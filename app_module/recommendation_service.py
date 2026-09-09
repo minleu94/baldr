@@ -363,6 +363,18 @@ class RecommendationService:
             "data_date": canonical["日期"].max().strftime("%Y-%m-%d") if not canonical.empty else "",
             "warnings": ["industry_membership_not_point_in_time"] if cutoff else [],
         }
+        declared_identity = {
+            "strategy_version_id": config.get("strategy_version_id") or config.get("strategy_version"),
+            "cost_model_id": config.get("cost_model_id"),
+            "benchmark_id": config.get("benchmark_id"),
+            "industry_benchmark_id": config.get("industry_benchmark_id"),
+            "horizon_days": config.get("horizon_days") or config.get("expected_horizon_days"),
+        }
+        self.last_run_context.update({
+            key: value
+            for key, value in declared_identity.items()
+            if value is not None and str(value).strip()
+        })
         if df.empty:
             self.last_run_context["eligible_universe_size"] = 0
             self._finalize_negative_evidence_buffers()
@@ -432,6 +444,49 @@ class RecommendationService:
         else:
             # 沒有產業篩選，直接限制數量
             stocks = all_stocks[:max_stocks]
+
+        universe_selected_codes = sorted({str(code).strip() for code in stocks if str(code).strip()})
+        if universe_selected_codes:
+            selection_mode = (
+                "explicit_universe"
+                if universe is not None
+                else "industry_filtered"
+                if industry_filter and industry_filter != "全部"
+                else "top_max_stocks"
+            )
+            requested_codes = (
+                sorted({str(code).strip() for code in universe if str(code).strip()})
+                if universe is not None
+                else None
+            )
+            universe_identity_payload = {
+                "schema": "recommendation-universe.v1",
+                "as_of_date": decision_cutoff,
+                "selection_mode": selection_mode,
+                "industry_filter": str(industry_filter or "全部"),
+                "max_stocks": int(max_stocks),
+                "selected_codes": universe_selected_codes,
+                "requested_codes": requested_codes,
+            }
+            universe_digest = hashlib.sha256(
+                json.dumps(
+                    universe_identity_payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            universe_hash = f"sha256:{universe_digest}"
+            self.last_run_context["universe_id"] = f"recommendation-universe-v1:{universe_digest}"
+            self.last_run_context["universe_hash"] = universe_hash
+            self.last_run_context["universe_identity_schema"] = "recommendation-universe.v1"
+            self.last_run_context["universe_spec"].update(
+                {
+                    "selected_codes": universe_selected_codes,
+                    "selection_mode": selection_mode,
+                    "industry_filter": str(industry_filter or "全部"),
+                }
+            )
 
         # 🚀 效能優化：過濾 df 僅保留需要處理的股票，避免在包含所有個股的巨量 DataFrame 上進行高頻 boolean indexing
         df = df[df[stock_col].isin(stocks)].copy()

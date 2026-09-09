@@ -32,6 +32,13 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 否則報告會留下缺 horizon warning。大量相同 row-level 缺口會以
 `rows_<code>:<count>` 彙總，保留原因與數量但不讓報告被重複訊息淹沒。
 
+新的推薦 snapshot 會在服務實際選完處理股票後保存 `recommendation-universe.v1` 的
+`universe_id`／`universe_hash`；身份內容綁定決策日、選擇模式、產業篩選、`max_stocks`
+與實際處理代號。每日排程的策略版本固定為
+`scheduled-recommendation-default-v1`。Evidence importer 只讀取結果 config／run context
+明確提供的策略、成本、benchmark、universe 與 horizon，缺欄位就保持缺件，不從 profile、
+symbol 或目前股票池猜值；這項接線不回填舊事件，也不把新 snapshot 自動標成成熟或正式績效。
+
 FinMind 現金流只作交叉核對候選：
 
 ```powershell

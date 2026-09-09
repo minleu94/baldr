@@ -33,6 +33,12 @@ root 已以正式 D 槽 Evidence SQLite 做 mode=ro／`query_only` 唯讀 probe�
 metadata，再由自然 outcome 累積關閉 V4 八項 maturity 閘門。同期整體 program readiness
 仍為 `action_required`，Formal operational 為 `no_credit`（0/3），Paper 為 `partial`。
 
+本輪另完成推薦 producer 的身份接線：實際處理的股票集合會產生可重現的
+`recommendation-universe.v1` `universe_id`／`universe_hash`，排程 snapshot 固定宣告
+`scheduled-recommendation-default-v1`，importer 只搬運明確的策略、成本、benchmark、
+universe 與 horizon context。這讓後續自然 outcome 能按正確 cohort 累積，但不回填既有事件、
+不猜測缺欄位，也不改變目前 V4／Formal／Paper 的 gate。
+
 ## 開場現況
 
 - 前一輪已完成三面向清查，並有後續工程實作與 `4003 passed / 2 skipped` 的保存驗收；本輪以最新工作樹重新判讀，這不是本輪測試結果。

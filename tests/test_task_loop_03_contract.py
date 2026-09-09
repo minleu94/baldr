@@ -82,6 +82,10 @@ def test_universe_is_applied_after_point_in_time_filter(tmp_path):
     recs = service.run_recommendation({}, as_of_date="2026-05-20", universe=["2317"])
     assert [r.stock_code for r in recs] == ["2317"]
     assert service.last_run_context["universe_spec"]["codes"] == ["2317"]
+    assert service.last_run_context["universe_spec"]["selected_codes"] == ["2317"]
+    assert service.last_run_context["universe_spec"]["selection_mode"] == "explicit_universe"
+    assert service.last_run_context["universe_id"].startswith("recommendation-universe-v1:")
+    assert service.last_run_context["universe_hash"].startswith("sha256:")
     assert recs[0].eligible_universe_size == 1
 
 

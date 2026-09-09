@@ -34,6 +34,17 @@ SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設
 大量相同的 row-level 輸入錯誤會以 `rows_<code>:<count>` 彙總，避免正式資料
 缺欄時產生數千個重複訊息；未知狀態與 cohort 衝突仍保留明確 warning。
 
+### 新推薦事件的身份綁定
+
+`RecommendationService` 在完成實際 universe 選擇後，以決策日、選擇模式、產業篩選、
+`max_stocks`、實際處理股票代號及明確請求代號產生 `recommendation-universe.v1` 的
+`universe_id` 與 `sha256:` `universe_hash`，並保存於 run context。每日 research-only
+推薦 snapshot 固定帶 `strategy_version_id=scheduled-recommendation-default-v1`，並將
+執行 context 一起保存。`RecommendationEvidenceImporter` 只接受 result config／run context
+中已存在的 strategy、cost、benchmark、universe 與 positive horizon 欄位，寫入 event 欄位
+及 metadata；不以 profile、symbol、目前股票池或推薦結果列推導缺件，也不替既有事件回填。
+因此這是後續 producer 的可追溯身份接線，不是現有資料的 V4 credit。
+
 2026-09-09 以正式 D 槽資料做唯讀 probe：`evidence_events=51,866`、
 `evidence_outcomes=0`，並觀測到事件沒有明確 `universe_id`，因此輸出為空 slices、
 `no_valid_cohort_rows` 與計數 warning。這是目前 Evidence producer／outcome 尚未接通的

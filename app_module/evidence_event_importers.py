@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Protocol
 
 from app_module.decision_desk_dtos import (
@@ -95,6 +96,7 @@ class RecommendationEvidenceImporter:
         config = dict(getattr(result, "config", {}) or {})
         profile_id = str(config.get("profile_id") or config.get("selected_profile") or "")
         profile_version = str(config.get("profile_version") or "")
+        identity = self._identity_payload(result)
         payloads: list[dict[str, Any]] = []
         diagnostics: list[EvidenceImportDiagnostic] = []
 
@@ -149,7 +151,9 @@ class RecommendationEvidenceImporter:
                         "ranking_method": getattr(rec, "ranking_method", None),
                         "recommendation_rank": index + 1,
                         "source_created_at": getattr(result, "created_at", None),
+                        **identity["metadata"],
                     },
+                    **identity["fields"],
                 }
             )
             if request.limit is not None and len(payloads) >= request.limit:
@@ -242,6 +246,8 @@ class RecommendationEvidenceImporter:
             "threshold_mode": row.get("threshold_mode"),
             "source_result_id": str(getattr(result, "result_id", "")),
         }
+        identity = self._identity_payload(result)
+        metadata.update(identity["metadata"])
         return {
             "event_date": decision_date,
             "decision_date": decision_date,
@@ -265,6 +271,7 @@ class RecommendationEvidenceImporter:
             "available_date": decision_date,
             "source_version": "recommendation_screening_matrix_importer_v1",
             "metadata": metadata,
+            **identity["fields"],
         }
 
     def _screening_event_type(self, status: str) -> EvidenceEventType:
@@ -356,6 +363,7 @@ class RecommendationEvidenceImporter:
         required_value = row.get("required_value")
         why_not_codes = reason_codes if event_type == EvidenceEventType.WHY_NOT_EXCLUDED else ()
         risk_codes = reason_codes if event_type == EvidenceEventType.LIQUIDITY_GATE_EXCLUDED else ()
+        identity = self._identity_payload(result)
         return {
             "event_date": decision_date,
             "decision_date": decision_date,
@@ -382,8 +390,88 @@ class RecommendationEvidenceImporter:
                 "warnings": list(warnings),
                 "source_result_id": str(getattr(result, "result_id", "")),
                 "exclusion_payload_kind": payload_kind,
+                **identity["metadata"],
             },
+            **identity["fields"],
         }
+
+    def _identity_payload(self, result: Any) -> dict[str, dict[str, Any]]:
+        """Read only explicitly declared V4 identity; never infer missing fields."""
+
+        mappings = self._identity_mappings(result)
+        strategy_version_id = self._first_text(mappings, ("strategy_version_id", "strategy_version"))
+        cost_model_id = self._first_text(mappings, ("cost_model_id",))
+        benchmark_id = self._first_text(mappings, ("benchmark_id",))
+        industry_benchmark_id = self._first_text(mappings, ("industry_benchmark_id",))
+        universe_id = self._first_text(mappings, ("universe_id",))
+        universe_hash = self._first_text(mappings, ("universe_hash",))
+        universe_identity_schema = self._first_text(mappings, ("universe_identity_schema",))
+        horizon_days = self._first_positive_integer(mappings, ("horizon_days", "expected_horizon_days"))
+
+        fields = {
+            key: value
+            for key, value in {
+                "strategy_version_id": strategy_version_id,
+                "cost_model_id": cost_model_id,
+                "benchmark_id": benchmark_id,
+                "industry_benchmark_id": industry_benchmark_id,
+            }.items()
+            if value
+        }
+        metadata = {
+            key: value
+            for key, value in {
+                "strategy_version_id": strategy_version_id,
+                "cost_model_id": cost_model_id,
+                "benchmark_id": benchmark_id,
+                "industry_benchmark_id": industry_benchmark_id,
+                "universe_id": universe_id,
+                "universe_hash": universe_hash,
+                "universe_identity_schema": universe_identity_schema,
+                "horizon_days": horizon_days,
+            }.items()
+            if value not in (None, "")
+        }
+        return {"fields": fields, "metadata": metadata}
+
+    def _identity_mappings(self, result: Any) -> tuple[Mapping[str, Any], ...]:
+        mappings: list[Mapping[str, Any]] = []
+        for candidate in (
+            getattr(result, "run_context", None),
+            getattr(result, "config", None),
+        ):
+            if not isinstance(candidate, Mapping):
+                continue
+            mappings.append(candidate)
+            nested = candidate.get("strategy_config")
+            if isinstance(nested, Mapping):
+                mappings.append(nested)
+        return tuple(mappings)
+
+    def _first_text(self, mappings: tuple[Mapping[str, Any], ...], keys: tuple[str, ...]) -> str:
+        for mapping in mappings:
+            for key in keys:
+                value = mapping.get(key)
+                if value is None or isinstance(value, (bool, Mapping, list, tuple)):
+                    continue
+                text = str(value).strip()
+                if text:
+                    return text
+        return ""
+
+    def _first_positive_integer(self, mappings: tuple[Mapping[str, Any], ...], keys: tuple[str, ...]) -> int | None:
+        for mapping in mappings:
+            for key in keys:
+                value = mapping.get(key)
+                if value is None or isinstance(value, bool):
+                    continue
+                try:
+                    parsed = Decimal(str(value).strip())
+                except (InvalidOperation, ValueError, TypeError):
+                    continue
+                if parsed.is_finite() and parsed == parsed.to_integral_value() and parsed > 0:
+                    return int(parsed)
+        return None
 
     def _load_result(self, request: EvidenceCaptureRequest) -> Any | None:
         if request.result_id:

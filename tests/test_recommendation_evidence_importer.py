@@ -104,3 +104,49 @@ def test_recommendation_importer_uses_requested_decision_date_and_stable_source_
     assert event["decision_date"] == "2026-07-03"
     assert event["source_id"] == "rec-001"
     assert event["score_percentile_bp"] == 9000
+
+
+def test_recommendation_importer_preserves_explicit_v4_identity_without_defaults():
+    result_dto = _result(score_percentile_bp=9000)
+    result_dto.config.update(
+        {
+            "strategy_version_id": "strategy-v4-test",
+            "cost_model_id": "cost-v1",
+            "benchmark_id": "TAIEX",
+            "industry_benchmark_id": "semiconductor-index",
+            "universe_id": "recommendation-universe-v1:test",
+            "universe_hash": "sha256:" + "a" * 64,
+            "horizon_days": 5,
+        }
+    )
+    result_dto.run_context = {
+        "universe_id": "recommendation-universe-v1:test",
+        "universe_hash": "sha256:" + "a" * 64,
+        "universe_identity_schema": "recommendation-universe.v1",
+        "horizon_days": 5,
+    }
+    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(result_dto))
+
+    result = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-001"))
+
+    event = result.event_payloads[0]
+    assert event["strategy_version_id"] == "strategy-v4-test"
+    assert event["cost_model_id"] == "cost-v1"
+    assert event["benchmark_id"] == "TAIEX"
+    assert event["industry_benchmark_id"] == "semiconductor-index"
+    assert event["metadata"]["universe_id"] == "recommendation-universe-v1:test"
+    assert event["metadata"]["universe_hash"] == "sha256:" + "a" * 64
+    assert event["metadata"]["horizon_days"] == 5
+
+
+def test_recommendation_importer_does_not_infer_missing_v4_identity():
+    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(_result()))
+
+    result = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-001"))
+
+    event = result.event_payloads[0]
+    assert "strategy_version_id" not in event
+    assert "cost_model_id" not in event
+    assert "benchmark_id" not in event
+    assert "universe_id" not in event["metadata"]
+    assert "horizon_days" not in event["metadata"]

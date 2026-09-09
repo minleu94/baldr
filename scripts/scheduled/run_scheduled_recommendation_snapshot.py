@@ -29,6 +29,7 @@ TASK_NAME = "baldr-recommendation-snapshot-daily"
 
 def _scheduled_default_config() -> dict[str, Any]:
     return {
+        "strategy_version_id": "scheduled-recommendation-default-v1",
         "technical": {
             "momentum": {
                 "enabled": True,
@@ -190,6 +191,20 @@ def main(argv: list[str] | None = None) -> int:
                 },
             }
         )
+        run_context = deepcopy(getattr(service, "last_run_context", {}) or {})
+        for identity_key in (
+            "universe_id",
+            "universe_hash",
+            "universe_identity_schema",
+            "strategy_version_id",
+            "cost_model_id",
+            "benchmark_id",
+            "industry_benchmark_id",
+            "horizon_days",
+        ):
+            value = run_context.get(identity_key)
+            if value is not None and str(value).strip():
+                result_config[identity_key] = value
 
         result = RecommendationResultDTO(
             result_id=_build_result_id(now),
@@ -205,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             liquidity_gate_payload_json=list(getattr(service, "last_liquidity_gate_payload_json", [])),
             exclusion_quality=str(getattr(service, "last_exclusion_quality", "observed")),
             exclusion_warnings_json=list(getattr(service, "last_exclusion_warnings_json", [])),
+            run_context=run_context,
         )
 
         repository = RecommendationRepository(config)
@@ -259,6 +275,20 @@ def main(argv: list[str] | None = None) -> int:
                 "auto_trading": False,
                 "lifecycle_action": False,
                 "confirm": False,
+                "evidence_identity": {
+                    key: result_config[key]
+                    for key in (
+                        "strategy_version_id",
+                        "universe_id",
+                        "universe_hash",
+                        "universe_identity_schema",
+                        "cost_model_id",
+                        "benchmark_id",
+                        "industry_benchmark_id",
+                        "horizon_days",
+                    )
+                    if key in result_config and str(result_config[key]).strip()
+                },
             }
         )
         log_path.write_text(

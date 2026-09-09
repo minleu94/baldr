@@ -8,6 +8,13 @@ V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 
 不會增加成熟 outcome、Formal credit、alpha 或交易權限。驗收見
 [V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)。
 
+同日新增推薦證據身份接線：`RecommendationService` 會依實際處理股票集合、決策日、
+選擇模式與 `max_stocks` 產生可重現的 `universe_id`／`universe_hash`，每日排程固定宣告
+`strategy_version_id=scheduled-recommendation-default-v1`；evidence importer 只傳遞結果
+或執行 context 明確宣告的策略、成本、benchmark、universe 與 horizon 欄位。缺件不猜測、
+不以 profile 或推薦列補值，也不回填既有 51,866 筆事件；這只讓後續新事件可被正確分 cohort，
+不授予任何成熟度或正式權限。
+
 2026-09-09 正式 D 槽 Evidence SQLite 唯讀盤點為 `evidence_events=51,866`、
 `evidence_outcomes=0`，且事件缺明確 `universe_id`，所以目前沒有可計算的有效 cohort。
 整體 program readiness 仍為 `action_required`；Formal operational audit 為

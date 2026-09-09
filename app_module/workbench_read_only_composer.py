@@ -853,6 +853,7 @@ def _scheduled_status_summary(status: ScheduledEvidenceStatus) -> str:
         recommendation_source = "manual_result（scheduled latest_status missing）"
     return (
         f"recommendation={status.recommendation_status} / evidence={status.evidence_status}；"
+        f"forward_outcomes={status.forward_outcome_status}；"
         f"source={recommendation_source}；result_id={result_id}；推薦 {rec_count} 筆；"
         f"machine_classification={status.machine_status_classification}；"
         f"load_state={status.load_state}；"

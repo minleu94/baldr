@@ -271,6 +271,47 @@ def test_scheduled_evidence_status_reads_latest_status_and_report(tmp_path: Path
     assert "Run Metadata" in status.report_preview
 
 
+def test_scheduled_evidence_status_reads_forward_outcome_receipt(tmp_path: Path) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    forward_dir = output_root / "scheduled" / "forward_outcomes"
+    forward_dir.mkdir(parents=True)
+    forward_path = forward_dir / "latest_status.json"
+    forward_path.write_text(
+        json.dumps(
+            {
+                "status": "passed_with_warnings",
+                "checked_at": "2026-09-09T05:40:00+08:00",
+                "run_id": "20260908T214000000000Z",
+                "writes_evidence_db": True,
+                "summary": {
+                    "events_scanned": 2500,
+                    "outcomes_written": 1820,
+                    "pending_insufficient_future_data": 680,
+                    "warnings_count": 4,
+                },
+                "blockers": [],
+                "warnings": ["missing_benchmark"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.load_state == "current"
+    assert status.forward_outcome_status == "passed_with_warnings"
+    assert status.forward_outcome_run_id == "20260908T214000000000Z"
+    assert status.forward_outcome_events_scanned == 2500
+    assert status.forward_outcome_outcomes_written == 1820
+    assert status.forward_outcome_pending == 680
+    assert status.forward_outcome_warnings_count == 4
+    assert status.forward_outcome_writes_evidence_db is True
+    assert status.forward_outcome_status_path == forward_path
+    assert status.has_production_write_risk is True
+    assert dict(status.machine_status_classifications)["forward_outcomes"] == "machine_degraded"
+
+
 def test_scheduled_evidence_status_uses_same_day_manual_recommendation_when_scheduled_status_missing(
     tmp_path: Path,
 ) -> None:

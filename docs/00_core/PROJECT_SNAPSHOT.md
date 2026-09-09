@@ -15,6 +15,20 @@ V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 
 不以 profile 或推薦列補值，也不回填既有 51,866 筆事件；這只讓後續新事件可被正確分 cohort，
 不授予任何成熟度或正式權限。
 
+同日已接上 `baldr-forward-outcomes-daily` 的每日 outcome producer。它在 05:40 以台北
+當日可見價格，按 120 個曆日／2,500 events 上限計算 5／10／20／60 交易日
+`close_to_close_event_date` 結果，排程 wrapper 預設限定 `recommendation_included` 事件；
+只有排程明確帶入 confirm 旗標時才更新
+`evidence_outcomes`，並以獨立 status／不可覆寫 run receipt 揭露缺件。這是讓後續自然
+outcome 能累積的 producer 接線，不是回填既有事件，也不改目前 `evidence_outcomes=0`
+的正式盤點結果。
+
+既有證據覆盤與 Decision Workbench 的排程狀態頁也已接上這份 receipt：它只讀取
+`forward_outcomes/latest_status.json`，顯示掃描／寫入／待成熟數、machine status 與
+`forward_outcome_writes_evidence_db` 邊界；receipt 缺失時保留 source gap，不把推薦或
+資料新鮮度誤當成 outcome。舊 DTO 注入仍維持相容，不會因尚未產生新 receipt 而讓既有
+排程狀態讀取失效。
+
 2026-09-09 正式 D 槽 Evidence SQLite 唯讀盤點為 `evidence_events=51,866`、
 `evidence_outcomes=0`，且事件缺明確 `universe_id`，所以目前沒有可計算的有效 cohort。
 整體 program readiness 仍為 `action_required`；Formal operational audit 為

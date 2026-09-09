@@ -63,13 +63,20 @@ class FakeScheduledStatus:
             evidence_status="degraded",
             pipeline_overall_status="degraded",
             recommendation_status="passed",
+            forward_outcome_status="passed_with_warnings",
             latest_data_date="20260707",
             decision_date="2026-07-07",
             recommendation_result_id="scheduled_rec_20260707_051001",
+            forward_outcome_run_id="20260707T214000000000Z",
             recommendations_count=12,
+            forward_outcome_events_scanned=12,
+            forward_outcome_outcomes_written=7,
+            forward_outcome_pending=5,
+            forward_outcome_warnings_count=1,
             screening_matrix_rows=200,
             dry_run=True,
             writes_evidence_db=False,
+            forward_outcome_writes_evidence_db=False,
             writes_recommendation_result=True,
             auto_trading=False,
             lifecycle_action=False,
@@ -242,12 +249,14 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
     assert "20260707" in view.freshness_label.text()
     assert "scheduled_rec_20260707_051001" in view.recommendation_label.text()
     assert "degraded / 決策日 2026-07-07" in view.evidence_label.text()
+    assert "passed_with_warnings / 掃描 12 / 寫入 7" in view.forward_outcome_label.text()
     assert "writes_recommendation_result: true" in view.detail_panel.toPlainText()
     assert "writes_evidence_db=false" in view.safety_label.text()
     assert "screening_matrix_missing" in view.detail_panel.toPlainText()
     assert "pipeline warnings: 7 warning occurrences / 2 warning types" in view.detail_panel.toPlainText()
     assert "pipeline advisories: 3 advisory occurrences / 2 advisory types" in view.detail_panel.toPlainText()
     assert "pipeline_overall_status: degraded" in view.detail_panel.toPlainText()
+    assert "forward outcomes: passed_with_warnings" in view.detail_panel.toPlainText()
     assert "recommendation result write: true / research-only output" in view.detail_panel.toPlainText()
     assert "production evidence/trading write risk: false" in view.detail_panel.toPlainText()
     assert "risk_prompt_source_quality:portfolio_alerts:estimated=4" in view.detail_panel.toPlainText()
@@ -285,6 +294,7 @@ def test_scheduled_status_view_marks_each_card_stale_and_focuses_retry() -> None
         view.freshness_label,
         view.recommendation_label,
         view.evidence_label,
+        view.forward_outcome_label,
         view.safety_label,
         view.report_label,
     ))

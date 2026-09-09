@@ -1,13 +1,13 @@
 # baldr Scheduled Operational Wrappers
 
-These wrappers are intentionally conservative. They use CMD files and Windows built-in `schtasks.exe` because the previous PowerShell `.ps1` registration path was blocked by local execution policy. Do not use `Set-ExecutionPolicy` or bypass local policy. Only the dedicated Decision/Evidence capture task enters confirmed append-only formal evidence capture；EOD Paper execution may append the separate research-only Paper ledger under its own bounded contract. 所有 Gate 都由機器重驗，不建立等待人工批准的排程 task。
+These wrappers are intentionally conservative. They use CMD files and Windows built-in `schtasks.exe` because the previous PowerShell `.ps1` registration path was blocked by local execution policy. Do not use `Set-ExecutionPolicy` or bypass local policy. Only the dedicated Decision/Evidence capture task enters confirmed append-only formal event capture；the separate forward-outcome task may update only the corresponding research outcome rows after a bounded current-date calculation；EOD Paper execution may append the separate research-only Paper ledger under its own bounded contract. 所有 Gate 都由機器重驗，不建立等待人工批准的排程 task。
 
 Aggregate `register`／`register-all` 只允許在 Windows `Pacific Standard Time`
 主機建立這些以 Pacific local time 表示的 task；`dryrun` 仍可在其他時區唯讀檢查。
 Paper Portfolio 的 trigger 固定為 Pacific 16:15：PDT 時是台北次日 07:15、PST
 時是 08:15。adapter 以真實 Asia/Taipei 08:30 cutoff guard；兩種 offset 都會等待
 cutoff，不能把台北 09:30 開盤後時間稱為盤前。
-完整 Windows 清冊目前是 17 個每日 task 加 1 個 weekly task，共 18 個。
+完整 Windows 清冊目前是 18 個每日 task 加 1 個 weekly task，共 19 個。
 `baldr-ml-allocation-forward-daily` 使用 pinned UTF-16 XML 與獨立 preflight，
 aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unregister`
 也只會查詢並保留它，回復必須依 registration plan 的專用 delete 命令進行。
@@ -26,6 +26,7 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-ml-promotion-authority-daily` | enabled after register | daily local time 05:18 | 由獨立 DPAPI user-scope authority 重驗 compatible evidence、Gate registry 與決策有效窗。只有所有機器門檻通過才簽章；否則成功 fail closed，維持 alpha 0。 |
 | `baldr-ml-allocation-copilot-daily` | enabled after register | daily local time 05:20 | 執行配置型 ML promotion 評估並寫入 append-only sidecar、promotion artifact 與 `latest_status.json`。缺少、無效或未授權證據時仍成功完成每日流程，但固定輸出 `formal_oos_allowed=false`、`selected_alpha_bp=0` 與四條未通過 lane；不改寫來源資料庫或投組狀態。 |
 | `baldr-decision-evidence-capture-daily` | enabled after register | daily local time 05:25 | 依台北時間選擇最近一個**已到達**的 08:30 日曆決策日，依序確認保存 durable Decision Desk snapshot 與 Evidence Event；不再把隔日 cutoff 當成已發生資料。既有 hash／unique key 使重跑轉為 duplicate；任一步失敗即回傳失敗並保留下一次重跑能力。它不推定交易日／成熟日、不改 Rule／Advice／Portfolio 狀態，也不連接券商執行。 |
+| `baldr-forward-outcomes-daily` | enabled after register | daily local time 05:40 | 在 Decision/Evidence capture 之後，wrapper 預設只處理帶有身份契約的 `recommendation_included` 事件，以台北當日可見資料及固定 120 個曆日／2,500 events 上限，重算 5／10／20／60 交易日 close-to-close research outcome。可用 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換事件類型；只有 wrapper 明確傳入 `--confirm --allow-production-db-confirm` 才更新 `evidence_outcomes`；事件、推薦、Paper／Formal、模型與券商狀態不變。未成熟、缺價、缺 benchmark 與政策資料只保留明確 warning／degraded，不補未來價格、不做 historical backfill。 |
 | `baldr-paper-portfolio-daily` | enabled after register | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，adapter guard 至 08:30） | 由 `run_paper_portfolio_daily_isolated.py` 先以 D 槽 snapshot 的 SQLite read-only consistent backup 建立 repository state；兩種 offset 都等待真實台北 08:30，再 append preopen/T-1 估值 snapshot。之後 D snapshot 永遠只讀，EOD 與 Formal 共用 repository state。盤前只以 `mode=ro/query_only` 讀市場 SQLite 與 EOD ledger；不覆寫既有 snapshot、不把 snapshot 當成交、不自動調倉、不修改 Advice，也不具券商執行能力。 |
 | `baldr-ml-allocation-forward-daily` | registered by dedicated XML | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，等待 Asia/Taipei 08:30，08:35 後 fail closed） | 只執行 repository-isolated、candidate-only ML forward shadow。每日 config producer 依 offline official calendar、單一交易日 freshness、archive custody 與固定 V2 release manifest hash 建立 create-only config；child 必須保留完整 outer payload，`forward_credit_granted=false`。不寫市場 SQLite、不下單、不改正式 Paper／Formal 狀態；註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`，aggregate registration 不會替換其設定。 |
 | `baldr-pit-sector-membership-preopen-capture-daily` | enabled after dedicated register | daily local time 16:00（PDT 台北 07:00；PST 台北 08:00） | 在台北 08:30 前以官方 TWSE／TPEx response completion timestamp 建立 current-day PIT machine candidate，保存 raw custody、machine consumer readback 與 durable archive；同一 task 會先重驗當日獨立 denominator，缺少時自動以 data.gov dataset/resource、官方 Swagger 與授權文件建立 bounded create-only refresh；來源失敗會保留具體 status 並讓 sidecar 下輪重試。若 clock 或 response 越過 cutoff，fail closed，不建立可被當日 handoff 消費的 archive。 |
@@ -747,7 +748,7 @@ decision_selection_attempts，因此自動補跑不需要人工猜測，也不�
 
 ### ML forward 自然日設定產出（已註冊、尚待自然執行）
 
-`run_ml_allocation_forward_daily.cmd` 是第 17 個 daily task 的前瞻 shadow 入口，
+`run_ml_allocation_forward_daily.cmd` 是第 18 個 daily task 的前瞻 shadow 入口，
 目前已由 pinned UTF-16 XML 獨立註冊；它不由 aggregate registration 建立或覆寫。
 省略
 `ML_FORWARD_CONFIG_PATH` 時，Python wrapper 在真實 Asia/Taipei 08:30
@@ -843,7 +844,7 @@ Evidence status schema v3 會保存 `requested_decision_at`、`decision_selectio
 `upstream_data_update_proof_reason`。選日調整不是 Gate 通過；formal OOC、PIT、replay、shadow
 或 authority 任一缺件仍會回傳 blocked、alpha 0。
 
-Only the dedicated Decision/Evidence capture task writes the durable snapshot and production evidence event tables through the existing idempotent repositories. The Paper Portfolio task writes only its isolated append-only paper ledger. The data freshness, recommendation, evidence dry-run, ML co-pilot and weekly collection tasks do not write the production evidence DB. No scheduled task runs the UI, reads UI state, changes the live portfolio, changes `ScoringEngine`, changes recommendation weights, promotes / demotes / retires strategies, connects to a broker, or automates trading.
+Only the dedicated Decision/Evidence capture task writes the durable snapshot and production evidence event tables through the existing idempotent repositories. The forward-outcome task writes only `evidence_outcomes` after its bounded read-only source preflight and explicit confirm boundary. The Paper Portfolio task writes only its isolated append-only paper ledger. The data freshness, recommendation, evidence dry-run, ML co-pilot and weekly collection tasks do not write the production evidence DB. No scheduled task runs the UI, reads UI state, changes the live portfolio, changes `ScoringEngine`, changes recommendation weights, promotes / demotes / retires strategies, connects to a broker, or automates trading.
 
 ML allocation co-pilot task 只消費前兩個獨立 task 產生、且與本次 inference release 相同的 evidence／authorization custody。Evidence builder 不簽章，Authority 不訓練模型，Co-pilot 不自行製造 OOS、PIT、calibration、drift 或 shadow days 證據；非零 alpha 必須通過三層重驗。
 

@@ -5,7 +5,7 @@ from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any
+from typing import Any, Iterable
 from uuid import uuid4
 
 from app_module.evidence_event_dtos import (
@@ -26,6 +26,7 @@ class EvidenceEventRepository:
     def __init__(self, config: Any, *, db_path: str | Path | None = None) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
+        self._schema_ready = False
 
     def _read_rows(self, table: str, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
         if not self.db_path.exists():
@@ -38,9 +39,13 @@ class EvidenceEventRepository:
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
     def ensure_schema(self) -> None:
+        if self._schema_ready:
+            return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 30000")
             apply_evidence_event_schema(conn)
+        self._schema_ready = True
 
     def insert_event(self, event: EvidenceEvent) -> EvidenceEvent:
         self.ensure_schema()
@@ -55,7 +60,8 @@ class EvidenceEventRepository:
         columns = list(row.keys())
         placeholders = ", ".join("?" for _ in columns)
         column_sql = ", ".join(columns)
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 30000")
             conn.execute(
                 f"INSERT INTO evidence_events ({column_sql}) VALUES ({placeholders})",
                 tuple(row[column] for column in columns),
@@ -114,14 +120,28 @@ class EvidenceEventRepository:
         return [self._row_to_event(row) for row in rows]
 
     def upsert_outcome(self, outcome: EvidenceOutcome) -> EvidenceOutcome:
+        self.upsert_outcomes((outcome,))
+        saved = self.get_outcome(outcome.event_id, outcome.window_days, outcome.return_basis)
+        if saved is None:
+            raise RuntimeError(f"evidence outcome not found after upsert: {outcome.event_id}")
+        return saved
+
+    def upsert_outcomes(self, outcomes: Iterable[EvidenceOutcome]) -> None:
+        """Atomically upsert a batch of outcomes under one SQLite transaction."""
+
+        rows = [self._outcome_to_row(outcome) for outcome in outcomes]
+        if not rows:
+            return
         self.ensure_schema()
-        row = self._outcome_to_row(outcome)
-        columns = list(row.keys())
+        columns = list(rows[0].keys())
         placeholders = ", ".join("?" for _ in columns)
         column_sql = ", ".join(columns)
-        updates = ", ".join(f"{column} = excluded.{column}" for column in columns if column != "calculated_at")
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
+        updates = ", ".join(
+            f"{column} = excluded.{column}" for column in columns if column != "calculated_at"
+        )
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 30000")
+            conn.executemany(
                 f"""
                 INSERT INTO evidence_outcomes ({column_sql})
                 VALUES ({placeholders})
@@ -129,12 +149,8 @@ class EvidenceEventRepository:
                     {updates},
                     calculated_at = CURRENT_TIMESTAMP
                 """,
-                tuple(row[column] for column in columns),
+                [tuple(row[column] for column in columns) for row in rows],
             )
-        saved = self.get_outcome(outcome.event_id, outcome.window_days, outcome.return_basis)
-        if saved is None:
-            raise RuntimeError(f"evidence outcome not found after upsert: {outcome.event_id}")
-        return saved
 
     def get_outcome(
         self,

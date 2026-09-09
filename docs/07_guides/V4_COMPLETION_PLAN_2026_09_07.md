@@ -33,6 +33,20 @@ root 已以正式 D 槽 Evidence SQLite 做 mode=ro／`query_only` 唯讀 probe�
 metadata，再由自然 outcome 累積關閉 V4 八項 maturity 閘門。同期整體 program readiness
 仍為 `action_required`，Formal operational 為 `no_credit`（0/3），Paper 為 `partial`。
 
+本輪另接上 `baldr-forward-outcomes-daily`：05:40 在 Decision/Evidence capture 後以
+台北當日可見價格，固定 5／10／20／60 交易日與 `close_to_close_event_date`，有界處理最近
+120 個曆日／2,500 events；排程 wrapper 預設只處理有身份契約的
+`recommendation_included`，也可受控切換事件類型。入口先以 query-only 確認 Evidence 與 daily price tables，
+排程明確帶入 `--confirm --allow-production-db-confirm` 後才只更新
+`evidence_outcomes`；未成熟、缺價、缺 benchmark 或政策資料仍保存 warning／degraded，
+不回填既有 event identity、不產生交易權限。隔離測試已覆蓋 dry-run、production confirm
+與未來日期阻擋；尚未在正式 D 槽執行 writer，因此正式 `evidence_outcomes=0` 仍是待自然
+排程驗證的真實狀態。
+
+排程狀態頁與 Workbench 背景證據流已納入 `forward_outcomes/latest_status.json` 的唯讀
+投影，顯示掃描／寫入／待成熟數與寫入邊界；receipt 缺失時只顯示 source gap，避免把
+推薦或 freshness payload 當成 forward outcome。
+
 本輪另完成推薦 producer 的身份接線：實際處理的股票集合會產生可重現的
 `recommendation-universe.v1` `universe_id`／`universe_hash`，排程 snapshot 固定宣告
 `scheduled-recommendation-default-v1`，importer 只搬運明確的策略、成本、benchmark、

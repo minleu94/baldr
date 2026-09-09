@@ -45,6 +45,35 @@ SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設
 及 metadata；不以 profile、symbol、目前股票池或推薦結果列推導缺件，也不替既有事件回填。
 因此這是後續 producer 的可追溯身份接線，不是現有資料的 V4 credit。
 
+### 每日 forward outcome producer
+
+新增 `app_module/scheduled_forward_outcome_service.py`、
+`scripts/scheduled/run_scheduled_forward_outcomes.py` 與
+`scripts/scheduled/run_forward_outcomes_daily.cmd`。`baldr-forward-outcomes-daily`
+固定在 Decision/Evidence capture 後的 05:40 執行，預設只處理最近 120 個曆日、最多
+2,500 個帶身份契約的 `recommendation_included` 事件及 5／10／20／60 交易日觀察窗；
+`FORWARD_OUTCOME_EVENT_TYPE` 可受控切換事件類型。價格查詢以當次台北
+`data_as_of_date` 為上限，固定使用 `close_to_close_event_date`，不做 historical
+backfill 或未來價格補值。
+
+入口先用 SQLite `mode=ro`／`PRAGMA query_only=ON` 確認
+`evidence_events`、`evidence_outcomes`、`daily_prices` 三個來源存在。未加 `--confirm`
+只產生 dry-run receipt；正式 DB 還需 `--allow-production-db-confirm`。排程 wrapper 才會
+明確帶入兩個旗標，並只呼叫既有 `ForwardPerformanceService` 的 outcome upsert；事件、
+推薦、Paper／Formal、模型與券商狀態都不在寫入範圍。每輪保存
+`scheduled/forward_outcomes/latest_status.json` 與不可覆寫的 `runs/<run_id>.json`，
+缺資料、未成熟、缺 benchmark 或政策表時以 `passed_with_warnings`／`degraded` 揭露。
+
+`ScheduledEvidenceStatusService`、`ScheduledEvidenceStatusView` 與 Workbench 背景證據流
+會唯讀呈現這份 receipt 的 status、掃描／寫入／待成熟計數與
+`forward_outcome_writes_evidence_db`；缺少 receipt 時顯示 source gap，不會以其他排程
+payload 推估 outcome。
+
+隔離驗收涵蓋 dry-run 不改 DB、production confirm 缺旗標時阻擋、明確 confirm 只新增
+outcome、必要來源表缺失阻擋，以及未來 `data_as_of_date` 拒絕；測試為
+`tests/test_scheduled_forward_outcomes.py`。本次沒有對正式 D 槽執行 writer，因此正式
+盤點的 `evidence_outcomes=0` 仍維持原狀，待下一個自然排程產生第一筆可讀回結果。
+
 2026-09-09 以正式 D 槽資料做唯讀 probe：`evidence_events=51,866`、
 `evidence_outcomes=0`，並觀測到事件沒有明確 `universe_id`，因此輸出為空 slices、
 `no_valid_cohort_rows` 與計數 warning。這是目前 Evidence producer／outcome 尚未接通的

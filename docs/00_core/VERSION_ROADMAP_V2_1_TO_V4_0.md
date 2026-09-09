@@ -204,6 +204,12 @@ V4.0 是長期 maturity milestone，不是目前六個月工程承諾。只有�
 7. 持續調參受到 Experiment Contract、search budget、OOS 與 pruning 約束，沒有用過度擬合換取版號。
 8. Model / source / policy 出現 drift 或 failure 時，可回到 last approved champion。
 
+目前已接上的 `baldr-forward-outcomes-daily` 只是第 1、2、4、5 項的資料累積入口：
+它以固定的 close-to-close basis、自然交易日與明確的事件／日期上限寫入
+`evidence_outcomes`，並保留缺價、benchmark、成本與成熟度缺口。producer 的成功不等於
+上述八項已達標；未具備的成本後績效、Paper／Live 成交、Exit、drift、OOS 與 rollback
+證據仍須自然累積並逐項驗收。
+
 V4.0 仍不代表：
 
 - 保證獲利。

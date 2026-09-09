@@ -12,6 +12,7 @@ param(
     [string]$MLPromotionAuthorityAt = "05:18",
     [string]$MLAllocationAt = "05:20",
     [string]$DecisionEvidenceAt = "05:25",
+    [string]$ForwardOutcomeAt = "05:40",
     # Pacific 16:15 在 PDT／PST 分別對應台北次日 07:15／08:15；adapter
     # 以台北真實 08:30 cutoff guard 等待後才讀取來源，兩種 offset 都維持
     # 在開盤前喚醒，也避免 DST 漂移。
@@ -93,6 +94,7 @@ $mlPromotionEvidenceScript = Join-Path $RepoRoot "scripts\scheduled\run_ml_promo
 $mlAllocationScript = Join-Path $RepoRoot "scripts\scheduled\run_ml_allocation_copilot.cmd"
 $mlPromotionAuthorityScript = Join-Path $RepoRoot "scripts\scheduled\run_ml_promotion_authority.cmd"
 $decisionEvidenceScript = Join-Path $RepoRoot "scripts\scheduled\run_decision_evidence_capture.cmd"
+$forwardOutcomeScript = Join-Path $RepoRoot "scripts\scheduled\run_forward_outcomes_daily.cmd"
 $paperPortfolioScript = Join-Path $RepoRoot "scripts\scheduled\run_paper_portfolio_daily.cmd"
 $paperPortfolioRegistrationScript = Join-Path $RepoRoot "scripts\scheduled\register_paper_portfolio_task.cmd"
 $paperExecutionScript = Join-Path $RepoRoot "scripts\scheduled\run_paper_execution_daily_isolated.cmd"
@@ -120,6 +122,7 @@ $dailyTasks = @(
     (New-DailyTaskSpec "baldr-ml-promotion-authority-daily" "Independent DPAPI-protected machine promotion authority for the next decision session." $mlPromotionAuthorityScript $MLPromotionAuthorityAt),
     (New-DailyTaskSpec "baldr-ml-allocation-copilot-daily" "Fail-closed baldr ML allocation co-pilot promotion evaluation." $mlAllocationScript $MLAllocationAt),
     (New-DailyTaskSpec "baldr-decision-evidence-capture-daily" "Idempotent Decision Desk snapshot and evidence event capture." $decisionEvidenceScript $DecisionEvidenceAt),
+    (New-DailyTaskSpec "baldr-forward-outcomes-daily" "Bounded close-to-close forward research outcome writer." $forwardOutcomeScript $ForwardOutcomeAt),
     (New-DailyTaskSpec "baldr-paper-execution-eod-replay-daily" "Delayed EOD Paper execution after same-day update/freshness proof; bounded same-source retry." $paperExecutionScript $PaperExecutionAt),
     (New-DailyTaskSpec "baldr-paper-portfolio-daily" "Pacific 16:15 wake-up; Taipei 08:30 guarded repository-only Paper valuation." $paperPortfolioScript $PaperPortfolioAt),
     (New-DailyTaskSpec "baldr-pit-sector-membership-preopen-capture-daily" "Candidate-only official PIT sector membership capture before Taipei open." $pitPreopenScript $PitPreopenAt),

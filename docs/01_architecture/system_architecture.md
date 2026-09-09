@@ -656,6 +656,18 @@ diagnostic calibration 不得被當成正式校準器。
 
 Post-V1 evidence layer 由 `EvidenceEventService` / `EvidenceEventRepository` 保存 append-only `evidence_events`，並由 `ForwardPerformanceService` 計算 `evidence_outcomes`。v1 outcome 使用 SQLite `daily_prices` 的 close-to-close forward return，並嘗試從 `market_indices` / `industry_indices` 產生 benchmark / industry excess；缺資料時保留 NULL 與 warnings，不中斷整批。reference return 分為三層契約：raw forward return、market benchmark excess、industry excess；market benchmark 可在 missing event benchmark 時 fallback 到 TAIEX，industry excess 必須有 event industry id 或 sector payload 才能填入。`EvidenceSourceCoverageService` 統一檢查 persisted recommendation、durable Daily Decision Desk snapshot sections 與 optional exclusion payload 的 coverage，避免 CLI、runner、readiness evaluator 各自分級。V1.6 cross-sectional factor snapshot 以 `CrossSectionalFactorRepository` 保存每日 factor rank / quantile 與 diagnostics，供 attribution 與後續 negative evidence 使用。此層只輸出 research evidence、factor attribution 與 source diagnostics，不改 `ScoringEngine`、推薦權重、策略版本或 portfolio position。
 
+每日 `baldr-forward-outcomes-daily` 是上述 outcome layer 的受控 producer：它在
+Decision/Evidence event capture 後，以台北當日可見日期、固定觀察窗及事件數上限重新計算
+成熟度，只有顯式 confirm 才 upsert `evidence_outcomes`。入口先用 query-only 連線檢查
+`evidence_events`、`evidence_outcomes`、`daily_prices`，並保存 status／不可覆寫 run receipt；
+缺價、未成熟、benchmark 或政策資料缺口保留 status 與 warning。此 writer 不新增事件、
+不回填 cohort identity、不改 recommendation／Paper／Formal／ML 狀態，也不連接 broker。
+
+`ScheduledEvidenceStatusService` 以唯讀 adapter 載入上述 producer 的
+`scheduled/forward_outcomes/latest_status.json`；`ScheduledEvidenceStatusView` 與
+Workbench 只投影 status、事件掃描／寫入／待成熟計數、receipt path 與寫入邊界，缺少
+receipt 時保留 source gap。UI 不會因讀取狀態而重跑 producer 或開啟資料庫寫入。
+
 目前 registry 已保存：
 
 - 資料截止日與 hash

@@ -16,6 +16,8 @@ REQUIRED_FILES = (
     "run_ml_direct_chain_maintenance.py",
     "run_daily_data_freshness_check.ps1",
     "run_evidence_pipeline_dry_run.ps1",
+    "run_forward_outcomes_daily.cmd",
+    "run_scheduled_forward_outcomes.py",
     "run_evidence_working_copy_smoke.ps1",
     "paper_execution_dependency_gate.py",
     "paper_execution_retry_runner.py",
@@ -51,6 +53,7 @@ def test_register_and_unregister_support_dry_run_modes() -> None:
     assert "baldr-ml-promotion-authority-daily" in register_text
     assert "baldr-ml-allocation-copilot-daily" in register_text
     assert "baldr-decision-evidence-capture-daily" in register_text
+    assert "baldr-forward-outcomes-daily" in register_text
     assert "baldr-paper-portfolio-daily" in register_text
     assert "baldr-paper-execution-eod-replay-daily" in register_text
     assert "baldr-pit-sector-membership-preopen-capture-daily" in register_text

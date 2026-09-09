@@ -74,10 +74,29 @@ class ScheduledEvidenceStatus:
     is_stale: bool = False
     load_checked_at: str | None = None
     last_good_loaded_at: str | None = None
+    # Forward outcome fields are appended to preserve positional compatibility
+    # for older injected DTOs while the read model gains the new receipt.
+    forward_outcome_status: str = "missing"
+    forward_outcome_checked_at: str | None = None
+    forward_outcome_run_id: str | None = None
+    forward_outcome_events_scanned: int | None = None
+    forward_outcome_outcomes_written: int | None = None
+    forward_outcome_pending: int | None = None
+    forward_outcome_warnings_count: int | None = None
+    forward_outcome_writes_evidence_db: bool | None = None
+    forward_outcome_blockers: tuple[str, ...] = ()
+    forward_outcome_warnings: tuple[str, ...] = ()
+    forward_outcome_status_path: Path | None = None
 
     @property
     def has_production_write_risk(self) -> bool:
-        return bool(self.confirm) or bool(self.writes_evidence_db) or bool(self.auto_trading) or bool(self.lifecycle_action)
+        return (
+            bool(self.confirm)
+            or bool(self.writes_evidence_db)
+            or bool(self.forward_outcome_writes_evidence_db)
+            or bool(self.auto_trading)
+            or bool(self.lifecycle_action)
+        )
 
     @property
     def machine_status_classifications(self) -> tuple[tuple[str, str], ...]:
@@ -87,11 +106,20 @@ class ScheduledEvidenceStatus:
             + self.pipeline_diagnostic_codes
             + self.source_coverage_warnings
             + self.freshness_errors
+            + self.forward_outcome_blockers
+            + self.forward_outcome_warnings
         )
         return (
             ("data_freshness", classify_machine_status(self.freshness_status, diagnostics)),
             ("recommendation_snapshot", classify_machine_status(self.recommendation_status, diagnostics)),
             ("evidence_pipeline", classify_machine_status(self.evidence_status, diagnostics)),
+            (
+                "forward_outcomes",
+                _classify_forward_outcome(
+                    self.forward_outcome_status,
+                    (*self.forward_outcome_blockers, *self.forward_outcome_warnings),
+                ),
+            ),
         )
 
     @property
@@ -105,9 +133,19 @@ class ScheduledEvidenceStatus:
             and self.freshness_status in {"", "missing", "unknown"}
             and self.recommendation_status in {"", "missing", "unknown"}
             and self.evidence_status in {"", "missing", "unknown"}
+            and self.forward_outcome_status in {"", "missing", "unknown"}
         ):
             return MACHINE_STATUS_UNKNOWN
-        classifications = {value for _name, value in self.machine_status_classifications}
+        classifications = {
+            value
+            for name, value in self.machine_status_classifications
+            if not (
+                name == "forward_outcomes"
+                and self.forward_outcome_status_path is None
+                and self.load_state == MACHINE_STATUS_UNKNOWN
+                and self.load_checked_at is None
+            )
+        }
         for value in (
             MACHINE_STATUS_INVALID_EVIDENCE,
             MACHINE_STATUS_SOURCE_MISSING,
@@ -149,9 +187,19 @@ class ScheduledEvidenceStatusService:
         freshness_path = self.output_root / "scheduled" / "data_freshness" / "latest_status.json"
         recommendation_path = self.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
         evidence_path = self.output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
+        forward_outcome_path = self.output_root / "scheduled" / "forward_outcomes" / "latest_status.json"
         freshness = _read_json(freshness_path, diagnostics)
         recommendation = _read_json(recommendation_path, diagnostics)
         evidence = _read_json(evidence_path, diagnostics)
+        # The outcome producer was added after the existing three scheduled
+        # payloads.  Its first absence is an honest source gap, but it must
+        # not invalidate a previously observable freshness/recommendation/
+        # evidence status during the rollout window.
+        forward_outcome = _read_optional_json(forward_outcome_path, diagnostics)
+        forward_summary_raw = forward_outcome.get("summary")
+        forward_summary: dict[str, Any] = (
+            forward_summary_raw if isinstance(forward_summary_raw, dict) else {}
+        )
 
         report_path = _optional_path(evidence.get("report_path"))
         log_path = _optional_path(evidence.get("log_path"))
@@ -205,16 +253,25 @@ class ScheduledEvidenceStatusService:
             recommendation_status=recommendation_status,
             recommendation_source=recommendation_source,
             evidence_status=str(evidence.get("status") or "missing"),
+            forward_outcome_status=str(forward_outcome.get("status") or "missing"),
             latest_data_date=str(latest_data_date) if latest_data_date else None,
             decision_date=_str_or_none(evidence.get("decision_date")),
             recommendation_checked_at=_str_or_none(
                 recommendation_payload.get("checked_at") or recommendation_payload.get("created_at")
             ),
+            forward_outcome_checked_at=_str_or_none(forward_outcome.get("checked_at")),
             recommendation_result_id=_str_or_none(recommendation_payload.get("result_id")),
+            forward_outcome_run_id=_str_or_none(forward_outcome.get("run_id")),
             recommendations_count=_count_or_int(
                 recommendation_payload.get("recommendations_count"),
                 recommendation_payload.get("recommendations"),
             ),
+            forward_outcome_events_scanned=_int_or_none(forward_summary.get("events_scanned")),
+            forward_outcome_outcomes_written=_int_or_none(forward_summary.get("outcomes_written")),
+            forward_outcome_pending=_int_or_none(
+                forward_summary.get("pending_insufficient_future_data")
+            ),
+            forward_outcome_warnings_count=_int_or_none(forward_summary.get("warnings_count")),
             screening_matrix_rows=_count_or_int(
                 recommendation_payload.get("screening_matrix_rows"),
                 recommendation_payload.get("screening_matrix_json"),
@@ -264,9 +321,15 @@ class ScheduledEvidenceStatusService:
             report_path=report_path,
             log_path=log_path,
             manual_recommendation_result_path=manual_recommendation_path,
+            forward_outcome_status_path=forward_outcome_path if forward_outcome else None,
             report_exists=report_exists,
             report_preview=report_preview,
             diagnostics=tuple(diagnostics),
+            forward_outcome_writes_evidence_db=_bool_or_none(
+                forward_outcome.get("writes_evidence_db")
+            ),
+            forward_outcome_blockers=_tuple_of_str(forward_outcome.get("blockers")),
+            forward_outcome_warnings=_tuple_of_str(forward_outcome.get("warnings")),
         )
 
     def _accept_candidate(
@@ -285,6 +348,7 @@ class ScheduledEvidenceStatusService:
             candidate.freshness_status in {"", "missing", "unknown"}
             and candidate.recommendation_status in {"", "missing", "unknown"}
             and candidate.evidence_status in {"", "missing", "unknown"}
+            and candidate.forward_outcome_status in {"", "missing", "unknown"}
         ):
             failures = (*failures, "status_no_observation")
 
@@ -339,6 +403,19 @@ class ScheduledEvidenceStatusService:
         )
 
 
+def _classify_forward_outcome(status: object, diagnostics: tuple[str, ...]) -> str:
+    """Project producer-specific states onto the shared machine vocabulary."""
+
+    raw = str(status or "").strip().lower()
+    if raw in {"passed_with_warnings", "degraded", "warning", "partial"}:
+        return MACHINE_STATUS_MACHINE_DEGRADED
+    if raw == "dry_run":
+        return MACHINE_STATUS_MACHINE_CANDIDATE
+    if raw in {"blocked", "failed", "error"}:
+        return MACHINE_STATUS_INVALID_EVIDENCE
+    return classify_machine_status(raw, diagnostics)
+
+
 def _read_json(path: Path, diagnostics: list[str]) -> dict[str, Any]:
     if not path.exists():
         diagnostics.append(f"status_missing:{path}")
@@ -352,6 +429,12 @@ def _read_json(path: Path, diagnostics: list[str]) -> dict[str, Any]:
         diagnostics.append(f"status_invalid_payload:{path}:expected_object")
         return {}
     return loaded
+
+
+def _read_optional_json(path: Path, diagnostics: list[str]) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    return _read_json(path, diagnostics)
 
 
 def _timestamp(value: datetime) -> str:

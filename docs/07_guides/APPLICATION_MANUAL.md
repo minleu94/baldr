@@ -596,8 +596,9 @@ Canonical reference v2 為 22,093 rows、62 features／3 formal families，refer
 | 05:18 | `baldr-ml-promotion-authority-daily` | DPAPI machine authorization；不足即不簽 |
 | 05:20 | `baldr-ml-allocation-copilot-daily` | immutable lane sidecar/promotion status |
 | 05:25 | `baldr-decision-evidence-capture-daily` | durable DDD snapshot + evidence events |
+| 05:40 | `baldr-forward-outcomes-daily` | 以當下可見行情有界重算 5／10／20／60 交易日 close-to-close research outcomes；明確 confirm 後只更新 `evidence_outcomes` |
 | 16:15 Pacific | `baldr-paper-portfolio-daily` | 先以 D 槽 Paper snapshot 的唯讀 consistent backup 建立 repository isolated state；PDT／PST 分別在台北 07:15／08:15 喚醒，adapter 兩種 offset 都等待真實 08:30 cutoff 後才 append preopen snapshot；不自動產生真實 fills 或成本 ledger |
-| 16:15 Pacific | `baldr-ml-allocation-forward-daily` | 第 17 個 daily task；以 pinned UTF-16 XML 註冊，等待真實 Asia/Taipei 08:30，08:35 後 fail closed；只寫 repository-isolated candidate shadow/config/receipt，固定 real_v2 output、V2 manifest hash、repo Paper state 與 offline calendar；不授予 forward／formal／production credit |
+| 16:15 Pacific | `baldr-ml-allocation-forward-daily` | 第 18 個 daily task；以 pinned UTF-16 XML 註冊，等待真實 Asia/Taipei 08:30，08:35 後 fail closed；只寫 repository-isolated candidate shadow/config/receipt，固定 real_v2 output、V2 manifest hash、repo Paper state 與 offline calendar；不授予 forward／formal／production credit |
 | 06:00 Pacific | `baldr-paper-execution-eod-replay-daily` | 先以同一台北自然日的 quick update、freshness、daily_prices open rows 與 TWSE／TPEx source→DB readback gate 驗證，再由隔離 runner 消費 frozen recommendation；缺源只在同一自然日最多重試 3 次，每次間隔 15 分鐘；terminal blocker 立即停止，官方無資料日為明確 no-op |
 | 16:00 Pacific | `baldr-pit-sector-membership-preopen-capture-daily` | 在台北 08:30 前保存 PIT candidate/archive；response completion 越過 cutoff 或 custody 不完整時 fail closed |
 | 18:00 Pacific | `baldr-formal-pit-sidecar-postcutoff-daily` | 只讀當日 PIT archive 建立 sidecar；缺完整 archive 時留下 blocked receipt，不重新抓取同日來源 |
@@ -627,7 +628,7 @@ Asia/Taipei 08:30 cutoff guard 等待兩種 offset 的早到喚醒，不能把 P
 scripts\scheduled\query_baldr_scheduled_tasks.cmd
 ```
 
-目前 17 個 daily tasks 加 1 個 weekly task 共 18 個 Windows tasks。ML evidence／Authority／Co-pilot 三段與 Direct chain maintainer 已實際觸發且 `Last Result=0`；raw PIT refresh 與 Direct chain 各有獨立 immutable／bootstrap status，若 OOC／replay 尚未完整仍只輸出 `blocked` 或維持等待，Authority 可輸出 `skipped_evidence_unavailable`，這些都是成功的 fail-closed 營運狀態。Scheduler process-level 成功不表示資料來源全數 observed 或 ML promotion 已通過。所有 tasks 都不得送單；只有經成熟度、交易日、雙 replay、簽章與 inference-release identity 全部驗證的 evidence 才能影響 alpha。Forward task 的註冊完成也不表示它已有自然執行結果；請以 registration inspector、wrapper preflight 與當日 receipt 分別判讀。
+目前 18 個 daily tasks 加 1 個 weekly task 共 19 個 Windows tasks。ML evidence／Authority／Co-pilot 三段與 Direct chain maintainer 已實際觸發且 `Last Result=0`；raw PIT refresh 與 Direct chain 各有獨立 immutable／bootstrap status，若 OOC／replay 尚未完整仍只輸出 `blocked` 或維持等待，Authority 可輸出 `skipped_evidence_unavailable`，這些都是成功的 fail-closed 營運狀態。Scheduler process-level 成功不表示資料來源全數 observed 或 ML promotion 已通過。所有 tasks 都不得送單；只有經成熟度、交易日、雙 replay、簽章與 inference-release identity 全部驗證的 evidence 才能影響 alpha。Forward task 的註冊完成也不表示它已有自然執行結果；請以 registration inspector、wrapper preflight 與當日 receipt 分別判讀。
 
 Paper EOD replay 現行 trigger 為 Pacific 06:00，PDT／PST 分別對應台北 21:00／22:00，位於 Pacific 04:20 quick data update 之後。2026-09-08 00:05 的非零結果只屬變更前歷史證據；部署後仍須以 `schtasks /Query /TN baldr-paper-execution-eod-replay-daily /V /FO LIST` 讀取 Next Run、Last Result、登入模式與電池條件，再以 dependency gate receipt 判定資料是否真的可用。現行 `Logon Mode=Interactive only`、停止於電池且不喚醒，登出或休眠時不能保證自然 capture；缺跑應由 task query 與各 latest status／receipt 的 freshness 監控揭露。
 
@@ -1461,7 +1462,7 @@ P0 表格的長欄位採固定上限欄寬、儲存格換行與水平捲動；�
   --output C:\Users\archi\AppData\Local\Temp\scheduled_task_status.json
 ```
 
-輸出會列出 18 個預期 task（17 個 daily、1 個 weekly）的 available／missing 計數、安全摘要，以及本地 wrapper
+輸出會列出 19 個預期 task（18 個 daily、1 個 weekly）的 available／missing 計數、安全摘要，以及本地 wrapper
 manifest 是否存在、每個 task action 是否指向預期 `.cmd`；若 task 可用但 `Task To Run`
 未出現，會另標示 action 尚未觀測，不能算 `configuration_ready`。它不會註冊或修改 task；若要
 指定其他 checkout，可加 `--repo-root <path>`。也可把該 JSON 以 unified readiness 的
@@ -2725,7 +2726,7 @@ Evidence 的 close-to-close outcome 是事後診斷，不是 v2 執行 PnL；成
   - 研究落差：檢查 portfolio source trace、Research Run / strategy version、evidence event / outcome link、portfolio mode、gap metrics、attribution categories、match confidence、quality 與 warnings。沒有真實交易與人工 override 記錄時，只能解讀為 research / simulated gap。
   - 訊號衰退：檢查 event_type、event_family、strategy_version、profile scope 的短窗 / 長窗樣本、decay score、status、lifecycle candidate、confidence、quality 與 warnings。`demote_candidate` / `retire_candidate` 只是人工覆盤候選，不會自動套用。
   - 決策品質：檢查週 / 月 / custom review item、process score、reason codes、review question、open / reviewed / dismissed 狀態、quality 與 warnings。score 只代表流程 evidence，不是投資能力、不是交易建議，也不是責備使用者。
-  - 排程狀態：讀取 `OUTPUT_ROOT/scheduled/data_freshness/latest_status.json`、`OUTPUT_ROOT/scheduled/recommendation_snapshot/latest_status.json`、`OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/latest_status.json` 與 latest status 指向的 dry-run markdown report preview，顯示 data freshness、recommendation snapshot result id / 筆數 / screening matrix rows、evidence dry-run、`pipeline_overall_status`、report path、warning occurrences、blocking gaps 與 `confirm / writes_recommendation_result / writes_evidence_db / auto_trading / lifecycle_action` 安全邊界。推薦結果寫入會另標示為 research-only output，不會和 production evidence / trading write risk 混為同一概念。若 scheduled recommendation latest status 缺失，但同一 decision date 已有人工保存的 `OUTPUT_ROOT/recommendation/runs/rec_YYYYMMDD_*.json`，頁面會把 recommendation source 顯示為 `manual_result`、status 顯示為 `manual_observed`；這只代表人工補跑結果可供判讀，不代表 scheduled snapshot 正常，也不計入 scheduled 共同觀測天數。下方狀態明細採「判讀摘要 / 人工要看 / 關鍵欄位 / 安全邊界」優先，report preview 只保留前段 metadata，完整 JSON diagnostics 請依 `report_path` 開啟原始 report。這只是讓每日 scheduled output 與人工補跑觀察在 UI 可見；不重跑 pipeline、不寫 evidence DB、不自動追加 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`。
+  - 排程狀態：唯讀讀取 `OUTPUT_ROOT/scheduled/data_freshness/latest_status.json`、`OUTPUT_ROOT/scheduled/recommendation_snapshot/latest_status.json`、`OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/latest_status.json`、`OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 與 latest status 指向的 report preview。畫面顯示 data freshness、recommendation snapshot result id / 筆數 / screening matrix rows、evidence dry-run、forward outcome 的 status／掃描事件數／寫入結果數／待成熟數、`pipeline_overall_status`、report path、warning occurrences、blocking gaps 與 `confirm / writes_recommendation_result / writes_evidence_db / forward_outcome_writes_evidence_db / auto_trading / lifecycle_action` 安全邊界。forward outcome 的 `passed_with_warnings`、`degraded`、`dry_run` 與 `blocked` 會分別映射成可掃描的 machine status；缺少新 receipt 會顯示 source gap，不補值。推薦結果寫入與 forward outcome 寫入會分別標示 research-only output，不會和 production evidence / trading write risk 混為同一概念。若 scheduled recommendation latest status 缺失，但同一 decision date 已有人工保存的 `OUTPUT_ROOT/recommendation/runs/rec_YYYYMMDD_*.json`，頁面會把 recommendation source 顯示為 `manual_result`、status 顯示為 `manual_observed`；這只代表人工補跑結果可供判讀，不代表 scheduled snapshot 正常，也不計入 scheduled 共同觀測天數。下方狀態明細採「判讀摘要 / 人工要看 / 關鍵欄位 / 安全邊界」優先，report preview 只保留前段 metadata，完整 JSON diagnostics 請依 `report_path` 或 `forward_outcome_status_path` 開啟原始 receipt。這只是讓每日 scheduled output、forward outcome 累積與人工補跑觀察在 UI 可見；頁面不重跑 producer／pipeline、不寫 evidence DB、不自動追加 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`。
   這個分頁只使用 dashboard service、已保存 read model 與 scheduled output status 檔，不重算推薦、不重算策略、不讀 UI state、不寫 evidence，也不建立或修改排程；樣本不足或資料降級時只能作資料品質檢查，不可作訊號有效性判斷。
   - 覆盤歷史：只讀取已保存 weekly review；若 history DB／table 不存在，畫面會顯示 `evidence_operations_history_db_missing`／`...table_missing` 診斷與 CLI 建立指引，絕不因刷新畫面建立空 schema。
 - 批次結果：排行榜與整體統計，雙擊股票可載入明細；頁首會說明排行榜只用來找出同批次內值得複核的股票，整體統計用來看樣本分布與成功率，不代表正式策略判斷、交易建議或持倉調整。
@@ -2763,6 +2764,41 @@ Runner steps：
 輸出 summary 會包含 events_seen、events_inserted、events_skipped_duplicate、outcomes_attempted、outcomes_created、outcomes_updated、outcomes_pending、summary_groups、groups_ready、groups_insufficient_sample、groups_degraded、warnings_count、warning_counts、warning_unique_count、warning_top_counts、errors_count、blocking_gaps、warnings 與 scheduler_readiness。Markdown report 的 `Warning Summary` 會分開顯示跨 pipeline steps 的 warning occurrence 總量與唯一 warning token 數，`Warning Breakdown` 會列出完整 warning token 分布；`diagnostic:<code>` 代表 warning 等級 diagnostic，不代表 blocking error。Readiness 最高只到 `ready_for_manual_confirm`，不代表 production scheduler 已批准。
 
 V1.5 後，source coverage 由 `EvidenceSourceCoverageService` 統一判讀。`recommendation_persisted_missing`、`decision_desk_snapshot_missing`、`watchlist_trigger_snapshot_section_missing`、`portfolio_alert_snapshot_section_missing`、`risk_prompt_snapshot_section_missing` 是 durable source blocking gaps；`screening_matrix_missing`、`why_not_payload_missing` 與 `liquidity_gate_payload_missing` 是 payload warnings，會使整體 readiness 維持 `dry_run_only`，但不等於 durable source missing。V1.7 後新保存的推薦結果會包含 screening matrix、Why Not 與 Liquidity payload；舊推薦結果若缺 payload，只會列 warning / diagnostic，不回補、不重算。2026-07-06 後，成交量門檻造成的 empty strategy result 會被保存為 Liquidity payload，而非一般 `strategy_filter_no_signal`。若 runner dry-run 在同一輪建立 transient Daily Decision Desk snapshot，報告會以 `source_coverage_basis=dry_run_transient_decision_desk_snapshot` 標示，並把同輪 transient snapshot 用於 source coverage 判讀，避免把 dry-run 未寫 durable snapshot 誤列為 stale `decision_desk_snapshot_missing`；這只影響 report diagnostics，不寫 durable snapshot 或 production evidence DB。若使用 `--sources why-not` 或 `--sources liquidity-gate` 明確要求 exclusion source，runner 仍會在該請求層級阻擋缺 payload 的 capture。Current 查詢會以台灣市場今日為日期上限；active Decision Desk future row 會列為 `decision_desk_snapshot_future_dated` blocker，並排除於 current latest，原始 row 不刪除。`EvidenceSourceCoverageService`、`inspect_evidence_source_coverage.py` 與 `inspect_decision_desk_snapshots.py` 都是 query-only 檢查，不會因 repository 初始化 schema 而寫入正式 DB。`inspect_data_source_capabilities.py` 只檢查 source registry，不抓外部資料；`inspect_corporate_action_policy.py` 只輸出價格政策與資料表候選，不建立 adjusted price、不寫正式 DB。
+
+### 9.9.1a 每日前瞻結果累積
+
+`baldr-forward-outcomes-daily` 在 05:40 執行獨立的 bounded producer，讓前一個
+Decision/Evidence capture task 已保存的事件可以在後續交易日成熟時補上 outcome。它以
+`data_as_of_date` 為價格可見上限，預設只讀最近 120 個曆日、最多 2,500 個事件，觀察窗為
+5／10／20／60 交易日，固定使用 `close_to_close_event_date`。排程 wrapper 預設以
+`event_type=recommendation_included` 消費已具身份契約的推薦事件，避免低價值診斷事件
+佔滿每日上限；可透過 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換。未成熟的 60 日區間、缺事件價、
+缺大盤／產業 benchmark 或政策資料會留下 `pending`／`missing` 與 warning，不以曆日補算、
+不回填事件身份，也不會把結果變成投資建議。
+
+排程 wrapper 會明確傳入 `--confirm --allow-production-db-confirm`，因此只更新正式
+SQLite 的 `evidence_outcomes` table；它不新增或修改 `evidence_events`，不改推薦、Rule、
+Paper、Formal、模型或券商狀態。每輪都先以 SQLite `mode=ro`／`PRAGMA query_only=ON`
+確認 `evidence_events`、`evidence_outcomes` 與 `daily_prices` 存在，再保存
+`OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 及不可覆寫的
+`runs/<run_id>.json`。直接手動執行若未加 `--confirm` 只會產生 dry-run receipt；正式 DB
+若未再加 `--allow-production-db-confirm` 會 fail closed。
+
+常用命令：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\scheduled\run_scheduled_forward_outcomes.py `
+  --data-root D:\Min\Python\Project\FA_Data `
+  --output-root D:\Min\Python\Project\FA_Data\output `
+  --db-path D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
+  --event-type recommendation_included `
+  --windows 5,10,20,60 --lookback-calendar-days 120 --max-events 2500
+```
+
+只有在受控排程或明確隔離 DB 寫入時才加 `--confirm`；若目標是
+`TWStockConfig.db_file`，還要明確加 `--allow-production-db-confirm`。此入口的
+`passed_with_warnings` 只表示 outcome 計算完成並揭露缺口，不能授予 V4 maturity、正式 alpha、
+production scheduler 或 broker 權限。
 
 ### 9.9.2 Historical Evidence Replay（歷史排程重放）
 
@@ -3177,7 +3213,7 @@ Phase 2 起，Qt 主 UI 新增 `決策工作台` 分頁作為 read-only Unified 
 - 今日待判讀：只列出需要人工 review 的 watchlist trigger、portfolio alert、risk prompt 或 readiness gap；它不是買賣建議，也不會產生下單動作。
 - 詳情檢視 / Inspector：點選今日待判讀、背景證據流或 Action Items 的任一列，右側會用狀態徽章與三個分區顯示完整內容：「重點摘要」看標題與 summary，「來源與邊界」看 source trace、degraded reason、drill-down target 與 read-only 保證，「診斷訊號」看 diagnostics token。表格只保留掃描欄位；完整證據不要在表格橫向捲動找，改看 Inspector。
 - 背景證據流：只彙整既有 DTO / service payload，包括 Daily Decision snapshot、Evidence Review readiness、Portfolio alerts 與可選 replay summary diagnostics。清單表格只顯示「證據來源 / 狀態 / 摘要」，完整 source trace、degraded reason、diagnostics 需點列後在 Inspector 查看。這個區塊不讀 replay DB、不重跑 Evidence Pipeline、不重新判斷 portfolio 或 scoring。若清單為空，文案會提醒只是 DTO payload 為空，不代表 gate 通過；若來源降級，文案會要求依 source trace / diagnostics 人工檢查，不補值、不重跑 pipeline。
-- 背景證據流也會顯示 `Scheduled morning pipeline`，來源是 `ScheduledEvidenceStatusService` 唯讀讀取 `OUTPUT_ROOT/scheduled/*/latest_status.json`、recommendation snapshot 檔、同日人工 recommendation result fallback 與 evidence dry-run report 檔。它會顯示最新 scheduled 或 manual recommendation result id、推薦筆數、recommendation snapshot 觀測天數、manual recommendation 觀測天數、evidence dry-run 觀測天數與 scheduled recommendation/evidence 共同觀測天數；`manual_observed` 只解除人工判讀的資訊缺口，不會把 scheduled 狀態標成 passed，也不會自動解除正式 multi-day gate。
+- 背景證據流也會顯示 `Scheduled morning pipeline`，來源是 `ScheduledEvidenceStatusService` 唯讀讀取 `OUTPUT_ROOT/scheduled/*/latest_status.json`、recommendation snapshot 檔、同日人工 recommendation result fallback、evidence dry-run report 檔與 forward outcome receipt。它會顯示最新 scheduled 或 manual recommendation result id、推薦筆數、recommendation snapshot 觀測天數、manual recommendation 觀測天數、evidence dry-run 觀測天數、forward outcome status 與 scheduled recommendation/evidence 共同觀測天數；`manual_observed` 只解除人工判讀的資訊缺口，不會把 scheduled 狀態標成 passed，也不會自動解除正式 multi-day gate。forward outcome receipt 缺失時只呈現 source gap，不以推薦結果或資料日期推估 outcome。
 - 只讀 Action Items：只顯示人工待處理事項；清單供排序與掃描，完整 `queue_group`、`severity`、`source_label`、`source_trace`、`degraded_reason`、`drilldown_target` 與 `write_intent=false` 可點列後在 Inspector 查看。Composer 會先依 severity，再依 queue group 與 source 排序，讓持倉警示、風險提示、觀察清單與 readiness gap 更容易掃描。空狀態不代表可以交易或 gate 已通過；降級狀態只供人工覆盤排序，不是買賣建議。Workbench 不建立 action item repository、不 append DB、不標記完成、不套用 lifecycle action。
 - 操作節奏：只從 `WorkbenchDashboardDTO.operating_loop_steps` 顯示 daily first-look、manual queue、weekly review history、multi-day dry-run、manual review note 與 scheduler gate。這個區塊預設收合；展開後以直列 timeline card 呈現步驟編號、狀態 badge、摘要與 linked item chips，避免水平捲動。長的 source trace、人工提示與 `write_intent=false` 會收在「展開細節」中；Workbench 不會把項目標記完成、不會寫 DB、不會補 weekly history / multi-day dry-run、不會啟用 scheduler。
 - Evidence mode / data quality：讀取 DTO 內的 evidence summary 與 diagnostics；上方以兩張摘要卡拆分「邊界與 Gate 摘要」及「覆蓋率與缺口」，下方表格只保留證據、狀態與摘要，完整 diagnostics 需點列後在 Inspector 查看。若 payload 帶 replay summary，會揭露 `simulated_scheduler`、source gap / coverage、payload gap、outcome maturity、benchmark coverage、industry benchmark coverage、missing industry benchmark 與 pending future-data 限制。2026-07-06 `_reference_fix` summary 的目前判讀是市場 benchmark coverage 已補齊成熟 outcomes，但 screening matrix source gap、產業 benchmark 大量缺口與 pending future-data 仍阻擋 production readiness；這不是投資有效性結論。
@@ -3294,12 +3330,12 @@ scripts\scheduled\unregister_baldr_scheduled_tasks.cmd unregister
 
 aggregate `register` 會處理既有 16 個每日 task；`register-all` 會在同一個受控
 操作中處理這 16 個每日 task 與每週日 collection task。新增的
-`baldr-ml-allocation-forward-daily` 是第 17 個每日 task，使用獨立的 pinned
+`baldr-ml-allocation-forward-daily` 是第 18 個每日 task，使用獨立的 pinned
 UTF-16 XML 定義，刻意不由 aggregate path 建立或覆蓋。兩個 aggregate 模式都會先
 檢查自己選定的 `.cmd` wrapper 是否存在，缺檔時在呼叫 schtasks 前停止，不會留下
 指向不存在檔案的 task。執行前仍須先以 dryrun 檢查 repo root、時間與 action，執行後
-再用 registration inspector 與真實 terminal history 驗證；完整清冊應是 17 個每日
-task 加 1 個 weekly task，共 18 個。
+再用 registration inspector 與真實 terminal history 驗證；完整清冊應是 18 個每日
+task 加 1 個 weekly task，共 19 個。
 
 Formal input producer 的單項排程使用獨立入口，避免為了新增這一項而重註冊其他 task：
 
@@ -3320,7 +3356,7 @@ scripts\scheduled\register_formal_input_producer_task.cmd register
 
 目前 Windows Task Scheduler task：
 
-- `baldr-ml-allocation-forward-daily`：第 17 個每日 task，Pacific 16:15（PDT／PST 對應台北次日 07:15／08:15），wrapper 會等待真實 Asia/Taipei 08:30 並在 08:35 後 fail closed；只產生 repository-isolated candidate shadow，不授予 formal／production／broker credit。它固定使用 `output/v4_ml_daily_derived_shadow_real_v2`、repository Paper state、離線 calendar cache 與 V2 release manifest hash。註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`；再用 `ml_forward_task_registration.xml` 建立或讀回 task。這個 task 不由 `register`／`register-all` 建立，也不由 aggregate `unregister` 移除，避免覆蓋其 InteractiveToken、電池限制、`IgnoreNew`、`PT2H` 與 release pin；回復只能在確認 task 名稱後使用 registration plan 的專用 delete 命令。
+- `baldr-ml-allocation-forward-daily`：第 18 個每日 task，Pacific 16:15（PDT／PST 對應台北次日 07:15／08:15），wrapper 會等待真實 Asia/Taipei 08:30 並在 08:35 後 fail closed；只產生 repository-isolated candidate shadow，不授予 formal／production／broker credit。它固定使用 `output/v4_ml_daily_derived_shadow_real_v2`、repository Paper state、離線 calendar cache 與 V2 release manifest hash。註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`；再用 `ml_forward_task_registration.xml` 建立或讀回 task。這個 task 不由 `register`／`register-all` 建立，也不由 aggregate `unregister` 移除，避免覆蓋其 InteractiveToken、電池限制、`IgnoreNew`、`PT2H` 與 release pin；回復只能在確認 task 名稱後使用 registration plan 的專用 delete 命令。
 
 - `baldr-data-update-quick-daily`：每日本機時間 04:20，走非 UI 快速更新路徑，補最近工作日窗口的 TWSE / TPEX 每日股價、大盤、產業、券商分點、SQLite 同步與必要的技術指標增量；輸出位於 `<OUTPUT_ROOT>/scheduled/data_update_quick/`。若 TWSE 的 `ALL` 與 `ALLBUT0999` 都精確回覆「很抱歉，沒有符合條件的資料！」，該日會列入 `no_data_skipped_dates`，task 會以 `passed_with_warnings` 記錄警告並繼續同步；HTTP、timeout、解析錯誤、未來日期或其他非完整文案回覆仍是 `failed`。若 TPEX 當日或窗口內日期抓取失敗，task 會繼續可完成步驟並以 `passed_with_warnings` 保存 `TPEX 每日股價缺少日期：YYYYMMDD`，不再把只有既有 skipped CSV 的情況誤判為完整成功。
 - `baldr-data-freshness-check-daily`：每日本機時間 05:00，唯讀檢查 SQLite / `DATA_ROOT` freshness，只寫 `<OUTPUT_ROOT>/scheduled/data_freshness/latest_status.json` 與 logs。除了 SQLite `daily_prices` / `technical_indicators` 最新日期，也會反查同一最新日的 `daily_price/YYYYMMDD.csv` 與 `daily_price_tpex/YYYYMMDD.csv`；若 SQLite 最新但 TPEX 原始日檔缺失，狀態會是 `degraded`。freshness 也會讀取最近一次 `data_update_quick/latest_status.json`；若快速更新為 `failed`、status 檔遺失或 status 日期未達預期工作日，即使資料年齡仍在容許範圍，freshness 仍會是 `degraded` 並列出相應 warning。
@@ -3434,7 +3470,7 @@ Registry 比較只使用已保存的 metadata、equity curve 與 benchmark_resul
 1. **五大排程任務相依性**:
    - `daily_data_update_quick` -> `daily_data_freshness_check` -> `scheduled_recommendation_snapshot` -> `scheduled_evidence_pipeline_dry_run` -> `v2_2_weekly_collection`
    - 這是 health service 的五個邏輯證據單元，不是 Windows task 總數。Windows
-     registration inspector 另檢查 17 個每日 task 與 1 個 weekly task，共 18 個；
+     registration inspector 另檢查 18 個每日 task 與 1 個 weekly task，共 19 個；
      `baldr-ml-allocation-forward-daily` 由固定 XML 及專用 preflight 管理，aggregate
      `register`／`register-all` 不會覆蓋它。
 2. **寫入意圖劃分**:
@@ -4339,11 +4375,14 @@ production alpha。
 * `human_review`：只有來源明確要求人工判讀時才會出現，並保留下鑽目標與原因。
   `action_required`、缺來源或等待時間本身不代表人工要求。
 
-`Scheduled Evidence` 的 `load_state=current` 只在三份 payload 成功讀取且通過
+`Scheduled Evidence` 的 `load_state=current` 會在既有三份核心 payload 成功讀取且通過
 基本完整性檢查時成立。初次沒有可信 payload 會顯示 `unknown`；若已成功讀取後
 本輪檔案遺失、損壞或 loader 例外，畫面保留最後可信內容，但每張狀態卡、摘要與
 詳細資料都標示 `stale`、最後成功載入時間及錯誤原因。修復檔案後按「重新整理排程
 證據狀態」；按鈕會取得焦點，並由 loader 重新驗證，不能把 stale 卡片當成 current。
+新增的 forward outcome receipt 若尚未出現，核心三份 payload 仍可正常顯示，forward
+卡片會單獨標示 `source_missing`；receipt 一旦存在，則同時顯示掃描／寫入／待成熟數與
+`forward_outcome_writes_evidence_db`，不把 outcome 寫入誤當成 UI 寫入。
 
 Workbench 來源例外時同樣保留最後可信 DTO，頂端 banner、摘要色彩、狀態文字與
 warning 會標示 stale，並把焦點放在「重新整理工作台狀態」。初次讀取失敗顯示

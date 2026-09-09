@@ -408,6 +408,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_scheduled_data_update_runner.py": "governance-doc-tooling",
     "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py": "governance-doc-tooling",
     "tests/test_scheduled_evidence_status_service.py": "governance-doc-tooling",
+    "tests/test_scheduled_forward_outcomes.py": "governance-doc-tooling",
     "tests/test_scheduled_readme_no_production_confirm.py": "governance-doc-tooling",
     "tests/test_scheduled_scripts_exist.py": "governance-doc-tooling",
     "tests/test_scheduled_scripts_no_trading_language.py": "governance-doc-tooling",

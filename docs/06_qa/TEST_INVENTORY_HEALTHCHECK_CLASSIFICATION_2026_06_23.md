@@ -4,12 +4,12 @@
 
 ## 2026-09-09 machine refresh
 
-Current filesystem Python files: `786`
+Current filesystem Python files: `787`
 
 | 分類 | 數量 |
 |---|---:|
 | `general-unit-keep-in-pytest` | 148 |
-| `governance-doc-tooling` | 148 |
+| `governance-doc-tooling` | 149 |
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
@@ -29,7 +29,7 @@ Current filesystem Python files: `786`
 - 本輪清理前實測為 748 個 Python 檔、4639 測項；舊 679 檔／4005 測項是較早檢查點。
 - 本輪補登 69 個檔案（含既有 ml_teacher_fixture 支援檔），刪除七份一次性診斷，兩份欄位測試合為參數化雙入口測試。
 - 2026-09-08 最終 collection 為 4,655；全量 pytest 為 4,652 passed、3 skipped；missing／stale／count drift 為零。見 [LUNA 三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)；[前次查核](PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留為歷史。
-- 2026-09-09 TDCC candidate completion 新增 2 個定向測試與 2 個同輪資料服務測試登錄；本段計數以當前 filesystem／registry machine audit 為準，TDCC raw/candidate 仍位於 ignored output。
+- 2026-09-09 TDCC candidate completion 新增 2 個定向測試與 2 個同輪資料服務測試登錄；本輪 V4 forward outcome producer 再新增 1 個治理測試並完成登錄。本段計數以當前 filesystem／registry machine audit 為準，TDCC raw/candidate 仍位於 ignored output。
 
 ## Runner 規則
 

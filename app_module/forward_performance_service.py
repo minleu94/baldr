@@ -66,10 +66,12 @@ class ForwardPerformanceService:
         self,
         config: Any,
         repository: EvidenceEventRepository | None = None,
+        *,
+        db_path: str | Path | None = None,
     ) -> None:
         self.config = config
         self.repository = repository or EvidenceEventRepository(config)
-        self.db_path = Path(config.db_file)
+        self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
         self._daily_price_cache: dict[str, tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]] = {}
         self._index_return_cache: dict[tuple[str, str | None, str, str], int | None] = {}
         self._index_table_columns_cache: dict[str, tuple[str, ...]] = {}
@@ -113,6 +115,7 @@ class ForwardPerformanceService:
             "missing_industry_benchmark": 0,
             "warnings_count": 0,
         }
+        pending_writes: list[EvidenceOutcome] = []
 
         for event in events:
             if not event.symbol or event.symbol.upper() == "MARKET":
@@ -142,7 +145,13 @@ class ForwardPerformanceService:
                 else:
                     counters["outcomes_updated"] += 1
                 if not dry_run:
-                    self.repository.upsert_outcome(outcome)
+                    pending_writes.append(outcome)
+
+        if not dry_run:
+            # Commit the bounded run as one transaction.  A source or SQLite
+            # failure therefore leaves the outcome table unchanged instead of
+            # exposing a partially written batch to the next scheduled run.
+            self.repository.upsert_outcomes(pending_writes)
 
         return ForwardOutcomeSummary(dry_run=dry_run, **counters)
 

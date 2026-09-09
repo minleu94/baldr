@@ -154,6 +154,25 @@ def test_decision_evidence_wrapper_is_the_dedicated_confirm_boundary() -> None:
     assert "broker_execution" in py_text
 
 
+def test_forward_outcome_wrapper_is_the_only_outcome_table_writer() -> None:
+    cmd_text = (SCHEDULED_DIR / "run_forward_outcomes_daily.cmd").read_text(encoding="utf-8").lower()
+    py_text = (SCHEDULED_DIR / "run_scheduled_forward_outcomes.py").read_text(encoding="utf-8").lower()
+    service_text = (ROOT / "app_module" / "scheduled_forward_outcome_service.py").read_text(
+        encoding="utf-8"
+    ).lower()
+    text = cmd_text + "\n" + py_text + "\n" + service_text
+
+    assert "run_scheduled_forward_outcomes.py" in cmd_text
+    assert "--confirm" in cmd_text
+    assert "--allow-production-db-confirm" in cmd_text
+    assert "recommendation_included" in cmd_text
+    assert "evidence_outcomes" in text
+    assert "research_only" in text
+    assert "auto_trading" in text
+    assert "broker_order_allowed" in text
+    assert "daily_prices" in text
+
+
 def test_readme_limits_confirm_to_the_dedicated_capture_task() -> None:
     text = (SCHEDULED_DIR / "README.md").read_text(encoding="utf-8").lower()
 

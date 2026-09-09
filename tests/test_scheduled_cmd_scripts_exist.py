@@ -23,6 +23,8 @@ REQUIRED_CMD_FILES = (
     "run_recommendation_snapshot.cmd",
     "run_scheduled_recommendation_snapshot.py",
     "run_evidence_pipeline_dry_run.cmd",
+    "run_forward_outcomes_daily.cmd",
+    "run_scheduled_forward_outcomes.py",
     "run_ml_promotion_evidence.cmd",
     "run_ml_allocation_copilot.cmd",
     "run_ml_promotion_authority.cmd",

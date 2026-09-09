@@ -145,6 +145,7 @@ def test_confirmed_run_writes_only_outcomes(tmp_path: Path) -> None:
     outcomes = repository.list_outcomes()
     assert len(outcomes) == 1
     assert outcomes[0].return_basis == "close_to_close_event_date"
+    outcome_id = outcomes[0].outcome_id
 
     second = run_scheduled_forward_outcomes(
         config=config,
@@ -159,7 +160,9 @@ def test_confirmed_run_writes_only_outcomes(tmp_path: Path) -> None:
     assert second["summary"]["outcomes_created"] == 0
     assert second["summary"]["outcomes_updated"] == 1
     assert second["summary"]["outcomes_written"] == 1
-    assert len(repository.list_outcomes()) == 1
+    outcomes_after_retry = repository.list_outcomes()
+    assert len(outcomes_after_retry) == 1
+    assert outcomes_after_retry[0].outcome_id == outcome_id
 
 
 def test_missing_required_source_table_blocks_before_calculation(tmp_path: Path) -> None:

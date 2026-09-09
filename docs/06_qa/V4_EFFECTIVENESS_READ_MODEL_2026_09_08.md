@@ -68,6 +68,9 @@ backfill 或未來價格補值。
 `scheduled/forward_outcomes/latest_status.json` 與不可覆寫的 `runs/<run_id>.json`，
 缺資料、未成熟、缺 benchmark 或政策表時以 `passed_with_warnings`／`degraded` 揭露。
 
+Outcome upsert 的自然鍵是 `(event_id, window_days, return_basis)`；重跑只更新該鍵下的
+價格、成熟度、品質與 warning，保留第一次建立的 `outcome_id`，讓下游引用在重算後仍穩定。
+
 `ScheduledEvidenceStatusService`、`ScheduledEvidenceStatusView` 與 Workbench 背景證據流
 會唯讀呈現這份 receipt 的 status、掃描／寫入／待成熟計數與
 `forward_outcome_writes_evidence_db`；缺少 receipt 時顯示 source gap，不會以其他排程

@@ -136,8 +136,14 @@ class EvidenceEventRepository:
         columns = list(rows[0].keys())
         placeholders = ", ".join("?" for _ in columns)
         column_sql = ", ".join(columns)
+        # The tuple below is the outcome's natural identity.  A recalculation
+        # may refresh prices, status, warnings, or hashes, but it must not
+        # replace the primary key that downstream evidence references.
+        immutable_identity = {"outcome_id", "event_id", "window_days", "return_basis"}
         updates = ", ".join(
-            f"{column} = excluded.{column}" for column in columns if column != "calculated_at"
+            f"{column} = excluded.{column}"
+            for column in columns
+            if column not in {"calculated_at", *immutable_identity}
         )
         with sqlite3.connect(self.db_path, timeout=30.0) as conn:
             conn.execute("PRAGMA busy_timeout = 30000")

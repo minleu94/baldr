@@ -2787,6 +2787,8 @@ Paper、Formal、模型或券商狀態。每輪都先以 SQLite `mode=ro`／`PRA
 `OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 及不可覆寫的
 `runs/<run_id>.json`。直接手動執行若未加 `--confirm` 只會產生 dry-run receipt；正式 DB
 若未再加 `--allow-production-db-confirm` 會 fail closed。
+Outcome 以 `(event_id, window_days, return_basis)` 為自然鍵；重跑只更新該鍵下的價格、
+成熟度、品質與 warning，保留既有 `outcome_id`，使下游 Evidence 引用在重算後仍穩定。
 
 常用命令：
 

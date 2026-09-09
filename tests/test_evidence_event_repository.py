@@ -123,6 +123,7 @@ def test_repository_upserts_and_lists_outcomes(tmp_path):
 
     rows = repo.list_outcomes(event_id=event.event_id)
     assert len(rows) == 1
+    assert updated.outcome_id == "outcome-a"
     assert rows[0].outcome_id == updated.outcome_id
     assert rows[0].outcome_status == EvidenceOutcomeStatus.READY
     assert rows[0].forward_return_bp == 1000

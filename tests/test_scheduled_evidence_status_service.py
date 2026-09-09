@@ -96,6 +96,21 @@ def test_scheduled_status_keeps_partial_initial_read_unknown(tmp_path: Path) -> 
     assert "status_no_observation" not in status.diagnostics
 
 
+def test_scheduled_status_keeps_optional_forward_gap_out_of_core_classification(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.load_state == "current"
+    assert status.forward_outcome_status == "missing"
+    assert status.forward_outcome_status_path is None
+    assert dict(status.machine_status_classifications)["forward_outcomes"] == "source_missing"
+    assert status.machine_status_classification == "machine_verified"
+
+
 def test_scheduled_status_preserves_last_known_good_when_latest_payload_breaks(tmp_path: Path) -> None:
     output_root = tmp_path / "output"
     _write_minimal_scheduled_statuses(output_root)

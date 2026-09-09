@@ -142,8 +142,6 @@ class ScheduledEvidenceStatus:
             if not (
                 name == "forward_outcomes"
                 and self.forward_outcome_status_path is None
-                and self.load_state == MACHINE_STATUS_UNKNOWN
-                and self.load_checked_at is None
             )
         }
         for value in (

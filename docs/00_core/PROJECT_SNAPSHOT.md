@@ -1,5 +1,13 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-09 V4 read model 收尾增量
+
+V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 outcome 的事件，
+並固定讀取單一 canonical `return_basis`，避免缺件被 SQL 篩掉或不同口徑重複計算；大量
+缺少 cohort 欄位的 row-level 警告改以原因／數量彙總。此增量仍是 query-only、人工覆盤資料，
+不會增加成熟 outcome、Formal credit、alpha 或交易權限。驗收見
+[V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)。
+
 ## 2026-09-08 root 執行收尾增量
 
 本輪在不改寫原始資料與不解除正式權限的前提下，已加入 V4 cohort effectiveness 唯讀評估器／CLI、

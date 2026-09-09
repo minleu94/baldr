@@ -94,6 +94,29 @@ def test_unknown_status_is_conservative_and_empty_input_is_explicit():
     assert empty.warnings == ("no_valid_cohort_rows",)
 
 
+def test_invalid_row_diagnostics_are_counted_instead_of_expanding_warning_list():
+    rows = [
+        {
+            "decision_date": "2026-09-01",
+            "horizon_days": 5,
+            "strategy_version": "rule-v4.1",
+            "universe_id": "",
+            "cost_model": "paper-balanced-v1",
+            "benchmark_id": "twse-ew",
+            "status": "missing",
+        }
+        for _ in range(500)
+    ]
+
+    report = evaluate_v4_effectiveness(rows)
+
+    assert report.slices == ()
+    assert report.warnings == (
+        "no_valid_cohort_rows",
+        "rows_incomplete_cohort_identity:500",
+    )
+
+
 def test_known_unavailable_outcome_status_is_missing_without_unknown_warning():
     report = evaluate_v4_effectiveness(
         [_row("2026-09-01", "missing-price", 9000, 100, status="missing_price")],

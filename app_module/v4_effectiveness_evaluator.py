@@ -122,22 +122,23 @@ def evaluate_v4_effectiveness(
         }
     )
     report_warnings: set[str] = set()
+    row_warning_counts: dict[str, int] = defaultdict(int)
 
     for index, raw in enumerate(rows):
         row = dict(raw)
         horizon_days = _integer_or_none(row.get("horizon_days"))
         if horizon_days is None or horizon_days <= 0:
-            report_warnings.add(f"row_{index}:invalid_horizon_days")
+            row_warning_counts["invalid_horizon_days"] += 1
             continue
 
         decision_date = _normalise_date(row.get("decision_date"))
         if decision_date is None:
-            report_warnings.add(f"row_{index}:missing_decision_date")
+            row_warning_counts["missing_decision_date"] += 1
             continue
 
         values = tuple(_required_group_value(row, field) for field in _GROUP_FIELDS[1:])
         if any(value == "" for value in values):
-            report_warnings.add(f"row_{index}:incomplete_cohort_identity")
+            row_warning_counts["incomplete_cohort_identity"] += 1
             continue
         strategy_version, universe_id, cost_model, benchmark_id = values
         key = (horizon_days, strategy_version, universe_id, cost_model, benchmark_id)
@@ -296,6 +297,10 @@ def evaluate_v4_effectiveness(
 
     if not slices:
         report_warnings.add("no_valid_cohort_rows")
+    report_warnings.update(
+        f"rows_{code}:{count}"
+        for code, count in row_warning_counts.items()
+    )
     report_warnings.update(
         warning
         for item in slices

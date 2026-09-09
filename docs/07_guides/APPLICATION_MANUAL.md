@@ -29,7 +29,8 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 不以目前股票池或 symbol 推測補值。指定 `--window-days` 時，沒有該窗口 outcome 的事件仍會
 以 `missing` 保留；查詢只納入 `close_to_close_event_date`（可用 `--return-basis` 明確改變），
 避免不同計算口徑重複計算。事件只有明確保存 `horizon_days` 才能在缺件時形成有效 horizon，
-否則報告會留下缺 horizon warning。
+否則報告會留下缺 horizon warning。大量相同 row-level 缺口會以
+`rows_<code>:<count>` 彙總，保留原因與數量但不讓報告被重複訊息淹沒。
 
 FinMind 現金流只作交叉核對候選：
 

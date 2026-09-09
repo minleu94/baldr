@@ -18,6 +18,20 @@ read model／唯讀 CLI、FinMind 現金流 numeric-only candidate、SQLite WAL-
 candidate、fixture 或 replay 改標成正式證據。自然觀測、公告可得日、Paper 成交、正式三路 consumer 與
 V4 maturity 仍由實際時間及來源累積；本計畫保持 active，直到權威證據逐項達標。
 
+## 2026-09-09 root V4 read model 收尾更新
+
+V4 effectiveness SQLite read path 已補上指定 `window_days` 的缺件保留：沒有成熟 outcome
+的事件仍以 `missing` 留在查詢結果，不會因 SQL 條件消失；同一事件只讀預設的
+`close_to_close_event_date` canonical return basis。事件 metadata 明確保存
+`universe_id`／`horizon_days` 時才映射到 cohort，缺少時維持 fail-closed；大量相同的
+row-level 缺口改為 `rows_<code>:<count>` 計數警告，讓報告可讀且仍可追溯。
+
+root 已以正式 D 槽 Evidence SQLite 做 mode=ro／`query_only` 唯讀 probe：目前 51,866
+筆事件仍缺明確 `universe_id`，因此報告沒有有效 cohort，未增加任何成熟 outcome、alpha、
+promotion 或交易權限。這是實際資料缺口的可見化，不以目前股票池猜值補齊；後續須由正式
+evidence producer 保存可驗證的 universe／horizon metadata，再由自然 outcome 累積關閉 V4
+八項 maturity 閘門。
+
 ## 開場現況
 
 - 前一輪已完成三面向清查，並有後續工程實作與 `4003 passed / 2 skipped` 的保存驗收；本輪以最新工作樹重新判讀，這不是本輪測試結果。

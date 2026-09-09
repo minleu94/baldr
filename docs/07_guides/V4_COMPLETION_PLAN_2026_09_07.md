@@ -27,10 +27,11 @@ V4 effectiveness SQLite read path 已補上指定 `window_days` 的缺件保留�
 row-level 缺口改為 `rows_<code>:<count>` 計數警告，讓報告可讀且仍可追溯。
 
 root 已以正式 D 槽 Evidence SQLite 做 mode=ro／`query_only` 唯讀 probe：目前 51,866
-筆事件仍缺明確 `universe_id`，因此報告沒有有效 cohort，未增加任何成熟 outcome、alpha、
-promotion 或交易權限。這是實際資料缺口的可見化，不以目前股票池猜值補齊；後續須由正式
-evidence producer 保存可驗證的 universe／horizon metadata，再由自然 outcome 累積關閉 V4
-八項 maturity 閘門。
+筆事件、`evidence_outcomes=0`，且事件缺明確 `universe_id`，因此報告沒有有效 cohort，
+未增加任何成熟 outcome、alpha、promotion 或交易權限。這是實際資料缺口的可見化，不以
+目前股票池猜值補齊；後續須由正式 evidence producer 保存可驗證的 universe／horizon
+metadata，再由自然 outcome 累積關閉 V4 八項 maturity 閘門。同期整體 program readiness
+仍為 `action_required`，Formal operational 為 `no_credit`（0/3），Paper 為 `partial`。
 
 ## 開場現況
 

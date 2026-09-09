@@ -34,6 +34,11 @@ SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設
 大量相同的 row-level 輸入錯誤會以 `rows_<code>:<count>` 彙總，避免正式資料
 缺欄時產生數千個重複訊息；未知狀態與 cohort 衝突仍保留明確 warning。
 
+2026-09-09 以正式 D 槽資料做唯讀 probe：`evidence_events=51,866`、
+`evidence_outcomes=0`，並觀測到事件沒有明確 `universe_id`，因此輸出為空 slices、
+`no_valid_cohort_rows` 與計數 warning。這是目前 Evidence producer／outcome 尚未接通的
+實際結果，不以現有股票池、replay 或 fixture 補值。
+
 ### FinMind 現金流候選
 
 新增 `data_module/finmind_cashflow_candidate.py` 與

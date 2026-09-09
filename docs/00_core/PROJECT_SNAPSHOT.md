@@ -8,6 +8,12 @@ V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 
 不會增加成熟 outcome、Formal credit、alpha 或交易權限。驗收見
 [V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)。
 
+2026-09-09 正式 D 槽 Evidence SQLite 唯讀盤點為 `evidence_events=51,866`、
+`evidence_outcomes=0`，且事件缺明確 `universe_id`，所以目前沒有可計算的有效 cohort。
+整體 program readiness 仍為 `action_required`；Formal operational audit 為
+`no_credit`（0/3），Paper readiness 為 `partial`（29 個 snapshot、0 fills、benchmark／cost
+ledger 尚未具備）。這些狀態只描述目前可驗證資料，不會把等待 EOD、自然時間或來源缺件改成完成。
+
 ## 2026-09-08 root 執行收尾增量
 
 本輪在不改寫原始資料與不解除正式權限的前提下，已加入 V4 cohort effectiveness 唯讀評估器／CLI、

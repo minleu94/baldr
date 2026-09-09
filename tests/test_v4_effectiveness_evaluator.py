@@ -143,3 +143,16 @@ def test_gross_no_cost_identity_is_explicitly_warned():
     slice_ = report.slices[0]
     assert "cost_model_not_cost_adjusted" in slice_.warnings
     assert slice_.evaluation_status == "ready_for_manual_review_with_warnings"
+
+
+def test_non_scalar_cohort_identity_is_rejected():
+    row = _row("2026-09-01", "malformed", 9000, 100)
+    row["universe_id"] = {"unexpected": "object"}
+
+    report = evaluate_v4_effectiveness([row])
+
+    assert report.slices == ()
+    assert report.warnings == (
+        "no_valid_cohort_rows",
+        "rows_incomplete_cohort_identity:1",
+    )

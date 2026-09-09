@@ -45,7 +45,7 @@ def _has_complete_cohort_identity(event: EvidenceEvent) -> bool:
     """Return whether an event can be placed in a V4 effectiveness cohort."""
 
     if not all(
-        str(value or "").strip()
+        _identity_text(value)
         for value in (
             event.strategy_version_id,
             event.cost_model_id,
@@ -55,7 +55,7 @@ def _has_complete_cohort_identity(event: EvidenceEvent) -> bool:
         return False
     metadata: Mapping[str, Any] = event.metadata if isinstance(event.metadata, Mapping) else {}
     universe_id = metadata.get("universe_id")
-    if universe_id is None or not str(universe_id).strip():
+    if not _identity_text(universe_id):
         return False
     horizon = metadata.get("horizon_days", metadata.get("expected_horizon_days"))
     if horizon is None or isinstance(horizon, bool):
@@ -69,6 +69,12 @@ def _has_complete_cohort_identity(event: EvidenceEvent) -> bool:
         and parsed_horizon == parsed_horizon.to_integral_value()
         and parsed_horizon > 0
     )
+
+
+def _identity_text(value: object) -> str:
+    if value is None or isinstance(value, (bool, Mapping, list, tuple)):
+        return ""
+    return str(value).strip()
 
 
 @dataclass(frozen=True)

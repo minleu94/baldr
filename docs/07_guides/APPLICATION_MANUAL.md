@@ -31,6 +31,8 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 避免不同計算口徑重複計算。事件只有明確保存 `horizon_days` 才能在缺件時形成有效 horizon，
 否則報告會留下缺 horizon warning。大量相同 row-level 缺口會以
 `rows_<code>:<count>` 彙總，保留原因與數量但不讓報告被重複訊息淹沒。
+cohort identity 只接受純量文字；list／mapping／bool 形式會以
+`rows_incomplete_cohort_identity` fail-closed。
 
 新的推薦 snapshot 會在服務實際選完處理股票後保存 `recommendation-universe.v1` 的
 `universe_id`／`universe_hash`；身份內容綁定決策日、選擇模式、產業篩選、`max_stocks`

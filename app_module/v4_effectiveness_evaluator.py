@@ -317,7 +317,10 @@ def evaluate_v4_effectiveness(
 
 
 def _required_group_value(row: Mapping[str, Any], field_name: str) -> str:
-    return str(row.get(field_name, "")).strip()
+    value = row.get(field_name, "")
+    if value is None or isinstance(value, (bool, Mapping, list, tuple)):
+        return ""
+    return str(value).strip()
 
 
 def _normalise_date(value: object) -> date | None:

@@ -32,7 +32,9 @@ SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設
 `close_to_close_event_date`。事件若明確保存 `horizon_days`，可在未指定 outcome
 時提供缺件 row 的 horizon；未宣告 horizon 會留下 warning 並維持無效 cohort。
 大量相同的 row-level 輸入錯誤會以 `rows_<code>:<count>` 彙總，避免正式資料
-缺欄時產生數千個重複訊息；未知狀態與 cohort 衝突仍保留明確 warning。
+缺欄時產生數千個重複訊息；cohort identity 欄位只接受純量文字，list／mapping／bool
+形式會以 `rows_incomplete_cohort_identity` fail closed；未知狀態與 cohort 衝突仍保留
+明確 warning。
 
 ### 新推薦事件的身份綁定
 

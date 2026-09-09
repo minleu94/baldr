@@ -34,10 +34,14 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 
 新的推薦 snapshot 會在服務實際選完處理股票後保存 `recommendation-universe.v1` 的
 `universe_id`／`universe_hash`；身份內容綁定決策日、選擇模式、產業篩選、`max_stocks`
-與實際處理代號。每日排程的策略版本固定為
-`scheduled-recommendation-default-v1`。Evidence importer 只讀取結果 config／run context
-明確提供的策略、成本、benchmark、universe 與 horizon，缺欄位就保持缺件，不從 profile、
-symbol 或目前股票池猜值；這項接線不回填舊事件，也不把新 snapshot 自動標成成熟或正式績效。
+與實際處理代號。每日排程固定宣告
+`strategy_version_id=scheduled-recommendation-default-v1`、
+`cost_model_id=gross-close-to-close-no-cost-v1`、`benchmark_id=TAIEX` 與
+`horizon_days=20`。20 是主要 cohort 標籤，不是持有保證；no-cost model 表示尚未扣除
+手續費、稅費、滑價或流動性成本，報告會留下 `cost_model_not_cost_adjusted` 警告。
+Evidence importer 只讀取結果 config／run context 明確提供的策略、成本、benchmark、
+universe 與 horizon，缺欄位就保持缺件，不從 profile、symbol 或目前股票池猜值；這項接線
+不回填舊事件，也不把新 snapshot 自動標成成熟或正式績效。
 
 FinMind 現金流只作交叉核對候選：
 

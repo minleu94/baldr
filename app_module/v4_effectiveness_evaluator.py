@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Iterable, Mapping
 
+from app_module.v4_evidence_identity import UNMODELED_COST_MODEL_IDS
+
 
 @dataclass(frozen=True)
 class V4EffectivenessSlice:
@@ -143,6 +145,8 @@ def evaluate_v4_effectiveness(
         strategy_version, universe_id, cost_model, benchmark_id = values
         key = (horizon_days, strategy_version, universe_id, cost_model, benchmark_id)
         bucket = grouped[key]
+        if cost_model in UNMODELED_COST_MODEL_IDS:
+            bucket["warnings"].add("cost_model_not_cost_adjusted")
 
         identity = str(
             row.get("outcome_id")

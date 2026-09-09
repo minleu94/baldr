@@ -20,6 +20,12 @@ from app_module.forward_position_thesis_candidate_producer import (
 )
 from app_module.recommendation_repository import RecommendationRepository
 from app_module.recommendation_service import RecommendationService
+from app_module.v4_evidence_identity import (
+    SCHEDULED_RECOMMENDATION_BENCHMARK_ID,
+    SCHEDULED_RECOMMENDATION_COST_MODEL_ID,
+    SCHEDULED_RECOMMENDATION_PRIMARY_HORIZON_DAYS,
+    SCHEDULED_RECOMMENDATION_STRATEGY_VERSION_ID,
+)
 from data_module.config import TWStockConfig
 from scripts.scheduled.scheduled_clock import scheduled_now
 
@@ -29,7 +35,13 @@ TASK_NAME = "baldr-recommendation-snapshot-daily"
 
 def _scheduled_default_config() -> dict[str, Any]:
     return {
-        "strategy_version_id": "scheduled-recommendation-default-v1",
+        "strategy_version_id": SCHEDULED_RECOMMENDATION_STRATEGY_VERSION_ID,
+        # These are explicit research identities, not inferred defaults.  The
+        # cost model is intentionally gross/unpriced until a governed cost
+        # ledger is available; the evaluator exposes that limitation.
+        "cost_model_id": SCHEDULED_RECOMMENDATION_COST_MODEL_ID,
+        "benchmark_id": SCHEDULED_RECOMMENDATION_BENCHMARK_ID,
+        "horizon_days": SCHEDULED_RECOMMENDATION_PRIMARY_HORIZON_DAYS,
         "technical": {
             "momentum": {
                 "enabled": True,

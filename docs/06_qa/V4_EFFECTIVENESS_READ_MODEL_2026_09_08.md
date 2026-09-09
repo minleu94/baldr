@@ -39,10 +39,14 @@ SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設
 `RecommendationService` 在完成實際 universe 選擇後，以決策日、選擇模式、產業篩選、
 `max_stocks`、實際處理股票代號及明確請求代號產生 `recommendation-universe.v1` 的
 `universe_id` 與 `sha256:` `universe_hash`，並保存於 run context。每日 research-only
-推薦 snapshot 固定帶 `strategy_version_id=scheduled-recommendation-default-v1`，並將
-執行 context 一起保存。`RecommendationEvidenceImporter` 只接受 result config／run context
-中已存在的 strategy、cost、benchmark、universe 與 positive horizon 欄位，寫入 event 欄位
-及 metadata；不以 profile、symbol、目前股票池或推薦結果列推導缺件，也不替既有事件回填。
+推薦 snapshot 固定帶 `strategy_version_id=scheduled-recommendation-default-v1`、
+`cost_model_id=gross-close-to-close-no-cost-v1`、`benchmark_id=TAIEX` 與
+`horizon_days=20`。其中 20 是 V4 主要 cohort 標籤，不是持有保證；no-cost identity
+明確表示尚未扣除手續費、稅費、滑價或流動性成本，evaluator 會留下
+`cost_model_not_cost_adjusted` warning。`RecommendationEvidenceImporter` 只接受 result
+config／run context 中已存在的 strategy、cost、benchmark、universe 與 positive horizon
+欄位，寫入 event 欄位及 metadata；不以 profile、symbol、目前股票池或推薦結果列推導
+缺件，也不替既有事件回填。
 因此這是後續 producer 的可追溯身份接線，不是現有資料的 V4 credit。
 
 ### 每日 forward outcome producer

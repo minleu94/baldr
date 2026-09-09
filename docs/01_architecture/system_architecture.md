@@ -66,7 +66,11 @@ full-market OOC + 4+ Meta OOF folds
   衝突重複列保守排除並揭露 warning。所有比例以整數 basis points 輸出；read model 不寫
   evidence、不啟用 scheduler、不產生交易或 lifecycle action。CLI 可直接以 SQLite
   `mode=ro`／`PRAGMA query_only` 讀取既有 `evidence_events`／`evidence_outcomes`；缺少明確
-  `universe_id` 時只回報 warning，不猜測或補寫 cohort identity。
+  `universe_id` 時只回報 warning，不猜測或補寫 cohort identity。每日排程推薦的固定身份
+  由 `app_module/v4_evidence_identity.py` 集中宣告：策略
+  `scheduled-recommendation-default-v1`、市場基準 `TAIEX`、主要 horizon `20`，以及
+  `gross-close-to-close-no-cost-v1`。後者只表示尚未套用費稅／滑價／流動性成本，evaluator
+  會加上 `cost_model_not_cost_adjusted`，不能當作成本後有效性。
 - `data_module/finmind_cashflow_candidate.py` 與 `scripts/fetch_finmind_cashflow_candidate.py`
   只保存 FinMind `TaiwanStockCashFlowsStatement` 的 numeric-only candidate rows、來源列 hash
   與觀測時間。FinMind observation date 不等同官方公告／決策可得日，故不產生 availability

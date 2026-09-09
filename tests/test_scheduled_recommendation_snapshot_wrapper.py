@@ -177,6 +177,10 @@ def test_scheduled_default_config_uses_recommendation_service_tokens() -> None:
 
     assert config["filters"]["industry"] == "全部"
     assert config["patterns"]["selected"] == ["旗形", "三角形", "矩形", "V形反轉"]
+    assert config["strategy_version_id"] == "scheduled-recommendation-default-v1"
+    assert config["cost_model_id"] == "gross-close-to-close-no-cost-v1"
+    assert config["benchmark_id"] == "TAIEX"
+    assert config["horizon_days"] == 20
 
 
 def test_scheduled_snapshot_emits_forward_candidate_after_result_is_persisted(

@@ -33,6 +33,12 @@ root 已以正式 D 槽 Evidence SQLite 做 mode=ro／`query_only` 唯讀 probe�
 metadata，再由自然 outcome 累積關閉 V4 八項 maturity 閘門。同期整體 program readiness
 仍為 `action_required`，Formal operational 為 `no_credit`（0/3），Paper 為 `partial`。
 
+本日 identity follow-up：每日推薦 snapshot 現在明確宣告
+`strategy_version_id=scheduled-recommendation-default-v1`、`benchmark_id=TAIEX`、
+`horizon_days=20` 與 `cost_model_id=gross-close-to-close-no-cost-v1`。no-cost 是可追溯的
+gross research observation 身份，表示費稅、滑價及流動性成本尚未建模；V4 evaluator 會以
+`cost_model_not_cost_adjusted` 保留限制，因此不會把新 cohort 誤標成成本後有效性。
+
 本輪另接上 `baldr-forward-outcomes-daily`：05:40 在 Decision/Evidence capture 後以
 台北當日可見價格，固定 5／10／20／60 交易日與 `close_to_close_event_date`，有界處理最近
 120 個曆日／2,500 events；排程 wrapper 預設只處理有身份契約的

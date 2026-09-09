@@ -128,3 +128,18 @@ def test_known_unavailable_outcome_status_is_missing_without_unknown_warning():
     assert slice_.mature_outcome_count == 0
     assert slice_.missing_outcome_count == 1
     assert "unknown_status:missing_price" not in slice_.warnings
+
+
+def test_gross_no_cost_identity_is_explicitly_warned():
+    row = _row("2026-09-01", "gross", 9000, 100)
+    row["cost_model"] = "gross-close-to-close-no-cost-v1"
+
+    report = evaluate_v4_effectiveness(
+        [row],
+        minimum_decision_days=1,
+        minimum_mature_outcomes=1,
+    )
+
+    slice_ = report.slices[0]
+    assert "cost_model_not_cost_adjusted" in slice_.warnings
+    assert slice_.evaluation_status == "ready_for_manual_review_with_warnings"

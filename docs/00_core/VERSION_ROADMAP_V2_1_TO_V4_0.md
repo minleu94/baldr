@@ -210,6 +210,10 @@ V4.0 是長期 maturity milestone，不是目前六個月工程承諾。只有�
 上述八項已達標；未具備的成本後績效、Paper／Live 成交、Exit、drift、OOS 與 rollback
 證據仍須自然累積並逐項驗收。
 
+每日推薦 producer 的 cohort identity 已固定保存策略版本、`TAIEX` benchmark、20 日主要
+horizon 與 `gross-close-to-close-no-cost-v1` 成本標籤；no-cost 標籤只代表尚未扣除費稅、
+滑價與流動性成本，evaluator 會保留警告，不能被當成第 2 項的成本後比較。
+
 V4.0 仍不代表：
 
 - 保證獲利。

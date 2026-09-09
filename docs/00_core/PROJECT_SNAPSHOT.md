@@ -10,9 +10,12 @@ V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 
 
 同日新增推薦證據身份接線：`RecommendationService` 會依實際處理股票集合、決策日、
 選擇模式與 `max_stocks` 產生可重現的 `universe_id`／`universe_hash`，每日排程固定宣告
-`strategy_version_id=scheduled-recommendation-default-v1`；evidence importer 只傳遞結果
-或執行 context 明確宣告的策略、成本、benchmark、universe 與 horizon 欄位。缺件不猜測、
-不以 profile 或推薦列補值，也不回填既有 51,866 筆事件；這只讓後續新事件可被正確分 cohort，
+`strategy_version_id=scheduled-recommendation-default-v1`、
+`cost_model_id=gross-close-to-close-no-cost-v1`、`benchmark_id=TAIEX` 與
+`horizon_days=20`；其中 no-cost 只代表 gross research observation，尚未扣除費稅滑價，
+evaluator 會保留 `cost_model_not_cost_adjusted` 警告。evidence importer 只傳遞結果或執行
+context 明確宣告的策略、成本、benchmark、universe 與 horizon 欄位。缺件不猜測、不以
+profile 或推薦列補值，也不回填既有 51,866 筆事件；這只讓後續新事件可被正確分 cohort，
 不授予任何成熟度或正式權限。
 
 同日已接上 `baldr-forward-outcomes-daily` 的每日 outcome producer。它在 05:40 以台北

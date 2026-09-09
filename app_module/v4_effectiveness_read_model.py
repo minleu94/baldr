@@ -20,6 +20,9 @@ from app_module.v4_effectiveness_evaluator import (
 )
 
 
+DEFAULT_RETURN_BASIS = "close_to_close_event_date"
+
+
 class V4EffectivenessReadModel:
     """從已保存證據建立 V4 唯讀報告，不產生交易或 lifecycle 動作。"""
 
@@ -59,6 +62,7 @@ class V4EffectivenessReadModel:
         end_date: str | None = None,
         window_days: int | None = None,
         limit: int | None = None,
+        return_basis: str = DEFAULT_RETURN_BASIS,
     ) -> V4EffectivenessReport:
         """從正式 evidence SQLite 建立唯讀報告。
 
@@ -74,6 +78,7 @@ class V4EffectivenessReadModel:
             end_date=end_date,
             window_days=window_days,
             limit=limit,
+            return_basis=return_basis,
         )
         report = self.build_report(rows=rows)
         return replace(
@@ -90,13 +95,15 @@ def load_v4_effectiveness_rows_from_evidence_db(
     end_date: str | None = None,
     window_days: int | None = None,
     limit: int | None = None,
+    return_basis: str = DEFAULT_RETURN_BASIS,
 ) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
     """以 query-only 連線把 Evidence events/outcomes 映射成 V4 rows。
 
     Evidence event schema 沒有強制的 ``universe_id`` 欄位；只接受事件
     metadata 內明確保存的 ``universe_id``，不以 source id、symbol 或目前
     股票池代替。沒有 outcome 的 event 也保留為 missing，讓成熟分母不會
-    因為 SQL inner join 而被悄悄縮小。
+    因為 SQL inner join 而被悄悄縮小。查詢固定一個 canonical return basis，
+    避免同一事件的不同計算口徑被重複計入。
     """
 
     path = Path(db_path)
@@ -108,8 +115,19 @@ def load_v4_effectiveness_rows_from_evidence_db(
         isinstance(window_days, bool) or int(window_days) <= 0
     ):
         raise ValueError("window_days must be positive when provided")
+    normalized_return_basis = str(return_basis).strip()
+    if not normalized_return_basis:
+        raise ValueError("return_basis must not be empty")
 
     where: list[str] = []
+    # Keep outcome filters in the JOIN condition.  A predicate in WHERE would
+    # turn this LEFT JOIN into an inner join and silently erase events whose
+    # requested horizon is not mature yet.
+    join_params: list[Any] = [normalized_return_basis]
+    outcome_join = "o.event_id = e.event_id AND o.return_basis = ?"
+    if window_days is not None:
+        outcome_join += " AND o.window_days = ?"
+        join_params.append(int(window_days))
     params: list[Any] = []
     if decision_date:
         where.append("e.decision_date = ?")
@@ -120,9 +138,6 @@ def load_v4_effectiveness_rows_from_evidence_db(
     if end_date:
         where.append("e.decision_date <= ?")
         params.append(str(end_date))
-    if window_days is not None:
-        where.append("o.window_days = ?")
-        params.append(int(window_days))
     sql = """
         SELECT
             e.event_id,
@@ -138,14 +153,14 @@ def load_v4_effectiveness_rows_from_evidence_db(
             e.available_date,
             o.outcome_id,
             o.window_days,
+            o.return_basis,
             o.forward_return_bp,
             o.benchmark_excess_bp,
             o.industry_excess_bp,
             o.outcome_status,
             o.data_quality
         FROM evidence_events AS e
-        LEFT JOIN evidence_outcomes AS o ON o.event_id = e.event_id
-    """
+        LEFT JOIN evidence_outcomes AS o ON """ + outcome_join
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY e.decision_date ASC, e.event_id ASC, o.window_days ASC"
@@ -168,7 +183,10 @@ def load_v4_effectiveness_rows_from_evidence_db(
             if not {"evidence_events", "evidence_outcomes"}.issubset(tables):
                 return [], ("evidence_db_tables_missing",)
             conn.row_factory = sqlite3.Row
-            raw_rows = conn.execute(sql, tuple(params)).fetchall()
+            raw_rows = conn.execute(
+                sql,
+                tuple(join_params + params),
+            ).fetchall()
             for raw in raw_rows:
                 row = dict(raw)
                 metadata = _metadata_object(row.get("metadata_json"))
@@ -179,11 +197,18 @@ def load_v4_effectiveness_rows_from_evidence_db(
                 outcome_id = str(row.get("outcome_id") or "").strip()
                 if not outcome_id:
                     outcome_id = f"{event_id}:missing"
+                horizon = row.get("window_days")
+                if horizon is None and window_days is not None:
+                    horizon = int(window_days)
+                if horizon is None:
+                    horizon = _metadata_horizon_days(metadata)
+                if horizon is None:
+                    warnings.add(f"evidence_rows_missing_horizon:{event_id}")
                 rows.append(
                     {
                         "decision_date": row.get("decision_date"),
                         "outcome_id": outcome_id,
-                        "horizon_days": row.get("window_days") or 0,
+                        "horizon_days": horizon or 0,
                         "strategy_version": row.get("strategy_version_id") or "",
                         "universe_id": universe_id,
                         "cost_model": row.get("cost_model_id") or "",
@@ -198,6 +223,7 @@ def load_v4_effectiveness_rows_from_evidence_db(
                         "symbol": row.get("symbol") or "",
                         "available_date": row.get("available_date") or "",
                         "data_quality": row.get("data_quality") or "",
+                        "return_basis": row.get("return_basis") or normalized_return_basis,
                     }
                 )
     except sqlite3.Error as exc:
@@ -222,7 +248,24 @@ def _metadata_text(metadata: Mapping[str, Any], key: str) -> str:
     return str(value).strip()
 
 
+def _metadata_horizon_days(metadata: Mapping[str, Any]) -> int | None:
+    """Read an explicitly declared event horizon without guessing defaults."""
+
+    for key in ("horizon_days", "expected_horizon_days"):
+        value = metadata.get(key)
+        if isinstance(value, bool):
+            continue
+        try:
+            parsed = int(str(value).strip())
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            return parsed
+    return None
+
+
 __all__ = [
+    "DEFAULT_RETURN_BASIS",
     "V4EffectivenessReadModel",
     "load_v4_effectiveness_rows_from_evidence_db",
 ]

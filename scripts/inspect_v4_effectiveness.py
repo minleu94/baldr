@@ -17,7 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app_module.v4_effectiveness_read_model import V4EffectivenessReadModel
+from app_module.v4_effectiveness_read_model import (
+    DEFAULT_RETURN_BASIS,
+    V4EffectivenessReadModel,
+)
 
 
 def _sample_rows() -> tuple[dict[str, Any], ...]:
@@ -113,6 +116,7 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
             end_date=args.end_date,
             window_days=args.window_days,
             limit=args.limit,
+            return_basis=args.return_basis,
         )
     else:
         rows: Iterable[Mapping[str, Any]] = (
@@ -136,6 +140,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--end-date")
     parser.add_argument("--window-days", type=int)
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--return-basis",
+        default=DEFAULT_RETURN_BASIS,
+        help="outcome return basis to include; defaults to the canonical close-to-close basis",
+    )
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--k", type=int, default=10)

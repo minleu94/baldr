@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timezone
 import json
+from types import SimpleNamespace
 
 from scripts.batch_update_daily_data import _format_update_diagnostic
 from scripts.scheduled import run_daily_data_update_quick as runner
@@ -17,6 +18,23 @@ from data_module.ml_storage_capacity import (
     acquire_heavy_chain_reservation,
     release_heavy_chain_reservation,
 )
+
+
+def _patch_capacity_preflight_for_unit_test(monkeypatch) -> None:
+    """Keep runner unit tests independent from the host's live free space."""
+
+    monkeypatch.setattr(
+        runner,
+        "preflight_capacity",
+        lambda **_kwargs: SimpleNamespace(
+            as_dict=lambda: {
+                "within_budget": True,
+                "required_free_bytes": 0,
+                "free_bytes": 0,
+                "blockers": [],
+            }
+        ),
+    )
 
 
 def test_update_diagnostic_is_ascii_safe_for_windows_stdout() -> None:
@@ -114,6 +132,7 @@ def test_technical_is_not_current_when_latest_date_coverage_lags() -> None:
 def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     tmp_path, monkeypatch
 ) -> None:
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
     data_root = tmp_path / "FA_Data"
     output_root = data_root / "output"
     status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
@@ -201,6 +220,7 @@ def test_quick_update_publishes_running_before_work_and_terminal_metadata(
 def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     tmp_path, monkeypatch
 ) -> None:
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
     data_root = tmp_path / "FA_Data"
     output_root = data_root / "output"
     status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
@@ -269,6 +289,7 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
 def test_quick_update_releases_capacity_reservation_after_service_exception(
     tmp_path, monkeypatch
 ) -> None:
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
     data_root = tmp_path / "FA_Data"
     output_root = data_root / "output"
     status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"

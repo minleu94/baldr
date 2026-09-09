@@ -26,7 +26,10 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 
 `--db-path` 使用 SQLite `mode=ro`／`PRAGMA query_only` 讀取既有 `evidence_events` 與
 `evidence_outcomes`；若事件 metadata 沒有明確 `universe_id`，報告會保留警告並維持 fail-closed，
-不以目前股票池或 symbol 推測補值。
+不以目前股票池或 symbol 推測補值。指定 `--window-days` 時，沒有該窗口 outcome 的事件仍會
+以 `missing` 保留；查詢只納入 `close_to_close_event_date`（可用 `--return-basis` 明確改變），
+避免不同計算口徑重複計算。事件只有明確保存 `horizon_days` 才能在缺件時形成有效 horizon，
+否則報告會留下缺 horizon warning。
 
 FinMind 現金流只作交叉核對候選：
 

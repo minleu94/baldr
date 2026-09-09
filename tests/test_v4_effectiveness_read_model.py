@@ -158,6 +158,90 @@ def test_evidence_db_loader_is_explicit_about_missing_db_and_filters(tmp_path: P
     assert warnings == ()
 
 
+def test_evidence_db_window_filter_keeps_event_without_matching_outcome(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "evidence.sqlite"
+    _write_evidence_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO evidence_events (
+                event_id, event_hash, event_date, decision_date, symbol,
+                event_type, event_family, source_type, strategy_version_id,
+                score_bp, data_quality, as_of_date, available_date,
+                cost_model_id, benchmark_id, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "event-pending",
+                "hash-pending",
+                "2026-09-03",
+                "2026-09-03",
+                "2333",
+                "recommendation_included",
+                "recommendation",
+                "paper",
+                "rule-v4",
+                8990,
+                "observed",
+                "2026-09-03",
+                "2026-09-03",
+                "paper-v1",
+                "twse-ew",
+                json.dumps({"universe_id": "twse-liquid", "horizon_days": 5}),
+            ),
+        )
+
+    rows, warnings = load_v4_effectiveness_rows_from_evidence_db(
+        db_path,
+        decision_date="2026-09-03",
+        window_days=5,
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["event_id"] == "event-pending"
+    assert rows[0]["horizon_days"] == 5
+    assert rows[0]["status"] == "missing"
+    assert warnings == ()
+
+
+def test_evidence_db_loader_uses_only_canonical_return_basis(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "evidence.sqlite"
+    _write_evidence_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO evidence_outcomes (
+                outcome_id, event_id, window_days, return_basis,
+                forward_return_bp, outcome_status, data_quality
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "outcome-alt-basis",
+                "event-1",
+                5,
+                "open_to_close_event_date",
+                9999,
+                "ready",
+                "observed",
+            ),
+        )
+
+    rows, warnings = load_v4_effectiveness_rows_from_evidence_db(
+        db_path,
+        decision_date="2026-09-01",
+        window_days=5,
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["return_bp"] == 100
+    assert rows[0]["return_basis"] == "close_to_close_event_date"
+    assert warnings == ()
+
+
 def test_v4_cli_reads_evidence_db(tmp_path: Path) -> None:
     db_path = tmp_path / "evidence.sqlite"
     output_path = tmp_path / "report.json"

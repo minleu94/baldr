@@ -27,6 +27,10 @@
 
 `--db-path` 只以 SQLite `mode=ro`／`PRAGMA query_only` 讀取 `evidence_events` 與
 `evidence_outcomes`；事件 metadata 沒有明確 `universe_id` 時保留 warning，不能用目前股票池猜測補值。
+指定 `--window-days` 時，沒有該成熟 outcome 的事件仍會保留為 `missing`，不因
+SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設只讀
+`close_to_close_event_date`。事件若明確保存 `horizon_days`，可在未指定 outcome
+時提供缺件 row 的 horizon；未宣告 horizon 會留下 warning 並維持無效 cohort。
 
 ### FinMind 現金流候選
 

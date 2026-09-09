@@ -64,7 +64,9 @@ full-market OOC + 4+ Meta OOF folds
   application read path。輸入依持有期間、策略、股票池、成本模型與 benchmark 分 cohort，
   每個決策日獨立取 top-k；只有 `ready` outcome 進成熟分母，`pending`／`missing`／未知狀態及
   衝突重複列保守排除並揭露 warning。所有比例以整數 basis points 輸出；read model 不寫
-  evidence、不啟用 scheduler、不產生交易或 lifecycle action。
+  evidence、不啟用 scheduler、不產生交易或 lifecycle action。CLI 可直接以 SQLite
+  `mode=ro`／`PRAGMA query_only` 讀取既有 `evidence_events`／`evidence_outcomes`；缺少明確
+  `universe_id` 時只回報 warning，不猜測或補寫 cohort identity。
 - `data_module/finmind_cashflow_candidate.py` 與 `scripts/fetch_finmind_cashflow_candidate.py`
   只保存 FinMind `TaiwanStockCashFlowsStatement` 的 numeric-only candidate rows、來源列 hash
   與觀測時間。FinMind observation date 不等同官方公告／決策可得日，故不產生 availability

@@ -159,7 +159,13 @@ def evaluate_v4_effectiveness(
         if status in {"pending", "not_matured", "incomplete"}:
             bucket["pending"] += 1
             continue
-        if status in {"missing", "unavailable", "failed"}:
+        if status in {
+            "missing",
+            "unavailable",
+            "failed",
+            "missing_price",
+            "insufficient_future_data",
+        }:
             bucket["missing"] += 1
             continue
         if status != "ready":

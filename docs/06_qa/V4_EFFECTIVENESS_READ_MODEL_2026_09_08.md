@@ -22,7 +22,11 @@
 ```powershell
 .\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --sample --format markdown
 .\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --input <EVIDENCE_JSON_OR_JSONL> --format json --output <REPORT_JSON>
+.\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --db-path <EVIDENCE_SQLITE> --window-days 5 --format markdown
 ```
+
+`--db-path` 只以 SQLite `mode=ro`／`PRAGMA query_only` 讀取 `evidence_events` 與
+`evidence_outcomes`；事件 metadata 沒有明確 `universe_id` 時保留 warning，不能用目前股票池猜測補值。
 
 ### FinMind 現金流候選
 

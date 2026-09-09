@@ -92,3 +92,16 @@ def test_unknown_status_is_conservative_and_empty_input_is_explicit():
     empty = evaluate_v4_effectiveness([])
     assert empty.slices == ()
     assert empty.warnings == ("no_valid_cohort_rows",)
+
+
+def test_known_unavailable_outcome_status_is_missing_without_unknown_warning():
+    report = evaluate_v4_effectiveness(
+        [_row("2026-09-01", "missing-price", 9000, 100, status="missing_price")],
+        minimum_decision_days=1,
+        minimum_mature_outcomes=1,
+    )
+
+    slice_ = report.slices[0]
+    assert slice_.mature_outcome_count == 0
+    assert slice_.missing_outcome_count == 1
+    assert "unknown_status:missing_price" not in slice_.warnings

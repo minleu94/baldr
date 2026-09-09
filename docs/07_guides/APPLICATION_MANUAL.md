@@ -21,7 +21,12 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 ```powershell
 .\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --sample --format markdown
 .\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --input <EVIDENCE_JSON_OR_JSONL> --format json --output <REPORT_JSON>
+.\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --db-path <EVIDENCE_SQLITE> --window-days 5 --format markdown
 ```
+
+`--db-path` 使用 SQLite `mode=ro`／`PRAGMA query_only` 讀取既有 `evidence_events` 與
+`evidence_outcomes`；若事件 metadata 沒有明確 `universe_id`，報告會保留警告並維持 fail-closed，
+不以目前股票池或 symbol 推測補值。
 
 FinMind 現金流只作交叉核對候選：
 

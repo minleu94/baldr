@@ -97,16 +97,28 @@ def _render_markdown(payload: Mapping[str, Any]) -> str:
 
 
 def build_payload(args: argparse.Namespace) -> dict[str, Any]:
-    if bool(args.sample) == bool(args.input):
-        raise SystemExit("請擇一提供 --sample 或 --input")
-    rows: Iterable[Mapping[str, Any]] = (
-        _sample_rows() if args.sample else _load_rows(Path(args.input))
-    )
-    report = V4EffectivenessReadModel(
+    sources = [bool(args.sample), bool(args.input), bool(args.db_path)]
+    if sum(sources) != 1:
+        raise SystemExit("請擇一提供 --sample、--input 或 --db-path")
+    read_model = V4EffectivenessReadModel(
         k=args.k,
         minimum_decision_days=args.minimum_decision_days,
         minimum_mature_outcomes=args.minimum_mature_outcomes,
-    ).build_report(rows=rows)
+    )
+    if args.db_path:
+        report = read_model.build_report_from_evidence_db(
+            db_path=Path(args.db_path),
+            decision_date=args.decision_date,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            window_days=args.window_days,
+            limit=args.limit,
+        )
+    else:
+        rows: Iterable[Mapping[str, Any]] = (
+            _sample_rows() if args.sample else _load_rows(Path(args.input))
+        )
+        report = read_model.build_report(rows=rows)
     return report.to_dict()
 
 
@@ -114,6 +126,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sample", action="store_true")
     parser.add_argument("--input", type=Path)
+    parser.add_argument(
+        "--db-path",
+        type=Path,
+        help="正式 evidence SQLite；只以 mode=ro/query_only 讀取",
+    )
+    parser.add_argument("--decision-date")
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
+    parser.add_argument("--window-days", type=int)
+    parser.add_argument("--limit", type=int)
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--k", type=int, default=10)

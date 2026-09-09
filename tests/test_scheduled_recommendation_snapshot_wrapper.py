@@ -159,6 +159,10 @@ def test_scheduled_recommendation_snapshot_saves_result_and_status(
     assert payload["auto_trading"] is False
     assert payload["lifecycle_action"] is False
     assert payload["confirm"] is False
+    assert payload["evidence_identity"]["strategy_version_id"] == "scheduled-recommendation-default-v1"
+    assert payload["evidence_identity"]["cost_model_id"] == "gross-close-to-close-no-cost-v1"
+    assert payload["evidence_identity"]["benchmark_id"] == "TAIEX"
+    assert payload["evidence_identity"]["horizon_days"] == 20
     assert FakeRecommendationService.instances[0].calls[0]["max_stocks"] == 25
     assert FakeRecommendationService.instances[0].calls[0]["top_n"] == 5
 

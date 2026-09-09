@@ -87,6 +87,54 @@ def test_builder_handles_mixed_tpex_identity_and_marks_income_ytd(tmp_path: Path
     assert balance_row["item_name"].startswith("資產負債表:期末:")
 
 
+def test_builder_accepts_cashflow_endpoint_and_keeps_ytd_label(tmp_path: Path) -> None:
+    openapi = tmp_path / "openapi"
+    openapi.mkdir()
+    cashflow = [
+        {
+            "出表日期": "1150909",
+            "年度": "115",
+            "季別": "2",
+            "公司代號": "2330",
+            "營業活動之淨現金流入（流出）": "-12.5",
+        }
+    ]
+    _write_json(openapi / "cashflow.json", cashflow)
+    manifest = {
+        "schema_version": "official-openapi-statement-endpoints.v1",
+        "captured_at": "2026-09-08T10:00:00+00:00",
+        "endpoints": {
+            "cashflow.json": _endpoint(openapi / "cashflow.json", "twse", "cashflow"),
+        },
+    }
+    _write_json(openapi / "endpoint_manifest.json", manifest)
+    availability = tmp_path / "availability"
+    availability.mkdir()
+    _write_mapping(availability / "mapping.csv", [("2330", "cash_flows_statement")])
+
+    result = build_candidate(
+        openapi_root=openapi,
+        availability_roots=(availability,),
+        output_root=tmp_path / "candidate",
+        period="2026-Q2",
+        observed_at=datetime(2026, 9, 8, 10, tzinfo=timezone.utc),
+    )
+
+    rows = list(
+        csv.DictReader(
+            (tmp_path / "candidate" / "statement_current_observations.csv").open(
+                encoding="utf-8-sig", newline=""
+            )
+        )
+    )
+    assert result["coverage"]["current_statement_type_counts"] == {
+        "cash_flows_statement": 1
+    }
+    assert rows[0]["item_code"].startswith("cash_flows_statement:")
+    assert rows[0]["item_name"].startswith("現金流量表:YTD:")
+    assert rows[0]["value"] == "-12500.0"
+
+
 def test_builder_quarantines_conflicting_duplicate_values(tmp_path: Path) -> None:
     openapi = tmp_path / "openapi"
     openapi.mkdir()

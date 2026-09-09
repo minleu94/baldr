@@ -43,6 +43,7 @@
 - [LUNA B 開發環境與依賴基線](../07_guides/LUNA_B_ENVIRONMENT_2026_09_07.md)：runtime／dev requirements、Windows／Python／TA-Lib／PySide6 邊界與已驗證版本限制。
 - [LUNA B 架構與 QA handoff](../06_qa/LUNA_B_HANDOFF_2026_09_07.md)：repo map、測試隔離、分析整併、依賴驗證、完整 suite 結果與 A／C 整合步驟。
 - [V4 Next Formal／Paper handoff](../06_qa/V4_NEXT_FORMAL_HANDOFF_2026_09_08.md)：實際受控 environment attestation、Paper legacy retry／跨日策略、三路 source→fill→ledger→Formal 執行順序與 atomic path update rollback；不把 candidate 直接升格為正式輸入。
+- [V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)：cohort／決策日 top-k 唯讀評估、FinMind 現金流候選、SQLite WAL 備份、每日更新容量 reservation 與剩餘自然證據邊界。
 
 ## 0. 核心入口
 
@@ -238,6 +239,8 @@
 | `data_module/official_calendar_bundle.py` / `scripts/capture_official_calendar_bundle.py` | 官方 TWSE 年表／TPEX 月表 raw response 的候選-only 正規化入口；支援 fixture 或明確 bounded network capture，輸出 TEMP、create-only 的 `official-trading-calendar-bundle.v1`，不建立 formal clock。 |
 | `data_module/monthly_revenue_snapshot_harvester.py` / `scripts/fetch_mops_monthly_revenue_snapshot.py` | Month 5 MOPS 月營收完整市場 snapshot 候選抓取器；保存 raw HTML 與營收值 candidate CSV，不推定 available_date，不寫正式 mapping 或 SQLite。 |
 | `data_module/finmind_monthly_revenue_create_time.py` / `scripts/fetch_finmind_monthly_revenue_create_time.py` | Month 5 FinMind 月營收 create_time 候選抓取器；使用 DPAPI / 環境變數 token、支援 resume 與請求節流，輸出 create_time 分組候選，不寫正式 mapping 或 SQLite。 |
+| `data_module/finmind_cashflow_candidate.py` / `scripts/fetch_finmind_cashflow_candidate.py` | FinMind `TaiwanStockCashFlowsStatement` 現金流數值候選；保存 row hash／observed_at／numeric-only eligibility，沒有可得日便不進 PIT／ML／正式 scoring，支援明確股票或 `--all-raw-stock-codes --resume`，不寫正式 SQLite。 |
+| `app_module/v4_effectiveness_evaluator.py` / `scripts/inspect_v4_effectiveness.py` | V4 cohort effectiveness 唯讀評估；按決策日計算 top-k 與整數 bp 指標，pending／missing／未知狀態保守排除，不啟用 scheduler 或交易。 |
 | [2026-06-16-month5-fundamental-sqlite-migration-v1.md](../superpowers/plans/2026-06-16-month5-fundamental-sqlite-migration-v1.md) | Month 5 Fundamental SQLite 受控 migration v1 plan，要求 working-copy dry-run、backup、rollback 與 schema preservation tests。 |
 | [2026-06-16-month5-revenue-factor-pack-v1.md](../superpowers/plans/2026-06-16-month5-revenue-factor-pack-v1.md) | Month 5 Revenue Factor Pack v1 plan，實作 Revenue YoY、MoM、3M trend 與 new high factor adapters，並強制 available_date gate。 |
 | [2026-06-16-month5-valuation-data-layer-v1.md](../superpowers/plans/2026-06-16-month5-valuation-data-layer-v1.md) | Month 5 Valuation Data Layer v1 plan，建立估值 metric 的 industry percentile 來源與 adapter，只輸出相對區間與 diagnostics。 |
@@ -615,6 +618,5 @@
 - 2026-07-08：新增 V3 Score Effectiveness / ML Readiness design + plan 索引，將 TotalScore 分組、fixed threshold robustness、component ablation 放在 ML 前置 gate，ML 僅作 shadow-only 第二層。
 - 2026-07-08：新增 V3.0 engineering candidate manual validation report 索引，標示 V3 effectiveness read model / gap classifier / review scaffold / readiness inspector 已具工程候選驗證入口，但人工驗證仍為 `PENDING_MANUAL_VALIDATION`，不啟用 scheduler、不宣稱投資有效性。
 - 2026-07-12：新增 V2.1 engineering readiness 與 formal closeout approval record 索引；`592d3db` safeguards、focused suite 與 rollback 已記錄，但 release owner 的 owner / timestamp / decision 尚未提供，因此狀態為 `awaiting_release_owner_confirmation`，不宣稱正式 closeout、投資有效性或 broker execution。
-
 
 

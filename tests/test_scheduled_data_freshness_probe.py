@@ -81,7 +81,14 @@ def test_freshness_probe_reports_artifact_write_failure_as_structured_error(
     assert not log_path.exists()
 
 
-def test_freshness_probe_degrades_when_tpex_file_missing_for_latest_daily_date(tmp_path):
+def test_freshness_probe_degrades_when_tpex_file_missing_for_latest_daily_date(tmp_path, monkeypatch):
+    # Keep the fixture independent from the wall clock and exercise the
+    # post-cutoff branch that classifies a missing TPEx file as stale.
+    monkeypatch.setattr(
+        probe,
+        "scheduled_now",
+        lambda: datetime(2026, 7, 6, 5, 0, tzinfo=probe.PACIFIC),
+    )
     data_root = tmp_path / "FA_Data"
     output_root = data_root / "output"
     daily_price_dir = data_root / "daily_price"

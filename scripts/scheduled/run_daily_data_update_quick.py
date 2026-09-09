@@ -20,6 +20,16 @@ from data_module.official_trading_calendar import (
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
 )
+from data_module.ml_storage_capacity import (
+    BYTES_PER_GIB,
+    HEAVY_CHAIN_LOCK_FILENAME,
+    StorageCapacityError,
+    acquire_heavy_chain_reservation,
+    heavy_chain_capacity_budget,
+    preflight_capacity,
+    release_heavy_chain_reservation,
+)
+from data_module.phase3c_backfill_runner import configured_candidate_db_path
 from scripts.scheduled.scheduled_clock import scheduled_now
 
 
@@ -164,7 +174,16 @@ def _run_step(
     warning_only: bool = False,
 ) -> dict[str, Any] | None:
     logging.info("Starting step: %s", name)
-    result = action()
+    try:
+        result = action()
+    except Exception as exc:  # noqa: BLE001
+        # Scheduled execution must publish a terminal status and release its
+        # shared capacity reservation even when a service raises unexpectedly.
+        result = {
+            "success": False,
+            "error_type": type(exc).__name__,
+            "message": f"{type(exc).__name__}: {exc}",
+        }
     ok = bool(result.get("success", True))
     if not ok and warning_only:
         logging.warning("Step completed with warning: %s: %s", name, result.get("message", ""))
@@ -212,6 +231,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--log-path")
     parser.add_argument(
+        "--capacity-persistent-new-gib",
+        type=int,
+        default=1,
+        help="本次更新允許的持久新增 GiB 上限；仍保留中央 200 GiB 安全底線",
+    )
+    parser.add_argument(
+        "--capacity-temporary-peak-gib",
+        type=int,
+        default=1,
+        help="本次更新允許的暫存峰值 GiB 上限；仍保留中央 200 GiB 安全底線",
+    )
+    parser.add_argument(
+        "--capacity-lock-path",
+        help=(
+            "跨每日更新與 Raw/Direct/OOC heavy chain 共用的 reservation lock；"
+            "省略時使用 output-root/release_v4/.ml_heavy_chain.lock"
+        ),
+    )
+    parser.add_argument(
         "--enable-technical-process-pool",
         action="store_true",
         help=(
@@ -240,6 +278,96 @@ def main(argv: list[str] | None = None) -> int:
     )
     log_path = Path(args.log_path) if args.log_path else run_root / f"{today_key}_data_update_quick.log"
     _setup_logging(log_path)
+
+    capacity_preflight: dict[str, Any] | None = None
+    candidate_db_path = configured_candidate_db_path()
+    capacity_lock_path = Path(args.capacity_lock_path) if args.capacity_lock_path else (
+        output_root / "release_v4" / HEAVY_CHAIN_LOCK_FILENAME
+    )
+    capacity_reservation = None
+    try:
+        # 先取得與 Raw／Direct／OOC 相同的 OS reservation，再量測容量。
+        # 只做 free-space check 而不持有 reservation，兩個同時啟動的
+        # caller 可能各自通過而共同耗盡 D 槽 headroom。
+        capacity_reservation = acquire_heavy_chain_reservation(capacity_lock_path)
+        if capacity_reservation is None:
+            raise StorageCapacityError(
+                "shared capacity reservation is already held by another process",
+                preflight={
+                    "stage": "scheduled_daily_update_reservation",
+                    "lock_path": str(capacity_lock_path),
+                    "blocker": "shared_capacity_reservation_unavailable",
+                },
+            )
+        capacity_budget = heavy_chain_capacity_budget(
+            persistent_new_bytes_budget=(
+                int(args.capacity_persistent_new_gib) * BYTES_PER_GIB
+            ),
+            temporary_peak_bytes_budget=(
+                int(args.capacity_temporary_peak_gib) * BYTES_PER_GIB
+            ),
+        )
+        persistent_root_candidates = (
+            Path(args.data_root),
+            output_root,
+            candidate_db_path.parent if candidate_db_path is not None else None,
+            capacity_lock_path.parent,
+        )
+        persistent_roots = tuple(
+            dict.fromkeys(
+                path for path in persistent_root_candidates if path is not None
+            )
+        )
+        capacity_result = preflight_capacity(
+            probe_path=Path(args.data_root),
+            budget=capacity_budget,
+            stage="scheduled_daily_update_preflight",
+            persistent_roots=persistent_roots,
+            persistent_new_bytes_estimate=capacity_budget.persistent_new_bytes_budget,
+            # The scheduled data root is the protected production volume.  A
+            # caller that places temporary files on another volume can pass
+            # that root to the shared preflight service directly; this runner
+            # avoids probing a packaged-app temp extraction path that may be
+            # unreadable on Windows.
+            temporary_roots=(),
+            temporary_peak_bytes_observed=capacity_budget.temporary_peak_bytes_budget,
+        )
+        capacity_preflight = capacity_result.as_dict()
+    except Exception as exc:  # noqa: BLE001
+        # Capacity is a fail-closed gate.  Do not start a network download or
+        # SQLite writer if the filesystem cannot prove the required reserve.
+        completed_at = scheduled_now()
+        failure_message = f"capacity_preflight_failed:{type(exc).__name__}:{exc}"
+        failure_payload = {
+            "task": "baldr-data-update-quick-daily",
+            "status": "failed",
+            "run_id": f"{today_key}-{os.getpid()}",
+            "started_at": run_now.isoformat(timespec="seconds"),
+            "completed_at": completed_at.isoformat(timespec="seconds"),
+            "checked_at": completed_at.isoformat(timespec="seconds"),
+            "process_id": os.getpid(),
+            "data_root": str(args.data_root),
+            "output_root": str(output_root),
+            "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+            "capacity_lock_path": str(capacity_lock_path),
+            "capacity_reservation_acquired": False,
+            "calendar_resolution": [],
+            "steps": [],
+            "warnings": [],
+            "errors": [failure_message],
+            "capacity_preflight": getattr(exc, "preflight", None),
+            "writes_market_data_db": False,
+            "writes_evidence_db": False,
+            "auto_trading": False,
+            "auto_lifecycle_action": False,
+            "history_path": str(history_path),
+        }
+        failure_payload["history"] = _append_history_safely(history_path, failure_payload)
+        _write_json(status_path, failure_payload)
+        logging.error(failure_message)
+        release_heavy_chain_reservation(capacity_reservation)
+        capacity_reservation = None
+        return 2
 
     config = TWStockConfig(
         data_root=Path(args.data_root),
@@ -277,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
             end_date = str(calendar_records[-1]["date_str"])
     except (OfficialTradingCalendarError, ValueError) as exc:
         completed_at = scheduled_now()
+        failure_message = f"official_trading_calendar_unavailable:{type(exc).__name__}:{exc}"
         failure_payload = {
             "task": "baldr-data-update-quick-daily",
             "status": "failed",
@@ -287,12 +416,16 @@ def main(argv: list[str] | None = None) -> int:
             "process_id": os.getpid(),
             "data_root": str(config.data_root),
             "output_root": str(config.output_root),
+            "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
             "start_date": args.start_date,
             "end_date": args.end_date,
+            "capacity_lock_path": str(capacity_lock_path),
+            "capacity_reservation_acquired": False,
             "calendar_resolution": [],
             "steps": [],
             "warnings": [],
-            "errors": [f"official_trading_calendar_unavailable:{type(exc).__name__}:{exc}"],
+            "errors": [failure_message],
+            "capacity_preflight": capacity_preflight,
             "writes_market_data_db": False,
             "writes_evidence_db": False,
             "auto_trading": False,
@@ -301,7 +434,9 @@ def main(argv: list[str] | None = None) -> int:
         }
         failure_payload["history"] = _append_history_safely(history_path, failure_payload)
         _write_json(status_path, failure_payload)
-        logging.error(failure_payload["errors"][0])
+        logging.error(failure_message)
+        release_heavy_chain_reservation(capacity_reservation)
+        capacity_reservation = None
         return 1
 
     service = UpdateService(config)
@@ -320,6 +455,9 @@ def main(argv: list[str] | None = None) -> int:
         "process_id": os.getpid(),
         "data_root": str(config.data_root),
         "output_root": str(config.output_root),
+        "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+        "capacity_lock_path": str(capacity_lock_path),
+        "capacity_reservation_acquired": capacity_reservation is not None,
         "start_date": start_date,
         "end_date": end_date,
         "calendar_resolution": _serializable_calendar_records(calendar_records),
@@ -336,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:
         "technical_process_pool_workers": config.technical_process_pool_workers,
         "technical_process_pool_max_in_flight": config.technical_process_pool_max_in_flight,
         "technical_process_pool_max_retries": config.technical_process_pool_max_retries,
+        "capacity_preflight": capacity_preflight,
     }
     _write_json(status_path, running_payload)
     running_payload["history"] = _append_history_safely(history_path, running_payload)
@@ -389,6 +528,36 @@ def main(argv: list[str] | None = None) -> int:
             name="sync_broker_branch_to_sqlite",
             action=lambda: service.sync_source_to_sqlite("broker_branch_files", start_date, end_date),
         )
+    if failed is None:
+        candidate_updater = getattr(service, "update_phase3c_candidate_range", None)
+        if candidate_db_path is None or not callable(candidate_updater):
+            steps.append(
+                {
+                    "name": "update_phase3c_candidate_sources",
+                    "status": "skipped",
+                    "message": "未設定候選資料庫路徑；保留正式資料更新，未猜測候選寫入位置",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "candidate_only": True,
+                        "reason": "candidate_db_path_not_configured",
+                    },
+                }
+            )
+        else:
+            failed = _run_step(
+                steps=steps,
+                name="update_phase3c_candidate_sources",
+                action=lambda: candidate_updater(
+                    start_date=start_date,
+                    end_date=end_date,
+                    sources=("institutional", "credit"),
+                    include_latest_tdcc_snapshot=run_date.weekday() == 0,
+                    allow_online_calendar_probe=True,
+                    progress_callback=None,
+                ),
+                warning_only=True,
+            )
     if failed is None:
         status = service.check_data_overview()
         coverage = service.check_technical_indicator_latest_coverage()
@@ -446,6 +615,9 @@ def main(argv: list[str] | None = None) -> int:
         "checked_at": completed_at.isoformat(timespec="seconds"),
         "data_root": str(config.data_root),
         "output_root": str(config.output_root),
+        "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+        "capacity_lock_path": str(capacity_lock_path),
+        "capacity_reservation_acquired": capacity_reservation is not None,
         "start_date": start_date,
         "end_date": end_date,
         "calendar_resolution": _serializable_calendar_records(calendar_records),
@@ -462,10 +634,12 @@ def main(argv: list[str] | None = None) -> int:
         "technical_process_pool_workers": config.technical_process_pool_workers,
         "technical_process_pool_max_in_flight": config.technical_process_pool_max_in_flight,
         "technical_process_pool_max_retries": config.technical_process_pool_max_retries,
+        "capacity_preflight": capacity_preflight,
     }
     payload["history"] = _append_history_safely(history_path, payload)
     _write_json(status_path, payload)
     logging.info("Scheduled quick data update finished with status=%s", final_status)
+    release_heavy_chain_reservation(capacity_reservation)
     return 1 if failed is not None else 0
 
 

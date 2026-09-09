@@ -30,10 +30,11 @@ if str(ROOT) not in sys.path:
 from data_module.current_fundamental_snapshots import COLUMNS
 
 
-TARGET_STATEMENT_TYPES = frozenset({"income", "balance"})
+TARGET_STATEMENT_TYPES = frozenset({"income", "balance", "cashflow"})
 STATEMENT_ITEM_PREFIX = {
     "income": "income_statement",
     "balance": "balance_sheet",
+    "cashflow": "cash_flows_statement",
 }
 IDENTITY_FIELDS = frozenset(
     {
@@ -528,8 +529,12 @@ def _unit_for_item(item_name: str) -> str:
 def _display_item_name(statement_type: str, field_name: str) -> str:
     """Keep report type and Q2 income cumulative basis visible to readers."""
 
-    prefix = "損益表" if statement_type == "income" else "資產負債表"
-    basis = "YTD" if statement_type == "income" else "期末"
+    if statement_type == "income":
+        prefix, basis = "損益表", "YTD"
+    elif statement_type == "cashflow":
+        prefix, basis = "現金流量表", "YTD"
+    else:
+        prefix, basis = "資產負債表", "期末"
     return f"{prefix}:{basis}:{field_name}"
 
 

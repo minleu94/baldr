@@ -5,7 +5,10 @@ from pathlib import Path
 import shutil
 import sqlite3
 
-from data_module.backup_retention import create_retained_backup
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
 
 
 EVIDENCE_TABLES = ("evidence_events", "evidence_outcomes")
@@ -176,7 +179,7 @@ def apply_evidence_event_schema_migration(
             diagnostics=("source_db_missing",),
         )
 
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         backup_dir,
         label="evidence_event_schema",
@@ -205,7 +208,8 @@ def apply_evidence_event_schema_migration(
         return EvidenceEventSchemaMigrationResult(applied=True, backup_file=backup_file, report=report)
     except Exception:
         conn.rollback()
-        shutil.copy2(backup_file, db_file)
+        conn.close()
+        restore_sqlite_backup(backup_file, db_file)
         raise
     finally:
         conn.close()

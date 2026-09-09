@@ -4,6 +4,10 @@ from data_module.fundamental_migration import (
     apply_fundamental_schema_migration,
     restore_fundamental_schema_backup,
 )
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
 
 
 def test_apply_fundamental_schema_migration_creates_backup_and_tables(tmp_path):
@@ -49,3 +53,53 @@ def test_apply_fundamental_schema_migration_rejects_missing_db(tmp_path):
     assert result.applied is False
     assert result.backup_file is None
     assert result.diagnostics[0] == "source_db_missing"
+
+
+def test_sqlite_retained_backup_includes_uncheckpointed_wal_pages(tmp_path):
+    db_file = tmp_path / "wal.sqlite"
+    backup_dir = tmp_path / "backup"
+    connection = sqlite3.connect(db_file)
+    try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA wal_autocheckpoint=0")
+        connection.execute("CREATE TABLE observations (id INTEGER PRIMARY KEY, value TEXT)")
+        connection.executemany(
+            "INSERT INTO observations(value) VALUES (?)",
+            [("first",), ("second",)],
+        )
+        connection.commit()
+        backup_file = create_sqlite_retained_backup(
+            db_file,
+            backup_dir,
+            label="wal",
+            timestamp="20260908_120000",
+        )
+    finally:
+        connection.close()
+
+    assert backup_file is not None
+    with sqlite3.connect(backup_file) as backup:
+        assert backup.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 2
+        assert backup.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+
+
+def test_restore_sqlite_backup_replaces_destination_contents_via_online_backup(tmp_path):
+    source = tmp_path / "source.db"
+    destination = tmp_path / "destination.db"
+    with sqlite3.connect(source) as conn:
+        conn.execute("CREATE TABLE sample (value TEXT NOT NULL)")
+        conn.executemany(
+            "INSERT INTO sample(value) VALUES (?)",
+            [("before",), ("second",)],
+        )
+    with sqlite3.connect(destination) as conn:
+        conn.execute("CREATE TABLE sample (value TEXT NOT NULL)")
+        conn.execute("INSERT INTO sample(value) VALUES ('after')")
+
+    restore_sqlite_backup(source, destination)
+
+    with sqlite3.connect(destination) as conn:
+        assert conn.execute("SELECT value FROM sample ORDER BY rowid").fetchall() == [
+            ("before",),
+            ("second",),
+        ]

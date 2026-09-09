@@ -4,26 +4,26 @@
 
 ## 2026-09-09 machine refresh
 
-Current filesystem Python files: `782`
+Current filesystem Python files: `786`
 
 | 分類 | 數量 |
 |---|---:|
 | `general-unit-keep-in-pytest` | 148 |
-| `governance-doc-tooling` | 147 |
+| `governance-doc-tooling` | 148 |
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
-| `service-oracle-data-market` | 118 |
-| `service-oracle-portfolio-decision-runtime` | 118 |
+| `service-oracle-data-market` | 119 |
+| `service-oracle-portfolio-decision-runtime` | 119 |
 | `service-oracle-recommendation` | 20 |
 | `service-oracle-research-backtest` | 72 |
 | `slow-e2e-or-environment` | 3 |
 | `ui-healthcheck-candidate-bridge` | 28 |
 | `ui-healthcheck-direct-bridge` | 12 |
-| `write-risk-dry-run-required` | 70 |
+| `write-risk-dry-run-required` | 71 |
 
 - 預設收集檔案：755；support：4；不收集：23。
-- 2026-09-09 補齊資料工作新增五份測試；新四份 data oracle 與一份 TDCC write-risk 均僅用隔離資料驗證，不授予 runner 正式資料寫入權限。
+- 2026-09-09 補齊資料工作新增五份測試；本輪再加入四份 V4 effectiveness／FinMind candidate 測試，均僅用隔離資料驗證，不授予 runner 正式資料寫入權限。
 - 歷史對照：本段更新前的機器摘要曾記錄總數 `743`、general `147`、governance `138`、data `110`、portfolio-runtime `106`、research-backtest `71`、UI candidate `26`、write-risk `64`；以上數字保留作舊 QA 快照，不代表目前清冊。
 - 本次 machine refresh 以實際 `tests/` 目錄取得 31 份新增測試並依責任分類登錄；`run_test_inventory_audit()` 的 missing/stale 均為零。新增測試不因此進入 direct bridge。
 - 本輪清理前實測為 748 個 Python 檔、4639 測項；舊 679 檔／4005 測項是較早檢查點。

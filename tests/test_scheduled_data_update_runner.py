@@ -6,11 +6,16 @@ import json
 from scripts.batch_update_daily_data import _format_update_diagnostic
 from scripts.scheduled import run_daily_data_update_quick as runner
 from scripts.scheduled.run_daily_data_update_quick import (
+    _run_step,
     _scheduled_target_weekday,
     _technical_is_current,
     _tpex_warning_messages,
     _twse_skip_warning_messages,
     _weekday_window,
+)
+from data_module.ml_storage_capacity import (
+    acquire_heavy_chain_reservation,
+    release_heavy_chain_reservation,
 )
 
 
@@ -32,6 +37,21 @@ def test_update_diagnostic_is_ascii_safe_for_windows_stdout() -> None:
 
     line.encode("cp1252")
     assert json.loads(line.removeprefix("UPDATE_DIAGNOSTIC ")) == diagnostic
+
+
+def test_run_step_converts_unexpected_service_exception_to_terminal_failure() -> None:
+    steps: list[dict] = []
+
+    failed = _run_step(
+        steps=steps,
+        name="unexpected_service",
+        action=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    assert failed is not None
+    assert failed["error_type"] == "RuntimeError"
+    assert steps[0]["status"] == "failed"
+    assert "boom" in steps[0]["message"]
 
 
 def test_scheduled_target_weekday_uses_today_on_weekday() -> None:
@@ -170,3 +190,162 @@ def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     ]
     assert [record["status"] for record in history_records] == ["running", "passed"]
     assert all(record["run_id"] == payload["run_id"] for record in history_records)
+    assert payload["capacity_reservation_acquired"] is True
+    recovered_reservation = acquire_heavy_chain_reservation(
+        output_root / "release_v4" / ".ml_heavy_chain.lock"
+    )
+    assert recovered_reservation is not None
+    release_heavy_chain_reservation(recovered_reservation)
+
+
+def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
+    tmp_path, monkeypatch
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    candidate_path = tmp_path / "candidate" / "phase3c.sqlite"
+    observed = {"candidate_calls": 0}
+
+    class _FakeUpdateService:
+        def __init__(self, _config) -> None:
+            pass
+
+        def check_data_overview(self):
+            return {
+                "success": True,
+                "daily_data": {"latest_date": "2026-07-03"},
+                "technical_indicators": {"latest_date": "2026-07-03"},
+            }
+
+        def _success(self, *_args, **_kwargs):
+            return {"success": True}
+
+        update_daily = _success
+        update_tpex_daily_price_range = _success
+        sync_source_to_sqlite = _success
+        update_market = _success
+        update_industry = _success
+        update_broker_branch = _success
+
+        def update_phase3c_candidate_range(self, **_kwargs):
+            observed["candidate_calls"] += 1
+            return {
+                "success": True,
+                "candidate_only": True,
+                "candidate_db_path": str(candidate_path),
+            }
+
+        def check_technical_indicator_latest_coverage(self):
+            return {"success": True, "is_current": True}
+
+    monkeypatch.setattr(runner, "UpdateService", _FakeUpdateService)
+    monkeypatch.setattr(runner, "configured_candidate_db_path", lambda: candidate_path)
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
+    )
+
+    assert runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--status-path",
+            str(status_path),
+        ]
+    ) == 0
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    candidate_step = next(
+        item for item in payload["steps"] if item["name"] == "update_phase3c_candidate_sources"
+    )
+    assert observed["candidate_calls"] == 1
+    assert candidate_step["status"] == "passed"
+    assert candidate_step["result"]["candidate_only"] is True
+
+
+def test_quick_update_releases_capacity_reservation_after_service_exception(
+    tmp_path, monkeypatch
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    lock_path = tmp_path / "shared" / ".ml_heavy_chain.lock"
+
+    class _RaisingUpdateService:
+        def __init__(self, _config) -> None:
+            pass
+
+        def check_data_overview(self):
+            raise RuntimeError("service exploded")
+
+    monkeypatch.setattr(runner, "UpdateService", _RaisingUpdateService)
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
+    )
+
+    assert runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--capacity-lock-path",
+            str(lock_path),
+            "--status-path",
+            str(status_path),
+        ]
+    ) == 1
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert "service exploded" in payload["errors"][0]
+    recovered = acquire_heavy_chain_reservation(lock_path)
+    assert recovered is not None
+    release_heavy_chain_reservation(recovered)
+
+
+def test_quick_update_fails_before_service_when_shared_capacity_lock_is_busy(
+    tmp_path, monkeypatch
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    lock_path = tmp_path / "shared" / ".ml_heavy_chain.lock"
+    held = acquire_heavy_chain_reservation(lock_path)
+    assert held is not None
+
+    class _UnexpectedUpdateService:
+        def __init__(self, _config) -> None:
+            raise AssertionError("service must not start while capacity lock is busy")
+
+    monkeypatch.setattr(runner, "UpdateService", _UnexpectedUpdateService)
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
+    )
+    try:
+        assert runner.main(
+            [
+                "--data-root",
+                str(data_root),
+                "--output-root",
+                str(output_root),
+                "--capacity-lock-path",
+                str(lock_path),
+                "--status-path",
+                str(status_path),
+            ]
+        ) == 2
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        assert payload["status"] == "failed"
+        assert payload["writes_market_data_db"] is False
+        assert payload["capacity_preflight"]["blocker"] == (
+            "shared_capacity_reservation_unavailable"
+        )
+    finally:
+        release_heavy_chain_reservation(held)

@@ -12,7 +12,28 @@
 
 本次其他資料的維護工具：法人／信用為 `scripts/complete_institutional_credit_flows.py capture` 與受控 `apply`；集保為 `scripts/capture_tdcc_shareholding_candidate.py` 和 `scripts/apply_tdcc_shareholding_candidate.py`；季報為 `scripts/build_current_statement_snapshot_candidate.py` 和 `scripts/apply_current_statement_snapshot.py`。每次使用新的任務輸出子目錄保存來源與驗收，不覆蓋已採用的manifest。所有正式套用前須取得共用更新鎖、核對容量並建立SQLite線上備份；不要只複製DB主檔而遺漏WAL。
 
-原有UI「候選更新」按鈕仍操作Phase3C隔離候選庫，**不會自動套用上述新來源到正式庫**；每日quick排程也尚未接入。這次實際補齊已由受控CLI完成，不能把下次按候選更新誤認為正式資料已刷新。集保正式表的 `observed_at` 等價保存本次來源 `first_observed_at`／`available_at`，完整17級仍在 `shareholding_tiers`。
+原有UI「候選更新」按鈕仍操作Phase3C隔離候選庫，**不會自動套用上述新來源到正式庫**。每日quick排程在明確設定 `PHASE3C_CANDIDATE_DB_PATH` 時會執行 institutional／credit（週一加最新TDCC）候選更新；未設定時會在status明示 skipped，不猜測路徑。月營收、季報與集保的正式套用仍須使用各自受控CLI，不能把下次按候選更新誤認為正式資料已刷新。集保正式表的 `observed_at` 等價保存本次來源 `first_observed_at`／`available_at`，完整17級仍在 `shareholding_tiers`。
+
+## 2026-09-08 V4 唯讀有效性與現金流候選
+
+V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可讀 JSON array、含 `rows` 的 JSON object 或 JSONL，依 horizon／strategy version／universe／cost model／benchmark 分組，並對每個決策日獨立計算 Precision@K。只有 `ready` outcome 進成熟分母；`pending`、`missing`、未知狀態、缺 score／return 與衝突重複列會保守排除並留下 warning。輸出比例與 coverage 是整數 basis points，固定唯讀、需人工覆盤、不啟用 scheduler、不下單。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --sample --format markdown
+.\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --input <EVIDENCE_JSON_OR_JSONL> --format json --output <REPORT_JSON>
+```
+
+FinMind 現金流只作交叉核對候選：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\fetch_finmind_cashflow_candidate.py `
+  --start-date YYYY-MM-DD --end-date YYYY-MM-DD --stock-code 2330 `
+  --output-dir <任務輸出> --fetch-date YYYY-MM-DD --observed-at <ISO8601>
+```
+
+批次需明確指定股票；只有要從既有 raw 目錄批次續跑時才使用 `--all-raw-stock-codes --resume`。輸出保存 `source_row_hash`、`observed_at`、科目與數值，`eligibility=numeric_only` 且 `available_date_candidate` 留白。FinMind row 沒有可驗證的官方公告／可得日，不能用於 PIT、ML 歷史特徵或正式 scoring；正式季度資料仍以 MOPS 受控候選與 availability evidence 為準。命令只寫任務輸出，不寫正式 SQLite。
+
+SQLite 相關正式變更前，備份與還原均使用線上備份及 `PRAGMA quick_check`；每日quick更新先取得 `OUTPUT_ROOT/release_v4/.ml_heavy_chain.lock` 並通過容量預檢，鎖忙或低於200 GiB保留量即停止。完整契約與驗收見 [V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)。
 
 ## 2026-09-07 月營收恢復與衍生 ML 操作入口
 

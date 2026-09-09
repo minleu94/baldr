@@ -7,11 +7,13 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import re
-import shutil
 import sqlite3
 from typing import Mapping
 
-from data_module.backup_retention import create_retained_backup
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
 from decision_module.factors.factor_dtos import FactorDiagnostic
 
 
@@ -200,7 +202,7 @@ def apply_tpex_daily_price_backfill(
     try:
         inserted_count = _insert_daily_price_rows(db_file, plan.rows)
     except Exception:
-        shutil.copy2(backup_file, db_file)
+        restore_sqlite_backup(backup_file, db_file)
         raise
     return TpexDailyPriceBackfillApplyResult(
         applied=True,
@@ -269,7 +271,7 @@ def _split_change(value: str) -> tuple[str | None, str | None]:
 
 
 def _backup_db(db_file: Path, backup_dir: Path) -> Path:
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         backup_dir,
         label="tpex_daily_price_backfill",

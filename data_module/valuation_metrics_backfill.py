@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -11,7 +10,10 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Mapping, cast
 
-from data_module.backup_retention import create_retained_backup
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
 from data_module.valuation_data import calculate_industry_percentiles_bp
 from decision_module.factors.factor_dtos import FactorDiagnostic, FactorQuality
 
@@ -243,7 +245,7 @@ def apply_valuation_metrics_backfill(
         )
 
     db_file = Path(db_file)
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         Path(backup_dir),
         label="valuation_metrics_backfill",
@@ -258,7 +260,7 @@ def apply_valuation_metrics_backfill(
     except Exception:
         conn.rollback()
         conn.close()
-        shutil.copy2(backup_file, db_file)
+        restore_sqlite_backup(backup_file, db_file)
         raise
     finally:
         try:

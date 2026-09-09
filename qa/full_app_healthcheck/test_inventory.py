@@ -8,6 +8,9 @@ from pathlib import Path
 TEST_INVENTORY: dict[str, str] = {
     "tests/test_current_fundamental_snapshots.py": "service-oracle-data-market",
     "tests/test_build_current_statement_snapshot_candidate.py": "service-oracle-data-market",
+    "tests/test_finmind_cashflow_candidate.py": "service-oracle-data-market",
+    "tests/test_v4_effectiveness_evaluator.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_v4_effectiveness_read_model.py": "governance-doc-tooling",
     "tests/test_institutional_credit_flows_service.py": "service-oracle-data-market",
     "tests/test_tdcc_shareholding_candidate.py": "service-oracle-data-market",
     "tests/test_task_loop_01_contract.py": "service-oracle-data-market",
@@ -468,6 +471,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/scripts/test_moneydj_requests_tables.py": "write-risk-dry-run-required",
     "tests/test_company_registry_cli.py": "write-risk-dry-run-required",
     "tests/test_finmind_monthly_revenue_create_time_cli.py": "write-risk-dry-run-required",
+    "tests/test_finmind_cashflow_candidate_cli.py": "write-risk-dry-run-required",
     "tests/test_fundamental_migration.py": "write-risk-dry-run-required",
     "tests/test_fundamental_migration_cli.py": "write-risk-dry-run-required",
     "tests/test_fundamental_statement_backfill.py": "write-risk-dry-run-required",

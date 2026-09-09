@@ -1,5 +1,14 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-08 root 執行收尾增量
+
+本輪在不改寫原始資料與不解除正式權限的前提下，已加入 V4 cohort effectiveness 唯讀評估器／CLI、
+FinMind `TaiwanStockCashFlowsStatement` numeric-only 候選抓取器、共用 heavy-chain 容量 reservation、
+每日 quick 的明確 Phase3C candidate 接線，以及所有主要 SQLite backfill／migration 的 WAL-safe online backup／restore。
+相關輸出均保存來源雜湊、觀測時間、候選或唯讀邊界；`pending`／`missing` 不會增加成熟分母，容量鎖忙或低於 200 GiB reserve 會 fail closed。
+這些是工程能力與可重播檢查，不會製造自然前瞻日、公告可得日、成交或投資有效性；V4 八項 maturity、Formal 3/3、alpha、promotion、broker 仍維持關閉，
+細節與測試見 [V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)。
+
 ## 2026-09-09 官方資料實際補齊
 
 已備份後增量入庫並從正式SQLite讀回：月營收7月1,851／8月已公告873家公司；法人229,472筆與信用22,163筆（8/26～9/8共10交易日）；集保9/4共4,047筆；Q2損益／資產負債66,358筆、1,972家公司。2330／1240／1108個股報告實測可讀最新數值，更新頁已區分現況與歷史PIT。D剩296.610 GiB。

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import csv
 from collections import Counter
-import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from data_module.backup_retention import create_retained_backup
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
 from data_module.fundamental_statement_availability_sources import (
     load_statement_availability_overrides_csv_files,
 )
@@ -187,7 +189,7 @@ def apply_statement_items_backfill(
         )
 
     db_file = Path(db_file)
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         Path(backup_dir),
         label="statement_items_backfill",
@@ -202,7 +204,7 @@ def apply_statement_items_backfill(
     except Exception:
         conn.rollback()
         conn.close()
-        shutil.copy2(backup_file, db_file)
+        restore_sqlite_backup(backup_file, db_file)
         raise
     finally:
         try:

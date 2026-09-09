@@ -1,0 +1,97 @@
+"""抓取 FinMind 現金流量表研究候選，不寫正式資料。"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import date
+from pathlib import Path
+import sys
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from data_module.config import TWStockConfig
+from data_module.finmind_cashflow_candidate import (
+    fetch_finmind_cashflow_rows,
+    harvest_finmind_cashflow_candidate,
+)
+from data_module.finmind_monthly_revenue_create_time import (
+    calculate_sleep_seconds,
+    load_finmind_token,
+    load_stock_codes_from_raw_monthly_revenue_dir,
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Fetch FinMind TaiwanStockCashFlowsStatement candidate observations."
+    )
+    parser.add_argument("--start-date", required=True)
+    parser.add_argument("--end-date", required=True)
+    parser.add_argument("--raw-dir", type=Path, default=None)
+    parser.add_argument("--stock-code", action="append", default=None)
+    parser.add_argument(
+        "--all-raw-stock-codes",
+        action="store_true",
+        help="explicitly opt into the resumable raw-directory batch; requires --resume",
+    )
+    parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument("--state-file", type=Path, default=None)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--max-requests-per-hour", type=int, default=480)
+    parser.add_argument("--fetch-date", default=date.today().isoformat())
+    parser.add_argument("--observed-at")
+    parser.add_argument("--token-file", type=Path, default=None)
+    args = parser.parse_args(argv)
+
+    if args.stock_code and args.all_raw_stock_codes:
+        parser.error("--stock-code and --all-raw-stock-codes are mutually exclusive")
+    if args.all_raw_stock_codes and not args.resume:
+        parser.error("--all-raw-stock-codes requires --resume")
+    if not args.stock_code and not args.all_raw_stock_codes:
+        parser.error("provide --stock-code or explicitly opt into --all-raw-stock-codes --resume")
+
+    config = TWStockConfig()
+    raw_dir = args.raw_dir or (config.data_root / "financial_data")
+    output_dir = args.output_dir or config.resolve_output_path("cashflow_finmind_candidate")
+    stock_codes = (
+        tuple(str(code).strip() for code in args.stock_code)
+        if args.stock_code
+        else load_stock_codes_from_raw_monthly_revenue_dir(raw_dir)
+    )
+    token = load_finmind_token(args.token_file)
+    result = harvest_finmind_cashflow_candidate(
+        stock_codes=stock_codes,
+        start_date=args.start_date,
+        end_date=args.end_date,
+        token=token,
+        fetch_rows=fetch_finmind_cashflow_rows,
+        output_dir=output_dir,
+        state_file=args.state_file or (output_dir / "finmind_cashflow_fetch_state.json"),
+        resume=args.resume,
+        fetch_date=date.fromisoformat(args.fetch_date),
+        observed_at=args.observed_at,
+        sleep_seconds=calculate_sleep_seconds(args.max_requests_per_hour),
+    )
+
+    _safe_print(result.to_markdown())
+    if result.row_output is not None:
+        _safe_print(f"- output_csv: {result.row_output}")
+    if result.state_file is not None:
+        _safe_print(f"- state_file: {result.state_file}")
+    return 0 if result.failed_stock_count == 0 and result.rejected_row_count == 0 else 1
+
+
+def _safe_print(text: str) -> None:
+    stream = sys.stdout
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    try:
+        stream.write(text + "\n")
+    except UnicodeEncodeError:
+        safe_text = text.encode(encoding, errors="backslashreplace").decode(encoding)
+        stream.write(safe_text + "\n")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

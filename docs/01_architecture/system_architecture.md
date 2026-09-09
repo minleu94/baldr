@@ -1,6 +1,6 @@
 ﻿# 系統架構
 
-> **最後更新：2026-09-08｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-09-09｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
 
 ## 個股研究、資料新鮮度與持倉證據邊界
@@ -57,6 +57,25 @@ full-market OOC + 4+ Meta OOF folds
 - replay 的帳務可重算與正式配置語意是兩個不同 Gate；`formal_semantic_validation.verified=false` 或 Meta OOF folds 少於 4 時，Promotion Builder 必須拒絕。Shadow observation 只有 `promotion_day_credit_allowed=true` 才能累積 20 日門檻。
 - Formal ML input custody 由 `causal-portfolio-ledger.v1`、`rule-champion-snapshot-history.v1` 與 `pit-sector-membership-sidecar-v1` 分別驗證；ledger／Rule history 的 manifest／file hash 會從 Direct、OOC store 綁到 OOS replay input，replay consumer 仍會再次驗證，缺件時維持 blocked，不以 research／current snapshot／cash-only fallback 補值。
 - scheduler wrapper 不讀 UI state。只有既有 data update、confirmed evidence repository 與 isolated Paper ledger 具有各自明確寫入範圍；無 broker adapter。
+
+### V4 收尾增量：證據評估、候選現金流與容量邊界（2026-09-09）
+
+- `app_module/v4_effectiveness_read_model.py` 與 `v4_effectiveness_evaluator.py` 是唯讀
+  application read path。輸入依持有期間、策略、股票池、成本模型與 benchmark 分 cohort，
+  每個決策日獨立取 top-k；只有 `ready` outcome 進成熟分母，`pending`／`missing`／未知狀態及
+  衝突重複列保守排除並揭露 warning。所有比例以整數 basis points 輸出；read model 不寫
+  evidence、不啟用 scheduler、不產生交易或 lifecycle action。
+- `data_module/finmind_cashflow_candidate.py` 與 `scripts/fetch_finmind_cashflow_candidate.py`
+  只保存 FinMind `TaiwanStockCashFlowsStatement` 的 numeric-only candidate rows、來源列 hash
+  與觀測時間。FinMind observation date 不等同官方公告／決策可得日，故不產生 availability
+  mapping、正式 SQLite 或 PIT／ML eligibility；正式使用前須由 MOPS 官方資料交叉核對。
+- `data_module/backup_retention.py` 的正式 SQLite 備份／還原使用 online backup 與
+  `PRAGMA quick_check`，再以暫存檔原子替換；fundamental、TPEX price、valuation 與 evidence
+  migration 共用此邊界，避免 WAL 遺漏及 Windows 開啟 read handle 時直接覆蓋失敗。
+- `scripts/scheduled/run_daily_data_update_quick.py` 先取得 `release_v4/.ml_heavy_chain.lock`
+  的 OS reservation，再做中央 200 GiB safety reserve preflight。reservation 忙碌或容量不足時
+  fail closed 且不啟動網路／SQLite writer；明確設定 `PHASE3C_CANDIDATE_DB_PATH` 才會執行
+  institutional／credit candidate 更新，狀態與 history 會保留候選路徑、鎖與 preflight payload。
 
 > **舊架構稽核基線**：2026-07-13
 > **工程補充**：Advice 已是 CURRENT bounded/read-only；Portfolio 與 Position Health/Exit 是 CURRENT_ENGINEERING proposal/paper；P0 adapters 與 ML 固定 candidate/shadow。跨 repository 由 `artifact_lineage_verifier.py` 唯讀驗證，外部 Gate 仍以 `EngineeringGateRegistry` 為 SSOT。

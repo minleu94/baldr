@@ -10,6 +10,14 @@
 
 本目標不含券商自動下單、偽造歷史資料或績效、刪除原始資料。正式環境的可逆更新依已驗收的更新路徑與容量限制執行，不能把所有工作永久留在 fixture 便宣稱完成。
 
+## 2026-09-08 root 執行更新
+
+使用者已將本目標由規劃切換為直接執行；本輪 root 已完成一批可獨立驗收的工程變更：V4 cohort effectiveness
+read model／唯讀 CLI、FinMind 現金流 numeric-only candidate、SQLite WAL-safe online backup／restore、
+每日 quick 的共用容量鎖與明確 Phase3C candidate 路由。這些變更不會把人工姓名當成客觀資料缺口，也不會把
+candidate、fixture 或 replay 改標成正式證據。自然觀測、公告可得日、Paper 成交、正式三路 consumer 與
+V4 maturity 仍由實際時間及來源累積；本計畫保持 active，直到權威證據逐項達標。
+
 ## 開場現況
 
 - 前一輪已完成三面向清查，並有後續工程實作與 `4003 passed / 2 skipped` 的保存驗收；本輪以最新工作樹重新判讀，這不是本輪測試結果。

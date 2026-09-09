@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 import sqlite3
 
-from data_module.backup_retention import create_retained_backup
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
 from data_module.fundamental_schema import (
     FundamentalSchemaDryRunReport,
     apply_fundamental_schema,
@@ -41,7 +43,7 @@ def apply_fundamental_schema_migration(
             diagnostics=("source_db_missing",),
         )
 
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         backup_dir,
         label="fundamental_schema",
@@ -82,4 +84,9 @@ def apply_fundamental_schema_migration(
 
 
 def restore_fundamental_schema_backup(backup_file: Path, db_file: Path) -> None:
-    shutil.copy2(Path(backup_file), Path(db_file))
+    backup_file = Path(backup_file)
+    db_file = Path(db_file)
+    if not backup_file.exists():
+        raise FileNotFoundError(backup_file)
+
+    restore_sqlite_backup(backup_file, db_file)

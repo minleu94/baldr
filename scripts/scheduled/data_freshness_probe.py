@@ -580,10 +580,12 @@ def _build_operational_source_statuses(
     raw_codes.update(twse.get("_codes", set()))
     raw_codes.update(tpex.get("_codes", set()))
     db_codes = _db_codes_for_date(conn, "daily_prices", expected_key)
-    code_set_comparable = bool(twse.get("exists") and tpex.get("exists"))
+    both_raw_files_present = bool(twse.get("exists") and tpex.get("exists"))
+    code_set_comparable = both_raw_files_present
     db_matches_raw = (
         raw_rows > 0
         and daily_db.get("row_count") == raw_rows
+        and both_raw_files_present
         and (
             not code_set_comparable
             or (

@@ -56,12 +56,15 @@ def run_scheduled_forward_outcomes(
     data_as_of_date: str | None = None,
     event_type: str | None = None,
     symbol: str | None = None,
+    require_cohort_identity: bool = False,
 ) -> dict[str, Any]:
     """執行一次有界 outcome 更新並保存 machine-readable receipt。
 
     ``confirm=False`` 只建立 dry-run receipt；即使呼叫端提供 production DB，
     也不會寫入。production DB 寫入另外需要 ``allow_production_db_confirm``，
-    讓正式 task 的寫入意圖在 wrapper 與 receipt 中都清楚可見。
+    讓正式 task 的寫入意圖在 wrapper 與 receipt 中都清楚可見。開啟
+    ``require_cohort_identity`` 時，沒有明確策略／成本／benchmark／universe／horizon
+    的事件會在計算前跳過並統計，不會佔用 outcome 寫入額度。
     """
 
     checked_raw = now or datetime.now(TAIPEI)
@@ -96,6 +99,7 @@ def run_scheduled_forward_outcomes(
         "historical_backfill": False,
         "event_type": event_type,
         "symbol": symbol,
+        "require_cohort_identity": bool(require_cohort_identity),
     }
 
     try:
@@ -177,6 +181,7 @@ def run_scheduled_forward_outcomes(
             symbol=symbol,
             limit=bounded_max_events,
             data_as_of_date=visible_date.isoformat(),
+            require_cohort_identity=require_cohort_identity,
         )
         summary_payload = asdict(summary)
         summary_payload["outcomes_written"] = (
@@ -227,6 +232,7 @@ def _summary_has_warnings(summary: ForwardOutcomeSummary) -> bool:
         or summary.missing_outcome_price
         or summary.missing_benchmark
         or summary.missing_industry_benchmark
+        or summary.events_skipped_incomplete_identity
     )
 
 

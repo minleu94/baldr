@@ -2776,7 +2776,9 @@ Decision/Evidence capture task 已保存的事件可以在後續交易日成熟�
 `data_as_of_date` 為價格可見上限，預設只讀最近 120 個曆日、最多 2,500 個事件，觀察窗為
 5／10／20／60 交易日，固定使用 `close_to_close_event_date`。排程 wrapper 預設以
 `event_type=recommendation_included` 消費已具身份契約的推薦事件，避免低價值診斷事件
-佔滿每日上限；可透過 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換。未成熟的 60 日區間、缺事件價、
+佔滿每日上限；wrapper 同時使用 `--require-cohort-identity`，缺少明確策略、成本、
+benchmark、universe 或正整數 horizon 的舊事件會跳過並記入
+`events_skipped_incomplete_identity`；可透過 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換。未成熟的 60 日區間、缺事件價、
 缺大盤／產業 benchmark 或政策資料會留下 `pending`／`missing` 與 warning，不以曆日補算、
 不回填事件身份，也不會把結果變成投資建議。
 
@@ -2798,6 +2800,7 @@ Outcome 以 `(event_id, window_days, return_basis)` 為自然鍵；重跑只更�
   --output-root D:\Min\Python\Project\FA_Data\output `
   --db-path D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
   --event-type recommendation_included `
+  --require-cohort-identity `
   --windows 5,10,20,60 --lookback-calendar-days 120 --max-events 2500
 ```
 

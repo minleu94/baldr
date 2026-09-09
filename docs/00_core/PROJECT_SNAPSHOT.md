@@ -21,6 +21,7 @@ profile 或推薦列補值，也不回填既有 51,866 筆事件；這只讓後�
 同日已接上 `baldr-forward-outcomes-daily` 的每日 outcome producer。它在 05:40 以台北
 當日可見價格，按 120 個曆日／2,500 events 上限計算 5／10／20／60 交易日
 `close_to_close_event_date` 結果，排程 wrapper 預設限定 `recommendation_included` 事件；
+並跳過缺少完整 cohort identity 的舊事件，將數量寫入 receipt；
 只有排程明確帶入 confirm 旗標時才更新
 `evidence_outcomes`，並以獨立 status／不可覆寫 run receipt 揭露缺件。這是讓後續自然
 outcome 能累積的 producer 接線，不是回填既有事件，也不改目前 `evidence_outcomes=0`

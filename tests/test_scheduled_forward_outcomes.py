@@ -105,6 +105,44 @@ def test_dry_run_is_read_only_and_persists_receipt(tmp_path: Path) -> None:
     assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "dry_run"
 
 
+def test_identity_gate_skips_unbound_events_before_writing(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    EvidenceEventService(EvidenceEventRepository(config)).record_event(
+        event_date="2026-09-02",
+        decision_date="2026-09-02",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="legacy_recommendation_result",
+        source_id="unbound-event",
+        reason_codes=("legacy",),
+        score_bp=6000,
+        data_quality=EvidenceDataQuality.OBSERVED,
+        as_of_date="2026-09-02",
+        available_date="2026-09-02",
+        source_version="test",
+    )
+
+    result = run_scheduled_forward_outcomes(
+        config=config,
+        now=_now(),
+        confirm=True,
+        allow_production_db_confirm=True,
+        windows=(5,),
+        start_date="2026-09-01",
+        end_date="2026-09-10",
+        data_as_of_date="2026-09-10",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED.value,
+        require_cohort_identity=True,
+    )
+
+    assert result["status"] == "passed_with_warnings"
+    assert result["summary"]["events_scanned"] == 1
+    assert result["summary"]["events_skipped_incomplete_identity"] == 1
+    assert result["summary"]["outcomes_created"] == 1
+    assert len(EvidenceEventRepository(config).list_outcomes()) == 1
+
+
 def test_production_confirm_requires_explicit_allowance(tmp_path: Path) -> None:
     config = _config(tmp_path)
     result = run_scheduled_forward_outcomes(

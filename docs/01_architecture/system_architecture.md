@@ -662,7 +662,9 @@ Post-V1 evidence layer 由 `EvidenceEventService` / `EvidenceEventRepository` �
 
 每日 `baldr-forward-outcomes-daily` 是上述 outcome layer 的受控 producer：它在
 Decision/Evidence event capture 後，以台北當日可見日期、固定觀察窗及事件數上限重新計算
-成熟度，只有顯式 confirm 才 upsert `evidence_outcomes`。入口先用 query-only 連線檢查
+成熟度；排程預設要求完整 cohort identity，缺策略／成本／benchmark／universe／horizon
+的舊事件只計入 skipped 診斷，不佔用 outcome 寫入額度。只有顯式 confirm 才 upsert
+`evidence_outcomes`。入口先用 query-only 連線檢查
 `evidence_events`、`evidence_outcomes`、`daily_prices`，並保存 status／不可覆寫 run receipt；
 缺價、未成熟、benchmark 或政策資料缺口保留 status 與 warning。此 writer 不新增事件、
 不回填 cohort identity、不改 recommendation／Paper／Formal／ML 狀態，也不連接 broker。

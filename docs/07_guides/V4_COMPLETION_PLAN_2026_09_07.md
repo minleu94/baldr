@@ -49,6 +49,9 @@ gross research observation 身份，表示費稅、滑價及流動性成本尚�
 與未來日期阻擋；尚未在正式 D 槽執行 writer，因此正式 `evidence_outcomes=0` 仍是待自然
 排程驗證的真實狀態。
 
+Outcome wrapper 同時要求完整 cohort identity；缺少策略／成本／benchmark／universe／horizon
+的舊事件會被計入 `events_skipped_incomplete_identity`，不會佔用有限 outcome 寫入額度。
+
 排程狀態頁與 Workbench 背景證據流已納入 `forward_outcomes/latest_status.json` 的唯讀
 投影，顯示掃描／寫入／待成熟數與寫入邊界；receipt 缺失時只顯示 source gap，避免把
 推薦或 freshness payload 當成 forward outcome。

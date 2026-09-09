@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, replace
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
 from app_module.evidence_event_dtos import (
@@ -41,9 +41,40 @@ MARKET_BENCHMARK_ALIASES = (
 )
 
 
+def _has_complete_cohort_identity(event: EvidenceEvent) -> bool:
+    """Return whether an event can be placed in a V4 effectiveness cohort."""
+
+    if not all(
+        str(value or "").strip()
+        for value in (
+            event.strategy_version_id,
+            event.cost_model_id,
+            event.benchmark_id,
+        )
+    ):
+        return False
+    metadata: Mapping[str, Any] = event.metadata if isinstance(event.metadata, Mapping) else {}
+    universe_id = metadata.get("universe_id")
+    if universe_id is None or not str(universe_id).strip():
+        return False
+    horizon = metadata.get("horizon_days", metadata.get("expected_horizon_days"))
+    if horizon is None or isinstance(horizon, bool):
+        return False
+    try:
+        parsed_horizon = Decimal(str(horizon).strip())
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+    return (
+        parsed_horizon.is_finite()
+        and parsed_horizon == parsed_horizon.to_integral_value()
+        and parsed_horizon > 0
+    )
+
+
 @dataclass(frozen=True)
 class ForwardOutcomeSummary:
     events_scanned: int = 0
+    events_skipped_incomplete_identity: int = 0
     events_ready: int = 0
     outcomes_created: int = 0
     outcomes_updated: int = 0
@@ -90,6 +121,7 @@ class ForwardPerformanceService:
         symbol: str | None = None,
         limit: int | None = None,
         data_as_of_date: str | None = None,
+        require_cohort_identity: bool = False,
     ) -> ForwardOutcomeSummary:
         self._daily_price_cache.clear()
         self._index_return_cache.clear()
@@ -103,8 +135,18 @@ class ForwardPerformanceService:
             end_date=end_date,
             limit=limit,
         )
+        skipped_incomplete_identity = 0
+        if require_cohort_identity:
+            eligible_events: list[EvidenceEvent] = []
+            for event in events:
+                if _has_complete_cohort_identity(event):
+                    eligible_events.append(event)
+                else:
+                    skipped_incomplete_identity += 1
+            events = eligible_events
         counters = {
             "events_scanned": len(events),
+            "events_skipped_incomplete_identity": skipped_incomplete_identity,
             "events_ready": 0,
             "outcomes_created": 0,
             "outcomes_updated": 0,

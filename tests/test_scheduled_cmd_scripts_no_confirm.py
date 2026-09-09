@@ -165,6 +165,7 @@ def test_forward_outcome_wrapper_is_the_only_outcome_table_writer() -> None:
     assert "run_scheduled_forward_outcomes.py" in cmd_text
     assert "--confirm" in cmd_text
     assert "--allow-production-db-confirm" in cmd_text
+    assert "--require-cohort-identity" in cmd_text
     assert "recommendation_included" in cmd_text
     assert "evidence_outcomes" in text
     assert "research_only" in text

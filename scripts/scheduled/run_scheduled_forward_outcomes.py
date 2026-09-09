@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-as-of-date", default=None)
     parser.add_argument("--event-type", default=None)
     parser.add_argument("--symbol", default=None)
+    parser.add_argument(
+        "--require-cohort-identity",
+        action="store_true",
+        help="Skip events without explicit V4 strategy/cost/benchmark/universe/horizon identity.",
+    )
     return parser
 
 
@@ -68,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         data_as_of_date=args.data_as_of_date,
         event_type=args.event_type,
         symbol=args.symbol,
+        require_cohort_identity=args.require_cohort_identity,
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return int(result.get("exit_code", 2))

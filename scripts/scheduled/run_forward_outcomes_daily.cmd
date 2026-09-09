@@ -27,6 +27,7 @@ if "%FORWARD_OUTCOME_EVENT_TYPE%"=="" set "FORWARD_OUTCOME_EVENT_TYPE=recommenda
   --lookback-calendar-days "%FORWARD_OUTCOME_LOOKBACK_DAYS%" ^
   --max-events "%FORWARD_OUTCOME_MAX_EVENTS%" ^
   --event-type "%FORWARD_OUTCOME_EVENT_TYPE%" ^
+  --require-cohort-identity ^
   --confirm ^
   --allow-production-db-confirm
 exit /b %ERRORLEVEL%

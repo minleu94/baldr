@@ -68,6 +68,10 @@ backfill 或未來價格補值。
 `scheduled/forward_outcomes/latest_status.json` 與不可覆寫的 `runs/<run_id>.json`，
 缺資料、未成熟、缺 benchmark 或政策表時以 `passed_with_warnings`／`degraded` 揭露。
 
+排程 wrapper 同時帶入 `--require-cohort-identity`；沒有明確策略、成本、benchmark、
+universe 或正整數 horizon 的舊事件會被計入 `events_skipped_incomplete_identity`，不會
+寫入不可被 V4 cohort 消費的 outcome。
+
 Outcome upsert 的自然鍵是 `(event_id, window_days, return_basis)`；重跑只更新該鍵下的
 價格、成熟度、品質與 warning，保留第一次建立的 `outcome_id`，讓下游引用在重算後仍穩定。
 

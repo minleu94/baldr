@@ -1,5 +1,23 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-10 V4 跨日證據閉環工程完成
+
+本輪已修正每日推薦把決策日與 selected codes 放進跨日 `universe_id`、導致 evaluator
+永遠一日一 cohort 的根因。新事件現在沿 RecommendationService → persisted DTO／JSON →
+RecommendationEvidenceImporter → `evidence_events` → bounded forward outcome → SQLite
+read model → evaluator 全鏈保存：
+
+- 穩定的 `universe_policy_id/hash` 描述可跨日比較的政策；`universe_snapshot_id/hash` 另保存
+  決策日、當日成分與 selected-code hash。evaluator 以 policy 作跨日 key，並揭露快照數與組成變化。
+- `strategy_config_id/hash`、horizon、cost、benchmark、return basis 與 evidence tier 具體隔離；
+  舊事件不猜測、不批次回填，缺件會在 read model／forward health 顯示。
+- forward producer 維持 120 曆日／2,500 event bounded 上限，優先未完成 outcome，再以完整身份
+  過濾後套用上限；health receipt 與排程狀態頁提供日數、horizon ready／pending／missing、最近
+  capture／outcome／evaluation、下一成熟日與五種阻塞分類。
+- `tests/test_v4_cross_day_evidence_contract.py` 以隔離 SQLite 實際驗證 DTO/importer/event/
+  outcome/read model/evaluator 接線、三日同 cohort、動態成分、身份分組、冪等、舊 schema 診斷及
+  長 horizon 優先順序。這些是工程證據，不增加正式 D 槽自然 outcome，也不授予 V4／Formal／alpha。
+
 ## 2026-09-09 V4 read model 收尾增量
 
 V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 outcome 的事件，
@@ -8,13 +26,14 @@ V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 
 不會增加成熟 outcome、Formal credit、alpha 或交易權限。驗收見
 [V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)。
 
-同日新增推薦證據身份接線：`RecommendationService` 會依實際處理股票集合、決策日、
-選擇模式與 `max_stocks` 產生可重現的 `universe_id`／`universe_hash`，每日排程固定宣告
+同日新增推薦證據身份接線：`RecommendationService` 會依政策設定產生穩定的
+`universe_policy_id/hash`，並以決策日與實際處理股票集合產生每日
+`universe_snapshot_id/hash`；舊 `universe_id/hash` 僅作 snapshot 相容 alias。每日排程固定宣告
 `strategy_version_id=scheduled-recommendation-default-v1`、
 `cost_model_id=gross-close-to-close-no-cost-v1`、`benchmark_id=TAIEX` 與
 `horizon_days=20`；其中 no-cost 只代表 gross research observation，尚未扣除費稅滑價，
 evaluator 會保留 `cost_model_not_cost_adjusted` 警告。evidence importer 只傳遞結果或執行
-context 明確宣告的策略、成本、benchmark、universe 與 horizon 欄位。缺件不猜測、不以
+context 明確宣告的策略、成本、benchmark、policy／snapshot universe 與 horizon 欄位。缺件不猜測、不以
 profile 或推薦列補值，也不回填既有 51,866 筆事件；這只讓後續新事件可被正確分 cohort，
 不授予任何成熟度或正式權限。
 

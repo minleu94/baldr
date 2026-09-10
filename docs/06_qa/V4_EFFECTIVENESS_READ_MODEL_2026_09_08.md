@@ -4,14 +4,47 @@
 自然前瞻觀測、成熟 outcome、正式三路輸入與 promotion 仍依
 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` 的門檻累積。
 
+## 2026-09-10 跨日證據身份修正
+
+本節是本文件中 V4 evidence identity 的最新契約；後面的歷史段落保留當時驗收
+脈絡，不覆寫正式資料或替舊事件補身份。
+
+- `universe_policy_id/hash` 是可跨日比較的政策身份，只包含市場範圍、選擇演算法版本、
+  產業／資格設定、`max_stocks`、來源 provider 與明確 requested universe；不包含決策日或
+  動態政策每日選出的代號。
+- `universe_snapshot_id/hash` 是不可變的每日快照身份，保存決策日、當日 selected codes、
+  selected-count 與 `universe_snapshot_selected_codes_hash`。它保留每日組成差異，但不再作為
+  evaluator 的跨日 cohort key。
+- `strategy_config_id/hash` 綁定重要策略設定、`max_stocks` 與 `top_n`；`horizon_days`、
+  cost model、benchmark、`return_basis` 與 evidence tier 都是獨立的比較身份。不同設定、
+  口徑或 `forward`／`replay` lane 不混算。
+- Recommendation snapshot → importer → `evidence_events.metadata_json` → outcome metadata →
+  SQLite read model → evaluator 全鏈保留上述欄位。缺新版 policy／snapshot 任一件會 fail closed；
+  舊事件只保留 legacy／缺件診斷，不以目前股票池、profile 或新政策回填。
+- evaluator 會以 policy／strategy／horizon／cost／benchmark／return-basis／tier 分組，並另外
+  揭露 `universe_snapshot_count`、快照清單與組成變化次數。工程正例的跨日累積只證明接線，
+  不授予 V4 或投資有效性信用。
+
+每日 forward producer 維持 120 個曆日／2,500 events 上限，但在 SQL bounded query 中先把
+未完成 outcome 排到前面，再以完整 cohort identity 過濾後套用相同上限；舊 pending 事件因此不會
+被當日新事件長期餓死。receipt 的 `health` 會列出最新合格事件日、完整身份事件數、cohort／日數、
+各 horizon 的 ready／pending／missing、capture／outcome／evaluation 時間、下一成熟日與 blocker，
+並分類 `normal_completion`、`normal_no_new_outcomes`、`waiting_for_natural_maturity`、
+`actionable_engineering_blocker`、`external_source_missing`。UI 只讀顯示這些欄位。
+
+跨日整合驗收位於 `tests/test_v4_cross_day_evidence_contract.py`，涵蓋真實 DTO/importer/
+evidence SQLite/outcome/read model/evaluator 接線、動態成分變化、身份隔離、舊 schema 診斷、
+冪等與 bounded 長 horizon 優先順序。這些資料是隔離 fixture，不是正式 D 槽自然證據。
+
 ## 本輪交付
 
 ### V4 cohort effectiveness read model
 
 - 新增 `app_module/v4_effectiveness_evaluator.py` 與
   `app_module/v4_effectiveness_read_model.py`。
-- 輸入依 `horizon_days`、`strategy_version`、`universe_id`、`cost_model`、
-  `benchmark_id` 分 cohort；每個決策日獨立排序 top-k，不把日期、策略或成本政策混在一起。
+- 輸入依 `horizon_days`、`strategy_version`、`strategy_config_id`、穩定
+  `universe_policy_id/hash`、`cost_model`、`benchmark_id`、`return_basis` 與 evidence tier
+  分 cohort；每個決策日獨立排序 top-k，不把日期、策略或成本政策混在一起。
 - `ready` 才進成熟分母；`pending`、`missing`、未知狀態、缺 score／return 或衝突重複列均保守排除並留下 warning。
 - Precision@K、hit rate、coverage 與平均值以整數 basis points 輸出；benchmark／industry coverage 以成熟列數揭露。
 - read model 固定 `read_only=true`、`manual_review_required=true`、
@@ -26,7 +59,9 @@
 ```
 
 `--db-path` 只以 SQLite `mode=ro`／`PRAGMA query_only` 讀取 `evidence_events` 與
-`evidence_outcomes`；事件 metadata 沒有明確 `universe_id` 時保留 warning，不能用目前股票池猜測補值。
+`evidence_outcomes`；新版事件 metadata 必須同時有 policy 與 snapshot 身份，缺件時保留 warning，
+不能用目前股票池猜測補值。只有沒有新版 schema 標記的舊 bare `universe_id` 才以 legacy
+相容模式讀取，並不宣稱符合新版跨日契約。
 指定 `--window-days` 時，沒有該成熟 outcome 的事件仍會保留為 `missing`，不因
 SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設只讀
 `close_to_close_event_date`。事件若明確保存 `horizon_days`，可在未指定 outcome
@@ -38,15 +73,17 @@ SQL 篩選而消失；同一事件的其他 `return_basis` 不會混入，預設
 
 ### 新推薦事件的身份綁定
 
-`RecommendationService` 在完成實際 universe 選擇後，以決策日、選擇模式、產業篩選、
-`max_stocks`、實際處理股票代號及明確請求代號產生 `recommendation-universe.v1` 的
-`universe_id` 與 `sha256:` `universe_hash`，並保存於 run context。每日 research-only
+`RecommendationService` 在完成實際 universe 選擇後，產生穩定的
+`recommendation-universe-policy.v1` `universe_policy_id/hash`，並另產生保存決策日與
+實際成分的 `recommendation-universe-snapshot.v1` `universe_snapshot_id/hash`，兩者都保存於
+run context。舊 `universe_id/hash` 欄位保留為每日 snapshot alias，不能再拿來作跨日政策 key。
+每日 research-only
 推薦 snapshot 固定帶 `strategy_version_id=scheduled-recommendation-default-v1`、
 `cost_model_id=gross-close-to-close-no-cost-v1`、`benchmark_id=TAIEX` 與
 `horizon_days=20`。其中 20 是 V4 主要 cohort 標籤，不是持有保證；no-cost identity
 明確表示尚未扣除手續費、稅費、滑價或流動性成本，evaluator 會留下
 `cost_model_not_cost_adjusted` warning。`RecommendationEvidenceImporter` 只接受 result
-config／run context 中已存在的 strategy、cost、benchmark、universe 與 positive horizon
+config／run context 中已存在的 strategy、cost、benchmark、policy／snapshot universe 與 positive horizon
 欄位，寫入 event 欄位及 metadata；不以 profile、symbol、目前股票池或推薦結果列推導
 缺件，也不替既有事件回填。
 因此這是後續 producer 的可追溯身份接線，不是現有資料的 V4 credit。

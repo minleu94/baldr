@@ -58,19 +58,22 @@ full-market OOC + 4+ Meta OOF folds
 - Formal ML input custody 由 `causal-portfolio-ledger.v1`、`rule-champion-snapshot-history.v1` 與 `pit-sector-membership-sidecar-v1` 分別驗證；ledger／Rule history 的 manifest／file hash 會從 Direct、OOC store 綁到 OOS replay input，replay consumer 仍會再次驗證，缺件時維持 blocked，不以 research／current snapshot／cash-only fallback 補值。
 - scheduler wrapper 不讀 UI state。只有既有 data update、confirmed evidence repository 與 isolated Paper ledger 具有各自明確寫入範圍；無 broker adapter。
 
-### V4 收尾增量：證據評估、候選現金流與容量邊界（2026-09-09）
+### V4 收尾增量：跨日證據身份、評估與容量邊界（2026-09-10）
 
 - `app_module/v4_effectiveness_read_model.py` 與 `v4_effectiveness_evaluator.py` 是唯讀
-  application read path。輸入依持有期間、策略、股票池、成本模型與 benchmark 分 cohort，
+  application read path。輸入依持有期間、策略設定、穩定 universe policy、成本模型、
+  benchmark、return basis 與 evidence tier 分 cohort，
   每個決策日獨立取 top-k；只有 `ready` outcome 進成熟分母，`pending`／`missing`／未知狀態及
   衝突重複列保守排除並揭露 warning。所有比例以整數 basis points 輸出；read model 不寫
   evidence、不啟用 scheduler、不產生交易或 lifecycle action。CLI 可直接以 SQLite
-  `mode=ro`／`PRAGMA query_only` 讀取既有 `evidence_events`／`evidence_outcomes`；缺少明確
-  `universe_id` 時只回報 warning，不猜測或補寫 cohort identity。每日排程推薦的固定身份
+  `mode=ro`／`PRAGMA query_only` 讀取既有 `evidence_events`／`evidence_outcomes`；新版事件缺少
+  policy／snapshot 任一身份時只回報 warning，不猜測或補寫 cohort identity。每日排程推薦的固定身份
   由 `app_module/v4_evidence_identity.py` 集中宣告：策略
   `scheduled-recommendation-default-v1`、市場基準 `TAIEX`、主要 horizon `20`，以及
-  `gross-close-to-close-no-cost-v1`。後者只表示尚未套用費稅／滑價／流動性成本，evaluator
-  會加上 `cost_model_not_cost_adjusted`，不能當作成本後有效性。
+  `gross-close-to-close-no-cost-v1`。`RecommendationService` 另外保存穩定
+  `universe_policy_id/hash` 及每日 `universe_snapshot_id/hash`；後者只作追溯與組成變化診斷，
+  不作跨日 key。策略重要設定由 `strategy_config_id/hash` 綁定。no-cost identity 只表示尚未
+  套用費稅／滑價／流動性成本，evaluator 會加上 `cost_model_not_cost_adjusted`，不能當作成本後有效性。
 - `data_module/finmind_cashflow_candidate.py` 與 `scripts/fetch_finmind_cashflow_candidate.py`
   只保存 FinMind `TaiwanStockCashFlowsStatement` 的 numeric-only candidate rows、來源列 hash
   與觀測時間。FinMind observation date 不等同官方公告／決策可得日，故不產生 availability
@@ -668,6 +671,11 @@ Decision/Evidence event capture 後，以台北當日可見日期、固定觀察
 `evidence_events`、`evidence_outcomes`、`daily_prices`，並保存 status／不可覆寫 run receipt；
 缺價、未成熟、benchmark 或政策資料缺口保留 status 與 warning。此 writer 不新增事件、
 不回填 cohort identity、不改 recommendation／Paper／Formal／ML 狀態，也不連接 broker。
+
+Producer 的 bounded 選取先將未完成 `(event_id, window_days, return_basis)` 的事件排在前面，
+再用完整身份查詢套用相同上限，避免新事件長期排擠舊的 60 日 pending。每輪 health receipt
+另外保存最新合格事件日、cohort／決策日數、各 horizon ready／pending／missing、capture／
+outcome／evaluation 時間、下一成熟日、冪等自然鍵與 blocker 分類；狀態頁只讀投影這些欄位。
 
 `ScheduledEvidenceStatusService` 以唯讀 adapter 載入上述 producer 的
 `scheduled/forward_outcomes/latest_status.json`；`ScheduledEvidenceStatusView` 與

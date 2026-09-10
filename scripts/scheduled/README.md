@@ -26,7 +26,7 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-ml-promotion-authority-daily` | enabled after register | daily local time 05:18 | 由獨立 DPAPI user-scope authority 重驗 compatible evidence、Gate registry 與決策有效窗。只有所有機器門檻通過才簽章；否則成功 fail closed，維持 alpha 0。 |
 | `baldr-ml-allocation-copilot-daily` | enabled after register | daily local time 05:20 | 執行配置型 ML promotion 評估並寫入 append-only sidecar、promotion artifact 與 `latest_status.json`。缺少、無效或未授權證據時仍成功完成每日流程，但固定輸出 `formal_oos_allowed=false`、`selected_alpha_bp=0` 與四條未通過 lane；不改寫來源資料庫或投組狀態。 |
 | `baldr-decision-evidence-capture-daily` | enabled after register | daily local time 05:25 | 依台北時間選擇最近一個**已到達**的 08:30 日曆決策日，依序確認保存 durable Decision Desk snapshot 與 Evidence Event；不再把隔日 cutoff 當成已發生資料。既有 hash／unique key 使重跑轉為 duplicate；任一步失敗即回傳失敗並保留下一次重跑能力。它不推定交易日／成熟日、不改 Rule／Advice／Portfolio 狀態，也不連接券商執行。 |
-| `baldr-forward-outcomes-daily` | enabled after register | daily local time 05:40 | 在 Decision/Evidence capture 之後，wrapper 預設只處理帶有身份契約的 `recommendation_included` 事件，並在計算前跳過缺少策略／成本／benchmark／universe／horizon 的事件，以台北當日可見資料及固定 120 個曆日／2,500 個合格事件上限，重算 5／10／20／60 交易日 close-to-close research outcome。可用 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換事件類型；只有 wrapper 明確傳入 `--confirm --allow-production-db-confirm` 才更新 `evidence_outcomes`；事件、推薦、Paper／Formal、模型與券商狀態不變。未成熟、缺價、缺 benchmark 與政策資料只保留明確 warning／degraded，不補未來價格、不做 historical backfill。 |
+| `baldr-forward-outcomes-daily` | enabled after register | daily local time 05:40 | 在 Decision/Evidence capture 之後，wrapper 預設只處理帶有身份契約的 `recommendation_included` 事件，並在計算前跳過缺少策略／成本／benchmark／policy／snapshot／horizon 的事件，以台北當日可見資料及固定 120 個曆日／2,500 個合格事件上限，重算 5／10／20／60 交易日 close-to-close research outcome。選取先把未完成 outcome 排到前面，再以完整 policy／snapshot identity 套用 bounded 上限，避免新事件排擠舊 60 日 pending；`health` receipt 會分類 normal completion／normal no-op／natural maturity／engineering blocker／external source missing，列出 cohort／決策日與各 horizon ready／pending／missing。可用 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換事件類型；只有 wrapper 明確傳入 `--confirm --allow-production-db-confirm` 才更新 `evidence_outcomes`；事件、推薦、Paper／Formal、模型與券商狀態不變。未成熟、缺價、缺 benchmark 與政策資料只保留明確 warning／degraded，不補未來價格、不做 historical backfill。 |
 | `baldr-paper-portfolio-daily` | enabled after register | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，adapter guard 至 08:30） | 由 `run_paper_portfolio_daily_isolated.py` 先以 D 槽 snapshot 的 SQLite read-only consistent backup 建立 repository state；兩種 offset 都等待真實台北 08:30，再 append preopen/T-1 估值 snapshot。之後 D snapshot 永遠只讀，EOD 與 Formal 共用 repository state。盤前只以 `mode=ro/query_only` 讀市場 SQLite 與 EOD ledger；不覆寫既有 snapshot、不把 snapshot 當成交、不自動調倉、不修改 Advice，也不具券商執行能力。 |
 | `baldr-ml-allocation-forward-daily` | registered by dedicated XML | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，等待 Asia/Taipei 08:30，08:35 後 fail closed） | 只執行 repository-isolated、candidate-only ML forward shadow。每日 config producer 依 offline official calendar、單一交易日 freshness、archive custody 與固定 V2 release manifest hash 建立 create-only config；child 必須保留完整 outer payload，`forward_credit_granted=false`。不寫市場 SQLite、不下單、不改正式 Paper／Formal 狀態；註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`，aggregate registration 不會替換其設定。 |
 | `baldr-pit-sector-membership-preopen-capture-daily` | enabled after dedicated register | daily local time 16:00（PDT 台北 07:00；PST 台北 08:00） | 在台北 08:30 前以官方 TWSE／TPEx response completion timestamp 建立 current-day PIT machine candidate，保存 raw custody、machine consumer readback 與 durable archive；同一 task 會先重驗當日獨立 denominator，缺少時自動以 data.gov dataset/resource、官方 Swagger 與授權文件建立 bounded create-only refresh；來源失敗會保留具體 status 並讓 sidecar 下輪重試。若 clock 或 response 越過 cutoff，fail closed，不建立可被當日 handoff 消費的 archive。 |
@@ -35,6 +35,22 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-paper-execution-eod-replay-daily` | enabled after register | daily local time 06:00（PDT／PST 分別對應台北 21:00／22:00） | 先以固定 D 槽唯讀 dependency gate 驗證同一台北自然日的 quick update、freshness、daily_prices open rows 與 TWSE／TPEX source hash，再從持久 recommendation queue 選取下一官方 session 已到期的 frozen input。Paper writer 以 execution date 與完整 recommendation file/content hash 讀取同一份 repository `event_captures` durable manifest；缺失、hash／日期／source custody 不符時 fail closed。只有 durable capture、candidate、processed receipt 與 query-only ledger readback 全部綁定才保存 research-only fill；Formal consumer 仍另驗 event-time 與三來源 common identity。上游暫時來源最多重試 3 次並保留每次診斷，terminal blocker 立即停止；不跑 snapshot valuation，也不接受 D／環境變數 writer path 覆寫。 |
 | `baldr-ml-direct-chain-maintainer` | enabled after register | daily local time 05:30 | 自動解析並重驗最新全市場 immutable raw PIT pointer、official market-event custody 與目前 Direct identity，然後啟動／維持 `maintain_ml_direct_v3_refresh_chain.py --watch-formal-inputs`。使用既有 instance lock 防止重複訓練；無效輸入只寫 `blocked_invalid_bootstrap_input`，不寫來源 SQLite、不建立未受控 sidecar、不放寬 formal／alpha／broker gate。 |
 | `baldr-v2-2-weekly-collection` | `weekly-register` 後啟用 | 每週日 18:00 | 執行 `run_v2_2_weekly_collection.cmd`，以 SQLite read-only 讀取來源並將 evidence append 至 sidecar。對外狀態為 `pending_human_review`；需要人工判讀，但不代表 Gate 通過、不寫 weekly history，且 `write_intent=false`。 |
+
+### V4 跨日 evidence identity 與每日 health
+
+每日推薦 snapshot 會保存 `universe_policy_id/hash`（跨日政策）與
+`universe_snapshot_id/hash`（決策日實際成分），並以 `strategy_config_id/hash`、horizon、
+cost、benchmark、return basis、evidence tier 固定可比較邊界。`universe_id/hash` 是相容 alias，
+不應再作為跨日 policy key。缺 policy／snapshot 的既有事件保留 legacy／missing 診斷，不由目前
+股票池回填。
+
+`baldr-forward-outcomes-daily` 每輪 `latest_status.json` 與 `runs/<run_id>.json` 的 `health`
+保存 `latest_qualifying_event_date`、`qualifying_event_count`、`cohort_count`、每 cohort 的
+`decision_day_count`／snapshot 清單、各 horizon ready／pending／missing、最近 capture／outcome／
+evaluation、`next_maturity_date`、blockers／warnings 與自然鍵冪等結果。分類可為
+`normal_completion`、`normal_no_new_outcomes`、`waiting_for_natural_maturity`、
+`actionable_engineering_blocker`、`external_source_missing`；只有最後兩類需要修正工程或來源。
+這些欄位由 `ScheduledEvidenceStatusService`／UI 唯讀投影，不會重跑 producer 或寫 DB。
 
 `run_paper_portfolio_daily.cmd` 先呼叫 `run_paper_portfolio_daily_isolated.py`。首次
 執行只將 `DATA_ROOT\output\paper_portfolio\paper_portfolio.sqlite` 以 SQLite

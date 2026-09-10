@@ -69,10 +69,31 @@ append-only history 寫入前轉成 JSON-safe 結構，避免資料步驟完成�
 投影，顯示掃描／寫入／待成熟數與寫入邊界；receipt 缺失時只顯示 source gap，避免把
 推薦或 freshness payload 當成 forward outcome。
 
-本輪另完成推薦 producer 的身份接線：實際處理的股票集合會產生可重現的
-`recommendation-universe.v1` `universe_id`／`universe_hash`，排程 snapshot 固定宣告
+## 2026-09-10 跨日 evidence closeout
+
+本輪已完成工程層的跨日 evidence closeout：
+
+- `RecommendationService` 將跨日政策與每日快照分成 `universe_policy_id/hash`、
+  `universe_snapshot_id/hash`；每日 snapshot 保留 selected-code hash 與內容摘要，evaluator
+  只用 policy 作跨日 key，並揭露 snapshot 數量與組成變化。
+- `strategy_config_id/hash`、horizon、cost、benchmark、return basis 與 evidence tier 已沿
+  DTO／JSON、importer、event metadata、outcome metadata、read model 與 CLI／UI 隔離。
+  既有 event 不回填；舊 schema／缺件只留診斷，避免製造 V4 credit。
+- bounded forward outcome 先選 pending／missing 事件，再用完整 identity 篩選並套用 120 曆日／
+  2,500 event 上限；health receipt 保存 cohort／決策日／horizon 與 blocker 分類，能區分正常
+  no-op、自然成熟、工程阻塞及外部來源缺件。
+- `tests/test_v4_cross_day_evidence_contract.py` 驗證真實 result DTO → importer → isolated
+  SQLite → outcome → read model → evaluator；三日 20 筆成熟 fixture 形成單一 cohort，
+  但這只是接線正例，不代表自然前瞻、成本後結果、Formal 3/3 或 V4 完成。
+
+本節關閉的是工程接線與後續觀測入口；正式 D 槽仍不得人工回填舊 evidence，V4 八項 maturity、
+自然 60 日結果、PIT／Paper／成本與正式 promotion 仍依實際來源與時間累積。
+
+本輪另完成推薦 producer 的身份接線：實際處理的股票集合會產生穩定的
+`recommendation-universe-policy.v1` policy identity 及每日
+`recommendation-universe-snapshot.v1` snapshot identity，排程 snapshot 固定宣告
 `scheduled-recommendation-default-v1`，importer 只搬運明確的策略、成本、benchmark、
-universe 與 horizon context。這讓後續自然 outcome 能按正確 cohort 累積，但不回填既有事件、
+policy／snapshot universe 與 horizon context。這讓後續自然 outcome 能按正確 cohort 累積，但不回填既有事件、
 不猜測缺欄位，也不改變目前 V4／Formal／Paper 的 gate。
 
 ## 開場現況

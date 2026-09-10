@@ -307,6 +307,9 @@ flowchart LR
 - **Dependencies**：Backtest engine、storage ports、data governance。
 - **Persistent artifacts**：registry metadata、Parquet、events/outcomes、review records。
 - **Failure / degraded**：樣本不足只回 directional / insufficient，不產生有效性結論。
+- **Cross-day identity contract**：政策 `universe_policy_id/hash` 與每日
+  `universe_snapshot_id/hash` 分層保存；`strategy_config_id`、horizon、cost、benchmark、
+  return basis 與 evidence tier 共同定義可比較 cohort。舊事件缺件只診斷，不由目前政策回填。
 - **Current status**：`CURRENT`，多個工程底座已存在。
 - **Target status**：Experiment Manager + Evidence operating loop。
 - **修改正式決策**：只透過 Promotion / Lifecycle human review。

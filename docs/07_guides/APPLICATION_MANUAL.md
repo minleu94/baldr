@@ -14,9 +14,9 @@
 
 原有UI「候選更新」按鈕仍操作Phase3C隔離候選庫，**不會自動套用上述新來源到正式庫**。每日quick排程在明確設定 `PHASE3C_CANDIDATE_DB_PATH` 時會執行 institutional／credit（週一加最新TDCC）候選更新；未設定時會在status明示 skipped，不猜測路徑。月營收、季報與集保的正式套用仍須使用各自受控CLI，不能把下次按候選更新誤認為正式資料已刷新。集保正式表的 `observed_at` 等價保存本次來源 `first_observed_at`／`available_at`，完整17級仍在 `shareholding_tiers`。
 
-## 2026-09-08 V4 唯讀有效性與現金流候選
+## 2026-09-10 V4 唯讀有效性與跨日證據
 
-V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可讀 JSON array、含 `rows` 的 JSON object 或 JSONL，依 horizon／strategy version／universe／cost model／benchmark 分組，並對每個決策日獨立計算 Precision@K。只有 `ready` outcome 進成熟分母；`pending`、`missing`、未知狀態、缺 score／return 與衝突重複列會保守排除並留下 warning。輸出比例與 coverage 是整數 basis points，固定唯讀、需人工覆盤、不啟用 scheduler、不下單。
+V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可讀 JSON array、含 `rows` 的 JSON object 或 JSONL，依 horizon／strategy version／strategy config／穩定 universe policy／cost model／benchmark／return basis／evidence tier 分組，並對每個決策日獨立計算 Precision@K。只有 `ready` outcome 進成熟分母；`pending`、`missing`、未知狀態、缺 score／return 與衝突重複列會保守排除並留下 warning。輸出比例與 coverage 是整數 basis points，固定唯讀、需人工覆盤、不啟用 scheduler、不下單。
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\inspect_v4_effectiveness.py --sample --format markdown
@@ -25,8 +25,10 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 ```
 
 `--db-path` 使用 SQLite `mode=ro`／`PRAGMA query_only` 讀取既有 `evidence_events` 與
-`evidence_outcomes`；若事件 metadata 沒有明確 `universe_id`，報告會保留警告並維持 fail-closed，
-不以目前股票池或 symbol 推測補值。指定 `--window-days` 時，沒有該窗口 outcome 的事件仍會
+`evidence_outcomes`；新版事件 metadata 必須同時保存 `universe_policy_id/hash` 與
+`universe_snapshot_id/hash`，缺件會保留警告並維持 fail-closed，不以目前股票池或 symbol
+推測補值。沒有新版 schema 標記的舊 bare `universe_id` 只以 legacy 相容方式讀取，不宣稱
+符合新版跨日契約。指定 `--window-days` 時，沒有該窗口 outcome 的事件仍會
 以 `missing` 保留；查詢只納入 `close_to_close_event_date`（可用 `--return-basis` 明確改變），
 避免不同計算口徑重複計算。事件只有明確保存 `horizon_days` 才能在缺件時形成有效 horizon，
 否則報告會留下缺 horizon warning。大量相同 row-level 缺口會以
@@ -34,16 +36,24 @@ V4 cohort 有效性檢查使用 `scripts/inspect_v4_effectiveness.py`。它可�
 cohort identity 只接受純量文字；list／mapping／bool 形式會以
 `rows_incomplete_cohort_identity` fail-closed。
 
-新的推薦 snapshot 會在服務實際選完處理股票後保存 `recommendation-universe.v1` 的
-`universe_id`／`universe_hash`；身份內容綁定決策日、選擇模式、產業篩選、`max_stocks`
-與實際處理代號。每日排程固定宣告
+新的推薦 snapshot 會在服務實際選完處理股票後保存穩定的
+`recommendation-universe-policy.v1` `universe_policy_id/hash`，以及保存決策日與實際成分的
+`recommendation-universe-snapshot.v1` `universe_snapshot_id/hash`；舊 `universe_id/hash`
+只保留為每日 snapshot alias。策略重要設定另由 `strategy_config_id/hash` 綁定。每日排程固定宣告
 `strategy_version_id=scheduled-recommendation-default-v1`、
 `cost_model_id=gross-close-to-close-no-cost-v1`、`benchmark_id=TAIEX` 與
 `horizon_days=20`。20 是主要 cohort 標籤，不是持有保證；no-cost model 表示尚未扣除
 手續費、稅費、滑價或流動性成本，報告會留下 `cost_model_not_cost_adjusted` 警告。
 Evidence importer 只讀取結果 config／run context 明確提供的策略、成本、benchmark、
-universe 與 horizon，缺欄位就保持缺件，不從 profile、symbol 或目前股票池猜值；這項接線
+policy／snapshot universe 與 horizon，缺欄位就保持缺件，不從 profile、symbol 或目前股票池猜值；這項接線
 不回填舊事件，也不把新 snapshot 自動標成成熟或正式績效。
+
+每日 forward receipt 的 `health` 顯示最新合格事件日、完整身份事件數、cohort／決策日數、
+各 horizon 的 ready／pending／missing、最近 capture／outcome／evaluation、下一成熟日、
+冪等自然鍵與 blocker。分類包括 `normal_completion`、`normal_no_new_outcomes`、
+`waiting_for_natural_maturity`、`actionable_engineering_blocker` 與
+`external_source_missing`；UI 的「排程狀態」只讀呈現這些資訊。`tests/test_v4_cross_day_evidence_contract.py`
+是隔離端到端接線驗收，通過只證明工程資料流，不增加 V4／Formal／alpha 信用。
 
 FinMind 現金流只作交叉核對候選：
 
@@ -2736,7 +2746,7 @@ Evidence 的 close-to-close outcome 是事後診斷，不是 v2 執行 PnL；成
   - 研究落差：檢查 portfolio source trace、Research Run / strategy version、evidence event / outcome link、portfolio mode、gap metrics、attribution categories、match confidence、quality 與 warnings。沒有真實交易與人工 override 記錄時，只能解讀為 research / simulated gap。
   - 訊號衰退：檢查 event_type、event_family、strategy_version、profile scope 的短窗 / 長窗樣本、decay score、status、lifecycle candidate、confidence、quality 與 warnings。`demote_candidate` / `retire_candidate` 只是人工覆盤候選，不會自動套用。
   - 決策品質：檢查週 / 月 / custom review item、process score、reason codes、review question、open / reviewed / dismissed 狀態、quality 與 warnings。score 只代表流程 evidence，不是投資能力、不是交易建議，也不是責備使用者。
-  - 排程狀態：唯讀讀取 `OUTPUT_ROOT/scheduled/data_freshness/latest_status.json`、`OUTPUT_ROOT/scheduled/recommendation_snapshot/latest_status.json`、`OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/latest_status.json`、`OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 與 latest status 指向的 report preview。畫面顯示 data freshness、recommendation snapshot result id / 筆數 / screening matrix rows、evidence dry-run、forward outcome 的 status／掃描事件數／寫入結果數／待成熟數、`pipeline_overall_status`、report path、warning occurrences、blocking gaps 與 `confirm / writes_recommendation_result / writes_evidence_db / forward_outcome_writes_evidence_db / auto_trading / lifecycle_action` 安全邊界。forward outcome 的 `passed_with_warnings`、`degraded`、`dry_run` 與 `blocked` 會分別映射成可掃描的 machine status；缺少新 receipt 會顯示 source gap，不補值。推薦結果寫入與 forward outcome 寫入會分別標示 research-only output，不會和 production evidence / trading write risk 混為同一概念。若 scheduled recommendation latest status 缺失，但同一 decision date 已有人工保存的 `OUTPUT_ROOT/recommendation/runs/rec_YYYYMMDD_*.json`，頁面會把 recommendation source 顯示為 `manual_result`、status 顯示為 `manual_observed`；這只代表人工補跑結果可供判讀，不代表 scheduled snapshot 正常，也不計入 scheduled 共同觀測天數。下方狀態明細採「判讀摘要 / 人工要看 / 關鍵欄位 / 安全邊界」優先，report preview 只保留前段 metadata，完整 JSON diagnostics 請依 `report_path` 或 `forward_outcome_status_path` 開啟原始 receipt。這只是讓每日 scheduled output、forward outcome 累積與人工補跑觀察在 UI 可見；頁面不重跑 producer／pipeline、不寫 evidence DB、不自動追加 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`。
+  - 排程狀態：唯讀讀取 `OUTPUT_ROOT/scheduled/data_freshness/latest_status.json`、`OUTPUT_ROOT/scheduled/recommendation_snapshot/latest_status.json`、`OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/latest_status.json`、`OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 與 latest status 指向的 report preview。畫面顯示 data freshness、recommendation snapshot result id / 筆數 / screening matrix rows、evidence dry-run、forward outcome 的 status／掃描事件數／寫入結果數／待成熟數，並顯示 health 的最新合格事件日、完整身份事件數、cohort／決策日數、各 horizon ready／pending／missing、最近 capture／outcome／evaluation、下一成熟日與 blockers／warnings；同時保留 `pipeline_overall_status`、report path、warning occurrences、blocking gaps 與 `confirm / writes_recommendation_result / writes_evidence_db / forward_outcome_writes_evidence_db / auto_trading / lifecycle_action` 安全邊界。health 分類 `normal_completion`、`normal_no_new_outcomes`、`waiting_for_natural_maturity`、`actionable_engineering_blocker` 與 `external_source_missing` 會投影到 machine status；缺少新 receipt 會顯示 source gap，不補值。推薦結果寫入與 forward outcome 寫入會分別標示 research-only output，不會和 production evidence / trading write risk 混為同一概念。若 scheduled recommendation latest status 缺失，但同一 decision date 已有人工保存的 `OUTPUT_ROOT/recommendation/runs/rec_YYYYMMDD_*.json`，頁面會把 recommendation source 顯示為 `manual_result`、status 顯示為 `manual_observed`；這只代表人工補跑結果可供判讀，不代表 scheduled snapshot 正常，也不計入 scheduled 共同觀測天數。下方狀態明細採「判讀摘要 / 人工要看 / 關鍵欄位 / 安全邊界」優先，report preview 只保留前段 metadata，完整 JSON diagnostics 請依 `report_path` 或 `forward_outcome_status_path` 開啟原始 receipt。這只是讓每日 scheduled output、forward outcome 累積與人工補跑觀察在 UI 可見；頁面不重跑 producer／pipeline、不寫 evidence DB、不自動追加 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`。
   這個分頁只使用 dashboard service、已保存 read model 與 scheduled output status 檔，不重算推薦、不重算策略、不讀 UI state、不寫 evidence，也不建立或修改排程；樣本不足或資料降級時只能作資料品質檢查，不可作訊號有效性判斷。
   - 覆盤歷史：只讀取已保存 weekly review；若 history DB／table 不存在，畫面會顯示 `evidence_operations_history_db_missing`／`...table_missing` 診斷與 CLI 建立指引，絕不因刷新畫面建立空 schema。
 - 批次結果：排行榜與整體統計，雙擊股票可載入明細；頁首會說明排行榜只用來找出同批次內值得複核的股票，整體統計用來看樣本分布與成功率，不代表正式策略判斷、交易建議或持倉調整。
@@ -2787,6 +2797,12 @@ benchmark、universe 或正整數 horizon 的舊事件會跳過並記入
 `events_skipped_incomplete_identity`；可透過 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換。未成熟的 60 日區間、缺事件價、
 缺大盤／產業 benchmark 或政策資料會留下 `pending`／`missing` 與 warning，不以曆日補算、
 不回填事件身份，也不會把結果變成投資建議。
+
+選取順序先以 `(event_id, window_days, return_basis)` 的 ready 缺口把未完成事件排在前面，
+再以完整 cohort identity 篩選並套用相同的 2,500 event 上限；因此每日新事件不會長期排擠
+舊的 60 日 pending。若 health 分類是 `actionable_engineering_blocker`，先修正身份／caller／
+DB 路徑再重跑；`external_source_missing` 代表補齊指定來源；`waiting_for_natural_maturity`
+才代表只需等待自然交易日。`normal_no_new_outcomes` 是冪等 no-op，不需要為了製造數字改模型。
 
 排程 wrapper 會明確傳入 `--confirm --allow-production-db-confirm`，因此只更新正式
 SQLite 的 `evidence_outcomes` table；它不新增或修改 `evidence_events`，不改推薦、Rule、

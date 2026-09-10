@@ -1381,7 +1381,7 @@ Advice 不寫 DB、不啟用 scheduler、不建立 broker order、不改 Scoring
 
 「檢查數據狀態」及來源明細是唯讀觀測：缺 DB、缺來源或資料降級會保留實際日期、quality 與 warnings，不因檢查而建表、寫入 manifest 或修復資料。candidate 可用不代表已接受正式來源。下載／合併／指標計算仍使用各自明確操作；技術指標由單一寫入者落地，週末資料缺官方交易 session 證據時不會被誤收為交易日。
 
-窄視窗（小於 720px）會將左側資料來源導覽移到內容上方，核心狀態卡改為雙欄、候選資料卡改為單欄、快速／安全／狀態檢查按鈕改為直列；整個更新頁可垂直捲動。這只是畫面排版，更新日期、worker、SQLite 同步與 fail-closed 規則不變。
+窄視窗（小於 720px）會將左側資料來源導覽移到內容上方，核心狀態卡改為雙欄、候選資料卡改為單欄、快速／安全／狀態檢查按鈕改為直列；整個更新頁可垂直捲動。所有更新子頁沿用同一套 Midnight Analyst 深色面板、語意按鈕與狀態摘要樣式，不會因切換來源而變成淺色表單。這只是畫面排版，更新日期、worker、SQLite 同步與 fail-closed 規則不變。
 
 一般桌面寬度的「全部資料」頁會把「快速更新」、「安全更新」與「檢查數據狀態」固定放在標題下方的「立即操作」列，接著才是手動更新摘要、六張核心狀態卡、時間軸與 readiness／P0 診斷。核心卡在寬版採三欄、窄版採雙欄；按鈕不再被長篇狀態表推到頁面最下方。候選資料與月營收分頁也把檢查／抓取操作列放在治理說明與 CLI 範例之前，進入子分頁即可操作。
 
@@ -1460,6 +1460,8 @@ P0 表格的長欄位採固定上限欄寬、儲存格換行與水平捲動；�
 若要讓 UI 使用最新 route status，請把明確產生的 audit 檔設定到 `P0_SOURCE_CONTROL_CENTER_AUDIT`（例如 `C:\Users\archi\AppData\Local\Temp\technical_analysis_p0_audit\p0_evidence_20260828_route_status_refresh.json`）後重新開啟或重新載入更新頁；UI 不會自行掃描 TEMP。這份 refresh 若未同時指定 MOPS 季報 artifact，季報列顯示 `artifact_missing` 是預期的 fail-closed 結果，不代表其他 12 個來源的 probe 失敗。
 
 快速更新排程會在 `latest_status.json` 旁以 append-only 方式保存 `data-update-status-history.v1` JSONL；每次真實執行會記錄 `running` 與 terminal status 的 run／時間／步驟摘要。預設 history 路徑為 `OUTPUT_ROOT/scheduled/data_update_quick/history.jsonl`，也可用 runner 的 `--history-path` 或 UI 的 `DATA_UPDATE_HISTORY_ARTIFACT` 指定。這個功能不會回放既有 latest status、不會把檔案 mtime 當成完成時間；既有環境的 history 缺檔會顯示「缺漏」，等下一次真實排程自然產生，不得手動複製舊結果補足。
+
+快速更新的狀態邊界會先把 Phase 3C `BackfillSummary` 等 dataclass、路徑、日期與數值 wrapper 轉成 JSON-safe 結構，再寫入 latest status 與 history。單一步驟若回傳非原生 JSON 物件，不會使整輪停在「執行中」；終端 status 仍會發布，步驟結果的結構化內容也會保留在 artifact。
 
 若 history 缺檔，先用下列唯讀命令確認 Windows task 是否真的存在：
 
@@ -2119,7 +2121,9 @@ V1.7 後，「保存結果」會一併保存推薦當下的 screening matrix：�
 
 ### 候選股分析與跨頁下鑽（2026-09-06）
 
-右下方點選已保存的「選股清單」，會直接列出該清單的股票代號與名稱，不必先加入候選池。單擊預覽股票可讀取分析摘要，雙擊可下鑽主力流向；預覽本身不修改清單或候選池。
+桌面寬度下，畫面固定為兩個主面板：「觀察候選池」在左側負責刷新／新增／移除／清空、候選表格、個股研究摘要與下一步動作；「已保存選股清單」在右側負責選取清單、預覽股票及載入／新增／編輯／刪除。候選池操作不再獨立佔一欄，清單與個股預覽共享右側高度；窄版才切回上下排列，仍維持先看候選池、再看已保存清單的順序。
+
+點選已保存的「選股清單」，會直接列出該清單的股票代號與名稱，不必先加入候選池。單擊預覽股票可讀取分析摘要，雙擊可下鑽主力流向；預覽本身不修改清單或候選池。
 
 在上方「觀察候選池」選取一檔股票，下方摘要會讀取已保存推薦的分數、理由及分析日期。有推薦來源 ID 時使用該次保存結果；沒有來源 ID 時使用最近保存的一份推薦，並明示來源與日期。這是當時策略的分析快照，並非即時行情或重新評分；沒有結果、未包含該股、日期缺失或晚於查詢日期時，顯示缺件原因，不推論為看空。讀取失敗可刷新重試；若尚未保存推薦，先至「推薦分析」完成並保存分析。
 
@@ -3978,6 +3982,7 @@ $env:PHASE3C_CANDIDATE_DB_PATH = 'D:/Min/Python/Project/FA_Data_candidate/phase3
 - 2026-09-07：校正 Paper T+1 排程時序：preopen snapshot 是 execution session 的 T-1 起始狀態，EOD replay 可重用已存在 snapshot 並只追加獨立 postfill ledger transition；下一個 preopen runner 透過 `--ledger-db` 唯讀投影已驗證 fill，重算隔日現金／股數並保留守恆 diagnostic。Recommendation 落在休市自然日時，reference date 綁定該日或之前最近有官方證據的交易 session（例如週日綁前一週五），不把自然日直接當成 `daily_prices` 日期。
 - 2026-09-07：新增 MOPS t164 三表 2026-Q2 universe plan、每批最多 8 家的 checkpoint／resume、金融公司 selector 與 XBRL row-code 單位／期間驗證，以及 repo output／TEMP-only 隔離 consumer 操作；continuation plan 依官方 registry 分母自動選取下一批，失敗公司保留原因，不把部分成功宣稱為全市場完成。
 - 2026-09-07：新增 PySide6 主視窗 150%／200% offscreen Qt keyboard smoke；以真實 MainWindow、工作區 Space 導覽、Runtime 狀態及 600 列長表格 PageDown／Ctrl+Home 保存可重跑 evidence。明確標示 offscreen 不等於 Windows 前景鍵盤、實體顯示器或 screenreader 驗證，未取得這些證據前不作宣稱。
+- 2026-09-09：統一 Data Update 所有來源子頁的 Midnight Analyst 深色 token、群組、狀態摘要與按鈕 variant，移除會蓋掉全域主題的淺色 inline QSS；觀察清單改為「左側候選池主工作區／右側已保存清單」兩個主面板，候選池操作貼近表格、研究摘要與下一步動作，並分開顯示股票數量與更新狀態。只改善 UI 呈現與可用空間，不改資料更新、研究、回測或交易邏輯。
 - 2026-09-04：重整 Data Update 使用流程：全部資料頁把快速／安全更新與「檢查數據狀態」移到標題下方的「立即操作」列，核心卡改為寬版三欄／窄版雙欄；月營收、三大法人、信用交易與集保股權子分頁把操作列提前到治理說明前。新增月營收「抓取最新候選快照」及三個 Phase 3C 候選更新按鈕；服務層揭露月營收預期期別與候選新鮮度，並在正式根目錄唯讀時對 status manifest 寫入採 fail-soft。所有新抓取仍是候選／人工 gate，不會自動寫入正式 SQLite、availability mapping 或下游策略。
 - 2026-08-29：校正產品定位為 `V3.3 Engineering Complete / V4 Evidence Accumulation`；`release_v4` 不等於正式 V4.0 Production。新增 Evidence 五層判讀、Paper 21/21 但 ledger／fills／cost 缺口、Runtime proof tier 與 cleanup 後 stale storage status 排錯。
 - 2026-08-29：依使用者明確授權完成 ML release_v4 人工 retention cleanup 並建立 durable custody audit；三個主要 root 共釋放約 `403.95 GiB`，各保留 6 個完整 PIT／Direct／OOC run，D free 約 `410.31 GiB`。補上 exact target、pointer／dependency closure、resume abandonment、歷史 runbook tombstone 與 post-cleanup inventory SOP；不建立自動刪除權、不改 raw data／Formal／scheduler／broker Gate。

@@ -43,6 +43,7 @@ from data_module.monthly_revenue_snapshot_selection import (
 )
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.text_sanitizer import strip_leading_symbol_icon
+from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.views.update.update_formatters import (
     format_data_freshness_preview,
     format_freshness_gap,
@@ -81,6 +82,30 @@ def _safe_nonnegative_int(value: Any) -> int:
         return 0
 
 
+def _refresh_qss_property(widget: QWidget, name: str, value: str) -> None:
+    """設定語意化 QSS property，並立即刷新已顯示的元件。"""
+
+    widget.setProperty(name, value)
+    style = widget.style()
+    if style is not None:
+        style.unpolish(widget)
+        style.polish(widget)
+    widget.update()
+
+
+def _set_update_group_tone(group: QGroupBox, tone: str = "default") -> None:
+    """讓更新頁群組沿用全域主題，只以 tone 表達狀態差異。"""
+
+    _refresh_qss_property(group, "sectionTone", tone)
+
+
+def _set_update_status_tone(label: QLabel, tone: str = "info") -> None:
+    """讓摘要／狀態標籤使用共用深色 status surface。"""
+
+    _refresh_qss_property(label, "role", "status")
+    _refresh_qss_property(label, "statusTone", tone)
+
+
 
 
 
@@ -93,26 +118,6 @@ class StatusCard(QFrame):
         self._raw_text = ""
 
         self.setObjectName("CardFrame")
-        # 設置現代暗色玻璃擬態樣式
-        self.setStyleSheet("""
-            QFrame#CardFrame {
-                background-color: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(30, 41, 59, 0.65),
-                    stop:1 rgba(15, 23, 42, 0.8)
-                );
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 10px;
-            }
-            QFrame#CardFrame:hover {
-                background-color: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(51, 65, 85, 0.75),
-                    stop:1 rgba(30, 41, 59, 0.85)
-                );
-                border: 1px solid rgba(255, 255, 255, 0.18);
-            }
-        """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -123,7 +128,10 @@ class StatusCard(QFrame):
         header_layout.setSpacing(6)
 
         title_prefix = f"{self.icon_str} " if self.icon_str else ""
-        self.title_label = QLabel(f"<span style='font-size:12px; font-weight:bold; color:#cbd5e1;'>{title_prefix}{title}</span>")
+        self.title_label = QLabel(
+            f"<span style='font-size:12px; font-weight:bold; "
+            f"color:{MIDNIGHT_ANALYST.text_primary};'>{title_prefix}{title}</span>"
+        )
         self.indicator_label = QLabel("<span style='font-size:11px; color:#94a3b8;'>未檢查</span>")
 
         header_layout.addWidget(self.title_label)
@@ -132,18 +140,26 @@ class StatusCard(QFrame):
         layout.addLayout(header_layout)
 
         # 中間最新日期
-        self.date_label = QLabel("<span style='color:#94a3b8;'>最新日期：</span><b style='color:#f8fafc;'>--</b>")
+        self.date_label = QLabel(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>最新日期：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>--</b>"
+        )
         self.date_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.date_label)
 
         # 總筆數
-        self.records_label = QLabel("<span style='color:#94a3b8;'>總記錄數：</span><b style='color:#f8fafc;'>--</b>")
+        self.records_label = QLabel(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>總記錄數：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>--</b>"
+        )
         self.records_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.records_label)
 
         # 額外資訊（例如技術指標數量）
         self.extra_label = QLabel("")
-        self.extra_label.setStyleSheet("color:#94a3b8; font-size: 11px;")
+        self.extra_label.setStyleSheet(
+            f"color:{MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
         self.extra_label.setVisible(False)
         layout.addWidget(self.extra_label)
 
@@ -187,12 +203,21 @@ class StatusCard(QFrame):
             elif "讀取模式" in line or "提醒" in line:
                 extra_info_lines.append(line.strip())
 
-        self.date_label.setText(f"<span style='color:#94a3b8;'>{date_label}：</span><b style='color:#f8fafc;'>{latest_date}</b>")
-        self.records_label.setText(f"<span style='color:#94a3b8;'>總記錄數：</span><b style='color:#f8fafc;'>{total_records}</b>")
+        self.date_label.setText(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>{date_label}：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>{latest_date}</b>"
+        )
+        self.records_label.setText(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>總記錄數：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>{total_records}</b>"
+        )
 
         if extra_info_lines:
             extra_info = "<br>".join(extra_info_lines)
-            self.extra_label.setText(f"<span style='color:#94a3b8;'>{extra_info}</span>")
+            self.extra_label.setText(
+                f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>"
+                f"{extra_info}</span>"
+            )
             self.extra_label.setVisible(True)
         else:
             self.extra_label.setVisible(False)
@@ -631,33 +656,18 @@ class UpdateView(QWidget):
         )
         label.setText(text)
         normalized = str(status or "unknown").strip().lower()
-        color = {
-            "success": "#166534",
-            "passed": "#166534",
-            "completed": "#166534",
-            "running": "#1d4ed8",
-            "in_progress": "#1d4ed8",
-            "cancelled": "#92400e",
-            "failed": "#b91c1c",
-            "failure": "#b91c1c",
-            "error": "#b91c1c",
-        }.get(normalized, "#92400e" if normalized in {"warning", "partial"} else "#475569")
-        border = {
-            "#166534": "#86efac",
-            "#1d4ed8": "#93c5fd",
-            "#92400e": "#fbbf24",
-            "#b91c1c": "#fca5a5",
-        }.get(color, "#cbd5e1")
-        label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            f" color: {color};"
-            f" border: 1px solid {border};"
-            " border-radius: 6px;"
-            " padding: 6px 10px;"
-            " font-size: 11px;"
-            "}"
-        )
+        tone = {
+            "success": "success",
+            "passed": "success",
+            "completed": "success",
+            "running": "info",
+            "in_progress": "info",
+            "cancelled": "warning",
+            "failed": "error",
+            "failure": "error",
+            "error": "error",
+        }.get(normalized, "warning" if normalized in {"warning", "partial"} else "info")
+        _set_update_status_tone(label, tone)
 
     def _set_progress(self, message: str, percentage: int) -> int:
         """更新共用進度列，保證單一工作生命週期內不倒退。"""
@@ -696,24 +706,19 @@ class UpdateView(QWidget):
         message = str(payload.get("message") or "").strip()
         if payload.get("cancelled"):
             state = "已取消"
-            color = "#92400e"
-            border = "#fbbf24"
+            tone = "warning"
         elif payload.get("status") in {"running", "in_progress"}:
             state = "執行中"
-            color = "#1d4ed8"
-            border = "#93c5fd"
+            tone = "info"
         elif payload.get("success") is True:
             state = "完成"
-            color = "#166534"
-            border = "#86efac"
+            tone = "success"
         elif payload:
             state = "失敗"
-            color = "#b91c1c"
-            border = "#fca5a5"
+            tone = "error"
         else:
             state = "尚未執行"
-            color = "#475569"
-            border = "#cbd5e1"
+            tone = "info"
 
         details = [f"SQLite 同步：{state}"]
         if source and state != "尚未執行":
@@ -727,16 +732,7 @@ class UpdateView(QWidget):
         display = "｜".join(details)
         if label is not None:
             label.setText(display)
-            label.setStyleSheet(
-                "QLabel {"
-                " background-color: #f8fafc;"
-                f" color: {color};"
-                f" border: 1px solid {border};"
-                " border-radius: 6px;"
-                " padding: 6px 10px;"
-                " font-size: 11px;"
-                "}"
-            )
+            _set_update_status_tone(label, tone)
         return display
 
     def _collect_sqlite_sync_results(self, result: Any) -> list[dict[str, Any]]:
@@ -859,32 +855,9 @@ class UpdateView(QWidget):
 
         # 左側導覽列
         self.nav_list = QListWidget()
+        self.nav_list.setObjectName("updateNavigation")
         self.nav_list.setFixedWidth(160)
         self.nav_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        self.nav_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                background-color: rgba(15, 23, 42, 0.5);
-                padding: 5px;
-            }
-            QListWidget::item {
-                height: 38px;
-                border-radius: 6px;
-                padding-left: 10px;
-                margin-bottom: 2px;
-                color: #cbd5e1;
-            }
-            QListWidget::item:hover {
-                background-color: rgba(51, 65, 85, 0.5);
-                color: #ffffff;
-            }
-            QListWidget::item:selected {
-                background-color: #3b82f6;
-                color: white;
-                font-weight: bold;
-            }
-        """)
 
         self._nav_items = [
             ("all", "全部資料"),
@@ -924,7 +897,7 @@ class UpdateView(QWidget):
         title_font.setPointSize(14)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setStyleSheet("color: #f8fafc;")
+        title.setProperty("role", "pageTitle")
         title_layout.addWidget(title)
         title_layout.addStretch()
         info_btn = InfoButton("update", self)
@@ -933,7 +906,8 @@ class UpdateView(QWidget):
 
         # 看板說明
         desc_label = QLabel("此處提供整個系統的資料狀態概覽。您可以點選下方一鍵安全更新來同步最新資料，或點選左側進行個別資料維護。")
-        desc_label.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        desc_label.setProperty("role", "muted")
+        desc_label.setStyleSheet("font-size: 12px;")
         desc_label.setWordWrap(True)
         desc_label.setMinimumWidth(0)
         desc_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -943,17 +917,7 @@ class UpdateView(QWidget):
         # 使用者必須捲到頁尾才能檢查或啟動更新。
         action_group = QGroupBox("立即操作")
         action_group.setObjectName("updateImmediateActions")
-        action_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #bfdbfe;
-                border-radius: 8px;
-                margin-top: 8px;
-                padding-top: 10px;
-                color: #1e3a8a;
-                font-weight: bold;
-                background-color: #eff6ff;
-            }
-        """)
+        _set_update_group_tone(action_group, "info")
         actions_layout = QHBoxLayout(action_group)
         actions_layout.setContentsMargins(10, 8, 10, 8)
         actions_layout.setSpacing(10)
@@ -968,16 +932,8 @@ class UpdateView(QWidget):
         self.data_update_action_summary_label.setTextInteractionFlags(
             Qt.TextSelectableByMouse
         )
-        self.data_update_action_summary_label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            " color: #475569;"
-            " border: 1px solid #cbd5e1;"
-            " border-radius: 6px;"
-            " padding: 6px 10px;"
-            " font-size: 11px;"
-            "}"
-        )
+        self.data_update_action_summary_label.setStyleSheet("font-size: 11px;")
+        _set_update_status_tone(self.data_update_action_summary_label, "info")
         all_layout.addWidget(self.data_update_action_summary_label)
 
         # 數據狀態卡片網格（精美 StatusCard 呈現，取代原先 status_group 內多個 TextEdit）
@@ -1010,15 +966,7 @@ class UpdateView(QWidget):
         # 更新流程時間軸：只投影明確指定的 latest_status artifact，避免卡片
         # 有數字、卻看不出那是何時完成或是否仍是舊結果。
         timeline_group = QGroupBox("資料更新時間軸（唯讀）")
-        timeline_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(timeline_group)
         timeline_layout = QVBoxLayout(timeline_group)
         timeline_layout.setSpacing(8)
         timeline_layout.setContentsMargins(12, 12, 12, 12)
@@ -1029,9 +977,8 @@ class UpdateView(QWidget):
         self.data_update_timeline_summary_label.setTextInteractionFlags(
             Qt.TextSelectableByMouse
         )
-        self.data_update_timeline_summary_label.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px;"
-        )
+        self.data_update_timeline_summary_label.setProperty("role", "muted")
+        self.data_update_timeline_summary_label.setStyleSheet("font-size: 11px;")
         timeline_layout.addWidget(self.data_update_timeline_summary_label)
         self.data_update_timeline_table = QTableWidget(0, 3)
         self.data_update_timeline_table.setHorizontalHeaderLabels(("步驟", "結果", "訊息"))
@@ -1050,7 +997,8 @@ class UpdateView(QWidget):
         )
         timeline_layout.addWidget(self.data_update_timeline_table)
         history_label = QLabel("最近執行歷史（append-only／唯讀）")
-        history_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        history_label.setProperty("role", "muted")
+        history_label.setStyleSheet("font-size: 11px;")
         timeline_layout.addWidget(history_label)
         self.data_update_timeline_history_table = QTableWidget(0, 4)
         self.data_update_timeline_history_table.setHorizontalHeaderLabels(
@@ -1074,15 +1022,7 @@ class UpdateView(QWidget):
 
         # 候選與決策資料域群組
         candidate_group = QGroupBox("候選與決策資料域（治理檢視 / 尚未啟用）")
-        candidate_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(candidate_group)
         candidate_layout = QGridLayout(candidate_group)
         candidate_layout.setSpacing(10)
         candidate_layout.setContentsMargins(12, 12, 12, 12)
@@ -1106,15 +1046,7 @@ class UpdateView(QWidget):
         # P0 官方來源證據面板：與核心 SQLite/CSV 狀態同頁呈現，但明確保留
         # candidate／shadow 邊界，避免使用者誤以為「抓得到」就等於已核准。
         p0_group = QGroupBox("P0 官方來源證據（候選／唯讀，不參與評分）")
-        p0_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(p0_group)
         p0_layout = QVBoxLayout(p0_group)
         p0_layout.setSpacing(8)
         p0_layout.setContentsMargins(12, 12, 12, 12)
@@ -1123,9 +1055,8 @@ class UpdateView(QWidget):
         )
         self.p0_source_control_summary_label.setWordWrap(True)
         self.p0_source_control_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.p0_source_control_summary_label.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px;"
-        )
+        self.p0_source_control_summary_label.setProperty("role", "muted")
+        self.p0_source_control_summary_label.setStyleSheet("font-size: 11px;")
         p0_layout.addWidget(self.p0_source_control_summary_label)
 
         self.p0_source_control_table = QTableWidget(0, 9)
@@ -1186,15 +1117,7 @@ class UpdateView(QWidget):
         # 讓使用者在同一頁看見各 lane 的真實 blocker 與下一步；不在 UI
         # 重新計算 readiness，也不因顯示結果授予任何正式權限。
         readiness_group = QGroupBox("整體程式 readiness（唯讀）")
-        readiness_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(readiness_group)
         readiness_layout = QVBoxLayout(readiness_group)
         readiness_layout.setSpacing(8)
         readiness_layout.setContentsMargins(12, 12, 12, 12)
@@ -1206,9 +1129,8 @@ class UpdateView(QWidget):
         self.program_readiness_summary_label.setTextInteractionFlags(
             Qt.TextSelectableByMouse
         )
-        self.program_readiness_summary_label.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px;"
-        )
+        self.program_readiness_summary_label.setProperty("role", "muted")
+        self.program_readiness_summary_label.setStyleSheet("font-size: 11px;")
         readiness_layout.addWidget(self.program_readiness_summary_label)
         self.program_readiness_table = QTableWidget(0, 4)
         self.program_readiness_table.setHorizontalHeaderLabels(
@@ -1240,34 +1162,13 @@ class UpdateView(QWidget):
         # 一鍵更新與輔助按鈕；容器已在標題下方建立，這裡只填入按鈕。
         self.quick_update_all_btn = QPushButton("快速更新 (跳過大型合併)")
         self.quick_update_all_btn.setMinimumHeight(45)
-        self.quick_update_all_btn.setProperty("variant", "primary")
+        self.quick_update_all_btn.setProperty("variant", "secondary")
         self.quick_update_all_btn.setToolTip(
             "【快速更新 (跳過大型合併)】\n"
             "速度優先。TWSE 每日股價、TPEX 每日股價與券商分點都更新結束日前最近 10 個工作日。\n"
             "TPEX 使用官方歷史查詢 endpoint，會先跳過本機已有 CSV，只補缺少日期。\n"
             "資料會直接增量同步 SQLite，但跳過 stock_data_whole 與分點 merged.csv 的大型合併重寫。"
         )
-        self.quick_update_all_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8b5cf6, stop:1 #6d28d9);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #a78bfa, stop:1 #7c3aed);
-            }
-            QPushButton:pressed {
-                background: #5b21b6;
-            }
-            QPushButton:disabled {
-                background-color: #cbd5e1;
-                color: #94a3b8;
-            }
-        """)
         self.quick_update_all_btn.clicked.connect(self._execute_quick_update_all)
 
         self.safe_update_all_btn = QPushButton("安全更新 (完整 CSV + SQLite)")
@@ -1280,27 +1181,6 @@ class UpdateView(QWidget):
             "完成下載後會重建每日股價大表與分點 merged.csv，再同步寫入 SQLite。\n"
             "此流程耗時較長，但能保證 CSV 歷史資料庫的完整備份。"
         )
-        self.safe_update_all_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #3b82f6, stop:1 #2563eb);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #60a5fa, stop:1 #3b82f6);
-            }
-            QPushButton:pressed {
-                background: #1d4ed8;
-            }
-            QPushButton:disabled {
-                background-color: #cbd5e1;
-                color: #94a3b8;
-            }
-        """)
         self.safe_update_all_btn.clicked.connect(self._execute_safe_update_all)
 
         self.check_status_btn = QPushButton("檢查數據狀態")
@@ -1312,27 +1192,6 @@ class UpdateView(QWidget):
             "並更新上方 6 張狀態卡片的狀態文字（最新 / 待更新 / 異常 / 未檢查）。\n"
             "檢查結果會同步呈現在頂部卡片與下方日誌主控台中。"
         )
-        self.check_status_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f1f5f9;
-                color: #334155;
-                border: 1px solid #cbd5e1;
-                border-radius: 8px;
-                font-size: 13px;
-                font-weight: bold;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background-color: #e2e8f0;
-            }
-            QPushButton:pressed {
-                background-color: #cbd5e1;
-            }
-            QPushButton:disabled {
-                background-color: #f8fafc;
-                color: #cbd5e1;
-            }
-        """)
         self.check_status_btn.clicked.connect(self._check_data_status)
 
         self._action_buttons = [
@@ -1393,7 +1252,7 @@ class UpdateView(QWidget):
             sub_title_font.setPointSize(13)
             sub_title_font.setBold(True)
             sub_title.setFont(sub_title_font)
-            sub_title.setStyleSheet("color: #1e293b;")
+            sub_title.setProperty("role", "pageTitle")
             sub_title_layout.addWidget(sub_title)
             sub_title_layout.addStretch()
             page_layout.addLayout(sub_title_layout)
@@ -1410,7 +1269,8 @@ class UpdateView(QWidget):
         # 4. 底部全域共享的進度條與日誌 console
         # 進度文字與進度條
         self.progress_label = QLabel("")
-        self.progress_label.setStyleSheet("color: #475569; font-size: 12px;")
+        self.progress_label.setProperty("role", "muted")
+        self.progress_label.setStyleSheet("font-size: 12px;")
         self.progress_label.setVisible(False)
         main_layout.addWidget(self.progress_label)
 
@@ -1418,96 +1278,37 @@ class UpdateView(QWidget):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                text-align: center;
-                background-color: #f1f5f9;
-                height: 18px;
-            }
-            QProgressBar::chunk {
-                background-color: #3b82f6;
-                border-radius: 5px;
-            }
-        """)
         main_layout.addWidget(self.progress_bar)
 
         self.cancel_update_btn = QPushButton("取消目前工作", self)
         self.cancel_update_btn.setObjectName("cancel_update_btn")
         self.cancel_update_btn.setVisible(False)
         self.cancel_update_btn.setEnabled(False)
+        self.cancel_update_btn.setProperty("variant", "warning")
         self.cancel_update_btn.setToolTip(
             "送出合作式取消。系統會在目前 API 請求、日期或檔案寫入安全收尾後停止，"
             "不會強制終止正在使用 SQLite／檔案資源的執行緒。"
         )
-        self.cancel_update_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #fff7ed;
-                color: #9a3412;
-                border: 1px solid #fdba74;
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #ffedd5;
-            }
-            QPushButton:disabled {
-                background-color: #f8fafc;
-                color: #94a3b8;
-                border-color: #cbd5e1;
-            }
-        """)
         self.cancel_update_btn.clicked.connect(self._request_current_worker_cancel)
         main_layout.addWidget(self.cancel_update_btn)
 
         self.sqlite_sync_status_label = QLabel("SQLite 同步：尚未執行", self)
         self.sqlite_sync_status_label.setWordWrap(True)
-        self.sqlite_sync_status_label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            " color: #475569;"
-            " border: 1px solid #cbd5e1;"
-            " border-radius: 6px;"
-            " padding: 6px 10px;"
-            " font-size: 11px;"
-            "}"
-        )
+        self.sqlite_sync_status_label.setStyleSheet("font-size: 11px;")
+        _set_update_status_tone(self.sqlite_sync_status_label, "info")
         main_layout.addWidget(self.sqlite_sync_status_label)
 
         # 日誌 Console
         log_group = QGroupBox("日誌主控台")
-        log_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #cbd5e1;
-                border-radius: 8px;
-                margin-top: 8px;
-                font-weight: bold;
-                color: #475569;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-        """)
+        _set_update_group_tone(log_group)
         log_layout = QVBoxLayout(log_group)
         log_layout.setContentsMargins(10, 2, 10, 6)
         log_layout.setSpacing(4)
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #0f172a;
-                color: #cbd5e1;
-                font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
-                font-size: 11px;
-                border: 1px solid #1e293b;
-                border-radius: 6px;
-            }
-        """)
+        self.log_text.setObjectName("updateLogText")
+        self.log_text.setProperty("role", "code")
         log_layout.addWidget(self.log_text)
 
         # 日誌輔助工具列放在底部，避免標題下方出現整條空白列
@@ -1516,20 +1317,9 @@ class UpdateView(QWidget):
         log_toolbar.setSpacing(0)
         log_toolbar.addStretch()
         clear_log_btn = QPushButton("清除日誌")
-        clear_log_btn.setFixedHeight(16)
-        clear_log_btn.setStyleSheet("""
-            QPushButton {
-                min-height: 0px;
-                padding: 0px 4px;
-                background-color: transparent;
-                color: #64748b;
-                border: none;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                color: #ef4444;
-            }
-        """)
+        clear_log_btn.setObjectName("clearUpdateLog")
+        clear_log_btn.setFixedHeight(20)
+        clear_log_btn.setProperty("variant", "ghost")
         clear_log_btn.clicked.connect(lambda: self.log_text.clear())
         log_toolbar.addWidget(clear_log_btn)
         log_layout.addLayout(log_toolbar)
@@ -1605,17 +1395,8 @@ class UpdateView(QWidget):
         """在來源分頁放置可見的唯讀狀態摘要。"""
         detail_status = QLabel("尚未檢查此資料源狀態", parent)
         detail_status.setWordWrap(True)
-        detail_status.setStyleSheet("""
-            QLabel {
-                background-color: #f8fafc;
-                color: #334155;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 8px 10px;
-                font-size: 12px;
-                line-height: 1.4;
-            }
-        """)
+        detail_status.setStyleSheet("font-size: 12px;")
+        _set_update_status_tone(detail_status, "info")
         setattr(parent, f"{key}_detail_status_label", detail_status)
         layout.addWidget(detail_status)
 
@@ -1644,43 +1425,13 @@ class UpdateView(QWidget):
             detail = f"{detail}｜{message}"
         label.setText(f"TPEX 背景任務：{status_text}{detail}")
 
-        color = {
-            "info": "#334155",
-            "success": "#166534",
-            "warning": "#92400e",
-            "error": "#b91c1c",
-        }.get(level, "#334155")
-        border = {
-            "info": "#cbd5e1",
-            "success": "#86efac",
-            "warning": "#fbbf24",
-            "error": "#fca5a5",
-        }.get(level, "#cbd5e1")
-        label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            f" color: {color};"
-            f" border: 1px solid {border};"
-            " border-radius: 6px;"
-            " padding: 8px 10px;"
-            " font-size: 12px;"
-            "}"
-        )
+        _set_update_status_tone(label, level if level in {"info", "success", "warning", "error"} else "info")
 
     def _add_source_tab_content(self, layout: QVBoxLayout, key: str):
         """為個別資料源維護分頁建立專屬操作與手動配置界面"""
         if key in {"institutional_flow", "credit_transaction", "tdcc_shareholding", "scheduler_status"}:
             info_group = QGroupBox("資料域狀態與治理說明")
-            info_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(info_group)
             info_layout = QVBoxLayout(info_group)
             info_layout.setSpacing(10)
 
@@ -1699,7 +1450,8 @@ class UpdateView(QWidget):
 
             text_label = QLabel(status_desc.get(key, ""))
             text_label.setWordWrap(True)
-            text_label.setStyleSheet("color: #475569; font-size: 12px; line-height: 140%;")
+            text_label.setProperty("role", "muted")
+            text_label.setStyleSheet("font-size: 12px;")
             info_layout.addWidget(text_label)
 
             if key in {"institutional_flow", "credit_transaction", "tdcc_shareholding"}:
@@ -1732,7 +1484,7 @@ class UpdateView(QWidget):
                         "  --confirm apply-phase3c-candidate-ingestion"
                     )
                 cli_box.setPlainText(cmd_str)
-                cli_box.setStyleSheet("background-color: #0f172a; color: #38bdf8; font-family: monospace; font-size: 11px;")
+                cli_box.setProperty("role", "code")
                 info_layout.addWidget(QLabel("可複製的安全受控 CLI 回補命令 (寫入隔離 Candidate DB)："))
                 info_layout.addWidget(cli_box)
 
@@ -1741,7 +1493,7 @@ class UpdateView(QWidget):
                 self.scheduler_status_log_box = log_box
                 log_box.setReadOnly(True)
                 log_box.setPlaceholderText("背景排程尚未啟動，目前無執行日誌。")
-                log_box.setStyleSheet("background-color: #0f172a; color: #cbd5e1; font-family: monospace; font-size: 11px;")
+                log_box.setProperty("role", "code")
                 status_path = self.data_freshness_status_path
                 if status_path is not None and status_path.exists():
                     try:
@@ -1764,31 +1516,11 @@ class UpdateView(QWidget):
                 info_layout.addWidget(log_box)
 
             op_group = QGroupBox("數據操作")
-            op_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(op_group)
             button_layout = QHBoxLayout(op_group)
             check_btn = QPushButton("檢查此資料源狀態")
             check_btn.setMinimumHeight(35)
-            check_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f8fafc;
-                    color: #475569;
-                    border: 1px solid #cbd5e1;
-                    border-radius: 6px;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #f1f5f9;
-                }
-            """)
+            check_btn.setProperty("variant", "ghost")
             check_btn.clicked.connect(lambda _checked=False, source=key: self._check_source_detail(source, force=True))
             button_layout.addWidget(check_btn)
 
@@ -1807,18 +1539,6 @@ class UpdateView(QWidget):
                     "只寫入 PHASE3C_CANDIDATE_DB_PATH 指定的隔離 Candidate DB；"
                     "不會寫入正式 twstock.db，也不會接入評分／推薦／交易。"
                 )
-                update_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2563eb;
-                        color: white;
-                        border: none;
-                        border-radius: 6px;
-                        padding: 6px 12px;
-                        font-weight: bold;
-                    }
-                    QPushButton:hover { background-color: #1d4ed8; }
-                    QPushButton:disabled { background-color: #cbd5e1; color: #64748b; }
-                """)
                 update_btn.clicked.connect(
                     lambda _checked=False, source=key: self._execute_phase3c_candidate_update(source)
                 )
@@ -1853,22 +1573,14 @@ class UpdateView(QWidget):
         }
 
         desc_label = QLabel(descriptions.get(key, "檢查此資料來源的更新狀態。"))
-        desc_label.setStyleSheet("color: #64748b; font-size: 12px;")
+        desc_label.setProperty("role", "muted")
+        desc_label.setStyleSheet("font-size: 12px;")
         desc_label.setWordWrap(True)
         layout.addWidget(desc_label)
 
         if key == "monthly_revenue":
             config_group = QGroupBox("MOPS 月營收回填設定")
-            config_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(config_group)
             form_layout = QFormLayout(config_group)
             form_layout.setSpacing(8)
 
@@ -1925,23 +1637,11 @@ class UpdateView(QWidget):
                 "下方抓取只建立候選快照，不會直接寫入正式資料庫。"
             )
             self.monthly_revenue_candidate_hint_label.setWordWrap(True)
-            self.monthly_revenue_candidate_hint_label.setStyleSheet(
-                "color: #92400e; background-color: #fffbeb; "
-                "border: 1px solid #fbbf24; border-radius: 6px; padding: 6px 10px;"
-            )
+            self.monthly_revenue_candidate_hint_label.setProperty("role", "hint")
             layout.addWidget(self.monthly_revenue_candidate_hint_label)
 
             op_group = QGroupBox("月營收資料操作")
-            op_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(op_group)
             button_layout = QHBoxLayout(op_group)
             button_layout.setSpacing(10)
 
@@ -1953,18 +1653,7 @@ class UpdateView(QWidget):
                 "只寫入 output/monthly_revenue_mops_snapshots 候選檔與 raw HTML；"
                 "不寫入 SQLite，也不自動修改 availability mapping。"
             )
-            self.monthly_revenue_fetch_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #d97706;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover { background-color: #b45309; }
-                QPushButton:disabled { background-color: #cbd5e1; color: #64748b; }
-            """)
+            self.monthly_revenue_fetch_btn.setProperty("variant", "warning")
             self.monthly_revenue_fetch_btn.clicked.connect(
                 self._execute_monthly_revenue_candidate_fetch
             )
@@ -1973,6 +1662,7 @@ class UpdateView(QWidget):
             self.monthly_revenue_dry_run_btn = QPushButton("先檢查，不寫入")
             self.monthly_revenue_dry_run_btn.setObjectName("monthly_revenue_dry_run_btn")
             self.monthly_revenue_dry_run_btn.setMinimumHeight(35)
+            self.monthly_revenue_dry_run_btn.setProperty("variant", "ghost")
             self.monthly_revenue_dry_run_btn.setToolTip("只檢查可回填筆數與診斷結果，不寫入正式資料庫。")
             self.monthly_revenue_dry_run_btn.clicked.connect(
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=False)
@@ -1983,19 +1673,7 @@ class UpdateView(QWidget):
             self.monthly_revenue_apply_btn.setObjectName("monthly_revenue_apply_btn")
             self.monthly_revenue_apply_btn.setMinimumHeight(35)
             self.monthly_revenue_apply_btn.setToolTip("跳出確認視窗後，使用正式可得日對照檔把 MOPS 月營收寫入正式月營收資料表。")
-            self.monthly_revenue_apply_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #10b981;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
+            self.monthly_revenue_apply_btn.setProperty("variant", "success")
             self.monthly_revenue_apply_btn.clicked.connect(
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True)
             )
@@ -2009,16 +1687,7 @@ class UpdateView(QWidget):
         # 針對需要日期設定的分頁（daily, market, industry, broker_branch）
         if key in {"daily", "market", "industry", "broker_branch"}:
             date_group = QGroupBox("手動下載日期範圍")
-            date_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(date_group)
             date_layout = QFormLayout(date_group)
             date_layout.setSpacing(8)
 
@@ -2067,16 +1736,7 @@ class UpdateView(QWidget):
         # 針對技術指標計算分頁
         if key == "technical":
             tech_group = QGroupBox("技術指標計算配置")
-            tech_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(tech_group)
             tech_layout = QVBoxLayout(tech_group)
             tech_layout.setSpacing(8)
 
@@ -2117,16 +1777,7 @@ class UpdateView(QWidget):
 
         # 操作按鈕面板
         op_group = QGroupBox("數據操作")
-        op_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #e2e8f0;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 10px;
-                color: #475569;
-                font-weight: bold;
-            }
-        """)
+        _set_update_group_tone(op_group)
         button_layout = QHBoxLayout(op_group)
         button_layout.setSpacing(10)
 
@@ -2137,18 +1788,7 @@ class UpdateView(QWidget):
             "單獨檢查此項資料來源在本地原始檔案目錄以及 SQLite 資料庫中的最新狀態（最新日期、總記錄數），\n"
             "並更新頂部的對應數據卡片與下方日誌主控台。"
         )
-        check_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f8fafc;
-                color: #475569;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #f1f5f9;
-            }
-        """)
+        check_btn.setProperty("variant", "ghost")
         check_btn.clicked.connect(lambda _checked=False, source=key: self._check_source_detail(source, force=True))
         button_layout.addWidget(check_btn)
 
@@ -2162,19 +1802,7 @@ class UpdateView(QWidget):
                 f"每日股價手動下載會跑 TWSE 日期範圍，TPEX 則改為區間流程嘗試抓取每個交易日；若 API 只回傳最近交易日，會自動以回應日覆蓋對應檔案。\n"
                 f"提交後會自動同步 daily_price / daily_price_tpex 到 SQLite，並進行增量技術指標計算。"
             )
-            update_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3b82f6;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #2563eb;
-                }
-            """)
+            update_btn.setProperty("variant", "primary")
             update_btn.clicked.connect(lambda _checked=False, k=key: self._dispatch_update(k))
             button_layout.addWidget(update_btn)
             if key == "daily":
@@ -2185,19 +1813,7 @@ class UpdateView(QWidget):
                     "將以背景方式執行 TPEX 區間抓取（含 fallback / 重複日短路）、同步日價到 SQLite，並立即進行技術指標增量更新。\n"
                     "任務會寫入背景狀態檔，可用「檢查背景任務狀態」隨時查看最新進度。"
                 )
-                self.tpex_background_btn.setStyleSheet("""
-                    QPushButton {
-                        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f59e0b, stop:1 #d97706);
-                        color: white;
-                        border: none;
-                        border-radius: 6px;
-                        font-weight: bold;
-                        padding: 6px 12px;
-                    }
-                    QPushButton:hover {
-                        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fbbf24, stop:1 #f59e0b);
-                    }
-                """)
+                self.tpex_background_btn.setProperty("variant", "warning")
                 self.tpex_background_btn.clicked.connect(self._execute_background_tpex_refresh)
                 button_layout.addWidget(self.tpex_background_btn)
 
@@ -2207,115 +1823,55 @@ class UpdateView(QWidget):
                     "【檢查背景任務狀態】\n"
                     "讀取背景任務的 JSON 狀態檔，確認目前是 running / done / failed，以及 TPEX、SQLite、技術指標三個步驟結果。"
                 )
-                self.tpex_background_status_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #f8fafc;
-                        color: #334155;
-                        border: 1px solid #cbd5e1;
-                        border-radius: 6px;
-                        font-weight: bold;
-                        padding: 6px 12px;
-                    }
-                    QPushButton:hover {
-                        background-color: #e2e8f0;
-                    }
-                """)
+                self.tpex_background_status_btn.setProperty("variant", "ghost")
                 self.tpex_background_status_btn.clicked.connect(self._show_tpex_background_status)
                 button_layout.addWidget(self.tpex_background_status_btn)
 
         if key == "daily":
             self.merge_btn = QPushButton("合併每日股價")
             self.merge_btn.setMinimumHeight(35)
+            self.merge_btn.setProperty("variant", "success")
             self.merge_btn.setToolTip(
                 "【合併每日股價】\n"
                 "將本地 daily_price/ 與 daily_price_tpex/ 目錄下下載好的單日股價 CSV 檔案，\n"
                 "增量同步寫入至 SQLite 資料庫的 daily_prices 表中，\n"
                 "以便大盤檢測、策略推薦與回測引擎能夠讀取到最新數據。"
             )
-            self.merge_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #10b981;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
             self.merge_btn.clicked.connect(self._execute_merge)
             button_layout.addWidget(self.merge_btn)
         elif key == "broker_branch":
             self.merge_broker_branch_btn = QPushButton("合併券商分點")
             self.merge_broker_branch_btn.setMinimumHeight(35)
+            self.merge_broker_branch_btn.setProperty("variant", "success")
             self.merge_broker_branch_btn.setToolTip(
                 "【合併券商分點】\n"
                 "將本地 broker_flow/ 內目前啟用的追蹤分點買賣超 CSV 數據進行增量合併，\n"
                 "並同步寫入至 SQLite 資料庫的 broker_flows 表中，供主力流向分析使用。"
             )
-            self.merge_broker_branch_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #10b981;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
             self.merge_broker_branch_btn.clicked.connect(self._execute_merge_broker_branch)
             button_layout.addWidget(self.merge_broker_branch_btn)
         elif key == "technical":
             self.calculate_tech_btn = QPushButton("計算技術指標")
             self.calculate_tech_btn.setMinimumHeight(35)
+            self.calculate_tech_btn.setProperty("variant", "success")
             self.calculate_tech_btn.setToolTip(
                 "【計算技術指標】\n"
                 "依據上方的指標配置，計算個股的 KD, MACD, RSI, ADX 與均線等技術指標，\n"
                 "並將計算結果高速儲存至 SQLite 資料庫中。推薦與回測引擎非常依賴此指標，\n"
                 "因此手動合併完股價後，務必要點擊此處計算技術指標，系統功能才能正常運作。"
             )
-            self.calculate_tech_btn.setStyleSheet("""
-                QPushButton {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #10b981, stop:1 #059669);
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 16px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #34d399, stop:1 #10b981);
-                }
-            """)
             self.calculate_tech_btn.clicked.connect(self._execute_calculate_technical_indicators)
             button_layout.addWidget(self.calculate_tech_btn)
 
         export_btn = QPushButton("匯出 CSV 備案")
         export_btn.setMinimumHeight(35)
+        export_btn.setProperty("variant", "secondary")
         export_btn.setToolTip(
             "【匯出 CSV 備案】\n"
             "將 SQLite 資料庫中此資料來源所屬的資料表，匯出為 Excel 可直接開啟的\n"
             "UTF-8 with BOM 編碼的 CSV 檔案。您可以選擇匯出「最近範圍」或「全部歷史」。\n"
             "這屬於離線備份與人工調研的輔助備案功能，日常更新不需要使用。"
         )
-        export_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ffffff;
-                color: #475569;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #f1f5f9;
-                border-color: #94a3b8;
-            }
-        """)
         export_btn.clicked.connect(lambda _checked=False, source=key: self._execute_export_csv(source))
         button_layout.addWidget(export_btn)
         button_layout.addStretch()
@@ -2335,52 +1891,24 @@ class UpdateView(QWidget):
 
         if key == "daily":
             danger_group = QGroupBox("高風險操作區 (Danger Zone)")
-            danger_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #ef4444;
-                    border-radius: 8px;
-                    margin-top: 15px;
-                    padding-top: 10px;
-                    font-weight: bold;
-                    color: #ef4444;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 3px 0 3px;
-                }
-            """)
+            _set_update_group_tone(danger_group, "danger")
             danger_layout = QVBoxLayout(danger_group)
             danger_layout.setSpacing(6)
 
             danger_desc = QLabel("注意：強制重新合併將完全忽略現有合併結果，並重新讀取 daily_price/ 底下的所有 CSV 檔案寫入資料庫。\n此操作耗時較長，通常僅在資料庫損毀或修復資料時使用。")
-            danger_desc.setStyleSheet("color: #64748b; font-size: 11px;")
+            danger_desc.setProperty("role", "muted")
+            danger_desc.setStyleSheet("font-size: 11px;")
             danger_desc.setWordWrap(True)
 
             self.force_merge_btn = QPushButton("強制重新合併所有每日股價")
             self.force_merge_btn.setMinimumHeight(35)
+            self.force_merge_btn.setProperty("variant", "danger")
             self.force_merge_btn.setToolTip(
                 "【強制重新合併所有每日股價】\n"
                 "高風險操作！忽略資料庫中已有的合併狀態，全量掃描並重新將\n"
                 "raw/daily_price/ 底下的所有歷史股價 CSV 檔案重新寫入資料庫的 daily_prices 表。\n"
                 "可能需要非常長的時間，通常僅在資料庫損毀或需要完全修復重整數據時使用。"
             )
-            self.force_merge_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #ef4444;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #dc2626;
-                }
-                QPushButton:pressed {
-                    background-color: #991b1b;
-                }
-            """)
             self.force_merge_btn.clicked.connect(self._execute_force_merge)
 
             danger_layout.addWidget(danger_desc)
@@ -2831,34 +2359,12 @@ class UpdateView(QWidget):
         date_edit.setDisplayFormat("yyyy-MM-dd")
         date_edit.setMinimumWidth(132)
         date_edit.setMaximumWidth(150)
-        date_edit.setStyleSheet("""
-            QDateEdit {
-                padding-right: 7px;
-            }
-        """)
 
     def _create_calendar_button(self, date_edit: QDateEdit) -> QPushButton:
         button = QPushButton("日曆")
         button.setMaximumWidth(52)
+        button.setProperty("variant", "ghost")
         button.setToolTip("開啟日曆選擇日期")
-        button.setStyleSheet("""
-            QPushButton {
-                background-color: #f8fafc;
-                color: #334155;
-                border: 1px solid #94a3b8;
-                border-radius: 5px;
-                padding: 3px 6px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #e0f2fe;
-                border-color: #0284c7;
-            }
-            QPushButton:pressed {
-                background-color: #bae6fd;
-            }
-        """)
         button.clicked.connect(lambda _checked=False, edit=date_edit, anchor=button: self._show_calendar_popup(edit, anchor))
         return button
 
@@ -2873,18 +2379,23 @@ class UpdateView(QWidget):
         calendar.setMinimumSize(340, 280)
         calendar.setCurrentPage(selected_date.year(), selected_date.month())
         calendar.setSelectedDate(selected_date)
-        calendar.setStyleSheet("""
+        calendar.setStyleSheet(f"""
             QCalendarWidget QToolButton {
                 min-width: 44px;
                 min-height: 24px;
                 padding: 2px 6px;
+                background: {MIDNIGHT_ANALYST.surface_2};
+                color: {MIDNIGHT_ANALYST.text_primary};
+                border: 1px solid {MIDNIGHT_ANALYST.border};
             }
             QCalendarWidget QAbstractItemView {
                 font-size: 12px;
                 min-width: 300px;
                 min-height: 210px;
-                selection-background-color: #2563eb;
-                selection-color: white;
+                background: {MIDNIGHT_ANALYST.surface_1};
+                color: {MIDNIGHT_ANALYST.text_primary};
+                selection-background-color: {MIDNIGHT_ANALYST.table_selected};
+                selection-color: {MIDNIGHT_ANALYST.text_primary};
             }
         """)
         calendar.clicked.connect(lambda selected, edit=date_edit, frame=popup: self._apply_calendar_date(edit, selected, frame))

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QMessageBox, QDialog,
     QDialogButtonBox, QLineEdit, QTextEdit, QListWidget,
     QListWidgetItem, QHeaderView, QMenu, QAbstractItemView,
-    QGroupBox, QSplitter
+    QGroupBox, QSplitter, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QAction
@@ -102,7 +102,7 @@ class WatchlistView(QWidget):
     def _setup_ui(self):
         """設置 UI"""
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(0)
+        main_layout.setSpacing(8)
         main_layout.setContentsMargins(10, 10, 10, 10)
         
         # 標題列（標題 + InfoButton）
@@ -117,40 +117,114 @@ class WatchlistView(QWidget):
         info_btn = InfoButton("watchlist", self)
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
-        
-        # 使用垂直 Splitter 分割主要工作區和管理區
-        main_splitter = QSplitter(Qt.Vertical)
-        
-        # ========== 上方：主要工作區（60-70%高度）==========
-        # 觀察清單表格（主要工作區）
-        work_area_widget = QWidget()
-        work_area_layout = QVBoxLayout(work_area_widget)
-        work_area_layout.setSpacing(5)
-        work_area_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 工作區標題（小標題）
+
+        page_hint = QLabel("左側整理候選股票；右側保存可重用的選股清單。")
+        page_hint.setProperty("role", "muted")
+        page_hint.setObjectName("watchlistPageHint")
+        page_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        main_layout.addWidget(page_hint)
+
+        # 桌面版只保留兩個有清楚責任的主面板：候選池與已保存清單；
+        # 窄版才回到上下排列，維持同一套閱讀順序。
+        main_splitter = QSplitter(Qt.Horizontal)
+        main_splitter.setObjectName("watchlistMainSplitter")
+        main_splitter.setChildrenCollapsible(False)
+        main_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.main_splitter = main_splitter
+        self._watchlist_layout_mode: bool | None = None
+
+        # ========== 左側：候選池主工作區 ==========
+        candidate_panel = QGroupBox("觀察候選池")
+        candidate_panel.setObjectName("watchlistCandidatePanel")
+        candidate_layout = QVBoxLayout(candidate_panel)
+        candidate_layout.setSpacing(8)
+        candidate_layout.setContentsMargins(12, 14, 12, 12)
+
+        # 保留可被搜尋與輔助工具辨識的頁內標題；視覺上由外層面板標題統一呈現。
         work_title = QLabel("觀察候選池")
         work_title_font = QFont()
         work_title_font.setPointSize(11)
         work_title_font.setBold(True)
         work_title.setFont(work_title_font)
-        work_area_layout.addWidget(work_title)
-        
-        # 表格（主要內容，佔用大部分空間）
+        self.work_title = work_title
+        candidate_layout.addWidget(work_title)
+
+        candidate_hint = QLabel("選取一檔股票查看摘要；雙擊或按鈕可開啟完整研究報告。")
+        candidate_hint.setProperty("role", "muted")
+        candidate_hint.setObjectName("watchlistCandidateHint")
+        self.candidate_hint = candidate_hint
+        candidate_layout.addWidget(candidate_hint)
+
+        # 操作區留在候選池內，讓使用者不必在三個區塊間來回尋找。
+        watchlist_ops_group = QGroupBox("候選池操作")
+        watchlist_ops_group.setObjectName("watchlistOpsGroup")
+        watchlist_ops_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        watchlist_ops_group.setFixedHeight(64)
+        self.watchlist_ops_group = watchlist_ops_group
+        watchlist_ops_layout = QHBoxLayout(watchlist_ops_group)
+        watchlist_ops_layout.setSpacing(8)
+        watchlist_ops_layout.setContentsMargins(8, 8, 8, 8)
+
+        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn.setProperty("variant", "secondary")
+        self.refresh_btn.setMinimumHeight(30)
+        self.refresh_btn.clicked.connect(self._load_watchlist)
+        watchlist_ops_layout.addWidget(self.refresh_btn)
+
+        self.add_btn = QPushButton("新增股票")
+        self.add_btn.setProperty("variant", "secondary")
+        self.add_btn.setMinimumHeight(30)
+        self.add_btn.clicked.connect(self._show_add_dialog)
+        watchlist_ops_layout.addWidget(self.add_btn)
+
+        self.remove_btn = QPushButton("移除選中")
+        self.remove_btn.setProperty("variant", "secondary")
+        self.remove_btn.setMinimumHeight(30)
+        self.remove_btn.clicked.connect(self._remove_selected)
+        watchlist_ops_layout.addWidget(self.remove_btn)
+
+        self.clear_btn = QPushButton("清空候選池")
+        self.clear_btn.setProperty("variant", "danger")
+        self.clear_btn.setMinimumHeight(30)
+        self.clear_btn.clicked.connect(self._clear_watchlist)
+        watchlist_ops_layout.addWidget(self.clear_btn)
+        watchlist_ops_layout.addStretch()
+        candidate_layout.addWidget(watchlist_ops_group)
+
+        # 表格是候選池的主內容，讓它取得左側大部分可用高度。
         self.stocks_table = QTableView()
         apply_financial_table_style(self.stocks_table)
         self.stocks_table.setSelectionBehavior(QTableView.SelectRows)
         self.stocks_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.stocks_table.setSortingEnabled(True)
+        self.stocks_table.setMinimumHeight(180)
         self.stocks_table.horizontalHeader().setStretchLastSection(True)
-        
+
         # 右鍵選單
         self.stocks_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.stocks_table.customContextMenuRequested.connect(self._show_context_menu)
-        
-        work_area_layout.addWidget(self.stocks_table, stretch=1)
+
+        candidate_layout.addWidget(self.stocks_table, stretch=1)
         self.stocks_table.doubleClicked.connect(self._open_stock_analysis)
+
+        # 研究摘要明確標示，不再讓 QTextEdit 看起來像不明原因的第三個區塊。
+        analysis_group = QGroupBox("個股研究摘要")
+        analysis_group.setObjectName("watchlistResearchSummary")
+        analysis_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        analysis_group.setFixedHeight(142)
+        self.analysis_group = analysis_group
+        analysis_layout = QVBoxLayout(analysis_group)
+        analysis_layout.setSpacing(6)
+        analysis_layout.setContentsMargins(8, 10, 8, 8)
+        analysis_header_layout = QHBoxLayout()
+        analysis_hint = QLabel("只讀取已保存的推薦證據，不重新計算。")
+        analysis_hint.setProperty("role", "muted")
+        self.analysis_hint = analysis_hint
+        analysis_header_layout.addWidget(analysis_hint)
+        analysis_header_layout.addStretch()
+
         self.stock_analysis_btn = QPushButton("查看選中個股研究報告")
+        self.stock_analysis_btn.setProperty("variant", "secondary")
         self.stock_analysis_btn.setAccessibleName("查看選中個股研究報告")
         self.stock_analysis_btn.setToolTip(
             "選取一檔股票後開啟同一份個股研究報告；也可雙擊或從右鍵選單開啟。"
@@ -159,138 +233,264 @@ class WatchlistView(QWidget):
         # MainWindow 以 stockResearchRequested 作為唯一正式報告入口。
         self.stock_research_btn = self.stock_analysis_btn
         self.stock_analysis_btn.clicked.connect(self._open_stock_analysis)
-        work_area_layout.addWidget(self.stock_analysis_btn)
+        analysis_header_layout.addWidget(self.stock_analysis_btn)
+        analysis_layout.addLayout(analysis_header_layout)
+
         self.analysis_text = QTextEdit()
+        self.analysis_text.setObjectName("watchlistAnalysisText")
         self.analysis_text.setReadOnly(True)
-        self.analysis_text.setMinimumHeight(130)
+        self.analysis_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.analysis_text.setFixedHeight(90)
         self.analysis_text.setPlaceholderText("選取一檔股票，查看已保存的推薦分數、理由與分析日期。")
-        work_area_layout.addWidget(self.analysis_text)
-        
-        # 統計信息（放在表格下方）
-        self.stats_label = QLabel("共 0 檔股票")
-        work_area_layout.addWidget(self.stats_label)
-        self.status_label = self.stats_label
-        self._set_status_label("尚未載入", level="info")
-        
-        main_splitter.addWidget(work_area_widget)
-        
-        # ========== 下方：管理操作區（30-40%高度）==========
-        management_widget = QWidget()
-        management_layout = QHBoxLayout(management_widget)
-        management_layout.setSpacing(10)
-        management_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 使用水平 Splitter 分割左右兩側
-        management_splitter = QSplitter(Qt.Horizontal)
-        
-        # 左側：候選池操作區
-        watchlist_ops_group = QGroupBox("候選池操作")
-        watchlist_ops_layout = QVBoxLayout(watchlist_ops_group)
-        watchlist_ops_layout.setSpacing(8)
-        watchlist_ops_layout.setContentsMargins(10, 12, 10, 10)
-        
-        # 操作按鈕（垂直排列，更緊湊）
-        self.refresh_btn = QPushButton("刷新")
-        self.refresh_btn.clicked.connect(self._load_watchlist)
-        watchlist_ops_layout.addWidget(self.refresh_btn)
-        
-        self.add_btn = QPushButton("新增股票")
-        self.add_btn.setProperty("variant", "primary")
-        self.add_btn.clicked.connect(self._show_add_dialog)
-        watchlist_ops_layout.addWidget(self.add_btn)
-        
-        self.remove_btn = QPushButton("移除選中")
-        self.remove_btn.clicked.connect(self._remove_selected)
-        watchlist_ops_layout.addWidget(self.remove_btn)
-        
-        self.clear_btn = QPushButton("清空候選池")
-        self.clear_btn.setProperty("variant", "danger")
-        self.clear_btn.clicked.connect(self._clear_watchlist)
-        watchlist_ops_layout.addWidget(self.clear_btn)
-        
-        watchlist_ops_layout.addStretch()
-        
+        analysis_layout.addWidget(self.analysis_text)
+        candidate_layout.addWidget(analysis_group)
+
+        # 主要下一步與保存動作集中在候選池底部，並與資料區保持明確界線。
+        next_actions_group = QGroupBox("下一步")
+        next_actions_group.setObjectName("watchlistNextActions")
+        next_actions_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        next_actions_group.setFixedHeight(64)
+        self.next_actions_group = next_actions_group
+        next_actions_layout = QHBoxLayout(next_actions_group)
+        next_actions_layout.setSpacing(8)
+        next_actions_layout.setContentsMargins(8, 8, 8, 8)
+        self.next_actions_hint = QLabel("研究候選池，或保存成可重用的選股清單。")
+        self.next_actions_hint.setProperty("role", "muted")
+        next_actions_layout.addWidget(self.next_actions_hint)
+        next_actions_layout.addStretch()
+
         self.send_to_research_lab_btn = QPushButton("送 Research Lab 批次回測")
         self.send_to_research_lab_btn.setProperty("variant", "primary")
         self.send_to_research_lab_btn.setEnabled(False)
         self.send_to_research_lab_btn.setToolTip("候選池目前沒有股票，加入股票後即可送 Research Lab 批次回測。")
         self.send_to_research_lab_btn.clicked.connect(self._send_to_research_lab)
-        watchlist_ops_layout.addWidget(self.send_to_research_lab_btn)
+        next_actions_layout.addWidget(self.send_to_research_lab_btn)
 
-        # 保存為選股清單按鈕
         self.save_to_universe_btn = QPushButton("保存為選股清單")
+        self.save_to_universe_btn.setProperty("variant", "secondary")
         self.save_to_universe_btn.setToolTip("將目前候選池作為批次股票回測的輸入。")
         self.save_to_universe_btn.clicked.connect(self._save_watchlist_to_universe)
-        watchlist_ops_layout.addWidget(self.save_to_universe_btn)
-        
-        management_splitter.addWidget(watchlist_ops_group)
-        
-        # 右側：選股清單管理
+        next_actions_layout.addWidget(self.save_to_universe_btn)
+        candidate_layout.addWidget(next_actions_group)
+
+        # 數量與狀態分開，讓「有幾檔」不會被「已更新」覆蓋。
+        candidate_status_layout = QHBoxLayout()
+        self.stats_label = QLabel("共 0 檔股票")
+        self.stats_label.setObjectName("watchlistStats")
+        self.stats_label.setProperty("role", "summary")
+        candidate_status_layout.addWidget(self.stats_label)
+
+        self.status_label = QLabel("尚未載入")
+        self.status_label.setObjectName("watchlistStatus")
+        self.status_label.setProperty("role", "status")
+        self.status_label.setWordWrap(True)
+        candidate_status_layout.addWidget(self.status_label, stretch=1)
+        self._set_status_label("尚未載入", level="info")
+        candidate_layout.addLayout(candidate_status_layout)
+
+        main_splitter.addWidget(candidate_panel)
+
+        # ========== 右側：已保存選股清單 ==========
+        # 右側只處理保存後的清單，不再混入候選池的新增／移除操作。
+        universe_group = QGroupBox("已保存選股清單")
+        universe_group.setObjectName("watchlistUniversePanel")
+        universe_layout = QVBoxLayout(universe_group)
+        universe_layout.setSpacing(8)
+        universe_layout.setContentsMargins(12, 14, 12, 12)
+
+        universe_hint = QLabel("選取清單查看股票；可載入回候選池或管理清單內容。")
+        universe_hint.setProperty("role", "muted")
+        universe_hint.setObjectName("watchlistUniverseHint")
+        self.universe_hint = universe_hint
+        universe_layout.addWidget(universe_hint)
+
+        list_header_layout = QHBoxLayout()
+        list_header = QLabel("已保存清單")
+        list_header.setFont(work_title_font)
+        list_header_layout.addWidget(list_header)
+        list_header_layout.addStretch()
+        self.refresh_universe_btn = QPushButton("刷新")
+        self.refresh_universe_btn.setProperty("variant", "ghost")
+        self.refresh_universe_btn.setMinimumHeight(30)
+        self.refresh_universe_btn.setMaximumWidth(72)
+        self.refresh_universe_btn.clicked.connect(self._refresh_universe_list)
+        list_header_layout.addWidget(self.refresh_universe_btn)
+        universe_layout.addLayout(list_header_layout)
+
+        # 右側內部只分割「清單」與「預覽」，而不是再切一個候選池操作欄。
+        management_splitter = QSplitter(Qt.Vertical)
+        management_splitter.setObjectName("watchlistManagementSplitter")
+        management_splitter.setChildrenCollapsible(False)
+        self.management_splitter = management_splitter
+        self.universe_splitter = management_splitter
+
+        universe_list_section = QWidget()
+        universe_list_section.setObjectName("watchlistUniverseListSection")
+        universe_list_section_layout = QVBoxLayout(universe_list_section)
+        universe_list_section_layout.setSpacing(6)
+        universe_list_section_layout.setContentsMargins(0, 0, 0, 0)
+        self.universe_list = QListWidget()
+        self.universe_list.setObjectName("watchlistUniverseList")
+        self.universe_list.setUniformItemSizes(True)
+        self.universe_list.setMinimumHeight(100)
+        universe_list_section_layout.addWidget(self.universe_list)
+        management_splitter.addWidget(universe_list_section)
+
+        universe_preview_section = QWidget()
+        universe_preview_section.setObjectName("watchlistUniversePreviewSection")
+        universe_preview_section_layout = QVBoxLayout(universe_preview_section)
+        universe_preview_section_layout.setSpacing(6)
+        universe_preview_section_layout.setContentsMargins(0, 0, 0, 0)
+        preview_label = QLabel("清單個股預覽（單擊看摘要，雙擊開啟主力流向）")
+        preview_label.setProperty("role", "muted")
+        preview_label.setWordWrap(True)
+        universe_preview_section_layout.addWidget(preview_label)
+        self.universe_stock_list = QListWidget()
+        self.universe_stock_list.setObjectName("watchlistUniverseStockList")
+        self.universe_stock_list.setUniformItemSizes(True)
+        self.universe_stock_list.setMinimumHeight(100)
+        universe_preview_section_layout.addWidget(self.universe_stock_list)
+        management_splitter.addWidget(universe_preview_section)
+        management_splitter.setStretchFactor(0, 2)
+        management_splitter.setStretchFactor(1, 3)
+        management_splitter.setSizes([220, 300])
+        universe_layout.addWidget(management_splitter, stretch=1)
+
+        self.universe_list.itemSelectionChanged.connect(self._preview_universe_stocks)
+        self.universe_stock_list.currentItemChanged.connect(self._select_universe_stock)
+        self.universe_stock_list.itemDoubleClicked.connect(self._open_universe_stock_analysis)
+
+        # 右側底部是同一組清單動作，閱讀順序固定為載入，再新增／編輯／刪除。
+        universe_action_layout = QHBoxLayout()
+        universe_action_layout.setSpacing(6)
+        self.load_to_watchlist_btn = QPushButton("載入到候選池")
+        self.load_to_watchlist_btn.setProperty("variant", "secondary")
+        self.load_to_watchlist_btn.clicked.connect(self._load_universe_to_watchlist)
+        universe_action_layout.addWidget(self.load_to_watchlist_btn)
+        universe_action_layout.addStretch()
+
+        self.create_universe_btn = QPushButton("新增")
+        self.create_universe_btn.setProperty("variant", "secondary")
+        self.create_universe_btn.clicked.connect(self._create_universe)
+        universe_action_layout.addWidget(self.create_universe_btn)
+
+        self.edit_universe_btn = QPushButton("編輯")
+        self.edit_universe_btn.setProperty("variant", "secondary")
+        self.edit_universe_btn.clicked.connect(self._edit_universe)
+        universe_action_layout.addWidget(self.edit_universe_btn)
+
+        self.delete_universe_btn = QPushButton("刪除")
+        self.delete_universe_btn.setProperty("variant", "danger")
+        self.delete_universe_btn.clicked.connect(self._delete_universe)
+        universe_action_layout.addWidget(self.delete_universe_btn)
+        universe_layout.addLayout(universe_action_layout)
+
         if self.universe_service:
-            universe_group = QGroupBox("選股清單（用於回測）")
-            universe_layout = QVBoxLayout(universe_group)
-            universe_layout.setSpacing(6)
-            universe_layout.setContentsMargins(10, 12, 10, 10)
-            
-            # 選股清單列表標題和刷新按鈕
-            list_header_layout = QHBoxLayout()
-            list_header_layout.addWidget(QLabel("選股清單列表:"))
-            list_header_layout.addStretch()
-            self.refresh_universe_btn = QPushButton("刷新")
-            self.refresh_universe_btn.setMaximumWidth(60)
-            self.refresh_universe_btn.clicked.connect(self._refresh_universe_list)
-            list_header_layout.addWidget(self.refresh_universe_btn)
-            universe_layout.addLayout(list_header_layout)
-            
-            # 選股清單列表
-            self.universe_list = QListWidget()
             self._refresh_universe_list()
-            universe_layout.addWidget(self.universe_list, stretch=1)
-            universe_layout.addWidget(QLabel("清單個股預覽（單擊看摘要，雙擊開啟主力流向）"))
-            self.universe_stock_list = QListWidget()
-            universe_layout.addWidget(self.universe_stock_list, stretch=1)
-            self.universe_list.itemSelectionChanged.connect(self._preview_universe_stocks)
-            self.universe_stock_list.currentItemChanged.connect(self._select_universe_stock)
-            self.universe_stock_list.itemDoubleClicked.connect(self._open_universe_stock_analysis)
-            
-            # 載入到觀察清單按鈕
-            self.load_to_watchlist_btn = QPushButton("載入到候選池")
-            self.load_to_watchlist_btn.clicked.connect(self._load_universe_to_watchlist)
-            universe_layout.addWidget(self.load_to_watchlist_btn)
-            
-            # 管理按鈕（水平排列）
-            universe_manage_layout = QHBoxLayout()
-            universe_manage_layout.setSpacing(5)
-            
-            self.create_universe_btn = QPushButton("新增")
-            self.create_universe_btn.clicked.connect(self._create_universe)
-            universe_manage_layout.addWidget(self.create_universe_btn)
-            
-            self.edit_universe_btn = QPushButton("編輯")
-            self.edit_universe_btn.clicked.connect(self._edit_universe)
-            universe_manage_layout.addWidget(self.edit_universe_btn)
-            
-            self.delete_universe_btn = QPushButton("刪除")
-            self.delete_universe_btn.setProperty("variant", "danger")
-            self.delete_universe_btn.clicked.connect(self._delete_universe)
-            universe_manage_layout.addWidget(self.delete_universe_btn)
-            
-            universe_manage_layout.addStretch()
-            universe_layout.addLayout(universe_manage_layout)
-            
-            management_splitter.addWidget(universe_group)
-            management_splitter.setSizes([200, 300])  # 左側操作區較窄，右側列表區較寬
         else:
-            # 如果沒有 universe_service，只顯示左側操作區
-            pass
-        
-        management_layout.addWidget(management_splitter)
-        main_splitter.addWidget(management_widget)
-        
-        # 設置上下比例：主要工作區 70%，管理區 30%
-        main_splitter.setSizes([700, 300])
-        
+            unavailable_hint = QLabel("選股清單服務未初始化。")
+            unavailable_hint.setProperty("role", "hint")
+            universe_layout.addWidget(unavailable_hint)
+            for control in (
+                self.refresh_universe_btn,
+                self.universe_list,
+                self.universe_stock_list,
+                self.load_to_watchlist_btn,
+                self.create_universe_btn,
+                self.edit_universe_btn,
+                self.delete_universe_btn,
+            ):
+                control.setEnabled(False)
+
+        main_splitter.addWidget(universe_group)
+
+        # 左側是主工作區，右側是次要但持續可見的清單面板。
+        main_splitter.setStretchFactor(0, 7)
+        main_splitter.setStretchFactor(1, 3)
+        main_splitter.setSizes([860, 400])
+
         main_layout.addWidget(main_splitter)
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        """依可用寬度切換兩個主面板，保持候選池優先且清單可讀。"""
+
+        if not hasattr(self, "main_splitter"):
+            return
+
+        main_is_narrow = self.width() < 980
+        layout_mode = main_is_narrow
+        self._watchlist_layout_mode = layout_mode
+
+        if main_is_narrow:
+            self.main_splitter.setOrientation(Qt.Vertical)
+            height = max(self.height(), 720)
+            self.main_splitter.setSizes(
+                [max(400, int(height * 0.60)), max(280, int(height * 0.40))]
+            )
+            self.watchlist_ops_group.setFixedHeight(64)
+            self.stocks_table.setMinimumHeight(76)
+            self.analysis_group.setFixedHeight(92)
+            self.analysis_text.setFixedHeight(40)
+            self.next_actions_group.setFixedHeight(56)
+            self.universe_list.setMinimumHeight(50)
+            self.universe_stock_list.setMinimumHeight(50)
+            self.work_title.setVisible(False)
+            self.candidate_hint.setVisible(False)
+            self.universe_hint.setVisible(False)
+            self.analysis_hint.setVisible(False)
+            self._set_next_actions_hint_visible(False)
+        else:
+            self.main_splitter.setOrientation(Qt.Horizontal)
+            width = max(self.width(), 1200)
+            self.main_splitter.setSizes(
+                [max(720, int(width * 0.68)), max(360, int(width * 0.32))]
+            )
+            self.watchlist_ops_group.setFixedHeight(64)
+            self.stocks_table.setMinimumHeight(180)
+            self.analysis_group.setFixedHeight(142)
+            self.analysis_text.setFixedHeight(90)
+            self.next_actions_group.setFixedHeight(64)
+            self.universe_list.setMinimumHeight(100)
+            self.universe_stock_list.setMinimumHeight(100)
+            # 外層 QGroupBox 已提供唯一主標題，避免桌面版重複顯示「觀察候選池」。
+            self.work_title.setVisible(False)
+            self.candidate_hint.setVisible(True)
+            self.universe_hint.setVisible(True)
+            self.analysis_hint.setVisible(True)
+            self._set_next_actions_hint_visible(True)
+
+        # 子元件的窄版尺寸先完成，再重設主分割比例，避免 Qt 依舊的 sizeHint
+        # 把兩個面板強制平均分配而造成內部內容重疊。
+        if main_is_narrow:
+            height = max(self.main_splitter.height(), 640)
+            self.main_splitter.setSizes(
+                [max(400, int(height * 0.60)), max(280, int(height * 0.40))]
+            )
+        else:
+            width = max(self.main_splitter.width(), 1200)
+            self.main_splitter.setSizes(
+                [max(720, int(width * 0.68)), max(360, int(width * 0.32))]
+            )
+
+        if hasattr(self, "management_splitter"):
+            # 右側固定採上下分割：上方選清單，下方看股票預覽。
+            self.management_splitter.setOrientation(Qt.Vertical)
+            height = max(self.height(), 520)
+            self.management_splitter.setSizes(
+                [max(160, int(height * 0.38)), max(180, int(height * 0.62))]
+            )
+
+    def _set_next_actions_hint_visible(self, visible: bool) -> None:
+        """窄版收起輔助文案，保留兩個主要動作的完整按鈕。"""
+
+        hint = getattr(self, "next_actions_hint", None)
+        if hint is not None:
+            hint.setVisible(visible)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
 
     @staticmethod
     def _empty_frame() -> pd.DataFrame:
@@ -299,15 +499,12 @@ class WatchlistView(QWidget):
         )
 
     def _set_status_label(self, text: str, *, level: str) -> None:
-        colors = {
-            "info": "#94a3b8",
-            "success": "#86efac",
-            "warning": "#facc15",
-            "error": "#fca5a5",
-        }
-        self.status_label.setStyleSheet(
-            f"color: {colors.get(level, colors['info'])}; padding: 2px 0;"
-        )
+        tone = level if level in {"info", "success", "warning", "error"} else "info"
+        self.status_label.setProperty("statusTone", tone)
+        style = self.status_label.style()
+        if style is not None:
+            style.unpolish(self.status_label)
+            style.polish(self.status_label)
         self.status_label.setText(text)
 
     def _load_watchlist(self):

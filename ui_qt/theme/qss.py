@@ -77,6 +77,35 @@ def build_global_stylesheet(tokens: ThemeTokens = MIDNIGHT_ANALYST) -> str:
         background: {tokens.accent_hover};
         border-color: {tokens.accent_hover};
     }}
+    QPushButton[variant="secondary"] {{
+        background: {tokens.surface_2};
+        color: {tokens.text_primary};
+        border-color: {tokens.border};
+    }}
+    QPushButton[variant="secondary"]:hover {{
+        background: {tokens.surface_3};
+        border-color: {tokens.accent};
+    }}
+    QPushButton[variant="success"] {{
+        background: {tokens.success};
+        color: {tokens.app_bg};
+        border-color: {tokens.success};
+        font-weight: 700;
+    }}
+    QPushButton[variant="success"]:hover {{
+        background: #4ade80;
+        border-color: #4ade80;
+    }}
+    QPushButton[variant="warning"] {{
+        background: {tokens.warning};
+        color: {tokens.app_bg};
+        border-color: {tokens.warning};
+        font-weight: 700;
+    }}
+    QPushButton[variant="warning"]:hover {{
+        background: #ffd27a;
+        border-color: #ffd27a;
+    }}
     QPushButton[variant="danger"] {{
         background: {tokens.danger};
         color: {tokens.text_primary};
@@ -87,6 +116,11 @@ def build_global_stylesheet(tokens: ThemeTokens = MIDNIGHT_ANALYST) -> str:
         background: transparent;
         color: {tokens.text_secondary};
         border-color: {tokens.border_subtle};
+    }}
+    QPushButton[variant="ghost"]:hover {{
+        background: {tokens.surface_2};
+        color: {tokens.text_primary};
+        border-color: {tokens.accent};
     }}
     QGroupBox {{
         background: {tokens.surface_1};
@@ -104,6 +138,167 @@ def build_global_stylesheet(tokens: ThemeTokens = MIDNIGHT_ANALYST) -> str:
         color: {tokens.text_primary};
         border: 1px solid {tokens.border_subtle};
         border-radius: {tokens.radius_badge}px;
+    }}
+    QGroupBox[sectionTone="info"] {{
+        border-color: {tokens.accent};
+    }}
+    QGroupBox[sectionTone="info"]::title {{
+        color: {tokens.accent_hover};
+        border-color: {tokens.accent};
+    }}
+    QGroupBox[sectionTone="warning"] {{
+        border-color: {tokens.warning};
+    }}
+    QGroupBox[sectionTone="warning"]::title {{
+        color: {tokens.warning};
+        border-color: {tokens.warning};
+    }}
+    QGroupBox[sectionTone="danger"] {{
+        border-color: {tokens.danger};
+    }}
+    QGroupBox[sectionTone="danger"]::title {{
+        color: {tokens.danger};
+        border-color: {tokens.danger};
+    }}
+    QLabel[role="muted"] {{
+        color: {tokens.text_secondary};
+    }}
+    QLabel[role="summary"] {{
+        background: {tokens.surface_2};
+        color: {tokens.text_primary};
+        border: 1px solid {tokens.border};
+        border-radius: {tokens.radius_panel}px;
+        padding: 6px 10px;
+    }}
+    QLabel[role="hint"] {{
+        background: {tokens.surface_2};
+        color: {tokens.warning};
+        border: 1px solid {tokens.warning};
+        border-radius: {tokens.radius_panel}px;
+        padding: 6px 10px;
+    }}
+    QLabel[role="status"] {{
+        background: {tokens.surface_2};
+        color: {tokens.text_primary};
+        border: 1px solid {tokens.border};
+        border-radius: {tokens.radius_panel}px;
+        padding: 6px 10px;
+    }}
+    QLabel[statusTone="info"] {{
+        color: {tokens.text_secondary};
+        border-color: {tokens.border};
+    }}
+    QLabel[statusTone="success"] {{
+        color: {tokens.success};
+        border-color: {tokens.success};
+    }}
+    QLabel[statusTone="warning"] {{
+        color: {tokens.warning};
+        border-color: {tokens.warning};
+    }}
+    QLabel[statusTone="error"] {{
+        color: {tokens.danger};
+        border-color: {tokens.danger};
+    }}
+    QTextEdit[role="code"] {{
+        background: {tokens.app_bg};
+        color: {tokens.accent_hover};
+        border: 1px solid {tokens.border_subtle};
+        border-radius: {tokens.radius_panel}px;
+        font-family: {tokens.mono_family};
+        font-size: 9pt;
+    }}
+    QListWidget#updateNavigation {{
+        background: {tokens.surface_1};
+        border: 1px solid {tokens.border};
+        border-radius: {tokens.radius_panel}px;
+        padding: 4px;
+    }}
+    QListWidget#updateNavigation::item {{
+        min-height: 22px;
+        padding: 7px 9px;
+        border-radius: {tokens.radius_badge}px;
+        color: {tokens.text_secondary};
+    }}
+    QListWidget#updateNavigation::item:hover {{
+        background: {tokens.surface_3};
+        color: {tokens.text_primary};
+    }}
+    QListWidget#updateNavigation::item:selected {{
+        background: {tokens.table_selected};
+        color: {tokens.text_primary};
+        border-left: 3px solid {tokens.accent};
+        font-weight: 700;
+    }}
+    QPushButton#clearUpdateLog {{
+        min-height: 0px;
+        padding: 2px 5px;
+        font-size: 9pt;
+    }}
+    QFrame#CardFrame {{
+        background: {tokens.surface_2};
+        border: 1px solid {tokens.border};
+        border-radius: {tokens.radius_panel}px;
+    }}
+    QFrame#CardFrame:hover {{
+        background: {tokens.surface_3};
+        border-color: {tokens.accent};
+    }}
+    QGroupBox#watchlistCandidatePanel {{
+        border-color: {tokens.accent};
+    }}
+    QGroupBox#watchlistCandidatePanel::title {{
+        color: {tokens.accent_hover};
+        border-color: {tokens.accent};
+    }}
+    QGroupBox#watchlistUniversePanel {{
+        border-color: {tokens.border};
+    }}
+    QGroupBox#watchlistOpsGroup,
+    QGroupBox#watchlistNextActions {{
+        background: transparent;
+        border: 0;
+        margin-top: 12px;
+        padding: 6px 0 0 0;
+    }}
+    QGroupBox#watchlistOpsGroup::title,
+    QGroupBox#watchlistNextActions::title {{
+        background: transparent;
+        color: {tokens.text_secondary};
+        border: 0;
+        left: 0px;
+        padding: 0px 2px;
+    }}
+    QGroupBox#watchlistResearchSummary {{
+        background: {tokens.surface_2};
+        border-color: {tokens.border_subtle};
+        margin-top: 8px;
+        padding: 10px 8px 8px 8px;
+    }}
+    QGroupBox#watchlistResearchSummary::title {{
+        background: {tokens.surface_2};
+        color: {tokens.text_secondary};
+        border-color: {tokens.border_subtle};
+    }}
+    QLabel#watchlistPageHint,
+    QLabel#watchlistCandidateHint,
+    QLabel#watchlistUniverseHint {{
+        color: {tokens.text_secondary};
+    }}
+    QLabel#watchlistStats {{
+        min-height: 22px;
+        padding: 3px 8px;
+    }}
+    QLabel#watchlistStatus {{
+        min-height: 22px;
+        padding: 3px 8px;
+    }}
+    QTextEdit#watchlistAnalysisText {{
+        background: {tokens.app_bg};
+        border-color: {tokens.border_subtle};
+    }}
+    QSplitter#watchlistManagementSplitter::handle {{
+        background: {tokens.border};
     }}
     QTableView {{
         background: {tokens.surface_1};

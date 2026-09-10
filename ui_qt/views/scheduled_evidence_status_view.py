@@ -282,6 +282,9 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
         f"- horizon ready/pending/missing: {_horizon_summary(status.forward_health_horizons)}",
         f"- latest capture / outcome update / evaluation: {status.forward_health_latest_capture_at or '未知'} / {status.forward_health_latest_outcome_updated_at or '未知'} / {status.forward_health_last_evaluation_at or '未知'}",
         f"- next maturity date: {status.forward_health_next_maturity_date or '無法推算'}",
+        f"- forward health blocking reason: {status.forward_health_blocking_reason or '無'}",
+        f"- forward health next action: {status.forward_health_next_action or '無'}",
+        f"- forward health recovery verification: {_recovery_summary(status.forward_health_recovery_verification)}",
         f"- forward health blockers: {_join(status.forward_health_blockers)}",
         f"- forward health warnings: {_join(status.forward_health_warnings)}",
         f"- blocking gaps: {_join(status.pipeline_blocking_gaps)}",
@@ -412,6 +415,16 @@ def _horizon_summary(value: object) -> str:
             f"{horizon}:R{item.get('ready', 0)}/P{item.get('pending', 0)}/M{item.get('missing', 0)}"
         )
     return "; ".join(parts) if parts else "未知"
+
+
+def _recovery_summary(value: object) -> str:
+    if not isinstance(value, dict):
+        return "未知"
+    status = str(value.get("status") or "未知")
+    checks = value.get("checks")
+    if isinstance(checks, (list, tuple)) and checks:
+        return f"{status} / " + ", ".join(str(item) for item in checks)
+    return status
 
 
 def _bool_text(value: bool | None) -> str:

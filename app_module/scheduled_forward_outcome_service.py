@@ -218,6 +218,7 @@ def run_scheduled_forward_outcomes(
             status = "passed"
             exit_code = 0
         payload.update({"status": status, "exit_code": exit_code})
+        _apply_health_terminal_state(payload, confirm=confirm)
     except (ScheduledForwardOutcomeError, ValueError, OSError, sqlite3.Error) as exc:
         payload.update(
             {
@@ -247,6 +248,185 @@ def _summary_has_warnings(summary: ForwardOutcomeSummary) -> bool:
         or summary.missing_industry_benchmark
         or summary.events_skipped_incomplete_identity
     )
+
+
+_HEALTH_BLOCKING_CLASSIFICATIONS = frozenset(
+    {"actionable_engineering_blocker", "external_source_missing"}
+)
+
+
+def _apply_health_terminal_state(payload: dict[str, Any], *, confirm: bool) -> None:
+    """Project bounded health onto the scheduled receipt terminal state.
+
+    ``health`` was originally diagnostic-only, which allowed a confirmed run
+    to report ``passed_with_warnings`` while its health already said that the
+    event identity or source was not usable.  Natural maturity remains an
+    explicit wait; source and engineering blockers fail closed.  The bounded
+    outcome write remains idempotent, so a blocked receipt may still report
+    rows written by that same run.
+    """
+
+    raw_health = payload.get("health")
+    if not isinstance(raw_health, dict):
+        return
+    health = raw_health
+    classification = str(health.get("classification") or "").strip()
+    if not classification:
+        return
+
+    blockers = _text_items(health.get("blockers"))
+    if classification in _HEALTH_BLOCKING_CLASSIFICATIONS and not blockers:
+        blockers = [f"health:{classification}"]
+    warnings = _text_items(health.get("warnings"))
+    next_maturity_date = _optional_text(health.get("next_maturity_date"))
+    blocking_reason = blockers[0] if blockers else None
+    next_action = _health_next_action(classification, next_maturity_date)
+    recovery_verification = _health_recovery_verification(
+        classification=classification,
+        next_maturity_date=next_maturity_date,
+    )
+
+    health.update(
+        {
+            "blocking_reason": blocking_reason,
+            "next_action": next_action,
+            "recovery_verification": recovery_verification,
+        }
+    )
+    payload.update(
+        {
+            "health_classification": classification,
+            "blocking_reason": blocking_reason,
+            "next_action": next_action,
+            "next_maturity_date": next_maturity_date,
+            "recovery_verification": recovery_verification,
+            "blockers": _merge_text_items(payload.get("blockers"), blockers),
+            "warnings": _merge_text_items(payload.get("warnings"), warnings),
+        }
+    )
+
+    # A dry-run remains a candidate receipt so callers can inspect the plan.
+    # A confirmed run must not exit successfully when health says the source
+    # or cohort is unusable.  This is deliberately after the bounded writer:
+    # retrying the same natural key is safe and must not create duplicates.
+    if confirm and classification in _HEALTH_BLOCKING_CLASSIFICATIONS:
+        payload.update({"status": "blocked", "exit_code": 2})
+
+
+def _health_next_action(classification: str, next_maturity_date: str | None) -> str:
+    if classification == "actionable_engineering_blocker":
+        return (
+            "修正未來 producer/caller 的 cohort identity 或來源路徑；"
+            "不回填既有事件，修正後從下一個自然日重跑 bounded producer。"
+        )
+    if classification == "external_source_missing":
+        return (
+            "補齊指定事件、價格或 benchmark 官方來源後重跑相同 bounded window；"
+            "不補未來價格、不做 historical backfill。"
+        )
+    if classification == "waiting_for_natural_maturity":
+        if next_maturity_date:
+            return (
+                f"等待官方交易日 {next_maturity_date} 的可見價格觀測；"
+                "成熟前不回填、不補未來資料。"
+            )
+        return "等待下一個官方交易日的可見價格觀測；成熟前不回填、不補未來資料。"
+    if classification == "normal_no_new_outcomes":
+        return "下一個自然日以相同 bounded window 冪等重跑，不為製造數字改模型。"
+    return "持續下一個自然日的 bounded 觀測；維持 research-only 與 no-lookahead 邊界。"
+
+
+def _health_recovery_verification(
+    *,
+    classification: str,
+    next_maturity_date: str | None,
+) -> dict[str, Any]:
+    if classification == "actionable_engineering_blocker":
+        return {
+            "status": "required",
+            "expected_health_classifications": [
+                "waiting_for_natural_maturity",
+                "normal_completion",
+                "normal_no_new_outcomes",
+            ],
+            "checks": [
+                "events_skipped_incomplete_identity=0_for_current_bounded_selection",
+                "source_preflight.ready=true",
+                "historical_backfill=false",
+                "outcome_natural_key_idempotent",
+            ],
+        }
+    if classification == "external_source_missing":
+        return {
+            "status": "required",
+            "expected_health_classifications": [
+                "waiting_for_natural_maturity",
+                "normal_completion",
+                "normal_no_new_outcomes",
+            ],
+            "checks": [
+                "source_preflight.ready=true",
+                "missing_source_blockers_resolved",
+                "no_future_dated_observations",
+                "historical_backfill=false",
+            ],
+        }
+    if classification == "waiting_for_natural_maturity":
+        return {
+            "status": "wait_until_natural_maturity",
+            "expected_health_classifications": [
+                "normal_completion",
+                "normal_no_new_outcomes",
+            ],
+            "next_maturity_date": next_maturity_date,
+            "checks": [
+                "data_as_of_date_not_future",
+                "outcome_status=ready_or_explicit_pending",
+                "historical_backfill=false",
+                "outcome_natural_key_idempotent",
+            ],
+        }
+    return {
+        "status": "not_required",
+        "expected_health_classifications": [classification],
+        "checks": [
+            "health_blockers_empty",
+            "bounded_window_preserved",
+            "historical_backfill=false",
+            "outcome_natural_key_idempotent",
+        ],
+    }
+
+
+def _text_items(value: object) -> list[str]:
+    if isinstance(value, (list, tuple, set)):
+        values = value
+    elif value is None or isinstance(value, Mapping):
+        values = ()
+    else:
+        values = (value,)
+    result: list[str] = []
+    for item in values:
+        text = str(item).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _merge_text_items(*values: object) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        for item in _text_items(value):
+            if item not in result:
+                result.append(item)
+    return result
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None or isinstance(value, (Mapping, list, tuple, set)):
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _build_daily_health(

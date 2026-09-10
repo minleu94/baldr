@@ -680,7 +680,13 @@ outcome／evaluation 時間、下一成熟日、冪等自然鍵與 blocker 分�
 `ScheduledEvidenceStatusService` 以唯讀 adapter 載入上述 producer 的
 `scheduled/forward_outcomes/latest_status.json`；`ScheduledEvidenceStatusView` 與
 Workbench 只投影 status、事件掃描／寫入／待成熟計數、receipt path 與寫入邊界，缺少
-receipt 時保留 source gap。UI 不會因讀取狀態而重跑 producer 或開啟資料庫寫入。
+receipt 時保留 source gap。confirmed run 若 health 分類為
+`actionable_engineering_blocker` 或 `external_source_missing`，producer 會把 health
+blockers 投影到 top-level receipt，輸出 `status=blocked`／`exit_code=2`，並保存
+`blocking_reason`、`next_action`、`next_maturity_date` 與 `recovery_verification`；
+`waiting_for_natural_maturity` 仍是 `passed_with_warnings` 的自然時間等待。這個終端狀態
+投影不改變 bounded writer 的來源邊界，重跑仍受 outcome natural key 保護。UI 不會因讀取
+狀態而重跑 producer 或開啟資料庫寫入。
 
 目前 registry 已保存：
 

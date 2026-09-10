@@ -136,11 +136,91 @@ def test_identity_gate_skips_unbound_events_before_writing(tmp_path: Path) -> No
         require_cohort_identity=True,
     )
 
-    assert result["status"] == "passed_with_warnings"
+    assert result["status"] == "blocked"
+    assert result["exit_code"] == 2
+    assert result["blockers"] == ["events_missing_complete_cohort_identity"]
+    assert result["health_classification"] == "actionable_engineering_blocker"
+    assert result["blocking_reason"] == "events_missing_complete_cohort_identity"
+    assert "不回填既有事件" in result["next_action"]
+    assert result["recovery_verification"]["status"] == "required"
     assert result["summary"]["events_scanned"] == 1
     assert result["summary"]["events_skipped_incomplete_identity"] == 1
     assert result["summary"]["outcomes_created"] == 1
     assert len(EvidenceEventRepository(config).list_outcomes()) == 1
+
+
+def test_natural_maturity_remains_waiting_and_exposes_recovery_check(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    EvidenceEventService(EvidenceEventRepository(config)).record_event(
+        event_date="2026-09-07",
+        decision_date="2026-09-07",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="recommendation_result",
+        source_id="pending-event",
+        reason_codes=("rank_top",),
+        score_bp=7000,
+        data_quality=EvidenceDataQuality.OBSERVED,
+        as_of_date="2026-09-07",
+        available_date="2026-09-07",
+        source_version="test",
+        strategy_version_id="strategy-v1",
+        cost_model_id="cost-v1",
+        benchmark_id="TAIEX",
+        industry_benchmark_id="半導體類指數",
+        metadata={"universe_id": "universe-v1", "horizon_days": 5},
+    )
+
+    result = run_scheduled_forward_outcomes(
+        config=config,
+        now=_now(),
+        confirm=True,
+        allow_production_db_confirm=True,
+        windows=(5,),
+        start_date="2026-09-01",
+        end_date="2026-09-10",
+        data_as_of_date="2026-09-10",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED.value,
+        require_cohort_identity=True,
+    )
+
+    assert result["status"] == "passed_with_warnings"
+    assert result["exit_code"] == 0
+    assert result["blockers"] == []
+    assert result["health_classification"] == "waiting_for_natural_maturity"
+    assert result["blocking_reason"] is None
+    assert "等待官方交易日" in result["next_action"] or "等待下一個官方交易日" in result["next_action"]
+    assert result["recovery_verification"]["status"] == "wait_until_natural_maturity"
+    assert result["recovery_verification"]["next_maturity_date"] == result["next_maturity_date"]
+    assert result["summary"]["pending_insufficient_future_data"] > 0
+
+
+def test_external_source_health_blocks_confirmed_run(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    result = run_scheduled_forward_outcomes(
+        config=config,
+        now=_now(),
+        confirm=True,
+        allow_production_db_confirm=True,
+        windows=(5,),
+        start_date="2026-08-01",
+        end_date="2026-08-02",
+        data_as_of_date="2026-09-10",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED.value,
+        require_cohort_identity=True,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["exit_code"] == 2
+    assert result["health_classification"] == "external_source_missing"
+    assert result["blocking_reason"] == "no_events_in_window"
+    assert result["blockers"] == ["no_events_in_window"]
+    assert result["recovery_verification"]["status"] == "required"
+    assert result["summary"]["events_scanned"] == 0
 
 
 def test_production_confirm_requires_explicit_allowance(tmp_path: Path) -> None:

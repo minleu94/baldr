@@ -344,6 +344,12 @@ def test_scheduled_status_projects_forward_health_blocker(tmp_path: Path) -> Non
                     "cohort_count": 0,
                     "blockers": ["events_missing_complete_cohort_identity"],
                     "warnings": [],
+                    "blocking_reason": "events_missing_complete_cohort_identity",
+                    "next_action": "repair producer",
+                    "recovery_verification": {
+                        "status": "required",
+                        "checks": ["source_preflight.ready=true"],
+                    },
                     "horizons": {"60": {"ready": 0, "pending": 0, "missing": 0}},
                 },
             }
@@ -357,6 +363,12 @@ def test_scheduled_status_projects_forward_health_blocker(tmp_path: Path) -> Non
     assert status.forward_health_qualifying_event_count == 0
     assert status.forward_health_horizons == {
         "60": {"ready": 0, "pending": 0, "missing": 0}
+    }
+    assert status.forward_health_blocking_reason == "events_missing_complete_cohort_identity"
+    assert status.forward_health_next_action == "repair producer"
+    assert status.forward_health_recovery_verification == {
+        "status": "required",
+        "checks": ["source_preflight.ready=true"],
     }
     assert dict(status.machine_status_classifications)["forward_outcomes"] == "invalid_evidence"
     assert status.machine_status_classification == "invalid_evidence"

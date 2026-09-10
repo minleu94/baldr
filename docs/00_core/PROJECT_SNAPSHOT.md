@@ -18,6 +18,28 @@ read model → evaluator 全鏈保存：
   outcome/read model/evaluator 接線、三日同 cohort、動態成分、身份分組、冪等、舊 schema 診斷及
   長 horizon 優先順序。這些是工程證據，不增加正式 D 槽自然 outcome，也不授予 V4／Formal／alpha。
 
+## 2026-09-10 B 線唯讀盤點與每日可靠性修正
+
+以 `TWStockConfig` 實際解析的 `DATA_ROOT=D:\Min\Python\Project\FA_Data`、
+`OUTPUT_ROOT` 與 read-only receipt／SQLite 完成 B 線盤點，沒有執行正式資料 writer、schema
+變更或歷史回填：
+
+- 2026-08-20～09-10 的 `evidence_events` 每日仍有約 1,650～1,700 筆 capture，
+  `recommendation_included` 合計 217 筆，9/10 有 2 筆；但 `evidence_outcomes` 唯讀聚合為
+  5／10／20／60 各 2 筆，全部尚未成熟，ready=0。
+- 9/10 forward receipt 的 health 已正確辨識 215 筆不完整 cohort identity；修正前 top-level
+  卻是 `passed_with_warnings`／`blockers=[]`／`exit_code=0`。現在 confirmed run 遇到
+  `actionable_engineering_blocker` 或 `external_source_missing` 會 fail closed 為
+  `blocked`／2，並保留 blocking reason、next action、next maturity 與 recovery verification；
+  `waiting_for_natural_maturity` 仍只是自然等待，不回填舊事件或未來價格。
+- Canonical isolated Paper 截至 9/10 有 6 個持倉、現金 `161526.11`、總值 `482526.11`；
+  ledger 8 筆（6 filled、1 partially filled、1 rejected），費稅合計 `1373.89`，Decimal
+  現金對帳一致。readiness 仍為 `partial`，原因是 Equal-Weight benchmark 與週報 benchmark
+  observations 缺失，這不是 Paper accounting mismatch。
+- 本次受限 shell 的 `schtasks.exe /Query` 無法找到目標系統路徑，故不把 receipts 當成
+  實機 Task Scheduler 註冊／最近成功證據；scheduler、Formal OOS、promotion、alpha 與 broker
+  旗標仍關閉。下一輪只需在可見排程主機重驗 live task 與最近成功時間。
+
 ## 2026-09-09 V4 read model 收尾增量
 
 V4 effectiveness SQLite read path 現已在指定 `window_days` 時保留沒有 outcome 的事件，

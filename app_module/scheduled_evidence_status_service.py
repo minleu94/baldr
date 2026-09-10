@@ -101,6 +101,9 @@ class ScheduledEvidenceStatus:
     forward_health_blockers: tuple[str, ...] = ()
     forward_health_warnings: tuple[str, ...] = ()
     forward_health_cohorts: tuple[dict[str, Any], ...] = ()
+    forward_health_blocking_reason: str | None = None
+    forward_health_next_action: str | None = None
+    forward_health_recovery_verification: dict[str, Any] | None = None
 
     @property
     def has_production_write_risk(self) -> bool:
@@ -390,6 +393,15 @@ class ScheduledEvidenceStatusService:
                 item
                 for item in (forward_health.get("cohorts") or ())
                 if isinstance(item, dict)
+            ),
+            forward_health_blocking_reason=_str_or_none(
+                forward_health.get("blocking_reason")
+            ),
+            forward_health_next_action=_str_or_none(forward_health.get("next_action")),
+            forward_health_recovery_verification=(
+                dict(forward_health["recovery_verification"])
+                if isinstance(forward_health.get("recovery_verification"), dict)
+                else None
             ),
         )
 

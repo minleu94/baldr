@@ -32,6 +32,38 @@
 並分類 `normal_completion`、`normal_no_new_outcomes`、`waiting_for_natural_maturity`、
 `actionable_engineering_blocker`、`external_source_missing`。UI 只讀顯示這些欄位。
 
+## 2026-09-10 B 線唯讀盤點與 receipt 可靠性修正
+
+本次以 `TWStockConfig` 回傳的正式 `DATA_ROOT=D:\Min\Python\Project\FA_Data` 與其
+`OUTPUT_ROOT` 唯讀檢查；沒有執行正式 DB writer、資料重建或歷史回填。盤點結果如下：
+
+- `evidence_events` 仍有每日 capture；2026-08-20～09-10 每日事件約 1,650～1,700 筆，
+  `recommendation_included` 合計 217 筆，2026-09-10 有 2 筆。這證明 capture／importer
+  端持續產生事件，但不等於 outcome 已成熟。
+- `evidence_outcomes` 目前唯讀聚合為 5／10／20／60 各 2 筆，全部是
+  `insufficient_future_data`／`missing`，ready=0；2026-09-10 forward receipt 的
+  summary 只建立 8 筆 pending outcome。receipt 原先是 `passed_with_warnings`、
+  `blockers=[]`、`exit_code=0`，但 `health.classification` 已是
+  `actionable_engineering_blocker`，且 bounded selection 跳過 215 筆不完整 identity。
+- 本切片把 health 終端狀態接回 receipt：confirmed run 遇到
+  `actionable_engineering_blocker` 或 `external_source_missing` 會是 `blocked`／2，並保留
+  `blocking_reason`、`next_action`、`next_maturity_date` 與
+  `recovery_verification`；同輪已寫入的 outcome 仍受 `(event_id, window_days, return_basis)`
+  冪等鍵保護。自然未成熟仍是 `passed_with_warnings`／0，不能用人工補值或未來價格消除。
+- Canonical isolated Paper（repository operation root）截至 2026-09-10 有 6 個持倉、現金
+  `161526.11`、總值 `482526.11`；ledger 有 8 筆（6 filled、1 partially filled、1 rejected），
+  費稅合計 `1373.89`。以 Decimal 逐筆重算後現金與 snapshot 一致，沒有發現 accounting mismatch；
+  readiness 仍為 `partial`，因 Equal-Weight benchmark 與週報 benchmark observations 缺失。
+- `schtasks.exe /Query` 在本次受限環境對目標 task 回報找不到系統路徑，因此不能以本次 shell
+  宣稱實機註冊／最近成功已驗證；receipt 也不能取代 Task Scheduler live query。正式
+  scheduler／Formal OOS／broker 旗標維持關閉。
+
+恢復判定以 receipt 的 machine-readable checks 為準：工程阻塞須看到 bounded selection 的
+`events_skipped_incomplete_identity=0`、`source_preflight.ready=true`、無 historical backfill，
+再確認 outcome natural key 重跑不重複；自然成熟則等待官方交易日可見價格，確認
+`data_as_of_date` 非 future、outcome 變為 ready 或明確 pending。上述修正只改程式與隔離測試，
+不把現有 8 筆 pending、Paper 隔離資料或 replay／fixture 提升為 V4／Formal credit。
+
 跨日整合驗收位於 `tests/test_v4_cross_day_evidence_contract.py`，涵蓋真實 DTO/importer/
 evidence SQLite/outcome/read model/evaluator 接線、動態成分變化、身份隔離、舊 schema 診斷、
 冪等與 bounded 長 horizon 優先順序。這些資料是隔離 fixture，不是正式 D 槽自然證據。
@@ -105,7 +137,9 @@ backfill 或未來價格補值。
 明確帶入兩個旗標，並只呼叫既有 `ForwardPerformanceService` 的 outcome upsert；事件、
 推薦、Paper／Formal、模型與券商狀態都不在寫入範圍。每輪保存
 `scheduled/forward_outcomes/latest_status.json` 與不可覆寫的 `runs/<run_id>.json`，
-缺資料、未成熟、缺 benchmark 或政策表時以 `passed_with_warnings`／`degraded` 揭露。
+自然未成熟仍以 `passed_with_warnings`／`degraded` 揭露；但 confirmed run 若 health 判定
+工程阻塞或外部來源缺失，會以 `blocked`／`exit_code=2` fail closed，並留下 blocking reason、
+next action、next maturity 與 recovery verification。
 
 排程 wrapper 同時帶入 `--require-cohort-identity`；沒有明確策略、成本、benchmark、
 universe 或正整數 horizon 的舊事件會被計入 `events_skipped_incomplete_identity`，不會

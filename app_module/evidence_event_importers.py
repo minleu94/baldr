@@ -400,13 +400,30 @@ class RecommendationEvidenceImporter:
 
         mappings = self._identity_mappings(result)
         strategy_version_id = self._first_text(mappings, ("strategy_version_id", "strategy_version"))
+        strategy_config_id = self._first_text(mappings, ("strategy_config_id",))
+        strategy_config_hash = self._first_text(mappings, ("strategy_config_hash",))
+        strategy_config_schema = self._first_text(mappings, ("strategy_config_schema",))
         cost_model_id = self._first_text(mappings, ("cost_model_id",))
         benchmark_id = self._first_text(mappings, ("benchmark_id",))
         industry_benchmark_id = self._first_text(mappings, ("industry_benchmark_id",))
         universe_id = self._first_text(mappings, ("universe_id",))
         universe_hash = self._first_text(mappings, ("universe_hash",))
         universe_identity_schema = self._first_text(mappings, ("universe_identity_schema",))
+        universe_policy_id = self._first_text(mappings, ("universe_policy_id",))
+        universe_policy_hash = self._first_text(mappings, ("universe_policy_hash",))
+        universe_policy_schema = self._first_text(mappings, ("universe_policy_schema",))
+        universe_snapshot_id = self._first_text(mappings, ("universe_snapshot_id",))
+        universe_snapshot_hash = self._first_text(mappings, ("universe_snapshot_hash",))
+        universe_snapshot_schema = self._first_text(mappings, ("universe_snapshot_schema",))
+        universe_snapshot_source_provider_id = self._first_text(
+            mappings, ("universe_snapshot_source_provider_id",)
+        )
+        universe_snapshot_selected_codes_hash = self._first_text(
+            mappings, ("universe_snapshot_selected_codes_hash",)
+        )
         horizon_days = self._first_positive_integer(mappings, ("horizon_days", "expected_horizon_days"))
+        evidence_tier = self._first_text(mappings, ("evidence_tier",))
+        return_basis = self._first_text(mappings, ("return_basis",))
 
         fields = {
             key: value
@@ -425,13 +442,35 @@ class RecommendationEvidenceImporter:
                 "cost_model_id": cost_model_id,
                 "benchmark_id": benchmark_id,
                 "industry_benchmark_id": industry_benchmark_id,
+                "strategy_config_id": strategy_config_id,
+                "strategy_config_hash": strategy_config_hash,
+                "strategy_config_schema": strategy_config_schema,
                 "universe_id": universe_id,
                 "universe_hash": universe_hash,
                 "universe_identity_schema": universe_identity_schema,
+                "universe_policy_id": universe_policy_id,
+                "universe_policy_hash": universe_policy_hash,
+                "universe_policy_schema": universe_policy_schema,
+                "universe_snapshot_id": universe_snapshot_id,
+                "universe_snapshot_hash": universe_snapshot_hash,
+                "universe_snapshot_schema": universe_snapshot_schema,
+                "universe_snapshot_source_provider_id": universe_snapshot_source_provider_id,
+                "universe_snapshot_selected_codes_hash": universe_snapshot_selected_codes_hash,
                 "horizon_days": horizon_days,
+                "evidence_tier": evidence_tier,
+                "return_basis": return_basis,
             }.items()
             if value not in (None, "")
         }
+        snapshot_spec = self._first_mapping(mappings, ("universe_snapshot_spec",))
+        if snapshot_spec:
+            # 每筆 event 只保存精簡的快照摘要；完整成分仍留在推薦結果 JSON。
+            selected_count = snapshot_spec.get("selected_count")
+            if selected_count is not None and not isinstance(selected_count, bool):
+                try:
+                    metadata["universe_snapshot_selected_count"] = int(selected_count)
+                except (TypeError, ValueError):
+                    pass
         return {"fields": fields, "metadata": metadata}
 
     def _identity_mappings(self, result: Any) -> tuple[Mapping[str, Any], ...]:
@@ -471,6 +510,18 @@ class RecommendationEvidenceImporter:
                     continue
                 if parsed.is_finite() and parsed == parsed.to_integral_value() and parsed > 0:
                     return int(parsed)
+        return None
+
+    def _first_mapping(
+        self,
+        mappings: tuple[Mapping[str, Any], ...],
+        keys: tuple[str, ...],
+    ) -> Mapping[str, Any] | None:
+        for mapping in mappings:
+            for key in keys:
+                value = mapping.get(key)
+                if isinstance(value, Mapping):
+                    return value
         return None
 
     def _load_result(self, request: EvidenceCaptureRequest) -> Any | None:

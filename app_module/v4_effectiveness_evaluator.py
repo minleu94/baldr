@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Iterable, Mapping
 
-from app_module.v4_evidence_identity import UNMODELED_COST_MODEL_IDS
+from app_module.v4_evidence_identity import (
+    DEFAULT_RETURN_BASIS,
+    UNMODELED_COST_MODEL_IDS,
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,13 @@ class V4EffectivenessSlice:
     average_benchmark_excess_bp: int | None
     evaluation_status: str
     warnings: tuple[str, ...] = ()
+    strategy_config_id: str = ""
+    universe_policy_hash: str = ""
+    return_basis: str = DEFAULT_RETURN_BASIS
+    evidence_tier: str = "unclassified"
+    universe_snapshot_count: int = 0
+    universe_snapshot_ids: tuple[str, ...] = ()
+    universe_component_change_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +57,14 @@ class V4EffectivenessSlice:
             "horizon_days": self.horizon_days,
             "strategy_version": self.strategy_version,
             "universe_id": self.universe_id,
+            "universe_policy_id": self.universe_id,
+            "universe_policy_hash": self.universe_policy_hash,
+            "strategy_config_id": self.strategy_config_id,
+            "return_basis": self.return_basis,
+            "evidence_tier": self.evidence_tier,
+            "universe_snapshot_count": self.universe_snapshot_count,
+            "universe_snapshot_ids": list(self.universe_snapshot_ids),
+            "universe_component_change_count": self.universe_component_change_count,
             "cost_model": self.cost_model,
             "benchmark_id": self.benchmark_id,
             "decision_date_start": self.decision_date_start,
@@ -87,15 +105,6 @@ class V4EffectivenessReport:
         }
 
 
-_GROUP_FIELDS = (
-    "horizon_days",
-    "strategy_version",
-    "universe_id",
-    "cost_model",
-    "benchmark_id",
-)
-
-
 def evaluate_v4_effectiveness(
     rows: Iterable[Mapping[str, Any]],
     *,
@@ -121,6 +130,8 @@ def evaluate_v4_effectiveness(
             "missing": 0,
             "warnings": set(),
             "seen": {},
+            "snapshot_ids": set(),
+            "snapshot_component_hashes": set(),
         }
     )
     report_warnings: set[str] = set()
@@ -138,27 +149,57 @@ def evaluate_v4_effectiveness(
             row_warning_counts["missing_decision_date"] += 1
             continue
 
-        values = tuple(_required_group_value(row, field) for field in _GROUP_FIELDS[1:])
-        if any(value == "" for value in values):
+        identity = _cohort_identity(row)
+        if identity is None:
             row_warning_counts["incomplete_cohort_identity"] += 1
             continue
-        strategy_version, universe_id, cost_model, benchmark_id = values
-        key = (horizon_days, strategy_version, universe_id, cost_model, benchmark_id)
+        (
+            strategy_version,
+            strategy_config_id,
+            universe_policy_id,
+            universe_policy_hash,
+            cost_model,
+            benchmark_id,
+            return_basis,
+            evidence_tier,
+            identity_warnings,
+        ) = identity
+        key = (
+            horizon_days,
+            strategy_version,
+            strategy_config_id,
+            universe_policy_id,
+            universe_policy_hash,
+            cost_model,
+            benchmark_id,
+            return_basis,
+            evidence_tier,
+        )
         bucket = grouped[key]
+        bucket["warnings"].update(identity_warnings)
         if cost_model in UNMODELED_COST_MODEL_IDS:
             bucket["warnings"].add("cost_model_not_cost_adjusted")
 
-        identity = str(
+        snapshot_id = _required_group_value(row, "universe_snapshot_id")
+        if snapshot_id:
+            bucket["snapshot_ids"].add(snapshot_id)
+        component_hash = _required_group_value(
+            row, "universe_snapshot_selected_codes_hash"
+        )
+        if component_hash:
+            bucket["snapshot_component_hashes"].add(component_hash)
+
+        outcome_identity = str(
             row.get("outcome_id")
             or row.get("event_id")
             or f"row-{index}"
         ).strip()
-        previous = bucket["seen"].get((decision_date, identity))
+        previous = bucket["seen"].get((decision_date, outcome_identity))
         if previous is not None:
             if _stable_row_signature(previous) != _stable_row_signature(row):
                 bucket["warnings"].add("conflicting_duplicate_outcome")
             continue
-        bucket["seen"][(decision_date, identity)] = row
+        bucket["seen"][(decision_date, outcome_identity)] = row
 
         status = str(row.get("status", "")).strip().lower()
         if status in {"pending", "not_matured", "incomplete"}:
@@ -187,7 +228,7 @@ def evaluate_v4_effectiveness(
             continue
         bucket["ready_by_date"][decision_date].append(
             {
-                "identity": identity,
+                "identity": outcome_identity,
                 "score_bp": score_bp,
                 "return_bp": return_bp,
                 "benchmark_excess_bp": _integer_or_none(
@@ -201,7 +242,17 @@ def evaluate_v4_effectiveness(
 
     slices: list[V4EffectivenessSlice] = []
     for key, bucket in sorted(grouped.items(), key=lambda item: item[0]):
-        horizon_days, strategy_version, universe_id, cost_model, benchmark_id = key
+        (
+            horizon_days,
+            strategy_version,
+            strategy_config_id,
+            universe_policy_id,
+            universe_policy_hash,
+            cost_model,
+            benchmark_id,
+            return_basis,
+            evidence_tier,
+        ) = key
         ready_by_date = bucket["ready_by_date"]
         dates = sorted(ready_by_date)
         ready_rows = [row for day in dates for row in ready_by_date[day]]
@@ -249,9 +300,12 @@ def evaluate_v4_effectiveness(
             (
                 str(horizon_days),
                 str(strategy_version),
-                str(universe_id),
+                str(strategy_config_id),
+                str(universe_policy_id),
                 str(cost_model),
                 str(benchmark_id),
+                str(return_basis),
+                str(evidence_tier),
             )
         )
         slices.append(
@@ -259,7 +313,7 @@ def evaluate_v4_effectiveness(
                 cohort_id=cohort_id,
                 horizon_days=int(horizon_days),
                 strategy_version=str(strategy_version),
-                universe_id=str(universe_id),
+                universe_id=str(universe_policy_id),
                 cost_model=str(cost_model),
                 benchmark_id=str(benchmark_id),
                 decision_date_start=dates[0].isoformat() if dates else None,
@@ -296,6 +350,15 @@ def evaluate_v4_effectiveness(
                 ),
                 evaluation_status=status,
                 warnings=tuple(sorted(warnings)),
+                strategy_config_id=str(strategy_config_id),
+                universe_policy_hash=str(universe_policy_hash),
+                return_basis=str(return_basis),
+                evidence_tier=str(evidence_tier),
+                universe_snapshot_count=len(bucket["snapshot_ids"]),
+                universe_snapshot_ids=tuple(sorted(bucket["snapshot_ids"])),
+                universe_component_change_count=max(
+                    0, len(bucket["snapshot_component_hashes"]) - 1
+                ),
             )
         )
 
@@ -321,6 +384,95 @@ def _required_group_value(row: Mapping[str, Any], field_name: str) -> str:
     if value is None or isinstance(value, (bool, Mapping, list, tuple)):
         return ""
     return str(value).strip()
+
+
+def _cohort_identity(
+    row: Mapping[str, Any],
+) -> tuple[str, str, str, str, str, str, str, str, tuple[str, ...]] | None:
+    """解析跨日 cohort identity，並拒絕新版身份的缺件。
+
+    舊 JSON／fixture 只有 ``universe_id`` 時保留相容讀取；一旦 row 宣告
+    新版 policy／snapshot schema，缺少政策身份或每日快照就必須診斷為無效，
+    不可把當日 snapshot id 當成跨日政策 id。
+    """
+
+    strategy_version = _required_group_value(row, "strategy_version")
+    if not strategy_version:
+        strategy_version = _required_group_value(row, "strategy_version_id")
+    cost_model = _required_group_value(row, "cost_model") or _required_group_value(
+        row, "cost_model_id"
+    )
+    benchmark_id = _required_group_value(row, "benchmark_id")
+    if not strategy_version or not cost_model or not benchmark_id:
+        return None
+
+    identity_schema = _required_group_value(row, "universe_identity_schema")
+    policy_schema = _required_group_value(row, "universe_policy_schema")
+    snapshot_schema = _required_group_value(row, "universe_snapshot_schema")
+    policy_id = _required_group_value(row, "universe_policy_id")
+    snapshot_id = _required_group_value(row, "universe_snapshot_id")
+    snapshot_hash = _required_group_value(row, "universe_snapshot_hash")
+    warnings: list[str] = []
+
+    # Read-model rows for pre-policy events expose the legacy ``universe_id``
+    # through the compatibility ``universe_policy_id`` alias.  Treat that
+    # exact, schema-less alias as legacy; an explicitly declared policy (or a
+    # policy id that differs from the legacy alias) must carry a snapshot too.
+    legacy_alias = _required_group_value(row, "universe_id")
+    declared_new_identity = bool(
+        policy_schema
+        or snapshot_schema
+        or identity_schema in {
+            "recommendation-universe-policy.v1",
+            "recommendation-universe-snapshot.v1",
+        }
+        or (policy_id and policy_id != legacy_alias)
+    )
+    if declared_new_identity:
+        # 新版 row 必須同時保存穩定政策與每日快照；兩者缺一都不能進成熟分母。
+        if not policy_id or not snapshot_id or not snapshot_hash:
+            return None
+        if identity_schema and identity_schema not in {
+            "recommendation-universe-snapshot.v1",
+            "recommendation-universe.v1",
+        }:
+            warnings.append("universe_identity_schema_unrecognized")
+    else:
+        legacy_id = legacy_alias
+        if not legacy_id:
+            return None
+        # 舊資料沒有 policy/snapshot 分層，僅作相容診斷，不宣稱新版契約。
+        policy_id = legacy_id
+        snapshot_id = ""
+
+    policy_hash = _required_group_value(row, "universe_policy_hash")
+    if not policy_hash:
+        policy_hash = _required_group_value(row, "universe_hash") or (
+            "legacy-universe-hash" if not policy_schema else ""
+        )
+    if not policy_hash:
+        return None
+
+    strategy_config_id = _required_group_value(row, "strategy_config_id")
+    strategy_config_schema = _required_group_value(row, "strategy_config_schema")
+    if strategy_config_schema and not strategy_config_id:
+        return None
+    if not strategy_config_id:
+        strategy_config_id = _required_group_value(row, "strategy_config_hash")
+    if not strategy_config_id:
+        strategy_config_id = "legacy-strategy-config"
+
+    return (
+        strategy_version,
+        strategy_config_id,
+        policy_id,
+        policy_hash,
+        cost_model,
+        benchmark_id,
+        _required_group_value(row, "return_basis") or DEFAULT_RETURN_BASIS,
+        _required_group_value(row, "evidence_tier") or "unclassified",
+        tuple(warnings),
+    )
 
 
 def _normalise_date(value: object) -> date | None:

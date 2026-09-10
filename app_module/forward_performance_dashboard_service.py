@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 import sqlite3
-from typing import Any
+from typing import Any, Iterable
 
 from app_module.evidence_event_dtos import EvidenceEvent, EvidenceOutcome, normalize_event_type
 from app_module.evidence_event_repository import EvidenceEventRepository
@@ -98,7 +98,11 @@ class ReadOnlyEvidenceEventRepository(EvidenceEventRepository):
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int | None = None,
+        incomplete_outcomes_first: bool = False,
+        outcome_windows: Iterable[int] | None = None,
+        complete_cohort_identity_only: bool = False,
     ) -> list[EvidenceEvent]:
+        del incomplete_outcomes_first, outcome_windows, complete_cohort_identity_only
         where: list[str] = []
         params: list[Any] = []
         if symbol is not None:

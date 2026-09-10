@@ -143,7 +143,11 @@ class EvidenceEventService:
     @staticmethod
     def lineage_for(event: EvidenceEvent) -> dict[str, Any]:
         declared = event.metadata.get("evidence_lineage", {})
-        tier = declared.get("declared_tier", "unclassified") if isinstance(declared, dict) else "unclassified"
+        tier = (
+            declared.get("declared_tier")
+            if isinstance(declared, dict)
+            else None
+        ) or event.metadata.get("evidence_tier", "unclassified")
         if tier not in {"replay", "forward", "paper", "live"}:
             tier = "unclassified"
         return {

@@ -21,23 +21,44 @@ from app_module.v4_effectiveness_read_model import (
     DEFAULT_RETURN_BASIS,
     V4EffectivenessReadModel,
 )
+from app_module.v4_evidence_identity import (
+    build_recommendation_universe_identity,
+    build_strategy_config_identity,
+)
 
 
 def _sample_rows() -> tuple[dict[str, Any], ...]:
     rows: list[dict[str, Any]] = []
+    strategy_identity = build_strategy_config_identity(
+        {"strategy_version_id": "rule-v4-sample", "filters": {"industry": "全部"}},
+        max_stocks=20,
+        top_n=10,
+    )
     for index, decision_date in enumerate(
         ("2026-09-01", "2026-09-02", "2026-09-03"),
         start=1,
     ):
+        universe_identity = build_recommendation_universe_identity(
+            decision_date=decision_date,
+            selection_mode="top_max_stocks",
+            industry_filter="全部",
+            max_stocks=20,
+            requested_codes=None,
+            selected_codes=("2330", "2317") if index == 1 else ("2330", "2412"),
+            source_provider_id="sample-provider",
+        )
         rows.append(
             {
+                **strategy_identity,
+                **universe_identity,
                 "decision_date": decision_date,
                 "outcome_id": f"sample-{index}",
                 "horizon_days": 5,
                 "strategy_version": "rule-v4-sample",
-                "universe_id": "twse-liquid",
                 "cost_model": "paper-balanced-v1",
                 "benchmark_id": "twse-equal-weight",
+                "return_basis": DEFAULT_RETURN_BASIS,
+                "evidence_tier": "forward",
                 "status": "ready",
                 "score_bp": 9000 - index * 100,
                 "return_bp": 120 if index != 2 else -80,
@@ -83,12 +104,12 @@ def _render_markdown(payload: Mapping[str, Any]) -> str:
         "",
         "> 唯讀 cohort 統計；不是交易建議，不宣稱投資有效性，不啟用 scheduler。",
         "",
-        "| Cohort | Horizon | Decision days | Mature | Pending | Missing | Precision@K | Hit rate | Status |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| Cohort | Policy | Snapshots | Horizon | Decision days | Mature | Pending | Missing | Precision@K | Hit rate | Status |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for item in payload["slices"]:
         lines.append(
-            "| {cohort_id} | {horizon_days} | {decision_day_count} | "
+            "| {cohort_id} | {universe_policy_id} | {universe_snapshot_count} | {horizon_days} | {decision_day_count} | "
             "{mature_outcome_count} | {pending_outcome_count} | "
             "{missing_outcome_count} | {precision_at_k_bp} | "
             "{hit_rate_bp} | {evaluation_status} |".format(**item)

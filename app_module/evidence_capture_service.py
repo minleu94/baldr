@@ -66,7 +66,12 @@ class EvidenceCaptureService:
             diagnostics.extend(import_result.diagnostics)
             payloads.extend(import_result.event_payloads)
             advisory_counts.update(_warning_tokens(import_result.advisory_tokens))
-        payloads = [self._with_replay_context(payload, request.replay_context) for payload in payloads]
+        payloads = [
+            self._with_declared_evidence_tier(
+                self._with_replay_context(payload, request.replay_context)
+            )
+            for payload in payloads
+        ]
 
         event_type_counts = Counter(self._event_type_value(payload.get("event_type")) for payload in payloads)
         quality_counts = Counter(self._quality_value(payload.get("data_quality")) for payload in payloads)
@@ -138,6 +143,17 @@ class EvidenceCaptureService:
         return (request.source,)
 
     def _event_hash(self, payload: Mapping[str, Any]) -> str:
+        metadata = dict(payload.get("metadata") or {})
+        evidence_tier = str(payload.get("evidence_tier") or "").strip()
+        if evidence_tier in {"replay", "forward", "paper", "live"}:
+            metadata["evidence_lineage"] = {
+                "contract": "evidence-lineage.v1",
+                "declared_tier": evidence_tier,
+                "run_id": str(payload.get("run_id") or ""),
+                "source_snapshot_id": str(payload.get("source_snapshot_id") or ""),
+                "formal_credit_granted": False,
+                "requires_named_review": True,
+            }
         return self.event_service.build_event_hash(
             event_date=str(payload.get("event_date") or ""),
             decision_date=str(payload.get("decision_date") or ""),
@@ -152,7 +168,7 @@ class EvidenceCaptureService:
             strategy_version_id=str(payload.get("strategy_version_id") or ""),
             profile_id=str(payload.get("profile_id") or ""),
             run_id=str(payload.get("run_id") or ""),
-            metadata=dict(payload.get("metadata") or {}),
+            metadata=metadata,
         )
 
     def _sample_event(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -170,6 +186,20 @@ class EvidenceCaptureService:
         metadata = dict(enriched.get("metadata") or {})
         metadata.update({str(key): value for key, value in replay_context.items()})
         enriched["metadata"] = metadata
+        return enriched
+
+    def _with_declared_evidence_tier(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Promote a declared metadata tier to the event-service contract."""
+
+        enriched = dict(payload)
+        if enriched.get("evidence_tier"):
+            return enriched
+        metadata = enriched.get("metadata")
+        if not isinstance(metadata, Mapping):
+            return enriched
+        tier = str(metadata.get("evidence_tier") or "").strip()
+        if tier in {"replay", "forward", "paper", "live"}:
+            enriched["evidence_tier"] = tier
         return enriched
 
     def _event_type_value(self, value: Any) -> str:

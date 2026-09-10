@@ -184,6 +184,7 @@ class HistoricalEvidenceReplayService:
                     confirm=request.confirm,
                     skip_outcomes=True,
                     replay_context={
+                        "evidence_tier": "replay",
                         "replay_mode": request.replay_mode,
                         "source_label": request.source_label,
                         "replay_run_id": request.replay_run_id,

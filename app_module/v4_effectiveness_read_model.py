@@ -99,11 +99,11 @@ def load_v4_effectiveness_rows_from_evidence_db(
 ) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
     """以 query-only 連線把 Evidence events/outcomes 映射成 V4 rows。
 
-    Evidence event schema 沒有強制的 ``universe_id`` 欄位；只接受事件
-    metadata 內明確保存的 ``universe_id``，不以 source id、symbol 或目前
-    股票池代替。沒有 outcome 的 event 也保留為 missing，讓成熟分母不會
-    因為 SQL inner join 而被悄悄縮小。查詢固定一個 canonical return basis，
-    避免同一事件的不同計算口徑被重複計入。
+    Evidence event schema 沒有強制的 cohort 欄位；新版事件必須在 metadata
+    同時保存 ``universe_policy_id`` 與 ``universe_snapshot_id``。舊資料只有
+    ``universe_id`` 時保留相容讀取，但不替新版缺件猜值。沒有 outcome 的 event
+    也保留為 missing，讓成熟分母不會因為 SQL inner join 而被悄悄縮小。查詢
+    固定一個 canonical return basis，避免同一事件的不同計算口徑被重複計入。
     """
 
     path = Path(db_path)
@@ -190,9 +190,50 @@ def load_v4_effectiveness_rows_from_evidence_db(
             for raw in raw_rows:
                 row = dict(raw)
                 metadata = _metadata_object(row.get("metadata_json"))
-                universe_id = _metadata_text(metadata, "universe_id")
-                if not universe_id:
+                identity_schema = _metadata_text(metadata, "universe_identity_schema")
+                universe_id_legacy = _metadata_text(metadata, "universe_id")
+                universe_policy_id = _metadata_text(metadata, "universe_policy_id")
+                universe_policy_hash = _metadata_text(metadata, "universe_policy_hash")
+                universe_policy_schema = _metadata_text(metadata, "universe_policy_schema")
+                universe_snapshot_id = _metadata_text(metadata, "universe_snapshot_id")
+                universe_snapshot_hash = _metadata_text(metadata, "universe_snapshot_hash")
+                universe_snapshot_schema = _metadata_text(metadata, "universe_snapshot_schema")
+                universe_snapshot_source_provider_id = _metadata_text(
+                    metadata, "universe_snapshot_source_provider_id"
+                )
+                universe_snapshot_selected_codes_hash = _metadata_text(
+                    metadata, "universe_snapshot_selected_codes_hash"
+                )
+                if universe_policy_id:
+                    if not universe_snapshot_id:
+                        warnings.add("evidence_rows_missing_universe_snapshot_id")
+                    if not universe_policy_hash:
+                        warnings.add("evidence_rows_missing_universe_policy_hash")
+                    if not universe_snapshot_hash:
+                        warnings.add("evidence_rows_missing_universe_snapshot_hash")
+                elif identity_schema in {
+                    "recommendation-universe.v1",
+                    "recommendation-universe-snapshot.v1",
+                } or universe_snapshot_schema:
+                    # 舊版每日 identity 含日期與 selected codes，不能升格成政策身份。
+                    warnings.add("evidence_rows_missing_universe_policy_id")
+                elif not universe_id_legacy:
                     warnings.add("evidence_rows_missing_universe_id")
+                else:
+                    # 只有沒有新版 schema 標記的舊 row 才使用相容 alias。
+                    universe_policy_id = universe_id_legacy
+                    universe_policy_hash = universe_policy_hash or _metadata_text(
+                        metadata, "universe_hash"
+                    ) or "legacy-universe-hash"
+                strategy_config_id = _metadata_text(metadata, "strategy_config_id")
+                strategy_config_hash = _metadata_text(metadata, "strategy_config_hash")
+                strategy_config_schema = _metadata_text(metadata, "strategy_config_schema")
+                evidence_tier = _metadata_text(metadata, "evidence_tier")
+                if not evidence_tier:
+                    lineage = metadata.get("evidence_lineage")
+                    if isinstance(lineage, Mapping):
+                        evidence_tier = _metadata_text(lineage, "declared_tier")
+                evidence_tier = evidence_tier or "unclassified"
                 event_id = str(row.get("event_id") or "").strip()
                 outcome_id = str(row.get("outcome_id") or "").strip()
                 if not outcome_id:
@@ -210,9 +251,24 @@ def load_v4_effectiveness_rows_from_evidence_db(
                         "outcome_id": outcome_id,
                         "horizon_days": horizon or 0,
                         "strategy_version": row.get("strategy_version_id") or "",
-                        "universe_id": universe_id,
+                        # 舊欄位保留為每日 snapshot alias；新版 evaluator 使用
+                        # universe_policy_id 作為跨日 key。
+                        "universe_id": universe_snapshot_id or universe_id_legacy or universe_policy_id,
+                        "universe_policy_id": universe_policy_id,
+                        "universe_policy_hash": universe_policy_hash,
+                        "universe_policy_schema": universe_policy_schema,
+                        "universe_identity_schema": identity_schema,
+                        "universe_snapshot_id": universe_snapshot_id,
+                        "universe_snapshot_hash": universe_snapshot_hash,
+                        "universe_snapshot_schema": universe_snapshot_schema,
+                        "universe_snapshot_source_provider_id": universe_snapshot_source_provider_id,
+                        "universe_snapshot_selected_codes_hash": universe_snapshot_selected_codes_hash,
+                        "strategy_config_id": strategy_config_id or strategy_config_hash,
+                        "strategy_config_hash": strategy_config_hash,
+                        "strategy_config_schema": strategy_config_schema,
                         "cost_model": row.get("cost_model_id") or "",
                         "benchmark_id": row.get("benchmark_id") or "",
+                        "evidence_tier": evidence_tier,
                         "status": row.get("outcome_status") or "missing",
                         "score_bp": row.get("score_bp"),
                         "return_bp": row.get("forward_return_bp"),

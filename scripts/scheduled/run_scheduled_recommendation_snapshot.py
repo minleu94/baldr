@@ -21,6 +21,7 @@ from app_module.forward_position_thesis_candidate_producer import (
 from app_module.recommendation_repository import RecommendationRepository
 from app_module.recommendation_service import RecommendationService
 from app_module.v4_evidence_identity import (
+    DEFAULT_RETURN_BASIS,
     SCHEDULED_RECOMMENDATION_BENCHMARK_ID,
     SCHEDULED_RECOMMENDATION_COST_MODEL_ID,
     SCHEDULED_RECOMMENDATION_PRIMARY_HORIZON_DAYS,
@@ -204,15 +205,35 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
         run_context = deepcopy(getattr(service, "last_run_context", {}) or {})
+        # 排程推薦是自然前瞻研究來源；這個宣告會沿 importer／event／outcome
+        # 保存，不能由下游依 source name 猜測。
+        run_context["evidence_tier"] = "forward"
+        run_context["return_basis"] = DEFAULT_RETURN_BASIS
         for identity_key in (
             "universe_id",
             "universe_hash",
             "universe_identity_schema",
+            "universe_policy_id",
+            "universe_policy_hash",
+            "universe_policy_schema",
+            "universe_policy_spec",
+            "universe_snapshot_id",
+            "universe_snapshot_hash",
+            "universe_snapshot_schema",
+            "universe_snapshot_source_provider_id",
+            "universe_snapshot_selected_codes_hash",
+            "universe_snapshot_spec",
+            "strategy_config_id",
+            "strategy_config_hash",
+            "strategy_config_schema",
+            "strategy_config_spec",
             "strategy_version_id",
             "cost_model_id",
             "benchmark_id",
             "industry_benchmark_id",
             "horizon_days",
+            "evidence_tier",
+            "return_basis",
         ):
             value = run_context.get(identity_key)
             if value is not None and str(value).strip():
@@ -291,13 +312,25 @@ def main(argv: list[str] | None = None) -> int:
                     key: result_config[key]
                     for key in (
                         "strategy_version_id",
+                        "strategy_config_id",
+                        "strategy_config_hash",
                         "universe_id",
                         "universe_hash",
                         "universe_identity_schema",
+                        "universe_policy_id",
+                        "universe_policy_hash",
+                        "universe_policy_schema",
+                        "universe_snapshot_id",
+                        "universe_snapshot_hash",
+                        "universe_snapshot_schema",
+                        "universe_snapshot_source_provider_id",
+                        "universe_snapshot_selected_codes_hash",
                         "cost_model_id",
                         "benchmark_id",
                         "industry_benchmark_id",
                         "horizon_days",
+                        "evidence_tier",
+                        "return_basis",
                     )
                     if key in result_config and str(result_config[key]).strip()
                 },

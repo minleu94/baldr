@@ -54,8 +54,29 @@ def _has_complete_cohort_identity(event: EvidenceEvent) -> bool:
     ):
         return False
     metadata: Mapping[str, Any] = event.metadata if isinstance(event.metadata, Mapping) else {}
-    universe_id = metadata.get("universe_id")
-    if not _identity_text(universe_id):
+    policy_id = metadata.get("universe_policy_id")
+    snapshot_id = metadata.get("universe_snapshot_id")
+    policy_hash = metadata.get("universe_policy_hash")
+    snapshot_hash = metadata.get("universe_snapshot_hash")
+    identity_schema = _identity_text(metadata.get("universe_identity_schema"))
+    if _identity_text(policy_id):
+        if (
+            not _identity_text(snapshot_id)
+            or not _identity_text(snapshot_hash)
+            or not _identity_text(policy_hash)
+        ):
+            return False
+    elif identity_schema in {
+        "recommendation-universe.v1",
+        "recommendation-universe-snapshot.v1",
+    }:
+        # 舊版 daily digest 不能被當成跨日政策身份。
+        return False
+    elif not _identity_text(metadata.get("universe_id")):
+        # 保留無新版 schema 的舊 caller 相容性；它只作 legacy 診斷。
+        return False
+    strategy_config_schema = _identity_text(metadata.get("strategy_config_schema"))
+    if strategy_config_schema and not _identity_text(metadata.get("strategy_config_id")):
         return False
     horizon = metadata.get("horizon_days", metadata.get("expected_horizon_days"))
     if horizon is None or isinstance(horizon, bool):
@@ -75,6 +96,49 @@ def _identity_text(value: object) -> str:
     if value is None or isinstance(value, (bool, Mapping, list, tuple)):
         return ""
     return str(value).strip()
+
+
+def _event_identity_metadata(event: EvidenceEvent) -> dict[str, Any]:
+    """把事件的明確 cohort identity 複製到 outcome metadata。
+
+    Read model 仍以 event join 為主；這份副本讓單獨保存的 outcome receipt
+    也能保留政策／快照追溯，不會由下游重新猜測身份。
+    """
+
+    source = event.metadata if isinstance(event.metadata, Mapping) else {}
+    keys = (
+        "strategy_config_id",
+        "strategy_config_hash",
+        "strategy_config_schema",
+        "universe_id",
+        "universe_hash",
+        "universe_identity_schema",
+        "universe_policy_id",
+        "universe_policy_hash",
+        "universe_policy_schema",
+        "universe_snapshot_id",
+        "universe_snapshot_hash",
+        "universe_snapshot_schema",
+        "universe_snapshot_source_provider_id",
+        "universe_snapshot_selected_codes_hash",
+        "horizon_days",
+        "evidence_tier",
+        "return_basis",
+    )
+    metadata = {
+        key: source[key]
+        for key in keys
+        if key in source and source[key] not in (None, "")
+    }
+    metadata.update(
+        {
+            "strategy_version_id": event.strategy_version_id,
+            "cost_model_id": event.cost_model_id,
+            "benchmark_id": event.benchmark_id,
+            "industry_benchmark_id": event.industry_benchmark_id,
+        }
+    )
+    return metadata
 
 
 @dataclass(frozen=True)
@@ -140,16 +204,29 @@ class ForwardPerformanceService:
             start_date=start_date,
             end_date=end_date,
             limit=limit,
+            incomplete_outcomes_first=True,
+            outcome_windows=windows,
         )
         skipped_incomplete_identity = 0
         if require_cohort_identity:
-            eligible_events: list[EvidenceEvent] = []
-            for event in events:
-                if _has_complete_cohort_identity(event):
-                    eligible_events.append(event)
-                else:
-                    skipped_incomplete_identity += 1
-            events = eligible_events
+            # Keep a bounded diagnostic pass for the skip count, then use a
+            # SQL identity gate before applying the same bounded event limit.
+            # This prevents a large legacy backlog from consuming all slots
+            # and starving a valid long-horizon pending event.
+            skipped_incomplete_identity = sum(
+                not _has_complete_cohort_identity(event) for event in events
+            )
+            events = self.repository.list_events(
+                symbol=symbol,
+                event_type=event_type,
+                decision_date=decision_date,
+                start_date=start_date,
+                end_date=end_date,
+                limit=limit,
+                incomplete_outcomes_first=True,
+                outcome_windows=windows,
+                complete_cohort_identity_only=True,
+            )
         counters = {
             "events_scanned": len(events),
             "events_skipped_incomplete_identity": skipped_incomplete_identity,
@@ -176,6 +253,7 @@ class ForwardPerformanceService:
                     **outcome.metadata,
                     "evidence_lineage": EvidenceEventService.lineage_for(event),
                     "is_execution_pnl": False,
+                    **_event_identity_metadata(event),
                 })
                 counters["warnings_count"] += len(outcome.warnings)
                 if outcome.outcome_status == EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA:

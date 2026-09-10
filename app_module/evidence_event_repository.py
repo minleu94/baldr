@@ -18,6 +18,7 @@ from app_module.evidence_event_dtos import (
 )
 from app_module.research_run_dtos import canonical_json
 from data_module.evidence_event_migration import apply_evidence_event_schema
+from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
 
 
 class EvidenceEventRepository:
@@ -86,6 +87,9 @@ class EvidenceEventRepository:
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int | None = None,
+        incomplete_outcomes_first: bool = False,
+        outcome_windows: Iterable[int] | None = None,
+        complete_cohort_identity_only: bool = False,
     ) -> list[EvidenceEvent]:
         where: list[str] = []
         params: list[Any] = []
@@ -104,15 +108,79 @@ class EvidenceEventRepository:
         if end_date is not None:
             where.append("decision_date <= ?")
             params.append(end_date)
-        sql = "SELECT * FROM evidence_events"
+        sql = "SELECT e.* FROM evidence_events AS e"
+        if complete_cohort_identity_only:
+            # Keep the query bounded while preventing malformed/legacy rows
+            # from consuming the producer's event budget.  The JSON fields
+            # are only accepted when the event explicitly carries a complete
+            # policy+snapshot pair, or the schema-less legacy universe alias.
+            metadata_json = (
+                "CASE WHEN json_valid(e.metadata_json) "
+                "THEN e.metadata_json ELSE '{}' END"
+            )
+            where.append(
+                "COALESCE(NULLIF(TRIM(e.strategy_version_id), ''), '') <> ''"
+            )
+            where.append("COALESCE(NULLIF(TRIM(e.cost_model_id), ''), '') <> ''")
+            where.append("COALESCE(NULLIF(TRIM(e.benchmark_id), ''), '') <> ''")
+            where.append(
+                f"COALESCE(CAST(json_extract({metadata_json}, '$.horizon_days') AS INTEGER), "
+                f"CAST(json_extract({metadata_json}, '$.expected_horizon_days') AS INTEGER), 0) > 0"
+            )
+            where.append(
+                "("
+                f"(COALESCE(json_extract({metadata_json}, '$.universe_policy_id'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_policy_hash'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_snapshot_id'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_snapshot_hash'), '') <> '' "
+                f"AND (COALESCE(json_extract({metadata_json}, '$.strategy_config_schema'), '') = '' "
+                f"OR COALESCE(json_extract({metadata_json}, '$.strategy_config_id'), '') <> ''))"
+                " OR "
+                f"(COALESCE(json_extract({metadata_json}, '$.universe_policy_id'), '') = '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_id'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_identity_schema'), '') NOT IN "
+                "('recommendation-universe.v1', 'recommendation-universe-snapshot.v1'))"
+                ")"
+            )
         if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY decision_date ASC, event_id ASC"
+            sql += " WHERE " + " AND ".join(
+                item.replace("decision_date", "e.decision_date") for item in where
+            )
+        order_params: list[Any] = []
+        normalized_window_values: set[int] = set()
+        for value in outcome_windows or ():
+            if isinstance(value, bool):
+                continue
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                normalized_window_values.add(parsed)
+        normalized_windows = tuple(sorted(normalized_window_values))
+        if incomplete_outcomes_first and normalized_windows:
+            placeholders = ", ".join("?" for _ in normalized_windows)
+            sql += (
+                " ORDER BY CASE WHEN ("
+                "SELECT COUNT(DISTINCT o.window_days) FROM evidence_outcomes AS o "
+                "WHERE o.event_id = e.event_id "
+                f"AND o.window_days IN ({placeholders}) "
+                "AND o.return_basis = ? AND o.outcome_status = 'ready'"
+                f") < {len(normalized_windows)} THEN 0 ELSE 1 END, "
+                "e.decision_date ASC, e.event_id ASC"
+            )
+            order_params.extend(normalized_windows)
+            order_params.append(DEFAULT_RETURN_BASIS)
+        else:
+            sql += " ORDER BY e.decision_date ASC, e.event_id ASC"
         if limit is not None:
             sql += " LIMIT ?"
-            params.append(int(limit))
+            order_params.append(int(limit))
 
-        return [self._row_to_event(row) for row in self._read_rows("evidence_events", sql, tuple(params))]
+        return [
+            self._row_to_event(row)
+            for row in self._read_rows("evidence_events", sql, tuple(params + order_params))
+        ]
 
     def list_events_for_run(self, run_id: str) -> list[EvidenceEvent]:
         rows = self._read_rows("evidence_events",

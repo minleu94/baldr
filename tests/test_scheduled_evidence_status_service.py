@@ -327,6 +327,41 @@ def test_scheduled_evidence_status_reads_forward_outcome_receipt(tmp_path: Path)
     assert dict(status.machine_status_classifications)["forward_outcomes"] == "machine_degraded"
 
 
+def test_scheduled_status_projects_forward_health_blocker(tmp_path: Path) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    forward_dir = output_root / "scheduled" / "forward_outcomes"
+    forward_dir.mkdir(parents=True)
+    (forward_dir / "latest_status.json").write_text(
+        json.dumps(
+            {
+                "status": "passed_with_warnings",
+                "checked_at": "2026-09-10T05:40:00+08:00",
+                "summary": {"events_scanned": 0, "outcomes_written": 0},
+                "health": {
+                    "classification": "actionable_engineering_blocker",
+                    "qualifying_event_count": 0,
+                    "cohort_count": 0,
+                    "blockers": ["events_missing_complete_cohort_identity"],
+                    "warnings": [],
+                    "horizons": {"60": {"ready": 0, "pending": 0, "missing": 0}},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.forward_health_classification == "actionable_engineering_blocker"
+    assert status.forward_health_qualifying_event_count == 0
+    assert status.forward_health_horizons == {
+        "60": {"ready": 0, "pending": 0, "missing": 0}
+    }
+    assert dict(status.machine_status_classifications)["forward_outcomes"] == "invalid_evidence"
+    assert status.machine_status_classification == "invalid_evidence"
+
+
 def test_scheduled_evidence_status_uses_same_day_manual_recommendation_when_scheduled_status_missing(
     tmp_path: Path,
 ) -> None:

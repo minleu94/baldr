@@ -157,6 +157,7 @@ class ScheduledEvidenceStatusView(QWidget):
             f"{status.forward_outcome_status} / 掃描 {_count_text(status.forward_outcome_events_scanned)} / "
             f"寫入 {_count_text(status.forward_outcome_outcomes_written)}\n"
             f"待成熟 {_count_text(status.forward_outcome_pending)}；"
+            f"健康：{status.forward_health_classification or '未知'}\n"
             f"分類：{format_machine_status_classification(forward_class)}{stale_suffix}"
         )
         recommendation_id = status.recommendation_result_id or "未知"
@@ -275,6 +276,14 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
         f"- forward outcome run: {status.forward_outcome_run_id or '未知'}",
         f"- forward outcome blockers: {_join(status.forward_outcome_blockers)}",
         f"- forward outcome warnings: {_join(status.forward_outcome_warnings)}",
+        f"- forward health classification: {status.forward_health_classification or '未知'}",
+        f"- latest qualifying event date: {status.forward_health_latest_qualifying_event_date or '未知'}",
+        f"- qualifying events / cohorts: {_count_text(status.forward_health_qualifying_event_count)} / {_count_text(status.forward_health_cohort_count)}",
+        f"- horizon ready/pending/missing: {_horizon_summary(status.forward_health_horizons)}",
+        f"- latest capture / outcome update / evaluation: {status.forward_health_latest_capture_at or '未知'} / {status.forward_health_latest_outcome_updated_at or '未知'} / {status.forward_health_last_evaluation_at or '未知'}",
+        f"- next maturity date: {status.forward_health_next_maturity_date or '無法推算'}",
+        f"- forward health blockers: {_join(status.forward_health_blockers)}",
+        f"- forward health warnings: {_join(status.forward_health_warnings)}",
         f"- blocking gaps: {_join(status.pipeline_blocking_gaps)}",
         f"- evidence/trading boundary: {'ok' if boundary_ok else 'needs review'}",
         (
@@ -389,6 +398,20 @@ def _join(values: tuple[str, ...]) -> str:
 
 def _count_text(value: int | None) -> str:
     return str(value) if value is not None else "未知"
+
+
+def _horizon_summary(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return "未知"
+    parts: list[str] = []
+    for horizon in sorted(value, key=str):
+        item = value.get(horizon)
+        if not isinstance(item, dict):
+            continue
+        parts.append(
+            f"{horizon}:R{item.get('ready', 0)}/P{item.get('pending', 0)}/M{item.get('missing', 0)}"
+        )
+    return "; ".join(parts) if parts else "未知"
 
 
 def _bool_text(value: bool | None) -> str:

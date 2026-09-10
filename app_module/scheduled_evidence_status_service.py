@@ -87,6 +87,20 @@ class ScheduledEvidenceStatus:
     forward_outcome_blockers: tuple[str, ...] = ()
     forward_outcome_warnings: tuple[str, ...] = ()
     forward_outcome_status_path: Path | None = None
+    # V4 跨日 cohort 健康摘要；欄位追加在 DTO 尾端以維持舊 caller 的 positional 相容。
+    forward_health_classification: str | None = None
+    forward_health_latest_qualifying_event_date: str | None = None
+    forward_health_qualifying_event_count: int | None = None
+    forward_health_events_skipped_incomplete_identity: int | None = None
+    forward_health_cohort_count: int | None = None
+    forward_health_horizons: dict[str, Any] | None = None
+    forward_health_latest_capture_at: str | None = None
+    forward_health_latest_outcome_updated_at: str | None = None
+    forward_health_last_evaluation_at: str | None = None
+    forward_health_next_maturity_date: str | None = None
+    forward_health_blockers: tuple[str, ...] = ()
+    forward_health_warnings: tuple[str, ...] = ()
+    forward_health_cohorts: tuple[dict[str, Any], ...] = ()
 
     @property
     def has_production_write_risk(self) -> bool:
@@ -108,6 +122,8 @@ class ScheduledEvidenceStatus:
             + self.freshness_errors
             + self.forward_outcome_blockers
             + self.forward_outcome_warnings
+            + self.forward_health_blockers
+            + self.forward_health_warnings
         )
         return (
             ("data_freshness", classify_machine_status(self.freshness_status, diagnostics)),
@@ -117,7 +133,13 @@ class ScheduledEvidenceStatus:
                 "forward_outcomes",
                 _classify_forward_outcome(
                     self.forward_outcome_status,
-                    (*self.forward_outcome_blockers, *self.forward_outcome_warnings),
+                    (
+                        *self.forward_outcome_blockers,
+                        *self.forward_outcome_warnings,
+                        *self.forward_health_blockers,
+                        *self.forward_health_warnings,
+                    ),
+                    self.forward_health_classification,
                 ),
             ),
         )
@@ -197,6 +219,16 @@ class ScheduledEvidenceStatusService:
         forward_summary_raw = forward_outcome.get("summary")
         forward_summary: dict[str, Any] = (
             forward_summary_raw if isinstance(forward_summary_raw, dict) else {}
+        )
+        forward_health_raw = forward_outcome.get("health")
+        forward_health: dict[str, Any] = (
+            forward_health_raw if isinstance(forward_health_raw, dict) else {}
+        )
+        forward_health_horizons_raw = forward_health.get("horizons")
+        forward_health_horizons = (
+            dict(forward_health_horizons_raw)
+            if isinstance(forward_health_horizons_raw, dict)
+            else None
         )
 
         report_path = _optional_path(evidence.get("report_path"))
@@ -328,6 +360,37 @@ class ScheduledEvidenceStatusService:
             ),
             forward_outcome_blockers=_tuple_of_str(forward_outcome.get("blockers")),
             forward_outcome_warnings=_tuple_of_str(forward_outcome.get("warnings")),
+            forward_health_classification=_str_or_none(forward_health.get("classification")),
+            forward_health_latest_qualifying_event_date=_str_or_none(
+                forward_health.get("latest_qualifying_event_date")
+            ),
+            forward_health_qualifying_event_count=_int_or_none(
+                forward_health.get("qualifying_event_count")
+            ),
+            forward_health_events_skipped_incomplete_identity=_int_or_none(
+                forward_health.get("events_skipped_incomplete_identity")
+            ),
+            forward_health_cohort_count=_int_or_none(forward_health.get("cohort_count")),
+            forward_health_horizons=forward_health_horizons,
+            forward_health_latest_capture_at=_str_or_none(
+                forward_health.get("latest_capture_at")
+            ),
+            forward_health_latest_outcome_updated_at=_str_or_none(
+                forward_health.get("latest_outcome_updated_at")
+            ),
+            forward_health_last_evaluation_at=_str_or_none(
+                forward_health.get("last_evaluation_at")
+            ),
+            forward_health_next_maturity_date=_str_or_none(
+                forward_health.get("next_maturity_date")
+            ),
+            forward_health_blockers=_tuple_of_str(forward_health.get("blockers")),
+            forward_health_warnings=_tuple_of_str(forward_health.get("warnings")),
+            forward_health_cohorts=tuple(
+                item
+                for item in (forward_health.get("cohorts") or ())
+                if isinstance(item, dict)
+            ),
         )
 
     def _accept_candidate(
@@ -401,9 +464,20 @@ class ScheduledEvidenceStatusService:
         )
 
 
-def _classify_forward_outcome(status: object, diagnostics: tuple[str, ...]) -> str:
+def _classify_forward_outcome(
+    status: object,
+    diagnostics: tuple[str, ...],
+    health_classification: str | None = None,
+) -> str:
     """Project producer-specific states onto the shared machine vocabulary."""
 
+    health = str(health_classification or "").strip().lower()
+    if health == "actionable_engineering_blocker":
+        return MACHINE_STATUS_INVALID_EVIDENCE
+    if health == "external_source_missing":
+        return MACHINE_STATUS_SOURCE_MISSING
+    if health == "waiting_for_natural_maturity":
+        return MACHINE_STATUS_WAITING_FOR_TIME
     raw = str(status or "").strip().lower()
     if raw in {"passed_with_warnings", "degraded", "warning", "partial"}:
         return MACHINE_STATUS_MACHINE_DEGRADED

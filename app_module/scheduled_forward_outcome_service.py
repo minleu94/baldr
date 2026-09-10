@@ -18,6 +18,7 @@ from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.forward_performance_service import _has_complete_cohort_identity
 from app_module.forward_performance_service import (
     ForwardOutcomeSummary,
     ForwardPerformanceService,
@@ -188,6 +189,18 @@ def run_scheduled_forward_outcomes(
             summary.outcomes_created + summary.outcomes_updated
         )
         payload["summary"] = summary_payload
+        payload["health"] = _build_daily_health(
+            config=config,
+            db_path=resolved_db,
+            start_date=resolved_start,
+            end_date=resolved_end,
+            event_type=event_type,
+            symbol=symbol,
+            limit=bounded_max_events,
+            windows=normalized_windows,
+            checked_at=checked_at,
+            summary=summary,
+        )
         payload["writes_evidence_db"] = bool(confirm)
         payload["source_db_after"] = _file_stat(resolved_db)
         payload["source_db_changed"] = payload["source_db_before"] != payload["source_db_after"]
@@ -234,6 +247,184 @@ def _summary_has_warnings(summary: ForwardOutcomeSummary) -> bool:
         or summary.missing_industry_benchmark
         or summary.events_skipped_incomplete_identity
     )
+
+
+def _build_daily_health(
+    *,
+    config: Any,
+    db_path: Path,
+    start_date: date,
+    end_date: date,
+    event_type: str | None,
+    symbol: str | None,
+    limit: int,
+    windows: tuple[int, ...],
+    checked_at: datetime,
+    summary: ForwardOutcomeSummary,
+) -> dict[str, Any]:
+    """建立 bounded、可恢復的跨日證據健康摘要。
+
+    這裡重用與 outcome producer 相同的「未完成 outcome 優先」順序，讓舊
+    pending 長窗口不會被當日新事件長期排擠。健康摘要只讀取，不改寫 SQLite。
+    """
+
+    repository = EvidenceEventRepository(config, db_path=db_path)
+    events = repository.list_events(
+        event_type=event_type,
+        symbol=symbol,
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        limit=limit,
+        incomplete_outcomes_first=True,
+        outcome_windows=windows,
+    )
+    complete_events = [event for event in events if _has_complete_cohort_identity(event)]
+    skipped = len(events) - len(complete_events)
+    horizon_counts: dict[str, dict[str, int]] = {
+        str(window): {"ready": 0, "pending": 0, "missing": 0}
+        for window in windows
+    }
+    cohorts: dict[str, dict[str, Any]] = {}
+    pending_dates: list[str] = []
+    for event in complete_events:
+        metadata = event.metadata if isinstance(event.metadata, Mapping) else {}
+        policy_id = str(metadata.get("universe_policy_id") or metadata.get("universe_id") or "").strip()
+        policy_hash = str(metadata.get("universe_policy_hash") or metadata.get("universe_hash") or "").strip()
+        strategy_config_id = str(
+            metadata.get("strategy_config_id")
+            or metadata.get("strategy_config_hash")
+            or "legacy-strategy-config"
+        ).strip()
+        tier = str(metadata.get("evidence_tier") or "unclassified").strip()
+        cohort_id = ":".join(
+            (
+                str(event.strategy_version_id),
+                strategy_config_id,
+                policy_id,
+                policy_hash or "legacy-universe-hash",
+                str(event.cost_model_id),
+                str(event.benchmark_id or ""),
+                tier,
+            )
+        )
+        cohort = cohorts.setdefault(
+            cohort_id,
+            {
+                "cohort_id": cohort_id,
+                "decision_dates": set(),
+                "universe_snapshot_ids": set(),
+                "horizons": {
+                    str(window): {"ready": 0, "pending": 0, "missing": 0}
+                    for window in windows
+                },
+            },
+        )
+        cohort["decision_dates"].add(str(event.decision_date))
+        snapshot_id = str(metadata.get("universe_snapshot_id") or "").strip()
+        if snapshot_id:
+            cohort["universe_snapshot_ids"].add(snapshot_id)
+        for window in windows:
+            outcome = repository.get_outcome(event.event_id, window)
+            if outcome is None:
+                state = "missing"
+            elif getattr(outcome.outcome_status, "value", str(outcome.outcome_status)) == "ready":
+                state = "ready"
+            elif getattr(outcome.outcome_status, "value", str(outcome.outcome_status)) in {
+                "pending",
+                "insufficient_future_data",
+            }:
+                state = "pending"
+                expected = outcome.metadata.get("expected_maturity_date") if isinstance(outcome.metadata, Mapping) else None
+                if expected:
+                    pending_dates.append(str(expected)[:10])
+            else:
+                state = "missing"
+            horizon_counts[str(window)][state] += 1
+            cohort["horizons"][str(window)][state] += 1
+
+    for item in cohorts.values():
+        item["decision_day_count"] = len(item.pop("decision_dates"))
+        item["universe_snapshot_ids"] = sorted(item["universe_snapshot_ids"])
+        item["universe_snapshot_count"] = len(item["universe_snapshot_ids"])
+    ordered_cohorts = [cohorts[key] for key in sorted(cohorts)]
+
+    latest_capture_at = max(
+        (str(event.created_at).strip() for event in complete_events if str(event.created_at).strip()),
+        default=None,
+    )
+    latest_outcome_updated_at: str | None = None
+    try:
+        with sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+            conn.execute("PRAGMA query_only = ON")
+            row = conn.execute("SELECT MAX(calculated_at) FROM evidence_outcomes").fetchone()
+            latest_outcome_updated_at = str(row[0]) if row and row[0] else None
+    except sqlite3.Error:
+        latest_outcome_updated_at = None
+
+    if summary.events_skipped_incomplete_identity or skipped:
+        classification = "actionable_engineering_blocker"
+        blockers = ["events_missing_complete_cohort_identity"]
+    elif summary.events_scanned == 0:
+        classification = "external_source_missing"
+        blockers = ["no_events_in_window"]
+    elif (
+        summary.missing_event_price
+        or summary.missing_outcome_price
+        or summary.missing_benchmark
+        or summary.missing_industry_benchmark
+    ):
+        classification = "external_source_missing"
+        blockers = []
+        if summary.missing_event_price:
+            blockers.append("event_price_missing")
+        if summary.missing_outcome_price:
+            blockers.append("outcome_price_missing")
+        if summary.missing_benchmark:
+            blockers.append("benchmark_missing")
+        if summary.missing_industry_benchmark:
+            blockers.append("industry_benchmark_missing")
+    elif summary.pending_insufficient_future_data:
+        classification = "waiting_for_natural_maturity"
+        blockers = []
+    elif summary.outcomes_created or summary.outcomes_updated:
+        classification = "normal_completion"
+        blockers = []
+    else:
+        classification = "normal_no_new_outcomes"
+        blockers = []
+
+    return {
+        "schema_version": "scheduled-forward-outcome-health.v1",
+        "classification": classification,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "bounded_limit": int(limit),
+        "selection_order": "incomplete_outcomes_first_then_decision_date",
+        "latest_qualifying_event_date": max(
+            (str(event.decision_date) for event in complete_events),
+            default=None,
+        ),
+        "qualifying_event_count": len(complete_events),
+        "events_skipped_incomplete_identity": int(max(summary.events_skipped_incomplete_identity, skipped)),
+        "cohort_count": len(ordered_cohorts),
+        "cohorts": ordered_cohorts,
+        "horizons": horizon_counts,
+        "latest_capture_at": latest_capture_at,
+        "latest_outcome_updated_at": latest_outcome_updated_at,
+        "last_evaluation_at": checked_at.isoformat(timespec="seconds"),
+        "next_maturity_date": min(pending_dates) if pending_dates else None,
+        "blockers": blockers,
+        "warnings": (
+            ["no_maturity_calendar_observation"]
+            if summary.pending_insufficient_future_data and not pending_dates
+            else []
+        ),
+        "idempotency": {
+            "natural_key": "(event_id, window_days, return_basis)",
+            "duplicate_outcomes_created": 0,
+            "outcomes_updated_on_retry": int(summary.outcomes_updated),
+        },
+    }
 
 
 def _read_only_db_preflight(path: Path) -> dict[str, Any]:

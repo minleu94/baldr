@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Mapping, Protocol, Sequence
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 
@@ -461,7 +462,10 @@ def _write_selection_status(
     root = _path(config_root)
     now = datetime.now(timezone.utc)
     stamp = now.strftime("%Y%m%dT%H%M%S%fZ")
-    receipt = root / "selection_receipts" / f"{stamp}-{os.getpid()}.json"
+    # Windows clock resolution can return the same microsecond for two rapid
+    # create-only calls.  Keep immutable receipts distinct without changing
+    # the date-keyed config reuse contract.
+    receipt = root / "selection_receipts" / f"{stamp}-{os.getpid()}-{uuid4().hex[:12]}.json"
     latest = root / "latest_selection.json"
     record = dict(payload)
     record["receipt_path"] = str(receipt)

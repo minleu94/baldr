@@ -18,6 +18,7 @@ from data_module.ml_storage_capacity import (
     acquire_heavy_chain_reservation,
     release_heavy_chain_reservation,
 )
+from data_module.phase3c_backfill_runner import BackfillSummary
 
 
 def _patch_capacity_preflight_for_unit_test(monkeypatch) -> None:
@@ -254,6 +255,25 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
                 "success": True,
                 "candidate_only": True,
                 "candidate_db_path": str(candidate_path),
+                "summary": BackfillSummary(
+                    start_date="2026-07-01",
+                    end_date="2026-07-03",
+                    candidate_db_path=str(candidate_path),
+                    dry_run=False,
+                    sources=["institutional", "credit"],
+                    total_days=3,
+                    trading_days_count=3,
+                    non_trading_days_count=0,
+                    unknown_days_count=0,
+                    succeeded_days_count=3,
+                    skipped_days_count=0,
+                    failed_days_count=0,
+                    total_rows_inserted=12,
+                    tdcc_historical_status="not_requested",
+                    started_at="2026-07-03T04:20:00+00:00",
+                    finished_at="2026-07-03T04:20:01+00:00",
+                    daily_results=[],
+                ),
             }
 
         def check_technical_indicator_latest_coverage(self):
@@ -284,6 +304,13 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     assert observed["candidate_calls"] == 1
     assert candidate_step["status"] == "passed"
     assert candidate_step["result"]["candidate_only"] is True
+    assert candidate_step["result"]["summary"]["succeeded_days_count"] == 3
+    history_records = [
+        json.loads(line)
+        for line in (status_path.parent / "history.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [record["status"] for record in history_records] == ["running", "passed"]
 
 
 def test_quick_update_releases_capacity_reservation_after_service_exception(

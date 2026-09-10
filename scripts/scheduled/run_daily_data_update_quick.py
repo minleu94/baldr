@@ -3,9 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import sys
+from collections.abc import Mapping
+from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
@@ -102,16 +107,91 @@ def _default_calendar_cache_path() -> Path | None:
     return path if path.is_dir() else None
 
 
+def _json_safe(value: Any, *, _seen: set[int] | None = None) -> Any:
+    """Convert service results into a bounded JSON-compatible status value.
+
+    Scheduled service results are allowed to carry dataclasses (for example the
+    Phase 3C ``BackfillSummary``), ``Path`` instances, dates, or scalar wrapper
+    types.  Those values are useful in a status payload but must not be able to
+    prevent publication of the terminal run status.  Unknown values are kept as
+    a diagnostic representation instead of raising from the status writer.
+    """
+
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, Enum):
+        return _json_safe(value.value, _seen=_seen)
+    if isinstance(value, Path):
+        return str(value)
+
+    seen = _seen if _seen is not None else set()
+    object_id = id(value)
+    if object_id in seen:
+        return f"<circular:{type(value).__name__}>"
+    seen.add(object_id)
+    try:
+        if is_dataclass(value) and not isinstance(value, type):
+            try:
+                return _json_safe(asdict(value), _seen=seen)
+            except Exception:  # noqa: BLE001
+                pass
+        if isinstance(value, Mapping):
+            return {
+                str(key): _json_safe(child, _seen=seen)
+                for key, child in value.items()
+            }
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return [_json_safe(child, _seen=seen) for child in value]
+        for method_name in ("as_dict", "to_dict"):
+            method = getattr(value, method_name, None)
+            if callable(method):
+                try:
+                    converted = method()
+                except Exception:  # noqa: BLE001
+                    continue
+                if converted is not value:
+                    return _json_safe(converted, _seen=seen)
+        item = getattr(value, "item", None)
+        if callable(item):
+            try:
+                converted = item()
+            except Exception:  # noqa: BLE001
+                converted = value
+            if converted is not value:
+                return _json_safe(converted, _seen=seen)
+        return repr(value)
+    finally:
+        seen.discard(object_id)
+
+
+def _json_safe_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    converted = _json_safe(payload)
+    if not isinstance(converted, dict):
+        raise TypeError("scheduled status payload must serialize to an object")
+    return converted
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    safe_payload = _json_safe_payload(payload)
+    path.write_text(
+        json.dumps(safe_payload, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _append_history_safely(path: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """保存 append-only history；history 寫入失敗不掩蓋主要更新結果。"""
 
     try:
-        return append_update_status_history(path, payload)
+        return append_update_status_history(path, _json_safe_payload(payload))
     except Exception as exc:  # noqa: BLE001
         logging.warning("Unable to append data update history: %s", exc)
         return {

@@ -54,6 +54,20 @@ FinMind `TaiwanStockCashFlowsStatement` numeric-only 候選抓取器、共用 he
 
 未完成範圍必須保留：8月未公告公司、4筆集保加總異常、現金流數值及6家TDR財報；現況快照不授予歷史PIT／ML credit。歷史基本面表仍為原期別；新數值存於 `fundamental_current_observations`，當下報告依完整觀測時間讀取。每日quick尚未接新capture/apply入口。詳細來源、真入庫、驗證與限制見 [資料補齊驗收](../06_qa/DATA_COMPLETION_2026_09_09.md)。下方9/8工作線表是前一輪整合快照，資料狀態以本段為準。
 
+## 2026-09-09 排程落地與狀態發布收尾
+
+Windows Task Scheduler 已以 `register-all` 加上專用 Paper／PIT 路徑完成註冊；root elevated live query
+確認 18 個 daily 與 1 個 weekly 共 19 個 task 均為 `Enabled`／`Ready`，wrapper action 與 Pacific local
+trigger（04:20–21:25 daily、16:00／16:15／18:00 handoff、週日18:00）一致。任務維持
+`Interactive only` 與既有電池／單實例限制，主機必須保持已登入的 Windows 使用者工作階段；這不會把
+排程註冊解讀為 production evidence、Formal OOS、promotion 或 broker 授權。
+
+每日 quick 更新曾因 Phase 3C `BackfillSummary` 非原生 JSON 物件，使 2026-09-09 那輪完成資料步驟後
+latest status 停在 `running`。runner 現已在 latest status／history 邊界統一轉換 dataclass、Path、日期與
+scalar wrapper，並以回歸測試證明 terminal status 與 append-only history 仍會發布；不重跑當日正式更新以免
+重複寫入 D 槽，既有 stale receipt 會由下一個 04:20 真實輪次取代。其餘 `pending`／`blocked` 仍只代表
+自然成熟、來源授權、成本／成交或 owner-controlled input 尚未取得，不能改寫成完成。
+
 ## 2026-09-08 Luna 交付整合收尾
 
 目前是工程整合與自然證據建立階段，**V4 尚未完成**。以下是目前狀態；先前逐輪測試、失敗與中途進度已移到歷史封存，不再把「早期待啟動」與「後續已中止」同列為現況。

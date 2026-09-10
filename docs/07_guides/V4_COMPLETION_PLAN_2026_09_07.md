@@ -52,6 +52,19 @@ gross research observation 身份，表示費稅、滑價及流動性成本尚�
 Outcome wrapper 同時要求完整 cohort identity；缺少策略／成本／benchmark／universe／horizon
 的舊事件會被計入 `events_skipped_incomplete_identity`，不會佔用有限 outcome 寫入額度。
 
+## 2026-09-09 root scheduler／runner closeout
+
+Windows Task Scheduler 已完成 aggregate `register-all` 與專用 Paper／PIT registration。root 以 elevated
+live query 逐一確認 18 個 daily 與 1 個 weekly task 均為 `Enabled`／`Ready`，action 指向目前 checkout
+的 wrapper，Pacific local trigger 與台北 cutoff mapping 符合既有契約；`register ... dryrun` 亦通過且沒有
+額外建立 task。所有 task 保留 `Interactive only`、IgnoreNew、電池與 timeout 設定，已登入的 Windows
+使用者工作階段是日常執行前提。
+
+同日修正 quick runner 的狀態發布邊界：Phase 3C `BackfillSummary` 等服務結果現在會在 latest status／
+append-only history 寫入前轉成 JSON-safe 結構，避免資料步驟完成後因序列化例外留下永久 `running`。新增
+回歸測試驗證 terminal status、history 與候選摘要均可讀回；當日既有 stale status 不以人工回填，等待
+下一個 04:20 真實輪次自然取代。這項修正不改正式證據、交易或 promotion gate。
+
 排程狀態頁與 Workbench 背景證據流已納入 `forward_outcomes/latest_status.json` 的唯讀
 投影，顯示掃描／寫入／待成熟數與寫入邊界；receipt 缺失時只顯示 source gap，避免把
 推薦或 freshness payload 當成 forward outcome。

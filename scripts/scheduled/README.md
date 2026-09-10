@@ -598,6 +598,8 @@ UI 若要讀取外部 status，另需設定 `DATA_FRESHNESS_STATUS_ARTIFACT` 指
 
 The same runner appends bounded `data-update-status-history.v1` records to `history.jsonl` (or the explicit `--history-path`) for the running and terminal attempts. The history is append-only and idempotent by record hash; it does not backfill an existing `latest_status.json` and does not change any downstream readiness or write permission.
 
+The status boundary converts service result dataclasses (including the Phase 3C `BackfillSummary`), paths, dates, and scalar wrappers before writing JSON or history. A serialization problem in one step therefore cannot leave the run permanently reported as `running`; the terminal status is still published and the original structured result remains visible in the artifact.
+
 ```text
 <OUTPUT_ROOT>/scheduled/data_update_quick/latest_status.json
 <OUTPUT_ROOT>/scheduled/data_update_quick/history.jsonl

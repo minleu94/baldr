@@ -105,7 +105,7 @@ B 的 synthetic fixture 只在明確測試 scope 中 patch `filesystem_usage`，
 
 已驗證環境：Windows x64、Python `3.11.9`、`.venv\Scripts\python.exe`；pandas `2.3.3`、numpy `2.3.5`、scikit-learn `1.8.0`、TA-Lib `0.6.8`、fallback `ta 0.5.25`、PySide6 `6.10.1`、pyarrow `22.0.0`、pytest `9.0.2`、mypy `2.1.0`。本 venv 缺 `pytest-qt`，所以 Qt plugin 不是 B 的已驗證安裝結果；C 的 UI handoff 有其自身 offscreen／healthcheck evidence。
 
-重建計畫與平台邊界詳見 [`LUNA_B_ENVIRONMENT_2026_09_07.md`](../07_guides/LUNA_B_ENVIRONMENT_2026_09_07.md)。B 沒有下載套件、沒有共用 venv install／upgrade，也沒有把 private `fubon_neo` wheel 或 Codex tooling 放入正式 runtime manifest。
+重建計畫與平台邊界詳見 [`LUNA_B_ENVIRONMENT_2026_09_07.md`](../09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md)。B 沒有下載套件、沒有共用 venv install／upgrade，也沒有把 private `fubon_neo` wheel 或 Codex tooling 放入正式 runtime manifest。
 
 ## 7. QA 命令、exit code 與結果
 

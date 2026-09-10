@@ -1,9 +1,9 @@
-﻿# 專案導航文件
+# 專案導航文件
 
 **版本**：v1.4.10
 **最後更新**：2026-09-08
 
-本輪請先看 [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)、[Luna整合驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)及[工作區檔案說明](docs/07_guides/WORKSPACE_FILES_AND_CLEANUP.md)。個股研究入口由持倉／觀察清單共用，操作與限制以 [Manual](docs/07_guides/APPLICATION_MANUAL.md) 為準。
+本輪請先看 [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)、[Luna整合驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)及[工作區檔案說明](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)。個股研究入口由持倉／觀察清單共用，操作與限制以 [Manual](docs/07_guides/APPLICATION_MANUAL.md) 為準。
 **目標讀者**：專案開發者、新加入工程師
 
 ---
@@ -18,7 +18,7 @@
 
 Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsal_complete`；它可重跑 replay / source shadow / ML shadow / lineage 的 coverage、quality、missingness 與 blocker 揭露，Workbench 只讀顯示、沒有 apply / promote。它不是 forward evidence，也不會把 External Validation Register 自動標為 complete；接手時先讀 `docs/06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md`，再依 register 的 owner 與 completion rule 累積真實資料、授權、時間與人工 Gate。
 
-本輪全專案整理與已知問題見[整併查核](docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)，下一輪工作入口見[LUNA 三線計畫](docs/07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md)。B 線環境與需求關係見[LUNA B 環境基線](docs/07_guides/LUNA_B_ENVIRONMENT_2026_09_07.md)；可重跑的 repo map 與候選引用證據由 `scripts/audit_luna_b_repo_map.py` 產生到 `output/luna_B/`。本導航不再複製 dated headroom 或 preflight-only 為目前執行狀態；容量以實際目的卷探針與 `data_module/ml_storage_capacity.py` 為準，執行／驗收現況回到 Snapshot 與綁定產物。
+本輪全專案整理與已知問題見[整併查核](docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)，上一輪三線背景見[LUNA 三線計畫](docs/09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)（歷史歸檔）。B 線環境與需求關係見[LUNA B 環境基線](docs/09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md)（歷史歸檔）；可重跑的 repo map 與候選引用證據由 `scripts/audit_luna_b_repo_map.py` 產生到 `output/luna_B/`。本導航不再複製 dated headroom 或 preflight-only 為目前執行狀態；容量以實際目的卷探針與 `data_module/ml_storage_capacity.py` 為準，執行／驗收現況回到 Snapshot 與綁定產物。
 
 2026-07-13 跨工作流工程整合入口為 `app_module/system_execution_blueprint_adapters.py`，純 JSON 驗證入口為 `scripts/verify_system_execution_blueprint.py`。兩者只組合／驗證 Evidence、PIT／source、ML shadow、dashboard 與 latency 的既有輸出，不改 Recommendation、Score、Advice、Portfolio 或 Exit。任一契約失敗時回到原 owner 修正；禁止在整合層補值、放寬 Gate 或把 `degraded` 改成 ready。
 

@@ -34,13 +34,13 @@
 
 - [本輪交付複核](../06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)、[檔案清理結果](../06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)。
 - [資料更新](../06_qa/V4_DATA_FRESHNESS_HANDOFF.md)、[Direct資料鏈](../06_qa/V4_DIRECT_RELEASE_HANDOFF.md)、[個股研究報告](../06_qa/V4_STOCK_RESEARCH_REPORT_HANDOFF.md)。
-- [工作區檔案說明](../07_guides/WORKSPACE_FILES_AND_CLEANUP.md)、[三線接手Prompt](../07_guides/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)。
+- [工作區檔案說明](../06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)、[三線接手Prompt（歷史歸檔）](../09_archive/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)。
 
 - [LUNA 三線整合驗收](../06_qa/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)：三線判定、整合缺陷修補、全域驗證、正式 ML 限制與 Git 收尾。
 
 - [專案整併查核](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)：實際整理結果、驗證限制、邏輯衝突與重大改動判斷。
-- [LUNA 三線執行 companion](../07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md)：共同基線、資源預算、A／B／C Prompt 與整合驗收。
-- [LUNA B 開發環境與依賴基線](../07_guides/LUNA_B_ENVIRONMENT_2026_09_07.md)：runtime／dev requirements、Windows／Python／TA-Lib／PySide6 邊界與已驗證版本限制。
+- [LUNA 三線執行 companion（歷史歸檔）](../09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)：共同基線、資源預算、A／B／C Prompt 與整合驗收。
+- [LUNA B 開發環境與依賴基線（歷史歸檔）](../09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md)：runtime／dev requirements、Windows／Python／TA-Lib／PySide6 邊界與已驗證版本限制。
 - [LUNA B 架構與 QA handoff](../06_qa/LUNA_B_HANDOFF_2026_09_07.md)：repo map、測試隔離、分析整併、依賴驗證、完整 suite 結果與 A／C 整合步驟。
 - [V4 Next Formal／Paper handoff](../06_qa/V4_NEXT_FORMAL_HANDOFF_2026_09_08.md)：實際受控 environment attestation、Paper legacy retry／跨日策略、三路 source→fill→ledger→Formal 執行順序與 atomic path update rollback；不把 candidate 直接升格為正式輸入。
 - [V4 有效性與資料來源工程驗收](../06_qa/V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md)：cohort／決策日 top-k 唯讀評估、FinMind 現金流候選、SQLite WAL 備份、每日更新容量 reservation 與剩餘自然證據邊界。
@@ -73,6 +73,9 @@
 | [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) | 本文件，文檔導航。 |
 | [EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) | 唯讀 evidence rehearsal engineering closeout、四層 tier、已知缺口與 forward handoff；不改寫 external Gate。 |
 | [DOCUMENTATION_STRUCTURE.md](DOCUMENTATION_STRUCTURE.md) | `docs/` 資料夾歸屬、生命週期、刪除/歸檔規則。 |
+| [DOC_COVERAGE_MAP.md](DOC_COVERAGE_MAP.md) | 文檔覆蓋矩陣，規範功能與程式修改時必須同步的文件清單。 |
+| [AI_CONTEXT_PACK.md](AI_CONTEXT_PACK.md) | AI 助手高密度上下文包、系統分析與架構邊界治理規範。 |
+| [V4_COMPLETION_PLAN_2026_09_07.md](V4_COMPLETION_PLAN_2026_09_07.md) | V4 持續完成計畫與驗收帳（進行中）。 |
 | [PROJECT_NAVIGATION.md](../../PROJECT_NAVIGATION.md) | repo 根目錄的日常開發導航。 |
 | [PROJECT_INVENTORY.md](../../PROJECT_INVENTORY.md) | repo 根目錄的完整專案盤點。 |
 | [../../AGENTS.md](../../AGENTS.md) | Codex 自動讀取的 repo 根目錄指令入口，指向 `docs/agents/` 完整 Agent 架構。 |
@@ -283,7 +286,7 @@
 
 ### 2026-09-06 Master Goal 八卡工程交接
 
-[Master Goal Playbook](../07_guides/MASTER_GOAL_PLAYBOOK_2026_09_06.md) 保存任務拆解時的基線與白名單；後續實作以各卡 handoff 與目前 Scoped SSOT 為準。下表只導航工程證據，不授予來源 acceptance、Formal credit、正式 migration／writer 或 V4 closeout。
+[Master Goal Playbook（歷史歸檔）](../09_archive/MASTER_GOAL_PLAYBOOK_2026_09_06.md) 保存任務拆解時的基線與白名單；後續實作以各卡 handoff 與目前 Scoped SSOT 為準。下表只導航工程證據，不授予來源 acceptance、Formal credit、正式 migration／writer 或 V4 closeout。
 
 | 文件 | 內容 |
 |---|---|
@@ -396,6 +399,10 @@
 | [INSTALL_GUIDE.md](../07_guides/INSTALL_GUIDE.md) | 安裝與環境設置。 |
 | [scripts_readme.md](../07_guides/scripts_readme.md) | `scripts/` 目錄腳本說明。 |
 | [tests_readme.md](../07_guides/tests_readme.md) | `tests/` 目錄測試說明。 |
+| [EVIDENCE_REHEARSAL_RUNBOOK.md](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) | 受控證據演練 Runbook，說明 `scripts/run_evidence_rehearsal.py` 執行模式與安全邊界。 |
+| [HISTORICAL_ML_SHADOW_RUNBOOK.md](../07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md) | 歷史 ML Shadow 訓練與評估 Runbook，說明 Terra Development Dataset V0 的 expanding walk-forward 與選模。 |
+| [ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md](../07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md) | ML Shadow 單日推論操作 Runbook，說明 `scripts/run_ml_shadow_inference.py` 契約驗證與 rollback 模擬。 |
+| [PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md](../07_guides/PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md) | PIT 歷史資料修復 Runbook，說明月營收與季度財報 availability mapping 與 coverage audit。 |
 
 ---
 
@@ -459,6 +466,11 @@
 - [ARCH_GOVERNANCE_CHECKLIST.md](../09_archive/ARCH_GOVERNANCE_CHECKLIST.md)：早期架構治理自檢清單，已自 `00_core/` 歸檔；目前架構權威以 `docs/01_architecture/system_architecture.md` 為準。
 - [ARCH_GOVERNANCE_LIFECYCLE.md](../09_archive/ARCH_GOVERNANCE_LIFECYCLE.md)：早期架構治理生命週期備忘，已自 `00_core/` 歸檔；目前文件治理以 Coverage Map 與 Documentation Structure 為準。
 - [ARCH_VIOLATION_RESPONSE_POLICY.md](../09_archive/ARCH_VIOLATION_RESPONSE_POLICY.md)：早期架構違規處理政策備忘，已自 `00_core/` 歸檔；目前架構邊界與高風險契約以 system architecture 為準。
+- [MASTER_GOAL_PLAYBOOK_2026_09_06.md](../09_archive/MASTER_GOAL_PLAYBOOK_2026_09_06.md)：2026-09-06 八卡任務拆解手冊（TASK-01～08 已全數交接驗收）。
+- [LUNA_PARALLEL_PLAN_2026_09_07.md](../09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)：2026-09-07 Luna 三線平行規劃伴隨文件（已於 09-08 結案）。
+- [LUNA_PROMPT_A_DATA_ML_2026_09_07.md](../09_archive/LUNA_PROMPT_A_DATA_ML_2026_09_07.md)、[LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md](../09_archive/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md)、[LUNA_PROMPT_C_UX_2026_09_07.md](../09_archive/LUNA_PROMPT_C_UX_2026_09_07.md)：2026-09-07 給 Luna A/B/C 三位子代理的單次任務 Prompt（已結案歸檔）。
+- [V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md](../09_archive/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)：2026-09-08 接手任務 Prompt（已於 09-08 交付收尾並提交 Git）。
+- [LUNA_B_ENVIRONMENT_2026_09_07.md](../09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md)：2026-09-07 Luna B 開發環境依賴記錄快照（現行環境以 `INSTALL_GUIDE.md` 為準）。
 
 ---
 

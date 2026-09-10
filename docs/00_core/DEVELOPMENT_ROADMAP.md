@@ -62,7 +62,7 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 
 ## 3. 目前執行狀態
 
-2026-09-06 的 [Master Goal Playbook](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/MASTER_GOAL_PLAYBOOK_2026_09_06.md) 已形成八卡工程交接：日期／品質 DTO、推薦指紋、T+1 撮合、Registry 顯式恢復、候選帳本／候選池及 Runtime 觀測均有隔離驗收。中央組裝與當輪全域結果見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)；各卡現況與殘餘邊界集中於 [Snapshot](C:/Projects/PythonProjects/technical_analysis/docs/00_core/PROJECT_SNAPSHOT.md)。這是既有 Gate 的工程修補，不新增 maturity 版本或放寬正式權限。
+2026-09-06 的 [Master Goal Playbook](../09_archive/MASTER_GOAL_PLAYBOOK_2026_09_06.md) 已形成八卡工程交接：日期／品質 DTO、推薦指紋、T+1 撮合、Registry 顯式恢復、候選帳本／候選池及 Runtime 觀測均有隔離驗收。中央組裝與當輪全域結果見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)；各卡現況與殘餘邊界集中於 [Snapshot](C:/Projects/PythonProjects/technical_analysis/docs/00_core/PROJECT_SNAPSHOT.md)。這是既有 Gate 的工程修補，不新增 maturity 版本或放寬正式權限。
 
 目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。Gate 2–7 純工程完成後，後續 agent 應先讀 [Engineering Control Center](../06_qa/GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md)，再依工作類型進入 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) 或 [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)。短版摘要如下：
 

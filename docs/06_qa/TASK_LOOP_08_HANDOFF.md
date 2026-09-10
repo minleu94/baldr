@@ -6,7 +6,7 @@
 
 - Base SHA：`678db2bb260bb1de5cee4a0864f9f402db3660a7`；本卡沒有 stage、commit 或 push，current SHA 未改變。
 - 接手時既有 dirty：`GPT6_ASTRA_CONTEXT_PACK.md` 與 `docs/07_guides/ASTRA_LUNA_COLLABORATION_SOP.md` 的刪除，以及未追蹤的 `MASTER_GOAL_PLAYBOOK_2026_09_06.md`；本卡未操作這些變更。TASK-01／04 同時修改中的檔案由各自 owner 管理。
-- 執行依據：`docs/07_guides/MASTER_GOAL_PLAYBOOK_2026_09_06.md` 的共同契約及 TASK-08，另由根任務明確限縮為 08-A。
+- 執行依據：`docs/09_archive/MASTER_GOAL_PLAYBOOK_2026_09_06.md` 的共同契約及 TASK-08，另由根任務明確限縮為 08-A。
 - 執行雙根：`output/master_goal/TASK-LOOP-08/data`、`output/master_goal/TASK-LOOP-08/artifacts`，`PROFILE=test` 時設定實際解析至各根下的 `_test`。Qt 使用 `QT_QPA_PLATFORM=offscreen`。
 - 專用 QA 額外在系統 TEMP 建立自己的雙根，覆蓋並還原環境變數；不建立 `TWStockConfig`，故該專用 fixture 根不再追加 `_test`。
 - 原始來源為合成 fixture，不是真實時間、正式資料或投資證據。沒有寫入 repo `runtime/events/`／`runtime/state/` 正式檔、正式 DATA_ROOT／OUTPUT_ROOT、Windows Scheduler 或 broker。

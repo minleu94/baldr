@@ -48,7 +48,7 @@ Gate 7 ML Shadow Layer 只作條件式後續：若 Gate 5 在第六個月以前�
 
 ### 2026-09-06 閉環工程增量的 Gate 對應
 
-八卡依 [Master Goal Playbook](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/MASTER_GOAL_PLAYBOOK_2026_09_06.md) 的檔案 owner 與隔離雙根執行；[TASK-08 交接](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md) 保存中央組裝與整合驗收。整體仍為 `action_required`、V4 Evidence Accumulation，以下工程契約不代表正式 Gate Exit Criteria 已通過。
+八卡依 [Master Goal Playbook](../09_archive/MASTER_GOAL_PLAYBOOK_2026_09_06.md) 的檔案 owner 與隔離雙根執行；[TASK-08 交接](../06_qa/TASK_LOOP_08_HANDOFF.md) 保存中央組裝與整合驗收。整體仍為 `action_required`、V4 Evidence Accumulation，以下工程契約不代表正式 Gate Exit Criteria 已通過。
 
 | 既有 Gate | 本輪可承接的工程能力 | 下一個不可替代的條件 |
 |---|---|---|

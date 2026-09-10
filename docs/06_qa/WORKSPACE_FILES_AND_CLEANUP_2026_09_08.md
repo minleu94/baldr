@@ -14,7 +14,7 @@
 
 ## 現在的處理批次
 
-本輪已實際清除兩批共 **2,469 檔、50,254,082 bytes（約 47.9 MiB）**：Python／工具快取 2,324 檔，以及已確認可再生的舊 QA 暫存 145 檔。逐檔清單與路徑驗證摘要見 [清理驗收](../06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)。歷史 QA 原始位元組沒有備份；可重新執行產生新報告，不能還原成同一份舊報告。
+本輪已實際清除兩批共 **2,469 檔、50,254,082 bytes（約 47.9 MiB）**：Python／工具快取 2,324 檔，以及已確認可再生的舊 QA 暫存 145 檔。逐檔清單與路徑驗證摘要見 [清理驗收](V4_WORKSPACE_CLEANUP_CLOSEOUT.md)。歷史 QA 原始位元組沒有備份；可重新執行產生新報告，不能還原成同一份舊報告。
 
 上表是清理前的盤點快照，並非現在的即時檔案數。執行任務會重新產生快取及證據，因此檔案總數不會永久降到幾百個。`.venv`、持久帳本、有效模型／資料 checkpoint 與工具圖譜保留在本機且不提交；Git 提交完成後則可讓變更列表回到乾淨狀態。
 
@@ -28,7 +28,7 @@
 - 使用入口：`ui_qt/main.py`。
 - 操作說明：`docs/07_guides/APPLICATION_MANUAL.md`。
 - 目前進度：`docs/00_core/PROJECT_SNAPSHOT.md`。
-- 三份新任務：`docs/07_guides/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md`。
+- 三份已交付任務 Prompt：`docs/09_archive/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md`（歷史歸檔）。
 - 不必逐一閱讀 `.venv`、快取、raw QA 與工具產物。
 
 Commit 是保存原始碼版本；完成後檔案從Git變更列表消失，但仍留在磁碟。清理才會減少磁碟檔案。兩者不能混為一談。

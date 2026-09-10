@@ -64,6 +64,21 @@
 - **`ARCH_VIOLATION_RESPONSE_POLICY.md`**
   - 早期架構違規處理政策備忘；2026-06-24 自 `docs/00_core/` 歸檔。目前架構邊界與高風險契約以 `docs/01_architecture/system_architecture.md` 為準。
 
+- **`MASTER_GOAL_PLAYBOOK_2026_09_06.md`**
+  - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；八卡已全數交付驗收（見 `docs/06_qa/TASK_LOOP_01_HANDOFF.md` ~ `08_HANDOFF.md`），歷史任務指派歸檔。
+
+- **`LUNA_PARALLEL_PLAN_2026_09_07.md`**
+  - 2026-09-07 Luna 三線平行規劃伴隨文件；該輪三線已於 2026-09-08 結案（見 `docs/06_qa/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md`）。
+
+- **`LUNA_PROMPT_A_DATA_ML_2026_09_07.md`**、**`LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md`**、**`LUNA_PROMPT_C_UX_2026_09_07.md`**
+  - 2026-09-07 給 Luna A/B/C 三位子代理的一次性任務 Prompt；任務已結案並整合，歷史提示詞歸檔。
+
+- **`V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md`**
+  - 2026-09-08 給新 Luna A/B/C 三線的接手任務 Prompt；已在 `docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md` 複核並提交入庫，歷史提示詞歸檔。
+
+- **`LUNA_B_ENVIRONMENT_2026_09_07.md`**
+  - 2026-09-07 Luna B 開發環境與依賴基線記錄快照；現行環境指引以 `docs/07_guides/INSTALL_GUIDE.md` 與 requirements 檔為準。
+
 ## ⚠️ 注意
 
 這些文檔主要用於記錄歷史，日常使用時請參考：

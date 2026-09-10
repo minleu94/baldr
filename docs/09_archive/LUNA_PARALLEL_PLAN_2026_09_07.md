@@ -1,6 +1,6 @@
 # LUNA MAX 三線平行交付計畫
 
-> 使用者要求的下一輪工作包，為 [V4 Completion Plan](V4_COMPLETION_PLAN_2026_09_07.md) 的執行 companion。它不覆寫目前狀態、產品方向或版本 Gate。查核基線與本輪清理見[專案整併報告](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)。
+> 使用者要求的下一輪工作包，為 [V4 Completion Plan](../00_core/V4_COMPLETION_PLAN_2026_09_07.md) 的執行 companion。它不覆寫目前狀態、產品方向或版本 Gate。查核基線與本輪清理見[專案整併報告](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)。
 
 ## 目標與主要判斷
 

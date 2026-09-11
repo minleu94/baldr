@@ -10,7 +10,7 @@
 
 > Evidence rehearsal closeout：[Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)（`engineering_rehearsal_complete`；不是 external completion）。
 
-> **最後整理**：2026-09-08
+> **最後整理**：2026-09-10
 > **判讀規則**：本索引用於導航，不作為狀態或架構事實來源。Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，North Star / Evidence 看 `system_vision_specification.md`，目前／目標架構分別看 `system_architecture.md` / `target_system_architecture.md`。
 >
 > **2026-08-29 audit entry（歷史）**：[Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md)
@@ -363,6 +363,7 @@
 | [V2_2_SIMULATED_PHASE_PROGRESS_QA_2026_07_07.md](../06_qa/V2_2_SIMULATED_PHASE_PROGRESS_QA_2026_07_07.md) | V2.2 simulated phase progress QA，記錄 historical replay reference-fix summary 如何標註為 `historical_replay` / `simulated_scheduler` / `official_gate_credit=false`，以及 simulated Phase 0-5 可演練但 official Phase 0 / Phase 5 gate 不變的 read-only 邊界。 |
 | [V2_2_PHASE5_APPROVAL_REHEARSAL_PACKAGE_2026_07_07.md](../06_qa/V2_2_PHASE5_APPROVAL_REHEARSAL_PACKAGE_2026_07_07.md) | V2.2 Phase 5 approval rehearsal package，整理 simulated Phase 5 審核包預演、official completion waiting list、data source candidate backlog、execution realism backlog、scheduler approval rehearsal checklist 與 UI 資訊架構 follow-up；明確標示哪些項目必須等待正式資料才能標為已完成。 |
 | [V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md](../06_qa/V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md) | V3.0 engineering candidate manual validation / closeout report，記錄 V3 effectiveness read model、score bucket audit、threshold robustness、component ablation readiness、ML shadow-only contract、Phase 3C source candidate readiness、`PENDING_MANUAL_VALIDATION` 與夜間 closeout 目標；不宣稱投資有效性、不啟用 scheduler。 |
+| [V4_1_RECOMMENDATION_CALIBRATION_VERTICAL_SLICE_2026_09_10.md](../06_qa/V4_1_RECOMMENDATION_CALIBRATION_VERTICAL_SLICE_2026_09_10.md) | V4.1 A 線推薦機率校準垂直切片：20 日 primary／5 日 auxiliary outcome contract、walk-forward train／calibration／untouched-test、整數 bp calibration、Brier／分箱／不確定性、成本與 benchmark、正式 DB read-only 結果與未完成的自然 evidence 邊界。 |
 | [V3_0_AUTOMATED_READINESS_2026_07_12.md](../06_qa/V3_0_AUTOMATED_READINESS_2026_07_12.md) | V3.0 自動工程 readiness 重驗證，記錄 26 passed、required artifact 檢查、sample evidence 缺口與 read-only report 入口；不建立 formal closeout。 |
 | [V2_5_ENGINEERING_READINESS_2026_07_12.md](../06_qa/V2_5_ENGINEERING_READINESS_2026_07_12.md) | V2.5 Position Health Foundation engineering readiness，記錄 condition / feedback / source trace 的唯讀 HEALTHY / WATCH / EXIT_CANDIDATE 投影、sample CLI、驗證與不自動 action 邊界。 |
 | [POST_V1_FORWARD_PERFORMANCE_DASHBOARD_QA_2026_07_05.md](../06_qa/POST_V1_FORWARD_PERFORMANCE_DASHBOARD_QA_2026_07_05.md) | Post-V1 Forward Performance Dashboard read-only UI QA 紀錄，包含 UI placement、read-only guarantee、filter coverage、禁用交易語氣檢查與 scheduler readiness 邊界。 |

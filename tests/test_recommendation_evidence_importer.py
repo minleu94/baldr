@@ -69,6 +69,9 @@ def test_recommendation_importer_preserves_missing_percentile_with_warning():
     assert event["warnings"] == ("score_percentile_missing",)
     assert event["profile_id"] == "balanced"
     assert event["metadata"]["profile_version"] == "1.0"
+    assert event["metadata"]["indicator_score_bp"] == 3000
+    assert event["metadata"]["pattern_score_bp"] == 3000
+    assert event["metadata"]["volume_score_bp"] == 2200
     assert [diagnostic.code for diagnostic in result.diagnostics] == [
         "source_missing_screening_matrix",
         "source_missing_exclusion_payload",

@@ -109,6 +109,10 @@ scalar wrapper，並以回歸測試證明 terminal status 與 append-only histor
 重複寫入 D 槽，既有 stale receipt 會由下一個 04:20 真實輪次取代。其餘 `pending`／`blocked` 仍只代表
 自然成熟、來源授權、成本／成交或 owner-controlled input 尚未取得，不能改寫成完成。
 
+## 2026-09-10 V4.1 A 線推薦機率校準切片
+
+已完成 research-only 的 20 trading-day primary／5 trading-day auxiliary walk-forward calibration 垂直切片：固定 decision time、return、benchmark、成本與 universe policy，分離 train／calibration／untouched test，輸出 baseline、raw score、整數 bp calibrated probability、probability bins、Brier／ECE、Wilson 不確定性、成本後與 benchmark 比較，並分開保存 ranking score、upside probability、after-cost profit probability、action suitability、evidence confidence。deterministic sample 可測得 OOS；正式 evidence DB 目前讀到 217 recommendation events、8 未成熟 outcomes，但成熟 observations／fold 仍為 0，不能宣稱有效或失效。price／volume 只對未來新 event 保存 component metadata，未回填歷史；chip／funding、industry、PIT theme 與自然 forward evidence 仍待後續真實時間累積。完整契約、實際 read-only 結果與測試見 [V4.1 推薦機率校準垂直切片](../06_qa/V4_1_RECOMMENDATION_CALIBRATION_VERTICAL_SLICE_2026_09_10.md)。
+
 ## 2026-09-08 Luna 交付整合收尾
 
 目前是工程整合與自然證據建立階段，**V4 尚未完成**。以下是目前狀態；先前逐輪測試、失敗與中途進度已移到歷史封存，不再把「早期待啟動」與「後續已中止」同列為現況。

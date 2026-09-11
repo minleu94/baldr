@@ -688,6 +688,8 @@ blockers 投影到 top-level receipt，輸出 `status=blocked`／`exit_code=2`�
 投影不改變 bounded writer 的來源邊界，重跑仍受 outcome natural key 保護。UI 不會因讀取
 狀態而重跑 producer 或開啟資料庫寫入。
 
+V4.1 A 線的 `app_module/recommendation_calibration.py` 位於同一 application research boundary，僅消費已保存的 recommendation Evidence Event 與成熟 Evidence Outcome，輸出固定 20／5 trading-day target、expanding train／calibration／untouched-test walk-forward、整數 bp probability calibration 與 benchmark／cost diagnostics。`scripts/inspect_recommendation_calibration.py` 透過 query-only evidence repository 或 deterministic sample 呼叫它；它不建立 schema、不寫正式 DB、不改 Recommendation／Scoring／Advice／Portfolio，也不把 historical replay 或 sample 結果授予 natural forward evidence credit。推薦 importer 只把未來新事件當下已存在的 indicator／pattern／volume component 轉成 bp metadata，歷史事件缺件時不回填；chip／funding、industry、PIT theme 必須另有 decision-time source contract 才能接入。
+
 目前 registry 已保存：
 
 - 資料截止日與 hash

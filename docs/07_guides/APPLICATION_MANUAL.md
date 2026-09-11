@@ -3237,6 +3237,29 @@ V3 score effectiveness audit 可用 `scripts\inspect_score_effectiveness.py` 檢
 
 輸出固定保留 `0-40`、`40-50`、`50-60`、`60-70`、`70-80`、`80-100` 六個分數區間，即使該 bucket 沒有樣本也會顯示 empty bucket。每個 bucket 會列出樣本數、ready / pending / missing outcome、各 horizon 的 forward return bp、benchmark excess bp、industry excess bp、liquidity cost、成本後超額、描述性 95% 區間、max drawdown bp、win rate bp、warnings 與 limitations。`access_boundary.writes_allowed=false`、`production_scheduler_allowed=false`、`investment_effectiveness_claim=false` 與 `ml_training_allowed=false` 必須保留；結果只能用於研究覆盤，不能解讀為買賣建議、投資有效性證明、threshold promotion 或 ML production readiness。
 
+V4.1 A 線的推薦機率校準研究可用 `scripts\inspect_recommendation_calibration.py`。此 CLI 以既有 `recommendation_included` Evidence Event 與成熟的 20／5 trading-day Evidence Outcome 建立固定 outcome contract，按 decision date 做 expanding `train`／`calibration`／`untouched-test` walk-forward。它會輸出 baseline prevalence、`score_percentile_v1`、整數 bp isotonic calibrated probability、10 個 probability bins、樣本數、Wilson 95% 區間、Brier／ECE，以及 forward return、benchmark return／excess、cost-adjusted return／excess。主目標是 20 日，5 日只作輔助觀察。
+
+```powershell
+# 只跑 deterministic sample，不讀正式資料
+.\.venv\Scripts\python.exe scripts\inspect_recommendation_calibration.py --sample --format markdown
+.\.venv\Scripts\python.exe scripts\inspect_recommendation_calibration.py --sample --format json --output output\qa\recommendation_calibration_sample.json
+
+# 既有 evidence DB 只讀查詢；缺成熟 outcome 時會回 not_evaluable 與 diagnostics
+.\.venv\Scripts\python.exe scripts\inspect_recommendation_calibration.py --db-path <working-copy-db> --format markdown
+.\.venv\Scripts\python.exe scripts\inspect_recommendation_calibration.py --db-path <working-copy-db> --fixed-round-trip-cost-bp 80 --format json
+```
+
+固定判讀規則：
+
+- decision time 是 event 的 `decision_date`；`event_date`、`as_of_date`、`available_date` 晚於 decision date 的 row 會被排除。training／calibration 的 label end 也必須在各自切點前成熟；test row 不回流 fit。
+- primary labels 是 `forward_return_bp > 0` 與 `forward_return_bp > fixed_round_trip_cost_bp + observed liquidity_cost_bp`。缺 liquidity cost 不補零、不進 after-cost label；fixed cost 預設 `0 bp` 不代表完整手續費、證交稅或 execution ledger 已提供。
+- benchmark 直接使用 Outcome 保存的 benchmark 欄位；缺值只縮小該項統計，不補成 0。成本後欄位明確揭露成本來源與 sample count。
+- `ranking_score_bp`、`score_percentile_bp`、`upside_probability_bp`、`after_cost_profit_probability_bp`、`action_suitability`、`evidence_confidence` 是不同欄位；probability 不是 score，也不是自然語言 confidence 的百分比勝率。
+- `price_volume_v1` 目前只是 challenger ablation。新匯入的 recommendation event 會保存決策當下的 indicator／pattern／volume component bp；歷史缺件不回填。chip／funding、industry、PIT theme 尚未接入，必須先有可核對的 decision-time／PIT source lineage。
+- report 固定 `production_eligible=false`、`production_scheduler_allowed=false`、`natural_forward_evidence_credit=false`，不改 ScoringEngine、推薦權重、threshold、alpha 或 promotion pointer。sample／replay 不可視為自然 forward evidence。
+
+正式 evidence DB 若出現 `observation_count=0` 或 `fold_count=0`，只能解讀為成熟度／來源不足，不能解讀為策略有效或失效。完整契約、實際 2026-09-10 read-only 結果、測試與限制見 [V4.1 推薦機率校準垂直切片](../06_qa/V4_1_RECOMMENDATION_CALIBRATION_VERTICAL_SLICE_2026_09_10.md)。
+
 Phase 2 起，Qt 主 UI 新增 `決策工作台` 分頁作為 read-only Unified Decision Workbench MVP shell。2026-08-14 後，總覽第一屏先顯示「今日行動中心」與單一下一步導覽，再顯示今日重點帶、語意色摘要卡、今日待判讀、背景證據流、只讀 Action Items 與 Inspector；這些導覽按鈕只切換既有工作區。操作節奏、Evidence mode / data quality、Daily Checklist 與 warnings / degraded source 改成可收合區塊，需要時再展開。畫面只透過 `WorkbenchSourceService` 取得 `WorkbenchDashboardDTO`，不直接讀 SQLite、不寫 DB、不啟用 scheduler，也不重算 scoring、portfolio、backtest 或 lifecycle。若預設 `_reference_fix` replay JSON summary 存在於 `OUTPUT_ROOT/evidence_pipeline/historical_replay_reference_fix_20260706/`，主 UI 會自動把 JSON summary 傳入 WorkbenchSourceService；這仍只是讀 summary，不會讀 replay DB 或執行 replay。
 
 操作與判讀：
@@ -4133,6 +4156,7 @@ $env:PHASE3C_CANDIDATE_DB_PATH = 'D:/Min/Python/Project/FA_Data_candidate/phase3
 - 2026-07-07：更新 Qt `決策工作台` Phase 2 Workbench MVP shell 操作說明，標示中文優先顯示、舊 Daily Decision / Evidence Review / Portfolio read-only drill-down、預設 `_reference_fix` replay JSON summary 分析，以及 source gap coverage / benchmark coverage / industry benchmark coverage 限制；UI 只透過 `WorkbenchSourceService` / `WorkbenchDashboardDTO`，不直接讀 SQLite、不寫 DB、不啟用 scheduler、不產生交易建議。
 - 2026-07-08：補充 Pre-V2 readiness 修正後歷史觀察日規則；source-gap closeout 可採信同日 scheduled dry-run `latest_status.json` 的 read-only 證據，但仍不寫 DB、不啟用 scheduler、不代表 production approval。
 - 2026-07-08：新增 V3 score effectiveness audit CLI 操作說明；`inspect_score_effectiveness.py` 以 read-only 方式輸出 `TotalScore` raw bucket、forward outcome、benchmark / industry excess、limitations 與安全邊界，不寫 DB、不提供 `--confirm`、不改分數 / threshold，也不訓練 ML model。
+- 2026-09-10：新增 V4.1 A 線 recommendation calibration CLI 操作說明；固定 20／5 trading-day outcome contract、train／calibration／untouched-test walk-forward、整數 bp calibration、Brier／probability bins／不確定性、成本與 benchmark 比較及 ranking／probability／action／evidence 分欄。正式 evidence DB 若 outcome 尚未成熟只回 `not_evaluable`，不回填、不授予自然 forward credit、不改推薦或 production scheduler。
 - 2026-07-07：補充 Workbench background evidence feed / read-only Action Items MVP 操作說明；背景證據流只彙整既有 DTO / service payload，Action Items 每列帶 source trace、degraded reason 與 drill-down target，且不建立 repository、不寫 DB、不套用 lifecycle。
 - 2026-07-07：補充 Workbench Action Items 人工佇列操作說明；Action Items 依 severity / queue group / source 排序並顯示來源，row drill-down target 與舊頁導向一致，Evidence Feed / Action Items 空狀態與降級狀態文案維持只讀、非建議、不補值邊界。
 - 2026-07-07：補充 Workbench Phase 2C / 2D 操作節奏 closeout；Operating Loop 只顯示 daily first-look、manual queue、weekly history、multi-day dry-run、manual review note 與 scheduler gate，不寫 DB、不標記完成、不補真實時間 gate。

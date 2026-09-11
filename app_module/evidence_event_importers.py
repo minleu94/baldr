@@ -152,6 +152,11 @@ class RecommendationEvidenceImporter:
                         "recommendation_rank": index + 1,
                         "source_created_at": getattr(result, "created_at", None),
                         **identity["metadata"],
+                        # V4.1 只保存決策當下已存在的 component score；
+                        # 這些欄位供後續 price/volume ablation 使用，不回填歷史事件。
+                        "indicator_score_bp": _score_bp(getattr(rec, "indicator_score", None)),
+                        "pattern_score_bp": _score_bp(getattr(rec, "pattern_score", None)),
+                        "volume_score_bp": _score_bp(getattr(rec, "volume_score", None)),
                     },
                     **identity["fields"],
                 }

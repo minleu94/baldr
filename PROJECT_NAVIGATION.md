@@ -115,6 +115,7 @@ Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsa
 - `app_module/relative_strength_liquidity_service.py`
 - `app_module/decision_desk_service.py`
 - `app_module/decision_desk_risk_prompt_service.py`
+- `app_module/decision_presentation.py`：V4.2 C 線共用唯讀呈現 DTO／adapter；不重算推薦、機率或權重
 
 修改 Daily Decision Desk 時，必須維持 service / DTO 邊界，不能在 UI 直接複製上述 domain 計算。
 
@@ -387,6 +388,7 @@ python ui_qt/main.py
 **對應的 Service**：
 - `app_module/portfolio_service.py`：Portfolio use case 編排
 - `app_module/portfolio_condition_monitor.py`：條件監控（來源快照 vs 目前快照 Regime/TotalScore 對照）
+- `app_module/decision_presentation.py`：把既有 Advice／Condition Monitor／持倉來源摘要投影成共用動作、權重與失效條件欄位
 - `app_module/portfolio_chip_service.py`：持倉層籌碼監控與分點資料彙整
 - `app_module/portfolio_feedback_service.py`：持倉 post-trade attribution / live-vs-research gap
 - `app_module/portfolio_review_service.py`：Portfolio Review dashboard snapshot
@@ -417,6 +419,8 @@ python ui_qt/main.py
 
 **對應的 Service**：`app_module/watchlist_service.py`
 - 負責：跨 Tab 共用候選池管理、JSON 持久化
+- `app_module/watchlist_analysis_service.py`：唯讀取回保存推薦的分數、樣本與來源 metadata
+- `app_module/decision_presentation.py`：觀察清單與研究報告共用呈現契約
 
 **真正動邏輯的地方**：
 - `app_module/watchlist_service.py`：觀察清單的完整邏輯都在這裡（沒有 Domain 層依賴）

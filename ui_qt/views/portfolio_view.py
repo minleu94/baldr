@@ -40,6 +40,11 @@ from ui_qt.workers.task_worker import TaskWorker
 from app_module.strategy_version_service import StrategyVersionService
 from app_module.portfolio_chip_service import PortfolioChipService
 from app_module.portfolio_feedback_service import PortfolioFeedbackService
+from app_module.decision_presentation import (
+    DecisionPresentationService,
+    decision_action_label,
+    format_decision_presentation,
+)
 from app_module.research_session import ResearchStockContextDTO
 from app_module.portfolio_stress_lab_service import (
     PortfolioStressLabService,
@@ -382,6 +387,7 @@ class PortfolioView(QWidget):
         parent=None,
         *,
         async_refresh: bool = False,
+        presentation_service: DecisionPresentationService | None = None,
     ):
         super().__init__(parent)
         self.setMinimumWidth(0)
@@ -390,6 +396,7 @@ class PortfolioView(QWidget):
         self.journal_service = journal_service
         self.recommendation_service = recommendation_service
         self.condition_monitor = condition_monitor or PortfolioConditionMonitor()
+        self.presentation_service = presentation_service or DecisionPresentationService()
         self.strategy_version_service = StrategyVersionService(self.portfolio_service.config)
         self.portfolio_feedback_service = PortfolioFeedbackService()
         self.stress_lab_service = PortfolioStressLabService()
@@ -434,9 +441,6 @@ class PortfolioView(QWidget):
         self._refresh_pending = False
         self._closing = False
         self._portfolio_narrow = False
-
-        # 緩存最新推薦結果，用以在背景進行 Condition Monitor 條件監控
-        self.rec_cache: Dict[str, Dict[str, Any]] = {}
 
         self._setup_ui()
         self.refresh_all()
@@ -1775,14 +1779,21 @@ class PortfolioView(QWidget):
                 df = pd.DataFrame(columns=[
                     "證券代號", "證券名稱", "持有股數", "平均成本", "目前價格",
                     "投入金額", "未實現損益", "未實現損益%", "已實現損益",
-                    "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因"
+                    "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因",
+                    "動作適合度", "權重差距(bp)", "失效條件"
                 ])
             else:
                 data = []
                 for p in positions:
-                    snapshot = self._current_snapshot_for_position(p.stock_code)
+                    snapshot = self._current_snapshot_for_position(p.stock_code, p)
                     monitor_result = self.condition_monitor.evaluate(p, snapshot)
                     monitor_reason = "；".join(monitor_result.reasons)
+                    presentation = self.presentation_service.from_position(
+                        p,
+                        condition_result=monitor_result,
+                    )
+                    invalidation_text = "；".join(presentation.invalidation_conditions) or "未提供"
+                    presentation_text = format_decision_presentation(presentation)
 
                     pnl_pct_str = "-"
                     if p.unrealized_pnl_pct is not None:
@@ -1803,7 +1814,10 @@ class PortfolioView(QWidget):
                         "目前分數": monitor_result.current_total_score,
                         "狀態監控": monitor_result.label,
                         "監控原因": monitor_reason,
-                        "_tooltip": monitor_reason,
+                        "動作適合度": decision_action_label(presentation.action_suitability),
+                        "權重差距(bp)": presentation.weight_gap_bp if presentation.weight_gap_bp is not None else "未知",
+                        "失效條件": invalidation_text,
+                        "_tooltip": presentation_text,
                     })
                 df = pd.DataFrame(data)
 
@@ -1823,51 +1837,23 @@ class PortfolioView(QWidget):
             import traceback
             traceback.print_exc()
 
-    def _current_snapshot_for_position(self, stock_code: str) -> Optional[PortfolioCurrentSnapshot]:
-        """取得單一持倉的目前評分快照；取不到時交由 monitor 標示待更新。"""
+    def _current_snapshot_for_position(
+        self,
+        stock_code: str,
+        position: Any | None = None,
+    ) -> Optional[PortfolioCurrentSnapshot]:
+        """只讀取價格與持倉來源摘要；缺 current score 時由 monitor 保守標示待更新。"""
         current_price = self.portfolio_service.get_current_price(stock_code)
-
-        if not self.recommendation_service:
-            return PortfolioCurrentSnapshot(current_price=current_price)
-        try:
-            if stock_code not in self.rec_cache:
-                self._update_recommendation_cache_for_stock(stock_code)
-            rec_info = self.rec_cache.get(stock_code)
-            if not rec_info:
-                return PortfolioCurrentSnapshot(current_price=current_price)
-            return PortfolioCurrentSnapshot(
-                current_regime=str(rec_info.get("regime", "")),
-                current_total_score=rec_info.get("score"),
-                current_price=current_price,
-            )
-        except Exception as exc:
-            logger.debug("Current snapshot lookup failed for %s: %s", stock_code, exc)
-            return PortfolioCurrentSnapshot(current_price=current_price)
-
-    def _update_recommendation_cache_for_stock(self, stock_code: str):
-        """背景快速獲取特定個股的推薦狀態，用以更新 Condition Monitor"""
-        if not self.recommendation_service:
-            return
-        try:
-            # 獲取最新大盤 Regime 與個股打分 (極簡快速模擬以防止卡頓)
-            # 實際上可從 recommendation_service 的內部方法做快速單股 Scoring
-            # 此處做安全緩存防禦
-            engine = getattr(self.recommendation_service, 'screening_service', None)
-            if engine:
-                # 簡單查詢該股的分數快照
-                df_score = engine.get_market_strength_score()  # 這會返回大表
-                if not df_score.empty and '證券代號' in df_score.columns:
-                    stock_row = df_score[df_score['證券代號'] == stock_code]
-                    if not stock_row.empty:
-                        # 獲取總技術分數
-                        score = float(stock_row.iloc[0].get('綜合分數', 80.0))
-                        self.rec_cache[stock_code] = {
-                            "score": score,
-                            "regime": "",
-                            "why_not": "多空分數失衡" if score < 60 else ""
-                        }
-        except Exception as e:
-            logger.debug("Failed to prefetch recommendation score for %s: %s", stock_code, e)
+        source_summary = getattr(position, "source_summary", {}) if position is not None else {}
+        if not isinstance(source_summary, dict):
+            source_summary = {}
+        current_regime = str(source_summary.get("current_regime") or "")
+        current_total_score = source_summary.get("current_total_score")
+        return PortfolioCurrentSnapshot(
+            current_regime=current_regime,
+            current_total_score=current_total_score,
+            current_price=current_price,
+        )
 
     def _load_trades_history(self):
         """加載交易明細，若有選定股票，則進行篩選"""

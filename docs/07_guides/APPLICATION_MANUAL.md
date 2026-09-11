@@ -952,6 +952,31 @@ Evidence `latest_status.json` 使用 schema v3，並保存
 4. 更新時保留 loading；若較早查詢晚於新查詢返回，stale-result guard 會忽略舊結果。錯誤只降級該來源並保留 warning，不改 action、focus 或 Score。
 5. 券商查詢採背景載入；week／month 與股票明細應在畫面恢復互動後判讀，勿以 loading 中的暫態內容做結論。
 
+### V4.2 C 線：每日決策呈現流程
+
+這條流程把既有唯讀 DTO 串成「市場總覽 → 重點產業／股票 → 觀察清單 → 持倉」的人工判讀路徑。UI 只適配與呈現既有來源，不重新計算推薦、機率、權重或交易結果。
+
+1. 從「市場探索 > 市場總覽」開始。先確認決策日、資料品質、source trace 與 warnings，再閱讀大盤、產業與個股焦點卡。焦點卡的動作固定是「研究」；即使是風險焦點，也不等於正式 `NO_NEW_POSITION`。
+2. 由焦點卡或既有下鑽入口開啟重點產業／個股研究。研究報告可呈現既有 Recommendation／Portfolio Advice；只有真正帶入 Advice DTO 時，才可顯示「買進候選／持有／減碼候選／退出候選」等 Advice 動作。
+3. 將要追蹤的股票放入「觀察清單」，選取清單項目後查看保存的分數、排名百分位／方法、樣本數、決策日／資料日、理由與來源 ID。保存結果是研究參考，不會在 UI 即時重評分。
+4. 在觀察清單或持倉頁選取股票，可開啟同一個個股研究報告；研究報告頂端與持倉表使用相同呈現欄位：動作適合度、排名分數、校準機率、證據／信心／樣本、適用期間、成本基準、理由、風險與失效條件。
+5. 在「持倉管理」查看動作適合度與權重欄位。Condition Monitor 的 `valid`、`warning`、`invalid` 只會映射為「持有」、「減碼候選」、「退出候選」；這是待覆盤候選，不是下單或自動調倉指令。
+
+欄位判讀與安全限制：
+
+- `校準機率` 只有上游明確提供 0–10,000 bp 且標記為 available 才會顯示百分比；否則顯示「不可用（研究中／不可用）」，不把排名分數當機率。
+- `目標／目前／差距` 使用整數 bp。只有既有 Portfolio Advice 或持倉來源摘要明確提供的欄位才會顯示；缺欄位為「未知」，不由畫面自行相減，也不把未知當成 0。
+- `研究`、`降級`、`缺漏`、`不可用` 是證據狀態，不代表報酬為零或看空；請先看理由、警告、資料日與來源追溯。
+- 全流程為唯讀呈現，不建立委託、不寫入交易／持倉、不修改 Recommendation／Portfolio，也不解除 Formal evidence、scheduler 或 broker Gate。
+
+常見問題：
+
+- 市場總覽沒有焦點卡：先看 snapshot 的空狀態、來源品質與 warnings；沒有 DTO rows 不等於沒有投資訊號或 Gate 通過。
+- 觀察清單顯示 `not_in_result`：代表目前沒有該股票的保存結果，不等於看空；請回到 Recommendation 產生並保存新的研究結果。
+- 持倉權重差距顯示未知：檢查上游 Portfolio Advice／`source_summary` 是否提供 `target_weight_bp`、`current_weight_bp`、`weight_gap_bp`；不要手動在 UI 補值。
+- 持倉目前分數／Regime 顯示待更新：確認持倉來源摘要是否已有 `current_total_score`／`current_regime`；UI 不會自行掃描全市場重建分數。
+- 校準機率顯示研究中／不可用：目前沒有合格 calibration artifact 或上游沒有明確機率欄位，維持研究模式即可。
+
 ### Evidence 模式與 ML shadow
 
 - `projection_only` 只投影與驗證輸入，不建立 working copy。

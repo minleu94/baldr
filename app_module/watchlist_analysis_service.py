@@ -26,6 +26,10 @@ class WatchlistAnalysisDTO:
     profile_version: str = ""
     source_id: str = ""
     source_kind: str = ""
+    # 只沿用保存結果中的 ranking metadata；不在觀察清單頁重新計算。
+    sample_size: int | None = None
+    score_percentile_bp: int | None = None
+    ranking_method: str = ""
 
 
 class WatchlistAnalysisService:
@@ -119,6 +123,9 @@ class WatchlistAnalysisService:
                     profile_version=profile_version,
                     source_id=source_lineage_id,
                     source_kind=source_kind,
+                    sample_size=recommendation.eligible_universe_size,
+                    score_percentile_bp=recommendation.score_percentile_bp,
+                    ranking_method=str(recommendation.ranking_method or ""),
                 )
         return WatchlistAnalysisDTO(
             stock_code,

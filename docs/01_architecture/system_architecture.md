@@ -1,11 +1,13 @@
 ﻿# 系統架構
 
-> **最後更新：2026-09-09｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-09-10｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
 
 ## 個股研究、資料新鮮度與持倉證據邊界
 
 - 持倉與觀察清單透過共同 `stockResearchRequested` 導向 `StockResearchReportDialog`。`StockResearchReportReadService` 組合既有SQLite、保存推薦與持倉服務，再交 `StockResearchReportDTO`／Qt view呈現；不在UI新增第二套股票評分或交易引擎。
+- `app_module/decision_presentation.py` 定義 `decision-presentation.v1` 共用唯讀呈現契約。`DecisionPresentationService` 只適配既有 Market Focus、Watchlist Analysis、Recommendation／Portfolio Advice、Condition Monitor 與 Position payload，供 Decision Desk、Watchlist、Portfolio 與 Stock Research Report 共用；它保留排名分數、百分位／方法與樣本 metadata，但不查 SQLite、不寫資料、不重算 scoring、機率或權重。
+- 呈現契約對 `calibrated_probability_bp` 採 fail-closed：沒有明確校準來源時狀態為 `research`／`unavailable`。目標／目前／差距權重只接受上游已提供的整數 bp；缺件時保留未知與 warning，不以 current=0 或 UI 相減補值。Condition Monitor 的狀態映射只是唯讀候選分類，不是 broker 或 lifecycle action。
 - 個股報告使用有限唯讀查詢、可取消worker與request identity，區分股票資料期間、來源可得時間與報告cutoff；來源新鮮度應消費既有probe契約，不將月／季資料一律當每日資料。來源不足時維持可用區塊，並明示缺失。
 - `ForwardMachinePolicyProducer`、候選binding、持倉行情來源producer與transition evaluator串接為提案流程；不自動核准或修改正式倉位。`ExitEffectivenessProducer` 以transition與Paper ledger讀取結果，分開實際平倉與假設提案成效；沒有可得時間、執行或成熟證據時不得納入成熟成效。
 - 日常caller、實際產物及驗收限制見 [本輪整合驗收](../06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)，模組存在不代表自然閉環已完成。
@@ -103,6 +105,8 @@ baldr 是一套可驗證、可回溯、可演化的台股投資決策系統。�
 3. 持倉檢查：Recommendation / Backtest → Portfolio → Condition / Chip Monitor → Journal → 回到研究。
 
 目標中的第四閉環是 Daily Decision Desk：Market Intelligence → Daily Decision Desk → Watchlist Trigger / Portfolio Alert / Research Input。v1 已接上主 UI；唯一實例位於「市場探索 > 市場總覽」，Workbench「決策來源」只導向同一畫面，不建立第二份 widget。目前由 service snapshot 聚合，Market Breadth v1 已由 SQLite `daily_prices` provider 接線，Sector Rotation v1 已由 SQLite `industry_indices` provider 接線，Watchlist Trigger v1 已由 `WatchlistService` 與 SQLite `technical_indicators` 共同推導接線，Portfolio Alert v1 已由 `PortfolioService`、`PortfolioConditionMonitor` 與 `PortfolioChipService` 共同推導接線。
+
+V4.2 C 線在這個閉環上新增 presentation-only vertical slice：市場焦點先以研究卡呈現，觀察清單讀取保存的排名／樣本 metadata，持倉與個股報告再消費同一份呈現欄位。Advice 仍由既有 Advice DTO 決定；UI 不把市場焦點或保存分數升級成正式買進／持有／減碼／退出建議。
 
 未來 6 個月的工程方向見 [ROADMAP_6M_ENGINEERING.md](../00_core/ROADMAP_6M_ENGINEERING.md)，舊 Roadmap 移交狀態見 [LEGACY_ROADMAP_CARRYOVER.md](../00_core/LEGACY_ROADMAP_CARRYOVER.md)。
 

@@ -1,5 +1,13 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-10 V4.2 C 線每日決策呈現切片
+
+已完成第一個可用的唯讀垂直切片：市場總覽焦點卡、觀察清單保存分析、持倉條件監控與個股研究報告共用 `decision-presentation.v1`。畫面現在可沿「市場總覽 → 重點研究 → 觀察清單 → 持倉」判讀動作適合度、排名分數、證據品質、樣本／信心、理由／風險、權重欄位與失效條件；所有欄位由既有 DTO／service 適配而來，不在 UI 重算推薦。
+
+本切片的安全邊界仍保留：市場焦點與保存的 Watchlist 結果只標為研究；校準機率沒有明確合格來源時維持研究中／不可用；持倉的 `valid`／`warning`／`invalid` 只映射為持有／減碼候選／退出候選；目標／目前／差距權重缺來源時顯示未知，不由 UI 推導。這不代表正式 Advice、自然 evidence、scheduler、broker 或 promotion 已開放。
+
+本輪工作區驗證：presentation tests 6 passed、受影響 UI／service tests 106 passed、UpdateView workbench 81 passed、`qa_validate_update_tab.py` 25 passed／4 skipped、mypy 588 source files 無錯；QA output 不納入提交。
+
 ## 2026-09-10 V4 跨日證據閉環工程完成
 
 本輪已修正每日推薦把決策日與 selected codes 放進跨日 `universe_id`、導致 evaluator

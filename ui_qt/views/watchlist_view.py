@@ -24,6 +24,10 @@ from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.watchlist_service import WatchlistService
 from app_module.universe_service import UniverseService
 from app_module.watchlist_analysis_service import WatchlistAnalysisService
+from app_module.decision_presentation import (
+    DecisionPresentationService,
+    format_decision_presentation,
+)
 from app_module.research_session import ResearchStockContextDTO
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.info_button import InfoButton
@@ -39,7 +43,13 @@ class WatchlistView(QWidget):
     stockAnalysisRequested = Signal(str)
     stockResearchRequested = Signal(object)
     
-    def __init__(self, watchlist_service: WatchlistService, config=None, parent=None):
+    def __init__(
+        self,
+        watchlist_service: WatchlistService,
+        config=None,
+        parent=None,
+        presentation_service: DecisionPresentationService | None = None,
+    ):
         """初始化觀察清單視圖
         
         Args:
@@ -53,6 +63,7 @@ class WatchlistView(QWidget):
         
         self.watchlist_service = watchlist_service
         self.config = config
+        self.presentation_service = presentation_service or DecisionPresentationService()
         self.analysis_service = WatchlistAnalysisService(config) if config and hasattr(config, "output_root") else None
         self._analysis_request_id = 0
         self._analysis_worker: TaskWorker | None = None
@@ -241,7 +252,7 @@ class WatchlistView(QWidget):
         self.analysis_text.setReadOnly(True)
         self.analysis_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.analysis_text.setFixedHeight(90)
-        self.analysis_text.setPlaceholderText("選取一檔股票，查看已保存的推薦分數、理由與分析日期。")
+        self.analysis_text.setPlaceholderText("選取一檔股票，查看共用呈現契約與已保存的推薦理由。")
         analysis_layout.addWidget(self.analysis_text)
         candidate_layout.addWidget(analysis_group)
 
@@ -866,6 +877,8 @@ class WatchlistView(QWidget):
             lines.append(f"Profile：{profile}")
         if result.status == "saved":
             lines.extend([f"當時收盤價：{result.close_price}｜推薦總分：{result.score}", f"推薦理由：{result.reasons}"])
+        presentation = self.presentation_service.from_watchlist_analysis(result)
+        lines.extend(["", "共用呈現契約（唯讀）：", format_decision_presentation(presentation)])
         self.analysis_text.setPlainText("\n".join(lines))
 
     def _show_analysis_error(self, request_id, error):

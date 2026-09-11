@@ -20,6 +20,10 @@ from app_module.decision_desk_dtos import (
     DecisionDeskSnapshot,
 )
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
+from app_module.decision_presentation import (
+    DecisionPresentationService,
+    format_decision_presentation,
+)
 from app_module.market_data_visibility_dtos import MarketDataVisibilitySummary
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.workers.task_worker import TaskWorker
@@ -37,12 +41,14 @@ class DecisionDeskView(QWidget):
         async_refresh: bool = True,
         navigate_to_smart_money_callback: Callable[[str], None] | None = None,
         parent=None,
+        presentation_service: DecisionPresentationService | None = None,
     ):
         super().__init__(parent)
         self.decision_desk_builder = decision_desk_builder or DecisionDeskSnapshotBuilder()
         self.as_of_date = as_of_date or date.today()
         self.async_refresh = async_refresh
         self.navigate_to_smart_money_callback = navigate_to_smart_money_callback
+        self.presentation_service = presentation_service or DecisionPresentationService()
         self._auto_refresh_pending = auto_refresh
         self._last_snapshot: DecisionDeskSnapshot | None = None
         self._refresh_worker: TaskWorker | None = None
@@ -154,6 +160,22 @@ class DecisionDeskView(QWidget):
         self.stock_focus_button_layout.setSpacing(6)
         focus_group.layout.addWidget(self.stock_focus_button_container)
         content_layout.addWidget(focus_group)
+
+        self.presentation_contract_label = QLabel("尚未載入共用呈現契約。")
+        self.presentation_contract_label.setWordWrap(True)
+        self.presentation_contract_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.presentation_contract_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 10pt;"
+        )
+        presentation_group = SectionPanel("共用呈現契約")
+        presentation_intro = QLabel(
+            "市場焦點只沿用既有快照；沒有合格來源的分數、機率、樣本或權重維持未知。"
+        )
+        presentation_intro.setWordWrap(True)
+        presentation_intro.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+        presentation_group.layout.addWidget(presentation_intro)
+        presentation_group.layout.addWidget(self.presentation_contract_label)
+        content_layout.addWidget(presentation_group)
 
         self.visibility_section = SectionPanel("資料可見性與擴充因子")
         visibility_header = QHBoxLayout()
@@ -276,6 +298,7 @@ class DecisionDeskView(QWidget):
         self.risk_sector_label.setText("避開產業 / 風險區：尚未載入")
         self.priority_stock_label.setText("優先研究股票：尚未載入")
         self.risk_stock_label.setText("風險股票：尚未載入")
+        self.presentation_contract_label.setText("尚未載入共用呈現契約。")
         self._set_stock_focus_buttons(())
         self._render_market_data_visibility(None)
         for status_label, badge in self._status_badges.items():
@@ -579,6 +602,24 @@ class DecisionDeskView(QWidget):
             )
             self.risk_stock_label.setText("風險股票：" + self._format_stock_cards(stock_focus.risk_stocks))
             self._set_stock_focus_buttons(tuple(stock_focus.priority_stocks) + tuple(stock_focus.risk_stocks))
+        self._render_presentation_contract(snapshot)
+
+    def _render_presentation_contract(self, snapshot: DecisionDeskSnapshot) -> None:
+        focus = getattr(snapshot, "stock_focus", None)
+        cards = () if focus is None else (*focus.priority_stocks, *focus.risk_stocks)
+        if not cards:
+            self.presentation_contract_label.setText(
+                "目前沒有可呈現的個股焦點；缺資料不等於看多或看空。"
+            )
+            return
+        rows = []
+        for card in cards[:6]:
+            presentation = self.presentation_service.from_market_focus_card(
+                card,
+                as_of_date=snapshot.as_of_date,
+            )
+            rows.append(f"{presentation.stock_code} {presentation.stock_name}\n{format_decision_presentation(presentation)}")
+        self.presentation_contract_label.setText("\n\n".join(rows))
 
     @staticmethod
     def _format_sector_cards(cards) -> str:

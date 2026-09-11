@@ -41,6 +41,10 @@ from app_module.stock_research_report_dtos import (
     StockPricePointDTO,
     StockResearchReportDTO,
 )
+from app_module.decision_presentation import (
+    DecisionPresentationService,
+    format_decision_presentation,
+)
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.theme_widgets import StatusBadge
@@ -202,10 +206,12 @@ class StockResearchReportView(QWidget):
         *,
         stock_codes: Sequence[str] = (),
         parent: QWidget | None = None,
+        presentation_service: DecisionPresentationService | None = None,
     ) -> None:
         super().__init__(parent)
         self.service = service
         self.context = context
+        self.presentation_service = presentation_service or DecisionPresentationService()
         self.stock_codes = tuple(str(code).strip() for code in stock_codes if str(code).strip())
         self._request_id = 0
         self._active_code = ""
@@ -779,6 +785,13 @@ class StockResearchReportView(QWidget):
         advice: StockAdviceSnapshotDTO,
         position: StockPositionSnapshotDTO | None = None,
     ) -> None:
+        presentation = self.presentation_service.from_report_parts(advice, position)
+        if presentation is not None:
+            layout.addWidget(
+                self._wrapped_label(
+                    "共用呈現契約（唯讀）\n" + format_decision_presentation(presentation)
+                )
+            )
         if advice.recommendation is None:
             if advice.saved_analysis is not None:
                 saved = advice.saved_analysis

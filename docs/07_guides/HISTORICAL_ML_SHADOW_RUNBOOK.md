@@ -15,6 +15,14 @@ Core family 只接受 price、technical、market、industry。Fundamental 在正
 5. Downside calibration 只使用至少兩個 OOF blocks。Research blend 只使用 `label.available_date <= 2024-12-31` 的 OOF rows，候選 alpha 固定為 0/2500/5000/7500/10000 bp。
 6. `production_alpha_bp` 永遠是 0。Research alpha 不會寫回 production path，也不代表 promotion。
 
+## V4.1 A 線 Historical Method Pack（B 線輸入）
+
+`scripts/build_v41_historical_method_pack.py` 是推薦機率校準的 research-only dataset／candidate packaging 入口。它從既有 `recommendation_included` Evidence Event 與 Evidence Outcome 的 read-only projection 產生逐列、逐 horizon manifest，再重用 20 日 primary／5 日 auxiliary expanding train／calibration／untouched-test evaluator。每列必須能追溯 `decision_date`、`available_at`、label maturity、strategy／config、universe policy／snapshot、return basis、benchmark、cost 與 source hash；缺件以 machine-readable `gap_codes` 保留。
+
+方法順序固定為 current baseline → simple price／volume challenger → chip／funding → industry-relative → PIT theme。只有 decision-time feature 可得且有 source hash 的欄位才可進候選；PIT theme 更要求 membership id、as-of、available-at 與 source hash 均不晚於 decision date。current snapshot、historical replay、deterministic sample 與人工補欄位都不能替代 PIT membership 或自然 forward outcome。
+
+CLI 會 create-only 保存 `historical_dataset_manifest.json`、`historical_calibration_report.json` 與 `frozen_candidate_artifact.json`。B shadow 在消費前必須核對 manifest／source hash，保持 query-only／read-only；artifact 的 `production_eligible`、`promotion_eligible`、`formal_oos`、`scheduler_enabled` 與自然 evidence credit 均為 false。若正式資料不足成熟 label，狀態維持 `waiting_for_natural_maturity`／`not_evaluable`；不得藉由降低 Gate、回填或把 sample／replay 當正式證據解鎖。
+
 ## Corporate-action gate
 
 - `strict`：coverage unknown 時排除 label window；不得建立 clean/formal OOS dataset。

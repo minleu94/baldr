@@ -1,6 +1,6 @@
 ﻿# 系統架構
 
-> **最後更新：2026-09-10｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-09-12｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
 
 ## 個股研究、資料新鮮度與持倉證據邊界
@@ -210,7 +210,7 @@ Application Services / DTO / Repository
 | 保存與版本 | `backtest_repository.py`、`recommendation_repository.py`、`strategy_version_service.py`、`preset_service.py`、`universe_service.py` |
 | Portfolio | `portfolio_service.py`、`portfolio_condition_monitor.py`、`portfolio_source_adapter.py`、`portfolio_construction_service.py`、`portfolio_execution_trace_service.py`、`paper_portfolio_policy.py`（V2.4 核准參數的唯讀紙上再平衡評估；不讀持倉、不寫 DB、不下單）、`paper_portfolio_time.py`（台灣市場共用日期邊界，阻擋 future snapshot／週報 look-ahead）、`paper_portfolio_readiness_service.py`（daily status／snapshot／可選 Equal Weight ledger／Paper Trade Ledger 的唯讀 readiness；缺檔不建 schema）、`paper_portfolio_weekly_evidence_service.py`（從既有 snapshot／benchmark／成本帳 query-only 重建期間化週報；缺件／future period fail-closed）、`paper_trade_ledger.py`（研究用 fill／partial-fill／cost／execution-gap 的 append-only contract；不接 broker）、`portfolio_stress_lab_service.py`（固定情境的 Decimal／研究唯讀投影；缺輸入 fail-closed）、`trade_import_service.py`（CSV 預覽、hash／欄位驗證與明確確認後的批次匯入）、`position_health_service.py`（V2.5 condition / feedback / trace 的唯讀健康狀態投影；不自動 action） |
 | Strategy lifecycle / feedback | `strategy_lifecycle_service.py`、`strategy_lifecycle_repository.py`、`portfolio_feedback_service.py`、`portfolio_review_service.py`、`promotion_reconciliation_service.py` |
-| Post-V1 evidence / V2.0-V2.1 workbench | `evidence_event_dtos.py`、`evidence_event_repository.py`、`evidence_event_service.py`、`forward_performance_service.py`、`evidence_source_coverage_service.py`、`historical_evidence_replay.py`、`agent_evidence_access_service.py`、`pre_v2_readiness_service.py`、`workbench_dtos.py`、`workbench_read_only_composer.py`、`workbench_replay_summary.py`、`workbench_source_service.py`、`ui_qt/views/workbench_view.py`、`ui_qt/models/workbench_table_models.py`、`cross_sectional_factor_*`、recommendation screening matrix / negative evidence payloads |
+| Post-V1 evidence / V2.0-V2.1 workbench | `evidence_event_dtos.py`、`evidence_event_repository.py`、`evidence_event_service.py`、`forward_performance_service.py`、`evidence_source_coverage_service.py`、`historical_evidence_replay.py`、`agent_evidence_access_service.py`、`pre_v2_readiness_service.py`、`workbench_dtos.py`、`workbench_read_only_composer.py`、`workbench_replay_summary.py`、`workbench_source_service.py`、`v41_historical_method_pack.py`、`ui_qt/views/workbench_view.py`、`ui_qt/models/workbench_table_models.py`、`cross_sectional_factor_*`、recommendation screening matrix / negative evidence payloads |
 | Runtime | `runtime_services/`、`dtos/runtime_dtos.py` |
 
 `app_module` 不依賴 `ui_app`。Legacy Tkinter UI 不是目前 service 架構的一部分。
@@ -694,6 +694,8 @@ blockers 投影到 top-level receipt，輸出 `status=blocked`／`exit_code=2`�
 
 V4.1 A 線的 `app_module/recommendation_calibration.py` 位於同一 application research boundary，僅消費已保存的 recommendation Evidence Event 與成熟 Evidence Outcome，輸出固定 20／5 trading-day target、expanding train／calibration／untouched-test walk-forward、整數 bp probability calibration 與 benchmark／cost diagnostics。`scripts/inspect_recommendation_calibration.py` 透過 query-only evidence repository 或 deterministic sample 呼叫它；它不建立 schema、不寫正式 DB、不改 Recommendation／Scoring／Advice／Portfolio，也不把 historical replay 或 sample 結果授予 natural forward evidence credit。推薦 importer 只把未來新事件當下已存在的 indicator／pattern／volume component 轉成 bp metadata，歷史事件缺件時不回填；chip／funding、industry、PIT theme 必須另有 decision-time source contract 才能接入。
 
+第二輪由 `app_module/v41_historical_method_pack.py` 與 `scripts/build_v41_historical_method_pack.py` 建立 research-only historical method pack：以既有 evidence event／outcome 的 query-only projection 展開逐列、逐 horizon manifest，保留 decision／available-at、label maturity、strategy／universe identity、return／benchmark／cost、source hash 與 gap codes，再重用 calibration evaluator 產生 baseline／price-volume method comparison。輸出的 `frozen_candidate_artifact.json` 是 create-only、hash-bound、shadow-only contract；current snapshot 不得冒充 PIT theme membership，缺 source／availability／成熟度時維持 blocked，且 artifact 明確禁止 production、promotion、scheduler、formal writer 與自然 forward evidence credit。
+
 目前 registry 已保存：
 
 - 資料截止日與 hash
@@ -840,6 +842,7 @@ UI 修改：
 - 2026-08-27：ScoringEngine 的 rolling PatternScore 同步保存已確認型態的唯讀 evidence（名稱、方向、確認日與衰減日數），並投影 `PatternNames`／`Pattern_Signal`／`PatternAgeDays` 給 ReasonEngine。Explain 不在單列資料上重新呼叫 PatternAnalyzer；缺少具體名稱時只顯示 generic 方向訊號，避免把 end_idx 或分數臆測成已成立型態。
 - 2026-08-27：Recommendation 與四個策略 executor 移除未使用的全歷史 `identify_patterns()` 預掃描，統一由 ScoringEngine rolling path 產出分數與 evidence；不改策略訊號，只避免重複計算與未確認型態的誤解釋。
 - 2026-08-27：UpdateService 的 SQLite 輸入正規化修正為先辨識受治理的日期／股票代號／股票名稱別名，再在寫入副本上統一 canonical 欄位、日期與四碼代號；修正重複條件造成的英文欄位被提前丟棄問題。raw CSV 與呼叫端 DataFrame 不被原地改寫，必要欄位缺失仍 fail-closed。
+- 2026-09-12：新增 V4.1 A 線第二輪 historical method pack 架構同步，確認 manifest 的 row-level time／lineage／gap contract、20／5 walk-forward reuse、PIT theme fail-closed 與 create-only frozen shadow artifact；不改 Recommendation／Scoring、不寫 formal DB、不授予 natural forward evidence credit。
 - 2026-07-06：新增 Historical Evidence Replay 架構同步，確認 replay service 只做 working-copy / replay DB orchestration，recommendation result 受 `created_at <= decision_date` 限制，forward outcome 受 `data_as_of_date` 限制，不改 scheduled dry-run、不寫 formal DB、不啟用 production scheduler。
 - 2026-07-06：補充 Phase 0A reference return fix 架構契約，確認 missing benchmark fallback 到 TAIEX、market index `收盤價` fallback 與保守 industry sector mapping 只影響 evidence outcome reference lookup，不改 scoring、portfolio 或 scheduler。
 - 2026-07-06：新增 Pre-V2 readiness inspector 架構同步，確認 `PreV2ReadinessService` 只做 weekly history / multi-day record / source gaps / Agent report sample 唯讀檢查，不建立 schema、不寫 evidence、不啟用 scheduler。

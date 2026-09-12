@@ -12,6 +12,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_v4_effectiveness_evaluator.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_v4_effectiveness_read_model.py": "governance-doc-tooling",
     "tests/test_v4_cross_day_evidence_contract.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_v41_historical_method_pack.py": "governance-doc-tooling",
     "tests/test_institutional_credit_flows_service.py": "service-oracle-data-market",
     "tests/test_tdcc_shareholding_candidate.py": "service-oracle-data-market",
     "tests/test_task_loop_01_contract.py": "service-oracle-data-market",

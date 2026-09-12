@@ -3283,6 +3283,27 @@ V4.1 A 線的推薦機率校準研究可用 `scripts\inspect_recommendation_cali
 - `price_volume_v1` 目前只是 challenger ablation。新匯入的 recommendation event 會保存決策當下的 indicator／pattern／volume component bp；歷史缺件不回填。chip／funding、industry、PIT theme 尚未接入，必須先有可核對的 decision-time／PIT source lineage。
 - report 固定 `production_eligible=false`、`production_scheduler_allowed=false`、`natural_forward_evidence_credit=false`，不改 ScoringEngine、推薦權重、threshold、alpha 或 promotion pointer。sample／replay 不可視為自然 forward evidence。
 
+### V4.1 A 線第二輪歷史研究與候選方法包
+
+使用 `scripts\build_v41_historical_method_pack.py` 可將既有 recommendation Evidence Event／Outcome 以 query-only 方式展開為逐列、逐 horizon 的 dataset manifest，並重用同一套 20 日 primary／5 日 auxiliary expanding `train`／`calibration`／`untouched-test` evaluator。它會另外列出 current baseline、price／volume challenger、chip／funding、industry-relative 與 PIT theme 的 ready／blocked coverage 與 gap codes；PIT theme 只有在決策當下可得的 membership id、as-of、available-at 與 source hash 全部存在時才可列為 ready。
+
+```powershell
+# 正式 evidence SQLite：只讀，輸出請放在 DATA_ROOT 外的專屬目錄
+.\.venv\Scripts\python.exe scripts\build_v41_historical_method_pack.py `
+  --db-path D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
+  --output-dir C:\Temp\v41_historical_method_pack_YYYYMMDD `
+  --format markdown
+
+# deterministic sample：只驗證契約與 walk-forward 結構，不是自然 forward evidence
+.\.venv\Scripts\python.exe scripts\build_v41_historical_method_pack.py `
+  --sample --output-dir C:\Temp\v41_historical_method_pack_sample_YYYYMMDD `
+  --format json
+```
+
+輸出目錄會以 create-only 方式保存 `historical_dataset_manifest.json`、`historical_calibration_report.json` 與 `frozen_candidate_artifact.json`；若任一同名檔案已存在，CLI 會拒絕覆寫。manifest 每列保留 `decision_date`、`available_at`（含 precision）、`label_maturity`／`label_end_date`、strategy config、universe policy／snapshot、return basis、benchmark、fixed／liquidity cost、event／outcome／source hash 與 `gap_codes`。缺 outcome 只標為 `missing_outcome`，未成熟 outcome 標為 `insufficient_future_data`，不以 fixture、replay 或 current snapshot 回補。
+
+正式資料若回 `observation_row_count=0`、`fold_count=0` 或 `status=not_evaluable`，只能判讀為目前沒有足夠成熟且可追溯的樣本；它不代表策略有效或失效。`frozen_candidate_artifact.json` 固定 `shadow_only=true`、`production_eligible=false`、`promotion_eligible=false`、`recommendation_weights_changed=false`、`scheduler_enabled=false`，只能交給 B 線做 hash 驗證與唯讀 shadow，不能改正式推薦或寫回 SQLite。完整 2026-09-12 結果見 [V4.1 歷史研究與候選方法包 QA](../06_qa/V4_1_HISTORICAL_METHOD_PACK_2026_09_12.md)。
+
 正式 evidence DB 若出現 `observation_count=0` 或 `fold_count=0`，只能解讀為成熟度／來源不足，不能解讀為策略有效或失效。完整契約、實際 2026-09-10 read-only 結果、測試與限制見 [V4.1 推薦機率校準垂直切片](../06_qa/V4_1_RECOMMENDATION_CALIBRATION_VERTICAL_SLICE_2026_09_10.md)。
 
 Phase 2 起，Qt 主 UI 新增 `決策工作台` 分頁作為 read-only Unified Decision Workbench MVP shell。2026-08-14 後，總覽第一屏先顯示「今日行動中心」與單一下一步導覽，再顯示今日重點帶、語意色摘要卡、今日待判讀、背景證據流、只讀 Action Items 與 Inspector；這些導覽按鈕只切換既有工作區。操作節奏、Evidence mode / data quality、Daily Checklist 與 warnings / degraded source 改成可收合區塊，需要時再展開。畫面只透過 `WorkbenchSourceService` 取得 `WorkbenchDashboardDTO`，不直接讀 SQLite、不寫 DB、不啟用 scheduler，也不重算 scoring、portfolio、backtest 或 lifecycle。若預設 `_reference_fix` replay JSON summary 存在於 `OUTPUT_ROOT/evidence_pipeline/historical_replay_reference_fix_20260706/`，主 UI 會自動把 JSON summary 傳入 WorkbenchSourceService；這仍只是讀 summary，不會讀 replay DB 或執行 replay。
@@ -4182,6 +4203,7 @@ $env:PHASE3C_CANDIDATE_DB_PATH = 'D:/Min/Python/Project/FA_Data_candidate/phase3
 - 2026-07-08：補充 Pre-V2 readiness 修正後歷史觀察日規則；source-gap closeout 可採信同日 scheduled dry-run `latest_status.json` 的 read-only 證據，但仍不寫 DB、不啟用 scheduler、不代表 production approval。
 - 2026-07-08：新增 V3 score effectiveness audit CLI 操作說明；`inspect_score_effectiveness.py` 以 read-only 方式輸出 `TotalScore` raw bucket、forward outcome、benchmark / industry excess、limitations 與安全邊界，不寫 DB、不提供 `--confirm`、不改分數 / threshold，也不訓練 ML model。
 - 2026-09-10：新增 V4.1 A 線 recommendation calibration CLI 操作說明；固定 20／5 trading-day outcome contract、train／calibration／untouched-test walk-forward、整數 bp calibration、Brier／probability bins／不確定性、成本與 benchmark 比較及 ranking／probability／action／evidence 分欄。正式 evidence DB 若 outcome 尚未成熟只回 `not_evaluable`，不回填、不授予自然 forward credit、不改推薦或 production scheduler。
+- 2026-09-12：新增 V4.1 A 線第二輪 historical method pack CLI；補上逐列 manifest、available-at／label maturity／strategy／universe／return／benchmark／cost／source hash、候選方法 gap、自然時間等待與 create-only frozen shadow artifact 操作及 fail-closed 限制。
 - 2026-07-07：補充 Workbench background evidence feed / read-only Action Items MVP 操作說明；背景證據流只彙整既有 DTO / service payload，Action Items 每列帶 source trace、degraded reason 與 drill-down target，且不建立 repository、不寫 DB、不套用 lifecycle。
 - 2026-07-07：補充 Workbench Action Items 人工佇列操作說明；Action Items 依 severity / queue group / source 排序並顯示來源，row drill-down target 與舊頁導向一致，Evidence Feed / Action Items 空狀態與降級狀態文案維持只讀、非建議、不補值邊界。
 - 2026-07-07：補充 Workbench Phase 2C / 2D 操作節奏 closeout；Operating Loop 只顯示 daily first-look、manual queue、weekly history、multi-day dry-run、manual review note 與 scheduler gate，不寫 DB、不標記完成、不補真實時間 gate。

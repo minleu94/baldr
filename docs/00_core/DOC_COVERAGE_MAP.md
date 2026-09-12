@@ -395,6 +395,7 @@
 
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
 - 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
+- 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。
 - 2026-08-29：新增容量／retention／immutable artifact 清理的文件 coverage、custody、pointer／dependency、tombstone 與安全檢查要求。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 的 scoped authority 邊界，定位為 V2.0 之後長期版本階梯 companion。
 - 2026-07-11：新增 Post-Refactor Product Roadmap、Target Architecture 與新版 Vision scoped authority；補充 Product / Engineering、Current / Target 一致性 Gate。

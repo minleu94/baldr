@@ -1,9 +1,9 @@
 # 專案導航文件
 
 **版本**：v1.4.10
-**最後更新**：2026-09-08
+**最後更新**：2026-09-12
 
-本輪請先看 [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)、[Luna整合驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)及[工作區檔案說明](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)。個股研究入口由持倉／觀察清單共用，操作與限制以 [Manual](docs/07_guides/APPLICATION_MANUAL.md) 為準。
+本輪請先看 [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)、[V4.1 歷史方法包 QA](docs/06_qa/V4_1_HISTORICAL_METHOD_PACK_2026_09_12.md)、[Luna整合驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)及[工作區檔案說明](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)。個股研究入口由持倉／觀察清單共用，操作與限制以 [Manual](docs/07_guides/APPLICATION_MANUAL.md) 為準。
 **目標讀者**：專案開發者、新加入工程師
 
 ---
@@ -34,6 +34,7 @@ Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsa
 |---|---|
 | 更新／市場日期與品質 DTO | [update_loop_dtos.py](app_module/dtos/update_loop_dtos.py)、[market_loop_dtos.py](app_module/dtos/market_loop_dtos.py)；服務維持舊 API 相容，UI 不查 storage |
 | 推薦決策切片／輸入指紋 | [recommendation_service.py](app_module/recommendation_service.py)；`recommendation-context.v1`、未知因子與歷史產業 PIT 拒用 |
+| V4.1 歷史研究／候選方法包 | [v41_historical_method_pack.py](app_module/v41_historical_method_pack.py)、[build_v41_historical_method_pack.py](scripts/build_v41_historical_method_pack.py)；逐列 manifest、20／5 walk-forward、gap 分類與 frozen shadow-only artifact |
 | T+1 版本撮合／研究成本 | [broker_simulator.py](backtest_module/broker_simulator.py)、[recommendation_portfolio_backtest_service.py](app_module/recommendation_portfolio_backtest_service.py)；v2 與 legacy 隔離 |
 | Registry／Evidence lineage | [research_run_service.py](app_module/research_run_service.py)、[evidence_event_service.py](app_module/evidence_event_service.py)；query 不 reconcile，review 僅提案 |
 | 候選 append 帳本／副本 migration | [portfolio_ledger_repository.py](data_module/portfolio_ledger_repository.py)、[portfolio_ledger_migration.py](data_module/portfolio_ledger_migration.py)；由 PortfolioService 明確注入，正式 JSONL 未切換 |
@@ -137,6 +138,8 @@ Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsa
 - `app_module/workbench_replay_summary.py`
 - `app_module/evidence_source_coverage_service.py`
 - `app_module/recommendation_service.py`、`app_module/dtos/__init__.py`（Recommendation result screening matrix / payload 保存邊界）
+- `app_module/recommendation_calibration.py`
+- `app_module/v41_historical_method_pack.py`
 - `app_module/cross_sectional_factor_dtos.py`
 - `app_module/cross_sectional_factor_repository.py`
 - `app_module/cross_sectional_factor_pipeline.py`
@@ -149,6 +152,8 @@ Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsa
 - `scripts/inspect_pre_v2_readiness.py`
 - `scripts/replay_historical_evidence_pipeline.py`
 - `scripts/inspect_v2_workbench_prototype.py`
+- `scripts/inspect_recommendation_calibration.py`
+- `scripts/build_v41_historical_method_pack.py`
 
 **如果我要改 evidence source coverage / data credibility**：先看 `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md` 與 `docs/01_architecture/system_architecture.md`；程式改動優先從 `EvidenceSourceCoverageService` 或 `data_module/*policy/*registry` 切入，不要在 CLI、runner 或 UI 各自複製分級邏輯。
 
@@ -157,6 +162,8 @@ Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsa
 **如果我要改 V1.7 screening matrix / negative evidence**：先看 `RecommendationService`、`RecommendationResultDTO`、`RecommendationEvidenceImporter` 與 `EvidenceSourceCoverageService`；screening matrix 必須來自推薦當下保存的 payload，importer 不可事後重算或回補舊 result，也不可把 fail / degraded 變成自動 lifecycle action。
 
 **如果我要改 Historical Evidence Replay**：先看 `HistoricalEvidenceReplayService`、`EvidencePipelineRunner`、`EvidenceCaptureService` 與 `ForwardPerformanceService`；replay DB 必須與 source DB 分離，recommendation result 必須受 `created_at <= decision_date` 限制，outcome price search 必須受 `data_as_of_date` 限制，replay metadata 必須保留 `historical_replay` / `simulated_scheduler`，且 replay 不得計入 production scheduler approval。
+
+**如果我要做 V4.1 A 線歷史研究／候選方法包**：先看 `app_module/recommendation_calibration.py`、`app_module/v41_historical_method_pack.py` 與 [V4.1 歷史方法包 QA](docs/06_qa/V4_1_HISTORICAL_METHOD_PACK_2026_09_12.md)。使用 `scripts/build_v41_historical_method_pack.py` 以 query-only SQLite 或 deterministic sample 建立逐列 manifest；每列必須保留 decision／available-at、label maturity、strategy／universe identity、return／benchmark／cost、source hash 與 gap codes。20 日是 primary、5 日是 auxiliary；缺成熟 outcome、PIT membership 或 source lineage 時 fail-closed，輸出只可供 B 線 shadow，不能改正式推薦、scheduler 或 promotion。
 
 **如果我要改 V2.0 / V2.1 Workbench read-only source adapter、background evidence feed、Action Items 或 Operating Loop**：先看 `WorkbenchSourceService`、`WorkbenchReadOnlyComposer`、`WorkbenchDashboardDTO`、`PreV2ReadinessService` 與 `AgentEvidenceAccessService`；adapter 只能讀受控 DB path / replay JSON summary，missing DB / table 要變成 diagnostics。背景證據流只能彙整既有 DTO / service payload；Action Items 只能顯示人工待處理事項，必須保留 severity / queue group / source label / source trace / degraded reason / sort rank / drill-down target。Operating Loop 只能從 DTO payload 串接 daily first-look、manual queue、weekly history、multi-day dry-run、manual review note 與 scheduler gate，必須保留 source trace / linked item ids / drill-down target / `write_intent=false`。首頁「今日行動中心」也只能讀這些既有 DTO，並只透過既有 drill-down callback 導向數據更新、Daily Decision、推薦分析或持倉管理；不得自行推導投資結論、寫 DB、更新資料或觸發任何 domain action。`AdaptiveWorkspaceStack` 只處理目前可見 workspace 的尺寸提示，不能改變 workspace registration、widget ownership 或資料載入。Evidence current 顯示必須同時區分 formal/canonical credit 未授予、歷史 working-copy 1/3、owner-approved UI projection 3/3、pending sidecar 10 與 multi-day 3/3；`formal_credit_authorized=false`、multi-day ready 不構成 scheduler approval，fixture／手動改表／replay 也不得補 official Gate。Drill-down target 必須對齊 Daily Decision、Evidence Review、Portfolio 舊頁導向，空狀態與 degraded 狀態文案不得暗示 gate passed、補值或建議，且不得建立 repository、寫 DB、讀 UI state、重算 scoring / portfolio / backtest、啟用 scheduler、套用 lifecycle 或產生交易建議。
 

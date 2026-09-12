@@ -750,6 +750,83 @@ def _mean_summary(values: Sequence[int]) -> dict[str, Any]:
     }
 
 
+def _discrimination_summary(
+    records: Sequence[tuple[RecommendationCalibrationObservation, int, int]],
+) -> dict[str, Any]:
+    """以整數 bp 保存 pairwise AUC，避免把辨識力寫成裸 float。"""
+
+    positives = [(probability, row.row_id) for row, label, probability in records if label == 1]
+    negatives = [(probability, row.row_id) for row, label, probability in records if label == 0]
+    pair_count = len(positives) * len(negatives)
+    if not positives or not negatives:
+        return {
+            "status": "not_evaluable",
+            "reason": "requires_two_label_classes",
+            "auc_bp": None,
+            "positive_count": len(positives),
+            "negative_count": len(negatives),
+            "pair_count": pair_count,
+        }
+    wins = sum(probability > negative for probability, _ in positives for negative, _ in negatives)
+    ties = sum(probability == negative for probability, _ in positives for negative, _ in negatives)
+    auc_bp = _round_int(
+        Decimal(wins * PROBABILITY_MAX_BP + ties * (PROBABILITY_MAX_BP // 2))
+        / Decimal(pair_count)
+    )
+    return {
+        "status": "measured",
+        "auc_bp": _bounded_probability(auc_bp),
+        "positive_count": len(positives),
+        "negative_count": len(negatives),
+        "pair_count": pair_count,
+        "concordant_pair_count": wins,
+        "tied_pair_count": ties,
+    }
+
+
+def _turnover_summary(
+    records: Sequence[tuple[RecommendationCalibrationObservation, int, int]],
+    *,
+    action_threshold_bp: int,
+) -> dict[str, Any]:
+    """以跨決策日 symbol membership churn 估計研究 turnover。"""
+
+    by_date: dict[str, set[str]] = defaultdict(set)
+    for row, _, probability in records:
+        if probability >= action_threshold_bp:
+            by_date[row.decision_date].add(row.symbol)
+    dates = sorted(by_date)
+    if len(dates) < 2:
+        return {
+            "status": "not_evaluable",
+            "reason": "requires_two_decision_dates",
+            "turnover_bp": None,
+            "decision_date_count": len(dates),
+            "selected_symbol_count": sum(len(by_date[item]) for item in dates),
+        }
+    churn = 0
+    denominator = 0
+    for previous, current in zip(dates, dates[1:]):
+        previous_set = by_date[previous]
+        current_set = by_date[current]
+        churn += len(previous_set.symmetric_difference(current_set))
+        denominator += max(len(previous_set), len(current_set))
+    turnover = (
+        None
+        if denominator == 0
+        else _round_int(Decimal(churn * PROBABILITY_MAX_BP) / Decimal(denominator))
+    )
+    return {
+        "status": "measured" if turnover is not None else "not_evaluable",
+        "reason": None if turnover is not None else "no_selected_membership",
+        "turnover_bp": turnover,
+        "decision_date_count": len(dates),
+        "selected_symbol_count": sum(len(by_date[item]) for item in dates),
+        "membership_churn_count": churn,
+        "turnover_definition": "sum symmetric-difference selected symbols / sum adjacent max holdings",
+    }
+
+
 def _probability_bins(
     probabilities: Sequence[int],
     labels: Sequence[int],
@@ -797,7 +874,14 @@ def _metric_payload(
     records: Sequence[tuple[RecommendationCalibrationObservation, int, int]],
     *,
     config: RecommendationCalibrationConfig,
+    coverage_denominator: int | None = None,
 ) -> dict[str, Any]:
+    denominator = len(records) if coverage_denominator is None else max(0, int(coverage_denominator))
+    coverage_bp = (
+        None
+        if denominator == 0
+        else _round_int(Decimal(len(records) * PROBABILITY_MAX_BP) / Decimal(denominator))
+    )
     if len(records) < config.minimum_test_samples:
         return {
             "status": "not_evaluable",
@@ -809,6 +893,20 @@ def _metric_payload(
             "probability_bins": [],
             "positive_rate_ci95_bp": None,
             "performance": {},
+            "discrimination": _discrimination_summary(records),
+            "turnover": _turnover_summary(
+                records,
+                action_threshold_bp=config.action_threshold_bp,
+            ),
+            "coverage": {
+                "evaluated_sample_count": len(records),
+                "denominator_sample_count": denominator,
+                "coverage_bp": coverage_bp,
+            },
+            "uncertainty": {
+                "positive_rate_ci95_bp": None,
+                "performance_ci95": {},
+            },
         }
     labels = tuple(label for _, label, _ in records)
     probabilities = tuple(probability for _, _, probability in records)
@@ -870,6 +968,27 @@ def _metric_payload(
         "performance": {
             key: _mean_summary(values) for key, values in performance_rows.items()
         },
+        "discrimination": _discrimination_summary(records),
+        "turnover": _turnover_summary(
+            records,
+            action_threshold_bp=config.action_threshold_bp,
+        ),
+        "coverage": {
+            "evaluated_sample_count": len(records),
+            "denominator_sample_count": denominator,
+            "coverage_bp": coverage_bp,
+        },
+        "uncertainty": {
+            "positive_rate_ci95_bp": _wilson_interval_bp(positive_count, len(records)),
+            "performance_ci95": {
+                key: summary["ci95_bp"]
+                for key, summary in (
+                    (metric, _mean_summary(values))
+                    for metric, values in performance_rows.items()
+                )
+                if summary["ci95_bp"] is not None
+            },
+        },
     }
 
 
@@ -877,8 +996,13 @@ def _target_metrics(
     records: Sequence[tuple[RecommendationCalibrationObservation, int, int]],
     *,
     config: RecommendationCalibrationConfig,
+    coverage_denominator: int | None = None,
 ) -> dict[str, Any]:
-    return _metric_payload(records, config=config)
+    return _metric_payload(
+        records,
+        config=config,
+        coverage_denominator=coverage_denominator,
+    )
 
 
 def _comparison_payload(
@@ -981,9 +1105,22 @@ def _evaluate_fold_target_feature(
             }
         )
 
-    baseline_metrics = _target_metrics(baseline_records, config=config)
-    raw_metrics = _target_metrics(raw_records, config=config)
-    calibrated_metrics = _target_metrics(calibrated_records, config=config)
+    coverage_denominator = len(test_rows)
+    baseline_metrics = _target_metrics(
+        baseline_records,
+        config=config,
+        coverage_denominator=coverage_denominator,
+    )
+    raw_metrics = _target_metrics(
+        raw_records,
+        config=config,
+        coverage_denominator=coverage_denominator,
+    )
+    calibrated_metrics = _target_metrics(
+        calibrated_records,
+        config=config,
+        coverage_denominator=coverage_denominator,
+    )
     payload = {
         "status": "measured" if raw_metrics["status"] == "measured" else "not_evaluable",
         "feature_set_id": feature_set_id,
@@ -1013,8 +1150,13 @@ def _aggregate_metric_records(
     records: Sequence[tuple[RecommendationCalibrationObservation, int, int]],
     *,
     config: RecommendationCalibrationConfig,
+    coverage_denominator: int | None = None,
 ) -> dict[str, Any]:
-    return _metric_payload(records, config=config)
+    return _metric_payload(
+        records,
+        config=config,
+        coverage_denominator=coverage_denominator,
+    )
 
 
 def _target_name(target: str, horizon_days: int) -> str:
@@ -1038,7 +1180,9 @@ def evaluate_recommendation_calibration(
     aggregate: dict[str, dict[str, dict[str, list[tuple[RecommendationCalibrationObservation, int, int]]]]] = defaultdict(
         lambda: defaultdict(lambda: defaultdict(list))
     )
+    aggregate_coverage: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     primary_prediction_rows: dict[str, dict[str, Any]] = {}
+    oos_prediction_rows: list[dict[str, Any]] = []
 
     for fold in folds:
         fold_targets: dict[str, Any] = {}
@@ -1058,7 +1202,12 @@ def evaluate_recommendation_calibration(
                     aggregate[name][feature_set_id]["baseline"].extend(raw_records["baseline_records"])
                     aggregate[name][feature_set_id]["raw"].extend(raw_records["raw_records"])
                     aggregate[name][feature_set_id]["calibrated"].extend(raw_records["calibrated_records"])
+                    aggregate_coverage[name][feature_set_id] += len(
+                        [row for row in fold.test_rows if row.horizon_days == horizon_days]
+                    )
                     for item in prediction_rows:
+                        item = {**item, "fold_id": fold.fold_id}
+                        oos_prediction_rows.append(item)
                         if feature_set_id == "score_percentile_v1":
                             current = primary_prediction_rows.setdefault(
                                 item["row_id"],
@@ -1099,13 +1248,19 @@ def evaluate_recommendation_calibration(
             feature_sets: dict[str, Any] = {}
             for feature_set_id in cfg.feature_sets:
                 baseline = _aggregate_metric_records(
-                    aggregate[name][feature_set_id]["baseline"], config=cfg
+                    aggregate[name][feature_set_id]["baseline"],
+                    config=cfg,
+                    coverage_denominator=aggregate_coverage[name][feature_set_id],
                 )
                 raw = _aggregate_metric_records(
-                    aggregate[name][feature_set_id]["raw"], config=cfg
+                    aggregate[name][feature_set_id]["raw"],
+                    config=cfg,
+                    coverage_denominator=aggregate_coverage[name][feature_set_id],
                 )
                 calibrated = _aggregate_metric_records(
-                    aggregate[name][feature_set_id]["calibrated"], config=cfg
+                    aggregate[name][feature_set_id]["calibrated"],
+                    config=cfg,
+                    coverage_denominator=aggregate_coverage[name][feature_set_id],
                 )
                 feature_sets[feature_set_id] = {
                     "feature_set_id": feature_set_id,
@@ -1258,6 +1413,15 @@ def evaluate_recommendation_calibration(
         "fold_count": len(folds),
         "folds": fold_payloads,
         "oos": {"targets": oos_targets},
+        "oos_predictions": sorted(
+            oos_prediction_rows,
+            key=lambda item: (
+                str(item.get("decision_date") or ""),
+                str(item.get("row_id") or ""),
+                str(item.get("feature_set_id") or ""),
+                str(item.get("target") or ""),
+            ),
+        ),
         "decision": {
             "feature_set_policy": "若 challenger 沒有 matched OOS improvement，保留 current score method；本報告不自動 promote。",
             "research_decision": decision,

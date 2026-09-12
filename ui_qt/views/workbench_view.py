@@ -11,6 +11,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
     QBoxLayout,
+    QAbstractItemView,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -37,6 +38,11 @@ from app_module.engineering_closure_dashboard_service import EvidenceRehearsalDa
 from app_module.workbench_source_service import WorkbenchSourceService
 from app_module.research_console_source_service import ResearchConsoleSourceService
 from app_module.advice_dtos import AdviceClassification
+from app_module.decision_presentation import (
+    DecisionPresentationService,
+    format_decision_presentation,
+)
+from app_module.research_session import format_research_workflow_path
 from ui_qt.models.workbench_table_models import (
     AdvicePortfolioTableModel,
     AdviceCandidateTableModel,
@@ -113,6 +119,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         navigate_to_market_explore_callback: Callable[[], None] | None = None,
         navigate_to_evidence_review_callback: Callable[[], None] | None = None,
         navigate_to_portfolio_callback: Callable[[], None] | None = None,
+        navigate_to_watchlist_callback: Callable[[], None] | None = None,
         navigate_to_update_callback: Callable[[], None] | None = None,
         navigate_to_recommendation_callback: Callable[[], None] | None = None,
         parent=None,
@@ -129,6 +136,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.navigate_to_market_explore_callback = navigate_to_market_explore_callback
         self.navigate_to_evidence_review_callback = navigate_to_evidence_review_callback
         self.navigate_to_portfolio_callback = navigate_to_portfolio_callback
+        self.navigate_to_watchlist_callback = navigate_to_watchlist_callback
         self.navigate_to_update_callback = navigate_to_update_callback
         self.navigate_to_recommendation_callback = navigate_to_recommendation_callback
         self._dashboard: WorkbenchDashboardDTO | None = None
@@ -137,6 +145,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._dashboard_stale = False
         self._viewed_review_item_ids: set[str] = set()
         self._workbench_narrow = False
+        self.presentation_service = DecisionPresentationService()
 
         self.status_model = WorkbenchStatusStripTableModel()
         self.review_model = WorkbenchReviewQueueTableModel()
@@ -190,6 +199,66 @@ class UnifiedDecisionWorkbenchView(QWidget):
         title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
         content_layout.addWidget(title)
 
+        workflow_panel, self.workflow_section_title = self._panel_with_title("單一路徑 / Research Workflow")
+        self.workflow_path_label = QLabel(
+            "路徑：" + format_research_workflow_path()
+        )
+        self.workflow_path_label.setWordWrap(True)
+        self.workflow_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.workflow_path_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
+        workflow_panel.layout.addWidget(self.workflow_path_label)
+        workflow_path_layout = QHBoxLayout()
+        workflow_path_layout.setContentsMargins(0, 0, 0, 0)
+        workflow_path_layout.setSpacing(6)
+        self.workflow_path_layout = workflow_path_layout
+        self.workflow_path_buttons: dict[str, QPushButton] = {}
+        for key, label, callback, tooltip in (
+            (
+                "market",
+                "1 市場總覽",
+                self.navigate_to_daily_decision_callback,
+                "前往市場總覽，確認市場與風險焦點。",
+            ),
+            (
+                "industry",
+                "2 產業探索",
+                self.navigate_to_market_explore_callback,
+                "前往市場探索，人工比對產業與關鍵股。",
+            ),
+            (
+                "watchlist",
+                "4 觀察清單",
+                self.navigate_to_watchlist_callback,
+                "前往觀察清單，查看研究／等待／買進候選的來源理由。",
+            ),
+            (
+                "portfolio",
+                "5 持倉覆盤",
+                self.navigate_to_portfolio_callback,
+                "前往持倉管理，查看持有／減碼／退出候選與權重差距。",
+            ),
+        ):
+            button = QPushButton(label)
+            button.setProperty("variant", "secondary")
+            button.setToolTip(tooltip)
+            button.setAccessibleName(label)
+            button.setEnabled(callback is not None)
+            if callback is not None:
+                button.clicked.connect(callback)
+            workflow_path_layout.addWidget(button)
+            self.workflow_path_buttons[key] = button
+        workflow_path_layout.addStretch()
+        workflow_panel.layout.addLayout(workflow_path_layout)
+        self.workflow_path_note = self._make_state_label()
+        self.workflow_path_note.setText(
+            "第 3 段『關鍵股研究』需從市場焦點、觀察清單或持倉列選取個股後開啟；"
+            "此處不替使用者挑股，也不自動下單。"
+        )
+        workflow_panel.layout.addWidget(self.workflow_path_note)
+        content_layout.addWidget(workflow_panel)
+
         self._build_today_action_center(content_layout)
 
         self.priority_banner = QLabel("")
@@ -229,12 +298,34 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_recommendation_table = self._make_table(self.advice_recommendation_model)
         self.advice_candidate_table = self._make_table(self.advice_candidate_model)
         self.advice_portfolio_table = self._make_table(self.advice_portfolio_model)
+        self.advice_recommendation_table.clicked.connect(
+            lambda index: self._show_advice_row_presentation(
+                self.advice_recommendation_model, index.row()
+            )
+        )
+        self.advice_candidate_table.clicked.connect(
+            lambda index: self._show_advice_row_presentation(
+                self.advice_candidate_model, index.row()
+            )
+        )
+        self.advice_portfolio_table.clicked.connect(
+            lambda index: self._show_advice_row_presentation(
+                self.advice_portfolio_model, index.row()
+            )
+        )
         advice_panel.layout.addWidget(self.advice_summary)
         advice_panel.layout.addWidget(self.advice_recommendation_table)
         self.advice_candidate_label = QLabel("Professional 研究候選（不屬於正式 Advice）")
         advice_panel.layout.addWidget(self.advice_candidate_label)
         advice_panel.layout.addWidget(self.advice_candidate_table)
         advice_panel.layout.addWidget(self.advice_portfolio_table)
+        self.advice_presentation_detail = self._make_state_label()
+        self.advice_presentation_detail.setObjectName("advicePresentationDetail")
+        self.advice_presentation_detail.setText(
+            "共用證據詳情：選取 Advice 或研究候選列後顯示；"
+            "排名分數、校準機率與成本後獲利機率不互相代換。"
+        )
+        advice_panel.layout.addWidget(self.advice_presentation_detail)
 
         # 建立三態空狀態 Widget 及其唯讀導引
         self.advice_empty_widget = QWidget()
@@ -602,6 +693,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
         table.setModel(model)
         table.setMinimumHeight(110)
         table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setFocusPolicy(Qt.StrongFocus)
+        table.setTabKeyNavigation(True)
+        table.setAlternatingRowColors(True)
+        table.setAccessibleDescription(
+            "唯讀資料表；可用 Tab 與方向鍵移動，點選列後在詳情區查看完整來源。"
+        )
+        table.verticalHeader().setDefaultSectionSize(28)
+        table.verticalHeader().setMinimumSectionSize(28)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         apply_financial_table_style(table)
@@ -646,6 +748,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
         self.summary_layout.setDirection(direction)
+        self.workflow_path_layout.setDirection(direction)
         self.drilldown_layout.setDirection(direction)
         self.evidence_summary_layout.setDirection(direction)
         self.primary_layout.setDirection(direction)
@@ -1228,6 +1331,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
             self.advice_summary.setText("等待 AdviceDashboardDTO；UI 不執行 Policy 或核心計算。")
+            self.advice_presentation_detail.setText(
+                "共用證據詳情：等待 AdviceDashboardDTO；沒有資料不等於沒有風險。"
+            )
 
         elif state == "NO_ELIGIBLE_ADVICE":
             reasons_str = f" | 原因: {extra_msg}" if extra_msg else ""
@@ -1242,6 +1348,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
             self.advice_summary.setText("無可用建議；UI 不執行 Policy。")
+            self.advice_presentation_detail.setText(
+                "共用證據詳情：目前沒有合格 Advice；不補排名、機率或成本後結果。"
+            )
 
         elif state == "ADVICE_DTO_ERROR":
             self.advice_empty_label.setText(
@@ -1255,6 +1364,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
             self.advice_summary.setText("Advice 載入錯誤或降級。")
+            self.advice_presentation_detail.setText(
+                "共用證據詳情：Advice DTO 狀態未知；請重新載入來源，不保留舊結論。"
+            )
 
         elif state == "READY":
             self.advice_empty_widget.setVisible(False)
@@ -1301,6 +1413,28 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_recommendation_model.set_rows(formal_rows)
         self.advice_candidate_model.set_rows(candidate_rows)
         self.advice_portfolio_model.set_rows(portfolio_rows)
+        self.advice_presentation_detail.setText(
+            "共用證據詳情：選取 Advice 或研究候選列後顯示；"
+            "缺少校準／成本後機率時維持不可用，不從排名分數推導。"
+        )
+
+    def _show_advice_row_presentation(self, model, row: int) -> None:
+        """在 Workbench 直接展示共用 DTO；無法適配時 fail closed。"""
+
+        item = model.row_at(row)
+        if item is None:
+            self.advice_presentation_detail.setText("共用證據詳情：尚未選取有效 Advice DTO。")
+            return
+        try:
+            presentation = self.presentation_service.from_advice(item)
+        except (TypeError, ValueError) as exc:
+            self.advice_presentation_detail.setText(
+                f"共用證據詳情：Advice DTO 無法安全適配（{exc}）；請回到來源頁檢查。"
+            )
+            return
+        self.advice_presentation_detail.setText(
+            "共用證據詳情（唯讀）\n" + format_decision_presentation(presentation)
+        )
 
     def _show_initial_detail(self, dashboard: WorkbenchDashboardDTO) -> None:
         if self.evidence_feed_model.rowCount() > 0:
@@ -1487,6 +1621,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.action_item_table,
             self.evidence_table,
             self.advice_recommendation_table,
+            self.advice_candidate_table,
             self.advice_portfolio_table,
         ):
             table.setHorizontalScrollBarPolicy(

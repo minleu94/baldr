@@ -963,7 +963,7 @@ Evidence `latest_status.json` 使用 schema v3，並保存
 
 ### V4.2 C 線：每日決策呈現流程
 
-這條流程把既有唯讀 DTO 串成「市場總覽 → 重點產業／股票 → 觀察清單 → 持倉」的人工判讀路徑。UI 只適配與呈現既有來源，不重新計算推薦、機率、權重或交易結果。
+這條流程把既有唯讀 DTO 串成「市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤」的人工判讀路徑。UI 只適配與呈現既有來源，不重新計算推薦、機率、權重或交易結果。
 
 1. 從「市場探索 > 市場總覽」開始。先確認決策日、資料品質、source trace 與 warnings，再閱讀大盤、產業與個股焦點卡。焦點卡的動作固定是「研究」；即使是風險焦點，也不等於正式 `NO_NEW_POSITION`。
 2. 由焦點卡或既有下鑽入口開啟重點產業／個股研究。研究報告可呈現既有 Recommendation／Portfolio Advice；只有真正帶入 Advice DTO 時，才可顯示「買進候選／持有／減碼候選／退出候選」等 Advice 動作。
@@ -974,6 +974,8 @@ Evidence `latest_status.json` 使用 schema v3，並保存
 欄位判讀與安全限制：
 
 - `校準機率` 只有上游明確提供 0–10,000 bp 且標記為 available 才會顯示百分比；否則顯示「不可用（研究中／不可用）」，不把排名分數當機率。
+- `成本後獲利機率` 是獨立欄位，只有明確 after-cost evidence／校準輸入才顯示；不得以 ranking score、毛報酬或文字信心代換。`證據信心`、`決策信心`、`樣本數` 與 `適用期間` 也各自保留，缺值顯示未知／研究中。
+- Workbench 的「單一路徑 / Research Workflow」按鈕只切換既有 workspace；第 3 段「關鍵股研究」必須由市場焦點、觀察清單或持倉列選取股票後開啟，不能由 UI 自動挑股。
 - `目標／目前／差距` 使用整數 bp。只有既有 Portfolio Advice 或持倉來源摘要明確提供的欄位才會顯示；缺欄位為「未知」，不由畫面自行相減，也不把未知當成 0。
 - `研究`、`降級`、`缺漏`、`不可用` 是證據狀態，不代表報酬為零或看空；請先看理由、警告、資料日與來源追溯。
 - 全流程為唯讀呈現，不建立委託、不寫入交易／持倉、不修改 Recommendation／Portfolio，也不解除 Formal evidence、scheduler 或 broker Gate。
@@ -4075,6 +4077,7 @@ $env:PHASE3C_CANDIDATE_DB_PATH = 'D:/Min/Python/Project/FA_Data_candidate/phase3
 
 ## 14. 更新記錄
 
+- 2026-09-12：V4.2 C 線完成每日投資決策工作台第二輪可用流程與視覺整理：建立市場總覽→產業／市場探索→關鍵股研究→觀察清單→持倉覆盤單一路徑，補上 status／決策日／資料日／source trace／返回來源 context，市場焦點可開啟個股研究報告；Workbench、觀察清單、持倉與報告共用 `DecisionPresentationDTO`，分開呈現排名、校準機率、成本後獲利機率、動作適合度、證據信心、樣本與期間，缺值 fail-closed。表格改為單列唯讀選取、鍵盤焦點與窄版可讀詳情；不寫 DB、不自動下單。QA handoff 見 `docs/06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md`。
 - 2026-09-07：Paper Portfolio 日常 research-only execution candidate producer 固定採 Recommendation 日凍結、下一官方 session open 的 T+1 合約；成交量 cap 綁定推薦日收盤可得的 `成交股數`，execution 日 EOD 全天量不得回看影響開盤 fill。因 `daily_prices` 沒有盤中 capture timestamp，延遲 replay 以台北 15:00 作保守可得門檻，早於門檻只回傳 waiting、不讀 state／market、不建 fill；預設只寫 OS TEMP candidate，既有排程以 `PAPER_EXECUTION_RECOMMENDATION_JSON` opt-in，仍不自動追加 Paper ledger、不寫正式行情／Formal DB、不連 broker。
 - 2026-09-07：Paper EOD replay 改由 `baldr-paper-execution-eod-replay-daily` 從持久 recommendation queue 自動挑選下一官方 session 到期的 frozen input，不需人工每日改寫 JSON 路徑；以 `portfolio_id + next_official_execution_date` 凍結唯一 source，較舊候選留下 `superseded` receipt。processed 只有在 receipt schema/content hash、來源檔 hash、candidate 結果及 research-only ledger append/readback 均可重驗時才會停止重跑；壞 receipt 或壞 source 會留下具體 blocker。這條排程仍是 15:00 後的 delayed EOD replay，`realtime_execution_allowed=false`，不回填 2026-09-07、不寫 Formal／行情資料庫、不連 broker。
 - 2026-09-07：校正 Paper T+1 排程時序：preopen snapshot 是 execution session 的 T-1 起始狀態，EOD replay 可重用已存在 snapshot 並只追加獨立 postfill ledger transition；下一個 preopen runner 透過 `--ledger-db` 唯讀投影已驗證 fill，重算隔日現金／股數並保留守恆 diagnostic。Recommendation 落在休市自然日時，reference date 綁定該日或之前最近有官方證據的交易 session（例如週日綁前一週五），不把自然日直接當成 `daily_prices` 日期。

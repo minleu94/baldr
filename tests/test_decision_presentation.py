@@ -65,6 +65,8 @@ def test_recommendation_adapter_does_not_invent_probability() -> None:
     assert presentation.evidence_status == "degraded"
     assert presentation.calibrated_probability_bp is None
     assert presentation.calibrated_probability_status == "research"
+    assert presentation.after_cost_profit_probability_bp is None
+    assert presentation.after_cost_profit_probability_status == "research"
 
 
 def test_watchlist_adapter_uses_saved_score_and_research_action() -> None:
@@ -148,3 +150,54 @@ def test_invalid_probability_value_is_rejected() -> None:
             stock_code="2330",
             calibrated_probability_bp=10001,
         )
+
+
+def test_presentation_separates_calibrated_and_after_cost_probability() -> None:
+    presentation = DecisionPresentationDTO(
+        stock_code="2330",
+        ranking_score=Decimal("82.5"),
+        calibrated_probability_bp=6400,
+        after_cost_profit_probability_bp=5100,
+        evidence_confidence="B",
+    )
+
+    text = format_decision_presentation(presentation)
+
+    assert "排名分數：82.5（僅作排序，不等於機率）" in text
+    assert "校準機率：64.00%" in text
+    assert "成本後獲利機率：51.00%" in text
+    assert "證據信心：B" in text
+
+
+def test_probability_status_available_without_value_fails_closed_for_both_fields() -> None:
+    presentation = DecisionPresentationDTO(
+        stock_code="2330",
+        calibrated_probability_status="available",
+        after_cost_profit_probability_status="available",
+    )
+
+    assert presentation.calibrated_probability_bp is None
+    assert presentation.calibrated_probability_status == "unavailable"
+    assert presentation.after_cost_profit_probability_bp is None
+    assert presentation.after_cost_profit_probability_status == "unavailable"
+
+
+def test_from_dict_normalizes_bp_strings_without_deriving_probability_from_score() -> None:
+    presentation = DecisionPresentationDTO.from_dict(
+        {
+            "stock_code": "2330",
+            "ranking_score": "82.5",
+            "target_weight_bp": "1500",
+            "current_weight_bp": "1000",
+            "weight_gap_bp": "500",
+            "calibrated_probability_status": "research",
+            "after_cost_profit_probability_status": "research",
+        }
+    )
+
+    assert presentation.ranking_score == Decimal("82.5")
+    assert presentation.target_weight_bp == 1500
+    assert presentation.current_weight_bp == 1000
+    assert presentation.weight_gap_bp == 500
+    assert presentation.calibrated_probability_bp is None
+    assert presentation.after_cost_profit_probability_bp is None

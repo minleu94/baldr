@@ -45,7 +45,10 @@ from app_module.decision_presentation import (
     decision_action_label,
     format_decision_presentation,
 )
-from app_module.research_session import ResearchStockContextDTO
+from app_module.research_session import (
+    ResearchStockContextDTO,
+    format_research_workflow_path,
+)
 from app_module.portfolio_stress_lab_service import (
     PortfolioStressLabService,
 )
@@ -429,6 +432,7 @@ class PortfolioView(QWidget):
         # Summary 與明細表必須來自同一個 service DTO，避免一次 refresh 中
         # 分別讀取而顯示不同版本的持倉狀態。
         self._last_portfolio_dto: PortfolioDTO | None = None
+        self._position_presentations: dict[str, Any] = {}
         self.selected_stock_code: str = ""
         self.selected_trade_id: str = ""
         # PortfolioService 讀取可能同時掃描 JSONL、SQLite 與價格來源；主
@@ -537,6 +541,16 @@ class PortfolioView(QWidget):
         self.positions_table.horizontalHeader().setStretchLastSection(True)
         self.positions_table.setMinimumWidth(0)
         self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.positions_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.positions_table.setFocusPolicy(Qt.StrongFocus)
+        self.positions_table.setTabKeyNavigation(True)
+        self.positions_table.setAlternatingRowColors(True)
+        self.positions_table.setAccessibleName("當前持倉部位表")
+        self.positions_table.setAccessibleDescription(
+            "唯讀持倉表；可用方向鍵選取，查看共用動作適合度、權重差距、風險與失效條件。"
+        )
+        self.positions_table.verticalHeader().setDefaultSectionSize(28)
+        self.positions_table.verticalHeader().setMinimumSectionSize(28)
 
         # 監聽持倉選擇事件，用以更新右側明細與日記
         self.positions_table.clicked.connect(self._on_position_selected)
@@ -547,6 +561,21 @@ class PortfolioView(QWidget):
         self.positions_table.customContextMenuRequested.connect(self._show_position_context_menu)
 
         left_layout.addWidget(self.positions_table, stretch=1)
+
+        position_detail_group = QGroupBox("選中持倉｜共用證據詳情")
+        position_detail_group.setObjectName("portfolioDecisionPresentation")
+        position_detail_layout = QVBoxLayout(position_detail_group)
+        position_detail_layout.setContentsMargins(8, 8, 8, 8)
+        position_detail_layout.setSpacing(4)
+        self.position_presentation_label = QLabel(
+            "研究路徑：" + format_research_workflow_path() +
+            "\n選取持倉列後顯示既有 Health／Exit 與權重來源；缺值維持未知。"
+        )
+        self.position_presentation_label.setWordWrap(True)
+        self.position_presentation_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.position_presentation_label.setAccessibleName("選中持倉共用證據詳情")
+        position_detail_layout.addWidget(self.position_presentation_label)
+        left_layout.addWidget(position_detail_group)
 
         # 左側底部操作按鈕
         btn_layout = QHBoxLayout()
@@ -1774,6 +1803,7 @@ class PortfolioView(QWidget):
                 if not isinstance(portfolio, PortfolioDTO):
                     raise TypeError("PortfolioService.get_portfolio must return PortfolioDTO")
             positions = list(portfolio.positions)
+            self._position_presentations = {}
 
             if not positions:
                 df = pd.DataFrame(columns=[
@@ -1792,6 +1822,7 @@ class PortfolioView(QWidget):
                         p,
                         condition_result=monitor_result,
                     )
+                    self._position_presentations[str(p.stock_code).strip()] = presentation
                     invalidation_text = "；".join(presentation.invalidation_conditions) or "未提供"
                     presentation_text = format_decision_presentation(presentation)
 
@@ -1828,6 +1859,7 @@ class PortfolioView(QWidget):
 
             self.positions_table.setModel(self.positions_model)
             self.positions_table.resizeColumnsToContents()
+            self._render_selected_position_presentation()
 
             # 設定 Tooltip 提示以符合條件監控體驗
             # 這裡我們可以設置雙擊或滑鼠懸停 tooltip
@@ -1853,6 +1885,22 @@ class PortfolioView(QWidget):
             current_regime=current_regime,
             current_total_score=current_total_score,
             current_price=current_price,
+        )
+
+    def _render_selected_position_presentation(self) -> None:
+        """把持倉表同一輪產生的 presentation DTO 顯示在明細區。"""
+
+        code = str(self.selected_stock_code or "").strip()
+        presentation = self._position_presentations.get(code)
+        if presentation is None:
+            self.position_presentation_label.setText(
+                "研究路徑：" + format_research_workflow_path() +
+                "\n選取持倉列後顯示既有 Health／Exit 與權重來源；缺值維持未知。"
+            )
+            return
+        self.position_presentation_label.setText(
+            f"研究路徑：{format_research_workflow_path()}\n"
+            "共用呈現契約（唯讀）\n" + format_decision_presentation(presentation)
         )
 
     def _load_trades_history(self):
@@ -2001,6 +2049,7 @@ class PortfolioView(QWidget):
 
             logger.info("Selected position stock: %s", self.selected_stock_code)
             self.btn_stock_research.setEnabled(bool(self.selected_stock_code))
+            self._render_selected_position_presentation()
             self._load_trades_history()
             self._load_journal_entries()
             self._update_monitoring_tab()
@@ -2028,12 +2077,26 @@ class PortfolioView(QWidget):
             self.portfolio_refresh_status_label.setText("請先選取一檔持倉，再查看個股研究報告。")
             self.btn_stock_research.setEnabled(False)
             return
+        presentation = self._position_presentations.get(code)
+        position = None
+        if self._last_portfolio_dto is not None:
+            position = next(
+                (item for item in self._last_portfolio_dto.positions if item.stock_code == code),
+                None,
+            )
+        position_source_summary = getattr(position, "source_summary", {}) if position is not None else {}
+        if not isinstance(position_source_summary, dict):
+            position_source_summary = {}
         self.stockResearchRequested.emit(
             ResearchStockContextDTO(
                 stock_code=code,
                 stock_name=self._selected_position_name(),
-                source_label="持倉管理",
-                source_kind="portfolio",
+                decision_date=str(position_source_summary.get("decision_date", "") or ""),
+                data_date=(presentation.data_as_of_date if presentation is not None else ""),
+                result_id=str(getattr(position, "source_id", "") or ""),
+                source_id=str(getattr(position, "source_id", "") or ""),
+                source_label="持倉管理／共用證據詳情",
+                source_kind=str(getattr(position, "source_type", "") or "portfolio"),
                 source_workspace="portfolio",
             )
         )

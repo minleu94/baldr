@@ -4,6 +4,21 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+RESEARCH_WORKFLOW_PATH = (
+    "市場總覽",
+    "產業／市場探索",
+    "關鍵股研究",
+    "觀察清單",
+    "持倉覆盤",
+)
+
+
+def format_research_workflow_path() -> str:
+    """回傳跨頁共用的唯讀研究路徑；不代表任何交易流程。"""
+
+    return " → ".join(RESEARCH_WORKFLOW_PATH)
+
+
 @dataclass(frozen=True)
 class ResearchStockContextDTO:
     """單股研究下鑽所需的唯讀來源脈絡。

@@ -587,6 +587,10 @@ class MainWindow(QMainWindow):
                     parent=self,
                 )
                 self.decision_desk_view = decision_desk_view
+                if hasattr(decision_desk_view, "stockResearchRequested"):
+                    decision_desk_view.stockResearchRequested.connect(
+                        self._open_stock_research_context
+                    )
                 print("[MainWindow] 每日決策來源建立成功")
             except Exception as e:
                 print(f"[MainWindow] 警告：每日決策來源初始化失敗：{e}")
@@ -616,6 +620,7 @@ class MainWindow(QMainWindow):
                     navigate_to_market_explore_callback=self._open_workbench_market_explore,
                     navigate_to_evidence_review_callback=self._open_workbench_evidence_review,
                     navigate_to_portfolio_callback=self._open_workbench_portfolio,
+                    navigate_to_watchlist_callback=lambda: self._select_main_workspace("watchlist"),
                     navigate_to_update_callback=lambda: self._select_main_workspace("update"),
                     navigate_to_recommendation_callback=lambda: self._select_main_workspace("recommendation"),
                     auto_refresh=True,
@@ -1048,6 +1053,9 @@ class MainWindow(QMainWindow):
             view = getattr(self, "watchlist_view", None)
         elif context.source_workspace == "portfolio":
             view = getattr(self, "portfolio_view", None)
+        elif context.source_workspace == "market_explore":
+            self._open_workbench_market_explore()
+            view = None
         else:
             view = None
         selector = getattr(view, "select_stock", None)

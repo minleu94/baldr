@@ -5,7 +5,12 @@ This package owns short-lived workflow context only. It intentionally avoids
 Qt, pandas, persistence, and domain computation.
 """
 
-from .session_dtos import ResearchSessionSnapshotDTO, ResearchStockContextDTO
+from .session_dtos import (
+    RESEARCH_WORKFLOW_PATH,
+    ResearchSessionSnapshotDTO,
+    ResearchStockContextDTO,
+    format_research_workflow_path,
+)
 from .session_events import (
     ActiveProfileChanged,
     ActiveRegimeChanged,
@@ -27,7 +32,9 @@ __all__ = [
     "ResearchSessionSnapshotDTO",
     "ResearchStockContextDTO",
     "ResearchSessionStore",
+    "RESEARCH_WORKFLOW_PATH",
     "SelectedWatchlistChanged",
     "StockResearchContextChanged",
     "ResearchContextChanged",
+    "format_research_workflow_path",
 ]

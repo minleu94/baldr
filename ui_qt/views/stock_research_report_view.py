@@ -15,6 +15,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, 
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush
 from PySide6.QtWidgets import (
     QDialog,
+    QAbstractItemView,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -29,7 +30,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app_module.research_session import ResearchStockContextDTO
+from app_module.research_session import (
+    ResearchStockContextDTO,
+    format_research_workflow_path,
+)
 from app_module.stock_research_report_dtos import (
     ReportSectionStatus,
     StockAdviceSnapshotDTO,
@@ -278,6 +282,15 @@ class StockResearchReportView(QWidget):
         self.identity_label.setAccessibleName("個股識別")
         root.addWidget(self.identity_label)
 
+        self.context_path_label = QLabel("研究路徑：" + format_research_workflow_path())
+        self.context_path_label.setWordWrap(True)
+        self.context_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.context_path_label.setAccessibleName("個股研究來源脈絡")
+        self.context_path_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
+        root.addWidget(self.context_path_label)
+
         status_row = QHBoxLayout()
         self.status_badge = StatusBadge("尚未載入", "info")
         self.status_badge.setObjectName("stockResearchStatusBadge")
@@ -353,6 +366,13 @@ class StockResearchReportView(QWidget):
         self.sources_table = QTableView()
         apply_financial_table_style(self.sources_table)
         self.sources_table.setAccessibleName("個股研究報告來源表")
+        self.sources_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.sources_table.setFocusPolicy(Qt.StrongFocus)
+        self.sources_table.setTabKeyNavigation(True)
+        self.sources_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.sources_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.sources_table.verticalHeader().setDefaultSectionSize(28)
+        self.sources_table.verticalHeader().setMinimumSectionSize(28)
         self.sources_table.setMaximumHeight(240)
         source_layout.addWidget(self.sources_table)
         layout.addWidget(self.summary_source_group)
@@ -365,7 +385,26 @@ class StockResearchReportView(QWidget):
     def set_context(self, context: ResearchStockContextDTO) -> None:
         self.context = context
         self.stock_search.setText(context.stock_code)
+        self._render_context_path()
         self._load_stock(context.stock_code)
+
+    def _render_context_path(self) -> None:
+        """呈現來源、日期與返回能力；不把缺 metadata 補成 current。"""
+
+        context = self.context
+        if context is None:
+            self.context_path_label.setText(
+                "研究路徑：" + format_research_workflow_path() +
+                "｜來源：未標示｜決策日：未知｜資料日：未知"
+            )
+            return
+        source = context.source_label or context.source_id or "未標示"
+        return_text = "可返回來源" if context.has_source else "沒有可返回來源"
+        self.context_path_label.setText(
+            f"研究路徑：{format_research_workflow_path()}\n"
+            f"來源：{source}｜狀態：{return_text}｜"
+            f"決策日：{context.decision_date or '未知'}｜資料日：{context.data_date or '未知'}"
+        )
 
     def _load_from_search(self) -> None:
         self._load_stock(self.stock_search.text())
@@ -533,6 +572,7 @@ class StockResearchReportView(QWidget):
         self.load_button.setEnabled(not self._closing)
         self.reload_button.setEnabled(bool(self._active_code) and not self._closing)
         self.return_button.setEnabled(not busy)
+        self.return_button.setVisible(bool(self.context and self.context.has_source))
 
     def _render_report(self, report: StockResearchReportDTO) -> None:
         self.identity_label.setText(
@@ -907,8 +947,13 @@ class StockResearchReportView(QWidget):
         apply_financial_table_style(table)
         table.setModel(StockReportTableModel(columns, rows, table))
         table.setMaximumHeight(maximum_height)
-        table.setSelectionBehavior(QTableView.SelectRows)
-        table.setSelectionMode(QTableView.SingleSelection)
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setFocusPolicy(Qt.StrongFocus)
+        table.setTabKeyNavigation(True)
+        table.verticalHeader().setDefaultSectionSize(28)
+        table.verticalHeader().setMinimumSectionSize(28)
         table.setAccessibleDescription("可使用鍵盤方向鍵選取；完整欄位文字可由 tooltip 讀取。")
         table.resizeColumnsToContents()
         layout.addWidget(table)

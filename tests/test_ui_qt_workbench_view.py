@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import QApplication, QBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QAbstractItemView, QBoxLayout, QWidget
 
 from app_module.workbench_dtos import (
     WorkbenchAccessBoundary,
@@ -676,6 +676,71 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert "NO_NEW_POSITION" in view.advice_summary.text()
     assert "evidence_quality_missing" in view.advice_summary.text()
     assert view.advice_recommendation_model.rowCount() == 1
+
+
+def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknown() -> None:
+    app()
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-06",
+        data_as_of_date="2026-07-06",
+        mode=AdviceMode.GUIDED,
+        policy=AdvicePolicyConfig(),
+        recommendations=(
+            RecommendationAdviceDTO(
+                stock_code="2330",
+                advice_action=AdviceAction.ADD_CANDIDATE,
+                why_reasons=("research_gate_passed",),
+                risk_reasons=("position_limit_review",),
+                confidence_tier="medium",
+                evidence_tier="partial",
+                data_quality="PARTIAL",
+                holding_horizon="swing",
+                entry_thesis="先確認產業與個股證據",
+                invalidation_conditions=("證據失效",),
+                decision_date="2026-07-06",
+                data_as_of_date="2026-07-06",
+                execution_feasibility="FEASIBLE",
+                source_trace=("fixture:advice",),
+            ),
+        ),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), advice_dashboard=advice),
+        auto_refresh=False,
+    )
+
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    detail_text = view.advice_presentation_detail.text()
+
+    assert "排名分數：未知（僅作排序，不等於機率）" in detail_text
+    assert "校準機率：不可用（研究中）" in detail_text
+    assert "成本後獲利機率：不可用（研究中）" in detail_text
+    assert "證據信心：未提供" in detail_text
+    assert "適用期間：swing" in detail_text
+    assert "資料日：2026-07-06" in detail_text
+    assert "來源追溯：fixture:advice" in detail_text
+
+
+def test_unified_workbench_exposes_single_research_workflow_and_keyboard_tables() -> None:
+    app()
+    clicked: list[str] = []
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=_dashboard_with_replay(),
+        auto_refresh=False,
+        navigate_to_daily_decision_callback=lambda: clicked.append("market"),
+        navigate_to_market_explore_callback=lambda: clicked.append("industry"),
+        navigate_to_watchlist_callback=lambda: clicked.append("watchlist"),
+        navigate_to_portfolio_callback=lambda: clicked.append("portfolio"),
+    )
+
+    assert "市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤" in view.workflow_path_label.text()
+    assert set(view.workflow_path_buttons) == {"market", "industry", "watchlist", "portfolio"}
+    assert view.advice_recommendation_table.editTriggers() == QAbstractItemView.EditTrigger.NoEditTriggers
+    assert view.advice_recommendation_table.focusPolicy() == Qt.FocusPolicy.StrongFocus
+
+    for key in ("market", "industry", "watchlist", "portfolio"):
+        view.workflow_path_buttons[key].click()
+    assert clicked == ["market", "industry", "watchlist", "portfolio"]
 
 
 def test_unified_workbench_overview_uses_detail_inspector_and_collapsible_sections() -> None:

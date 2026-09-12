@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QWidget,
@@ -25,6 +25,7 @@ from app_module.decision_presentation import (
     format_decision_presentation,
 )
 from app_module.market_data_visibility_dtos import MarketDataVisibilitySummary
+from app_module.research_session import ResearchStockContextDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.theme_widgets import CompactCodeList, MetricCard, SectionPanel, StatusBadge, WarningList
@@ -32,6 +33,8 @@ from ui_qt.widgets.theme_widgets import CompactCodeList, MetricCard, SectionPane
 
 class DecisionDeskView(QWidget):
     """每日決策工作台：只透過 DecisionDeskSnapshotBuilder 取得快照。"""
+
+    stockResearchRequested = Signal(object)
 
     def __init__(
         self,
@@ -159,6 +162,15 @@ class DecisionDeskView(QWidget):
         self.stock_focus_button_layout.setContentsMargins(0, 4, 0, 0)
         self.stock_focus_button_layout.setSpacing(6)
         focus_group.layout.addWidget(self.stock_focus_button_container)
+        self.stock_focus_research_button = QPushButton("開啟焦點研究報告")
+        self.stock_focus_research_button.setProperty("variant", "secondary")
+        self.stock_focus_research_button.setAccessibleName("開啟市場焦點個股研究報告")
+        self.stock_focus_research_button.setToolTip(
+            "以市場焦點的既有日期與來源開啟個股研究；沒有焦點時停用。"
+        )
+        self.stock_focus_research_button.setEnabled(False)
+        self.stock_focus_research_button.clicked.connect(self._open_stock_focus_research)
+        focus_group.layout.addWidget(self.stock_focus_research_button)
         content_layout.addWidget(focus_group)
 
         self.presentation_contract_label = QLabel("尚未載入共用呈現契約。")
@@ -640,6 +652,7 @@ class DecisionDeskView(QWidget):
             if widget is not None:
                 widget.deleteLater()
         self.stock_focus_buttons = []
+        self._stock_focus_research_card = None
         for card in cards[:6]:
             button = QPushButton(str(card.stock_code))
             button.setToolTip(f"開啟主力流向：{card.stock_code} {card.reason}")
@@ -647,6 +660,41 @@ class DecisionDeskView(QWidget):
             self.stock_focus_button_layout.addWidget(button)
             self.stock_focus_buttons.append(button)
         self.stock_focus_button_layout.addStretch()
+        first_card = next(iter(cards[:6]), None)
+        self._stock_focus_research_card = first_card
+        if first_card is None:
+            self.stock_focus_research_button.setText("開啟焦點研究報告")
+            self.stock_focus_research_button.setEnabled(False)
+        else:
+            self.stock_focus_research_button.setText(
+                f"開啟 {first_card.stock_code} 研究報告"
+            )
+            self.stock_focus_research_button.setEnabled(True)
+
+    def _open_stock_focus_research(self) -> None:
+        card = getattr(self, "_stock_focus_research_card", None)
+        if card is None:
+            return
+        self.stockResearchRequested.emit(
+            ResearchStockContextDTO(
+                stock_code=str(card.stock_code),
+                stock_name=str(getattr(card, "stock_name", "") or ""),
+                decision_date=(
+                    self._last_snapshot.as_of_date.isoformat()
+                    if self._last_snapshot is not None
+                    else self.as_of_date.isoformat()
+                ),
+                data_date=(
+                    self._last_snapshot.as_of_date.isoformat()
+                    if self._last_snapshot is not None
+                    else self.as_of_date.isoformat()
+                ),
+                source_id=str(getattr(card, "source", "") or "decision_desk"),
+                source_kind="decision_desk",
+                source_label="市場總覽／關鍵股焦點",
+                source_workspace="market_explore",
+            )
+        )
 
     def _navigate_to_smart_money(self, stock_code: str) -> None:
         if self.navigate_to_smart_money_callback is not None:

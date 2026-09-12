@@ -28,7 +28,10 @@ from app_module.decision_presentation import (
     DecisionPresentationService,
     format_decision_presentation,
 )
-from app_module.research_session import ResearchStockContextDTO
+from app_module.research_session import (
+    ResearchStockContextDTO,
+    format_research_workflow_path,
+)
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
@@ -129,7 +132,10 @@ class WatchlistView(QWidget):
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
 
-        page_hint = QLabel("左側整理候選股票；右側保存可重用的選股清單。")
+        page_hint = QLabel(
+            "研究路徑：" + format_research_workflow_path() +
+            "\n左側整理候選股票；右側保存可重用的選股清單。"
+        )
         page_hint.setProperty("role", "muted")
         page_hint.setObjectName("watchlistPageHint")
         page_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
@@ -210,6 +216,16 @@ class WatchlistView(QWidget):
         self.stocks_table.setSortingEnabled(True)
         self.stocks_table.setMinimumHeight(180)
         self.stocks_table.horizontalHeader().setStretchLastSection(True)
+        self.stocks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.stocks_table.setFocusPolicy(Qt.StrongFocus)
+        self.stocks_table.setTabKeyNavigation(True)
+        self.stocks_table.setAlternatingRowColors(True)
+        self.stocks_table.setAccessibleName("觀察候選池股票表")
+        self.stocks_table.setAccessibleDescription(
+            "唯讀候選池；可用方向鍵選列，選取後查看研究／等待狀態與來源詳情。"
+        )
+        self.stocks_table.verticalHeader().setDefaultSectionSize(28)
+        self.stocks_table.verticalHeader().setMinimumSectionSize(28)
 
         # 右鍵選單
         self.stocks_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -246,6 +262,14 @@ class WatchlistView(QWidget):
         self.stock_analysis_btn.clicked.connect(self._open_stock_analysis)
         analysis_header_layout.addWidget(self.stock_analysis_btn)
         analysis_layout.addLayout(analysis_header_layout)
+
+        self.analysis_context_label = QLabel(
+            "狀態：尚未選取｜決策日：未知｜資料日：未知｜來源：未知"
+        )
+        self.analysis_context_label.setProperty("role", "status")
+        self.analysis_context_label.setWordWrap(True)
+        self.analysis_context_label.setAccessibleName("觀察清單研究狀態")
+        analysis_layout.addWidget(self.analysis_context_label)
 
         self.analysis_text = QTextEdit()
         self.analysis_text.setObjectName("watchlistAnalysisText")
@@ -343,6 +367,11 @@ class WatchlistView(QWidget):
         self.universe_list = QListWidget()
         self.universe_list.setObjectName("watchlistUniverseList")
         self.universe_list.setUniformItemSizes(True)
+        self.universe_list.setFocusPolicy(Qt.StrongFocus)
+        self.universe_list.setAccessibleName("已保存選股清單")
+        self.universe_list.setAccessibleDescription(
+            "可用方向鍵選取保存清單；下方預覽只讀取既有清單內容。"
+        )
         self.universe_list.setMinimumHeight(100)
         universe_list_section_layout.addWidget(self.universe_list)
         management_splitter.addWidget(universe_list_section)
@@ -359,6 +388,11 @@ class WatchlistView(QWidget):
         self.universe_stock_list = QListWidget()
         self.universe_stock_list.setObjectName("watchlistUniverseStockList")
         self.universe_stock_list.setUniformItemSizes(True)
+        self.universe_stock_list.setFocusPolicy(Qt.StrongFocus)
+        self.universe_stock_list.setAccessibleName("已保存清單個股預覽")
+        self.universe_stock_list.setAccessibleDescription(
+            "可用方向鍵選取個股；雙擊開啟與候選池共用的研究報告。"
+        )
         self.universe_stock_list.setMinimumHeight(100)
         universe_preview_section_layout.addWidget(self.universe_stock_list)
         management_splitter.addWidget(universe_preview_section)
@@ -441,8 +475,8 @@ class WatchlistView(QWidget):
             )
             self.watchlist_ops_group.setFixedHeight(64)
             self.stocks_table.setMinimumHeight(76)
-            self.analysis_group.setFixedHeight(92)
-            self.analysis_text.setFixedHeight(40)
+            self.analysis_group.setFixedHeight(118)
+            self.analysis_text.setFixedHeight(56)
             self.next_actions_group.setFixedHeight(56)
             self.universe_list.setMinimumHeight(50)
             self.universe_stock_list.setMinimumHeight(50)
@@ -459,8 +493,8 @@ class WatchlistView(QWidget):
             )
             self.watchlist_ops_group.setFixedHeight(64)
             self.stocks_table.setMinimumHeight(180)
-            self.analysis_group.setFixedHeight(142)
-            self.analysis_text.setFixedHeight(90)
+            self.analysis_group.setFixedHeight(170)
+            self.analysis_text.setFixedHeight(112)
             self.next_actions_group.setFixedHeight(64)
             self.universe_list.setMinimumHeight(100)
             self.universe_stock_list.setMinimumHeight(100)
@@ -522,6 +556,9 @@ class WatchlistView(QWidget):
         """載入觀察清單"""
         self._analysis_request_id += 1
         self.analysis_text.clear()
+        self.analysis_context_label.setText(
+            "狀態：載入中｜決策日：未知｜資料日：未知｜來源：讀取候選池"
+        )
         logger.info("[WatchlistView._load_watchlist] 開始載入...")
         self._set_status_label("載入中…", level="info")
         try:
@@ -814,6 +851,9 @@ class WatchlistView(QWidget):
         selection = self.stocks_table.selectionModel()
         rows = selection.selectedRows() if selection else []
         if self.stocks_model is None or len(rows) != 1:
+            self.analysis_context_label.setText(
+                "狀態：尚未選取｜決策日：未知｜資料日：未知｜來源：未知"
+            )
             self.analysis_text.setPlainText("請選取一檔股票查看分析摘要。")
             return
         row = self.stocks_model.getDataFrame().iloc[rows[0].row()]
@@ -824,8 +864,14 @@ class WatchlistView(QWidget):
 
     def _request_stock_summary(self, code, source_id, request_id):
         if self.analysis_service is None:
+            self.analysis_context_label.setText(
+                f"狀態：研究中｜決策日：未知｜資料日：未知｜來源：未配置"
+            )
             self.analysis_text.setPlainText(f"{code}｜分析來源尚未配置；可使用個股主力流向入口。")
             return
+        self.analysis_context_label.setText(
+            f"狀態：讀取中｜決策日：未知｜資料日：未知｜來源：{source_id or '未標示'}"
+        )
         self.analysis_text.setPlainText(f"{code}｜正在讀取已保存分析…")
         service = self.analysis_service
         cutoff = datetime.now(ZoneInfo("Asia/Taipei")).date()
@@ -865,6 +911,18 @@ class WatchlistView(QWidget):
     def _show_selected_analysis(self, request_id, result):
         if request_id != self._analysis_request_id:
             return
+        status = str(getattr(result, "status", "unavailable") or "unavailable")
+        status_label = {
+            "saved": "研究／等待",
+            "not_in_result": "研究／未入選",
+            "missing": "資料缺漏",
+            "unavailable": "不可用",
+        }.get(status, "研究中")
+        self.analysis_context_label.setText(
+            f"狀態：{status_label}｜決策日：{getattr(result, 'decision_date', '') or getattr(result, 'analysis_date', '') or '未知'}"
+            f"｜資料日：{getattr(result, 'data_date', '') or '未知'}"
+            f"｜來源：{getattr(result, 'result_id', '') or getattr(result, 'source_id', '') or '未標示'}"
+        )
         lines = [result.stock_code, result.message]
         if result.analysis_date:
             lines.append(f"分析日期：{result.analysis_date}｜來源：{result.result_id}")
@@ -883,6 +941,9 @@ class WatchlistView(QWidget):
 
     def _show_analysis_error(self, request_id, error):
         if request_id == self._analysis_request_id:
+            self.analysis_context_label.setText(
+                "狀態：讀取失敗｜決策日：未知｜資料日：未知｜來源：未知"
+            )
             self.analysis_text.setPlainText(f"分析讀取失敗：{str(error).splitlines()[0]}")
 
     def closeEvent(self, event):

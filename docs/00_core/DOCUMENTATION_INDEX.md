@@ -32,6 +32,7 @@
 
 ## 2026-09-08 整併與下一輪工作
 
+- [V4.2 C 線每日決策工作台 QA handoff](../06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md)：單一路徑、跨頁研究 context、共用呈現契約、fail-closed 欄位與窄版／鍵盤驗證。
 - [本輪交付複核](../06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)、[檔案清理結果](../06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)。
 - [資料更新](../06_qa/V4_DATA_FRESHNESS_HANDOFF.md)、[Direct資料鏈](../06_qa/V4_DIRECT_RELEASE_HANDOFF.md)、[個股研究報告](../06_qa/V4_STOCK_RESEARCH_REPORT_HANDOFF.md)。
 - [工作區檔案說明](../06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)、[三線接手Prompt（歷史歸檔）](../09_archive/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)。
@@ -305,6 +306,7 @@
 | [EVIDENCE_WEEKLY_APPROVAL_REFRESH_2026_08_30.md](../06_qa/EVIDENCE_WEEKLY_APPROVAL_REFRESH_2026_08_30.md) | 2026-08-30 自然 weekly collection 後的唯讀 owner/reviewer packet；10 筆 pending periods、source hash、review 欄位與 zero-credit 邊界。 |
 | [RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md](../06_qa/RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md) | 2026-08-30 Runtime／Performance fresh proof；TEMP write probe、Registry／technical canary preview、PIT／Direct／OOC headroom、preflight-only runner 與 owner packet 的安全邊界。 |
 | [DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md](../06_qa/DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md) | 2026-08-30 Data Update timeline 日期語意修正；避免週末 freshness check 因檢查日晚於資料 end date 被誤標 degraded。 |
+| [V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md](../06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md) | V4.2 C 線每日決策工作台第二輪 QA handoff；記錄單一路徑、共用呈現契約、fail-closed 欄位、窄版／鍵盤驗證與 read-only 邊界。 |
 | [PROGRAM_STATUS_REBASELINE_2026_08_29.md](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md) | 2026-08-29 全程式現況 rebaseline；以七個 readiness lane 區分已完成工程、外部 Gate、真實資料／fills、production canary 與可持續推進順序。 |
 | [ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md) | 使用者授權的 release_v4 一次性 retention cleanup；記錄 43 個刪除目標、18 個 retained runs、三個 current pointer、約 403.95 GiB 釋放、dependency closure、不可逆性與歷史 runbook tombstone。 |
 | [GATE_1_ADVICE_CLOSEOUT_2026_07_12.md](../06_qa/GATE_1_ADVICE_CLOSEOUT_2026_07_12.md) | Gate 1 Daily Usable Advice closeout：契約、唯讀 UI、驗證結果與非目標。 |

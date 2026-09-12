@@ -116,19 +116,76 @@ def _source_trace(*values: Any) -> tuple[str, ...]:
     return _strings(items)
 
 
+def _first_explicit_metric(
+    objects: tuple[Any | None, ...],
+    value_field: str,
+    status_field: str,
+) -> tuple[Any, Any]:
+    """從明確上游欄位取值；不以缺值物件的預設狀態遮蔽其他來源。"""
+
+    for obj in objects:
+        if obj is None:
+            continue
+        value = getattr(obj, value_field, None)
+        if value is not None and value != "":
+            return value, getattr(obj, status_field, "research")
+    for obj in objects:
+        if obj is None:
+            continue
+        status = getattr(obj, status_field, None)
+        if status not in (None, ""):
+            return None, status
+    return None, "research"
+
+
+def _first_explicit_text(objects: tuple[Any | None, ...], field_name: str) -> str:
+    for obj in objects:
+        if obj is None:
+            continue
+        value = str(getattr(obj, field_name, "") or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _action_text(value: Any) -> str:
     if isinstance(value, AdviceAction):
         return value.value
     return str(value or "UNAVAILABLE").strip().upper() or "UNAVAILABLE"
 
 
+def _normalize_probability(
+    value: Any,
+    status: Any,
+    *,
+    field_name: str,
+) -> tuple[int | None, str]:
+    """驗證上游機率欄位；沒有值時只保留狀態，不做任何替代計算。"""
+
+    probability_status = str(status or "research").strip().lower()
+    if probability_status not in _KNOWN_PROBABILITY_STATUSES:
+        probability_status = "research"
+    probability = value
+    if probability is not None:
+        if isinstance(probability, bool) or not isinstance(probability, int):
+            raise ValueError(f"{field_name} must be an integer bp value")
+        if not 0 <= probability <= 10000:
+            raise ValueError(f"{field_name} must be between 0 and 10000 bp")
+        probability_status = "available"
+    elif probability_status == "available":
+        # 沒有合格上游結果時，不可讓畫面看起來像有機率。
+        probability_status = "unavailable"
+    return probability, probability_status
+
+
 @dataclass(frozen=True)
 class DecisionPresentationDTO:
-    """三個決策畫面共用的個股／持倉呈現 read model。
+    """各決策畫面共用的個股／持倉呈現 read model。
 
-    ``ranking_score`` 與 ``cost_basis`` 使用 Decimal；``*_weight_bp`` 與
-    ``calibrated_probability_bp`` 使用整數基點。這個 DTO 沒有任何計算責任，
-    只保留上游已經提供、且能被追溯的值。
+    ``ranking_score`` 與 ``cost_basis`` 使用 Decimal；``*_weight_bp``、
+    ``*_probability_bp`` 使用整數基點。這個 DTO 沒有任何計算責任，只保留
+    上游已經提供、且能被追溯的值。排名分數、校準機率與成本後獲利機率是
+    三個不同欄位，缺少上游治理來源時不互相代換。
     """
 
     stock_code: str
@@ -138,9 +195,12 @@ class DecisionPresentationDTO:
     ranking_method: str = ""
     calibrated_probability_bp: int | None = None
     calibrated_probability_status: str = "research"
+    after_cost_profit_probability_bp: int | None = None
+    after_cost_profit_probability_status: str = "research"
     action_suitability: str = "UNAVAILABLE"
     evidence_status: str = "unavailable"
     confidence_tier: str = ""
+    evidence_confidence: str = ""
     sample_size: int | None = None
     horizon: str = ""
     cost_basis: Decimal | None = None
@@ -166,20 +226,24 @@ class DecisionPresentationDTO:
         object.__setattr__(self, "cost_basis", _decimal(self.cost_basis))
         object.__setattr__(self, "action_suitability", _action_text(self.action_suitability))
         object.__setattr__(self, "evidence_status", _evidence_status(self.evidence_status))
-        probability_status = str(self.calibrated_probability_status or "research").strip().lower()
-        if probability_status not in _KNOWN_PROBABILITY_STATUSES:
-            probability_status = "research"
-        probability = self.calibrated_probability_bp
-        if probability is not None:
-            if isinstance(probability, bool) or not isinstance(probability, int):
-                raise ValueError("calibrated_probability_bp must be an integer bp value")
-            if not 0 <= probability <= 10000:
-                raise ValueError("calibrated_probability_bp must be between 0 and 10000 bp")
-            probability_status = "available"
-        elif probability_status == "available":
-            # 沒有合格校準結果時不可讓畫面看起來像有機率。
-            probability_status = "unavailable"
+        probability, probability_status = _normalize_probability(
+            self.calibrated_probability_bp,
+            self.calibrated_probability_status,
+            field_name="calibrated_probability_bp",
+        )
+        object.__setattr__(self, "calibrated_probability_bp", probability)
         object.__setattr__(self, "calibrated_probability_status", probability_status)
+        after_cost_probability, after_cost_probability_status = _normalize_probability(
+            self.after_cost_profit_probability_bp,
+            self.after_cost_profit_probability_status,
+            field_name="after_cost_profit_probability_bp",
+        )
+        object.__setattr__(self, "after_cost_profit_probability_bp", after_cost_probability)
+        object.__setattr__(
+            self,
+            "after_cost_profit_probability_status",
+            after_cost_probability_status,
+        )
         if self.sample_size is not None:
             if isinstance(self.sample_size, bool) or not isinstance(self.sample_size, int) or self.sample_size < 0:
                 raise ValueError("sample_size must be a non-negative integer")
@@ -205,6 +269,7 @@ class DecisionPresentationDTO:
         object.__setattr__(self, "data_as_of_date", _date_text(self.data_as_of_date))
         object.__setattr__(self, "horizon", str(self.horizon or "").strip())
         object.__setattr__(self, "confidence_tier", str(self.confidence_tier or "").strip())
+        object.__setattr__(self, "evidence_confidence", str(self.evidence_confidence or "").strip())
         object.__setattr__(self, "ranking_method", str(self.ranking_method or "").strip())
 
     def to_dict(self) -> dict[str, Any]:
@@ -217,9 +282,12 @@ class DecisionPresentationDTO:
             "ranking_method": self.ranking_method,
             "calibrated_probability_bp": self.calibrated_probability_bp,
             "calibrated_probability_status": self.calibrated_probability_status,
+            "after_cost_profit_probability_bp": self.after_cost_profit_probability_bp,
+            "after_cost_profit_probability_status": self.after_cost_profit_probability_status,
             "action_suitability": self.action_suitability,
             "evidence_status": self.evidence_status,
             "confidence_tier": self.confidence_tier,
+            "evidence_confidence": self.evidence_confidence,
             "sample_size": self.sample_size,
             "horizon": self.horizon,
             "cost_basis": None if self.cost_basis is None else str(self.cost_basis),
@@ -247,18 +315,25 @@ class DecisionPresentationDTO:
             ranking_method=value.get("ranking_method", ""),
             calibrated_probability_bp=_integer(value.get("calibrated_probability_bp"), minimum=0, maximum=10000),
             calibrated_probability_status=value.get("calibrated_probability_status", "research"),
+            after_cost_profit_probability_bp=_integer(
+                value.get("after_cost_profit_probability_bp"), minimum=0, maximum=10000
+            ),
+            after_cost_profit_probability_status=value.get(
+                "after_cost_profit_probability_status", "research"
+            ),
             action_suitability=value.get("action_suitability", "UNAVAILABLE"),
             evidence_status=value.get("evidence_status", "unavailable"),
             confidence_tier=value.get("confidence_tier", ""),
+            evidence_confidence=value.get("evidence_confidence", ""),
             sample_size=_integer(value.get("sample_size"), minimum=0),
             horizon=value.get("horizon", ""),
             cost_basis=_decimal(value.get("cost_basis")),
             reasons=_strings(value.get("reasons")),
             risks=_strings(value.get("risks")),
             invalidation_conditions=_strings(value.get("invalidation_conditions")),
-            target_weight_bp=value.get("target_weight_bp"),
-            current_weight_bp=value.get("current_weight_bp"),
-            weight_gap_bp=value.get("weight_gap_bp"),
+            target_weight_bp=_bp(value.get("target_weight_bp"), minimum=0),
+            current_weight_bp=_bp(value.get("current_weight_bp"), minimum=0),
+            weight_gap_bp=_bp(value.get("weight_gap_bp")),
             decision_date=value.get("decision_date", ""),
             data_as_of_date=value.get("data_as_of_date", ""),
             source_trace=_strings(value.get("source_trace")),
@@ -289,9 +364,28 @@ class DecisionPresentationService:
         return DecisionPresentationDTO(
             stock_code=str(getattr(card, "stock_code", "")),
             stock_name=str(getattr(card, "stock_name", "")),
+            calibrated_probability_bp=_integer(
+                getattr(card, "calibrated_probability_bp", None), minimum=0, maximum=10000
+            ),
+            calibrated_probability_status=str(
+                getattr(card, "calibrated_probability_status", "research") or "research"
+            ),
+            after_cost_profit_probability_bp=_integer(
+                getattr(card, "after_cost_profit_probability_bp", None),
+                minimum=0,
+                maximum=10000,
+            ),
+            after_cost_profit_probability_status=str(
+                getattr(card, "after_cost_profit_probability_status", "research") or "research"
+            ),
             action_suitability=action,
             evidence_status=_evidence_status(quality),
-            horizon="研究中／未定",
+            evidence_confidence=str(getattr(card, "evidence_confidence", "") or ""),
+            horizon=str(
+                getattr(card, "horizon", "")
+                or getattr(card, "holding_horizon", "")
+                or "研究中／未定"
+            ),
             reasons=reason,
             risks=reason if role != "priority" else (),
             source_trace=(f"decision_desk:{source}",),
@@ -310,16 +404,36 @@ class DecisionPresentationService:
             warnings = (*warnings, "保存結果只作研究參考，非即時重新評分。")
         return DecisionPresentationDTO(
             stock_code=str(getattr(analysis, "stock_code", "")),
+            stock_name=str(getattr(analysis, "stock_name", "") or ""),
             ranking_score=_decimal(getattr(analysis, "score", None)),
             ranking_percentile_bp=_integer(
                 getattr(analysis, "score_percentile_bp", None), minimum=0, maximum=10000
             ),
             ranking_method=str(getattr(analysis, "ranking_method", "") or ""),
-            calibrated_probability_status="research",
+            calibrated_probability_bp=_integer(
+                getattr(analysis, "calibrated_probability_bp", None), minimum=0, maximum=10000
+            ),
+            calibrated_probability_status=str(
+                getattr(analysis, "calibrated_probability_status", "research") or "research"
+            ),
+            after_cost_profit_probability_bp=_integer(
+                getattr(analysis, "after_cost_profit_probability_bp", None),
+                minimum=0,
+                maximum=10000,
+            ),
+            after_cost_profit_probability_status=str(
+                getattr(analysis, "after_cost_profit_probability_status", "research") or "research"
+            ),
             action_suitability=AdviceAction.RESEARCH.value if saved or status == "not_in_result" else "UNAVAILABLE",
             evidence_status=evidence,
+            confidence_tier=str(getattr(analysis, "confidence_tier", "") or ""),
+            evidence_confidence=str(getattr(analysis, "evidence_confidence", "") or ""),
             sample_size=_integer(getattr(analysis, "sample_size", None), minimum=0),
-            horizon="研究中／未定",
+            horizon=str(
+                getattr(analysis, "horizon", "")
+                or getattr(analysis, "holding_horizon", "")
+                or "研究中／未定"
+            ),
             reasons=_strings(getattr(analysis, "reasons", "")),
             decision_date=getattr(analysis, "decision_date", "") or getattr(analysis, "analysis_date", ""),
             data_as_of_date=getattr(analysis, "data_date", "") or "",
@@ -342,7 +456,30 @@ class DecisionPresentationService:
         source_trace: tuple[str, ...] = (),
         calibrated_probability_bp: int | None = None,
         calibrated_probability_status: str = "research",
+        after_cost_profit_probability_bp: int | None = None,
+        after_cost_profit_probability_status: str = "research",
+        evidence_confidence: str = "",
     ) -> DecisionPresentationDTO:
+        if calibrated_probability_bp is None:
+            calibrated_probability_bp = _integer(
+                getattr(advice, "calibrated_probability_bp", None), minimum=0, maximum=10000
+            )
+        if calibrated_probability_status == "research":
+            calibrated_probability_status = str(
+                getattr(advice, "calibrated_probability_status", "research") or "research"
+            )
+        if after_cost_profit_probability_bp is None:
+            after_cost_profit_probability_bp = _integer(
+                getattr(advice, "after_cost_profit_probability_bp", None),
+                minimum=0,
+                maximum=10000,
+            )
+        if after_cost_profit_probability_status == "research":
+            after_cost_profit_probability_status = str(
+                getattr(advice, "after_cost_profit_probability_status", "research") or "research"
+            )
+        if not evidence_confidence:
+            evidence_confidence = str(getattr(advice, "evidence_confidence", "") or "")
         reasons = _strings((*advice.why_reasons, advice.entry_thesis))
         warnings = _strings((*advice.warnings, *advice.refusal_reasons))
         return DecisionPresentationDTO(
@@ -352,9 +489,12 @@ class DecisionPresentationService:
             ranking_method=ranking_method,
             calibrated_probability_bp=calibrated_probability_bp,
             calibrated_probability_status=calibrated_probability_status,
+            after_cost_profit_probability_bp=after_cost_profit_probability_bp,
+            after_cost_profit_probability_status=after_cost_profit_probability_status,
             action_suitability=advice.advice_action.value,
             evidence_status=_evidence_status(advice.data_quality, advice.evidence_tier),
             confidence_tier=advice.confidence_tier,
+            evidence_confidence=evidence_confidence,
             sample_size=_integer(sample_size, minimum=0),
             horizon=advice.holding_horizon,
             cost_basis=_decimal(cost_basis),
@@ -376,15 +516,45 @@ class DecisionPresentationService:
         ranking_percentile_bp: int | None = None,
         ranking_method: str = "",
         sample_size: int | None = None,
+        calibrated_probability_bp: int | None = None,
+        calibrated_probability_status: str = "research",
+        after_cost_profit_probability_bp: int | None = None,
+        after_cost_profit_probability_status: str = "research",
+        evidence_confidence: str = "",
     ) -> DecisionPresentationDTO:
+        if calibrated_probability_bp is None:
+            calibrated_probability_bp = _integer(
+                getattr(advice, "calibrated_probability_bp", None), minimum=0, maximum=10000
+            )
+        if calibrated_probability_status == "research":
+            calibrated_probability_status = str(
+                getattr(advice, "calibrated_probability_status", "research") or "research"
+            )
+        if after_cost_profit_probability_bp is None:
+            after_cost_profit_probability_bp = _integer(
+                getattr(advice, "after_cost_profit_probability_bp", None),
+                minimum=0,
+                maximum=10000,
+            )
+        if after_cost_profit_probability_status == "research":
+            after_cost_profit_probability_status = str(
+                getattr(advice, "after_cost_profit_probability_status", "research") or "research"
+            )
+        if not evidence_confidence:
+            evidence_confidence = str(getattr(advice, "evidence_confidence", "") or "")
         return DecisionPresentationDTO(
             stock_code=advice.stock_code,
             ranking_score=_decimal(ranking_score),
             ranking_percentile_bp=ranking_percentile_bp,
             ranking_method=ranking_method,
+            calibrated_probability_bp=calibrated_probability_bp,
+            calibrated_probability_status=calibrated_probability_status,
+            after_cost_profit_probability_bp=after_cost_profit_probability_bp,
+            after_cost_profit_probability_status=after_cost_profit_probability_status,
             action_suitability=advice.advice_action.value,
             evidence_status=_evidence_status(advice.data_quality, advice.evidence_tier),
             confidence_tier=advice.confidence_tier,
+            evidence_confidence=evidence_confidence,
             sample_size=_integer(sample_size, minimum=0),
             horizon=advice.holding_horizon,
             cost_basis=_decimal(cost_basis),
@@ -395,10 +565,19 @@ class DecisionPresentationService:
             current_weight_bp=advice.current_weight_bp,
             weight_gap_bp=advice.weight_gap_bp,
             decision_date=advice.review_date,
-            data_as_of_date="",
+            data_as_of_date=str(getattr(advice, "data_as_of_date", "") or ""),
             source_trace=advice.source_trace,
             warnings=_strings((*advice.warnings, *advice.diagnostics)),
         )
+
+    def from_advice(self, advice: Any, **kwargs: Any) -> DecisionPresentationDTO:
+        """將單一 Recommendation／Portfolio Advice 適配成同一份 read model。"""
+
+        if isinstance(advice, PortfolioAdviceDTO):
+            return self.from_portfolio_advice(advice, **kwargs)
+        if isinstance(advice, RecommendationAdviceDTO):
+            return self.from_recommendation_advice(advice, **kwargs)
+        raise TypeError("unsupported advice DTO for decision presentation")
 
     def from_position(
         self,
@@ -407,7 +586,8 @@ class DecisionPresentationService:
         condition_result: Any | None = None,
         feedback_report: Any | None = None,
     ) -> DecisionPresentationDTO:
-        source_summary = dict(getattr(position, "source_summary", {}) or {})
+        raw_source_summary = getattr(position, "source_summary", {}) or {}
+        source_summary = dict(raw_source_summary) if isinstance(raw_source_summary, Mapping) else {}
         condition_status = str(getattr(condition_result, "status", "") or "").lower()
         action = {
             "valid": AdviceAction.HOLD.value,
@@ -440,11 +620,38 @@ class DecisionPresentationService:
         weight_gap = _bp(source_summary.get("weight_gap_bp"))
         if target_weight is None or current_weight is None or weight_gap is None:
             warnings.append("未提供既有 Portfolio Advice 的完整權重欄位；不由畫面推導權重差距。")
+        calibrated_probability_value = source_summary.get("calibrated_probability_bp")
+        if calibrated_probability_value is None:
+            calibrated_probability_value = getattr(position, "calibrated_probability_bp", None)
+        calibrated_probability = _integer(
+            calibrated_probability_value,
+            minimum=0,
+            maximum=10000,
+        )
+        after_cost_probability_value = source_summary.get("after_cost_profit_probability_bp")
+        if after_cost_probability_value is None:
+            after_cost_probability_value = getattr(position, "after_cost_profit_probability_bp", None)
+        after_cost_probability = _integer(
+            after_cost_probability_value,
+            minimum=0,
+            maximum=10000,
+        )
         return DecisionPresentationDTO(
             stock_code=str(getattr(position, "stock_code", "")),
             stock_name=str(getattr(position, "stock_name", "")),
+            calibrated_probability_bp=calibrated_probability,
+            calibrated_probability_status=str(
+                source_summary.get("calibrated_probability_status") or "research"
+            ),
+            after_cost_profit_probability_bp=after_cost_probability,
+            after_cost_profit_probability_status=str(
+                source_summary.get("after_cost_profit_probability_status") or "research"
+            ),
             action_suitability=action,
             evidence_status=evidence,
+            confidence_tier=str(source_summary.get("confidence_tier") or ""),
+            evidence_confidence=str(source_summary.get("evidence_confidence") or ""),
+            sample_size=_integer(source_summary.get("sample_size"), minimum=0),
             horizon=str(source_summary.get("holding_horizon") or ""),
             cost_basis=_decimal(getattr(position, "average_cost", None)),
             reasons=_strings((*condition_reasons, *feedback_tokens, *health_reasons)),
@@ -482,6 +689,20 @@ class DecisionPresentationService:
         )
         ranking_method = getattr(saved_analysis, "ranking_method", "") if saved_analysis is not None else ""
         sample_size = getattr(saved_analysis, "sample_size", None) if saved_analysis is not None else None
+        calibrated_probability_bp, calibrated_probability_status = _first_explicit_metric(
+            (recommendation, portfolio_advice, saved_analysis),
+            "calibrated_probability_bp",
+            "calibrated_probability_status",
+        )
+        after_cost_probability_bp, after_cost_probability_status = _first_explicit_metric(
+            (portfolio_advice, recommendation, saved_analysis),
+            "after_cost_profit_probability_bp",
+            "after_cost_profit_probability_status",
+        )
+        evidence_confidence = _first_explicit_text(
+            (recommendation, portfolio_advice, saved_analysis),
+            "evidence_confidence",
+        )
         if portfolio_advice is not None:
             presentation = self.from_portfolio_advice(
                 portfolio_advice,
@@ -490,6 +711,11 @@ class DecisionPresentationService:
                 ranking_percentile_bp=ranking_percentile_bp,
                 ranking_method=ranking_method,
                 sample_size=sample_size,
+                calibrated_probability_bp=calibrated_probability_bp,
+                calibrated_probability_status=calibrated_probability_status,
+                after_cost_profit_probability_bp=after_cost_probability_bp,
+                after_cost_profit_probability_status=after_cost_probability_status,
+                evidence_confidence=evidence_confidence,
             )
             if recommendation is not None:
                 presentation = replace(
@@ -510,6 +736,11 @@ class DecisionPresentationService:
                 ranking_method=ranking_method,
                 sample_size=sample_size,
                 cost_basis=cost_basis,
+                calibrated_probability_bp=calibrated_probability_bp,
+                calibrated_probability_status=calibrated_probability_status,
+                after_cost_profit_probability_bp=after_cost_probability_bp,
+                after_cost_profit_probability_status=after_cost_probability_status,
+                evidence_confidence=evidence_confidence,
             )
         if saved_analysis is not None:
             return self.from_watchlist_analysis(saved_analysis)
@@ -564,8 +795,20 @@ def _probability_text(presentation: DecisionPresentationDTO) -> str:
     return f"{value // 100}.{value % 100:02d}%"
 
 
+def _after_cost_probability_text(presentation: DecisionPresentationDTO) -> str:
+    if presentation.after_cost_profit_probability_bp is None:
+        status = (
+            "研究中"
+            if presentation.after_cost_profit_probability_status == "research"
+            else "不可用"
+        )
+        return f"不可用（{status}）"
+    value = presentation.after_cost_profit_probability_bp
+    return f"{value // 100}.{value % 100:02d}%"
+
+
 def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
-    """供 Qt 三個畫面共用的短版欄位呈現；不在此處計算任何指標。"""
+    """供 Qt 各決策畫面共用的短版欄位呈現；不在此處計算任何指標。"""
 
     score = "未知" if presentation.ranking_score is None else format(presentation.ranking_score, "f")
     cost = "未知" if presentation.cost_basis is None else f"TWD {presentation.cost_basis:,.2f}"
@@ -575,8 +818,9 @@ def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
         ranking_context += f"｜排名方法：{presentation.ranking_method}"
     lines = [
         f"動作適合度：{_action_label(presentation.action_suitability)}",
-        f"排名分數：{score}{ranking_context}｜校準機率：{_probability_text(presentation)}",
-        f"證據：{_quality_label(presentation.evidence_status)}｜信心：{presentation.confidence_tier or '未提供'}｜樣本數：{sample}",
+        f"排名分數：{score}（僅作排序，不等於機率）{ranking_context}",
+        f"校準機率：{_probability_text(presentation)}｜成本後獲利機率：{_after_cost_probability_text(presentation)}",
+        f"證據狀態：{_quality_label(presentation.evidence_status)}｜證據信心：{presentation.evidence_confidence or '未提供'}｜決策信心：{presentation.confidence_tier or '未提供'}｜樣本數：{sample}",
         f"適用期間：{presentation.horizon or '未提供'}｜成本基準：{cost}",
         f"目標／目前／差距：{_bp_text(presentation.target_weight_bp)}／{_bp_text(presentation.current_weight_bp)}／{_bp_text(presentation.weight_gap_bp)}",
         "理由：" + ("；".join(presentation.reasons) if presentation.reasons else "未提供"),

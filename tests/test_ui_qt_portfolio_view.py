@@ -276,6 +276,21 @@ def test_portfolio_active_summary_lists_position_count_and_top_symbols(tmp_path)
     assert "已標記市值 2/2 檔" in view.active_positions_summary_label.text()
 
 
+def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path):
+    view = make_portfolio_view(tmp_path)
+
+    view.refresh_all()
+    assert view.select_stock("2317") is True
+
+    detail_text = view.position_presentation_label.text()
+    assert "研究路徑：市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤" in detail_text
+    assert "動作適合度：持有" in detail_text
+    assert "排名分數：未知（僅作排序，不等於機率）" in detail_text
+    assert "校準機率：不可用（研究中）" in detail_text
+    assert "成本基準：TWD 150.00" in detail_text
+    assert "來源追溯：recommendation_result；rec-1" in detail_text
+
+
 def test_portfolio_page_hydrates_summary_and_table_from_one_portfolio_dto(tmp_path):
     class DtoOnlyPortfolioService(FakePortfolioService):
         def list_positions(self):

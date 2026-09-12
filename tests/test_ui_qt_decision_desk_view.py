@@ -237,6 +237,31 @@ def test_decision_desk_view_stock_focus_buttons_drill_down_to_smart_money():
     assert any(button.text() == "2330" for button in view.stock_focus_buttons)
 
 
+def test_decision_desk_view_focus_opens_shared_stock_research_context():
+    app()
+    contexts: list[object] = []
+    view = DecisionDeskView(
+        FakeBuilder(_snapshot()),
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    view.stockResearchRequested.connect(contexts.append)
+    view.refresh_snapshot()
+
+    assert view.stock_focus_research_button.isEnabled()
+    assert view.stock_focus_research_button.text() == "開啟 2330 研究報告"
+    view.stock_focus_research_button.click()
+
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.stock_code == "2330"
+    assert context.source_workspace == "market_explore"
+    assert context.source_kind == "decision_desk"
+    assert context.decision_date == "2026-06-15"
+    assert context.data_date == "2026-06-15"
+    assert context.has_source is True
+
+
 def test_decision_desk_view_shows_degraded_status():
     app()
     s = _snapshot(

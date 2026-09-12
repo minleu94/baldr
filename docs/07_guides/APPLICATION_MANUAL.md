@@ -55,6 +55,15 @@ policy／snapshot universe 與 horizon，缺欄位就保持缺件，不從 profi
 `external_source_missing`；UI 的「排程狀態」只讀呈現這些資訊。`tests/test_v4_cross_day_evidence_contract.py`
 是隔離端到端接線驗收，通過只證明工程資料流，不增加 V4／Formal／alpha 信用。
 
+每日 progress readback 位於
+`<OUTPUT_ROOT>/scheduled/evidence_progress/latest_status.json`，immutable run 位於同目錄
+`runs/<run_id>.json`。它只投影 forward receipt 的當日／當週 capture、5／10／20／60
+maturity、blocker、warning 與 next action；同一 `run_id` 重試保持 run receipt 不變。
+連續兩個應有資料工作日沒有新 capture 時，`no_new_data_alert.alert=true`，UI 會顯示告警；
+週末或 freshness receipt 已驗證的官方休市日則為 `suppressed_non_trading_day`。官方 calendar
+未知時不猜成休市，會保留 expected-day 觀測並留下 warning。此 readback 不回填歷史、不補未來價格，
+也不寫 evidence DB、Paper ledger 或券商狀態。
+
 FinMind 現金流只作交叉核對候選：
 
 ```powershell

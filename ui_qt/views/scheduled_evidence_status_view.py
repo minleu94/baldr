@@ -158,6 +158,7 @@ class ScheduledEvidenceStatusView(QWidget):
             f"寫入 {_count_text(status.forward_outcome_outcomes_written)}\n"
             f"待成熟 {_count_text(status.forward_outcome_pending)}；"
             f"健康：{status.forward_health_classification or '未知'}\n"
+            f"進度：{_progress_card_text(status)}\n"
             f"分類：{format_machine_status_classification(forward_class)}{stale_suffix}"
         )
         recommendation_id = status.recommendation_result_id or "未知"
@@ -287,6 +288,11 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
         f"- forward health recovery verification: {_recovery_summary(status.forward_health_recovery_verification)}",
         f"- forward health blockers: {_join(status.forward_health_blockers)}",
         f"- forward health warnings: {_join(status.forward_health_warnings)}",
+        f"- evidence progress: {_progress_detail(status)}",
+        f"- evidence progress blockers: {_join(status.evidence_progress_blockers)}",
+        f"- evidence progress warnings: {_join(status.evidence_progress_warnings)}",
+        f"- evidence progress next action: {status.evidence_progress_next_action or '無'}",
+        f"- evidence progress receipt: {status.evidence_progress_status_path or '未提供'}",
         f"- blocking gaps: {_join(status.pipeline_blocking_gaps)}",
         f"- evidence/trading boundary: {'ok' if boundary_ok else 'needs review'}",
         (
@@ -356,6 +362,41 @@ def _recommendation_note(status: ScheduledEvidenceStatus) -> str:
     if status.recommendation_status == "missing":
         return "recommendation snapshot missing"
     return "review recommendation status"
+
+
+def _progress_card_text(status: ScheduledEvidenceStatus) -> str:
+    alert = status.evidence_progress_no_new_data_alert or {}
+    consecutive = alert.get("consecutive_no_new_data_days")
+    alert_text = "告警" if alert.get("alert") else "正常"
+    return (
+        f"{status.evidence_progress_status} / 無新增 {consecutive if consecutive is not None else '未知'} 天 / "
+        f"{alert_text}"
+    )
+
+
+def _progress_detail(status: ScheduledEvidenceStatus) -> str:
+    daily = status.evidence_progress_daily or {}
+    weekly = status.evidence_progress_weekly or {}
+    captures = daily.get("captures") if isinstance(daily.get("captures"), dict) else {}
+    maturity = daily.get("maturity") if isinstance(daily.get("maturity"), dict) else {}
+    calendar = (
+        daily.get("calendar_observation")
+        if isinstance(daily.get("calendar_observation"), dict)
+        else {}
+    )
+    alert = status.evidence_progress_no_new_data_alert or {}
+    return (
+        f"status={status.evidence_progress_status} / "
+        f"calendar expected={daily.get('data_expected', '未知')}"
+        f"({calendar.get('reason_code', daily.get('data_expected_reason', '未知'))}) / "
+        f"daily captures={captures.get('decision_day_count', '未知')} decision days, "
+        f"new events={captures.get('new_event_count', '未知')} / "
+        f"maturity ready/pending/missing={maturity.get('ready', '未知')}/"
+        f"{maturity.get('pending', '未知')}/{maturity.get('missing', '未知')} / "
+        f"weekly decision days={weekly.get('capture_decision_day_count', '未知')} / "
+        f"no-new={alert.get('consecutive_no_new_data_days', '未知')} days, "
+        f"alert={'true' if alert.get('alert') else 'false'}"
+    )
 
 
 def _trim_report_preview(preview: str, *, max_lines: int = 24) -> str:

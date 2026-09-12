@@ -104,6 +104,17 @@ class ScheduledEvidenceStatus:
     forward_health_blocking_reason: str | None = None
     forward_health_next_action: str | None = None
     forward_health_recovery_verification: dict[str, Any] | None = None
+    # Daily/weekly progress receipt is an output-side read model.  Keep it at
+    # the DTO tail so older positional callers remain compatible.
+    evidence_progress_status: str = "missing"
+    evidence_progress_checked_at: str | None = None
+    evidence_progress_daily: dict[str, Any] | None = None
+    evidence_progress_weekly: dict[str, Any] | None = None
+    evidence_progress_no_new_data_alert: dict[str, Any] | None = None
+    evidence_progress_blockers: tuple[str, ...] = ()
+    evidence_progress_warnings: tuple[str, ...] = ()
+    evidence_progress_next_action: str | None = None
+    evidence_progress_status_path: Path | None = None
 
     @property
     def has_production_write_risk(self) -> bool:
@@ -127,6 +138,8 @@ class ScheduledEvidenceStatus:
             + self.forward_outcome_warnings
             + self.forward_health_blockers
             + self.forward_health_warnings
+            + self.evidence_progress_blockers
+            + self.evidence_progress_warnings
         )
         return (
             ("data_freshness", classify_machine_status(self.freshness_status, diagnostics)),
@@ -211,6 +224,7 @@ class ScheduledEvidenceStatusService:
         recommendation_path = self.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
         evidence_path = self.output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
         forward_outcome_path = self.output_root / "scheduled" / "forward_outcomes" / "latest_status.json"
+        progress_path = self.output_root / "scheduled" / "evidence_progress" / "latest_status.json"
         freshness = _read_json(freshness_path, diagnostics)
         recommendation = _read_json(recommendation_path, diagnostics)
         evidence = _read_json(evidence_path, diagnostics)
@@ -232,6 +246,24 @@ class ScheduledEvidenceStatusService:
             dict(forward_health_horizons_raw)
             if isinstance(forward_health_horizons_raw, dict)
             else None
+        )
+        progress = _read_optional_json(progress_path, diagnostics)
+        progress_daily_raw = progress.get("daily")
+        progress_weekly_raw = progress.get("weekly")
+        progress_daily = (
+            dict(progress_daily_raw) if isinstance(progress_daily_raw, dict) else None
+        )
+        progress_weekly = (
+            dict(progress_weekly_raw) if isinstance(progress_weekly_raw, dict) else None
+        )
+        progress_alert_raw = progress.get("no_new_data_alert")
+        progress_alert = (
+            dict(progress_alert_raw) if isinstance(progress_alert_raw, dict) else None
+        )
+        progress_alert_warning = (
+            ("evidence_progress_no_new_data_consecutive",)
+            if progress_alert and bool(progress_alert.get("alert"))
+            else ()
         )
 
         report_path = _optional_path(evidence.get("report_path"))
@@ -403,6 +435,17 @@ class ScheduledEvidenceStatusService:
                 if isinstance(forward_health.get("recovery_verification"), dict)
                 else None
             ),
+            evidence_progress_status=str(progress.get("status") or "missing"),
+            evidence_progress_checked_at=_str_or_none(progress.get("checked_at")),
+            evidence_progress_daily=progress_daily,
+            evidence_progress_weekly=progress_weekly,
+            evidence_progress_no_new_data_alert=progress_alert,
+            evidence_progress_blockers=_tuple_of_str(progress.get("blockers")),
+            evidence_progress_warnings=_dedupe_strings(
+                (*_tuple_of_str(progress.get("warnings")), *progress_alert_warning)
+            ),
+            evidence_progress_next_action=_str_or_none(progress.get("next_action")),
+            evidence_progress_status_path=progress_path if progress else None,
         )
 
     def _accept_candidate(

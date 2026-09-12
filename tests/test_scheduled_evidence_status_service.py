@@ -311,6 +311,31 @@ def test_scheduled_evidence_status_reads_forward_outcome_receipt(tmp_path: Path)
         ),
         encoding="utf-8",
     )
+    progress_dir = output_root / "scheduled" / "evidence_progress"
+    progress_dir.mkdir(parents=True)
+    progress_path = progress_dir / "latest_status.json"
+    progress_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "scheduled-evidence-progress.v1",
+                "status": "passed_with_warnings",
+                "checked_at": "2026-09-09T05:40:00+08:00",
+                "daily": {
+                    "captures": {"decision_day_count": 2, "new_event_count": 0},
+                    "maturity": {"ready": 0, "pending": 20, "missing": 0},
+                },
+                "weekly": {"capture_decision_day_count": 2},
+                "no_new_data_alert": {
+                    "alert": True,
+                    "consecutive_no_new_data_days": 2,
+                },
+                "blockers": [],
+                "warnings": [],
+                "next_action": "wait",
+            }
+        ),
+        encoding="utf-8",
+    )
 
     status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
 
@@ -323,6 +348,18 @@ def test_scheduled_evidence_status_reads_forward_outcome_receipt(tmp_path: Path)
     assert status.forward_outcome_warnings_count == 4
     assert status.forward_outcome_writes_evidence_db is True
     assert status.forward_outcome_status_path == forward_path
+    assert status.evidence_progress_status == "passed_with_warnings"
+    assert status.evidence_progress_daily == {
+        "captures": {"decision_day_count": 2, "new_event_count": 0},
+        "maturity": {"ready": 0, "pending": 20, "missing": 0},
+    }
+    assert status.evidence_progress_weekly == {"capture_decision_day_count": 2}
+    assert status.evidence_progress_no_new_data_alert == {
+        "alert": True,
+        "consecutive_no_new_data_days": 2,
+    }
+    assert status.evidence_progress_status_path == progress_path
+    assert "evidence_progress_no_new_data_consecutive" in status.evidence_progress_warnings
     assert status.has_production_write_risk is True
     assert dict(status.machine_status_classifications)["forward_outcomes"] == "machine_degraded"
 

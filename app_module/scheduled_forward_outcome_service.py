@@ -18,6 +18,9 @@ from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.evidence_progress_receipt_service import (
+    persist_evidence_progress_receipt,
+)
 from app_module.forward_performance_service import _has_complete_cohort_identity
 from app_module.forward_performance_service import (
     ForwardOutcomeSummary,
@@ -141,6 +144,10 @@ def run_scheduled_forward_outcomes(
                 "data_as_of_date": visible_date.isoformat(),
             }
         )
+        payload["calendar_observation"] = _read_calendar_observation(
+            resolved_output,
+            checked_at.date(),
+        )
 
         preflight = _read_only_db_preflight(resolved_db)
         payload["source_preflight"] = preflight
@@ -200,6 +207,7 @@ def run_scheduled_forward_outcomes(
             windows=normalized_windows,
             checked_at=checked_at,
             summary=summary,
+            require_cohort_identity=require_cohort_identity,
         )
         payload["writes_evidence_db"] = bool(confirm)
         payload["source_db_after"] = _file_stat(resolved_db)
@@ -429,6 +437,19 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
+def _has_explicit_v4_cohort_identity(event: Any) -> bool:
+    metadata = event.metadata if isinstance(event.metadata, Mapping) else {}
+    return all(
+        str(metadata.get(key) or "").strip()
+        for key in (
+            "universe_policy_id",
+            "universe_policy_hash",
+            "universe_snapshot_id",
+            "universe_snapshot_hash",
+        )
+    )
+
+
 def _build_daily_health(
     *,
     config: Any,
@@ -441,6 +462,7 @@ def _build_daily_health(
     windows: tuple[int, ...],
     checked_at: datetime,
     summary: ForwardOutcomeSummary,
+    require_cohort_identity: bool,
 ) -> dict[str, Any]:
     """建立 bounded、可恢復的跨日證據健康摘要。
 
@@ -449,7 +471,7 @@ def _build_daily_health(
     """
 
     repository = EvidenceEventRepository(config, db_path=db_path)
-    events = repository.list_events(
+    diagnostic_events = repository.list_events(
         event_type=event_type,
         symbol=symbol,
         start_date=start_date.isoformat(),
@@ -458,8 +480,29 @@ def _build_daily_health(
         incomplete_outcomes_first=True,
         outcome_windows=windows,
     )
-    complete_events = [event for event in events if _has_complete_cohort_identity(event)]
-    skipped = len(events) - len(complete_events)
+    if require_cohort_identity:
+        # Keep health aligned with the producer's second, identity-gated query.
+        # The first query is retained only as a bounded diagnostic sample so a
+        # large legacy backlog cannot make health disagree with the write plan.
+        events = repository.list_events(
+            event_type=event_type,
+            symbol=symbol,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            limit=limit,
+            incomplete_outcomes_first=True,
+            outcome_windows=windows,
+            complete_cohort_identity_only=True,
+        )
+        complete_events = [event for event in events if _has_complete_cohort_identity(event)]
+        skipped = sum(
+            not _has_complete_cohort_identity(event) for event in diagnostic_events
+        )
+    else:
+        complete_events = [
+            event for event in diagnostic_events if _has_complete_cohort_identity(event)
+        ]
+        skipped = len(diagnostic_events) - len(complete_events)
     horizon_counts: dict[str, dict[str, int]] = {
         str(window): {"ready": 0, "pending": 0, "missing": 0}
         for window in windows
@@ -522,8 +565,18 @@ def _build_daily_health(
             horizon_counts[str(window)][state] += 1
             cohort["horizons"][str(window)][state] += 1
 
+    # Only an explicit V4 policy+snapshot identity can release the cut-over
+    # blocker.  The compatibility path in ``_has_complete_cohort_identity``
+    # still lets legacy ``universe_id`` rows be measured, but those rows are
+    # not evidence that the new cohort producer is healthy.
+    explicit_v4_events = [
+        event for event in complete_events if _has_explicit_v4_cohort_identity(event)
+    ]
+
     for item in cohorts.values():
-        item["decision_day_count"] = len(item.pop("decision_dates"))
+        decision_dates = sorted(item.pop("decision_dates"))
+        item["decision_dates"] = decision_dates
+        item["decision_day_count"] = len(decision_dates)
         item["universe_snapshot_ids"] = sorted(item["universe_snapshot_ids"])
         item["universe_snapshot_count"] = len(item["universe_snapshot_ids"])
     ordered_cohorts = [cohorts[key] for key in sorted(cohorts)]
@@ -541,7 +594,13 @@ def _build_daily_health(
     except sqlite3.Error:
         latest_outcome_updated_at = None
 
-    if summary.events_skipped_incomplete_identity or skipped:
+    # A legacy backlog is expected during the V4 cohort cut-over.  It is
+    # intentionally skipped and never backfilled, but it must not starve or
+    # block a bounded run that already found at least one new complete cohort.
+    # Keep the hard blocker for the true failure mode: the bounded selection
+    # contains only incomplete identities and therefore has no safe event to
+    # evaluate.
+    if (summary.events_skipped_incomplete_identity or skipped) and not explicit_v4_events:
         classification = "actionable_engineering_blocker"
         blockers = ["events_missing_complete_cohort_identity"]
     elif summary.events_scanned == 0:
@@ -594,11 +653,21 @@ def _build_daily_health(
         "last_evaluation_at": checked_at.isoformat(timespec="seconds"),
         "next_maturity_date": min(pending_dates) if pending_dates else None,
         "blockers": blockers,
-        "warnings": (
-            ["no_maturity_calendar_observation"]
-            if summary.pending_insufficient_future_data and not pending_dates
-            else []
-        ),
+        "warnings": [
+            *(
+                ["no_maturity_calendar_observation"]
+                if summary.pending_insufficient_future_data and not pending_dates
+                else []
+            ),
+            *(
+                [
+                    "legacy_incomplete_identity_skipped_without_backfill"
+                ]
+                if (summary.events_skipped_incomplete_identity or skipped)
+                and explicit_v4_events
+                else []
+            ),
+        ],
         "idempotency": {
             "natural_key": "(event_id, window_days, return_basis)",
             "duplicate_outcomes_created": 0,
@@ -645,6 +714,73 @@ def _read_only_db_preflight(path: Path) -> dict[str, Any]:
         "required_tables": sorted(required),
         "read_only": True,
         "query_only": True,
+    }
+
+
+def _read_calendar_observation(output_root: Path, target_date: date) -> dict[str, Any]:
+    """Read the latest official-calendar observation without probing or writing."""
+
+    if target_date.weekday() >= 5:
+        return {
+            "date": target_date.isoformat(),
+            "is_trading_day": False,
+            "reason_code": "weekend_closed",
+            "source": "weekday_boundary",
+        }
+
+    status_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {
+            "date": target_date.isoformat(),
+            "is_trading_day": None,
+            "reason_code": "official_calendar_observation_unavailable",
+            "source_status_path": str(status_path),
+        }
+    if not isinstance(payload, dict):
+        return {
+            "date": target_date.isoformat(),
+            "is_trading_day": None,
+            "reason_code": "official_calendar_observation_invalid",
+            "source_status_path": str(status_path),
+        }
+    checks = payload.get("checks")
+    checks_mapping = checks if isinstance(checks, dict) else {}
+    calendar = checks_mapping.get("official_calendar")
+    calendar_mapping = calendar if isinstance(calendar, dict) else {}
+    checked_at = str(payload.get("checked_at") or "").strip()
+    if checked_at[:10] != target_date.isoformat():
+        return {
+            "date": target_date.isoformat(),
+            "is_trading_day": None,
+            "reason_code": "official_calendar_observation_stale",
+            "source_status_path": str(status_path),
+        }
+    records = calendar_mapping.get("records")
+    if calendar_mapping.get("freshness_status") == "current" and isinstance(records, list):
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            record_date = str(record.get("date_str") or "").strip()[:10]
+            if record_date != target_date.isoformat():
+                continue
+            state = record.get("is_trading_day")
+            return {
+                "date": target_date.isoformat(),
+                "is_trading_day": state if isinstance(state, bool) else None,
+                "reason_code": str(
+                    record.get("reason_code")
+                    or "official_calendar_observation_invalid"
+                ),
+                "source": "data_freshness_official_calendar",
+                "source_status_path": str(status_path),
+            }
+    return {
+        "date": target_date.isoformat(),
+        "is_trading_day": None,
+        "reason_code": "official_calendar_observation_unknown",
+        "source_status_path": str(status_path),
     }
 
 
@@ -713,6 +849,21 @@ def _persist_receipt(
     result.setdefault("exit_code", 2 if result.get("status") == "blocked" else 0)
     result["status_path"] = str(status_path)
     result["run_path"] = str(run_path)
+    try:
+        progress = persist_evidence_progress_receipt(
+            result,
+            output_root=status_path.parent.parent.parent,
+        )
+        result["progress_receipt_path"] = progress["status_path"]
+        result["progress_run_path"] = progress["run_path"]
+        result["progress_receipt_idempotent"] = bool(progress["idempotent"])
+    except (OSError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        result["status"] = "blocked"
+        result["exit_code"] = 2
+        result["blockers"] = _merge_text_items(
+            result.get("blockers"),
+            f"progress_receipt_write_failed:{type(exc).__name__}",
+        )
     encoded = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     try:
         run_path.parent.mkdir(parents=True, exist_ok=True)

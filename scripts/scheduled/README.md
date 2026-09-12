@@ -57,6 +57,16 @@ confirmed run 若 health 分類為最後兩類，receipt 會同步輸出 top-lev
 只等待官方可見價格，不補未來資料、不做 historical backfill。這些欄位由
 `ScheduledEvidenceStatusService`／UI 唯讀投影，不會重跑 producer 或寫 DB。
 
+同一輪會另外在 `<OUTPUT_ROOT>/scheduled/evidence_progress/` 保存
+`latest_status.json` 與不可變的 `runs/<run_id>.json`。progress receipt 只消費
+forward receipt，彙總當日／當週實際 capture、5／10／20／60 maturity 與 next action；
+同一 `run_id` 重試只更新 latest projection，不覆寫 immutable run。連續兩個應有資料的
+工作日沒有新 capture 會標成 `no_new_data_alert.status=alert`；週末或
+`data_freshness.latest_status.json` 已驗證的官方休市日標成 `suppressed_non_trading_day`。
+官方 calendar 未知時不猜成休市，而保留 expected-day 觀測並加 warning。告警由
+`ScheduledEvidenceStatusService` 與 UI 讀取，
+不會把 no-new 狀態當成新證據，也不會寫 evidence DB、Paper 或 broker。
+
 `run_paper_portfolio_daily.cmd` 先呼叫 `run_paper_portfolio_daily_isolated.py`。首次
 執行只將 `DATA_ROOT\output\paper_portfolio\paper_portfolio.sqlite` 以 SQLite
 `mode=ro/query_only` 一致 backup seed 到

@@ -52,6 +52,7 @@ def _parse_windows(value: str) -> tuple[int, ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_utf8()
     args = build_parser().parse_args(argv)
     config_kwargs = {}
     if args.data_root is not None:
@@ -77,6 +78,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return int(result.get("exit_code", 2))
+
+
+def _configure_utf8() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="backslashreplace")
+            except (OSError, ValueError):
+                pass
 
 
 if __name__ == "__main__":

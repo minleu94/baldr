@@ -73,6 +73,16 @@ class FakeScheduledStatus:
             forward_outcome_outcomes_written=7,
             forward_outcome_pending=5,
             forward_outcome_warnings_count=1,
+            evidence_progress_status="passed_with_warnings",
+            evidence_progress_daily={
+                "captures": {"decision_day_count": 2, "new_event_count": 1},
+                "maturity": {"ready": 0, "pending": 12, "missing": 0},
+            },
+            evidence_progress_weekly={"capture_decision_day_count": 2},
+            evidence_progress_no_new_data_alert={
+                "alert": False,
+                "consecutive_no_new_data_days": 0,
+            },
             screening_matrix_rows=200,
             dry_run=True,
             writes_evidence_db=False,
@@ -250,6 +260,7 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
     assert "scheduled_rec_20260707_051001" in view.recommendation_label.text()
     assert "degraded / 決策日 2026-07-07" in view.evidence_label.text()
     assert "passed_with_warnings / 掃描 12 / 寫入 7" in view.forward_outcome_label.text()
+    assert "進度：passed_with_warnings / 無新增 0 天 / 正常" in view.forward_outcome_label.text()
     assert "writes_recommendation_result: true" in view.detail_panel.toPlainText()
     assert "writes_evidence_db=false" in view.safety_label.text()
     assert "screening_matrix_missing" in view.detail_panel.toPlainText()
@@ -257,6 +268,8 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
     assert "pipeline advisories: 3 advisory occurrences / 2 advisory types" in view.detail_panel.toPlainText()
     assert "pipeline_overall_status: degraded" in view.detail_panel.toPlainText()
     assert "forward outcomes: passed_with_warnings" in view.detail_panel.toPlainText()
+    assert "evidence progress: status=passed_with_warnings" in view.detail_panel.toPlainText()
+    assert "weekly decision days=2" in view.detail_panel.toPlainText()
     assert "recommendation result write: true / research-only output" in view.detail_panel.toPlainText()
     assert "production evidence/trading write risk: false" in view.detail_panel.toPlainText()
     assert "risk_prompt_source_quality:portfolio_alerts:estimated=4" in view.detail_panel.toPlainText()

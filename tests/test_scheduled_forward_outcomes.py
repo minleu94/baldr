@@ -149,6 +149,75 @@ def test_identity_gate_skips_unbound_events_before_writing(tmp_path: Path) -> No
     assert len(EvidenceEventRepository(config).list_outcomes()) == 1
 
 
+def test_legacy_identity_backlog_does_not_block_new_complete_cohort(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    event_service = EvidenceEventService(EvidenceEventRepository(config))
+    event_service.record_event(
+        event_date="2026-09-02",
+        decision_date="2026-09-02",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="legacy_recommendation_result",
+        source_id="legacy-backlog-event",
+        reason_codes=("legacy",),
+        score_bp=6000,
+        data_quality=EvidenceDataQuality.OBSERVED,
+        as_of_date="2026-09-02",
+        available_date="2026-09-02",
+        source_version="test",
+    )
+    event_service.record_event(
+        event_date="2026-09-03",
+        decision_date="2026-09-03",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="recommendation_result",
+        source_id="new-v4-cohort-event",
+        reason_codes=("rank_top",),
+        score_bp=7000,
+        data_quality=EvidenceDataQuality.OBSERVED,
+        as_of_date="2026-09-03",
+        available_date="2026-09-03",
+        source_version="test",
+        strategy_version_id="strategy-v2",
+        cost_model_id="cost-v2",
+        benchmark_id="TAIEX",
+        industry_benchmark_id="半導體類指數",
+        metadata={
+            "strategy_config_id": "strategy-config-v2",
+            "strategy_config_schema": "strategy-config.v1",
+            "universe_policy_id": "policy-v2",
+            "universe_policy_hash": "policy-hash-v2",
+            "universe_snapshot_id": "snapshot-v2-20260903",
+            "universe_snapshot_hash": "snapshot-hash-v2",
+            "horizon_days": 5,
+        },
+    )
+
+    result = run_scheduled_forward_outcomes(
+        config=config,
+        now=_now(),
+        confirm=True,
+        allow_production_db_confirm=True,
+        windows=(5,),
+        max_events=1,
+        start_date="2026-09-02",
+        end_date="2026-09-10",
+        data_as_of_date="2026-09-10",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED.value,
+        require_cohort_identity=True,
+    )
+
+    assert result["health_classification"] != "actionable_engineering_blocker"
+    assert result["blockers"] == []
+    assert result["summary"]["events_scanned"] == 1
+    assert result["summary"]["events_skipped_incomplete_identity"] == 1
+    assert "legacy_incomplete_identity_skipped_without_backfill" in result["health"]["warnings"]
+    assert len(EvidenceEventRepository(config).list_outcomes()) == 1
+
+
 def test_natural_maturity_remains_waiting_and_exposes_recovery_check(
     tmp_path: Path,
 ) -> None:
@@ -221,6 +290,52 @@ def test_external_source_health_blocks_confirmed_run(tmp_path: Path) -> None:
     assert result["blockers"] == ["no_events_in_window"]
     assert result["recovery_verification"]["status"] == "required"
     assert result["summary"]["events_scanned"] == 0
+
+
+def test_stale_calendar_receipt_is_not_used_for_weekday_progress(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    freshness_dir = config.output_root / "scheduled" / "data_freshness"
+    freshness_dir.mkdir(parents=True)
+    (freshness_dir / "latest_status.json").write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "checked_at": "2026-09-09T05:00:00+08:00",
+                "checks": {
+                    "official_calendar": {
+                        "freshness_status": "current",
+                        "records": [
+                            {
+                                "date_str": "2026-09-10",
+                                "is_trading_day": False,
+                                "reason_code": "twse_holiday_schedule_closed",
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_scheduled_forward_outcomes(
+        config=config,
+        now=_now(),
+        confirm=False,
+        windows=(5,),
+        start_date="2026-09-01",
+        end_date="2026-09-10",
+        data_as_of_date="2026-09-10",
+        require_cohort_identity=True,
+    )
+
+    assert result["calendar_observation"]["is_trading_day"] is None
+    assert result["calendar_observation"]["reason_code"] == "official_calendar_observation_stale"
+    progress = json.loads(
+        Path(result["progress_receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert progress["daily"]["data_expected"] is True
+    assert "official_calendar_observation_unknown" in progress["warnings"]
 
 
 def test_production_confirm_requires_explicit_allowance(tmp_path: Path) -> None:

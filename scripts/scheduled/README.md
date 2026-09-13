@@ -682,12 +682,13 @@ Recommendation calibration learning (shadow-only):
 ```text
 baldr-recommendation-calibration-learning-daily
   DAILY 05:45 canonical host local time
-  Pacific host conversion: 20:45 Asia/Taipei during PDT / 21:45 during PST
+  Task Scheduler XML: StartBoundary=2026-09-13T05:45:00 (no offset; host-local trigger)
   cmd.exe /c "<repo>\scripts\scheduled\run_recommendation_calibration_learning.cmd"
 ```
 
 這個 task 接續同一 canonical host local time 的 05:40 `baldr-forward-outcomes-daily`；在
-deployment host 上兩者分別對應 Asia/Taipei 20:40／20:45（PDT）或 21:40／21:45（PST）。
+deployment host 上兩者都以無 offset 的 host-local trigger 保存，維持 05:40 → 05:45 的順序；
+runner 另以 `Asia/Taipei` clock 與 official calendar 判定資料日期。
 canonical entrypoint 是
 `scripts\scheduled\run_daily_recommendation_learning.py`；它以 SQLite
 `mode=ro`／`PRAGMA query_only=ON` 讀取 bounded historical training rows、當日

@@ -73,9 +73,8 @@ candidate，並驗證 loader 回傳 `shadow_model_ready`、consumer pointer 與 
 
 canonical `dev` 已 fast-forward 至 `053f597f`（包含 `a2e3797f`、`bee59b9e`、`8cde901f`、
 `c46c6039`、`b146abe8` 與 recoverable retry compatibility 修正）；`main` 未變更，也未 push。主機 `DESKTOP-4663E62` 的
-Windows timezone 是 `Pacific Standard Time`，因此 Task Scheduler 的 local 05:40／05:45 分別是
-Asia/Taipei 20:40／20:45（PDT）或 21:40／21:45（PST），兩者仍保持 forward outcome → learning
-的主機 local 順序；runner 以 `Asia/Taipei` clock 與 official calendar 判定資料日期。
+Windows timezone 是 `Pacific Standard Time`；兩個 Task Scheduler trigger 都以 deployment host
+local 05:40／05:45 執行，且 runner 以 `Asia/Taipei` clock 與 official calendar 判定資料日期。
 
 以提升權限唯讀回讀註冊結果：
 
@@ -83,15 +82,15 @@ Asia/Taipei 20:40／20:45（PDT）或 21:40／21:45（PST），兩者仍保持 f
   `cmd.exe /c "C:\Projects\PythonProjects\technical_analysis\scripts\scheduled\run_forward_outcomes_daily.cmd"`，
   2026-09-13 05:40 的 `LastTaskResult=0`，NextRunTime 為 2026-09-14 05:40。
 - `baldr-recommendation-calibration-learning-daily` 只以精確 task registration 建立／更新，沒有呼叫
-  aggregate `RegisterAll`；Enabled／Ready、Daily 05:45，XML StartBoundary 為
-  `2026-09-13T05:45:00-07:00`，Action 是
+  aggregate `RegisterAll`；Enabled／Ready、Daily 05:45，XML StartBoundary 為無 offset 的
+  `2026-09-13T05:45:00`，Action 是
   `cmd.exe /c "C:\Projects\PythonProjects\technical_analysis\scripts\scheduled\run_recommendation_calibration_learning.cmd"`，
   MultipleInstances=`IgnoreNew`，NextRunTime 為 2026-09-14 05:45。初始 LastTaskResult=`267011`
   (`0x41303`，尚未執行)，因此下列 CLI bounded run 是獨立正常入口驗證，不冒充 task 已執行。
   XML 沒有 `TimeZone` 或 synchronize-across-time-zones 設定，`schtasks` 讀回為 Daily local
-  05:45；Windows Pacific host 的冬令換算實測為 05:40→21:40、05:45→21:45 Asia/Taipei，
-  夏令則為 20:40／20:45，因此不會把 learning 固定成 UTC 04:45，也會在冬令維持 local
-  05:40 forward → 05:45 learning 順序。
+  05:45；因此驗收契約是 host-local 05:40 forward → host-local 05:45 learning，沒有把 learning
+  trigger 固定成某個 UTC 時刻；此處只依無 offset local trigger 與目前排程回讀，不延伸推導未回讀的
+  DST 觸發結果。
 - 預設 shadow root 是 `D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\`；
   由 resolver 建立的 root 位於 formal `D:\Min\Python\Project\FA_Data` 外。正式 SQLite 讀取仍由
   `MLHistoricalSnapshotProvider:sqlite_mode_ro_query_only` 執行；未建立任何 formal DB writer。
@@ -176,6 +175,7 @@ scheduled 全量回歸（21 個 `test_scheduled_*.py` 檔）為 `164 passed, 10 
 均為隔離驗證環境限制或既有 baseline，沒有把 skipped 當成 passed：
 
 - `test_scheduled_paper_execution_wrapper.py::test_scheduled_wrapper_uses_queue_without_fixed_recommendation_env`：本 worktree 沒有 `.venv`，舊 paper wrapper 退回 PATH `python`，子程序缺 `pandas`；本輪新增 learning wrapper 已改為明確 governed interpreter，並以 canonical runtime 直接驗證。
+- 上述 paper wrapper test 已在 canonical `.venv` 重新單測驗證：`1 passed`；其餘 scheduled 全量失敗項仍維持下列隔離 calendar/cache baseline 說明。
 - `test_scheduled_data_update_runner.py::test_scheduled_target_weekday_uses_today_on_weekday`、
   `test_scheduled_data_update_runner.py::test_scheduled_target_weekday_falls_back_to_friday_on_weekend`、
   `test_scheduled_data_update_runner.py::test_weekday_window_includes_requested_number_of_weekdays`、

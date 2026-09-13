@@ -442,7 +442,7 @@ class DailyRecommendationLearningRunner:
             "formal_order_allowed": False,
             "shadow_only": True,
         }
-        _write_json_once(receipt_path, receipt)
+        receipt_path = _write_recoverable_attempt(receipt_path, receipt)
         _write_json(latest_path, receipt)
         return DailyRecommendationLearningResult(
             run_id=run_id,
@@ -488,6 +488,31 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def _write_recoverable_attempt(path: Path, payload: dict[str, Any]) -> Path:
+    """Keep an immutable old attempt while allowing a newer schema to retry."""
+
+    try:
+        _write_json_once(path, payload)
+        return path
+    except RuntimeError as exc:
+        if str(exc) != "immutable daily recommendation receipt conflict":
+            raise
+    identity = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"attempt_id", "receipt_path"}
+    }
+    suffix = hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:12]
+    attempt_id = f"{payload['attempt_id']}-{suffix}"
+    retry_path = path.with_name(f"{attempt_id}.json")
+    payload["attempt_id"] = attempt_id
+    payload["receipt_path"] = str(retry_path)
+    _write_json_once(retry_path, payload)
+    return retry_path
 
 
 def _write_json_once(path: Path, payload: Mapping[str, Any]) -> None:

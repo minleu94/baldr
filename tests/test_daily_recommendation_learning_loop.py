@@ -247,7 +247,23 @@ def test_daily_runner_dependency_attempt_can_recover_then_locks_success(tmp_path
     assert not (tmp_path / "recommendation_learning" / "runs" / "2026-06-01" / "run_receipt.json").exists()
     attempts = list((tmp_path / "recommendation_learning" / "runs" / "2026-06-01" / "attempts").glob("*.json"))
     assert len(attempts) == 1
-    assert json.loads(attempts[0].read_text(encoding="utf-8"))["recoverable"] is True
+    legacy_attempt = json.loads(attempts[0].read_text(encoding="utf-8"))
+    assert legacy_attempt["recoverable"] is True
+    legacy_attempt["next_step"] = "legacy retry wording"
+    attempts[0].write_text(json.dumps(legacy_attempt), encoding="utf-8")
+
+    retried_failed = runner.run(
+        decision_date="2026-06-01",
+        samples=_samples(),
+        natural_evidence=None,
+        data_dependency_status="failed",
+        outcome_dependency_status="failed",
+        drift_status="not_checked",
+    )
+    assert retried_failed.status == "failed_dependency"
+    assert retried_failed.receipt_path != str(attempts[0])
+    assert json.loads(Path(retried_failed.receipt_path).read_text(encoding="utf-8"))["recoverable"] is True
+    assert json.loads(attempts[0].read_text(encoding="utf-8"))["next_step"] == "legacy retry wording"
 
     recovered = runner.run(
         decision_date="2026-06-01",

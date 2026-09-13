@@ -1193,10 +1193,21 @@ def _resolve_symbols(
         symbols = tuple(
             sorted(
                 {
-                    str(item.get("stock_code") or item.get("symbol") or item.get("code"))
+                    str(
+                        item.get("stock_code")
+                        or item.get("symbol")
+                        or item.get("code")
+                        or item.get("證券代號")
+                    )
                     for item in recommendations
                     if isinstance(item, Mapping)
-                    and str(item.get("stock_code") or item.get("symbol") or item.get("code") or "").strip()
+                    and str(
+                        item.get("stock_code")
+                        or item.get("symbol")
+                        or item.get("code")
+                        or item.get("證券代號")
+                        or ""
+                    ).strip()
                 }
             )
         )

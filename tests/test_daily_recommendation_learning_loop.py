@@ -393,6 +393,38 @@ def test_daily_cli_reports_invalid_learning_root_without_starting_replay(
     assert "outside DATA_ROOT" in payload["error"]
 
 
+def test_symbol_resolution_accepts_native_scheduled_snapshot_identifier(tmp_path: Path) -> None:
+    from scripts.scheduled.run_daily_recommendation_learning import _resolve_symbols
+
+    runs_root = tmp_path / "recommendation" / "runs"
+    runs_root.mkdir(parents=True)
+    (runs_root / "scheduled_rec_20260913_051004.json").write_text(
+        json.dumps(
+            {
+                "config": {
+                    "scheduled_snapshot": True,
+                    "decision_date": "2026-09-13",
+                },
+                "recommendations": [
+                    {"證券代號": "1569"},
+                    {"證券代號": "1528"},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    symbols, source = _resolve_symbols(
+        output_root=tmp_path,
+        explicit_symbols=None,
+        decision_date=date(2026, 9, 13),
+    )
+
+    assert symbols == ("1528", "1569")
+    assert source == "scheduled_recommendation_snapshot:scheduled_rec_20260913_051004.json"
+
+
 def test_qualified_adoption_changes_consumer_projection_with_cap(tmp_path: Path) -> None:
     result, root, metadata = _candidate(tmp_path, shift=0, candidate_day="2026-06-01")
     evidence = _natural_receipt(tmp_path, root=root, candidate_day="2026-06-01", evaluation_day="2026-06-22")

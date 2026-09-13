@@ -15,11 +15,10 @@
 - 05:40 → 05:45 排程順序、Asia/Taipei official calendar、重跑冪等、recoverable failure 與 status receipt。
 
 本次需求已授權的範圍，是完成 recommendation calibration 的每日自動學習、受控 shadow
-調整／active monitor、自然 maturity、rollback 與 05:45 排程 wrapper／註冊定義。這個 learning
-loop 的工程授權不需要另開一個 owner approval gate；目前隔離 worktree 只做過 registration
-DryRun，實機 Windows Task Scheduler 註冊留在父任務完成整合審核後執行，屬部署步驟而非重新
-請求學習排程授權。broker execution、正式 Recommendation／Portfolio allocation promotion、
-正式推薦權重變更與 production evidence credit 則不在本次授權範圍。
+調整／active monitor、自然 maturity、rollback 與 05:45 排程 wrapper／註冊定義。learning
+loop 已整合至 canonical `dev`，並在取得明確部署批准後完成單一 learning task 的實機註冊；
+這是既有 learning scope 的部署步驟，不代表 broker execution、正式 Recommendation／Portfolio
+allocation promotion、正式推薦權重變更或 production evidence credit 已獲准。
 
 ## 安全與資料邊界
 
@@ -70,6 +69,63 @@ candidate，並驗證 loader 回傳 `shadow_model_ready`、consumer pointer 與 
 `recommendation_learning_output_root_invalid` fail closed。wrapper 改以
 `RECOMMENDATION_LEARNING_OUTPUT_ROOT` 傳入專用 root，不改動一般 `OUTPUT_ROOT` 契約。
 
+## 實機部署與有界入口驗證（2026-09-13）
+
+canonical `dev` 已 fast-forward 至 `c46c6039`（包含 `a2e3797f`、`bee59b9e`、`8cde901f` 與原生
+scheduled snapshot symbol-source 修正）；`main` 未變更，也未 push。主機 `DESKTOP-4663E62` 的
+Windows timezone 是 `Pacific Standard Time`，因此 Task Scheduler 的 local 05:40／05:45 分別是
+Asia/Taipei 20:40／20:45（PDT）或 21:40／21:45（PST），兩者仍保持 forward outcome → learning
+的主機 local 順序；runner 以 `Asia/Taipei` clock 與 official calendar 判定資料日期。
+
+以提升權限唯讀回讀註冊結果：
+
+- `baldr-forward-outcomes-daily` 已存在、Enabled、Daily 05:40；Action 是
+  `cmd.exe /c "C:\Projects\PythonProjects\technical_analysis\scripts\scheduled\run_forward_outcomes_daily.cmd"`，
+  2026-09-13 05:40 的 `LastTaskResult=0`，NextRunTime 為 2026-09-14 05:40。
+- `baldr-recommendation-calibration-learning-daily` 只以精確 task registration 建立／更新，沒有呼叫
+  aggregate `RegisterAll`；Enabled／Ready、Daily 05:45，XML StartBoundary 為
+  `2026-09-13T05:45:00-07:00`，Action 是
+  `cmd.exe /c "C:\Projects\PythonProjects\technical_analysis\scripts\scheduled\run_recommendation_calibration_learning.cmd"`，
+  MultipleInstances=`IgnoreNew`，NextRunTime 為 2026-09-14 05:45。初始 LastTaskResult=`267011`
+  (`0x41303`，尚未執行)，因此下列 CLI bounded run 是獨立正常入口驗證，不冒充 task 已執行。
+  XML 沒有 `TimeZone` 或 synchronize-across-time-zones 設定，`schtasks` 讀回為 Daily local
+  05:45；Windows Pacific host 的冬令換算實測為 05:40→21:40、05:45→21:45 Asia/Taipei，
+  夏令則為 20:40／20:45，因此不會把 learning 固定成 UTC 04:45，也會在冬令維持 local
+  05:40 forward → 05:45 learning 順序。
+- 預設 shadow root 是 `D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\`；
+  由 resolver 建立的 root 位於 formal `D:\Min\Python\Project\FA_Data` 外。正式 SQLite 讀取仍由
+  `MLHistoricalSnapshotProvider:sqlite_mode_ro_query_only` 執行；未建立任何 formal DB writer。
+
+正常 canonical entrypoint（沒有 `--skip-capture-current`、沒有注入 source contract／mature data）：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\scheduled\run_daily_recommendation_learning.py `
+  --decision-date 2026-09-13 `
+  --history-start-date 2024-01-01 `
+  --max-decision-dates 5 `
+  --fixed-round-trip-cost-bp 50
+```
+
+實跑 exit code=`0`。它從既有 `scheduled_rec_20260913_051004.json` 讀到原生
+`證券代號` symbol source：`1528,1558,1560,1569`；這也回歸了正式 snapshot 的中文 identifier
+欄位，不再要求人工補 symbols。receipt／latest status 位於
+`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\`，結果為：
+`status=skipped_no_data`、`decision=retain_current`、`decision_reason=no_new_matured_or_historical_rows`、
+`recoverable=true`、`formal_order_allowed=false`、`shadow_only=true`。官方 calendar 在 receipt 的
+`decision_calendar` 明確回報 `Asia/Taipei / official_calendar_is_trading_day=false /
+official_calendar_reason=weekend_closed`；live capture 使用正常預設開關，因 requested historical
+date 不是當下 Taipei date 而回 `status=skipped`、`reason=capture_current_requires_current_asia_taipei_date`。
+這不是以 skip flag 代替日曆驗證；calendar check 實際執行並保留 weekend blocker。run receipt 是
+可恢復 attempt：`runs/2026-09-13/attempts/attempt-3e40ba4539442809b4a05c2a.json`，沒有 candidate、
+natural evidence 或 promotion。
+
+同一個 shared resolver 回讀確認：consumer pointer 是
+`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\recommendation-calibration-active-pointer.json`，
+Workbench 讀取同一個 `latest_status.json` 且 diagnostics 為空；formal `DATA_ROOT`、generic
+`OUTPUT_ROOT` 與 shadow artifact root 沒有混用。剩餘 Gate 仍是 production source contract、
+technical publication／PIT availability、corporate-action adjustment custody、自然成熟 outcomes
+與 observed liquidity cost。
+
 ## 本輪命令與結果
 
 使用共享 runtime：
@@ -110,8 +166,8 @@ scheduled 全量回歸（21 個 `test_scheduled_*.py` 檔）為 `164 passed, 10 
   `test_scheduled_data_freshness_probe.py::test_freshness_probe_degrades_when_latest_quick_update_failed`、
   `test_scheduled_data_freshness_probe.py::test_freshness_probe_degrades_when_latest_quick_update_status_is_stale`：同一 official calendar cache／網路限制；套用既有 canonical calendar cache 後通過。
 
-排程 registration script 以 `-Mode DryRun` 通過，顯示新增的 05:45 任務位於 05:40 forward
-outcomes 之後；沒有在隔離 worktree 執行實機註冊。
+排程 registration script 的 `-Mode DryRun` 仍通過；實機部署則只操作上述精確 learning task，
+保留既有 forward task 與其他排程不變。
 
 ## 正式資料 bounded read-only run
 
@@ -146,5 +202,6 @@ read-only run，但屬主機操作上的可觀測性提醒。
 contract、technical publication／PIT evidence、corporate-action adjusted-price custody、
 具 unique-key 且可重算的 natural matured outcomes 與 observed liquidity cost，並完成正式
 Formal／Advice／production allocation review。這些是正式 production／allocation 的外部 Gate，
-不是本次已授權 learning loop 的重新批准條件。本輪工程不自行補造這些外部事實，也不整合到
-`dev`；實機 Windows Task Scheduler 註冊待父任務整合審核後依既定 wrapper 執行。
+不是本次已授權 learning loop 的重新批准條件。本輪工程不自行補造這些外部事實；learning
+task 已依批准的 canonical wrapper 啟用，後續仍只保留 shadow／fail-closed 邊界，未啟用任何
+正式 promotion、broker 或 production evidence credit。

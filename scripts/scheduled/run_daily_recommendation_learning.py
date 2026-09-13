@@ -15,6 +15,7 @@ import argparse
 from datetime import date, datetime, timedelta
 import json
 from pathlib import Path
+import sqlite3
 import sys
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
@@ -182,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             data_status="failed",
             outcome_status="failed",
             drift_status="not_checked",
+            recovery_policy="recoverable_attempt",
         )
         run_result = runner.run(
             decision_date=decision_day.isoformat(),
@@ -190,7 +192,8 @@ def main(argv: list[str] | None = None) -> int:
             data_dependency_status="failed",
             outcome_dependency_status="failed",
             drift_status="not_checked",
-            emergency_rollback=True,
+            emergency_rollback=False,
+            dependency_failure_reason=f"symbol_cohort_preflight_failed:{type(exc).__name__}",
         )
         print(
             json.dumps(
@@ -244,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
             data_status="failed",
             outcome_status="failed",
             drift_status="drifted",
+            recovery_policy="explicit_emergency_rollback",
         )
         run_result = runner.run(
             decision_date=decision_day.isoformat(),
@@ -279,12 +283,19 @@ def main(argv: list[str] | None = None) -> int:
         provider = MLHistoricalSnapshotProvider(source_db)
         replay_result = RecommendationHistoricalReplayService(provider).build(replay_config)
         manifest_path = replay_result.persist(learning_output_root)
-    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
+        preflight_reason = f"replay_or_source_preflight_failed:{type(exc).__name__}"
+        emergency_from_preflight = _preflight_requires_emergency(exc)
         dependencies = _dependency_failure(
-            reason=f"replay_or_source_preflight_failed:{type(exc).__name__}",
+            reason=preflight_reason,
             data_status="failed",
             outcome_status="failed",
             drift_status="not_checked",
+            recovery_policy=(
+                "fail_closed_emergency_rollback"
+                if emergency_from_preflight
+                else "recoverable_attempt"
+            ),
         )
         run_result = runner.run(
             decision_date=decision_day.isoformat(),
@@ -293,7 +304,8 @@ def main(argv: list[str] | None = None) -> int:
             data_dependency_status="failed",
             outcome_dependency_status="failed",
             drift_status="not_checked",
-            emergency_rollback=True,
+            emergency_rollback=emergency_from_preflight,
+            dependency_failure_reason=preflight_reason,
         )
         print(
             json.dumps(
@@ -556,6 +568,7 @@ def _inspect_dependencies(
     data_status = "ready"
     outcome_status = "ready"
     drift_status = "clean"
+    recovery_policy = "normal"
     trading_dates: tuple[str, ...] = ()
     official_trading_day: bool | None = None
     calendar_reason = "not_checked"
@@ -584,12 +597,14 @@ def _inspect_dependencies(
         if official_trading_day is None:
             data_status = "failed"
             outcome_status = "failed"
+            recovery_policy = "recoverable_attempt"
             diagnostics.append(f"official_trading_calendar_unresolved:{calendar_reason}")
         elif official_trading_day is False:
             diagnostics.append(f"official_trading_calendar_closed:{calendar_reason}")
         elif not trading_dates:
             data_status = "failed"
             outcome_status = "failed"
+            recovery_policy = "recoverable_attempt"
             diagnostics.append("official_trading_day_but_explicit_symbol_rows_missing")
         if not replay_source_fingerprint:
             drift_status = "not_checked"
@@ -610,15 +625,21 @@ def _inspect_dependencies(
             for item in active_performance.get("diagnostics", ())
             if str(item).strip()
         )
-    except (OSError, RuntimeError, ValueError) as exc:
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         data_status = "failed"
         outcome_status = "failed"
         drift_status = "not_checked"
+        recovery_policy = (
+            "fail_closed_emergency_rollback"
+            if _preflight_requires_emergency(exc)
+            else "recoverable_attempt"
+        )
         diagnostics.append(f"source_preflight_failed:{type(exc).__name__}")
     return {
         "data_status": data_status,
         "outcome_status": outcome_status,
         "drift_status": drift_status,
+        "recovery_policy": recovery_policy,
         "data_source": "MLHistoricalSnapshotProvider:sqlite_mode_ro_query_only",
         "drift_method": "active_model_natural_evidence_metrics_plus_source_health",
         "model_performance": active_performance,
@@ -1695,10 +1716,34 @@ def _dependencies_require_emergency(dependencies: Mapping[str, Any]) -> bool:
     """Return whether actual post-scan health requires a fail-closed rollback."""
 
     blocked = {"failed", "missing", "unavailable", "degraded", "drifted"}
+    recovery_policy = str(dependencies.get("recovery_policy", "normal")).lower()
+    if recovery_policy == "fail_closed_emergency_rollback":
+        return True
+    if recovery_policy == "recoverable_attempt":
+        return str(dependencies.get("drift_status", "not_checked")).lower() in blocked
     return any(
         str(dependencies.get(field_name, "not_checked")).lower() in blocked
         for field_name in ("data_status", "outcome_status", "drift_status")
     )
+
+
+def _preflight_requires_emergency(exc: BaseException) -> bool:
+    """Classify source-integrity faults separately from temporarily unavailable data."""
+
+    message = str(exc).strip().lower()
+    integrity_markers = (
+        "changed during",
+        "immutable historical replay dataset conflict",
+        "required table is missing",
+        "required columns are missing",
+        "source whitelist mismatch",
+        "query_only could not be enabled",
+        "database disk image is malformed",
+        "file is encrypted or is not a database",
+        "integrity check failed",
+        "corrupt",
+    )
+    return any(marker in message for marker in integrity_markers)
 
 
 def _dependency_failure(
@@ -1707,11 +1752,13 @@ def _dependency_failure(
     data_status: str,
     outcome_status: str,
     drift_status: str,
+    recovery_policy: str,
 ) -> dict[str, Any]:
     return {
         "data_status": data_status,
         "outcome_status": outcome_status,
         "drift_status": drift_status,
+        "recovery_policy": recovery_policy,
         "data_source": "MLHistoricalSnapshotProvider:sqlite_mode_ro_query_only",
         "drift_method": "active_model_natural_evidence_metrics_plus_source_health",
         "model_performance": {"status": drift_status, "reason": reason},

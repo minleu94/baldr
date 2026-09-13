@@ -393,6 +393,240 @@ def test_daily_cli_reports_invalid_learning_root_without_starting_replay(
     assert "outside DATA_ROOT" in payload["error"]
 
 
+def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """A delayed scheduled snapshot must not finalize a false rollback for the day."""
+
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    data_root = tmp_path / "formal-data"
+    output_root = tmp_path / "learning-shadow"
+    scheduled_output_root = tmp_path / "scheduled-output"
+    source_db = tmp_path / "source.db"
+    decision_day = date(2026, 9, 14)
+    taipei = ZoneInfo("Asia/Taipei")
+
+    monkeypatch.setenv("OUTPUT_ROOT", str(scheduled_output_root))
+    monkeypatch.delenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", raising=False)
+    monkeypatch.setattr(
+        daily_learning,
+        "_taipei_now",
+        lambda: datetime(2026, 9, 14, 9, 0, tzinfo=taipei),
+    )
+    monkeypatch.setattr(daily_learning, "_official_trading_day", lambda **_: (True, "test_calendar"))
+
+    class _Provider:
+        def __init__(self, database_path: Path) -> None:
+            self.database_path = Path(database_path)
+
+        def list_trading_dates(self, *, start_date: str, end_date: str, symbols: tuple[str, ...]):
+            return (start_date[:10],)
+
+        def load_forward_price_window(self, *, start_date: str, end_date: str, symbols: tuple[str, ...]):
+            return SimpleNamespace(
+                prices=(),
+                market=(),
+                source_fingerprint=f"forward:{start_date[:10]}:{end_date[:10]}",
+            )
+
+        def load(self, *, decision_date: str, history_start_date: str, symbols: tuple[str, ...], industry_index_names):
+            return SimpleNamespace(
+                decision_date=decision_date[:10],
+                feature_as_of_date="2026-09-13",
+                source_fingerprint=f"snapshot:{decision_date[:10]}",
+                prices=(),
+                technicals=(),
+                market=(),
+                industries=(),
+            )
+
+    class _FeatureBuilder:
+        def __init__(self, registry) -> None:
+            self.registry = registry
+
+        def compute(self, snapshot, *, industry_index_name_by_symbol):
+            return ()
+
+    class _ReplayResult:
+        source_fingerprint = "sha256:fixture-source"
+        training_data_eligible = False
+        forward_evidence_eligible = False
+        formal_candidate_eligible = False
+        candidate_blockers = ("fixture_has_no_rows",)
+        dataset_id = "fixture-dataset"
+        dataset_hash = "sha256:" + "1" * 64
+        source_disclosures = ()
+        lookahead_checks = ()
+        decision_dates = ()
+        rows_skipped_missing_price = 0
+        rows_skipped_missing_benchmark = 0
+        rows_skipped_missing_feature = 0
+        selection_policy = "latest_eligible_dates"
+
+        def __init__(self) -> None:
+            feature_count = len(daily_learning.CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids)
+            rows: list[RecommendationCalibrationSample] = []
+            start = date(2025, 1, 2)
+            for day_index in range(110):
+                decision = start + timedelta(days=day_index)
+                for symbol_index, symbol in enumerate(("1101", "2330")):
+                    rows.append(
+                        RecommendationCalibrationSample.from_forward_return(
+                            row_id=f"{decision.isoformat()}-{symbol}",
+                            symbol=symbol,
+                            decision_date=decision.isoformat(),
+                            feature_as_of_date=(decision - timedelta(days=1)).isoformat(),
+                            feature_available_date=(decision - timedelta(days=1)).isoformat(),
+                            label_end_date=(decision + timedelta(days=20)).isoformat(),
+                            label_available_date=(decision + timedelta(days=20)).isoformat(),
+                            feature_values=tuple(
+                                ((day_index % 6) - 2) * 1000 + symbol_index * 170
+                                for _ in range(feature_count)
+                            ),
+                            stock_return_bp=((day_index % 6) - 2) * 1000 + symbol_index * 120,
+                            benchmark_return_bp=100,
+                            fixed_round_trip_cost_bp=50,
+                            observed_liquidity_cost_bp=20,
+                            rule_probability_bp=5000,
+                            rule_after_cost_probability_bp=5000,
+                        )
+                    )
+            self.samples = tuple(rows)
+            self.training_data_eligible = True
+            self.formal_candidate_eligible = True
+            self.candidate_blockers = ()
+
+        def persist(self, root: Path) -> Path:
+            path = Path(root) / "recommendation_learning" / "datasets" / "fixture.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(self.to_dict()), encoding="utf-8")
+            return path
+
+        def to_dict(self) -> dict[str, object]:
+            return {
+                "dataset_id": self.dataset_id,
+                "dataset_hash": self.dataset_hash,
+                "sample_count": len(self.samples),
+                "decision_dates": sorted({row.decision_date for row in self.samples}),
+                "source_fingerprint": self.source_fingerprint,
+                "training_data_eligible": self.training_data_eligible,
+                "forward_evidence_eligible": self.forward_evidence_eligible,
+                "formal_candidate_eligible": self.formal_candidate_eligible,
+                "candidate_blockers": list(self.candidate_blockers),
+                "source_disclosures": [],
+                "lookahead_checks": [],
+            }
+
+    class _ReplayService:
+        def __init__(self, provider) -> None:
+            self.provider = provider
+
+        def build(self, config):
+            assert config.symbols == ("1101",)
+            return _ReplayResult()
+
+    monkeypatch.setattr(daily_learning, "MLHistoricalSnapshotProvider", _Provider)
+    monkeypatch.setattr(daily_learning, "HistoricalFeatureBuilder", _FeatureBuilder)
+    monkeypatch.setattr(daily_learning, "RecommendationHistoricalReplayService", _ReplayService)
+
+    emergency_result = _runner(output_root, data_root=data_root).run(
+        decision_date=decision_day.isoformat(),
+        samples=(),
+        natural_evidence=None,
+        data_dependency_status="failed",
+        outcome_dependency_status="failed",
+        drift_status="failed",
+        emergency_rollback=True,
+    )
+    emergency_receipt_path = Path(emergency_result.receipt_path)
+    emergency_receipt_hash = hashlib.sha256(emergency_receipt_path.read_bytes()).hexdigest()
+    emergency_pointer_path = output_root / "recommendation_learning" / "recommendation-calibration-active-pointer.json"
+    emergency_pointer = json.loads(emergency_pointer_path.read_text(encoding="utf-8"))
+    assert emergency_pointer["status"] == "rule_only"
+
+    common_args = [
+        "--data-root",
+        str(data_root),
+        "--output-root",
+        str(output_root),
+        "--source-db",
+        str(source_db),
+        "--decision-date",
+        decision_day.isoformat(),
+        "--history-start-date",
+        "2025-01-01",
+        "--replay-start-date",
+        "2025-01-02",
+        "--replay-end-date",
+        decision_day.isoformat(),
+        "--max-decision-dates",
+        "100",
+        "--fixed-round-trip-cost-bp",
+        "50",
+    ]
+
+    assert daily_learning.main(common_args) == 2
+    first_payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    first_receipt_path = Path(first_payload["run"]["receipt_path"])
+    first_receipt = json.loads(first_receipt_path.read_text(encoding="utf-8"))
+    assert first_payload["run"]["status"] == "failed_dependency"
+    assert first_payload["run"]["reason"] == "symbol_cohort_preflight_failed:ValueError"
+    assert first_payload["dependencies"]["recovery_policy"] == "recoverable_attempt"
+    assert first_receipt["finalized"] is False
+    assert first_receipt["recoverable"] is True
+    assert "同一 decision date" in first_receipt["next_step"]
+    assert not first_receipt_path.parents[1].joinpath("run_receipt.json").exists()
+
+    snapshot_path = (
+        scheduled_output_root
+        / "recommendation"
+        / "runs"
+        / "scheduled_rec_20260914_051004.json"
+    )
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "config": {"scheduled_snapshot": True, "decision_date": decision_day.isoformat()},
+                "recommendations": [{"證券代號": "1101"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    assert daily_learning.main(common_args) == 0
+    second_payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    second_receipt_path = Path(second_payload["run"]["receipt_path"])
+    latest_status = json.loads(
+        (output_root / "recommendation_learning" / "latest_status.json").read_text(encoding="utf-8")
+    )
+    assert second_payload["symbol_source"].startswith("scheduled_recommendation_snapshot:")
+    assert second_payload["symbols"] == ["1101"]
+    assert second_payload["run"]["status"] == "completed"
+    assert second_payload["run"]["reason"] == "candidate_trained_and_gate_evaluated"
+    assert second_payload["run"]["candidate_id"]
+    candidate_metadata = json.loads(
+        (Path(second_payload["run"]["candidate_root"]) / "candidate.json").read_text(encoding="utf-8")
+    )
+    assert int(candidate_metadata["training_row_count"]) > 0
+    assert second_receipt_path != first_receipt_path
+    assert latest_status["finalized"] is True
+    assert hashlib.sha256(emergency_receipt_path.read_bytes()).hexdigest() == emergency_receipt_hash
+
+
+def test_preflight_failure_classifies_transient_and_integrity_faults() -> None:
+    from scripts.scheduled.run_daily_recommendation_learning import _preflight_requires_emergency
+
+    assert _preflight_requires_emergency(OSError("provider temporarily unavailable")) is False
+    assert _preflight_requires_emergency(RuntimeError("database is locked")) is False
+    assert _preflight_requires_emergency(RuntimeError("historical SQLite source changed during snapshot load")) is True
+    assert _preflight_requires_emergency(ValueError("required table is missing: daily_prices")) is True
+
+
 def test_symbol_resolution_accepts_native_scheduled_snapshot_identifier(tmp_path: Path) -> None:
     from scripts.scheduled.run_daily_recommendation_learning import _resolve_symbols
 

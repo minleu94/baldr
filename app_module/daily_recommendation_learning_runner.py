@@ -88,6 +88,7 @@ class DailyRecommendationLearningRunner:
         frozen_candidate_root: str | Path | None = None,
         fault_after_candidate: bool = False,
         emergency_rollback: bool = False,
+        dependency_failure_reason: str | None = None,
     ) -> DailyRecommendationLearningResult:
         day = date.fromisoformat(decision_date[:10]).isoformat()
         run_id = f"daily-recommendation-learning:{day}"
@@ -168,6 +169,7 @@ class DailyRecommendationLearningRunner:
                 "status": "completed",
                 "finalized": True,
                 "recoverable": False,
+                "dependency_failure_reason": dependency_failure_reason,
                 "reason": (
                     "explicit_emergency_rollback_evaluated_without_new_candidate"
                     if emergency_rollback
@@ -238,7 +240,7 @@ class DailyRecommendationLearningRunner:
             return self._write_skip(
                 day=day,
                 run_id=run_id,
-                reason="data_dependency_failed_fail_closed",
+                reason=dependency_failure_reason or "data_dependency_failed_fail_closed",
                 status="failed_dependency",
                 dataset_hash=dataset_hash,
                 decision="retain_current",
@@ -252,7 +254,8 @@ class DailyRecommendationLearningRunner:
             return self._write_skip(
                 day=day,
                 run_id=run_id,
-                reason="outcome_dependency_unavailable_natural_evidence_not_fabricated",
+                reason=dependency_failure_reason
+                or "outcome_dependency_unavailable_natural_evidence_not_fabricated",
                 status="skipped_insufficient_evidence",
                 dataset_hash=dataset_hash,
                 decision="retain_current",
@@ -535,6 +538,8 @@ def _next_step(decision: str, reason: str) -> str:
         return "檢查資料／drift fault 與 last-good pointer；修復後以新日重試，不覆寫當日 receipt。"
     if "no_data" in reason or "insufficient" in reason or "matured" in reason:
         return "等待新的成熟自然 forward outcomes；未達門檻前保留 current/rule-only。"
+    if "dependency" in reason or "preflight" in reason:
+        return "暫時 dependency 尚未就緒；資料於同一 decision date 到齊後即可重跑，不覆寫既有 receipt。"
     if "fault" in reason or "failed" in reason or "unavailable" in reason:
         return "修復 dependency 或資料品質問題後，以新日重新執行 bounded runner。"
     return "保留 current；下一個排程日重新檢查同樣本、同成本與自然成熟度。"

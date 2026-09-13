@@ -260,6 +260,97 @@ def test_composer_accepts_v2_allocation_and_preserves_executable_weight() -> Non
     assert row.source_trace[0] == "PortfolioAllocationResultV2"
 
 
+def test_verified_calibration_projection_flows_to_advice_and_decision_presentation() -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.decision_presentation import DecisionPresentationService
+
+    projection = {
+        "ranking_score_bp": 2400,
+        "ranking_percentile_bp": 8200,
+        "ranking_method": "absolute_return_shadow_candidate",
+        "calibrated_probability_bp": 6000,
+        "calibrated_probability_status": "shadow_candidate",
+        "after_cost_profit_probability_bp": 5500,
+        "after_cost_profit_probability_status": "shadow_candidate",
+        "evidence_confidence": "shadow_candidate",
+        "sample_size": 120,
+        "cost_basis_bp": 50,
+        "model_version": "rec-cal-model-2",
+        "dataset_version": "recommendation-dataset-2",
+        "status": "active_candidate",
+        "source_trace": ("candidate:rec-cal-model-2", "dataset:recommendation-dataset-2"),
+    }
+    dashboard = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=_recommendation_result(),
+        portfolio_result=_portfolio_result(),
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+        current_weights_bp={"2330": 500},
+        calibration_by_stock_code={"2330": projection},
+    )
+    recommendation = dashboard.recommendations[0]
+    portfolio = dashboard.portfolio_rows[0]
+    assert recommendation.calibrated_probability_bp == 6000
+    assert recommendation.after_cost_profit_probability_bp == 5500
+    assert recommendation.ranking_score_bp == 2400
+    assert recommendation.sample_size == 120
+    assert "candidate:rec-cal-model-2" in recommendation.source_trace
+    assert portfolio.calibrated_probability_bp == 6000
+    presentation = DecisionPresentationService().from_recommendation_advice(recommendation)
+    assert presentation.ranking_score == Decimal("2400")
+    assert presentation.ranking_percentile_bp == 8200
+    assert presentation.calibrated_probability_bp == 6000
+    assert presentation.after_cost_profit_probability_bp == 5500
+    assert presentation.sample_size == 120
+    assert presentation.cost_basis == Decimal("50")
+
+
+def test_recommendation_dto_projection_is_reused_by_normal_advice_and_portfolio_paths() -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.decision_presentation import DecisionPresentationService
+
+    source = _recommendation_result()
+    recommendation = source.recommendations[0]
+    recommendation.ranking_score_bp = 2_400
+    recommendation.score_percentile_bp = 8_200
+    recommendation.ranking_method = "absolute_return_shadow_candidate"
+    recommendation.calibrated_probability_bp = 6_000
+    recommendation.calibrated_probability_status = "shadow_candidate"
+    recommendation.after_cost_profit_probability_bp = 5_500
+    recommendation.after_cost_profit_probability_status = "shadow_candidate"
+    recommendation.evidence_confidence = "shadow_candidate"
+    recommendation.sample_size = 120
+    recommendation.cost_basis_bp = 50
+    recommendation.calibration_model_version = "rec-cal-model-2"
+    recommendation.calibration_dataset_version = "recommendation-dataset-2"
+    recommendation.calibration_status = "active_candidate"
+    recommendation.calibration_source_trace = ["candidate:rec-cal-model-2", "dataset:recommendation-dataset-2"]
+
+    dashboard = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=_portfolio_result(),
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+        current_weights_bp={"2330": 500},
+    )
+
+    advice = dashboard.recommendations[0]
+    assert advice.calibrated_probability_bp == 6_000
+    assert advice.after_cost_profit_probability_bp == 5_500
+    assert advice.sample_size == 120
+    assert "candidate:rec-cal-model-2" in advice.source_trace
+    portfolio = dashboard.portfolio_rows[0]
+    assert portfolio.calibrated_probability_bp == 6_000
+    presentation = DecisionPresentationService().from_recommendation_advice(advice)
+    assert presentation.calibrated_probability_bp == 6_000
+    assert presentation.after_cost_profit_probability_bp == 5_500
+    assert presentation.sample_size == 120
+
+
 def test_professional_candidate_is_classified_for_research_section() -> None:
     from app_module.advice_composer import AdviceComposer
 

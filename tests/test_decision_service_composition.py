@@ -47,3 +47,39 @@ def test_decision_service_composition_injects_shared_mapper_and_data_ports() -> 
         industry_mapper=mapper,
         regime_detector=recommendation_detector,
     )
+
+
+def test_normal_composition_injects_read_only_recommendation_calibration_consumer(monkeypatch) -> None:
+    dependencies = {
+        name: MagicMock(name=name)
+        for name in (
+            "IndustryMapper",
+            "ScreeningService",
+            "MarketRegimeDetector",
+            "RegimeService",
+            "RecommendationService",
+            "StockScreener",
+        )
+    }
+    dependencies["IndustryMapper"].return_value = object()
+    dependencies["MarketRegimeDetector"].side_effect = [object(), object()]
+    dependencies["StockScreener"].return_value = object()
+    consumer = object()
+    monkeypatch.setattr(
+        "app_module.recommendation_calibration_consumer.build_default_recommendation_calibration_consumer",
+        lambda config: consumer,
+    )
+    monkeypatch.setattr(
+        "app_module.decision_service_composition._default_dependencies",
+        lambda: dependencies,
+    )
+
+    config = SimpleNamespace()
+    build_decision_service_composition(
+        config=config,
+        industry_index_provider=object(),
+        market_index_provider=object(),
+    )
+
+    kwargs = dependencies["RecommendationService"].call_args.kwargs
+    assert kwargs["calibration_consumer"] is consumer

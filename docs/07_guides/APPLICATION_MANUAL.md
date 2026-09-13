@@ -3317,6 +3317,49 @@ V4.1 A 線的推薦機率校準研究可用 `scripts\inspect_recommendation_cali
 
 正式 evidence DB 若出現 `observation_count=0` 或 `fold_count=0`，只能解讀為成熟度／來源不足，不能解讀為策略有效或失效。完整契約、實際 2026-09-10 read-only 結果、測試與限制見 [V4.1 推薦機率校準垂直切片](../06_qa/V4_1_RECOMMENDATION_CALIBRATION_VERTICAL_SLICE_2026_09_10.md)。
 
+### V4.2 每日推薦自動學習與受控校準調整
+
+每日 shadow loop 的排程入口是 `scripts\scheduled\run_recommendation_calibration_learning.cmd`，canonical service 是 `scripts\scheduled\run_daily_recommendation_learning.py`。它在 `baldr-forward-outcomes-daily`（05:40）之後於 05:45 執行，只讀取指定的 market SQLite，並把 dataset、frozen challenger、prediction capture、自然成熟 evidence、promotion decision 與 rollback receipt 寫入隔離的 `OUTPUT_ROOT\recommendation_learning\`。它不寫 `recommendation`、`evidence_outcomes`、Portfolio、Formal 或 broker state，也不改 `ScoringEngine`、正式推薦權重或 scheduler write mode。
+
+```powershell
+# bounded shadow run；明確股票群組，不做 universe discovery
+.\.venv\Scripts\python.exe scripts\scheduled\run_daily_recommendation_learning.py `
+  --data-root D:\Min\Python\Project\FA_Data `
+  --output-root <隔離輸出目錄> `
+  --source-db D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
+  --symbols 1101,2330 `
+  --history-start-date 2014-01-01 `
+  --replay-selection-policy latest_eligible_dates `
+  --max-decision-dates 100 `
+  --fixed-round-trip-cost-bp 50
+```
+
+固定判讀與安全限制：
+
+- replay 只作 training data；每列固定 20 trading-day absolute stock-return labels，feature 與 label 都要通過決策日／label availability 的 causal cutoff。它永遠標記 `forward_evidence_eligible=false`，不能用歷史 replay 灌滿自然成熟日。
+- `--symbols` 若省略，只接受同日已保存的 scheduled recommendation snapshot 明確股票群組；沒有群組便 fail closed。台北週末／休市日可完成 bounded receipt，但跳過 live capture，不把自然日算成交易日。
+- candidate 第一次 fit 後以 candidate、dataset、manifest、artifact、policy、feature schema 與 probability lineage freeze；後續每日只新增當下 feature 與 active/challenger identity capture。重跑同日同 hash 是冪等，依賴失敗保留 recoverable attempt，修復後可用新日續接。
+- 自然 evidence 只接受 immutable capture 加上後來真正成熟的 forward price／market source；至少 20 筆且至少 20 個 distinct decision dates 才能進比較。重複 `(symbol, decision_date, horizon)` 不增加分母。candidate 與 active monitor 分開計算；active monitor 的新成熟 receipt 會在同一次 main run 重新檢查，若超過 drift gate 即同日 fail-closed rollback。
+- `recommendation_source_contract` 是可選的 source acceptance contract。它至少要有 component、source id/table、status、coverage、available-at、SHA-256、source columns 與 verification 欄位；service 另外重算 symbol-scoped 實際 source rows digest、期間／symbol coverage，並驗證 feature builder 實際使用的 technical row `available_at <= decision`。只填 `verified=1` 或只填任意 hash 不會通過；缺 contract 時仍可作 research training，但保留明確 source blockers。固定 caller symbol cohort 不宣稱 PIT constituent history。
+- corporate action source 必須有實際可讀 records、有效 adjustment factor、coverage 與一致 digest。raw close 沒有可驗證 adjusted-price custody 時，non-unit action 落在 label window 會保守排除該列並保留 blocker；不可只因 table 存在或 bool 為 true 就把 raw label 當成 adjusted。
+- after-cost label 只在取得可追溯的 `evidence_outcomes.liquidity_cost_bp` 時建立。成本存在時，使用獨立命名的 `after_cost_null_benchmark_50pct_v1`／5000 bp baseline；成本缺失時 after-cost target、model output 與 consumer projection 均保持 `None`，不補零、不借用 upside baseline。adopted active model 的 post-adoption matured rows 會在其 label availability cutoff 通過後，以同一 null-baseline contract 供下一 training cycle 使用，不把 active prediction 當 target。
+
+主要輸出：
+
+```text
+<OUTPUT_ROOT>\recommendation_learning\latest_status.json
+<OUTPUT_ROOT>\recommendation_learning\runs\YYYY-MM-DD\run_receipt.json
+<OUTPUT_ROOT>\recommendation_learning\datasets\<dataset_id>\dataset.json
+<OUTPUT_ROOT>\recommendation_learning\challenger\current.json
+<OUTPUT_ROOT>\recommendation_learning\captures\YYYY-MM-DD\<candidate_id>.json
+<OUTPUT_ROOT>\recommendation_learning\active_captures\YYYY-MM-DD\<candidate_id>.json
+<OUTPUT_ROOT>\recommendation_learning\evidence\<candidate_id>\YYYY-MM-DD.json
+<OUTPUT_ROOT>\recommendation_learning\active_evidence\<candidate_id>\YYYY-MM-DD.json
+<OUTPUT_ROOT>\recommendation_learning\recommendation-calibration-active-pointer.json
+```
+
+判讀時先看 `dependencies`、`natural_evidence`、`active_model_natural_evidence`、`model_performance`、`candidate_blockers`、`decision_receipt` 與 `formal_order_allowed=false`。`pending` 代表等待真正成熟時間或不足門檻；`retain_current`／`rule_only` 代表沒有通過 authority；`adopt` 只代表 shadow consumer 可讀取 versioned candidate，並不改正式 Recommendation；`rollback` 會回到完整 previous candidate，沒有可恢復 champion 時回到 explicit rule-only。pointer、artifact、manifest、lineage、policy 或 evidence receipt 損壞時一律 fail closed。目前正式 DB 的 source contract、自然 matured evidence 與成本覆蓋仍須以當次 receipt／QA 判讀，不可用 fixture、historical replay、單次 bounded run 或手動改 JSON 解除 gate。
+
 Phase 2 起，Qt 主 UI 新增 `決策工作台` 分頁作為 read-only Unified Decision Workbench MVP shell。2026-08-14 後，總覽第一屏先顯示「今日行動中心」與單一下一步導覽，再顯示今日重點帶、語意色摘要卡、今日待判讀、背景證據流、只讀 Action Items 與 Inspector；這些導覽按鈕只切換既有工作區。操作節奏、Evidence mode / data quality、Daily Checklist 與 warnings / degraded source 改成可收合區塊，需要時再展開。畫面只透過 `WorkbenchSourceService` 取得 `WorkbenchDashboardDTO`，不直接讀 SQLite、不寫 DB、不啟用 scheduler，也不重算 scoring、portfolio、backtest 或 lifecycle。若預設 `_reference_fix` replay JSON summary 存在於 `OUTPUT_ROOT/evidence_pipeline/historical_replay_reference_fix_20260706/`，主 UI 會自動把 JSON summary 傳入 WorkbenchSourceService；這仍只是讀 summary，不會讀 replay DB 或執行 replay。
 
 操作與判讀：

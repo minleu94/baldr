@@ -51,8 +51,15 @@ class WorkbenchReadOnlyComposer:
         source_mode: str = "read_only",
         source_diagnostics: tuple[str, ...] = (),
         advice_dashboard: AdviceDashboardDTO | None = None,
+        recommendation_learning_status: dict[str, Any] | None = None,
     ) -> WorkbenchDashboardDTO:
-        warnings = self._warnings(readiness_report, agent_report_sample, historical_replay_summary, source_diagnostics)
+        warnings = self._warnings(
+            readiness_report,
+            agent_report_sample,
+            historical_replay_summary,
+            source_diagnostics,
+            recommendation_learning_status,
+        )
         if decision_snapshot is not None:
             warnings.extend(item for item in decision_snapshot.warnings if item not in warnings)
         review_items = self._review_items(
@@ -66,6 +73,7 @@ class WorkbenchReadOnlyComposer:
             readiness_report,
             scheduled_status,
             historical_replay_summary,
+            recommendation_learning_status,
         )
         action_items = self._action_items(decision_snapshot, readiness_report, historical_replay_summary)
         return WorkbenchDashboardDTO(
@@ -75,7 +83,12 @@ class WorkbenchReadOnlyComposer:
             access_boundary=WorkbenchAccessBoundary(),
             status_strip=self._status_strip(decision_snapshot, readiness_report),
             review_items=review_items,
-            evidence_summary=self._evidence_summary(readiness_report, scheduled_status, historical_replay_summary),
+            evidence_summary=self._evidence_summary(
+                readiness_report,
+                scheduled_status,
+                historical_replay_summary,
+                recommendation_learning_status,
+            ),
             market_context=self._market_context(decision_snapshot),
             portfolio_watchlist_summary=self._portfolio_watchlist_summary(decision_snapshot),
             daily_checklist=daily_checklist,
@@ -88,6 +101,7 @@ class WorkbenchReadOnlyComposer:
                 action_items=action_items,
                 daily_checklist=daily_checklist,
                 readiness_report=readiness_report,
+                recommendation_learning_status=recommendation_learning_status,
             ),
             advice_dashboard=advice_dashboard,
         )
@@ -214,6 +228,7 @@ class WorkbenchReadOnlyComposer:
         readiness_report: PreV2ReadinessReport,
         scheduled_status: ScheduledEvidenceStatus | None,
         historical_replay_summary: dict[str, Any] | None,
+        recommendation_learning_status: dict[str, Any] | None = None,
     ) -> tuple[WorkbenchEvidenceFeedItem, ...]:
         items: list[WorkbenchEvidenceFeedItem] = []
         if decision_snapshot is None:
@@ -310,6 +325,9 @@ class WorkbenchReadOnlyComposer:
                     status_classification=scheduled_status.machine_status_classification,
                 )
             )
+
+        if recommendation_learning_status is not None:
+            items.append(_recommendation_learning_feed_item(recommendation_learning_status))
 
         if historical_replay_summary:
             diagnostics = _replay_diagnostics(historical_replay_summary)
@@ -481,6 +499,7 @@ class WorkbenchReadOnlyComposer:
         readiness_report: PreV2ReadinessReport,
         scheduled_status: ScheduledEvidenceStatus | None,
         historical_replay_summary: dict[str, Any] | None,
+        recommendation_learning_status: dict[str, Any] | None = None,
     ) -> tuple[WorkbenchEvidenceSummary, ...]:
         items = [
             WorkbenchEvidenceSummary(
@@ -500,6 +519,17 @@ class WorkbenchReadOnlyComposer:
                     status=_scheduled_status_label(scheduled_status),
                     summary=_scheduled_status_summary(scheduled_status),
                     diagnostics=scheduled_status.diagnostics,
+                )
+            )
+        if recommendation_learning_status is not None:
+            status = _recommendation_learning_payload(recommendation_learning_status)
+            items.append(
+                WorkbenchEvidenceSummary(
+                    item_id="recommendation_learning",
+                    label="每日推薦學習與受控調整",
+                    status=status["status"],
+                    summary=status["summary"],
+                    diagnostics=status["diagnostics"],
                 )
             )
         if historical_replay_summary:
@@ -541,6 +571,7 @@ class WorkbenchReadOnlyComposer:
         action_items: tuple[WorkbenchActionItem, ...],
         daily_checklist: tuple[WorkbenchChecklistItem, ...],
         readiness_report: PreV2ReadinessReport,
+        recommendation_learning_status: dict[str, Any] | None = None,
     ) -> tuple[WorkbenchOperatingLoopStep, ...]:
         weekly_history = _find_readiness_item(readiness_report, "weekly_history")
         multi_day = _find_readiness_item(readiness_report, "multi_day_dry_run")
@@ -558,7 +589,7 @@ class WorkbenchReadOnlyComposer:
             if machine_action_items
             else "evidence_review"
         )
-        return (
+        steps = [
             WorkbenchOperatingLoopStep(
                 step_id="daily_start",
                 label="每日先看",
@@ -610,6 +641,23 @@ class WorkbenchReadOnlyComposer:
                 drilldown_target="evidence_review",
                 guidance="多日 dry-run 必須靠真實交易日紀錄累積；不執行 replay 補值。",
             ),
+        ]
+        if recommendation_learning_status is not None:
+            learning = _recommendation_learning_payload(recommendation_learning_status)
+            steps.append(
+                WorkbenchOperatingLoopStep(
+                    step_id="daily_recommendation_learning",
+                    label="每日推薦學習閉環",
+                    cadence="daily_after_maturity",
+                    status=learning["status"],
+                    summary=learning["summary"],
+                    source_trace="DailyRecommendationLearningRunner.latest_status",
+                    linked_item_ids=("recommendation_learning",),
+                    drilldown_target="evidence_review",
+                    guidance=learning["next_step"],
+                )
+            )
+        steps.extend([
             WorkbenchOperatingLoopStep(
                 step_id="manual_review_note",
                 label="人工覆盤註記",
@@ -635,7 +683,8 @@ class WorkbenchReadOnlyComposer:
                 drilldown_target="evidence_review",
                 guidance="這是 closeout guard，不是啟用排程或交易建議。",
             ),
-        )
+        ])
+        return tuple(steps)
 
     def _market_context(self, decision_snapshot: DecisionDeskSnapshot | None) -> dict[str, Any]:
         if decision_snapshot is None:
@@ -704,6 +753,7 @@ class WorkbenchReadOnlyComposer:
         agent_report_sample: dict[str, Any] | None,
         historical_replay_summary: dict[str, Any] | None,
         source_diagnostics: tuple[str, ...] = (),
+        recommendation_learning_status: dict[str, Any] | None = None,
     ) -> list[str]:
         warnings = [
             "Phase 1 prototype 為 research/read-only 模式，不是交易建議。",
@@ -730,6 +780,8 @@ class WorkbenchReadOnlyComposer:
                 )
             )
             warnings.extend(str(item) for item in historical_replay_summary.get("warnings", ()))
+        if recommendation_learning_status is not None:
+            warnings.extend(_recommendation_learning_payload(recommendation_learning_status)["diagnostics"])
         return _dedupe(warnings)
 
 
@@ -779,6 +831,135 @@ def _int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _recommendation_learning_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize the runner's latest status for read-only Workbench display."""
+
+    decision_receipt = payload.get("decision_receipt")
+    receipt = decision_receipt if isinstance(decision_receipt, Mapping) else {}
+    raw_status = str(payload.get("status") or "unknown").strip().lower()
+    decision = str(payload.get("decision") or receipt.get("decision") or "retain_current")
+    reason = str(
+        payload.get("decision_reason")
+        or receipt.get("reason")
+        or payload.get("reason")
+        or "recommendation_learning_status_missing_reason"
+    )
+    matured = _int(
+        payload.get(
+            "natural_matured_sample_count",
+            receipt.get("natural_matured_sample_count", 0),
+        )
+    )
+    active_evidence = payload.get("active_model_natural_evidence")
+    active_evidence = active_evidence if isinstance(active_evidence, Mapping) else {}
+    active_matured = _int(active_evidence.get("matured_sample_count", 0))
+    active_matured_dates = _int(active_evidence.get("matured_unique_decision_date_count", 0))
+    active_performance = payload.get("active_model_performance")
+    if not isinstance(active_performance, Mapping):
+        dependencies = payload.get("dependencies")
+        active_performance = (
+            dependencies.get("model_performance", {})
+            if isinstance(dependencies, Mapping) and isinstance(dependencies.get("model_performance"), Mapping)
+            else {}
+        )
+    active_performance_status = str(active_performance.get("status") or "pending")
+    active_performance_reason = str(active_performance.get("reason") or "")
+    training_rows = _int(payload.get("training_row_count", 0))
+    calibration_rows = _int(payload.get("calibration_sample_count", 0))
+    old_brier = receipt.get("old_brier_bp")
+    new_brier = receipt.get("new_brier_bp")
+    improvement = receipt.get("brier_improvement_bp")
+    gap = receipt.get("calibration_gap_bp", payload.get("calibration_gap_bp"))
+    pointer_version = receipt.get("pointer_version", payload.get("pointer_version", "n/a"))
+    active_pointer = payload.get("active_pointer")
+    active_pointer = active_pointer if isinstance(active_pointer, Mapping) else {}
+    current_version = str(
+        active_pointer.get("candidate_id")
+        or active_performance.get("active_candidate_id")
+        or (
+            receipt.get("candidate_id")
+            or payload.get("candidate_id")
+            if "active_pointer" not in payload
+            else "rule-only/current"
+        )
+        or "rule-only/current"
+    )
+    next_step = str(payload.get("next_step") or _learning_next_step(decision, reason))
+    if active_performance_status in {"failed", "drifted"}:
+        next_step = "active champion 已觸發 fault／drift；沿既有 authority rollback，修復後以新日重試。"
+    summary = (
+        f"status={raw_status}；matured_samples={matured}；"
+        f"training_rows={training_rows}；calibration_rows={calibration_rows}；"
+        f"old_brier={_display_value(old_brier)} → new_brier={_display_value(new_brier)} "
+        f"(improvement={_display_value(improvement)})；"
+        f"calibration_gap={_display_value(gap)}；decision={decision}；"
+        f"reason={reason}；current_version={current_version}；"
+        f"pointer_version={pointer_version}；active_matured_samples={active_matured} "
+        f"({active_matured_dates} dates)；active_performance={active_performance_status} "
+        f"({active_performance_reason or 'n/a'})；next_step={next_step}"
+    )
+    if (
+        raw_status in {"failed", "failed_dependency", "error"}
+        or decision == "rollback"
+        or active_performance_status in {"failed", "drifted"}
+    ):
+        display_status = "degraded"
+    elif raw_status in {"skipped_no_data", "skipped_insufficient_evidence", "missing"}:
+        display_status = "missing"
+    elif decision == "adopt":
+        display_status = "candidate"
+    elif matured < 20 or "natural" in reason or "matured" in reason:
+        display_status = "waiting_for_time"
+    else:
+        display_status = "observed"
+    diagnostics = _dedupe(
+        [
+            reason,
+            str(payload.get("data_dependency_status") or ""),
+            str(payload.get("outcome_dependency_status") or ""),
+            str(payload.get("drift_status") or ""),
+            active_performance_status,
+            active_performance_reason,
+            str(active_evidence.get("reason") or ""),
+            *(str(item) for item in payload.get("warnings", ()) or ()),
+        ]
+    )
+    return {
+        "status": display_status,
+        "summary": summary,
+        "diagnostics": tuple(item for item in diagnostics if item),
+        "next_step": next_step,
+    }
+
+
+def _recommendation_learning_feed_item(payload: Mapping[str, Any]) -> WorkbenchEvidenceFeedItem:
+    status = _recommendation_learning_payload(payload)
+    return WorkbenchEvidenceFeedItem(
+        item_id="recommendation_learning",
+        label="Daily recommendation learning / controlled adjustment",
+        status=status["status"],
+        summary=status["summary"],
+        source_trace="DailyRecommendationLearningRunner.latest_status",
+        degraded_reason=status["diagnostics"][0] if status["diagnostics"] else "none",
+        drilldown_target="evidence_review",
+        diagnostics=status["diagnostics"],
+    )
+
+
+def _display_value(value: Any) -> str:
+    return "n/a" if value is None or value == "" else str(value)
+
+
+def _learning_next_step(decision: str, reason: str) -> str:
+    if decision == "adopt":
+        return "持續收集自然 forward capture，確認 active pointer 與 consumer 可重載。"
+    if decision == "rollback":
+        return "檢查資料／drift fault 與 last-good pointer，修復後以新日重試。"
+    if "natural" in reason or "matured" in reason or "no_data" in reason:
+        return "等待新的成熟自然 forward outcomes，未達門檻前保留 current/rule-only。"
+    return "保留 current，下一個排程日重新檢查同樣本、同成本與自然成熟度。"
 
 
 def _find_status(readiness_report: PreV2ReadinessReport, item_id: str) -> str:

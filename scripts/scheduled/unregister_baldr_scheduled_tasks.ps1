@@ -21,6 +21,7 @@ $taskNames = @(
     "baldr-paper-portfolio-daily",
     "baldr-formal-pit-sidecar-postcutoff-daily",
     "baldr-formal-input-producer-daily",
+    "baldr-recommendation-calibration-learning-daily",
     "baldr-v2-2-weekly-collection",
     "baldr-evidence-working-copy-smoke-manual"
 )

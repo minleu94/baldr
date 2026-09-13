@@ -370,9 +370,11 @@ flowchart LR
 - **Dependencies**：Research / Evidence、model registry。
 - **Persistent artifacts**：model、dataset、prediction、calibration、drift、rollback metadata。
 - **Failure / degraded**：停止 shadow / rollback，不 fallback 成無版本輸出。
-- **Current status**：`CANDIDATE`，readiness scaffold only。
+- **Current status**：`CANDIDATE`；已具備 shadow-only 的每日 bounded replay／training、frozen challenger、Asia/Taipei trading-day capture、自然 maturity、active monitor、authority receipt 與 fail-closed rollback／consumer lineage reload。正式 DB／Advice 仍不受影響；正式 production source contract、可追溯 liquidity cost 與足量成熟 forward evidence 尚未滿足。
 - **Target status**：Champion / Challenger governed layer。
 - **修改正式決策**：Gate 前否；Gate 後只能經 versioned adapter。
+
+目前實作的 scheduler 順序是 05:40 forward outcome 後接 05:45 learning runner。Historical replay 僅是 training data，不能取得 natural forward evidence credit；live candidate／active capture 綁定 feature availability、freeze、artifact／manifest／policy／probability-transform lineage。自然 outcome 需用 capture 的 immutable row 與之後可得的 market close source 重新計算，且以 distinct matured decision dates 去重。`recommendation_source_contract` 會重算實際來源內容 digest、coverage 與 symbol 範圍，驗證 technical `available_at` 及 corporate action window；未調整 corporate action 只保守排除 label rows，不視為已通過。after-cost 沒有觀測成本時維持 missing；採用 active model 的成熟 post-adoption rows 只有在 label availability cutoff 前通過 identity／receipt 驗證後，才可進下一 training cycle。這些能力仍是研究／shadow custody，不是 Target 的正式 Advice promotion、broker execution 或自動改權重授權。
 
 ### 10.12 AI Research Copilot
 

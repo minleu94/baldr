@@ -81,6 +81,28 @@ class HistoricalRawSnapshot:
             raise ValueError("historical ML snapshot must remain read-only and shadow-only")
 
 
+@dataclass(frozen=True)
+class HistoricalForwardPriceWindow:
+    """Read-only raw close window used only after a feature decision cutoff."""
+
+    start_date: str
+    end_date: str
+    prices: tuple[HistoricalPriceObservation, ...]
+    market: tuple[HistoricalIndexObservation, ...]
+    source_fingerprint: str
+    query_count: int
+    source_tables: tuple[str, ...] = ("daily_prices", "market_indices")
+    query_only: bool = True
+    shadow_only: bool = True
+    production_action_allowed: bool = False
+
+    def __post_init__(self) -> None:
+        if self.source_tables != ("daily_prices", "market_indices"):
+            raise ValueError("historical forward window source whitelist mismatch")
+        if not self.query_only or not self.shadow_only or self.production_action_allowed:
+            raise ValueError("historical forward window must remain read-only and shadow-only")
+
+
 class MLHistoricalSnapshotProvider:
     """Loads bounded price/technical/market/industry history without write access."""
 
@@ -190,6 +212,102 @@ class MLHistoricalSnapshotProvider:
             decision_date=_iso_date(decision), feature_as_of_date=_iso_date(cutoff),
             prices=prices, technicals=technicals, market=market, industries=industries,
             source_fingerprint=self._fingerprint(schema, source_stat_before), query_count=query_count,
+        )
+
+    def list_trading_dates(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        symbols: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        """Return bounded stock trading dates without discovering a universe."""
+
+        source_stat_before = self.database_path.stat()
+        start = _compact_date(start_date)
+        end = _compact_date(end_date)
+        normalized_symbols = _normalized_texts(symbols, field_name="symbols")
+        with closing(self._connect()) as connection:
+            self._validate_schema(connection)
+            symbol_clause = _placeholders(normalized_symbols)
+            rows = connection.execute(
+                f'SELECT DISTINCT "日期" FROM daily_prices '
+                f'WHERE "日期" BETWEEN ? AND ? AND "證券代號" IN ({symbol_clause}) '
+                f'ORDER BY "日期"',
+                (start, end, *normalized_symbols),
+            ).fetchall()
+        source_stat_after = self.database_path.stat()
+        if (source_stat_before.st_size, source_stat_before.st_mtime_ns) != (
+            source_stat_after.st_size,
+            source_stat_after.st_mtime_ns,
+        ):
+            raise RuntimeError("historical SQLite source changed during trading-date load")
+        return tuple(_iso_date(row[0]) for row in rows)
+
+    def load_forward_price_window(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        symbols: tuple[str, ...],
+    ) -> HistoricalForwardPriceWindow:
+        """Load raw prices and benchmark rows for labels, in SQLite read-only mode."""
+
+        source_stat_before = self.database_path.stat()
+        start = _compact_date(start_date)
+        end = _compact_date(end_date)
+        normalized_symbols = _normalized_texts(symbols, field_name="symbols")
+        query_count = 0
+        with closing(self._connect()) as connection:
+            schema = self._validate_schema(connection)
+            symbol_clause = _placeholders(normalized_symbols)
+            prices = tuple(
+                HistoricalPriceObservation(
+                    symbol=str(row[0]).strip(),
+                    trading_date=_iso_date(row[1]),
+                    volume=_integer(row[2]),
+                    turnover_amount_minor=_integer(row[3]),
+                    open_price=_decimal(row[4]),
+                    high_price=_decimal(row[5]),
+                    low_price=_decimal(row[6]),
+                    close_price=_decimal(row[7]),
+                )
+                for row in connection.execute(
+                    f'SELECT "證券代號", "日期", "成交股數", "成交金額", '
+                    f'CAST("開盤價" AS TEXT), CAST("最高價" AS TEXT), '
+                    f'CAST("最低價" AS TEXT), CAST("收盤價" AS TEXT) '
+                    f'FROM daily_prices WHERE "日期" BETWEEN ? AND ? '
+                    f'AND "證券代號" IN ({symbol_clause}) ORDER BY "證券代號", "日期"',
+                    (start, end, *normalized_symbols),
+                )
+            )
+            query_count += 1
+            market = tuple(
+                HistoricalIndexObservation(
+                    index_name="market",
+                    trading_date=_iso_date(row[0]),
+                    close_value=_decimal(row[1]),
+                )
+                for row in connection.execute(
+                    'SELECT "日期", CAST(COALESCE("收盤價", "收盤指數") AS TEXT) '
+                    'FROM market_indices WHERE "日期" BETWEEN ? AND ? ORDER BY "日期"',
+                    (start, end),
+                )
+            )
+            query_count += 1
+        source_stat_after = self.database_path.stat()
+        if (source_stat_before.st_size, source_stat_before.st_mtime_ns) != (
+            source_stat_after.st_size,
+            source_stat_after.st_mtime_ns,
+        ):
+            raise RuntimeError("historical SQLite source changed during forward window load")
+        return HistoricalForwardPriceWindow(
+            start_date=_iso_date(start),
+            end_date=_iso_date(end),
+            prices=prices,
+            market=market,
+            source_fingerprint=self._fingerprint(schema, source_stat_before),
+            query_count=query_count,
         )
 
     def _connect(self) -> sqlite3.Connection:

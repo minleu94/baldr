@@ -57,6 +57,11 @@ from app_module.v4_evidence_identity import (
     build_recommendation_universe_identity,
     build_strategy_config_identity,
 )
+from app_module.recommendation_calibration_consumer import (
+    RecommendationCalibrationConsumer,
+    build_default_recommendation_calibration_consumer,
+)
+from ml_module.recommendation_probability_transform import NULL_BENCHMARK_BASELINE_ID
 
 
 class RecommendationService:
@@ -68,6 +73,7 @@ class RecommendationService:
         industry_mapper: Optional[IndustryMapper] = None,
         market_data_provider: Optional[MarketFrameProvider] = None,
         regime_detector: Optional[MarketRegimeDetector] = None,
+        calibration_consumer: RecommendationCalibrationConsumer | None = None,
     ):
         """初始化推薦服務
 
@@ -88,6 +94,12 @@ class RecommendationService:
             else DefaultRecommendationMarketDataProvider(config)
         )
         self.regime_detector = regime_detector or MarketRegimeDetector(config)
+        self.calibration_consumer = (
+            calibration_consumer
+            if calibration_consumer is not None
+            else build_default_recommendation_calibration_consumer(config)
+        )
+        self.last_calibration_projections: Dict[str, Any] = {}
         self.last_screening_matrix: List[Dict[str, Any]] = []
         self.last_excluded_candidates_json: List[Dict[str, Any]] = []
         self.last_why_not_payload_json: List[Dict[str, Any]] = []
@@ -106,6 +118,114 @@ class RecommendationService:
         self.last_exclusion_quality = "observed"
         self.last_exclusion_warnings_json = []
         self.last_run_context = {}
+        self.last_calibration_projections = {}
+
+    def _apply_recommendation_calibration(
+        self,
+        recommendations: List[RecommendationDTO],
+        *,
+        decision_date: str,
+    ) -> None:
+        """Inject the verified active pointer projection into the normal DTO path.
+
+        This is deliberately a read-only adapter.  If the pointer, artifact,
+        canonical feature vector, or data quality is unavailable, each row
+        remains rule-only and the existing recommendation score is untouched.
+        """
+
+        consumer = self.calibration_consumer
+        if consumer is None:
+            return
+        if not decision_date or not recommendations:
+            return
+        try:
+            from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
+            from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
+            from ml_module.historical_feature_builder import HistoricalFeatureBuilder
+
+            db_file = getattr(self.config, "db_file", None)
+            if db_file is None:
+                raise FileNotFoundError("recommendation calibration source database is not configured")
+            provider = MLHistoricalSnapshotProvider(db_file)
+            snapshot = provider.load(
+                decision_date=decision_date,
+                history_start_date=str(getattr(self.config, "default_start_date", "2014-01-01"))[:10],
+                symbols=tuple(sorted({str(item.stock_code) for item in recommendations})),
+                industry_index_names=(),
+            )
+            rows = HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY).compute(
+                snapshot,
+                industry_index_name_by_symbol={},
+            )
+            feature_values = {
+                row.symbol: tuple(value for _, value in row.values)
+                for row in rows
+            }
+        except Exception as exc:  # noqa: BLE001 - consumer must fail closed
+            self.last_run_context["calibration_projection_status"] = "unavailable"
+            self.last_run_context.setdefault("warnings", []).append(
+                f"calibration_feature_source_unavailable:{type(exc).__name__}"
+            )
+            for recommendation in recommendations:
+                recommendation.calibration_status = "unavailable"
+                recommendation.calibration_source = "recommendation_calibration_consumer"
+                recommendation.calibration_warnings = ["feature_vector_source_unavailable_fail_closed"]
+            return
+
+        rule_probability = {str(item.stock_code): 5_000 for item in recommendations}
+        percentiles = {
+            str(item.stock_code): int(item.score_percentile_bp)
+            for item in recommendations
+            if item.score_percentile_bp is not None
+        }
+        projections = consumer.project_many(
+            feature_values_by_symbol=feature_values,
+            rule_probability_by_symbol=rule_probability,
+            ranking_percentile_by_symbol=percentiles,
+            decision_date=decision_date,
+            data_quality="observed",
+            rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
+        )
+        self.last_calibration_projections = dict(projections)
+        self.last_run_context["calibration_projection_status"] = (
+            "active_candidate"
+            if any(item.status == "active_candidate" for item in projections.values())
+            else "rule_only"
+        )
+        self.last_run_context["calibration_rule_baseline_id"] = NULL_BENCHMARK_BASELINE_ID
+        self.last_run_context["calibration_projection_source"] = "RecommendationCalibrationConsumer"
+        self.last_run_context["calibration_projection_rows"] = {
+            code: projection.to_dict() for code, projection in sorted(projections.items())
+        }
+        for recommendation in recommendations:
+            projection = projections.get(recommendation.stock_code)
+            if projection is None:
+                continue
+            recommendation.ranking_score_bp = projection.ranking_score_bp
+            recommendation.calibrated_probability_bp = projection.calibrated_probability_bp
+            recommendation.calibrated_probability_status = projection.calibrated_probability_status
+            recommendation.after_cost_profit_probability_bp = projection.after_cost_profit_probability_bp
+            recommendation.after_cost_profit_probability_status = projection.after_cost_profit_probability_status
+            recommendation.evidence_confidence = projection.evidence_confidence
+            recommendation.sample_size = projection.sample_size
+            recommendation.cost_basis_bp = projection.cost_basis_bp
+            recommendation.calibration_model_version = projection.model_version
+            recommendation.calibration_dataset_version = projection.dataset_version
+            recommendation.calibration_horizon = projection.horizon
+            recommendation.calibration_status = projection.status
+            recommendation.calibration_source = "RecommendationCalibrationConsumer"
+            recommendation.calibration_source_trace = list(projection.source_trace)
+            recommendation.calibration_warnings = list(projection.warnings)
+            recommendation.calibration_probability_transform_id = projection.probability_transform_id
+            recommendation.calibration_probability_baseline_id = projection.probability_baseline_id
+            recommendation.calibration_probability_baseline_kind = projection.probability_baseline_kind
+            recommendation.calibration_probability_baseline_probability_bp = (
+                projection.probability_baseline_probability_bp
+            )
+            recommendation.calibration_raw_probability_bp = projection.raw_calibrated_probability_bp
+            recommendation.calibration_raw_after_cost_probability_bp = (
+                projection.raw_after_cost_profit_probability_bp
+            )
 
     def _matrix_row(
         self,
@@ -1014,6 +1134,10 @@ class RecommendationService:
         all_recommendations = [
             recommendations_by_code[code] for code in ranking_plan.selected_codes
         ]
+        self._apply_recommendation_calibration(
+            all_recommendations,
+            decision_date=decision_cutoff or latest_date_str,
+        )
         self._finalize_negative_evidence_buffers()
         return all_recommendations
 

@@ -7,7 +7,7 @@ Aggregate `register`／`register-all` 只允許在 Windows `Pacific Standard Tim
 Paper Portfolio 的 trigger 固定為 Pacific 16:15：PDT 時是台北次日 07:15、PST
 時是 08:15。adapter 以真實 Asia/Taipei 08:30 cutoff guard；兩種 offset 都會等待
 cutoff，不能把台北 09:30 開盤後時間稱為盤前。
-完整 Windows 清冊目前是 18 個每日 task 加 1 個 weekly task，共 19 個。
+完整 Windows 清冊目前是 19 個每日 task 加 1 個 weekly task，共 20 個。
 `baldr-ml-allocation-forward-daily` 使用 pinned UTF-16 XML 與獨立 preflight，
 aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unregister`
 也只會查詢並保留它，回復必須依 registration plan 的專用 delete 命令進行。
@@ -27,6 +27,7 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-ml-allocation-copilot-daily` | enabled after register | daily local time 05:20 | 執行配置型 ML promotion 評估並寫入 append-only sidecar、promotion artifact 與 `latest_status.json`。缺少、無效或未授權證據時仍成功完成每日流程，但固定輸出 `formal_oos_allowed=false`、`selected_alpha_bp=0` 與四條未通過 lane；不改寫來源資料庫或投組狀態。 |
 | `baldr-decision-evidence-capture-daily` | enabled after register | daily local time 05:25 | 依台北時間選擇最近一個**已到達**的 08:30 日曆決策日，依序確認保存 durable Decision Desk snapshot 與 Evidence Event；不再把隔日 cutoff 當成已發生資料。既有 hash／unique key 使重跑轉為 duplicate；任一步失敗即回傳失敗並保留下一次重跑能力。它不推定交易日／成熟日、不改 Rule／Advice／Portfolio 狀態，也不連接券商執行。 |
 | `baldr-forward-outcomes-daily` | enabled after register | daily local time 05:40 | 在 Decision/Evidence capture 之後，wrapper 預設只處理帶有身份契約的 `recommendation_included` 事件，並在計算前跳過缺少策略／成本／benchmark／policy／snapshot／horizon 的事件，以台北當日可見資料及固定 120 個曆日／2,500 個合格事件上限，重算 5／10／20／60 交易日 close-to-close research outcome。選取先把未完成 outcome 排到前面，再以完整 policy／snapshot identity 套用 bounded 上限，避免新事件排擠舊 60 日 pending；`health` receipt 會分類 normal completion／normal no-op／natural maturity／engineering blocker／external source missing，列出 cohort／決策日與各 horizon ready／pending／missing。可用 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換事件類型；只有 wrapper 明確傳入 `--confirm --allow-production-db-confirm` 才更新 `evidence_outcomes`；事件、推薦、Paper／Formal、模型與券商狀態不變。自然未成熟保留明確 warning／degraded；confirmed run 遇到工程 blocker 或外部來源缺失會以 `blocked`／`exit_code=2` fail closed，並留下 blocking reason／next action／recovery verification。不補未來價格、不做 historical backfill。 |
+| `baldr-recommendation-calibration-learning-daily` | enabled after register | daily local time 05:45 | 接續 05:40 forward outcome source，執行 bounded、read-only 的 recommendation calibration learning loop。若未設定 `RECOMMENDATION_LEARNING_SYMBOLS`，只會讀取同日已保存的 scheduled recommendation snapshot 明確股票群組，不做 universe discovery；replay 使用 latest bounded decision-date window，讓新成熟資料可進入下一 training cycle。candidate 一次 freeze，之後每日 live capture 只保存當下 feature／candidate／active champion identity；自然成熟由可驗證 capture + market close source 產生，缺 observed liquidity cost 時 after-cost 維度保持 missing。promotion 沿 `baldr-ml-promotion-authority-daily` authority family，固定 distinct decision-date／Brier／gap／probability-cap／cooldown gates；不足、無改善、drift 或來源故障只保留 current/rule-only，失敗會寫 recoverable attempt，成功 receipt 才鎖定同日冪等。輸出位於 `OUTPUT_ROOT/recommendation_learning/`；永遠不寫 recommendation result、evidence DB、Portfolio、Formal 或 broker state。非 Asia/Taipei 交易日明確跳過 live capture。 |
 | `baldr-paper-portfolio-daily` | enabled after register | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，adapter guard 至 08:30） | 由 `run_paper_portfolio_daily_isolated.py` 先以 D 槽 snapshot 的 SQLite read-only consistent backup 建立 repository state；兩種 offset 都等待真實台北 08:30，再 append preopen/T-1 估值 snapshot。之後 D snapshot 永遠只讀，EOD 與 Formal 共用 repository state。盤前只以 `mode=ro/query_only` 讀市場 SQLite 與 EOD ledger；不覆寫既有 snapshot、不把 snapshot 當成交、不自動調倉、不修改 Advice，也不具券商執行能力。 |
 | `baldr-ml-allocation-forward-daily` | registered by dedicated XML | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，等待 Asia/Taipei 08:30，08:35 後 fail closed） | 只執行 repository-isolated、candidate-only ML forward shadow。每日 config producer 依 offline official calendar、單一交易日 freshness、archive custody 與固定 V2 release manifest hash 建立 create-only config；child 必須保留完整 outer payload，`forward_credit_granted=false`。不寫市場 SQLite、不下單、不改正式 Paper／Formal 狀態；註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`，aggregate registration 不會替換其設定。 |
 | `baldr-pit-sector-membership-preopen-capture-daily` | enabled after dedicated register | daily local time 16:00（PDT 台北 07:00；PST 台北 08:00） | 在台北 08:30 前以官方 TWSE／TPEx response completion timestamp 建立 current-day PIT machine candidate，保存 raw custody、machine consumer readback 與 durable archive；同一 task 會先重驗當日獨立 denominator，缺少時自動以 data.gov dataset/resource、官方 Swagger 與授權文件建立 bounded create-only refresh；來源失敗會保留具體 status 並讓 sidecar 下輪重試。若 clock 或 response 越過 cutoff，fail closed，不建立可被當日 handoff 消費的 archive。 |
@@ -675,6 +676,70 @@ Recommendation snapshot:
 ```
 
 The recommendation snapshot status includes `result_id`, `recommendations_count`, `screening_matrix_rows`, `why_not_payload_rows`, `liquidity_gate_payload_rows`, `writes_recommendation_result`, `writes_evidence_db`, `auto_trading`, and `lifecycle_action`.
+
+Recommendation calibration learning (shadow-only):
+
+```text
+baldr-recommendation-calibration-learning-daily
+  DAILY 05:45 Taipei local date
+  cmd.exe /c "<repo>\scripts\scheduled\run_recommendation_calibration_learning.cmd"
+```
+
+這個 task 接續 05:40 的 `baldr-forward-outcomes-daily`。canonical entrypoint 是
+`scripts\scheduled\run_daily_recommendation_learning.py`；它以 SQLite
+`mode=ro`／`PRAGMA query_only=ON` 讀取 bounded historical training rows、當日
+candidate／active capture 與真正成熟的 forward outcomes，只把 versioned dataset、candidate、
+evidence、authority receipt 與 fail-closed pointer 寫入隔離的
+`OUTPUT_ROOT\recommendation_learning\`。它不寫 `recommendation`、`evidence_outcomes`、
+Portfolio、Formal、broker 或正式推薦權重。
+
+Windows wrapper 只接受明確的 `BALDR_PYTHON`，或 repository
+`.venv\Scripts\python.exe`；兩者皆不存在時直接 fail closed，不退回 PATH 的未治理
+`python`。正式整合到 `C:\Projects\PythonProjects\technical_analysis` 後，應確認
+`C:\Projects\PythonProjects\technical_analysis\.venv\Scripts\python.exe` 存在，或在
+Task Scheduler service environment 明確設定 `BALDR_PYTHON`，並從 wrapper log 的
+`Governed Python` 行核對實際 interpreter。
+
+若未設定 `RECOMMENDATION_LEARNING_SYMBOLS`，wrapper 只讀同日 scheduled recommendation
+snapshot 已明確保存的 symbol cohort；不做 universe discovery。`latest_eligible_dates` 只限制
+bounded replay 選取，不能把 historical replay 當 natural forward evidence。candidate freeze
+後，每日 live capture 會保存 feature、candidate／active identity、manifest／artifact／lineage
+hash；active monitor 與 challenger 分開，當日新 evidence 成熟後會重新檢查 active performance，
+因此當天達到 20 個不同 decision dates 且 breach drift gate 時可立即 rollback，不等隔日。
+
+`recommendation_source_contract` 若存在，service 不信任宣告的 `verified` bool：會重算
+symbol-scoped 實際來源 rows 的 canonical digest、期間與 symbol coverage，並驗證 feature builder
+實際使用的 technical row `available_at <= decision`。corporate action source 需有可讀實際
+records、有效 factor、coverage 與一致 digest；raw label window 遇 non-unit action 且沒有
+adjusted-price custody 時，受影響列保守排除並保留 blocker。正式 DB 缺 contract／來源時仍可
+建立 research training，但 receipt 必須揭露 source blocker。
+
+after-cost target 只使用有來源的 `evidence_outcomes.liquidity_cost_bp`。成本缺失時 target、
+after-cost model output 與 consumer projection 保持 missing；成本存在時使用獨立
+`after_cost_null_benchmark_50pct_v1`／5000 bp baseline。adopted active model 的 post-adoption
+matured rows 只有在 label availability cutoff 前成熟並通過 identity／receipt 驗證後，才可進
+下一個 training cycle。
+
+主要輸出：
+
+```text
+<OUTPUT_ROOT>\recommendation_learning\latest_status.json
+<OUTPUT_ROOT>\recommendation_learning\runs\YYYY-MM-DD\run_receipt.json
+<OUTPUT_ROOT>\recommendation_learning\datasets\<dataset_id>\dataset.json
+<OUTPUT_ROOT>\recommendation_learning\challenger\current.json
+<OUTPUT_ROOT>\recommendation_learning\captures\YYYY-MM-DD\<candidate_id>.json
+<OUTPUT_ROOT>\recommendation_learning\active_captures\YYYY-MM-DD\<candidate_id>.json
+<OUTPUT_ROOT>\recommendation_learning\evidence\<candidate_id>\YYYY-MM-DD.json
+<OUTPUT_ROOT>\recommendation_learning\active_evidence\<candidate_id>\YYYY-MM-DD.json
+<OUTPUT_ROOT>\recommendation_learning\recommendation-calibration-active-pointer.json
+```
+
+`pending` 只表示等待自然 maturity／樣本門檻；`retain_current`／`rule_only` 表示 authority
+未通過；`adopt` 仍是 shadow consumer 的 versioned projection，不是正式 Recommendation
+變更；`rollback` 會恢復 previous candidate 或 explicit rule-only。pointer、artifact、manifest、
+lineage、policy、source contract 或 evidence receipt 損壞時 fail closed。建議以明確隔離的
+output root 先執行 bounded CLI；非 Asia/Taipei official trading day 會跳過 live capture，
+不會偽造交易日。
 
 Evidence dry-run:
 

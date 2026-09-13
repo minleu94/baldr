@@ -601,3 +601,42 @@ def test_workbench_payload_does_not_present_buy_sell_recommendations() -> None:
     assert "買進" not in rendered
     assert "賣出" not in rendered
     assert "不是交易建議" in rendered
+
+
+def test_composer_surfaces_daily_recommendation_learning_receipt_without_promoting_it_to_formal_advice() -> None:
+    dashboard = WorkbenchReadOnlyComposer().compose(
+        decision_snapshot=_decision_snapshot(),
+        readiness_report=_readiness_report(),
+        recommendation_learning_status={
+            "status": "completed",
+            "decision": "retain_current",
+            "decision_reason": "natural_forward_evidence_insufficient",
+            "candidate_id": "candidate-20260912",
+            "training_row_count": 96,
+            "calibration_sample_count": 20,
+            "natural_matured_sample_count": 0,
+            "calibration_gap_bp": 320,
+            "next_step": "等待新的成熟自然 forward outcomes。",
+            "decision_receipt": {
+                "pointer_version": 4,
+                "old_brier_bp": 2100,
+                "new_brier_bp": 1900,
+                "brier_improvement_bp": 200,
+                "calibration_gap_bp": 320,
+                "candidate_id": "candidate-20260912",
+            },
+        },
+    )
+
+    feed = {item.item_id: item for item in dashboard.background_evidence_feed}
+    evidence = {item.item_id: item for item in dashboard.evidence_summary}
+    learning_feed = feed["recommendation_learning"]
+    assert learning_feed.status == "waiting_for_time"
+    assert "matured_samples=0" in learning_feed.summary
+    assert "old_brier=2100 → new_brier=1900" in learning_feed.summary
+    assert "decision=retain_current" in learning_feed.summary
+    assert "current_version=candidate-20260912" in learning_feed.summary
+    assert evidence["recommendation_learning"].status == "waiting_for_time"
+    step = next(item for item in dashboard.operating_loop_steps if item.step_id == "daily_recommendation_learning")
+    assert step.linked_item_ids == ("recommendation_learning",)
+    assert "等待新的成熟" in step.guidance

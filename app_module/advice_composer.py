@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from app_module.advice_dtos import (
     AdviceAction,
@@ -40,6 +40,7 @@ class AdviceComposer:
         mode: AdviceMode,
         evidence_warnings: Sequence[str] = (),
         current_weights_bp: Mapping[str, int] | None = None,
+        calibration_by_stock_code: Mapping[str, object] | None = None,
     ) -> AdviceDashboardDTO:
         decision_date_text = self._date_text(decision_date, "decision_date")
         data_as_of_date_text = self._date_text(data_as_of_date, "data_as_of_date")
@@ -58,7 +59,13 @@ class AdviceComposer:
         warning_values = self._strings(evidence_warnings, "evidence_warnings")
         current_weights_known = current_weights_bp is not None
         current_weights = self._weights(current_weights_bp or {})
+        calibration_by_stock = dict(calibration_by_stock_code or {})
         result_id, config, recommendation_rows = self._recommendation_payload(recommendations)
+        # A normal RecommendationService run persists the projection fields on
+        # each RecommendationDTO.  Reuse that exact object for portfolio rows
+        # as well, so Advice does not require a parallel caller-only mapping.
+        for recommendation in recommendation_rows:
+            calibration_by_stock.setdefault(recommendation.stock_code, recommendation)
         legacy_allocations = (
             portfolio_result.allocations
             if isinstance(portfolio_result, PortfolioConstructionResult)
@@ -120,6 +127,7 @@ class AdviceComposer:
                     warnings=warning_values,
                     strategy_version=self._string_or_empty(config.get("strategy_version")),
                     market_regime=self._string_or_empty(config.get("market_regime") or config.get("regime")),
+                    calibration=calibration_by_stock.get(recommendation.stock_code),
                 )
                 for recommendation in recommendation_rows
             )
@@ -132,6 +140,7 @@ class AdviceComposer:
                 data_as_of_date=data_as_of_date_text,
                 evidence_quality=evidence_quality or "",
                 warnings=warning_values,
+                calibration=calibration_by_stock.get(allocation.stock_code),
             )
             for allocation in legacy_allocations
         )
@@ -144,6 +153,7 @@ class AdviceComposer:
                     data_as_of_date=data_as_of_date_text,
                     evidence_quality=evidence_quality or "",
                     warnings=warning_values,
+                    calibration=calibration_by_stock.get(allocation.stock_code),
                 )
                 for allocation in allocation_v2_rows
             )
@@ -186,6 +196,7 @@ class AdviceComposer:
         warnings: tuple[str, ...],
         strategy_version: str,
         market_regime: str,
+        calibration: object | None,
     ) -> RecommendationAdviceDTO:
         decision = self._policy.decide(
             mode=mode,
@@ -199,7 +210,14 @@ class AdviceComposer:
             cash_reserve_bp=cash_reserve_bp,
             target_weight_bp=target_weight_bp,
         )
-        source_trace = ("RecommendationResultDTO",) + ((str(result_id),) if result_id else ())
+        calibration_fields = self._calibration_fields(
+            calibration if calibration is not None else recommendation
+        )
+        source_trace = (
+            ("RecommendationResultDTO",)
+            + ((str(result_id),) if result_id else ())
+            + tuple(calibration_fields.pop("_source_trace", ()))
+        )
         risk_reasons = self._recommendation_risk_reasons(
             decision_reasons=decision.reasons,
             evidence_quality=evidence_quality,
@@ -223,6 +241,7 @@ class AdviceComposer:
             execution_feasibility=self._feasibility_text(execution_feasible),
             source_trace=source_trace,
             refusal_reasons=decision.reasons,
+            **calibration_fields,
         )
 
     @staticmethod
@@ -249,6 +268,7 @@ class AdviceComposer:
         data_as_of_date: str,
         evidence_quality: str,
         warnings: tuple[str, ...],
+        calibration: object | None,
     ) -> PortfolioAdviceDTO:
         stock_code = allocation.stock_code
         target_weight_bp = self._bp(allocation.constrained_weight_bp, "target_weight_bp")
@@ -258,7 +278,12 @@ class AdviceComposer:
             None if current_weight_bp is None else target_weight_bp - current_weight_bp
         )
         diagnostics = tuple(allocation.diagnostics) + (("current_weight_missing",) if missing_current_weight else ())
-        source_trace = ("PortfolioConstructionResult",) + ((str(result_id),) if result_id else ())
+        calibration_fields = self._calibration_fields(calibration)
+        source_trace = (
+            ("PortfolioConstructionResult",)
+            + ((str(result_id),) if result_id else ())
+            + tuple(calibration_fields.pop("_source_trace", ()))
+        )
         action, reasons = self._allocation_action(
             target_weight_bp=target_weight_bp,
             current_weight_bp=current_weight_bp,
@@ -288,6 +313,7 @@ class AdviceComposer:
             source_trace=source_trace,
             review_date=data_as_of_date,
             diagnostics=diagnostics,
+            **calibration_fields,
         )
 
     def _portfolio_advice_v2(
@@ -298,6 +324,7 @@ class AdviceComposer:
         data_as_of_date: str,
         evidence_quality: str,
         warnings: tuple[str, ...],
+        calibration: object | None,
     ) -> PortfolioAdviceDTO:
         current_weight_bp = allocation.current_weight_bp
         executable_weight_bp = allocation.executable_weight_bp
@@ -309,12 +336,14 @@ class AdviceComposer:
             executable_weight_bp=executable_weight_bp,
             diagnostics=diagnostics,
         )
+        calibration_fields = self._calibration_fields(calibration)
         source_trace = (
             "PortfolioAllocationResultV2",
             result.dataset_identity_hash,
             result.dataset_manifest_file_hash,
             result.model_hash,
             result.policy_hash,
+            *tuple(calibration_fields.pop("_source_trace", ())),
         )
         risk_reasons = tuple(
             diagnostic
@@ -352,7 +381,74 @@ class AdviceComposer:
             source_trace=source_trace,
             review_date=data_as_of_date,
             diagnostics=diagnostics,
+            **calibration_fields,
         )
+
+    @staticmethod
+    def _calibration_fields(calibration: object | None) -> dict[str, Any]:
+        """Map a verified consumer projection into Advice without doing calculations."""
+
+        if calibration is None:
+            return {}
+
+        def value(name: str, default: Any = None) -> Any:
+            if isinstance(calibration, Mapping):
+                return calibration.get(name, default)
+            return getattr(calibration, name, default)
+
+        source_trace = value("source_trace", value("calibration_source_trace", ()))
+        if not isinstance(source_trace, (list, tuple)):
+            source_trace = ()
+        calibration_source = str(
+            value("calibration_source", value("source", "")) or ""
+        )
+        if not calibration_source and source_trace:
+            calibration_source = str(source_trace[0])
+        return {
+            "ranking_score_bp": value("ranking_score_bp"),
+            "ranking_percentile_bp": value("ranking_percentile_bp"),
+            "ranking_method": str(value("ranking_method", "") or ""),
+            "confidence_tier": str(value("confidence_tier", "") or ""),
+            "calibrated_probability_bp": value("calibrated_probability_bp"),
+            "calibrated_probability_status": str(value("calibrated_probability_status", "research") or "research"),
+            "after_cost_profit_probability_bp": value("after_cost_profit_probability_bp"),
+            "after_cost_profit_probability_status": str(value("after_cost_profit_probability_status", "research") or "research"),
+            "evidence_confidence": str(value("evidence_confidence", "") or ""),
+            "sample_size": value("sample_size"),
+            "cost_basis_bp": value("cost_basis_bp"),
+            "calibration_model_version": str(
+                value("model_version", value("calibration_model_version", "")) or ""
+            ),
+            "calibration_dataset_version": str(
+                value("dataset_version", value("calibration_dataset_version", "")) or ""
+            ),
+            "calibration_source": calibration_source,
+            "calibration_probability_transform_id": str(
+                value("probability_transform_id", value("calibration_probability_transform_id", "")) or ""
+            ),
+            "calibration_probability_baseline_id": str(
+                value("probability_baseline_id", value("calibration_probability_baseline_id", "")) or ""
+            ),
+            "calibration_probability_baseline_kind": str(
+                value("probability_baseline_kind", value("calibration_probability_baseline_kind", "")) or ""
+            ),
+            "calibration_probability_baseline_probability_bp": value(
+                "probability_baseline_probability_bp",
+                value("calibration_probability_baseline_probability_bp"),
+            ),
+            "calibration_raw_probability_bp": value(
+                "raw_calibrated_probability_bp",
+                value("calibration_raw_probability_bp"),
+            ),
+            "calibration_raw_after_cost_probability_bp": value(
+                "raw_after_cost_profit_probability_bp",
+                value("calibration_raw_after_cost_probability_bp"),
+            ),
+            "holding_horizon": str(
+                value("horizon", value("holding_horizon", value("calibration_horizon", ""))) or ""
+            ),
+            "_source_trace": tuple(str(item) for item in source_trace),
+        }
 
     @staticmethod
     def _allocation_action(

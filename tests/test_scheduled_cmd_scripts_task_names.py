@@ -22,6 +22,7 @@ TASK_NAMES = (
     "baldr-ml-allocation-copilot-daily",
     "baldr-decision-evidence-capture-daily",
     "baldr-forward-outcomes-daily",
+    "baldr-recommendation-calibration-learning-daily",
     "baldr-paper-execution-eod-replay-daily",
     "baldr-pit-sector-membership-preopen-capture-daily",
     "baldr-paper-portfolio-daily",
@@ -50,6 +51,7 @@ def test_register_cmd_contains_task_names_and_times() -> None:
     assert "05:20" in text
     assert "05:25" in text
     assert "05:40" in text
+    assert "05:45" in text
     assert "06:00" in text
     assert "16:00" in text
     assert "16:15" in text
@@ -70,6 +72,7 @@ def test_register_cmd_contains_task_names_and_times() -> None:
     assert "run_ml_promotion_authority.cmd" in text
     assert "run_decision_evidence_capture.cmd" in text
     assert "run_forward_outcomes_daily.cmd" in text
+    assert "run_recommendation_calibration_learning.cmd" in text
     assert "run_paper_portfolio_daily.cmd" in text
     assert "register_paper_portfolio_task.cmd" in text
     assert "run_paper_execution_daily_isolated.cmd" in text
@@ -114,6 +117,7 @@ def test_register_powershell_defines_all_daily_and_weekly_tasks() -> None:
         "MLAllocationAt",
         "DecisionEvidenceAt",
         "ForwardOutcomeAt",
+        "RecommendationCalibrationLearningAt",
         "PaperPortfolioAt",
         "PaperExecutionAt",
         "PitPreopenAt",
@@ -181,7 +185,7 @@ def test_query_cmd_returns_nonzero_when_a_task_is_missing(tmp_path: Path) -> Non
 
     assert result.returncode == 1
     assert "Task not found: baldr-ml-allocation-copilot-daily" in result.stdout
-    assert "1 of 19 task(s) missing or unavailable" in result.stdout
+    assert "1 of 20 task(s) missing or unavailable" in result.stdout
 
 
 def test_query_cmd_returns_zero_when_all_tasks_exist(tmp_path: Path) -> None:
@@ -205,7 +209,7 @@ def test_query_cmd_returns_zero_when_all_tasks_exist(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "all 19 task(s) are available" in result.stdout
+    assert "all 20 task(s) are available" in result.stdout
 
 
 def test_weekly_register_creates_only_the_sunday_sidecar_collection_task() -> None:

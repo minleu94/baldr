@@ -30,6 +30,26 @@ class WatchlistAnalysisDTO:
     sample_size: int | None = None
     score_percentile_bp: int | None = None
     ranking_method: str = ""
+    calibrated_probability_bp: int | None = None
+    calibrated_probability_status: str = "unavailable"
+    after_cost_profit_probability_bp: int | None = None
+    after_cost_profit_probability_status: str = "unavailable"
+    confidence_tier: str = ""
+    evidence_confidence: str = ""
+    calibration_model_version: str = ""
+    calibration_dataset_version: str = ""
+    calibration_horizon: str = ""
+    calibration_status: str = "unavailable"
+    calibration_source: str = ""
+    calibration_source_trace: tuple[str, ...] = ()
+    calibration_warnings: tuple[str, ...] = ()
+    cost_basis_bp: int | None = None
+    calibration_probability_transform_id: str = ""
+    calibration_probability_baseline_id: str = ""
+    calibration_probability_baseline_kind: str = ""
+    calibration_probability_baseline_probability_bp: int | None = None
+    calibration_raw_probability_bp: int | None = None
+    calibration_raw_after_cost_probability_bp: int | None = None
 
 
 class WatchlistAnalysisService:
@@ -123,9 +143,36 @@ class WatchlistAnalysisService:
                     profile_version=profile_version,
                     source_id=source_lineage_id,
                     source_kind=source_kind,
-                    sample_size=recommendation.eligible_universe_size,
+                    sample_size=(
+                        recommendation.sample_size
+                        if recommendation.sample_size is not None
+                        else recommendation.eligible_universe_size
+                    ),
                     score_percentile_bp=recommendation.score_percentile_bp,
                     ranking_method=str(recommendation.ranking_method or ""),
+                    calibrated_probability_bp=recommendation.calibrated_probability_bp,
+                    calibrated_probability_status=recommendation.calibrated_probability_status,
+                    after_cost_profit_probability_bp=recommendation.after_cost_profit_probability_bp,
+                    after_cost_profit_probability_status=recommendation.after_cost_profit_probability_status,
+                    evidence_confidence=recommendation.evidence_confidence,
+                    calibration_model_version=recommendation.calibration_model_version,
+                    calibration_dataset_version=recommendation.calibration_dataset_version,
+                    calibration_horizon=recommendation.calibration_horizon,
+                    calibration_status=recommendation.calibration_status,
+                    calibration_source=recommendation.calibration_source,
+                    calibration_source_trace=tuple(recommendation.calibration_source_trace),
+                    calibration_warnings=tuple(recommendation.calibration_warnings),
+                    cost_basis_bp=recommendation.cost_basis_bp,
+                    calibration_probability_transform_id=recommendation.calibration_probability_transform_id,
+                    calibration_probability_baseline_id=recommendation.calibration_probability_baseline_id,
+                    calibration_probability_baseline_kind=recommendation.calibration_probability_baseline_kind,
+                    calibration_probability_baseline_probability_bp=(
+                        recommendation.calibration_probability_baseline_probability_bp
+                    ),
+                    calibration_raw_probability_bp=recommendation.calibration_raw_probability_bp,
+                    calibration_raw_after_cost_probability_bp=(
+                        recommendation.calibration_raw_after_cost_probability_bp
+                    ),
                 )
         return WatchlistAnalysisDTO(
             stock_code,

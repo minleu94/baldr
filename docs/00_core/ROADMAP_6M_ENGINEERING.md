@@ -8,7 +8,7 @@
 
 > **2026-07-13 系統整合校正**：跨流 contracts、唯讀正式資料 smoke、Dashboard／Broker latency 與 pure closeout verifier 已完成工程驗證。Gate 2 真實 forward evidence、Gate 3 source／license acceptance、Gate 7 formal OOS、shadow-day 累積與 promotion review 均仍是 external pending，不能由本次工程測試折抵。
 >
-> **最後更新**：2026-09-06
+> **最後更新**：2026-09-13
 > **定位**：本文件是未來六個月工程執行的 scoped authority，將 [PRODUCT_ROADMAP_POST_REFACTOR.md](PRODUCT_ROADMAP_POST_REFACTOR.md) 轉成可交付、可測試、可回滾的 Gate。
 > **現況**：目前完成狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。既有 V3.0 engineering candidate、read-only Workbench、candidate source readiness 或 simulated phase progress 不自動折抵本 Roadmap 的產品 Gate。
 > **版本 companion**：產品成熟度版號見 [VERSION_ROADMAP_V2_1_TO_V4_0.md](VERSION_ROADMAP_V2_1_TO_V4_0.md)。
@@ -471,6 +471,20 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
   cleanup custody／tombstone 見
   [ML Release v4 Storage Retention Cleanup](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
 
+### 2026-09-13 V4.2 每日推薦 calibration engineering closeout
+
+- 本次已授權的 recommendation calibration 每日自動學習／受控 shadow 調整已完成工程閉環：
+  bounded replay／training、frozen challenger、當日 prediction capture、自然成熟 outcome、
+  same-sample authority、active champion monitor／rollback、source contract 實際內容驗證與
+  after-cost／lineage custody 均已接線並有 focused regression。
+- 05:45 learning wrapper 排在 05:40 forward outcomes 之後，週末／官方休市日由
+  `OfficialTradingCalendar` skip，不將 historical replay 當 natural evidence；輸出只落隔離
+  shadow root。這是已授權的 learning engineering path，不是新的 owner approval request。
+- 本 worktree 的 registration 只做 DryRun；實機 Windows Task Scheduler 註冊待父任務整合審核後
+  作為部署步驟執行。正式 Recommendation／Portfolio allocation promotion、broker execution、
+  Formal evidence credit 與 production source acceptance 仍維持 external pending，符合本 Gate
+  原有「shadow output 不進正式決策層」邊界。
+
 ### Entry Conditions
 
 - Gate 5 對 rule score、bucket、component、label 與 metric 已可判讀。
@@ -527,6 +541,10 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
 
 ## 更新記錄
 
+- 2026-09-13：完成 V4.2 每日 recommendation calibration shadow learning／controlled adjustment
+  engineering loop、active monitor／rollback、實際 source contract／availability／corporate-action／
+  after-cost gates、05:45 wrapper 與 QA；明確保留 formal allocation、broker 與 production evidence
+  external gates，實機 scheduler registration 留待整合後部署。
 - 2026-09-06：將八卡工程增量映射到既有 Gate，保留真實 fills、來源接受、自然時間、具名 review 及正式遷移邊界。
 
 - 2026-08-29：完成整體 Gate rebaseline 與 owner-authorized ML release_v4 retention cleanup 紀錄；三個主要 root 釋放約 `403.95 GiB`、D free 約 `410.31 GiB`，各保留 6 個完整 PIT／Direct／OOC run 與有效 current pointer。這解除實體 headroom blocker，但不改 Evidence credit、P0 acceptance、Paper fills、Formal 0/3、alpha 0、scheduler／broker 或 technical production canary Gate；cleanup 前的 6.56 GiB 條目保留作歷史。

@@ -81,10 +81,24 @@ def build_decision_service_composition(
     regime_service = constructors["RegimeService"](
         config, regime_detector=regime_detector
     )
+    recommendation_kwargs: dict[str, Any] = {
+        "industry_mapper": mapper,
+        "regime_detector": recommendation_detector,
+    }
+    # The normal application composition explicitly injects the read-only
+    # calibration consumer.  Test/custom service constructors keep the legacy
+    # dependency contract and may opt in themselves.
+    if dependencies is None:
+        from app_module.recommendation_calibration_consumer import (
+            build_default_recommendation_calibration_consumer,
+        )
+
+        calibration_consumer = build_default_recommendation_calibration_consumer(config)
+        if calibration_consumer is not None:
+            recommendation_kwargs["calibration_consumer"] = calibration_consumer
     recommendation_service = constructors["RecommendationService"](
         config,
-        industry_mapper=mapper,
-        regime_detector=recommendation_detector,
+        **recommendation_kwargs,
     )
     return DecisionServiceComposition(
         config=config,

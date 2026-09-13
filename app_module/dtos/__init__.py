@@ -46,10 +46,34 @@ class RecommendationDTO:
     eligible_universe_date: Optional[str] = None
     ranking_method: Optional[str] = None
     threshold_mode: str = "fixed"
+    # 受控 recommendation calibration projection；缺值代表 rule-only/unavailable。
+    ranking_score_bp: Optional[int] = None
+    calibrated_probability_bp: Optional[int] = None
+    calibrated_probability_status: str = "unavailable"
+    after_cost_profit_probability_bp: Optional[int] = None
+    after_cost_profit_probability_status: str = "unavailable"
+    evidence_confidence: str = ""
+    sample_size: Optional[int] = None
+    cost_basis_bp: Optional[int] = None
+    calibration_model_version: str = ""
+    calibration_dataset_version: str = ""
+    calibration_horizon: str = ""
+    calibration_status: str = "unavailable"
+    calibration_source: str = ""
+    calibration_warnings: List[str] = field(default_factory=list)
+    calibration_source_trace: List[str] = field(default_factory=list)
+    # 保留 consumer 的 effective probability lineage，讓下游 Advice／Portfolio／呈現
+    # 可以辨識實際送達值、raw 值與遞迴 cap 的基準；缺值仍代表舊版 rule-only 資料。
+    calibration_probability_transform_id: str = ""
+    calibration_probability_baseline_id: str = ""
+    calibration_probability_baseline_kind: str = ""
+    calibration_probability_baseline_probability_bp: Optional[int] = None
+    calibration_raw_probability_bp: Optional[int] = None
+    calibration_raw_after_cost_probability_bp: Optional[int] = None
     
     def to_dict(self) -> dict:
         """轉換為字典"""
-        result = {
+        result: dict[str, Any] = {
             '證券代號': self.stock_code,
             '證券名稱': self.stock_name,
             '收盤價': self.close_price,
@@ -67,6 +91,29 @@ class RecommendationDTO:
             'ranking_method': self.ranking_method,
             'threshold_mode': self.threshold_mode
         }
+        result.update({
+            'ranking_score_bp': self.ranking_score_bp,
+            'calibrated_probability_bp': self.calibrated_probability_bp,
+            'calibrated_probability_status': self.calibrated_probability_status,
+            'after_cost_profit_probability_bp': self.after_cost_profit_probability_bp,
+            'after_cost_profit_probability_status': self.after_cost_profit_probability_status,
+            'evidence_confidence': self.evidence_confidence,
+            'sample_size': self.sample_size,
+            'cost_basis_bp': self.cost_basis_bp,
+            'calibration_model_version': self.calibration_model_version,
+            'calibration_dataset_version': self.calibration_dataset_version,
+            'calibration_horizon': self.calibration_horizon,
+            'calibration_status': self.calibration_status,
+            'calibration_source': self.calibration_source,
+            'calibration_warnings': list(self.calibration_warnings),
+            'calibration_source_trace': list(self.calibration_source_trace),
+            'calibration_probability_transform_id': self.calibration_probability_transform_id,
+            'calibration_probability_baseline_id': self.calibration_probability_baseline_id,
+            'calibration_probability_baseline_kind': self.calibration_probability_baseline_kind,
+            'calibration_probability_baseline_probability_bp': self.calibration_probability_baseline_probability_bp,
+            'calibration_raw_probability_bp': self.calibration_raw_probability_bp,
+            'calibration_raw_after_cost_probability_bp': self.calibration_raw_after_cost_probability_bp,
+        })
         if self.threshold_mode == "quantile":
             result['百分位'] = f"{self.score_percentile_bp / 100:.2f}%" if self.score_percentile_bp is not None else "N/A"
             result['母體數'] = self.eligible_universe_size if self.eligible_universe_size is not None else "N/A"
@@ -117,7 +164,36 @@ class RecommendationDTO:
             eligible_universe_size=eligible_universe_size,
             eligible_universe_date=eligible_universe_date,
             ranking_method=ranking_method,
-            threshold_mode=threshold_mode
+            threshold_mode=threshold_mode,
+            ranking_score_bp=data.get('ranking_score_bp'),
+            calibrated_probability_bp=data.get('calibrated_probability_bp'),
+            calibrated_probability_status=data.get('calibrated_probability_status', 'unavailable'),
+            after_cost_profit_probability_bp=data.get('after_cost_profit_probability_bp'),
+            after_cost_profit_probability_status=data.get('after_cost_profit_probability_status', 'unavailable'),
+            evidence_confidence=str(data.get('evidence_confidence', '') or ''),
+            sample_size=data.get('sample_size'),
+            cost_basis_bp=data.get('cost_basis_bp'),
+            calibration_model_version=str(data.get('calibration_model_version', '') or ''),
+            calibration_dataset_version=str(data.get('calibration_dataset_version', '') or ''),
+            calibration_horizon=str(data.get('calibration_horizon', '') or ''),
+            calibration_status=str(data.get('calibration_status', 'unavailable') or 'unavailable'),
+            calibration_source=str(data.get('calibration_source', '') or ''),
+            calibration_warnings=[str(item) for item in (data.get('calibration_warnings') or [])],
+            calibration_source_trace=[str(item) for item in (data.get('calibration_source_trace') or [])],
+            calibration_probability_transform_id=str(
+                data.get('calibration_probability_transform_id', '') or ''
+            ),
+            calibration_probability_baseline_id=str(
+                data.get('calibration_probability_baseline_id', '') or ''
+            ),
+            calibration_probability_baseline_kind=str(
+                data.get('calibration_probability_baseline_kind', '') or ''
+            ),
+            calibration_probability_baseline_probability_bp=data.get(
+                'calibration_probability_baseline_probability_bp'
+            ),
+            calibration_raw_probability_bp=data.get('calibration_raw_probability_bp'),
+            calibration_raw_after_cost_probability_bp=data.get('calibration_raw_after_cost_probability_bp'),
         )
 
 

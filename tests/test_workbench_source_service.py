@@ -477,3 +477,38 @@ def test_workbench_source_service_surfaces_replay_quality_disclosures_without_re
     assert "pending_future_data:91488" in replay_diagnostics
     assert "replay_direction_assessment" in replay_diagnostics
     assert "phase0_gate_not_satisfied" in replay_diagnostics
+
+
+def test_workbench_source_service_reads_daily_learning_latest_status_as_read_only_evidence(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    record_path = tmp_path / "multi-day.md"
+    _multi_day_record(record_path, rows=0)
+    learning_path = Path(config.output_root) / "recommendation_learning" / "latest_status.json"
+    learning_path.parent.mkdir(parents=True, exist_ok=True)
+    learning_path.write_text(
+        json.dumps(
+            {
+                "status": "skipped_no_data",
+                "decision": "retain_current",
+                "decision_reason": "no_new_matured_or_historical_rows",
+                "natural_matured_sample_count": 0,
+                "next_step": "等待新的成熟自然 forward outcomes。",
+                "decision_receipt": {"pointer_version": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = WorkbenchSourceService(config, evidence_db_path=tmp_path / "missing.db").inspect(
+        decision_date="2026-07-06",
+        multi_day_record_path=record_path,
+    ).to_dict()
+
+    feed = {item["item_id"]: item for item in payload["background_evidence_feed"]}
+    assert feed["recommendation_learning"]["status"] == "missing"
+    assert "matured_samples=0" in feed["recommendation_learning"]["summary"]
+    assert "no_new_matured_or_historical_rows" in feed["recommendation_learning"]["summary"]
+    assert any(
+        item["step_id"] == "daily_recommendation_learning"
+        for item in payload["operating_loop_steps"]
+    )

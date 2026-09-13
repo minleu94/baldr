@@ -116,6 +116,56 @@ def _source_trace(*values: Any) -> tuple[str, ...]:
     return _strings(items)
 
 
+def _calibration_lineage_kwargs(source: Any, fallback: Any | None = None) -> dict[str, Any]:
+    """只讀轉送 consumer lineage 欄位，避免呈現層重新推導有效機率。"""
+
+    def read(*names: str) -> Any:
+        for obj in (source, fallback):
+            if obj is None:
+                continue
+            for name in names:
+                if isinstance(obj, Mapping):
+                    value = obj.get(name)
+                else:
+                    value = getattr(obj, name, None)
+                if value is not None and value != "":
+                    return value
+        return None
+
+    return {
+        "calibration_probability_transform_id": str(
+            read("calibration_probability_transform_id", "probability_transform_id") or ""
+        ),
+        "calibration_probability_baseline_id": str(
+            read("calibration_probability_baseline_id", "probability_baseline_id") or ""
+        ),
+        "calibration_probability_baseline_kind": str(
+            read("calibration_probability_baseline_kind", "probability_baseline_kind") or ""
+        ),
+        "calibration_probability_baseline_probability_bp": _integer(
+            read(
+                "calibration_probability_baseline_probability_bp",
+                "probability_baseline_probability_bp",
+            ),
+            minimum=0,
+            maximum=10000,
+        ),
+        "calibration_raw_probability_bp": _integer(
+            read("calibration_raw_probability_bp", "raw_calibrated_probability_bp"),
+            minimum=0,
+            maximum=10000,
+        ),
+        "calibration_raw_after_cost_probability_bp": _integer(
+            read(
+                "calibration_raw_after_cost_probability_bp",
+                "raw_after_cost_profit_probability_bp",
+            ),
+            minimum=0,
+            maximum=10000,
+        ),
+    }
+
+
 def _first_explicit_metric(
     objects: tuple[Any | None, ...],
     value_field: str,
@@ -215,6 +265,13 @@ class DecisionPresentationDTO:
     source_trace: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     schema_version: str = DECISION_PRESENTATION_SCHEMA_VERSION
+    # 校準 consumer 的 lineage 摘要；這些欄位只讀傳遞，不在呈現層重算機率。
+    calibration_probability_transform_id: str = ""
+    calibration_probability_baseline_id: str = ""
+    calibration_probability_baseline_kind: str = ""
+    calibration_probability_baseline_probability_bp: int | None = None
+    calibration_raw_probability_bp: int | None = None
+    calibration_raw_after_cost_probability_bp: int | None = None
 
     def __post_init__(self) -> None:
         stock_code = str(self.stock_code).strip()
@@ -271,6 +328,30 @@ class DecisionPresentationDTO:
         object.__setattr__(self, "confidence_tier", str(self.confidence_tier or "").strip())
         object.__setattr__(self, "evidence_confidence", str(self.evidence_confidence or "").strip())
         object.__setattr__(self, "ranking_method", str(self.ranking_method or "").strip())
+        for field_name in (
+            "calibration_probability_baseline_probability_bp",
+            "calibration_raw_probability_bp",
+            "calibration_raw_after_cost_probability_bp",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10000:
+                    raise ValueError(f"{field_name} must be an integer bp value between 0 and 10000")
+        object.__setattr__(
+            self,
+            "calibration_probability_transform_id",
+            str(self.calibration_probability_transform_id or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "calibration_probability_baseline_id",
+            str(self.calibration_probability_baseline_id or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "calibration_probability_baseline_kind",
+            str(self.calibration_probability_baseline_kind or "").strip(),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -301,6 +382,12 @@ class DecisionPresentationDTO:
             "data_as_of_date": self.data_as_of_date,
             "source_trace": list(self.source_trace),
             "warnings": list(self.warnings),
+            "calibration_probability_transform_id": self.calibration_probability_transform_id,
+            "calibration_probability_baseline_id": self.calibration_probability_baseline_id,
+            "calibration_probability_baseline_kind": self.calibration_probability_baseline_kind,
+            "calibration_probability_baseline_probability_bp": self.calibration_probability_baseline_probability_bp,
+            "calibration_raw_probability_bp": self.calibration_raw_probability_bp,
+            "calibration_raw_after_cost_probability_bp": self.calibration_raw_after_cost_probability_bp,
         }
 
     @classmethod
@@ -339,6 +426,18 @@ class DecisionPresentationDTO:
             source_trace=_strings(value.get("source_trace")),
             warnings=_strings(value.get("warnings")),
             schema_version=str(value.get("schema_version", DECISION_PRESENTATION_SCHEMA_VERSION)),
+            calibration_probability_transform_id=value.get("calibration_probability_transform_id", ""),
+            calibration_probability_baseline_id=value.get("calibration_probability_baseline_id", ""),
+            calibration_probability_baseline_kind=value.get("calibration_probability_baseline_kind", ""),
+            calibration_probability_baseline_probability_bp=_integer(
+                value.get("calibration_probability_baseline_probability_bp"), minimum=0, maximum=10000
+            ),
+            calibration_raw_probability_bp=_integer(
+                value.get("calibration_raw_probability_bp"), minimum=0, maximum=10000
+            ),
+            calibration_raw_after_cost_probability_bp=_integer(
+                value.get("calibration_raw_after_cost_probability_bp"), minimum=0, maximum=10000
+            ),
         )
 
 
@@ -391,13 +490,19 @@ class DecisionPresentationService:
             source_trace=(f"decision_desk:{source}",),
             data_as_of_date=_date_text(as_of_date),
             warnings=(warning,),
+            **_calibration_lineage_kwargs(card),
         )
 
     def from_watchlist_analysis(self, analysis: Any) -> DecisionPresentationDTO:
         status = str(getattr(analysis, "status", "unavailable") or "unavailable").lower()
         saved = status == "saved"
         evidence = "degraded" if saved else ("missing" if status == "not_in_result" else "unavailable")
-        warnings = _strings(getattr(analysis, "message", ""))
+        warnings = _strings(
+            (
+                getattr(analysis, "message", ""),
+                *(getattr(analysis, "calibration_warnings", ()) or ()),
+            )
+        )
         if status == "not_in_result":
             warnings = (*warnings, "未入選不等於看空；目前沒有此股票的保存 Advice。")
         if saved:
@@ -440,8 +545,11 @@ class DecisionPresentationService:
             source_trace=_source_trace(
                 getattr(analysis, "result_id", ""),
                 getattr(analysis, "source_id", ""),
+                getattr(analysis, "calibration_source", ""),
+                getattr(analysis, "calibration_source_trace", ()),
             ),
             warnings=warnings,
+            **_calibration_lineage_kwargs(analysis),
         )
 
     def from_recommendation_advice(
@@ -460,6 +568,18 @@ class DecisionPresentationService:
         after_cost_profit_probability_status: str = "research",
         evidence_confidence: str = "",
     ) -> DecisionPresentationDTO:
+        if ranking_score is None:
+            ranking_score = getattr(advice, "ranking_score_bp", None)
+        if ranking_percentile_bp is None:
+            ranking_percentile_bp = _integer(
+                getattr(advice, "ranking_percentile_bp", None), minimum=0, maximum=10000
+            )
+        if not ranking_method:
+            ranking_method = str(getattr(advice, "ranking_method", "") or "")
+        if sample_size is None:
+            sample_size = _integer(getattr(advice, "sample_size", None), minimum=0)
+        if cost_basis is None:
+            cost_basis = getattr(advice, "cost_basis_bp", None)
         if calibrated_probability_bp is None:
             calibrated_probability_bp = _integer(
                 getattr(advice, "calibrated_probability_bp", None), minimum=0, maximum=10000
@@ -505,6 +625,7 @@ class DecisionPresentationService:
             data_as_of_date=advice.data_as_of_date,
             source_trace=_source_trace(advice.source_trace, source_trace),
             warnings=warnings,
+            **_calibration_lineage_kwargs(advice),
         )
 
     def from_portfolio_advice(
@@ -522,6 +643,18 @@ class DecisionPresentationService:
         after_cost_profit_probability_status: str = "research",
         evidence_confidence: str = "",
     ) -> DecisionPresentationDTO:
+        if ranking_score is None:
+            ranking_score = getattr(advice, "ranking_score_bp", None)
+        if ranking_percentile_bp is None:
+            ranking_percentile_bp = _integer(
+                getattr(advice, "ranking_percentile_bp", None), minimum=0, maximum=10000
+            )
+        if not ranking_method:
+            ranking_method = str(getattr(advice, "ranking_method", "") or "")
+        if sample_size is None:
+            sample_size = _integer(getattr(advice, "sample_size", None), minimum=0)
+        if cost_basis is None:
+            cost_basis = getattr(advice, "cost_basis_bp", None)
         if calibrated_probability_bp is None:
             calibrated_probability_bp = _integer(
                 getattr(advice, "calibrated_probability_bp", None), minimum=0, maximum=10000
@@ -568,6 +701,7 @@ class DecisionPresentationService:
             data_as_of_date=str(getattr(advice, "data_as_of_date", "") or ""),
             source_trace=advice.source_trace,
             warnings=_strings((*advice.warnings, *advice.diagnostics)),
+            **_calibration_lineage_kwargs(advice),
         )
 
     def from_advice(self, advice: Any, **kwargs: Any) -> DecisionPresentationDTO:
@@ -676,6 +810,7 @@ class DecisionPresentationService:
                 getattr(position, "source_snapshot_hash", ""),
             ),
             warnings=tuple(warnings),
+            **_calibration_lineage_kwargs(source_summary, position),
         )
 
     def from_report_parts(self, advice: Any, position: Any | None = None) -> DecisionPresentationDTO | None:

@@ -1,5 +1,40 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-13 V4.2 每日推薦自動學習與受控調整工程閉環
+
+已完成每日 recommendation calibration 的 shadow-only 工程閉環：05:40
+`baldr-forward-outcomes-daily` 後，由 05:45 `baldr-recommendation-calibration-learning-daily`
+執行 Asia/Taipei bounded historical replay／training、frozen challenger、當日 candidate／active
+monitor capture、自然成熟 outcome、同日 active performance recheck，以及 authority 的 adopt／
+retain／rollback 決策。runner 只在隔離 `OUTPUT_ROOT/recommendation_learning/` 保存 dataset、model、
+capture、evidence、authority receipt 與 fail-closed pointer；不寫正式 recommendation、
+`evidence_outcomes`、Portfolio、Formal、broker 或正式推薦權重。週末與官方休市日不偽造 live capture；
+caller 傳入的 evidence／status／drift flags 不會成為真實證據，重跑具同日冪等與失敗可恢復 attempt。
+
+本輪也補上來源實質驗證：若存在 `recommendation_source_contract`，replay 會重算 requested
+symbols 的實際 canonical rows digest、期間與 symbol coverage，驗證 feature builder 實際使用的
+technical row `available_at <= decision`，並檢查 corporate-action records／factor／coverage。
+raw label window 遇未調整的 non-unit corporate action 時，受影響列保守排除並保留 source blocker，
+不信任單一 `verified` bool。after-cost 只接受 `evidence_outcomes.liquidity_cost_bp` 等可追溯成本；
+有成本時使用獨立 `after_cost_null_benchmark_50pct_v1`／5000 bp baseline，沒有成本則維持 missing。
+adopted active model 的 post-adoption matured rows 只有在 identity、receipt 與 label availability
+cutoff 通過後，才可進下一 training cycle。
+
+真實正式 DB 的 bounded read-only run（輸出隔離於
+`C:\Users\archi\.codex\visualizations\2026\09\13\01a09930-3fda-7d82-acef-218c0d18424c\real_daily_learning_v3`）以 1101／2330、2024-01-02～2026-09-13、latest 80 個 decision dates 執行：
+160 samples、200 feature rows seen、40 rows skipped，`training_data_eligible=true`，但
+`forward_evidence_eligible=false`、`formal_candidate_eligible=false`。第一次探索性執行曾帶有
+`--skip-capture-current`，其 `not_requested` 不作日曆證據；隨後沿用同一 frozen candidate／daily
+receipt，以正常預設入口重跑並得到 `run.idempotent_replay=true`、
+`live_capture.status=skipped`、`reason=non_trading_day_official_calendar`、
+`calendar_reason=weekend_closed`、`official_calendar_is_trading_day=false`，確認週日官方曆
+不偽造 live capture；candidate 仍 pending／retain current，未有自然 evidence。可驗證 blocker 為 historical replay
+不能代替 natural forward evidence、technical publication time 未驗證、corporate-action source／
+adjustment 未驗證，以及 observed liquidity cost 缺失。正式 DB 沒有可接受的 production source
+contract、成熟 natural outcomes 或 observed cost，因此本輪不宣稱 promotion、production readiness
+或正式推薦變更。完整驗收見
+[V4.2 每日推薦自動學習 QA](../06_qa/V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13.md)。
+
 ## 2026-09-12 V4.1 A 線第二輪歷史研究與候選方法包
 
 已完成 research-only 的第二輪方法包：以正式 evidence SQLite 的 query-only 讀取建立逐列、逐 horizon 的 `historical_dataset_manifest.json`，再交給既有 20 trading-day primary／5 trading-day auxiliary expanding `train`／`calibration`／untouched-test evaluator。2026-09-12 正式 DB 讀到 221 個 `recommendation_included` events、24 個 outcomes，展開 442 rows；其中 `missing_outcome=430`、`insufficient_future_data=12`，成熟 observations=0、folds=0，因此正式結果為 `not_evaluable`，12 列等待自然成熟，其餘缺 outcome 仍是可追蹤缺口，不得回填。

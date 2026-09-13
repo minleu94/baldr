@@ -4,7 +4,7 @@
 
 > **2026-07-13 系統工程整合**：A～F committed handoff 已由 G 依 SHA、ownership 與 focused suite 驗證，跨流 DTO／JSON composition、唯讀 smoke 與 pure verifier 均成立。這只代表工程整合已驗證；下一步仍是 forward evidence、逐來源人工接受與正式 ML OOS／promotion review，不是 scheduler、production automation 或 formal product closeout。
 >
-> **最後更新**：2026-09-06
+> **最後更新**：2026-09-13
 > **工程主線**：`V3.3 Engineering Complete`，進入 `V4.0 Evidence Accumulation Track`；這不是正式 V4.0。詳見 [V3.3 Engineering Closeout](../06_qa/V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)。
 > **Evidence rehearsal**：唯讀 replay / shadow 工程底座另以 `engineering_rehearsal_complete` 收口；它只提供可重跑 diagnostics 與 forward handoff，不會改寫 external Gate 狀態。見 [Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)。
 > **定位**：本文件是 Roadmap Hub，不再保存完整歷史長文。它負責指向目前狀態、6 個月工程路線、系統架構與歷史歸檔。
@@ -16,6 +16,15 @@
 > closeout。D 槽實體 headroom 已由人工 retention cleanup 恢復；8/30 fresh inventory 約
 > 338.9 GiB，舊容量 blocker 僅作歷史。
 > blocker 只作歷史。詳見 [Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md)。
+
+> **2026-09-13 V4.2 每日推薦學習狀態**：本次已授權的 recommendation calibration 每日自動
+> 學習、受控 shadow 調整、自然 maturity、active monitor／rollback 與 05:45 scheduler wrapper
+> 已完成工程閉環，驗收見 [V4.2 每日推薦自動學習 QA](../06_qa/V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13.md)。
+> 這是隔離 research／shadow learning path：不改正式 Recommendation／Portfolio allocation、不下單，
+> 也不取得 Formal evidence credit。05:45 wrapper／registration definition 已納入本次工程授權；
+> 此隔離 worktree 只做 registration DryRun，實機 Windows Task Scheduler 註冊是父任務整合後的部署步驟，
+> 不是重新請求 learning loop 的 owner approval。正式 source acceptance、natural production evidence、
+> allocation promotion 與 broker 仍維持 external pending。
 
 ---
 
@@ -70,6 +79,7 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 - **外部 Gate**：P0 accepted／limited 仍 0；Evidence projection 3/3 仍 `formal_credit_authorized=false`；Paper fills／cost 0；Formal inputs 0/3。
 - **Production Gate**：Runtime environment ready 不等於 Registry writer ready；technical single-writer canary、scheduler approval 與 broker production pool 仍關閉。
 - **容量**：8/30 fresh D free 約 338.9 GiB、retention inventory=`headroom_ok`；舊 6.11/6.56/410.31 GiB status artifact 只作歷史，後續以受控 preflight 產生新觀測，不手改歷史 terminal。
+- **V4.2 每日推薦 calibration**：05:40 forward outcomes 後的 05:45 bounded shadow learning loop 已完成，包含 frozen challenger、自然成熟度、active monitor／rollback、source／availability／corporate-action／after-cost guards 與 lineage；實際正式 DB run 仍因缺 natural forward evidence、production source custody 與 observed cost 而保持 `formal_candidate_eligible=false`，不改正式推薦或 allocation。
 
 以下長列為已落地工程能力清單，不應逐項解讀為產品 closeout：
 

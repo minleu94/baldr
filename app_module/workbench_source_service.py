@@ -57,6 +57,7 @@ class WorkbenchSourceService:
         min_dry_run_days: int = DEFAULT_MIN_DRY_RUN_DAYS,
         agent_report_limit: int = 5,
         replay_summary_json: str | Path | None = None,
+        recommendation_learning_status_json: str | Path | None = None,
     ) -> WorkbenchDashboardDTO:
         decision_snapshot, source_diagnostics = self._load_decision_snapshot(decision_date)
         readiness_report = self.readiness_service.inspect(
@@ -71,6 +72,10 @@ class WorkbenchSourceService:
             load_historical_replay_summary(replay_summary_json) if replay_summary_json is not None else None
         )
         scheduled_status = self.scheduled_status_service.load_latest()
+        recommendation_learning_status, learning_diagnostics = self._load_recommendation_learning_status(
+            recommendation_learning_status_json
+        )
+        source_diagnostics.extend(learning_diagnostics)
         source_mode = "read_only_sources_plus_historical_replay" if historical_replay_summary else "read_only_sources"
         return self.composer.compose(
             decision_snapshot=decision_snapshot,
@@ -80,7 +85,42 @@ class WorkbenchSourceService:
             historical_replay_summary=historical_replay_summary,
             source_mode=source_mode,
             source_diagnostics=tuple(source_diagnostics),
+            recommendation_learning_status=recommendation_learning_status,
         )
+
+    def _load_recommendation_learning_status(
+        self,
+        explicit_path: str | Path | None,
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        """Load only the runner's immutable latest status; never execute the runner in UI."""
+
+        if explicit_path is not None:
+            path = Path(explicit_path)
+        else:
+            output_root = getattr(self.config, "output_root", None)
+            if output_root is None:
+                return None, ["recommendation_learning_latest_status_output_root_missing"]
+            path = Path(output_root) / "recommendation_learning" / "latest_status.json"
+        if not path.is_file():
+            return None, []
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "status": "failed",
+                "reason": "recommendation_learning_latest_status_invalid",
+                "decision": "retain_current",
+                "decision_reason": "recommendation_learning_latest_status_invalid",
+                "warnings": [f"{type(exc).__name__}"],
+            }, ["recommendation_learning_latest_status_invalid"]
+        if not isinstance(payload, dict):
+            return {
+                "status": "failed",
+                "reason": "recommendation_learning_latest_status_not_object",
+                "decision": "retain_current",
+                "decision_reason": "recommendation_learning_latest_status_not_object",
+            }, ["recommendation_learning_latest_status_not_object"]
+        return payload, []
 
     def _load_decision_snapshot(self, decision_date: str | None) -> tuple[DecisionDeskSnapshot | None, list[str]]:
         diagnostics: list[str] = []

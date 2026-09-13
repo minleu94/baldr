@@ -18,6 +18,7 @@ REQUIRED_FILES = (
     "run_evidence_pipeline_dry_run.ps1",
     "run_forward_outcomes_daily.cmd",
     "run_scheduled_forward_outcomes.py",
+    "run_recommendation_calibration_learning.cmd",
     "run_evidence_working_copy_smoke.ps1",
     "paper_execution_dependency_gate.py",
     "paper_execution_retry_runner.py",

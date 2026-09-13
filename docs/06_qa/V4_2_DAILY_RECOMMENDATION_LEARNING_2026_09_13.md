@@ -71,7 +71,7 @@ candidate，並驗證 loader 回傳 `shadow_model_ready`、consumer pointer 與 
 
 ## 實機部署與有界入口驗證（2026-09-13）
 
-canonical `dev` 已 fast-forward 至 `053f597f`（包含 `a2e3797f`、`bee59b9e`、`8cde901f`、
+canonical `dev` 已完成 fast-forward integration（包含 `a2e3797f`、`bee59b9e`、`8cde901f`、
 `c46c6039`、`b146abe8` 與 recoverable retry compatibility 修正）；`main` 未變更，也未 push。主機 `DESKTOP-4663E62` 的
 Windows timezone 是 `Pacific Standard Time`；兩個 Task Scheduler trigger 都以 deployment host
 local 05:40／05:45 執行，且 runner 以 `Asia/Taipei` clock 與 official calendar 判定資料日期。

@@ -690,8 +690,18 @@ baldr-recommendation-calibration-learning-daily
 `mode=ro`／`PRAGMA query_only=ON` 讀取 bounded historical training rows、當日
 candidate／active capture 與真正成熟的 forward outcomes，只把 versioned dataset、candidate、
 evidence、authority receipt 與 fail-closed pointer 寫入隔離的
-`OUTPUT_ROOT\recommendation_learning\`。它不寫 `recommendation`、`evidence_outcomes`、
+`RECOMMENDATION_LEARNING_OUTPUT_ROOT\recommendation_learning\`。它不繼承一般產品的
+`OUTPUT_ROOT` 作為 learning artifact root，也不寫 `recommendation`、`evidence_outcomes`、
 Portfolio、Formal、broker 或正式推薦權重。
+
+learning root 由 scheduler、runner、read-only calibration consumer 與 Workbench 共用同一個
+resolver。未指定 `RECOMMENDATION_LEARNING_OUTPUT_ROOT` 或 CLI `--output-root` 時，若
+`DATA_ROOT=D:\Min\Python\Project\FA_Data`，預設為同層的
+`D:\Min\Python\Project\FA_Data_Shadow`；自訂 `DATA_ROOT` 時預設為
+`<DATA_ROOT 的上一層>\FA_Data_Shadow`。明確 override 必須是絕對路徑且位於
+`DATA_ROOT` 外；違反時 CLI 會輸出 `recommendation_learning_output_root_invalid` 並以 exit code 2
+fail closed。正式 recommendation snapshot 仍可使用一般 `OUTPUT_ROOT`，但不應與 learning
+shadow artifact 混用。
 
 Windows wrapper 只接受明確的 `BALDR_PYTHON`，或 repository
 `.venv\Scripts\python.exe`；兩者皆不存在時直接 fail closed，不退回 PATH 的未治理
@@ -723,15 +733,15 @@ matured rows 只有在 label availability cutoff 前成熟並通過 identity／r
 主要輸出：
 
 ```text
-<OUTPUT_ROOT>\recommendation_learning\latest_status.json
-<OUTPUT_ROOT>\recommendation_learning\runs\YYYY-MM-DD\run_receipt.json
-<OUTPUT_ROOT>\recommendation_learning\datasets\<dataset_id>\dataset.json
-<OUTPUT_ROOT>\recommendation_learning\challenger\current.json
-<OUTPUT_ROOT>\recommendation_learning\captures\YYYY-MM-DD\<candidate_id>.json
-<OUTPUT_ROOT>\recommendation_learning\active_captures\YYYY-MM-DD\<candidate_id>.json
-<OUTPUT_ROOT>\recommendation_learning\evidence\<candidate_id>\YYYY-MM-DD.json
-<OUTPUT_ROOT>\recommendation_learning\active_evidence\<candidate_id>\YYYY-MM-DD.json
-<OUTPUT_ROOT>\recommendation_learning\recommendation-calibration-active-pointer.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\latest_status.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\runs\YYYY-MM-DD\run_receipt.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\datasets\<dataset_id>\dataset.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\challenger\current.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\captures\YYYY-MM-DD\<candidate_id>.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\active_captures\YYYY-MM-DD\<candidate_id>.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\evidence\<candidate_id>\YYYY-MM-DD.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\active_evidence\<candidate_id>\YYYY-MM-DD.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\recommendation-calibration-active-pointer.json
 ```
 
 `pending` 只表示等待自然 maturity／樣本門檻；`retain_current`／`rule_only` 表示 authority

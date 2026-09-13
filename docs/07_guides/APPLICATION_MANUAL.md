@@ -3319,13 +3319,13 @@ V4.1 A 線的推薦機率校準研究可用 `scripts\inspect_recommendation_cali
 
 ### V4.2 每日推薦自動學習與受控校準調整
 
-每日 shadow loop 的排程入口是 `scripts\scheduled\run_recommendation_calibration_learning.cmd`，canonical service 是 `scripts\scheduled\run_daily_recommendation_learning.py`。它在 `baldr-forward-outcomes-daily`（05:40）之後於 05:45 執行，只讀取指定的 market SQLite，並把 dataset、frozen challenger、prediction capture、自然成熟 evidence、promotion decision 與 rollback receipt 寫入隔離的 `OUTPUT_ROOT\recommendation_learning\`。它不寫 `recommendation`、`evidence_outcomes`、Portfolio、Formal 或 broker state，也不改 `ScoringEngine`、正式推薦權重或 scheduler write mode。
+每日 shadow loop 的排程入口是 `scripts\scheduled\run_recommendation_calibration_learning.cmd`，canonical service 是 `scripts\scheduled\run_daily_recommendation_learning.py`。它在 `baldr-forward-outcomes-daily`（05:40）之後於 05:45 執行，只讀取指定的 market SQLite，並把 dataset、frozen challenger、prediction capture、自然成熟 evidence、promotion decision 與 rollback receipt 寫入專用的 `RECOMMENDATION_LEARNING_OUTPUT_ROOT\recommendation_learning\`。這個 root 不繼承一般產品的 `OUTPUT_ROOT`：未指定專用環境變數或 CLI override 時，`DATA_ROOT=D:\Min\Python\Project\FA_Data` 會解析到同層的 `D:\Min\Python\Project\FA_Data_Shadow`；自訂 `DATA_ROOT` 則解析到其上一層的 `FA_Data_Shadow`。`RECOMMENDATION_LEARNING_OUTPUT_ROOT` 與 CLI `--output-root` 都必須是 `DATA_ROOT` 外的絕對路徑；違反時以 `recommendation_learning_output_root_invalid` fail closed。scheduler、runner、read-only consumer 與 Workbench 共用這個 root contract。它不寫 `recommendation`、`evidence_outcomes`、Portfolio、Formal 或 broker state，也不改 `ScoringEngine`、正式推薦權重或 scheduler write mode。
 
 ```powershell
 # bounded shadow run；明確股票群組，不做 universe discovery
 .\.venv\Scripts\python.exe scripts\scheduled\run_daily_recommendation_learning.py `
   --data-root D:\Min\Python\Project\FA_Data `
-  --output-root <隔離輸出目錄> `
+  --output-root <DATA_ROOT 外的隔離輸出目錄> `
   --source-db D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
   --symbols 1101,2330 `
   --history-start-date 2014-01-01 `
@@ -3347,15 +3347,15 @@ V4.1 A 線的推薦機率校準研究可用 `scripts\inspect_recommendation_cali
 主要輸出：
 
 ```text
-<OUTPUT_ROOT>\recommendation_learning\latest_status.json
-<OUTPUT_ROOT>\recommendation_learning\runs\YYYY-MM-DD\run_receipt.json
-<OUTPUT_ROOT>\recommendation_learning\datasets\<dataset_id>\dataset.json
-<OUTPUT_ROOT>\recommendation_learning\challenger\current.json
-<OUTPUT_ROOT>\recommendation_learning\captures\YYYY-MM-DD\<candidate_id>.json
-<OUTPUT_ROOT>\recommendation_learning\active_captures\YYYY-MM-DD\<candidate_id>.json
-<OUTPUT_ROOT>\recommendation_learning\evidence\<candidate_id>\YYYY-MM-DD.json
-<OUTPUT_ROOT>\recommendation_learning\active_evidence\<candidate_id>\YYYY-MM-DD.json
-<OUTPUT_ROOT>\recommendation_learning\recommendation-calibration-active-pointer.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\latest_status.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\runs\YYYY-MM-DD\run_receipt.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\datasets\<dataset_id>\dataset.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\challenger\current.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\captures\YYYY-MM-DD\<candidate_id>.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\active_captures\YYYY-MM-DD\<candidate_id>.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\evidence\<candidate_id>\YYYY-MM-DD.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\active_evidence\<candidate_id>\YYYY-MM-DD.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\recommendation-calibration-active-pointer.json
 ```
 
 判讀時先看 `dependencies`、`natural_evidence`、`active_model_natural_evidence`、`model_performance`、`candidate_blockers`、`decision_receipt` 與 `formal_order_allowed=false`。`pending` 代表等待真正成熟時間或不足門檻；`retain_current`／`rule_only` 代表沒有通過 authority；`adopt` 只代表 shadow consumer 可讀取 versioned candidate，並不改正式 Recommendation；`rollback` 會回到完整 previous candidate，沒有可恢復 champion 時回到 explicit rule-only。pointer、artifact、manifest、lineage、policy 或 evidence receipt 損壞時一律 fail closed。目前正式 DB 的 source contract、自然 matured evidence 與成本覆蓋仍須以當次 receipt／QA 判讀，不可用 fixture、historical replay、單次 bounded run 或手動改 JSON 解除 gate。
@@ -4120,6 +4120,7 @@ $env:PHASE3C_CANDIDATE_DB_PATH = 'D:/Min/Python/Project/FA_Data_candidate/phase3
 
 ## 14. 更新記錄
 
+- 2026-09-13：補上 V4.2 recommendation learning 的 dedicated `FA_Data_Shadow` root contract：預設不再沿用一般 `OUTPUT_ROOT`，scheduler、runner、read-only consumer 與 Workbench 共用同一解析器；explicit root 必須是 `DATA_ROOT` 外的絕對路徑，否則以 `recommendation_learning_output_root_invalid` fail closed。同步更新排程 wrapper、輸出路徑與操作／排錯說明。
 - 2026-09-12：V4.2 C 線完成每日投資決策工作台第二輪可用流程與視覺整理：建立市場總覽→產業／市場探索→關鍵股研究→觀察清單→持倉覆盤單一路徑，補上 status／決策日／資料日／source trace／返回來源 context，市場焦點可開啟個股研究報告；Workbench、觀察清單、持倉與報告共用 `DecisionPresentationDTO`，分開呈現排名、校準機率、成本後獲利機率、動作適合度、證據信心、樣本與期間，缺值 fail-closed。表格改為單列唯讀選取、鍵盤焦點與窄版可讀詳情；不寫 DB、不自動下單。QA handoff 見 `docs/06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md`。
 - 2026-09-07：Paper Portfolio 日常 research-only execution candidate producer 固定採 Recommendation 日凍結、下一官方 session open 的 T+1 合約；成交量 cap 綁定推薦日收盤可得的 `成交股數`，execution 日 EOD 全天量不得回看影響開盤 fill。因 `daily_prices` 沒有盤中 capture timestamp，延遲 replay 以台北 15:00 作保守可得門檻，早於門檻只回傳 waiting、不讀 state／market、不建 fill；預設只寫 OS TEMP candidate，既有排程以 `PAPER_EXECUTION_RECOMMENDATION_JSON` opt-in，仍不自動追加 Paper ledger、不寫正式行情／Formal DB、不連 broker。
 - 2026-09-07：Paper EOD replay 改由 `baldr-paper-execution-eod-replay-daily` 從持久 recommendation queue 自動挑選下一官方 session 到期的 frozen input，不需人工每日改寫 JSON 路徑；以 `portfolio_id + next_official_execution_date` 凍結唯一 source，較舊候選留下 `superseded` receipt。processed 只有在 receipt schema/content hash、來源檔 hash、candidate 結果及 research-only ledger append/readback 均可重驗時才會停止重跑；壞 receipt 或壞 source 會留下具體 blocker。這條排程仍是 15:00 後的 delayed EOD replay，`realtime_execution_allowed=false`，不回填 2026-09-07、不寫 Formal／行情資料庫、不連 broker。

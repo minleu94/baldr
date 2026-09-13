@@ -2,11 +2,13 @@
 
 ## 2026-09-13 V4.2 每日推薦自動學習與受控調整工程閉環
 
-已完成每日 recommendation calibration 的 shadow-only 工程閉環：05:40
-`baldr-forward-outcomes-daily` 後，由 05:45 `baldr-recommendation-calibration-learning-daily`
+已完成每日 recommendation calibration 的 shadow-only 工程閉環；learning artifact 由專用
+`RECOMMENDATION_LEARNING_OUTPUT_ROOT` 管理，正式預設 `DATA_ROOT` 會解析到同層
+`FA_Data_Shadow\recommendation_learning\`，不與一般 `OUTPUT_ROOT` 或 formal `DATA_ROOT` 混用。
+05:40 `baldr-forward-outcomes-daily` 後，由 05:45 `baldr-recommendation-calibration-learning-daily`
 執行 Asia/Taipei bounded historical replay／training、frozen challenger、當日 candidate／active
 monitor capture、自然成熟 outcome、同日 active performance recheck，以及 authority 的 adopt／
-retain／rollback 決策。runner 只在隔離 `OUTPUT_ROOT/recommendation_learning/` 保存 dataset、model、
+retain／rollback 決策。runner 只在隔離 `RECOMMENDATION_LEARNING_OUTPUT_ROOT/recommendation_learning/` 保存 dataset、model、
 capture、evidence、authority receipt 與 fail-closed pointer；不寫正式 recommendation、
 `evidence_outcomes`、Portfolio、Formal、broker 或正式推薦權重。週末與官方休市日不偽造 live capture；
 caller 傳入的 evidence／status／drift flags 不會成為真實證據，重跑具同日冪等與失敗可恢復 attempt。

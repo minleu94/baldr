@@ -11,6 +11,8 @@ from types import SimpleNamespace
 from typing import Mapping
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from app_module.daily_recommendation_learning_runner import DailyRecommendationLearningRunner
 from app_module.recommendation_calibration_consumer import (
     RecommendationCalibrationConsumer,
@@ -94,9 +96,11 @@ def _samples(shift: int = 0) -> tuple[RecommendationCalibrationSample, ...]:
 def _runner(
     tmp_path: Path,
     authority: RecommendationCalibrationPromotionAuthority | None = None,
+    data_root: Path | None = None,
 ) -> DailyRecommendationLearningRunner:
     return DailyRecommendationLearningRunner(
         output_root=tmp_path,
+        data_root=data_root,
         feature_names=FEATURE_NAMES,
         feature_schema=FEATURE_SCHEMA,
         feature_registry_hash=FEATURE_REGISTRY_HASH,
@@ -294,6 +298,99 @@ def test_taipei_calendar_never_infers_weekend_as_a_trading_day(tmp_path: Path) -
     is_trading_day, reason = calendar.is_official_trading_day(date(2026, 9, 13), allow_online_probe=False)
     assert is_trading_day is False
     assert reason == "weekend_closed"
+
+
+def test_default_config_uses_external_shared_shadow_root_and_loader_reads_candidate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Default config must not place learning artifacts below formal DATA_ROOT."""
+
+    from app_module.recommendation_calibration_consumer import (
+        _library_versions,
+        build_default_recommendation_calibration_consumer,
+    )
+    from app_module.recommendation_learning_paths import resolve_recommendation_learning_paths
+    from app_module.workbench_source_service import WorkbenchSourceService
+    from data_module.config import TWStockConfig
+    from ml_module.model_artifact_loader import ArtifactCompatibilityExpectation, SafeShadowModelArtifactLoader
+    from ml_module.recommendation_calibration_training import recommendation_label_registry_hash
+
+    monkeypatch.delenv("OUTPUT_ROOT", raising=False)
+    monkeypatch.delenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", raising=False)
+    config = TWStockConfig(data_root=tmp_path / "formal-data")
+    paths = resolve_recommendation_learning_paths(data_root=config.data_root)
+
+    assert paths.output_root == (tmp_path / "FA_Data_Shadow").resolve()
+    assert config.data_root.resolve() not in paths.output_root.parents
+    assert paths.output_root != config.output_root.resolve()
+
+    runner = _runner(paths.output_root, data_root=config.data_root)
+    result = runner.run(
+        decision_date="2026-06-01",
+        samples=_samples(),
+        natural_evidence=None,
+        data_dependency_status="ready",
+        outcome_dependency_status="ready",
+        drift_status="not_checked",
+    )
+    assert result.candidate_root is not None
+    candidate_root = Path(result.candidate_root)
+    manifest_payload = json.loads((candidate_root / "manifest.json").read_text(encoding="utf-8"))
+    loaded = SafeShadowModelArtifactLoader(data_root=config.data_root).load(
+        candidate_root,
+        expectation=ArtifactCompatibilityExpectation(
+            expected_model_family=str(manifest_payload["model_family"]),
+            expected_feature_registry_hash=FEATURE_REGISTRY_HASH,
+            expected_label_registry_hash=recommendation_label_registry_hash(),
+            expected_feature_schema=FEATURE_SCHEMA,
+            installed_library_versions=_library_versions(),
+        ),
+    )
+    assert loaded.status == "shadow_model_ready"
+    assert candidate_root.is_relative_to(paths.learning_root)
+
+    consumer = build_default_recommendation_calibration_consumer(config)
+    assert consumer is not None
+    assert consumer.pointer_path == paths.active_pointer_path
+    status, diagnostics = WorkbenchSourceService(config)._load_recommendation_learning_status(None)
+    assert diagnostics == []
+    assert status is not None
+    assert status["run_id"] == result.run_id
+
+
+def test_recommendation_learning_root_rejects_formal_data_root_descendant(tmp_path: Path) -> None:
+    from app_module.recommendation_learning_paths import (
+        RecommendationLearningPathError,
+        resolve_recommendation_learning_paths,
+    )
+
+    formal_root = tmp_path / "formal-data"
+    with pytest.raises(RecommendationLearningPathError, match="outside DATA_ROOT"):
+        resolve_recommendation_learning_paths(
+            data_root=formal_root,
+            explicit_output_root=formal_root / "output",
+        )
+
+
+def test_daily_cli_reports_invalid_learning_root_without_starting_replay(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    from scripts.scheduled.run_daily_recommendation_learning import main
+
+    formal_root = tmp_path / "formal-data"
+    assert main(
+        [
+            "--data-root",
+            str(formal_root),
+            "--output-root",
+            str(formal_root / "unsafe-output"),
+        ]
+    ) == 2
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["decision_reason"] == "recommendation_learning_output_root_invalid"
+    assert "outside DATA_ROOT" in payload["error"]
 
 
 def test_qualified_adoption_changes_consumer_projection_with_cap(tmp_path: Path) -> None:

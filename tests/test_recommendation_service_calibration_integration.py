@@ -150,7 +150,11 @@ def test_normal_recommendation_service_consumes_injected_projection_adapter(tmp_
     assert service.last_run_context["calibration_projection_status"] == "active_candidate"
 
 
-def test_default_recommendation_service_has_read_only_consumer_from_output_pointer(tmp_path: Path) -> None:
+def test_default_recommendation_service_has_read_only_consumer_from_dedicated_shadow_pointer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", raising=False)
     config = SimpleNamespace(
         output_root=tmp_path / "output",
         data_root=tmp_path / "formal-data",
@@ -164,5 +168,5 @@ def test_default_recommendation_service_has_read_only_consumer_from_output_point
 
     assert service.calibration_consumer is not None
     assert service.calibration_consumer.pointer_path == (
-        (tmp_path / "output" / "recommendation_learning" / "recommendation-calibration-active-pointer.json").resolve()
+        (tmp_path / "FA_Data_Shadow" / "recommendation_learning" / "recommendation-calibration-active-pointer.json").resolve()
     )

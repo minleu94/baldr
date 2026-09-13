@@ -1,7 +1,8 @@
 """Run one bounded daily recommendation-learning shadow cycle.
 
 The command reads the configured SQLite source in ``mode=ro`` and writes only
-versioned research/shadow artifacts under ``OUTPUT_ROOT``.  A challenger is
+versioned research/shadow artifacts under the dedicated recommendation-learning
+shadow root.  A challenger is
 frozen once, captured on each eligible day, and automatically evaluated from
 all matching matured captures before the authority gate runs.  Historical
 replay is training data only; it is never accepted as natural forward
@@ -24,6 +25,10 @@ if str(ROOT) not in sys.path:
 
 from app_module.daily_recommendation_learning_runner import (  # noqa: E402
     DailyRecommendationLearningRunner,
+)
+from app_module.recommendation_learning_paths import (  # noqa: E402
+    RecommendationLearningPathError,
+    resolve_recommendation_learning_output_root,
 )
 from data_module.config import TWStockConfig  # noqa: E402
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider  # noqa: E402
@@ -130,9 +135,30 @@ def main(argv: list[str] | None = None) -> int:
     config_kwargs: dict[str, Any] = {}
     if args.data_root is not None:
         config_kwargs["data_root"] = args.data_root
-    if args.output_root is not None:
-        config_kwargs["output_root"] = args.output_root
     config = TWStockConfig(**config_kwargs)
+    try:
+        learning_output_root = resolve_recommendation_learning_output_root(
+            data_root=config.data_root,
+            explicit_output_root=args.output_root,
+        )
+    except RecommendationLearningPathError as exc:
+        print(
+            json.dumps(
+                {
+                    "schema_version": "daily-recommendation-learning-cli-result.v3",
+                    "status": "failed",
+                    "decision": "retain_current",
+                    "decision_reason": "recommendation_learning_output_root_invalid",
+                    "data_root": str(config.data_root.resolve()),
+                    "error": str(exc),
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 2
     source_db = args.source_db or config.db_file
     decision_day = (
         date.fromisoformat(str(args.decision_date)[:10])
@@ -146,7 +172,11 @@ def main(argv: list[str] | None = None) -> int:
             decision_date=decision_day,
         )
     except ValueError as exc:
-        runner = _build_runner(config.output_root, args.fixed_round_trip_cost_bp)
+        runner = _build_runner(
+            learning_output_root,
+            args.fixed_round_trip_cost_bp,
+            data_root=config.data_root,
+        )
         dependencies = _dependency_failure(
             reason=f"symbol_cohort_preflight_failed:{type(exc).__name__}",
             data_status="failed",
@@ -165,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             json.dumps(
                 _cli_payload(
-                    output_root=config.output_root,
+                    output_root=learning_output_root,
                     decision_day=decision_day,
                     symbols=(),
                     symbol_source="unresolved",
@@ -203,7 +233,11 @@ def main(argv: list[str] | None = None) -> int:
         max_decision_dates=args.max_decision_dates,
         selection_policy=args.replay_selection_policy,
     )
-    runner = _build_runner(config.output_root, args.fixed_round_trip_cost_bp)
+    runner = _build_runner(
+        learning_output_root,
+        args.fixed_round_trip_cost_bp,
+        data_root=config.data_root,
+    )
     if args.emergency_rollback:
         dependencies = _dependency_failure(
             reason="explicit_emergency_rollback_requested",
@@ -223,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             json.dumps(
                 _cli_payload(
-                    output_root=config.output_root,
+                    output_root=learning_output_root,
                     decision_day=decision_day,
                     symbols=symbols,
                     symbol_source=symbol_source,
@@ -244,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         provider = MLHistoricalSnapshotProvider(source_db)
         replay_result = RecommendationHistoricalReplayService(provider).build(replay_config)
-        manifest_path = replay_result.persist(config.output_root)
+        manifest_path = replay_result.persist(learning_output_root)
     except (OSError, RuntimeError, ValueError, TypeError) as exc:
         dependencies = _dependency_failure(
             reason=f"replay_or_source_preflight_failed:{type(exc).__name__}",
@@ -264,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             json.dumps(
                 _cli_payload(
-                    output_root=config.output_root,
+                    output_root=learning_output_root,
                     decision_day=decision_day,
                     symbols=symbols,
                     symbol_source=symbol_source,
@@ -285,17 +319,17 @@ def main(argv: list[str] | None = None) -> int:
 
     dependencies = _inspect_dependencies(
         provider=provider,
-        output_root=config.output_root,
+        output_root=learning_output_root,
         data_root=config.data_root,
         decision_date=decision_day,
         symbols=symbols,
         replay_source_fingerprint=replay_result.source_fingerprint,
         policy=RecommendationPromotionPolicy(),
     )
-    challenger_payload = _read_challenger_pointer(config.output_root)
-    challenger_path = _load_frozen_challenger(config.output_root)
+    challenger_payload = _read_challenger_pointer(learning_output_root)
+    challenger_path = _load_frozen_challenger(learning_output_root)
     natural_training_samples = _load_natural_training_samples(
-        output_root=config.output_root,
+        output_root=learning_output_root,
         challenger_payload=challenger_payload,
         feature_count=len(CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids),
         fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
@@ -334,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     if run_result.candidate_root and run_result.candidate_id:
         challenger_path = _ensure_challenger_pointer(
-            output_root=config.output_root,
+            output_root=learning_output_root,
             run_result=run_result,
             status="pending",
             natural_result=None,
@@ -348,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
     capture_result = _capture_current_if_requested(
         args=args,
         config=config,
+        output_root=learning_output_root,
         source_db=source_db,
         provider=provider,
         symbols=symbols,
@@ -356,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     active_natural_result = _scan_active_model_evidence(
-        output_root=config.output_root,
+        output_root=learning_output_root,
         data_root=config.data_root,
         provider=provider,
         source_db=source_db,
@@ -371,7 +406,7 @@ def main(argv: list[str] | None = None) -> int:
     # receipt can trigger the same day's fail-closed rollback.  A stale
     # preflight status must never delay a rollback until tomorrow.
     post_scan_active_performance = _inspect_active_model_performance(
-        output_root=config.output_root,
+        output_root=learning_output_root,
         data_root=config.data_root,
         decision_date=decision_day,
         policy=RecommendationPromotionPolicy(),
@@ -402,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
     automatic_evidence = None
     if run_result.candidate_id and run_result.candidate_root:
         evidence_path = (
-            Path(config.output_root)
+            Path(learning_output_root)
             / "recommendation_learning"
             / "evidence"
             / run_result.candidate_id
@@ -412,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
             provider,
             evidence_db_path=source_db,
         ).scan_and_build_evidence(
-            output_root=config.output_root,
+            output_root=learning_output_root,
             evaluation_date=decision_day.isoformat(),
             output_path=evidence_path,
             candidate_id=run_result.candidate_id,
@@ -438,7 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     if run_result.candidate_id and run_result.candidate_root:
         challenger_status = _challenger_status(run_result, natural_result)
         challenger_path = _ensure_challenger_pointer(
-            output_root=config.output_root,
+            output_root=learning_output_root,
             run_result=run_result,
             status=challenger_status,
             natural_result=natural_result,
@@ -462,7 +497,7 @@ def main(argv: list[str] | None = None) -> int:
         if value is not None
     ]
     payload = _cli_payload(
-        output_root=config.output_root,
+        output_root=learning_output_root,
         decision_day=decision_day,
         symbols=symbols,
         symbol_source=symbol_source,
@@ -488,9 +523,15 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _build_runner(output_root: Path, fixed_round_trip_cost_bp: int) -> DailyRecommendationLearningRunner:
+def _build_runner(
+    output_root: Path,
+    fixed_round_trip_cost_bp: int,
+    *,
+    data_root: Path | None = None,
+) -> DailyRecommendationLearningRunner:
     return DailyRecommendationLearningRunner(
         output_root=output_root,
+        data_root=data_root,
         feature_names=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids,
         feature_schema=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
         feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
@@ -608,6 +649,7 @@ def _capture_current_if_requested(
     *,
     args: argparse.Namespace,
     config: TWStockConfig,
+    output_root: Path,
     source_db: Path,
     provider: MLHistoricalSnapshotProvider,
     symbols: tuple[str, ...],
@@ -709,7 +751,7 @@ def _capture_current_if_requested(
             candidate_capture = {"status": "skipped", "reason": "candidate_not_available"}
         else:
             capture_path = (
-                Path(config.output_root)
+                Path(output_root)
                 / "recommendation_learning"
                 / "captures"
                 / decision_day.isoformat()
@@ -747,7 +789,7 @@ def _capture_current_if_requested(
                     fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
                     data_root=config.data_root,
                     champion_pointer_path=(
-                        Path(config.output_root)
+                        Path(output_root)
                         / "recommendation_learning"
                         / "recommendation-calibration-active-pointer.json"
                     ),
@@ -767,7 +809,7 @@ def _capture_current_if_requested(
                     "probability_transform_id": capture.probability_transform_id,
                 }
         active_capture = _capture_active_model_monitor(
-            output_root=config.output_root,
+            output_root=output_root,
             data_root=config.data_root,
             decision_date=decision_day,
             captured_at=capture_at,

@@ -28,6 +28,7 @@ from app_module.evidence_event_dtos import (
 )
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.workbench_source_service import WorkbenchSourceService
+from app_module.recommendation_learning_paths import resolve_recommendation_learning_paths
 from data_module.config import TWStockConfig
 
 
@@ -483,7 +484,7 @@ def test_workbench_source_service_reads_daily_learning_latest_status_as_read_onl
     config = _config(tmp_path)
     record_path = tmp_path / "multi-day.md"
     _multi_day_record(record_path, rows=0)
-    learning_path = Path(config.output_root) / "recommendation_learning" / "latest_status.json"
+    learning_path = resolve_recommendation_learning_paths(data_root=config.data_root).latest_status_path
     learning_path.parent.mkdir(parents=True, exist_ok=True)
     learning_path.write_text(
         json.dumps(

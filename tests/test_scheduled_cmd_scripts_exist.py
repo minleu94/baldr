@@ -101,3 +101,7 @@ def test_recommendation_learning_cmd_requires_governed_python_interpreter() -> N
     assert 'if not defined PYTHON if exist "%REPO_ROOT%\\.venv\\Scripts\\python.exe"' in text
     assert "No governed Python interpreter found" in text
     assert 'set "PYTHON=python"' not in text
+    assert "RECOMMENDATION_LEARNING_OUTPUT_ROOT" in text
+    assert "FA_Data_Shadow" in text
+    assert '--output-root "%RECOMMENDATION_LEARNING_OUTPUT_ROOT%"' in text
+    assert 'set "OUTPUT_ROOT=%DATA_ROOT%\\output"' not in text

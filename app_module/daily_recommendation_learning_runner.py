@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from app_module.recommendation_learning_paths import resolve_recommendation_learning_output_root
 from ml_module.model_artifact_manifest import FeatureSchema
 from ml_module.recommendation_calibration_authority import (
     RecommendationCalibrationPromotionAuthority,
@@ -54,11 +55,16 @@ class DailyRecommendationLearningRunner:
         feature_schema: FeatureSchema,
         feature_registry_hash: str,
         fixed_round_trip_cost_bp: int,
+        data_root: str | Path | None = None,
         training_config: RecommendationCalibrationTrainingConfig | None = None,
         training_service: RecommendationCalibrationTrainingService | None = None,
         authority: RecommendationCalibrationPromotionAuthority | None = None,
     ) -> None:
-        self.root = Path(output_root).resolve() / "recommendation_learning"
+        resolved_output_root = resolve_recommendation_learning_output_root(
+            data_root=data_root,
+            explicit_output_root=output_root,
+        )
+        self.root = resolved_output_root / "recommendation_learning"
         self.runs_root = self.root / "runs"
         self.feature_names = feature_names
         self.feature_schema = feature_schema

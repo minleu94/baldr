@@ -19,6 +19,10 @@ from app_module.pre_v2_readiness_service import (
 )
 from app_module.workbench_dtos import WorkbenchDashboardDTO
 from app_module.workbench_read_only_composer import WorkbenchReadOnlyComposer
+from app_module.recommendation_learning_paths import (
+    RecommendationLearningPathError,
+    resolve_recommendation_learning_paths,
+)
 from app_module.workbench_replay_summary import load_historical_replay_summary
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 from app_module.paper_portfolio_time import taiwan_market_today
@@ -97,10 +101,21 @@ class WorkbenchSourceService:
         if explicit_path is not None:
             path = Path(explicit_path)
         else:
-            output_root = getattr(self.config, "output_root", None)
-            if output_root is None:
-                return None, ["recommendation_learning_latest_status_output_root_missing"]
-            path = Path(output_root) / "recommendation_learning" / "latest_status.json"
+            try:
+                path = resolve_recommendation_learning_paths(
+                    data_root=getattr(self.config, "data_root", None)
+                ).latest_status_path
+            except RecommendationLearningPathError as exc:
+                return (
+                    {
+                        "status": "failed",
+                        "reason": "recommendation_learning_output_root_invalid",
+                        "decision": "retain_current",
+                        "decision_reason": "recommendation_learning_output_root_invalid",
+                        "warnings": [str(exc)],
+                    },
+                    ["recommendation_learning_output_root_invalid"],
+                )
         if not path.is_file():
             return None, []
         try:

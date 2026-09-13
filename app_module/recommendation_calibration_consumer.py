@@ -17,6 +17,9 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from app_module.recommendation_learning_paths import (
+    resolve_recommendation_learning_paths,
+)
 from ml_module.model_artifact_loader import ArtifactCompatibilityExpectation, SafeShadowModelArtifactLoader
 from ml_module.model_artifact_manifest import FeatureSchema
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
@@ -757,12 +760,12 @@ def _date_text_or_none(value: str | None) -> str | None:
 def build_default_recommendation_calibration_consumer(config: Any) -> RecommendationCalibrationConsumer | None:
     """Build the read-only consumer used by the normal application composition root."""
 
-    output_root = getattr(config, "output_root", None)
-    if output_root is None:
-        return None
     data_root = getattr(config, "data_root", None)
+    if data_root is None:
+        return None
+    paths = resolve_recommendation_learning_paths(data_root=data_root)
     return RecommendationCalibrationConsumer(
-        pointer_path=Path(output_root) / "recommendation_learning" / "recommendation-calibration-active-pointer.json",
+        pointer_path=paths.active_pointer_path,
         feature_schema=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
         feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
         data_root=data_root,

@@ -71,8 +71,8 @@ candidate，並驗證 loader 回傳 `shadow_model_ready`、consumer pointer 與 
 
 ## 實機部署與有界入口驗證（2026-09-13）
 
-canonical `dev` 已 fast-forward 至 `c46c6039`（包含 `a2e3797f`、`bee59b9e`、`8cde901f` 與原生
-scheduled snapshot symbol-source 修正）；`main` 未變更，也未 push。主機 `DESKTOP-4663E62` 的
+canonical `dev` 已 fast-forward 至 `053f597f`（包含 `a2e3797f`、`bee59b9e`、`8cde901f`、
+`c46c6039`、`b146abe8` 與 recoverable retry compatibility 修正）；`main` 未變更，也未 push。主機 `DESKTOP-4663E62` 的
 Windows timezone 是 `Pacific Standard Time`，因此 Task Scheduler 的 local 05:40／05:45 分別是
 Asia/Taipei 20:40／20:45（PDT）或 21:40／21:45（PST），兩者仍保持 forward outcome → learning
 的主機 local 順序；runner 以 `Asia/Taipei` clock 與 official calendar 判定資料日期。
@@ -119,6 +119,26 @@ date 不是當下 Taipei date 而回 `status=skipped`、`reason=capture_current_
 可恢復 attempt：`runs/2026-09-13/attempts/attempt-3e40ba4539442809b4a05c2a.json`，沒有 candidate、
 natural evidence 或 promotion。
 
+另以真正的 canonical wrapper 做無日期覆寫、無顯式 symbols、預設 `max-decision-dates=100` 的入口驗證：
+
+```powershell
+& .\scripts\scheduled\run_recommendation_calibration_learning.cmd
+# wrapper 的 governed Python exit code: 2
+```
+
+當時本機為 2026-09-13 11:58 PDT，runner 的 Asia/Taipei decision date 已是 2026-09-14，
+但 `scheduled_rec_20260914_*.json` 尚未由前置 recommendation snapshot task 產生。因此 wrapper
+正確輸出 `symbol_source=unresolved`、空 symbols、`symbol_cohort_preflight_failed:ValueError`，
+不做 universe discovery、不進 replay／capture，也不偽造 snapshot；`latest_status.json` 為
+`status=failed_dependency`、`decision=retain_current`、`finalized=false`、`recoverable=true`、
+`formal_order_allowed=false`、`shadow_only=true`，且 `recovery_policy=recoverable_attempt`。
+失敗會回傳 exit 2 供排程觀測，但不會永久鎖定當日；同一 decision date 的 snapshot 到齊後可直接
+重跑。先前曾產生的 `run_receipt-emergency-rollback.json` 原樣保留，SHA-256 為
+`406DB4323B76FB82597F2AB793CD758E821983781D746EF4D0D86E4256DB0BD3`，active pointer 仍為
+`rule_only`；舊 recoverable attempt 與新版 next-step schema 衝突時，runner 會保留舊 receipt，另建
+不可覆寫的 retry attempt，不會使 wrapper crash。新增 main 級測試也以真實 runner／authority receipt、
+rule-only pointer 與 220 筆 historical samples 證明同日 snapshot 出現後可建立 candidate/pending。
+
 同一個 shared resolver 回讀確認：consumer pointer 是
 `D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\recommendation-calibration-active-pointer.json`，
 Workbench 讀取同一個 `latest_status.json` 且 diagnostics 為空；formal `DATA_ROOT`、generic
@@ -145,11 +165,11 @@ C:\Projects\PythonProjects\technical_analysis\.venv\Scripts\python.exe -m pytest
   CLI 測試全部通過（`6 passed`）；合併受影響檔案回歸為 `28 passed`。
 - 受影響整合回歸（含 DTO／service／scheduled 靜態契約）：`107 passed`。
 - UpdateView workbench：`81 passed`；`qa_validate_update_tab.py`：`25 passed`、`4 skipped`。
-- mypy：`Success: no issues found in 599 source files`；變更／新增 Python `py_compile` 通過；
+- mypy：`Success: no issues found in 600 source files`；變更／新增 Python `py_compile` 通過；
   quant guard 的 float 與 look-ahead 檢查均通過；金融邊界／單位／ML dependency guard：`50 passed`。
 - review fix 後，兩個 commit 涉及的 24 個 production／script Python modules 以完整 imports
   mypy 通過；所有本次修改／新增 Python 檔案 `py_compile` 通過；合併 replay／training／learning／
-  consumer／Workbench／scheduled 受影響回歸為 `38 passed`。先前 `recommendation_historical_replay.py`
+  consumer／Workbench／scheduled 受影響回歸為 `41 passed`。先前 `recommendation_historical_replay.py`
   的 3 個 assignment 型別錯誤已修正，未以 skip-import 掩蓋。
 
 scheduled 全量回歸（21 個 `test_scheduled_*.py` 檔）為 `164 passed, 10 failed`。失敗項目與原因

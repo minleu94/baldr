@@ -89,8 +89,12 @@ C:\Projects\PythonProjects\technical_analysis\.venv\Scripts\python.exe -m pytest
   CLI 測試全部通過（`6 passed`）；合併受影響檔案回歸為 `28 passed`。
 - 受影響整合回歸（含 DTO／service／scheduled 靜態契約）：`107 passed`。
 - UpdateView workbench：`81 passed`；`qa_validate_update_tab.py`：`25 passed`、`4 skipped`。
-- mypy：`Success: no issues found in 598 source files`；變更／新增 Python `py_compile` 通過；
+- mypy：`Success: no issues found in 599 source files`；變更／新增 Python `py_compile` 通過；
   quant guard 的 float 與 look-ahead 檢查均通過；金融邊界／單位／ML dependency guard：`50 passed`。
+- review fix 後，兩個 commit 涉及的 24 個 production／script Python modules 以完整 imports
+  mypy 通過；所有本次修改／新增 Python 檔案 `py_compile` 通過；合併 replay／training／learning／
+  consumer／Workbench／scheduled 受影響回歸為 `38 passed`。先前 `recommendation_historical_replay.py`
+  的 3 個 assignment 型別錯誤已修正，未以 skip-import 掩蓋。
 
 scheduled 全量回歸（21 個 `test_scheduled_*.py` 檔）為 `164 passed, 10 failed`。失敗項目與原因
 均為隔離驗證環境限制或既有 baseline，沒有把 skipped 當成 passed：

@@ -419,11 +419,11 @@ class RecommendationHistoricalReplayService:
             if isinstance(item, (list, tuple)) and len(item) == 3
         }
         if excluded_label_windows:
-            samples = tuple(
+            samples = [
                 row
                 for row in samples
                 if (row.symbol, row.decision_date, row.label_end_date) not in excluded_label_windows
-            )
+            ]
             diagnostics.append(
                 "corporate_action_unadjusted_label_windows_excluded:"
                 + str(len(excluded_label_windows))
@@ -996,6 +996,9 @@ def _read_source_content_snapshot(
 ) -> dict[str, Any]:
     """Read the exact symbol-scoped source records bound by a contract hash."""
 
+    columns: tuple[str, ...]
+    symbol_column: str
+    date_columns: tuple[str, ...]
     if component == "technical":
         columns = _TECHNICAL_SOURCE_CONTENT_COLUMNS
         symbol_column = "證券代號"

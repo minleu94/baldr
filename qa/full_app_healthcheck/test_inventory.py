@@ -278,6 +278,8 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_workbench_advice_contract.py": "service-oracle-research-backtest",
     "tests/test_portfolio_sandbox_inspection_cli.py": "service-oracle-research-backtest",
     "tests/test_recommendation_portfolio_backtest.py": "service-oracle-research-backtest",
+    "tests/test_banktaiwan_cost_policy.py": "service-oracle-research-backtest",
+    "tests/test_recommendation_portfolio_banktaiwan_cost.py": "service-oracle-research-backtest",
     "tests/test_recommendation_portfolio_optimizer.py": "service-oracle-research-backtest",
     "tests/test_report_export_dtos.py": "service-oracle-research-backtest",
     "tests/test_report_export_service.py": "service-oracle-research-backtest",

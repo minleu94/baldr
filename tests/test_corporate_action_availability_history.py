@@ -777,6 +777,57 @@ def test_official_backfill_publishes_immutable_raw_and_atomic_latest(
     )
 
 
+def test_bounded_prospective_publication_does_not_move_formal_pointer(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "release_v4"
+    builder = OfficialMarketEventBackfillBuilder(
+        fetcher=_OfficialFixtureFetcher(),
+        now=lambda: datetime(
+            2026,
+            7,
+            30,
+            16,
+            1,
+            tzinfo=timezone.utc,
+        ),
+        sleep=lambda _: None,
+    )
+    formal = builder.build(
+        OfficialMarketEventBackfillRequest(
+            output_root=output_root,
+            start_year=2024,
+            end_year=2024,
+            request_delay_seconds=0,
+        )
+    )
+    formal_pointer = (output_root / "latest_manifest.json").read_bytes()
+
+    prospective = builder.build(
+        OfficialMarketEventBackfillRequest(
+            output_root=output_root,
+            start_year=2024,
+            end_year=2024,
+            publication_scope="prospective_bounded",
+            request_delay_seconds=0,
+        )
+    )
+
+    manifest = json.loads(
+        prospective.manifest_path.read_text(encoding="utf-8")
+    )
+    assert manifest["status"] == "prospective_source_publication"
+    assert manifest["publication_scope"] == "prospective_bounded"
+    assert manifest["parent_manifest_hash"] is None
+    assert manifest["safety"]["formal_source_publication"] is False
+    assert manifest["safety"]["formal_latest_manifest_untouched"] is True
+    assert prospective.latest_manifest_path.name == (
+        "prospective_latest_manifest.json"
+    )
+    assert (output_root / "latest_manifest.json").read_bytes() == formal_pointer
+    assert prospective.canonical_event_count == formal.canonical_event_count
+
+
 def test_official_no_data_response_keeps_raw_hash_and_zero_row_coverage(
     tmp_path: Path,
 ) -> None:

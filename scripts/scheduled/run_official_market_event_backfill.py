@@ -22,6 +22,9 @@ from data_module.official_market_event_backfill import (  # noqa: E402
     OfficialMarketEventBackfillBuilder,
     OfficialMarketEventBackfillRequest,
 )
+from data_module.corporate_action_adjustment_custody import (  # noqa: E402
+    publish_corporate_action_adjustment_custody,
+)
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -39,6 +42,13 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--as-of-date", type=date.fromisoformat)
+    parser.add_argument(
+        "--publication-scope",
+        choices=("formal_historical", "prospective_bounded"),
+        default="formal_historical",
+    )
+    parser.add_argument("--start-year", type=int)
+    parser.add_argument("--end-year", type=int)
     parser.add_argument("--timeout-seconds", type=int, default=30)
     parser.add_argument("--max-attempts", type=int, default=4)
     parser.add_argument("--retry-delay-seconds", type=int, default=2)
@@ -109,10 +119,20 @@ def _same_day_failed_custody(
 def _inspect_last_known_good_publication(
     publication_root: Path,
 ) -> dict[str, object]:
-    """Verify the untouched formal pointer before reporting a retryable failure."""
+    """Verify a formal or prospective pointer before reporting a retryable failure."""
 
-    pointer_path = publication_root / "latest_manifest.json"
-    if not pointer_path.is_file():
+    pointer_path = next(
+        (
+            candidate
+            for candidate in (
+                publication_root / "latest_manifest.json",
+                publication_root / "prospective_latest_manifest.json",
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    if pointer_path is None:
         return {
             "validation_status": "missing",
             "diagnostic": "latest_manifest_missing",
@@ -143,10 +163,20 @@ def _inspect_last_known_good_publication(
                 "validation_status": "invalid",
                 "diagnostic": "formal_manifest_not_object",
             }
-        if manifest.get("status") != "formal_source_publication":
+        publication_scope = str(manifest.get("publication_scope") or "") or (
+            "formal_historical"
+            if pointer_path.name == "latest_manifest.json"
+            else "prospective_bounded"
+        )
+        expected_status = (
+            "formal_source_publication"
+            if pointer_path.name == "latest_manifest.json"
+            else "prospective_source_publication"
+        )
+        if manifest.get("status") != expected_status:
             return {
                 "validation_status": "invalid",
-                "diagnostic": "latest_manifest_not_formal_publication",
+                "diagnostic": "latest_manifest_publication_scope_mismatch",
             }
         manifest_hash = str(manifest.get("manifest_hash", ""))
         if not manifest_hash or pointer.get("manifest_hash") != manifest_hash:
@@ -187,6 +217,8 @@ def _inspect_last_known_good_publication(
         return {
             "validation_status": "verified",
             "publication_id": pointer.get("publication_id"),
+            "pointer_path": str(pointer_path),
+            "publication_scope": publication_scope,
             "manifest_path": str(manifest_path),
             "manifest_hash": manifest_hash,
             "manifest_file_hash": manifest_file_hash,
@@ -243,6 +275,11 @@ def _failure_context(
         "manual_action_required": False,
         "formal_publication_preserved": (
             known_good.get("validation_status") == "verified"
+            and known_good.get("publication_scope") == "formal_historical"
+        ),
+        "prospective_publication_preserved": (
+            known_good.get("validation_status") == "verified"
+            and known_good.get("publication_scope") == "prospective_bounded"
         ),
         "last_known_good_publication": known_good,
     }
@@ -257,10 +294,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     publication_root = (
         output_root / "release_v4" / "official_market_events"
     )
-    start_year, end_year = _year_window(
-        as_of_date,
-        publication_root,
-    )
+    if (args.start_year is None) != (args.end_year is None):
+        raise SystemExit("--start-year and --end-year must be supplied together")
+    if args.start_year is not None and args.end_year is not None:
+        start_year, end_year = args.start_year, args.end_year
+    elif args.publication_scope == "prospective_bounded":
+        start_year = end_year = as_of_date.year
+    else:
+        start_year, end_year = _year_window(
+            as_of_date,
+            publication_root,
+        )
+    if start_year < 1912 or end_year < start_year:
+        raise SystemExit("invalid official market event year range")
     status_root = output_root / "scheduled" / "official_market_events"
     status_root.mkdir(parents=True, exist_ok=True)
     raw_custody = _same_day_failed_custody(
@@ -272,6 +318,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "as_of_date": as_of_date.isoformat(),
         "requested_start_year": start_year,
         "requested_end_year": end_year,
+        "publication_scope": args.publication_scope,
         "publication_root": str(publication_root),
         "raw_custody": (
             None if raw_custody is None else str(raw_custody)
@@ -288,6 +335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raw_custody=raw_custody,
                 start_year=start_year,
                 end_year=end_year,
+                publication_scope=args.publication_scope,
                 timeout_seconds=args.timeout_seconds,
                 max_attempts=args.max_attempts,
                 retry_delay_seconds=args.retry_delay_seconds,
@@ -302,6 +350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "error_type": type(exc).__name__,
             "message": str(exc),
             "latest_manifest_updated_by_failed_run": False,
+            "prospective_latest_manifest_updated_by_failed_run": False,
         }
         _publish_status(status_root, status, now=now)
         print(
@@ -309,6 +358,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    try:
+        corporate_action_custody = publish_corporate_action_adjustment_custody(
+            publication_root=publication_root,
+            output_root=output_root,
+            manifest_pointer_path=publication.latest_manifest_path,
+            prospective=args.publication_scope == "prospective_bounded",
+        )
+    except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        # The official event publication itself remains immutable and valid;
+        # adjustment custody is surfaced as blocked so no downstream lane can
+        # treat a partial derivation as a verified adjustment source.
+        corporate_action_custody = {
+            "status": "blocked",
+            "reason": f"corporate_action_adjustment_custody_failed:{type(exc).__name__}",
+            "error": str(exc),
+            "formal_source_contract_eligible": False,
+        }
     status = {
         **base_status,
         "status": "published",
@@ -316,10 +382,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "manifest_path": str(publication.manifest_path),
         "manifest_hash": publication.manifest_hash,
         "manifest_file_hash": publication.manifest_file_hash,
+        "manifest_pointer_path": str(publication.latest_manifest_path),
         "canonical_events_hash": publication.canonical_events_hash,
         "canonical_event_count": publication.canonical_event_count,
         "new_event_count": publication.new_event_count,
         "raw_request_count": publication.raw_request_count,
+        "corporate_action_adjustment_custody": corporate_action_custody,
     }
     _publish_status(status_root, status, now=now)
     print(json.dumps(status, ensure_ascii=False, sort_keys=True))

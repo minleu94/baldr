@@ -134,6 +134,7 @@ def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     tmp_path, monkeypatch
 ) -> None:
     _patch_capacity_preflight_for_unit_test(monkeypatch)
+    _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch)
     data_root = tmp_path / "FA_Data"
     output_root = data_root / "output"
     status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
@@ -172,8 +173,8 @@ def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     monkeypatch.setattr(runner, "UpdateService", _FakeUpdateService)
     clock = iter(
         (
-            runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
-            runner.datetime(2026, 7, 3, 4, 21, tzinfo=timezone.utc),
+            runner.datetime(2026, 7, 3, 4, 20, 0, 100000, tzinfo=timezone.utc),
+            runner.datetime(2026, 7, 3, 4, 20, 0, 900000, tzinfo=timezone.utc),
         )
     )
     monkeypatch.setattr(
@@ -201,6 +202,8 @@ def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     assert payload["status"] == "passed"
     assert payload["run_id"].startswith("20260703-")
     assert payload["started_at"] < payload["completed_at"]
+    assert payload["started_at"] == "2026-07-03T04:20:00.100000+00:00"
+    assert payload["completed_at"] == "2026-07-03T04:20:00.900000+00:00"
     assert payload["checked_at"] == payload["completed_at"]
     history_path = status_path.parent / "history.jsonl"
     history_records = [
@@ -218,10 +221,106 @@ def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     release_heavy_chain_reservation(recovered_reservation)
 
 
+def _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch) -> None:
+    """Supply custody at the boundary for fake-service metadata tests only.
+
+    These tests do not construct a SQLite source database or exercise the
+    real calculator. The production runner remains fail-closed; the mocked
+    verified reuse keeps their assertions focused on status/history metadata.
+    """
+
+    from data_module import recommendation_calibration_source_contract as source_contract
+
+    monkeypatch.setattr(
+        source_contract,
+        "reuse_verified_technical_computation_receipt",
+        lambda **_kwargs: {
+            "status": "reused",
+            "technical_computation": {"fixture": "verified"},
+            "source_publication_receipt": {
+                "path": "unit-test-technical-receipt.json",
+                "sha256": "sha256:unit-test",
+                "available_at": "2026-07-03T04:00:00+00:00",
+                "source_root": "unit-test-output-root",
+            },
+            "source_date_start": "2026-07-03",
+            "source_date_end": "2026-07-03",
+        },
+    )
+
+
+def test_quick_update_can_skip_optional_broker_branch_for_bounded_core_run(
+    tmp_path, monkeypatch
+) -> None:
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
+    _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch)
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+
+    class _FakeUpdateService:
+        def __init__(self, _config) -> None:
+            pass
+
+        def check_data_overview(self):
+            return {
+                "success": True,
+                "daily_data": {"latest_date": "2026-07-03"},
+                "technical_indicators": {"latest_date": "2026-07-03"},
+            }
+
+        def _success(self, *_args, **_kwargs):
+            return {"success": True}
+
+        update_daily = _success
+        update_tpex_daily_price_range = _success
+        sync_source_to_sqlite = _success
+        update_market = _success
+        update_industry = _success
+
+        def update_broker_branch(self, *_args, **_kwargs):
+            raise AssertionError("optional broker branch must not run")
+
+        def check_technical_indicator_latest_coverage(self):
+            return {"success": True, "is_current": True}
+
+    monkeypatch.setattr(runner, "UpdateService", _FakeUpdateService)
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
+    )
+
+    assert runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--status-path",
+            str(status_path),
+            "--skip-broker-branch",
+        ]
+    ) == 0
+
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert payload["optional_source_policy"] == {"skip_broker_branch": True}
+    skipped = {
+        item["name"]: item for item in payload["steps"] if item["status"] == "skipped"
+    }
+    assert skipped["update_broker_branch"]["result"]["reason"] == (
+        "explicit_skip_broker_branch"
+    )
+    assert skipped["sync_broker_branch_to_sqlite"]["result"]["reason"] == (
+        "broker_branch_refresh_skipped"
+    )
+
+
 def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     tmp_path, monkeypatch
 ) -> None:
     _patch_capacity_preflight_for_unit_test(monkeypatch)
+    _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch)
     data_root = tmp_path / "FA_Data"
     output_root = data_root / "output"
     status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"

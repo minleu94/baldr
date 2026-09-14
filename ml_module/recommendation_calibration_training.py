@@ -16,7 +16,7 @@ consumer projection 讀取，且不會改變正式 rule path。
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from io import BytesIO
 import hashlib
@@ -384,6 +384,12 @@ class RecommendationCalibrationTrainingResult:
         "training_artifact_is_shadow_only",
         "natural_forward_evidence_must_be_supplied_to_authority",
     )
+    prospective_source_contract_ready: bool = False
+    prospective_price_up_promotion_ready: bool = False
+    historical_replay_candidate_blockers: tuple[str, ...] = ()
+    after_cost_blockers: tuple[str, ...] = ()
+    actual_execution_blockers: tuple[str, ...] = ()
+    lane_status: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def training_row_count(self) -> int:
@@ -454,6 +460,12 @@ class RecommendationCalibrationTrainingResult:
             "forward_evidence_eligible": self.forward_evidence_eligible,
             "formal_candidate_eligible": self.formal_candidate_eligible,
             "candidate_blockers": list(self.candidate_blockers),
+            "prospective_source_contract_ready": self.prospective_source_contract_ready,
+            "prospective_price_up_promotion_ready": self.prospective_price_up_promotion_ready,
+            "historical_replay_candidate_blockers": list(self.historical_replay_candidate_blockers),
+            "after_cost_blockers": list(self.after_cost_blockers),
+            "actual_execution_blockers": list(self.actual_execution_blockers),
+            "lane_status": dict(self.lane_status),
             "shadow_only": True,
             "production_eligible": False,
             "production_action_allowed": False,
@@ -555,6 +567,7 @@ class RecommendationCalibrationTrainingService:
         calibration_folds = usable[:-1]
         oof_upside: list[tuple[float, int, str, RecommendationCalibrationSample]] = []
         oof_after: list[tuple[float, int, str, RecommendationCalibrationSample]] = []
+        split_diagnostics: dict[str, dict[str, Any]] = {}
         evaluation_cutoff = _date(evaluation_fold.test_start)
         for fold in calibration_folds:
             train_rows = tuple(
@@ -570,6 +583,10 @@ class RecommendationCalibrationTrainingService:
                 if row.row_id in by_id
                 and _date(by_id[row.row_id].label_available_date) < evaluation_cutoff
             )
+            split_diagnostics[fold.fold_id] = {
+                "train": _split_row_diagnostics(train_rows, "upside_label"),
+                "test": _split_row_diagnostics(test_rows, "upside_label"),
+            }
             if len(train_rows) < cfg.minimum_fold_train_rows or not test_rows:
                 continue
             upside_model = _fit_classifier(train_rows, "upside_label", cfg.random_state)
@@ -591,24 +608,44 @@ class RecommendationCalibrationTrainingService:
 
         if len(oof_upside) < cfg.minimum_calibration_samples or len({item[2] for item in oof_upside}) < 2:
             raise ValueError("insufficient purged OOF samples for upside calibration")
-        upside_calibrator = ShadowProbabilityCalibrator(
-            minimum_samples=cfg.minimum_calibration_samples
-        ).fit(
-            model_id=f"{dataset_id}-upside",
-            raw_probabilities=np.asarray([item[0] for item in oof_upside], dtype=float),
-            labels=np.asarray([item[1] for item in oof_upside], dtype=int),
-            fold_ids=[item[2] for item in oof_upside],
-        )
-        after_calibrator: FittedShadowProbabilityCalibrator | None = None
-        if len(oof_after) >= cfg.minimum_calibration_samples and len({item[2] for item in oof_after}) >= 2:
-            after_calibrator = ShadowProbabilityCalibrator(
+        try:
+            upside_calibrator = ShadowProbabilityCalibrator(
                 minimum_samples=cfg.minimum_calibration_samples
             ).fit(
-                model_id=f"{dataset_id}-after-cost",
-                raw_probabilities=np.asarray([item[0] for item in oof_after], dtype=float),
-                labels=np.asarray([item[1] for item in oof_after], dtype=int),
-                fold_ids=[item[2] for item in oof_after],
+                model_id=f"{dataset_id}-upside",
+                raw_probabilities=np.asarray([item[0] for item in oof_upside], dtype=float),
+                labels=np.asarray([item[1] for item in oof_upside], dtype=int),
+                fold_ids=[item[2] for item in oof_upside],
             )
+        except ValueError as exc:
+            raise ValueError(
+                "upside OOF calibration failed: "
+                f"{exc}; oof_label_distribution={_label_distribution(item[1] for item in oof_upside)}; "
+                f"oof_sample_count={len(oof_upside)}; "
+                f"oof_fold_count={len({item[2] for item in oof_upside})}; "
+                "split_diagnostics="
+                f"{json.dumps({'usable_fold_count': len(usable), 'calibration_fold_count': len(calibration_folds), 'evaluation_fold_id': evaluation_fold.fold_id, 'folds': split_diagnostics}, sort_keys=True, separators=(',', ':'))}"
+            ) from exc
+        after_calibrator: FittedShadowProbabilityCalibrator | None = None
+        if len(oof_after) >= cfg.minimum_calibration_samples and len({item[2] for item in oof_after}) >= 2:
+            try:
+                after_calibrator = ShadowProbabilityCalibrator(
+                    minimum_samples=cfg.minimum_calibration_samples
+                ).fit(
+                    model_id=f"{dataset_id}-after-cost",
+                    raw_probabilities=np.asarray([item[0] for item in oof_after], dtype=float),
+                    labels=np.asarray([item[1] for item in oof_after], dtype=int),
+                    fold_ids=[item[2] for item in oof_after],
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "after-cost OOF calibration failed: "
+                    f"{exc}; oof_label_distribution={_label_distribution(item[1] for item in oof_after)}; "
+                    f"oof_sample_count={len(oof_after)}; "
+                    f"oof_fold_count={len({item[2] for item in oof_after})}; "
+                    "oof_fold_diagnostics="
+                    f"{json.dumps(_oof_fold_diagnostics(oof_after, len(usable), evaluation_fold.fold_id, 'after_cost_profit_label'), sort_keys=True, separators=(',', ':'))}"
+                ) from exc
 
         final_train = tuple(
             by_id[row.row_id]
@@ -695,6 +732,10 @@ class RecommendationCalibrationTrainingService:
         training_data_eligible = quality.get("training_data_eligible", True) is not False
         forward_evidence_eligible = quality.get("forward_evidence_eligible", False) is True
         formal_candidate_eligible = quality.get("formal_candidate_eligible") is True
+        prospective_source_contract_ready = quality.get("prospective_source_contract_ready") is True
+        prospective_price_up_promotion_ready = (
+            quality.get("prospective_price_up_promotion_ready") is True
+        )
         candidate_blockers = tuple(
             str(item)
             for item in quality.get("candidate_blockers", ())
@@ -705,6 +746,23 @@ class RecommendationCalibrationTrainingService:
                 "training_artifact_is_shadow_only",
                 "natural_forward_evidence_must_be_supplied_to_authority",
             )
+        historical_replay_candidate_blockers = tuple(
+            str(item)
+            for item in quality.get("historical_replay_candidate_blockers", ())
+            if str(item).strip()
+        )
+        after_cost_blockers = tuple(
+            str(item)
+            for item in quality.get("after_cost_blockers", ())
+            if str(item).strip()
+        )
+        actual_execution_blockers = tuple(
+            str(item)
+            for item in quality.get("actual_execution_blockers", ())
+            if str(item).strip()
+        )
+        lane_status_value = quality.get("lane_status")
+        lane_status = dict(lane_status_value) if isinstance(lane_status_value, Mapping) else {}
         return RecommendationCalibrationTrainingResult(
             candidate_id=candidate_id,
             dataset_id=dataset_id,
@@ -724,6 +782,12 @@ class RecommendationCalibrationTrainingService:
             forward_evidence_eligible=forward_evidence_eligible,
             formal_candidate_eligible=formal_candidate_eligible,
             candidate_blockers=candidate_blockers,
+            prospective_source_contract_ready=prospective_source_contract_ready,
+            prospective_price_up_promotion_ready=prospective_price_up_promotion_ready,
+            historical_replay_candidate_blockers=historical_replay_candidate_blockers,
+            after_cost_blockers=after_cost_blockers,
+            actual_execution_blockers=actual_execution_blockers,
+            lane_status=lane_status,
         )
 
 
@@ -907,6 +971,54 @@ def _calibration_gap_bp(probabilities: Sequence[int | None], labels: Sequence[in
 def _has_two_classes(rows: Sequence[RecommendationCalibrationSample], label_name: str) -> bool:
     values = {getattr(row, label_name) for row in rows if getattr(row, label_name) is not None}
     return values == {0, 1}
+
+
+def _label_distribution(values: Iterable[int | None]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = "missing" if value is None else str(int(value))
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _date_window(rows: Sequence[RecommendationCalibrationSample], field_name: str) -> dict[str, str | None]:
+    values = sorted(str(getattr(row, field_name))[:10] for row in rows)
+    return {
+        "start": values[0] if values else None,
+        "end": values[-1] if values else None,
+    }
+
+
+def _split_row_diagnostics(
+    rows: Sequence[RecommendationCalibrationSample],
+    label_name: str,
+) -> dict[str, Any]:
+    return {
+        "sample_count": len(rows),
+        "label_distribution": _label_distribution(getattr(row, label_name, None) for row in rows),
+        "decision_date_window": _date_window(rows, "decision_date"),
+        "label_available_date_window": _date_window(rows, "label_available_date"),
+    }
+
+
+def _oof_fold_diagnostics(
+    rows: Sequence[tuple[float, int, str, RecommendationCalibrationSample]],
+    usable_fold_count: int,
+    evaluation_fold_id: str,
+    label_name: str,
+) -> dict[str, Any]:
+    grouped: dict[str, list[RecommendationCalibrationSample]] = {}
+    for _probability, _label, fold_id, row in rows:
+        grouped.setdefault(fold_id, []).append(row)
+    return {
+        "usable_fold_count": usable_fold_count,
+        "calibration_fold_count": len(grouped),
+        "evaluation_fold_id": evaluation_fold_id,
+        "folds": {
+            fold_id: _split_row_diagnostics(fold_rows, label_name)
+            for fold_id, fold_rows in sorted(grouped.items())
+        },
+    }
 
 
 def _rows_for_ids(

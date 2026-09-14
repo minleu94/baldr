@@ -78,6 +78,7 @@ class DailyRecommendationLearningRunner:
         self,
         *,
         decision_date: str,
+        run_scope: str | None = None,
         samples: Sequence[RecommendationCalibrationSample],
         natural_evidence: Any,
         data_dependency_status: str = "ready",
@@ -91,8 +92,9 @@ class DailyRecommendationLearningRunner:
         dependency_failure_reason: str | None = None,
     ) -> DailyRecommendationLearningResult:
         day = date.fromisoformat(decision_date[:10]).isoformat()
-        run_id = f"daily-recommendation-learning:{day}"
-        run_dir = self.runs_root / day
+        scope = _safe_run_scope(run_scope)
+        run_id = f"daily-recommendation-learning:{day}" + (f":{scope}" if scope else "")
+        run_dir = _scoped_run_dir(self.runs_root, day, scope)
         receipt_path = run_dir / "run_receipt.json"
         latest_path = self.root / "latest_status.json"
         training_cutoff = day if training_as_of is None else date.fromisoformat(training_as_of[:10]).isoformat()
@@ -105,7 +107,30 @@ class DailyRecommendationLearningRunner:
         dataset_hash = _dataset_hash(eligible_samples)
         if receipt_path.is_file() and not emergency_rollback:
             existing = json.loads(receipt_path.read_text(encoding="utf-8"))
-            if existing.get("dataset_hash") != dataset_hash:
+            finalized_evidence_retry = (
+                existing.get("status") == "completed"
+                and existing.get("finalized") is True
+                and natural_evidence is not None
+                and existing.get("decision") == "retain_current"
+                and existing.get("candidate_root")
+                and existing.get("candidate_id")
+            )
+            if (
+                existing.get("status") == "completed"
+                and existing.get("finalized") is True
+                and not finalized_evidence_retry
+            ):
+                # A finalized scoped receipt is immutable.  A later same-day
+                # orchestration retry may rebuild a different preliminary
+                # replay window (for example after a historical bootstrap),
+                # but must read back the finalized candidate/capture instead
+                # of treating that legitimate idempotent retry as an
+                # overwrite attempt.  A materialized natural receipt is the
+                # one intentional exception: the first pass can finish
+                # training before the same day's forward evidence scan, so it
+                # must be allowed to re-evaluate the existing candidate.
+                return _result_from_receipt(existing, idempotent=True, latest_status_path=latest_path)
+            if not finalized_evidence_retry and existing.get("dataset_hash") != dataset_hash:
                 raise RuntimeError("same daily run id received a different dataset; refusing overwrite")
             if existing.get("decision") in {"adopt", "rollback"}:
                 return _result_from_receipt(existing, idempotent=True, latest_status_path=latest_path)
@@ -164,6 +189,7 @@ class DailyRecommendationLearningRunner:
             receipt = {
                 "schema_version": "daily-recommendation-learning-receipt.v1",
                 "run_id": run_id,
+                "run_scope": scope,
                 "decision_date": day,
                 "receipt_path": str(receipt_path.with_name("run_receipt-emergency-rollback.json")),
                 "status": "completed",
@@ -226,6 +252,8 @@ class DailyRecommendationLearningRunner:
                 return self._write_skip(
                     day=day,
                     run_id=run_id,
+                    run_dir=run_dir,
+                    run_scope=scope,
                     reason=f"frozen_challenger_unavailable:{type(exc).__name__}",
                     status="failed_candidate",
                     dataset_hash=dataset_hash,
@@ -240,6 +268,8 @@ class DailyRecommendationLearningRunner:
             return self._write_skip(
                 day=day,
                 run_id=run_id,
+                run_dir=run_dir,
+                run_scope=scope,
                 reason=dependency_failure_reason or "data_dependency_failed_fail_closed",
                 status="failed_dependency",
                 dataset_hash=dataset_hash,
@@ -254,6 +284,8 @@ class DailyRecommendationLearningRunner:
             return self._write_skip(
                 day=day,
                 run_id=run_id,
+                run_dir=run_dir,
+                run_scope=scope,
                 reason=dependency_failure_reason
                 or "outcome_dependency_unavailable_natural_evidence_not_fabricated",
                 status="skipped_insufficient_evidence",
@@ -269,6 +301,8 @@ class DailyRecommendationLearningRunner:
             return self._write_skip(
                 day=day,
                 run_id=run_id,
+                run_dir=run_dir,
+                run_scope=scope,
                 reason="no_new_matured_or_historical_rows",
                 status="skipped_no_data",
                 dataset_hash=dataset_hash,
@@ -301,7 +335,12 @@ class DailyRecommendationLearningRunner:
                 return self._write_skip(
                     day=day,
                     run_id=run_id,
-                    reason=f"candidate_training_failed:{type(exc).__name__}",
+                    run_dir=run_dir,
+                    run_scope=scope,
+                    reason=(
+                        f"candidate_training_failed:{type(exc).__name__}:"
+                        f"{_compact_exception_text(exc)}"
+                    ),
                     status="failed_training",
                     dataset_hash=dataset_hash,
                     decision="retain_current",
@@ -310,6 +349,11 @@ class DailyRecommendationLearningRunner:
                     data_dependency_status=data_dependency_status,
                     outcome_dependency_status=outcome_dependency_status,
                     drift_status=drift_status,
+                    training_diagnostics=_training_sample_diagnostics(
+                        eligible_samples,
+                        training_as_of=training_cutoff,
+                        dataset_quality=dataset_quality,
+                    ),
                 )
             candidate_root = run_dir / "candidates" / result.candidate_id
             if not candidate_root.exists():
@@ -336,9 +380,17 @@ class DailyRecommendationLearningRunner:
             drift_status=drift_status,
             emergency_rollback=emergency_rollback,
         )
+        quality = dataset_quality if isinstance(dataset_quality, Mapping) else {}
+        historical_bootstrap_value = quality.get("historical_bootstrap")
+        historical_bootstrap = (
+            dict(historical_bootstrap_value)
+            if isinstance(historical_bootstrap_value, Mapping)
+            else None
+        )
         receipt = {
             "schema_version": "daily-recommendation-learning-receipt.v1",
             "run_id": run_id,
+            "run_scope": scope,
             "decision_date": day,
             "receipt_path": str(receipt_path),
             "status": "completed",
@@ -358,6 +410,12 @@ class DailyRecommendationLearningRunner:
             "calibration_sample_count": result.model.calibration_sample_count if result is not None else candidate_metadata.get("calibration_sample_count"),
             "calibration_gap_bp": result.calibration_gap_bp if result is not None else candidate_metadata.get("calibration_gap_bp"),
             "evaluation": dict(result.evaluation) if result is not None else dict(candidate_metadata.get("evaluation", {})),
+            "training_diagnostics": _training_sample_diagnostics(
+                eligible_samples,
+                training_as_of=training_cutoff,
+                dataset_quality=dataset_quality,
+            ),
+            "historical_bootstrap": historical_bootstrap,
             "natural_matured_sample_count": _evidence_count(resolved_evidence),
             "data_dependency_status": data_dependency_status,
             "outcome_dependency_status": outcome_dependency_status,
@@ -396,6 +454,8 @@ class DailyRecommendationLearningRunner:
         *,
         day: str,
         run_id: str,
+        run_dir: Path | None = None,
+        run_scope: str | None = None,
         reason: str,
         status: str,
         dataset_hash: str,
@@ -405,8 +465,9 @@ class DailyRecommendationLearningRunner:
         data_dependency_status: str = "not_checked",
         outcome_dependency_status: str = "not_checked",
         drift_status: str = "not_checked",
+        training_diagnostics: Mapping[str, Any] | None = None,
     ) -> DailyRecommendationLearningResult:
-        run_dir = self.runs_root / day
+        run_dir = run_dir or self.runs_root / day
         attempt_id = "attempt-" + hashlib.sha256(
             f"{run_id}|{status}|{reason}|{dataset_hash}".encode("utf-8")
         ).hexdigest()[:24]
@@ -415,6 +476,7 @@ class DailyRecommendationLearningRunner:
         receipt = {
             "schema_version": "daily-recommendation-learning-receipt.v1",
             "run_id": run_id,
+            "run_scope": run_scope,
             "decision_date": day,
             "receipt_path": str(receipt_path),
             "attempt_id": attempt_id,
@@ -422,6 +484,7 @@ class DailyRecommendationLearningRunner:
             "recoverable": True,
             "status": status,
             "reason": reason,
+            "training_diagnostics": dict(training_diagnostics or {}),
             "dataset_id": None,
             "dataset_hash": dataset_hash,
             "candidate_id": None,
@@ -464,6 +527,89 @@ def _dataset_hash(samples: Sequence[RecommendationCalibrationSample]) -> str:
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return f"sha256:{digest}"
+
+
+def _compact_exception_text(exc: BaseException, *, limit: int = 2400) -> str:
+    text = " ".join(str(exc).split())
+    return text[:limit] if text else "unspecified_error"
+
+
+def _training_sample_diagnostics(
+    samples: Sequence[RecommendationCalibrationSample],
+    *,
+    training_as_of: str,
+    dataset_quality: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    def distribution(field_name: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for row in samples:
+            value = getattr(row, field_name, None)
+            key = "missing" if value is None else str(value)
+            counts[key] = counts.get(key, 0) + 1
+        return dict(sorted(counts.items()))
+
+    quality = dataset_quality if isinstance(dataset_quality, Mapping) else {}
+    replay_coverage = quality.get("replay_coverage")
+    replay_coverage = replay_coverage if isinstance(replay_coverage, Mapping) else {}
+    source_quality: dict[str, int] = {}
+    for row in samples:
+        key = str(getattr(row, "source_quality", "unknown") or "unknown")
+        source_quality[key] = source_quality.get(key, 0) + 1
+    decision_dates = sorted({str(row.decision_date)[:10] for row in samples})
+    symbols = sorted({str(row.symbol).strip() for row in samples if str(row.symbol).strip()})
+    historical_bootstrap_value = quality.get("historical_bootstrap")
+    historical_bootstrap = (
+        dict(historical_bootstrap_value)
+        if isinstance(historical_bootstrap_value, Mapping)
+        else None
+    )
+    return {
+        "eligible_sample_count": len(samples),
+        "eligible_decision_date_count": len(decision_dates),
+        "eligible_decision_date_start": decision_dates[0] if decision_dates else None,
+        "eligible_decision_date_end": decision_dates[-1] if decision_dates else None,
+        "eligible_symbols": symbols,
+        "label_distribution": {
+            "upside_label": distribution("upside_label"),
+            "after_cost_profit_label": distribution("after_cost_profit_label"),
+        },
+        "source_quality_distribution": dict(sorted(source_quality.items())),
+        "historical_bootstrap": historical_bootstrap,
+        "bootstrap_selection": {
+            "training_as_of": training_as_of,
+            "selection_method": "historical_replay_plus_natural_forward_deduplicated_by_symbol_date_horizon",
+            "replay_selection_policy": quality.get("replay_selection_policy"),
+            "replay_max_decision_dates": replay_coverage.get("max_decision_dates"),
+            "replay_selected_decision_date_count": replay_coverage.get("selected_decision_date_count"),
+            "replay_sample_count": quality.get("replay_sample_count"),
+            "natural_sample_count": quality.get("natural_training_sample_count"),
+        },
+    }
+
+
+def _safe_run_scope(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    safe = "".join(char if char.isalnum() or char in {"-", "_", "."} else "-" for char in text)
+    return safe.strip("-._") or None
+
+
+def _scoped_run_dir(runs_root: Path, day: str, scope: str | None) -> Path:
+    base = runs_root / day
+    if not scope:
+        return base
+    scoped = base / scope
+    # Windows still has installations with the legacy MAX_PATH limit.  Keep
+    # the human-readable scope in the immutable receipt, but shorten only the
+    # filesystem directory when a long temporary/output root would otherwise
+    # make the candidate artifact path unwritable.
+    if len(str(scoped)) > 170:
+        directory_hash = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:16]
+        return base / f"scope-{directory_hash}"
+    return scoped
 
 
 def _evidence_count(evidence: Any) -> int:

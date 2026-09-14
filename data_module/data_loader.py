@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, Optional, Dict, List, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
 import requests
@@ -23,6 +23,9 @@ from .market_date_utils import (
     normalize_market_date_range,
     recent_date_range,
     year_to_date_start,
+)
+from .official_daily_price_custody import (
+    persist_official_daily_price_response,
 )
 
 
@@ -472,6 +475,15 @@ class DataLoader:
                     api_statuses.append("")
                     continue
 
+                # ``requests.Response.content`` reads the complete HTTP body.
+                # Keep the completion timestamp immediately after that read so
+                # the source receipt can prove when this process actually had
+                # the official bytes.  Test doubles that only expose ``json``
+                # receive a deterministic serialized fallback; production
+                # requests always use the wire bytes.
+                response_body = getattr(response, "content", None)
+                response_completed_at = datetime.now(timezone.utc)
+
                 # 解析 JSON 響應
                 try:
                     candidate = response.json()
@@ -494,6 +506,17 @@ class DataLoader:
                         parse_error,
                     )
                     continue
+                if not isinstance(response_body, bytes) or not response_body:
+                    response_body = json.dumps(
+                        candidate,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                    response_completed_at = datetime.now(timezone.utc)
+                if not isinstance(response_body, bytes):
+                    raise TypeError("TWSE response body was not captured as bytes")
+                captured_raw_response: bytes = response_body
                 api_status = str(candidate.get('stat') or "")
                 api_statuses.append(api_status)
                 request_attempts.append({
@@ -598,6 +621,24 @@ class DataLoader:
                     lambda x: '+' if 'color:red' in str(x) else 
                              '-' if 'color:green' in str(x) else ''
                 )
+
+            source_custody = persist_official_daily_price_response(
+                output_root=self.config.output_root,
+                venue="twse",
+                source_id="twse.mi_index.daily_price",
+                source_date=formatted_date,
+                requested_url=url,
+                final_url=getattr(response, "url", None) or url,
+                request_parameters=params,
+                http_status=int(response.status_code),
+                response_headers=getattr(response, "headers", None),
+                raw_response=captured_raw_response,
+                captured_at=response_completed_at,
+                row_count=len(df),
+                source_columns=stock_data.get("fields", []),
+                parser_id="twse.mi_index.v1",
+                historical_backfill_claimed=False,
+            )
             
             # 創建備份
             daily_price_file = self.config.get_daily_price_file(date)
@@ -615,6 +656,7 @@ class DataLoader:
                 "outcome": "success",
                 "reason_code": "twse_data_available",
                 "request_attempts": request_attempts,
+                "source_custody": source_custody,
             }
             
             return df

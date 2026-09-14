@@ -12,8 +12,11 @@ evidence.
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import date, datetime, timedelta
+import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -34,6 +37,10 @@ from app_module.recommendation_learning_paths import (  # noqa: E402
 from data_module.config import TWStockConfig  # noqa: E402
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider  # noqa: E402
 from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
+from data_module.recommendation_calibration_source_contract import (  # noqa: E402
+    inspect_source_contract,
+    write_source_contract,
+)
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY  # noqa: E402
 from ml_module.historical_feature_builder import HistoricalFeatureBuilder  # noqa: E402
 from ml_module.recommendation_calibration_authority import (  # noqa: E402
@@ -60,6 +67,173 @@ from ml_module.recommendation_historical_replay import (  # noqa: E402
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
+
+_HISTORICAL_REPLAY_SOURCE_BLOCKERS = frozenset(
+    {
+        "technical_publication_time_unverified",
+        "corporate_action_source_or_adjustment_unverified",
+        "observed_liquidity_cost_missing_after_cost_target_unavailable",
+        "observed_liquidity_cost_partial_after_cost_target_unavailable",
+    }
+)
+
+
+def _clean_blockers(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    return list(dict.fromkeys(str(item) for item in value if str(item).strip()))
+
+
+def _capture_dependency_failure(
+    live_capture: Mapping[str, Any] | None,
+) -> tuple[str | None, bool]:
+    """Classify capture custody failures without treating natural skips as errors."""
+
+    if not isinstance(live_capture, Mapping):
+        return None, False
+    status = str(live_capture.get("status") or "").strip().lower()
+    if status not in {"blocked", "failed"}:
+        return None, False
+    reason = str(live_capture.get("reason") or "capture_dependency_unavailable").strip()
+    return f"live_capture_{status}:{reason}", status == "blocked"
+
+
+def _replay_sample_count(replay_result: Any) -> int:
+    value = getattr(replay_result, "sample_count", None)
+    if isinstance(value, int):
+        return value
+    samples = getattr(replay_result, "samples", ())
+    try:
+        return len(samples)
+    except TypeError:
+        return 0
+
+
+def _should_expand_historical_bootstrap(result: Any) -> bool:
+    """Return true only for a causal OOF class-coverage training failure."""
+
+    if str(getattr(result, "status", "")) != "failed_training":
+        return False
+    reason = str(getattr(result, "reason", "")).lower()
+    return "oof calibration" in reason or "calibration target requires two classes" in reason
+
+
+def _build_training_quality(
+    *,
+    replay_result: Any,
+    source_contract: Mapping[str, Any],
+    manifest_path: Path,
+    symbol_source: str,
+    natural_training_sample_count: int,
+    replay_selection_policy: str,
+    dependency_check: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Separate historical replay notes from prospective promotion lanes.
+
+    Historical replay is intentionally never relabeled as forward evidence.
+    The price-up lane can nevertheless become eligible for later authority
+    promotion when the immutable prospective input contract is ready.  Cost
+    and broker-actual lanes remain independent and visible blockers.
+    """
+
+    lanes_value = source_contract.get("lanes")
+    lanes = lanes_value if isinstance(lanes_value, Mapping) else {}
+    price_up_value = lanes.get("price_up_calibration")
+    price_up = price_up_value if isinstance(price_up_value, Mapping) else {}
+    after_cost_value = lanes.get("after_cost_calibration")
+    after_cost = after_cost_value if isinstance(after_cost_value, Mapping) else {}
+    actual_value = lanes.get("actual_execution")
+    actual = actual_value if isinstance(actual_value, Mapping) else {}
+
+    price_up_prospective_blockers = _clean_blockers(price_up.get("prospective_blockers"))
+    price_up_prospective_ready = (
+        price_up.get("prospective_status") == "ready"
+        and not price_up_prospective_blockers
+    )
+    historical_replay_blockers = _clean_blockers(
+        getattr(replay_result, "candidate_blockers", ())
+    )
+    # These are historical-contract explanations, not blockers for a new
+    # source-bound price-up capture.  Keep them under the explicit historical
+    # fields so they remain inspectable and cannot be mistaken for proof.
+    candidate_gate_blockers = [
+        blocker
+        for blocker in historical_replay_blockers
+        if blocker not in _HISTORICAL_REPLAY_SOURCE_BLOCKERS
+    ]
+    if not price_up_prospective_ready:
+        candidate_gate_blockers.extend(
+            ["prospective_price_up_source_not_ready", *price_up_prospective_blockers]
+        )
+    candidate_gate_blockers = list(dict.fromkeys(candidate_gate_blockers))
+
+    after_cost_blockers = _clean_blockers(
+        after_cost.get("prospective_blockers") or after_cost.get("blockers")
+    )
+    actual_execution_blockers = _clean_blockers(actual.get("blockers"))
+    lane_status = {
+        "price_up_calibration": {
+            "status": price_up.get("status"),
+            "prospective_status": price_up.get("prospective_status"),
+            "prospective_blockers": price_up_prospective_blockers,
+            "promotion_target": "price_up_calibration",
+            "promotion_source_bound": price_up_prospective_ready,
+        },
+        "after_cost_calibration": {
+            "status": after_cost.get("status"),
+            "prospective_status": after_cost.get("prospective_status"),
+            "blockers": after_cost_blockers,
+            "requires_observed_cost": after_cost.get("requires_observed_cost") is True,
+            "estimated_cost_is_not_observed": after_cost.get("estimated_cost_is_not_observed") is True,
+            "promotion_target": "after_cost_calibration",
+        },
+        "actual_execution": {
+            "status": actual.get("status"),
+            "blockers": actual_execution_blockers,
+            "requires_broker_fill_custody": actual.get("requires_broker_fill_custody") is True,
+            "promotion_target": "actual_execution",
+        },
+    }
+    replay_coverage = getattr(replay_result, "coverage", {})
+    replay_coverage = replay_coverage if isinstance(replay_coverage, Mapping) else {}
+    source_disclosures = getattr(replay_result, "source_disclosures", {})
+    source_disclosures = source_disclosures if isinstance(source_disclosures, Mapping) else {}
+    lookahead_checks = getattr(replay_result, "lookahead_checks", {})
+    lookahead_checks = lookahead_checks if isinstance(lookahead_checks, Mapping) else {}
+    return {
+        "training_data_eligible": replay_result.training_data_eligible,
+        # These two fields retain the historical-replay semantics.  A replay
+        # result is never promoted to forward evidence by setting them true.
+        "forward_evidence_eligible": replay_result.forward_evidence_eligible,
+        "formal_candidate_eligible": replay_result.formal_candidate_eligible,
+        "historical_replay_forward_evidence_eligible": replay_result.forward_evidence_eligible,
+        "historical_replay_formal_candidate_eligible": replay_result.formal_candidate_eligible,
+        "historical_replay_candidate_blockers": historical_replay_blockers,
+        "candidate_blockers": candidate_gate_blockers,
+        "prospective_source_contract_ready": price_up_prospective_ready,
+        "prospective_price_up_promotion_ready": price_up_prospective_ready,
+        "prospective_price_up_blockers": price_up_prospective_blockers,
+        "after_cost_blockers": after_cost_blockers,
+        "actual_execution_blockers": actual_execution_blockers,
+        "lane_status": lane_status,
+        "promotion_target": "price_up_calibration",
+        "replay_dataset_id": replay_result.dataset_id,
+        "replay_dataset_manifest_path": str(manifest_path),
+        "replay_dataset_hash": replay_result.dataset_hash,
+        "replay_sample_count": _replay_sample_count(replay_result),
+        "replay_decision_date_count": len(replay_result.decision_dates),
+        "replay_coverage": dict(replay_coverage),
+        "source_disclosures": source_disclosures,
+        "lookahead_checks": lookahead_checks,
+        "dependency_check": dependency_check,
+        "probability_baseline_id": NULL_BENCHMARK_BASELINE_ID,
+        "symbol_source": symbol_source,
+        "natural_training_sample_count": natural_training_sample_count,
+        "replay_selection_policy": replay_selection_policy,
+        "source_contract": dict(source_contract),
+    }
+
+
 from ml_module.recommendation_natural_outcome_service import (  # noqa: E402
     RecommendationNaturalOutcomeService,
     verify_active_model_evidence_payload,
@@ -102,7 +276,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-decision-dates", type=int, default=100)
     parser.add_argument(
         "--replay-selection-policy",
-        choices=("chronological_first_eligible_date", "latest_eligible_dates"),
+        choices=(
+            "chronological_first_eligible_date",
+            "latest_eligible_dates",
+            "time_stratified_eligible_dates",
+        ),
         default="latest_eligible_dates",
         help="Bounded replay window policy; scheduled runs use the latest dates so new data can enter.",
     )
@@ -136,7 +314,24 @@ def main(argv: list[str] | None = None) -> int:
     config_kwargs: dict[str, Any] = {}
     if args.data_root is not None:
         config_kwargs["data_root"] = args.data_root
+    if args.output_root is not None:
+        # Keep the operational source-contract audit and the learning shadow
+        # on the same explicitly selected root.  Without this binding, the
+        # CLI could write learning artifacts to one root while auditing the
+        # default formal output root.
+        config_kwargs["output_root"] = args.output_root
     config = TWStockConfig(**config_kwargs)
+    # A generic OUTPUT_ROOT may still own the scheduled recommendation
+    # snapshot used for symbol resolution.  Keep that operational input
+    # location separate from the explicitly selected learning/source-contract
+    # output root; an explicit --symbols bypasses this lookup entirely.
+    scheduled_snapshot_output_root = Path(
+        os.environ.get("OUTPUT_ROOT", str(config.output_root))
+    ).expanduser().resolve()
+    snapshot_cohort: dict[str, Any] | None = None
+    run_scope: str | None = None
+    capture_scope: str | None = None
+    experiment_scope: str | None = None
     try:
         learning_output_root = resolve_recommendation_learning_output_root(
             data_root=config.data_root,
@@ -168,10 +363,40 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         symbols, symbol_source = _resolve_symbols(
-            output_root=config.output_root,
+            output_root=scheduled_snapshot_output_root,
             explicit_symbols=args.symbols,
             decision_date=decision_day,
         )
+        if args.symbols is None:
+            snapshot_cohort = _load_snapshot_cohort(
+                output_root=scheduled_snapshot_output_root,
+                decision_date=decision_day,
+            )
+            effective_policy = RecommendationPromotionPolicy()
+            experiment_scope = _scheduled_experiment_scope(
+                fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+                policy=effective_policy,
+                feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+            )
+            run_scope = _scheduled_run_scope(
+                symbols=symbols,
+                snapshot_cohort=snapshot_cohort,
+                fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+                policy=effective_policy,
+                feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+            )
+            capture_scope = _scheduled_capture_scope(
+                symbols=symbols,
+                snapshot_cohort=snapshot_cohort,
+            )
+        else:
+            experiment_scope = _explicit_experiment_scope(
+                symbols,
+                fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+                policy=RecommendationPromotionPolicy(),
+                feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+            )
+            capture_scope = _capture_scope_token(None, symbols)
     except ValueError as exc:
         runner = _build_runner(
             learning_output_root,
@@ -210,6 +435,8 @@ def main(argv: list[str] | None = None) -> int:
                     active_natural_result={"status": "not_run", "reason": "symbol_cohort_preflight_failed"},
                     live_capture={"status": "not_run"},
                     error=f"{type(exc).__name__}: {exc}",
+                    symbol_coverage=None,
+                    run_scope=None,
                 ),
                 ensure_ascii=False,
                 sort_keys=True,
@@ -236,6 +463,19 @@ def main(argv: list[str] | None = None) -> int:
         max_decision_dates=args.max_decision_dates,
         selection_policy=args.replay_selection_policy,
     )
+    source_contract_audit = _audit_source_contract(
+        data_root=config.data_root,
+        output_root=config.output_root,
+        source_db=source_db,
+        learning_output_root=learning_output_root,
+        decision_date=decision_day,
+        symbols=symbols,
+        fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+        history_start_date=replay_config.history_start_date,
+        replay_start_date=replay_config.replay_start_date,
+        replay_end_date=replay_config.replay_end_date,
+        availability_cutoff_at=_taipei_now().isoformat(timespec="seconds"),
+    )
     runner = _build_runner(
         learning_output_root,
         args.fixed_round_trip_cost_bp,
@@ -249,8 +489,10 @@ def main(argv: list[str] | None = None) -> int:
             drift_status="drifted",
             recovery_policy="explicit_emergency_rollback",
         )
+        dependencies.update(source_contract_audit)
         run_result = runner.run(
             decision_date=decision_day.isoformat(),
+            run_scope=run_scope,
             samples=(),
             natural_evidence=None,
             data_dependency_status=dependencies["data_status"],
@@ -273,6 +515,8 @@ def main(argv: list[str] | None = None) -> int:
                     active_natural_result={"status": "not_run", "reason": "explicit_emergency_rollback"},
                     live_capture={"status": "not_run"},
                     error=None,
+                    symbol_coverage=snapshot_cohort,
+                    run_scope=run_scope,
                 ),
                 ensure_ascii=False,
                 sort_keys=True,
@@ -297,8 +541,10 @@ def main(argv: list[str] | None = None) -> int:
                 else "recoverable_attempt"
             ),
         )
+        dependencies.update(source_contract_audit)
         run_result = runner.run(
             decision_date=decision_day.isoformat(),
+            run_scope=run_scope,
             samples=(),
             natural_evidence=None,
             data_dependency_status="failed",
@@ -322,6 +568,8 @@ def main(argv: list[str] | None = None) -> int:
                     active_natural_result={"status": "not_run", "reason": "source_preflight_failed"},
                     live_capture={"status": "not_run"},
                     error=f"{type(exc).__name__}: {exc}",
+                    symbol_coverage=snapshot_cohort,
+                    run_scope=run_scope,
                 ),
                 ensure_ascii=False,
                 sort_keys=True,
@@ -337,9 +585,22 @@ def main(argv: list[str] | None = None) -> int:
         symbols=symbols,
         replay_source_fingerprint=replay_result.source_fingerprint,
         policy=RecommendationPromotionPolicy(),
+        source_contract_audit=source_contract_audit,
     )
     challenger_payload = _read_challenger_pointer(learning_output_root)
     challenger_path = _load_frozen_challenger(learning_output_root)
+    # The experiment scope controls the frozen challenger.  Daily cohort
+    # changes only affect the receipt/capture scope, so a scheduled challenger
+    # can accumulate natural observations across different symbol sets while
+    # a manual trial can never be reused by the normal lane.
+    if experiment_scope is not None:
+        challenger_scope = (
+            str(challenger_payload.get("experiment_scope") or "")
+            if isinstance(challenger_payload, Mapping)
+            else ""
+        )
+        if challenger_scope != experiment_scope:
+            challenger_path = None
     natural_training_samples = _load_natural_training_samples(
         output_root=learning_output_root,
         challenger_payload=challenger_payload,
@@ -349,25 +610,25 @@ def main(argv: list[str] | None = None) -> int:
         data_root=config.data_root,
     )
     training_samples = _merge_samples(replay_result.samples, natural_training_samples)
-    quality = {
-        "training_data_eligible": replay_result.training_data_eligible,
-        "forward_evidence_eligible": replay_result.forward_evidence_eligible,
-        "formal_candidate_eligible": replay_result.formal_candidate_eligible,
-        "candidate_blockers": replay_result.candidate_blockers,
-        "replay_dataset_id": replay_result.dataset_id,
-        "replay_dataset_manifest_path": str(manifest_path),
-        "replay_dataset_hash": replay_result.dataset_hash,
-        "source_disclosures": replay_result.source_disclosures,
-        "lookahead_checks": replay_result.lookahead_checks,
-        "dependency_check": dependencies,
-        "probability_baseline_id": NULL_BENCHMARK_BASELINE_ID,
-        "symbol_source": symbol_source,
-        "natural_training_sample_count": len(natural_training_samples),
-        "replay_selection_policy": replay_config.selection_policy,
-    }
+    source_contract = dependencies.get("source_contract")
+    source_contract = source_contract if isinstance(source_contract, Mapping) else {}
+    quality = _build_training_quality(
+        replay_result=replay_result,
+        source_contract=source_contract,
+        manifest_path=manifest_path,
+        symbol_source=symbol_source,
+        natural_training_sample_count=len(natural_training_samples),
+        replay_selection_policy=replay_config.selection_policy,
+        dependency_check=dependencies,
+    )
     emergency_from_preflight = _dependencies_require_emergency(dependencies)
+    historical_bootstrap: dict[str, Any] = {
+        "status": "not_triggered",
+        "policy": "no label-aware date selection",
+    }
     run_result = runner.run(
         decision_date=decision_day.isoformat(),
+        run_scope=run_scope,
         samples=training_samples,
         natural_evidence=None,
         data_dependency_status=dependencies["data_status"],
@@ -378,6 +639,175 @@ def main(argv: list[str] | None = None) -> int:
         frozen_candidate_root=challenger_path,
         emergency_rollback=emergency_from_preflight,
     )
+    if args.symbols is None and _should_expand_historical_bootstrap(run_result):
+        bootstrap_max_dates = min(max(args.max_decision_dates * 3, 300), 500)
+        initial_seen_decision_dates = tuple(
+            sorted({str(value)[:10] for value in replay_result.decision_dates if str(value).strip()})
+        )
+        bootstrap_config = replace(
+            replay_config,
+            max_decision_dates=bootstrap_max_dates,
+            selection_policy="time_stratified_eligible_dates",
+        )
+        historical_bootstrap = {
+            "status": "attempted",
+            "trigger": str(run_result.reason),
+            "initial_max_decision_dates": args.max_decision_dates,
+            "bootstrap_max_decision_dates": bootstrap_max_dates,
+            "selection_policy": bootstrap_config.selection_policy,
+            "selection_basis": (
+                "date-only evenly spaced maturable trading dates; no labels or holdout metrics used"
+            ),
+            "initial_replay_dataset_id": replay_result.dataset_id,
+            "initial_replay_sample_count": _replay_sample_count(replay_result),
+            "initial_seen_decision_date_count": len(initial_seen_decision_dates),
+            "initial_seen_decision_date_start": (
+                initial_seen_decision_dates[0] if initial_seen_decision_dates else None
+            ),
+            "initial_seen_decision_date_end": (
+                initial_seen_decision_dates[-1] if initial_seen_decision_dates else None
+            ),
+        }
+        try:
+            if not initial_seen_decision_dates:
+                raise RuntimeError("historical_bootstrap_requires_initial_seen_decision_dates")
+            initial_boundary = date.fromisoformat(initial_seen_decision_dates[0])
+            boundary_candidates = tuple(
+                str(value)[:10]
+                for value in provider.list_trading_dates(
+                    start_date=replay_config.replay_start_date,
+                    end_date=(initial_boundary - timedelta(days=1)).isoformat(),
+                    symbols=replay_config.symbols,
+                )
+            )
+            embargo_date_count = replay_config.horizon_trading_days
+            if len(boundary_candidates) <= embargo_date_count:
+                raise RuntimeError("historical_bootstrap_has_no_causal_pre_boundary_window")
+            bootstrap_end_date = boundary_candidates[-(embargo_date_count + 1)]
+            bootstrap_config = replace(
+                bootstrap_config,
+                replay_end_date=bootstrap_end_date,
+            )
+            historical_bootstrap.update(
+                {
+                    "bootstrap_replay_end_date": bootstrap_end_date,
+                    "untouched_boundary_policy": (
+                        "bootstrap uses only dates strictly before the initial observed replay window; "
+                        "a 20-trading-day causal label/embargo gap is reserved before that boundary"
+                    ),
+                    "reserved_causal_embargo_trading_days": embargo_date_count,
+                    "boundary_candidate_trading_date_count": len(boundary_candidates),
+                }
+            )
+            bootstrap_replay_result = RecommendationHistoricalReplayService(provider).build(
+                bootstrap_config
+            )
+            bootstrap_seen_decision_dates = tuple(
+                sorted({str(value)[:10] for value in bootstrap_replay_result.decision_dates})
+            )
+            date_overlap = sorted(
+                set(initial_seen_decision_dates).intersection(bootstrap_seen_decision_dates)
+            )
+            initial_seen_rows = {
+                (str(row.symbol).strip(), str(row.decision_date)[:10], str(row.label_end_date)[:10])
+                for row in replay_result.samples
+            }
+            bootstrap_seen_rows = {
+                (str(row.symbol).strip(), str(row.decision_date)[:10], str(row.label_end_date)[:10])
+                for row in bootstrap_replay_result.samples
+            }
+            row_overlap = sorted(initial_seen_rows.intersection(bootstrap_seen_rows))
+            crossing_rows = sorted(
+                {
+                    (str(row.symbol).strip(), str(row.decision_date)[:10], str(row.label_end_date)[:10])
+                    for row in bootstrap_replay_result.samples
+                    if str(row.label_end_date)[:10] >= initial_seen_decision_dates[0]
+                }
+            )
+            if date_overlap or row_overlap or crossing_rows:
+                raise RuntimeError(
+                    "historical_bootstrap_seen_data_overlap:"
+                    f"dates={len(date_overlap)}:rows={len(row_overlap)}:crossing_labels={len(crossing_rows)}"
+                )
+            historical_bootstrap.update(
+                {
+                    "initial_bootstrap_decision_date_overlap_count": len(date_overlap),
+                    "initial_bootstrap_row_overlap_count": len(row_overlap),
+                    "bootstrap_rows_crossing_initial_boundary_count": len(crossing_rows),
+                    "bootstrap_seen_decision_date_count": len(bootstrap_seen_decision_dates),
+                    "bootstrap_seen_decision_date_start": (
+                        bootstrap_seen_decision_dates[0] if bootstrap_seen_decision_dates else None
+                    ),
+                    "bootstrap_seen_decision_date_end": (
+                        bootstrap_seen_decision_dates[-1] if bootstrap_seen_decision_dates else None
+                    ),
+                }
+            )
+            bootstrap_manifest_path = bootstrap_replay_result.persist(learning_output_root)
+            bootstrap_quality = _build_training_quality(
+                replay_result=bootstrap_replay_result,
+                source_contract=source_contract,
+                manifest_path=bootstrap_manifest_path,
+                symbol_source=symbol_source,
+                natural_training_sample_count=len(natural_training_samples),
+                replay_selection_policy=bootstrap_config.selection_policy,
+                dependency_check=dependencies,
+            )
+            bootstrap_quality["historical_bootstrap"] = dict(historical_bootstrap)
+            bootstrap_training_samples = _merge_samples(
+                bootstrap_replay_result.samples,
+                natural_training_samples,
+            )
+            bootstrap_run_result = runner.run(
+                decision_date=decision_day.isoformat(),
+                run_scope=run_scope,
+                samples=bootstrap_training_samples,
+                natural_evidence=None,
+                data_dependency_status=dependencies["data_status"],
+                outcome_dependency_status=dependencies["outcome_status"],
+                drift_status=dependencies["drift_status"],
+                dataset_quality=bootstrap_quality,
+                training_as_of=training_as_of,
+                frozen_candidate_root=challenger_path,
+                emergency_rollback=emergency_from_preflight,
+            )
+            replay_result = bootstrap_replay_result
+            replay_config = bootstrap_config
+            manifest_path = bootstrap_manifest_path
+            training_samples = bootstrap_training_samples
+            quality = bootstrap_quality
+            run_result = bootstrap_run_result
+            historical_bootstrap.update(
+                {
+                    "status": "completed",
+                    "replay_dataset_id": bootstrap_replay_result.dataset_id,
+                    "replay_sample_count": _replay_sample_count(bootstrap_replay_result),
+                    "replay_decision_date_count": len(bootstrap_replay_result.decision_dates),
+                    "replay_date_start": (
+                        bootstrap_replay_result.decision_dates[0]
+                        if bootstrap_replay_result.decision_dates
+                        else None
+                    ),
+                    "replay_date_end": (
+                        bootstrap_replay_result.decision_dates[-1]
+                        if bootstrap_replay_result.decision_dates
+                        else None
+                    ),
+                    "replay_coverage": dict(bootstrap_replay_result.coverage),
+                    "replay_diagnostics": list(bootstrap_replay_result.diagnostics),
+                    "training_status": bootstrap_run_result.status,
+                    "training_reason": bootstrap_run_result.reason,
+                    "replay_manifest_path": str(bootstrap_manifest_path),
+                    "training_receipt_path": bootstrap_run_result.receipt_path,
+                }
+            )
+        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+            historical_bootstrap.update(
+                {
+                    "status": "failed",
+                    "error": f"{type(exc).__name__}:{exc}",
+                }
+            )
     if run_result.candidate_root and run_result.candidate_id:
         challenger_path = _ensure_challenger_pointer(
             output_root=learning_output_root,
@@ -389,6 +819,8 @@ def main(argv: list[str] | None = None) -> int:
                 if emergency_from_preflight
                 else "new_candidate_frozen"
             ),
+            run_scope=run_scope,
+            experiment_scope=experiment_scope,
         )
 
     capture_result = _capture_current_if_requested(
@@ -399,8 +831,12 @@ def main(argv: list[str] | None = None) -> int:
         provider=provider,
         symbols=symbols,
         run_result=run_result,
+        run_scope=run_scope,
+        capture_scope=capture_scope,
         replay_config=replay_config,
+        source_contract_audit=source_contract_audit,
     )
+    capture_failure, capture_recoverable = _capture_dependency_failure(capture_result)
 
     active_natural_result = _scan_active_model_evidence(
         output_root=learning_output_root,
@@ -464,6 +900,7 @@ def main(argv: list[str] | None = None) -> int:
             output_path=evidence_path,
             candidate_id=run_result.candidate_id,
             candidate_freeze_hash=_candidate_freeze(run_result.candidate_root),
+            required_source_contract=source_contract_audit,
         ).to_dict()
         evidence_payload = natural_result.get("evidence")
         if isinstance(evidence_payload, Mapping):
@@ -472,6 +909,7 @@ def main(argv: list[str] | None = None) -> int:
     if automatic_evidence is not None or emergency_after_scan != emergency_from_preflight:
         run_result = runner.run(
             decision_date=decision_day.isoformat(),
+            run_scope=run_scope,
             samples=training_samples,
             natural_evidence=automatic_evidence,
             data_dependency_status=dependencies["data_status"],
@@ -482,6 +920,16 @@ def main(argv: list[str] | None = None) -> int:
             frozen_candidate_root=run_result.candidate_root,
             emergency_rollback=emergency_after_scan,
         )
+    if args.symbols is None and historical_bootstrap.get("status") == "not_triggered":
+        recovered_bootstrap = _recover_historical_bootstrap_metadata(
+            learning_output_root=learning_output_root,
+            decision_day=decision_day,
+            run_scope=run_scope,
+            initial_replay_result=replay_result,
+            run_result=run_result,
+        )
+        if recovered_bootstrap is not None:
+            historical_bootstrap = recovered_bootstrap
     if run_result.candidate_id and run_result.candidate_root:
         challenger_status = _challenger_status(run_result, natural_result)
         challenger_path = _ensure_challenger_pointer(
@@ -496,6 +944,8 @@ def main(argv: list[str] | None = None) -> int:
                 if challenger_status == "retired"
                 else "awaiting_natural_maturity"
             ),
+            run_scope=run_scope,
+            experiment_scope=experiment_scope,
         )
 
     ignored_inputs = [
@@ -520,19 +970,29 @@ def main(argv: list[str] | None = None) -> int:
         natural_result=natural_result,
         active_natural_result=active_natural_result,
         live_capture=capture_result,
-        error=None,
+        error=capture_failure,
+        symbol_coverage=snapshot_cohort,
+        run_scope=run_scope,
+        capture_scope=capture_scope,
+        experiment_scope=experiment_scope,
+        recoverable=capture_recoverable,
     )
     payload["natural_evidence_supplied"] = automatic_evidence is not None
     payload["ignored_caller_inputs"] = ignored_inputs
     payload["training_sample_count"] = len(training_samples)
+    if historical_bootstrap.get("status") in {"completed", "recovered_completed"}:
+        bootstrap_sample_count = historical_bootstrap.get("replay_sample_count")
+        if isinstance(bootstrap_sample_count, int):
+            payload["training_sample_count"] = bootstrap_sample_count + len(natural_training_samples)
     payload["natural_training_sample_count"] = len(natural_training_samples)
     payload["training_as_of"] = training_as_of
+    payload["historical_bootstrap"] = historical_bootstrap
     _update_latest_status(
         run_result.latest_status_path,
         payload,
     )
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-    return 0
+    return 2 if capture_failure is not None else 0
 
 
 def _build_runner(
@@ -552,6 +1012,139 @@ def _build_runner(
     )
 
 
+def _audit_source_contract(
+    *,
+    data_root: Path,
+    output_root: Path,
+    source_db: Path,
+    learning_output_root: Path,
+    decision_date: date,
+    symbols: tuple[str, ...],
+    fixed_round_trip_cost_bp: int,
+    history_start_date: str,
+    replay_start_date: str,
+    replay_end_date: str,
+    availability_cutoff_at: str | None = None,
+) -> dict[str, Any]:
+    """Create a read-only source audit and persist its shadow receipt."""
+
+    try:
+        contract = inspect_source_contract(
+            data_root=data_root,
+            output_root=output_root,
+            source_db=source_db,
+            decision_date=decision_date,
+            symbols=symbols,
+            estimated_cost_bp=fixed_round_trip_cost_bp,
+            history_start_date=history_start_date,
+            replay_start_date=replay_start_date,
+            replay_end_date=replay_end_date,
+            availability_cutoff_at=availability_cutoff_at,
+        )
+        receipt = write_source_contract(
+            contract,
+            learning_output_root=learning_output_root,
+        )
+        return {
+            "source_contract": contract,
+            "source_contract_receipt": receipt,
+        }
+    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+        return {
+            "source_contract": {
+                "schema_version": "recommendation-calibration-source-contract.v1",
+                "status": "blocked",
+                "decision_date": decision_date.isoformat(),
+                "symbols": list(symbols),
+                "reason": f"source_contract_audit_failed:{type(exc).__name__}",
+                "error": str(exc),
+            },
+            "source_contract_receipt": {
+                "status": "blocked",
+                "reason": f"source_contract_audit_failed:{type(exc).__name__}",
+                "error": str(exc),
+            },
+        }
+
+
+def _capture_source_contract_binding(
+    audit: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Build the immutable prospective-input binding for a live capture."""
+
+    if not isinstance(audit, Mapping):
+        return None, "prospective_source_contract_audit_missing"
+    contract = audit.get("source_contract")
+    receipt = audit.get("source_contract_receipt")
+    if not isinstance(contract, Mapping) or not isinstance(receipt, Mapping):
+        return None, "prospective_source_contract_receipt_missing"
+    lanes = contract.get("lanes")
+    lanes = lanes if isinstance(lanes, Mapping) else {}
+    price_up = lanes.get("price_up_calibration")
+    price_up = price_up if isinstance(price_up, Mapping) else {}
+    if price_up.get("prospective_status") != "ready":
+        blockers = price_up.get("prospective_blockers") or price_up.get("blockers") or []
+        detail = ",".join(str(item) for item in blockers if str(item).strip())
+        return None, "prospective_price_up_source_not_ready" + (f":{detail}" if detail else "")
+    contract_path = str(receipt.get("contract_path") or "")
+    content_hash = str(
+        receipt.get("contract_content_sha256")
+        or contract.get("contract_sha256")
+        or ""
+    )
+    file_hash = str(
+        receipt.get("contract_file_sha256")
+        or receipt.get("contract_sha256")
+        or ""
+    )
+    if not contract_path or not content_hash.startswith("sha256:") or not file_hash.startswith("sha256:"):
+        return None, "prospective_source_contract_receipt_hash_missing"
+    technical = contract.get("technical")
+    technical = technical if isinstance(technical, Mapping) else {}
+    technical_receipt = technical.get("publication_receipt")
+    technical_receipt = technical_receipt if isinstance(technical_receipt, Mapping) else {}
+    feature_snapshot = technical.get("prospective_feature_snapshot")
+    feature_snapshot = feature_snapshot if isinstance(feature_snapshot, Mapping) else {}
+    feature_snapshot_hash = str(feature_snapshot.get("content_sha256") or "")
+    if not feature_snapshot_hash.startswith("sha256:"):
+        return None, "prospective_feature_snapshot_missing"
+    corporate = contract.get("corporate_actions")
+    corporate = corporate if isinstance(corporate, Mapping) else {}
+    adjustment_custody = corporate.get("adjustment_custody")
+    adjustment_custody = adjustment_custody if isinstance(adjustment_custody, Mapping) else {}
+    binding = {
+        "schema_version": "recommendation-calibration-capture-source-binding.v1",
+        "contract_path": contract_path,
+        "contract_content_sha256": content_hash,
+        "contract_file_sha256": file_hash,
+        "decision_date": contract.get("decision_date"),
+        "symbols": list(contract.get("symbols", [])) if isinstance(contract.get("symbols"), list) else [],
+        "price_up_prospective_status": price_up.get("prospective_status"),
+        "price_up_prospective_blockers": list(price_up.get("prospective_blockers", [])),
+        "technical_publication_receipt_file_sha256": technical_receipt.get("sha256"),
+        "technical_publication_content_sha256": (
+            technical_receipt.get("payload", {}).get("content_sha256")
+            if isinstance(technical_receipt.get("payload"), Mapping)
+            else None
+        ),
+        "technical_publication_available_at": technical.get("publication_available_at"),
+        "technical_source_available_ats": list(technical.get("source_receipt_available_ats") or []),
+        "feature_snapshot_content_sha256": feature_snapshot_hash,
+        "feature_snapshot_rows_sha256": feature_snapshot.get("rows_sha256"),
+        "feature_snapshot_captured_at": feature_snapshot.get("captured_at"),
+        "corporate_adjustment_manifest_hash": adjustment_custody.get("manifest_hash"),
+        "corporate_adjustment_available_at": adjustment_custody.get("available_at"),
+        "official_event_available_at": (
+            (corporate.get("event_publication") or {}).get("source_publication_available_at")
+            if isinstance(corporate.get("event_publication"), Mapping)
+            else None
+        ),
+        "historical_pit_eligible": False,
+        "source_semantics": "prospective_input_only;not_historical_backfill",
+    }
+    return binding, None
+
+
 def _inspect_dependencies(
     *,
     provider: MLHistoricalSnapshotProvider,
@@ -561,6 +1154,7 @@ def _inspect_dependencies(
     symbols: tuple[str, ...],
     replay_source_fingerprint: str,
     policy: RecommendationPromotionPolicy,
+    source_contract_audit: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Perform actual read-only source checks; no caller status becomes truth."""
 
@@ -651,6 +1245,10 @@ def _inspect_dependencies(
             "trading_dates": list(trading_dates),
         },
         "diagnostics": diagnostics,
+        "source_contract": dict((source_contract_audit or {}).get("source_contract") or {}),
+        "source_contract_receipt": dict(
+            (source_contract_audit or {}).get("source_contract_receipt") or {}
+        ),
         "checked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
 
@@ -666,6 +1264,197 @@ def _official_trading_day(
     return calendar.is_official_trading_day(decision_date, allow_online_probe=False)
 
 
+def _capture_scope_token(scope: str | None, symbols: tuple[str, ...]) -> str:
+    """Return a stable, filesystem-safe scope for immutable daily captures."""
+
+    raw = str(scope or "").strip()
+    if not raw:
+        raw = "explicit-" + hashlib.sha256(
+            json.dumps(sorted(set(symbols)), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:24]
+    safe = "".join(
+        character if character.isalnum() or character in "._-" else "_"
+        for character in raw
+    )
+    return safe[:120] or "unspecified"
+
+
+def _capture_row_identity(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Identity of a point-in-time feature row, excluding model outputs."""
+
+    return {
+        "symbol": str(row.get("symbol") or "").strip(),
+        "decision_date": str(row.get("decision_date") or "")[:10],
+        "feature_as_of_date": str(row.get("feature_as_of_date") or "")[:10],
+        "feature_available_date": str(row.get("feature_available_date") or "")[:10],
+        "feature_values": list(row.get("feature_values") or []),
+    }
+
+
+def _capture_input_identity(item: RecommendationPredictionCaptureInput) -> dict[str, Any]:
+    return _capture_row_identity(
+        {
+            "symbol": item.symbol,
+            "decision_date": item.decision_date,
+            "feature_as_of_date": item.feature_as_of_date,
+            "feature_available_date": item.feature_available_date,
+            "feature_values": list(item.feature_values),
+        }
+    )
+
+
+def _capture_source_identity(binding: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(binding, Mapping):
+        return None
+    return {
+        "decision_date": str(binding.get("decision_date") or "")[:10],
+        "symbols": sorted(
+            str(item).strip()
+            for item in binding.get("symbols", [])
+            if str(item).strip()
+        ),
+        "contract_path": str(binding.get("contract_path") or ""),
+        "contract_file_sha256": str(binding.get("contract_file_sha256") or ""),
+        "contract_content_sha256": str(binding.get("contract_content_sha256") or ""),
+        "feature_snapshot_content_sha256": str(
+            binding.get("feature_snapshot_content_sha256") or ""
+        ),
+        "price_up_prospective_status": str(
+            binding.get("price_up_prospective_status") or ""
+        ),
+    }
+
+
+def _capture_request_fingerprint(
+    *,
+    candidate_metadata: Mapping[str, Any],
+    decision_date: str,
+    inputs: tuple[RecommendationPredictionCaptureInput, ...],
+    source_contract_binding: Mapping[str, Any] | None,
+) -> str:
+    body = {
+        "candidate_id": str(candidate_metadata.get("candidate_id") or ""),
+        "candidate_freeze_hash": str(candidate_metadata.get("candidate_freeze_hash") or ""),
+        "candidate_manifest_hash": str(candidate_metadata.get("manifest_hash") or ""),
+        "candidate_artifact_hash": str(candidate_metadata.get("artifact_hash") or ""),
+        "dataset_hash": str(candidate_metadata.get("dataset_hash") or ""),
+        "capture_as_of_date": str(decision_date)[:10],
+        "rows": sorted(
+            (_capture_input_identity(item) for item in inputs),
+            key=lambda row: row["symbol"],
+        ),
+        "source_contract": _capture_source_identity(source_contract_binding),
+    }
+    return "sha256:" + hashlib.sha256(
+        json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def _read_verified_candidate_capture(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("capture is not an object")
+        _verify_capture_payload(payload)
+        return payload, None
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return None, f"{type(exc).__name__}:{exc}"
+
+
+def _capture_matches_request(
+    payload: Mapping[str, Any],
+    *,
+    candidate_metadata: Mapping[str, Any],
+    candidate_root: Path,
+    decision_date: str,
+    inputs: tuple[RecommendationPredictionCaptureInput, ...],
+    source_contract_binding: Mapping[str, Any] | None,
+) -> bool:
+    expected_by_symbol = {
+        str(item.symbol).strip(): _capture_input_identity(item)
+        for item in inputs
+    }
+    actual_rows = [row for row in payload.get("rows", []) if isinstance(row, Mapping)]
+    actual_by_symbol = {
+        str(row.get("symbol") or "").strip(): row for row in actual_rows
+    }
+    if str(payload.get("candidate_id") or "") != str(candidate_metadata.get("candidate_id") or ""):
+        return False
+    if str(payload.get("candidate_freeze_hash") or "") != str(
+        candidate_metadata.get("candidate_freeze_hash") or ""
+    ):
+        return False
+    if Path(str(payload.get("candidate_root") or "")).resolve() != candidate_root.resolve():
+        return False
+    if str(payload.get("capture_as_of_date") or "")[:10] != str(decision_date)[:10]:
+        return False
+    if set(actual_by_symbol) != set(expected_by_symbol):
+        return False
+    if any(
+        _capture_row_identity(row) != expected_by_symbol[symbol]
+        for symbol, row in actual_by_symbol.items()
+    ):
+        return False
+    return _capture_source_identity(payload.get("source_contract_binding")) == _capture_source_identity(
+        source_contract_binding
+    )
+
+
+def _scan_cross_capture_identity(
+    *,
+    capture_root: Path,
+    destination: Path,
+    candidate_id: str,
+    decision_date: str,
+    inputs: tuple[RecommendationPredictionCaptureInput, ...],
+    source_contract_binding: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Audit same-day rows before writing a new immutable scope capture."""
+
+    expected_by_symbol = {
+        str(item.symbol).strip(): _capture_input_identity(item)
+        for item in inputs
+    }
+    exact_symbols: set[str] = set()
+    source_conflicts: set[str] = set()
+    feature_conflicts: set[str] = set()
+    source_paths: set[str] = set()
+    paths = sorted(capture_root.rglob("*.json")) if capture_root.is_dir() else ()
+    for path in paths:
+        if path.resolve() == destination.resolve():
+            continue
+        payload, _ = _read_verified_candidate_capture(path)
+        if not isinstance(payload, Mapping):
+            continue
+        if str(payload.get("candidate_id") or "") != candidate_id:
+            continue
+        if str(payload.get("capture_as_of_date") or "")[:10] != str(decision_date)[:10]:
+            continue
+        for row in payload.get("rows", []):
+            if not isinstance(row, Mapping):
+                continue
+            symbol = str(row.get("symbol") or "").strip()
+            if symbol not in expected_by_symbol:
+                continue
+            source_paths.add(str(path.resolve()))
+            if _capture_row_identity(row) != expected_by_symbol[symbol]:
+                feature_conflicts.add(symbol)
+            elif _capture_source_identity(payload.get("source_contract_binding")) == _capture_source_identity(
+                source_contract_binding
+            ):
+                exact_symbols.add(symbol)
+            else:
+                source_conflicts.add(symbol)
+    return {
+        "exact_symbols": sorted(exact_symbols),
+        "source_conflict_symbols": sorted(source_conflicts),
+        "feature_conflict_symbols": sorted(feature_conflicts),
+        "source_capture_paths": sorted(source_paths),
+    }
+
+
 def _capture_current_if_requested(
     *,
     args: argparse.Namespace,
@@ -675,7 +1464,10 @@ def _capture_current_if_requested(
     provider: MLHistoricalSnapshotProvider,
     symbols: tuple[str, ...],
     run_result: Any,
+    run_scope: str | None = None,
+    capture_scope: str | None = None,
     replay_config: RecommendationHistoricalReplayConfig,
+    source_contract_audit: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not args.capture_current:
         return {"status": "not_requested"}
@@ -709,6 +1501,16 @@ def _capture_current_if_requested(
             "decision_timezone": "Asia/Taipei",
             "calendar_reason": calendar_reason,
             "trading_calendar_source": "OfficialTradingCalendar",
+        }
+    source_contract_binding, source_contract_reason = _capture_source_contract_binding(
+        source_contract_audit
+    )
+    if source_contract_binding is None:
+        return {
+            "status": "blocked",
+            "reason": source_contract_reason or "prospective_source_contract_not_ready",
+            "source_contract": dict((source_contract_audit or {}).get("source_contract") or {}),
+            "capture_eligible": False,
         }
     try:
         trading_dates = provider.list_trading_dates(
@@ -767,40 +1569,111 @@ def _capture_current_if_requested(
                 "active_model_monitor": {"status": "skipped", "reason": "live_capture_feature_rows_missing"},
             }
         capture_at = _taipei_now().isoformat(timespec="seconds")
+        scope_token = _capture_scope_token(capture_scope, symbols)
         candidate_capture: dict[str, Any]
         if not run_result.candidate_root or not run_result.candidate_id:
             candidate_capture = {"status": "skipped", "reason": "candidate_not_available"}
         else:
-            capture_path = (
-                Path(output_root)
+            candidate_root = Path(str(run_result.candidate_root)).resolve()
+            candidate_metadata = json.loads(
+                (candidate_root / "candidate.json").read_text(encoding="utf-8")
+            )
+            if not isinstance(candidate_metadata, Mapping):
+                raise ValueError("candidate metadata is not an object")
+            capture_root = (
+                Path(output_root).resolve()
                 / "recommendation_learning"
                 / "captures"
                 / decision_day.isoformat()
-                / f"{run_result.candidate_id}.json"
+            )
+            request_fingerprint = _capture_request_fingerprint(
+                candidate_metadata=candidate_metadata,
+                decision_date=decision_day.isoformat(),
+                inputs=inputs,
+                source_contract_binding=source_contract_binding,
+            )
+            scoped_root = capture_root / scope_token
+            scoped_path = scoped_root / (
+                f"{run_result.candidate_id}-{request_fingerprint.split(':', 1)[1][:24]}.json"
+            )
+            legacy_path = capture_root / f"{run_result.candidate_id}.json"
+            capture_path = scoped_path
+            legacy_reuse = False
+            if run_scope is None and legacy_path.is_file():
+                legacy_payload, legacy_error = _read_verified_candidate_capture(legacy_path)
+                if legacy_payload is not None and _capture_matches_request(
+                    legacy_payload,
+                    candidate_metadata=candidate_metadata,
+                    candidate_root=candidate_root,
+                    decision_date=decision_day.isoformat(),
+                    inputs=inputs,
+                    source_contract_binding=source_contract_binding,
+                ):
+                    capture_path = legacy_path
+                    legacy_reuse = True
+                elif legacy_error is not None:
+                    # A legacy artifact is immutable.  A malformed or
+                    # mismatched file cannot be repaired in place; the new
+                    # scope path below is the only safe retry destination.
+                    pass
+
+            cross_capture = _scan_cross_capture_identity(
+                capture_root=capture_root,
+                destination=capture_path,
+                candidate_id=str(run_result.candidate_id),
+                decision_date=decision_day.isoformat(),
+                inputs=inputs,
+                source_contract_binding=source_contract_binding,
             )
             if capture_path.is_file():
-                try:
-                    payload = json.loads(capture_path.read_text(encoding="utf-8"))
-                    if isinstance(payload, dict):
-                        _verify_capture_payload(payload)
-                        candidate_capture = {
-                            "status": "already_captured",
-                            "capture_path": str(capture_path.resolve()),
-                            "capture_id": payload.get("capture_id"),
-                            "capture_hash": payload.get("capture_hash"),
-                            "row_count": len(payload.get("rows", [])),
-                            "capture_origin": payload.get("capture_origin"),
-                        }
-                    else:
-                        raise ValueError("candidate capture is not an object")
-                except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+                payload, error = _read_verified_candidate_capture(capture_path)
+                if payload is not None and _capture_matches_request(
+                    payload,
+                    candidate_metadata=candidate_metadata,
+                    candidate_root=candidate_root,
+                    decision_date=decision_day.isoformat(),
+                    inputs=inputs,
+                    source_contract_binding=source_contract_binding,
+                ):
+                    candidate_capture = {
+                        "status": "already_captured",
+                        "reuse_mode": "legacy_exact_identity" if legacy_reuse else "exact_scope_identity",
+                        "capture_path": str(capture_path.resolve()),
+                        "capture_id": payload.get("capture_id"),
+                        "capture_hash": payload.get("capture_hash"),
+                        "row_count": len(payload.get("rows", [])),
+                        "capture_origin": payload.get("capture_origin"),
+                        "capture_scope": scope_token,
+                        "requested_symbols": sorted({str(item.symbol) for item in inputs}),
+                        "captured_symbols": sorted(
+                            str(row.get("symbol"))
+                            for row in payload.get("rows", [])
+                            if isinstance(row, Mapping)
+                        ),
+                        "capture_request_fingerprint": request_fingerprint,
+                        "deduplicated_symbols": cross_capture["exact_symbols"],
+                        "cross_capture_source_paths": cross_capture["source_capture_paths"],
+                    }
+                elif error is not None:
                     candidate_capture = {
                         "status": "failed",
-                        "reason": "existing_capture_invalid_refusing_overwrite",
+                        "reason": "existing_capture_invalid_or_identity_conflict_refusing_overwrite",
+                        "capture_path": str(capture_path.resolve()),
+                        "capture_scope": scope_token,
+                        "capture_request_fingerprint": request_fingerprint,
+                        "existing_capture_error": error,
+                    }
+                else:
+                    candidate_capture = {
+                        "status": "failed",
+                        "reason": "existing_capture_identity_conflict_refusing_overwrite",
+                        "capture_path": str(capture_path.resolve()),
+                        "capture_scope": scope_token,
+                        "capture_request_fingerprint": request_fingerprint,
                     }
             else:
                 capture = RecommendationPredictionCaptureService().capture(
-                    candidate_root=run_result.candidate_root,
+                    candidate_root=candidate_root,
                     feature_schema=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
                     feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
                     policy_hash=RecommendationPromotionPolicy().policy_hash,
@@ -815,15 +1688,25 @@ def _capture_current_if_requested(
                         / "recommendation-calibration-active-pointer.json"
                     ),
                     capture_origin="scheduled_live",
+                    source_contract_binding=source_contract_binding,
                 )
                 capture.persist(capture_path)
                 candidate_capture = {
                     "status": "captured",
+                    "reuse_mode": "new_immutable_scope_capture",
                     "capture_path": str(capture_path.resolve()),
                     "capture_id": capture.capture_id,
                     "capture_hash": capture.capture_hash,
                     "row_count": len(capture.rows),
                     "capture_origin": capture.capture_origin,
+                    "capture_scope": scope_token,
+                    "requested_symbols": sorted({str(item.symbol) for item in inputs}),
+                    "captured_symbols": sorted(str(row["symbol"]) for row in capture.rows),
+                    "capture_request_fingerprint": request_fingerprint,
+                    "deduplicated_symbols": cross_capture["exact_symbols"],
+                    "cross_capture_source_paths": cross_capture["source_capture_paths"],
+                    "cross_capture_source_conflict_symbols": cross_capture["source_conflict_symbols"],
+                    "cross_capture_feature_conflict_symbols": cross_capture["feature_conflict_symbols"],
                     "champion_kind": capture.probability_baseline_kind,
                     "champion_model_id": capture.champion_model_id,
                     "champion_candidate_id": capture.champion_candidate_id,
@@ -848,6 +1731,8 @@ def _capture_current_if_requested(
             overall_status = "skipped"
         return {
             "status": overall_status,
+            "capture_scope": scope_token,
+            "requested_symbols": sorted({str(item.symbol) for item in inputs}),
             "candidate": candidate_capture,
             "active_model_monitor": active_capture,
             # Keep the old top-level fields for operators/scripts that only
@@ -1119,6 +2004,8 @@ def _ensure_challenger_pointer(
     status: str,
     natural_result: Mapping[str, Any] | None = None,
     retrain_trigger: str = "",
+    run_scope: str | None = None,
+    experiment_scope: str | None = None,
 ) -> Path:
     root = Path(str(run_result.candidate_root)).resolve()
     metadata = json.loads((root / "candidate.json").read_text(encoding="utf-8"))
@@ -1174,6 +2061,8 @@ def _ensure_challenger_pointer(
         ),
         "last_evaluated_decision_date_count": len(evidence_dates),
         "retrain_trigger": retrain_trigger or "awaiting_natural_maturity",
+        "run_scope": run_scope,
+        "experiment_scope": experiment_scope,
         "shadow_only": True,
         "formal_order_allowed": False,
     }
@@ -1192,25 +2081,34 @@ def _resolve_symbols(
         if symbols:
             return symbols, "caller_explicit_symbols"
         raise ValueError("--symbols must contain at least one explicit symbol")
-    runs_root = Path(output_root).resolve() / "recommendation" / "runs"
-    if not runs_root.is_dir():
+    snapshot = _find_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    if snapshot is None:
         raise ValueError("--symbols missing and scheduled recommendation snapshot directory is unavailable")
-    for path in sorted(runs_root.glob("*.json"), reverse=True):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
-        if not isinstance(payload, Mapping):
-            continue
-        config = payload.get("config")
-        if not isinstance(config, Mapping) or config.get("scheduled_snapshot") is not True:
-            continue
-        snapshot_date = str(config.get("decision_date") or payload.get("created_at") or "")[:10]
-        if snapshot_date != decision_date.isoformat():
-            continue
-        recommendations = payload.get("recommendations")
-        if not isinstance(recommendations, list):
-            continue
+    path, payload = snapshot
+    config = payload.get("config")
+    config = config if isinstance(config, Mapping) else {}
+    snapshot_cohort = config.get("snapshot_cohort")
+    if isinstance(snapshot_cohort, Mapping):
+        cohort_symbols = snapshot_cohort.get("eligible_symbols")
+        symbols = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in cohort_symbols
+                    if str(item).strip()
+                }
+            )
+            if isinstance(cohort_symbols, (list, tuple, set))
+            else ()
+        )
+        if symbols:
+            return symbols, f"scheduled_recommendation_snapshot:{path.name}:eligible"
+
+    recommendations = payload.get("recommendations")
+    if isinstance(recommendations, list):
         symbols = tuple(
             sorted(
                 {
@@ -1237,6 +2135,143 @@ def _resolve_symbols(
     raise ValueError(
         "--symbols missing and no same-day scheduled recommendation snapshot supplied an explicit symbol cohort"
     )
+
+
+def _find_same_day_snapshot(
+    *,
+    output_root: Path,
+    decision_date: date,
+) -> tuple[Path, Mapping[str, Any]] | None:
+    runs_root = Path(output_root).resolve() / "recommendation" / "runs"
+    if not runs_root.is_dir():
+        return None
+    for path in sorted(runs_root.glob("*.json"), reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        config = payload.get("config")
+        if not isinstance(config, Mapping) or config.get("scheduled_snapshot") is not True:
+            continue
+        snapshot_date = str(config.get("decision_date") or payload.get("created_at") or "")[:10]
+        if snapshot_date == decision_date.isoformat():
+            return path, payload
+    return None
+
+
+def _load_snapshot_cohort(
+    *,
+    output_root: Path,
+    decision_date: date,
+) -> dict[str, Any] | None:
+    snapshot = _find_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    if snapshot is None:
+        return None
+    _, payload = snapshot
+    config = payload.get("config")
+    if not isinstance(config, Mapping):
+        return None
+    cohort = config.get("snapshot_cohort")
+    return dict(cohort) if isinstance(cohort, Mapping) else None
+
+
+def _scheduled_run_scope(
+    *,
+    symbols: tuple[str, ...],
+    snapshot_cohort: Mapping[str, Any] | None,
+    fixed_round_trip_cost_bp: int = 50,
+    policy: RecommendationPromotionPolicy | None = None,
+    feature_registry_hash: str | None = None,
+) -> str:
+    """Return a daily receipt scope bound to the immutable experiment version."""
+
+    cohort_hash = str((snapshot_cohort or {}).get("cohort_hash") or "")
+    if not cohort_hash.startswith("sha256:"):
+        cohort_hash = "sha256:" + hashlib.sha256(
+            json.dumps(
+                {"symbols": sorted(set(symbols)), "cohort": dict(snapshot_cohort or {})},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+    experiment_hash = _scheduled_experiment_scope(
+        fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        policy=policy,
+        feature_registry_hash=feature_registry_hash,
+    ).rsplit("-", 1)[-1]
+    return "scheduled-snapshot-" + cohort_hash.split(":", 1)[1][:16] + "-e" + experiment_hash[:6]
+
+
+def _scheduled_experiment_scope(
+    *,
+    fixed_round_trip_cost_bp: int = 50,
+    policy: RecommendationPromotionPolicy | None = None,
+    feature_registry_hash: str | None = None,
+) -> str:
+    """Stable identity shared by all scheduled days and symbol cohorts."""
+
+    effective_policy = policy or RecommendationPromotionPolicy()
+    body = {
+        "experiment_version": "scheduled-daily-recommendation-learning-v1",
+        "strategy_profile": "scheduled_daily_research_default_v1",
+        "target": "price_up_20d_after_cost_separate_lanes",
+        "feature_registry_hash": feature_registry_hash or CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+        "policy_hash": effective_policy.policy_hash,
+        "fixed_round_trip_cost_bp": int(fixed_round_trip_cost_bp),
+    }
+    digest = hashlib.sha256(
+        json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()[:24]
+    return "scheduled-experiment-" + digest
+
+
+def _explicit_experiment_scope(
+    symbols: tuple[str, ...],
+    *,
+    fixed_round_trip_cost_bp: int = 50,
+    policy: RecommendationPromotionPolicy | None = None,
+    feature_registry_hash: str | None = None,
+) -> str:
+    effective_policy = policy or RecommendationPromotionPolicy()
+    body = {
+        "experiment_version": "explicit-recommendation-learning-trial-v1",
+        "symbols": sorted(set(symbols)),
+        "feature_registry_hash": feature_registry_hash or CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+        "policy_hash": effective_policy.policy_hash,
+        "fixed_round_trip_cost_bp": int(fixed_round_trip_cost_bp),
+    }
+    digest = hashlib.sha256(
+        json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()[:24]
+    return "explicit-experiment-" + digest
+
+
+def _scheduled_capture_scope(
+    *,
+    symbols: tuple[str, ...],
+    snapshot_cohort: Mapping[str, Any] | None,
+) -> str:
+    cohort_hash = str((snapshot_cohort or {}).get("cohort_hash") or "")
+    if not cohort_hash.startswith("sha256:"):
+        cohort_hash = "sha256:" + hashlib.sha256(
+            json.dumps(
+                {"symbols": sorted(set(symbols)), "cohort": dict(snapshot_cohort or {})},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+    return "scheduled-capture-" + cohort_hash.split(":", 1)[1][:16]
 
 
 def _merge_samples(
@@ -1782,6 +2817,11 @@ def _cli_payload(
     active_natural_result: Mapping[str, Any],
     live_capture: Mapping[str, Any],
     error: str | None,
+    recoverable: bool = False,
+    symbol_coverage: Mapping[str, Any] | None = None,
+    run_scope: str | None = None,
+    capture_scope: str | None = None,
+    experiment_scope: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema_version": "daily-recommendation-learning-cli-result.v3",
@@ -1789,6 +2829,10 @@ def _cli_payload(
         "decision_timezone": "Asia/Taipei",
         "symbols": list(symbols),
         "symbol_source": symbol_source,
+        "symbol_coverage": dict(symbol_coverage) if isinstance(symbol_coverage, Mapping) else None,
+        "run_scope": run_scope,
+        "capture_scope": capture_scope,
+        "experiment_scope": experiment_scope,
         "replay": replay_result.to_dict() if replay_result is not None else None,
         "replay_manifest_path": str(manifest_path) if manifest_path is not None else None,
         "dependencies": dict(dependencies),
@@ -1812,6 +2856,7 @@ def _cli_payload(
         "active_model_natural_evidence": dict(active_natural_result or {}),
         "live_capture": dict(live_capture),
         "error": error,
+        "recoverable": bool(recoverable),
         "formal_order_allowed": False,
         "shadow_only": True,
     }
@@ -1851,6 +2896,166 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
+def _recover_historical_bootstrap_metadata(
+    *,
+    learning_output_root: Path,
+    decision_day: date,
+    run_scope: str | None,
+    initial_replay_result: Any,
+    run_result: Any,
+) -> dict[str, Any] | None:
+    """Recover bootstrap observability when a same-day rerun is idempotent.
+
+    The first normal run records the causal trigger in its failed-training
+    attempt and persists the replay manifest before the final candidate is
+    written.  A later same-day retry returns the completed receipt without
+    retraining, so this read-only recovery keeps the final status disclosure
+    intact instead of replacing it with ``not_triggered``.
+    """
+
+    if not run_scope or str(getattr(run_result, "status", "")) != "completed":
+        return None
+    run_dir = (
+        Path(learning_output_root).resolve()
+        / "recommendation_learning"
+        / "runs"
+        / decision_day.isoformat()
+        / str(run_scope)
+    )
+    try:
+        receipt = json.loads((run_dir / "run_receipt.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(receipt, Mapping) or receipt.get("status") != "completed":
+        return None
+
+    trigger_payload: Mapping[str, Any] | None = None
+    attempts_dir = run_dir / "attempts"
+    for attempt_path in sorted(
+        attempts_dir.glob("*.json"),
+        key=lambda path: path.stat().st_mtime if path.exists() else 0,
+    ):
+        try:
+            attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(attempt, Mapping) or attempt.get("status") != "failed_training":
+            continue
+        reason = str(attempt.get("reason") or "").lower()
+        if "oof calibration" in reason or "calibration target requires two classes" in reason:
+            trigger_payload = attempt
+            break
+    if trigger_payload is None:
+        return None
+    diagnostics = trigger_payload.get("training_diagnostics")
+    diagnostics = diagnostics if isinstance(diagnostics, Mapping) else {}
+    selection = diagnostics.get("bootstrap_selection")
+    selection = selection if isinstance(selection, Mapping) else {}
+    initial_dates = tuple(
+        sorted({str(value)[:10] for value in getattr(initial_replay_result, "decision_dates", ())})
+    )
+    initial_start = str(diagnostics.get("eligible_decision_date_start") or (initial_dates[0] if initial_dates else ""))[:10]
+    if not initial_start:
+        return None
+
+    datasets_root = Path(learning_output_root).resolve() / "recommendation_learning" / "datasets"
+    selected_manifest: tuple[Path, Mapping[str, Any]] | None = None
+    for dataset_dir in sorted(
+        (path for path in datasets_root.iterdir() if path.is_dir()),
+        key=lambda path: path.stat().st_mtime if path.exists() else 0,
+        reverse=True,
+    ) if datasets_root.is_dir() else ():
+        manifest_path = dataset_dir / "dataset.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(manifest, Mapping):
+            continue
+        coverage = manifest.get("coverage")
+        coverage = coverage if isinstance(coverage, Mapping) else {}
+        if coverage.get("selection_policy") != "time_stratified_eligible_dates":
+            continue
+        dates = tuple(sorted({str(value)[:10] for value in manifest.get("decision_dates", ())}))
+        if not dates or dates[-1] >= initial_start:
+            continue
+        selected_manifest = (manifest_path, manifest)
+        break
+    if selected_manifest is None:
+        return None
+
+    manifest_path, manifest = selected_manifest
+    bootstrap_dates = tuple(sorted({str(value)[:10] for value in manifest.get("decision_dates", ())}))
+    initial_date_set = set(initial_dates)
+    date_overlap = sorted(initial_date_set.intersection(bootstrap_dates))
+
+    def row_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
+        return (
+            str(row.get("symbol") or "").strip(),
+            str(row.get("decision_date") or "")[:10],
+            str(row.get("label_end_date") or "")[:10],
+        )
+
+    initial_rows = {
+        (
+            str(getattr(row, "symbol", "") or "").strip(),
+            str(getattr(row, "decision_date", "") or "")[:10],
+            str(getattr(row, "label_end_date", "") or "")[:10],
+        )
+        for row in getattr(initial_replay_result, "samples", ())
+    }
+    bootstrap_rows = {
+        row_key(row)
+        for row in manifest.get("samples", ())
+        if isinstance(row, Mapping)
+    }
+    row_overlap = sorted(initial_rows.intersection(bootstrap_rows))
+    crossing_labels = sorted(
+        row
+        for row in bootstrap_rows
+        if row[2] >= initial_start
+    )
+    coverage = manifest.get("coverage")
+    coverage = dict(coverage) if isinstance(coverage, Mapping) else {}
+    source_contract = coverage.get("source_contract")
+    source_contract = source_contract if isinstance(source_contract, Mapping) else {}
+    return {
+        "status": "recovered_completed",
+        "recovered_from_existing_artifacts": True,
+        "trigger": str(trigger_payload.get("reason") or ""),
+        "initial_max_decision_dates": selection.get("replay_max_decision_dates"),
+        "bootstrap_max_decision_dates": coverage.get("max_decision_dates"),
+        "selection_policy": coverage.get("selection_policy"),
+        "selection_basis": "date-only evenly spaced maturable trading dates; no labels or holdout metrics used",
+        "initial_replay_dataset_id": getattr(initial_replay_result, "dataset_id", None),
+        "initial_replay_sample_count": getattr(initial_replay_result, "sample_count", None),
+        "initial_seen_decision_date_count": len(initial_dates),
+        "initial_seen_decision_date_start": initial_dates[0] if initial_dates else None,
+        "initial_seen_decision_date_end": initial_dates[-1] if initial_dates else None,
+        "bootstrap_replay_dataset_id": manifest.get("dataset_id"),
+        "replay_dataset_id": manifest.get("dataset_id"),
+        "replay_sample_count": manifest.get("sample_count"),
+        "replay_decision_date_count": len(bootstrap_dates),
+        "replay_date_start": bootstrap_dates[0] if bootstrap_dates else None,
+        "replay_date_end": bootstrap_dates[-1] if bootstrap_dates else None,
+        "bootstrap_replay_end_date": source_contract.get("replay_end_date"),
+        "untouched_boundary_policy": (
+            "bootstrap uses only dates strictly before the initial observed replay window; "
+            "a 20-trading-day causal label/embargo gap is reserved before that boundary"
+        ),
+        "reserved_causal_embargo_trading_days": 20,
+        "initial_bootstrap_decision_date_overlap_count": len(date_overlap),
+        "initial_bootstrap_row_overlap_count": len(row_overlap),
+        "bootstrap_rows_crossing_initial_boundary_count": len(crossing_labels),
+        "replay_coverage": coverage,
+        "replay_diagnostics": list(manifest.get("diagnostics", ())),
+        "replay_manifest_path": str(manifest_path),
+        "training_status": receipt.get("status"),
+        "training_reason": receipt.get("reason"),
+        "training_receipt_path": str(run_dir / "run_receipt.json"),
+    }
+
+
 def _update_latest_status(path_text: str, cli_payload: Mapping[str, Any]) -> None:
     """Append CLI observability to the runner receipt without changing its contract."""
 
@@ -1867,6 +3072,10 @@ def _update_latest_status(path_text: str, cli_payload: Mapping[str, Any]) -> Non
         "decision_timezone",
         "symbols",
         "symbol_source",
+        "symbol_coverage",
+        "run_scope",
+        "capture_scope",
+        "experiment_scope",
         "dependencies",
         "challenger",
         "active_pointer",
@@ -1878,12 +3087,18 @@ def _update_latest_status(path_text: str, cli_payload: Mapping[str, Any]) -> Non
         "natural_training_sample_count",
         "natural_evidence_supplied",
         "ignored_caller_inputs",
+        "historical_bootstrap",
         "formal_order_allowed",
         "shadow_only",
         "error",
+        "recoverable",
     ):
         if field_name in cli_payload:
-            existing[f"cli_{field_name}" if field_name == "schema_version" else field_name] = cli_payload[field_name]
+            existing[
+                f"cli_{field_name}"
+                if field_name in {"schema_version", "recoverable"}
+                else field_name
+            ] = cli_payload[field_name]
     existing["active_model_performance"] = (
         cli_payload.get("dependencies", {}).get("model_performance", {})
         if isinstance(cli_payload.get("dependencies"), Mapping)

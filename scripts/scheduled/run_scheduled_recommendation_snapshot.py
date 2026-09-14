@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -104,6 +105,110 @@ def _with_fixed_threshold_metadata(recommendations: list[Any]) -> list[Any]:
     ]
 
 
+def _symbol_from_value(value: Any) -> str:
+    if isinstance(value, dict):
+        value = (
+            value.get("stock_code")
+            or value.get("symbol")
+            or value.get("code")
+            or value.get("證券代號")
+        )
+    else:
+        value = getattr(value, "stock_code", value)
+    return str(value or "").strip()
+
+
+def _build_snapshot_cohort(
+    *,
+    screening_matrix: list[dict[str, Any]],
+    recommendations: list[Any],
+) -> dict[str, Any]:
+    """Persist the actual scheduled cohort, including non-selected gaps.
+
+    The recommendation DTO only contains the selected top-N rows.  The
+    screening matrix is the authoritative record of the bounded requested
+    cohort, so learning can capture eligible rows without silently losing
+    missing/degraded source coverage or top-N exclusions.
+    """
+
+    rows_by_symbol: dict[str, dict[str, Any]] = {}
+    for row in screening_matrix:
+        if not isinstance(row, dict):
+            continue
+        symbol = _symbol_from_value(row)
+        if symbol:
+            rows_by_symbol[symbol] = row
+
+    eligible_symbols = sorted(
+        {
+            symbol
+            for symbol in (_symbol_from_value(item) for item in recommendations)
+            if symbol
+        }
+    )
+    requested_symbols = sorted(set(rows_by_symbol) | set(eligible_symbols))
+    missing_symbols = sorted(
+        {
+            symbol
+            for symbol, row in rows_by_symbol.items()
+            if str(row.get("quality") or "").lower() == "missing"
+        }
+    )
+    degraded_symbols = sorted(
+        {
+            symbol
+            for symbol, row in rows_by_symbol.items()
+            if str(row.get("quality") or "").lower() == "degraded"
+            and symbol not in set(missing_symbols)
+        }
+    )
+    excluded_symbols = sorted(
+        set(requested_symbols)
+        - set(eligible_symbols)
+        - set(missing_symbols)
+        - set(degraded_symbols)
+    )
+    coverage_by_symbol = {
+        symbol: {
+            "status": row.get("status"),
+            "quality": row.get("quality"),
+            "stage": row.get("stage"),
+            "reason_codes": list(row.get("reason_codes") or []),
+            "warnings": list(row.get("warnings") or []),
+        }
+        for symbol, row in sorted(rows_by_symbol.items())
+    }
+    body = {
+        "schema_version": "scheduled-recommendation-snapshot-cohort.v1",
+        "requested_symbols": requested_symbols,
+        "eligible_symbols": eligible_symbols,
+        "missing_symbols": missing_symbols,
+        "degraded_symbols": degraded_symbols,
+        "excluded_symbols": excluded_symbols,
+        "requested_count": len(requested_symbols),
+        "eligible_count": len(eligible_symbols),
+        "missing_count": len(missing_symbols),
+        "degraded_count": len(degraded_symbols),
+        "excluded_count": len(excluded_symbols),
+        "coverage_status": (
+            "partial"
+            if missing_symbols
+            else "degraded"
+            if degraded_symbols
+            else "complete"
+        ),
+        "coverage_by_symbol": coverage_by_symbol,
+        "eligible_definition": "final scheduled recommendation DTO rows",
+        "missing_definition": "screening rows with quality=missing; same-day retry candidates",
+        "degraded_definition": "screening rows with quality=degraded; visible but not source-missing",
+        "excluded_definition": "requested rows not selected and not missing/degraded",
+    }
+    body["cohort_hash"] = "sha256:" + hashlib.sha256(
+        json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return body
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Scheduled research-only recommendation snapshot wrapper.")
     parser.add_argument("--data-root", required=True)
@@ -184,6 +289,11 @@ def main(argv: list[str] | None = None) -> int:
             max_stocks=args.max_stocks,
             top_n=args.top_n,
         ))
+        screening_matrix = list(getattr(service, "last_screening_matrix", []))
+        snapshot_cohort = _build_snapshot_cohort(
+            screening_matrix=screening_matrix,
+            recommendations=recommendations,
+        )
 
         result_config = deepcopy(recommendation_config)
         result_config.update(
@@ -196,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
                 "profile_id": "scheduled_daily_research_default_v1",
                 "profile_name": "Scheduled daily research default v1",
                 "look_ahead_check": "uses latest available data at scheduled run time only",
+                "snapshot_cohort": snapshot_cohort,
                 "safety_boundary": {
                     "confirm": False,
                     "writes_evidence_db": False,
@@ -248,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
             created_at=checked_at,
             notes="Research-only scheduled snapshot; not trading advice.",
             excluded_candidates_json=list(getattr(service, "last_excluded_candidates_json", [])),
-            screening_matrix_json=list(getattr(service, "last_screening_matrix", [])),
+            screening_matrix_json=screening_matrix,
             why_not_payload_json=list(getattr(service, "last_why_not_payload_json", [])),
             liquidity_gate_payload_json=list(getattr(service, "last_liquidity_gate_payload_json", [])),
             exclusion_quality=str(getattr(service, "last_exclusion_quality", "observed")),
@@ -261,6 +372,10 @@ def main(argv: list[str] | None = None) -> int:
         warnings = []
         if not recommendations:
             warnings.append("no_recommendations_returned")
+        if snapshot_cohort["missing_symbols"]:
+            warnings.append("snapshot_cohort_partial_source_coverage")
+        elif snapshot_cohort["degraded_symbols"]:
+            warnings.append("snapshot_cohort_degraded_screening_quality")
 
         forward_candidate: dict[str, Any] | None = None
         if args.forward_candidate_output_root:
@@ -294,6 +409,7 @@ def main(argv: list[str] | None = None) -> int:
                 "result_name": result.result_name,
                 "recommendations_count": len(recommendations),
                 "screening_matrix_rows": len(result.screening_matrix_json),
+                "snapshot_cohort": snapshot_cohort,
                 "excluded_candidates_rows": len(result.excluded_candidates_json),
                 "why_not_payload_rows": len(result.why_not_payload_json),
                 "liquidity_gate_payload_rows": len(result.liquidity_gate_payload_json),

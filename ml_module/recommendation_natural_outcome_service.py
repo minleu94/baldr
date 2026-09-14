@@ -29,6 +29,7 @@ from ml_module.recommendation_calibration_evidence import (
     _sha256_file,
     _verify_active_model_capture_payload,
     _verify_capture_payload,
+    _verify_source_contract_binding,
 )
 
 
@@ -80,6 +81,7 @@ class RecommendationNaturalOutcomeService:
         capture_path: str | Path,
         evaluation_date: str,
         output_path: str | Path,
+        required_source_contract: Mapping[str, Any] | None = None,
         max_rows: int = 1_000,
     ) -> RecommendationNaturalOutcomeResult:
         """Build evidence for one immutable capture, using source-derived outcomes."""
@@ -87,6 +89,22 @@ class RecommendationNaturalOutcomeService:
         capture_file = Path(capture_path).resolve()
         payload = _read_json(capture_file)
         _verify_capture_payload(payload)
+        if required_source_contract is not None:
+            gate = _source_contract_gate(required_source_contract)
+            if gate is not None and gate[0] is not True:
+                return RecommendationNaturalOutcomeResult(
+                    status="pending",
+                    reason="prospective_source_contract_not_available_for_maturity",
+                    capture_path=str(capture_file),
+                    capture_paths=(str(capture_file),),
+                    evaluation_date=_date(evaluation_date).isoformat(),
+                    matured_sample_count=0,
+                    diagnostics=(str(gate[1]),),
+                )
+            _verify_source_contract_binding(
+                payload.get("source_contract_binding"),
+                require_ready=True,
+            )
         evaluation_day = _date(evaluation_date)
         if evaluation_day > datetime.now(ZoneInfo("Asia/Taipei")).date():
             raise ValueError("evaluation_date cannot be future-dated")
@@ -131,6 +149,7 @@ class RecommendationNaturalOutcomeService:
         output_path: str | Path,
         candidate_id: str | None = None,
         candidate_freeze_hash: str | None = None,
+        required_source_contract: Mapping[str, Any] | None = None,
         max_captures: int = 366,
         max_rows: int = 10_000,
     ) -> RecommendationNaturalOutcomeResult:
@@ -146,6 +165,18 @@ class RecommendationNaturalOutcomeService:
             raise ValueError("scan bounds must be positive")
         evaluation_day = _date(evaluation_date)
         capture_root = Path(output_root).resolve() / "recommendation_learning" / "captures"
+        source_contract_gate = _source_contract_gate(required_source_contract)
+        if source_contract_gate is not None and source_contract_gate[0] is not True:
+            return RecommendationNaturalOutcomeResult(
+                status="pending",
+                reason="prospective_source_contract_not_available_for_maturity",
+                capture_path=str(capture_root),
+                capture_paths=(),
+                evaluation_date=evaluation_day.isoformat(),
+                matured_sample_count=0,
+                diagnostics=(str(source_contract_gate[1]),),
+            )
+        expected_contract_file_hash = None
         paths = tuple(sorted(capture_root.rglob("*.json"))) if capture_root.is_dir() else ()
         selected: list[Path] = []
         payloads: list[dict[str, Any]] = []
@@ -164,6 +195,12 @@ class RecommendationNaturalOutcomeService:
                     continue
                 if candidate_freeze_hash is not None and str(payload.get("candidate_freeze_hash")) != candidate_freeze_hash:
                     continue
+                if required_source_contract is not None:
+                    _verify_source_contract_binding(
+                        payload.get("source_contract_binding"),
+                        require_ready=True,
+                        expected_contract_file_sha256=expected_contract_file_hash,
+                    )
                 if _date(str(payload["capture_as_of_date"])) > evaluation_day:
                     continue
                 capture_id = str(payload["capture_id"])
@@ -848,3 +885,24 @@ def _return_bp(start: Any, end: Any) -> int:
 
 def _date(value: str) -> date:
     return date.fromisoformat(str(value)[:10])
+
+
+def _source_contract_gate(
+    audit: Mapping[str, Any] | None,
+) -> tuple[bool, str] | None:
+    """Signal that scheduled maturity must require a capture source binding.
+
+    The binding is evaluated at prediction time and remains immutable.  A new
+    day's source-contract receipt must not retroactively replace yesterday's
+    cutoff, so this helper deliberately does not compare captures to today's
+    contract hash.
+    """
+
+    if audit is None:
+        return None
+    if not isinstance(audit.get("source_contract"), Mapping):
+        return False, "prospective_source_contract_audit_missing"
+    receipt = audit.get("source_contract_receipt")
+    if not isinstance(receipt, Mapping) or not str(receipt.get("contract_path") or ""):
+        return False, "prospective_source_contract_receipt_missing"
+    return True, ""

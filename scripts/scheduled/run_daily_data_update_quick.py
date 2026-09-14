@@ -8,7 +8,7 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -298,12 +298,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run scheduled baldr quick data update.")
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument(
+        "--formal-output-root",
+        help=(
+            "explicit formal output root whose existing verified technical "
+            "receipts may be reused; defaults to <data-root>/output"
+        ),
+    )
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
     parser.add_argument("--window-weekdays", type=int, default=10)
     parser.add_argument("--daily-delay-seconds", type=float, default=0.5)
     parser.add_argument("--tpex-delay-seconds", type=float, default=0.5)
     parser.add_argument("--broker-delay-seconds", type=float, default=0.5)
+    parser.add_argument(
+        "--skip-broker-branch",
+        action="store_true",
+        help=(
+            "skip the optional MoneyDJ broker-branch refresh so the bounded "
+            "official price/index/technical source path can complete"
+        ),
+    )
     parser.add_argument("--status-path")
     parser.add_argument(
         "--history-path",
@@ -345,7 +360,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    output_root = Path(args.output_root)
+    output_root = Path(args.output_root).expanduser().resolve()
+    formal_output_root = (
+        Path(args.formal_output_root).expanduser().resolve()
+        if args.formal_output_root
+        else (Path(args.data_root).expanduser().resolve() / "output")
+    )
+    authorized_technical_output_roots = tuple(
+        dict.fromkeys((output_root, formal_output_root))
+    )
     run_root = output_root / "scheduled" / "data_update_quick"
     run_now = scheduled_now()
     run_date = run_now.date()
@@ -422,12 +445,16 @@ def main(argv: list[str] | None = None) -> int:
             "task": "baldr-data-update-quick-daily",
             "status": "failed",
             "run_id": f"{today_key}-{os.getpid()}",
-            "started_at": run_now.isoformat(timespec="seconds"),
-            "completed_at": completed_at.isoformat(timespec="seconds"),
-            "checked_at": completed_at.isoformat(timespec="seconds"),
+            "started_at": run_now.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "checked_at": completed_at.isoformat(),
             "process_id": os.getpid(),
             "data_root": str(args.data_root),
             "output_root": str(output_root),
+            "formal_output_root": str(formal_output_root),
+            "authorized_technical_output_roots": [
+                str(path) for path in authorized_technical_output_roots
+            ],
             "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
             "capacity_lock_path": str(capacity_lock_path),
             "capacity_reservation_acquired": False,
@@ -490,12 +517,16 @@ def main(argv: list[str] | None = None) -> int:
             "task": "baldr-data-update-quick-daily",
             "status": "failed",
             "run_id": f"{today_key}-{os.getpid()}",
-            "started_at": run_now.isoformat(timespec="seconds"),
-            "completed_at": completed_at.isoformat(timespec="seconds"),
-            "checked_at": completed_at.isoformat(timespec="seconds"),
+            "started_at": run_now.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "checked_at": completed_at.isoformat(),
             "process_id": os.getpid(),
             "data_root": str(config.data_root),
             "output_root": str(config.output_root),
+            "formal_output_root": str(formal_output_root),
+            "authorized_technical_output_roots": [
+                str(path) for path in authorized_technical_output_roots
+            ],
             "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
             "start_date": args.start_date,
             "end_date": args.end_date,
@@ -531,10 +562,14 @@ def main(argv: list[str] | None = None) -> int:
         "task": "baldr-data-update-quick-daily",
         "status": "running",
         "run_id": run_id,
-        "started_at": run_now.isoformat(timespec="seconds"),
+        "started_at": run_now.isoformat(),
         "process_id": os.getpid(),
         "data_root": str(config.data_root),
         "output_root": str(config.output_root),
+        "formal_output_root": str(formal_output_root),
+        "authorized_technical_output_roots": [
+            str(path) for path in authorized_technical_output_roots
+        ],
         "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
         "capacity_lock_path": str(capacity_lock_path),
         "capacity_reservation_acquired": capacity_reservation is not None,
@@ -555,6 +590,9 @@ def main(argv: list[str] | None = None) -> int:
         "technical_process_pool_max_in_flight": config.technical_process_pool_max_in_flight,
         "technical_process_pool_max_retries": config.technical_process_pool_max_retries,
         "capacity_preflight": capacity_preflight,
+        "optional_source_policy": {
+            "skip_broker_branch": bool(args.skip_broker_branch),
+        },
     }
     _write_json(status_path, running_payload)
     running_payload["history"] = _append_history_safely(history_path, running_payload)
@@ -596,13 +634,40 @@ def main(argv: list[str] | None = None) -> int:
         failed = _run_step(steps=steps, name="update_industry_index", action=lambda: service.update_industry(start_date, end_date))
     if failed is None:
         failed = _run_step(steps=steps, name="sync_industry_index_to_sqlite", action=lambda: service.sync_source_to_sqlite("industry_index"))
-    if failed is None:
+    if failed is None and args.skip_broker_branch:
+        steps.extend(
+            [
+                {
+                    "name": "update_broker_branch",
+                    "status": "skipped",
+                    "message": "optional broker-branch source skipped by explicit bounded-run policy",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "optional_source": True,
+                        "reason": "explicit_skip_broker_branch",
+                    },
+                },
+                {
+                    "name": "sync_broker_branch_to_sqlite",
+                    "status": "skipped",
+                    "message": "broker-branch sync skipped because its optional source refresh was skipped",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "optional_source": True,
+                        "reason": "broker_branch_refresh_skipped",
+                    },
+                },
+            ]
+        )
+    if failed is None and not args.skip_broker_branch:
         failed = _run_step(
             steps=steps,
             name="update_broker_branch",
             action=lambda: service.update_broker_branch(start_date, end_date, delay_seconds=args.broker_delay_seconds),
         )
-    if failed is None:
+    if failed is None and not args.skip_broker_branch:
         failed = _run_step(
             steps=steps,
             name="sync_broker_branch_to_sqlite",
@@ -642,31 +707,165 @@ def main(argv: list[str] | None = None) -> int:
         status = service.check_data_overview()
         coverage = service.check_technical_indicator_latest_coverage()
         current, message = _technical_is_current(status, coverage)
-        if current:
-            steps.append(
-                {
-                    "name": "calculate_technical_indicators",
-                    "status": "skipped",
-                    "message": message,
-                    "result": {"success": True, "skipped": True, "skip_reason": "technical_indicators_current"},
-                }
+        def _calculate_technical_with_evidence(
+            *,
+            recompute_currentity: bool = False,
+        ) -> dict[str, Any]:
+            """Run the real calculator and attach a pre/post hash witness."""
+
+            from data_module.recommendation_calibration_source_contract import (
+                build_technical_computation_evidence,
+                capture_technical_input_snapshot,
+                daily_price_receipt_source_dates,
+                discover_daily_price_receipt_paths,
             )
-            logging.info(message)
+
+            receipt_path_set: set[Path] = set()
+            for receipt_root in authorized_technical_output_roots:
+                receipt_path_set.update(
+                    discover_daily_price_receipt_paths(
+                        receipt_root,
+                        values=steps,
+                        source_date_start=start_date,
+                        source_date_end=end_date,
+                    )
+                )
+            receipt_paths = sorted(receipt_path_set)
+            receipt_dates = daily_price_receipt_source_dates(receipt_paths)
+            evidence_start = receipt_dates[0] if receipt_dates else start_date
+            evidence_end = receipt_dates[-1] if receipt_dates else end_date
+            started_at = datetime.now(timezone.utc)
+            input_snapshot = capture_technical_input_snapshot(
+                config.db_file,
+            )
+            calculation = service.calculate_technical_indicators(
+                target_stock=None,
+                force_all=False,
+                start_date=None,
+                progress_callback=None,
+                incremental_lookback_days=120,
+                recompute_currentity=recompute_currentity,
+                technical_process_pool=config.technical_process_pool_enabled,
+                technical_process_pool_workers=config.technical_process_pool_workers,
+                technical_process_pool_max_in_flight=config.technical_process_pool_max_in_flight,
+                technical_process_pool_max_retries=config.technical_process_pool_max_retries,
+            )
+            completed_at = datetime.now(timezone.utc)
+            calculation = dict(calculation)
+            calculation["source_receipts"] = [
+                {"receipt_path": str(path)} for path in receipt_paths
+            ]
+            if recompute_currentity:
+                calculation["technical_recomputation_mode"] = (
+                    "bounded_currentity_recompute"
+                )
+                calculation["technical_recomputation_lookback_days"] = 120
+                if (
+                    calculation.get("success") is not True
+                    or int(calculation.get("success_count") or 0) <= 0
+                    or not calculation.get("updated_stocks")
+                ):
+                    calculation["success"] = False
+                    calculation["message"] = (
+                        str(calculation.get("message") or "")
+                        + "; technical_currentity_recompute_produced_no_updates"
+                    ).strip("; ")
+                    calculation["technical_computation_error"] = (
+                        "technical_currentity_recompute_produced_no_updates"
+                    )
+            if calculation.get("success") is True:
+                if input_snapshot.get("verified") is True:
+                    try:
+                        calculation["technical_computation"] = (
+                            build_technical_computation_evidence(
+                                source_db=config.db_file,
+                                calculation_result=calculation,
+                                source_date_start=evidence_start,
+                                source_date_end=evidence_end,
+                                started_at=started_at,
+                                completed_at=completed_at,
+                                input_snapshot=input_snapshot,
+                            )
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        calculation["technical_computation_error"] = (
+                            f"{type(exc).__name__}:{exc}"
+                        )
+                        calculation["success"] = False
+                else:
+                    calculation["technical_computation_error"] = str(
+                        input_snapshot.get("reason") or "technical_input_snapshot_unverified"
+                    )
+                    calculation["success"] = False
+            return calculation
+
+        if current:
+            from data_module.recommendation_calibration_source_contract import (
+                reuse_verified_technical_computation_receipt,
+            )
+
+            reuse = reuse_verified_technical_computation_receipt(
+                authorized_output_roots=authorized_technical_output_roots,
+                source_db=config.db_file,
+                source_date_start=start_date,
+                source_date_end=end_date,
+                availability_cutoff_at=run_now,
+            )
+            if reuse.get("status") == "reused":
+                technical_computation = reuse.get("technical_computation")
+                source_publication_receipt = reuse.get("source_publication_receipt")
+                if not isinstance(technical_computation, Mapping) or not isinstance(
+                    source_publication_receipt, Mapping
+                ):
+                    reuse["status"] = "not_found"
+                    reuse["reason"] = "technical_reuse_result_shape_invalid"
+                else:
+                    steps.append(
+                        {
+                            "name": "calculate_technical_indicators",
+                            "status": "skipped",
+                            "message": (
+                                f"{message}; reused verified technical computation witness"
+                            ),
+                            "result": {
+                                "success": True,
+                                "skipped": True,
+                                "skip_reason": "technical_indicators_current",
+                                "technical_computation": dict(technical_computation),
+                                "technical_computation_reuse": dict(
+                                    source_publication_receipt
+                                ),
+                                "technical_reuse_validation": {
+                                    "status": "reused",
+                                    "source_date_start": reuse.get("source_date_start"),
+                                    "source_date_end": reuse.get("source_date_end"),
+                                },
+                            },
+                        }
+                    )
+                    logging.info(
+                        "%s; reused verified technical computation witness from %s",
+                        message,
+                        source_publication_receipt.get("path"),
+                    )
+            if not steps or steps[-1].get("name") != "calculate_technical_indicators":
+                logging.info(
+                    "%s; no reusable verified witness (%s), running bounded recomputation",
+                    message,
+                    reuse.get("reason") or "unknown",
+                )
+                failed = _run_step(
+                    steps=steps,
+                    name="calculate_technical_indicators",
+                    action=lambda: _calculate_technical_with_evidence(
+                        recompute_currentity=True
+                    ),
+                )
         else:
             failed = _run_step(
                 steps=steps,
                 name="calculate_technical_indicators",
-                action=lambda: service.calculate_technical_indicators(
-                    target_stock=None,
-                    force_all=False,
-                    start_date=None,
-                    progress_callback=None,
-                    incremental_lookback_days=120,
-                    technical_process_pool=config.technical_process_pool_enabled,
-                    technical_process_pool_workers=config.technical_process_pool_workers,
-                    technical_process_pool_max_in_flight=config.technical_process_pool_max_in_flight,
-                    technical_process_pool_max_retries=config.technical_process_pool_max_retries,
-                ),
+                action=_calculate_technical_with_evidence,
             )
     if failed is None:
         failed = _run_step(steps=steps, name="check_overview_after", action=service.check_data_overview)
@@ -689,12 +888,16 @@ def main(argv: list[str] | None = None) -> int:
         "task": "baldr-data-update-quick-daily",
         "status": final_status,
         "run_id": run_id,
-        "started_at": run_now.isoformat(timespec="seconds"),
-        "completed_at": completed_at.isoformat(timespec="seconds"),
+        "started_at": run_now.isoformat(),
+        "completed_at": completed_at.isoformat(),
         "process_id": os.getpid(),
-        "checked_at": completed_at.isoformat(timespec="seconds"),
+        "checked_at": completed_at.isoformat(),
         "data_root": str(config.data_root),
         "output_root": str(config.output_root),
+        "formal_output_root": str(formal_output_root),
+        "authorized_technical_output_roots": [
+            str(path) for path in authorized_technical_output_roots
+        ],
         "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
         "capacity_lock_path": str(capacity_lock_path),
         "capacity_reservation_acquired": capacity_reservation is not None,
@@ -715,7 +918,29 @@ def main(argv: list[str] | None = None) -> int:
         "technical_process_pool_max_in_flight": config.technical_process_pool_max_in_flight,
         "technical_process_pool_max_retries": config.technical_process_pool_max_retries,
         "capacity_preflight": capacity_preflight,
+        "optional_source_policy": {
+            "skip_broker_branch": bool(args.skip_broker_branch),
+        },
     }
+    try:
+        from data_module.recommendation_calibration_source_contract import (
+            publish_technical_indicator_receipt,
+        )
+
+        payload["technical_publication_receipt"] = publish_technical_indicator_receipt(
+            output_root=config.output_root,
+            update_status=payload,
+            source_db=config.db_file,
+            authorized_output_roots=authorized_technical_output_roots,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # The source-contract receipt is a shadow/audit artifact.  A custody
+        # failure must remain visible without changing the data-update result.
+        payload["technical_publication_receipt"] = {
+            "status": "blocked",
+            "reason": f"technical_publication_receipt_failed:{type(exc).__name__}",
+            "error": str(exc),
+        }
     payload["history"] = _append_history_safely(history_path, payload)
     _write_json(status_path, payload)
     logging.info("Scheduled quick data update finished with status=%s", final_status)

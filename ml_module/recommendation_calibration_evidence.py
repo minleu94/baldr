@@ -98,6 +98,7 @@ class RecommendationPredictionCapture:
     champion_pointer_version: int | None = None
     capture_path: str | None = None
     capture_origin: str = "scheduled_live"
+    source_contract_binding: Mapping[str, Any] | None = None
     schema_version: str = "recommendation-prediction-capture.v2"
 
     def to_dict(self) -> dict[str, Any]:
@@ -136,6 +137,11 @@ class RecommendationPredictionCapture:
             "champion_pointer_version": self.champion_pointer_version,
             "capture_path": self.capture_path,
             "capture_origin": self.capture_origin,
+            "source_contract_binding": (
+                dict(self.source_contract_binding)
+                if self.source_contract_binding is not None
+                else None
+            ),
         }
 
     def persist(self, path: str | Path) -> Path:
@@ -433,10 +439,17 @@ class RecommendationPredictionCaptureService:
         data_root: str | Path | None = None,
         champion_pointer_path: str | Path | None = None,
         capture_origin: str = "scheduled_live",
+        source_contract_binding: Mapping[str, Any] | None = None,
     ) -> RecommendationPredictionCapture:
         candidate_path = Path(candidate_root).resolve()
         if capture_origin not in {"scheduled_live", "live_forward"}:
             raise ValueError("capture_origin must identify a live scheduled forward capture")
+        if source_contract_binding is not None:
+            _verify_source_contract_binding(
+                source_contract_binding,
+                require_ready=True,
+                capture_at=captured_at,
+            )
         if not 0 <= maximum_probability_change_bp <= 10_000:
             raise ValueError("maximum_probability_change_bp must be within 0..10000")
         candidate_payload = _read_json(candidate_path / "candidate.json")
@@ -609,12 +622,37 @@ class RecommendationPredictionCaptureService:
                     "champion_after_cost_probability_bp": champion_after_cost,
                 }
             )
+        resolved_source_contract_binding = (
+            dict(source_contract_binding) if source_contract_binding is not None else None
+        )
+        if resolved_source_contract_binding is not None:
+            resolved_source_contract_binding.update(
+                {
+                    "capture_decision_date": capture_day,
+                    "capture_symbols": sorted({str(row["symbol"]) for row in rows}),
+                    "feature_row_count": len(rows),
+                    "feature_snapshot_fingerprint": _feature_snapshot_fingerprint(
+                        capture_day,
+                        rows,
+                    ),
+                }
+            )
+            _verify_source_contract_binding(
+                resolved_source_contract_binding,
+                require_ready=True,
+                capture_day=_date(capture_day),
+                capture_rows=rows,
+                capture_at=captured_at,
+            )
         capture_id = "capture-" + hashlib.sha256(
             json.dumps(
                 {
                     "candidate_freeze_hash": candidate_payload["candidate_freeze_hash"],
                     "capture_as_of_date": capture_day,
                     "rows": rows,
+                    "source_contract_binding": resolved_source_contract_binding
+                    if resolved_source_contract_binding is not None
+                    else None,
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -653,6 +691,11 @@ class RecommendationPredictionCaptureService:
             "champion_pointer_version": champion_identity.get("pointer_version") if champion_identity else None,
             "rows": rows,
             "capture_origin": capture_origin,
+            "source_contract_binding": (
+                resolved_source_contract_binding
+                if resolved_source_contract_binding is not None
+                else None
+            ),
         }
         capture_hash = _hash_payload(body)
         return RecommendationPredictionCapture(
@@ -692,6 +735,11 @@ class RecommendationPredictionCaptureService:
                 else None
             ),
             capture_origin=capture_origin,
+            source_contract_binding=(
+                resolved_source_contract_binding
+                if resolved_source_contract_binding is not None
+                else None
+            ),
         )
 
 
@@ -935,6 +983,10 @@ class NaturalForwardEvidenceBuilder:
             "source_capture_ids": capture_payload.get("source_capture_ids", [capture_payload["capture_id"]]),
             "source_capture_hashes": capture_payload.get("source_capture_hashes", [capture_payload["capture_hash"]]),
             "source_capture_paths": capture_payload.get("source_capture_paths", [capture_payload.get("capture_path")]),
+            "source_contract_bindings": capture_payload.get(
+                "source_contract_bindings",
+                [capture_payload.get("source_contract_binding")],
+            ),
             "matured_sample_count": len(comparisons),
             "comparison_sample_fingerprint": comparison_fingerprint,
             "candidate_prediction_hash": candidate_prediction_hash,
@@ -1059,6 +1111,9 @@ def _build_capture_bundle(
         "source_capture_ids": source_ids,
         "source_capture_hashes": source_hashes,
         "source_capture_paths": source_paths,
+        "source_contract_bindings": [
+            payload.get("source_contract_binding") for payload in payloads
+        ],
         "rows": source_rows,
         "capture_origin": "scheduled_live_bundle",
     }
@@ -1182,6 +1237,12 @@ def _verify_capture_payload(payload: Mapping[str, Any]) -> None:
         raise ValueError("prediction capture baseline identity is invalid")
     if payload.get("probability_transform_id") != PROBABILITY_TRANSFORM_ID:
         raise ValueError("prediction capture probability transform is unsupported")
+    if payload.get("source_contract_binding") is not None:
+        _verify_source_contract_binding(
+            payload["source_contract_binding"],
+            require_ready=True,
+            capture_at=str(payload["captured_at"]),
+        )
     lineage = payload.get("probability_lineage")
     if not isinstance(lineage, list) or not lineage:
         raise ValueError("prediction capture probability lineage is missing")
@@ -1251,6 +1312,375 @@ def _verify_capture_payload(payload: Mapping[str, Any]) -> None:
                 raise ValueError("active champion after-cost probability identity mismatch")
         elif champion_model_probability is not None or champion_model_after_cost is not None:
             raise ValueError("null or declared baseline cannot carry active model prediction")
+    if payload.get("source_contract_binding") is not None:
+        _verify_source_contract_binding(
+            payload["source_contract_binding"],
+            require_ready=True,
+            capture_day=capture_day,
+            capture_rows=rows,
+            capture_at=str(payload["captured_at"]),
+        )
+
+
+def _verify_source_contract_binding(
+    binding: object,
+    *,
+    require_ready: bool,
+    expected_contract_file_sha256: str | None = None,
+    capture_day: date | None = None,
+    capture_rows: Sequence[Mapping[str, Any]] | None = None,
+    capture_at: str | None = None,
+) -> None:
+    """Verify a capture's immutable prospective-input source binding."""
+
+    if not isinstance(binding, Mapping):
+        raise ValueError("capture source contract binding is invalid")
+    if binding.get("schema_version") != "recommendation-calibration-capture-source-binding.v1":
+        raise ValueError("capture source contract binding schema is unsupported")
+    if binding.get("historical_pit_eligible") is not False:
+        raise ValueError("capture source contract binding cannot claim historical PIT")
+    if require_ready and binding.get("price_up_prospective_status") != "ready":
+        raise ValueError("capture source contract prospective price-up source is not ready")
+    contract_path = Path(str(binding.get("contract_path") or "")).expanduser().resolve()
+    contract_file_hash = str(binding.get("contract_file_sha256") or "")
+    contract_content_hash = str(binding.get("contract_content_sha256") or "")
+    if not contract_path.is_file() or contract_path.is_symlink():
+        raise ValueError("capture source contract receipt is missing")
+    if not contract_file_hash.startswith("sha256:") or len(contract_file_hash) != 71:
+        raise ValueError("capture source contract file hash is invalid")
+    if _sha256_file(contract_path) != contract_file_hash:
+        raise ValueError("capture source contract file hash mismatch")
+    if expected_contract_file_sha256 is not None and contract_file_hash != expected_contract_file_sha256:
+        raise ValueError("capture source contract has changed since capture")
+    if not contract_content_hash.startswith("sha256:") or len(contract_content_hash) != 71:
+        raise ValueError("capture source contract content hash is invalid")
+    contract_payload = _read_json(contract_path)
+    contract_body = {
+        key: value
+        for key, value in contract_payload.items()
+        if key not in {"contract_sha256", "checked_at"}
+    }
+    if contract_payload.get("contract_sha256") != _hash_payload(contract_body):
+        raise ValueError("capture source contract self-hash mismatch")
+    if contract_payload.get("contract_sha256") != contract_content_hash:
+        raise ValueError("capture source contract content hash mismatch")
+    if str(binding.get("decision_date") or "")[:10] != str(contract_payload.get("decision_date") or "")[:10]:
+        raise ValueError("capture source contract decision identity mismatch")
+    lanes = contract_payload.get("lanes")
+    lanes = lanes if isinstance(lanes, Mapping) else {}
+    price_up = lanes.get("price_up_calibration")
+    price_up = price_up if isinstance(price_up, Mapping) else {}
+    if price_up.get("prospective_status") != binding.get("price_up_prospective_status"):
+        raise ValueError("capture source contract prospective status mismatch")
+    if require_ready and price_up.get("prospective_status") != "ready":
+        raise ValueError("capture source contract receipt is not ready")
+    contract_symbols = {
+        str(symbol).strip()
+        for symbol in contract_payload.get("symbols", [])
+        if str(symbol).strip()
+    }
+    binding_symbols = {
+        str(symbol).strip()
+        for symbol in binding.get("symbols", [])
+        if str(symbol).strip()
+    }
+    if not contract_symbols or contract_symbols != binding_symbols:
+        raise ValueError("capture source contract symbol identity mismatch")
+    if capture_day is not None and str(binding.get("decision_date") or "")[:10] != capture_day.isoformat():
+        raise ValueError("capture source contract decision cutoff mismatch")
+    if capture_rows is not None:
+        if capture_day is None:
+            raise ValueError("capture source contract capture date is missing")
+        capture_day_text = capture_day.isoformat()
+        capture_symbols = {
+            str(row.get("symbol") or "").strip()
+            for row in capture_rows
+            if str(row.get("symbol") or "").strip()
+        }
+        if capture_symbols != contract_symbols:
+            raise ValueError("capture source contract does not cover capture symbols")
+        if binding.get("capture_decision_date") != capture_day_text:
+            raise ValueError("capture source contract capture date mismatch")
+        if binding.get("capture_symbols") != sorted(capture_symbols):
+            raise ValueError("capture source contract capture symbol fingerprint mismatch")
+        if binding.get("feature_row_count") != len(capture_rows):
+            raise ValueError("capture source contract feature row count mismatch")
+        expected_fingerprint = _feature_snapshot_fingerprint(
+            capture_day_text,
+            capture_rows,
+        )
+        if binding.get("feature_snapshot_fingerprint") != expected_fingerprint:
+            raise ValueError("capture source contract feature snapshot fingerprint mismatch")
+        technical = contract_payload.get("technical")
+        technical = technical if isinstance(technical, Mapping) else {}
+        feature_snapshot = technical.get("prospective_feature_snapshot")
+        if not isinstance(feature_snapshot, Mapping):
+            raise ValueError("capture source contract feature snapshot missing")
+        if not _verified_content_hash(feature_snapshot, "content_sha256"):
+            raise ValueError("capture source contract feature snapshot hash mismatch")
+        if binding.get("feature_snapshot_content_sha256") != feature_snapshot.get(
+            "content_sha256"
+        ):
+            raise ValueError("capture source contract feature snapshot identity mismatch")
+        expected_rows = feature_snapshot.get("rows")
+        if not isinstance(expected_rows, list):
+            raise ValueError("capture source contract feature snapshot rows missing")
+        expected_by_symbol = {
+            str(row.get("symbol") or ""): row
+            for row in expected_rows
+            if isinstance(row, Mapping) and str(row.get("symbol") or "")
+        }
+        actual_by_symbol = {
+            str(row.get("symbol") or ""): row
+            for row in capture_rows
+            if str(row.get("symbol") or "")
+        }
+        if set(expected_by_symbol) != set(actual_by_symbol):
+            raise ValueError("capture source contract feature symbol coverage mismatch")
+        for symbol, actual in actual_by_symbol.items():
+            expected = expected_by_symbol[symbol]
+            for field_name in (
+                "decision_date",
+                "feature_as_of_date",
+                "feature_available_date",
+            ):
+                if str(actual.get(field_name) or "")[:10] != str(expected.get(field_name) or "")[:10]:
+                    raise ValueError(
+                        "capture source contract feature timing/value identity mismatch"
+                    )
+            if list(actual.get("feature_values") or []) != list(
+                expected.get("feature_values") or []
+            ):
+                raise ValueError("capture source contract feature values mismatch")
+    technical = contract_payload.get("technical")
+    technical = technical if isinstance(technical, Mapping) else {}
+    feature_snapshot = technical.get("prospective_feature_snapshot")
+    if not isinstance(feature_snapshot, Mapping):
+        raise ValueError("capture source contract feature snapshot missing")
+    if not _verified_content_hash(feature_snapshot, "content_sha256"):
+        raise ValueError("capture source contract feature snapshot hash mismatch")
+    if binding.get("feature_snapshot_content_sha256") != feature_snapshot.get(
+        "content_sha256"
+    ):
+        raise ValueError("capture source contract feature snapshot identity mismatch")
+    if capture_at is not None:
+        _verify_source_availability(
+            contract_payload,
+            binding,
+            capture_at=capture_at,
+        )
+    _verify_source_contract_dependencies(contract_payload, binding)
+
+
+def _verify_source_availability(
+    contract_payload: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    *,
+    capture_at: str,
+) -> None:
+    """Reject any source artifact that was unavailable at live capture time."""
+
+    try:
+        cutoff = _datetime(str(capture_at)).astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("capture source contract capture timestamp is invalid") from exc
+
+    def require_available(
+        label: str,
+        value: object,
+        *,
+        binding_key: str | None = None,
+    ) -> None:
+        if value in (None, ""):
+            raise ValueError(f"capture source contract {label} availability is missing")
+        try:
+            available_at = _datetime(str(value)).astimezone(timezone.utc)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"capture source contract {label} availability is invalid") from exc
+        if binding_key is not None:
+            bound_value = binding.get(binding_key)
+            if bound_value in (None, ""):
+                raise ValueError(f"capture source contract {binding_key} is missing")
+            try:
+                bound_at = _datetime(str(bound_value)).astimezone(timezone.utc)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"capture source contract {binding_key} is invalid") from exc
+            if bound_at != available_at:
+                raise ValueError(f"capture source contract {label} availability identity mismatch")
+        if available_at > cutoff:
+            raise ValueError(f"capture source contract {label} available after capture cutoff")
+
+    technical = contract_payload.get("technical")
+    technical = technical if isinstance(technical, Mapping) else {}
+    require_available(
+        "technical publication",
+        technical.get("publication_available_at"),
+        binding_key="technical_publication_available_at",
+    )
+    source_available_ats = technical.get("source_receipt_available_ats")
+    if not isinstance(source_available_ats, list) or not source_available_ats:
+        raise ValueError("capture source contract technical source availability is missing")
+    bound_source_available_ats = binding.get("technical_source_available_ats")
+    if not isinstance(bound_source_available_ats, list) or len(bound_source_available_ats) != len(source_available_ats):
+        raise ValueError("capture source contract technical source availability identity is missing")
+    for index, available_at in enumerate(source_available_ats):
+        if _datetime(str(bound_source_available_ats[index])).astimezone(timezone.utc) != _datetime(
+            str(available_at)
+        ).astimezone(timezone.utc):
+            raise ValueError("capture source contract technical source availability identity mismatch")
+        require_available(f"technical source receipt {index}", available_at)
+
+    feature_snapshot = technical.get("prospective_feature_snapshot")
+    if not isinstance(feature_snapshot, Mapping):
+        raise ValueError("capture source contract feature snapshot missing")
+    require_available(
+        "feature snapshot",
+        feature_snapshot.get("captured_at"),
+        binding_key="feature_snapshot_captured_at",
+    )
+
+    corporate = contract_payload.get("corporate_actions")
+    corporate = corporate if isinstance(corporate, Mapping) else {}
+    adjustment = corporate.get("adjustment_custody")
+    adjustment = adjustment if isinstance(adjustment, Mapping) else {}
+    require_available(
+        "corporate adjustment manifest",
+        adjustment.get("available_at"),
+        binding_key="corporate_adjustment_available_at",
+    )
+    event_publication = corporate.get("event_publication")
+    event_publication = event_publication if isinstance(event_publication, Mapping) else {}
+    require_available(
+        "official event publication",
+        event_publication.get("source_publication_available_at"),
+        binding_key="official_event_available_at",
+    )
+
+
+def _feature_snapshot_fingerprint(
+    capture_day: str | date,
+    rows: Sequence[Mapping[str, Any]],
+) -> str:
+    return _hash_payload(
+        {
+            "capture_decision_date": (
+                capture_day.isoformat() if isinstance(capture_day, date) else str(capture_day)[:10]
+            ),
+            "rows": [
+                {
+                    "row_id": row.get("row_id"),
+                    "symbol": row.get("symbol"),
+                    "decision_date": row.get("decision_date"),
+                    "feature_as_of_date": row.get("feature_as_of_date"),
+                    "feature_available_date": row.get("feature_available_date"),
+                    "feature_values": row.get("feature_values"),
+                }
+                for row in sorted(rows, key=lambda item: (str(item.get("row_id")), str(item.get("symbol"))))
+            ],
+        }
+    )
+
+
+def _verify_source_contract_dependencies(
+    contract_payload: Mapping[str, Any],
+    binding: Mapping[str, Any],
+) -> None:
+    """Re-check the immutable raw/technical/event lineage named by a contract."""
+
+    technical = contract_payload.get("technical")
+    technical = technical if isinstance(technical, Mapping) else {}
+    publication = technical.get("publication_receipt")
+    if not isinstance(publication, Mapping):
+        raise ValueError("capture source contract technical publication lineage missing")
+    publication_path = Path(str(publication.get("path") or "")).expanduser().resolve()
+    if publication_path.is_symlink() or not publication_path.is_file():
+        raise ValueError("capture source contract technical publication missing")
+    if _sha256_file(publication_path) != publication.get("sha256"):
+        raise ValueError("capture source contract technical publication hash mismatch")
+    if (
+        binding.get("technical_publication_receipt_file_sha256") is not None
+        and binding.get("technical_publication_receipt_file_sha256") != publication.get("sha256")
+    ):
+        raise ValueError("capture source contract technical publication binding mismatch")
+    publication_payload = _read_json(publication_path)
+    if not _verified_payload_hash(publication_payload, "content_sha256"):
+        raise ValueError("capture source contract technical publication content hash mismatch")
+    technical_output = publication_payload.get("technical_output")
+    if not isinstance(technical_output, Mapping) or not _verified_content_hash(
+        technical_output, "content_sha256"
+    ):
+        raise ValueError("capture source contract technical output hash mismatch")
+    if not isinstance(technical_output.get("rows_sha256"), str):
+        raise ValueError("capture source contract technical output value hash missing")
+    if publication_payload.get("technical_step_status") == "passed" and (
+        publication_payload.get("technical_computation_evidence_status") != "verified"
+        or not isinstance(publication_payload.get("technical_computation_evidence"), Mapping)
+    ):
+        raise ValueError("capture source contract technical computation witness missing")
+    source_receipts = publication_payload.get("source_receipts")
+    if not isinstance(source_receipts, list) or not source_receipts:
+        raise ValueError("capture source contract technical source lineage missing")
+    for reference in source_receipts:
+        if not isinstance(reference, Mapping):
+            raise ValueError("capture source contract daily receipt lineage invalid")
+        receipt_path = Path(str(reference.get("receipt_path") or "")).expanduser().resolve()
+        if receipt_path.is_symlink() or not receipt_path.is_file():
+            raise ValueError("capture source contract daily receipt missing")
+        if _sha256_file(receipt_path) != reference.get("receipt_sha256"):
+            raise ValueError("capture source contract daily receipt hash mismatch")
+        receipt_payload = _read_json(receipt_path)
+        if not _verified_payload_hash(receipt_payload, "content_sha256"):
+            raise ValueError("capture source contract daily receipt content hash mismatch")
+        raw_path = Path(str(reference.get("raw_response_path") or "")).expanduser().resolve()
+        if raw_path.is_symlink() or not raw_path.is_file() or not raw_path.is_relative_to(receipt_path.parent):
+            raise ValueError("capture source contract raw response lineage invalid")
+        if _sha256_file(raw_path) != reference.get("raw_response_sha256"):
+            raise ValueError("capture source contract raw response hash mismatch")
+
+    corporate = contract_payload.get("corporate_actions")
+    corporate = corporate if isinstance(corporate, Mapping) else {}
+    adjustment = corporate.get("adjustment_custody")
+    adjustment = adjustment if isinstance(adjustment, Mapping) else {}
+    if adjustment.get("prospective_verified") is not True:
+        raise ValueError("capture source contract corporate adjustment custody is not ready")
+    adjustment_path = Path(str(adjustment.get("manifest_path") or "")).expanduser().resolve()
+    adjustment_file_hash = adjustment.get("manifest_file_hash")
+    if adjustment_path.is_symlink() or not adjustment_path.is_file() or _sha256_file(adjustment_path) != adjustment_file_hash:
+        raise ValueError("capture source contract adjustment manifest hash mismatch")
+    if (
+        binding.get("corporate_adjustment_manifest_hash") is not None
+        and binding.get("corporate_adjustment_manifest_hash") != adjustment.get("manifest_hash")
+    ):
+        raise ValueError("capture source contract adjustment binding mismatch")
+    adjustment_manifest = _read_json(adjustment_path)
+    if not _verified_payload_hash(adjustment_manifest, "manifest_hash"):
+        raise ValueError("capture source contract adjustment manifest content hash mismatch")
+    adjustment_sections = (
+        adjustment_manifest.get("adjustments"),
+        adjustment_manifest.get("coverage"),
+    )
+    for section in adjustment_sections:
+        if not isinstance(section, Mapping):
+            raise ValueError("capture source contract adjustment section missing")
+        section_path = (adjustment_path.parent / str(section.get("path") or "")).resolve()
+        if section_path.is_symlink() or not section_path.is_file() or _sha256_file(section_path) != section.get("file_hash"):
+            raise ValueError("capture source contract adjustment section hash mismatch")
+    event_publication = corporate.get("event_publication")
+    event_publication = event_publication if isinstance(event_publication, Mapping) else {}
+    event_path = Path(str(event_publication.get("manifest_path") or "")).expanduser().resolve()
+    if event_path.is_symlink() or not event_path.is_file() or _sha256_file(event_path) != event_publication.get("manifest_file_sha256"):
+        raise ValueError("capture source contract event manifest hash mismatch")
+    event_manifest = _read_json(event_path)
+    if not _verified_payload_hash(event_manifest, "manifest_hash"):
+        raise ValueError("capture source contract event manifest content hash mismatch")
+
+
+def _verified_payload_hash(payload: Mapping[str, Any], field_name: str) -> bool:
+    declared = payload.get(field_name)
+    if not isinstance(declared, str) or not declared.startswith("sha256:"):
+        return False
+    body = {key: value for key, value in payload.items() if key != field_name}
+    return _hash_payload(body) == declared
 
 
 def _verify_active_model_capture_payload(payload: Mapping[str, Any]) -> None:
@@ -1381,6 +1811,14 @@ def _hash_payload(payload: Any) -> str:
     return "sha256:" + hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _verified_content_hash(payload: Mapping[str, Any], field_name: str) -> bool:
+    declared = payload.get(field_name)
+    if not isinstance(declared, str) or not declared.startswith("sha256:"):
+        return False
+    body = {key: value for key, value in payload.items() if key != field_name}
+    return _hash_payload(body) == declared
 
 
 def _read_json(path: Path) -> dict[str, Any]:

@@ -2,20 +2,20 @@
 
 > 本文件只維護目前分類摘要；逐檔清單以 `qa/full_app_healthcheck/test_inventory.py` 為準。歷史執行紀錄不可當作本次通過證據。
 
-## 2026-09-10 machine refresh
+## 2026-09-13 machine refresh
 
-Current filesystem Python files: `790`
+Current filesystem Python files: `805`
 
 | 分類 | 數量 |
 |---|---:|
 | `general-unit-keep-in-pytest` | 148 |
-| `governance-doc-tooling` | 149 |
+| `governance-doc-tooling` | 150 |
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
-| `service-oracle-data-market` | 119 |
-| `service-oracle-portfolio-decision-runtime` | 120 |
-| `service-oracle-recommendation` | 20 |
+| `service-oracle-data-market` | 121 |
+| `service-oracle-portfolio-decision-runtime` | 121 |
+| `service-oracle-recommendation` | 31 |
 | `service-oracle-research-backtest` | 72 |
 | `slow-e2e-or-environment` | 3 |
 | `ui-healthcheck-candidate-bridge` | 30 |
@@ -31,6 +31,8 @@ Current filesystem Python files: `790`
 - 2026-09-08 最終 collection 為 4,655；全量 pytest 為 4,652 passed、3 skipped；missing／stale／count drift 為零。見 [LUNA 三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)；[前次查核](PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留為歷史。
 - 2026-09-09 TDCC candidate completion 新增 2 個定向測試與 2 個同輪資料服務測試登錄；本輪 V4 forward outcome producer 再新增 1 個治理測試並完成登錄。本段計數以當前 filesystem／registry machine audit 為準，TDCC raw/candidate 仍位於 ignored output。
 - 2026-09-10 登錄跨日 evidence contract 整合測試，以及既有 UI theme／watchlist layout 測試；本輪新增測試仍只使用隔離資料或 UI fixture，不因此進入 direct bridge。
+- 2026-09-13 登錄每日 recommendation calibration learning、官方 daily-price custody、corporate-action adjustment custody、source-contract 與 capture-binding 測試；均維持 service oracle 分類，不因此進入 direct bridge。
+- 2026-09-14 登錄 `test_recommendation_calibration_contract_guards.py` 與 `test_recommendation_learning_cache_hit_custody.py`；維持 service-oracle-recommendation 分類，均不進 direct bridge。
 
 ## Runner 規則
 

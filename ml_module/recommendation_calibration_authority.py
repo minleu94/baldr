@@ -1225,13 +1225,29 @@ def _mapping(value: Any) -> Mapping[str, Any]:
 
 
 def _candidate_gate_blockers(metadata: Mapping[str, Any]) -> tuple[str, ...]:
-    """Keep real PIT/cost blockers while ignoring lifecycle-only shadow notes."""
+    """Apply lane-aware gates without converting replay into forward proof.
+
+    A ready prospective price-up source contract supersedes only the two
+    historical-publication blockers that describe missing historical PIT
+    authority.  Observed-cost and broker-actual blockers are never ignored by
+    this helper; they remain separate promotion lanes.
+    """
 
     ignored = {
         "historical_replay_is_not_natural_forward_evidence",
         "training_artifact_is_shadow_only",
         "natural_forward_evidence_must_be_supplied_to_authority",
     }
+    if (
+        metadata.get("prospective_price_up_promotion_ready") is True
+        and metadata.get("promotion_target", "price_up_calibration") == "price_up_calibration"
+    ):
+        ignored.update(
+            {
+                "technical_publication_time_unverified",
+                "corporate_action_source_or_adjustment_unverified",
+            }
+        )
     return tuple(
         str(item)
         for item in metadata.get("candidate_blockers", ())

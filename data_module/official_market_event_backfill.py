@@ -23,9 +23,12 @@ import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import time as time_module
 from typing import Any, Callable, Mapping, Protocol, Sequence
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin, urlparse
+from urllib.error import HTTPError
+from urllib.request import HTTPSHandler, HTTPRedirectHandler, Request, build_opener
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -338,6 +341,7 @@ class OfficialMarketEventBackfillRequest:
     raw_custody: Path | None = None
     start_year: int = 2014
     end_year: int = 2026
+    publication_scope: str = "formal_historical"
     timeout_seconds: int = 30
     max_attempts: int = 3
     retry_delay_seconds: int = 2
@@ -346,6 +350,14 @@ class OfficialMarketEventBackfillRequest:
     def __post_init__(self) -> None:
         if self.start_year < 1912 or self.end_year < self.start_year:
             raise ValueError("invalid official market event year range")
+        if self.publication_scope not in {
+            "formal_historical",
+            "prospective_bounded",
+        }:
+            raise ValueError(
+                "publication_scope must be formal_historical or "
+                "prospective_bounded"
+            )
         for field_name in (
             "timeout_seconds",
             "max_attempts",
@@ -430,12 +442,67 @@ class RequestsOfficialEndpointFetcher:
         last_error: BaseException | None = None
         for attempt in range(1, max_attempts + 1):
             try:
-                response = self._session.get(
-                    endpoint.endpoint_url,
-                    params=parameters,
-                    headers=headers,
-                    timeout=timeout_seconds,
-                )
+                try:
+                    response = self._session.get(
+                        endpoint.endpoint_url,
+                        params=parameters,
+                        headers=headers,
+                        timeout=timeout_seconds,
+                        allow_redirects=False,
+                    )
+                except TypeError:
+                    # Keep compatibility with the tiny fake sessions used by
+                    # the deterministic tests; production requests.Session
+                    # accepts allow_redirects.
+                    response = self._session.get(
+                        endpoint.endpoint_url,
+                        params=parameters,
+                        headers=headers,
+                        timeout=timeout_seconds,
+                    )
+                except requests.exceptions.SSLError as exc:
+                    try:
+                        response = _urllib_official_response(
+                            endpoint,
+                            parameters,
+                            headers,
+                            timeout_seconds,
+                        )
+                    except (OSError, RuntimeError, TypeError, ValueError) as fallback_exc:
+                        last_error = RuntimeError(
+                            "requests TLS verification failed and verified urllib "
+                            f"fallback failed: {type(fallback_exc).__name__}: {fallback_exc}"
+                        )
+                        if attempt < max_attempts and retry_delay_seconds:
+                            time_module.sleep(min(30, retry_delay_seconds * attempt))
+                        continue
+                response_source_url = source_url
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = _optional_header(response.headers, "Location")
+                    if not location:
+                        raise RuntimeError(
+                            f"official endpoint redirect missing Location: {source_url}"
+                        )
+                    redirect_url = _safe_official_redirect_url(
+                        endpoint,
+                        source_url,
+                        location,
+                        parameters,
+                    )
+                    try:
+                        response = self._session.get(
+                            redirect_url,
+                            headers=headers,
+                            timeout=timeout_seconds,
+                            allow_redirects=False,
+                        )
+                    except TypeError:
+                        response = self._session.get(
+                            redirect_url,
+                            headers=headers,
+                            timeout=timeout_seconds,
+                        )
+                    response_source_url = redirect_url
                 if response.status_code == 200:
                     try:
                         _official_response_classification(
@@ -444,8 +511,8 @@ class RequestsOfficialEndpointFetcher:
                         )
                     except (TypeError, ValueError) as exc:
                         last_error = RuntimeError(
-                            "official endpoint returned anomalous "
-                            f"payload: {source_url}: {exc}"
+                                "official endpoint returned anomalous "
+                            f"payload: {response_source_url}: {exc}"
                         )
                     else:
                         retrieved_at = self._now()
@@ -462,7 +529,7 @@ class RequestsOfficialEndpointFetcher:
                             request_parameters=tuple(
                                 sorted(parameters.items())
                             ),
-                            source_url=source_url,
+                            source_url=response_source_url,
                             retrieved_at=retrieved_at.isoformat(),
                             http_status=200,
                             content_type=str(
@@ -492,7 +559,7 @@ class RequestsOfficialEndpointFetcher:
                             )
                     last_error = RuntimeError(
                         "official endpoint returned HTTP "
-                        f"{response.status_code}: {source_url}; "
+                        f"{response.status_code}: {response_source_url}; "
                         + "; ".join(header_diagnostics)
                     )
                     if (
@@ -515,6 +582,80 @@ class RequestsOfficialEndpointFetcher:
             f"official endpoint fetch failed after {max_attempts} attempts: "
             f"{source_url}{diagnostic}"
         ) from last_error
+
+
+def _safe_official_redirect_url(
+    endpoint: OfficialMarketEndpoint,
+    source_url: str,
+    location: str,
+    parameters: Mapping[str, str],
+) -> str:
+    """Allow at most one HTTPS redirect on the same official host."""
+
+    target = urljoin(source_url, location)
+    source_host = (urlparse(endpoint.endpoint_url).hostname or "").lower()
+    parsed = urlparse(target)
+    if parsed.scheme.lower() != "https" or (parsed.hostname or "").lower() != source_host:
+        raise RuntimeError(
+            "official endpoint redirect escaped the registered HTTPS host: "
+            f"{source_url} -> {target}"
+        )
+    if not parsed.query:
+        target += ("&" if "?" in target else "?") + urlencode(parameters)
+    return target
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+def _urllib_official_response(
+    endpoint: OfficialMarketEndpoint,
+    parameters: Mapping[str, str],
+    headers: Mapping[str, str],
+    timeout_seconds: int,
+) -> Any:
+    """Verified-CA urllib fallback for hosts whose requests CA bundle is stale."""
+
+    url = f"{endpoint.endpoint_url}?{urlencode(parameters)}"
+    opener = build_opener(
+        _NoRedirectHandler,
+        HTTPSHandler(context=ssl.create_default_context()),
+    )
+    for _ in range(2):
+        request = Request(url, headers=dict(headers), method="GET")
+        try:
+            response = opener.open(request, timeout=timeout_seconds)
+        except HTTPError as exc:
+            if exc.code not in {301, 302, 303, 307, 308}:
+                return type(
+                    "UrllibResponse",
+                    (),
+                    {
+                        "status_code": int(exc.code),
+                        "content": exc.read(),
+                        "headers": dict(exc.headers.items()),
+                        "url": url,
+                    },
+                )()
+            location = exc.headers.get("Location")
+            if not location:
+                raise RuntimeError("urllib official redirect missing Location") from exc
+            url = _safe_official_redirect_url(endpoint, url, location, parameters)
+            continue
+        with response:
+            return type(
+                "UrllibResponse",
+                (),
+                {
+                    "status_code": int(getattr(response, "status", 200)),
+                    "content": response.read(),
+                    "headers": dict(response.headers.items()),
+                    "url": response.geturl(),
+                },
+            )()
+    raise RuntimeError("urllib official endpoint returned too many redirects")
 
 
 @dataclass(frozen=True)
@@ -554,7 +695,17 @@ class OfficialMarketEventBackfillBuilder:
         runs_root = output_root / "runs"
         output_root.mkdir(parents=True, exist_ok=True)
         runs_root.mkdir(parents=True, exist_ok=True)
-        prior = _load_prior_publication(output_root)
+        is_formal_publication = (
+            request.publication_scope == "formal_historical"
+        )
+        # A bounded prospective publication is an isolated current-period
+        # observation.  It must not inherit historical events or move the
+        # formal pointer, even when both scopes share a publication root.
+        prior = (
+            _load_prior_publication(output_root)
+            if is_formal_publication
+            else _PriorPublication(None, None, ())
+        )
         (
             raw_custody_entries,
             raw_custody_manifest_hash,
@@ -705,6 +856,7 @@ class OfficialMarketEventBackfillBuilder:
                 "generated_at": generated_text,
                 "requested_start_year": request.start_year,
                 "requested_end_year": request.end_year,
+                "publication_scope": request.publication_scope,
                 "raw_index_hash": raw_index_hash,
                 "canonical_events_hash": canonical_events_hash,
                 "source_registry_hash": _sha256_json(source_registry),
@@ -716,13 +868,19 @@ class OfficialMarketEventBackfillBuilder:
             manifest: dict[str, object] = {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "publication_id": publication_id,
-                "status": "formal_source_publication",
+                "status": (
+                    "formal_source_publication"
+                    if is_formal_publication
+                    else "prospective_source_publication"
+                ),
+                "publication_scope": request.publication_scope,
                 "generated_at": generated_text,
                 "parent_manifest_hash": prior.manifest_hash,
                 "parent_manifest_file_hash": prior.manifest_file_hash,
                 "request": {
                     "start_year": request.start_year,
                     "end_year": request.end_year,
+                    "publication_scope": request.publication_scope,
                     "timeout_seconds": request.timeout_seconds,
                     "max_attempts": request.max_attempts,
                     "retry_delay_seconds": request.retry_delay_seconds,
@@ -766,7 +924,10 @@ class OfficialMarketEventBackfillBuilder:
                     ),
                 },
                 "safety": {
-                    "formal_source_publication": True,
+                    "formal_source_publication": is_formal_publication,
+                    "prospective_source_publication": (
+                        not is_formal_publication
+                    ),
                     "active_sqlite_written": False,
                     "original_raw_files_modified": False,
                     "immutable_raw_responses": True,
@@ -788,6 +949,9 @@ class OfficialMarketEventBackfillBuilder:
                     "result_tables_label_ledger_only": True,
                     "result_tables_decision_feature_allowed": False,
                     "atomic_latest_manifest_publish": True,
+                    "formal_latest_manifest_untouched": (
+                        not is_formal_publication
+                    ),
                 },
             }
             manifest["manifest_hash"] = _sha256_json(manifest)
@@ -808,11 +972,16 @@ class OfficialMarketEventBackfillBuilder:
             else:
                 staging.replace(publication_directory)
             final_manifest_path = publication_directory / "manifest.json"
-            latest_manifest_path = output_root / "latest_manifest.json"
+            latest_manifest_path = output_root / (
+                "latest_manifest.json"
+                if is_formal_publication
+                else "prospective_latest_manifest.json"
+            )
             _atomic_write_json(
                 latest_manifest_path,
                 {
                     "schema_version": LATEST_POINTER_SCHEMA_VERSION,
+                    "publication_scope": request.publication_scope,
                     "publication_id": publication_id,
                     "manifest_path": (
                         f"runs/{publication_id}/manifest.json"
@@ -1826,6 +1995,7 @@ def _quarantine_failed_staging(
         "request": {
             "start_year": request.start_year,
             "end_year": request.end_year,
+            "publication_scope": request.publication_scope,
             "timeout_seconds": request.timeout_seconds,
             "max_attempts": request.max_attempts,
             "retry_delay_seconds": request.retry_delay_seconds,

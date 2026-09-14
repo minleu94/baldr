@@ -115,7 +115,13 @@ def _runner(
     )
 
 
-def _candidate(tmp_path: Path, *, shift: int, candidate_day: str) -> tuple[object, Path, dict[str, object]]:
+def _candidate(
+    tmp_path: Path,
+    *,
+    shift: int,
+    candidate_day: str,
+    dataset_quality: Mapping[str, object] | None = None,
+) -> tuple[object, Path, dict[str, object]]:
     samples = _samples(shift)
     digest = "a" if shift == 0 else "b"
     root = tmp_path / f"candidate-{digest}"
@@ -128,7 +134,11 @@ def _candidate(tmp_path: Path, *, shift: int, candidate_day: str) -> tuple[objec
         feature_registry_hash=FEATURE_REGISTRY_HASH,
         training_as_of="2026-12-31",
         fixed_round_trip_cost_bp=50,
-        dataset_quality={"formal_candidate_eligible": True},
+        dataset_quality=(
+            dict(dataset_quality)
+            if dataset_quality is not None
+            else {"formal_candidate_eligible": True}
+        ),
         created_at=f"{candidate_day}T00:00:00+00:00",
         config=RecommendationCalibrationTrainingConfig(
             minimum_calibration_samples=10,
@@ -148,12 +158,13 @@ def _natural_receipt(
     root: Path,
     candidate_day: str,
     evaluation_day: str,
+    capture_dates: tuple[date, ...] | None = None,
 ) -> object:
     captures: list[Path] = []
     outcomes: list[MaturedRecommendationOutcome] = []
     start = date.fromisoformat(candidate_day)
-    for index in range(20):
-        capture_day = start + timedelta(days=index)
+    dates = capture_dates or tuple(start + timedelta(days=index) for index in range(20))
+    for index, capture_day in enumerate(dates):
         capture_input = RecommendationPredictionCaptureInput(
             row_id=f"forward-{index:02d}",
             symbol="1101" if index % 2 == 0 else "2330",
@@ -196,6 +207,120 @@ def _natural_receipt(
         output_path=tmp_path / f"natural-{candidate_day}.json",
         source_id="scheduled_forward_outcomes",
     )
+
+
+def _prospective_price_up_quality() -> dict[str, object]:
+    return {
+        "training_data_eligible": True,
+        "forward_evidence_eligible": False,
+        "formal_candidate_eligible": False,
+        "candidate_blockers": [
+            "historical_replay_is_not_natural_forward_evidence",
+            "technical_publication_time_unverified",
+            "corporate_action_source_or_adjustment_unverified",
+        ],
+        "historical_replay_candidate_blockers": [
+            "historical_replay_is_not_natural_forward_evidence",
+            "technical_publication_time_unverified",
+            "corporate_action_source_or_adjustment_unverified",
+        ],
+        "prospective_source_contract_ready": True,
+        "prospective_price_up_promotion_ready": True,
+        "promotion_target": "price_up_calibration",
+        "after_cost_blockers": [
+            "observed_liquidity_cost_not_matured_with_fill_lineage",
+        ],
+        "actual_execution_blockers": ["broker_actual_fill_custody_not_in_scope"],
+        "lane_status": {
+            "price_up_calibration": {
+                "prospective_status": "ready",
+                "prospective_blockers": [],
+            },
+            "after_cost_calibration": {
+                "prospective_status": "blocked",
+                "blockers": [
+                    "observed_liquidity_cost_not_matured_with_fill_lineage",
+                ],
+            },
+            "actual_execution": {
+                "status": "blocked",
+                "blockers": ["broker_actual_fill_custody_not_in_scope"],
+            },
+        },
+    }
+
+
+def test_prospective_price_up_lane_can_promote_after_natural_maturity(tmp_path: Path) -> None:
+    _, candidate_root, metadata = _candidate(
+        tmp_path,
+        shift=0,
+        candidate_day="2026-06-01",
+        dataset_quality=_prospective_price_up_quality(),
+    )
+    natural = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-20",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(
+        output_root=tmp_path / "authority",
+        policy=RecommendationPromotionPolicy(),
+    )
+
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-20",
+        candidate_id=str(metadata["candidate_id"]),
+        candidate_root=candidate_root,
+        candidate_metadata=metadata,
+        natural_evidence=natural,
+        data_status="ready",
+        drift_status="clean",
+    )
+
+    assert decision.decision == "adopt"
+    assert decision.reason == "natural_same_sample_same_cost_gates_qualified"
+    assert metadata["forward_evidence_eligible"] is False
+    assert metadata["formal_candidate_eligible"] is False
+    assert metadata["prospective_price_up_promotion_ready"] is True
+    assert metadata["after_cost_blockers"] == [
+        "observed_liquidity_cost_not_matured_with_fill_lineage"
+    ]
+
+
+def test_prospective_price_up_lane_needs_natural_distinct_decision_dates(tmp_path: Path) -> None:
+    _, candidate_root, metadata = _candidate(
+        tmp_path,
+        shift=0,
+        candidate_day="2026-06-01",
+        dataset_quality=_prospective_price_up_quality(),
+    )
+    start = date(2026, 6, 1)
+    natural = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-20",
+        capture_dates=tuple(start + timedelta(days=index) for index in range(19))
+        + (start + timedelta(days=18),),
+    )
+    authority = RecommendationCalibrationPromotionAuthority(
+        output_root=tmp_path / "authority",
+        policy=RecommendationPromotionPolicy(),
+    )
+
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-20",
+        candidate_id=str(metadata["candidate_id"]),
+        candidate_root=candidate_root,
+        candidate_metadata=metadata,
+        natural_evidence=natural,
+        data_status="ready",
+        drift_status="clean",
+    )
+
+    assert decision.decision == "retain_current"
+    assert decision.reason == "natural_forward_distinct_decision_dates_insufficient"
 
 
 def test_daily_runner_is_idempotent_and_does_not_fabricate_natural_maturity(tmp_path: Path) -> None:
@@ -614,8 +739,13 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
         encoding="utf-8",
     )
 
-    assert daily_learning.main(common_args) == 0
+    # The replay/training attempt can complete, but the same run's live
+    # capture is blocked by the missing prospective source contract. That is
+    # a recoverable dependency failure, not normal natural-maturity pending.
+    assert daily_learning.main(common_args) == 2
     second_payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert second_payload["error"].startswith("live_capture_blocked:")
+    assert second_payload["recoverable"] is True
     second_receipt_path = Path(second_payload["run"]["receipt_path"])
     latest_status = json.loads(
         (output_root / "recommendation_learning" / "latest_status.json").read_text(encoding="utf-8")
@@ -673,6 +803,229 @@ def test_symbol_resolution_accepts_native_scheduled_snapshot_identifier(tmp_path
 
     assert symbols == ("1528", "1569")
     assert source == "scheduled_recommendation_snapshot:scheduled_rec_20260913_051004.json"
+
+
+def test_scheduled_experiment_scope_is_stable_while_daily_capture_scope_tracks_cohort() -> None:
+    from scripts.scheduled.run_daily_recommendation_learning import (
+        _scheduled_capture_scope,
+        _scheduled_experiment_scope,
+        _scheduled_run_scope,
+    )
+
+    cohorts = (
+        {
+            "requested_symbols": ["1101", "2330"],
+            "eligible_symbols": ["1101"],
+            "degraded_symbols": ["2330"],
+            "cohort_hash": "sha256:" + "1" * 64,
+        },
+        {
+            "requested_symbols": ["1528", "1569"],
+            "eligible_symbols": ["1528"],
+            "degraded_symbols": ["1569"],
+            "cohort_hash": "sha256:" + "2" * 64,
+        },
+        {
+            "requested_symbols": ["0050", "1558", "1560"],
+            "eligible_symbols": ["1558", "1560"],
+            "degraded_symbols": [],
+            "cohort_hash": "sha256:" + "3" * 64,
+        },
+    )
+    experiment_scopes = {
+        _scheduled_experiment_scope(fixed_round_trip_cost_bp=50),
+        _scheduled_experiment_scope(fixed_round_trip_cost_bp=50),
+    }
+    run_scopes = {
+        _scheduled_run_scope(
+            symbols=tuple(cohort["eligible_symbols"]),
+            snapshot_cohort=cohort,
+        )
+        for cohort in cohorts
+    }
+    capture_scopes = {
+        _scheduled_capture_scope(
+            symbols=tuple(cohort["eligible_symbols"]),
+            snapshot_cohort=cohort,
+        )
+        for cohort in cohorts
+    }
+
+    # The challenger experiment is stable across three different daily
+    # cohorts; receipt/capture scopes remain day/cohort-specific.
+    assert len(experiment_scopes) == 1
+    assert len(run_scopes) == 3
+    assert len(capture_scopes) == 3
+
+    # A daily symbol/quality change stays in the same experiment, while a
+    # changed cost contract must start a fresh incompatible experiment.
+    assert _scheduled_experiment_scope(fixed_round_trip_cost_bp=50) == _scheduled_experiment_scope(
+        fixed_round_trip_cost_bp=50,
+    )
+    assert _scheduled_experiment_scope(fixed_round_trip_cost_bp=50) != _scheduled_experiment_scope(
+        fixed_round_trip_cost_bp=100,
+    )
+
+
+def test_three_daily_receipts_reuse_one_frozen_candidate_across_symbol_quality_changes(
+    tmp_path: Path,
+) -> None:
+    from scripts.scheduled.run_daily_recommendation_learning import (
+        _scheduled_experiment_scope,
+        _scheduled_run_scope,
+    )
+
+    assert _scheduled_experiment_scope().startswith("scheduled-experiment-")
+    runner = _runner(tmp_path)
+    frozen_root: Path | None = None
+    candidate_ids: list[str] = []
+    for index, (day, symbols, quality) in enumerate(
+        (
+            ("2026-09-14", ("1101",), "observed"),
+            ("2026-09-15", ("1528",), "degraded"),
+            ("2026-09-16", ("1569", "2330"), "observed"),
+        )
+    ):
+        cohort = {
+            "requested_symbols": list(symbols),
+            "eligible_symbols": list(symbols[:1]),
+            "degraded_symbols": list(symbols[1:]) if quality == "degraded" else [],
+            "cohort_hash": "sha256:" + str(index + 4) * 64,
+        }
+        result = runner.run(
+            decision_date=day,
+            run_scope=_scheduled_run_scope(symbols=symbols, snapshot_cohort=cohort),
+            samples=_samples(),
+            natural_evidence=None,
+            data_dependency_status="ready",
+            outcome_dependency_status="ready",
+            drift_status="not_checked",
+            dataset_quality={"formal_candidate_eligible": True},
+            frozen_candidate_root=frozen_root,
+        )
+        if frozen_root is None:
+            frozen_root = Path(str(result.candidate_root))
+        candidate_ids.append(str(result.candidate_id))
+        assert Path(result.receipt_path).is_file()
+    assert len(set(candidate_ids)) == 1
+
+
+def test_manual_three_stock_capture_cannot_be_reused_for_normal_one_stock_scope(
+    tmp_path: Path,
+) -> None:
+    from scripts.scheduled.run_daily_recommendation_learning import _capture_matches_request
+
+    _, candidate_root, metadata = _candidate(
+        tmp_path,
+        shift=0,
+        candidate_day="2026-09-14",
+    )
+    service = RecommendationPredictionCaptureService()
+    inputs = tuple(
+        RecommendationPredictionCaptureInput(
+            row_id=f"scheduled-live:2026-09-14:{symbol}",
+            symbol=symbol,
+            decision_date="2026-09-14",
+            feature_as_of_date="2026-09-13",
+            feature_available_date="2026-09-13",
+            feature_values=(1000 + index, 2000 + index),
+            rule_probability_bp=5000,
+        )
+        for index, symbol in enumerate(("1101", "2330", "1528"))
+    )
+    manual_capture = service.capture(
+        candidate_root=candidate_root,
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        policy_hash=RecommendationPromotionPolicy().policy_hash,
+        decision_date="2026-09-14",
+        captured_at="2026-09-14T09:00:00+00:00",
+        inputs=inputs,
+        fixed_round_trip_cost_bp=50,
+        data_root=tmp_path / "formal-data",
+    )
+    manual_path = tmp_path / "manual" / "2026-09-14" / "manual-3.json"
+    manual_capture.persist(manual_path)
+    normal_one = (inputs[0],)
+
+    assert _capture_matches_request(
+        json.loads(manual_path.read_text(encoding="utf-8")),
+        candidate_metadata=metadata,
+        candidate_root=candidate_root,
+        decision_date="2026-09-14",
+        inputs=normal_one,
+        source_contract_binding=None,
+    ) is False
+    assert _capture_matches_request(
+        json.loads(manual_path.read_text(encoding="utf-8")),
+        candidate_metadata=metadata,
+        candidate_root=candidate_root,
+        decision_date="2026-09-14",
+        inputs=inputs,
+        source_contract_binding=None,
+    ) is True
+
+
+def test_same_day_new_symbol_capture_does_not_claim_old_capture_coverage(
+    tmp_path: Path,
+) -> None:
+    from scripts.scheduled.run_daily_recommendation_learning import (
+        _scan_cross_capture_identity,
+    )
+
+    _, candidate_root, metadata = _candidate(
+        tmp_path,
+        shift=0,
+        candidate_day="2026-09-14",
+    )
+    service = RecommendationPredictionCaptureService()
+    existing_input = RecommendationPredictionCaptureInput(
+        row_id="scheduled-live:2026-09-14:1101",
+        symbol="1101",
+        decision_date="2026-09-14",
+        feature_as_of_date="2026-09-13",
+        feature_available_date="2026-09-13",
+        feature_values=(1000, 2000),
+        rule_probability_bp=5000,
+        rule_after_cost_probability_bp=5000,
+    )
+    existing_capture = service.capture(
+        candidate_root=candidate_root,
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        policy_hash=RecommendationPromotionPolicy().policy_hash,
+        decision_date="2026-09-14",
+        captured_at="2026-09-14T09:00:00+00:00",
+        inputs=(existing_input,),
+        fixed_round_trip_cost_bp=50,
+        data_root=tmp_path / "formal-data",
+    )
+    capture_root = tmp_path / "captures" / "2026-09-14"
+    existing_path = capture_root / "old-scope" / "capture.json"
+    existing_capture.persist(existing_path)
+    new_input = RecommendationPredictionCaptureInput(
+        row_id="scheduled-live:2026-09-14:2330",
+        symbol="2330",
+        decision_date="2026-09-14",
+        feature_as_of_date="2026-09-13",
+        feature_available_date="2026-09-13",
+        feature_values=(3000, 4000),
+        rule_probability_bp=5000,
+        rule_after_cost_probability_bp=5000,
+    )
+
+    identity = _scan_cross_capture_identity(
+        capture_root=capture_root,
+        destination=capture_root / "new-scope" / "capture.json",
+        candidate_id=str(metadata["candidate_id"]),
+        decision_date="2026-09-14",
+        inputs=(existing_input, new_input),
+        source_contract_binding=None,
+    )
+
+    assert identity["exact_symbols"] == ["1101"]
+    assert "2330" not in identity["exact_symbols"]
+    assert identity["source_capture_paths"] == [str(existing_path.resolve())]
 
 
 def test_qualified_adoption_changes_consumer_projection_with_cap(tmp_path: Path) -> None:
@@ -1145,7 +1498,12 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     """Exercise the real scheduled entrypoint with only clock/source seams replaced."""
 
     import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+    import ml_module.recommendation_calibration_evidence as evidence_module
     import ml_module.recommendation_historical_replay as replay_module
+    from data_module.recommendation_calibration_source_contract import (
+        _hash_payload,
+        write_source_contract,
+    )
 
     output_root = tmp_path / "daily-output"
     data_root = tmp_path / "daily-data"
@@ -1343,8 +1701,8 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
             request_number = self.forward_calls[key]
             candidate_dir = output_root / "recommendation_learning" / "captures" / start.isoformat()
             active_dir = output_root / "recommendation_learning" / "active_captures" / start.isoformat()
-            candidate_files = tuple(candidate_dir.glob("*.json")) if candidate_dir.is_dir() else ()
-            active_files = tuple(active_dir.glob("*.json")) if active_dir.is_dir() else ()
+            candidate_files = tuple(candidate_dir.rglob("*.json")) if candidate_dir.is_dir() else ()
+            active_files = tuple(active_dir.rglob("*.json")) if active_dir.is_dir() else ()
 
             candidate_rows: dict[str, Mapping[str, object]] = {}
             active_rows: dict[str, Mapping[str, object]] = {}
@@ -1389,8 +1747,15 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
                         # output.  This makes the natural gate qualify
                         # on its observed same-sample improvement without
                         # passing a caller-supplied gate flag.
+                        business_day_index = sum(
+                            1
+                            for offset in range(
+                                (start - date(2026, 6, 1)).days + 1
+                            )
+                            if (date(2026, 6, 1) + timedelta(days=offset)).weekday() < 5
+                        ) - 1
                         positive = (
-                            (start.toordinal() + (0 if symbol == "1101" else 1)) % 5
+                            (business_day_index + (0 if symbol == "1101" else 1)) % 5
                         ) < 3
                     else:
                         row = None
@@ -1445,6 +1810,257 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     monkeypatch.setattr(replay_module, "HistoricalFeatureBuilder", _FeatureBuilder)
     monkeypatch.setattr(daily_learning, "_official_trading_day", lambda **_: (True, "test_clock_calendar"))
     monkeypatch.setattr(daily_learning, "_taipei_now", _clock_now)
+
+    def _qualified_source_contract_audit(**kwargs):
+        """Inject a qualified prospective source snapshot for this authority test.
+
+        Source lineage and tamper checks are covered by the dedicated custody
+        tests.  This regression test focuses on the daily capture -> natural
+        maturity -> active-model authority loop, so it supplies an explicit
+        qualified contract instead of silently relying on an unqualified
+        fixture to pass the production gate.
+        """
+
+        symbols = tuple(str(symbol) for symbol in kwargs["symbols"])
+        decision_date = kwargs["decision_date"].isoformat()
+        feature_registry = daily_learning.CORE_LONG_HISTORY_FEATURE_REGISTRY
+        feature_rows = [
+            {
+                "symbol": symbol,
+                "decision_date": decision_date,
+                "feature_as_of_date": (kwargs["decision_date"] - timedelta(days=1)).isoformat(),
+                "feature_available_date": (kwargs["decision_date"] - timedelta(days=1)).isoformat(),
+                "feature_ids": list(feature_registry.canonical_ids),
+                "feature_values": [100_000 for _ in feature_registry.canonical_ids],
+                "snapshot_hash": "sha256:test-feature-row-" + symbol,
+            }
+            for symbol in sorted(symbols)
+        ]
+        feature_snapshot_body = {
+            "component": "prospective_recommendation_features",
+            "source_db": str(kwargs["source_db"]),
+            "decision_date": decision_date,
+            "history_start_date": "2025-01-01",
+            "feature_registry_hash": feature_registry.registry_hash,
+            "feature_schema_hash": "sha256:test-feature-schema",
+            "symbols": sorted(symbols),
+            "rows": feature_rows,
+        }
+        available_at = f"{decision_date}T08:00:00+08:00"
+        fixture_root = (
+            Path(kwargs["learning_output_root"])
+            / "fixture_source_lineage"
+            / decision_date
+        )
+        fixture_root.mkdir(parents=True, exist_ok=True)
+
+        def _write_hashed_json(path: Path, body: dict[str, object], hash_field: str) -> str:
+            payload = {
+                **body,
+                hash_field: _hash_payload(body),
+            }
+            path.write_text(
+                json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            return str(payload[hash_field])
+
+        raw_response_path = fixture_root / "daily-source.raw.json"
+        raw_response_path.write_text(
+            json.dumps(
+                {
+                    "decision_date": decision_date,
+                    "symbols": sorted(symbols),
+                    "source": "authority-test-fixture",
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        daily_receipt_path = fixture_root / "daily-source.receipt.json"
+        daily_receipt_hash = _write_hashed_json(
+            daily_receipt_path,
+            {
+                "schema_version": "fixture-daily-source-receipt.v1",
+                "decision_date": decision_date,
+                "available_at": available_at,
+                "raw_response_path": str(raw_response_path.resolve()),
+                "symbols": sorted(symbols),
+            },
+            "content_sha256",
+        )
+        technical_output_body = {
+            "component": "technical_indicators",
+            "decision_date": decision_date,
+            "symbols": sorted(symbols),
+            "rows_sha256": _hash_payload({"rows": feature_rows}),
+        }
+        technical_output = {
+            **technical_output_body,
+            "content_sha256": _hash_payload(technical_output_body),
+        }
+        publication_payload_body = {
+            "schema_version": "fixture-technical-publication-receipt.v1",
+            "decision_date": decision_date,
+            "available_at": available_at,
+            "technical_step_status": "fixture",
+            "technical_output": technical_output,
+            "source_receipts": [
+                {
+                    "receipt_path": str(daily_receipt_path.resolve()),
+                    "receipt_sha256": evidence_module._sha256_file(daily_receipt_path),
+                    "raw_response_path": str(raw_response_path.resolve()),
+                    "raw_response_sha256": evidence_module._sha256_file(raw_response_path),
+                    "available_at": available_at,
+                }
+            ],
+        }
+        publication_payload = {
+            **publication_payload_body,
+            "content_sha256": _hash_payload(publication_payload_body),
+        }
+        publication_path = fixture_root / "technical-publication.receipt.json"
+        publication_path.write_text(
+            json.dumps(publication_payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        adjustment_section_paths: dict[str, Path] = {}
+        for section_name in ("adjustments", "coverage"):
+            section_path = fixture_root / f"corporate-{section_name}.json"
+            section_body = {
+                "decision_date": decision_date,
+                "section": section_name,
+                "symbols": sorted(symbols),
+            }
+            section_path.write_text(
+                json.dumps(section_body, ensure_ascii=False, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            adjustment_section_paths[section_name] = section_path
+        adjustment_manifest_body = {
+            "schema_version": "fixture-corporate-adjustment-manifest.v1",
+            "decision_date": decision_date,
+            "adjustments": {
+                "path": adjustment_section_paths["adjustments"].name,
+                "file_hash": evidence_module._sha256_file(adjustment_section_paths["adjustments"]),
+            },
+            "coverage": {
+                "path": adjustment_section_paths["coverage"].name,
+                "file_hash": evidence_module._sha256_file(adjustment_section_paths["coverage"]),
+            },
+        }
+        adjustment_manifest_path = fixture_root / "corporate-adjustment.manifest.json"
+        adjustment_manifest_hash = _write_hashed_json(
+            adjustment_manifest_path,
+            adjustment_manifest_body,
+            "manifest_hash",
+        )
+        event_manifest_path = fixture_root / "official-events.manifest.json"
+        event_manifest_hash = _write_hashed_json(
+            event_manifest_path,
+            {
+                "schema_version": "fixture-official-event-manifest.v1",
+                "decision_date": decision_date,
+                "symbols": sorted(symbols),
+            },
+            "manifest_hash",
+        )
+        feature_snapshot = {
+            "status": "captured",
+            "verified": True,
+            **feature_snapshot_body,
+            "row_count": len(feature_rows),
+            "rows_sha256": _hash_payload(feature_snapshot_body),
+            "captured_at": available_at,
+            "reason": None,
+        }
+        feature_snapshot["content_sha256"] = _hash_payload(
+            {key: value for key, value in feature_snapshot.items() if key != "content_sha256"}
+        )
+        contract_body = {
+            "schema_version": "recommendation-calibration-source-contract.v1",
+            "status": "blocked",
+            "decision_date": decision_date,
+            "symbols": list(symbols),
+            "source_root": str(kwargs["output_root"]),
+            "data_root": str(kwargs["data_root"]),
+            "source_database": str(kwargs["source_db"]),
+            "technical": {
+                "status": "ready",
+                "formal_source_contract": {"verified": True},
+                "prospective_available": True,
+                "prospective_blockers": [],
+                "publication_receipt": {
+                    "path": str(publication_path.resolve()),
+                    "sha256": evidence_module._sha256_file(publication_path),
+                    "payload": publication_payload,
+                    "available_at": available_at,
+                },
+                "publication_available_at": available_at,
+                "source_receipt_available_ats": [available_at],
+                "prospective_feature_snapshot": feature_snapshot,
+            },
+            "corporate_actions": {
+                "status": "ready",
+                "formal_source_contract": {"verified": True},
+                "adjustment_custody": {
+                    "prospective_verified": True,
+                    "manifest_hash": "sha256:" + ("0" * 64),
+                    "manifest_path": str(adjustment_manifest_path.resolve()),
+                    "manifest_file_hash": evidence_module._sha256_file(adjustment_manifest_path),
+                    "available_at": available_at,
+                },
+                "event_publication": {
+                    "manifest_path": str(event_manifest_path.resolve()),
+                    "manifest_file_sha256": evidence_module._sha256_file(event_manifest_path),
+                    "manifest_hash": event_manifest_hash,
+                    "source_publication_available_at": available_at,
+                },
+            },
+            "lanes": {
+                "price_up_calibration": {
+                    "status": "blocked",
+                    "prospective_status": "ready",
+                    "blockers": [],
+                    "prospective_blockers": [],
+                },
+                "after_cost_calibration": {
+                    "status": "blocked",
+                    "prospective_status": "blocked",
+                    "blockers": ["observed_liquidity_cost_not_matured_with_fill_lineage"],
+                    "prospective_blockers": ["observed_liquidity_cost_not_matured_with_fill_lineage"],
+                },
+                "actual_execution": {
+                    "status": "blocked",
+                    "blockers": ["broker_actual_fill_custody_not_in_scope"],
+                },
+            },
+            "historical_pit_policy": {
+                "eligible": False,
+                "reason": "prospective_test_snapshot_only",
+            },
+            "replay_vs_prospective": {
+                "historical_replay_status": "separately_verified_fixture",
+                "prospective_input_status": "ready_for_future_capture_only",
+            },
+        }
+        contract = {
+            **contract_body,
+            "contract_sha256": _hash_payload(contract_body),
+        }
+        receipt = write_source_contract(
+            contract,
+            learning_output_root=kwargs["learning_output_root"],
+        )
+        return {
+            "source_contract": contract,
+            "source_contract_receipt": receipt,
+        }
+
+    monkeypatch.setattr(daily_learning, "_audit_source_contract", _qualified_source_contract_audit)
 
     def _run(day: date) -> dict[str, object]:
         clock["day"] = day

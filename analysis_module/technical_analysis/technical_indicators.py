@@ -647,6 +647,15 @@ class TechnicalIndicatorCalculator:
             if trend_indicators:
                 for key, value in trend_indicators.items():
                     df_result[key] = value
+
+            # ADX is part of the persisted technical source contract.  Keep
+            # it on the normal calculator path so SQLite/CSV producers and
+            # source-custody witnesses observe the same real OHLC-derived
+            # value; callers must not have to patch the column after the run.
+            adx_indicators = self.calculate_adx_indicator(df_result, params={})
+            if adx_indicators:
+                for key, value in adx_indicators.items():
+                    df_result[key] = value
             
             # 3. 驗證結果
             df_result = self.validate_indicator_results(df_result)

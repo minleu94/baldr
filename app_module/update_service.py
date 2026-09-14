@@ -548,7 +548,10 @@ class UpdateService :
     def _create_tpex_daily_price_source (self )->Any :
         from data_module .tpex_daily_price_source import TpexDailyPriceSource
 
-        return TpexDailyPriceSource (self .config .tpex_daily_price_dir )
+        return TpexDailyPriceSource (
+            self .config .tpex_daily_price_dir,
+            source_custody_root=self .config .output_root,
+        )
 
     def update_tpex_daily_price (
     self ,
@@ -617,6 +620,7 @@ class UpdateService :
                 'diagnostic_count':int (result .diagnostic_count ),
                 'source_date':result .source_date ,
                 'output_file':str (result .output_file )if result .output_file else None ,
+                'source_custody':dict (getattr (result, 'source_custody', None) or {}) or None ,
                 }
 
             if result .source_date and result .source_date !=effective_target :
@@ -644,6 +648,7 @@ class UpdateService :
                     'diagnostic_count':int (fallback_result .diagnostic_count ),
                     'source_date':fallback_result .source_date ,
                     'output_file':str (fallback_result .output_file )if fallback_result .output_file else None ,
+                    'source_custody':dict (getattr (fallback_result, 'source_custody', None) or {}) or None ,
                     }
 
             logger .warning ("[UpdateService] TPEX daily price update failed: %s",result .message )
@@ -740,6 +745,7 @@ class UpdateService :
             total_rows =0
             total_skipped_rows =0
             last_source_date :Optional [str ]=None
+            source_custody_receipts :list [dict [str ,Any ]]=[]
 
             def cancelled_result(message: str) -> Dict[str, Any]:
                 return {
@@ -801,6 +807,8 @@ class UpdateService :
                     total_rows += int(result.row_count)
                     if effective_source_date != requested_date:
                         fallback_dates.append(effective_source_date)
+                    if getattr(result, 'source_custody', None):
+                        source_custody_receipts.append(dict(result.source_custody))
                 else:
                     twse_skipped = False
                     if twse_no_data_dates:
@@ -827,6 +835,8 @@ class UpdateService :
                             source_date_seen .add (fallback_source_date )
                             total_rows +=int (fallback_result .row_count )
                             effective_source_date =fallback_source_date
+                            if getattr(fallback_result, 'source_custody', None):
+                                source_custody_receipts.append(dict(fallback_result.source_custody))
                         else :
                             logger .warning (
                             "[UpdateService] TPEX fallback request failed: request=%s fallback=%s message=%s",
@@ -916,6 +926,7 @@ class UpdateService :
             'skipped_rows':total_skipped_rows ,
             'diagnostic_count':0 ,
             'source_dates':unique_updated_dates ,
+            'source_custody':source_custody_receipts,
             'sync_summary':sync_summary ,
             }
         except Exception as exc :
@@ -4169,7 +4180,8 @@ class UpdateService :
     technical_process_pool :Optional [bool ]=None ,
     technical_process_pool_workers :Optional [int ]=None ,
     technical_process_pool_max_in_flight :Optional [int ]=None ,
-    technical_process_pool_max_retries :Optional [int ]=None
+    technical_process_pool_max_retries :Optional [int ]=None ,
+    recompute_currentity :bool =False
     )->Dict [str ,Any ]:
         """計算技術指標
 
@@ -4181,6 +4193,8 @@ class UpdateService :
             cancel_callback: 合作式取消回調；只在安全邊界停止後續計算／寫入
             ignore_existing_files: 是否忽略現有指標文件，直接覆蓋（用於修復有問題的文件）
             incremental_lookback_days: 增量更新時往前回補的交易日數，避免技術指標缺少歷史序列
+            recompute_currentity: 已 current 的 technical table 仍需重新計算時，
+                只對 bounded lookback window 重算，不清空全量 technical table
             technical_process_pool: 明確覆寫 process-pool feature flag；預設讀取 config，且預設關閉
             technical_process_pool_workers: process-pool worker 上限；僅在 feature flag 開啟時使用
             technical_process_pool_max_in_flight: parent queue 的最大 in-flight 任務數
@@ -4232,6 +4246,7 @@ class UpdateService :
         logger .info (
         f"[UpdateService] 開始計算技術指標: "
         f"target_stock={target_stock}, force_all={force_all}, start_date={start_date}, "
+        f"recompute_currentity={recompute_currentity}, "
         f"process_pool_enabled={process_pool_enabled}"
         )
 
@@ -4401,6 +4416,7 @@ class UpdateService :
                 'production_worker_enabled': process_pool_enabled,
                 'parent_single_writer': True,
             },
+            'recompute_currentity': bool(recompute_currentity),
             }
 
             all_data =[]
@@ -4454,7 +4470,32 @@ class UpdateService :
                     max_date =max (max_date ,group_max_date )
 
                     # 檢查是否需要更新（基於日期）
-                if auto_incremental and group_date_column :
+                if recompute_currentity and group_date_column:
+                    date_col = group_df[group_date_column]
+                    if not pd.api.types.is_string_dtype(date_col):
+                        date_col = date_col.astype(str)
+                    normalized_dates = pd.to_datetime(date_col, errors="coerce")
+                    sorted_dates = (
+                        pd.Series(normalized_dates.dropna().unique())
+                        .sort_values()
+                        .reset_index(drop=True)
+                    )
+                    if len(sorted_dates) == 0:
+                        logger.debug(
+                            f"股票 {stock_id} 沒有可用日期，跳過 currentity bounded 重算"
+                        )
+                        continue
+                    warmup_index = max(
+                        len(sorted_dates) - max(int(incremental_lookback_days), 1),
+                        0,
+                    )
+                    warmup_start = sorted_dates.iloc[warmup_index]
+                    group_df = group_df[normalized_dates >= warmup_start]
+                    logger.debug(
+                        f"股票 {stock_id} currentity bounded 重算從 "
+                        f"{warmup_start.strftime('%Y-%m-%d')} 開始"
+                    )
+                elif auto_incremental and group_date_column :
                     indicator_file =self .config .technical_dir /f'{stock_id}_indicators.csv'
                     existing_latest_date =self ._get_indicator_latest_date (indicator_file )
                     if existing_latest_date and not ignore_existing_files :

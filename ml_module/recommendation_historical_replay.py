@@ -132,6 +132,7 @@ class RecommendationHistoricalReplayConfig:
         if self.selection_policy not in {
             "chronological_first_eligible_date",
             "latest_eligible_dates",
+            "time_stratified_eligible_dates",
         }:
             raise ValueError("selection_policy is unsupported")
         industry_mapping = self.industry_index_name_by_symbol
@@ -239,20 +240,34 @@ class RecommendationHistoricalReplayService:
             return self._empty_result(config, "no_explicit_universe_trading_dates")
 
         # Keep the date bound deterministic and explicit.  The scheduled path
-        # selects the latest eligible window so a new trading day can change
-        # the training dataset; research callers retain the historical-first
-        # default for backwards-compatible replay.
+        # normally selects the latest eligible window so a new trading day can
+        # change the training dataset.  A bounded bootstrap fallback may use a
+        # date-only, time-stratified window when a recent slice cannot produce
+        # causal OOF calibration; it never inspects labels while selecting
+        # dates and it never changes the explicit symbol cohort.
         all_decision_candidates = tuple(
             item
             for item in trading_dates
             if _date(item) >= _date(config.replay_start_date)
             and _date(item) <= _date(config.replay_end_date)
         )
+        diagnostics: list[str] = []
         if config.selection_policy == "latest_eligible_dates":
             decision_candidates = all_decision_candidates[-config.max_decision_dates :]
+        elif config.selection_policy == "time_stratified_eligible_dates":
+            decision_candidates = _time_stratified_eligible_dates(
+                all_decision_candidates,
+                max_decision_dates=config.max_decision_dates,
+                horizon_trading_days=config.horizon_trading_days,
+            )
+            diagnostics.append(
+                "time_stratified_date_selection:"
+                f"pool={max(0, len(all_decision_candidates) - config.horizon_trading_days)}:"
+                f"selected={len(decision_candidates)}:"
+                f"max_decision_dates={config.max_decision_dates}"
+            )
         else:
             decision_candidates = all_decision_candidates[: config.max_decision_dates]
-        diagnostics: list[str] = []
         samples: list[RecommendationCalibrationSample] = []
         selected_dates: list[str] = []
         source_fingerprints: set[str] = set()
@@ -484,6 +499,11 @@ class RecommendationHistoricalReplayService:
         coverage = {
             "requested_symbols": list(config.symbols),
             "requested_decision_date_count": len(all_decision_candidates),
+            "selection_pool_decision_date_count": (
+                max(0, len(all_decision_candidates) - config.horizon_trading_days)
+                if config.selection_policy == "time_stratified_eligible_dates"
+                else len(all_decision_candidates)
+            ),
             "selected_decision_date_count": len(selected_dates),
             "max_decision_dates": config.max_decision_dates,
             "selection_policy": config.selection_policy,
@@ -1252,6 +1272,34 @@ def _config_payload(config: RecommendationHistoricalReplayConfig) -> dict[str, A
 
 def _date(value: str) -> date:
     return date.fromisoformat(str(value)[:10])
+
+
+def _time_stratified_eligible_dates(
+    candidates: Sequence[str],
+    *,
+    max_decision_dates: int,
+    horizon_trading_days: int,
+) -> tuple[str, ...]:
+    """Select bounded dates across the available history without reading labels.
+
+    The final ``horizon_trading_days`` trading dates are excluded because they
+    cannot have a complete forward label inside the replay boundary.  The
+    remaining date-only pool is sampled with evenly spaced integer indices;
+    this keeps the fallback reproducible and preserves causal time ordering.
+    """
+
+    maturable = tuple(candidates[:-horizon_trading_days]) if len(candidates) > horizon_trading_days else ()
+    if len(maturable) <= max_decision_dates:
+        return maturable
+    if max_decision_dates <= 1:
+        return maturable[:1]
+    indices = sorted(
+        {
+            (index * (len(maturable) - 1)) // (max_decision_dates - 1)
+            for index in range(max_decision_dates)
+        }
+    )
+    return tuple(maturable[index] for index in indices)
 
 
 def _hash_payload(payload: Any) -> str:

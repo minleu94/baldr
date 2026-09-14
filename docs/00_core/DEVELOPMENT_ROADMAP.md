@@ -4,7 +4,7 @@
 
 > **2026-07-13 系統工程整合**：A～F committed handoff 已由 G 依 SHA、ownership 與 focused suite 驗證，跨流 DTO／JSON composition、唯讀 smoke 與 pure verifier 均成立。這只代表工程整合已驗證；下一步仍是 forward evidence、逐來源人工接受與正式 ML OOS／promotion review，不是 scheduler、production automation 或 formal product closeout。
 >
-> **最後更新**：2026-09-13
+> **最後更新**：2026-09-14
 > **工程主線**：`V3.3 Engineering Complete`，進入 `V4.0 Evidence Accumulation Track`；這不是正式 V4.0。詳見 [V3.3 Engineering Closeout](../06_qa/V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)。
 > **Evidence rehearsal**：唯讀 replay / shadow 工程底座另以 `engineering_rehearsal_complete` 收口；它只提供可重跑 diagnostics 與 forward handoff，不會改寫 external Gate 狀態。見 [Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)。
 > **定位**：本文件是 Roadmap Hub，不再保存完整歷史長文。它負責指向目前狀態、6 個月工程路線、系統架構與歷史歸檔。
@@ -22,9 +22,14 @@
 > 已完成工程閉環，驗收見 [V4.2 每日推薦自動學習 QA](../06_qa/V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13.md)。
 > 這是隔離 research／shadow learning path：不改正式 Recommendation／Portfolio allocation、不下單，
 > 也不取得 Formal evidence credit。05:45 wrapper／registration definition 已納入本次工程授權；
-> 此隔離 worktree 只做 registration DryRun，實機 Windows Task Scheduler 註冊是父任務整合後的部署步驟，
-> 不是重新請求 learning loop 的 owner approval。正式 source acceptance、natural production evidence、
-> allocation promotion 與 broker 仍維持 external pending。
+> 2026-09-14 由父任務以提升權限進行的唯讀主機查詢觀察到
+> `baldr-forward-outcomes-daily` 與 `baldr-recommendation-calibration-learning-daily`
+> 均位於 TaskPath `\\`、State `Ready`；這只表示工作可被觸發，不代表 formal evidence、
+> production Recommendation／Portfolio promotion 或 broker execution 已開啟。最新 durable
+> shadow receipt 為 `completed / retain_current`，`natural_matured_sample_count=0`，
+> `formal_order_allowed=false`。正式 source acceptance、natural production evidence、
+> allocation promotion 與 broker 仍維持 external pending。跨市場到個股的呈現／證據缺口矩陣見
+> [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
 
 ---
 

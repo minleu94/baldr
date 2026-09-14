@@ -716,6 +716,18 @@ def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknow
     assert "校準機率：不可用（研究中）" in detail_text
     assert "成本後獲利機率：不可用（研究中）" in detail_text
     assert "證據信心：未提供" in detail_text
+    assert view.advice_lineage_button.isEnabled() is True
+    assert "機率依據詳情（唯讀）" not in detail_text
+
+    view.advice_lineage_button.click()
+    expanded_text = view.advice_presentation_detail.text()
+    assert "機率依據詳情（唯讀）" in expanded_text
+    assert "模型版本：未提供" in expanded_text
+    assert "自然 evidence status：unknown" in expanded_text
+    assert "自然 authority receipt：未提供" in expanded_text
+
+    view.advice_lineage_button.click()
+    assert "機率依據詳情（唯讀）" not in view.advice_presentation_detail.text()
     assert "適用期間：swing" in detail_text
     assert "資料日：2026-07-06" in detail_text
     assert "來源追溯：fixture:advice" in detail_text

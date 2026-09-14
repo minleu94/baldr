@@ -10,6 +10,13 @@
 > **現況邊界**：目前完成狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準；本文件中的 Target capability 不代表已實作。
 > **安全邊界**：Investment Advice（投資建議）不等於 Broker Execution（券商執行）。本 Roadmap 不授權自動下單、保證獲利、production ML 或自動策略升降級。
 
+> **2026-09-14 Decision Workbench handoff**：本輪新增的是 V4.1／V4.2 engineering slice：
+> 將 rank、校準機率、成本後機率與 evidence／source／model／dataset metadata 分開呈現，
+> 並在 Workbench 提供唯讀的機率依據詳情。它不宣稱真實市場→產業→個股端到端已驗收，
+> 不把 `available` 當 natural validation，也不以 fixture／shadow／scheduler Ready 取得
+> V4.0 formal credit。完整 requirements／code／gap／acceptance matrix 見
+> [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
+
 ---
 
 ## 1. Executive Summary
@@ -257,6 +264,51 @@ Evidence 分層：
 - Paper Portfolio：納入配置、成本與 execution feasibility。
 - Live review：需實際成交、override 與 decision journal 才能成立。
 
+### 10.1 2026-09-14 Decision Workbench integration handoff
+
+本節把目前的工程工作與長期產品版本分流，不取代 `PROJECT_SNAPSHOT.md` 的運行狀態或
+`ROADMAP_6M_ENGINEERING.md` 的交付順序。
+
+#### V4.1／V4.2 engineering track
+
+- **V4.1 engineering**：完成 Advice／Portfolio presentation 的 rank／probability 分離、
+  decision date／data-as-of／horizon／sample、model／dataset／source、evidence kind 與
+  missing／warning 的唯讀投影；下一增量是 content-first Workbench、每日 evidence view、
+  既有 Journal／Evidence／Portfolio ledger identity adapter 與研究 fallback。
+- **V4.2 engineering**：保留既有 05:40 forward outcome → 05:45 shadow learning 的
+  自動候選採用／回退 policy、frozen challenger、active monitor、receipt 與 rollback。
+  routine shadow adjustment 不要求使用者每日人工批准；只有超出既有 shadow／正式決策
+  影響範圍才另立具名 promotion／review Gate。沒有 verifier 的 natural receipt 仍只可
+  顯示 unknown，source `available`、hash 或 evidence kind 不是 authority。
+- **成本接線**：產品工程先消費臺銀 `estimated_research_only` 的成本 policy，形成可判讀
+  的估算淨效用；observed fills、partial fill、broker 對帳與實際滑價另列 execution-
+  realism／formal Gate，不阻擋 content-first 唯讀體驗。
+
+#### V4 formal maturity boundary
+
+V4.0 仍由長期自然 Forward／Paper／Live evidence、P0 source acceptance、PIT／available-
+time、成本／成交、decision journal、具名 review、calibration／downside／regime stability
+與 rollback Gate 判定。V4.1／V4.2 engineering 完成、UI 詳情、fixture、historical replay、
+shadow receipt 或 Task Scheduler `Ready` 都不會自動升級 V4.0，也不授權 broker。
+
+#### V5 full decision experience
+
+V5 是把 content-first daily conclusion、候選／持倉、market→industry→stock→watchlist／
+portfolio read-only journey、Why／Why Not／Risk、研究 fallback、既有 Journal／Evidence／
+Portfolio ledger continuity 與 T+N outcome view 收斂成單一路徑。V5 的 UX／唯讀資料旅程、
+decision continuity 與 V4 formal evidence accumulation 可並行；V4 formal 不會阻擋現在先
+交付真實唯讀 content。Evidence 不足時只限制 Advice scope，轉 `RESEARCH`／`NO_NEW_POSITION`。
+既有每日 shadow policy 內的 candidate adoption／rollback 仍可自動執行，不能跨到正式
+Recommendation／Portfolio 或 broker。
+
+#### V6 evidence-driven personalization
+
+V6 只在 V5 的 decision／outcome continuity 形成後，研究 user profile、risk budget、horizon、
+liquidity／sector preferences 的可解釋個人化排序與 guardrails；每個 user-level projection
+都需與 population baseline、sample、calibration、negative evidence、drift 與 rollback
+分開保存。V6 不保證報酬、不隱藏缺漏、不自動調倉／下單；目前只是後續產品方向，不是本輪
+工程完成狀態。
+
 ## 11. Data Source Roadmap
 
 ### 11.1 共通資料契約
@@ -492,5 +544,10 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 ---
 
 ## 更新記錄
+
+- 2026-09-14：新增 Decision Workbench integration handoff，拆分 V4.1／V4.2 engineering、
+  V4 formal maturity、可並行的 V5 full decision experience 與 V6 evidence-driven
+  personalization；保留既有 shadow 自動採用／回退、臺銀估算成本與 broker／observed fill
+  的後續邊界。
 
 - 2026-07-11：初版建立 Post-Refactor 產品方向權威；確立 bounded advice、Guided / Professional 共核、Portfolio Advice、Position Health / Exit、Data Source priority、Evidence operating loop、ML shadow-first 與 signal pruning 主線。

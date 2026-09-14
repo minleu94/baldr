@@ -40,6 +40,7 @@ from app_module.research_console_source_service import ResearchConsoleSourceServ
 from app_module.advice_dtos import AdviceClassification
 from app_module.decision_presentation import (
     DecisionPresentationService,
+    format_decision_lineage_detail,
     format_decision_presentation,
 )
 from app_module.research_session import format_research_workflow_path
@@ -146,6 +147,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._viewed_review_item_ids: set[str] = set()
         self._workbench_narrow = False
         self.presentation_service = DecisionPresentationService()
+        self._selected_advice_presentation = None
 
         self.status_model = WorkbenchStatusStripTableModel()
         self.review_model = WorkbenchReviewQueueTableModel()
@@ -325,6 +327,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "共用證據詳情：選取 Advice 或研究候選列後顯示；"
             "排名分數、校準機率與成本後獲利機率不互相代換。"
         )
+        self.advice_lineage_button = QPushButton("查看機率依據")
+        self.advice_lineage_button.setProperty("variant", "secondary")
+        self.advice_lineage_button.setCheckable(True)
+        self.advice_lineage_button.setEnabled(False)
+        self.advice_lineage_button.setAccessibleName("查看機率依據")
+        self.advice_lineage_button.setToolTip(
+            "展開目前選取列的完整模型／資料集／來源追溯與 hash；唯讀，不會修改 Advice。"
+        )
+        self.advice_lineage_button.toggled.connect(self._toggle_advice_lineage)
+        advice_panel.layout.addWidget(self.advice_lineage_button)
         advice_panel.layout.addWidget(self.advice_presentation_detail)
 
         # 建立三態空狀態 Widget 及其唯讀導引
@@ -1320,6 +1332,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._resize_tables()
 
     def _set_advice_state(self, state: str, extra_msg: str = ""):
+        self._clear_advice_presentation_selection()
         if state == "WAITING_FOR_ADVICE_DTO":
             self.advice_empty_label.setText(
                 "<b>【狀態：WAITING_FOR_ADVICE_DTO】</b><br/>"
@@ -1418,23 +1431,46 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "缺少校準／成本後機率時維持不可用，不從排名分數推導。"
         )
 
+    def _clear_advice_presentation_selection(self) -> None:
+        self._selected_advice_presentation = None
+        if hasattr(self, "advice_lineage_button"):
+            self.advice_lineage_button.blockSignals(True)
+            self.advice_lineage_button.setChecked(False)
+            self.advice_lineage_button.blockSignals(False)
+            self.advice_lineage_button.setEnabled(False)
+
+    def _render_advice_presentation_detail(self) -> None:
+        presentation = self._selected_advice_presentation
+        if presentation is None:
+            return
+        detail = "共用證據詳情（唯讀）\n" + format_decision_presentation(presentation)
+        if self.advice_lineage_button.isChecked():
+            detail += "\n\n" + format_decision_lineage_detail(presentation)
+        self.advice_presentation_detail.setText(detail)
+
+    def _toggle_advice_lineage(self, expanded: bool) -> None:
+        del expanded
+        self._render_advice_presentation_detail()
+
     def _show_advice_row_presentation(self, model, row: int) -> None:
         """在 Workbench 直接展示共用 DTO；無法適配時 fail closed。"""
 
         item = model.row_at(row)
         if item is None:
+            self._clear_advice_presentation_selection()
             self.advice_presentation_detail.setText("共用證據詳情：尚未選取有效 Advice DTO。")
             return
         try:
             presentation = self.presentation_service.from_advice(item)
         except (TypeError, ValueError) as exc:
+            self._clear_advice_presentation_selection()
             self.advice_presentation_detail.setText(
                 f"共用證據詳情：Advice DTO 無法安全適配（{exc}）；請回到來源頁檢查。"
             )
             return
-        self.advice_presentation_detail.setText(
-            "共用證據詳情（唯讀）\n" + format_decision_presentation(presentation)
-        )
+        self._selected_advice_presentation = presentation
+        self.advice_lineage_button.setEnabled(True)
+        self._render_advice_presentation_detail()
 
     def _show_initial_detail(self, dashboard: WorkbenchDashboardDTO) -> None:
         if self.evidence_feed_model.rowCount() > 0:

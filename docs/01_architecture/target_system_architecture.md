@@ -247,8 +247,13 @@ flowchart LR
 - **Dependencies**：Application façade。
 - **Persistent artifacts**：UI 本身不持久化；由 application command 保存 review / journal。
 - **Failure / degraded**：顯示 MISSING / DEGRADED、保留 `NO_NEW_POSITION`，不補值。
-- **Current status**：`CURRENT`，Workbench 以 read-only 能力為主。
-- **Target status**：Guided / Professional 任務導向入口。
+- **Current status**：`CURRENT`，Workbench 以 read-only 能力為主；2026-09-14 已有機率／rank
+  分離與可展開 lineage 詳情。下一個 content-first 增量可與 V4 formal evidence accumulation
+  並行，不必等待 formal closeout。
+- **Target status**：Guided / Professional 任務導向入口，先呈現每日結論、候選／持倉與研究
+  fallback，再展開 technical detail；decision continuity 應重用既有 Journal／Evidence／
+  Portfolio ledger identity，不建立平行 decision database。V6 再於此邊界上增加 user-level
+  evidence-driven personalization。
 - **修改正式決策**：否。
 
 ### 10.2 Application Orchestration
@@ -370,11 +375,11 @@ flowchart LR
 - **Dependencies**：Research / Evidence、model registry。
 - **Persistent artifacts**：model、dataset、prediction、calibration、drift、rollback metadata。
 - **Failure / degraded**：停止 shadow / rollback，不 fallback 成無版本輸出。
-- **Current status**：`CANDIDATE`；已具備 shadow-only 的每日 bounded replay／training、frozen challenger、Asia/Taipei trading-day capture、自然 maturity、active monitor、authority receipt 與 fail-closed rollback／consumer lineage reload。正式 DB／Advice 仍不受影響；正式 production source contract、可追溯 liquidity cost 與足量成熟 forward evidence 尚未滿足。
+- **Current status**：`CANDIDATE`；已具備 shadow-only 的每日 bounded replay／training、frozen challenger、Asia/Taipei trading-day capture、自然 maturity、active monitor、authority receipt 與 fail-closed rollback／consumer lineage reload。既有 daily policy 內的 candidate adoption／rollback 可自動執行；正式 DB／Advice 仍不受影響。正式 production source contract、可追溯 liquidity cost 與足量成熟 forward evidence 尚未滿足。
 - **Target status**：Champion / Challenger governed layer。
 - **修改正式決策**：Gate 前否；Gate 後只能經 versioned adapter。
 
-目前實作的 scheduler 順序是 05:40 forward outcome 後接 05:45 learning runner。Historical replay 僅是 training data，不能取得 natural forward evidence credit；live candidate／active capture 綁定 feature availability、freeze、artifact／manifest／policy／probability-transform lineage。自然 outcome 需用 capture 的 immutable row 與之後可得的 market close source 重新計算，且以 distinct matured decision dates 去重。`recommendation_source_contract` 會重算實際來源內容 digest、coverage 與 symbol 範圍，驗證 technical `available_at` 及 corporate action window；未調整 corporate action 只保守排除 label rows，不視為已通過。after-cost 沒有觀測成本時維持 missing；採用 active model 的成熟 post-adoption rows 只有在 label availability cutoff 前通過 identity／receipt 驗證後，才可進下一 training cycle。這些能力仍是研究／shadow custody，不是 Target 的正式 Advice promotion、broker execution 或自動改權重授權。
+目前實作的 scheduler 順序是 05:40 forward outcome 後接 05:45 learning runner。Historical replay 僅是 training data，不能取得 natural forward evidence credit；live candidate／active capture 綁定 feature availability、freeze、artifact／manifest／policy／probability-transform lineage。自然 outcome 需用 capture 的 immutable row 與之後可得的 market close source 重新計算，且以 distinct matured decision dates 去重。`recommendation_source_contract` 會重算實際來源內容 digest、coverage 與 symbol 範圍，驗證 technical `available_at` 及 corporate action window；未調整 corporate action 只保守排除 label rows，不視為已通過。after-cost 沒有觀測成本時維持 missing；採用 active model 的成熟 post-adoption rows 只有在 label availability cutoff 前通過 identity／receipt 驗證後，才可進下一 training cycle。routine shadow adoption／rollback 仍受既有 policy、identity、receipt 與 safety flag 約束；超出既有正式影響範圍才需另立 promotion review。這些能力仍是研究／shadow custody，不是 Target 的正式 Advice promotion、broker execution 或自動改權重授權。
 
 ### 10.12 AI Research Copilot
 
@@ -512,6 +517,9 @@ portfolio_advice_eligible
 
 ## 更新記錄
 
+- 2026-09-14：補上 content-first Workbench 可與 V4 formal evidence 並行的目標邊界、既有
+  Journal／Evidence／Portfolio ledger identity 重用原則，以及既有 daily shadow policy 的
+  自動採用／回退；V6 個人化保留為後續 target capability。
 - 2026-09-06：校正八卡已落地工程與 Current → Target 差距，保留 PIT、真實 fills、自然時間、具名 review、正式 migration／writer 等獨立 Gate。
 
 - 2026-07-11：初版建立 Current → Transitional → Target 架構；定義 15 個產品／領域邊界、6 張核心流程圖、degraded behavior、正式決策權限與不自動交易政策。

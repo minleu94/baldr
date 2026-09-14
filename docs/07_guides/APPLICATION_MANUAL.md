@@ -1399,6 +1399,23 @@ PySide6 主視窗的可重跑縮放／鍵盤 smoke 使用真實 `MainWindow`、�
 4. 平衡風險檔為最低現金 `2000 bp`、最多 8 檔、單檔上限 `1500 bp`；權重使用整數 bp，金額使用 `Decimal`。UI 只能顯示結果，不能修改 policy。
 5. Advice 的 decision / data-as-of date 與 source trace 必須存在；資料截止日不得晚於決策日。缺資料、降級或未來資料會被拒絕或降級，不能當作可交易結論。
 
+### Advice 機率與來源依據（2026-09-14）
+
+在 Advice 表格選取一列後，先閱讀同一行的「校準機率」與「成本後獲利機率」旁的證據
+標籤，再按「查看機率依據」。這兩個欄位與排名分數／百分位是不同量；只有上游提供的
+整數 bp 機率才會轉成百分比，不能用排名分數或文字信心代換。
+
+- `可用估計／自然驗證未證明` 只表示有可用的校準估計，不是自然 forward 已驗證。
+- `研究中／shadow` 只表示研究／shadow 路徑；不要自行解讀成 prospective 或正式 Advice。
+- 若只看到自然 evidence receipt 但沒有 typed authority verifier 的驗證結果，畫面會保留
+  unknown；source、hash 或 `status=available` 都不能自行視為核准證明。
+- 依據詳情會列出 decision date、data-as-of、適用期間、樣本數、模型版本、資料集版本、
+  機率來源、evidence kind、自然 evidence 狀態、完整 source trace 與 warnings。短摘要會
+  遮蔽完整 hash，完整 hash 只在「機率依據詳情（唯讀）」中查看。
+- 這個按鈕只展開既有 DTO 的唯讀內容，不查詢或改寫正式 DB、不建立 journal、不改
+  Recommendation／Portfolio、不啟用 scheduler，也不建立 broker order。畫面 screenshot 或
+  controlled fixture 只代表呈現可讀，不代表真實市場→產業→個股端到端已驗收。
+
 Advice 表格有三種空白狀態，不能只用「沒有列」判斷：`WAITING_FOR_ADVICE_DTO` 代表尚未載入 Advice DTO，應先依畫面導引檢查資料更新或推薦分析；`NO_ELIGIBLE_ADVICE` 代表 DTO 已成功載入但沒有符合條件的建議；`ADVICE_DTO_ERROR` 才代表 DTO 遺失、結構不完整或安全診斷拒絕。來源顯示 degraded / warning 但仍帶有有效 recommendations 時，表格應照常呈現，並把警告保留在摘要與警告區；不得把它誤判成 DTO 錯誤。
 
 Advice 不寫 DB、不啟用 scheduler、不建立 broker order、不改 Scoring / ranking / backtest，也不套用 lifecycle action。weekly review history 的 working-copy 保存與真實時間累積屬 Gate 2；人工覆盤完成後只能以 `build_evidence_operations_weekly_review.py --save-history` 對隔離 working-copy DB 保存，再以 `--list-history` 核對，不得直接編輯 history、使用 production DB 或以 replay / fixture 補週數。它不因 Gate 1 完成而自動通過。

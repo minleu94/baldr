@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any, Mapping
 
 from app_module.advice_dtos import (
@@ -133,6 +134,29 @@ def _calibration_lineage_kwargs(source: Any, fallback: Any | None = None) -> dic
         return None
 
     return {
+        "calibration_model_version": str(
+            read("calibration_model_version", "model_version", "calibration_model_id") or ""
+        ),
+        "calibration_dataset_version": str(
+            read("calibration_dataset_version", "dataset_version", "dataset_id") or ""
+        ),
+        "calibration_source": str(
+            read("calibration_source", "probability_source") or ""
+        ),
+        "calibration_evidence_kind": str(
+            read("calibration_evidence_kind", "evidence_kind") or "unknown"
+        ),
+        "calibration_natural_evidence_status": str(
+            read("calibration_natural_evidence_status", "natural_evidence_status") or "unknown"
+        ),
+        "calibration_natural_receipt_hash": str(
+            read(
+                "calibration_natural_receipt_hash",
+                "natural_evidence_receipt_hash",
+                "natural_receipt_hash",
+            )
+            or ""
+        ),
         "calibration_probability_transform_id": str(
             read("calibration_probability_transform_id", "probability_transform_id") or ""
         ),
@@ -266,6 +290,12 @@ class DecisionPresentationDTO:
     warnings: tuple[str, ...] = ()
     schema_version: str = DECISION_PRESENTATION_SCHEMA_VERSION
     # 校準 consumer 的 lineage 摘要；這些欄位只讀傳遞，不在呈現層重算機率。
+    calibration_model_version: str = ""
+    calibration_dataset_version: str = ""
+    calibration_source: str = ""
+    calibration_evidence_kind: str = "unknown"
+    calibration_natural_evidence_status: str = "unknown"
+    calibration_natural_receipt_hash: str = ""
     calibration_probability_transform_id: str = ""
     calibration_probability_baseline_id: str = ""
     calibration_probability_baseline_kind: str = ""
@@ -328,6 +358,36 @@ class DecisionPresentationDTO:
         object.__setattr__(self, "confidence_tier", str(self.confidence_tier or "").strip())
         object.__setattr__(self, "evidence_confidence", str(self.evidence_confidence or "").strip())
         object.__setattr__(self, "ranking_method", str(self.ranking_method or "").strip())
+        object.__setattr__(
+            self,
+            "calibration_model_version",
+            str(self.calibration_model_version or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "calibration_dataset_version",
+            str(self.calibration_dataset_version or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "calibration_source",
+            str(self.calibration_source or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "calibration_evidence_kind",
+            str(self.calibration_evidence_kind or "unknown").strip().lower() or "unknown",
+        )
+        object.__setattr__(
+            self,
+            "calibration_natural_evidence_status",
+            str(self.calibration_natural_evidence_status or "unknown").strip().lower() or "unknown",
+        )
+        object.__setattr__(
+            self,
+            "calibration_natural_receipt_hash",
+            str(self.calibration_natural_receipt_hash or "").strip(),
+        )
         for field_name in (
             "calibration_probability_baseline_probability_bp",
             "calibration_raw_probability_bp",
@@ -382,6 +442,12 @@ class DecisionPresentationDTO:
             "data_as_of_date": self.data_as_of_date,
             "source_trace": list(self.source_trace),
             "warnings": list(self.warnings),
+            "calibration_model_version": self.calibration_model_version,
+            "calibration_dataset_version": self.calibration_dataset_version,
+            "calibration_source": self.calibration_source,
+            "calibration_evidence_kind": self.calibration_evidence_kind,
+            "calibration_natural_evidence_status": self.calibration_natural_evidence_status,
+            "calibration_natural_receipt_hash": self.calibration_natural_receipt_hash,
             "calibration_probability_transform_id": self.calibration_probability_transform_id,
             "calibration_probability_baseline_id": self.calibration_probability_baseline_id,
             "calibration_probability_baseline_kind": self.calibration_probability_baseline_kind,
@@ -426,6 +492,14 @@ class DecisionPresentationDTO:
             source_trace=_strings(value.get("source_trace")),
             warnings=_strings(value.get("warnings")),
             schema_version=str(value.get("schema_version", DECISION_PRESENTATION_SCHEMA_VERSION)),
+            calibration_model_version=value.get("calibration_model_version", ""),
+            calibration_dataset_version=value.get("calibration_dataset_version", ""),
+            calibration_source=value.get("calibration_source", ""),
+            calibration_evidence_kind=value.get("calibration_evidence_kind", "unknown"),
+            calibration_natural_evidence_status=value.get(
+                "calibration_natural_evidence_status", "unknown"
+            ),
+            calibration_natural_receipt_hash=value.get("calibration_natural_receipt_hash", ""),
             calibration_probability_transform_id=value.get("calibration_probability_transform_id", ""),
             calibration_probability_baseline_id=value.get("calibration_probability_baseline_id", ""),
             calibration_probability_baseline_kind=value.get("calibration_probability_baseline_kind", ""),
@@ -922,12 +996,156 @@ def _percentile_text(value: int | None) -> str:
     return "未知" if value is None else f"{value // 100}.{value % 100:02d}%"
 
 
+def _short_identifier(value: Any, *, max_length: int = 24) -> str:
+    """將畫面摘要中的版本／識別碼縮短；完整值保留在 lineage 詳情。"""
+
+    text = str(value or "").strip()
+    if not text:
+        return "未提供"
+    if len(text) <= max_length:
+        return text
+    return f"{text[: max_length - 7]}…{text[-6:]}"
+
+
+def _short_trace_item(value: Any) -> str:
+    """摘要化來源追溯中的長 hash，不在短版畫面隱藏來源存在性。"""
+
+    text = str(value or "").strip()
+    if not text:
+        return "未提供"
+    match = re.search(r"sha256:[0-9a-f]{64}", text, flags=re.IGNORECASE)
+    if match is not None:
+        digest = match.group(0)
+        shortened = f"{digest[:15]}…{digest[-6:]}"
+        return f"{text[: match.start()]}{shortened}{text[match.end() :]}"
+    return _short_identifier(text, max_length=56)
+
+
+def _lineage_token_values(presentation: DecisionPresentationDTO) -> tuple[str, ...]:
+    return tuple(
+        str(value).strip().lower()
+        for value in (
+            presentation.calibration_evidence_kind,
+            presentation.calibration_source,
+            presentation.evidence_confidence,
+            *presentation.source_trace,
+            *presentation.warnings,
+        )
+        if str(value).strip()
+    )
+
+
+def _probability_evidence_label(
+    presentation: DecisionPresentationDTO,
+    status: str,
+) -> str:
+    """以來源分類機率證據；available 不等於自然前瞻驗證。"""
+
+    if (
+        presentation.calibration_natural_receipt_hash
+        or presentation.calibration_evidence_kind in {"natural_verified", "natural_forward"}
+    ):
+        return "有自然證據引用，驗證狀態未提供"
+
+    tokens = _lineage_token_values(presentation)
+    has_shadow_source = any(
+        marker in token
+        for token in tokens
+        for marker in (
+            "shadow",
+            "active_effective",
+            "probability_lineage",
+            "recommendationcalibrationconsumer",
+            "recommendation_calibration_consumer",
+        )
+    )
+    if has_shadow_source:
+        return "研究中／shadow"
+
+    has_historical_source = any(
+        marker in token
+        for token in tokens
+        for marker in ("historical", "replay", "backtest", "oos", "bootstrap")
+    )
+    if has_historical_source:
+        return "研究中／歷史研究"
+
+    has_prospective_source = any(
+        marker in token
+        for token in tokens
+        for marker in ("prospective", "forward", "capture", "matured")
+    )
+    if has_prospective_source:
+        return "研究中／prospective"
+
+    if status == "research":
+        return "研究中／來源未分類"
+    if status == "available":
+        return "可用估計／自然驗證未證明"
+    return "不可用／來源未分類"
+
+
+def _probability_source_text(presentation: DecisionPresentationDTO) -> str:
+    if presentation.calibration_source:
+        return _short_identifier(presentation.calibration_source)
+    for item in presentation.source_trace:
+        lowered = item.lower()
+        if any(
+            marker in lowered
+            for marker in ("calibration", "recommendation", "fixture", "source", "candidate")
+        ):
+            return _short_trace_item(item)
+    return "未提供"
+
+
+def _probability_context(presentation: DecisionPresentationDTO) -> str:
+    calibrated_kind = _probability_evidence_label(
+        presentation,
+        presentation.calibrated_probability_status,
+    )
+    after_cost_kind = _probability_evidence_label(
+        presentation,
+        presentation.after_cost_profit_probability_status,
+    )
+    evidence_kind = (
+        calibrated_kind
+        if calibrated_kind == after_cost_kind
+        else f"校準={calibrated_kind}；成本後={after_cost_kind}"
+    )
+    sample = "未提供" if presentation.sample_size is None else f"{presentation.sample_size:,}"
+    return (
+        f"證據類型：{evidence_kind}"
+        f"｜適用期間：{presentation.horizon or '未提供'}"
+        f"｜樣本：{sample}"
+        f"｜模型：{_short_identifier(presentation.calibration_model_version)}"
+        f"｜資料集：{_short_identifier(presentation.calibration_dataset_version)}"
+        f"｜來源：{_probability_source_text(presentation)}"
+    )
+
+
+def _has_probability_context(presentation: DecisionPresentationDTO) -> bool:
+    return bool(
+        presentation.calibration_model_version
+        or presentation.calibration_dataset_version
+        or presentation.calibration_source
+        or presentation.calibration_evidence_kind != "unknown"
+        or presentation.evidence_confidence
+        or presentation.sample_size is not None
+        or presentation.horizon
+        or presentation.source_trace
+    )
+
+
 def _probability_text(presentation: DecisionPresentationDTO) -> str:
     if presentation.calibrated_probability_bp is None:
         status = "研究中" if presentation.calibrated_probability_status == "research" else "不可用"
         return f"不可用（{status}）"
     value = presentation.calibrated_probability_bp
-    return f"{value // 100}.{value % 100:02d}%"
+    evidence_label = _probability_evidence_label(
+        presentation,
+        presentation.calibrated_probability_status,
+    )
+    return f"{value // 100}.{value % 100:02d}%（{evidence_label}）"
 
 
 def _after_cost_probability_text(presentation: DecisionPresentationDTO) -> str:
@@ -939,7 +1157,44 @@ def _after_cost_probability_text(presentation: DecisionPresentationDTO) -> str:
         )
         return f"不可用（{status}）"
     value = presentation.after_cost_profit_probability_bp
-    return f"{value // 100}.{value % 100:02d}%"
+    evidence_label = _probability_evidence_label(
+        presentation,
+        presentation.after_cost_profit_probability_status,
+    )
+    return f"{value // 100}.{value % 100:02d}%（{evidence_label}）"
+
+
+def format_decision_lineage_detail(presentation: DecisionPresentationDTO) -> str:
+    """回傳完整、唯讀的機率 lineage；供 UI 展開檢視，不改變任何決策值。"""
+
+    sample = "未提供" if presentation.sample_size is None else f"{presentation.sample_size:,}"
+    lines = [
+        "機率依據詳情（唯讀）",
+        f"校準證據類型：{_probability_evidence_label(presentation, presentation.calibrated_probability_status)}",
+        f"成本後證據類型：{_probability_evidence_label(presentation, presentation.after_cost_profit_probability_status)}",
+        f"校準機率狀態：{presentation.calibrated_probability_status}",
+        f"成本後機率狀態：{presentation.after_cost_profit_probability_status}",
+        f"模型版本：{presentation.calibration_model_version or '未提供'}",
+        f"資料集版本：{presentation.calibration_dataset_version or '未提供'}",
+        f"校準來源：{presentation.calibration_source or '未提供'}",
+        f"適用期間：{presentation.horizon or '未提供'}｜樣本數：{sample}",
+        f"自然 evidence kind：{presentation.calibration_evidence_kind}",
+        f"自然 evidence status：{presentation.calibration_natural_evidence_status}",
+        f"自然 authority receipt：{presentation.calibration_natural_receipt_hash or '未提供'}",
+        f"probability transform：{presentation.calibration_probability_transform_id or '未提供'}",
+        f"probability baseline：{presentation.calibration_probability_baseline_id or '未提供'}",
+        f"probability baseline kind：{presentation.calibration_probability_baseline_kind or '未提供'}",
+        f"baseline probability：{_bp_text(presentation.calibration_probability_baseline_probability_bp)}",
+        f"raw calibrated probability：{_bp_text(presentation.calibration_raw_probability_bp)}",
+        f"raw after-cost probability：{_bp_text(presentation.calibration_raw_after_cost_probability_bp)}",
+    ]
+    if presentation.source_trace:
+        lines.append("完整來源追溯：" + "；".join(presentation.source_trace))
+    else:
+        lines.append("完整來源追溯：未提供")
+    if presentation.warnings:
+        lines.append("完整限制／警告：" + "；".join(presentation.warnings))
+    return "\n".join(lines)
 
 
 def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
@@ -951,10 +1206,16 @@ def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
     ranking_context = f"｜排名百分位：{_percentile_text(presentation.ranking_percentile_bp)}"
     if presentation.ranking_method:
         ranking_context += f"｜排名方法：{presentation.ranking_method}"
+    probability_line = (
+        f"校準機率：{_probability_text(presentation)}"
+        f"｜成本後獲利機率：{_after_cost_probability_text(presentation)}"
+    )
+    if _has_probability_context(presentation):
+        probability_line += f"｜機率來源：{_probability_context(presentation)}"
     lines = [
         f"動作適合度：{_action_label(presentation.action_suitability)}",
         f"排名分數：{score}（僅作排序，不等於機率）{ranking_context}",
-        f"校準機率：{_probability_text(presentation)}｜成本後獲利機率：{_after_cost_probability_text(presentation)}",
+        probability_line,
         f"證據狀態：{_quality_label(presentation.evidence_status)}｜證據信心：{presentation.evidence_confidence or '未提供'}｜決策信心：{presentation.confidence_tier or '未提供'}｜樣本數：{sample}",
         f"適用期間：{presentation.horizon or '未提供'}｜成本基準：{cost}",
         f"目標／目前／差距：{_bp_text(presentation.target_weight_bp)}／{_bp_text(presentation.current_weight_bp)}／{_bp_text(presentation.weight_gap_bp)}",
@@ -973,5 +1234,5 @@ def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
     if presentation.warnings:
         lines.append("限制／警告：" + "；".join(presentation.warnings))
     if presentation.source_trace:
-        lines.append("來源追溯：" + "；".join(presentation.source_trace))
+        lines.append("來源追溯：" + "；".join(_short_trace_item(item) for item in presentation.source_trace))
     return "\n".join(lines)

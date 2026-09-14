@@ -10,6 +10,7 @@ from app_module.decision_presentation import (
     DecisionPresentationDTO,
     DecisionPresentationService,
     decision_action_label,
+    format_decision_lineage_detail,
     format_decision_presentation,
 )
 
@@ -67,6 +68,32 @@ def test_recommendation_adapter_does_not_invent_probability() -> None:
     assert presentation.calibrated_probability_status == "research"
     assert presentation.after_cost_profit_probability_bp is None
     assert presentation.after_cost_profit_probability_status == "research"
+
+
+def test_recommendation_adapter_forwards_shadow_lineage_without_promoting_it() -> None:
+    service = DecisionPresentationService()
+    advice = RecommendationAdviceDTO(
+        stock_code="2330",
+        advice_action=AdviceAction.ADD_CANDIDATE,
+        calibrated_probability_bp=8000,
+        calibrated_probability_status="active_effective",
+        evidence_confidence="shadow_candidate",
+        sample_size=1528,
+        holding_horizon="20 trading days",
+        calibration_model_version="rec-cal-candidate-20260914",
+        calibration_dataset_version="recommendation-dataset-20260914",
+        calibration_source="RecommendationCalibrationConsumer",
+        source_trace=("candidate:rec-cal-candidate-20260914",),
+    )
+
+    presentation = service.from_recommendation_advice(advice)
+    text = format_decision_presentation(presentation)
+
+    assert presentation.calibration_model_version == "rec-cal-candidate-20260914"
+    assert presentation.calibration_dataset_version == "recommendation-dataset-20260914"
+    assert presentation.calibration_source == "RecommendationCalibrationConsumer"
+    assert "校準機率：80.00%（研究中／shadow）" in text
+    assert "自然前瞻驗證" not in text
 
 
 def test_watchlist_adapter_uses_saved_score_and_research_action() -> None:
@@ -167,6 +194,94 @@ def test_presentation_separates_calibrated_and_after_cost_probability() -> None:
     assert "校準機率：64.00%" in text
     assert "成本後獲利機率：51.00%" in text
     assert "證據信心：B" in text
+
+
+def test_available_probability_without_natural_receipt_is_explicitly_not_natural_validated() -> None:
+    presentation = DecisionPresentationDTO(
+        stock_code="2330",
+        calibrated_probability_bp=8000,
+        calibrated_probability_status="available",
+        calibration_model_version="model-v1",
+        calibration_dataset_version="dataset-v1",
+        calibration_source="rule_only_projection",
+        horizon="20 trading days",
+        sample_size=1528,
+    )
+
+    text = format_decision_presentation(presentation)
+
+    assert "校準機率：80.00%（可用估計／自然驗證未證明）" in text
+    assert "自然前瞻驗證" not in text
+
+
+def test_shadow_consumer_probability_does_not_look_like_validated_probability() -> None:
+    source_hash = "sha256:" + "a" * 64
+    presentation = DecisionPresentationDTO(
+        stock_code="2330",
+        calibrated_probability_bp=8000,
+        calibrated_probability_status="available",
+        evidence_confidence="shadow_candidate",
+        calibration_model_version="rec-cal-candidate-20260914",
+        calibration_dataset_version="recommendation-dataset-20260914",
+        calibration_source="RecommendationCalibrationConsumer",
+        horizon="20 trading days",
+        sample_size=1528,
+        source_trace=(
+            "candidate:rec-cal-candidate-20260914",
+            f"probability_lineage:{source_hash}",
+        ),
+        warnings=("shadow candidate projection; formal rule unchanged",),
+    )
+
+    text = format_decision_presentation(presentation)
+
+    assert "校準機率：80.00%（研究中／shadow）" in text
+    assert "自然前瞻驗證" not in text
+    assert source_hash not in text
+
+
+def test_natural_validation_requires_typed_authority_consumer_not_hash_shape() -> None:
+    receipt_hash = "sha256:" + "a" * 64
+    unverified_reference = DecisionPresentationDTO(
+        stock_code="2330",
+        calibrated_probability_bp=8000,
+        calibrated_probability_status="available",
+        calibration_evidence_kind="natural_verified",
+        calibration_natural_receipt_hash=receipt_hash,
+        calibration_source="RecommendationCalibrationConsumer",
+    )
+    untyped_verified_claim = DecisionPresentationDTO(
+        stock_code="2330",
+        calibrated_probability_bp=8000,
+        calibrated_probability_status="available",
+        calibration_evidence_kind="natural_verified",
+        calibration_natural_evidence_status="verified",
+        calibration_natural_receipt_hash=receipt_hash,
+        calibration_source="RecommendationCalibrationAuthority",
+    )
+
+    assert "有自然證據引用，驗證狀態未提供" in format_decision_presentation(unverified_reference)
+    assert "自然前瞻驗證" not in format_decision_presentation(unverified_reference)
+    assert "有自然證據引用，驗證狀態未提供" in format_decision_presentation(untyped_verified_claim)
+    assert "自然前瞻驗證" not in format_decision_presentation(untyped_verified_claim)
+
+
+def test_short_presentation_redacts_long_hash_but_expandable_lineage_keeps_full_value() -> None:
+    source_hash = "sha256:" + "b" * 64
+    presentation = DecisionPresentationDTO(
+        stock_code="2330",
+        calibrated_probability_bp=6400,
+        calibration_model_version="candidate-v1",
+        calibration_dataset_version="dataset-v1",
+        calibration_source="RecommendationCalibrationConsumer",
+        source_trace=(f"probability_lineage:{source_hash}",),
+    )
+
+    short_text = format_decision_presentation(presentation)
+    lineage_text = format_decision_lineage_detail(presentation)
+
+    assert source_hash not in short_text
+    assert source_hash in lineage_text
 
 
 def test_probability_status_available_without_value_fails_closed_for_both_fields() -> None:

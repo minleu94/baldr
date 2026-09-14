@@ -1,6 +1,6 @@
 # V2.1 至 V4.0 產品成熟度路線圖
 
-> **最後更新**：2026-08-30
+> **最後更新**：2026-09-14
 > **目前狀態**：`V3.3 Engineering Complete` / `V4.0 Evidence Accumulation Track`；不可宣稱正式 V4.0，真實 evidence 與人工 Gate仍待累積。
 > **跨流整合校正**：V3.3 的 engineering shadow chain 已通過 committed-handoff 與跨模組驗證；真實 frozen artifact smoke、formal OOS、必要 shadow days、人工 promotion review 與 production alpha 仍未完成，因此 maturity 不升級。
 > **定位**：本文件是 V2.0 之後的長期產品成熟度與版本階梯權威；版號代表產品能力與證據成熟度，不代表功能數量。
@@ -222,6 +222,28 @@ V4.0 仍不代表：
 - 免人工審核。
 - 所有市場環境都有效。
 
+## 6A. 2026-09-14 工程／產品版本分流
+
+本 companion 仍只負責 V2.1 至 V4.0 的 maturity definition；本次新增的 V4.1／V4.2
+是工程軌名稱，不是本文件新增或提前宣告的 maturity version：
+
+- **V4.1 engineering** 聚焦 content-first Decision Workbench、每日 evidence view、
+  rank／probability／confidence 分離、model／dataset／source／日期／樣本 provenance、
+  Research fallback、既有 Journal／Evidence／Portfolio ledger identity adapter，以及
+  臺銀 `estimated_research_only` 成本 read model。
+- **V4.2 engineering** 聚焦 05:40→05:45 自然時間 custody、typed natural authority
+  projection、frozen challenger、既有 policy 內的自動 shadow adoption／rollback、active
+  monitor 與 durable receipt。沒有 verifier 時 natural status 必須 unknown；source
+  `available`、hash 或 evidence kind 不等於 authority。
+- **V5／V6** 是 Product Roadmap 的後續 handoff，不屬於本文件的 V4.0 maturity closeout。
+  V5 的 content-first／真實唯讀 journey／decision continuity 可與 V4 formal evidence
+  accumulation 並行；V6 的 user-level evidence-driven personalization 則需在 V5 的
+  decision／outcome continuity 上另建治理，兩者都不授權 broker 或自動交易。
+
+工程詳情與 acceptance sequence 以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md)
+及 [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)
+為準；V4.0 的 formal Gate 仍只能由本節長期 evidence 判定。
+
 ## 7. 版本 Promotion / Demotion 規則
 
 ### Promotion
@@ -259,6 +281,9 @@ V4.0 仍不代表：
 
 ## 更新記錄
 
+- 2026-09-14：明確把 V4.1／V4.2 定位為工程軌，將可並行的 V5 full decision experience
+  與 V6 evidence-driven personalization 移交 Product／6M Roadmap；不改 V4.0 formal
+  maturity Gate。
 - 2026-08-29：補入當日 historical maturity overlay；Evidence 分層為 formal credit 未授予／歷史 working-copy 1/3／UI projection 3/3／pending 9，P0 為 13/13 machine evidence 但 acceptance 0，Paper 為 21/21 但 fills／cost 0，Formal inputs 0/3。ML storage headroom 已恢復但不改任何版本 Closeout Gate。
 - 2026-08-30：追加 Evidence 自然 collection 後，current pending sidecar 為 10；仍不授予 formal credit、scheduler 或任何版本 Closeout Gate。
 - 2026-07-12：記錄 V2.2 engineering readiness 與三週 weekly review runbook；weekly `0/3 waiting_for_time`、multi-day `3/3 ready`、scheduler 未核准，不能 formal closeout。

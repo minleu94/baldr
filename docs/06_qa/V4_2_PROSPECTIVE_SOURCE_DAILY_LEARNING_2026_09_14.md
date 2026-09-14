@@ -1,6 +1,6 @@
 # V4.2 Prospective Source Daily Learning QA（2026-09-14）
 
-> **目前判定：PENDING（scheduler 修正 test fixture 後最終重跑／新版 wrapper smoke 待完成）**。P1 cache-hit engineering gap 已由獨立 custody QA 修復並通過：`tests/test_recommendation_learning_cache_hit_custody.py` 為 `1 passed, 1 warning in 1.25s`；2026-09-08 至 2026-09-10 的正式 `FA_Data/output` receipts 可跨至 `FA_Data_Shadow` 真實 verified reuse，保留原 timestamp，source-audit hash／value／lineage 與正式 ADX producer 輸出均通過。fixture source 為 `fixture.invalid`，且 `historical_pit_eligible=false`、`formal_source_contract_eligible=false`，這只證明 custody 行為。source-contract／capture／official-custody／guards focused `17 passed`、update-service／process-pool／technical-analysis focused `10 passed`、targeted mypy `5 files` clean、inventory `12 passed` 且登錄總量 `805`／recommendation `31` 均已核實；scheduler 最終結果與 wrapper smoke 尚待交付。real durable flow 仍為 `retain_current`；`passed_with_warnings`、candidate trained、單次 controlled capture、fixture 或 historical replay 都不能取代主線 QA handoff。
+> **目前判定：P1 daily custody／normal-lane acceptance PASS；整體 V4.2 仍 PENDING（natural forward／formal PIT 尚未驗證）**。2026-09-14 04:22:11-07:00 的正式 default wrapper 已成功：pipeline `passed_with_warnings`、`blockers=[]`；quick publication 於 `2026-09-14T04:21:27.181165-07:00` 為 `published`；normal learning `completed` 並保存新 immutable capture。symbol source=`scheduled_recommendation_snapshot:scheduled_rec_20260914_042140.json:eligible`、symbols=`1528`、candidate=`rec-cal-29c1b6129396a3885a89d080`、natural sample=`0`、decision=`retain_current`、reason=`natural_forward_evidence_receipt_missing`。新 capture hash=`sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0`。P1 cache-hit engineering gap 已由獨立 custody QA 修復並通過：`tests/test_recommendation_learning_cache_hit_custody.py` 為 `1 passed, 1 warning in 1.25s`；source-contract／capture／official-custody／guards focused `17 passed`、update-service／process-pool／technical-analysis focused `10 passed`、targeted mypy `5 files` clean、inventory `12 passed` 且登錄總量 `805`／recommendation `31` 均已核實。修後 nested blocked-capture／same-second microsecond regressions 為 `33 passed`，scheduler metadata suite 為 `14 passed`；主 Luna 回報 QA 7.1 為 `33 passed`（確切命令、34.54s、exit 0 已列於 QA 表）。real durable flow 仍為 `retain_current`；工程與正式 default smoke 已由父任務接受，僅主 Luna git commit 尚待完成；這些結果不能取代自然 evidence、formal PIT 或 actual cost。
 
 ## 1. 範圍與判定原則
 
@@ -126,20 +126,22 @@ D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\YYYY-MM-DD
 
 | 來源 | 目前 readback | 判讀 |
 |---|---|---|
-| `scheduled/recommendation_calibration_learning/latest_status.json` | 2026-09-14 02:34:17-07:00 wrapper 完成；`status=passed_with_warnings`、`blockers=[]`；warnings 為 `成功處理 1 天 (0 成功, 0 跳過, 2 待重試)` 與 `snapshot_cohort_degraded_screening_quality` | 最新 durable orchestration 已有 terminal receipt；warning／degraded source 仍須保留，不能當成自然 evidence 或整體 V4 完成 |
+| `scheduled/recommendation_calibration_learning/latest_status.json` | 2026-09-14 04:22:11-07:00 wrapper 完成；`status=passed_with_warnings`、`blockers=[]`；同輪 quick publication 於 `2026-09-14T04:21:27.181165-07:00` 為 `published` | 最新 durable orchestration 已有 terminal receipt；warning／degraded source 仍須保留，不能當成自然 evidence 或整體 V4 完成 |
 | `scheduled/recommendation_snapshot/latest_status.json` | `status=passed`；screening matrix 200 rows；recommendations 1；requested 200、eligible 1（`1528`）、missing 0、degraded 199；coverage `degraded` | normal snapshot 是 partial／degraded，不能說 200 檔都形成正常 recommendation cohort |
-| `recommendation_learning/latest_status.json` | `status=completed`；symbol source 為 `scheduled_recommendation_snapshot:scheduled_rec_20260914_023346.json:eligible`；symbols=`1528`；training rows=255；candidate=`rec-cal-29c1b6129396a3885a89d080`；experiment scope=`scheduled-experiment-ff4d2ab937e2c8b32bf2df04`；decision=`retain_current`；reason=`natural_forward_evidence_receipt_missing` | single-class blocker 已由 bounded bootstrap 處理；real natural sample 尚未成熟，獨立 cache-hit custody QA 已通過但不取代 final durable-flow 判讀，不能宣稱 promotion 或整體 V4 完成 |
+| `recommendation_learning/latest_status.json` | `status=completed`；symbol source 為 `scheduled_recommendation_snapshot:scheduled_rec_20260914_042140.json:eligible`；symbols=`1528`；training rows=255；candidate=`rec-cal-29c1b6129396a3885a89d080`；experiment scope=`scheduled-experiment-ff4d2ab937e2c8b32bf2df04`；decision=`retain_current`；reason=`natural_forward_evidence_receipt_missing`；natural sample=`0` | single-class blocker 已由 bounded bootstrap 處理；新 normal capture 已保存但 real natural sample 尚未成熟，不能宣稱 promotion 或整體 V4 完成 |
 | historical bootstrap dataset | observation status=`recovered_completed`；selection policy=`time_stratified_eligible_dates`；manifest=`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\datasets\recommendation-dataset-da3d867b06b5436d\dataset.json`；`initial_seen_start=2026-04-23`；bootstrap replay selected date window=`2024-09-16` 至 `2026-02-11`；date overlap=`0`、row overlap=`0`、label boundary crossing=`0` | 已有 bounded training lineage 的分層與零重疊觀測；這不是 natural forward evidence 或 formal PIT，real durable-flow 判讀仍分開保存 |
-| normal live capture | `D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\2026-09-14\scheduled-capture-5f4de77ffb404af2\rec-cal-29c1b6129396a3885a89d080-efb6e43126d8c1cd5b30bacc.json`；`row_count=1`；`reuse_mode=new_immutable_scope_capture` | 真正新 capture 已保存；自然 evidence 仍 `pending`，reason=`no_capture_rows_have_naturally_matured` |
+| normal live capture | `D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\2026-09-14\scheduled-capture-5f4de77ffb404af2\rec-cal-29c1b6129396a3885a89d080-850760d54413e019199be668.json`；hash=`sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0`；`reuse_mode=new_immutable_scope_capture` | 04:22 true-success 已保存新 immutable capture；自然 sample=`0`，仍等待自然成熟 |
 | `scheduled/data_update_quick/latest_status.json` | `passed_with_warnings`；core steps 有 receipt；broker branch 明確 skipped；保留 2 個待重試日期 warning | source update 有可用部分，但不是全來源 complete |
-| technical publication receipt | `D:\Min\Python\Project\FA_Data_Shadow\scheduled\technical_indicator_publication\2026-09-14\9858e9123498bc59\receipt.json`；verified、1,090 rows；`rows_sha256=sha256:fc838f239fbed55dd78fa9ac7bb19efadb21f590fe19d916fca3de39e2090afe`；technical computation evidence verified | exact output rows／hash 有 receipt；TPEx `20260914` 缺價 warning 仍需保留 |
+| technical publication receipt | `D:\Min\Python\Project\FA_Data_Shadow\scheduled\technical_indicator_publication\2026-09-14\0f533bde5119890a\receipt.json`；verified、1,954 rows；`rows_sha256=sha256:ef58d8d5cc49a772ce3eb89ab772fe752460e3309b66affc44490e1837828fae`；`content_sha256=sha256:4a24f6422ce4cde3092f038bc1cab4eb2ddea9c2a4e743c9a3ed51508a799304`；technical computation evidence verified | exact output rows／hash／microsecond completion time 有 receipt；TPEx `20260914` 缺價 warning 仍需保留 |
 | official market-event custody | `prospective_latest_manifest.json` 與對應 manifest／raw hash 可重驗；TWSE endpoint refresh 出現 redirect／`Location` anomaly，失敗被保留，使用已驗證的 last-known-good prospective replay | replay 是 provenance-preserving fallback，不是當日新抓成功，也不是 historical PIT |
 | corporate adjustment sidecar | `D:\Min\Python\Project\FA_Data_Shadow\release_v4\corporate_action_adjustments\runs\corporate-action-adjustments-2bcb882e3daeb04b77fca78d\manifest.json`；1,276 rows；manifest hash `sha256:7335383cc95f1f666e4f6f50c0f29e24376fd578d36d24709ad8e775d389360a`；`prospective_only=true`、`formal_source_contract_eligible=false`、`historical_pit_eligible=false` | prospective sidecar 已有 custody，但 formal／historical gate 仍未過 |
 
-pipeline 外層與 child 的差異是本日最重要的判讀：2026-09-14 02:34:17-07:00 的外層與 learning child
-都已有 durable completed receipt；外層仍保留 source／cohort warnings，child 的 decision 是
-`retain_current`，原因為 `natural_forward_evidence_receipt_missing`，自然結果為
-`no_capture_rows_have_naturally_matured`。historical bootstrap 的 observation status 為
+pipeline 外層與 child 的差異是本日最重要的判讀：2026-09-14 04:22:11-07:00 的外層與 learning child
+都有 durable receipt；外層 `passed_with_warnings` 且 `blockers=[]`，quick publication 在
+`2026-09-14T04:21:27.181165-07:00` 為 `published`，child 的 decision 是 `retain_current`，
+原因為 `natural_forward_evidence_receipt_missing`，natural sample 為 `0`。04:10 smoke 的
+microsecond completion witness 與 nested capture failure 曾造成 false-success 判讀，不能列為
+pass；此次只採信 04:22 true-success。historical bootstrap 的 observation status 為
 `recovered_completed`，selection policy 為 `time_stratified_eligible_dates`，其 date／row overlap
 與 label boundary crossing 均為 0；這些只屬 bounded training lineage，不是自然 evidence 或 formal PIT。
 因此可以記錄 normal training／capture 已產生，仍不能把它寫成 promotion、alpha 或整體 V4 完成。
@@ -149,10 +151,10 @@ pipeline 外層與 child 的差異是本日最重要的判讀：2026-09-14 02:34
 本次正常 scheduled lane 已建立 1 row 的新 immutable capture：
 
 ```text
-D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\2026-09-14\scheduled-capture-5f4de77ffb404af2\rec-cal-29c1b6129396a3885a89d080-efb6e43126d8c1cd5b30bacc.json
+D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\2026-09-14\scheduled-capture-5f4de77ffb404af2\rec-cal-29c1b6129396a3885a89d080-850760d54413e019199be668.json
 ```
 
-其 `capture_scope=scheduled-capture-5f4de77ffb404af2`、`reuse_mode=new_immutable_scope_capture`；這是正常 cohort 的 source-bound capture，不是三檔 controlled capture。它尚未形成 natural outcome，`matured_sample_count=0`、reason=`no_capture_rows_have_naturally_matured`。
+其 `capture_scope=scheduled-capture-5f4de77ffb404af2`、`reuse_mode=new_immutable_scope_capture`、hash=`sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0`；這是正常 cohort 的 source-bound capture，不是三檔 controlled capture。它尚未形成 natural outcome，`matured_sample_count=0`、reason=`natural_forward_evidence_receipt_missing`。
 
 2026-09-14 三檔 controlled capture 的既有 durable 檔案是：
 
@@ -197,37 +199,38 @@ D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\source_contract\202
 
 observed cost 的 readback 是 `actual_fill_lineage_rows=0`、`ready_rows=0`；paper ledger 仍是 research-only，不能作 observed fill。自然 price-up 可獨立進入 maturity verification，但在真正 future market source 到齊前仍是 pending。
 
-## 6. QA 驗證表（等待父任務轉交 final 結果）
+## 6. QA 驗證表（工程與正式 smoke 已接受；產品成熟度邊界另列）
 
-下表中的 `PENDING` 是 QA 判定，不代表程式一定沒有產出 receipt；它表示父任務尚未交付可作為本日 final handoff 的測試／正常 cohort 證據。
+下表的 `PASS` 只代表已核實的工程 gate／正式 default smoke；`PENDING` 或 `OUT OF SCOPE` 僅保留給自然 forward、formal PIT、observed cost 與 broker execution 等尚未具備的產品證據。
 
-| QA 項目 | 已讀取的工程事實 | QA 判定 | 尚待交接 |
+| QA 項目 | 已讀取的工程事實 | QA 判定 | 判讀邊界 |
 |---|---|---|---|
-| source root 與 output boundary | durable root 為 `FA_Data_Shadow`；output root 越界會 fail closed | **PENDING** | 父任務確認 final status 與 boundary 檢查結果 |
-| technical computation receipt | 有 exact rows／hash 與 verified computation receipt；TPEx `20260914` 仍缺價 | **PENDING** | 父任務確認來源補齊或保留 warning 的 final readback |
-| official event bounded refresh／replay | endpoint anomaly 被保留；prospective pointer、raw time、hash 可重驗的 last-good replay 已保存 | **PENDING** | 父任務確認 retry、warning propagation 與 final event status |
-| corporate adjustment custody | 1,276-row prospective sidecar；formal／historical eligibility false | **PENDING** | 父任務確認 formal contract blocker 沒有被錯誤清除 |
-| normal 200-row snapshot | snapshot status passed，但 1 eligible、199 degraded；learning child 已完成 bounded bootstrap 與 1 row capture | **PENDING** | normal cohort 的 degraded／real durable-flow 判讀與 parent handoff |
-| normal daily learning E2E | child `completed`；bounded bootstrap 後 training rows=255、candidate 已產生；normal live capture 1 row；decision=`retain_current`、reason=`natural_forward_evidence_receipt_missing`；自然 sample=0 | **PENDING** | real durable flow 仍待新版 wrapper smoke 與 final readback；不得把 candidate trained 或 1 row capture 代替自然 evidence |
-| historical bootstrap lineage | observation=`recovered_completed`；policy=`time_stratified_eligible_dates`；manifest、`initial_seen_start=2026-04-23` 與 replay selected date window=`2024-09-16` 至 `2026-02-11` 已保存；date overlap、row overlap、label boundary crossing 均為 0 | **PENDING** | 此 lineage 不授予 natural forward 或 formal PIT credit；final durable-flow 判讀仍分開保存 |
-| experiment／run／capture identity | fixed experiment scope 與每日 cohort scope 分離；explicit capture 不應重用 | **PENDING** | 父任務確認同日 capture、normal cohort、rerun 的 identity 測試結果 |
-| warning propagation | snapshot degraded、TPEx gap、待重試等 warning 已出現在 durable status | **PENDING** | 父任務確認 child → pipeline warning／blocker 沿線未遺失 |
-| child／pipeline timeout | child timeout 可恢復且不刪 receipt；pipeline timeout 留下 step blocker | **PENDING** | 父任務提供 timeout／retry 實際驗證結果 |
-| after-cost／actual execution gate | observed fill lineage 為 0；50 bp 為 estimate；broker lane 不在 scope | **PENDING** | 父任務確認沒有把 estimated cost 標成 observed |
+| source root 與 output boundary | durable root 為 `FA_Data_Shadow`；output root 越界會 fail closed，guards／focused QA 已驗證 | **PASS** | 工程 boundary gate 已接受；不授予 natural／formal PIT credit |
+| technical computation receipt | `D:\Min\Python\Project\FA_Data_Shadow\scheduled\technical_indicator_publication\2026-09-14\0f533bde5119890a\receipt.json`；status=`verified`；2148 檔股票 bounded 真重算完成；receipt 保留 exact rows／hash／microsecond completion | **PASS** | TPEx `20260914` 缺價 warning 保留；formal PIT 另行判讀 |
+| official event bounded refresh／replay | endpoint anomaly、prospective pointer、raw time 與 hash 可重驗的 last-good replay 均保留 | **PASS** | engineering custody／replay gate 已接受；replay 不是當日新抓取或 formal PIT |
+| corporate adjustment custody | 1,276-row prospective sidecar 與 manifest hash 已保存；formal／historical eligibility 為 false | **PASS** | custody gate 已接受；仍不得授予 formal／historical credit |
+| normal 200-row snapshot | snapshot status=`passed`；requested 200、eligible 1（`1528`）、missing 0、degraded 199，TPEx warning 保留 | **PASS（警告）** | engineering snapshot gate 已接受；degraded rows 不等於完整 200 檔 natural cohort |
+| normal daily learning E2E | 04:22 wrapper `passed_with_warnings`／`blockers=[]`；quick publication `published`（04:21:27.181165-07:00）；learning `completed`；normal capture hash=`sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0`；natural sample 0、decision `retain_current` | **PASS** | 正式 default smoke 已接受；natural evidence 尚未成熟，不作 promotion credit |
+| historical bootstrap lineage | observation=`recovered_completed`；policy=`time_stratified_eligible_dates`；date overlap、row overlap、label boundary crossing 均為 0 | **PASS** | bounded lineage gate 已接受；不授予 natural forward／formal PIT credit |
+| experiment／run／capture identity | fixed experiment scope、daily cohort scope 與 explicit capture identity 已分離，guards 已交付 | **PASS** | identity gate 已接受；同日 capture 不重用 |
+| warning propagation | snapshot degraded、TPEx gap、待重試等 warning 已由 child／pipeline durable status 保留 | **PASS** | warning propagation gate 已接受；警告仍須在操作判讀中保留 |
+| child／pipeline timeout | child timeout／recoverable receipt 與 pipeline blocker 傳遞 guards 已驗證 | **PASS** | timeout gate 已接受；前兩輪 180 秒 timeout 及 04:10 false-success 僅為失敗診斷，不列驗收 |
+| after-cost／actual execution gate | observed fill lineage rows=0；固定 50 bp 只是 estimate；broker lane 不在 scope | **PENDING／OUT OF SCOPE** | actual observed cost、broker fill 與 formal PIT 證據尚未具備 |
 | UI Workbench focused test | `tests/test_ui_qt_update_view_workbench.py`：81 passed；1 個 pytest cache permission warning，不影響測試 exit 0 | **PASS** | 保留 warning；不代表 daily learning focused tests 或 V4 gate 完成 |
 | Update Tab QA | `scripts/qa_validate_update_tab.py`：25 passed、0 failed、4 skipped；exit 0 | **PASS** | skipped 項目與 daily learning focused／maturity evidence 仍分開判讀 |
-| full-scope mypy | source-contract Mapping guard 修正後檢查 606 source files，`Success: no issues found in 606 source files`；exit 0 | **PASS** | 仍須把 real durable flow 與主線最終 handoff 分開判讀 |
-| affected focused suites | 主 Luna 交付 11 個 test files、`107 passed`、`36.44s`，保留既有 1 個 cache warning | **PASS** | 只代表 affected focused subset；完整 daily learning handoff 仍待交接 |
+| full-scope mypy | source-contract Mapping guard 修正後檢查 606 source files，`Success: no issues found in 606 source files`；exit 0 | **PASS** | canonical run exit 0；natural／formal PIT 與產品證據仍分開判讀 |
+| affected focused suites | 主 Luna 交付 11 個 test files、`107 passed`、`36.44s`，保留既有 1 個 cache warning | **PASS** | 只代表 affected focused subset；工程 focused gate 已接受；不授予 natural／formal credit |
 | synthetic mature fixture authority | `tests/test_daily_recommendation_learning_loop.py::test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags` 已通過 production source verifier；assert adopt／active pointer／active challenger／after-cost calibration sample、mature evidence、drift、rollback 與 final `rule_only` | **PASS** | 這是 synthetic fixture 的 authority proof；real durable flow 仍 `retain_current`，不授予 real natural maturity 或 promotion |
 | changed scheduled scripts type check | changed scheduled scripts 的 mypy 檢查 `7 files` 成功 | **PASS** | 不等於全主線 focused／maturity／promotion gate 完成 |
-| changed scripts／modules／tests compile | 以暫時 `PYTHONPYCACHEPREFIX` 執行 py_compile 通過；原有 `__pycache__` permission 限制保留 | **PASS** | 不刪除或重寫既有 cache；仍待主線完整測試 handoff |
+| changed scripts／modules／tests compile | 以暫時 `PYTHONPYCACHEPREFIX` 執行 py_compile 通過；原有 `__pycache__` permission 限制保留 | **PASS** | 不刪除或重寫既有 cache；不代表 full pytest 或 natural／formal evidence |
 | inventory／guards registration | inventory `12 passed`（1 個既有 cache warning）；新增 cache guard 後登錄總量 `805`、recommendation `31` | **PASS** | 登錄數是 inventory／coverage metadata，不是 805 個測試全數通過的宣稱 |
 | three-day technical cache-hit custody QA | `tests/test_recommendation_learning_cache_hit_custody.py`；正式 output receipt 從各日 `FA_Data/output` 跨 root 解析至 Shadow 真實 verified reuse；保留原 timestamp；source-audit hash／value／lineage 與正式 ADX producer 輸出均通過；`1 passed, 1 warning in 1.25s` | **PASS** | fixture source 為 `fixture.invalid`，且 historical／formal eligibility 均為 false；此為 custody proof，不授予 natural forward 或 formal PIT credit |
-| source／capture／official custody／guards focused | `17 passed` | **PASS** | 只代表已交付的 focused subset；scheduler 修正 fixture 後的最終重跑仍待完成 |
-| update-service／process-pool／technical-analysis focused | `10 passed` | **PASS** | 只代表已交付的 focused subset；不取代新版 wrapper smoke |
-| targeted mypy | `5 files` clean | **PASS** | 只代表 targeted modules；full-module mypy 的 606 source files 結果另列 |
-| Python／mypy／完整測試 | 本子任務與主 Luna 已交付 UI、Update Tab、全模組 mypy、affected focused、source／capture／official custody／guards 17 passed、update-service／process-pool／technical-analysis 10 passed、targeted mypy 5 files、mature fixture、changed-file py_compile、inventory `12 passed`、805／31 registration 與獨立 cache custody QA 結果；scheduler 修正 fixture 後最終重跑、新版 wrapper smoke 與完整 QA 終態尚未交接 | **PENDING** | 父任務交付兩項剩餘主線結果與最終整合判定，不以 synthetic／subset／custody fixture 結果代替 |
-| 文件同步 | 本文件與 Snapshot、Manual、system architecture 已同步行為邊界 | **PENDING** | 父任務確認沒有其他 worker 覆寫本四份文件，並完成整合審核 |
+| source／capture／official custody／guards focused | `17 passed` | **PASS** | focused gate 已接受；scheduler `14 passed` 與正式 wrapper smoke 另列，仍不授予 natural／formal credit |
+| update-service／process-pool／technical-analysis focused | `10 passed` | **PASS** | focused gate 已接受；不取代 natural／formal／actual evidence |
+| targeted mypy | `5 files` clean | **PASS** | targeted modules 已接受；canonical full-module mypy 606 files 另列 |
+| QA 7.1 microsecond／nested blocked-capture regression | command: `python -m pytest tests/test_recommendation_calibration_contract_guards.py tests/test_daily_recommendation_learning_loop.py -q -o addopts=`；主 Luna 回報 `33 passed`、34.54s、exit 0 | **PASS** | 覆蓋 completion microseconds 與 nested blocked capture；不授予 natural／formal／actual credit |
+| Python／mypy／已交付工程驗證 | UI81、Update Tab 25／0／4、canonical full-module mypy 606 files、affected 107、source／capture／official custody／guards 17、update-service／process-pool／technical-analysis 10、targeted mypy 5 files、mature fixture、py_compile、inventory 12、registration 805／31、cache custody 1、scheduler 14、QA 7.1 33 passed、04:22 default wrapper smoke 均已核實 | **PASS** | 這不是 full pytest 或 V4 completion 宣稱；僅主 Luna git commit 尚待完成 |
+| 文件同步 | Snapshot、system architecture、Application Manual 與本 QA 已同步最新 04:22／QA7.1／限制判讀 | **PASS** | 僅主 Luna git commit 尚待完成；不再保留泛稱 parent handoff pending |
 
 ### 6.1 Affected focused command manifest
 
@@ -258,15 +261,28 @@ tests/test_daily_recommendation_learning_loop.py::test_daily_main_discovers_matu
 mature evidence、drift、`rollback` 與 final `rule_only`。這是 synthetic fixture 的 authority
 proof；real durable flow 仍為 `retain_current`。
 
-## 7. 父任務收尾所需資料
+## 7. 目前收尾狀態與剩餘邊界
 
-父任務在 QA finalization 前需交付：
+04:22 正式 default wrapper 的 pipeline status 為 passed_with_warnings、blockers=[]；quick publication 已於 2026-09-14T04:21:27.181165-07:00 published；learning 已完成並保存 normal immutable capture。technical receipt 路徑為 D:\Min\Python\Project\FA_Data_Shadow\scheduled\technical_indicator_publication\2026-09-14\0f533bde5119890a\receipt.json 且已 verified；2148 檔股票 bounded 真重算完成。normal sample=0、retain_current 與 natural_forward_evidence_receipt_missing 仍照實保留。
 
-1. normal scheduled cohort 的最新 pipeline／snapshot／learning status 路徑與實際內容，清楚分開 wrapper status 與 learning child status；single-class 歷史阻擋已由 `recovered_completed`、`time_stratified_eligible_dates` bootstrap 處理，manifest 與 date／row／label zero-overlap 觀測已保存；affected focused suites、synthetic mature fixture、P1 cache-hit custody QA、source／capture／official custody／guards 17 passed、update-service／process-pool／technical-analysis 10 passed、targeted mypy 5 files 與 inventory 805／31 已完成，real durable flow 與主線新版 wrapper smoke 仍分開判讀。
-2. 同日 identity、warning propagation、exact cutoff、pipeline timeout、controlled explicit capture 不重用等 focused test 的實際結果；affected focused suites 的 11-file command 為 107 passed／36.44s（既有 1 個 warning），synthetic mature fixture 亦已完成 authority assertions；cache-hit 的 source-audit／cross-root lookup／隔日 DB 變更缺口已由 verified receipt reuse 修復，獨立 QA 為 `1 passed, 1 warning in 1.25s`。scheduler 修正 test fixture 後的最終重跑與新版 wrapper smoke 尚未完成，不得填入未執行的 pass 數字。
-3. technical／official event／corporate source 的 final warning 或補齊結果，並確認 historical replay 沒有取得 forward credit。
-4. 確認 50 bp 仍只為 estimate、沒有 broker observed transaction cost，也沒有把 price-up pending maturity 寫成收益或 alpha 證明。
-5. 確認主工作者未覆寫本文件、`PROJECT_SNAPSHOT.md`、`APPLICATION_MANUAL.md` 或 `system_architecture.md` 的同步內容。
+工程 gate 與正式 smoke 已由父任務接受：UI81、Update Tab 25／0／4、canonical full-module mypy 606 files、affected 107、source／capture／official custody／guards 17、update-service／process-pool／technical-analysis 10、targeted mypy 5 files、mature fixture、py_compile、inventory 12、registration 805／31、cache custody 1、scheduler 14 均已交付；主 Luna 回報 QA 7.1 為 33 passed（確切命令、34.54s、exit 0）。
+
+剩餘判定只在產品證據邊界：natural forward 尚未成熟；formal PIT／promotion 尚未授予；actual observed cost／broker fill 不在 scope，50 bp 仍只是 estimate；historical replay 與 bounded bootstrap 不取得 forward credit。
+
+四份 owned 文件已同步本次狀態；僅主 Luna git commit 尚待完成。
+### 7.1 Final acceptance readback（2026-09-14 04:22 PDT）
+
+本次 P1 daily custody／normal-lane acceptance 以新版 default wrapper 的 durable readback 為準：
+
+| 項目 | 最終結果 |
+|---|---|
+| formal wrapper | `cmd.exe /c scripts\scheduled\run_recommendation_calibration_learning.cmd`；`exit=0`；pipeline `passed_with_warnings`；`blockers=[]` |
+| technical producer | quick passed_with_warnings；completed=2026-09-14T04:21:27.181165-07:00；publication=published；evidence=verified；receipt=D:\Min\Python\Project\FA_Data_Shadow\scheduled\technical_indicator_publication\2026-09-14\0f533bde5119890a\receipt.json；2148 檔股票 bounded 真重算完成；TPEx warning 保留 |
+| learning lane | `status=completed`；`live_capture.status=captured`；new immutable capture hash=`sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0`；decision=`retain_current`；natural sample=`0` |
+| regressions | QA 7.1 command: python -m pytest tests/test_recommendation_calibration_contract_guards.py tests/test_daily_recommendation_learning_loop.py -q -o addopts=；主 Luna 回報 33 passed、34.54s、exit 0；scheduler metadata 14 passed；targeted mypy 5 files clean；cache custody 1 passed；工程 regression gate 已接受，不授予 natural／formal／actual credit |
+| limitations | official／TPEx retry warnings、199 degraded snapshot rows 與 natural sample=0 仍可見；actual fill lineage rows=0、50 bp 仍為 estimate、broker lane 不在 scope；natural forward、formal PIT、promotion、observed cost 與 overall V4.2 仍 pending／out of scope |
+
+前兩輪 180 秒 timeout 是失敗；04:10 default 雖完成，但 publication 因 completion microsecond witness 不合法而 blocked，normal capture 亦因 nested capture blocked 且被舊 training completed 遮蔽而出現 false-success。兩者均不列為驗收；04:22 才是採信的 true-success。四份 owned 文件已同步；僅主 Luna git commit 尚待完成。
 
 ## 8. 更新記錄
 
@@ -279,5 +295,7 @@ proof；real durable flow 仍為 `retain_current`。
 - 2026-09-14：P1 cache-hit custody 修復後獨立 QA：`tests/test_recommendation_learning_cache_hit_custody.py -q -o addopts=` 為 `1 passed, 1 warning in 1.25s`、exit 0；三日正式 output receipt → Shadow verified reuse、原 timestamp、source-audit hash／value／lineage 與正式 ADX producer 輸出均通過。fixture source 仍為 `fixture.invalid`，historical／formal eligibility 均為 false；此項改判 **PASS**，scheduler 修正 test fixture 後的最終重跑與新版 wrapper smoke 仍待交付。
 
 - 2026-09-14：主線修後 focused handoff：source-contract／capture／official-custody／guards `17 passed`；update-service／process-pool／technical-analysis `10 passed`；targeted mypy `5 files` clean；inventory `12 passed`，登錄總量 `805`／recommendation `31`；cache custody `1 passed`。scheduler 修正 test fixture 後的最終重跑與新版 wrapper smoke 尚待交付，整體 QA 維持 **PENDING**。
+
+- 2026-09-14 04:22:11-07:00：正式 default wrapper true-success readback：pipeline passed_with_warnings、blockers=[]；quick publication 完成於 2026-09-14T04:21:27.181165-07:00 且為 published；technical receipt 0f533bde5119890a 已 verified，2148 檔股票 bounded 真重算完成；learning child completed，symbol source=scheduled_recommendation_snapshot:scheduled_rec_20260914_042140.json:eligible、symbols=1528、candidate=rec-cal-29c1b6129396a3885a89d080、natural sample=0、decision=retain_current；新 immutable capture hash=sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0。前兩輪 180 秒 timeout 與 04:10 microsecond／nested capture false-success 均不列驗收；主 Luna 回報 QA 7.1 為 33 passed、34.54s、exit 0；工程與正式 default smoke 已由父任務接受，僅 git commit 尚待完成。
 
 - 2026-09-14：建立本 QA handoff，固定 wrapper／pipeline／source custody／normal snapshot／learning 行為、參數、路徑、retry／timeout、durable readback 與 source lane 限制。所有最終 QA 判定先維持 `PENDING`，等待父任務轉交正常 cohort 與測試結果。

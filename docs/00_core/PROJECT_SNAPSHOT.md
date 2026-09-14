@@ -1,41 +1,102 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-## 2026-09-13 V4.2 每日推薦自動學習與受控調整工程閉環
+## 2026-09-14 V4.2 prospective source custody 與每日學習現況
 
-已完成每日 recommendation calibration 的 shadow-only 工程閉環；learning artifact 由專用
-`RECOMMENDATION_LEARNING_OUTPUT_ROOT` 管理，正式預設 `DATA_ROOT` 會解析到同層
-`FA_Data_Shadow\recommendation_learning\`，不與一般 `OUTPUT_ROOT` 或 formal `DATA_ROOT` 混用。
-05:40 `baldr-forward-outcomes-daily` 後，由 05:45 `baldr-recommendation-calibration-learning-daily`
-執行 Asia/Taipei bounded historical replay／training、frozen challenger、當日 candidate／active
-monitor capture、自然成熟 outcome、同日 active performance recheck，以及 authority 的 adopt／
-retain／rollback 決策。runner 只在隔離 `RECOMMENDATION_LEARNING_OUTPUT_ROOT/recommendation_learning/` 保存 dataset、model、
-capture、evidence、authority receipt 與 fail-closed pointer；不寫正式 recommendation、
-`evidence_outcomes`、Portfolio、Formal、broker 或正式推薦權重。週末與官方休市日不偽造 live capture；
-caller 傳入的 evidence／status／drift flags 不會成為真實證據，重跑具同日冪等與失敗可恢復 attempt。
+05:45 的 `baldr-recommendation-calibration-learning-daily` 已接到同一條有界 pipeline：先跑
+官方日價／技術來源更新，再做 official market-event custody，接著保存正常 scheduled
+recommendation snapshot，最後才呼叫 recommendation learning child。排程的有效順序是主機當地
+05:40 `baldr-forward-outcomes-daily` → 05:45 learning；learning runner 仍以
+`Asia/Taipei` clock 與 official calendar 判定決策日，不把主機時區當成市場資料日。所有
+dataset、candidate、capture、evidence、authority receipt 與 pointer 仍只寫到
+`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\`；正式 market SQLite 以
+query-only 讀取，`formal_order_allowed=false`，不寫正式 recommendation、`evidence_outcomes`、
+Portfolio、Formal 或 broker state。
 
-本輪也補上來源實質驗證：若存在 `recommendation_source_contract`，replay 會重算 requested
-symbols 的實際 canonical rows digest、期間與 symbol coverage，驗證 feature builder 實際使用的
-technical row `available_at <= decision`，並檢查 corporate-action records／factor／coverage。
-raw label window 遇未調整的 non-unit corporate action 時，受影響列保守排除並保留 source blocker，
-不信任單一 `verified` bool。after-cost 只接受 `evidence_outcomes.liquidity_cost_bp` 等可追溯成本；
-有成本時使用獨立 `after_cost_null_benchmark_50pct_v1`／5000 bp baseline，沒有成本則維持 missing。
-adopted active model 的 post-adoption matured rows 只有在 identity、receipt 與 label availability
-cutoff 通過後，才可進下一 training cycle。
+2026-09-14 的 durable source run 已留下可追溯但含警告的狀態：quick data update 為
+`passed_with_warnings`，TPEx `20260914` 缺價並保留 bounded retry warning；technical publication
+receipt 綁定 exact output rows／source hash。TWSE official event refresh 遇 endpoint redirect
+異常而 fail closed，既有 verified prospective publication 以原始 raw retrieval time 與 SHA-256
+做 durable replay，不能把 replay 解讀成當日新抓取。corporate-action adjustment sidecar 已有
+prospective hash custody，但尚未形成可供 historical/formal eligibility 的正式 table／contract。
 
-真實正式 DB 的 bounded read-only run（輸出隔離於
-`C:\Users\archi\.codex\visualizations\2026\09\13\01a09930-3fda-7d82-acef-218c0d18424c\real_daily_learning_v3`）以 1101／2330、2024-01-02～2026-09-13、latest 80 個 decision dates 執行：
-160 samples、200 feature rows seen、40 rows skipped，`training_data_eligible=true`，但
-`forward_evidence_eligible=false`、`formal_candidate_eligible=false`。第一次探索性執行曾帶有
-`--skip-capture-current`，其 `not_requested` 不作日曆證據；隨後沿用同一 frozen candidate／daily
-receipt，以正常預設入口重跑並得到 `run.idempotent_replay=true`、
-`live_capture.status=skipped`、`reason=non_trading_day_official_calendar`、
-`calendar_reason=weekend_closed`、`official_calendar_is_trading_day=false`，確認週日官方曆
-不偽造 live capture；candidate 仍 pending／retain current，未有自然 evidence。可驗證 blocker 為 historical replay
-不能代替 natural forward evidence、technical publication time 未驗證、corporate-action source／
-adjustment 未驗證，以及 observed liquidity cost 缺失。正式 DB 沒有可接受的 production source
-contract、成熟 natural outcomes 或 observed cost，因此本輪不宣稱 promotion、production readiness
-或正式推薦變更。完整驗收見
-[V4.2 每日推薦自動學習 QA](../06_qa/V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13.md)。
+正常 `max-stocks=200` snapshot 目前是 partial／degraded：latest readback 僅有少量 eligible
+recommendation（目前為 1 筆），其餘 cohort rows 被標為 degraded，且含 TPEx 缺價警告；這不代表
+200 檔 cohort 已完整通過；不能把 partial snapshot 或 pipeline terminal status 當成自然
+evidence 已完成。2026-09-14 04:22:11-07:00 的最新 wrapper 已完成，status 為
+`passed_with_warnings`、blockers 為空；同輪 quick publication 於
+`2026-09-14T04:21:27.181165-07:00` 完成，publication 為 `published`。learning child 已
+`completed` 並保存 normal live capture：symbol source 為
+`scheduled_recommendation_snapshot:scheduled_rec_20260914_042140.json:eligible`，只提供
+`1528`；candidate 仍為 `rec-cal-29c1b6129396a3885a89d080`，沿用 stable experiment scope
+`scheduled-experiment-ff4d2ab937e2c8b32bf2df04`；natural sample 為 `0`，decision 仍為
+`retain_current`，原因為 `natural_forward_evidence_receipt_missing`。此前 single-class
+training blocker 已由事前決定的 bootstrap 處理，沒有使用三檔 capture 代替正常 lane。
+同輪 technical computation receipt 已在
+`D:\Min\Python\Project\FA_Data_Shadow\scheduled\technical_indicator_publication\2026-09-14\0f533bde5119890a\receipt.json`
+標記 `verified`，2148 檔股票的 bounded 真重算已完成並受該 receipt 約束。
+
+這次 historical bootstrap 的 durable observation status 為 `recovered_completed`，selection policy
+為 `time_stratified_eligible_dates`，manifest 位於
+`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\datasets\recommendation-dataset-da3d867b06b5436d\dataset.json`。
+其 `initial_seen_start=2026-04-23`，bootstrap replay 的 selected date window 為
+`2024-09-16` 至 `2026-02-11`；date overlap、row overlap 與 label boundary crossing 均為 `0`。
+這些是 bounded training lineage 與分割觀測，不是當日自然 forward evidence，也不解除 formal PIT gate。
+
+本次正常 lane 的新 immutable capture scope 仍為
+`scheduled-capture-5f4de77ffb404af2`，路徑為
+`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\2026-09-14\scheduled-capture-5f4de77ffb404af2\rec-cal-29c1b6129396a3885a89d080-850760d54413e019199be668.json`，
+hash 為 `sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0`；
+natural evidence 仍 pending、sample `0`，decision 為 `retain_current`。今天另有明確三檔 controlled capture 成功保存
+`1528,1558,1560` 的 feature-row、source-contract 與 adjustment manifest hash，狀態仍是等待
+自然成熟；這筆 explicit capture 不得回填或冒充正常 cohort 的 daily run。04:10 smoke 的
+前兩輪 180 秒 timeout 是失敗；04:10 default 雖跑完，但 publication 因 completion
+microsecond witness 不合法而 blocked，normal capture 亦因 nested capture blocked 且被舊
+training completed 遮蔽而出現 false-success。兩者均不列為驗收；本段只採信 04:22 的新
+durable success。
+
+本段記錄的是 04:22:11-07:00 的最新 durable run；affected focused suites 與 synthetic mature
+fixture 已有工程驗證。P1 三日 cache-hit custody QA 亦已通過：
+`tests/test_recommendation_learning_cache_hit_custody.py` 為 `1 passed, 1 warning in 1.25s`
+（exit 0）；2026-09-08 至 2026-09-10 的正式 `FA_Data/output` receipts 可跨至
+`FA_Data_Shadow` 真實 verified reuse，保留原 timestamp，production source audit 的
+hash／value／lineage 與正式 ADX producer 輸出均通過。這是 fixture custody proof，來源仍為
+`fixture.invalid` 且 `historical_pit_eligible=false`、`formal_source_contract_eligible=false`；
+real natural maturity、formal PIT 與 actual cost 仍各自維持待成熟或 out-of-scope，不把
+bounded bootstrap、單次 capture 或 pipeline warning 寫成 V4 完成；工程 gate 與正式 default
+smoke 已由父任務接受。
+
+另一次獨立 UI／型別 QA 已完成：`test_ui_qt_update_view_workbench.py` 為 81 passed（1 個 pytest
+cache permission warning）、`qa_validate_update_tab.py` 為 25 passed／0 failed／4 skipped，
+修正 source-contract Mapping guard 後 mypy 檢查 606 個 source files 並回報 no issues。這些只驗證
+UI、Update Tab 與型別邊界；主線 focused suites、synthetic mature fixture 與已通過的三日
+cache-hit custody QA 仍與 real natural maturity、formal source gate 及主線最終 QA 分層判讀。
+
+主 Luna 另交付 affected focused suites `107 passed`（11 個 test files、`36.44s`、既有 1 個
+warning）；source-contract／capture／official-custody／guards focused 為 `17 passed`，
+update-service／process-pool／technical-analysis focused 為 `10 passed`；targeted mypy `5 files`
+clean。先前 changed scheduled scripts 的 mypy `7 files`、以暫時 `PYTHONPYCACHEPREFIX` 執行的
+py_compile 也保留通過結果，原有 `__pycache__` permission 限制仍保留。inventory 驗證為
+`12 passed`（既有 1 個 cache warning）；新增 cache guard 後登錄總量已核實為 `805`，其中
+recommendation 為 `31`。synthetic mature fixture
+`tests/test_daily_recommendation_learning_loop.py::test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags`
+已通過 production source verifier、adopt／active／rollback assertions。P1 三日 technical cache-hit
+custody QA 已以 `currentity→verified receipt reuse` 修復並通過：三日正式 output receipt 重新解析
+至各日 `FA_Data/output`、Shadow publication 保留原 timestamp，source-audit hash／value／lineage
+與 ADX 正式 producer 輸出均驗證；測試結果為 `1 passed, 1 warning in 1.25s`。這只關閉 bounded
+fixture 的跨 root custody 缺口，不等於 real natural maturity、formal PIT、actual cost 或 V4 完成。
+scheduler 14 passed、04:22 wrapper true-success 與已交付工程 gate 均已由父任務接受；
+主 Luna 回報 QA 7.1 為 `33 passed`（含 microsecond／nested blocked-capture regression，未杜撰命令）。
+目前只剩主 Luna 的 git commit 尚待完成；real natural maturity、formal PIT 與 actual cost 仍維持
+各自的 pending／out-of-scope 邊界。
+
+目前可分開判讀的 gate 是：price-up calibration 的 prospective source lane 可進入後續自然
+驗證，但整體 promotion 仍等待自然 maturity 與 formal source gate；after-cost 仍因沒有可核驗
+broker fill lineage 的 observed liquidity cost 而 blocked，固定 50 bp 只是估計參數；actual
+execution 仍 blocked 且不在本工作線範圍。historical replay 永不取得 forward evidence credit，
+因此本頁不宣稱 V4 完成、alpha、收益提升、正式推薦變更或 broker execution。工程與正式
+default smoke 已完成接受；最新正常 cohort 的 natural evidence、formal PIT 與 observed cost
+仍依各自 gate 判讀，詳見
+[V4.2 prospective source 與每日學習 QA](../06_qa/V4_2_PROSPECTIVE_SOURCE_DAILY_LEARNING_2026_09_14.md)。
 
 ## 2026-09-12 V4.1 A 線第二輪歷史研究與候選方法包
 

@@ -62,6 +62,12 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _urlopen_fetcher(request: Request, timeout_seconds: float) -> object:
+    """Adapt urllib's keyword timeout to the injected fetcher contract."""
+
+    return urlopen(request, timeout=timeout_seconds)
+
+
 def _read_bounded_bytes(path: Path, *, role: str) -> bytes:
     """以固定上限讀檔，避免 custody 驗證先把未知大檔載入記憶體。"""
 
@@ -291,7 +297,7 @@ def capture_twse_session_open_prices(
     raw, response, completed_at = _fetch_raw_response(
         request_url,
         timeout_seconds=float(timeout_seconds),
-        fetcher=(fetcher or cast(Callable[[Request, float], object], urlopen)),
+        fetcher=(fetcher or _urlopen_fetcher),
     )
     captured_at = _aware(now or completed_at, "captured_at")
     captured_local = captured_at.astimezone(TAIPEI)

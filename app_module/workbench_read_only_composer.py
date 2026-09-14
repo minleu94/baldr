@@ -856,9 +856,27 @@ def _recommendation_learning_payload(payload: Mapping[str, Any]) -> dict[str, An
     active_evidence = active_evidence if isinstance(active_evidence, Mapping) else {}
     active_matured = _int(active_evidence.get("matured_sample_count", 0))
     active_matured_dates = _int(active_evidence.get("matured_unique_decision_date_count", 0))
+    dependencies = payload.get("dependencies")
+    dependencies = dependencies if isinstance(dependencies, Mapping) else {}
+    source_contract = dependencies.get("source_contract")
+    source_contract = source_contract if isinstance(source_contract, Mapping) else {}
+    source_contract_lanes = source_contract.get("lanes")
+    source_contract_lanes = source_contract_lanes if isinstance(source_contract_lanes, Mapping) else {}
+    source_contract_blockers = tuple(
+        dict.fromkeys(
+            str(blocker)
+            for lane_name in ("price_up_calibration", "after_cost_calibration")
+            for blocker in (
+                (source_contract_lanes.get(lane_name) or {}).get("blockers", [])
+                if isinstance(source_contract_lanes.get(lane_name), Mapping)
+                else []
+            )
+            if str(blocker).strip()
+        )
+    )
+    source_contract_status = str(source_contract.get("status") or "unknown")
     active_performance = payload.get("active_model_performance")
     if not isinstance(active_performance, Mapping):
-        dependencies = payload.get("dependencies")
         active_performance = (
             dependencies.get("model_performance", {})
             if isinstance(dependencies, Mapping) and isinstance(dependencies.get("model_performance"), Mapping)
@@ -898,7 +916,8 @@ def _recommendation_learning_payload(payload: Mapping[str, Any]) -> dict[str, An
         f"reason={reason}；current_version={current_version}；"
         f"pointer_version={pointer_version}；active_matured_samples={active_matured} "
         f"({active_matured_dates} dates)；active_performance={active_performance_status} "
-        f"({active_performance_reason or 'n/a'})；next_step={next_step}"
+        f"({active_performance_reason or 'n/a'})；source_contract={source_contract_status} "
+        f"({';'.join(source_contract_blockers) or 'n/a'})；next_step={next_step}"
     )
     if (
         raw_status in {"failed", "failed_dependency", "error"}
@@ -922,6 +941,8 @@ def _recommendation_learning_payload(payload: Mapping[str, Any]) -> dict[str, An
             str(payload.get("drift_status") or ""),
             active_performance_status,
             active_performance_reason,
+            f"source_contract:{source_contract_status}",
+            *source_contract_blockers,
             str(active_evidence.get("reason") or ""),
             *(str(item) for item in payload.get("warnings", ()) or ()),
         ]
@@ -931,6 +952,8 @@ def _recommendation_learning_payload(payload: Mapping[str, Any]) -> dict[str, An
         "summary": summary,
         "diagnostics": tuple(item for item in diagnostics if item),
         "next_step": next_step,
+        "source_contract_status": source_contract_status,
+        "source_contract_blockers": source_contract_blockers,
     }
 
 

@@ -1779,7 +1779,7 @@ def test_update_view_with_config_instantiates_inspector_widget(tmp_path):
     assert isinstance(last_widget, SqliteInspectorWidget)
 
 
-def test_background_tpex_refresh_does_not_force_technical_all(monkeypatch):
+def test_background_tpex_refresh_does_not_force_technical_all(monkeypatch, tmp_path):
     from ui_qt.views import update_view
 
     captured = {}
@@ -1797,6 +1797,7 @@ def test_background_tpex_refresh_does_not_force_technical_all(monkeypatch):
     monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok)
 
     view = make_view()
+    view.tpex_refresh_state_file = tmp_path / "tpex_full_refresh_status.json"
     view._execute_background_tpex_refresh()
 
     assert "--sync-sqlite" in captured["cmd"]

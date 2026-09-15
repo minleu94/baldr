@@ -51,7 +51,7 @@ from PySide6.QtWidgets import (
 )
 from typing import Dict, Any
 from collections.abc import Mapping
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QFont, QIcon
 
 from data_module.config import TWStockConfig
@@ -162,6 +162,28 @@ def apply_app_theme(app: QApplication) -> None:
         font = QFont(preferred_family, app.font().pointSize())
         app.setFont(font)
     app.setStyleSheet(build_global_stylesheet())
+
+
+def _drain_qt_deferred_deletes(
+    app: QApplication,
+    windows: tuple[Any, ...],
+) -> None:
+    """在 QApplication 有效期間釋放已關閉的 GUI QObject。"""
+
+    for window in windows:
+        try:
+            delete_later = getattr(window, "deleteLater", None)
+        except RuntimeError:
+            continue
+        if not callable(delete_later):
+            continue
+        try:
+            delete_later()
+        except RuntimeError:
+            # 其他關閉路徑可能已先釋放 wrapper；不要再次觸碰失效 C++ object。
+            continue
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    app.processEvents()
 
 
 class MainWindow(QMainWindow):
@@ -1414,6 +1436,9 @@ def main():
         print("[Main] 開始運行應用程序事件循環...")
         exit_code = app.exec()
         print(f"[Main] 應用程序退出，退出碼: {exit_code}")
+        # closeEvent 只會隱藏／接受主視窗；若把 QObject 留到 Python
+        # interpreter shutdown，PySide6／Qt6 可能在 native teardown 卡住。
+        _drain_qt_deferred_deletes(app, (window,))
         return int(exit_code)
     except Exception as e:
         record_exception("application_startup", e)

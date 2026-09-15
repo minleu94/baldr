@@ -211,3 +211,21 @@ def test_real_qapplication_worker_finishes_and_first_close_auto_completes() -> N
         window._shutdown_close_timer.stop()
         window.close()
         app.processEvents()
+
+
+def test_deferred_mainwindow_teardown_releases_cpp_wrapper() -> None:
+    """關閉後在 QApplication 有效期間排空 deferred delete。"""
+
+    from PySide6.QtWidgets import QApplication, QMainWindow
+
+    import shiboken6
+
+    app = QApplication.instance() or QApplication([])
+    window = QMainWindow()
+    window.show()
+    app.processEvents()
+    window.close()
+
+    main_module._drain_qt_deferred_deletes(app, (window,))
+
+    assert shiboken6.isValid(window) is False

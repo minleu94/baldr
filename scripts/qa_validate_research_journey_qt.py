@@ -892,7 +892,11 @@ def _run_mainwindow_shutdown_lifecycle(output_dir: Path) -> dict[str, Any]:
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QTimer
 
-    from ui_qt.main import MainWindow, apply_app_theme
+    from ui_qt.main import (
+        MainWindow,
+        _drain_qt_deferred_deletes,
+        apply_app_theme,
+    )
     from ui_qt.workers.task_worker import TaskWorker, running_task_workers
 
     app = QApplication.instance()
@@ -1141,18 +1145,21 @@ def _run_mainwindow_shutdown_lifecycle(output_dir: Path) -> dict[str, Any]:
                 # The owned launcher Job Object remains the final bounded
                 # cleanup scope if a failed QA child cannot finish its helper.
                 pass
-        for window in (busy_window, idle_window):
+        windows_to_delete = tuple(
+            window for window in (busy_window, idle_window) if window is not None
+        )
+        for window in windows_to_delete:
             if window is None:
                 continue
             try:
                 if window.isVisible():
                     window.hide()
-                window.deleteLater()
             except RuntimeError:
                 pass
         app.processEvents()
         if not natural_event_loop_returned:
             app.quit()
+        _drain_qt_deferred_deletes(app, windows_to_delete)
         faulthandler.cancel_dump_traceback_later()
         close_crash_diagnostics()
 

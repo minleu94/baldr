@@ -1765,6 +1765,8 @@ TWSE 補檔遇到平日休市（例如颱風停市）時，只有在至少一個
 
 桌面 App 直接啟動時會在載入 Qt 前啟用持久化 crash diagnostics，檔案固定為 `DATA_ROOT/logs/ui_qt_crash.log`。`SESSION_START` 後若沒有對應的 `SESSION_END`，或結尾為 `clean_shutdown=false`，代表程序未走完無例外的正常關閉；Python 主執行緒、背景執行緒與已被啟動邊界攔下的例外會保存 traceback，native fatal fault 則由 `faulthandler` 保存所有執行緒堆疊。每個 session 也會記錄 executable、argv0、cwd、parent PID 與 DATA_ROOT（不記錄完整環境或秘密），方便把 WER 對回實際 entrypoint。Windows 事件檢視器的 `RADAR_PRE_LEAK_64` 是記憶體壓力／疑似洩漏預警，不可單獨當成實際 crash；需與這份 log、WER Application Error 或 dump 一起判讀。
 
+`QApplication.exec()` 返回後，production entrypoint 會在 QApplication 仍有效的 GUI thread 內排空已關閉主視窗的 Qt `DeferredDelete`，再交回 Python interpreter。這個 teardown 不會同步等待背景 worker，也不會以 `terminate()` 或 End Task 代替合作式取消；若主視窗關閉後仍沒有 `SESSION_END`，仍應依上述 diagnostics、WER 與背景狀態收據排錯。即使看到 `SESSION_END clean_shutdown=true`，也不能單獨證明 native process 已正常退出；仍須對照 OS exit code、owned process tree 與實際 PID 是否殘留。
+
 啟動訊息含有繁體中文；`ui_qt/main.py` 會在直接或被其他 launcher 呼叫的 entrypoint 先將 stdout/stderr 嘗試切換為 UTF-8，並以 `backslashreplace` 處理不允許 reconfigure 的 console。這避免 Windows cp1252 console 在建立 `QApplication` 前因 `UnicodeEncodeError` 退出；若 stream 不可調整，會 fail-soft 繼續啟動，真正的例外仍由上述 diagnostics 記錄。
 
 `config.log`、`db_manager.log`、`data_loader.log`、`market_data_process.log` 或 `technical_calculation.log` 若因唯讀環境、短暫檔案鎖或權限問題無法建立，核心服務會降級為 console-only logging，不再只因診斷檔不可寫就中止 App 啟動或資料計算。這只放寬 log sink；SQLite、來源資料與任何正式 gate 的權限並未放寬。

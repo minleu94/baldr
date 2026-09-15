@@ -16,8 +16,9 @@ consumer projection 讀取，且不會改變正式 rule path。
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 import hashlib
 import json
@@ -40,6 +41,17 @@ from ml_module.recommendation_probability_transform import (
     AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
     NULL_BENCHMARK_BASELINE_ID,
 )
+from ml_module.recommendation_cost_scenario import (
+    BANKTAIWAN_RECOMMENDATION_COST_SCENARIO_ID,
+    LEGACY_RECOMMENDATION_COST_SCENARIO_ID,
+    LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION,
+    RecommendationCostEstimate,
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    build_legacy_cost_scenario,
+    cost_scenario_from_metadata,
+    normalize_cost_scenario,
+)
 
 
 RECOMMENDATION_LABEL_CONTRACT_ID = "recommendation-absolute-labels-v1"
@@ -53,16 +65,51 @@ RECOMMENDATION_LABEL_DEFINITIONS: Mapping[str, str] = {
 RECOMMENDATION_HORIZON_TRADING_DAYS = 20
 
 
-def recommendation_label_registry_hash() -> str:
-    """Return the stable hash for the two absolute recommendation labels."""
-
-    payload = {
-        "registry_id": RECOMMENDATION_LABEL_CONTRACT_ID,
-        "horizon_trading_days": RECOMMENDATION_HORIZON_TRADING_DAYS,
-        "definitions": dict(RECOMMENDATION_LABEL_DEFINITIONS),
-        "missing_policy": "pending_is_not_zero",
-        "benchmark_role": "evaluation_context_only_not_target",
+def _label_definitions_for_scenario(
+    cost_scenario: RecommendationCostScenario,
+) -> Mapping[str, str]:
+    if not cost_scenario.is_estimated:
+        return RECOMMENDATION_LABEL_DEFINITIONS
+    return {
+        "upside": "absolute forward stock return over 20 trading days > 0 bp",
+        "after_cost_profit": (
+            "same-row Decimal net profit after estimated buy+sell commission and sell tax "
+            "> 0; observed liquidity is not part of this fees_tax_only target; "
+            "unavailable fee/tax cost never becomes zero"
+        ),
     }
+
+
+def recommendation_label_registry_hash(
+    cost_scenario: RecommendationCostScenario | None = None,
+) -> str:
+    """Return the label contract hash, preserving the legacy hash by default."""
+
+    if cost_scenario is None or not cost_scenario.is_estimated:
+        payload = {
+            "registry_id": RECOMMENDATION_LABEL_CONTRACT_ID,
+            "horizon_trading_days": RECOMMENDATION_HORIZON_TRADING_DAYS,
+            "definitions": dict(RECOMMENDATION_LABEL_DEFINITIONS),
+            "missing_policy": "pending_is_not_zero",
+            "benchmark_role": "evaluation_context_only_not_target",
+        }
+    else:
+        payload = {
+            "registry_id": "recommendation-absolute-labels-banktaiwan-estimated-v1",
+            "horizon_trading_days": RECOMMENDATION_HORIZON_TRADING_DAYS,
+            "definitions": {
+                "upside": "absolute forward stock return over 20 trading days > 0 bp",
+                "after_cost_profit": (
+                    "same-row Decimal net profit after estimated buy+sell commission and "
+                    "sell tax is > 0; observed liquidity is diagnostic only and is not part "
+                    "of this fees_tax_only target"
+                ),
+            },
+            "missing_policy": "unavailable_fee_tax_cost_is_not_zero_false",
+            "liquidity_policy": "diagnostic_only_not_in_fees_tax_only_label",
+            "benchmark_role": "evaluation_context_only_not_target",
+            "cost_scenario_hash": cost_scenario.scenario_hash,
+        }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -76,13 +123,28 @@ def feature_schema_hash(feature_schema: FeatureSchema) -> str:
 
 
 def recommendation_cost_contract_hash(
-    fixed_round_trip_cost_bp: int,
+    fixed_round_trip_cost_bp: int | None,
     horizon_trading_days: int = RECOMMENDATION_HORIZON_TRADING_DAYS,
+    cost_scenario: RecommendationCostScenario | None = None,
 ) -> str:
-    """Hash the fixed cost contract; observed liquidity remains a required row field."""
+    """Hash the fixed or versioned estimated cost contract."""
 
     if horizon_trading_days != RECOMMENDATION_HORIZON_TRADING_DAYS:
         raise ValueError("recommendation calibration horizon is locked to 20 trading days")
+    if cost_scenario is not None and cost_scenario.is_estimated:
+        return _hash_payload(
+            {
+                "cost_scenario": cost_scenario.to_dict(),
+                "observed_liquidity_cost_required": False,
+                "observed_liquidity_cost_role": "optional_additive_not_zero_observation",
+                "after_cost_baseline_contract": "independent_null_benchmark_v1",
+                "after_cost_null_benchmark_baseline_id": AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+                "after_cost_null_benchmark_probability_bp": AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
+                "horizon_trading_days": horizon_trading_days,
+            }
+        )
+    if fixed_round_trip_cost_bp is None:
+        raise ValueError("fixed cost is required for the legacy cost contract")
     return _hash_payload(
         {
             "fixed_round_trip_cost_bp": fixed_round_trip_cost_bp,
@@ -112,7 +174,7 @@ class RecommendationCalibrationSample:
     feature_values: tuple[int | None, ...]
     stock_return_bp: int
     benchmark_return_bp: int
-    fixed_round_trip_cost_bp: int
+    fixed_round_trip_cost_bp: int | None
     observed_liquidity_cost_bp: int | None
     rule_probability_bp: int
     upside_label: int
@@ -121,6 +183,25 @@ class RecommendationCalibrationSample:
     rule_after_cost_baseline_id: str | None = None
     rule_baseline_id: str = NULL_BENCHMARK_BASELINE_ID
     source_quality: str = "research"
+    cost_scenario_id: str = LEGACY_RECOMMENDATION_COST_SCENARIO_ID
+    cost_scenario_version: str = LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION
+    cost_scenario_hash: str = ""
+    cost_basis: str = "fixed_round_trip_bp"
+    cost_policy_id: str | None = None
+    cost_policy_version: str | None = None
+    policy_estimate_date: str | None = None
+    market_replay_date: str | None = None
+    research_order_amount_twd: str | None = None
+    research_order_quantity_shares: int | None = None
+    lot_type: str | None = None
+    instrument_type: str | None = None
+    estimated_buy_cost_twd: str | None = None
+    estimated_sell_cost_twd: str | None = None
+    estimated_round_trip_cost_twd: str | None = None
+    estimated_round_trip_cost_bp: int | None = None
+    gross_buy_amount_twd: str | None = None
+    gross_sell_amount_twd: str | None = None
+    net_profit_twd: str | None = None
 
     def __post_init__(self) -> None:
         decision = _date(self.decision_date)
@@ -138,8 +219,66 @@ class RecommendationCalibrationSample:
             raise ValueError("row_id and symbol are required")
         if not self.rule_baseline_id.strip():
             raise ValueError("rule_baseline_id is required")
-        if isinstance(self.fixed_round_trip_cost_bp, bool) or self.fixed_round_trip_cost_bp < 0:
-            raise ValueError("fixed_round_trip_cost_bp must be a non-negative integer")
+        if self.cost_basis == "fixed_round_trip_bp":
+            if (
+                isinstance(self.fixed_round_trip_cost_bp, bool)
+                or not isinstance(self.fixed_round_trip_cost_bp, int)
+                or self.fixed_round_trip_cost_bp < 0
+            ):
+                raise ValueError("fixed_round_trip_cost_bp must be a non-negative integer")
+            if self.cost_scenario_id != LEGACY_RECOMMENDATION_COST_SCENARIO_ID:
+                raise ValueError("fixed label row has an unsupported cost scenario")
+            legacy_scenario = build_legacy_cost_scenario(self.fixed_round_trip_cost_bp)
+            if self.cost_scenario_version != LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION:
+                raise ValueError("legacy cost scenario version mismatch")
+            if self.cost_scenario_hash not in ("", legacy_scenario.scenario_hash):
+                raise ValueError("legacy cost scenario hash mismatch")
+            object.__setattr__(self, "cost_scenario_hash", legacy_scenario.scenario_hash)
+        elif self.cost_basis == "estimated_research_only":
+            if self.fixed_round_trip_cost_bp is not None:
+                raise ValueError("estimated cost row must not carry fixed_round_trip_cost_bp")
+            try:
+                scenario = cost_scenario_from_metadata(
+                    {
+                        "cost_scenario_id": self.cost_scenario_id,
+                        "cost_scenario_version": self.cost_scenario_version,
+                        "cost_basis": self.cost_basis,
+                        "cost_scenario_hash": self.cost_scenario_hash,
+                        "cost_policy_id": self.cost_policy_id,
+                        "cost_policy_version": self.cost_policy_version,
+                        "policy_estimate_date": self.policy_estimate_date,
+                        "research_order_amount_twd": self.research_order_amount_twd,
+                        "research_order_quantity_shares": self.research_order_quantity_shares,
+                        "lot_type": self.lot_type,
+                        "instrument_type": self.instrument_type,
+                    },
+                    fixed_round_trip_cost_bp=None,
+                )
+            except RecommendationCostScenarioError as exc:
+                raise ValueError(str(exc)) from exc
+            if scenario.scenario_hash != self.cost_scenario_hash:
+                raise ValueError("estimated cost scenario hash mismatch")
+            object.__setattr__(self, "cost_scenario_id", scenario.scenario_id)
+            object.__setattr__(self, "cost_scenario_version", scenario.scenario_version)
+            object.__setattr__(self, "cost_policy_id", scenario.policy_id)
+            object.__setattr__(self, "cost_policy_version", scenario.policy_version)
+            object.__setattr__(self, "policy_estimate_date", scenario.policy_estimate_date)
+            object.__setattr__(self, "research_order_amount_twd", scenario.research_order_amount_twd)
+            object.__setattr__(self, "research_order_quantity_shares", scenario.research_order_quantity_shares)
+            object.__setattr__(self, "lot_type", scenario.lot_type)
+            object.__setattr__(self, "instrument_type", scenario.instrument_type)
+            if self.market_replay_date is not None:
+                _date(self.market_replay_date)
+            if self.estimated_round_trip_cost_bp is not None and (
+                isinstance(self.estimated_round_trip_cost_bp, bool)
+                or not isinstance(self.estimated_round_trip_cost_bp, int)
+                or self.estimated_round_trip_cost_bp < 0
+            ):
+                raise ValueError("estimated_round_trip_cost_bp must be non-negative integer or None")
+            if self.net_profit_twd is not None:
+                _decimal_text(self.net_profit_twd, "net_profit_twd")
+        else:
+            raise ValueError("cost_basis is unsupported")
         for field_name, value in {
             "upside_label": self.upside_label,
             "after_cost_profit_label": self.after_cost_profit_label,
@@ -153,7 +292,7 @@ class RecommendationCalibrationSample:
         # baseline means the explicit after-cost null benchmark—not the
         # upside baseline—is used.  A non-null caller-supplied probability is
         # retained as a named declared baseline for compatibility.
-        if self.observed_liquidity_cost_bp is not None and self.after_cost_profit_label is not None:
+        if self.after_cost_profit_label is not None:
             after_cost_probability_was_missing = self.rule_after_cost_probability_bp is None
             if self.rule_after_cost_probability_bp is None:
                 object.__setattr__(
@@ -184,18 +323,58 @@ class RecommendationCalibrationSample:
         expected_upside = int(self.stock_return_bp > 0)
         if self.upside_label != expected_upside:
             raise ValueError("upside_label must use absolute stock return > 0")
-        if self.observed_liquidity_cost_bp is None:
+        if self.cost_basis == "estimated_research_only":
             if self.after_cost_profit_label is not None:
-                raise ValueError("after_cost_profit_label must be missing when liquidity cost is missing")
+                net_profit = _optional_decimal(self.net_profit_twd)
+                gross_buy = _optional_decimal(self.gross_buy_amount_twd)
+                gross_sell = _optional_decimal(self.gross_sell_amount_twd)
+                buy_cost = _optional_decimal(self.estimated_buy_cost_twd)
+                sell_cost = _optional_decimal(self.estimated_sell_cost_twd)
+                round_trip_cost = _optional_decimal(self.estimated_round_trip_cost_twd)
+                if (
+                    net_profit is None
+                    or gross_buy is None
+                    or gross_sell is None
+                    or buy_cost is None
+                    or sell_cost is None
+                    or round_trip_cost is None
+                ):
+                    raise ValueError(
+                        "estimated after-cost label requires complete exact fee/tax and gross/net fields"
+                    )
+                if round_trip_cost != buy_cost + sell_cost:
+                    raise ValueError("estimated round-trip cost does not equal buy plus sell costs")
+                if net_profit != gross_sell - gross_buy - buy_cost - sell_cost:
+                    raise ValueError("estimated net profit does not equal exact gross minus fee/tax costs")
+                # The new lane is deliberately a stable ``fees_tax_only``
+                # target.  Observed liquidity remains diagnostics and never
+                # changes the meaning of this label.
+                expected_after_cost = int(net_profit > 0)
+                if self.after_cost_profit_label != expected_after_cost:
+                    raise ValueError("estimated after-cost label must use exact Decimal net profit")
+            elif self.estimated_round_trip_cost_bp is None and self.net_profit_twd is not None:
+                raise ValueError("estimated net profit cannot coexist with an unavailable cost estimate")
         else:
-            if self.observed_liquidity_cost_bp < 0:
-                raise ValueError("observed_liquidity_cost_bp must be non-negative")
-            expected_after_cost = int(
-                self.stock_return_bp
-                > self.fixed_round_trip_cost_bp + self.observed_liquidity_cost_bp
-            )
-            if self.after_cost_profit_label != expected_after_cost:
-                raise ValueError("after_cost_profit_label must use absolute return after cost")
+            if self.observed_liquidity_cost_bp is None:
+                if self.after_cost_profit_label is not None:
+                    raise ValueError("after_cost_profit_label must be missing when liquidity cost is missing")
+            else:
+                threshold = self.effective_cost_threshold_bp
+                if threshold is None:
+                    if self.after_cost_profit_label is not None:
+                        raise ValueError("after_cost_profit_label requires an available cost estimate")
+                    return
+                expected_after_cost = int(self.stock_return_bp > threshold + self.observed_liquidity_cost_bp)
+                if self.after_cost_profit_label != expected_after_cost:
+                    raise ValueError("after_cost_profit_label must use absolute return after cost")
+
+    @property
+    def effective_cost_threshold_bp(self) -> int | None:
+        """The same-row round-trip threshold before observed liquidity."""
+
+        if self.cost_basis == "estimated_research_only":
+            return self.estimated_round_trip_cost_bp
+        return self.fixed_round_trip_cost_bp
 
     @classmethod
     def from_forward_return(
@@ -211,20 +390,80 @@ class RecommendationCalibrationSample:
         feature_values: tuple[int | None, ...],
         stock_return_bp: int,
         benchmark_return_bp: int,
-        fixed_round_trip_cost_bp: int,
+        fixed_round_trip_cost_bp: int | None,
         observed_liquidity_cost_bp: int | None,
         rule_probability_bp: int,
         rule_after_cost_probability_bp: int | None = None,
         rule_after_cost_baseline_id: str | None = None,
         rule_baseline_id: str = NULL_BENCHMARK_BASELINE_ID,
         source_quality: str = "research",
+        cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
+        cost_estimate: RecommendationCostEstimate | Mapping[str, Any] | None = None,
+        estimated_round_trip_cost_bp: int | None = None,
+        estimated_round_trip_cost_twd: str | None = None,
+        estimated_buy_cost_twd: str | None = None,
+        estimated_sell_cost_twd: str | None = None,
+        net_profit_twd: str | None = None,
+        market_replay_date: str | None = None,
     ) -> "RecommendationCalibrationSample":
-        after_cost = None
-        if observed_liquidity_cost_bp is not None:
-            after_cost = int(
-                stock_return_bp
-                > fixed_round_trip_cost_bp + observed_liquidity_cost_bp
+        scenario = normalize_cost_scenario(
+            cost_scenario,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        )
+        estimate_payload: Mapping[str, Any] = {}
+        if isinstance(cost_estimate, RecommendationCostEstimate):
+            estimate_payload = cost_estimate.sample_metadata()
+        elif isinstance(cost_estimate, Mapping):
+            estimate_payload = cost_estimate
+        gross_buy_amount_twd: str | None = None
+        gross_sell_amount_twd: str | None = None
+        if scenario.is_estimated:
+            fixed_round_trip_cost_bp = None
+            estimated_round_trip_cost_bp = (
+                estimated_round_trip_cost_bp
+                if estimated_round_trip_cost_bp is not None
+                else _optional_int(estimate_payload.get("estimated_round_trip_cost_bp"))
             )
+            estimated_round_trip_cost_twd = (
+                estimated_round_trip_cost_twd
+                if estimated_round_trip_cost_twd is not None
+                else _optional_text(estimate_payload.get("estimated_round_trip_cost_twd"))
+            )
+            estimated_buy_cost_twd = (
+                estimated_buy_cost_twd
+                if estimated_buy_cost_twd is not None
+                else _optional_text(estimate_payload.get("estimated_buy_cost_twd"))
+            )
+            estimated_sell_cost_twd = (
+                estimated_sell_cost_twd
+                if estimated_sell_cost_twd is not None
+                else _optional_text(estimate_payload.get("estimated_sell_cost_twd"))
+            )
+            net_profit_twd = (
+                net_profit_twd
+                if net_profit_twd is not None
+                else _optional_text(estimate_payload.get("net_profit_twd"))
+            )
+            gross_buy_amount_twd = _optional_text(estimate_payload.get("gross_buy_amount_twd"))
+            gross_sell_amount_twd = _optional_text(estimate_payload.get("gross_sell_amount_twd"))
+            market_replay_date = (
+                market_replay_date
+                or _optional_text(estimate_payload.get("market_replay_date"))
+                or decision_date
+            )
+        threshold = (
+            estimated_round_trip_cost_bp
+            if scenario.is_estimated
+            else fixed_round_trip_cost_bp
+        )
+        after_cost = None
+        if scenario.is_estimated and threshold is not None:
+            gross_buy = _optional_decimal(estimate_payload.get("gross_buy_amount_twd"))
+            net_profit = _optional_decimal(net_profit_twd)
+            if gross_buy is not None and net_profit is not None:
+                after_cost = int(net_profit > 0)
+        elif observed_liquidity_cost_bp is not None and threshold is not None:
+            after_cost = int(stock_return_bp > threshold + observed_liquidity_cost_bp)
         return cls(
             row_id=row_id,
             symbol=symbol,
@@ -245,7 +484,63 @@ class RecommendationCalibrationSample:
             upside_label=int(stock_return_bp > 0),
             after_cost_profit_label=after_cost,
             source_quality=source_quality,
+            cost_scenario_id=scenario.scenario_id,
+            cost_scenario_version=scenario.scenario_version,
+            cost_scenario_hash=scenario.scenario_hash,
+            cost_basis=scenario.cost_basis,
+            cost_policy_id=scenario.policy_id,
+            cost_policy_version=scenario.policy_version,
+            policy_estimate_date=scenario.policy_estimate_date,
+            market_replay_date=market_replay_date,
+            research_order_amount_twd=(
+                str(scenario.research_order_amount_twd)
+                if scenario.research_order_amount_twd is not None
+                else None
+            ),
+            research_order_quantity_shares=scenario.research_order_quantity_shares,
+            lot_type=scenario.lot_type,
+            instrument_type=scenario.instrument_type,
+            estimated_buy_cost_twd=estimated_buy_cost_twd,
+            estimated_sell_cost_twd=estimated_sell_cost_twd,
+            estimated_round_trip_cost_twd=estimated_round_trip_cost_twd,
+            estimated_round_trip_cost_bp=estimated_round_trip_cost_bp,
+            gross_buy_amount_twd=gross_buy_amount_twd,
+            gross_sell_amount_twd=gross_sell_amount_twd,
+            net_profit_twd=net_profit_twd,
         )
+
+
+_EXTENDED_COST_SAMPLE_FIELDS = (
+    "cost_scenario_id",
+    "cost_scenario_version",
+    "cost_scenario_hash",
+    "cost_basis",
+    "cost_policy_id",
+    "cost_policy_version",
+    "policy_estimate_date",
+    "market_replay_date",
+    "research_order_amount_twd",
+    "research_order_quantity_shares",
+    "lot_type",
+    "instrument_type",
+    "estimated_buy_cost_twd",
+    "estimated_sell_cost_twd",
+    "estimated_round_trip_cost_twd",
+    "estimated_round_trip_cost_bp",
+    "gross_buy_amount_twd",
+    "gross_sell_amount_twd",
+    "net_profit_twd",
+)
+
+
+def sample_payload(row: RecommendationCalibrationSample) -> dict[str, Any]:
+    """Serialize a sample while keeping the pre-existing legacy payload shape."""
+
+    payload = asdict(row)
+    if row.cost_basis == "fixed_round_trip_bp":
+        for field_name in _EXTENDED_COST_SAMPLE_FIELDS:
+            payload.pop(field_name, None)
+    return payload
 
 
 @dataclass(frozen=True)
@@ -375,8 +670,19 @@ class RecommendationCalibrationTrainingResult:
     evaluation_fold_id: str
     evaluation: Mapping[str, Any]
     target_definitions: Mapping[str, str]
-    fixed_round_trip_cost_bp: int
+    fixed_round_trip_cost_bp: int | None
     liquidity_cost_coverage: str
+    cost_scenario_id: str = LEGACY_RECOMMENDATION_COST_SCENARIO_ID
+    cost_scenario_version: str = LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION
+    cost_scenario_hash: str = ""
+    cost_basis: str = "fixed_round_trip_bp"
+    cost_policy_id: str | None = None
+    cost_policy_version: str | None = None
+    policy_estimate_date: str | None = None
+    research_order_amount_twd: str | None = None
+    research_order_quantity_shares: int | None = None
+    lot_type: str | None = None
+    instrument_type: str | None = None
     training_data_eligible: bool = True
     forward_evidence_eligible: bool = False
     formal_candidate_eligible: bool = False
@@ -438,9 +744,22 @@ class RecommendationCalibrationTrainingResult:
             "target_definitions": dict(self.target_definitions),
             "benchmark_role": "same-date evaluation context only; not a target",
             "fixed_round_trip_cost_bp": self.fixed_round_trip_cost_bp,
+            "cost_scenario_id": self.cost_scenario_id,
+            "cost_scenario_version": self.cost_scenario_version,
+            "cost_scenario_hash": self.cost_scenario_hash,
+            "cost_basis": self.cost_basis,
+            "cost_policy_id": self.cost_policy_id,
+            "cost_policy_version": self.cost_policy_version,
+            "policy_estimate_date": self.policy_estimate_date,
+            "research_order_amount_twd": self.research_order_amount_twd,
+            "research_order_quantity_shares": self.research_order_quantity_shares,
+            "lot_type": self.lot_type,
+            "instrument_type": self.instrument_type,
+            "cost_scenario": self._cost_scenario_payload(),
             "cost_contract_hash": recommendation_cost_contract_hash(
                 self.fixed_round_trip_cost_bp,
                 self.model.horizon_trading_days,
+                cost_scenario=self._cost_scenario(),
             ),
             "candidate_frozen_at": self.manifest.created_at,
             "rule_baseline_id": self.model.rule_baseline_id,
@@ -480,6 +799,28 @@ class RecommendationCalibrationTrainingResult:
             ),
         }
 
+    def _cost_scenario(self) -> RecommendationCostScenario:
+        return cost_scenario_from_metadata(
+            {
+                "cost_scenario_id": self.cost_scenario_id,
+                "cost_scenario_version": self.cost_scenario_version,
+                "cost_basis": self.cost_basis,
+                "cost_scenario_hash": self.cost_scenario_hash,
+                "fixed_round_trip_cost_bp": self.fixed_round_trip_cost_bp,
+                "cost_policy_id": self.cost_policy_id,
+                "cost_policy_version": self.cost_policy_version,
+                "policy_estimate_date": self.policy_estimate_date,
+                "research_order_amount_twd": self.research_order_amount_twd,
+                "research_order_quantity_shares": self.research_order_quantity_shares,
+                "lot_type": self.lot_type,
+                "instrument_type": self.instrument_type,
+            },
+            fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
+        )
+
+    def _cost_scenario_payload(self) -> dict[str, Any]:
+        return self._cost_scenario().to_dict()
+
 
 class RecommendationCalibrationTrainingService:
     """Train a runnable absolute-label candidate with purged OOF calibration."""
@@ -496,12 +837,20 @@ class RecommendationCalibrationTrainingService:
         feature_schema: FeatureSchema,
         feature_registry_hash: str,
         training_as_of: str,
-        fixed_round_trip_cost_bp: int,
+        fixed_round_trip_cost_bp: int | None,
+        cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
         dataset_quality: Mapping[str, Any] | None = None,
         created_at: str | None = None,
         config: RecommendationCalibrationTrainingConfig | None = None,
     ) -> RecommendationCalibrationTrainingResult:
         cfg = config or RecommendationCalibrationTrainingConfig()
+        try:
+            scenario = normalize_cost_scenario(
+                cost_scenario,
+                fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            )
+        except RecommendationCostScenarioError as exc:
+            raise ValueError(str(exc)) from exc
         ordered = tuple(sorted(samples, key=lambda row: (row.decision_date, row.row_id)))
         if len(ordered) < cfg.minimum_training_rows:
             raise ValueError("insufficient recommendation calibration training rows")
@@ -517,7 +866,19 @@ class RecommendationCalibrationTrainingService:
         )
         if len(eligible) < cfg.minimum_training_rows:
             raise ValueError("insufficient rows mature by training_as_of")
-        if any(row.fixed_round_trip_cost_bp != fixed_round_trip_cost_bp for row in eligible):
+        if scenario.is_estimated:
+            if any(
+                row.cost_basis != scenario.cost_basis
+                or row.cost_scenario_hash != scenario.scenario_hash
+                or row.fixed_round_trip_cost_bp is not None
+                for row in eligible
+            ):
+                raise ValueError("estimated cost scenario changed inside one dataset")
+        elif any(
+            row.fixed_round_trip_cost_bp != fixed_round_trip_cost_bp
+            or row.cost_scenario_hash != scenario.scenario_hash
+            for row in eligible
+        ):
             raise ValueError("fixed cost contract changed inside one dataset")
         baseline_ids = {row.rule_baseline_id for row in eligible}
         if len(baseline_ids) != 1:
@@ -666,7 +1027,13 @@ class RecommendationCalibrationTrainingService:
         observed_label_dates.extend(item[3].label_available_date for item in oof_upside)
         observed_label_dates.extend(item[3].label_available_date for item in oof_after)
         train_cutoff = max(observed_label_dates)
-        candidate_id = _candidate_id(dataset_id, dataset_hash, train_cutoff, feature_schema)
+        candidate_id = _candidate_id(
+            dataset_id,
+            dataset_hash,
+            train_cutoff,
+            feature_schema,
+            cost_scenario_hash=(scenario.scenario_hash if scenario.is_estimated else None),
+        )
         model = RunnableRecommendationCalibrationModel(
             model_id=candidate_id,
             dataset_id=dataset_id,
@@ -701,7 +1068,7 @@ class RecommendationCalibrationTrainingService:
                 "model_family": self.MODEL_FAMILY,
                 "random_state": cfg.random_state,
                 "calibration_method": "isotonic_oof",
-                "target_definitions": dict(RECOMMENDATION_LABEL_DEFINITIONS),
+                "target_definitions": dict(_label_definitions_for_scenario(scenario)),
             }
         )
         manifest = ModelArtifactManifest.create(
@@ -711,7 +1078,7 @@ class RecommendationCalibrationTrainingService:
             created_at=created_at or datetime.now(timezone.utc).isoformat(),
             model_family=self.MODEL_FAMILY,
             feature_registry_hash=feature_registry_hash,
-            label_registry_hash=recommendation_label_registry_hash(),
+            label_registry_hash=recommendation_label_registry_hash(scenario),
             feature_schema=feature_schema,
             training_as_of=train_cutoff,
             hyperparameters_hash=hyperparameters_hash,
@@ -775,9 +1142,24 @@ class RecommendationCalibrationTrainingService:
             calibration_fold_ids=tuple(fold.fold_id for fold in calibration_folds),
             evaluation_fold_id=evaluation_fold.fold_id,
             evaluation=evaluation,
-            target_definitions=RECOMMENDATION_LABEL_DEFINITIONS,
+            target_definitions=_label_definitions_for_scenario(scenario),
             fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
             liquidity_cost_coverage=liquidity_coverage,
+            cost_scenario_id=scenario.scenario_id,
+            cost_scenario_version=scenario.scenario_version,
+            cost_scenario_hash=scenario.scenario_hash,
+            cost_basis=scenario.cost_basis,
+            cost_policy_id=scenario.policy_id,
+            cost_policy_version=scenario.policy_version,
+            policy_estimate_date=scenario.policy_estimate_date,
+            research_order_amount_twd=(
+                str(scenario.research_order_amount_twd)
+                if scenario.research_order_amount_twd is not None
+                else None
+            ),
+            research_order_quantity_shares=scenario.research_order_quantity_shares,
+            lot_type=scenario.lot_type,
+            instrument_type=scenario.instrument_type,
             training_data_eligible=training_data_eligible,
             forward_evidence_eligible=forward_evidence_eligible,
             formal_candidate_eligible=formal_candidate_eligible,
@@ -874,6 +1256,35 @@ def _evaluate(
             after_improvement = after_old_brier - after_brier
         else:
             after_status = "old_baseline_missing_fail_closed"
+    scenario_values = tuple(_sample_cost_scenario(row) for row in rows)
+    cost_contract = (
+        recommendation_cost_contract_hash(
+            rows[0].fixed_round_trip_cost_bp,
+            model.horizon_trading_days,
+            cost_scenario=scenario_values[0],
+        )
+        if scenario_values and len({item.scenario_hash for item in scenario_values}) == 1
+        else None
+    )
+    evaluation_fingerprint: dict[str, Any] = {
+        "row_ids": [row.row_id for row in rows],
+        "decision_dates": [row.decision_date for row in rows],
+        "label_end_dates": [row.label_end_date for row in rows],
+        "fixed_round_trip_cost_bp": [row.fixed_round_trip_cost_bp for row in rows],
+        "horizon_trading_days": model.horizon_trading_days,
+    }
+    # Keep the exact legacy freeze hash stable; estimated lanes add their
+    # per-scenario observation identity and exact Decimal net amount.
+    if scenario_values and any(item.is_estimated for item in scenario_values):
+        evaluation_fingerprint.update(
+            {
+                "cost_scenario_hash": [item.scenario_hash for item in scenario_values],
+                "estimated_round_trip_cost_bp": [
+                    row.estimated_round_trip_cost_bp for row in rows
+                ],
+                "net_profit_twd": [row.net_profit_twd for row in rows],
+            }
+        )
     return {
         "untouched_test_sample_count": len(rows),
         "old_brier_bp": old_brier,
@@ -895,19 +1306,8 @@ def _evaluate(
             else None
         ),
         "rule_baseline_id": model.rule_baseline_id,
-        "evaluation_sample_fingerprint": _hash_payload(
-            {
-                "row_ids": [row.row_id for row in rows],
-                "decision_dates": [row.decision_date for row in rows],
-                "label_end_dates": [row.label_end_date for row in rows],
-                "fixed_round_trip_cost_bp": [row.fixed_round_trip_cost_bp for row in rows],
-                "horizon_trading_days": model.horizon_trading_days,
-            }
-        ),
-        "cost_contract_hash": recommendation_cost_contract_hash(
-            rows[0].fixed_round_trip_cost_bp,
-            model.horizon_trading_days,
-        ) if len({row.fixed_round_trip_cost_bp for row in rows}) == 1 else None,
+        "evaluation_sample_fingerprint": _hash_payload(evaluation_fingerprint),
+        "cost_contract_hash": cost_contract,
         "candidate_prediction_hash": _hash_payload(
             {
                 "row_ids": [row.row_id for row in rows],
@@ -1029,11 +1429,37 @@ def _rows_for_ids(
     return tuple(by_id[row.row_id] for row in rows if row.row_id in by_id)
 
 
+def _sample_cost_scenario(
+    row: RecommendationCalibrationSample,
+) -> RecommendationCostScenario:
+    try:
+        return cost_scenario_from_metadata(
+            {
+                "cost_scenario_id": row.cost_scenario_id,
+                "cost_scenario_version": row.cost_scenario_version,
+                "cost_basis": row.cost_basis,
+                "cost_scenario_hash": row.cost_scenario_hash,
+                "fixed_round_trip_cost_bp": row.fixed_round_trip_cost_bp,
+                "cost_policy_id": row.cost_policy_id,
+                "cost_policy_version": row.cost_policy_version,
+                "policy_estimate_date": row.policy_estimate_date,
+                "research_order_amount_twd": row.research_order_amount_twd,
+                "research_order_quantity_shares": row.research_order_quantity_shares,
+                "lot_type": row.lot_type,
+                "instrument_type": row.instrument_type,
+            },
+            fixed_round_trip_cost_bp=row.fixed_round_trip_cost_bp,
+        )
+    except RecommendationCostScenarioError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _candidate_id(
     dataset_id: str,
     dataset_hash: str,
     training_as_of: str,
     feature_schema: FeatureSchema,
+    cost_scenario_hash: str | None = None,
 ) -> str:
     payload = {
         "dataset_id": dataset_id,
@@ -1041,6 +1467,8 @@ def _candidate_id(
         "training_as_of": training_as_of,
         "feature_schema": [list(item) for item in feature_schema],
     }
+    if cost_scenario_hash is not None:
+        payload["cost_scenario_hash"] = cost_scenario_hash
     return "rec-cal-" + hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()[:24]
@@ -1099,6 +1527,38 @@ def _required_int(value: int | None, field_name: str) -> int:
     if value is None:
         raise ValueError(f"{field_name} is required")
     return int(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if not isinstance(value, int):
+        return None
+    return value
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_decimal(value: Any) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return result if result.is_finite() else None
+
+
+def _decimal_text(value: str, field_name: str) -> Decimal:
+    parsed = _optional_decimal(value)
+    if parsed is None:
+        raise ValueError(f"{field_name} must be a finite Decimal text")
+    return parsed
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:

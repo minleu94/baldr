@@ -8,7 +8,7 @@ same-date/same-cost evaluation、promotion decision receipt。沒有新資料、
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date
 import hashlib
 import json
@@ -25,6 +25,12 @@ from ml_module.recommendation_calibration_training import (
     RecommendationCalibrationTrainingConfig,
     RecommendationCalibrationTrainingResult,
     RecommendationCalibrationTrainingService,
+    sample_payload,
+)
+from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    normalize_cost_scenario,
 )
 
 
@@ -54,7 +60,8 @@ class DailyRecommendationLearningRunner:
         feature_names: tuple[str, ...],
         feature_schema: FeatureSchema,
         feature_registry_hash: str,
-        fixed_round_trip_cost_bp: int,
+        fixed_round_trip_cost_bp: int | None,
+        cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
         data_root: str | Path | None = None,
         training_config: RecommendationCalibrationTrainingConfig | None = None,
         training_service: RecommendationCalibrationTrainingService | None = None,
@@ -69,7 +76,16 @@ class DailyRecommendationLearningRunner:
         self.feature_names = feature_names
         self.feature_schema = feature_schema
         self.feature_registry_hash = feature_registry_hash
-        self.fixed_round_trip_cost_bp = fixed_round_trip_cost_bp
+        try:
+            self.cost_scenario = normalize_cost_scenario(
+                cost_scenario,
+                fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            )
+        except RecommendationCostScenarioError as exc:
+            raise ValueError(str(exc)) from exc
+        if self.cost_scenario.is_estimated and fixed_round_trip_cost_bp is not None:
+            raise ValueError("estimated runner must not carry fixed_round_trip_cost_bp")
+        self.fixed_round_trip_cost_bp = self.cost_scenario.fixed_round_trip_cost_bp
         self.training_config = training_config or RecommendationCalibrationTrainingConfig()
         self.training_service = training_service or RecommendationCalibrationTrainingService()
         self.authority = authority or RecommendationCalibrationPromotionAuthority(self.root)
@@ -196,6 +212,7 @@ class DailyRecommendationLearningRunner:
                 "finalized": True,
                 "recoverable": False,
                 "dependency_failure_reason": dependency_failure_reason,
+                **_scenario_receipt_metadata(self.cost_scenario),
                 "reason": (
                     "explicit_emergency_rollback_evaluated_without_new_candidate"
                     if emergency_rollback
@@ -248,6 +265,23 @@ class DailyRecommendationLearningRunner:
                 frozen_metadata = json.loads((frozen_root / "candidate.json").read_text(encoding="utf-8"))
                 if not isinstance(frozen_metadata, dict) or not frozen_metadata.get("candidate_id"):
                     raise ValueError("frozen challenger identity is missing")
+                declared_hash = str(frozen_metadata.get("cost_scenario_hash") or "")
+                declared_basis = str(frozen_metadata.get("cost_basis") or "")
+                if self.cost_scenario.is_estimated:
+                    if declared_hash != self.cost_scenario.scenario_hash:
+                        raise ValueError("frozen challenger cost scenario does not match runner lane")
+                else:
+                    # Pre-scenario frozen candidates are immutable legacy
+                    # artifacts.  Missing new metadata is compatible; if a
+                    # legacy artifact declares the optional fields, validate
+                    # them without requiring a rewrite.
+                    if declared_hash and declared_hash != self.cost_scenario.scenario_hash:
+                        raise ValueError("frozen challenger legacy cost scenario does not match runner lane")
+                    if declared_basis and declared_basis != "fixed_round_trip_bp":
+                        raise ValueError("frozen challenger legacy cost basis is invalid")
+                    declared_fixed = frozen_metadata.get("fixed_round_trip_cost_bp")
+                    if declared_fixed is not None and int(declared_fixed) != int(self.fixed_round_trip_cost_bp or 0):
+                        raise ValueError("frozen challenger legacy fixed cost does not match runner lane")
             except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
                 return self._write_skip(
                     day=day,
@@ -327,6 +361,7 @@ class DailyRecommendationLearningRunner:
                     feature_registry_hash=self.feature_registry_hash,
                     training_as_of=training_cutoff,
                     fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
+                    cost_scenario=self.cost_scenario,
                     dataset_quality=dataset_quality,
                     created_at=f"{day}T00:00:00+00:00",
                     config=self.training_config,
@@ -400,6 +435,7 @@ class DailyRecommendationLearningRunner:
             "dataset_id": dataset_id,
             "dataset_hash": dataset_hash,
             "training_as_of": training_cutoff,
+            **_scenario_receipt_metadata(self.cost_scenario),
             "candidate_id": candidate_id,
             "candidate_root": str(candidate_root),
             "candidate_manifest_hash": candidate_metadata.get("manifest_hash"),
@@ -492,6 +528,7 @@ class DailyRecommendationLearningRunner:
             "data_dependency_status": data_dependency_status,
             "outcome_dependency_status": outcome_dependency_status,
             "drift_status": drift_status,
+            **_scenario_receipt_metadata(self.cost_scenario),
             "decision": decision,
             "decision_reason": decision_reason,
             "next_step": _next_step(decision, decision_reason),
@@ -522,11 +559,36 @@ class DailyRecommendationLearningRunner:
 
 
 def _dataset_hash(samples: Sequence[RecommendationCalibrationSample]) -> str:
-    payload = [asdict(row) for row in sorted(samples, key=lambda item: (item.decision_date, item.row_id))]
+    payload = [
+        sample_payload(row)
+        for row in sorted(samples, key=lambda item: (item.decision_date, item.row_id))
+    ]
     digest = hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return f"sha256:{digest}"
+
+
+def _scenario_receipt_metadata(scenario: Any) -> dict[str, Any]:
+    if not getattr(scenario, "is_estimated", False):
+        # Do not mutate the bytes of legacy receipts merely because the
+        # optional scenario contract now exists in code.
+        return {}
+    metadata = scenario.to_dict()
+    return {
+        "cost_scenario_id": metadata.get("scenario_id"),
+        "cost_scenario_version": metadata.get("scenario_version"),
+        "cost_scenario_hash": metadata.get("scenario_hash"),
+        "cost_basis": metadata.get("cost_basis"),
+        "cost_policy_id": metadata.get("policy_id"),
+        "cost_policy_version": metadata.get("policy_version"),
+        "policy_estimate_date": metadata.get("policy_estimate_date"),
+        "research_order_amount_twd": metadata.get("research_order_amount_twd"),
+        "research_order_quantity_shares": metadata.get("research_order_quantity_shares"),
+        "lot_type": metadata.get("lot_type"),
+        "instrument_type": metadata.get("instrument_type"),
+        "cost_scenario": metadata,
+    }
 
 
 def _compact_exception_text(exc: BaseException, *, limit: int = 2400) -> str:

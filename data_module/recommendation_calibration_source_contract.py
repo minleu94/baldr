@@ -1753,7 +1753,13 @@ def _corporate_adjustment_custody_status(
         }
 
 
-def _cost_lanes(*, source_db: Path, output_root: Path, estimated_cost_bp: int) -> dict[str, object]:
+def _cost_lanes(
+    *,
+    source_db: Path,
+    output_root: Path,
+    estimated_cost_bp: int | None,
+    cost_scenario: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     observed_rows = 0
     ready_rows = 0
     unverified_lineage_rows = 0
@@ -1821,6 +1827,23 @@ def _cost_lanes(*, source_db: Path, output_root: Path, estimated_cost_bp: int) -
                 )
         except (OSError, sqlite3.Error, TypeError, ValueError):
             simulated_rows = 0
+    estimated: dict[str, object] = {
+        "cost_bp": int(estimated_cost_bp) if estimated_cost_bp is not None else None,
+        "eligible_for_estimate_only": True,
+        "source": "fixed_policy_parameter" if cost_scenario is None else "versioned_cost_policy_diagnostic",
+    }
+    if cost_scenario is not None:
+        # This source-contract audit only describes source readiness.  It is
+        # not the authority for the learning label and must not turn a
+        # versioned fee/tax estimate into a fixed basis-point assumption.
+        estimated.update(
+            {
+                "cost_scenario": dict(cost_scenario),
+                "fees_tax_only": True,
+                "liquidity_cost_role": "diagnostic_only_not_in_fees_tax_only_label",
+                "missing_is_not_zero_observation": True,
+            }
+        )
     return {
         "observed": {
             "ready_rows": ready_rows,
@@ -1831,11 +1854,7 @@ def _cost_lanes(*, source_db: Path, output_root: Path, estimated_cost_bp: int) -
             "reason": "broker_actual_fill_lineage_verifier_not_implemented",
             "source": "evidence_outcomes.liquidity_cost_bp;broker_ledger_verification_pending",
         },
-        "estimated": {
-            "cost_bp": int(estimated_cost_bp),
-            "eligible_for_estimate_only": True,
-            "source": "fixed_policy_parameter",
-        },
+        "estimated": estimated,
         "simulated": {
             "paper_ledger_research_only_rows": simulated_rows,
             "eligible_as_observed": False,
@@ -1898,7 +1917,8 @@ def inspect_source_contract(
     source_db: str | Path,
     decision_date: date,
     symbols: Sequence[str],
-    estimated_cost_bp: int = 50,
+    estimated_cost_bp: int | None = 50,
+    cost_scenario: Mapping[str, object] | None = None,
     history_start_date: str = "2014-01-01",
     replay_start_date: str | None = None,
     replay_end_date: str | None = None,
@@ -2002,6 +2022,7 @@ def inspect_source_contract(
         source_db=database,
         output_root=source_output,
         estimated_cost_bp=estimated_cost_bp,
+        cost_scenario=cost_scenario,
     )
     source_dates = sorted(
         str(item["source_date"])

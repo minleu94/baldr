@@ -64,6 +64,14 @@ from ml_module.recommendation_historical_replay import (  # noqa: E402
     RecommendationHistoricalReplayConfig,
     RecommendationHistoricalReplayService,
 )
+from ml_module.recommendation_cost_scenario import (  # noqa: E402
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    build_banktaiwan_cost_scenario,
+    build_legacy_cost_scenario,
+    cost_scenario_from_metadata,
+    normalize_cost_scenario,
+)
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -82,6 +90,14 @@ def _clean_blockers(value: object) -> list[str]:
     if not isinstance(value, (list, tuple, set)):
         return []
     return list(dict.fromkeys(str(item) for item in value if str(item).strip()))
+
+
+def _metadata_int_or_none(value: object) -> int | None:
+    """Read JSON integer metadata without coercing malformed values."""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
 
 def _capture_dependency_failure(
@@ -273,6 +289,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--training-as-of", default=None)
     parser.add_argument("--fixed-round-trip-cost-bp", type=int, default=50)
+    parser.add_argument(
+        "--cost-scenario",
+        choices=("legacy_fixed_bp", "banktaiwan_estimated_research"),
+        default="legacy_fixed_bp",
+        help="成本 contract；預設維持既有 fixed 50bp，臺銀情境僅供 research/shadow。",
+    )
+    parser.add_argument(
+        "--cost-policy-estimate-date",
+        default="2026-01-01",
+        help="臺銀 policy estimate date；與 market replay date 分開記錄。",
+    )
+    parser.add_argument(
+        "--research-order-amount-twd",
+        default=None,
+        help="臺銀研究訂單金額（Decimal-safe text）；與股數擇一。",
+    )
+    parser.add_argument("--research-order-quantity-shares", type=int, default=None)
+    parser.add_argument(
+        "--research-order-lot-type",
+        choices=("full_lot", "odd_lot"),
+        default="full_lot",
+    )
+    parser.add_argument(
+        "--research-instrument-type",
+        choices=("ordinary_stock", "equity_etf"),
+        default="ordinary_stock",
+    )
     parser.add_argument("--max-decision-dates", type=int, default=100)
     parser.add_argument(
         "--replay-selection-policy",
@@ -305,6 +348,124 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not create today's forward capture.",
     )
     return parser
+
+
+def _cost_scenario_from_args(
+    args: argparse.Namespace,
+) -> tuple[int | None, RecommendationCostScenario]:
+    if args.cost_scenario == "legacy_fixed_bp":
+        fixed = 50 if args.fixed_round_trip_cost_bp is None else int(args.fixed_round_trip_cost_bp)
+        return fixed, build_legacy_cost_scenario(fixed)
+    if args.fixed_round_trip_cost_bp not in (None, 50):
+        raise ValueError(
+            "banktaiwan_estimated_research 不可與非預設 fixed_round_trip_cost_bp 混用"
+        )
+    scenario = build_banktaiwan_cost_scenario(
+        policy_estimate_date=str(args.cost_policy_estimate_date),
+        research_order_amount_twd=args.research_order_amount_twd,
+        research_order_quantity_shares=args.research_order_quantity_shares,
+        lot_type=str(args.research_order_lot_type),
+        instrument_type=str(args.research_instrument_type),
+    )
+    return None, scenario
+
+
+def _stored_cost_scenario(
+    payload: Mapping[str, Any],
+    *,
+    source_path: Path,
+) -> tuple[RecommendationCostScenario | None, str | None]:
+    """Resolve one shared-root marker without ever inventing a new lane."""
+
+    try:
+        fixed_value = _metadata_int_or_none(payload.get("fixed_round_trip_cost_bp"))
+        return (
+            cost_scenario_from_metadata(
+                payload,
+                fixed_round_trip_cost_bp=fixed_value,
+            ),
+            None,
+        )
+    except (TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        return None, f"{source_path}:invalid_cost_scenario:{type(exc).__name__}:{exc}"
+
+
+def _cost_scenario_root_conflict(
+    output_root: Path,
+    requested_scenario: RecommendationCostScenario,
+) -> str | None:
+    """Reject a second cost lane from reusing shared authority state.
+
+    Run/dataset scopes already include the scenario identity, but the active
+    pointer, challenger pointer, decision receipts, and latest status are
+    intentionally shared legacy paths.  A mismatched lane must therefore use
+    another explicit output root; silently replacing those files would make a
+    fixed-cost champion appear to belong to an estimated-cost experiment (or
+    the reverse).
+    """
+
+    root = Path(output_root).resolve() / "recommendation_learning"
+    marker_paths: list[Path] = [
+        root / "recommendation-calibration-active-pointer.json",
+        root / "challenger" / "current.json",
+        root / "latest_status.json",
+    ]
+    decisions_root = root / "decisions"
+    if decisions_root.is_dir():
+        marker_paths.extend(sorted(decisions_root.glob("recommendation-calibration-*.json"))[:256])
+    seen: set[str] = set()
+    for marker_path in marker_paths:
+        if not marker_path.is_file():
+            continue
+        try:
+            raw = json.loads(marker_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            return (
+                "cost_scenario_root_conflict:existing_marker_unreadable:"
+                f"{marker_path}:{type(exc).__name__}"
+            )
+        if not isinstance(raw, Mapping):
+            return f"cost_scenario_root_conflict:existing_marker_invalid:{marker_path}"
+        payload = dict(raw)
+        scenario, error = _stored_cost_scenario(payload, source_path=marker_path)
+        if error is not None or scenario is None:
+            return f"cost_scenario_root_conflict:{error or marker_path}"
+        marker_identity = scenario.scenario_hash
+        if marker_identity in seen:
+            continue
+        seen.add(marker_identity)
+        if marker_identity != requested_scenario.scenario_hash:
+            return (
+                "cost_scenario_root_conflict:shared_authority_state_belongs_to_"
+                f"{scenario.scenario_id}:{scenario.scenario_hash}; requested="
+                f"{requested_scenario.scenario_id}:{requested_scenario.scenario_hash}; "
+                "use a different --output-root for an isolated cost lane"
+            )
+    return None
+
+
+def _scenario_cli_metadata(scenario: RecommendationCostScenario) -> dict[str, Any]:
+    """Expose the requested lane in preflight failures without extra writes."""
+
+    return {
+        "cost_scenario": scenario.metadata(),
+        "cost_scenario_id": scenario.scenario_id,
+        "cost_scenario_version": scenario.scenario_version,
+        "cost_scenario_hash": scenario.scenario_hash,
+        "cost_basis": scenario.cost_basis,
+        "fixed_round_trip_cost_bp": scenario.fixed_round_trip_cost_bp,
+        "cost_policy_id": scenario.policy_id,
+        "cost_policy_version": scenario.policy_version,
+        "policy_estimate_date": scenario.policy_estimate_date,
+        "research_order_amount_twd": (
+            str(scenario.research_order_amount_twd)
+            if scenario.research_order_amount_twd is not None
+            else None
+        ),
+        "research_order_quantity_shares": scenario.research_order_quantity_shares,
+        "lot_type": scenario.lot_type,
+        "instrument_type": scenario.instrument_type,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -362,6 +523,50 @@ def main(argv: list[str] | None = None) -> int:
         else _taipei_now().date()
     )
     try:
+        effective_fixed_cost, cost_scenario = _cost_scenario_from_args(args)
+    except (TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        print(
+            json.dumps(
+                {
+                    "schema_version": "daily-recommendation-learning-cli-result.v3",
+                    "status": "failed",
+                    "decision": "retain_current",
+                    "decision_reason": "cost_scenario_invalid",
+                    "decision_date": decision_day.isoformat(),
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 2
+    root_conflict = _cost_scenario_root_conflict(
+        learning_output_root,
+        cost_scenario,
+    )
+    if root_conflict is not None:
+        print(
+            json.dumps(
+                {
+                    "schema_version": "daily-recommendation-learning-cli-result.v3",
+                    "status": "failed",
+                    "decision": "retain_current",
+                    "decision_reason": "cost_scenario_root_conflict",
+                    "decision_date": decision_day.isoformat(),
+                    "output_root": str(learning_output_root),
+                    "error": root_conflict,
+                    **_scenario_cli_metadata(cost_scenario),
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 2
+    try:
         symbols, symbol_source = _resolve_symbols(
             output_root=scheduled_snapshot_output_root,
             explicit_symbols=args.symbols,
@@ -374,25 +579,29 @@ def main(argv: list[str] | None = None) -> int:
             )
             effective_policy = RecommendationPromotionPolicy()
             experiment_scope = _scheduled_experiment_scope(
-                fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+                fixed_round_trip_cost_bp=effective_fixed_cost,
+                cost_scenario=cost_scenario,
                 policy=effective_policy,
                 feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
             )
             run_scope = _scheduled_run_scope(
                 symbols=symbols,
                 snapshot_cohort=snapshot_cohort,
-                fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+                fixed_round_trip_cost_bp=effective_fixed_cost,
+                cost_scenario=cost_scenario,
                 policy=effective_policy,
                 feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
             )
             capture_scope = _scheduled_capture_scope(
                 symbols=symbols,
                 snapshot_cohort=snapshot_cohort,
+                cost_scenario=cost_scenario,
             )
         else:
             experiment_scope = _explicit_experiment_scope(
                 symbols,
-                fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+                fixed_round_trip_cost_bp=effective_fixed_cost,
+                cost_scenario=cost_scenario,
                 policy=RecommendationPromotionPolicy(),
                 feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
             )
@@ -400,7 +609,8 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         runner = _build_runner(
             learning_output_root,
-            args.fixed_round_trip_cost_bp,
+            effective_fixed_cost,
+            cost_scenario=cost_scenario,
             data_root=config.data_root,
         )
         dependencies = _dependency_failure(
@@ -437,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
                     error=f"{type(exc).__name__}: {exc}",
                     symbol_coverage=None,
                     run_scope=None,
+                    cost_scenario=cost_scenario,
                 ),
                 ensure_ascii=False,
                 sort_keys=True,
@@ -459,7 +670,8 @@ def main(argv: list[str] | None = None) -> int:
         replay_start_date=replay_start_date,
         replay_end_date=replay_end_date,
         symbols=symbols,
-        fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+        fixed_round_trip_cost_bp=effective_fixed_cost,
+        cost_scenario=cost_scenario,
         max_decision_dates=args.max_decision_dates,
         selection_policy=args.replay_selection_policy,
     )
@@ -470,7 +682,8 @@ def main(argv: list[str] | None = None) -> int:
         learning_output_root=learning_output_root,
         decision_date=decision_day,
         symbols=symbols,
-        fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+        fixed_round_trip_cost_bp=effective_fixed_cost,
+        cost_scenario=cost_scenario,
         history_start_date=replay_config.history_start_date,
         replay_start_date=replay_config.replay_start_date,
         replay_end_date=replay_config.replay_end_date,
@@ -478,7 +691,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     runner = _build_runner(
         learning_output_root,
-        args.fixed_round_trip_cost_bp,
+        effective_fixed_cost,
+        cost_scenario=cost_scenario,
         data_root=config.data_root,
     )
     if args.emergency_rollback:
@@ -517,6 +731,7 @@ def main(argv: list[str] | None = None) -> int:
                     error=None,
                     symbol_coverage=snapshot_cohort,
                     run_scope=run_scope,
+                    cost_scenario=cost_scenario,
                 ),
                 ensure_ascii=False,
                 sort_keys=True,
@@ -570,6 +785,7 @@ def main(argv: list[str] | None = None) -> int:
                     error=f"{type(exc).__name__}: {exc}",
                     symbol_coverage=snapshot_cohort,
                     run_scope=run_scope,
+                    cost_scenario=cost_scenario,
                 ),
                 ensure_ascii=False,
                 sort_keys=True,
@@ -605,7 +821,8 @@ def main(argv: list[str] | None = None) -> int:
         output_root=learning_output_root,
         challenger_payload=challenger_payload,
         feature_count=len(CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids),
-        fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+        fixed_round_trip_cost_bp=effective_fixed_cost,
+        cost_scenario=cost_scenario,
         training_as_of=training_as_of,
         data_root=config.data_root,
     )
@@ -835,6 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
         capture_scope=capture_scope,
         replay_config=replay_config,
         source_contract_audit=source_contract_audit,
+        cost_scenario=cost_scenario,
     )
     capture_failure, capture_recoverable = _capture_dependency_failure(capture_result)
 
@@ -976,6 +1194,7 @@ def main(argv: list[str] | None = None) -> int:
         capture_scope=capture_scope,
         experiment_scope=experiment_scope,
         recoverable=capture_recoverable,
+        cost_scenario=cost_scenario,
     )
     payload["natural_evidence_supplied"] = automatic_evidence is not None
     payload["ignored_caller_inputs"] = ignored_inputs
@@ -997,8 +1216,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def _build_runner(
     output_root: Path,
-    fixed_round_trip_cost_bp: int,
+    fixed_round_trip_cost_bp: int | None,
     *,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
     data_root: Path | None = None,
 ) -> DailyRecommendationLearningRunner:
     return DailyRecommendationLearningRunner(
@@ -1008,6 +1228,7 @@ def _build_runner(
         feature_schema=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
         feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
         fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        cost_scenario=cost_scenario,
         training_config=RecommendationCalibrationTrainingConfig(),
     )
 
@@ -1020,7 +1241,8 @@ def _audit_source_contract(
     learning_output_root: Path,
     decision_date: date,
     symbols: tuple[str, ...],
-    fixed_round_trip_cost_bp: int,
+    fixed_round_trip_cost_bp: int | None,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
     history_start_date: str,
     replay_start_date: str,
     replay_end_date: str,
@@ -1029,13 +1251,27 @@ def _audit_source_contract(
     """Create a read-only source audit and persist its shadow receipt."""
 
     try:
+        scenario = normalize_cost_scenario(
+            cost_scenario,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        )
+        estimated_lane = scenario.is_estimated
         contract = inspect_source_contract(
             data_root=data_root,
             output_root=output_root,
             source_db=source_db,
             decision_date=decision_date,
             symbols=symbols,
-            estimated_cost_bp=fixed_round_trip_cost_bp,
+            # The source contract's ``estimated`` lane is only a readiness
+            # diagnostic.  For the BankTaiwan lane it must not receive a
+            # fabricated fixed-bp fallback; the exact fee/tax label is owned
+            # by the versioned cost policy in the replay/evidence path.
+            estimated_cost_bp=(
+                None
+                if estimated_lane
+                else int(scenario.fixed_round_trip_cost_bp or 0)
+            ),
+            cost_scenario=(scenario.metadata() if estimated_lane else None),
             history_start_date=history_start_date,
             replay_start_date=replay_start_date,
             replay_end_date=replay_end_date,
@@ -1045,10 +1281,13 @@ def _audit_source_contract(
             contract,
             learning_output_root=learning_output_root,
         )
-        return {
+        result: dict[str, Any] = {
             "source_contract": contract,
             "source_contract_receipt": receipt,
         }
+        if estimated_lane:
+            result["cost_scenario"] = scenario.metadata()
+        return result
     except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
         return {
             "source_contract": {
@@ -1345,6 +1584,12 @@ def _capture_request_fingerprint(
         ),
         "source_contract": _capture_source_identity(source_contract_binding),
     }
+    candidate_cost_basis = str(candidate_metadata.get("cost_basis") or "")
+    declared_cost_scenario_hash = str(candidate_metadata.get("cost_scenario_hash") or "")
+    if candidate_cost_basis == "estimated_research_only" and declared_cost_scenario_hash:
+        # The request identity is scenario-scoped for the new lane.  Legacy
+        # captures intentionally keep the historical fingerprint body.
+        body["cost_scenario_hash"] = declared_cost_scenario_hash
     return "sha256:" + hashlib.sha256(
         json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
             "utf-8"
@@ -1388,6 +1633,12 @@ def _capture_matches_request(
         return False
     if Path(str(payload.get("candidate_root") or "")).resolve() != candidate_root.resolve():
         return False
+    candidate_cost_basis = str(candidate_metadata.get("cost_basis") or "")
+    candidate_cost_scenario_hash = str(candidate_metadata.get("cost_scenario_hash") or "")
+    payload_cost_scenario_hash = str(payload.get("cost_scenario_hash") or "")
+    if candidate_cost_basis == "estimated_research_only" or payload_cost_scenario_hash:
+        if not candidate_cost_scenario_hash or payload_cost_scenario_hash != candidate_cost_scenario_hash:
+            return False
     if str(payload.get("capture_as_of_date") or "")[:10] != str(decision_date)[:10]:
         return False
     if set(actual_by_symbol) != set(expected_by_symbol):
@@ -1410,6 +1661,7 @@ def _scan_cross_capture_identity(
     decision_date: str,
     inputs: tuple[RecommendationPredictionCaptureInput, ...],
     source_contract_binding: Mapping[str, Any] | None,
+    cost_scenario_hash: str | None = None,
 ) -> dict[str, Any]:
     """Audit same-day rows before writing a new immutable scope capture."""
 
@@ -1431,6 +1683,10 @@ def _scan_cross_capture_identity(
         if str(payload.get("candidate_id") or "") != candidate_id:
             continue
         if str(payload.get("capture_as_of_date") or "")[:10] != str(decision_date)[:10]:
+            continue
+        if cost_scenario_hash and str(
+            payload.get("cost_scenario_hash") or payload.get("scenario_hash") or ""
+        ) != cost_scenario_hash:
             continue
         for row in payload.get("rows", []):
             if not isinstance(row, Mapping):
@@ -1468,9 +1724,19 @@ def _capture_current_if_requested(
     capture_scope: str | None = None,
     replay_config: RecommendationHistoricalReplayConfig,
     source_contract_audit: Mapping[str, Any] | None = None,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not args.capture_current:
         return {"status": "not_requested"}
+    resolved_scenario = normalize_cost_scenario(
+        cost_scenario,
+        fixed_round_trip_cost_bp=(
+            int(args.fixed_round_trip_cost_bp)
+            if cost_scenario is None and args.fixed_round_trip_cost_bp is not None
+            else None
+        ),
+    )
+    effective_fixed_cost = resolved_scenario.fixed_round_trip_cost_bp
     decision_day = (
         date.fromisoformat(str(args.decision_date)[:10])
         if args.decision_date
@@ -1624,6 +1890,12 @@ def _capture_current_if_requested(
                 decision_date=decision_day.isoformat(),
                 inputs=inputs,
                 source_contract_binding=source_contract_binding,
+                cost_scenario_hash=(
+                    str(candidate_metadata.get("cost_scenario_hash") or "") or None
+                    if str(candidate_metadata.get("cost_basis") or "")
+                    == "estimated_research_only"
+                    else None
+                ),
             )
             if capture_path.is_file():
                 payload, error = _read_verified_candidate_capture(capture_path)
@@ -1680,7 +1952,8 @@ def _capture_current_if_requested(
                     decision_date=decision_day.isoformat(),
                     captured_at=capture_at,
                     inputs=inputs,
-                    fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+                    fixed_round_trip_cost_bp=effective_fixed_cost,
+                    cost_scenario=resolved_scenario,
                     data_root=config.data_root,
                     champion_pointer_path=(
                         Path(output_root)
@@ -1718,7 +1991,8 @@ def _capture_current_if_requested(
             decision_date=decision_day,
             captured_at=capture_at,
             inputs=inputs,
-            fixed_round_trip_cost_bp=args.fixed_round_trip_cost_bp,
+            fixed_round_trip_cost_bp=effective_fixed_cost,
+            cost_scenario=resolved_scenario,
         )
         statuses = {str(candidate_capture.get("status")), str(active_capture.get("status"))}
         if "captured" in statuses:
@@ -1753,7 +2027,8 @@ def _capture_active_model_monitor(
     decision_date: date,
     captured_at: str,
     inputs: tuple[RecommendationPredictionCaptureInput, ...],
-    fixed_round_trip_cost_bp: int,
+    fixed_round_trip_cost_bp: int | None,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Capture the actually delivered active output, even without a challenger."""
 
@@ -1827,6 +2102,7 @@ def _capture_active_model_monitor(
             captured_at=captured_at,
             inputs=inputs,
             fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            cost_scenario=cost_scenario,
         )
         capture.persist(capture_path)
         return {
@@ -2184,7 +2460,8 @@ def _scheduled_run_scope(
     *,
     symbols: tuple[str, ...],
     snapshot_cohort: Mapping[str, Any] | None,
-    fixed_round_trip_cost_bp: int = 50,
+    fixed_round_trip_cost_bp: int | None = 50,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
     policy: RecommendationPromotionPolicy | None = None,
     feature_registry_hash: str | None = None,
 ) -> str:
@@ -2202,6 +2479,7 @@ def _scheduled_run_scope(
         ).hexdigest()
     experiment_hash = _scheduled_experiment_scope(
         fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        cost_scenario=cost_scenario,
         policy=policy,
         feature_registry_hash=feature_registry_hash,
     ).rsplit("-", 1)[-1]
@@ -2210,21 +2488,35 @@ def _scheduled_run_scope(
 
 def _scheduled_experiment_scope(
     *,
-    fixed_round_trip_cost_bp: int = 50,
+    fixed_round_trip_cost_bp: int | None = 50,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
     policy: RecommendationPromotionPolicy | None = None,
     feature_registry_hash: str | None = None,
 ) -> str:
     """Stable identity shared by all scheduled days and symbol cohorts."""
 
     effective_policy = policy or RecommendationPromotionPolicy()
-    body = {
+    scenario = cost_scenario
+    if scenario is None:
+        scenario = build_legacy_cost_scenario(
+            50 if fixed_round_trip_cost_bp is None else fixed_round_trip_cost_bp
+        )
+    else:
+        scenario = normalize_cost_scenario(
+            scenario,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        )
+    body: dict[str, Any] = {
         "experiment_version": "scheduled-daily-recommendation-learning-v1",
         "strategy_profile": "scheduled_daily_research_default_v1",
         "target": "price_up_20d_after_cost_separate_lanes",
         "feature_registry_hash": feature_registry_hash or CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
         "policy_hash": effective_policy.policy_hash,
-        "fixed_round_trip_cost_bp": int(fixed_round_trip_cost_bp),
+        "fixed_round_trip_cost_bp": scenario.fixed_round_trip_cost_bp,
     }
+    if scenario.is_estimated:
+        body["cost_scenario"] = scenario.metadata()
+        body["cost_scenario_hash"] = scenario.scenario_hash
     digest = hashlib.sha256(
         json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
             "utf-8"
@@ -2236,18 +2528,32 @@ def _scheduled_experiment_scope(
 def _explicit_experiment_scope(
     symbols: tuple[str, ...],
     *,
-    fixed_round_trip_cost_bp: int = 50,
+    fixed_round_trip_cost_bp: int | None = 50,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
     policy: RecommendationPromotionPolicy | None = None,
     feature_registry_hash: str | None = None,
 ) -> str:
     effective_policy = policy or RecommendationPromotionPolicy()
-    body = {
+    scenario = cost_scenario
+    if scenario is None:
+        scenario = build_legacy_cost_scenario(
+            50 if fixed_round_trip_cost_bp is None else fixed_round_trip_cost_bp
+        )
+    else:
+        scenario = normalize_cost_scenario(
+            scenario,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        )
+    body: dict[str, Any] = {
         "experiment_version": "explicit-recommendation-learning-trial-v1",
         "symbols": sorted(set(symbols)),
         "feature_registry_hash": feature_registry_hash or CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
         "policy_hash": effective_policy.policy_hash,
-        "fixed_round_trip_cost_bp": int(fixed_round_trip_cost_bp),
+        "fixed_round_trip_cost_bp": scenario.fixed_round_trip_cost_bp,
     }
+    if scenario.is_estimated:
+        body["cost_scenario"] = scenario.metadata()
+        body["cost_scenario_hash"] = scenario.scenario_hash
     digest = hashlib.sha256(
         json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
             "utf-8"
@@ -2260,6 +2566,7 @@ def _scheduled_capture_scope(
     *,
     symbols: tuple[str, ...],
     snapshot_cohort: Mapping[str, Any] | None,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
 ) -> str:
     cohort_hash = str((snapshot_cohort or {}).get("cohort_hash") or "")
     if not cohort_hash.startswith("sha256:"):
@@ -2271,7 +2578,12 @@ def _scheduled_capture_scope(
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
-    return "scheduled-capture-" + cohort_hash.split(":", 1)[1][:16]
+    token = "scheduled-capture-" + cohort_hash.split(":", 1)[1][:16]
+    if cost_scenario is not None:
+        scenario = normalize_cost_scenario(cost_scenario, fixed_round_trip_cost_bp=None)
+        if scenario.is_estimated:
+            token += "-c" + scenario.scenario_hash.split(":", 1)[1][:12]
+    return token
 
 
 def _merge_samples(
@@ -2282,11 +2594,11 @@ def _merge_samples(
     # than a replay row, especially when it carries an observed liquidity
     # cost.  This also prevents duplicate rows from inflating the maturity or
     # training sample count.
-    by_key: dict[tuple[str, str, int], RecommendationCalibrationSample] = {
-        (row.symbol, row.decision_date, 20): row for row in replay_samples
+    by_key: dict[tuple[str, str, int, str], RecommendationCalibrationSample] = {
+        _sample_identity_key(row): row for row in replay_samples
     }
     for row in natural_samples:
-        key = (row.symbol, row.decision_date, 20)
+        key = _sample_identity_key(row)
         existing = by_key.get(key)
         if existing is None or (
             existing.observed_liquidity_cost_bp is None
@@ -2296,14 +2608,28 @@ def _merge_samples(
     return tuple(sorted(by_key.values(), key=lambda row: (row.decision_date, row.symbol, row.row_id)))
 
 
+def _sample_identity_key(
+    row: RecommendationCalibrationSample,
+) -> tuple[str, str, int, str]:
+    """Keep replay/natural deduplication isolated by immutable cost lane."""
+
+    return (
+        row.symbol,
+        row.decision_date,
+        20,
+        str(getattr(row, "cost_scenario_hash", None) or "legacy-fixed-round-trip-bp-v1"),
+    )
+
+
 def _load_natural_training_samples(
     *,
     output_root: Path,
     challenger_payload: Mapping[str, Any] | None,
     feature_count: int,
-    fixed_round_trip_cost_bp: int,
+    fixed_round_trip_cost_bp: int | None,
     training_as_of: str,
     data_root: Path | None,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
 ) -> tuple[RecommendationCalibrationSample, ...]:
     """Recover traceable natural rows from retired and adopted model paths.
 
@@ -2314,8 +2640,17 @@ def _load_natural_training_samples(
     delivered probability is never used as a hidden target or benchmark.
     """
 
+    expected_scenario = normalize_cost_scenario(
+        cost_scenario,
+        fixed_round_trip_cost_bp=(
+            fixed_round_trip_cost_bp if cost_scenario is None else None
+        ),
+    )
+    expected_scenario_hash = (
+        expected_scenario.scenario_hash if expected_scenario.is_estimated else ""
+    )
     samples: list[RecommendationCalibrationSample] = []
-    seen_keys: set[tuple[str, str, int]] = set()
+    seen_keys: set[tuple[str, str, int, str]] = set()
     seen_rows: set[str] = set()
     cutoff = date.fromisoformat(str(training_as_of)[:10])
     if challenger_payload and challenger_payload.get("status") == "retired":
@@ -2328,11 +2663,26 @@ def _load_natural_training_samples(
                     evidence_payload = json.loads(evidence_path.read_text(encoding="utf-8"))
                     if not isinstance(evidence_payload, Mapping):
                         continue
-                    if evidence_payload.get("schema_version") != "recommendation-natural-forward-evidence.v2":
+                    if evidence_payload.get("schema_version") not in {
+                        "recommendation-natural-forward-evidence.v2",
+                        "recommendation-natural-forward-evidence.v3",
+                    }:
                         continue
                     if evidence_payload.get("candidate_freeze_hash") != candidate_freeze_hash:
                         continue
                     if evidence_payload.get("status") != "matured":
+                        continue
+                    evidence_scenario = cost_scenario_from_metadata(
+                        evidence_payload,
+                        fixed_round_trip_cost_bp=_metadata_int_or_none(
+                            evidence_payload.get("fixed_round_trip_cost_bp")
+                        ),
+                    )
+                    if evidence_scenario.is_estimated != expected_scenario.is_estimated:
+                        continue
+                    if expected_scenario_hash and evidence_scenario.scenario_hash != expected_scenario_hash:
+                        continue
+                    if not expected_scenario_hash and evidence_scenario.scenario_hash != expected_scenario.scenario_hash:
                         continue
                     capture_path = Path(str(evidence_payload.get("capture_path") or "")).resolve()
                     capture_payload = json.loads(capture_path.read_text(encoding="utf-8"))
@@ -2351,8 +2701,9 @@ def _load_natural_training_samples(
                         if not isinstance(comparison, Mapping):
                             continue
                         row_id = str(comparison.get("capture_row_id") or "")
+                        row_seen_key = f"{evidence_scenario.scenario_hash}:{row_id}"
                         capture_row = capture_rows.get(row_id)
-                        if not row_id or row_id in seen_rows or capture_row is None:
+                        if not row_id or row_seen_key in seen_rows or capture_row is None:
                             continue
                         baseline_id = str(
                             comparison.get("probability_baseline_id")
@@ -2367,7 +2718,12 @@ def _load_natural_training_samples(
                             continue
                         symbol = str(comparison.get("symbol") or capture_row.get("symbol") or "")
                         decision = str(comparison.get("capture_as_of_date") or capture_row.get("decision_date") or "")[:10]
-                        key = (symbol, decision, 20)
+                        key = (
+                            symbol,
+                            decision,
+                            20,
+                            evidence_scenario.scenario_hash,
+                        )
                         if not symbol or key in seen_keys:
                             continue
                         benchmark = comparison.get("benchmark_return_bp")
@@ -2380,6 +2736,7 @@ def _load_natural_training_samples(
                         liquidity = comparison.get("observed_liquidity_cost_bp")
                         if comparison.get("observed_liquidity_cost_source") is None:
                             liquidity = None
+                        estimated = evidence_scenario.is_estimated
                         sample = RecommendationCalibrationSample.from_forward_return(
                             row_id=f"natural-forward:{candidate_id}:{row_id}",
                             symbol=symbol,
@@ -2401,7 +2758,55 @@ def _load_natural_training_samples(
                             ),
                             stock_return_bp=int(stock_return),
                             benchmark_return_bp=int(benchmark),
-                            fixed_round_trip_cost_bp=int(evidence_payload.get("fixed_round_trip_cost_bp", fixed_round_trip_cost_bp)),
+                            fixed_round_trip_cost_bp=(
+                                None
+                                if estimated
+                                else int(
+                                    evidence_payload.get(
+                                        "fixed_round_trip_cost_bp",
+                                        fixed_round_trip_cost_bp,
+                                    )
+                                )
+                            ),
+                            cost_scenario=(evidence_scenario if estimated else None),
+                            cost_estimate=(
+                                {
+                                    "estimated_buy_cost_twd": comparison.get("estimated_buy_cost_twd"),
+                                    "estimated_sell_cost_twd": comparison.get("estimated_sell_cost_twd"),
+                                    "estimated_round_trip_cost_twd": comparison.get(
+                                        "estimated_round_trip_cost_twd"
+                                    ),
+                                    "estimated_round_trip_cost_bp": comparison.get(
+                                        "estimated_round_trip_cost_bp"
+                                    ),
+                                    "gross_buy_amount_twd": comparison.get("gross_buy_amount_twd"),
+                                    "gross_sell_amount_twd": comparison.get("gross_sell_amount_twd"),
+                                    "net_profit_twd": comparison.get("net_profit_twd"),
+                                    "market_replay_date": comparison.get("market_replay_date") or decision,
+                                }
+                                if estimated
+                                else None
+                            ),
+                            estimated_buy_cost_twd=(
+                                comparison.get("estimated_buy_cost_twd") if estimated else None
+                            ),
+                            estimated_sell_cost_twd=(
+                                comparison.get("estimated_sell_cost_twd") if estimated else None
+                            ),
+                            estimated_round_trip_cost_twd=(
+                                comparison.get("estimated_round_trip_cost_twd") if estimated else None
+                            ),
+                            estimated_round_trip_cost_bp=(
+                                comparison.get("estimated_round_trip_cost_bp") if estimated else None
+                            ),
+                            net_profit_twd=(
+                                comparison.get("net_profit_twd") if estimated else None
+                            ),
+                            market_replay_date=(
+                                str(comparison.get("market_replay_date") or decision)[:10]
+                                if estimated
+                                else None
+                            ),
                             observed_liquidity_cost_bp=(int(liquidity) if liquidity is not None else None),
                             rule_probability_bp=NULL_BENCHMARK_PROBABILITY_BP,
                             rule_after_cost_probability_bp=(
@@ -2418,7 +2823,7 @@ def _load_natural_training_samples(
                             source_quality="natural_forward",
                         )
                         samples.append(sample)
-                        seen_rows.add(row_id)
+                        seen_rows.add(row_seen_key)
                         seen_keys.add(key)
                 except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, KeyError):
                     continue
@@ -2427,6 +2832,7 @@ def _load_natural_training_samples(
             output_root=output_root,
             feature_count=feature_count,
             fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            cost_scenario=expected_scenario,
             training_as_of=cutoff.isoformat(),
             data_root=data_root,
             seen_keys=seen_keys,
@@ -2440,11 +2846,12 @@ def _load_active_model_training_samples(
     *,
     output_root: Path,
     feature_count: int,
-    fixed_round_trip_cost_bp: int,
+    fixed_round_trip_cost_bp: int | None,
     training_as_of: str,
     data_root: Path | None,
-    seen_keys: set[tuple[str, str, int]],
+    seen_keys: set[tuple[str, str, int, str]],
     seen_rows: set[str],
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
 ) -> tuple[RecommendationCalibrationSample, ...]:
     """Return matured post-adoption rows without leaking active predictions.
 
@@ -2458,12 +2865,28 @@ def _load_active_model_training_samples(
     root = Path(output_root).resolve()
     pointer_path = root / "recommendation_learning" / "recommendation-calibration-active-pointer.json"
     try:
+        expected_scenario = normalize_cost_scenario(
+            cost_scenario,
+            fixed_round_trip_cost_bp=(
+                fixed_round_trip_cost_bp if cost_scenario is None else None
+            ),
+        )
         pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
         if not isinstance(pointer, Mapping) or pointer.get("status") != "active":
             return ()
         candidate_id = str(pointer.get("candidate_id") or "")
         effective_date = date.fromisoformat(str(pointer.get("effective_date") or "")[:10])
         if not candidate_id:
+            return ()
+        pointer_scenario = cost_scenario_from_metadata(
+            pointer,
+            fixed_round_trip_cost_bp=_metadata_int_or_none(
+                pointer.get("fixed_round_trip_cost_bp")
+            ),
+        )
+        if pointer_scenario.is_estimated != expected_scenario.is_estimated:
+            return ()
+        if pointer_scenario.scenario_hash != expected_scenario.scenario_hash:
             return ()
         from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
 
@@ -2495,6 +2918,14 @@ def _load_active_model_training_samples(
                     active_identity_hash=identity_hash,
                     decision_date=cutoff.isoformat(),
                 )
+                payload_scenario = cost_scenario_from_metadata(
+                    payload,
+                    fixed_round_trip_cost_bp=_metadata_int_or_none(
+                        payload.get("fixed_round_trip_cost_bp")
+                    ),
+                )
+                if payload_scenario.scenario_hash != expected_scenario.scenario_hash:
+                    continue
                 comparisons = payload.get("comparisons")
                 if not isinstance(comparisons, list):
                     continue
@@ -2504,7 +2935,8 @@ def _load_active_model_training_samples(
                     row_id = str(comparison.get("capture_row_id") or "")
                     decision = str(comparison.get("capture_as_of_date") or "")[:10]
                     label_available = str(comparison.get("label_available_date") or "")[:10]
-                    if not row_id or row_id in seen_rows or not decision or not label_available:
+                    row_seen_key = f"{payload_scenario.scenario_hash}:{row_id}"
+                    if not row_id or row_seen_key in seen_rows or not decision or not label_available:
                         continue
                     if date.fromisoformat(decision) < effective_date:
                         continue
@@ -2522,12 +2954,13 @@ def _load_active_model_training_samples(
                         or stock_return is None
                     ):
                         continue
-                    key = (symbol, decision, 20)
+                    key = (symbol, decision, 20, payload_scenario.scenario_hash)
                     if key in seen_keys:
                         continue
                     liquidity = comparison.get("observed_liquidity_cost_bp")
                     if comparison.get("observed_liquidity_cost_source") is None:
                         liquidity = None
+                    estimated = payload_scenario.is_estimated
                     sample = RecommendationCalibrationSample.from_forward_return(
                         row_id=f"natural-active-forward:{candidate_id}:{row_id}",
                         symbol=symbol,
@@ -2539,8 +2972,47 @@ def _load_active_model_training_samples(
                         feature_values=tuple(None if value is None else int(value) for value in feature_values),
                         stock_return_bp=int(stock_return),
                         benchmark_return_bp=int(benchmark),
-                        fixed_round_trip_cost_bp=int(
-                            payload.get("fixed_round_trip_cost_bp", fixed_round_trip_cost_bp)
+                        fixed_round_trip_cost_bp=(
+                            None
+                            if estimated
+                            else int(payload.get("fixed_round_trip_cost_bp", fixed_round_trip_cost_bp))
+                        ),
+                        cost_scenario=(payload_scenario if estimated else None),
+                        cost_estimate=(
+                            {
+                                "estimated_buy_cost_twd": comparison.get("estimated_buy_cost_twd"),
+                                "estimated_sell_cost_twd": comparison.get("estimated_sell_cost_twd"),
+                                "estimated_round_trip_cost_twd": comparison.get(
+                                    "estimated_round_trip_cost_twd"
+                                ),
+                                "estimated_round_trip_cost_bp": comparison.get(
+                                    "estimated_round_trip_cost_bp"
+                                ),
+                                "gross_buy_amount_twd": comparison.get("gross_buy_amount_twd"),
+                                "gross_sell_amount_twd": comparison.get("gross_sell_amount_twd"),
+                                "net_profit_twd": comparison.get("net_profit_twd"),
+                                "market_replay_date": comparison.get("market_replay_date") or decision,
+                            }
+                            if estimated
+                            else None
+                        ),
+                        estimated_buy_cost_twd=(
+                            comparison.get("estimated_buy_cost_twd") if estimated else None
+                        ),
+                        estimated_sell_cost_twd=(
+                            comparison.get("estimated_sell_cost_twd") if estimated else None
+                        ),
+                        estimated_round_trip_cost_twd=(
+                            comparison.get("estimated_round_trip_cost_twd") if estimated else None
+                        ),
+                        estimated_round_trip_cost_bp=(
+                            comparison.get("estimated_round_trip_cost_bp") if estimated else None
+                        ),
+                        net_profit_twd=(comparison.get("net_profit_twd") if estimated else None),
+                        market_replay_date=(
+                            str(comparison.get("market_replay_date") or decision)[:10]
+                            if estimated
+                            else None
                         ),
                         observed_liquidity_cost_bp=(int(liquidity) if liquidity is not None else None),
                         rule_probability_bp=NULL_BENCHMARK_PROBABILITY_BP,
@@ -2558,7 +3030,7 @@ def _load_active_model_training_samples(
                         source_quality="natural_forward_active_model",
                     )
                     samples.append(sample)
-                    seen_rows.add(row_id)
+                    seen_rows.add(row_seen_key)
                     seen_keys.add(key)
             except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, KeyError):
                 continue
@@ -2822,6 +3294,7 @@ def _cli_payload(
     run_scope: str | None = None,
     capture_scope: str | None = None,
     experiment_scope: str | None = None,
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema_version": "daily-recommendation-learning-cli-result.v3",
@@ -2860,6 +3333,33 @@ def _cli_payload(
         "formal_order_allowed": False,
         "shadow_only": True,
     }
+    if cost_scenario is not None:
+        scenario = normalize_cost_scenario(cost_scenario, fixed_round_trip_cost_bp=None)
+        if scenario.is_estimated:
+            payload.update(
+                {
+                    "cost_scenario": scenario.metadata(),
+                    "cost_scenario_id": scenario.scenario_id,
+                    "cost_scenario_version": scenario.scenario_version,
+                    "cost_scenario_hash": scenario.scenario_hash,
+                    "cost_basis": scenario.cost_basis,
+                    "cost_policy_id": scenario.policy_id,
+                    "cost_policy_version": scenario.policy_version,
+                    "policy_estimate_date": scenario.policy_estimate_date,
+                    "research_order_amount_twd": (
+                        str(scenario.research_order_amount_twd)
+                        if scenario.research_order_amount_twd is not None
+                        else None
+                    ),
+                    "research_order_quantity_shares": scenario.research_order_quantity_shares,
+                    "lot_type": scenario.lot_type,
+                    "instrument_type": scenario.instrument_type,
+                    "cost_estimate_source": "BankTaiwanElectronicCostPolicy:research_only",
+                    "liquidity_cost_role": "diagnostic_only_not_in_fees_tax_only_label",
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                }
+            )
     return payload
 
 

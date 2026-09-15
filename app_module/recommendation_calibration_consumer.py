@@ -26,8 +26,16 @@ from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.recommendation_calibration_training import (
     RECOMMENDATION_LABEL_CONTRACT_ID,
     RecommendationPrediction,
+    recommendation_cost_contract_hash,
     recommendation_label_registry_hash,
     candidate_freeze_hash,
+)
+from ml_module.recommendation_cost_scenario import (
+    LEGACY_RECOMMENDATION_COST_SCENARIO_ID,
+    LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION,
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    cost_scenario_from_metadata,
 )
 from ml_module.recommendation_calibration_authority import RecommendationPromotionPolicy
 from ml_module.recommendation_probability_transform import (
@@ -66,6 +74,17 @@ class RecommendationCalibrationProjection:
     raw_after_cost_profit_probability_bp: int | None = None
     warnings: tuple[str, ...] = ()
     status: str = "unavailable"
+    cost_policy_id: str | None = None
+    cost_policy_version: str | None = None
+    cost_scenario_id: str = LEGACY_RECOMMENDATION_COST_SCENARIO_ID
+    cost_scenario_version: str = LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION
+    cost_scenario_hash: str | None = None
+    policy_estimate_date: str | None = None
+    research_order_amount_twd: str | None = None
+    research_order_quantity_shares: int | None = None
+    lot_type: str | None = None
+    instrument_type: str | None = None
+    cost_estimate_source: str = "legacy_fixed_assumption"
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -143,6 +162,17 @@ class RecommendationCalibrationProjection:
             "raw_after_cost_profit_probability_bp": self.raw_after_cost_profit_probability_bp,
             "warnings": list(self.warnings),
             "status": self.status,
+            "cost_policy_id": self.cost_policy_id,
+            "cost_policy_version": self.cost_policy_version,
+            "cost_scenario_id": self.cost_scenario_id,
+            "cost_scenario_version": self.cost_scenario_version,
+            "cost_scenario_hash": self.cost_scenario_hash,
+            "policy_estimate_date": self.policy_estimate_date,
+            "research_order_amount_twd": self.research_order_amount_twd,
+            "research_order_quantity_shares": self.research_order_quantity_shares,
+            "lot_type": self.lot_type,
+            "instrument_type": self.instrument_type,
+            "cost_estimate_source": self.cost_estimate_source,
         }
 
 
@@ -170,6 +200,7 @@ class RecommendationCalibrationConsumer:
         self._lineage_models: tuple[tuple[Mapping[str, Any], Any], ...] = ()
         self._probability_lineage: tuple[Mapping[str, Any], ...] = ()
         self._blocker: str = "active_pointer_missing"
+        self._cost_scenario: RecommendationCostScenario | None = None
         self._pointer_stat: tuple[int, int] | None = None
         self._loaded_decision_date: str | None = None
 
@@ -183,6 +214,7 @@ class RecommendationCalibrationConsumer:
         self._lineage_models = ()
         self._probability_lineage = ()
         self._blocker = "active_pointer_missing"
+        self._cost_scenario = None
         self._pointer_stat = None
         self._loaded_decision_date = None
         if not self.pointer_path.is_file():
@@ -220,10 +252,50 @@ class RecommendationCalibrationConsumer:
         candidate_root = Path(candidate_text)
         if not candidate_root.is_absolute():
             candidate_root = (self.pointer_path.parent / candidate_root).resolve()
+        try:
+            scenario = cost_scenario_from_metadata(
+                pointer,
+                fixed_round_trip_cost_bp=_optional_int(pointer.get("fixed_round_trip_cost_bp")),
+            )
+        except (TypeError, ValueError, RecommendationCostScenarioError):
+            self._blocker = "active_pointer_cost_scenario_invalid"
+            return "rule_only"
+        expected_label_hash = recommendation_label_registry_hash(
+            cost_scenario=scenario if scenario.is_estimated else None
+        )
+        declared_label_hash = str(pointer.get("label_registry_hash") or "")
+        if declared_label_hash and declared_label_hash != expected_label_hash:
+            self._blocker = "active_pointer_label_registry_mismatch"
+            return "rule_only"
+        expected_cost_hash = recommendation_cost_contract_hash(
+            scenario.fixed_round_trip_cost_bp,
+            cost_scenario=scenario if scenario.is_estimated else None,
+        )
+        declared_cost_hash = str(pointer.get("cost_contract_hash") or "")
+        if declared_cost_hash and declared_cost_hash != expected_cost_hash:
+            self._blocker = "active_pointer_cost_contract_mismatch"
+            return "rule_only"
+        try:
+            candidate_payload = _read_json(candidate_root / "candidate.json")
+            candidate_scenario = cost_scenario_from_metadata(
+                candidate_payload,
+                fixed_round_trip_cost_bp=_optional_int(
+                    candidate_payload.get("fixed_round_trip_cost_bp")
+                ),
+            )
+        except (OSError, json.JSONDecodeError, TypeError, ValueError, RecommendationCostScenarioError):
+            self._blocker = "active_pointer_candidate_cost_scenario_invalid"
+            return "rule_only"
+        if candidate_scenario.scenario_hash != scenario.scenario_hash:
+            self._blocker = "active_pointer_candidate_cost_scenario_mismatch"
+            return "rule_only"
+        if str(candidate_payload.get("label_registry_hash") or expected_label_hash) != expected_label_hash:
+            self._blocker = "active_pointer_candidate_label_registry_mismatch"
+            return "rule_only"
         expectation = ArtifactCompatibilityExpectation(
             expected_model_family=self.expected_model_family,
             expected_feature_registry_hash=self.feature_registry_hash,
-            expected_label_registry_hash=recommendation_label_registry_hash(),
+            expected_label_registry_hash=expected_label_hash,
             expected_feature_schema=self.feature_schema,
             installed_library_versions=_library_versions(),
         )
@@ -253,6 +325,7 @@ class RecommendationCalibrationConsumer:
             return "rule_only"
         self._loaded_pointer = pointer
         self._model = loaded.model
+        self._cost_scenario = scenario
         lineage, lineage_error = self._load_probability_lineage(pointer, loaded.model, current_day)
         if lineage_error is not None:
             self._loaded_pointer = None
@@ -313,6 +386,11 @@ class RecommendationCalibrationConsumer:
             self.reload(decision_date=current_day)
         if self._loaded_pointer is None or self._model is None:
             return None
+        scenario_fields = (
+            _scenario_identity_fields(self._cost_scenario, self._loaded_pointer)
+            if self._cost_scenario is not None and self._cost_scenario.is_estimated
+            else {}
+        )
         return {
             "kind": "active_model",
             "pointer_version": self._loaded_pointer.get("pointer_version"),
@@ -325,6 +403,9 @@ class RecommendationCalibrationConsumer:
             "probability_lineage_schema_version": PROBABILITY_LINEAGE_SCHEMA_VERSION,
             "probability_lineage": [dict(item) for item in self._probability_lineage],
             "probability_lineage_hash": _hash_payload(self._probability_lineage),
+            # 舊版 legacy pointer 的 active identity 必須維持原始欄位形狀，
+            # 否則既有 active capture 的 identity hash 會被無意間改寫。
+            **scenario_fields,
         }
 
     def champion_baseline(
@@ -393,6 +474,12 @@ class RecommendationCalibrationConsumer:
                 return (), "active_pointer_probability_lineage_cap_mismatch"
             if index == 0:
                 continue
+            expected_scenario = self._cost_scenario or _legacy_scenario_from_pointer(pointer)
+            node_scenario_hash = str(node.get("cost_scenario_hash") or "")
+            if expected_scenario.is_estimated and node_scenario_hash != expected_scenario.scenario_hash:
+                return (), "active_pointer_probability_lineage_cost_scenario_mismatch"
+            if node_scenario_hash and node_scenario_hash != expected_scenario.scenario_hash:
+                return (), "active_pointer_probability_lineage_cost_scenario_mismatch"
             identity = {
                 "candidate_id": node.get("candidate_id"),
                 "candidate_root": node.get("candidate_root"),
@@ -401,6 +488,16 @@ class RecommendationCalibrationConsumer:
                 "candidate_freeze_hash": node.get("candidate_freeze_hash"),
                 "dataset_hash": node.get("dataset_hash"),
             }
+            for key in (
+                "label_registry_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
+                "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+                "cost_basis", "cost_policy_id", "cost_policy_version",
+                "policy_estimate_date", "research_order_amount_twd",
+                "research_order_quantity_shares", "lot_type", "instrument_type",
+                "cost_scenario",
+            ):
+                if key in node:
+                    identity[key] = node[key]
             if not identity["candidate_id"] or node.get("model_id") != identity["candidate_id"]:
                 return (), "active_pointer_probability_lineage_identity_invalid"
             parent = lineage[index - 1]
@@ -477,7 +574,7 @@ class RecommendationCalibrationConsumer:
         expectation = ArtifactCompatibilityExpectation(
             expected_model_family=self.expected_model_family,
             expected_feature_registry_hash=self.feature_registry_hash,
-            expected_label_registry_hash=recommendation_label_registry_hash(),
+            expected_label_registry_hash=_identity_label_registry_hash(identity),
             expected_feature_schema=self.feature_schema,
             installed_library_versions=_library_versions(),
         )
@@ -588,6 +685,24 @@ class RecommendationCalibrationConsumer:
         calibrated = prediction.calibrated_probability_bp
         after_cost = prediction.after_cost_profit_probability_bp
         after_cost_status = prediction.after_cost_profit_probability_status
+        scenario = self._cost_scenario or _legacy_scenario_from_pointer(self._loaded_pointer)
+        if scenario.is_estimated:
+            projection_cost_basis = (
+                "estimated_research_only:banktaiwan-electronic-order-v1; "
+                "fees_tax_only=commission+sell_tax; slippage_not_modeled; "
+                f"policy_estimate_date={scenario.policy_estimate_date}; "
+                f"research_order_amount_twd={scenario.research_order_amount_twd}; "
+                f"research_order_quantity_shares={scenario.research_order_quantity_shares}; "
+                f"scenario_hash={scenario.scenario_hash}; shadow_only"
+            )
+            projection_cost_basis_bp = None
+            cost_estimate_source = "banktaiwan_policy_estimate_research_only"
+        else:
+            projection_cost_basis = (
+                f"fixed_round_trip_bp={scenario.fixed_round_trip_cost_bp}; observed liquidity"
+            )
+            projection_cost_basis_bp = scenario.fixed_round_trip_cost_bp
+            cost_estimate_source = "legacy_fixed_assumption"
         source_trace = (
             "recommendation_calibration_consumer",
             f"pointer:{self._loaded_pointer.get('pointer_version', '')}",
@@ -600,6 +715,10 @@ class RecommendationCalibrationConsumer:
             f"training_as_of:{prediction.training_as_of}",
             f"label_contract:{RECOMMENDATION_LABEL_CONTRACT_ID}",
             "benchmark_role:evaluation_only",
+            f"cost_scenario:{scenario.scenario_hash}",
+            f"cost_policy:{scenario.policy_id or 'legacy'}@{scenario.policy_version or 'v1'}",
+            f"cost_estimate_source:{cost_estimate_source}",
+            "cost_label_role:fees_tax_only" if scenario.is_estimated else "cost_label_role:legacy_fixed_plus_observed_liquidity",
         )
         return RecommendationCalibrationProjection(
             stock_code=stock_code,
@@ -614,8 +733,8 @@ class RecommendationCalibrationConsumer:
             evidence_confidence="shadow_candidate",
             sample_size=prediction.sample_size,
             horizon=f"{prediction.horizon_trading_days} trading days",
-            cost_basis=f"fixed_round_trip_bp={self._loaded_pointer.get('fixed_round_trip_cost_bp', 'unknown')}; observed liquidity",
-            cost_basis_bp=_optional_int(self._loaded_pointer.get("fixed_round_trip_cost_bp")),
+            cost_basis=projection_cost_basis,
+            cost_basis_bp=projection_cost_basis_bp,
             model_version=prediction.model_id,
             dataset_version=prediction.dataset_id,
             source_trace=source_trace,
@@ -634,6 +753,7 @@ class RecommendationCalibrationConsumer:
                 ),
             ),
             status="active_candidate",
+            **_projection_scenario_fields(scenario, cost_estimate_source),
         )
 
     def project_many(
@@ -671,6 +791,96 @@ def _clamp_to_baseline(value: int | None, baseline: int, cap: int) -> int | None
     return max(0, min(10_000, max(baseline - cap, min(baseline + cap, int(value)))))
 
 
+def _read_json(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON object required: {path}")
+    return payload
+
+
+def _legacy_scenario_from_pointer(pointer: Mapping[str, Any] | None) -> RecommendationCostScenario:
+    if pointer is None:
+        return cost_scenario_from_metadata({}, fixed_round_trip_cost_bp=50)
+    return cost_scenario_from_metadata(
+        pointer,
+        fixed_round_trip_cost_bp=_optional_int(pointer.get("fixed_round_trip_cost_bp")),
+    )
+
+
+def _identity_label_registry_hash(identity: Mapping[str, Any]) -> str:
+    declared = str(identity.get("label_registry_hash") or "")
+    if declared:
+        return declared
+    scenario = cost_scenario_from_metadata(
+        identity,
+        fixed_round_trip_cost_bp=_optional_int(identity.get("fixed_round_trip_cost_bp")),
+    )
+    return recommendation_label_registry_hash(
+        cost_scenario=scenario if scenario.is_estimated else None
+    )
+
+
+def _scenario_identity_fields(
+    scenario: RecommendationCostScenario | None,
+    pointer: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    resolved = scenario or _legacy_scenario_from_pointer(pointer)
+    payload = resolved.metadata()
+    return {
+        "fixed_round_trip_cost_bp": resolved.fixed_round_trip_cost_bp,
+        "label_registry_hash": (
+            pointer.get("label_registry_hash")
+            if pointer is not None and pointer.get("label_registry_hash")
+            else recommendation_label_registry_hash(
+                cost_scenario=resolved if resolved.is_estimated else None
+            )
+        ),
+        "cost_contract_hash": recommendation_cost_contract_hash(
+            resolved.fixed_round_trip_cost_bp,
+            cost_scenario=resolved if resolved.is_estimated else None,
+        ),
+        "cost_scenario_id": resolved.scenario_id,
+        "cost_scenario_version": resolved.scenario_version,
+        "cost_scenario_hash": resolved.scenario_hash,
+        "cost_basis": resolved.cost_basis,
+        "cost_policy_id": resolved.policy_id,
+        "cost_policy_version": resolved.policy_version,
+        "policy_estimate_date": resolved.policy_estimate_date,
+        "research_order_amount_twd": (
+            str(resolved.research_order_amount_twd)
+            if resolved.research_order_amount_twd is not None
+            else None
+        ),
+        "research_order_quantity_shares": resolved.research_order_quantity_shares,
+        "lot_type": resolved.lot_type,
+        "instrument_type": resolved.instrument_type,
+        "cost_scenario": payload,
+    }
+
+
+def _projection_scenario_fields(
+    scenario: RecommendationCostScenario,
+    cost_estimate_source: str,
+) -> dict[str, Any]:
+    return {
+        "cost_policy_id": scenario.policy_id,
+        "cost_policy_version": scenario.policy_version,
+        "cost_scenario_id": scenario.scenario_id,
+        "cost_scenario_version": scenario.scenario_version,
+        "cost_scenario_hash": scenario.scenario_hash,
+        "policy_estimate_date": scenario.policy_estimate_date,
+        "research_order_amount_twd": (
+            str(scenario.research_order_amount_twd)
+            if scenario.research_order_amount_twd is not None
+            else None
+        ),
+        "research_order_quantity_shares": scenario.research_order_quantity_shares,
+        "lot_type": scenario.lot_type,
+        "instrument_type": scenario.instrument_type,
+        "cost_estimate_source": cost_estimate_source,
+    }
+
+
 def _null_lineage_node(cap: int) -> dict[str, Any]:
     return {
         "kind": "null_benchmark",
@@ -692,7 +902,7 @@ def _model_lineage_node(
     cap: int,
 ) -> dict[str, Any]:
     candidate_id = identity.get("candidate_id") or identity.get("model_id")
-    return {
+    node = {
         "kind": "active_model",
         "baseline_id": baseline_id,
         "baseline_kind": baseline_kind,
@@ -707,10 +917,21 @@ def _model_lineage_node(
         "maximum_probability_change_bp": cap,
         "effective_prediction": "recursive_capped_model_probability",
     }
+    for key in (
+        "label_registry_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
+        "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+        "cost_basis", "cost_policy_id", "cost_policy_version",
+        "policy_estimate_date", "research_order_amount_twd",
+        "research_order_quantity_shares", "lot_type", "instrument_type",
+        "cost_scenario",
+    ):
+        if key in identity:
+            node[key] = identity[key]
+    return node
 
 
 def _pointer_identity(pointer: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    identity = {
         "candidate_id": pointer.get("candidate_id"),
         "candidate_root": pointer.get("candidate_root"),
         "candidate_manifest_hash": pointer.get("candidate_manifest_hash"),
@@ -718,6 +939,17 @@ def _pointer_identity(pointer: Mapping[str, Any]) -> dict[str, Any]:
         "candidate_freeze_hash": pointer.get("candidate_freeze_hash"),
         "dataset_hash": pointer.get("dataset_hash"),
     }
+    for key in (
+        "label_registry_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
+        "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+        "cost_basis", "cost_policy_id", "cost_policy_version",
+        "policy_estimate_date", "research_order_amount_twd",
+        "research_order_quantity_shares", "lot_type", "instrument_type",
+        "cost_scenario",
+    ):
+        if key in pointer:
+            identity[key] = pointer[key]
+    return identity
 
 
 def _optional_int(value: Any) -> int | None:
@@ -804,6 +1036,26 @@ def _pointer_candidate_hashes_match(pointer: Mapping[str, Any], candidate_root: 
         return False
     if payload.get("candidate_freeze_hash") != pointer.get("candidate_freeze_hash"):
         return False
+    try:
+        pointer_scenario = cost_scenario_from_metadata(
+            pointer,
+            fixed_round_trip_cost_bp=_optional_int(pointer.get("fixed_round_trip_cost_bp")),
+        )
+        candidate_scenario = cost_scenario_from_metadata(
+            payload,
+            fixed_round_trip_cost_bp=_optional_int(payload.get("fixed_round_trip_cost_bp")),
+        )
+    except (TypeError, ValueError, RecommendationCostScenarioError):
+        return False
+    if pointer_scenario.scenario_hash != candidate_scenario.scenario_hash:
+        return False
+    expected_label_hash = recommendation_label_registry_hash(
+        cost_scenario=pointer_scenario if pointer_scenario.is_estimated else None
+    )
+    if payload.get("label_registry_hash") not in (None, expected_label_hash):
+        return False
+    if pointer.get("label_registry_hash") not in (None, expected_label_hash):
+        return False
     if manifest.manifest_hash != pointer.get("candidate_manifest_hash"):
         return False
     artifact_path = candidate_root / manifest.artifact_filename
@@ -831,7 +1083,7 @@ def _previous_identity(pointer: Mapping[str, Any]) -> dict[str, Any] | None:
     )
     if not all(pointer.get(key) for key in required):
         return None
-    return {
+    identity = {
         "candidate_id": pointer.get("previous_candidate_id"),
         "candidate_root": pointer.get("previous_candidate_root"),
         "candidate_manifest_hash": pointer.get("previous_candidate_manifest_hash"),
@@ -839,6 +1091,27 @@ def _previous_identity(pointer: Mapping[str, Any]) -> dict[str, Any] | None:
         "candidate_freeze_hash": pointer.get("previous_candidate_freeze_hash"),
         "dataset_hash": pointer.get("previous_dataset_hash"),
     }
+    prefix_map = {
+        "label_registry_hash": "previous_label_registry_hash",
+        "cost_contract_hash": "previous_cost_contract_hash",
+        "fixed_round_trip_cost_bp": "previous_fixed_round_trip_cost_bp",
+        "cost_scenario_id": "previous_cost_scenario_id",
+        "cost_scenario_version": "previous_cost_scenario_version",
+        "cost_scenario_hash": "previous_cost_scenario_hash",
+        "cost_basis": "previous_cost_basis",
+        "cost_policy_id": "previous_cost_policy_id",
+        "cost_policy_version": "previous_cost_policy_version",
+        "policy_estimate_date": "previous_policy_estimate_date",
+        "research_order_amount_twd": "previous_research_order_amount_twd",
+        "research_order_quantity_shares": "previous_research_order_quantity_shares",
+        "lot_type": "previous_lot_type",
+        "instrument_type": "previous_instrument_type",
+        "cost_scenario": "previous_cost_scenario",
+    }
+    for target, source in prefix_map.items():
+        if source in pointer:
+            identity[target] = pointer[source]
+    return identity
 
 
 def _pointer_receipt_error(pointer: Mapping[str, Any]) -> str | None:

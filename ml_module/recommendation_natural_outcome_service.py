@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
@@ -30,6 +31,16 @@ from ml_module.recommendation_calibration_evidence import (
     _verify_active_model_capture_payload,
     _verify_capture_payload,
     _verify_source_contract_binding,
+)
+from ml_module.recommendation_calibration_training import (
+    recommendation_cost_contract_hash,
+    recommendation_label_registry_hash,
+)
+from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenarioError,
+    cost_scenario_from_metadata,
+    estimate_round_trip_cost,
+    verify_estimated_cost_observation,
 )
 
 
@@ -188,7 +199,10 @@ class RecommendationNaturalOutcomeService:
                 break
             try:
                 payload = _read_json(path)
-                if payload.get("schema_version") != "recommendation-prediction-capture.v2":
+                if payload.get("schema_version") not in {
+                    "recommendation-prediction-capture.v2",
+                    "recommendation-prediction-capture.v3",
+                }:
                     continue
                 _verify_capture_payload(payload)
                 if candidate_id is not None and str(payload.get("candidate_id")) != candidate_id:
@@ -227,7 +241,7 @@ class RecommendationNaturalOutcomeService:
 
         outcomes: list[MaturedRecommendationOutcome] = []
         pending = 0
-        seen_keys: set[tuple[str, str, int]] = set()
+        seen_keys: set[tuple[str, str, str, int]] = set()
         for payload in payloads:
             remaining = max_rows - len(outcomes)
             if remaining <= 0:
@@ -247,6 +261,7 @@ class RecommendationNaturalOutcomeService:
                     if isinstance(row, Mapping) and str(row.get("row_id")) == outcome.capture_row_id
                 )
                 key = (
+                    str(payload.get("cost_scenario_hash") or "legacy-fixed-round-trip-bp"),
                     str(capture_row["symbol"]),
                     str(capture_row["decision_date"]),
                     20,
@@ -358,7 +373,7 @@ class RecommendationNaturalOutcomeService:
 
         outcomes: list[MaturedRecommendationOutcome] = []
         pending = 0
-        seen_keys: set[tuple[str, str, int]] = set()
+        seen_keys: set[tuple[str, str, str, int]] = set()
         for payload in payloads:
             remaining = max_rows - len(outcomes)
             if remaining <= 0:
@@ -380,7 +395,12 @@ class RecommendationNaturalOutcomeService:
                 capture_row = row_by_id.get(outcome.capture_row_id)
                 if capture_row is None:
                     continue
-                key = (str(capture_row.get("symbol")), str(capture_row.get("decision_date")), 20)
+                key = (
+                    str(payload.get("cost_scenario_hash") or "legacy-fixed-round-trip-bp"),
+                    str(capture_row.get("symbol")),
+                    str(capture_row.get("decision_date")),
+                    20,
+                )
                 if key in seen_keys:
                     diagnostics.append("active_monitor_duplicate_symbol_decision_horizon_ignored")
                     continue
@@ -411,6 +431,17 @@ class RecommendationNaturalOutcomeService:
             capture_payload = capture_by_row_id.get(outcome.capture_row_id)
             if row is None or capture_payload is None:
                 continue
+            try:
+                scenario = cost_scenario_from_metadata(
+                    capture_payload,
+                    fixed_round_trip_cost_bp=(
+                        int(capture_payload["fixed_round_trip_cost_bp"])
+                        if capture_payload.get("fixed_round_trip_cost_bp") is not None
+                        else None
+                    ),
+                )
+            except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+                raise ValueError(f"active capture cost scenario is invalid: {exc}") from exc
             if _date(outcome.label_available_date) > evaluation_day:
                 continue
             comparison: dict[str, Any] = {
@@ -436,13 +467,67 @@ class RecommendationNaturalOutcomeService:
                 "active_raw_after_cost_probability_bp": row.get("active_raw_after_cost_probability_bp"),
             }
             comparison["upside_label"] = int(outcome.stock_return_bp > 0)
-            if outcome.observed_liquidity_cost_bp is None or outcome.observed_liquidity_cost_source is None:
-                comparison["after_cost_profit_label"] = None
-            else:
-                comparison["after_cost_profit_label"] = int(
-                    outcome.stock_return_bp
-                    > int(capture_payload["fixed_round_trip_cost_bp"]) + outcome.observed_liquidity_cost_bp
+            if scenario.is_estimated:
+                comparison.update(
+                    {
+                        "cost_scenario_id": outcome.cost_scenario_id or scenario.scenario_id,
+                        "cost_scenario_version": outcome.cost_scenario_version or scenario.scenario_version,
+                        "cost_scenario_hash": outcome.cost_scenario_hash or scenario.scenario_hash,
+                        "cost_basis": outcome.cost_basis or scenario.cost_basis,
+                        "cost_policy_id": outcome.cost_policy_id or scenario.policy_id,
+                        "cost_policy_version": outcome.cost_policy_version or scenario.policy_version,
+                        "policy_estimate_date": outcome.policy_estimate_date or scenario.policy_estimate_date,
+                        "market_replay_date": outcome.market_replay_date or row.get("decision_date"),
+                        "research_order_amount_twd": outcome.research_order_amount_twd or (
+                            str(scenario.research_order_amount_twd)
+                            if scenario.research_order_amount_twd is not None
+                            else None
+                        ),
+                        "research_order_quantity_shares": outcome.research_order_quantity_shares or scenario.research_order_quantity_shares,
+                        "lot_type": outcome.lot_type or scenario.lot_type,
+                        "instrument_type": outcome.instrument_type or scenario.instrument_type,
+                        "buy_price_twd": outcome.buy_price_twd,
+                        "sell_price_twd": outcome.sell_price_twd,
+                        "estimated_buy_cost_twd": outcome.estimated_buy_cost_twd,
+                        "estimated_sell_cost_twd": outcome.estimated_sell_cost_twd,
+                        "estimated_round_trip_cost_twd": outcome.estimated_round_trip_cost_twd,
+                        "estimated_round_trip_cost_bp": outcome.estimated_round_trip_cost_bp,
+                        "gross_buy_amount_twd": outcome.gross_buy_amount_twd,
+                        "gross_sell_amount_twd": outcome.gross_sell_amount_twd,
+                        "net_profit_twd": outcome.net_profit_twd,
+                        "cost_estimate_status": outcome.cost_estimate_status,
+                        "cost_estimate_diagnostics": list(outcome.cost_estimate_diagnostics),
+                    }
                 )
+                if comparison["cost_scenario_hash"] != scenario.scenario_hash:
+                    raise ValueError("active matured outcome cost scenario mismatch")
+                gross_buy = _decimal_or_none(outcome.gross_buy_amount_twd)
+                gross_sell = _decimal_or_none(outcome.gross_sell_amount_twd)
+                buy_cost = _decimal_or_none(outcome.estimated_buy_cost_twd)
+                sell_cost = _decimal_or_none(outcome.estimated_sell_cost_twd)
+                net_profit = _decimal_or_none(outcome.net_profit_twd)
+                if (
+                    outcome.cost_estimate_status == "estimated"
+                    and gross_buy is not None
+                    and gross_sell is not None
+                    and buy_cost is not None
+                    and sell_cost is not None
+                    and net_profit is not None
+                ):
+                    expected_net = gross_sell - gross_buy - buy_cost - sell_cost
+                    if expected_net != net_profit:
+                        raise ValueError("active matured outcome exact net profit mismatch")
+                    comparison["after_cost_profit_label"] = int(net_profit > 0)
+                else:
+                    comparison["after_cost_profit_label"] = None
+            else:
+                if outcome.observed_liquidity_cost_bp is None or outcome.observed_liquidity_cost_source is None:
+                    comparison["after_cost_profit_label"] = None
+                else:
+                    comparison["after_cost_profit_label"] = int(
+                        outcome.stock_return_bp
+                        > int(capture_payload["fixed_round_trip_cost_bp"]) + outcome.observed_liquidity_cost_bp
+                    )
             comparisons.append(comparison)
         if not comparisons:
             return RecommendationNaturalOutcomeResult(
@@ -468,9 +553,18 @@ class RecommendationNaturalOutcomeService:
         after_cost_brier: int | None = None
         after_cost_gap: int | None = None
         after_cost_prediction_hash: str | None = None
-        after_cost_status = "missing_liquidity_or_baseline"
+        estimated_lane = any(
+            str(payload.get("cost_basis") or "") == "estimated_research_only"
+            for payload in payloads
+        )
+        after_cost_status = (
+            "estimated_fees_tax_only" if estimated_lane and after_cost_rows
+            else "estimated_cost_unavailable_or_baseline" if estimated_lane
+            else "missing_liquidity_or_baseline"
+        )
         if after_cost_rows:
-            after_cost_status = "observed"
+            if not estimated_lane:
+                after_cost_status = "observed"
             after_probabilities = [int(row["active_after_cost_probability_bp"]) for row in after_cost_rows]
             after_labels = [int(row["after_cost_profit_label"]) for row in after_cost_rows]
             after_cost_brier = _brier_bp(after_probabilities, after_labels)
@@ -483,21 +577,49 @@ class RecommendationNaturalOutcomeService:
             )
         capture_ids = [str(payload["capture_id"]) for payload in payloads]
         capture_hashes = [str(payload["capture_hash"]) for payload in payloads]
+        fingerprint_rows = [
+            {
+                "capture_row_id": row["capture_row_id"],
+                "label_end_date": row["label_end_date"],
+                "label_available_date": row["label_available_date"],
+                "stock_return_bp": row["stock_return_bp"],
+                "observed_liquidity_cost_bp": row["observed_liquidity_cost_bp"],
+                "observed_liquidity_cost_source": row.get("observed_liquidity_cost_source"),
+            }
+            for row in comparisons
+        ]
+        if estimated_lane:
+            fingerprint_rows = [
+                {
+                    **row,
+                    "observed_liquidity_cost_bp": None,
+                    "observed_liquidity_cost_source": None,
+                    **{
+                        key: comparison.get(key)
+                        for key in (
+                            "cost_scenario_hash",
+                            "policy_estimate_date",
+                            "market_replay_date",
+                            "buy_price_twd",
+                            "sell_price_twd",
+                            "estimated_buy_cost_twd",
+                            "estimated_sell_cost_twd",
+                            "estimated_round_trip_cost_twd",
+                            "estimated_round_trip_cost_bp",
+                            "gross_buy_amount_twd",
+                            "gross_sell_amount_twd",
+                            "net_profit_twd",
+                            "cost_estimate_status",
+                        )
+                    },
+                }
+                for row, comparison in zip(fingerprint_rows, comparisons)
+            ]
         comparison_fingerprint = _hash_payload(
             {
                 "active_identity_hash": active_identity_hash,
                 "capture_ids": capture_ids,
-                "rows": [
-                    {
-                        "capture_row_id": row["capture_row_id"],
-                        "label_end_date": row["label_end_date"],
-                        "label_available_date": row["label_available_date"],
-                        "stock_return_bp": row["stock_return_bp"],
-                        "observed_liquidity_cost_bp": row["observed_liquidity_cost_bp"],
-                        "observed_liquidity_cost_source": row.get("observed_liquidity_cost_source"),
-                    }
-                    for row in comparisons
-                ],
+                "rows": fingerprint_rows,
             }
         )
         prediction_hash = _hash_payload(
@@ -513,7 +635,11 @@ class RecommendationNaturalOutcomeService:
             f"{active_identity_hash}|{comparison_fingerprint}|{evaluation_day.isoformat()}".encode("utf-8")
         ).hexdigest()[:24]
         evidence_payload: dict[str, Any] = {
-            "schema_version": "recommendation-active-model-forward-evidence.v1",
+            "schema_version": (
+                "recommendation-active-model-forward-evidence.v2"
+                if estimated_lane
+                else "recommendation-active-model-forward-evidence.v1"
+            ),
             "evidence_id": evidence_id,
             "source_id": "scheduled_forward_outcomes_market_source",
             "source_kind": "matured_active_model_prediction_capture",
@@ -559,6 +685,27 @@ class RecommendationNaturalOutcomeService:
             "after_cost_prediction_hash": after_cost_prediction_hash,
             "comparisons": comparisons,
         }
+        if estimated_lane:
+            first_payload = payloads[0]
+            evidence_payload.update(
+                {
+                    key: first_payload.get(key)
+                    for key in (
+                        "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+                        "cost_basis", "cost_policy_id", "cost_policy_version",
+                        "policy_estimate_date", "research_order_amount_twd",
+                        "research_order_quantity_shares", "lot_type", "instrument_type",
+                    )
+                }
+            )
+            evidence_payload["cost_scenario"] = (
+                dict(first_payload["cost_scenario"])
+                if isinstance(first_payload.get("cost_scenario"), Mapping)
+                else None
+            )
+            evidence_payload["liquidity_cost_role"] = (
+                "diagnostic_only_not_in_fees_tax_only_label"
+            )
         evidence_payload["receipt_body_hash"] = _hash_payload(evidence_payload)
         destination = Path(output_path).resolve()
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -600,6 +747,17 @@ class RecommendationNaturalOutcomeService:
         capture_day = _date(str(payload["capture_as_of_date"]))
         if evaluation_day < capture_day:
             raise ValueError("evaluation_date must follow prediction capture")
+        try:
+            scenario = cost_scenario_from_metadata(
+                payload,
+                fixed_round_trip_cost_bp=(
+                    int(payload["fixed_round_trip_cost_bp"])
+                    if payload.get("fixed_round_trip_cost_bp") is not None
+                    else None
+                ),
+            )
+        except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+            raise ValueError(f"capture cost scenario is invalid: {exc}") from exc
         rows = payload.get("rows")
         if not isinstance(rows, list) or len(rows) > max_rows:
             raise ValueError("capture row count exceeds bounded outcome limit")
@@ -650,22 +808,59 @@ class RecommendationNaturalOutcomeService:
             if benchmark_start is None or benchmark_end is None or benchmark_start == 0:
                 pending += 1
                 continue
-            cost, cost_source = self._lookup_liquidity_cost(
+            observed_liquidity_cost, liquidity_source = self._lookup_liquidity_cost(
                 symbol=symbol,
                 decision_date=capture_day,
                 label_end_date=_date(end_row.trading_date),
             )
-            if cost is None:
-                diagnostics.append(f"liquidity_cost_missing:{symbol}:{capture_day.isoformat()}")
+            if observed_liquidity_cost is None:
+                diagnostics.append(
+                    f"observed_liquidity_missing_diagnostic_only:{symbol}:{capture_day.isoformat()}"
+                    if scenario.is_estimated
+                    else f"liquidity_cost_missing:{symbol}:{capture_day.isoformat()}"
+                )
+            cost_estimate = estimate_round_trip_cost(
+                scenario,
+                market_replay_date=capture_day,
+                buy_price_twd=start_row.close_price,
+                sell_price_twd=end_row.close_price,
+            )
+            if scenario.is_estimated and not cost_estimate.available:
+                diagnostics.append(
+                    f"estimated_fee_tax_cost_unavailable:{symbol}:{capture_day.isoformat()}"
+                )
             outcomes.append(
                 MaturedRecommendationOutcome(
                     capture_row_id=str(capture_row["row_id"]),
                     label_end_date=end_row.trading_date,
                     label_available_date=end_row.trading_date,
                     stock_return_bp=_return_bp(start_row.close_price, end_row.close_price),
-                    observed_liquidity_cost_bp=cost,
+                    observed_liquidity_cost_bp=observed_liquidity_cost,
                     benchmark_return_bp=_return_bp(benchmark_start, benchmark_end),
-                    observed_liquidity_cost_source=cost_source,
+                    observed_liquidity_cost_source=liquidity_source,
+                    buy_price_twd=str(start_row.close_price),
+                    sell_price_twd=str(end_row.close_price),
+                    cost_scenario_id=cost_estimate.scenario_id,
+                    cost_scenario_version=cost_estimate.scenario_version,
+                    cost_scenario_hash=cost_estimate.scenario_hash,
+                    cost_basis=cost_estimate.cost_basis,
+                    cost_policy_id=scenario.policy_id,
+                    cost_policy_version=scenario.policy_version,
+                    policy_estimate_date=cost_estimate.policy_estimate_date,
+                    market_replay_date=cost_estimate.market_replay_date,
+                    research_order_amount_twd=cost_estimate.research_order_amount_twd,
+                    research_order_quantity_shares=cost_estimate.research_order_quantity_shares,
+                    lot_type=scenario.lot_type,
+                    instrument_type=scenario.instrument_type,
+                    estimated_buy_cost_twd=cost_estimate.estimated_buy_cost_twd,
+                    estimated_sell_cost_twd=cost_estimate.estimated_sell_cost_twd,
+                    estimated_round_trip_cost_twd=cost_estimate.estimated_round_trip_cost_twd,
+                    estimated_round_trip_cost_bp=cost_estimate.estimated_round_trip_cost_bp,
+                    gross_buy_amount_twd=cost_estimate.gross_buy_amount_twd,
+                    gross_sell_amount_twd=cost_estimate.gross_sell_amount_twd,
+                    net_profit_twd=cost_estimate.net_profit_twd,
+                    cost_estimate_status=cost_estimate.status,
+                    cost_estimate_diagnostics=cost_estimate.diagnostics,
                 )
             )
         return outcomes, pending, tuple(diagnostics)
@@ -749,13 +944,37 @@ def verify_active_model_evidence_payload(
     )
     if any(key not in payload for key in required):
         raise ValueError("active model evidence metadata is incomplete")
-    if payload.get("schema_version") != "recommendation-active-model-forward-evidence.v1":
+    if payload.get("schema_version") not in {
+        "recommendation-active-model-forward-evidence.v1",
+        "recommendation-active-model-forward-evidence.v2",
+    }:
         raise ValueError("active model evidence schema is unsupported")
     if payload.get("status") != "matured":
         raise ValueError("active model evidence is not matured")
     body = {key: value for key, value in payload.items() if key != "receipt_body_hash"}
     if _hash_payload(body) != payload.get("receipt_body_hash"):
         raise ValueError("active model evidence receipt hash mismatch")
+    try:
+        scenario = cost_scenario_from_metadata(
+            payload,
+            fixed_round_trip_cost_bp=(
+                int(payload["fixed_round_trip_cost_bp"])
+                if payload.get("fixed_round_trip_cost_bp") is not None
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        raise ValueError(f"active model evidence cost scenario is invalid: {exc}") from exc
+    if payload.get("schema_version") == "recommendation-active-model-forward-evidence.v2" and not scenario.is_estimated:
+        raise ValueError("active model evidence v2 must use estimated cost scenario")
+    if payload.get("schema_version") == "recommendation-active-model-forward-evidence.v1" and scenario.is_estimated:
+        raise ValueError("active model evidence v1 cannot use estimated cost scenario")
+    expected_label_hash = _expected_label_registry_hash(scenario)
+    if payload.get("label_registry_hash") not in (None, expected_label_hash):
+        raise ValueError("active model evidence label registry contract mismatch")
+    expected_cost_hash = _expected_cost_contract_hash(scenario)
+    if payload.get("cost_contract_hash") not in (None, expected_cost_hash):
+        raise ValueError("active model evidence cost contract mismatch")
     if str(payload.get("active_candidate_id")) != active_candidate_id:
         raise ValueError("active model evidence candidate identity mismatch")
     if str(payload.get("active_identity_hash")) != active_identity_hash:
@@ -792,6 +1011,8 @@ def verify_active_model_evidence_payload(
             raise ValueError("active model evidence source capture hash mismatch")
         if str(capture_payload.get("active_identity_hash")) != active_identity_hash:
             raise ValueError("active model evidence source active identity mismatch")
+        if str(capture_payload.get("cost_scenario_hash") or scenario.scenario_hash) != scenario.scenario_hash:
+            raise ValueError("active model evidence source cost scenario mismatch")
         for row in capture_payload.get("rows", ()):
             if isinstance(row, Mapping) and row.get("row_id"):
                 source_rows[str(row["row_id"])] = row
@@ -819,13 +1040,18 @@ def verify_active_model_evidence_payload(
             raise ValueError("active model evidence label is invalid")
         probabilities.append(probability)
         labels.append(label)
+        if scenario.is_estimated:
+            verify_estimated_cost_observation(
+                scenario,
+                comparison,
+                expected_market_replay_date=str(comparison.get("capture_as_of_date")),
+            )
         if (
             comparison.get("after_cost_profit_label") is not None
             and comparison.get("active_after_cost_probability_bp") is not None
         ):
             after_cost_rows.append(comparison)
-        normalized_rows.append(
-            {
+        normalized_row = {
                 "capture_row_id": comparison["capture_row_id"],
                 "label_end_date": comparison["label_end_date"],
                 "label_available_date": comparison["label_available_date"],
@@ -833,7 +1059,22 @@ def verify_active_model_evidence_payload(
                 "observed_liquidity_cost_bp": comparison["observed_liquidity_cost_bp"],
                 "observed_liquidity_cost_source": comparison.get("observed_liquidity_cost_source"),
             }
-        )
+        if scenario.is_estimated:
+            normalized_row.update(
+                {
+                    key: comparison.get(key)
+                    for key in (
+                        "cost_scenario_hash", "policy_estimate_date", "market_replay_date",
+                        "estimated_buy_cost_twd", "estimated_sell_cost_twd",
+                        "estimated_round_trip_cost_twd", "estimated_round_trip_cost_bp",
+                        "gross_buy_amount_twd", "gross_sell_amount_twd", "net_profit_twd",
+                        "cost_estimate_status",
+                    )
+                }
+            )
+            normalized_row["observed_liquidity_cost_bp"] = None
+            normalized_row["observed_liquidity_cost_source"] = None
+        normalized_rows.append(normalized_row)
     unique_dates = {str(row.get("capture_as_of_date"))[:10] for row in comparisons}
     expected_fingerprint = _hash_payload(
         {
@@ -873,6 +1114,29 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("prediction capture must be a JSON object")
     return payload
+
+
+def _expected_label_registry_hash(scenario: Any) -> str:
+    return recommendation_label_registry_hash(
+        cost_scenario=scenario if getattr(scenario, "is_estimated", False) else None
+    )
+
+
+def _expected_cost_contract_hash(scenario: Any) -> str:
+    return recommendation_cost_contract_hash(
+        getattr(scenario, "fixed_round_trip_cost_bp", None),
+        cost_scenario=scenario if getattr(scenario, "is_estimated", False) else None,
+    )
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return parsed if parsed.is_finite() else None
 
 
 def _return_bp(start: Any, end: Any) -> int:

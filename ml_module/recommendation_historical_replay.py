@@ -39,8 +39,15 @@ from ml_module.recommendation_calibration_training import (
     AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
     RECOMMENDATION_HORIZON_TRADING_DAYS,
     RecommendationCalibrationSample,
+    sample_payload,
 )
 from ml_module.recommendation_probability_transform import NULL_BENCHMARK_BASELINE_ID
+from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    estimate_round_trip_cost,
+    normalize_cost_scenario,
+)
 
 
 _BP = Decimal("10000")
@@ -99,7 +106,8 @@ class RecommendationHistoricalReplayConfig:
     replay_start_date: str
     replay_end_date: str
     symbols: tuple[str, ...]
-    fixed_round_trip_cost_bp: int
+    fixed_round_trip_cost_bp: int | None
+    cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None
     max_decision_dates: int = 100
     horizon_trading_days: int = RECOMMENDATION_HORIZON_TRADING_DAYS
     industry_index_name_by_symbol: Mapping[str, str] = field(default_factory=dict)
@@ -119,8 +127,22 @@ class RecommendationHistoricalReplayConfig:
             raise ValueError("symbols must be explicitly supplied")
         normalized = tuple(sorted({str(symbol).strip() for symbol in self.symbols if str(symbol).strip()}))
         object.__setattr__(self, "symbols", normalized)
-        if isinstance(self.fixed_round_trip_cost_bp, bool) or self.fixed_round_trip_cost_bp < 0:
-            raise ValueError("fixed_round_trip_cost_bp must be a non-negative integer")
+        if self.fixed_round_trip_cost_bp is not None and (
+            isinstance(self.fixed_round_trip_cost_bp, bool)
+            or not isinstance(self.fixed_round_trip_cost_bp, int)
+            or self.fixed_round_trip_cost_bp < 0
+        ):
+            raise ValueError("fixed_round_trip_cost_bp must be a non-negative integer or None")
+        try:
+            scenario = normalize_cost_scenario(
+                self.cost_scenario,
+                fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
+            )
+        except RecommendationCostScenarioError as exc:
+            raise ValueError(str(exc)) from exc
+        if scenario.is_estimated and self.fixed_round_trip_cost_bp is not None:
+            raise ValueError("estimated replay config must not carry a fixed cost")
+        object.__setattr__(self, "cost_scenario", scenario)
         if isinstance(self.max_decision_dates, bool) or self.max_decision_dates <= 0:
             raise ValueError("max_decision_dates must be positive")
         if self.horizon_trading_days != RECOMMENDATION_HORIZON_TRADING_DAYS:
@@ -180,7 +202,7 @@ class RecommendationHistoricalReplayResult:
             "sample_count": len(self.samples),
             "decision_dates": list(self.decision_dates),
             "source_fingerprint": self.source_fingerprint,
-            "samples": [asdict(sample) for sample in self.samples],
+            "samples": [sample_payload(sample) for sample in self.samples],
             "diagnostics": list(self.diagnostics),
             "coverage": dict(self.coverage),
             "source_disclosures": dict(self.source_disclosures),
@@ -231,6 +253,9 @@ class RecommendationHistoricalReplayService:
         )
 
     def build(self, config: RecommendationHistoricalReplayConfig) -> RecommendationHistoricalReplayResult:
+        scenario = config.cost_scenario
+        if not isinstance(scenario, RecommendationCostScenario):
+            raise ValueError("replay cost scenario was not normalized")
         trading_dates = self.provider.list_trading_dates(
             start_date=config.replay_start_date,
             end_date=config.replay_end_date,
@@ -277,6 +302,8 @@ class RecommendationHistoricalReplayService:
         rows_skipped_missing_benchmark = 0
         rows_skipped_missing_feature = 0
         rows_with_observed_liquidity_cost = 0
+        rows_with_estimated_cost = 0
+        rows_with_unavailable_estimated_cost = 0
         technical_cutoffs: list[str] = []
         technical_usage: list[dict[str, str]] = []
 
@@ -378,6 +405,22 @@ class RecommendationHistoricalReplayService:
                 )
                 if observed_liquidity_cost_bp is not None:
                     rows_with_observed_liquidity_cost += 1
+                cost_estimate = estimate_round_trip_cost(
+                    scenario,
+                    market_replay_date=decision.isoformat(),
+                    buy_price_twd=start_price,
+                    sell_price_twd=label_row.close_price,
+                )
+                if scenario.is_estimated:
+                    if cost_estimate.available:
+                        rows_with_estimated_cost += 1
+                    else:
+                        rows_with_unavailable_estimated_cost += 1
+                        diagnostics.append(
+                            "estimated_cost_unavailable:"
+                            f"{decision.isoformat()}:{symbol}:"
+                            + ",".join(cost_estimate.diagnostics)
+                        )
                 sample = RecommendationCalibrationSample.from_forward_return(
                     row_id=f"historical-replay:{decision.isoformat()}:{symbol}",
                     symbol=symbol,
@@ -404,6 +447,8 @@ class RecommendationHistoricalReplayService:
                     ),
                     rule_baseline_id=config.rule_baseline_id,
                     source_quality="research",
+                    cost_scenario=scenario,
+                    cost_estimate=cost_estimate,
                 )
                 date_samples.append(sample)
             if date_samples:
@@ -455,7 +500,7 @@ class RecommendationHistoricalReplayService:
             "config": _config_payload(config),
             "source_fingerprints": sorted(source_fingerprints),
             "decision_dates": selected_dates,
-            "samples": [asdict(sample) for sample in samples],
+            "samples": [sample_payload(sample) for sample in samples],
         }
         dataset_hash = _hash_payload(dataset_payload)
         dataset_id = "recommendation-dataset-" + dataset_hash[7:23]
@@ -470,6 +515,8 @@ class RecommendationHistoricalReplayService:
             source_contract=source_contract,
             rows_built=labels_built,
             rows_with_observed_liquidity_cost=rows_with_observed_liquidity_cost,
+            rows_with_estimated_cost=rows_with_estimated_cost,
+            rows_with_unavailable_estimated_cost=rows_with_unavailable_estimated_cost,
         )
         lookahead_checks = {
             "feature_snapshot_rows_strictly_before_decision": True,
@@ -485,16 +532,21 @@ class RecommendationHistoricalReplayService:
                 source_contract["corporate_actions"]["verified"]
             ),
             "fixed_explicit_universe_does_not_claim_pit_constituent_history": True,
+            "cost_policy_estimate_date_separate_from_market_replay_date": True,
+            "cost_scenario_scope_key_excludes_market_replay_date": True,
         }
         blocker_list = ["historical_replay_is_not_natural_forward_evidence"]
         if not source_contract["technical"]["verified"]:
             blocker_list.append("technical_publication_time_unverified")
         if not source_contract["corporate_actions"]["verified"]:
             blocker_list.append("corporate_action_source_or_adjustment_unverified")
-        if rows_with_observed_liquidity_cost <= 0:
-            blocker_list.append("observed_liquidity_cost_missing_after_cost_target_unavailable")
-        elif rows_with_observed_liquidity_cost < labels_built:
-            blocker_list.append("observed_liquidity_cost_partial_after_cost_target_unavailable")
+        if not scenario.is_estimated:
+            if rows_with_observed_liquidity_cost <= 0:
+                blocker_list.append("observed_liquidity_cost_missing_after_cost_target_unavailable")
+            elif rows_with_observed_liquidity_cost < labels_built:
+                blocker_list.append("observed_liquidity_cost_partial_after_cost_target_unavailable")
+        if scenario.is_estimated and rows_with_unavailable_estimated_cost > 0:
+            blocker_list.append("estimated_fee_tax_cost_missing_after_cost_target_partial")
         blockers = tuple(blocker_list)
         coverage = {
             "requested_symbols": list(config.symbols),
@@ -517,8 +569,17 @@ class RecommendationHistoricalReplayService:
                 "observed" if rows_with_observed_liquidity_cost else "missing"
             ),
             "after_cost_label_coverage": (
-                "observed" if rows_with_observed_liquidity_cost else "missing"
+                "fees_tax_only_estimated"
+                if scenario.is_estimated and rows_with_estimated_cost
+                else "observed" if rows_with_observed_liquidity_cost else "missing"
             ),
+            "cost_scenario_id": scenario.scenario_id,
+            "cost_scenario_version": scenario.scenario_version,
+            "cost_scenario_hash": scenario.scenario_hash,
+            "cost_basis": scenario.cost_basis,
+            "estimated_cost_rows": rows_with_estimated_cost,
+            "estimated_cost_unavailable_rows": rows_with_unavailable_estimated_cost,
+            "market_replay_dates_are_observation_lineage_only": True,
             "source_contract": dict(source_contract["summary"]),
         }
         return RecommendationHistoricalReplayResult(
@@ -542,6 +603,10 @@ class RecommendationHistoricalReplayService:
         config: RecommendationHistoricalReplayConfig,
         reason: str,
     ) -> RecommendationHistoricalReplayResult:
+        scenario = normalize_cost_scenario(
+            config.cost_scenario,
+            fixed_round_trip_cost_bp=config.fixed_round_trip_cost_bp,
+        )
         dataset_payload = {
             "schema_version": _REPLAY_SCHEMA_VERSION,
             "config": _config_payload(config),
@@ -550,6 +615,32 @@ class RecommendationHistoricalReplayService:
             "samples": [],
         }
         dataset_hash = _hash_payload(dataset_payload)
+        empty_coverage: dict[str, Any] = {
+            "requested_symbols": list(config.symbols),
+            "requested_decision_date_count": 0,
+            "selected_decision_date_count": 0,
+            "max_decision_dates": config.max_decision_dates,
+            "selection_policy": config.selection_policy,
+            "samples_built": 0,
+            "liquidity_cost_coverage": "missing",
+            "after_cost_label_coverage": "missing",
+            "cost_scenario_id": scenario.scenario_id,
+            "cost_scenario_version": scenario.scenario_version,
+            "cost_scenario_hash": scenario.scenario_hash,
+            "cost_basis": scenario.cost_basis,
+            "estimated_cost_rows": 0,
+            "estimated_cost_unavailable_rows": 0,
+        }
+        empty_blockers = [
+            "no_historical_rows",
+            "historical_replay_is_not_natural_forward_evidence",
+            "technical_publication_time_unverified",
+            "corporate_action_source_or_adjustment_unverified",
+        ]
+        if not scenario.is_estimated:
+            empty_blockers.append(
+                "observed_liquidity_cost_missing_after_cost_target_unavailable"
+            )
         return RecommendationHistoricalReplayResult(
             dataset_id="recommendation-dataset-" + dataset_hash[7:23],
             dataset_hash=dataset_hash,
@@ -557,33 +648,20 @@ class RecommendationHistoricalReplayService:
             decision_dates=(),
             source_fingerprint=_hash_payload({"provider": str(self.provider.database_path), "source_fingerprints": []}),
             diagnostics=(reason,),
-            coverage={
-                "requested_symbols": list(config.symbols),
-                "requested_decision_date_count": 0,
-                "selected_decision_date_count": 0,
-                "max_decision_dates": config.max_decision_dates,
-                "selection_policy": config.selection_policy,
-                "samples_built": 0,
-                "liquidity_cost_coverage": "missing",
-                "after_cost_label_coverage": "missing",
-            },
+            coverage=empty_coverage,
             source_disclosures=_source_disclosures(config),
             lookahead_checks={
                 "feature_snapshot_rows_strictly_before_decision": True,
                 "future_label_dates_strictly_after_decision": True,
                 "benchmark_is_context_only_not_target": True,
                 "explicit_universe_only": True,
+                "cost_policy_estimate_date_separate_from_market_replay_date": True,
+                "cost_scenario_scope_key_excludes_market_replay_date": True,
             },
             training_data_eligible=False,
             forward_evidence_eligible=False,
             formal_candidate_eligible=False,
-            candidate_blockers=(
-                "no_historical_rows",
-                "historical_replay_is_not_natural_forward_evidence",
-                "technical_publication_time_unverified",
-                "corporate_action_source_or_adjustment_unverified",
-                "observed_liquidity_cost_missing_after_cost_target_unavailable",
-            ),
+            candidate_blockers=tuple(empty_blockers),
         )
 
 
@@ -627,6 +705,8 @@ def _source_disclosures(
     source_contract: Mapping[str, Any] | None = None,
     rows_built: int = 0,
     rows_with_observed_liquidity_cost: int = 0,
+    rows_with_estimated_cost: int = 0,
+    rows_with_unavailable_estimated_cost: int = 0,
 ) -> dict[str, Any]:
     contract = source_contract or _unknown_source_contract(config)
     technical = dict(contract["technical"])
@@ -690,6 +770,34 @@ def _source_disclosures(
         },
         "cost": {
             "fixed_round_trip_cost_bp": config.fixed_round_trip_cost_bp,
+            "cost_scenario_id": (
+                config.cost_scenario.scenario_id
+                if isinstance(config.cost_scenario, RecommendationCostScenario)
+                else None
+            ),
+            "cost_scenario_version": (
+                config.cost_scenario.scenario_version
+                if isinstance(config.cost_scenario, RecommendationCostScenario)
+                else None
+            ),
+            "cost_scenario_hash": (
+                config.cost_scenario.scenario_hash
+                if isinstance(config.cost_scenario, RecommendationCostScenario)
+                else None
+            ),
+            "cost_basis": (
+                config.cost_scenario.cost_basis
+                if isinstance(config.cost_scenario, RecommendationCostScenario)
+                else None
+            ),
+            "policy_estimate_date": (
+                config.cost_scenario.policy_estimate_date
+                if isinstance(config.cost_scenario, RecommendationCostScenario)
+                else None
+            ),
+            "market_replay_date_role": "per_row_observation_lineage_not_scope_key",
+            "estimated_fee_tax_cost_rows": rows_with_estimated_cost,
+            "estimated_fee_tax_cost_unavailable_rows": rows_with_unavailable_estimated_cost,
             "observed_liquidity_cost_source": (
                 "evidence_outcomes.liquidity_cost_bp"
                 if rows_with_observed_liquidity_cost
@@ -699,7 +807,10 @@ def _source_disclosures(
             "rows_built": rows_built,
             "coverage": cost_coverage,
             "after_cost_target": (
-                "absolute_return_after_fixed_and_observed_cost"
+                "fees_tax_only_exact_decimal_net_profit_for_banktaiwan_estimated_scenario"
+                if isinstance(config.cost_scenario, RecommendationCostScenario)
+                and config.cost_scenario.is_estimated
+                else "absolute_return_after_fixed_and_observed_cost"
                 if rows_with_observed_liquidity_cost
                 else "missing because observed liquidity cost is unavailable"
             ),
@@ -1255,7 +1366,7 @@ def _lookup_observed_liquidity_cost(
 
 
 def _config_payload(config: RecommendationHistoricalReplayConfig) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "history_start_date": _date(config.history_start_date).isoformat(),
         "replay_start_date": _date(config.replay_start_date).isoformat(),
         "replay_end_date": _date(config.replay_end_date).isoformat(),
@@ -1268,6 +1379,10 @@ def _config_payload(config: RecommendationHistoricalReplayConfig) -> dict[str, A
         "rule_baseline_id": config.rule_baseline_id,
         "selection_policy": config.selection_policy,
     }
+    if isinstance(config.cost_scenario, RecommendationCostScenario) and config.cost_scenario.is_estimated:
+        payload["cost_scenario"] = config.cost_scenario.to_dict()
+        payload["cost_scenario_hash"] = config.cost_scenario.scenario_hash
+    return payload
 
 
 def _date(value: str) -> date:

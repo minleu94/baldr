@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN
 import hashlib
 import json
 from pathlib import Path
@@ -31,6 +32,12 @@ from ml_module.recommendation_calibration_training import (
     candidate_freeze_hash,
     feature_schema_hash,
     recommendation_cost_contract_hash,
+)
+from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    cost_scenario_from_metadata,
+    verify_estimated_cost_observation,
 )
 from ml_module.recommendation_probability_transform import (
     NULL_BENCHMARK_BASELINE_ID,
@@ -327,6 +334,22 @@ class RecommendationCalibrationPromotionAuthority:
             "receipt_path": str(receipt_path),
             "pointer_path": str(self.pointer_path),
         }
+        try:
+            receipt_scenario = _scenario_from_metadata(
+                target_identity or metadata or (pointer or {})
+            )
+        except (TypeError, ValueError, RecommendationCostScenarioError):
+            receipt_scenario = None
+        if receipt_scenario is not None and receipt_scenario.is_estimated:
+            receipt_payload.update(
+                _scenario_identity_fields(
+                    receipt_scenario,
+                    target_identity or metadata or (pointer or {}),
+                )
+            )
+            receipt_payload["liquidity_cost_role"] = (
+                "diagnostic_only_not_in_fees_tax_only_label"
+            )
         # Receipt first makes an interrupted publication recoverable/reconcilable.
         _write_json_once(receipt_path, receipt_payload)
         if next_pointer_base is not None:
@@ -354,6 +377,30 @@ class RecommendationCalibrationPromotionAuthority:
         current = dict(current_pointer or {})
         is_adopt = decision == "adopt"
         current_lineage = _pointer_probability_lineage(current_pointer)
+        desired_scenario: RecommendationCostScenario | None = None
+        try:
+            desired_scenario = _scenario_from_metadata(
+                candidate_metadata if is_adopt else target if target else current
+            )
+        except (TypeError, ValueError, RecommendationCostScenarioError):
+            pass
+        same_cost_lane = True
+        if is_adopt and desired_scenario is not None and current:
+            try:
+                same_cost_lane = (
+                    _scenario_from_metadata(current).scenario_hash
+                    == desired_scenario.scenario_hash
+                )
+            except (TypeError, ValueError, RecommendationCostScenarioError):
+                same_cost_lane = False
+            if not same_cost_lane:
+                # A new cost contract starts an isolated active lineage.  A
+                # legacy champion is not silently used as a same-cost baseline.
+                current_lineage = [
+                    _probability_lineage_null_node(
+                        self.policy.maximum_probability_change_bp
+                    )
+                ]
         if is_adopt:
             previous_lineage = current_lineage
             target_lineage = previous_lineage + [
@@ -393,7 +440,21 @@ class RecommendationCalibrationPromotionAuthority:
         else:
             target_lineage = [_probability_lineage_null_node(self.policy.maximum_probability_change_bp)]
             previous_lineage = target_lineage
-        return {
+        scenario_metadata: Mapping[str, Any] = (
+            candidate_metadata if is_adopt else target if target else current
+        )
+        try:
+            pointer_scenario = _scenario_from_metadata(scenario_metadata)
+        except (TypeError, ValueError, RecommendationCostScenarioError):
+            pointer_scenario = None
+        fixed_cost_value = (
+            candidate_metadata.get("fixed_round_trip_cost_bp")
+            if is_adopt and candidate_metadata.get("fixed_round_trip_cost_bp") is not None
+            else target.get("fixed_round_trip_cost_bp")
+            if not is_adopt and target.get("fixed_round_trip_cost_bp") is not None
+            else current.get("fixed_round_trip_cost_bp")
+        )
+        pointer_base: dict[str, Any] = {
             "schema_version": "recommendation-calibration-active-pointer.v2",
             "pointer_version": pointer_version,
             "status": pointer_status,
@@ -405,19 +466,19 @@ class RecommendationCalibrationPromotionAuthority:
             "candidate_artifact_hash": target.get("candidate_artifact_hash"),
             "candidate_freeze_hash": target.get("candidate_freeze_hash"),
             "dataset_hash": target.get("dataset_hash"),
-            "previous_candidate_id": current.get("candidate_id") if is_adopt else target.get("previous_candidate_id"),
-            "previous_candidate_root": current.get("candidate_root") if is_adopt else target.get("previous_candidate_root"),
-            "previous_candidate_manifest_hash": current.get("candidate_manifest_hash") if is_adopt else target.get("previous_candidate_manifest_hash"),
-            "previous_candidate_artifact_hash": current.get("candidate_artifact_hash") if is_adopt else target.get("previous_candidate_artifact_hash"),
-            "previous_candidate_freeze_hash": current.get("candidate_freeze_hash") if is_adopt else target.get("previous_candidate_freeze_hash"),
-            "previous_dataset_hash": current.get("dataset_hash") if is_adopt else target.get("previous_dataset_hash"),
-            "previous_previous_candidate_id": current.get("previous_candidate_id") if is_adopt else target.get("previous_previous_candidate_id"),
-            "previous_previous_candidate_root": current.get("previous_candidate_root") if is_adopt else target.get("previous_previous_candidate_root"),
-            "previous_previous_candidate_manifest_hash": current.get("previous_candidate_manifest_hash") if is_adopt else target.get("previous_previous_candidate_manifest_hash"),
-            "previous_previous_candidate_artifact_hash": current.get("previous_candidate_artifact_hash") if is_adopt else target.get("previous_previous_candidate_artifact_hash"),
-            "previous_previous_candidate_freeze_hash": current.get("previous_candidate_freeze_hash") if is_adopt else target.get("previous_previous_candidate_freeze_hash"),
+            "previous_candidate_id": current.get("candidate_id") if is_adopt and same_cost_lane else target.get("previous_candidate_id"),
+            "previous_candidate_root": current.get("candidate_root") if is_adopt and same_cost_lane else target.get("previous_candidate_root"),
+            "previous_candidate_manifest_hash": current.get("candidate_manifest_hash") if is_adopt and same_cost_lane else target.get("previous_candidate_manifest_hash"),
+            "previous_candidate_artifact_hash": current.get("candidate_artifact_hash") if is_adopt and same_cost_lane else target.get("previous_candidate_artifact_hash"),
+            "previous_candidate_freeze_hash": current.get("candidate_freeze_hash") if is_adopt and same_cost_lane else target.get("previous_candidate_freeze_hash"),
+            "previous_dataset_hash": current.get("dataset_hash") if is_adopt and same_cost_lane else target.get("previous_dataset_hash"),
+            "previous_previous_candidate_id": current.get("previous_candidate_id") if is_adopt and same_cost_lane else target.get("previous_previous_candidate_id"),
+            "previous_previous_candidate_root": current.get("previous_candidate_root") if is_adopt and same_cost_lane else target.get("previous_previous_candidate_root"),
+            "previous_previous_candidate_manifest_hash": current.get("previous_candidate_manifest_hash") if is_adopt and same_cost_lane else target.get("previous_previous_candidate_manifest_hash"),
+            "previous_previous_candidate_artifact_hash": current.get("previous_candidate_artifact_hash") if is_adopt and same_cost_lane else target.get("previous_previous_candidate_artifact_hash"),
+            "previous_previous_candidate_freeze_hash": current.get("previous_candidate_freeze_hash") if is_adopt and same_cost_lane else target.get("previous_previous_candidate_freeze_hash"),
             "last_good_candidate_id": target.get("candidate_id") if is_adopt else current.get("last_good_candidate_id"),
-            "fixed_round_trip_cost_bp": candidate_metadata.get("fixed_round_trip_cost_bp") or current.get("fixed_round_trip_cost_bp"),
+            "fixed_round_trip_cost_bp": fixed_cost_value,
             "maximum_probability_change_bp": self.policy.maximum_probability_change_bp,
             "probability_lineage_schema_version": PROBABILITY_LINEAGE_SCHEMA_VERSION,
             "probability_lineage": target_lineage,
@@ -428,6 +489,20 @@ class RecommendationCalibrationPromotionAuthority:
             "authority_scope": AUTHORITY_SCOPE,
             "formal_order_allowed": False,
         }
+        if pointer_scenario is not None and pointer_scenario.is_estimated:
+            pointer_base.update(_scenario_identity_fields(pointer_scenario, scenario_metadata))
+            if is_adopt and same_cost_lane:
+                for field_name in (
+                    "label_registry_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
+                    "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+                    "cost_basis", "cost_policy_id", "cost_policy_version",
+                    "policy_estimate_date", "research_order_amount_twd",
+                    "research_order_quantity_shares", "lot_type", "instrument_type",
+                    "cost_scenario",
+                ):
+                    if field_name in current:
+                        pointer_base[f"previous_{field_name}"] = current[field_name]
+        return pointer_base
 
     def _valid_previous_identity(self, pointer: Mapping[str, Any] | None) -> dict[str, Any] | None:
         if not pointer or pointer.get("status") != "active":
@@ -446,6 +521,26 @@ class RecommendationCalibrationPromotionAuthority:
             "previous_candidate_freeze_hash": pointer.get("previous_previous_candidate_freeze_hash"),
             "previous_dataset_hash": pointer.get("previous_previous_dataset_hash"),
         }
+        previous_field_map = {
+            "label_registry_hash": "previous_label_registry_hash",
+            "cost_contract_hash": "previous_cost_contract_hash",
+            "fixed_round_trip_cost_bp": "previous_fixed_round_trip_cost_bp",
+            "cost_scenario_id": "previous_cost_scenario_id",
+            "cost_scenario_version": "previous_cost_scenario_version",
+            "cost_scenario_hash": "previous_cost_scenario_hash",
+            "cost_basis": "previous_cost_basis",
+            "cost_policy_id": "previous_cost_policy_id",
+            "cost_policy_version": "previous_cost_policy_version",
+            "policy_estimate_date": "previous_policy_estimate_date",
+            "research_order_amount_twd": "previous_research_order_amount_twd",
+            "research_order_quantity_shares": "previous_research_order_quantity_shares",
+            "lot_type": "previous_lot_type",
+            "instrument_type": "previous_instrument_type",
+            "cost_scenario": "previous_cost_scenario",
+        }
+        for target, source in previous_field_map.items():
+            if source in pointer:
+                previous[target] = pointer[source]
         required = (
             "candidate_id", "candidate_root", "candidate_manifest_hash",
             "candidate_artifact_hash", "candidate_freeze_hash",
@@ -483,6 +578,18 @@ class RecommendationCalibrationPromotionAuthority:
             return None, "active_pointer_schema_invalid"
         if pointer.get("policy_hash") != self.policy.policy_hash:
             return None, "active_pointer_policy_hash_mismatch"
+        try:
+            pointer_scenario = _scenario_from_metadata(pointer)
+        except (TypeError, ValueError, RecommendationCostScenarioError):
+            return None, "active_pointer_cost_scenario_invalid"
+        expected_label_hash = _label_registry_hash(pointer_scenario)
+        if pointer.get("label_registry_hash") not in (None, expected_label_hash):
+            return None, "active_pointer_label_registry_mismatch"
+        expected_cost_hash = _cost_contract_hash(pointer_scenario)
+        if pointer.get("cost_contract_hash") not in (None, expected_cost_hash):
+            return None, "active_pointer_cost_contract_mismatch"
+        if pointer_scenario.is_estimated and pointer.get("fixed_round_trip_cost_bp") is not None:
+            return None, "active_pointer_estimated_fixed_cost_mismatch"
         if pointer.get("status") == "active" and not all(pointer.get(key) for key in (
             "candidate_id", "candidate_root", "candidate_manifest_hash",
             "candidate_artifact_hash", "candidate_freeze_hash",
@@ -577,6 +684,31 @@ def _verify_candidate_identity(
         actual = candidate_payload.get(field_name)
         if supplied is not None and str(supplied) != str(actual):
             return f"candidate_metadata_{field_name}_mismatch"
+    try:
+        actual_scenario = cost_scenario_from_metadata(
+            candidate_payload,
+            fixed_round_trip_cost_bp=_optional_int(candidate_payload.get("fixed_round_trip_cost_bp")),
+        )
+        supplied_scenario = cost_scenario_from_metadata(
+            candidate_metadata,
+            fixed_round_trip_cost_bp=_optional_int(candidate_metadata.get("fixed_round_trip_cost_bp")),
+        )
+    except (TypeError, ValueError, RecommendationCostScenarioError):
+        return "candidate_cost_scenario_invalid"
+    if actual_scenario.scenario_hash != supplied_scenario.scenario_hash:
+        return "candidate_cost_scenario_mismatch"
+    expected_label_hash = _label_registry_hash(actual_scenario)
+    if candidate_payload.get("label_registry_hash") != expected_label_hash:
+        return "candidate_label_registry_contract_mismatch"
+    expected_cost_hash = _cost_contract_hash(actual_scenario)
+    if candidate_payload.get("cost_contract_hash") not in (None, expected_cost_hash):
+        return "candidate_cost_contract_mismatch"
+    supplied_label_hash = candidate_metadata.get("label_registry_hash")
+    if supplied_label_hash is not None and str(supplied_label_hash) != expected_label_hash:
+        return "candidate_metadata_label_registry_contract_mismatch"
+    supplied_cost_hash = candidate_metadata.get("cost_contract_hash")
+    if supplied_cost_hash is not None and str(supplied_cost_hash) != expected_cost_hash:
+        return "candidate_metadata_cost_contract_mismatch"
     expected_freeze = candidate_freeze_hash(
         candidate_id=candidate_id,
         dataset_hash=str(candidate_payload.get("dataset_hash") or candidate_metadata.get("dataset_hash") or ""),
@@ -672,7 +804,10 @@ def _verify_natural_evidence(
     if any(key not in receipt_payload for key in required):
         result["error"] = "natural_evidence_field_missing"
         return result
-    if receipt_payload.get("schema_version") != "recommendation-natural-forward-evidence.v2":
+    if receipt_payload.get("schema_version") not in {
+        "recommendation-natural-forward-evidence.v2",
+        "recommendation-natural-forward-evidence.v3",
+    }:
         result["error"] = "natural_evidence_schema_invalid"
         return result
     if str(receipt_payload.get("source_kind")) != "matured_forward_prediction_capture":
@@ -737,6 +872,17 @@ def _verify_natural_evidence(
             receipt_payload.get("maximum_probability_change_bp", -2)
         ):
             raise ValueError("capture probability cap binding mismatch")
+        candidate_scenario = _scenario_from_metadata(candidate_metadata)
+        capture_scenario = _scenario_from_metadata(capture_payload)
+        receipt_scenario = _scenario_from_metadata(receipt_payload)
+        if capture_scenario.scenario_hash != candidate_scenario.scenario_hash:
+            raise ValueError("capture cost scenario does not match candidate")
+        if receipt_scenario.scenario_hash != candidate_scenario.scenario_hash:
+            raise ValueError("natural evidence cost scenario does not match candidate")
+        if receipt_payload.get("schema_version") == "recommendation-natural-forward-evidence.v3" and not candidate_scenario.is_estimated:
+            raise ValueError("natural evidence v3 must use estimated cost scenario")
+        if receipt_payload.get("schema_version") == "recommendation-natural-forward-evidence.v2" and candidate_scenario.is_estimated:
+            raise ValueError("natural evidence v2 cannot use estimated cost scenario")
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         result["error"] = "natural_evidence_capture_artifact_invalid"
         return result
@@ -754,9 +900,11 @@ def _verify_natural_evidence(
         result["error"] = "natural_evidence_timestamp_or_as_of_invalid"
         return result
     try:
-        fixed_cost = int(candidate_metadata.get("fixed_round_trip_cost_bp", -1))
-        expected_cost_hash = recommendation_cost_contract_hash(fixed_cost)
-    except (TypeError, ValueError):
+        candidate_scenario = _scenario_from_metadata(candidate_metadata)
+        fixed_cost = candidate_scenario.fixed_round_trip_cost_bp
+        expected_cost_hash = _cost_contract_hash(candidate_scenario)
+        expected_label_hash = _label_registry_hash(candidate_scenario)
+    except (TypeError, ValueError, RecommendationCostScenarioError):
         result["error"] = "natural_evidence_candidate_cost_contract_invalid"
         return result
     expected_metadata = {
@@ -767,16 +915,39 @@ def _verify_natural_evidence(
         "dataset_hash": candidate_metadata.get("dataset_hash"),
         "feature_registry_hash": candidate_metadata.get("feature_registry_hash"),
         "feature_schema_hash": candidate_metadata.get("feature_schema_hash"),
-        "label_registry_hash": candidate_metadata.get("label_registry_hash"),
+        "label_registry_hash": expected_label_hash,
         "cost_contract_hash": expected_cost_hash,
         "fixed_round_trip_cost_bp": fixed_cost,
         "maximum_probability_change_bp": maximum_probability_change_bp,
         "policy_hash": policy_hash,
     }
     for key, expected_value in expected_metadata.items():
+        if (
+            key == "fixed_round_trip_cost_bp"
+            and candidate_scenario.is_estimated
+            and expected_value is None
+        ):
+            # The estimated fees/tax-only lane deliberately carries no fixed
+            # bp value.  ``None`` is a meaningful contract value here, not a
+            # missing binding.
+            if receipt_payload.get(key) is not None:
+                result["error"] = f"natural_evidence_candidate_binding_mismatch:{key}"
+                return result
+            continue
         if expected_value is None or str(receipt_payload.get(key)) != str(expected_value):
             result["error"] = f"natural_evidence_candidate_binding_mismatch:{key}"
             return result
+    if candidate_scenario.is_estimated:
+        for key in (
+            "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+            "cost_basis", "cost_policy_id", "cost_policy_version",
+            "policy_estimate_date", "research_order_amount_twd",
+            "research_order_quantity_shares", "lot_type", "instrument_type",
+            "cost_scenario",
+        ):
+            if receipt_payload.get(key) != candidate_metadata.get(key):
+                result["error"] = f"natural_evidence_candidate_binding_mismatch:{key}"
+                return result
     try:
         if int(receipt_payload["maximum_probability_change_bp"]) != int(maximum_probability_change_bp):
             result["error"] = "natural_evidence_probability_cap_mismatch"
@@ -800,7 +971,7 @@ def _verify_natural_evidence(
         result["error"] = "natural_evidence_count_mismatch"
         return result
     row_ids: list[str] = []
-    comparison_keys: set[tuple[str, str, int]] = set()
+    comparison_keys: set[tuple[str, str, str, int]] = set()
     decision_dates: set[str] = set()
     candidate_probabilities: list[int] = []
     champion_probabilities: list[int] = []
@@ -816,7 +987,14 @@ def _verify_natural_evidence(
         row_ids.append(row_id)
         try:
             row_capture_day = _date_text(str(row["capture_as_of_date"]))
-            comparison_key = (str(row.get("symbol") or ""), row_capture_day, 20)
+            comparison_key = (
+                candidate_scenario.scenario_hash
+                if candidate_scenario.is_estimated
+                else "legacy-fixed-round-trip-bp",
+                str(row.get("symbol") or ""),
+                row_capture_day,
+                20,
+            )
             if comparison_key in comparison_keys:
                 raise ValueError("duplicate symbol decision horizon comparison")
             comparison_keys.add(comparison_key)
@@ -890,7 +1068,31 @@ def _verify_natural_evidence(
             liquidity = row.get("observed_liquidity_cost_bp")
             after_label = row.get("after_cost_profit_label")
             liquidity_source = str(row.get("observed_liquidity_cost_source") or "").strip()
-            if liquidity is None:
+            if candidate_scenario.is_estimated:
+                if row.get("cost_scenario_hash") != candidate_scenario.scenario_hash:
+                    raise ValueError
+                # Re-run the versioned fee/tax policy from typed, outcome-bound
+                # prices and sizing.  A receipt body hash only proves that a
+                # producer wrote a self-consistent document; it does not make
+                # producer-supplied costs authoritative.
+                verify_estimated_cost_observation(
+                    candidate_scenario,
+                    row,
+                    expected_market_replay_date=row_capture_day,
+                )
+                if row.get("buy_price_twd") is not None and row.get("sell_price_twd") is not None:
+                    buy_price = Decimal(str(row["buy_price_twd"]))
+                    sell_price = Decimal(str(row["sell_price_twd"]))
+                    expected_stock_return = int(
+                        ((sell_price / buy_price - Decimal("1")) * Decimal("10000")).quantize(
+                            Decimal("1"), rounding=ROUND_HALF_EVEN
+                        )
+                    )
+                    if int(row["stock_return_bp"]) != expected_stock_return:
+                        raise ValueError
+                if liquidity is not None and int(liquidity) < 0:
+                    raise ValueError
+            elif liquidity is None:
                 if after_label is not None:
                     raise ValueError
             else:
@@ -913,21 +1115,39 @@ def _verify_natural_evidence(
         candidate_probabilities.append(candidate_probability)
         champion_probabilities.append(champion_probability)
         labels.append(candidate_label)
-    expected_sample_fingerprint = _hash_payload(
+    fingerprint_rows = [
         {
-            "capture_id": receipt_payload["capture_id"],
-            "rows": [
-                {
-                    "capture_row_id": row["capture_row_id"],
-                    "label_end_date": row["label_end_date"],
-                    "label_available_date": row["label_available_date"],
-                        "stock_return_bp": row["stock_return_bp"],
-                        "observed_liquidity_cost_bp": row.get("observed_liquidity_cost_bp"),
-                        "observed_liquidity_cost_source": row.get("observed_liquidity_cost_source"),
-                }
-                for row in comparisons
-            ],
+            "capture_row_id": row["capture_row_id"],
+            "label_end_date": row["label_end_date"],
+            "label_available_date": row["label_available_date"],
+            "stock_return_bp": row["stock_return_bp"],
+            "observed_liquidity_cost_bp": row.get("observed_liquidity_cost_bp"),
+            "observed_liquidity_cost_source": row.get("observed_liquidity_cost_source"),
         }
+        for row in comparisons
+    ]
+    if candidate_scenario.is_estimated:
+        fingerprint_rows = [
+            {
+                **row,
+                "observed_liquidity_cost_bp": None,
+                "observed_liquidity_cost_source": None,
+                **{
+                    key: comparison.get(key)
+                    for key in (
+                        "cost_scenario_hash", "policy_estimate_date", "market_replay_date",
+                        "buy_price_twd", "sell_price_twd",
+                        "estimated_buy_cost_twd", "estimated_sell_cost_twd",
+                        "estimated_round_trip_cost_twd", "estimated_round_trip_cost_bp",
+                        "gross_buy_amount_twd", "gross_sell_amount_twd", "net_profit_twd",
+                        "cost_estimate_status",
+                    )
+                },
+            }
+            for row, comparison in zip(fingerprint_rows, comparisons)
+        ]
+    expected_sample_fingerprint = _hash_payload(
+        {"capture_id": receipt_payload["capture_id"], "rows": fingerprint_rows}
     )
     expected_candidate_prediction_hash = _hash_payload(
         {"row_ids": row_ids, "probabilities_bp": candidate_probabilities}
@@ -1023,7 +1243,7 @@ def _verify_natural_evidence(
 
 
 def _candidate_identity_from_metadata(candidate_root: str | Path | None, metadata: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    identity = {
         "candidate_id": metadata.get("candidate_id") or metadata.get("model_id"),
         "candidate_root": str(Path(candidate_root).resolve()) if candidate_root else None,
         "candidate_manifest_hash": metadata.get("manifest_hash"),
@@ -1031,6 +1251,16 @@ def _candidate_identity_from_metadata(candidate_root: str | Path | None, metadat
         "candidate_freeze_hash": metadata.get("candidate_freeze_hash"),
         "dataset_hash": metadata.get("dataset_hash"),
     }
+    try:
+        scenario = cost_scenario_from_metadata(
+            metadata,
+            fixed_round_trip_cost_bp=_optional_int(metadata.get("fixed_round_trip_cost_bp")),
+        )
+    except (TypeError, ValueError, RecommendationCostScenarioError):
+        scenario = None
+    if scenario is not None and scenario.is_estimated:
+        identity.update(_scenario_identity_fields(scenario, metadata))
+    return identity
 
 
 def _probability_lineage_null_node(maximum_probability_change_bp: int) -> dict[str, Any]:
@@ -1054,7 +1284,7 @@ def _probability_lineage_model_node(
     maximum_probability_change_bp: int,
 ) -> dict[str, Any]:
     candidate_id = identity.get("candidate_id") or identity.get("model_id")
-    return {
+    node = {
         "kind": "active_model",
         "baseline_id": baseline_id,
         "baseline_kind": baseline_kind,
@@ -1069,6 +1299,17 @@ def _probability_lineage_model_node(
         "maximum_probability_change_bp": maximum_probability_change_bp,
         "effective_prediction": "recursive_capped_model_probability",
     }
+    for key in (
+        "label_registry_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
+        "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+        "cost_basis", "cost_policy_id", "cost_policy_version",
+        "policy_estimate_date", "research_order_amount_twd",
+        "research_order_quantity_shares", "lot_type", "instrument_type",
+        "cost_scenario",
+    ):
+        if key in identity:
+            node[key] = identity[key]
+    return node
 
 
 def _pointer_probability_lineage(pointer: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -1201,7 +1442,7 @@ def _candidate_training_after_decision(metadata: Mapping[str, Any], decision_dat
 def _pointer_identity(pointer: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if not pointer or pointer.get("status") != "active":
         return None
-    return {
+    identity = {
         "candidate_id": pointer.get("candidate_id"),
         "candidate_root": pointer.get("candidate_root"),
         "candidate_manifest_hash": pointer.get("candidate_manifest_hash"),
@@ -1209,6 +1450,17 @@ def _pointer_identity(pointer: Mapping[str, Any] | None) -> dict[str, Any] | Non
         "candidate_freeze_hash": pointer.get("candidate_freeze_hash"),
         "dataset_hash": pointer.get("dataset_hash"),
     }
+    for key in (
+        "label_registry_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
+        "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+        "cost_basis", "cost_policy_id", "cost_policy_version",
+        "policy_estimate_date", "research_order_amount_twd",
+        "research_order_quantity_shares", "lot_type", "instrument_type",
+        "cost_scenario",
+    ):
+        if key in pointer:
+            identity[key] = pointer[key]
+    return identity
 
 
 def _cooldown_active(pointer: Mapping[str, Any] | None, decision_date: str, cooldown_days: int) -> bool:
@@ -1222,6 +1474,65 @@ def _cooldown_active(pointer: Mapping[str, Any] | None, decision_date: str, cool
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _scenario_identity_fields(
+    scenario: RecommendationCostScenario,
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "label_registry_hash": metadata.get("label_registry_hash") or _label_registry_hash(scenario),
+        "cost_contract_hash": metadata.get("cost_contract_hash") or _cost_contract_hash(scenario),
+        "fixed_round_trip_cost_bp": scenario.fixed_round_trip_cost_bp,
+        "cost_scenario_id": scenario.scenario_id,
+        "cost_scenario_version": scenario.scenario_version,
+        "cost_scenario_hash": scenario.scenario_hash,
+        "cost_basis": scenario.cost_basis,
+        "cost_policy_id": scenario.policy_id,
+        "cost_policy_version": scenario.policy_version,
+        "policy_estimate_date": scenario.policy_estimate_date,
+        "research_order_amount_twd": (
+            str(scenario.research_order_amount_twd)
+            if scenario.research_order_amount_twd is not None
+            else None
+        ),
+        "research_order_quantity_shares": scenario.research_order_quantity_shares,
+        "lot_type": scenario.lot_type,
+        "instrument_type": scenario.instrument_type,
+        "cost_scenario": scenario.metadata(),
+    }
+
+
+def _label_registry_hash(scenario: RecommendationCostScenario) -> str:
+    from ml_module.recommendation_calibration_training import recommendation_label_registry_hash
+
+    return recommendation_label_registry_hash(
+        cost_scenario=scenario if scenario.is_estimated else None
+    )
+
+
+def _cost_contract_hash(scenario: RecommendationCostScenario) -> str:
+    return recommendation_cost_contract_hash(
+        scenario.fixed_round_trip_cost_bp,
+        cost_scenario=scenario if scenario.is_estimated else None,
+    )
+
+
+def _scenario_from_metadata(metadata: Mapping[str, Any]) -> RecommendationCostScenario:
+    return cost_scenario_from_metadata(
+        metadata,
+        fixed_round_trip_cost_bp=_optional_int(metadata.get("fixed_round_trip_cost_bp")),
+    )
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return parsed if parsed.is_finite() else None
 
 
 def _candidate_gate_blockers(metadata: Mapping[str, Any]) -> tuple[str, ...]:

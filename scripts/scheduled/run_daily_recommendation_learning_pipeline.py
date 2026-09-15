@@ -37,6 +37,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-decision-dates", type=int, default=100)
     parser.add_argument("--fixed-round-trip-cost-bp", type=int, default=50)
     parser.add_argument(
+        "--cost-scenario",
+        choices=("legacy_fixed_bp", "banktaiwan_estimated_research"),
+        default="legacy_fixed_bp",
+        help="成本 contract；預設維持既有 fixed 50bp，臺銀情境僅供 research/shadow。",
+    )
+    parser.add_argument("--cost-policy-estimate-date", default="2026-01-01")
+    parser.add_argument("--research-order-amount-twd", default=None)
+    parser.add_argument("--research-order-quantity-shares", type=int, default=None)
+    parser.add_argument(
+        "--research-order-lot-type",
+        choices=("full_lot", "odd_lot"),
+        default="full_lot",
+    )
+    parser.add_argument(
+        "--research-instrument-type",
+        choices=("ordinary_stock", "equity_etf"),
+        default="ordinary_stock",
+    )
+    parser.add_argument(
         "--symbols",
         default=None,
         help="optional explicit cohort for a controlled trial; omitted for the normal snapshot cohort",
@@ -436,6 +455,26 @@ def main(argv: list[str] | None = None) -> int:
                     "--decision-date", decision_date,
                     "--training-as-of", decision_date,
                 ]
+                if args.cost_scenario == "banktaiwan_estimated_research":
+                    learning_arguments.extend(
+                        [
+                            "--cost-scenario", args.cost_scenario,
+                            "--cost-policy-estimate-date", str(args.cost_policy_estimate_date),
+                            "--research-order-lot-type", str(args.research_order_lot_type),
+                            "--research-instrument-type", str(args.research_instrument_type),
+                        ]
+                    )
+                    if args.research_order_amount_twd is not None:
+                        learning_arguments.extend(
+                            ["--research-order-amount-twd", str(args.research_order_amount_twd)]
+                        )
+                    if args.research_order_quantity_shares is not None:
+                        learning_arguments.extend(
+                            [
+                                "--research-order-quantity-shares",
+                                str(args.research_order_quantity_shares),
+                            ]
+                        )
                 if args.symbols:
                     learning_arguments.extend(["--symbols", str(args.symbols)])
                 learning_step = run_child_bounded(

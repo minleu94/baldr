@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
@@ -27,6 +28,14 @@ from ml_module.recommendation_calibration_training import (
     recommendation_label_registry_hash,
     feature_schema_hash,
     candidate_freeze_hash,
+)
+from ml_module.recommendation_cost_scenario import (
+    LEGACY_RECOMMENDATION_COST_SCENARIO_ID,
+    LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION,
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    cost_scenario_from_metadata,
+    normalize_cost_scenario,
 )
 from ml_module.recommendation_probability_transform import (
     NULL_BENCHMARK_BASELINE_ID,
@@ -80,7 +89,7 @@ class RecommendationPredictionCapture:
     feature_schema: FeatureSchema
     label_registry_hash: str
     cost_contract_hash: str
-    fixed_round_trip_cost_bp: int
+    fixed_round_trip_cost_bp: int | None
     maximum_probability_change_bp: int
     policy_hash: str
     rows: tuple[Mapping[str, Any], ...]
@@ -100,9 +109,21 @@ class RecommendationPredictionCapture:
     capture_origin: str = "scheduled_live"
     source_contract_binding: Mapping[str, Any] | None = None
     schema_version: str = "recommendation-prediction-capture.v2"
+    cost_scenario_id: str = LEGACY_RECOMMENDATION_COST_SCENARIO_ID
+    cost_scenario_version: str = LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION
+    cost_scenario_hash: str = ""
+    cost_basis: str = "fixed_round_trip_bp"
+    cost_policy_id: str | None = None
+    cost_policy_version: str | None = None
+    policy_estimate_date: str | None = None
+    research_order_amount_twd: str | None = None
+    research_order_quantity_shares: int | None = None
+    lot_type: str | None = None
+    instrument_type: str | None = None
+    cost_scenario: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "schema_version": self.schema_version,
             "capture_id": self.capture_id,
             "capture_as_of_date": self.capture_as_of_date,
@@ -143,6 +164,9 @@ class RecommendationPredictionCapture:
                 else None
             ),
         }
+        if self.schema_version != "recommendation-prediction-capture.v2":
+            payload.update(_scenario_fields_from_capture(self))
+        return payload
 
     def persist(self, path: str | Path) -> Path:
         destination = Path(path).resolve()
@@ -175,7 +199,7 @@ class ActiveModelPredictionCapture:
     feature_schema: FeatureSchema
     label_registry_hash: str
     cost_contract_hash: str
-    fixed_round_trip_cost_bp: int
+    fixed_round_trip_cost_bp: int | None
     maximum_probability_change_bp: int
     policy_hash: str
     probability_transform_id: str
@@ -185,9 +209,21 @@ class ActiveModelPredictionCapture:
     capture_path: str | None = None
     capture_origin: str = "scheduled_active_monitor"
     schema_version: str = "recommendation-active-model-prediction-capture.v1"
+    cost_scenario_id: str = LEGACY_RECOMMENDATION_COST_SCENARIO_ID
+    cost_scenario_version: str = LEGACY_RECOMMENDATION_COST_SCENARIO_VERSION
+    cost_scenario_hash: str = ""
+    cost_basis: str = "fixed_round_trip_bp"
+    cost_policy_id: str | None = None
+    cost_policy_version: str | None = None
+    policy_estimate_date: str | None = None
+    research_order_amount_twd: str | None = None
+    research_order_quantity_shares: int | None = None
+    lot_type: str | None = None
+    instrument_type: str | None = None
+    cost_scenario: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "schema_version": self.schema_version,
             "capture_id": self.capture_id,
             "capture_as_of_date": self.capture_as_of_date,
@@ -219,6 +255,9 @@ class ActiveModelPredictionCapture:
             "capture_path": self.capture_path,
             "capture_origin": self.capture_origin,
         }
+        if self.schema_version != "recommendation-active-model-prediction-capture.v1":
+            payload.update(_scenario_fields_from_capture(self))
+        return payload
 
     def persist(self, path: str | Path) -> Path:
         destination = Path(path).resolve()
@@ -240,7 +279,8 @@ class ActiveModelPredictionCaptureService:
         decision_date: str,
         captured_at: str,
         inputs: Sequence[RecommendationPredictionCaptureInput],
-        fixed_round_trip_cost_bp: int,
+        fixed_round_trip_cost_bp: int | None,
+        cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
         maximum_probability_change_bp: int = 1_000,
     ) -> ActiveModelPredictionCapture:
         capture_day = _date(decision_date).isoformat()
@@ -260,6 +300,51 @@ class ActiveModelPredictionCaptureService:
             raise ValueError("active pointer identity is incomplete")
         candidate_payload = _read_json(candidate_root / "candidate.json")
         manifest_payload = _read_json(candidate_root / "manifest.json")
+        scenario_metadata = dict(candidate_payload)
+        for key in (
+            "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+            "cost_basis", "cost_policy_id", "cost_policy_version",
+            "policy_estimate_date", "research_order_amount_twd",
+            "research_order_quantity_shares", "lot_type", "instrument_type",
+            "cost_scenario", "fixed_round_trip_cost_bp",
+        ):
+            if key in identity:
+                scenario_metadata[key] = identity[key]
+        try:
+            declared_scenario = cost_scenario_from_metadata(
+                scenario_metadata,
+                fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            )
+            resolved_scenario = (
+                declared_scenario
+                if cost_scenario is None
+                else normalize_cost_scenario(
+                    cost_scenario,
+                    fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+                )
+            )
+        except RecommendationCostScenarioError as exc:
+            raise ValueError(str(exc)) from exc
+        if resolved_scenario.is_estimated and fixed_round_trip_cost_bp is not None:
+            raise ValueError("estimated active capture must not carry fixed_round_trip_cost_bp")
+        if (
+            not resolved_scenario.is_estimated
+            and fixed_round_trip_cost_bp is not None
+            and resolved_scenario.fixed_round_trip_cost_bp != fixed_round_trip_cost_bp
+        ):
+            raise ValueError("active capture fixed cost does not match cost scenario")
+        if resolved_scenario.scenario_hash != declared_scenario.scenario_hash:
+            raise ValueError("active capture cost scenario does not match candidate")
+        identity_scenario_hash = str(identity.get("cost_scenario_hash") or "")
+        if identity_scenario_hash and identity_scenario_hash != resolved_scenario.scenario_hash:
+            raise ValueError("active identity cost scenario mismatch")
+        expected_label_registry_hash = str(
+            identity.get("label_registry_hash")
+            or candidate_payload.get("label_registry_hash")
+            or ""
+        )
+        if not expected_label_registry_hash:
+            raise ValueError("active candidate label registry hash is missing")
         candidate_frozen_at = str(manifest_payload.get("created_at") or "")
         if not candidate_frozen_at:
             raise ValueError("active candidate freeze timestamp is missing")
@@ -316,20 +401,32 @@ class ActiveModelPredictionCaptureService:
                 }
             )
         identity_hash = _hash_payload(identity)
+        capture_identity: dict[str, Any] = {
+            "active_identity_hash": identity_hash,
+            "capture_as_of_date": capture_day,
+            "rows": rows,
+        }
+        if resolved_scenario.is_estimated:
+            capture_identity["cost_scenario_hash"] = resolved_scenario.scenario_hash
         capture_id = "active-capture-" + hashlib.sha256(
-            json.dumps(
-                {"active_identity_hash": identity_hash, "capture_as_of_date": capture_day, "rows": rows},
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
+            json.dumps(capture_identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:24]
         active_effective_date = str(
             consumer._loaded_pointer.get("effective_date")
             if getattr(consumer, "_loaded_pointer", None)
             else ""
         )[:10]
+        schema_version = (
+            "recommendation-active-model-prediction-capture.v2"
+            if resolved_scenario.is_estimated
+            else "recommendation-active-model-prediction-capture.v1"
+        )
+        contract_hash = recommendation_cost_contract_hash(
+            resolved_scenario.fixed_round_trip_cost_bp,
+            cost_scenario=resolved_scenario if resolved_scenario.is_estimated else None,
+        )
         body: dict[str, Any] = {
-            "schema_version": "recommendation-active-model-prediction-capture.v1",
+            "schema_version": schema_version,
             "capture_id": capture_id,
             "capture_as_of_date": capture_day,
             "captured_at": captured_at,
@@ -348,9 +445,9 @@ class ActiveModelPredictionCaptureService:
             "feature_registry_hash": feature_registry_hash,
             "feature_schema_hash": feature_schema_hash(feature_schema),
             "feature_schema": [list(item) for item in feature_schema],
-            "label_registry_hash": recommendation_label_registry_hash(),
-            "cost_contract_hash": recommendation_cost_contract_hash(fixed_round_trip_cost_bp),
-            "fixed_round_trip_cost_bp": fixed_round_trip_cost_bp,
+            "label_registry_hash": expected_label_registry_hash,
+            "cost_contract_hash": contract_hash,
+            "fixed_round_trip_cost_bp": resolved_scenario.fixed_round_trip_cost_bp,
             "maximum_probability_change_bp": maximum_probability_change_bp,
             "policy_hash": policy_hash,
             "probability_transform_id": PROBABILITY_TRANSFORM_ID,
@@ -358,6 +455,14 @@ class ActiveModelPredictionCaptureService:
             "rows": rows,
             "capture_origin": "scheduled_active_monitor",
         }
+        if resolved_scenario.is_estimated:
+            # Hash the exact v3 fields that ``to_dict`` persists.  Using the
+            # scenario's internal metadata shape here would emit
+            # ``scenario_id``/``scenario_version`` while the durable capture
+            # contract uses ``cost_scenario_id``/``cost_scenario_version``;
+            # that would make an otherwise immutable capture fail its own
+            # post-persist verification.
+            body.update(_scenario_dataclass_kwargs(resolved_scenario))
         body["capture_hash"] = _hash_payload(body)
         return ActiveModelPredictionCapture(
             capture_id=capture_id,
@@ -378,15 +483,17 @@ class ActiveModelPredictionCaptureService:
             feature_registry_hash=feature_registry_hash,
             feature_schema_hash=feature_schema_hash(feature_schema),
             feature_schema=feature_schema,
-            label_registry_hash=recommendation_label_registry_hash(),
-            cost_contract_hash=recommendation_cost_contract_hash(fixed_round_trip_cost_bp),
-            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            label_registry_hash=expected_label_registry_hash,
+            cost_contract_hash=contract_hash,
+            fixed_round_trip_cost_bp=resolved_scenario.fixed_round_trip_cost_bp,
             maximum_probability_change_bp=maximum_probability_change_bp,
             policy_hash=policy_hash,
             probability_transform_id=PROBABILITY_TRANSFORM_ID,
             probability_lineage=lineage,
             rows=tuple(rows),
             capture_hash=str(body["capture_hash"]),
+            schema_version=schema_version,
+            **(_scenario_dataclass_kwargs(resolved_scenario) if resolved_scenario.is_estimated else {}),
         )
 
 
@@ -399,6 +506,29 @@ class MaturedRecommendationOutcome:
     observed_liquidity_cost_bp: int | None
     benchmark_return_bp: int | None = None
     observed_liquidity_cost_source: str | None = None
+    buy_price_twd: str | None = None
+    sell_price_twd: str | None = None
+    cost_scenario_id: str | None = None
+    cost_scenario_version: str | None = None
+    cost_scenario_hash: str | None = None
+    cost_basis: str | None = None
+    cost_policy_id: str | None = None
+    cost_policy_version: str | None = None
+    policy_estimate_date: str | None = None
+    market_replay_date: str | None = None
+    research_order_amount_twd: str | None = None
+    research_order_quantity_shares: int | None = None
+    lot_type: str | None = None
+    instrument_type: str | None = None
+    estimated_buy_cost_twd: str | None = None
+    estimated_sell_cost_twd: str | None = None
+    estimated_round_trip_cost_twd: str | None = None
+    estimated_round_trip_cost_bp: int | None = None
+    gross_buy_amount_twd: str | None = None
+    gross_sell_amount_twd: str | None = None
+    net_profit_twd: str | None = None
+    cost_estimate_status: str | None = None
+    cost_estimate_diagnostics: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if _date(self.label_available_date) < _date(self.label_end_date):
@@ -434,7 +564,8 @@ class RecommendationPredictionCaptureService:
         decision_date: str,
         captured_at: str,
         inputs: Sequence[RecommendationPredictionCaptureInput],
-        fixed_round_trip_cost_bp: int,
+        fixed_round_trip_cost_bp: int | None,
+        cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
         maximum_probability_change_bp: int = 1_000,
         data_root: str | Path | None = None,
         champion_pointer_path: str | Path | None = None,
@@ -457,6 +588,36 @@ class RecommendationPredictionCaptureService:
         candidate_id = str(candidate_payload.get("candidate_id") or "")
         if not candidate_id:
             raise ValueError("candidate identity is missing")
+        try:
+            declared_scenario = cost_scenario_from_metadata(
+                candidate_payload,
+                fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            )
+            resolved_scenario = (
+                declared_scenario
+                if cost_scenario is None
+                else normalize_cost_scenario(
+                    cost_scenario,
+                    fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+                )
+            )
+        except RecommendationCostScenarioError as exc:
+            raise ValueError(str(exc)) from exc
+        if resolved_scenario.is_estimated and fixed_round_trip_cost_bp is not None:
+            raise ValueError("estimated capture must not carry fixed_round_trip_cost_bp")
+        if (
+            not resolved_scenario.is_estimated
+            and fixed_round_trip_cost_bp is not None
+            and resolved_scenario.fixed_round_trip_cost_bp != fixed_round_trip_cost_bp
+        ):
+            raise ValueError("capture fixed cost does not match cost scenario")
+        if resolved_scenario.scenario_hash != declared_scenario.scenario_hash:
+            raise ValueError("capture cost scenario does not match candidate")
+        expected_label_registry_hash = str(
+            candidate_payload.get("label_registry_hash") or ""
+        )
+        if not expected_label_registry_hash:
+            raise ValueError("candidate label registry hash is missing")
         if candidate_payload.get("feature_schema_hash") != feature_schema_hash(feature_schema):
             raise ValueError("candidate feature schema hash mismatch")
         evaluation_payload = candidate_payload.get("evaluation")
@@ -493,7 +654,7 @@ class RecommendationPredictionCaptureService:
         expectation = ArtifactCompatibilityExpectation(
             expected_model_family=str(manifest_payload.get("model_family")),
             expected_feature_registry_hash=feature_registry_hash,
-            expected_label_registry_hash=recommendation_label_registry_hash(),
+            expected_label_registry_hash=expected_label_registry_hash,
             expected_feature_schema=feature_schema,
             installed_library_versions=_library_versions(),
         )
@@ -644,22 +805,31 @@ class RecommendationPredictionCaptureService:
                 capture_rows=rows,
                 capture_at=captured_at,
             )
+        schema_version = (
+            "recommendation-prediction-capture.v3"
+            if resolved_scenario.is_estimated
+            else "recommendation-prediction-capture.v2"
+        )
+        capture_identity: dict[str, Any] = {
+            "candidate_freeze_hash": candidate_payload["candidate_freeze_hash"],
+            "capture_as_of_date": capture_day,
+            "rows": rows,
+            "source_contract_binding": resolved_source_contract_binding
+            if resolved_source_contract_binding is not None
+            else None,
+        }
+        if resolved_scenario.is_estimated:
+            capture_identity["cost_scenario_hash"] = resolved_scenario.scenario_hash
         capture_id = "capture-" + hashlib.sha256(
-            json.dumps(
-                {
-                    "candidate_freeze_hash": candidate_payload["candidate_freeze_hash"],
-                    "capture_as_of_date": capture_day,
-                    "rows": rows,
-                    "source_contract_binding": resolved_source_contract_binding
-                    if resolved_source_contract_binding is not None
-                    else None,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
+            json.dumps(capture_identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:24]
+        label_hash = expected_label_registry_hash
+        contract_hash = recommendation_cost_contract_hash(
+            resolved_scenario.fixed_round_trip_cost_bp,
+            cost_scenario=resolved_scenario if resolved_scenario.is_estimated else None,
+        )
         body = {
-            "schema_version": "recommendation-prediction-capture.v2",
+            "schema_version": schema_version,
             "capture_id": capture_id,
             "capture_as_of_date": capture_day,
             "captured_at": captured_at,
@@ -673,9 +843,9 @@ class RecommendationPredictionCaptureService:
             "feature_registry_hash": feature_registry_hash,
             "feature_schema_hash": feature_schema_hash(feature_schema),
             "feature_schema": [list(item) for item in feature_schema],
-            "label_registry_hash": recommendation_label_registry_hash(),
-            "cost_contract_hash": recommendation_cost_contract_hash(fixed_round_trip_cost_bp),
-            "fixed_round_trip_cost_bp": fixed_round_trip_cost_bp,
+            "label_registry_hash": label_hash,
+            "cost_contract_hash": contract_hash,
+            "fixed_round_trip_cost_bp": resolved_scenario.fixed_round_trip_cost_bp,
             "maximum_probability_change_bp": maximum_probability_change_bp,
             "policy_hash": policy_hash,
             "probability_transform_id": transform.transform_id,
@@ -697,6 +867,13 @@ class RecommendationPredictionCaptureService:
                 else None
             ),
         }
+        if resolved_scenario.is_estimated:
+            # Hash the exact v3 fields that ``to_dict`` persists.  The
+            # scenario metadata shape uses ``scenario_id``/``scenario_version``
+            # while the durable capture contract uses the prefixed field
+            # names, so hashing the former would make a persisted capture fail
+            # its own verification.
+            body.update(_scenario_dataclass_kwargs(resolved_scenario))
         capture_hash = _hash_payload(body)
         return RecommendationPredictionCapture(
             capture_id=capture_id,
@@ -712,9 +889,9 @@ class RecommendationPredictionCaptureService:
             feature_registry_hash=feature_registry_hash,
             feature_schema_hash=feature_schema_hash(feature_schema),
             feature_schema=feature_schema,
-            label_registry_hash=recommendation_label_registry_hash(),
-            cost_contract_hash=recommendation_cost_contract_hash(fixed_round_trip_cost_bp),
-            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            label_registry_hash=label_hash,
+            cost_contract_hash=contract_hash,
+            fixed_round_trip_cost_bp=resolved_scenario.fixed_round_trip_cost_bp,
             maximum_probability_change_bp=maximum_probability_change_bp,
             policy_hash=policy_hash,
             rows=tuple(rows),
@@ -740,6 +917,8 @@ class RecommendationPredictionCaptureService:
                 if resolved_source_contract_binding is not None
                 else None
             ),
+            schema_version=schema_version,
+            **(_scenario_dataclass_kwargs(resolved_scenario) if resolved_scenario.is_estimated else {}),
         )
 
 
@@ -820,6 +999,17 @@ class NaturalForwardEvidenceBuilder:
         source_id: str,
     ) -> NaturalEvidenceReceiptReference:
         evaluation_day = _date(evaluation_date)
+        try:
+            scenario = cost_scenario_from_metadata(
+                capture_payload,
+                fixed_round_trip_cost_bp=(
+                    int(capture_payload["fixed_round_trip_cost_bp"])
+                    if capture_payload.get("fixed_round_trip_cost_bp") is not None
+                    else None
+                ),
+            )
+        except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+            raise ValueError(f"capture cost scenario is invalid: {exc}") from exc
         by_id = {str(row["row_id"]): row for row in capture_payload["rows"]}
         if len(by_id) != len(capture_payload["rows"]):
             raise ValueError("prediction capture row ids must be unique")
@@ -866,16 +1056,75 @@ class NaturalForwardEvidenceBuilder:
                 "champion_after_cost_probability_bp": capture_row.get("champion_after_cost_probability_bp"),
             }
             row_payload["upside_label"] = int(outcome.stock_return_bp > 0)
-            if (
-                outcome.observed_liquidity_cost_bp is None
-                or outcome.observed_liquidity_cost_source is None
-            ):
-                row_payload["after_cost_profit_label"] = None
-            else:
-                row_payload["after_cost_profit_label"] = int(
-                    outcome.stock_return_bp
-                    > int(capture_payload["fixed_round_trip_cost_bp"]) + outcome.observed_liquidity_cost_bp
+            if scenario.is_estimated:
+                row_payload.update(
+                    {
+                        "cost_scenario_id": outcome.cost_scenario_id or scenario.scenario_id,
+                        "cost_scenario_version": outcome.cost_scenario_version or scenario.scenario_version,
+                        "cost_scenario_hash": outcome.cost_scenario_hash or scenario.scenario_hash,
+                        "cost_basis": outcome.cost_basis or scenario.cost_basis,
+                        "cost_policy_id": outcome.cost_policy_id or scenario.policy_id,
+                        "cost_policy_version": outcome.cost_policy_version or scenario.policy_version,
+                        "policy_estimate_date": outcome.policy_estimate_date or scenario.policy_estimate_date,
+                        "market_replay_date": outcome.market_replay_date or capture_row["decision_date"],
+                        "research_order_amount_twd": outcome.research_order_amount_twd or (
+                            str(scenario.research_order_amount_twd)
+                            if scenario.research_order_amount_twd is not None
+                            else None
+                        ),
+                        "research_order_quantity_shares": outcome.research_order_quantity_shares or scenario.research_order_quantity_shares,
+                        "lot_type": outcome.lot_type or scenario.lot_type,
+                        "instrument_type": outcome.instrument_type or scenario.instrument_type,
+                        # These source-derived prices let promotion authority
+                        # rerun the versioned policy instead of trusting the
+                        # producer's serialized fee/tax amounts.
+                        "buy_price_twd": outcome.buy_price_twd,
+                        "sell_price_twd": outcome.sell_price_twd,
+                        "estimated_buy_cost_twd": outcome.estimated_buy_cost_twd,
+                        "estimated_sell_cost_twd": outcome.estimated_sell_cost_twd,
+                        "estimated_round_trip_cost_twd": outcome.estimated_round_trip_cost_twd,
+                        "estimated_round_trip_cost_bp": outcome.estimated_round_trip_cost_bp,
+                        "gross_buy_amount_twd": outcome.gross_buy_amount_twd,
+                        "gross_sell_amount_twd": outcome.gross_sell_amount_twd,
+                        "net_profit_twd": outcome.net_profit_twd,
+                        "cost_estimate_status": outcome.cost_estimate_status,
+                        "cost_estimate_diagnostics": list(outcome.cost_estimate_diagnostics),
+                    }
                 )
+                if row_payload["cost_scenario_hash"] != scenario.scenario_hash:
+                    raise ValueError("matured outcome cost scenario mismatch")
+                gross_buy = _decimal_or_none(outcome.gross_buy_amount_twd)
+                gross_sell = _decimal_or_none(outcome.gross_sell_amount_twd)
+                net_profit = _decimal_or_none(outcome.net_profit_twd)
+                buy_cost = _decimal_or_none(outcome.estimated_buy_cost_twd)
+                sell_cost = _decimal_or_none(outcome.estimated_sell_cost_twd)
+                if (
+                    outcome.cost_estimate_status == "estimated"
+                    and gross_buy is not None
+                    and gross_sell is not None
+                    and net_profit is not None
+                    and buy_cost is not None
+                    and sell_cost is not None
+                ):
+                    expected_net = gross_sell - gross_buy - buy_cost - sell_cost
+                    if expected_net != net_profit:
+                        raise ValueError("matured outcome exact net profit mismatch")
+                    row_payload["after_cost_profit_label"] = int(net_profit > 0)
+                else:
+                    # Missing policy/price/product inputs stay unavailable; an
+                    # unavailable estimate is never interpreted as a loss.
+                    row_payload["after_cost_profit_label"] = None
+            else:
+                if (
+                    outcome.observed_liquidity_cost_bp is None
+                    or outcome.observed_liquidity_cost_source is None
+                ):
+                    row_payload["after_cost_profit_label"] = None
+                else:
+                    row_payload["after_cost_profit_label"] = int(
+                        outcome.stock_return_bp
+                        > int(capture_payload["fixed_round_trip_cost_bp"]) + outcome.observed_liquidity_cost_bp
+                    )
             comparisons.append(row_payload)
         if not comparisons:
             raise ValueError("no naturally matured outcome matches the prediction capture")
@@ -892,7 +1141,14 @@ class NaturalForwardEvidenceBuilder:
             and row["candidate_after_cost_probability_bp"] is not None
             and row["champion_after_cost_probability_bp"] is not None
         )
-        after_cost_status = "observed" if after_cost_rows else "missing_liquidity_or_baseline"
+        if scenario.is_estimated:
+            after_cost_status = (
+                "estimated_fees_tax_only"
+                if after_cost_rows
+                else "estimated_cost_unavailable_or_baseline"
+            )
+        else:
+            after_cost_status = "observed" if after_cost_rows else "missing_liquidity_or_baseline"
         after_cost_candidate_brier: int | None = None
         after_cost_champion_brier: int | None = None
         after_cost_improvement: int | None = None
@@ -919,21 +1175,49 @@ class NaturalForwardEvidenceBuilder:
                     "probabilities_bp": after_champion_probabilities,
                 }
             )
-        comparison_fingerprint = _hash_payload(
+        fingerprint_rows = [
             {
-                "capture_id": capture_payload["capture_id"],
-                "rows": [
-                    {
-                        "capture_row_id": row["capture_row_id"],
-                        "label_end_date": row["label_end_date"],
-                        "label_available_date": row["label_available_date"],
-                        "stock_return_bp": row["stock_return_bp"],
-                        "observed_liquidity_cost_bp": row["observed_liquidity_cost_bp"],
-                        "observed_liquidity_cost_source": row.get("observed_liquidity_cost_source"),
-                    }
-                    for row in comparisons
-                ],
+                "capture_row_id": row["capture_row_id"],
+                "label_end_date": row["label_end_date"],
+                "label_available_date": row["label_available_date"],
+                "stock_return_bp": row["stock_return_bp"],
+                "observed_liquidity_cost_bp": row["observed_liquidity_cost_bp"],
+                "observed_liquidity_cost_source": row.get("observed_liquidity_cost_source"),
             }
+            for row in comparisons
+        ]
+        if scenario.is_estimated:
+            fingerprint_rows = [
+                {
+                    **row,
+                    "observed_liquidity_cost_bp": None,
+                    "observed_liquidity_cost_source": None,
+                }
+                for row in fingerprint_rows
+            ]
+            for fingerprint_row, comparison in zip(fingerprint_rows, comparisons):
+                fingerprint_row.update(
+                    {
+                        key: comparison.get(key)
+                        for key in (
+                            "cost_scenario_hash",
+                            "policy_estimate_date",
+                            "market_replay_date",
+                            "buy_price_twd",
+                            "sell_price_twd",
+                            "estimated_buy_cost_twd",
+                            "estimated_sell_cost_twd",
+                            "estimated_round_trip_cost_twd",
+                            "estimated_round_trip_cost_bp",
+                            "gross_buy_amount_twd",
+                            "gross_sell_amount_twd",
+                            "net_profit_twd",
+                            "cost_estimate_status",
+                        )
+                    }
+                )
+        comparison_fingerprint = _hash_payload(
+            {"capture_id": capture_payload["capture_id"], "rows": fingerprint_rows}
         )
         candidate_prediction_hash = _hash_payload(
             {"row_ids": [row["capture_row_id"] for row in comparisons], "probabilities_bp": candidate_probabilities}
@@ -945,7 +1229,11 @@ class NaturalForwardEvidenceBuilder:
             f"{capture_payload['capture_hash']}|{comparison_fingerprint}|{evaluation_day.isoformat()}".encode("utf-8")
         ).hexdigest()[:24]
         body: dict[str, Any] = {
-            "schema_version": "recommendation-natural-forward-evidence.v2",
+            "schema_version": (
+                "recommendation-natural-forward-evidence.v3"
+                if scenario.is_estimated
+                else "recommendation-natural-forward-evidence.v2"
+            ),
             "evidence_id": evidence_id,
             "source_id": source_id,
             "source_kind": "matured_forward_prediction_capture",
@@ -1008,6 +1296,11 @@ class NaturalForwardEvidenceBuilder:
             "capture_origin": capture_payload.get("capture_origin"),
             "comparisons": comparisons,
         }
+        if scenario.is_estimated:
+            body.update(_scenario_fields_from_mapping(capture_payload))
+            body["cost_basis"] = scenario.cost_basis
+            body["fixed_round_trip_cost_bp"] = None
+            body["liquidity_cost_role"] = "diagnostic_only_not_in_fees_tax_only_label"
         body["receipt_body_hash"] = _hash_payload(body)
         destination = Path(output_path).resolve()
         _write_json_once(destination, body)
@@ -1040,13 +1333,29 @@ def _build_capture_bundle(
     if not payloads or len(payloads) != len(paths):
         raise ValueError("capture bundle sources are missing")
     first = payloads[0]
-    common_fields = (
+    common_fields: tuple[str, ...] = (
         "candidate_id", "candidate_root", "candidate_freeze_hash",
         "candidate_frozen_at", "candidate_manifest_hash", "candidate_artifact_hash",
         "dataset_hash", "feature_registry_hash", "feature_schema_hash",
         "cost_contract_hash", "fixed_round_trip_cost_bp",
         "maximum_probability_change_bp", "policy_hash", "probability_transform_id",
     )
+    first_scenario = cost_scenario_from_metadata(
+        first,
+        fixed_round_trip_cost_bp=(
+            int(first["fixed_round_trip_cost_bp"])
+            if first.get("fixed_round_trip_cost_bp") is not None
+            else None
+        ),
+    )
+    if first_scenario.is_estimated:
+        common_fields = common_fields + (
+            "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+            "cost_basis", "cost_policy_id", "cost_policy_version",
+            "policy_estimate_date", "research_order_amount_twd",
+            "research_order_quantity_shares", "lot_type", "instrument_type",
+            "cost_scenario",
+        )
     for payload in payloads[1:]:
         for field_name in common_fields:
             if str(payload.get(field_name)) != str(first.get(field_name)):
@@ -1117,6 +1426,8 @@ def _build_capture_bundle(
         "rows": source_rows,
         "capture_origin": "scheduled_live_bundle",
     }
+    if first_scenario.is_estimated:
+        body.update(_scenario_fields_from_mapping(first))
     body["capture_hash"] = _hash_payload(body)
     body["capture_path"] = None
     return body
@@ -1160,12 +1471,28 @@ def _verify_capture_bundle_payload(payload: Mapping[str, Any]) -> None:
     if not source_ids or not (len(source_ids) == len(source_hashes) == len(source_paths)):
         raise ValueError("capture bundle source index is empty or misaligned")
     source_rows: list[Mapping[str, Any]] = []
-    common_fields = (
+    common_fields: tuple[str, ...] = (
         "candidate_id", "candidate_freeze_hash", "candidate_manifest_hash",
         "candidate_artifact_hash", "dataset_hash", "feature_registry_hash",
         "feature_schema_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
         "maximum_probability_change_bp", "policy_hash", "probability_transform_id",
     )
+    bundle_scenario = cost_scenario_from_metadata(
+        payload,
+        fixed_round_trip_cost_bp=(
+            int(payload["fixed_round_trip_cost_bp"])
+            if payload.get("fixed_round_trip_cost_bp") is not None
+            else None
+        ),
+    )
+    if bundle_scenario.is_estimated:
+        common_fields = common_fields + (
+            "cost_scenario_id", "cost_scenario_version", "cost_scenario_hash",
+            "cost_basis", "cost_policy_id", "cost_policy_version",
+            "policy_estimate_date", "research_order_amount_twd",
+            "research_order_quantity_shares", "lot_type", "instrument_type",
+            "cost_scenario",
+        )
     for source_id, source_hash, source_path in zip(source_ids, source_hashes, source_paths):
         path = Path(str(source_path)).resolve()
         source = _read_json(path)
@@ -1208,7 +1535,10 @@ def _verify_capture_payload(payload: Mapping[str, Any]) -> None:
     )
     if any(key not in payload for key in required):
         raise ValueError("prediction capture metadata is incomplete")
-    if payload.get("schema_version") != "recommendation-prediction-capture.v2":
+    if payload.get("schema_version") not in {
+        "recommendation-prediction-capture.v2",
+        "recommendation-prediction-capture.v3",
+    }:
         raise ValueError("prediction capture schema is unsupported")
     body = {
         key: value
@@ -1217,6 +1547,34 @@ def _verify_capture_payload(payload: Mapping[str, Any]) -> None:
     }
     if _hash_payload(body) != payload["capture_hash"]:
         raise ValueError("prediction capture hash mismatch")
+    try:
+        scenario = cost_scenario_from_metadata(
+            payload,
+            fixed_round_trip_cost_bp=(
+                int(payload["fixed_round_trip_cost_bp"])
+                if payload.get("fixed_round_trip_cost_bp") is not None
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        raise ValueError(f"prediction capture cost scenario is invalid: {exc}") from exc
+    if payload.get("schema_version") == "recommendation-prediction-capture.v3" and not scenario.is_estimated:
+        raise ValueError("prediction capture v3 must use estimated cost scenario")
+    if payload.get("schema_version") == "recommendation-prediction-capture.v2" and scenario.is_estimated:
+        raise ValueError("prediction capture v2 cannot use estimated cost scenario")
+    expected_label_hash = recommendation_label_registry_hash(
+        cost_scenario=scenario if scenario.is_estimated else None
+    )
+    if payload.get("label_registry_hash") != expected_label_hash:
+        raise ValueError("prediction capture label registry contract mismatch")
+    expected_cost_hash = recommendation_cost_contract_hash(
+        scenario.fixed_round_trip_cost_bp,
+        cost_scenario=scenario if scenario.is_estimated else None,
+    )
+    if payload.get("cost_contract_hash") != expected_cost_hash:
+        raise ValueError("prediction capture cost contract mismatch")
+    if scenario.is_estimated and payload.get("fixed_round_trip_cost_bp") is not None:
+        raise ValueError("estimated prediction capture cannot carry fixed cost")
     if _date(str(payload["captured_at"])) > _date(str(payload["capture_as_of_date"])):
         raise ValueError("prediction capture timestamp is after decision cutoff")
     if _datetime(str(payload["candidate_frozen_at"])) > _datetime(str(payload["captured_at"])):
@@ -1699,7 +2057,10 @@ def _verify_active_model_capture_payload(payload: Mapping[str, Any]) -> None:
     )
     if any(key not in payload for key in required):
         raise ValueError("active model capture metadata is incomplete")
-    if payload.get("schema_version") != "recommendation-active-model-prediction-capture.v1":
+    if payload.get("schema_version") not in {
+        "recommendation-active-model-prediction-capture.v1",
+        "recommendation-active-model-prediction-capture.v2",
+    }:
         raise ValueError("active model capture schema is unsupported")
     body = {
         key: value
@@ -1708,6 +2069,37 @@ def _verify_active_model_capture_payload(payload: Mapping[str, Any]) -> None:
     }
     if _hash_payload(body) != payload.get("capture_hash"):
         raise ValueError("active model capture hash mismatch")
+    try:
+        scenario = cost_scenario_from_metadata(
+            payload,
+            fixed_round_trip_cost_bp=(
+                int(payload["fixed_round_trip_cost_bp"])
+                if payload.get("fixed_round_trip_cost_bp") is not None
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        raise ValueError(f"active model capture cost scenario is invalid: {exc}") from exc
+    if payload.get("schema_version") == "recommendation-active-model-prediction-capture.v2" and not scenario.is_estimated:
+        raise ValueError("active model capture v2 must use estimated cost scenario")
+    if payload.get("schema_version") == "recommendation-active-model-prediction-capture.v1" and scenario.is_estimated:
+        raise ValueError("active model capture v1 cannot use estimated cost scenario")
+    expected_label_hash = recommendation_label_registry_hash(
+        cost_scenario=scenario if scenario.is_estimated else None
+    )
+    if payload.get("label_registry_hash") != expected_label_hash:
+        raise ValueError("active model capture label registry contract mismatch")
+    expected_cost_hash = recommendation_cost_contract_hash(
+        scenario.fixed_round_trip_cost_bp,
+        cost_scenario=scenario if scenario.is_estimated else None,
+    )
+    if payload.get("cost_contract_hash") != expected_cost_hash:
+        raise ValueError("active model capture cost contract mismatch")
+    identity = payload.get("active_identity")
+    if isinstance(identity, Mapping):
+        identity_scenario_hash = str(identity.get("cost_scenario_hash") or "")
+        if identity_scenario_hash and identity_scenario_hash != scenario.scenario_hash:
+            raise ValueError("active model capture identity cost scenario mismatch")
     capture_day = _date(str(payload["capture_as_of_date"]))
     if _date(str(payload["captured_at"])) > capture_day:
         raise ValueError("active model capture timestamp is after decision cutoff")
@@ -1789,6 +2181,78 @@ def _probability(value: int, field_name: str) -> None:
         raise ValueError(f"{field_name} must be an integer probability bp")
 
 
+def _scenario_dataclass_kwargs(scenario: RecommendationCostScenario) -> dict[str, Any]:
+    """Map a canonical scenario to the optional capture dataclass fields."""
+
+    metadata = scenario.metadata()
+    return {
+        "cost_scenario_id": scenario.scenario_id,
+        "cost_scenario_version": scenario.scenario_version,
+        "cost_scenario_hash": scenario.scenario_hash,
+        "cost_basis": scenario.cost_basis,
+        "cost_policy_id": scenario.policy_id,
+        "cost_policy_version": scenario.policy_version,
+        "policy_estimate_date": scenario.policy_estimate_date,
+        "research_order_amount_twd": (
+            str(scenario.research_order_amount_twd)
+            if scenario.research_order_amount_twd is not None
+            else None
+        ),
+        "research_order_quantity_shares": scenario.research_order_quantity_shares,
+        "lot_type": scenario.lot_type,
+        "instrument_type": scenario.instrument_type,
+        "cost_scenario": metadata,
+    }
+
+
+def _scenario_fields_from_capture(capture: Any) -> dict[str, Any]:
+    """Return only the versioned scenario fields emitted by v3 captures."""
+
+    return {
+        "cost_scenario_id": capture.cost_scenario_id,
+        "cost_scenario_version": capture.cost_scenario_version,
+        "cost_scenario_hash": capture.cost_scenario_hash,
+        "cost_basis": capture.cost_basis,
+        "cost_policy_id": capture.cost_policy_id,
+        "cost_policy_version": capture.cost_policy_version,
+        "policy_estimate_date": capture.policy_estimate_date,
+        "research_order_amount_twd": capture.research_order_amount_twd,
+        "research_order_quantity_shares": capture.research_order_quantity_shares,
+        "lot_type": capture.lot_type,
+        "instrument_type": capture.instrument_type,
+        "cost_scenario": (
+            dict(capture.cost_scenario)
+            if capture.cost_scenario is not None
+            else None
+        ),
+    }
+
+
+def _scenario_fields_from_mapping(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy the canonical scenario contract from a capture-like mapping."""
+
+    fields = (
+        "cost_scenario_id",
+        "cost_scenario_version",
+        "cost_scenario_hash",
+        "cost_basis",
+        "cost_policy_id",
+        "cost_policy_version",
+        "policy_estimate_date",
+        "research_order_amount_twd",
+        "research_order_quantity_shares",
+        "lot_type",
+        "instrument_type",
+    )
+    result = {key: payload.get(key) for key in fields}
+    result["cost_scenario"] = (
+        dict(payload["cost_scenario"])
+        if isinstance(payload.get("cost_scenario"), Mapping)
+        else None
+    )
+    return result
+
+
 def _clamp_to_baseline(value: int | None, baseline: int | None, cap: int) -> int | None:
     if value is None or baseline is None:
         return None
@@ -1797,6 +2261,16 @@ def _clamp_to_baseline(value: int | None, baseline: int | None, cap: int) -> int
 
 def _date(value: str) -> date:
     return date.fromisoformat(str(value)[:10])
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return parsed if parsed.is_finite() else None
 
 
 def _datetime(value: str) -> datetime:

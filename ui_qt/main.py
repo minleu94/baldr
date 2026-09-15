@@ -62,6 +62,7 @@ from app_module.sector_rotation_service import (
     SectorRotationService,
     SQLiteIndustryIndexSectorRotationProvider,
 )
+from app_module.industry_strength_service import IndustryStrengthService
 from app_module.watchlist_trigger_service import (
     WatchlistTriggerService,
     WatchlistServiceWatchlistProvider,
@@ -177,12 +178,14 @@ class MainWindow(QMainWindow):
             broker_flow_service=getattr(self, "broker_flow_service", None),
             smart_money_service=getattr(self, "smart_money_semantic_service", None),
             market_frame_loader=getattr(self, "decision_market_frame_loader", None),
+            industry_strength_service=getattr(self, "industry_strength_service", None),
             dependencies={
                 "DecisionMarketFrameLoader": DecisionMarketFrameLoader,
                 "MarketBreadthService": MarketBreadthService,
                 "SQLiteDailyPriceMarketBreadthProvider": SQLiteDailyPriceMarketBreadthProvider,
                 "SectorRotationService": SectorRotationService,
                 "SQLiteIndustryIndexSectorRotationProvider": SQLiteIndustryIndexSectorRotationProvider,
+                "IndustryStrengthService": IndustryStrengthService,
                 "PortfolioConditionMonitor": PortfolioConditionMonitor,
                 "PortfolioChipService": PortfolioChipService,
                 "PortfolioAlertService": PortfolioAlertService,
@@ -222,6 +225,7 @@ class MainWindow(QMainWindow):
 
             decision_services = build_decision_service_composition(config=self.config)
             self.screening_service = decision_services.screening_service
+            self.industry_strength_service = decision_services.industry_strength_service
             self.regime_service = decision_services.regime_service
             self.recommendation_service = decision_services.recommendation_service
             self.update_service = UpdateService(
@@ -524,6 +528,10 @@ class MainWindow(QMainWindow):
             strong_industries = StrongIndustriesView(
                 screening_service=self.screening_service, parent=self
             )
+            if hasattr(strong_industries, "stockResearchRequested"):
+                strong_industries.stockResearchRequested.connect(
+                    self._open_stock_research_context
+                )
             market_tabs.addTab(strong_industries, "強勢產業")
             print("[MainWindow] 強勢產業視圖創建成功")
 
@@ -532,6 +540,10 @@ class MainWindow(QMainWindow):
             weak_industries = WeakIndustriesView(
                 screening_service=self.screening_service, parent=self
             )
+            if hasattr(weak_industries, "stockResearchRequested"):
+                weak_industries.stockResearchRequested.connect(
+                    self._open_stock_research_context
+                )
             market_tabs.addTab(weak_industries, "弱勢產業")
             print("[MainWindow] 弱勢產業視圖創建成功")
 
@@ -916,6 +928,10 @@ class MainWindow(QMainWindow):
                 "profile_id",
                 "profile_version",
                 "source_id",
+                "source_version",
+                "mapping_source_id",
+                "mapping_version",
+                "mapping_observed_date",
                 "source_kind",
                 "source_label",
                 "source_workspace",
@@ -953,6 +969,10 @@ class MainWindow(QMainWindow):
                             profile_id=context.profile_id,
                             profile_version=context.profile_version,
                             source_id=context.source_id,
+                            source_version=context.source_version,
+                            mapping_source_id=context.mapping_source_id,
+                            mapping_version=context.mapping_version,
+                            mapping_observed_date=context.mapping_observed_date,
                             source_kind=context.source_kind,
                             source_label=context.source_label,
                             source_workspace=context.source_workspace,

@@ -14,6 +14,7 @@ import pandas as pd
 from decision_module.stock_screener import StockScreener
 from decision_module.industry_mapper import IndustryMapper
 from app_module.dtos.market_loop_dtos import ScreeningResultDTO
+from app_module.industry_strength_service import IndustryStrengthService
 
 
 class ScreeningService:
@@ -24,6 +25,7 @@ class ScreeningService:
         config,
         industry_mapper: Optional[IndustryMapper] = None,
         stock_screener: Optional[StockScreener] = None,
+        industry_strength_service: Optional[IndustryStrengthService] = None,
     ):
         """初始化篩選服務
         
@@ -39,6 +41,7 @@ class ScreeningService:
         self.stock_screener = stock_screener or StockScreener(
             config, self.industry_mapper
         )
+        self.industry_strength_service = industry_strength_service
     
     def get_strong_stocks(
         self, 
@@ -93,7 +96,7 @@ class ScreeningService:
             DataFrame: 強勢產業列表，包含排名、指數名稱、收盤指數、漲幅%
         """
         requested = self._resolve_decision_date(decision_date, as_of_date)
-        if requested is not None:
+        if requested is not None or self.industry_strength_service is not None:
             return self.get_strong_industries_dto(
                 period=period,
                 top_n=top_n,
@@ -157,7 +160,7 @@ class ScreeningService:
             DataFrame: 弱勢產業列表，包含排名、指數名稱、收盤指數、漲幅%
         """
         requested = self._resolve_decision_date(decision_date, as_of_date)
-        if requested is not None:
+        if requested is not None or self.industry_strength_service is not None:
             return self.get_weak_industries_dto(
                 period=period,
                 top_n=top_n,
@@ -304,6 +307,24 @@ class ScreeningService:
         top_n: int,
         decision_date: date | None,
     ) -> ScreeningResultDTO:
+        industry_strength_service = self.industry_strength_service
+        if industry_strength_service is not None:
+            try:
+                return industry_strength_service.build_screening_result(
+                    direction=direction,
+                    period=period,
+                    top_n=top_n,
+                    decision_date=decision_date,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return self._missing_screening_dto(
+                    "industries",
+                    direction,
+                    period,
+                    decision_date,
+                    f"industry_strength_error:{type(exc).__name__}",
+                )
+
         frame = self._load_screening_frame("industries", period)
         if frame is None:
             if decision_date is not None:

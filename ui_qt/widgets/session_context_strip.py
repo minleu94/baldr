@@ -78,6 +78,10 @@ class SessionContextStrip(QFrame):
                 profile_id=snapshot.profile_id or snapshot.active_profile or "",
                 profile_version=snapshot.profile_version or "",
                 source_id=snapshot.source_id or "",
+                source_version=snapshot.source_version or "",
+                mapping_source_id=snapshot.mapping_source_id or "",
+                mapping_version=snapshot.mapping_version or "",
+                mapping_observed_date=snapshot.mapping_observed_date or "",
                 source_kind=snapshot.source_kind or "",
                 source_label=snapshot.source_label or "",
                 source_workspace=snapshot.source_workspace or "",
@@ -94,6 +98,8 @@ class SessionContextStrip(QFrame):
                 f"｜決策日：{context.decision_date or '未標示'}"
                 f"｜資料日：{context.data_date or '未標示'}"
                 f"｜結果：{result}｜Profile：{profile}｜來源：{source}"
+                f"｜來源版本：{context.source_version or '未標示'}"
+                f"｜映射版本：{context.mapping_version or '未標示'}"
             )
         else:
             # 沒有單股上下文時仍保留原有全域 session 資訊，避免工作台空白。

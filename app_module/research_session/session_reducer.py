@@ -48,6 +48,10 @@ def reduce_session_event(
                 profile_id=None,
                 profile_version=None,
                 source_id=None,
+                source_version=None,
+                mapping_source_id=None,
+                mapping_version=None,
+                mapping_observed_date=None,
                 source_kind=None,
                 source_label=None,
                 source_workspace=None,
@@ -76,6 +80,20 @@ def reduce_session_event(
             source_id=_normalize(
                 supplied_context.source_id if supplied_context is not None else event.source_id
             ) or "",
+            source_version=_normalize(
+                supplied_context.source_version if supplied_context is not None else event.source_version
+            ) or "",
+            mapping_source_id=_normalize(
+                supplied_context.mapping_source_id if supplied_context is not None else event.mapping_source_id
+            ) or "",
+            mapping_version=_normalize(
+                supplied_context.mapping_version if supplied_context is not None else event.mapping_version
+            ) or "",
+            mapping_observed_date=_normalize(
+                supplied_context.mapping_observed_date
+                if supplied_context is not None
+                else event.mapping_observed_date
+            ) or "",
             source_kind=_normalize(
                 supplied_context.source_kind if supplied_context is not None else event.source_kind
             ) or "",
@@ -99,6 +117,10 @@ def reduce_session_event(
             profile_id=context.profile_id or None,
             profile_version=context.profile_version or None,
             source_id=context.source_id or None,
+            source_version=context.source_version or None,
+            mapping_source_id=context.mapping_source_id or None,
+            mapping_version=context.mapping_version or None,
+            mapping_observed_date=context.mapping_observed_date or None,
             source_kind=context.source_kind or None,
             source_label=context.source_label or None,
             source_workspace=context.source_workspace or None,

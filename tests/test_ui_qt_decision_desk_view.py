@@ -25,6 +25,9 @@ from app_module.decision_desk_dtos import (
     DecisionDeskSectorFocus,
     DecisionDeskStockCard,
     DecisionDeskStockFocus,
+    IndustryRepresentativeStock,
+    IndustryStrengthRow,
+    IndustryStrengthSummary,
 )
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
 from app_module.market_data_visibility_dtos import (
@@ -258,7 +261,75 @@ def test_decision_desk_view_focus_opens_shared_stock_research_context():
     assert context.source_workspace == "market_explore"
     assert context.source_kind == "decision_desk"
     assert context.decision_date == "2026-06-15"
+
+
+def test_decision_desk_view_renders_comparable_industry_card_and_drills_to_representative_stock():
+    app()
+    base = _snapshot()
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 15),
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_mapping_current_research_only",),
+        source_version="industry-strength.current-research.v1",
+        mapping_source_id="meta_data.companies.csv",
+        mapping_version="tw-industry-explicit-map.v1",
+        mapping_observed_date=date(2026, 6, 14),
+        mapping_available_at="2026-06-14T08:00:00+08:00",
+        rows=(
+            IndustryStrengthRow(
+                industry_name="半導體",
+                index_name="半導體類指數",
+                industry_level="leaf",
+                market_scope="twse",
+                return_5d_bp=200,
+                return_20d_bp=500,
+                excess_5d_bp=100,
+                excess_20d_bp=300,
+                coverage_5d_bp=10000,
+                coverage_20d_bp=10000,
+                constituent_count=1,
+                eligible_stock_count_5d=1,
+                eligible_stock_count_20d=1,
+                representative_stocks=(
+                    IndustryRepresentativeStock(
+                        stock_code="2330",
+                        stock_name="台積電",
+                        industry_name="半導體",
+                    ),
+                ),
+            ),
+        ),
+    )
+    snapshot = replace(
+        base,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 15),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=("industry_mapping_current_research_only",),
+            leading_sector="半導體",
+            industry_strength=strength,
+        ),
+    )
+    contexts: list[object] = []
+    view = DecisionDeskView(FakeBuilder(snapshot), auto_refresh=False, async_refresh=False)
+    view.stockResearchRequested.connect(contexts.append)
+    view.refresh_snapshot()
+
+    assert "可比產業" in view.sector_rotation_value.text()
+    assert "current research only" in view.sector_rotation_value.text()
+    assert view.industry_focus_buttons
+    view.industry_focus_buttons[0].click()
+
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.stock_code == "2330"
+    assert context.source_kind == "industry_strength"
+    assert context.source_label == "市場總覽／半導體代表股"
     assert context.data_date == "2026-06-15"
+    assert context.source_version == "industry-strength.current-research.v1"
+    assert context.mapping_source_id == "meta_data.companies.csv"
+    assert context.mapping_version == "tw-industry-explicit-map.v1"
+    assert context.mapping_observed_date == "2026-06-14"
     assert context.has_source is True
 
 

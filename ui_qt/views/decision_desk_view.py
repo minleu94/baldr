@@ -146,6 +146,7 @@ class DecisionDeskView(QWidget):
         self.risk_sector_label = QLabel("避開產業 / 風險區：尚未載入")
         self.priority_stock_label = QLabel("優先研究股票：尚未載入")
         self.risk_stock_label = QLabel("風險股票：尚未載入")
+        self.industry_focus_buttons: list[QPushButton] = []
         self.stock_focus_buttons: list[QPushButton] = []
         focus_group = SectionPanel("市場焦點")
         for label in (
@@ -157,6 +158,11 @@ class DecisionDeskView(QWidget):
             label.setWordWrap(True)
             label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 10pt;")
             focus_group.layout.addWidget(label)
+        self.industry_focus_button_container = QWidget()
+        self.industry_focus_button_layout = QHBoxLayout(self.industry_focus_button_container)
+        self.industry_focus_button_layout.setContentsMargins(0, 4, 0, 0)
+        self.industry_focus_button_layout.setSpacing(6)
+        focus_group.layout.addWidget(self.industry_focus_button_container)
         self.stock_focus_button_container = QWidget()
         self.stock_focus_button_layout = QHBoxLayout(self.stock_focus_button_container)
         self.stock_focus_button_layout.setContentsMargins(0, 4, 0, 0)
@@ -310,6 +316,7 @@ class DecisionDeskView(QWidget):
         self.risk_sector_label.setText("避開產業 / 風險區：尚未載入")
         self.priority_stock_label.setText("優先研究股票：尚未載入")
         self.risk_stock_label.setText("風險股票：尚未載入")
+        self._set_industry_focus_buttons(None, self.as_of_date)
         self.presentation_contract_label.setText("尚未載入共用呈現契約。")
         self._set_stock_focus_buttons(())
         self._render_market_data_visibility(None)
@@ -415,6 +422,7 @@ class DecisionDeskView(QWidget):
 
     def _render_snapshot(self, snapshot: DecisionDeskSnapshot) -> None:
         self._render_answer_first_dashboard(snapshot)
+        self._set_industry_focus_buttons(snapshot.sector_rotation, snapshot.as_of_date)
         self._render_market_data_visibility(snapshot.market_data_visibility)
         self.overall_status_label.setText(f"整體品質：{self._quality_label(snapshot.overall_quality)}")
         self.generated_at_label.setText(f"生成時間：{snapshot.generated_at.isoformat()}（決策日 {snapshot.as_of_date.isoformat()}）")
@@ -444,11 +452,7 @@ class DecisionDeskView(QWidget):
         )
 
         self._set_section_quality(self.sector_rotation_status, snapshot.sector_rotation.quality)
-        self.sector_rotation_value.setText(
-            f"領先產業：{snapshot.sector_rotation.leading_sector or '未定義'}；"
-            f"落後產業：{snapshot.sector_rotation.trailing_sector or '未定義'}；"
-            f"輪動強度BP：{snapshot.sector_rotation.rotation_intensity_bp if snapshot.sector_rotation.rotation_intensity_bp is not None else 'N/A'}"
-        )
+        self.sector_rotation_value.setText(self._format_sector_rotation(snapshot.sector_rotation))
 
         self._set_section_quality(
             self.relative_strength_liquidity_status,
@@ -529,6 +533,37 @@ class DecisionDeskView(QWidget):
         sign = "-" if value < 0 else ""
         absolute = abs(value)
         return f"{sign}{absolute // 100}.{absolute % 100:02d}%"
+
+    @staticmethod
+    def _format_sector_rotation(rotation) -> str:
+        strength = getattr(rotation, "industry_strength", None)
+        if strength is None:
+            return (
+                f"領先產業：{rotation.leading_sector or '未定義'}；"
+                f"落後產業：{rotation.trailing_sector or '未定義'}；"
+                f"輪動強度BP：{rotation.rotation_intensity_bp if rotation.rotation_intensity_bp is not None else 'N/A'}"
+            )
+        rows = tuple(getattr(strength, "rows", ()) or ())
+        by_name = {item.industry_name: item for item in rows}
+        leading = by_name.get(getattr(rotation, "leading_sector", None))
+        trailing = by_name.get(getattr(rotation, "trailing_sector", None))
+        leading_text = getattr(rotation, "leading_sector", None) or "未定義"
+        trailing_text = getattr(rotation, "trailing_sector", None) or "未定義"
+        detail = (
+            f"5日／20日超額BP：{leading.excess_5d_bp if leading else 'N/A'}／"
+            f"{leading.excess_20d_bp if leading else 'N/A'}；"
+            f"覆蓋：{leading.coverage_5d_bp if leading else 'N/A'}／"
+            f"{leading.coverage_20d_bp if leading else 'N/A'} bp；"
+            f"代表股：{', '.join(item.stock_code for item in leading.representative_stocks[:3]) if leading else '無'}"
+        )
+        return (
+            f"可比產業（相對 TAIEX）｜領先：{leading_text}；落後：{trailing_text}；"
+            f"輪動強度BP：{rotation.rotation_intensity_bp if rotation.rotation_intensity_bp is not None else 'N/A'}；"
+            f"{detail}｜資料日 {getattr(strength, 'as_of_date', None) or '未知'}；"
+            f"來源 {getattr(strength, 'source_id', '未知')}；"
+            f"映射版本 {getattr(strength, 'mapping_version', '未知')}；"
+            f"層級分開排名；映射為 current research only"
+        )
 
     @staticmethod
     def _format_share_count(value: int | None) -> str:
@@ -670,6 +705,69 @@ class DecisionDeskView(QWidget):
                 f"開啟 {first_card.stock_code} 研究報告"
             )
             self.stock_focus_research_button.setEnabled(True)
+
+    def _set_industry_focus_buttons(self, rotation, as_of_date: date) -> None:
+        while self.industry_focus_button_layout.count():
+            item = self.industry_focus_button_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.industry_focus_buttons = []
+        strength = getattr(rotation, "industry_strength", None)
+        if strength is None:
+            self.industry_focus_button_layout.addStretch()
+            return
+        rows = {item.industry_name: item for item in getattr(strength, "rows", ())}
+        seen: set[str] = set()
+        for sector_name in (
+            getattr(rotation, "leading_sector", None),
+            getattr(rotation, "trailing_sector", None),
+        ):
+            row = rows.get(sector_name)
+            if row is None:
+                continue
+            for representative in row.representative_stocks[:3]:
+                code = str(representative.stock_code)
+                if not code or code in seen:
+                    continue
+                seen.add(code)
+                button = QPushButton(f"{code} {representative.stock_name}")
+                button.setAccessibleName(f"開啟{row.industry_name}代表股{code}研究報告")
+                button.setToolTip(
+                    f"由{row.industry_name}的可比產業排名開啟唯讀個股研究；不寫入觀察清單。"
+                )
+                button.clicked.connect(
+                    lambda checked=False, item=representative, source_row=row: self._open_industry_stock_research(
+                        item, source_row, as_of_date
+                    )
+                )
+                self.industry_focus_button_layout.addWidget(button)
+                self.industry_focus_buttons.append(button)
+        self.industry_focus_button_layout.addStretch()
+
+    def _open_industry_stock_research(self, representative, source_row, as_of_date: date) -> None:
+        strength = getattr(self._last_snapshot.sector_rotation, "industry_strength", None) if self._last_snapshot else None
+        source_id = str(getattr(strength, "source_id", "industry_strength.sqlite_current_research"))
+        self.stockResearchRequested.emit(
+            ResearchStockContextDTO(
+                stock_code=str(representative.stock_code),
+                stock_name=str(representative.stock_name),
+                decision_date=as_of_date.isoformat(),
+                data_date=(
+                    str(getattr(strength, "as_of_date", None) or as_of_date.isoformat())
+                ),
+                source_id=source_id,
+                source_version=str(getattr(strength, "source_version", "") or ""),
+                mapping_source_id=str(getattr(strength, "mapping_source_id", "") or ""),
+                mapping_version=str(getattr(strength, "mapping_version", "") or ""),
+                mapping_observed_date=(
+                    str(getattr(strength, "mapping_observed_date", None) or "")
+                ),
+                source_kind="industry_strength",
+                source_label=f"市場總覽／{source_row.industry_name}代表股",
+                source_workspace="market_explore",
+            )
+        )
 
     def _open_stock_focus_research(self) -> None:
         card = getattr(self, "_stock_focus_research_card", None)

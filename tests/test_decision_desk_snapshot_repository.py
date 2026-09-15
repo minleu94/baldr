@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskRiskPrompt,
     DecisionDeskRiskPromptSummary,
+    IndustryRepresentativeStock,
+    IndustryStrengthRow,
+    IndustryStrengthSummary,
     MarketBreadthSummary,
     MarketRegimeSummary,
     PortfolioAlertAttribution,
@@ -152,3 +156,74 @@ def test_read_only_repository_never_creates_missing_db_or_schema(tmp_path):
     assert repository.list_snapshots() == []
     assert repository.latest_before_or_on(date(2026, 7, 1)) is None
     assert not missing_db.exists()
+
+
+def test_industry_strength_payload_roundtrips_through_stored_snapshot():
+    snapshot = _snapshot()
+    row = IndustryStrengthRow(
+        industry_name="半導體業",
+        index_name="半導體類指數",
+        industry_level="leaf",
+        market_scope="twse",
+        index_close="100",
+        return_5d_bp=120,
+        return_20d_bp=450,
+        market_return_5d_bp=80,
+        market_return_20d_bp=100,
+        excess_5d_bp=40,
+        excess_20d_bp=350,
+        rank_5d=1,
+        rank_20d=1,
+        constituent_count=2,
+        eligible_stock_count_5d=2,
+        eligible_stock_count_20d=1,
+        coverage_5d_bp=10000,
+        coverage_20d_bp=5000,
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_stock_coverage_partial:20d:1/2",),
+        representative_stocks=(
+            IndustryRepresentativeStock(
+                stock_code="2330",
+                stock_name="台積電",
+                industry_name="半導體業",
+                return_5d_bp=200,
+                return_20d_bp=600,
+                excess_5d_bp=120,
+                excess_20d_bp=500,
+                quality=DecisionDeskQuality.OBSERVED,
+            ),
+        ),
+    )
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 30),
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_mapping_current_research_only",),
+        mapping_observed_date=date(2026, 6, 29),
+        mapping_available_at="2026-06-29T08:00:00+08:00",
+        mapping_effective_from=date(2026, 6, 29),
+        rows=(row,),
+        unmapped_industry_categories=("存託憑證",),
+        coverage={"coverage_denominator": "current_unambiguous_company_registry"},
+    )
+    snapshot = replace(
+        snapshot,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 30),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=("industry_mapping_current_research_only",),
+            leading_sector="半導體業",
+            trailing_sector=None,
+            rotation_intensity_bp=None,
+            industry_strength=strength,
+        ),
+    )
+
+    stored = build_stored_decision_desk_snapshot(snapshot)
+    restored = stored.to_decision_desk_snapshot()
+
+    assert stored.sector_rotation_json["industry_strength"]["mapping_version"] == "tw-industry-explicit-map.v1"
+    restored_strength = restored.sector_rotation.industry_strength
+    assert restored_strength is not None
+    assert restored_strength.rows[0].representative_stocks[0].stock_code == "2330"
+    assert restored_strength.rows[0].coverage_20d_bp == 5000
+    assert restored_strength.unmapped_industry_categories == ("存託憑證",)

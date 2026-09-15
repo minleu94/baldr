@@ -959,6 +959,33 @@ def _industry_rotation_summary(rotation: Any) -> str:
     """以來源可證明的語意呈現產業輪動，避免把代理指數冒充產業本身。"""
 
     quality = _quality_label(getattr(rotation, "quality", None))
+    strength = getattr(rotation, "industry_strength", None)
+    if strength is not None:
+        rows = tuple(getattr(strength, "rows", ()) or ())
+        if not rows:
+            missing_categories = "、".join(
+                getattr(strength, "unmapped_industry_categories", ())[:3]
+            ) or "無"
+            return (
+                f"產業：可比產業 read model 缺少可排名列｜品質 {quality}｜"
+                f"映射 {getattr(strength, 'mapping_version', '未知')}｜"
+                f"未映射類別 {missing_categories}｜current research only"
+            )
+        leading = str(getattr(rotation, "leading_sector", None) or "未定義")
+        trailing = str(getattr(rotation, "trailing_sector", None) or "未定義")
+        by_name = {item.industry_name: item for item in rows}
+        leading_row = by_name.get(leading)
+        return (
+            f"產業：可比純產業指數（相對 TAIEX）｜領先 {leading}、落後 {trailing}｜"
+            f"5日／20日超額BP "
+            f"{getattr(leading_row, 'excess_5d_bp', None) if leading_row else '未知'}／"
+            f"{getattr(leading_row, 'excess_20d_bp', None) if leading_row else '未知'}｜"
+            f"覆蓋 {getattr(leading_row, 'coverage_20d_bp', None) if leading_row else '未知'} bp｜"
+            f"資料日 {getattr(strength, 'as_of_date', None) or '未知'}｜"
+            f"來源 {getattr(strength, 'source_id', '未知')}｜"
+            f"映射 {getattr(strength, 'mapping_version', '未知')}｜"
+            f"current research only；品質 {quality}"
+        )
     leading = str(getattr(rotation, "leading_sector", None) or "").strip()
     trailing = str(getattr(rotation, "trailing_sector", None) or "").strip()
     labels = "、".join(item for item in (leading, trailing) if item)

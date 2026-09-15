@@ -127,12 +127,35 @@ class DecisionDeskDashboardComposer:
     def _compose_sector_focus(sector_rotation: SectorRotationSummary) -> DecisionDeskSectorFocus:
         priority: list[DecisionDeskSectorCard] = []
         risk: list[DecisionDeskSectorCard] = []
+        strength_rows = tuple(
+            getattr(sector_rotation.industry_strength, "rows", ())
+            if sector_rotation.industry_strength is not None
+            else ()
+        )
+
+        def reason_for(sector_name: str, base: str) -> str:
+            row = next(
+                (item for item in strength_rows if item.industry_name == sector_name),
+                None,
+            )
+            if row is None:
+                return base
+            representatives = ", ".join(
+                item.stock_code for item in row.representative_stocks[:3]
+            ) or "無"
+            return (
+                f"{base}｜層級 {row.industry_level}｜"
+                f"20日超額 {row.excess_20d_bp if row.excess_20d_bp is not None else 'N/A'} bp｜"
+                f"覆蓋 {row.coverage_20d_bp if row.coverage_20d_bp is not None else 'N/A'} bp｜"
+                f"代表股 {representatives}"
+            )
+
         if sector_rotation.leading_sector:
             priority.append(
                 DecisionDeskSectorCard(
                     sector_name=sector_rotation.leading_sector,
                     role="priority",
-                    reason="產業輪動領先",
+                    reason=reason_for(sector_rotation.leading_sector, "產業輪動領先"),
                     quality=sector_rotation.quality,
                     target_tab="強勢產業",
                 )
@@ -142,7 +165,7 @@ class DecisionDeskDashboardComposer:
                 DecisionDeskSectorCard(
                     sector_name=sector_rotation.trailing_sector,
                     role="risk",
-                    reason="產業輪動落後",
+                    reason=reason_for(sector_rotation.trailing_sector, "產業輪動落後"),
                     quality=sector_rotation.quality,
                     target_tab="弱勢產業",
                 )

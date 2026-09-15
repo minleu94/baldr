@@ -48,6 +48,10 @@ class StockResearchContextChanged:
     profile_id: Optional[str] = None
     profile_version: Optional[str] = None
     source_id: Optional[str] = None
+    source_version: Optional[str] = None
+    mapping_source_id: Optional[str] = None
+    mapping_version: Optional[str] = None
+    mapping_observed_date: Optional[str] = None
     source_kind: Optional[str] = None
     source_label: Optional[str] = None
     source_workspace: Optional[str] = None

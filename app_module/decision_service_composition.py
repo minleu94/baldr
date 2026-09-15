@@ -21,12 +21,14 @@ class DecisionServiceComposition:
     screening_service: Any
     regime_service: Any
     recommendation_service: Any
+    industry_strength_service: Any = None
 
 
 def _default_dependencies() -> dict[str, Any]:
     from app_module.recommendation_service import RecommendationService
     from app_module.regime_service import RegimeService
     from app_module.screening_service import ScreeningService
+    from app_module.industry_strength_service import IndustryStrengthService
     from decision_module.industry_mapper import IndustryMapper
     from decision_module.market_regime_detector import MarketRegimeDetector
     from decision_module.stock_screener import StockScreener
@@ -34,6 +36,7 @@ def _default_dependencies() -> dict[str, Any]:
     return {
         "IndustryMapper": IndustryMapper,
         "ScreeningService": ScreeningService,
+        "IndustryStrengthService": IndustryStrengthService,
         "MarketRegimeDetector": MarketRegimeDetector,
         "RegimeService": RegimeService,
         "RecommendationService": RecommendationService,
@@ -69,9 +72,21 @@ def build_decision_service_composition(
         recent_stock_provider=recent_stock_screen_provider(config),
         recent_industry_provider=recent_industry_screen_provider(config),
     )
-    screening_service = constructors["ScreeningService"](
-        config, industry_mapper=mapper, stock_screener=stock_screener
-    )
+    screening_kwargs: dict[str, Any] = {
+        "industry_mapper": mapper,
+        "stock_screener": stock_screener,
+    }
+    industry_strength_service = None
+    if "IndustryStrengthService" in constructors:
+        try:
+            industry_strength_service = constructors[
+                "IndustryStrengthService"
+            ](config)
+            screening_kwargs["industry_strength_service"] = industry_strength_service
+        except Exception:
+            # 產業強弱是可降級的研究 read model；保留既有篩選服務契約。
+            pass
+    screening_service = constructors["ScreeningService"](config, **screening_kwargs)
     regime_detector = constructors["MarketRegimeDetector"](
         config, market_frame_provider=market_provider
     )
@@ -106,4 +121,5 @@ def build_decision_service_composition(
         screening_service=screening_service,
         regime_service=regime_service,
         recommendation_service=recommendation_service,
+        industry_strength_service=industry_strength_service,
     )

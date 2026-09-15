@@ -135,6 +135,7 @@ def build_decision_desk_composition(
     broker_flow_service: Any = None,
     smart_money_service: Any = None,
     market_frame_loader: Any = None,
+    industry_strength_service: Any = None,
     dependencies: dict[str, Any],
     report_error: Callable[[str], None] = print,
 ) -> DecisionDeskComposition:
@@ -162,12 +163,19 @@ def build_decision_desk_composition(
             )
         ),
     )
-    sector_rotation_service = optional_service(
-        "SectorRotationService",
-        lambda: dependencies["SectorRotationService"](
-            dependencies["SQLiteIndustryIndexSectorRotationProvider"](config.db_file)
-        ),
-    )
+    if industry_strength_service is None and "IndustryStrengthService" in dependencies:
+        industry_strength_service = optional_service(
+            "IndustryStrengthService",
+            lambda: dependencies["IndustryStrengthService"](config),
+        )
+    sector_rotation_service = industry_strength_service
+    if sector_rotation_service is None:
+        sector_rotation_service = optional_service(
+            "SectorRotationService",
+            lambda: dependencies["SectorRotationService"](
+                dependencies["SQLiteIndustryIndexSectorRotationProvider"](config.db_file)
+            ),
+        )
 
     def build_portfolio_alert_service() -> Any:
         chip_summary_provider = optional_service(

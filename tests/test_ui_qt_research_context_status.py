@@ -53,6 +53,10 @@ def test_store_keeps_full_stock_context_and_can_clear() -> None:
         profile_id="momentum",
         profile_version="2.1",
         source_id="provider-1",
+        source_version="provider-v2",
+        mapping_source_id="mapping.csv",
+        mapping_version="mapping-v1",
+        mapping_observed_date="2026-09-04",
         source_kind="recommendation",
         source_label="已保存推薦結果",
         source_workspace="recommendation",
@@ -67,6 +71,10 @@ def test_store_keeps_full_stock_context_and_can_clear() -> None:
     assert snapshot.result_id == "result-1"
     assert snapshot.profile_id == "momentum"
     assert snapshot.source_id == "provider-1"
+    assert snapshot.source_version == "provider-v2"
+    assert snapshot.mapping_source_id == "mapping.csv"
+    assert snapshot.mapping_version == "mapping-v1"
+    assert snapshot.mapping_observed_date == "2026-09-04"
     assert store.clear_stock_context().stock_context is None
 
 
@@ -102,6 +110,7 @@ def test_context_strip_shows_dates_and_returns_snapshot() -> None:
     assert "2330 台積電" in strip._full_context_text
     assert "決策日：2026-09-05" in strip._full_context_text
     assert "資料日：2026-09-04" in strip._full_context_text
+    assert "映射版本：未標示" in strip._full_context_text
     assert strip.return_button.isVisible()
     strip.return_button.click()
     assert returned and returned[0].stock_context.result_id == "result-1"

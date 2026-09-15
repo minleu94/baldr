@@ -23,7 +23,7 @@ def format_research_workflow_path() -> str:
 class ResearchStockContextDTO:
     """單股研究下鑽所需的唯讀來源脈絡。
 
-    這個 DTO 只攜帶識別與日期，不攜帶行情、DataFrame 或重新計算結果。
+    這個 DTO 只攜帶識別、日期與來源／映射版本，不攜帶行情、DataFrame 或重新計算結果。
     `decision_date` 是原研究決策日，`data_date` 是該次研究實際使用的資料日；
     兩者刻意分開，避免跨頁時把目前行情誤認成歷史研究日期。
     """
@@ -36,6 +36,10 @@ class ResearchStockContextDTO:
     profile_id: str = ""
     profile_version: str = ""
     source_id: str = ""
+    source_version: str = ""
+    mapping_source_id: str = ""
+    mapping_version: str = ""
+    mapping_observed_date: str = ""
     source_kind: str = ""
     source_label: str = ""
     source_workspace: str = ""
@@ -50,6 +54,10 @@ class ResearchStockContextDTO:
             "profile_id",
             "profile_version",
             "source_id",
+            "source_version",
+            "mapping_source_id",
+            "mapping_version",
+            "mapping_observed_date",
             "source_kind",
             "source_label",
             "source_workspace",
@@ -87,6 +95,10 @@ class ResearchSessionSnapshotDTO:
     profile_id: Optional[str] = None
     profile_version: Optional[str] = None
     source_id: Optional[str] = None
+    source_version: Optional[str] = None
+    mapping_source_id: Optional[str] = None
+    mapping_version: Optional[str] = None
+    mapping_observed_date: Optional[str] = None
     source_kind: Optional[str] = None
     source_label: Optional[str] = None
     source_workspace: Optional[str] = None

@@ -19,6 +19,7 @@ from app_module.relative_strength_liquidity_service import (
     SQLiteDailyPriceRelativeStrengthLiquidityProvider,
 )
 from app_module.sector_rotation_service import SectorRotationService, SQLiteIndustryIndexSectorRotationProvider
+from app_module.industry_strength_service import IndustryStrengthService
 from app_module.smart_money_semantic_service import SmartMoneySemanticService, SQLiteSmartMoneyPriceProvider
 from app_module.watchlist_service import WatchlistService
 from app_module.watchlist_trigger_service import (
@@ -129,9 +130,14 @@ def build_service_backed_decision_desk_snapshot_builder(
         ),
     )
     sector_rotation_service = _try_create(
-        "SectorRotationService",
-        lambda: SectorRotationService(SQLiteIndustryIndexSectorRotationProvider(config.db_file)),
+        "IndustryStrengthService",
+        lambda: IndustryStrengthService(config),
     )
+    if sector_rotation_service is None:
+        sector_rotation_service = _try_create(
+            "SectorRotationService",
+            lambda: SectorRotationService(SQLiteIndustryIndexSectorRotationProvider(config.db_file)),
+        )
     relative_strength_liquidity_service = _try_create(
         "RelativeStrengthLiquidityService",
         lambda: RelativeStrengthLiquidityService(

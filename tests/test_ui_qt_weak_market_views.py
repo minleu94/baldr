@@ -1,5 +1,6 @@
 import os
 import sys
+from types import SimpleNamespace
 
 import pandas as pd
 from PySide6.QtCore import Qt
@@ -185,4 +186,155 @@ def test_market_views_clear_stale_rows_and_show_error_status(monkeypatch):
         assert model is not None
         assert model.rowCount() == 0
         assert view.status_label.text().startswith("載入失敗：")
+        view.deleteLater()
+
+
+def test_industry_rows_drill_down_to_read_only_stock_research_context_without_watchlist_write():
+    app()
+    row = pd.DataFrame(
+        [
+            {
+                "排名": 2,
+                "產業名稱": "半導體業",
+                "指數名稱": "半導體類指數",
+                "產業層級": "leaf",
+                "市場範圍": "twse",
+                "收盤指數": "100",
+                "漲幅%": "2.00",
+                "相對大盤超額BP": 120,
+                "5日漲幅BP": 200,
+                "20日漲幅BP": 500,
+                "成分數": 1,
+                "20日有效成分": 1,
+                "20日覆蓋率BP": 10000,
+                "代表股票代號": "2330, 2454",
+                "代表股票名稱": "台積電, 聯發科",
+                "代表股票": "2330 台積電, 2454 聯發科",
+                "資料日": "2026-09-14",
+                "資料來源": "industry_strength.sqlite_current_research",
+                "資料版本": "industry-strength.current-research.v1",
+                "映射來源": "meta_data.companies.csv",
+                "映射版本": "tw-industry-explicit-map.v1",
+                "映射觀測日": "2026-08-11",
+                "資料品質": "degraded",
+            },
+            {
+                "排名": 1,
+                "產業名稱": "金融保險",
+                "指數名稱": "金融保險類指數",
+                "產業層級": "leaf",
+                "市場範圍": "twse",
+                "收盤指數": "80",
+                "漲幅%": "-1.00",
+                "相對大盤超額BP": -80,
+                "5日漲幅BP": -100,
+                "20日漲幅BP": -300,
+                "成分數": 1,
+                "20日有效成分": 1,
+                "20日覆蓋率BP": 10000,
+                "代表股票代號": "2883",
+                "代表股票名稱": "凱基金",
+                "代表股票": "2883 凱基金",
+                "資料日": "2026-09-13",
+                "資料來源": "industry_strength.sqlite_current_research",
+                "資料版本": "industry-strength.current-research.v1",
+                "映射來源": "meta_data.companies.csv",
+                "映射版本": "tw-industry-explicit-map.v1",
+                "映射觀測日": "2026-08-11",
+                "資料品質": "degraded",
+            },
+        ]
+    )
+    for view in (StrongIndustriesView(object()), WeakIndustriesView(object())):
+        contexts = []
+        view.stockResearchRequested.connect(contexts.append)
+        view._update_table_with_data(row)
+        rank_column = _column_index(view.industries_model, "排名")
+        view.industries_model.sort(rank_column, Qt.DescendingOrder)
+        view._select_representative_row(view.industries_model.index(0, 0))
+        assert view.representative_selector.count() == 2
+        visible_columns = view.industries_model.getVisibleColumns()
+        assert visible_columns[:3] == ["排名", "產業名稱", "產業層級"]
+        assert view.industries_model.data(
+            view.industries_model.index(0, visible_columns.index("產業名稱")),
+            Qt.DisplayRole,
+        ) == "半導體業"
+        view.representative_selector.setCurrentIndex(1)
+        view.open_representative_button.click()
+
+        assert len(contexts) == 1
+        context = contexts[0]
+        assert context.stock_code == "2454"
+        assert context.stock_name == "聯發科"
+        assert context.source_kind == "industry_strength"
+        assert context.source_workspace == "market_explore"
+        assert context.source_id == "industry_strength.sqlite_current_research"
+        assert context.source_version == "industry-strength.current-research.v1"
+        assert context.mapping_source_id == "meta_data.companies.csv"
+        assert context.mapping_version == "tw-industry-explicit-map.v1"
+        assert context.mapping_observed_date == "2026-08-11"
+        view.deleteLater()
+
+
+def test_comparable_industry_controls_show_session_windows_and_separate_levels():
+    app()
+    comparable_service = SimpleNamespace(industry_strength_service=object())
+    rows = pd.DataFrame(
+        [
+            {
+                "排名": 1,
+                "產業名稱": "綜合醫療",
+                "產業層級": "aggregate",
+                "漲幅%": "-1.00",
+                "5日漲幅%": "-1.00",
+                "20日漲幅%": "-2.00",
+                "5日超額%": "-0.50",
+                "20日超額%": "-1.50",
+                "5日覆蓋率%": "100.00",
+                "20日覆蓋率%": "100.00",
+                "資料品質": "observed",
+            },
+            {
+                "排名": 1,
+                "產業名稱": "細分半導體",
+                "產業層級": "leaf",
+                "漲幅%": "2.00",
+                "5日漲幅%": "2.00",
+                "20日漲幅%": "4.00",
+                "5日超額%": "1.50",
+                "20日超額%": "3.50",
+                "5日覆蓋率%": "100.00",
+                "20日覆蓋率%": "100.00",
+                "資料品質": "degraded",
+            },
+        ]
+    )
+    for view_type in (StrongIndustriesView, WeakIndustriesView):
+        view = view_type(comparable_service)
+        assert view.period_btn_day.text() == "近5交易日"
+        assert view.period_btn_week.text() == "近20交易日"
+        view._cached_data["day"] = rows.copy()
+        view._update_table_with_data(rows)
+
+        assert view.industries_model is not None
+        assert view.industries_model.rowCount() == 1
+        visible = view.industries_model.getVisibleColumns()
+        assert view.industries_model.data(
+            view.industries_model.index(0, visible.index("產業層級")), Qt.DisplayRole
+        ) == "細分產業"
+        assert view.industries_model.data(
+            view.industries_model.index(0, visible.index("資料品質")), Qt.DisplayRole
+        ) == "降級"
+
+        view.level_selector.setCurrentIndex(1)
+        assert view.industries_model.rowCount() == 1
+        assert view.industries_model.data(
+            view.industries_model.index(0, visible.index("產業名稱")), Qt.DisplayRole
+        ) == "綜合醫療"
+        assert view.industries_model.data(
+            view.industries_model.index(0, visible.index("產業層級")), Qt.DisplayRole
+        ) == "綜合類別"
+
+        view.level_selector.setCurrentIndex(2)
+        assert view.industries_model.rowCount() == 2
         view.deleteLater()

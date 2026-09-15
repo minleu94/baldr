@@ -61,7 +61,22 @@ class PandasTableModel(QAbstractTableModel):
             if col_name not in self._dataframe.columns:
                 return None
             
-            value = self._dataframe.iloc[row, col]
+            # 可見欄位可能只是原始 DataFrame 的子集；必須依欄名取值，
+            # 不能把可見欄位位置誤當成原始欄位位置，否則表頭與內容會錯位。
+            # 同名欄位則依 visible occurrence 對應回原始 occurrence，避免
+            # pandas get_loc 回傳 slice／Series。
+            source_positions = [
+                position
+                for position, name in enumerate(self._dataframe.columns)
+                if name == col_name
+            ]
+            visible_occurrence = sum(
+                1 for name in self._visible_columns[:col] if name == col_name
+            )
+            source_column = source_positions[
+                min(visible_occurrence, len(source_positions) - 1)
+            ]
+            value = self._dataframe.iloc[row, source_column]
             
             if role == Qt.DisplayRole:
                 # 處理列表/數組類型（如 tags）

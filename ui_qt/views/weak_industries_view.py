@@ -4,10 +4,10 @@
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QTableView, QHeaderView, QMessageBox
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QPushButton, QTableView, QHeaderView, QMessageBox, QComboBox
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 import pandas as pd
 from typing import Optional
@@ -16,10 +16,13 @@ from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.screening_service import ScreeningService
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
+from app_module.research_session import ResearchStockContextDTO
 
 
 class WeakIndustriesView(QWidget):
     """弱勢產業視圖"""
+
+    stockResearchRequested = Signal(object)
     
     def __init__(self, screening_service: ScreeningService, parent=None):
         """初始化弱勢產業視圖
@@ -30,6 +33,9 @@ class WeakIndustriesView(QWidget):
         """
         super().__init__(parent)
         self.screening_service = screening_service
+        self._comparable_mode = (
+            getattr(screening_service, "industry_strength_service", None) is not None
+        )
         
         # 數據模型
         self.industries_model: Optional[PandasTableModel] = None
@@ -52,7 +58,9 @@ class WeakIndustriesView(QWidget):
         
         # 標題列（標題 + InfoButton）
         title_layout = QHBoxLayout()
-        title = QLabel("弱勢產業")
+        title = QLabel(
+            "弱勢產業（依相對大盤排名）" if self._comparable_mode else "弱勢產業"
+        )
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
@@ -68,8 +76,12 @@ class WeakIndustriesView(QWidget):
         
         # 時間範圍選擇
         control_layout.addWidget(QLabel("時間範圍:"))
-        self.period_btn_day = QPushButton("本日")
-        self.period_btn_week = QPushButton("本周")
+        self.period_btn_day = QPushButton(
+            "近5交易日" if self._comparable_mode else "本日"
+        )
+        self.period_btn_week = QPushButton(
+            "近20交易日" if self._comparable_mode else "本周"
+        )
         self.period_btn_day.setCheckable(True)
         self.period_btn_week.setCheckable(True)
         self.period_btn_day.setChecked(True)
@@ -77,6 +89,18 @@ class WeakIndustriesView(QWidget):
         self.period_btn_week.clicked.connect(lambda: self._on_period_changed('week'))
         control_layout.addWidget(self.period_btn_day)
         control_layout.addWidget(self.period_btn_week)
+
+        self.level_label = QLabel("層級：")
+        self.level_selector = QComboBox()
+        self.level_selector.setAccessibleName("選取產業排名層級")
+        self.level_selector.addItem("細分產業", "leaf")
+        self.level_selector.addItem("綜合類別", "aggregate")
+        self.level_selector.addItem("全部層級", "all")
+        self.level_selector.currentIndexChanged.connect(self._on_level_changed)
+        self.level_label.setVisible(self._comparable_mode)
+        self.level_selector.setVisible(self._comparable_mode)
+        control_layout.addWidget(self.level_label)
+        control_layout.addWidget(self.level_selector)
         
         control_layout.addStretch()
         
@@ -99,8 +123,24 @@ class WeakIndustriesView(QWidget):
         apply_financial_table_style(self.industries_table)
         self.industries_table.setSelectionBehavior(QTableView.SelectRows)
         self.industries_table.setSortingEnabled(True)
+        self.industries_table.clicked.connect(self._select_representative_row)
+        self.industries_table.doubleClicked.connect(self._select_representative_row)
         self.industries_table.horizontalHeader().setStretchLastSection(True)
         main_layout.addWidget(self.industries_table)
+
+        drilldown_layout = QHBoxLayout()
+        drilldown_layout.addWidget(QLabel("代表股下鑽:"))
+        self.representative_selector = QComboBox()
+        self.representative_selector.setAccessibleName("選取弱勢產業代表股")
+        self.representative_selector.setMinimumWidth(240)
+        self.representative_selector.addItem("請先選取產業列")
+        drilldown_layout.addWidget(self.representative_selector, 1)
+        self.open_representative_button = QPushButton("開啟所選代表股研究")
+        self.open_representative_button.setProperty("variant", "secondary")
+        self.open_representative_button.setEnabled(False)
+        self.open_representative_button.clicked.connect(self._open_selected_representative_stock)
+        drilldown_layout.addWidget(self.open_representative_button)
+        main_layout.addLayout(drilldown_layout)
 
         self.status_label = QLabel("尚未載入")
         self.status_label.setWordWrap(True)
@@ -119,6 +159,16 @@ class WeakIndustriesView(QWidget):
             f"color: {colors.get(level, colors['info'])}; padding: 2px 0;"
         )
         label.setText(text)
+
+    @staticmethod
+    def _data_identity_suffix(df: pd.DataFrame) -> str:
+        if df.empty:
+            return ""
+        row = df.iloc[0]
+        data_date = str(row.get('資料日') or '未知')
+        source_id = str(row.get('資料來源') or '未知')
+        version = str(row.get('資料版本') or '未知')
+        return f"｜資料日 {data_date}｜來源 {source_id}｜版本 {version}"
 
     @staticmethod
     def _empty_frame() -> pd.DataFrame:
@@ -145,15 +195,38 @@ class WeakIndustriesView(QWidget):
         """顯示緩存的數據（不重新計算）"""
         df = self._cached_data[period]
         if df is not None:
-            self._update_table_with_data(df)
+            visible_df = self._update_table_with_data(df)
             self._set_status_label(
                 self.status_label,
-                f"已載入快取：{len(df)} 筆",
-                level="success" if len(df) else "warning",
+                f"已載入快取：{len(visible_df)} 筆{self._data_identity_suffix(df)}",
+                level="success" if len(visible_df) else "warning",
             )
-    
-    def _update_table_with_data(self, df: pd.DataFrame):
+
+    def _on_level_changed(self, _index: int) -> None:
+        if not self._comparable_mode:
+            return
+        period = 'day' if self.period_btn_day.isChecked() else 'week'
+        if self._cached_data[period] is not None:
+            self._display_cached_data(period)
+
+    def _apply_level_filter(self, df: pd.DataFrame) -> pd.DataFrame:
+        if (
+            not self._comparable_mode
+            or "產業層級" not in df.columns
+            or not hasattr(self, "level_selector")
+        ):
+            return df
+        selected = self.level_selector.currentData()
+        if selected not in {"leaf", "aggregate"}:
+            return df
+        level_values = df["產業層級"].astype(str).str.strip().map(
+            {"細分產業": "leaf", "綜合類別": "aggregate"}
+        ).fillna(df["產業層級"].astype(str).str.strip())
+        return df.loc[level_values == selected].reset_index(drop=True)
+
+    def _update_table_with_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """更新表格顯示（內部方法，用於顯示數據）"""
+        self._reset_representative_selector()
         # 複製 DataFrame 以避免修改原始數據
         df = df.copy()
         
@@ -167,19 +240,97 @@ class WeakIndustriesView(QWidget):
                 df['跌幅%'] = pd.to_numeric(
                     df['跌幅%'], errors='coerce'
                 ).abs()
-        
-        # 確保欄位順序正確
-        expected_columns = ['排名', '指數名稱', '收盤指數', '跌幅%']
-        available_columns = [col for col in expected_columns if col in df.columns]
-        if available_columns:
-            df = df[available_columns]
+
+        df = self._apply_level_filter(df)
+        if '產業層級' in df.columns:
+            df['產業層級'] = df['產業層級'].astype(str).str.strip().map(
+                {'leaf': '細分產業', 'aggregate': '綜合類別'}
+            ).fillna(df['產業層級'])
+        if '資料品質' in df.columns:
+            quality_labels = {
+                'observed': '正常',
+                'estimated': '估算',
+                'degraded': '降級',
+                'missing': '缺漏',
+            }
+            df['資料品質'] = df['資料品質'].astype(str).str.strip().str.lower().map(
+                quality_labels
+            ).fillna(df['資料品質'])
         
         # 更新模型
         self.industries_model = PandasTableModel(df, red_positive_columns={'跌幅%'})
+        display_columns = [
+            '排名', '產業名稱', '產業層級', '5日漲幅%', '20日漲幅%', '5日超額%', '20日超額%',
+            '5日覆蓋率%', '20日覆蓋率%', '代表股票', '資料品質',
+        ]
+        if (
+            '跌幅%' in df.columns
+            and not {'5日漲幅%', '20日漲幅%'}.intersection(df.columns)
+        ):
+            display_columns.insert(3, '跌幅%')
+        available_columns = [col for col in display_columns if col in df.columns]
+        if available_columns:
+            self.industries_model.setVisibleColumns(available_columns)
         self.industries_table.setModel(self.industries_model)
         
         # 調整列寬
         self.industries_table.resizeColumnsToContents()
+        return df
+
+    def _select_representative_row(self, index) -> None:
+        if self.industries_model is None or not index.isValid():
+            return
+        frame = self.industries_model.getDataFrame()
+        if index.row() < 0 or index.row() >= len(frame):
+            return
+        row = frame.iloc[index.row()]
+        self.representative_selector.clear()
+        raw_names = str(row.get('代表股票名稱') or '').strip()
+        names = [item.strip() for item in raw_names.split(',')]
+        raw_codes = str(row.get('代表股票代號') or '').strip()
+        codes = [item.strip() for item in raw_codes.split(',') if item.strip()]
+        for position, code in enumerate(codes):
+            name = names[position] if position < len(names) and names[position] else code
+            self.representative_selector.addItem(f'{code} {name}', {
+                'code': code,
+                'name': name,
+                'industry': str(row.get('產業名稱') or row.get('指數名稱') or '').strip(),
+                'data_date': str(row.get('資料日') or '').strip(),
+                'source_id': str(row.get('資料來源') or 'industry_strength.sqlite_current_research'),
+                'source_version': str(row.get('資料版本') or '').strip(),
+                'mapping_source_id': str(row.get('映射來源') or '').strip(),
+                'mapping_version': str(row.get('映射版本') or '').strip(),
+                'mapping_observed_date': str(row.get('映射觀測日') or '').strip(),
+            })
+        if not codes:
+            self.representative_selector.addItem('此產業沒有可用代表股')
+        self.open_representative_button.setEnabled(bool(codes))
+
+    def _reset_representative_selector(self) -> None:
+        self.representative_selector.clear()
+        self.representative_selector.addItem('請先選取產業列')
+        self.open_representative_button.setEnabled(False)
+
+    def _open_selected_representative_stock(self) -> None:
+        payload = self.representative_selector.currentData()
+        if not isinstance(payload, dict) or not payload.get('code'):
+            return
+        self.stockResearchRequested.emit(
+            ResearchStockContextDTO(
+                stock_code=str(payload['code']),
+                stock_name=str(payload.get('name') or payload['code']),
+                decision_date=str(payload.get('data_date') or ''),
+                data_date=str(payload.get('data_date') or ''),
+                source_id=str(payload.get('source_id') or 'industry_strength.sqlite_current_research'),
+                source_version=str(payload.get('source_version') or ''),
+                mapping_source_id=str(payload.get('mapping_source_id') or ''),
+                mapping_version=str(payload.get('mapping_version') or ''),
+                mapping_observed_date=str(payload.get('mapping_observed_date') or ''),
+                source_kind='industry_strength',
+                source_label=f"弱勢產業／{payload.get('industry') or '未知產業'}",
+                source_workspace='market_explore',
+            )
+        )
     
     def _refresh_industries(self, use_cache: bool = True):
         """刷新弱勢產業數據
@@ -212,15 +363,15 @@ class WeakIndustriesView(QWidget):
             self._cached_data[period] = df.copy()
             
             # 更新表格顯示
-            self._update_table_with_data(df)
+            visible_df = self._update_table_with_data(df)
             
             # 更新按鈕狀態
             self.refresh_btn.setVisible(True)
             self.load_btn.setVisible(False)
             self._set_status_label(
                 self.status_label,
-                f"已更新：{len(df)} 筆",
-                level="success" if len(df) else "warning",
+                f"已更新：{len(visible_df)} 筆{self._data_identity_suffix(df)}",
+                level="success" if len(visible_df) else "warning",
             )
             
         except Exception as e:
@@ -231,6 +382,7 @@ class WeakIndustriesView(QWidget):
                 self._empty_frame(), red_positive_columns={'跌幅%'}
             )
             self.industries_table.setModel(self.industries_model)
+            self._reset_representative_selector()
             self.refresh_btn.setVisible(False)
             self.load_btn.setVisible(True)
             self._set_status_label(
@@ -241,6 +393,7 @@ class WeakIndustriesView(QWidget):
     
     def _show_empty_state(self):
         """顯示空狀態（提示用戶載入數據）"""
+        self._reset_representative_selector()
         self.industries_model = PandasTableModel(
             self._empty_frame(), red_positive_columns={'跌幅%'}
         )

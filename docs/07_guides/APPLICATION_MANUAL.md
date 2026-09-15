@@ -2042,9 +2042,13 @@ Regime 是對當下市場環境的分類，不是未來預測。規則匹配度�
 
 ### 5.3 強勢與弱勢產業
 
-使用本日或本周排名判斷產業相對強弱，再回到個股頁或推薦頁研究產業內股票。
+使用本日可得的 5／20 個 TAIEX 交易 session 排名判斷產業相對強弱，再回到個股研究頁查看產業內股票。這是 current-research 讀模型，不是歷史 PIT membership、回測結果或交易建議。
 
-強 / 弱勢產業同樣採 SQLite-first，從 SQLite `industry_indices` 只讀近期交易日與 `日期` / `指數名稱` / `收盤指數` 必要欄位；缺資料或讀取失敗才 fallback CSV。大型資料量下第一次載入仍可能需要等待，但不再需要先載入整張產業指數表。
+強 / 弱勢產業由 `IndustryStrengthService` 從 SQLite `industry_indices`、`market_indices` 的精確 `TAIEX` 與 `daily_prices` 唯讀組成。表格顯示產業、指數、層級、5／20 日報酬、相對 TAIEX 報酬、coverage、代表股與 quality；來源 ID、資料日、mapping version、PIT 狀態與完整 warnings 由狀態列／詳情保留。找不到 TAIEX 或有效窗口時 fail-closed，不任意改用其他 benchmark，也不把缺價補成 0。
+
+產業列只接受明確 pure-index mapping；槓桿、反向、策略與產品型指數會排除。父層 aggregate 與 leaf 分層排名，不混成互斥同級；`mapping_mode=current_research_only`、`historical_pit_eligible=false` 時，畫面只可作當期人工研究。coverage 分母固定是與 TAIEX／TWSE scope 對齊的 current registry members，TPEX／興櫃及未映射類別會以警告與缺口欄位揭露。
+
+操作時先在表格選取產業，再在「代表股」選擇器選一檔明確股票，按「開啟所選代表股研究」進入既有個股研究報告。排序後仍須重新確認目前選取列；點擊或雙擊表格列只會選取產業，不會偷偷開啟第一檔代表股。此路徑傳遞股票、產業、資料日與來源身份，不寫入觀察清單或 watchlist。
 
 弱勢產業頁的 `跌幅%` 同樣以正數顯示跌幅大小、以紅色表示下跌語意；不應把紅色正數解讀為上漲。
 
@@ -2297,14 +2301,16 @@ Market Breadth v1 會從 SQLite `daily_prices` 唯讀推導：
 
 若指定日期不是交易日或該日尚無資料，本頁會使用最近可用交易日並在 warnings 顯示 fallback 日期，不會把缺資料補成當日觀測值。
 
-Sector Rotation v1 會從 SQLite `industry_indices` 唯讀推導：
+產業強弱 current-research v1 會從 SQLite `industry_indices`、精確 `TAIEX` 與 `daily_prices` 唯讀推導：
 
-- 領先 / 落後產業
-- 5 / 20 日變化
-- 輪動強度 BP
-- 產業排名 metadata
+- leaf／aggregate 分層的產業列與 5／20 日報酬；層級內以相對 TAIEX basis points 排名。
+- `market_return_*_bp`、`excess_*_bp`、index close、代表股與每個窗口 coverage。
+- `source_id`、`source_version`、mapping source／version、mapping observed／available time、資料日、market scope 與 PIT eligibility。
+- `unmapped_industry_categories`、`unmapped_index_names`、duplicate／ambiguous membership、缺價／停牌與 scope exclusions 等可追溯 diagnostics。
 
-若指定日期不是交易日或該日尚無產業指數資料，本頁會使用最近可用交易日並在 warnings 顯示 fallback 日期。若某產業歷史不足 21 筆，該產業會被降級提示，不會強制補值。
+指定日期會先裁切到不晚於請求日的最後一個 TAIEX session；5／20 日端點都取同一份 market session 序列。找不到精確 TAIEX、窗口不足或產業缺 index 時，該列保持缺值並以 `MISSING`／`DEGRADED` 與 warnings 揭露，不以任意市場指數或 0 代替。current registry 的 mapping 只在當期研究適用，歷史 PIT 不可用時不進入回測、ML 或 Formal eligibility。
+
+在市場總覽的產業卡按「研究代表股」後，選取要研究的產業代表股即可開啟既有個股研究 context；這是明確選股的唯讀導覽，不建立 watchlist、不改 Advice／Portfolio。若仍看見舊版 `Sector Rotation v1` 的代理文字，應先確認 nested industry strength 是否存在，再依來源／mapping identity 判讀，不把 proxy 當成完整產業分類證據。
 
 Watchlist Trigger v1 會從 `WatchlistService` 與 SQLite `technical_indicators` 唯讀推導：
 

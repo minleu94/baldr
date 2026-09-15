@@ -108,6 +108,8 @@ baldr 是一套可驗證、可回溯、可演化的台股投資決策系統。�
 
 目標中的第四閉環是 Daily Decision Desk：Market Intelligence → Daily Decision Desk → Watchlist Trigger / Portfolio Alert / Research Input。v1 已接上主 UI；唯一實例位於「市場探索 > 市場總覽」，Workbench「決策來源」只導向同一畫面，不建立第二份 widget。目前由 service snapshot 聚合，Market Breadth v1 已由 SQLite `daily_prices` provider 接線，Sector Rotation v1 已由 SQLite `industry_indices` provider 接線，Watchlist Trigger v1 已由 `WatchlistService` 與 SQLite `technical_indicators` 共同推導接線，Portfolio Alert v1 已由 `PortfolioService`、`PortfolioConditionMonitor` 與 `PortfolioChipService` 共同推導接線。
 
+產業強弱 current-research v1 由 `app_module.industry_strength_service.IndustryStrengthService` 與 `SQLiteIndustryStrengthDataProvider` 以 query-only SQLite 組成；`ScreeningService`、Decision Desk composition 與市場總覽共用同一 service／DTO，不在 UI 重算。它固定使用 `TAIEX` session／benchmark、5／20 日可比窗口、明確 pure-index mapping 與 TWSE scope，將 leaf／aggregate 分層、coverage、來源／mapping version、資料日與 PIT 不可用狀態一併輸出；它不讀 Formal publisher／clock、不寫 DB／watchlist，也不把 current registry 冒充 historical PIT。
+
 V4.2 C 線在這個閉環上新增 presentation-only vertical slice：市場焦點先以研究卡呈現，觀察清單讀取保存的排名／樣本 metadata，持倉與個股報告再消費同一份呈現欄位。Advice 仍由既有 Advice DTO 決定；UI 不把市場焦點或保存分數升級成正式買進／持有／減碼／退出建議。
 
 未來 6 個月的工程方向見 [ROADMAP_6M_ENGINEERING.md](../00_core/ROADMAP_6M_ENGINEERING.md)，舊 Roadmap 移交狀態見 [LEGACY_ROADMAP_CARRYOVER.md](../00_core/LEGACY_ROADMAP_CARRYOVER.md)。
@@ -205,6 +207,7 @@ Application Services / DTO / Repository
 | 領域 | 主要元件 |
 |---|---|
 | 推薦與市場 | `recommendation_service.py`、`screening_service.py`、`regime_service.py`、`recommendation_profile_service.py`、`profile_replay_comparison_service.py` |
+| 產業強弱／市場探索 | `industry_strength_service.py`、`decision_desk_dtos.py`、`decision_desk_snapshot_storage_dtos.py`；current-research pure-index／TAIEX comparable read model，共用 `ScreeningService` 與 Decision Desk composition |
 | 數據更新 | `update_service.py`、`broker_branch_update_service.py`、`sqlite_inspector_service.py` |
 | 籌碼 | `broker_flow_service.py`、`portfolio_chip_service.py` |
 | 回測 | `backtest_service.py`、`batch_backtest_service.py`、`optimizer_service.py`、`walkforward_service.py`、`research_result_presentation.py` |

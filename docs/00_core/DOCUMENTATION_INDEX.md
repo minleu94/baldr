@@ -32,6 +32,7 @@
 
 ## 2026-09-08 整併與下一輪工作
 
+- [產業強弱與產業→個股決策旅程 QA](../06_qa/INDUSTRY_DECISION_JOURNEY_2026_09_14.md)：current-research 產業映射、TAIEX 可比 5／20 日排名、coverage／PIT 限制與代表股明確下鑽證據。
 - [V4.2 C 線每日決策工作台 QA handoff](../06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md)：單一路徑、跨頁研究 context、共用呈現契約、fail-closed 欄位與窄版／鍵盤驗證。
 - [本輪交付複核](../06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)、[檔案清理結果](../06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)。
 - [資料更新](../06_qa/V4_DATA_FRESHNESS_HANDOFF.md)、[Direct資料鏈](../06_qa/V4_DIRECT_RELEASE_HANDOFF.md)、[個股研究報告](../06_qa/V4_STOCK_RESEARCH_REPORT_HANDOFF.md)。

@@ -16,6 +16,7 @@ from app_module.advice_dtos import (
 )
 from app_module.advice_policy import AdvicePolicy
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
 from app_module.portfolio_construction_dtos import PortfolioAllocationRow, PortfolioConstructionResult
 from app_module.portfolio_allocation_dtos import (
     PortfolioAllocationResultV2,
@@ -211,7 +212,8 @@ class AdviceComposer:
             target_weight_bp=target_weight_bp,
         )
         calibration_fields = self._calibration_fields(
-            calibration if calibration is not None else recommendation
+            calibration if calibration is not None else recommendation,
+            expected_stock_code=recommendation.stock_code,
         )
         source_trace = (
             ("RecommendationResultDTO",)
@@ -278,7 +280,10 @@ class AdviceComposer:
             None if current_weight_bp is None else target_weight_bp - current_weight_bp
         )
         diagnostics = tuple(allocation.diagnostics) + (("current_weight_missing",) if missing_current_weight else ())
-        calibration_fields = self._calibration_fields(calibration)
+        calibration_fields = self._calibration_fields(
+            calibration,
+            expected_stock_code=stock_code,
+        )
         source_trace = (
             ("PortfolioConstructionResult",)
             + ((str(result_id),) if result_id else ())
@@ -336,7 +341,10 @@ class AdviceComposer:
             executable_weight_bp=executable_weight_bp,
             diagnostics=diagnostics,
         )
-        calibration_fields = self._calibration_fields(calibration)
+        calibration_fields = self._calibration_fields(
+            calibration,
+            expected_stock_code=allocation.stock_code,
+        )
         source_trace = (
             "PortfolioAllocationResultV2",
             result.dataset_identity_hash,
@@ -385,15 +393,46 @@ class AdviceComposer:
         )
 
     @staticmethod
-    def _calibration_fields(calibration: object | None) -> dict[str, Any]:
-        """Map a verified consumer projection into Advice without doing calculations."""
+    def _calibration_fields(
+        calibration: object | None,
+        *,
+        expected_stock_code: str | None = None,
+    ) -> dict[str, Any]:
+        """Map only typed producer projections into Advice without calculations.
+
+        The optional stock-code mapping is an integration seam, so a plain JSON
+        mapping must not be allowed to promote a number or status into a
+        probability.  Normal RecommendationService output remains supported via
+        ``RecommendationDTO``; explicit calibration maps must use the existing
+        frozen consumer projection.
+        """
 
         if calibration is None:
             return {}
+        if isinstance(calibration, Mapping):
+            return {}
+        if isinstance(calibration, RecommendationCalibrationProjection):
+            if expected_stock_code and calibration.stock_code != expected_stock_code:
+                return {}
+            has_probability = (
+                calibration.calibrated_probability_bp is not None
+                or calibration.after_cost_profit_probability_bp is not None
+            )
+            if has_probability and not AdviceComposer._typed_projection_has_scope(calibration):
+                return {}
+        elif isinstance(calibration, RecommendationDTO):
+            if expected_stock_code and calibration.stock_code != expected_stock_code:
+                return {}
+            has_probability = (
+                calibration.calibrated_probability_bp is not None
+                or calibration.after_cost_profit_probability_bp is not None
+            )
+            if has_probability and not AdviceComposer._recommendation_dto_has_scope(calibration):
+                return {}
+        else:
+            return {}
 
         def value(name: str, default: Any = None) -> Any:
-            if isinstance(calibration, Mapping):
-                return calibration.get(name, default)
             return getattr(calibration, name, default)
 
         source_trace = value("source_trace", value("calibration_source_trace", ()))
@@ -449,6 +488,84 @@ class AdviceComposer:
             ),
             "_source_trace": tuple(str(item) for item in source_trace),
         }
+
+    @staticmethod
+    def _typed_projection_has_scope(projection: RecommendationCalibrationProjection) -> bool:
+        """Require the fields emitted by the existing consumer for probability rows.
+
+        This is a shape/scope check only.  Natural evidence authority remains in
+        the existing learning verifier; an active candidate is still rendered as
+        research/shadow by the downstream presentation contract.
+        """
+
+        required_text = (
+            projection.model_version,
+            projection.dataset_version,
+            projection.horizon,
+            projection.cost_basis,
+        )
+        if not all(str(value or "").strip() for value in required_text):
+            return False
+        if not projection.source_trace:
+            return False
+        trace = " ".join(str(item).lower() for item in projection.source_trace)
+        if not any(token in trace for token in ("candidate:", "active:", "recommendation_calibration_consumer")):
+            return False
+        if projection.status != "active_candidate":
+            return False
+        valid_probability_statuses = {"active_effective", "shadow_candidate"}
+        if projection.calibrated_probability_bp is not None and (
+            projection.calibrated_probability_status not in valid_probability_statuses
+        ):
+            return False
+        if projection.after_cost_profit_probability_bp is not None and (
+            projection.after_cost_profit_probability_status not in valid_probability_statuses
+        ):
+            return False
+        if projection.after_cost_profit_probability_bp is not None and not any(
+            str(item).startswith("after_cost_baseline:") for item in projection.source_trace
+        ):
+            return False
+        return True
+
+    @staticmethod
+    def _recommendation_dto_has_scope(recommendation: RecommendationDTO) -> bool:
+        """Keep persisted producer DTOs fail-closed without a projection scope."""
+
+        required_text = (
+            recommendation.calibration_model_version,
+            recommendation.calibration_dataset_version,
+            recommendation.calibration_horizon,
+            recommendation.calibration_source,
+        )
+        if not all(str(value or "").strip() for value in required_text):
+            return False
+        if recommendation.calibration_status != "active_candidate":
+            return False
+        if not recommendation.calibration_source_trace:
+            return False
+        trace = " ".join(str(item).lower() for item in recommendation.calibration_source_trace)
+        if not any(token in trace for token in ("candidate:", "active:", "recommendation_calibration_consumer")):
+            return False
+        if recommendation.cost_basis_bp is None and not (
+            "cost_scenario:" in trace and "cost_estimate_source:" in trace
+        ):
+            return False
+        valid_probability_statuses = {"active_effective", "shadow_candidate"}
+        if recommendation.calibrated_probability_bp is not None and (
+            recommendation.calibrated_probability_status not in valid_probability_statuses
+        ):
+            return False
+        if recommendation.after_cost_profit_probability_bp is not None and (
+            recommendation.after_cost_profit_probability_status not in valid_probability_statuses
+        ):
+            return False
+        if recommendation.after_cost_profit_probability_bp is not None and not any(
+            str(item).startswith("after_cost_baseline:")
+            for item in recommendation.calibration_source_trace
+        ):
+            return False
+        return True
 
     @staticmethod
     def _allocation_action(

@@ -214,6 +214,50 @@ def test_available_probability_without_natural_receipt_is_explicitly_not_natural
     assert "自然前瞻驗證" not in text
 
 
+def test_historical_probability_remains_visible_as_research_only() -> None:
+    presentation = DecisionPresentationDTO(
+        stock_code="2330",
+        calibrated_probability_bp=8000,
+        calibrated_probability_status="research",
+        after_cost_profit_probability_bp=6500,
+        after_cost_profit_probability_status="research",
+        evidence_confidence="historical_research",
+        sample_size=64,
+        horizon="20 trading days",
+        calibration_model_version="historical-calibration-v1",
+        calibration_dataset_version="historical-oos-2026h1",
+        calibration_source="historical_recommendation_calibration",
+        source_trace=(
+            "historical_replay:2026h1",
+            "cost_scenario:legacy-fixed-round-trip-bp-v1",
+        ),
+        warnings=("research_only_historical_replay; not natural evidence",),
+    )
+
+    text = format_decision_presentation(presentation)
+
+    assert "校準機率：80.00%（研究中／歷史研究）" in text
+    assert "成本後獲利機率：65.00%（研究中／歷史研究）" in text
+    assert "自然前瞻驗證" not in text
+    assert "適用期間：20 trading days" in text
+
+
+def test_untyped_verified_status_does_not_claim_natural_validation() -> None:
+    advice = RecommendationAdviceDTO(
+        stock_code="2330",
+        advice_action=AdviceAction.RESEARCH,
+        calibrated_probability_bp=8000,
+        calibrated_probability_status="verified",
+        evidence_confidence="verified",
+    )
+
+    presentation = DecisionPresentationService().from_recommendation_advice(advice)
+    text = format_decision_presentation(presentation)
+
+    assert "校準機率：80.00%（可用估計／自然驗證未證明）" in text
+    assert "自然前瞻驗證" not in text
+
+
 def test_shadow_consumer_probability_does_not_look_like_validated_probability() -> None:
     source_hash = "sha256:" + "a" * 64
     presentation = DecisionPresentationDTO(

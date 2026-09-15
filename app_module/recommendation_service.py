@@ -173,6 +173,23 @@ class RecommendationService:
             return
 
         rule_probability = {str(item.stock_code): 5_000 for item in recommendations}
+        # After-cost is a distinct target.  Only pass its frozen 5,000 bp null
+        # benchmark when the active candidate declares that exact contract;
+        # declared-but-unpriced baselines remain unavailable.
+        after_cost_baseline = None
+        baseline_provider = getattr(consumer, "active_after_cost_baseline", None)
+        if callable(baseline_provider):
+            after_cost_baseline = baseline_provider(decision_date=decision_date)
+        after_cost_rule_probability: dict[str, int] = {}
+        after_cost_rule_baseline_ids: dict[str, str] = {}
+        if after_cost_baseline is not None:
+            baseline_id, baseline_probability = after_cost_baseline
+            after_cost_rule_probability = {
+                str(item.stock_code): baseline_probability for item in recommendations
+            }
+            after_cost_rule_baseline_ids = {
+                str(item.stock_code): baseline_id for item in recommendations
+            }
         percentiles = {
             str(item.stock_code): int(item.score_percentile_bp)
             for item in recommendations
@@ -181,6 +198,8 @@ class RecommendationService:
         projections = consumer.project_many(
             feature_values_by_symbol=feature_values,
             rule_probability_by_symbol=rule_probability,
+            after_cost_rule_probability_by_symbol=after_cost_rule_probability,
+            after_cost_rule_baseline_id_by_symbol=after_cost_rule_baseline_ids,
             ranking_percentile_by_symbol=percentiles,
             decision_date=decision_date,
             data_quality="observed",
@@ -193,6 +212,9 @@ class RecommendationService:
             else "rule_only"
         )
         self.last_run_context["calibration_rule_baseline_id"] = NULL_BENCHMARK_BASELINE_ID
+        self.last_run_context["calibration_after_cost_baseline_id"] = (
+            after_cost_baseline[0] if after_cost_baseline is not None else ""
+        )
         self.last_run_context["calibration_projection_source"] = "RecommendationCalibrationConsumer"
         self.last_run_context["calibration_projection_rows"] = {
             code: projection.to_dict() for code, projection in sorted(projections.items())

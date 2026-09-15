@@ -1442,6 +1442,22 @@ PySide6 主視窗的可重跑縮放／鍵盤 smoke 使用真實 `MainWindow`、�
   Recommendation／Portfolio、不啟用 scheduler，也不建立 broker order。畫面 screenshot 或
   controlled fixture 只代表呈現可讀，不代表真實市場→產業→個股端到端已驗收。
 
+本輪端到端來源契約稽核另確認：正式 `RecommendationService` 產生的
+`RecommendationCalibrationProjection` 才是校準／成本後機率的來源；`AdviceComposer` 對 bare
+raw mapping、只含數字／status、缺 model／dataset／horizon／cost／source，或股票 scope 不符的
+payload 會 fail-closed。正常 typed shadow projection 可保留 ranking、校準機率、成本後機率、
+sample、20 trading days、model／dataset 與 cost trace，但畫面仍標示「研究中／shadow」，不等於
+自然驗證。正式 producer 只有在 active candidate metadata 明示獨立的
+`after_cost_null_benchmark_50pct_v1`／`5000 bp` contract 時才傳入 after-cost baseline，consumer
+也會核對 candidate metadata；宣告但未提供數值、或 consumer／source 不可用時仍保持 unavailable，
+不以數字補值。只有 ranking score 時機率維持未知，
+confidence 也不是獲利機率。
+
+歷史 walk-forward／untouched-test 校準可以作研究比較；若來源明確是 historical／replay，會標示
+「研究中／歷史研究」，不因 natural sample 尚未成熟而全部隱藏，也不與 natural matured evidence、
+formal Advice 或 promotion credit 混算。沒有 typed scope 或實際資料時顯示 unknown／研究中；不要
+手動填入 80%、自然樣本或 observed cost。
+
 Advice 表格有三種空白狀態，不能只用「沒有列」判斷：`WAITING_FOR_ADVICE_DTO` 代表尚未載入 Advice DTO，應先依畫面導引檢查資料更新或推薦分析；`NO_ELIGIBLE_ADVICE` 代表 DTO 已成功載入但沒有符合條件的建議；`ADVICE_DTO_ERROR` 才代表 DTO 遺失、結構不完整或安全診斷拒絕。來源顯示 degraded / warning 但仍帶有有效 recommendations 時，表格應照常呈現，並把警告保留在摘要與警告區；不得把它誤判成 DTO 錯誤。
 
 Advice 不寫 DB、不啟用 scheduler、不建立 broker order、不改 Scoring / ranking / backtest，也不套用 lifecycle action。weekly review history 的 working-copy 保存與真實時間累積屬 Gate 2；人工覆盤完成後只能以 `build_evidence_operations_weekly_review.py --save-history` 對隔離 working-copy DB 保存，再以 `--list-history` 核對，不得直接編輯 history、使用 production DB 或以 replay / fixture 補週數。它不因 Gate 1 完成而自動通過。

@@ -15,6 +15,33 @@
 - candidate／active／capture 與 cost scenario 必須同 lane、同 candidate／model identity、同決策日及同 source contract；horizon 統計只取單一選定 lane，不能跨 candidate／active 或跨成本情境合併。
 - Workbench 的 dashboard decision date 會傳入 Research Console；未明示日期時只接受可信的臺灣官方交易日 resolver。日曆不可用或日期不明時顯示 `unknown`，不以 learning receipt 的最新日期冒充今日。
 
+## Recommendation／Advice 機率來源契約稽核
+
+本輪另外核對正式 Recommendation producer 到 Advice／Portfolio read model，再到既有
+Workbench renderer 的機率欄位。`RecommendationService` 只把既有
+`RecommendationCalibrationConsumer` 的 frozen `RecommendationCalibrationProjection` 逐欄
+注入 RecommendationDTO；`AdviceComposer` 現在拒絕 bare mapping，以及缺
+model／dataset／horizon／cost／source 或 stock scope 不一致的 projection。這個 shape／scope
+gate 不等於 natural verifier；candidate／active projection 仍只可標研究／shadow。
+
+| 量 | 可用研究判讀 | 不可推出 |
+|---|---|---|
+| ranking score／percentile | 只作排序；Presentation 與 Workbench 另列 ranking method／percentile。 | 不可由 7200 或 80 分推導 80% 上漲機率。 |
+| calibrated probability | typed consumer 的整數 bp output；需同時看 model、dataset、20 日 horizon、sample、transform／baseline、source trace。 | `status=available`、`verified` 字串、hash 或 shadow receipt 不等於 natural validation。 |
+| after-cost probability | 只讀同一 projection 的 after-cost 欄位與 cost scenario；臺銀 estimate 保留 research-only／slippage 未建模限制。 | 不可與另一 candidate、另一成本 lane 或另一 horizon 混接，也不可冒充 observed fill。 |
+| historical calibration | `recommendation_calibration.py` 的 walk-forward／untouched-test 結果可作歷史研究；有明確 historical／replay source 時 presentation 顯示「研究中／歷史研究」。 | 不可併入 natural matured sample、formal Advice 或 promotion credit。 |
+
+隔離驗收 `test_isolated_producer_consumer_advice_workbench_ui_path` 確認正式
+RecommendationService adapter→typed projection→Advice→Workbench 可讀到 ranking `7200`、校準
+`58.00%`、成本後 `57.00%`、20 日、sample `120`、model／dataset 與 shadow label；
+`test_real_consumer_producer_advice_workbench_ui_path` 再使用最小隔離 pointer／artifact 呼叫真正
+`RecommendationCalibrationConsumer`，確認 RecommendationService 只有在 active candidate metadata
+明示既有獨立 `after_cost_null_benchmark_50pct_v1`／`5000 bp` contract 時才傳入該 baseline；本測試
+fixture 是 declared-but-unpriced baseline，因此成本後值保持 unavailable，且錯誤混用 ID 會
+fail-closed。前一個 isolated wiring case 才是有完整 typed after-cost contract 的正常可用案例。
+raw payload 與缺 scope 反例則維持 unknown。自然 lane 仍依
+本文件既有 verifier／maturity QA 判讀，不因 UI render 或 typed DTO 存在而升格。
+
 ## Research fallback packet 增量
 
 `ResearchFallbackPacket` 是 `WorkbenchDailyEvidence.research_fallback` 的 frozen、read-only DTO。它以 `decision_date + result／stock + source_id／source_snapshot_id + cost_lane` 組成 scope key；同日不同來源或成本 lane 不會在 packet 層合併。既有 source 沒提供 owner 時固定保留 `未知（既有來源未提供 owner）`，不把 source ID 猜成 owner。

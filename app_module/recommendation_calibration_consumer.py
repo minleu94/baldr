@@ -39,6 +39,8 @@ from ml_module.recommendation_cost_scenario import (
 )
 from ml_module.recommendation_calibration_authority import RecommendationPromotionPolicy
 from ml_module.recommendation_probability_transform import (
+    AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+    AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
     NULL_BENCHMARK_BASELINE_ID,
     NULL_BENCHMARK_PROBABILITY_BP,
     PROBABILITY_LINEAGE_SCHEMA_VERSION,
@@ -341,6 +343,27 @@ class RecommendationCalibrationConsumer:
         self._loaded_decision_date = current_day
         return "active"
 
+    def active_after_cost_baseline(
+        self,
+        *,
+        decision_date: str,
+    ) -> tuple[str, int] | None:
+        """Return a baseline only when the loaded candidate declares its contract.
+
+        The independent null benchmark has a frozen 5,000 bp value.  A
+        candidate using a different declared after-cost baseline does not carry
+        its numeric rule value in the active model metadata, so the production
+        recommendation path must leave that target unavailable rather than
+        inventing one.
+        """
+
+        if self.reload(decision_date=decision_date) != "active" or self._model is None:
+            return None
+        baseline_id = str(getattr(self._model, "after_cost_baseline_id", "") or "").strip()
+        if baseline_id != AFTER_COST_NULL_BENCHMARK_BASELINE_ID:
+            return None
+        return baseline_id, AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+
     def predict_active(
         self,
         *,
@@ -594,6 +617,7 @@ class RecommendationCalibrationConsumer:
         feature_values: Sequence[int | None] | None,
         rule_probability_bp: int | None,
         after_cost_rule_probability_bp: int | None = None,
+        after_cost_rule_baseline_id: str | None = None,
         rule_baseline_id: str = NULL_BENCHMARK_BASELINE_ID,
         ranking_percentile_bp: int | None = None,
         decision_date: str = "",
@@ -631,6 +655,34 @@ class RecommendationCalibrationConsumer:
                 warning="rule_probability_baseline_missing_fail_closed",
                 ranking_percentile_bp=ranking_percentile_bp,
             )
+        model_after_cost_baseline_id = str(
+            getattr(self._model, "after_cost_baseline_id", "") or ""
+        ).strip()
+        after_cost_baseline_id = str(after_cost_rule_baseline_id or "").strip() or None
+        if after_cost_rule_probability_bp is not None:
+            if not model_after_cost_baseline_id:
+                return RecommendationCalibrationProjection.unavailable(
+                    stock_code=stock_code,
+                    warning="after_cost_probability_baseline_missing_fail_closed",
+                    ranking_percentile_bp=ranking_percentile_bp,
+                )
+            if after_cost_baseline_id is None:
+                after_cost_baseline_id = model_after_cost_baseline_id
+            if after_cost_baseline_id != model_after_cost_baseline_id:
+                return RecommendationCalibrationProjection.unavailable(
+                    stock_code=stock_code,
+                    warning="after_cost_probability_baseline_mismatch_fail_closed",
+                    ranking_percentile_bp=ranking_percentile_bp,
+                )
+            if (
+                after_cost_baseline_id == AFTER_COST_NULL_BENCHMARK_BASELINE_ID
+                and after_cost_rule_probability_bp != AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+            ):
+                return RecommendationCalibrationProjection.unavailable(
+                    stock_code=stock_code,
+                    warning="after_cost_null_benchmark_probability_invalid_fail_closed",
+                    ranking_percentile_bp=ranking_percentile_bp,
+                )
         if data_quality.lower() in {"missing", "degraded", "unavailable", "not_checked"}:
             return RecommendationCalibrationProjection.unavailable(
                 stock_code=stock_code,
@@ -685,6 +737,7 @@ class RecommendationCalibrationConsumer:
         calibrated = prediction.calibrated_probability_bp
         after_cost = prediction.after_cost_profit_probability_bp
         after_cost_status = prediction.after_cost_profit_probability_status
+        after_cost_baseline_kind = _after_cost_baseline_kind(after_cost_baseline_id)
         scenario = self._cost_scenario or _legacy_scenario_from_pointer(self._loaded_pointer)
         if scenario.is_estimated:
             projection_cost_basis = (
@@ -709,6 +762,14 @@ class RecommendationCalibrationConsumer:
             f"candidate:{prediction.model_id}",
             f"baseline:{baseline_id}",
             f"baseline_kind:{baseline_kind}",
+            f"after_cost_baseline:{after_cost_baseline_id or 'unavailable'}",
+            f"after_cost_baseline_kind:{after_cost_baseline_kind}",
+            f"after_cost_baseline_probability_bp:{after_cost_rule_probability_bp if after_cost_rule_probability_bp is not None else 'unavailable'}",
+            (
+                "after_cost_baseline_contract:independent_null_benchmark_v1"
+                if after_cost_baseline_id == AFTER_COST_NULL_BENCHMARK_BASELINE_ID
+                else "after_cost_baseline_contract:declared_or_unavailable"
+            ),
             f"probability_transform:{transform.transform_id}",
             f"probability_lineage:{_hash_payload(self._probability_lineage)}",
             f"dataset:{prediction.dataset_id}",
@@ -763,12 +824,14 @@ class RecommendationCalibrationConsumer:
         rule_probability_by_symbol: Mapping[str, int],
         decision_date: str,
         after_cost_rule_probability_by_symbol: Mapping[str, int] | None = None,
+        after_cost_rule_baseline_id_by_symbol: Mapping[str, str] | None = None,
         rule_baseline_id: str = NULL_BENCHMARK_BASELINE_ID,
         ranking_percentile_by_symbol: Mapping[str, int] | None = None,
         data_quality: str = "observed",
     ) -> dict[str, RecommendationCalibrationProjection]:
         percentiles = ranking_percentile_by_symbol or {}
         after_cost_baselines = after_cost_rule_probability_by_symbol or {}
+        after_cost_baseline_ids = after_cost_rule_baseline_id_by_symbol or {}
         symbols = tuple(sorted(set(feature_values_by_symbol) | set(rule_probability_by_symbol)))
         return {
             symbol: self.project(
@@ -776,6 +839,7 @@ class RecommendationCalibrationConsumer:
                 feature_values=feature_values_by_symbol.get(symbol),
                 rule_probability_bp=rule_probability_by_symbol.get(symbol),
                 after_cost_rule_probability_bp=after_cost_baselines.get(symbol),
+                after_cost_rule_baseline_id=after_cost_baseline_ids.get(symbol),
                 rule_baseline_id=rule_baseline_id,
                 ranking_percentile_bp=percentiles.get(symbol),
                 decision_date=decision_date,
@@ -789,6 +853,14 @@ def _clamp_to_baseline(value: int | None, baseline: int, cap: int) -> int | None
     if value is None:
         return None
     return max(0, min(10_000, max(baseline - cap, min(baseline + cap, int(value)))))
+
+
+def _after_cost_baseline_kind(baseline_id: str | None) -> str:
+    if not baseline_id:
+        return "unavailable"
+    if baseline_id == AFTER_COST_NULL_BENCHMARK_BASELINE_ID:
+        return "independent_null_benchmark"
+    return "declared_baseline"
 
 
 def _read_json(path: Path) -> dict[str, Any]:

@@ -227,14 +227,21 @@ V4.0 仍不代表：
 本 companion 仍只負責 V2.1 至 V4.0 的 maturity definition；本次新增的 V4.1／V4.2
 是工程軌名稱，不是本文件新增或提前宣告的 maturity version：
 
-- **V4.1 engineering** 聚焦 content-first Decision Workbench、每日 evidence view、
-  rank／probability／confidence 分離、model／dataset／source／日期／樣本 provenance、
-  Research fallback、既有 Journal／Evidence／Portfolio ledger identity adapter，以及
-  臺銀 `estimated_research_only` 成本 read model。
-- **V4.2 engineering** 聚焦 05:40→05:45 自然時間 custody、typed natural authority
-  projection、frozen challenger、既有 policy 內的自動 shadow adoption／rollback、active
-  monitor 與 durable receipt。沒有 verifier 時 natural status 必須 unknown；source
-  `available`、hash 或 evidence kind 不等於 authority。
+- **V4.1 engineering** 的 bounded slice 已驗收：`0d9d72af`／`cad07762` 的 content-first
+  每日首屏、`25544142` 的可比產業讀模型、`421ab844` 的每日 evidence／typed learning
+  projection，以及 `53b456a0`／`ffb66c6f` 的唯讀 Decision → Outcome journey。rank／
+  probability／confidence 分離、model／dataset／source／日期／樣本 provenance、Research
+  fallback 與臺銀 `estimated_research_only` read model 仍保持 read-only；完整跨頁操作接線
+  尚由 Increment B 施工，不提前宣稱 V5。
+- **V4.2 engineering** 的 shadow／custody slice 已驗收，涵蓋 05:40→05:45 自然時間
+  邊界、typed natural authority projection、frozen challenger、既有 policy 內的自動
+  shadow adoption／rollback、active monitor 與 durable receipt；`8acf29f0`／`b39fd399`
+  的臺銀成本／排程 lane 也保持隔離。沒有 verifier 時 natural status 必須 unknown；
+  source `available`、hash 或 evidence kind 不等於 authority。就 2026-09-14 臺銀正常 shadow
+  lane 觀測，natural sample 為 `0`、`retain_current`；legacy 50bp lane 可為 blocked；05:50 task
+  registration／Ready 不等於首個自然執行。
+- **Decision continuity**：`5339230f` 的 Increment A append-only storage contract 已驗收；
+  Increment B 的 accept／skip／note／next-review caller 與 Watchlist round-trip 仍在施工。
 - **V5／V6** 是 Product Roadmap 的後續 handoff，不屬於本文件的 V4.0 maturity closeout。
   V5 的 content-first／真實唯讀 journey／decision continuity 可與 V4 formal evidence
   accumulation 並行；V6 的 user-level evidence-driven personalization 則需在 V5 的
@@ -281,6 +288,9 @@ V4.0 仍不代表：
 
 ## 更新記錄
 
+- 2026-09-14：補入已驗收的 content-first／產業／learning projection／唯讀 outcome journey／
+  Increment A 工程切片與 Increment B 施工邊界；標明臺銀 05:50 registration 與首次自然執行
+  的差異，並保留 natural／PIT／source／observed cost 與 V4.0 formal maturity 的原 Gate。
 - 2026-09-14：明確把 V4.1／V4.2 定位為工程軌，將可並行的 V5 full decision experience
   與 V6 evidence-driven personalization 移交 Product／6M Roadmap；不改 V4.0 formal
   maturity Gate。

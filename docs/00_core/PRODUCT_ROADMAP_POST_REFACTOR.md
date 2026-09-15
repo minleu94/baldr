@@ -12,7 +12,14 @@
 
 > **2026-09-14 Decision Workbench handoff**：本輪新增的是 V4.1／V4.2 engineering slice：
 > 將 rank、校準機率、成本後機率與 evidence／source／model／dataset metadata 分開呈現，
-> 並在 Workbench 提供唯讀的機率依據詳情。它不宣稱真實市場→產業→個股端到端已驗收，
+> 並在 Workbench 提供唯讀的機率依據詳情。`0d9d72af`／`cad07762` 的每日首屏與
+> content-first 旅程、`25544142` 的可比產業讀模型、`421ab844` 的 typed learning projection、
+> `53b456a0`／`ffb66c6f` 的唯讀 Decision → Outcome journey，以及 `5339230f` 的 Increment A
+> continuity storage contract 已分別驗收為工程切片；Increment B 的研究操作／Watchlist
+> caller 仍在施工。這些不宣稱真實市場→產業→個股端到端已驗收，
+> 其中 `25544142` 的真實產業指數強弱與官方 TAIEX 5／20 日基準已可讀，純產業白名單已
+> 排除槓桿／反向產品型指數；current representative-stock mapping、TPEX／興櫃 coverage
+> 與 historical PIT membership 仍有限，不能把 current mapping 回填歷史。
 > 不把 `available` 當 natural validation，也不以 fixture／shadow／scheduler Ready 取得
 > V4.0 formal credit。完整 requirements／code／gap／acceptance matrix 見
 > [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
@@ -271,18 +278,24 @@ Evidence 分層：
 
 #### V4.1／V4.2 engineering track
 
-- **V4.1 engineering**：完成 Advice／Portfolio presentation 的 rank／probability 分離、
+- **V4.1 engineering**：Advice／Portfolio presentation 的 rank／probability 分離、
   decision date／data-as-of／horizon／sample、model／dataset／source、evidence kind 與
-  missing／warning 的唯讀投影；下一增量是 content-first Workbench、每日 evidence view、
-  既有 Journal／Evidence／Portfolio ledger identity adapter 與研究 fallback。
+  missing／warning 的唯讀投影已驗收；每日首屏 content-first、可比產業讀模型、Research
+  fallback 的唯讀邊界與 learning evidence view 已有可核對工程切片。下一個施工面是
+  Increment B 的研究操作／Watchlist caller 與完整跨頁 round-trip，不是把既有 read-only
+  slice 重寫成正式決策。
 - **V4.2 engineering**：保留既有 05:40 forward outcome → 05:45 shadow learning 的
   自動候選採用／回退 policy、frozen challenger、active monitor、receipt 與 rollback。
   routine shadow adjustment 不要求使用者每日人工批准；只有超出既有 shadow／正式決策
-  影響範圍才另立具名 promotion／review Gate。沒有 verifier 的 natural receipt 仍只可
-  顯示 unknown，source `available`、hash 或 evidence kind 不是 authority。
+  影響範圍才另立具名 promotion／review Gate。`421ab844` 的 typed verifier projection
+  已驗收；就 2026-09-14 臺銀正常 shadow lane 觀測，natural sample 為 `0`、receipt 為
+  `retain_current`，legacy 50bp lane 另行判讀且可能 `blocked`。沒有 verifier
+  的 natural receipt 仍只可顯示 unknown，source `available`、hash 或 evidence kind 不是
+  authority；05:50 臺銀 task 的註冊／可觸發狀態也不等於首個自然執行。
 - **成本接線**：產品工程先消費臺銀 `estimated_research_only` 的成本 policy，形成可判讀
-  的估算淨效用；observed fills、partial fill、broker 對帳與實際滑價另列 execution-
-  realism／formal Gate，不阻擋 content-first 唯讀體驗。
+  的估算淨效用（`8acf29f0`／`b39fd399`）；observed fills、partial fill、broker 對帳與
+  實際滑價另列 execution-realism／formal Gate，不阻擋 content-first 唯讀體驗，也不是
+  每日 learning 的前置條件。
 
 #### V4 formal maturity boundary
 
@@ -293,11 +306,12 @@ shadow receipt 或 Task Scheduler `Ready` 都不會自動升級 V4.0，也不授
 
 #### V5 full decision experience
 
-V5 是把 content-first daily conclusion、候選／持倉、market→industry→stock→watchlist／
+V5 是把已驗收的 content-first daily conclusion、候選／持倉、market→industry→stock→watchlist／
 portfolio read-only journey、Why／Why Not／Risk、研究 fallback、既有 Journal／Evidence／
 Portfolio ledger continuity 與 T+N outcome view 收斂成單一路徑。V5 的 UX／唯讀資料旅程、
 decision continuity 與 V4 formal evidence accumulation 可並行；V4 formal 不會阻擋現在先
-交付真實唯讀 content。Evidence 不足時只限制 Advice scope，轉 `RESEARCH`／`NO_NEW_POSITION`。
+交付真實唯讀 content。`5339230f` 的 A contract 已具備，B 的 caller／Watchlist round-trip
+仍在施工。Evidence 不足時只限制 Advice scope，轉 `RESEARCH`／`NO_NEW_POSITION`。
 既有每日 shadow policy 內的 candidate adoption／rollback 仍可自動執行，不能跨到正式
 Recommendation／Portfolio 或 broker。
 
@@ -545,9 +559,9 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 
 ## 更新記錄
 
-- 2026-09-14：新增 Decision Workbench integration handoff，拆分 V4.1／V4.2 engineering、
-  V4 formal maturity、可並行的 V5 full decision experience 與 V6 evidence-driven
-  personalization；保留既有 shadow 自動採用／回退、臺銀估算成本與 broker／observed fill
-  的後續邊界。
+- 2026-09-14：新增 Decision Workbench integration handoff，記錄每日首屏／產業讀模型、
+  typed learning projection、唯讀 Decision → Outcome journey 與 Increment A continuity
+  contract 的工程驗收；明確把 Increment B caller、自然 forward／05:50 首次執行、PIT／source、
+  observed fill 與 V4 formal maturity 保留為施工中或外部待驗，不改 V4 formal 定義。
 
 - 2026-07-11：初版建立 Post-Refactor 產品方向權威；確立 bounded advice、Guided / Professional 共核、Portfolio Advice、Position Health / Exit、Data Source priority、Evidence operating loop、ML shadow-first 與 signal pruning 主線。

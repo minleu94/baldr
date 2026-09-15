@@ -494,29 +494,41 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
 
 ### 2026-09-14 Decision Workbench integration track（V4.1／V4.2 → V5／V6）
 
-本軌與 V4 formal evidence accumulation **並行**；content-first Workbench、真實唯讀資料
-journey、daily evidence view 與既有 identity adapter 不必等待 V4 formal closeout。第一優先
-順序為：
+本軌與 V4 formal evidence accumulation **並行**；下表是本日 bounded engineering slice
+的 scoped 判定，不把工程驗收升格為 V4 formal：
 
-1. **P0 content-first entry**：每日結論、候選／持倉先出現，三個大型空表折疊；debug state、
+| 增量 | 目前狀態 | 可採認／仍待 |
+|---|---|---|
+| 每日首屏／content-first | **已驗收**（`0d9d72af`／`cad07762`） | 每日結論與候選／持倉先呈現的唯讀切片可核對；完整資料覆蓋與 formal Advice scope 仍受 evidence Gate 限制。 |
+| 市場 → 產業 → 個股 | **工程切片已驗收**（`25544142`） | 真實產業指數強弱與官方 TAIEX 5／20 日基準可讀，並排除槓桿／反向產品型指數；current representative-stock mapping、TPEX／興櫃 coverage 與 historical PIT membership 仍有限。 |
+| 每日 evidence／learning view | **已驗收**（`421ab844`） | 2026-09-14 臺銀正常 scheduled lane 的 typed candidate／active／capture projection 為 natural sample `0`、`retain_current`；legacy 50bp 是獨立 lane，可能為 `blocked`，不得合併。 |
+| 成本／排程 | **工程邊界已驗收**（`8acf29f0`／`b39fd399`） | 臺銀 `estimated_research_only` 可供研究；05:50 task 註冊／可觸發不等於首個自然執行，首次 execution readback 待驗。 |
+| Decision → Outcome／Increment A | **已驗收**（`53b456a0`／`ffb66c6f`／`5339230f`） | 唯讀 journey、exact identity 與 append-only storage contract 可核對；Increment B caller／Watchlist round-trip 仍施工中。 |
+
+已驗收的內容優先、每日 evidence、typed verifier 與 A storage slice 不必等待 V4 formal
+closeout；這些是接下來施工的已驗收基礎：
+
+1. **P0 content-first entry（已驗收 bounded slice）**：每日結論、候選／持倉先出現，三個大型空表折疊；debug state、
    `AdviceDashboardDTO`、完整 hash 收進技術詳情；缺資料轉 `RESEARCH`／`NO_NEW_POSITION`。
-2. **P0 daily evidence view**：以既有 `DecisionDeskSnapshot`、Evidence event／outcome、
+2. **P0 daily evidence view（已驗收 bounded slice）**：以既有 `DecisionDeskSnapshot`、Evidence event／outcome、
    forward read model 與最新 shadow receipt，同屏呈現 decision date、maturity、missing／
    pending／retain reason、candidate／champion／rollback identity；不新增 pseudo source。
-3. **P0/P1 typed verifier projection**：只有 verifier 已核對的 natural authority receipt
+3. **P0/P1 typed verifier projection（已驗收 read-only slice）**：只有 verifier 已核對的 natural authority receipt
    才能顯示已驗證；`available`、hash、evidence kind 或 shadow label 不能升格。routine daily
    shadow adoption／rollback 依既有已授權 policy 自動執行，不要求每日人工批准。
-4. **P0/P1 identity reuse**：先重用既有 Journal／Evidence／Portfolio ledger 的 IDs、source
-   snapshot 與 result identity 做 adapter／crosswalk，不另建平行 decision database；既有
-   Journal legacy delete／overwrite 需先治理，不能直接宣稱 formal append-only。
-5. **成本 read model**：本輪先消費已提交的臺銀 `estimated_research_only` policy／consumer；
+4. **P0/P1 identity reuse（A storage 已驗收、B caller 施工中）**：`5339230f` 已保存
+   append-only revision／tombstone 與原始列，並具備 idempotency／optimistic concurrency；
+   接下來只需把既有 Journal／Evidence／Portfolio ledger IDs、source snapshot 與 result
+   identity 接入 caller／crosswalk，不另建平行 decision database。
+5. **成本 read model（工程邊界已驗收）**：本輪先消費已提交的臺銀 `estimated_research_only` policy／consumer；
    observed fills、partial fill、broker 對帳與實際滑價是後續 execution-realism／formal Gate。
 
 本輪 2026-09-14 bounded slice 的未完成項（不得視為 V5 closeout）：
 
-- **真正產業分類強弱**：目前來源可能是 `industry_indices` 的市場指數代理，且可含槓桿／反向名稱；在建立 PIT 產業分類映射與可比基準前，Workbench 只能標示代理觀察，不能宣稱真實產業領先／落後。
-- **typed 自然驗證權威**：Workbench 只投影既有 learning receipt；若尚未有 verifier 核對的 natural authority receipt，matured sample／active model 不能升格為已驗證或 current champion。
-- **完整決策結果串接**：目前完成候選的唯讀 source identity 與既有個股研究下鑽；Journal、Portfolio ledger、Evidence outcome 與完整 decision continuity 尚未形成單一可回溯結果鏈，仍屬 V5 後續工作。
+- **Increment B caller／Watchlist round-trip**：A 的 revision／tombstone／idempotency contract 與 D 的唯讀 exact identity 已存在；accept／skip／note／next-review caller、跨頁 history head 與完整 Recommendation → Research → Watchlist／Portfolio → Workbench round-trip 仍在施工，尚未驗收。
+- **代表股／歷史產業歸因**：真實產業指數強弱與 TAIEX 5／20 日相對基準已可讀，純產業白名單已排除槓桿／反向產品型指數；current registry 的代表股 mapping、TPEX／興櫃 coverage 與 historical PIT membership／available-time 仍待補齊，因此不能把 current mapping 回填為歷史成分或宣稱完整產業回測。
+- **typed 自然驗證權威**：Workbench 只投影既有 learning receipt；若尚未有 verifier 核對的 natural authority receipt，matured sample／active model 不能升格為已驗證或 current champion。2026-09-14 臺銀正常 lane 仍為 sample `0`／`retain_current`，legacy lane 可為 `blocked`；首個 05:50 臺銀自然排程執行仍待 readback，註冊／Ready 不等於執行。
+- **觀測成交成本**：observed fill、partial fill、broker 對帳與實際滑價仍是後續 execution-realism／formal Gate，刻意不作每日 learning 的前置條件。
 
 V5 是可與 V4 formal 並行的完整決策體驗（每日結論、內容優先 journey、research fallback、
 decision／outcome continuity），不是新 Formal version。V6 是更後的 user-level evidence-

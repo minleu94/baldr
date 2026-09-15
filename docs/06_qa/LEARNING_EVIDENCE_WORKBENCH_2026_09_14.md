@@ -58,7 +58,9 @@ learning projection 當成 user decision。依目前 A／D 增量，狀態如下
 
 結果：`72 passed, 1 warning`。唯一 warning 是 pytest cache 目錄的既有 permission warning，不是測試失敗。
 
-另外，指定 9 個 changed source files 的 mypy 為 `Success: no issues found`；本輪 changed Python files 的 `py_compile` 通過。依根 AGENTS 強制清單重跑的全域指定 mypy（`ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`）目前為 `Success: no issues found in 611 source files`。
+另外，指定 9 個 changed source files 的 mypy 為 `Success: no issues found`；本輪 changed Python files 的 `py_compile` 通過。此前在 A／D public modules 恢復前的全域指定 mypy `Success: no issues found in 611 source files` 僅作歷史觀測；最新實際 QA 以
+`.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`
+執行，結果為 `Success: no issues found in 612 source files`。612 只代表目前指定 UI／application／data／analysis／backtest／decision／portfolio／runtime 型別範圍，不取代 learning natural maturity、formal source 或 promotion Gate。
 
 ## Qt 實際渲染與 MainWindow smoke
 

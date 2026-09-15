@@ -28,7 +28,8 @@
 > production Recommendation／Portfolio promotion 或 broker execution 已開啟。最新 durable
 > shadow receipt 為 `completed / retain_current`，`natural_matured_sample_count=0`，
 > `formal_order_allowed=false`。正式 source acceptance、natural production evidence、
-> allocation promotion 與 broker 仍維持 external pending。跨市場到個股的呈現／證據缺口矩陣見
+> allocation promotion 與 broker 仍維持 external pending。臺銀 05:50 task 的註冊／可觸發
+> 狀態不等於首個自然排程執行；該首次 execution readback 尚未驗證。跨市場到個股的呈現／證據缺口矩陣見
 > [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
 
 ---
@@ -84,7 +85,8 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 - **外部 Gate**：P0 accepted／limited 仍 0；Evidence projection 3/3 仍 `formal_credit_authorized=false`；Paper fills／cost 0；Formal inputs 0/3。
 - **Production Gate**：Runtime environment ready 不等於 Registry writer ready；technical single-writer canary、scheduler approval 與 broker production pool 仍關閉。
 - **容量**：8/30 fresh D free 約 338.9 GiB、retention inventory=`headroom_ok`；舊 6.11/6.56/410.31 GiB status artifact 只作歷史，後續以受控 preflight 產生新觀測，不手改歷史 terminal。
-- **V4.2 每日推薦 calibration**：05:40 forward outcomes 後的 05:45 bounded shadow learning loop 已完成，包含 frozen challenger、自然成熟度、active monitor／rollback、source／availability／corporate-action／after-cost guards 與 lineage；實際正式 DB run 仍因缺 natural forward evidence、production source custody 與 observed cost 而保持 `formal_candidate_eligible=false`，不改正式推薦或 allocation。
+- **V4.2 每日推薦 calibration**：05:40 forward outcomes 後的 05:45 bounded shadow learning loop 已完成，包含 frozen challenger、自然成熟度、active monitor／rollback、source／availability／corporate-action／after-cost guards 與 lineage；正式 promotion／allocation 仍因 natural forward evidence、production source custody 與 formal review Gate 維持 `formal_candidate_eligible=false`，不改正式推薦。observed fill／實際滑價另屬後續 execution-realism／formal Gate，不是每日 learning 的前置條件。
+- **Decision Workbench／決策連續性**：每日首屏／content-first（`0d9d72af`／`cad07762`）、可比產業讀模型（`25544142`）、typed learning projection（`421ab844`）、唯讀 Decision → Outcome journey（`53b456a0`／`ffb66c6f`）與 Increment A storage contract（`5339230f`）已分別驗收；Increment B 的研究操作／Watchlist caller 與跨頁 round-trip 仍在施工，不宣稱 V5 closeout。
 
 以下長列為已落地工程能力清單，不應逐項解讀為產品 closeout：
 
@@ -116,6 +118,17 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 目前立即順序改為：
 
 本輪 TASK-08 隔離工程整合驗收已完成，接續下列外部 Gate；真 MainWindow 截圖 smoke／人工 UI 驗收缺口仍明列。候選 SQLite 帳本／候選池不自動取代正式 JSONL／JSON；歷史產業篩選須先補已接受的 PIT membership。來源 acceptance、真實 Paper fills／費稅、自然前瞻時間與具名 review 仍不可由離線重跑替代。
+
+### 2026-09-14 Decision Workbench／continuity Next
+
+1. 施工 Increment B 的 accept／skip／note／next-review caller 與 Watchlist 跨頁讀回；以
+   `DecisionIdentity`、revision、tombstone、idempotency 與 exact outcome identity 做
+   round-trip QA，保持 A 的 append-only contract，不新增平行 decision DB。
+2. 以 read-only 方式對帳臺銀 05:50 task 的 action／trigger／latest receipt，先分開記錄
+   registration／可觸發與首個自然 execution；不註冊、不重啟、不改 trigger。
+3. 等待真正 natural forward maturity／typed authority、PIT 產業 membership／source
+   acceptance 與具名 review。observed fills／partial fills／實際滑價仍是較後的
+   execution-realism／formal Gate，不是每日 learning 的前置條件。
 
 ### 2026-08-30 canonical Next
 
@@ -217,6 +230,10 @@ V3.0 engineering candidate 的 closeout/readiness report 已完成，工程狀�
 
 ## 7. 更新記錄
 
+- 2026-09-14：同步 Decision Workbench 的已驗收工程切片與 Increment B 施工邊界；明確分開
+  每日首屏／產業讀模型／learning projection／唯讀 outcome journey／A storage contract、
+  05:50 task registration 與首個自然 execution，以及 natural／PIT／source／observed cost
+  外部 Gate；不改 V4 formal 定義。
 - 2026-09-06：新增八卡工程交接與整合入口；保留 action_required、V4 證據累積與正式來源／時間／writer Gate。
 
 - 2026-08-19：鎖定 Gate 7 prospective restart 方向；舊 2026-08-19 clock 禁止重建／回填，下一個長任務改建新未來 clock、由 Codex 提出 Rule Champion、採 TWSE／TPEX 官方產業來源，Broker 持續關閉。

@@ -24,8 +24,8 @@ recommendation（目前為 1 筆），其餘 cohort rows 被標為 degraded，�
 200 檔 cohort 已完整通過；不能把 partial snapshot 或 pipeline terminal status 當成自然
 evidence 已完成。2026-09-14 04:22:11-07:00 的最新 wrapper 已完成，status 為
 `passed_with_warnings`、blockers 為空；同輪 quick publication 於
-`2026-09-14T04:21:27.181165-07:00` 完成，publication 為 `published`。learning child 已
-`completed` 並保存 normal live capture：symbol source 為
+`2026-09-14T04:21:27.181165-07:00` 完成，publication 為 `published`。臺銀 normal shadow
+lane 的 learning child 已 `completed` 並保存 normal live capture：symbol source 為
 `scheduled_recommendation_snapshot:scheduled_rec_20260914_042140.json:eligible`，只提供
 `1528`；candidate 仍為 `rec-cal-29c1b6129396a3885a89d080`，沿用 stable experiment scope
 `scheduled-experiment-ff4d2ab937e2c8b32bf2df04`；natural sample 為 `0`，decision 仍為
@@ -65,11 +65,13 @@ real natural maturity、formal PIT 與 actual cost 仍各自維持待成熟或 o
 bounded bootstrap、單次 capture 或 pipeline warning 寫成 V4 完成；工程 gate 與正式 default
 smoke 已由父任務接受。
 
-另一次獨立 UI／型別 QA 已完成：`test_ui_qt_update_view_workbench.py` 為 81 passed（1 個 pytest
-cache permission warning）、`qa_validate_update_tab.py` 為 25 passed／0 failed／4 skipped，
-修正 source-contract Mapping guard 後 mypy 檢查 606 個 source files 並回報 no issues。這些只驗證
-UI、Update Tab 與型別邊界；主線 focused suites、synthetic mature fixture 與已通過的三日
-cache-hit custody QA 仍與 real natural maturity、formal source gate 及主線最終 QA 分層判讀。
+前一輪獨立 UI／型別 QA 曾以 `test_ui_qt_update_view_workbench.py` 81 passed、
+`qa_validate_update_tab.py` 25 passed／0 failed／4 skipped 及 606 個 source files 的 mypy
+結果收尾；該數字保留為前一輪工程證據。最新整合 QA 已由父任務接受，指定全域 mypy 改以
+`.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`
+執行並以 `Success: no issues found in 612 source files` 為目前型別基準；UI、Update Tab、
+MainWindow offscreen smoke、主線 focused suites、synthetic mature fixture 與三日 cache-hit
+custody QA 仍與 real natural maturity、formal source gate 及主線最終 QA 分層判讀。
 
 主 Luna 另交付 affected focused suites `107 passed`（11 個 test files、`36.44s`、既有 1 個
 warning）；source-contract／capture／official-custody／guards focused 為 `17 passed`，
@@ -97,6 +99,34 @@ execution 仍 blocked 且不在本工作線範圍。historical replay 永不取�
 default smoke 已完成接受；最新正常 cohort 的 natural evidence、formal PIT 與 observed cost
 仍依各自 gate 判讀，詳見
 [V4.2 prospective source 與每日學習 QA](../06_qa/V4_2_PROSPECTIVE_SOURCE_DAILY_LEARNING_2026_09_14.md)。
+
+## 2026-09-14 Decision Workbench／決策連續性 scoped status
+
+以下是本日已由父任務接受的工程切片；它們是可核對的 engineering acceptance，不能改寫成
+V4 formal completion：
+
+- `0d9d72af`／`cad07762` 已建立每日首屏與 content-first 唯讀旅程；`25544142` 已建立
+  真實產業指數強弱與官方 TAIEX 5／20 日基準的可比研究讀模型，並排除槓桿／反向產品型
+  指數。市場 → 產業 → 個股的唯讀下鑽可讀，但 current representative-stock mapping、
+  TPEX／興櫃 coverage、historical PIT membership 與完整每日歸因仍待外部資料 Gate。
+- `8acf29f0`／`b39fd399` 已隔離臺銀 `estimated_research_only` 成本 lane 與學習排程；
+  05:50 task 的註冊／可觸發狀態不等於首個自然排程執行，首個 05:50 執行 readback 仍未驗證。
+  observed fill／實際滑價是後續 execution-realism／formal Gate，不是每日學習的前置條件。
+- `421ab844` 已交付 candidate／active／capture typed verifier 的唯讀 learning projection，
+  BankTaiwan 與 legacy 50bp lane 保持分離；就 2026-09-14 臺銀正常 scheduled lane 的觀測，
+  natural sample 為 `0`、decision 為 `retain_current`；legacy 50bp 是獨立 lane，可能維持
+  `blocked`，不得把兩者合併判讀。
+  `53b456a0`／`ffb66c6f` 已交付唯讀 Decision → Outcome journey；`5339230f` 已驗收
+  Increment A 的 append-only continuity storage contract。Increment B 的 accept／skip／note／
+  next-review caller 與 Watchlist 跨頁接線仍在施工，尚未驗收。
+
+仍可施工的工程是 Increment B 的 accept／skip／note／next-review caller、Watchlist 跨頁
+round-trip 與 review history readback；這些不需等待 V4 formal closeout，但尚未驗收。
+必須等待／外部證據則是 natural forward maturity／authority receipt、首個 05:50 臺銀自然
+執行的 readback，以及 PIT／source／具名 review 等 Gate；historical bootstrap、controlled
+capture、shadow natural sample `0` 與任何 scheduler registration 都不折抵這些門檻。產品方向
+仍是每日市場 → 產業 → 股票、觀察／持倉決策連續性、可校準機率、historical bootstrap +
+natural forward + controlled shadow 日學習，以及個人決策連續性。
 
 ## 2026-09-12 V4.1 A 線第二輪歷史研究與候選方法包
 

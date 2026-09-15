@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QTableView, QMessageBox, QDialog, QDialogButtonBox, QLineEdit,
     QTextEdit, QListWidget, QListWidgetItem, QHeaderView, QMenu,
     QAbstractItemView, QGroupBox, QSplitter, QComboBox, QDateEdit,
-    QDoubleSpinBox, QSpinBox, QFormLayout, QTabWidget, QFrame, QFileDialog,
+    QDoubleSpinBox, QSpinBox, QFormLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
     QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QSize, QDate
@@ -79,7 +79,11 @@ from app_module.paper_equal_weight_benchmark_builder import (
 )
 from app_module.paper_trade_import_service import PaperTradeImportService
 from app_module.trade_import_service import TradeImportService
+from app_module.user_declared_holding_research import UserDeclaredHoldingResearchService
 from ui_qt.models.workbench_table_models import PositionHealthTableModel
+from ui_qt.widgets.user_declared_holding_research_widget import (
+    UserDeclaredHoldingResearchWidget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +407,9 @@ class PortfolioView(QWidget):
         async_refresh: bool = False,
         presentation_service: DecisionPresentationService | None = None,
         position_health_read_service: PositionHealthTransitionReadService | None = None,
+        user_declared_research_service: UserDeclaredHoldingResearchService | None = None,
+        user_declared_market_source: Any | None = None,
+        user_declared_condition_source: Any | None = None,
     ):
         super().__init__(parent)
         self.setMinimumWidth(0)
@@ -419,6 +426,14 @@ class PortfolioView(QWidget):
                 / "position_health_transition"
             )
         )
+        self.user_declared_research_service = (
+            user_declared_research_service
+            or UserDeclaredHoldingResearchService.under_output_root(
+                self.portfolio_service.config.output_root
+            )
+        )
+        self.user_declared_market_source = user_declared_market_source
+        self.user_declared_condition_source = user_declared_condition_source
         self.strategy_version_service = StrategyVersionService(self.portfolio_service.config)
         self.portfolio_feedback_service = PortfolioFeedbackService()
         self.stress_lab_service = PortfolioStressLabService()
@@ -766,7 +781,42 @@ class PortfolioView(QWidget):
 
         right_widget.addTab(journal_tab, "覆盤日誌")
 
-        # Right Tab 3: Paper Portfolio / Equal Weight（唯讀狀態）
+        # Right Tab 3: user_declared holding research（與 Paper lane 分離）
+        user_declared_tab = QWidget()
+        user_declared_layout = QVBoxLayout(user_declared_tab)
+        user_declared_layout.setContentsMargins(6, 6, 6, 6)
+        self.user_declared_research_widget = UserDeclaredHoldingResearchWidget(
+            self.user_declared_research_service,
+            portfolio_service=self.portfolio_service,
+            condition_monitor=self.condition_monitor,
+            market_source=self.user_declared_market_source,
+            condition_source=self.user_declared_condition_source,
+            parent=None,
+        )
+        # 研究頁同時承載安全邊界、結果列與可選技術詳情；在一般 viewport
+        # 中以頁內 scroll 保持表格至少能讀到表頭與一列，不把整個 Portfolio
+        # 撐出主視窗，也不把 Paper lane 的語意混進 user_declared lane。
+        self.user_declared_research_widget.setMinimumHeight(390)
+        self.user_declared_research_scroll_area = QScrollArea()
+        self.user_declared_research_scroll_area.setWidgetResizable(True)
+        self.user_declared_research_scroll_area.setFrameShape(QFrame.NoFrame)
+        self.user_declared_research_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff
+        )
+        self.user_declared_research_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded
+        )
+        self.user_declared_research_scroll_area.setAccessibleName(
+            "使用者聲明持倉研究可捲動頁面"
+        )
+        self.user_declared_research_scroll_area.setAccessibleDescription(
+            "研究結果與安全邊界在此頁內垂直捲動；不會改變 Portfolio 或 Paper identity。"
+        )
+        self.user_declared_research_scroll_area.setWidget(self.user_declared_research_widget)
+        user_declared_layout.addWidget(self.user_declared_research_scroll_area)
+        right_widget.addTab(user_declared_tab, "聲明持倉研究")
+
+        # Right Tab 4: Paper Portfolio / Equal Weight（唯讀狀態）
         paper_tab = QWidget()
         paper_layout = QVBoxLayout(paper_tab)
         paper_layout.setContentsMargins(10, 10, 10, 10)
@@ -1115,6 +1165,7 @@ class PortfolioView(QWidget):
         self._load_stress_lab(portfolio=portfolio)
         self._load_stress_history()
         self._update_monitoring_tab(portfolio)
+        self.user_declared_research_widget.refresh_research()
         self.portfolio_refresh_status_label.setText(
             f"持倉資料已更新｜DTO updated_at={portfolio.updated_at or '未提供'}｜"
             "摘要與持倉表使用同一份 DTO；只讀。"
@@ -1304,6 +1355,9 @@ class PortfolioView(QWidget):
         self._closing = True
         self._refresh_generation += 1
         self._refresh_pending = False
+        research_widget = getattr(self, "user_declared_research_widget", None)
+        if research_widget is not None:
+            research_widget.begin_shutdown()
         worker = self._refresh_worker
         if worker is not None:
             try:
@@ -1327,6 +1381,12 @@ class PortfolioView(QWidget):
             )
             event.ignore()
             return
+        research_widget = getattr(self, "user_declared_research_widget", None)
+        if research_widget is not None:
+            research_widget.begin_shutdown()
+            if research_widget.is_refresh_running():
+                event.ignore()
+                return
         if worker is not None:
             self._refresh_worker = None
             worker.deleteLater()

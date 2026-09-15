@@ -3845,6 +3845,78 @@ Registry 比較只使用已保存的 metadata、equity curve 與 benchmark_resul
 
 ## 10. 持倉管理
 
+### 10.0 使用者聲明持倉研究（user_declared）
+
+「持倉管理」右側的「聲明持倉研究」是獨立的 research-only lane，專門保存使用者
+自行聲明的股票、整數股數、Decimal 聲明成本、聲明日期與研究假設。它與右側
+「Paper Portfolio」分頁分開：這裡不是券商成交、不是已驗證 Paper entry，也不會把
+聲明資料猜配到正式 Portfolio identity。資料以 append-only JSONL 保存於
+`<OUTPUT_ROOT>/portfolio/user_declared_holdings.jsonl`；每筆 holding 以
+`holding_id + revision_number` 精確識別，修訂與封存都保留歷史 revision。
+
+#### 操作步驟
+
+1. 執行 `.\.venv\Scripts\python.exe ui_qt\main.py`，進入左側「持倉管理」，再切到
+   「聲明持倉研究」分頁；研究頁內容不足時可使用頁內垂直捲動。
+2. 先按「展開新增／修訂表單」，再輸入股票代號、整數股數、聲明成本、聲明日期；備註與
+   研究假設可選填。成本請輸入十進位文字，例如 `612.50`；核心服務不接受 binary `float`。
+   沒有研究假設時，研究動作會維持「待確認」。
+3. 按「新增保存」。保存成功後，畫面會以背景 worker 重新讀取並自動定位剛保存的
+   `holding_id／revision 1`。同一 portfolio 的同一股票已有 active holding 時，請選取
+   該列按「修訂保存」，不可再建立第二個 active identity。
+4. 修改欄位後按「修訂保存」；系統使用目前顯示的 exact revision 做 CAS 檢查。若另一個
+   caller 已先修訂，畫面會拒絕保存，請重新讀取後再編輯。按「封存選取」只停止 active
+   research view，不刪除歷史 revision；需要再次研究時可建立新的 holding identity。
+5. 以「評估日期」選擇目前或歷史研究日，再按「重新讀取研究」。刷新在背景執行，畫面
+   會保留最近一次可信結果；快速連按時只保留最新日期／generation。關閉 Portfolio 時，
+   worker 只做合作式取消並自然收尾，不強制終止正在讀檔的執行緒。
+
+#### 來源、參數與結果判讀
+
+- 預設市場來源是 `TWStockConfig` 的 `daily_price_dir`（若未提供則使用
+  `<DATA_ROOT>/daily_price`）CSV；它只讀取不修改原始日價。來源 row 會保留檔名、原始
+  bytes SHA-256、資料日與本機看到檔案的時間。檔案 mtime 只是本機觀測，不是官方
+  availability custody，因此歷史日研究可能安全降級為未知。
+- 預設 condition／Advice 來源只讀取已保存的 `RecommendationResultDTO` runs，並透過既有
+  `PortfolioConditionMonitor` 對照 regime、score 或明確停損／停利規則。聲明日以前的
+  baseline 與評估日的 current 必須是不同保存結果，且 profile、profile version、score
+  config identity 相同；缺 baseline、只找到一個結果、結果不是獨立 snapshot 或 identity
+  不同時，動作維持「待確認」，不會自我比較一份 current 結果。
+- `評估日期` 不得晚於目前台北日。歷史日必須明確提供同一台北日的 cutoff；source 的
+  `as_of_date` 不得晚於評估日，`available_at` 不得晚於 cutoff，來源品質、source ID 與
+  `sha256:<64 hex>` snapshot hash 也必須通過檢查。資料不完整、過期、future、hash／品質
+  不合約或 availability custody 不足時，畫面顯示「資料不足／未知」與原因，不把未知當
+  成 0 或可執行建議。
+- 主表以精簡中文顯示「持有／減碼候選／退出候選／待確認」、「可檢視／待確認」與帳面
+  變化；完整 `Entry lineage`、`Fill`、source trace 與原始 action 可在「查看技術詳情」核對。
+  `可供研究檢視` 只表示本次市場／condition 來源完整且研究假設可讀；`持有（研究建議）`、
+  `減碼候選（研究建議）`、`退出候選（研究建議）` 分別是既有 monitor 的 valid／warning／
+  invalid 映射。若只有價格／成本，價格本身不會產生 HOLD，結果一定是「待確認」。
+- 表格的「帳面變化（資訊）」是 `目前價格 × 聲明股數 − 聲明成本 × 聲明股數`，僅為
+  Decimal mark-to-declared-cost；不含手續費、稅、滑價或資金流，也沒有 realized PnL。
+  研究 row 的 `Entry lineage=unproven`、`Fill=not_provided`、`Research only=是` 應與
+  結果一起閱讀；來源 hash、revision、日期與 blocker 可在「查看技術詳情」核對。
+
+#### 安全限制與排錯
+
+- 這條 lane 固定 `research_only=true`、`formal_credit=false`、`broker_execution=false`、
+  `auto_action_allowed=false`，並排除 calibration／effectiveness cohort。它不寫正式
+  Portfolio trade、Paper ledger、Evidence credit，不呼叫 broker、不自動調倉、不自動下單。
+- `缺少目前價格`／`目前價格已過期`：先確認指定評估日前存在唯一日價 row 與正確檔名；不要
+  用今天價格回填歷史日。
+- `缺少 condition／Advice 來源`、`沒有可追溯的研究規則` 或 `研究規則缺少可比較的目前
+  訊號`：確認 Recommendation runs 含同股聲明日前 baseline 與評估日 current，且兩者
+  profile／version／score config 相同；不要把價格或 legacy monitor 的 fallback valid 當
+  成 HOLD。
+- `研究基準與目前快照不是獨立結果`、`研究基準與目前分析身份不同`：保存新的、不同
+  `result_id` 的同 scope snapshot，或接受本輪維持 WAIT；不要修改歷史 JSON 來製造獨立性。
+- `availability custody`／future／cutoff blocker：先核對來源自己的 capture／availability
+  證據與台北時間；本機檔案 mtime 不足以解鎖歷史正向建議。只要不確定，保留未知並由人工
+  review。
+- 主視窗關閉時若看到「刷新已取消／保留最近一次結果」，代表取消回執，不代表研究成功；
+  等自然收尾後再次開啟或按「重新讀取研究」。保存後重開應能從同一 JSONL 讀回 exact
+  holding／revision；若讀回失敗，保留檔案與技術詳情供排錯，不要刪除原始資料。
+
 ### 10.1 手動記錄交易
 
 既有 UI／JSONL 路徑維持相容。新的精確 SQLite 事件帳本只在 caller 明確注入候選 repository 時啟用：append-only、整數分／股、Decimal 成本、namespace 與 source ID，撤銷以 compensation event 重播。JSONL→SQLite 只處理指定 sandbox 副本並保留來源 hash；沒有正式 migration 或預設切換。backtest 結果不得轉成 Portfolio fills，paper namespace 仍需真實 producer 與 source acceptance。

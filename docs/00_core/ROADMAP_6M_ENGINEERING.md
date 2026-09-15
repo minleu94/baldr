@@ -547,12 +547,13 @@ driven personalization，需在 V5 continuity 上另立 sample、guardrail、cal
    quality、review required 與 conflict fail-closed；`research_only=true`、
    `auto_action_allowed=false` 維持不變。Paper verified lineage 只約束 Paper／formal health
    lane，不是所有 holdings research 的前置；後續 continuity review loop 另列，不在本增量內。
-2. **`user_declared` 持倉研究層（下一個工程增量；I task `01a0a457-2c28-7880-ae1c-64427d13341f` 施工中，尚未驗收）**：新增明確 source status／research read model，讓使用者聲明
-   的股票、數量、成本、日期、備註與 thesis 可支援 current condition、聲明成本的資訊性觀察、
-   假設覆盤與人工 review；不得冒充 fill／verified，不進 Paper／formal effectiveness，維持
-   `research_only=true`、無 broker／auto action。依賴第 1 項 read model 與輸入／修改規則，
-   不需真成交；日後 V6 個人化仍須與 population baseline、sample、calibration、negative
-   evidence、drift、rollback 分開治理。
+2. **`user_declared` 持倉研究層（Increment 2 已完成；I task `01a0a457-2c28-7880-ae1c-64427d13341f`）**：
+   已新增明確 source status／research read model，讓使用者聲明的股票、數量、成本、日期、
+   備註與研究假設支援 current condition、聲明成本的資訊性觀察、假設覆盤與人工 review；
+   不冒充 fill／verified、不進 Paper／formal effectiveness，維持 `research_only=true`、無
+   broker／auto action。工程證據見 [Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。
+   後續若擴充仍需保持與 V6 的 population baseline、sample、calibration、negative evidence、
+   drift、rollback 分開治理。
 3. **PIT 產業／Recommendation source acceptance**：由 `industry_strength_service.py`、
    `pit_sector_membership_machine.py`／`formal_pit_sector_publisher.py`、`recommendation_service.py`
    及對應 tests 建立版本化 membership、publication／available time、代表股與 TPEX／OTC scope；

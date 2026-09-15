@@ -324,6 +324,17 @@ liquidity／sector preferences 的可解釋個人化排序與 guardrails；每�
 分開保存。V6 不保證報酬、不隱藏缺漏、不自動調倉／下單；目前只是後續產品方向，不是本輪
 工程完成狀態。
 
+#### 2026-09-15 `user_declared` Increment 2 工程驗收
+
+`user_declared` 持倉研究層已完成 bounded engineering acceptance：Portfolio 右側提供
+獨立 research-only lane，保存使用者聲明的股票、整數股數、Decimal 成本、聲明日期、
+備註與研究假設，並以 append-only revision history、PIT cutoff、source quality／hash、
+historical availability custody 與 real condition／saved-recommendation baseline checks
+建立研究 read model。它不冒充 fill／verified entry、不進 Paper／formal effectiveness，
+也不開啟 broker、auto action 或 calibration credit。實際 writer→reader、busy close、
+1366×768／1700×1100 UI 與 focused／required QA 見
+[Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。
+
 #### 2026-09-15 下一工程順序（基線 `7e029933`）
 
 自然 forward 收集、同 scope calibration 與首個 05:50 實際 run 是獨立的持續觀察線：現行
@@ -337,12 +348,12 @@ normal lane 的 natural sample 仍為 0，不能因此宣稱 V4 formal 完工；
    review required、identity conflict fail-closed、無自動 action。依賴是 `7e029933` 的
    continuity identity／readback 與既有 source artifacts；Paper verified lineage 只約束 Paper／
    formal health lane，不阻擋其他 research-only holdings view。
-2. **`user_declared` 持倉研究層**。建立獨立的 user-declared source status／research read model，
-   可用使用者聲明的股票、數量、成本、日期與 thesis 文字做目前條件、聲明成本的資訊性觀察、
-   假設覆盤與人工 review；不得命名為 fill／verified，不計入 Paper／formal effectiveness，
-   並維持 `research_only=true`、無 broker／auto action。依賴是第 1 項的 read model 與明確輸入／
-   修改規則，不需要真成交；V6 個人化日後仍須把 user-level evidence 與 population baseline
-   分開治理。
+2. **`user_declared` 持倉研究層（Increment 2 已完成）**。上述獨立 source status／research
+   read model 已可用使用者聲明的股票、數量、成本、日期與研究假設文字做目前條件、聲明成本
+   的資訊性觀察、假設覆盤與人工 review；不得命名為 fill／verified，不計入 Paper／formal
+   effectiveness，並維持 `research_only=true`、無 broker／auto action。後續只收集使用回饋與
+   真實來源改善，不把此 lane 擴張成 Paper／formal writer；V6 個人化日後仍須把 user-level
+   evidence 與 population baseline 分開治理。
 3. **PIT 產業／Recommendation source acceptance**。補版本化 membership、publication／
    available time、代表股與 TPEX／OTC scope，讓 current 與 historical caller 不再以 current
    mapping 回填 PIT；驗收需可重建固定日期 membership、coverage／quality／hash，並讓缺口仍

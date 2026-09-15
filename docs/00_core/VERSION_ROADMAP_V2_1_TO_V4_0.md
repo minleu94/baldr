@@ -244,6 +244,11 @@ V4.0 仍不代表：
 - **Decision continuity**：`5339230f` 的 Increment A append-only storage contract 與
   `7e029933` 的 A/B/C continuity runtime 已驗收；Workbench state projection／Position Health
   caller 仍待接線。
+- **`user_declared` research lane**：2026-09-15 Increment 2 已完成 bounded engineering
+  acceptance。Portfolio 內的使用者聲明持倉以獨立 append-only revision／PIT read model
+  提供研究檢視、聲明成本資訊性觀察與人工 review；不提升為 V2.5／V3.x／V4.0 maturity，
+  不進 Paper／formal effectiveness，也不授權 broker 或 auto action。QA 與 rollback 邊界見
+  [Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。
 - **V5／V6** 是 Product Roadmap 的後續 handoff，不屬於本文件的 V4.0 maturity closeout。
   V5 的 content-first／真實唯讀 journey／decision continuity 可與 V4 formal evidence
   accumulation 並行；V6 的 user-level evidence-driven personalization 則需在 V5 的

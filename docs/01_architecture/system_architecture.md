@@ -469,6 +469,22 @@ manual / recommendation / backtest / strategy_version
   -> journal
 ```
 
+### user_declared 研究 lane（Increment 2）
+
+`app_module/user_declared_holding_research.py` 與
+`ui_qt/widgets/user_declared_holding_research_widget.py` 是獨立於 Paper／正式 fill
+projection 的 research-only lane。使用者聲明資料保存於
+`<OUTPUT_ROOT>/portfolio/user_declared_holdings.jsonl`，以
+`holding_id + revision_number` 維持 append-only exact identity、CAS 修訂與封存歷史；
+它不寫既有 Portfolio trade ledger，也不建立 broker／Paper identity。
+
+研究 read model 只接受 point-in-time market／condition observations，驗證 evaluation
+cutoff、as-of／available time、source quality、snapshot hash 與 historical availability
+custody；缺來源或 identity 不可比較時 fail closed 為 WAIT／unknown。聲明成本只作
+Decimal mark-to-declared-cost 資訊性觀察，`entry_lineage=unproven`、`fill=not_provided`、
+realized PnL／calibration／effectiveness 均不在此 lane。Portfolio UI 以背景 worker、
+generation discard、合作式取消與頁內 scroll 呈現，不把研究建議轉成 order。
+
 ### 來源追溯
 
 Portfolio 記錄可保留：

@@ -133,11 +133,13 @@ normal lane 的 natural sample 仍為 0，不宣稱 V4 formal 完工，也不以
    `research_only=true`、`auto_action_allowed=false`。QA 見
    [Position Health Increment 1 QA](../06_qa/POSITION_HEALTH_INCREMENT_1_QA_2026_09_15.md)。
    verified entry lineage 仍只約束 Paper／formal health lane，不是所有持倉研究的前置。
-2. **`user_declared` 持倉研究層（下一個工程增量；I task `01a0a457-2c28-7880-ae1c-64427d13341f` 施工中，尚未驗收）**。建立獨立 source status／research read model，支援使用者
-   聲明的股票、數量、成本、日期、備註與 thesis 做 current condition、聲明成本的資訊性
-   觀察、假設覆盤與人工 review；不得冒充 fill／verified，不進 Paper／formal effectiveness，
-   維持 Decimal／整數單位、`research_only=true`、無 broker／auto action。依賴第 1 項 read
-   model 與輸入／修改規則，不需真成交；正式交易資格不前置於此研究功能。
+2. **`user_declared` 持倉研究層（Increment 2 已完成；I task `01a0a457-2c28-7880-ae1c-64427d13341f`）**。
+   已建立獨立 source status／research read model，支援使用者聲明的股票、數量、成本、日期、
+   備註與研究假設做 current condition、聲明成本的資訊性觀察、假設覆盤與人工 review；不冒充
+   fill／verified，不進 Paper／formal effectiveness，維持 Decimal／整數單位、
+   `research_only=true`、無 broker／auto action。工程證據見
+   [Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。後續若擴充，
+   仍不得把正式交易資格前置於此研究功能。
 3. **PIT 產業／Recommendation source acceptance**。由既有
    `industry_strength_service.py`、`pit_sector_membership_machine.py`／`formal_pit_sector_publisher.py`、
    `recommendation_service.py` 與對應 tests 補版本化 membership、publication／available time、
@@ -253,6 +255,9 @@ V3.0 engineering candidate 的 closeout/readiness report 已完成，工程狀�
   Position Health source-backed projection → Portfolio／Workbench、`user_declared` 持倉研究、
   PIT 產業／Recommendation source acceptance；natural forward／同 scope calibration／05:50
   首次實際 run 保留為觀察線，不改 V4 formal、V5／V6 定位或正式交易邊界。
+- 2026-09-15：完成 `user_declared` Holding Research Increment 2；新增 append-only exact
+  revision、PIT／source custody read model、Portfolio research UI、自然關窗與獨立 writer／reader
+  QA。此為 research-only bounded slice，不改 Paper／formal／broker 權限。
 - 2026-09-14：同步 Decision Workbench 的已驗收工程切片與 Increment B 施工邊界；明確分開
   每日首屏／產業讀模型／learning projection／唯讀 outcome journey／A storage contract、
   05:50 task registration 與首個自然 execution，以及 natural／PIT／source／observed cost

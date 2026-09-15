@@ -1,5 +1,33 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-15 user_declared Holding Research Increment 2 工程驗收
+
+已完成與 Paper／正式 Portfolio fill lane 分離的 `user_declared` 持倉研究切片：新增
+append-only JSONL exact holding／revision identity、CAS 修訂、封存歷史、PIT cutoff、
+source quality／SHA-256／availability custody 檢查，以及既有 Recommendation／
+PortfolioConditionMonitor 的 condition read model。Saved Recommendation 只在聲明日前
+baseline 與評估日 current 是不同 snapshot 且 profile／version／score identity 相同時
+提供可比較規則；缺 baseline、self-compare、future、stale、source 不完整或只有價格／
+成本時維持 `WAIT_CONFIRMATION`，不把價格本身當成 HOLD。
+
+Portfolio 右側「聲明持倉研究」提供獨立研究 UI：表單預設收合，主表以精簡中文顯示
+股票、股數、聲明成本、研究建議、研究狀態、目前價格、帳面變化與原因；Entry lineage、
+Fill verification、source trace 與 raw flags 留在技術詳情。1366×768／1700×1100 實際
+視窗以頁內垂直捲動保持安全邊界換行與完整表頭／一列可讀；忙碌 refresh 以既有
+MainWindow shutdown coordinator 合作取消並自然結束，不 terminate／wait。
+
+Increment 2 QA 已完成：core／UI／Portfolio focused `43 passed`、TaskWorker／shutdown
+`24 passed`、Update UI `84 passed`、Update validator `25／0／4`、全域 mypy
+`617 source files` clean；隔離 writer 由實際 Portfolio UI 新增／修訂至 revision 2，
+獨立 reader 從同一 runtime root 讀回同一 notes／研究假設與兩筆 history，並確認一次
+busy close、`app.exec()=0`、合作取消及無 forced termination。完整證據見
+[user_declared Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。
+
+本段只代表 research-only bounded engineering acceptance；不代表 Paper verified entry、
+正式成交、realized PnL、observed slippage、calibration／effectiveness、自然 forward
+evidence、V4 formal closeout 或 broker／auto action 開啟。正式資料原始檔與既有 Paper
+identity 維持不變。
+
 ## 2026-09-15 Decision Continuity Increment C／Qt 關閉驗收
 
 工程修復與隔離驗收已完成：`7e029933` 已交付 Qt `TaskWorker` stale-wrapper 防護、一次 X

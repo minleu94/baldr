@@ -80,6 +80,14 @@ Runner 以正式 CJK font／Midnight theme、UTF-8 stdout、`tmp` source fixture
 `scripts\qa_validate_update_tab.py`：`Passed 25 / Failed 0 / Skipped 4`，process
 exit `0`。
 
+Mandatory Update UI suite `tests/test_ui_qt_update_view_workbench.py` 為 `84 passed`。
+受控 Qt panel evidence 的實際輸出為：
+
+- `C:\Users\archi\.codex\visualizations\2026\09\15\01a0a414-bafb-79a0-aeff-1c462f5cded6\position-health-qt\portfolio_verified.png`
+- `C:\Users\archi\.codex\visualizations\2026\09\15\01a0a414-bafb-79a0-aeff-1c462f5cded6\position-health-qt\portfolio_degraded.png`
+- `C:\Users\archi\.codex\visualizations\2026\09\15\01a0a414-bafb-79a0-aeff-1c462f5cded6\position-health-qt\workbench_verified.png`
+- `C:\Users\archi\.codex\visualizations\2026\09\15\01a0a414-bafb-79a0-aeff-1c462f5cded6\position-health-qt\workbench_degraded.png`
+
 ## 獨立唯讀 smoke 結論
 
 缺 receipt 的 smoke 會回傳 `status=blocked`、`source_status=missing`、空 positions 與

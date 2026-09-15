@@ -120,22 +120,20 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 
 本輪 TASK-08 隔離工程整合驗收已完成；真 MainWindow 截圖 smoke／人工 UI 驗收缺口仍明列。以下工程順序與外部 Gate 分開：候選 SQLite 帳本／候選池不自動取代正式 JSONL／JSON；歷史產業篩選須先補已接受的 PIT membership；來源 acceptance、真實 Paper fills／費稅、自然前瞻時間與具名 review 仍不可由離線重跑替代。
 
-### 2026-09-15 下一工程順序（基線 `7e029933`）
+### 2026-09-15 下一工程順序（Position Health Increment 1 已完成於 `5a3ed5db`）
 
 自然 forward 收集、同 scope calibration 與首個 05:50 實際 run 是獨立的持續觀察線；目前
 normal lane 的 natural sample 仍為 0，不宣稱 V4 formal 完工，也不以策略／模型效果逐日
 單調改善作為驗收條件。工程增量依序為：
 
-1. **Position Health source-backed projection → Portfolio／Workbench**（Luna task
-   `01a0a414-bafb-79a0-aeff-1c462f5cded6` 施工中，尚未驗收）。沿用既有
-   `position_health_daily_refresh_service.py`、source providers、transition evaluator、
-   `decision_presentation.py` 與 Portfolio／Workbench caller，讓同一 receipt／read model
-   帶 position identity、source trace、quality、review required；缺 source／future date／
-   identity conflict 必須 `WATCH`／degraded、fail closed，維持 `research_only=true`、
-   `auto_action_allowed=false`。依賴 `7e029933` continuity identity／readback、Paper
-   snapshot、official calendar、PIT condition 與 Decimal metrics；verified entry lineage
-   只約束 Paper／formal health lane，不是所有持倉研究的前置。
-2. **`user_declared` 持倉研究層**。建立獨立 source status／research read model，支援使用者
+1. **Position Health source-backed projection → Portfolio／Workbench（已完成）**。`5a3ed5db`
+   已沿用既有 source providers／transition evaluator，接上共同
+   `PositionHealthReadModel`、Portfolio／Workbench caller 與 fail-closed receipt 驗證；
+   缺 source／future date／identity conflict 維持 `WATCH`／未知，且保留
+   `research_only=true`、`auto_action_allowed=false`。QA 見
+   [Position Health Increment 1 QA](../06_qa/POSITION_HEALTH_INCREMENT_1_QA_2026_09_15.md)。
+   verified entry lineage 仍只約束 Paper／formal health lane，不是所有持倉研究的前置。
+2. **`user_declared` 持倉研究層（下一個工程增量；I task `01a0a457-2c28-7880-ae1c-64427d13341f` 施工中，尚未驗收）**。建立獨立 source status／research read model，支援使用者
    聲明的股票、數量、成本、日期、備註與 thesis 做 current condition、聲明成本的資訊性
    觀察、假設覆盤與人工 review；不得冒充 fill／verified，不進 Paper／formal effectiveness，
    維持 Decimal／整數單位、`research_only=true`、無 broker／auto action。依賴第 1 項 read

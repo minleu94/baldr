@@ -12,6 +12,28 @@
 完整歸因使用者曾見的 memory-write popup；正式資料、live trading 與自然前瞻證據邊界維持
 原狀。Workbench 本次驗證的是顯示與跨程序讀回，不擴大解讀為所有 Workbench 狀態均已接線。
 
+## 2026-09-15 Position Health Increment 1 工程驗收
+
+`5a3ed5db` 已完成既有 Paper `DailyPositionHealthTransitionEvaluator` receipt 到
+Portfolio／Workbench 的 source-backed、唯讀 typed projection。新增
+`PositionHealthTransitionReadService` 驗證 result／receipt hash、Paper snapshot／rows
+hash、cohort、exact position identity、available／observed clock 與 freshness；Portfolio
+人工 identity 與 Paper identity 不以 stock code 猜配，所有缺 source、future、stale、corrupt
+或 scope conflict 均 fail closed 為 `WATCH`／未知。UI 只讀 persisted projection，不寫
+receipt、registry、scheduler、ledger、broker 或 allocation，所有 action 維持
+`research_only=true`。
+
+工程 QA 已完成：health read／formatter `15 passed`、Portfolio／health `42 passed`、
+Workbench／evaluator `66 passed`、source-provider `16 passed`、Update UI `84 passed`、
+Update validator `25／0／4`，全域 mypy `615 source files` clean，受控 real Qt visual
+runner exit `0`。完整記錄見
+[Position Health Increment 1 QA](../06_qa/POSITION_HEALTH_INCREMENT_1_QA_2026_09_15.md)。
+
+本段只代表 bounded engineering／read-only acceptance，不代表自然 forward evidence、
+formal PIT、observed cost、broker execution 或 V4 完成。下一個獨立工程增量是與 Paper
+lane 分離的 `user_declared` research-only layer（I task `01a0a457-2c28-7880-ae1c-64427d13341f`
+施工中，尚未驗收）；自然證據仍是持續觀察線，尚未完成。
+
 ## 2026-09-14 V4.2 prospective source custody 與每日學習現況
 
 05:45 的 `baldr-recommendation-calibration-learning-daily` 已接到同一條有界 pipeline：先跑

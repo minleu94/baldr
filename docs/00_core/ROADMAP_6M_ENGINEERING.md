@@ -525,7 +525,7 @@ closeout；這些是接下來施工的已驗收基礎：
 
 本輪 2026-09-15 bounded slice 的未完成項（不得視為 V5 closeout）：
 
-- **Workbench state／Position Health caller**：A/B/C 的 continuity runtime close／cross-process writer→reader readback 已有驗收；目前 Workbench 仍主要投影 dashboard status／review／evidence rows，Position Health source-backed receipt 與 continuity state 尚未全面進入同一 presentation state。
+- **Workbench state／Position Health caller（Increment 1 已完成）**：A/B/C 的 continuity runtime close／cross-process writer→reader readback 已有驗收；`5a3ed5db` 已把 Position Health source-backed receipt 接入 Portfolio／Workbench 共用 read model；尚未完成的是 continuity review loop 與正式 decision outcome 對應，不在本增量內重做。
 - **代表股／歷史產業歸因**：真實產業指數強弱與 TAIEX 5／20 日相對基準已可讀，純產業白名單已排除槓桿／反向產品型指數；current registry 的代表股 mapping、TPEX／興櫃 coverage 與 historical PIT membership／available-time 仍待補齊，因此不能把 current mapping 回填為歷史成分或宣稱完整產業回測。
 - **typed 自然驗證權威**：Workbench 只投影既有 learning receipt；若尚未有 verifier 核對的 natural authority receipt，matured sample／active model 不能升格為已驗證或 current champion。2026-09-14 臺銀正常 lane 仍為 sample `0`／`retain_current`，legacy lane 可為 `blocked`；首個 05:50 臺銀自然排程實際 run 仍屬觀察線，註冊／Ready 不等於執行。
 - **觀測成交成本**：observed fill、partial fill、broker 對帳與實際滑價仍是後續 execution-realism／formal Gate，刻意不作每日 learning 的前置條件。
@@ -536,21 +536,18 @@ driven personalization，需在 V5 continuity 上另立 sample、guardrail、cal
 驗收。完整 requirements／code／gap／acceptance 對照見
 [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
 
-### 2026-09-15 下一工程順序（基線 `7e029933`）
+### 2026-09-15 下一工程順序（Position Health Increment 1 已完成於 `5a3ed5db`）
 
 自然 forward 收集、同 scope calibration 與首個 05:50 實際 run 維持獨立觀察線；目前不以
 `natural_sample_count=0` 推導 V4 formal 完工，也不以策略／模型效果逐日單調改善作為驗收條件。
 後續工程只做以下三個有界增量：
 
-1. **Position Health source-backed projection → Portfolio／Workbench**：由 Luna task
-   `01a0a414-bafb-79a0-aeff-1c462f5cded6` 施工，尚未驗收。檔案邊界為既有
-   `app_module/position_health_daily_refresh_service.py`、`position_health_source_providers.py`、
-   `position_health_transition_evaluator.py`、`decision_presentation.py` 與 Portfolio／Workbench
-   caller；驗收需同一 receipt 帶 position identity、source trace、quality、review required、
-   conflict fail-closed 與 `auto_action_allowed=false`。依賴 `7e029933` identity／readback、
-   Paper snapshot、official calendar、PIT condition／Decimal metrics；Paper verified lineage
-   只約束 Paper／formal health lane，不是所有 holdings research 的前置。
-2. **`user_declared` 持倉研究層**：新增明確 source status／research read model，讓使用者聲明
+1. **Position Health source-backed projection → Portfolio／Workbench（已完成）**：`5a3ed5db`
+   已接上共用 read model、receipt scope／hash／freshness 驗證、exact identity、source trace、
+   quality、review required 與 conflict fail-closed；`research_only=true`、
+   `auto_action_allowed=false` 維持不變。Paper verified lineage 只約束 Paper／formal health
+   lane，不是所有 holdings research 的前置；後續 continuity review loop 另列，不在本增量內。
+2. **`user_declared` 持倉研究層（下一個工程增量；I task `01a0a457-2c28-7880-ae1c-64427d13341f` 施工中，尚未驗收）**：新增明確 source status／research read model，讓使用者聲明
    的股票、數量、成本、日期、備註與 thesis 可支援 current condition、聲明成本的資訊性觀察、
    假設覆盤與人工 review；不得冒充 fill／verified，不進 Paper／formal effectiveness，維持
    `research_only=true`、無 broker／auto action。依賴第 1 項 read model 與輸入／修改規則，

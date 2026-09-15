@@ -10,11 +10,14 @@
 目前產品已具備一條可檢查的「大盤 → 產業 → 股票 → Advice → decision/outcome → learning」工程骨架，但尚未達到可宣稱的完整投資決策產品。現階段最重要的分界如下：
 
 - 已有工程驗收：唯讀大盤／產業／股票決策工作台、Advice action 與機率來源分離、歷史 bootstrap／forward outcome 的資料契約、每日 shadow learning 的受控調整與 rollback、精確 identity 的 decision→outcome 唯讀旅程，以及 Increment A/B/C 所涵蓋的 continuity 寫入／控制元件。A 的真 MainWindow `app.exec` 自然 exit 0，及 writer PID 32268 → reader PID 12432 的跨程序讀回也已由主審實證。
-- 仍是工程缺口：Workbench 尚未全面接上 continuity／Position Health state、持倉 Position Health／Exit 的來源 caller、正式 decision outcome 對應到下一次人工調整，以及把 proposal/read-only 邊界接成可持續的 review loop。跨程序 writer／reader 本身不再列為未驗證缺口。
+- Position Health source caller／Portfolio／Workbench read-only projection 的 Increment 1 已由 `5a3ed5db` 完成並驗收；仍是後續工程／治理缺口的是 continuity review loop、正式 decision outcome 對應下一次人工調整，以及不在本增量內的 `user_declared` research layer。跨程序 writer／reader 本身不再列為未驗證缺口。
 - 只待自然證據：同一 candidate／dataset／horizon／cost 定義下的自然前瞻成熟樣本、校準效果與長期 regime 穩定性。歷史 replay、fixture、shadow receipt 或 `verified` 字串都不能替代它。
 - 外部資料缺口：point-in-time industry membership／代表股、TPEX／OTC 覆蓋、可接受的技術／公司行動／成本來源，以及 Paper health lane 所需的 verified entry lineage。verified fill 是 Paper／正式 health lane 的前置，不是所有持倉研究視圖的前置；使用者聲明資料可另走明確標記的 `user_declared` research-only lane。
 
-因此，完成 Qt／Increment C 後，不應重做既有 UI、Advice DTO、calibration consumer 或 historical replay；下一輪工程優先序應是「Position Health source caller／Workbench state」、「user_declared 持倉研究層」、「PIT 產業資料 acceptance」。自然 evidence 另列為持續觀察線，不佔用下一個工程增量名額。
+因此，Qt／Increment C 後的「Position Health source caller／Workbench state」已由 `5a3ed5db`
+完成 bounded read-only acceptance；不應重做既有 UI、Advice DTO、calibration consumer
+或 historical replay。下一輪工程優先序為「`user_declared` 持倉研究層」、「PIT 產業資料
+acceptance」；自然 evidence 仍列為持續觀察線，不佔用下一個工程增量名額。
 
 ## 二、判定方式與證據等級
 
@@ -101,7 +104,15 @@
 
 ### 增量 1：Position Health source caller 與 Workbench state projection
 
-**明確缺口與檔案。** source provider、daily refresh、transition evaluator 已存在，但 `ui_qt/views/portfolio_view.py:2376-2380` 仍走 legacy `PortfolioConditionMonitor`，`ui_qt/views/workbench_view.py:1686-1700` 只填 dashboard models；需在既有 `app_module/position_health_daily_refresh_service.py`、`app_module/position_health_source_providers.py`、`app_module/position_health_transition_evaluator.py`、`app_module/decision_presentation.py` 建立一個明確的 source-backed read-model caller，並接到 `ui_qt/views/portfolio_view.py`／`workbench_view.py`。`scripts/run_position_health_transition_daily.py:69-87` 與 `scripts/scheduled/run_scheduled_evidence_pipeline_dry_run.py:661-687` 可作為既有入口，不新增第二套 evaluator。
+**目前狀態（2026-09-15）。** 原列工程缺口已由 `5a3ed5db` 完成：
+`PositionHealthTransitionReadService` 將 persisted evaluator receipt 驗證後投影為
+Portfolio／Workbench 共用 typed read model；Portfolio／Workbench 真實 caller、exact
+Paper identity、future／stale／corrupt／scope fail-closed 與缺 receipt unknown path 已
+由 [Position Health Increment 1 QA](POSITION_HEALTH_INCREMENT_1_QA_2026_09_15.md) 驗收。
+這只完成 Paper verified health lane 的 read-only presentation，不代表自然 evidence、
+formal PIT、broker execution 或 `user_declared` 已完成。
+
+**實作前缺口與檔案（歷史基線）。** source provider、daily refresh、transition evaluator 已存在，但 `ui_qt/views/portfolio_view.py:2376-2380` 仍走 legacy `PortfolioConditionMonitor`，`ui_qt/views/workbench_view.py:1686-1700` 只填 dashboard models；需在既有 `app_module/position_health_daily_refresh_service.py`、`app_module/position_health_source_providers.py`、`app_module/position_health_transition_evaluator.py`、`app_module/decision_presentation.py` 建立一個明確的 source-backed read-model caller，並接到 `ui_qt/views/portfolio_view.py`／`workbench_view.py`。`scripts/run_position_health_transition_daily.py:69-87` 與 `scripts/scheduled/run_scheduled_evidence_pipeline_dry_run.py:661-687` 可作為既有入口，不新增第二套 evaluator。
 
 **驗收條件。**
 
@@ -112,7 +123,8 @@
 
 **依賴。** A 的已驗收 identity／readback 介面完成 commit／必要 checks、既有 Paper snapshot／official calendar／condition／metrics source；不要求所有 holding 先有真 fill，只有 Paper health／formal lineage lane 必須遵守 verified policy。
 
-**分類。** **工程缺口**。
+**分類。** **工程已驗收（read-only／research-only）**；後續 continuity review loop 與正式
+decision outcome 對應不在本增量內。
 
 ### 增量 2：`user_declared` 持倉研究層（與 Paper verified lane 分離）
 

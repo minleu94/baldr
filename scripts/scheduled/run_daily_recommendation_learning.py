@@ -272,6 +272,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--source-db", type=Path, default=None)
     parser.add_argument(
+        "--snapshot-output-root",
+        type=Path,
+        default=None,
+        help=(
+            "同日 scheduled recommendation snapshot 的唯讀來源根目錄；"
+            "省略時沿用 OUTPUT_ROOT／learning output root。"
+        ),
+    )
+    parser.add_argument(
+        "--source-artifact-root",
+        type=Path,
+        default=None,
+        help=(
+            "已驗證 technical／official／corporate source custody 的唯讀根目錄；"
+            "省略時沿用 learning output root。"
+        ),
+    )
+    parser.add_argument(
         "--symbols",
         default=None,
         help=(
@@ -483,11 +501,15 @@ def main(argv: list[str] | None = None) -> int:
         config_kwargs["output_root"] = args.output_root
     config = TWStockConfig(**config_kwargs)
     # A generic OUTPUT_ROOT may still own the scheduled recommendation
-    # snapshot used for symbol resolution.  Keep that operational input
-    # location separate from the explicitly selected learning/source-contract
-    # output root; an explicit --symbols bypasses this lookup entirely.
-    scheduled_snapshot_output_root = Path(
-        os.environ.get("OUTPUT_ROOT", str(config.output_root))
+    # snapshot used for symbol resolution.  Keep that snapshot input and the
+    # source-custody input separate from the selected learning output root;
+    # an explicit --symbols bypasses snapshot lookup entirely.
+    scheduled_snapshot_output_root = (
+        args.snapshot_output_root
+        or Path(os.environ.get("OUTPUT_ROOT", str(config.output_root)))
+    ).expanduser().resolve()
+    source_artifact_root = (
+        args.source_artifact_root or config.output_root
     ).expanduser().resolve()
     snapshot_cohort: dict[str, Any] | None = None
     run_scope: str | None = None
@@ -677,7 +699,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     source_contract_audit = _audit_source_contract(
         data_root=config.data_root,
-        output_root=config.output_root,
+        output_root=source_artifact_root,
         source_db=source_db,
         learning_output_root=learning_output_root,
         decision_date=decision_day,

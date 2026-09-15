@@ -30,6 +30,7 @@ from app_module.workbench_dtos import (
     WorkbenchDashboardDTO,
     WorkbenchDailyEvidence,
     WorkbenchEvidenceSummary,
+    ResearchFallbackPacket,
 )
 from app_module.machine_status_classification import (
     MACHINE_STATUS_HUMAN_REVIEW,
@@ -992,9 +993,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_evidence_card.value_label.setText(_daily_evidence_card_text(daily))
         evidence_line = _daily_evidence_surface_line(daily)
         learning_line = _daily_learning_line(daily.learning, daily.learning_projection)
-        self.daily_journey_label.setText(
-            f"下一步：{daily.next_action}\n{evidence_line}\n{learning_line}"
-        )
+        journey_lines = [f"下一步：{daily.next_action}", evidence_line, learning_line]
+        fallback_line = _daily_research_fallback_line(daily.research_fallback)
+        if fallback_line:
+            journey_lines.append(fallback_line)
+        self.daily_journey_label.setText("\n".join(journey_lines))
         reasons = daily.candidate_reasons[:5]
         if reasons:
             candidate_text = "\n".join(reasons)
@@ -1074,6 +1077,26 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     f"learning projection lane={projection.cost_lane}｜status={projection.status}｜"
                     f"capture={projection.data_recorded_status}｜candidate={projection.candidate_id or '無'}",
                     f"learning next_gap={projection.next_gap}｜latest={projection.latest_evaluation_label}",
+                )
+            )
+        if daily.research_fallback is not None:
+            packet = daily.research_fallback
+            lines.extend(
+                (
+                    "Research fallback packet（唯讀）",
+                    f"status={packet.status}｜scope_key={packet.scope_key}｜"
+                    f"decision_date={packet.decision_date or '未知'}｜cost_lane={packet.cost_lane}",
+                    f"source_id={packet.source_id or '未知'}｜source_snapshot_id={packet.source_snapshot_id or '未知'}｜"
+                    f"source_owner={packet.source_owner}｜owner_known={packet.source_owner_known}",
+                    f"missing_reason={packet.missing_reason or '無'}",
+                    f"research_question={packet.research_question or '未知'}",
+                    f"next_step={packet.next_step or '未知'}",
+                    f"revisit={packet.revisit_date or '未知'}｜status={packet.revisit_status}｜"
+                    f"basis={packet.revisit_basis or '無'}｜reason={packet.revisit_reason or '未知'}",
+                    f"natural_evidence_status={packet.natural_evidence_status}｜"
+                    f"historical_research_allowed={packet.historical_research_allowed}",
+                    "limitations：" + ("；".join(packet.limitations) or "無"),
+                    "prohibited_actions：" + ("；".join(packet.prohibited_actions) or "無"),
                 )
             )
         lines.append("source trace：" + ("\n".join(daily.source_trace) or "無"))
@@ -2372,6 +2395,54 @@ def _daily_evidence_surface_line(daily: WorkbenchDailyEvidence) -> str:
         f"證據：合格事件 {daily.evidence_event_count} 件；結果 {daily.outcome_total} 筆；"
         f"{'、'.join(_daily_evidence_state_parts(daily))}。"
     )
+
+
+def _daily_research_fallback_line(packet: ResearchFallbackPacket | None) -> str:
+    if packet is None:
+        return ""
+    if packet.status == "not_needed":
+        return ""
+    user_reason = _fallback_user_reason(packet)
+    revisit = packet.revisit_date or "尚無法判定"
+    if packet.status == "pending_natural_evidence" and packet.revisit_date:
+        revisit = f"{packet.revisit_date}（官方交易日估算）"
+    if packet.status == "blocked_identity_or_cost":
+        next_step = "查看來源詳情定位衝突，再重新整理"
+    elif packet.status == "pending_natural_evidence":
+        next_step = "等待自然交易日資料，再查看證據成熟度"
+    elif packet.status == "pending_capture":
+        next_step = "重新整理每日資料，再查看證據成熟度"
+    elif packet.status == "read_failure":
+        next_step = "重新整理唯讀來源，再查看證據成熟度"
+    else:
+        next_step = "重新整理每日資料，再查看證據成熟度"
+    return "\n".join(
+        (
+            f"研究 fallback：{user_reason}",
+            f"下一步：{next_step}。再看時間：{revisit}。",
+            "目前不能下有效機率、權重或買賣結論。",
+        )
+    )
+
+
+def _fallback_user_reason(packet: ResearchFallbackPacket) -> str:
+    if packet.status == "missing_data":
+        return "缺少這次推薦的後續證據。"
+    if packet.status == "missing_source":
+        return "缺少每日證據來源。"
+    if packet.status == "pending_capture":
+        return "缺少這次推薦的後續價格紀錄。"
+    if packet.status == "pending_natural_evidence":
+        return "這次推薦的後續價格觀測尚未成熟。"
+    if packet.status == "blocked_identity_or_cost":
+        return "推薦、來源或成本版本不一致。"
+    if packet.status == "blocked_provenance":
+        return "證據來源尚未完成核對。"
+    if packet.status == "blocked_scope":
+        return "決策日與資料日不一致。"
+    if packet.status == "read_failure":
+        return "每日證據來源目前讀取失敗。"
+    return "目前無法確認缺口。"
 
 
 def _daily_learning_line(learning, projection=None) -> str:

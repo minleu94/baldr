@@ -1388,6 +1388,18 @@ Workbench 仍只透過 `WorkbenchSourceService` / `WorkbenchDashboardDTO` 讀取
 
 排錯順序：先按「重新整理狀態」，再核對數據更新的資料日與排程 `latest_status.json`；若候選為來源待檢查，確認 recommendation snapshot 與其 result 對應的 run JSON；若證據為待成熟，等待合法官方交易日；若顯示來源讀取失敗、過期或未來日期，保留詳情供人工核對後重試，不把舊畫面或空結果當成今日結論。若產業名稱含槓桿／反向產品字樣，回到來源詳情確認代理來源，不自行改標產業強弱。
 
+#### Research fallback packet（每日證據不足）
+
+Workbench「總覽」的每日決策旅程會在 evidence 不足時直接顯示一個唯讀 Research fallback packet。它沿用同一份 `WorkbenchDailyEvidence` 的 result／stock（若已知）、決策日、source identity 與 learning cost lane，並說明：
+
+- `缺什麼`：既有 candidate／EvidenceEvent／Outcome／capture／typed receipt 的明確缺口或衝突原因；`pending_natural_evidence`（等待自然成熟）與 `blocked_*`（日期、provenance、身份或成本受阻）不可混讀。
+- `研究問題` 與 `下一步`：只要求核對或補上同一決策日、同一 candidate／source／cost scope 的既有資料，再重新整理 Workbench；不會由畫面啟動 runner、scheduler、重算或寫入。
+- `再看`：只有同 scope 的 pending EvidenceEvent 原決策日、正整數 horizon 與可解析的 `OfficialTradingCalendar` 都存在時，才估算官方交易日；其餘顯示 `未知`，不以日曆天數、今天日期或缺件日期倒填。
+- `source owner`：既有 DTO／receipt 沒有提供 owner 時固定顯示「未知（既有來源未提供 owner）」；不可自行填人名或把 source ID 當 owner。
+- `限制`：packet 永遠是 `read_only=true`、`write_intent=false`、`positive_fallback_allowed=false`，不提供有效機率、score、權重或買賣結論。若有 historical replay／evaluation，只能另作研究比較，不能與 natural evidence 混算。
+
+按「查看每日來源詳情」可核對 packet 的 scope key、來源、缺口、研究問題、下一步、再看日期／未知理由與禁止動作。正常狀態不顯示 fallback 區塊，仍依既有成熟度閱讀；capture 缺失、資料缺件、identity／cost conflict 與 provenance blocked 各自保留不同狀態。若再看日期是未知，先修復或確認官方日曆／同 scope pending event／horizon 的缺口，再重整；不要手動補日期，也不要把 packet 當成 Advice approve 或交易入口。
+
 ### 2.7 顯示縮放、鍵盤與長表格驗證
 
 PySide6 主視窗的可重跑縮放／鍵盤 smoke 使用真實 `MainWindow`、左側工作區導覽、Runtime 狀態元件，以及實際嵌入的「推薦分析」`results_table` 與「持倉管理」`positions_table`。它在隔離 `DATA_ROOT`／`OUTPUT_ROOT` 中以 Qt `offscreen` 平台執行，不會寫入正式資料；會在 150% 與 200% scale factor 下以固定 1366×768 logical viewport 執行 `QTest`，以 `Space` 切換「市場探索」與「Runtime」，確認焦點保留，並把隔離 DTO 注入兩個實際頁面的 600 列表格，以 `PageDown`／`Ctrl+Home` 驗證捲動及返回頂端。執行命令：

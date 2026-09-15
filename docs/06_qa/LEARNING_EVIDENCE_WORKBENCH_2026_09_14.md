@@ -6,12 +6,32 @@
 
 目前實際資料仍未形成可授予 natural evidence credit 的成熟樣本：臺銀 lane 等待後續自然 forward capture，legacy lane 的既有 candidate 則因來源追溯衝突而 blocked。UI 因此保留 pending／blocked／unknown，不以 replay、fixture 或缺 receipt 的 capture 補值。
 
+本輪再完成 Research fallback packet：每日 Workbench evidence 不足時，沿用既有 daily journey／learning projection 的 result、stock、決策日、source identity、cost lane、原因與 horizon，顯示缺什麼、下一個研究問題、可操作的唯讀下一步、再看日期或未知理由，以及禁止的判讀。packet 不新增資料表、不執行 scheduler／runner、不要求 approve，也不產生機率、score、權重或交易結論。
+
 ## 範圍與安全邊界
 
 - 入口：`app_module/recommendation_learning_evidence_projection_service.py`、`app_module/workbench_source_service.py`、`ui_qt/views/workbench_view.py`、`ui_qt/views/research_console_view.py`、`ui_qt/main.py`。
 - authority boundary：`ml_module/recommendation_calibration_authority.py` 的 `verify_natural_evidence_read_only` 與 `ml_module/recommendation_calibration_evidence.py` 的 `verify_prediction_capture_read_only`；兩者只讀、只驗證，不寫 receipt／pointer、不 promotion、不改正式 Recommendation／Portfolio、不下 broker order。
 - candidate／active／capture 與 cost scenario 必須同 lane、同 candidate／model identity、同決策日及同 source contract；horizon 統計只取單一選定 lane，不能跨 candidate／active 或跨成本情境合併。
 - Workbench 的 dashboard decision date 會傳入 Research Console；未明示日期時只接受可信的臺灣官方交易日 resolver。日曆不可用或日期不明時顯示 `unknown`，不以 learning receipt 的最新日期冒充今日。
+
+## Research fallback packet 增量
+
+`ResearchFallbackPacket` 是 `WorkbenchDailyEvidence.research_fallback` 的 frozen、read-only DTO。它以 `decision_date + result／stock + source_id／source_snapshot_id + cost_lane` 組成 scope key；同日不同來源或成本 lane 不會在 packet 層合併。既有 source 沒提供 owner 時固定保留 `未知（既有來源未提供 owner）`，不把 source ID 猜成 owner。
+
+狀態分流如下：
+
+- `pending_capture`：本日 capture 尚未記錄或尚未能核對。
+- `pending_natural_evidence`：同一 capture／forward evidence 尚待自然成熟；只有精確 join 的 pending EvidenceEvent 原決策日、正整數 horizon 與可解析 `OfficialTradingCalendar` 都存在時，才估算 `revisit_date`。
+- `blocked_identity_or_cost`／`blocked_provenance`／`blocked_scope`：身份、成本、lineage 或日期 scope 受阻，`revisit_date` 保留未知。
+- `missing_data`／`read_failure`／`missing_source`：缺少 candidate、EvidenceEvent／Outcome、projection 或唯讀路徑失敗；不把零事件或讀取失敗當成零風險。
+- `not_needed`：同一 scope 已有 typed natural evidence verifier 結果；這不是新的 Advice 或交易授權。
+
+回看日期固定以同 scope pending event 的原決策日計算；每日重新查看同一 pending cohort 不會把日期向後漂移。若沒有唯一 anchor、horizon 不是正整數、官方交易日曆回傳 unknown 或只剩 historical replay／evaluation，packet 顯示 `unknown`，不以日曆天數或 Workbench 查看日假造。Historical replay 可以另作研究比較，但不能與 natural evidence 混算。所有 packet 固定 `read_only=true`、`write_intent=false`、`positive_fallback_allowed=false`。
+
+本輪新增／更新的可重跑驗收：`tests/test_research_fallback_packet.py`（scope 隔離、pending／blocked 分流、原 anchor 穩定、future event 排除、owner unknown、horizon 驗證、historical 限制與 readonly contract）、`tests/test_ui_qt_research_fallback.py`（首屏摘要／展開詳情／無 approve）與 `scripts/qa_validate_research_fallback_qt.py`（實際 production theme Qt offscreen 的四種 fixture PNG）。screen fixture 只證明 render，不宣稱正式 natural lane 或完整 production reader→projection→UI。
+
+本輪 Research fallback 驗收分開記錄：`tests/test_research_fallback_packet.py tests/test_ui_qt_research_fallback.py` 為 `13 passed, 1 warning`（功能／UI）；`tests/test_daily_investment_journey.py` 為 `6 passed, 1 warning`（daily service）；`tests/test_ui_qt_daily_journey.py` 為 `2 passed, 1 warning`（daily UI）。warning 都是既有 `.pytest_cache` permission warning。
 
 ## Increment B：研究操作、append-only 紀錄、跨頁讀回與自然 evidence
 
@@ -58,9 +78,9 @@ learning projection 當成 user decision。依目前 A／D 增量，狀態如下
 
 結果：`72 passed, 1 warning`。唯一 warning 是 pytest cache 目錄的既有 permission warning，不是測試失敗。
 
-另外，指定 9 個 changed source files 的 mypy 為 `Success: no issues found`；本輪 changed Python files 的 `py_compile` 通過。此前在 A／D public modules 恢復前的全域指定 mypy `Success: no issues found in 611 source files` 僅作歷史觀測；最新實際 QA 以
+本輪 changed Python files 的 `py_compile` 通過。此前在 A／D public modules 恢復前的全域指定 mypy `Success: no issues found in 611 source files` 僅作歷史觀測；最新實際 QA 以
 `.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`
-執行，結果為 `Success: no issues found in 612 source files`。612 只代表目前指定 UI／application／data／analysis／backtest／decision／portfolio／runtime 型別範圍，不取代 learning natural maturity、formal source 或 promotion Gate。
+執行，結果為 `Success: no issues found in 614 source files`。614 只代表目前指定 UI／application／data／analysis／backtest／decision／portfolio／runtime 型別範圍，不取代 learning natural maturity、formal source 或 promotion Gate。
 
 ## Qt 實際渲染與 MainWindow smoke
 
@@ -85,12 +105,23 @@ manifest：
 而阻擋 import；A／D public modules 恢復後，該 blocker 已 resolved。最新 MainWindow
 offscreen smoke 已重新通過，`summary.json` 為目前可引用的成功 artifact。
 
+### Research fallback packet Qt screenshot
+
+以實際 `UnifiedDecisionWorkbenchView`、`apply_app_theme` 與 `Microsoft JhengHei` production theme，在 `QT_QPA_PLATFORM=offscreen` 下只注入隔離、手建的 typed DTO fixture，驗證正常／缺件／identity-cost conflict／pending natural evidence 四種呈現。每種畫面預設收合 technical detail；expanded detail 另檢查 source owner 缺失明示為 unknown，沒有 approve／trade 控制。
+
+manifest：
+
+`C:\Users\archi\.codex\visualizations\2026\09\15\01a0a278-54ae-72b3-bae7-ada2025777cb\research_fallback_qt\summary.json`
+
+結果為 `status=passed`、`evidence_kind=actual_qt_production_theme_offscreen_screenshot`、`read_only_fixture=true`；實際字型為 `Microsoft JhengHei`、9pt。這些 PNG 僅證明 Workbench render 與文字分流，不能證明正式 natural lane、完整 production reader→projection→UI 或 formal evidence credit。
+
 ## 根 AGENTS 強制驗證補充
 
 - `pytest tests\test_ui_qt_update_view_workbench.py -q -o addopts=`：D 線最新驗證 `81 passed`。
 - `scripts\qa_validate_update_tab.py`：D 線最新驗證 `25 pass、0 fail、4 skip`。
 - MainWindow offscreen validator：本次恢復後重跑 `status=passed`；scale 1.0、1366×768、keyboard navigation、600-row table 與 embedded recommendation／portfolio pages 均通過。
-- 全域 mypy：本次實際輸出 `Success: no issues found in 612 source files`。
+- 全域 mypy：本次實際輸出 `Success: no issues found in 614 source files`。
+- Research fallback 分層結果為功能／UI `13 passed`、daily service `6 passed`、daily UI `2 passed`；screen fixture 另為 `status=passed`，不併入上述測試數，也不替代正式 natural evidence。
 - 歷史缺檔 blocker 已標記 resolved；本線 learning focused run 仍保留 `72 passed, 1 warning`、Research Console `16 passed, 1 warning` 與最新 learning PNG 的自身邊界證據。
 
 ## 尚未解除的產品 Gate

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 import json
 from pathlib import Path
 import sqlite3
@@ -27,7 +27,10 @@ from app_module.workbench_dtos import (
     WorkbenchEvidenceWindow,
     WorkbenchJourneyStep,
     WorkbenchLearningReceipt,
+    ResearchFallbackPacket,
 )
+from data_module.official_trading_calendar import OfficialTradingCalendar
+from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
 
 
 DEFAULT_EVENT_TYPE = "recommendation_included"
@@ -55,6 +58,20 @@ class _CandidateRead:
 
 
 @dataclass(frozen=True)
+class _PendingHorizonAnchor:
+    """可供 revisit 判讀的單一 event／outcome identity 摘要。"""
+
+    horizon_days: int
+    decision_date: str
+    symbol: str | None = None
+    source_id: str | None = None
+    source_snapshot_id: str | None = None
+    identity: tuple[tuple[str, str], ...] = ()
+    window_type: str | None = None
+    return_basis: str | None = None
+
+
+@dataclass(frozen=True)
 class _EvidenceRead:
     status: str = "missing"
     event_type: str = DEFAULT_EVENT_TYPE
@@ -76,18 +93,31 @@ class _EvidenceRead:
     diagnostics: tuple[str, ...] = ()
     source_trace: tuple[str, ...] = ()
     next_action: str = ""
+    matched_source_snapshot_id: str | None = None
+    pending_horizon_anchors: tuple[_PendingHorizonAnchor, ...] = ()
 
 
 class DailyInvestmentJourneyService:
     """Build the Workbench's content-first daily read model without writes."""
 
-    def __init__(self, config: Any, *, evidence_db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        config: Any,
+        *,
+        evidence_db_path: str | Path | None = None,
+        trading_calendar: Any | None = None,
+    ) -> None:
         self.config = config
         self.output_root = Path(config.output_root).resolve()
         self.evidence_db_path = (
             Path(evidence_db_path).resolve()
             if evidence_db_path is not None
             else Path(config.db_file).resolve()
+        )
+        self.trading_calendar = (
+            trading_calendar
+            if trading_calendar is not None
+            else OfficialTradingCalendar(db_path=getattr(config, "db_file", None))
         )
 
     def build(
@@ -179,6 +209,12 @@ class DailyInvestmentJourneyService:
             evidence=evidence,
             scheduled_status=scheduled_status,
         )
+        research_fallback = self._build_research_fallback_packet(
+            decision_date=decision_date,
+            candidate=candidate,
+            evidence=evidence,
+            recommendation_learning_projection=recommendation_learning_projection,
+        )
         if learning is not None and learning.active_pointer_status == "rule_only":
             warnings.append("目前 active pointer 為 rule_only；沒有 active model，不可稱為 current champion")
         if learning is not None and learning.natural_matured_sample_count == 0:
@@ -201,6 +237,8 @@ class DailyInvestmentJourneyService:
             diagnostics.append(f"evidence_summary={evidence_summary}")
         if learning_summary:
             diagnostics.append(f"learning_summary={learning_summary}")
+        if research_fallback is not None:
+            diagnostics.append(f"research_fallback_status={research_fallback.status}")
 
         return WorkbenchDailyEvidence(
             status=status,
@@ -243,9 +281,115 @@ class DailyInvestmentJourneyService:
             evidence_windows=evidence.evidence_windows,
             learning=learning,
             learning_projection=recommendation_learning_projection,
+            research_fallback=research_fallback,
             journey_steps=journey_steps,
             warnings=tuple(dict.fromkeys(warnings)),
             diagnostics=tuple(dict.fromkeys(diagnostics)),
+            source_trace=source_trace,
+        )
+
+    def _build_research_fallback_packet(
+        self,
+        *,
+        decision_date: str,
+        candidate: _CandidateRead,
+        evidence: _EvidenceRead,
+        recommendation_learning_projection: RecommendationLearningEvidenceProjection | None,
+    ) -> ResearchFallbackPacket | None:
+        """由既有 read model 組合受界定的研究交接 packet。
+
+        packet 不持久化，也沒有 action callback；只說明目前缺口、研究問題與
+        下一個安全的唯讀檢查。特別不把 score、receipt 宣稱或 historical
+        evaluation 當成 natural probability authority。
+        """
+
+        projection = recommendation_learning_projection
+        lane = _fallback_lane(projection)
+        evidence_reason = _evidence_fallback_reason(evidence)
+        candidate_reason = _candidate_fallback_reason(candidate)
+        source_trace = tuple(
+            dict.fromkeys(
+                (
+                    *candidate.source_trace,
+                    *evidence.source_trace,
+                    *(projection.source_trace if projection is not None else ()),
+                )
+            )
+        )
+        cost_lane = projection.cost_lane if projection is not None else "unknown"
+        natural_status = _fallback_natural_status(projection, evidence)
+        status = _fallback_status(
+            candidate=candidate,
+            evidence=evidence,
+            projection=projection,
+        )
+        if status == "not_needed":
+            return None
+        missing_reason = _fallback_missing_reason(
+            status=status,
+            candidate=candidate,
+            evidence=evidence,
+            projection=projection,
+            candidate_reason=candidate_reason,
+            evidence_reason=evidence_reason,
+            lane=lane,
+        )
+        research_question = _fallback_research_question(
+            status=status,
+            candidate=candidate,
+            evidence=evidence,
+            projection=projection,
+        )
+        next_step = _fallback_next_step(
+            status=status,
+            candidate=candidate,
+            evidence=evidence,
+            projection=projection,
+            lane=lane,
+        )
+        historical_research_allowed = bool(
+            projection is not None
+            and projection.historical_evaluation_sample_count > 0
+        )
+        limitations = _fallback_limitations(
+            projection=projection,
+            historical_research_allowed=historical_research_allowed,
+        )
+        revisit_date, revisit_status, revisit_basis, revisit_reason = _fallback_revisit(
+            status=status,
+            decision_date=decision_date,
+            candidate=candidate,
+            evidence=evidence,
+            projection=projection,
+            calendar=self.trading_calendar,
+        )
+        if historical_research_allowed:
+            next_step = (
+                f"{next_step}；若要比較，可另看 historical replay，不能把它當 natural evidence。"
+            )
+        return ResearchFallbackPacket(
+            status=status,
+            scope_result_id=candidate.result_id,
+            scope_stock_codes=candidate.symbols,
+            decision_date=None if decision_date == "unknown" else decision_date,
+            cost_lane=cost_lane,
+            source_id=candidate.source_id,
+            source_snapshot_id=candidate.source_snapshot_id or evidence.matched_source_snapshot_id,
+            source_owner="未知（既有來源未提供 owner）",
+            source_owner_known=False,
+            missing_reason=missing_reason,
+            research_question=research_question,
+            next_step=next_step,
+            revisit_date=revisit_date,
+            revisit_status=revisit_status,
+            revisit_basis=revisit_basis,
+            revisit_reason=revisit_reason,
+            natural_evidence_status=natural_status,
+            limitations=limitations,
+            historical_research_allowed=historical_research_allowed,
+            positive_fallback_allowed=False,
+            read_only=True,
+            write_intent=False,
             source_trace=source_trace,
         )
 
@@ -533,6 +677,13 @@ class DailyInvestmentJourneyService:
             except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
                 diagnostics.append(f"evidence_outcome_read_failure:{event.event_id}:{type(exc).__name__}")
         windows_summary = _summarize_outcomes(events, outcomes, windows)
+        matched_source_snapshot_id = _matched_source_snapshot_id(events, candidate)
+        pending_horizon_anchors = _pending_horizon_anchors(
+            events,
+            outcomes,
+            windows,
+            requested_date=requested_date,
+        )
         total = sum(item.total for item in windows_summary)
         ready = sum(item.ready for item in windows_summary)
         pending = sum(item.pending for item in windows_summary)
@@ -611,6 +762,8 @@ class DailyInvestmentJourneyService:
             diagnostics=tuple(diagnostics),
             source_trace=tuple(source_trace),
             next_action=next_action,
+            matched_source_snapshot_id=matched_source_snapshot_id,
+            pending_horizon_anchors=pending_horizon_anchors,
         )
 
     @staticmethod
@@ -779,6 +932,601 @@ class DailyInvestmentJourneyService:
                 f"scheduled_forward_event_count_mismatch:{evidence.event_count}!={receipt_events}"
             )
             warnings.append("排程 forward receipt 與唯讀事件分母不一致")
+
+
+def _fallback_lane(
+    projection: RecommendationLearningEvidenceProjection | None,
+) -> Any | None:
+    if projection is None:
+        return None
+    scoped_lane_id = str(getattr(projection, "horizon_scope_lane_id", "") or "")
+    if scoped_lane_id == projection.candidate_lane.lane_id:
+        return projection.candidate_lane
+    if scoped_lane_id == projection.active_lane.lane_id:
+        return projection.active_lane
+    verified = projection.verified_lane
+    if verified is not None:
+        return verified
+    for lane in (projection.candidate_lane, projection.active_lane):
+        if getattr(lane, "horizons", ()):
+            return lane
+    for lane in (projection.candidate_lane, projection.active_lane):
+        if str(getattr(lane, "status", "")) not in {"not_applicable", "unknown", "missing"}:
+            return lane
+    return projection.candidate_lane
+
+
+def _fallback_status(
+    *,
+    candidate: _CandidateRead,
+    evidence: _EvidenceRead,
+    projection: RecommendationLearningEvidenceProjection | None,
+) -> str:
+    projection_status = str(getattr(projection, "status", "")) if projection is not None else ""
+    lane = _fallback_lane(projection)
+    lane_status = str(getattr(lane, "status", "")) if lane is not None else ""
+    reason_values = (
+        projection_status,
+        str(getattr(projection, "data_recorded_reason", "")) if projection is not None else "",
+        str(getattr(projection, "decision_reason", "")) if projection is not None else "",
+        str(getattr(lane, "reason", "")) if lane is not None else "",
+        *(str(item) for item in (getattr(projection, "diagnostics", ()) if projection is not None else ())),
+        *(str(item) for item in (getattr(lane, "diagnostics", ()) if lane is not None else ())),
+    )
+    reason_text = " ".join(reason_values).lower()
+    if (
+        evidence.status == "read_failure"
+        or candidate.status == "read_failure"
+        or projection_status == "read_failure"
+    ):
+        return "read_failure"
+    if (
+        candidate.status in {"future_blocked", "stale"}
+        or projection_status in {"future_blocked", "stale"}
+    ):
+        return "blocked_scope"
+    if (
+        projection_status == "blocked_provenance"
+        or lane_status == "blocked_provenance"
+    ) and _fallback_is_identity_or_cost_conflict(reason_text):
+        return "blocked_identity_or_cost"
+    if projection_status == "blocked_provenance" or lane_status == "blocked_provenance":
+        return "blocked_provenance"
+    if (
+        evidence.event_count == 0
+        or evidence.outcome_missing > 0
+        or candidate.status in {"missing", "candidate_degraded", "degraded"}
+    ):
+        return "missing_data"
+    if projection is not None and projection.verified_lane is not None:
+        return "not_needed"
+    if (
+        projection is not None
+        and (
+            projection.data_recorded_status == "recorded"
+            or (
+                projection.data_recorded_status not in {"not_recorded", "unknown"}
+                and (projection_status == "pending" or lane_status == "pending")
+            )
+        )
+    ):
+        return "pending_natural_evidence"
+    if (
+        projection is not None
+        and projection.data_recorded_status in {"not_recorded", "unknown"}
+        and projection_status not in {"missing", "unknown"}
+    ):
+        return "pending_capture"
+    if evidence.status == "waiting_for_time" or evidence.outcome_pending > 0:
+        return "pending_natural_evidence"
+    if projection is None:
+        return "missing_source"
+    if projection_status in {"missing", "unknown"}:
+        return "missing_source"
+    return "unknown"
+
+
+def _fallback_is_identity_or_cost_conflict(reason_text: str) -> bool:
+    return any(
+        marker in reason_text
+        for marker in (
+            "mismatch",
+            "不一致",
+            "cross-capture",
+            "cost_scope",
+            "cost scenario",
+            "cost_scenario",
+            "hash_mismatch",
+            "capture_content_hash",
+            "source conflict",
+            "身份衝突",
+        )
+    )
+
+
+def _fallback_missing_reason(
+    *,
+    status: str,
+    candidate: _CandidateRead,
+    evidence: _EvidenceRead,
+    projection: RecommendationLearningEvidenceProjection | None,
+    candidate_reason: str,
+    evidence_reason: str,
+    lane: Any | None,
+) -> str:
+    if status == "not_needed":
+        return "同一 scope 已有 typed natural evidence verifier 結果；本輪不需補研究 fallback。"
+    parts: list[str] = []
+    if status == "missing_data":
+        if candidate_reason:
+            parts.append(candidate_reason)
+        if evidence_reason:
+            parts.append(evidence_reason)
+        if not parts:
+            parts.append("candidate／EvidenceEvent／outcome 欄位不足，無法形成完整 scope。")
+    elif status == "read_failure":
+        parts.append("既有唯讀來源讀取失敗；不能把讀取失敗解讀成沒有資料。")
+    elif status == "blocked_scope":
+        parts.append("既有來源日期超出或落後本次決策 scope；不沿用成為 current evidence。")
+    elif status == "blocked_identity_or_cost":
+        parts.append("同一決策日的 candidate／capture／source identity 或 cost lane 不一致。")
+    elif status == "blocked_provenance":
+        parts.append("typed natural evidence provenance 未通過；receipt 宣稱不能取代 verifier。")
+    elif status == "pending_capture":
+        parts.append("本日 scheduled live prediction capture 尚未記錄或尚未能核對。")
+    elif status == "pending_natural_evidence":
+        parts.append("capture／forward evidence 尚未自然成熟，或尚缺 typed natural receipt。")
+    elif status == "missing_source":
+        parts.append("learning projection 或其既有來源缺失；目前無法判定 capture／natural maturity。")
+    else:
+        parts.append("目前 evidence 狀態未知；沒有足夠證據形成正向結論。")
+    if projection is not None:
+        for value in (
+            projection.data_recorded_reason,
+            getattr(lane, "reason", "") if lane is not None else "",
+        ):
+            text = str(value or "").strip()
+            if text and text not in parts:
+                parts.append(text)
+        if status in {"pending_natural_evidence", "pending_capture"} and projection.next_gap:
+            parts.append(str(projection.next_gap))
+    return "；".join(dict.fromkeys(parts))
+
+
+def _fallback_research_question(
+    *,
+    status: str,
+    candidate: _CandidateRead,
+    evidence: _EvidenceRead,
+    projection: RecommendationLearningEvidenceProjection | None,
+) -> str:
+    if status == "not_needed":
+        return "本輪是否仍需補件？目前沒有待補的 natural evidence 欄位。"
+    if status == "missing_data":
+        return "本日 candidate、cohort identity 與 outcome 是否都能沿同一決策日核對？"
+    if status == "read_failure":
+        return "既有來源是否可在不寫入、不重算的前提下重新讀取？"
+    if status == "blocked_scope":
+        return "來源日期是否與本次決策日一致，且沒有把未來資料帶回當日？"
+    if status == "blocked_identity_or_cost":
+        return "candidate、capture、source 與 cost scenario 是否屬同一決策日同一 scope？"
+    if status == "blocked_provenance":
+        return "既有 receipt 是否能由 typed verifier 核對完整 lineage 與 authority？"
+    if status == "pending_capture":
+        return "同一 candidate／決策日是否有可驗證的 scheduled live capture？"
+    if status == "pending_natural_evidence":
+        return "同一 capture 的 natural outcome 是否已達 horizon 並通過 typed verifier？"
+    if projection is None:
+        return "既有 learning projection 是否可讀，且能確認相同決策日與成本 scope？"
+    return "目前還缺哪個可核對的 evidence 欄位，才能停止研究中狀態？"
+
+
+def _fallback_next_step(
+    *,
+    status: str,
+    candidate: _CandidateRead,
+    evidence: _EvidenceRead,
+    projection: RecommendationLearningEvidenceProjection | None,
+    lane: Any | None,
+) -> str:
+    if status == "not_needed":
+        return "依既有 Evidence／decision review 閱讀；UI 不改寫正式決策，也不要求新增批准。"
+    if status == "missing_data":
+        return "補／核對同一決策日的 candidate、EvidenceEvent identity 與 outcome 缺件，再重新整理 Workbench。"
+    if status == "read_failure":
+        return "檢查既有 DB／receipt／snapshot 路徑後重新整理唯讀來源；不要由 UI 執行 runner 或重算。"
+    if status == "blocked_scope":
+        return "先確認決策日與資料日 scope；移除未來／過期來源後重新讀取，不回填日期。"
+    if status == "blocked_identity_or_cost":
+        return "逐一核對 decision date、source snapshot、candidate／capture identity 與 cost lane；修復後重讀 typed projection。"
+    if status == "blocked_provenance":
+        return "保留 blocked 狀態，修復既有 lineage／receipt verifier 缺口後再重新整理。"
+    if status == "pending_capture":
+        return "補上同一 candidate／決策日的 scheduled live capture，核對 source identity 與 cost lane 後再整理。"
+    if status == "pending_natural_evidence":
+        return "維持同一 capture scope，等待自然 outcome 成熟，再回看 typed receipt；期間不補值。"
+    if projection is None:
+        return "重新整理既有 learning projection 與 source trace，確認缺件後再決定研究問題。"
+    return "先查看既有 projection 的 source trace 與缺口，再重新整理；未證明前維持研究中。"
+
+
+def _fallback_limitations(
+    *,
+    projection: RecommendationLearningEvidenceProjection | None,
+    historical_research_allowed: bool,
+) -> tuple[str, ...]:
+    limitations = [
+        "這是唯讀 research fallback；不提供有效機率、score、權重或買賣結論。",
+        "只有同 scope 且由 typed verifier 通過的 natural evidence 才能支持 reliability；不以 receipt 宣稱或 80% 補值。",
+        "來源 owner 未由既有 DTO／receipt 提供；unknown 不代表已指派 owner。",
+    ]
+    if historical_research_allowed and projection is not None:
+        note = str(projection.historical_evaluation_note or "").strip()
+        limitations.append(
+            note
+            or "已有 historical replay／evaluation；可研究比較，但不能與 natural evidence 混算。"
+        )
+    else:
+        limitations.append("若只剩 historical replay／evaluation，只能作研究比較，不能當 natural evidence。")
+    return tuple(dict.fromkeys(limitations))
+
+
+def _fallback_natural_status(
+    projection: RecommendationLearningEvidenceProjection | None,
+    evidence: _EvidenceRead,
+) -> str:
+    if projection is not None and projection.verified_lane is not None:
+        return "verified"
+    lane = _fallback_lane(projection)
+    if lane is not None and str(getattr(lane, "status", "")).strip():
+        return str(getattr(lane, "status"))
+    if evidence.status == "waiting_for_time" or evidence.outcome_pending > 0:
+        return "pending"
+    return "unknown"
+
+
+def _fallback_revisit(
+    *,
+    status: str,
+    decision_date: str,
+    candidate: _CandidateRead,
+    evidence: _EvidenceRead,
+    projection: RecommendationLearningEvidenceProjection | None,
+    calendar: Any | None,
+) -> tuple[str | None, str, str, str]:
+    if status != "pending_natural_evidence":
+        return None, "unknown", "", "只有自然成熟等待狀態才有可估的 revisit horizon。"
+    horizon_days = _fallback_horizon_days(projection)
+    if horizon_days is None:
+        return (
+            None,
+            "unknown",
+            "",
+            "缺少可證明的正整數 horizon；不以日曆天數假造 revisit date。",
+        )
+    anchors = _matching_pending_horizon_anchors(candidate, evidence, horizon_days)
+    anchor_dates = tuple(dict.fromkeys(anchor.decision_date for anchor in anchors))
+    if len(anchor_dates) != 1:
+        return (
+            None,
+            "unknown",
+            "",
+            "沒有唯一同 scope pending event 的原決策日；不以 Workbench 查看日倒填 revisit date。",
+        )
+    if not _pending_anchor_proves_learning_scope(anchors[0], candidate, projection):
+        return (
+            None,
+            "unknown",
+            "",
+            "forward cohort 尚未證明與 learning candidate、cost scenario、return basis 完整對應；不估算 revisit date。",
+        )
+    try:
+        anchor = date.fromisoformat(anchors[0].decision_date)
+    except (TypeError, ValueError):
+        return None, "unknown", "", "同 scope pending event 的原決策日無法解析；不倒填 revisit date。"
+    if decision_date != "unknown" and anchor > date.fromisoformat(decision_date[:10]):
+        return None, "unknown", "", "pending event 原決策日晚於 Workbench 決策日；不使用未來 anchor。"
+    if calendar is None:
+        return None, "unknown", "", "官方交易日曆不可用；不以週一至週五或日曆天數推定。"
+    current = anchor
+    counted = 0
+    max_scan_days = max(366, horizon_days * 10 + 31)
+    for _ in range(max_scan_days):
+        current += timedelta(days=1)
+        try:
+            resolved = calendar.is_official_trading_day(
+                current,
+                allow_online_probe=False,
+            )
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            return None, "unknown", "", f"官方交易日曆讀取失敗（{type(exc).__name__}）；不假造日期。"
+        if not isinstance(resolved, tuple) or len(resolved) < 2:
+            return None, "unknown", "", "官方交易日曆未回傳可核對結果；不假造日期。"
+        is_trading_day, reason = resolved[0], str(resolved[1])
+        if is_trading_day is None:
+            return (
+                None,
+                "unknown",
+                "",
+                f"官方交易日曆未知（{current.isoformat()}：{reason}）；不假造 revisit date。",
+            )
+        if is_trading_day:
+            counted += 1
+            if counted >= horizon_days:
+                return (
+                    current.isoformat(),
+                    "estimated_official_trading_day",
+                    "OfficialTradingCalendar + horizon_trading_days",
+                    f"以決策日後 {horizon_days} 個已解析官方交易日估算；下一輪仍須重新核對實際 maturity。",
+                )
+    return None, "unknown", "", "官方交易日曆掃描範圍不足；不假造 revisit date。"
+
+
+def _fallback_horizon_days(
+    projection: RecommendationLearningEvidenceProjection | None,
+) -> int | None:
+    if projection is None:
+        return None
+    lane = _fallback_lane(projection)
+    if lane is None:
+        return None
+    for horizon in getattr(lane, "horizons", ()):
+        raw = getattr(horizon, "horizon_days", None)
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, int):
+            value = raw
+        elif isinstance(raw, str) and raw.strip().isdigit():
+            value = int(raw.strip())
+        else:
+            continue
+        if value > 0:
+            return value
+    return None
+
+
+def _matching_pending_horizon_anchors(
+    candidate: _CandidateRead,
+    evidence: _EvidenceRead,
+    horizon_days: int,
+) -> tuple[_PendingHorizonAnchor, ...]:
+    return tuple(
+        anchor
+        for anchor in evidence.pending_horizon_anchors
+        if anchor.horizon_days == horizon_days
+        and _pending_anchor_matches_candidate(anchor, candidate)
+    )
+
+
+def _pending_anchor_from_event(
+    event: EvidenceEvent,
+    outcome: EvidenceOutcome | None,
+    *,
+    horizon_days: int = 0,
+    decision_date: str | None = None,
+) -> _PendingHorizonAnchor:
+    identity = dict(_event_identity_pairs(event))
+    return_basis = (
+        _text(getattr(outcome, "return_basis", None)) or None
+        if outcome is not None
+        else None
+    )
+    if return_basis:
+        identity["return_basis"] = return_basis
+    return _PendingHorizonAnchor(
+        horizon_days=horizon_days,
+        decision_date=decision_date or _date_key(getattr(event, "decision_date", None)) or "unknown",
+        symbol=_text(getattr(event, "symbol", None)) or None,
+        source_id=_text(getattr(event, "source_id", None)) or None,
+        source_snapshot_id=_text(getattr(event, "source_snapshot_id", None)) or None,
+        identity=tuple(sorted(identity.items())),
+        window_type=(
+            _text(getattr(outcome, "window_type", None)) or None
+            if outcome is not None
+            else None
+        ),
+        return_basis=return_basis,
+    )
+
+
+def _event_identity_pairs(event: EvidenceEvent) -> tuple[tuple[str, str], ...]:
+    metadata_raw = getattr(event, "metadata", {})
+    metadata = metadata_raw if isinstance(metadata_raw, Mapping) else {}
+    specs: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+        ("result_id", (), ("result_id", "source_result_id", "recommendation_result_id", "run_result_id")),
+        ("strategy_version_id", ("strategy_version_id",), ("strategy_version_id", "strategy_version")),
+        ("strategy_config_id", (), ("strategy_config_id",)),
+        ("strategy_config_hash", (), ("strategy_config_hash",)),
+        ("cost_model_id", ("cost_model_id",), ("cost_model_id",)),
+        ("cost_scenario_id", (), ("cost_scenario_id",)),
+        ("benchmark_id", ("benchmark_id",), ("benchmark_id",)),
+        ("industry_benchmark_id", ("industry_benchmark_id",), ("industry_benchmark_id",)),
+        ("universe_policy_id", (), ("universe_policy_id",)),
+        ("universe_policy_hash", (), ("universe_policy_hash",)),
+        ("universe_snapshot_id", (), ("universe_snapshot_id",)),
+        ("universe_snapshot_hash", (), ("universe_snapshot_hash",)),
+        ("cohort_hash", (), ("cohort_hash",)),
+        ("horizon_days", (), ("horizon_days", "expected_horizon_days")),
+        ("learning_candidate_id", (), ("learning_candidate_id", "candidate_id")),
+        ("run_context.as_of_date", ("as_of_date",), ("as_of_date",)),
+        ("run_context.data_as_of_date", (), ("data_as_of_date", "data_as_of")),
+    )
+    values: dict[str, str] = {}
+    for key, event_attributes, metadata_keys in specs:
+        value = ""
+        for attribute in event_attributes:
+            value = _text(getattr(event, attribute, None))
+            if value:
+                break
+        if not value:
+            for metadata_key in metadata_keys:
+                value = _text(metadata.get(metadata_key))
+                if value:
+                    break
+        if not value and key == "run_context.data_as_of_date":
+            value = _text(getattr(event, "as_of_date", None))
+        if value:
+            values[key] = value
+    return tuple(sorted(values.items()))
+
+
+def _candidate_identity_map(candidate: _CandidateRead) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for item in candidate.identity:
+        key, separator, value = _text(item).partition("=")
+        if separator and key.strip() and value.strip():
+            values[key.strip()] = value.strip()
+    return values
+
+
+def _pending_anchor_matches_candidate(
+    anchor: _PendingHorizonAnchor,
+    candidate: _CandidateRead,
+) -> bool:
+    candidate_source_id = _text(candidate.source_id)
+    candidate_snapshot_id = _text(candidate.source_snapshot_id)
+    if not candidate_source_id or not candidate_snapshot_id:
+        return False
+    if anchor.source_id != candidate_source_id or anchor.source_snapshot_id != candidate_snapshot_id:
+        return False
+    if not anchor.symbol or not candidate.symbols or anchor.symbol not in candidate.symbols:
+        return False
+
+    actual = dict(anchor.identity)
+    expected = _candidate_identity_map(candidate)
+    candidate_result_id = _text(candidate.result_id)
+    actual_result_id = actual.get("result_id", "")
+    if candidate_result_id:
+        if actual_result_id:
+            if actual_result_id != candidate_result_id:
+                return False
+        elif candidate_result_id != candidate_source_id:
+            # Existing recommendation importer uses source_id as the result id;
+            # a distinct result id needs an explicit event metadata binding.
+            return False
+    for key, expected_value in expected.items():
+        actual_key = "result_id" if key == "run.result_id" else key
+        actual_value = actual.get(actual_key)
+        if actual_value is None or actual_value != expected_value:
+            return False
+    return True
+
+
+def _single_identity_value(values: Mapping[str, str], keys: tuple[str, ...]) -> str | None:
+    present = tuple(dict.fromkeys(values.get(key, "") for key in keys if values.get(key, "")))
+    return present[0] if len(present) == 1 else None
+
+
+def _pending_anchor_proves_learning_scope(
+    anchor: _PendingHorizonAnchor,
+    candidate: _CandidateRead,
+    projection: RecommendationLearningEvidenceProjection | None,
+) -> bool:
+    if projection is None:
+        return False
+    expected = _candidate_identity_map(candidate)
+    actual = dict(anchor.identity)
+    lane = _fallback_lane(projection)
+    if lane is None:
+        return False
+    learning_candidate_id = expected.get("learning_candidate_id") or expected.get("candidate_id")
+    lane_candidate_id = _text(getattr(lane, "candidate_id", None))
+    if not learning_candidate_id or not lane_candidate_id or learning_candidate_id != lane_candidate_id:
+        return False
+    candidate_cost = _single_identity_value(expected, ("cost_scenario_id", "cost_model_id"))
+    anchor_cost = _single_identity_value(actual, ("cost_scenario_id", "cost_model_id"))
+    projection_cost = _text(
+        getattr(projection, "horizon_scope_cost_scenario_id", None)
+        or getattr(lane, "cost_scenario_id", None)
+    )
+    if not candidate_cost or not anchor_cost or not projection_cost:
+        return False
+    if len({candidate_cost, anchor_cost, projection_cost}) != 1:
+        return False
+    if anchor.window_type != "trading_days" or anchor.return_basis != DEFAULT_RETURN_BASIS:
+        return False
+    return True
+
+
+def _matched_source_snapshot_id(
+    events: Iterable[EvidenceEvent],
+    candidate: _CandidateRead,
+) -> str | None:
+    matched = {
+        str(event.source_snapshot_id).strip()
+        for event in events
+        if _pending_anchor_matches_candidate(_pending_anchor_from_event(event, None), candidate)
+        and str(event.source_snapshot_id or "").strip()
+    }
+    return next(iter(matched)) if len(matched) == 1 else None
+
+
+def _pending_horizon_anchors(
+    events: Iterable[EvidenceEvent],
+    outcomes: Iterable[EvidenceOutcome],
+    windows: tuple[int, ...],
+    *,
+    requested_date: str | None,
+) -> tuple[_PendingHorizonAnchor, ...]:
+    event_list = tuple(events)
+    by_key: dict[tuple[str, int], EvidenceOutcome] = {}
+    for outcome in outcomes:
+        if outcome.window_days not in windows:
+            continue
+        key = (str(outcome.event_id), int(outcome.window_days))
+        current = by_key.get(key)
+        if current is None or _outcome_preference(outcome) < _outcome_preference(current):
+            by_key[key] = outcome
+    anchors: list[_PendingHorizonAnchor] = []
+    for event in event_list:
+        event_date = _date_key(event.decision_date)
+        if event_date is None:
+            continue
+        if requested_date and requested_date != "unknown" and event_date > requested_date:
+            continue
+        for window in windows:
+            selected_outcome = by_key.get((str(event.event_id), window))
+            if selected_outcome is None:
+                continue
+            state = _text(
+                getattr(
+                    selected_outcome.outcome_status,
+                    "value",
+                    selected_outcome.outcome_status,
+                )
+            )
+            if state in {"pending", "insufficient_future_data"}:
+                anchors.append(
+                    _pending_anchor_from_event(
+                        event,
+                        selected_outcome,
+                        horizon_days=int(window),
+                        decision_date=event_date,
+                    )
+                )
+    return tuple(dict.fromkeys(anchors))
+
+
+def _candidate_fallback_reason(candidate: _CandidateRead) -> str:
+    if candidate.status == "missing":
+        return "每日 recommendation candidate source 缺失。"
+    if candidate.status == "read_failure":
+        return "每日 recommendation candidate source 讀取失敗。"
+    if candidate.status in {"candidate_degraded", "degraded"}:
+        return candidate.reasons[0] if candidate.reasons else "candidate source 降級，仍有欄位缺件。"
+    return ""
+
+
+def _evidence_fallback_reason(evidence: _EvidenceRead) -> str:
+    if evidence.status == "read_failure":
+        return "EvidenceEvent／Outcome 唯讀查詢失敗。"
+    if evidence.event_count == 0:
+        return _evidence_summary(evidence)
+    if evidence.outcome_missing > 0:
+        return f"Forward outcome 缺件 {evidence.outcome_missing} 筆；不能把缺件當成未獲利。"
+    if evidence.outcome_pending > 0:
+        return f"Forward outcome 尚待自然成熟 {evidence.outcome_pending} 筆。"
+    return ""
 
 
 def _project_learning_receipt(
@@ -1194,6 +1942,17 @@ def _candidate_identity(
         ("cohort_hash", cohort.get("cohort_hash")),
         ("benchmark_id", evidence_identity.get("benchmark_id")),
         ("cost_model_id", evidence_identity.get("cost_model_id")),
+        ("cost_scenario_id", evidence_identity.get("cost_scenario_id") or run_context.get("cost_scenario_id")),
+        (
+            "learning_candidate_id",
+            evidence_identity.get("learning_candidate_id")
+            or evidence_identity.get("candidate_id")
+            or run_context.get("learning_candidate_id")
+            or run_context.get("candidate_id")
+            or payload.get("learning_candidate_id")
+            or payload.get("candidate_id"),
+        ),
+        ("return_basis", evidence_identity.get("return_basis") or run_context.get("return_basis")),
         ("horizon_days", evidence_identity.get("horizon_days")),
         ("run_context.as_of_date", run_context.get("as_of_date")),
         ("run_context.data_as_of_date", run_context.get("data_as_of_date")),

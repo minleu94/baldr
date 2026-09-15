@@ -371,6 +371,118 @@ class WorkbenchEvidenceWindow:
 
 
 @dataclass(frozen=True)
+class ResearchFallbackPacket:
+    """Evidence 不足時供 Workbench 閱讀的 bounded research contract。
+
+    這是唯讀呈現 packet，不是第二套 evidence store；只攜帶 scope 與限制，
+    不製造機率、score、權重、Advice action 或交易指令。
+    """
+
+    status: str
+    scope_result_id: str | None = None
+    scope_stock_codes: tuple[str, ...] = ()
+    decision_date: str | None = None
+    cost_lane: str = "unknown"
+    source_id: str | None = None
+    source_snapshot_id: str | None = None
+    source_owner: str = "未知（既有來源未提供 owner）"
+    source_owner_known: bool = False
+    missing_reason: str = ""
+    research_question: str = ""
+    next_step: str = ""
+    revisit_date: str | None = None
+    revisit_status: str = "unknown"
+    revisit_basis: str = ""
+    revisit_reason: str = ""
+    natural_evidence_status: str = "unknown"
+    limitations: tuple[str, ...] = ()
+    prohibited_actions: tuple[str, ...] = (
+        "不可下單、調整持倉或改寫 Portfolio",
+        "不可把 historical replay／研究比較當成 natural evidence",
+        "不可把 score、權重或 80% 顯示值當成有效機率",
+    )
+    historical_research_allowed: bool = False
+    positive_fallback_allowed: bool = False
+    read_only: bool = True
+    write_intent: bool = False
+    source_trace: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.read_only:
+            raise ValueError("research fallback packet must remain read-only")
+        if self.positive_fallback_allowed:
+            raise ValueError("research fallback packet cannot authorize positive fallback")
+        if self.write_intent:
+            raise ValueError("research fallback packet cannot carry write intent")
+        object.__setattr__(self, "status", str(self.status or "unknown"))
+        object.__setattr__(self, "scope_stock_codes", _normalize_strings(self.scope_stock_codes))
+        object.__setattr__(self, "cost_lane", str(self.cost_lane or "unknown"))
+        object.__setattr__(self, "source_owner", str(self.source_owner or "未知（既有來源未提供 owner）"))
+        object.__setattr__(self, "source_owner_known", bool(self.source_owner_known))
+        for field_name in (
+            "missing_reason",
+            "research_question",
+            "next_step",
+            "revisit_status",
+            "revisit_basis",
+            "revisit_reason",
+            "natural_evidence_status",
+        ):
+            object.__setattr__(self, field_name, str(getattr(self, field_name) or ""))
+        object.__setattr__(self, "limitations", _normalize_strings(self.limitations))
+        object.__setattr__(self, "prohibited_actions", _normalize_strings(self.prohibited_actions))
+        object.__setattr__(self, "historical_research_allowed", bool(self.historical_research_allowed))
+        object.__setattr__(self, "positive_fallback_allowed", False)
+        object.__setattr__(self, "read_only", True)
+        object.__setattr__(self, "write_intent", False)
+        object.__setattr__(self, "source_trace", _normalize_strings(self.source_trace))
+
+    @property
+    def scope_key(self) -> str:
+        """穩定的呈現／讀取 key；不同日期、來源或成本 scope 絕不合併。"""
+
+        return "|".join(
+            (
+                self.decision_date or "unknown",
+                self.scope_result_id or "unknown",
+                ",".join(self.scope_stock_codes) or "unknown",
+                self.cost_lane,
+                self.source_id or "unknown",
+                self.source_snapshot_id or "unknown",
+            )
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "scope_key": self.scope_key,
+            "scope_result_id": self.scope_result_id,
+            "scope_stock_codes": list(self.scope_stock_codes),
+            "decision_date": self.decision_date,
+            "cost_lane": self.cost_lane,
+            "source_id": self.source_id,
+            "source_snapshot_id": self.source_snapshot_id,
+            "source_owner": self.source_owner,
+            "source_owner_known": self.source_owner_known,
+            "missing_reason": self.missing_reason,
+            "research_question": self.research_question,
+            "next_step": self.next_step,
+            "revisit_date": self.revisit_date,
+            "revisit_status": self.revisit_status,
+            "revisit_basis": self.revisit_basis,
+            "revisit_reason": self.revisit_reason,
+            "natural_evidence_status": self.natural_evidence_status,
+            "limitations": list(self.limitations),
+            "prohibited_actions": list(self.prohibited_actions),
+            "historical_research_allowed": self.historical_research_allowed,
+            "positive_fallback_allowed": self.positive_fallback_allowed,
+            "read_only": self.read_only,
+            "write_intent": self.write_intent,
+            "source_trace": list(self.source_trace),
+        }
+
+
+@dataclass(frozen=True)
 class WorkbenchJourneyStep:
     """市場 → 產業 → 個股 → 觀察清單／持倉的可導覽節點。"""
 
@@ -451,6 +563,8 @@ class WorkbenchDailyEvidence:
     warnings: tuple[str, ...] = ()
     diagnostics: tuple[str, ...] = ()
     source_trace: tuple[str, ...] = ()
+    # 追加在 DTO 尾端，以保留舊 positional caller 的相容性。
+    research_fallback: ResearchFallbackPacket | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", str(self.status or "unknown"))
@@ -535,6 +649,11 @@ class WorkbenchDailyEvidence:
             "learning_projection": (
                 self.learning_projection.to_dict()
                 if self.learning_projection is not None
+                else None
+            ),
+            "research_fallback": (
+                self.research_fallback.to_dict()
+                if self.research_fallback is not None
                 else None
             ),
             "journey_steps": [item.to_dict() for item in self.journey_steps],

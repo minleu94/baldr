@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+import json
 import os
 from pathlib import Path
 import sqlite3
@@ -437,6 +439,184 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     assert "cost_scenario:" in rendered
     assert "自然前瞻驗證" not in rendered
     view.close()
+
+
+def test_real_consumer_independent_after_cost_baseline_reaches_advice_presentation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Use a real trained artifact to prove the independent after-cost lane."""
+
+    from app_module.advice_composer import AdviceComposer
+    from app_module.advice_dtos import AdviceMode
+    from app_module.advice_policy import AdvicePolicy
+    from app_module.decision_presentation import (
+        DecisionPresentationService,
+        format_decision_lineage_detail,
+    )
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from ml_module.historical_feature_builder import HistoricalFeatureBuilder
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from ml_module.recommendation_calibration_training import (
+        RecommendationCalibrationTrainingConfig,
+        RecommendationCalibrationTrainingService,
+    )
+    from ml_module.recommendation_probability_transform import (
+        AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+        AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
+    )
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _natural_receipt,
+        _samples,
+    )
+
+    # The source rows are real training-service inputs; clearing the explicit
+    # rule value makes RecommendationCalibrationSample apply its existing
+    # independent-null contract instead of the declared-baseline compatibility
+    # path.  Everything remains under tmp_path and read-only to formal data.
+    samples = tuple(
+        replace(
+            sample,
+            rule_after_cost_probability_bp=None,
+            rule_after_cost_baseline_id=None,
+        )
+        for sample in _samples(0)
+    )
+    trained_result = RecommendationCalibrationTrainingService().fit(
+        dataset_id="dataset-independent-after-cost",
+        dataset_hash="sha256:" + "c" * 64,
+        samples=samples,
+        feature_names=("momentum_bp", "volume_ratio_bp"),
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        training_as_of="2026-05-31",
+        fixed_round_trip_cost_bp=50,
+        dataset_quality={"formal_candidate_eligible": True},
+        created_at="2026-06-01T00:00:00+00:00",
+        config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+    )
+    candidate_root = tmp_path / "candidate-independent-after-cost"
+    trained_result.persist(candidate_root)
+    candidate_metadata = json.loads((candidate_root / "candidate.json").read_text(encoding="utf-8"))
+    assert candidate_metadata["after_cost_baseline_id"] == AFTER_COST_NULL_BENCHMARK_BASELINE_ID
+    assert candidate_metadata["after_cost_baseline_probability_bp"] == AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-06-22",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "independent-authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-06-22",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "independent-authority" / "recommendation-calibration-active-pointer.json",
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        data_root=tmp_path / "formal-data",
+    )
+    assert consumer.active_after_cost_baseline(decision_date="2026-06-22") == (
+        AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+        AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
+    )
+
+    database = tmp_path / "source.db"
+    _make_database(database, start=date(2026, 1, 1))
+    monkeypatch.setattr(
+        HistoricalFeatureBuilder,
+        "compute",
+        lambda _self, _snapshot, *, industry_index_name_by_symbol: (
+            SimpleNamespace(
+                symbol="AAA",
+                values=(("momentum_bp", 1000), ("volume_ratio_bp", 2000)),
+            ),
+        ),
+    )
+    service = RecommendationService(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2026-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    recommendation = _recommendation()
+    service._apply_recommendation_calibration([recommendation], decision_date="2026-06-22")
+    projection = service.last_calibration_projections["AAA"]
+    assert projection.status == "active_candidate", projection.warnings
+    assert projection.after_cost_profit_probability_bp is not None
+    model_prediction = consumer._model.predict((1000, 2000))
+    assert projection.raw_after_cost_profit_probability_bp == (
+        model_prediction.after_cost_profit_probability_bp
+    )
+    assert projection.after_cost_profit_probability_bp != AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+    assert "after_cost_baseline:after_cost_null_benchmark_50pct_v1" in projection.source_trace
+    assert "after_cost_baseline_contract:independent_null_benchmark_v1" in projection.source_trace
+    assert service.last_run_context["calibration_after_cost_baseline_id"] == (
+        AFTER_COST_NULL_BENCHMARK_BASELINE_ID
+    )
+
+    invalid_null_value = consumer.project(
+        stock_code="AAA",
+        feature_values=(1000, 2000),
+        rule_probability_bp=5_000,
+        after_cost_rule_probability_bp=5_001,
+        after_cost_rule_baseline_id=AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+        decision_date="2026-06-22",
+    )
+    assert invalid_null_value.status == "rule_only"
+    assert invalid_null_value.warnings == (
+        "after_cost_null_benchmark_probability_invalid_fail_closed",
+    )
+
+    advice_result = RecommendationResultDTO(
+        result_id="rec-independent-after-cost-20260622",
+        result_name="independent after-cost recommendation",
+        config={
+            "strategy_status": "promoted",
+            "parameters_locked": True,
+            "disclosure_complete": True,
+            "execution_feasible": True,
+            "risk_budget_available": True,
+        },
+        recommendations=[recommendation],
+    )
+    advice_dashboard = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=advice_result,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date="2026-06-22",
+        data_as_of_date="2026-06-21",
+        mode=AdviceMode.GUIDED,
+    )
+    advice = advice_dashboard.recommendations[0]
+    assert advice.after_cost_profit_probability_bp == projection.after_cost_profit_probability_bp
+    presentation = DecisionPresentationService().from_recommendation_advice(advice)
+    assert presentation.after_cost_profit_probability_bp == projection.after_cost_profit_probability_bp
+    lineage_detail = format_decision_lineage_detail(presentation)
+    assert "after_cost_baseline:after_cost_null_benchmark_50pct_v1" in lineage_detail
+    assert "after_cost_baseline_probability_bp:5000" in lineage_detail
 
 
 def test_default_recommendation_service_has_read_only_consumer_from_dedicated_shadow_pointer(

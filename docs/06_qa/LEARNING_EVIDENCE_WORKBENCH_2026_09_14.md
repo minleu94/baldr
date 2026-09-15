@@ -38,7 +38,10 @@ RecommendationService adapter→typed projection→Advice→Workbench 可讀到 
 `RecommendationCalibrationConsumer`，確認 RecommendationService 只有在 active candidate metadata
 明示既有獨立 `after_cost_null_benchmark_50pct_v1`／`5000 bp` contract 時才傳入該 baseline；本測試
 fixture 是 declared-but-unpriced baseline，因此成本後值保持 unavailable，且錯誤混用 ID 會
-fail-closed。前一個 isolated wiring case 才是有完整 typed after-cost contract 的正常可用案例。
+fail-closed。`test_real_consumer_independent_after_cost_baseline_reaches_advice_presentation` 再用
+實際 training artifact／authority 建立 independent-null candidate，驗證 real consumer→RecommendationService
+→Advice→Presentation 的成本後值、獨立 baseline trace 與 5,001 bp 反例；前一個 isolated wiring
+case 則補 Workbench renderer 的正常可用案例。這些 artifact 均在 pytest `tmp_path`，不寫正式資料。
 raw payload 與缺 scope 反例則維持 unknown。自然 lane 仍依
 本文件既有 verifier／maturity QA 判讀，不因 UI render 或 typed DTO 存在而升格。
 

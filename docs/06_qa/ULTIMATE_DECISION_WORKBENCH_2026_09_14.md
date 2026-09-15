@@ -86,7 +86,7 @@ forward evidence、source acceptance、observed fill/cost 或人工 Gate。
 
 | 案例 | 測試與結果 |
 |---|---|
-| 正常 producer→consumer→Advice→Workbench UI | `test_isolated_producer_consumer_advice_workbench_ui_path` 是正式 RecommendationService adapter→typed projection seam 的 bounded wiring case，UI 顯示 ranking、校準、成本後、20 日、sample、model／dataset，並標 `研究中／shadow`；`test_real_consumer_producer_advice_workbench_ui_path` 再以最小隔離 pointer／artifact 呼叫真正 `RecommendationCalibrationConsumer`，確認 declared-but-unpriced after-cost baseline 不會被 5,000 bp 補值，畫面保持 unavailable。 |
+| 正常 producer→consumer→Advice→Workbench UI | `test_isolated_producer_consumer_advice_workbench_ui_path` 是正式 RecommendationService adapter→typed projection seam 的 bounded wiring case，UI 顯示 ranking、校準、成本後、20 日、sample、model／dataset，並標 `研究中／shadow`；`test_real_consumer_independent_after_cost_baseline_reaches_advice_presentation` 以實際 training artifact／authority 呼叫 real consumer→RecommendationService→Advice→Presentation，確認 independent-null after-cost 值與 trace；`test_real_consumer_producer_advice_workbench_ui_path` 則確認 declared-but-unpriced baseline 不會被 5,000 bp 補值，保持 unavailable。 |
 | raw payload | `tests/test_advice_composer.py::test_untyped_calibration_mapping_cannot_inject_probability_or_scope`：raw mapping 即使帶 `8000`／`7500`、`available`、`verified`、sample、cost、horizon 也不進 Advice；畫面不出現 80%／75%。 |
 | typed 但缺 scope／錯股票 | `test_typed_projection_with_missing_scope_or_wrong_stock_fails_closed` 與 `test_recommendation_dto_without_projection_scope_fails_closed`：缺 model／dataset／horizon／cost／source，或 mapping key 與 stock 不一致，均保持 unknown。 |
 | score 冒充 probability | `tests/test_decision_presentation.py::test_recommendation_adapter_does_not_invent_probability`：只有 ranking score 時兩種機率皆無值；既有 formatter 不重做。 |

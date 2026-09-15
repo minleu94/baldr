@@ -317,6 +317,7 @@ def test_late_or_tampered_daily_receipt_cannot_satisfy_cutoff(tmp_path):
         source_db=source_db,
         decision_date=date(2026, 9, 14),
         symbols=("1101",),
+        availability_cutoff_at=datetime(2026, 9, 15, 4, 59, tzinfo=timezone.utc),
     )
     assert late_audit["technical"]["prospective_available"] is False
     assert late_audit["technical"]["inventory"]["late_daily_source_receipt_count"] == 1
@@ -330,6 +331,7 @@ def test_late_or_tampered_daily_receipt_cannot_satisfy_cutoff(tmp_path):
         source_db=source_db,
         decision_date=date(2026, 9, 15),
         symbols=("1101",),
+        availability_cutoff_at=datetime(2026, 9, 15, 6, 0, tzinfo=timezone.utc),
     )
     assert tampered_audit["technical"]["prospective_available"] is False
     assert "technical_source_receipt_lineage_unverified" in tampered_audit["technical"]["prospective_blockers"]

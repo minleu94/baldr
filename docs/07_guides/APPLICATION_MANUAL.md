@@ -1450,7 +1450,7 @@ sample、20 trading days、model／dataset 與 cost trace，但畫面仍標示�
 自然驗證。正式 producer 只有在 active candidate metadata 明示獨立的
 `after_cost_null_benchmark_50pct_v1`／`5000 bp` contract 時才傳入 after-cost baseline，consumer
 也會核對 candidate metadata；宣告但未提供數值、或 consumer／source 不可用時仍保持 unavailable，
-不以數字補值。只有 ranking score 時機率維持未知，
+不以數字補值；null baseline 若收到非 `5000 bp` 數值也會 fail-closed。只有 ranking score 時機率維持未知，
 confidence 也不是獲利機率。
 
 歷史 walk-forward／untouched-test 校準可以作研究比較；若來源明確是 historical／replay，會標示

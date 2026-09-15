@@ -4,7 +4,7 @@
 
 > **2026-07-13 系統工程整合**：A～F committed handoff 已由 G 依 SHA、ownership 與 focused suite 驗證，跨流 DTO／JSON composition、唯讀 smoke 與 pure verifier 均成立。這只代表工程整合已驗證；下一步仍是 forward evidence、逐來源人工接受與正式 ML OOS／promotion review，不是 scheduler、production automation 或 formal product closeout。
 >
-> **最後更新**：2026-09-15；本輪基線為已提交 `719cf7a4`，不新增產品版號。
+> **最後更新**：2026-09-15；本輪基線為已提交 `0219d709`，並承接 Qt 修復 `9a9e778b`，不新增產品版號。
 > **工程主線**：`V3.3 Engineering Complete`，進入 `V4.0 Evidence Accumulation Track`；這不是正式 V4.0。詳見 [V3.3 Engineering Closeout](../06_qa/V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)。
 > **Evidence rehearsal**：唯讀 replay / shadow 工程底座另以 `engineering_rehearsal_complete` 收口；它只提供可重跑 diagnostics 與 forward handoff，不會改寫 external Gate 狀態。見 [Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)。
 > **定位**：本文件是 Roadmap Hub，不再保存完整歷史長文。它負責指向目前狀態、6 個月工程路線、系統架構與歷史歸檔。
@@ -19,9 +19,13 @@
 
 > **2026-09-13 V4.2 每日推薦學習狀態**：既有 recommendation calibration 的 bounded
 > replay／training、typed projection、受控 shadow receipt、active monitor／rollback 與 05:45
-> wrapper 已有工程證據；`719cf7a4` 另已提交並驗收 C 的 bounded canonical learning runner／
-> training lineage／cutoff／ML boundary 階段（88 tests、508 files guard 0 violations、
-> production-scoped mypy），但 P1 next-day inference／projection provenance 尚未完成。既有 path 是隔離 research／shadow learning：不改正式 Recommendation／Portfolio allocation、不下單，
+> wrapper 已有工程證據；`719cf7a4` 先提交並驗收 C 的 bounded canonical learning runner／
+> training lineage／cutoff／ML boundary，後續 `0219d709` 已完成 P1 next-day inference／
+> projection provenance bounded engineering slice（75 tests、mypy 9 source files、ML guard
+> 509 inspected／0 violations）。該 slice 將 training／inference source 與 PIT hash 分離，核對
+> shared schema／transform compatibility，保存 immutable receipt，並由 normal UI default UUID
+> identity → save → exact readback；identity conflict fail-closed，rule selection authority 不變。
+> 既有 path 是隔離 research／shadow learning：不改正式 Recommendation／Portfolio allocation、不下單，
 > 也不取得 Formal evidence credit。05:45 wrapper／registration definition 已納入本次工程授權；
 > 2026-09-14 由父任務以提升權限進行的唯讀主機查詢觀察到
 > `baldr-forward-outcomes-daily` 與 `baldr-recommendation-calibration-learning-daily`
@@ -32,11 +36,12 @@
 > allocation promotion 與 broker 仍維持 external pending。臺銀首次 05:50 實際 run 已於
 > `05:50:03–05:50:05 -07:00` 以 `failed_dependency` 結束，root guard 已由 `086ba60c` 修復，
 > `0aaf0dff` 受控 retry 成功但仍為 `completed_waiting_natural_maturity`；後續正常排程另列觀察線。
-> `7e029933` 已補真 MainWindow close
-> 與跨程序 writer／reader readback 的工程實證；2026-09-15 Continuity Review Workbench R1 已補
+> `7e029933` 已補真 MainWindow／跨程序 writer／reader continuity readback；`9a9e778b` 另補
+> MainWindow close（`DeferredDelete`、busy 單次 close、實際 OS process exit `0`）。2026-09-15 Continuity Review Workbench R1 已補
 > Journal reminder projection、exact candidate 下鑽與 shared Journey／controls readback；Position Health
-> source-backed projection 亦已由 `5a3ed5db`＋`ef594007` 驗收。C P1／L 尚未完成的端到端 source chain、
-> 跨頁一致性及推薦／決策／outcome 追溯整合，與跨市場到個股的其餘呈現／證據缺口矩陣見
+> source-backed projection 亦已由 `5a3ed5db`＋`ef594007` 驗收。C P1 provenance 已完成；L 官方
+> taxonomy source chain、跨頁一致性及推薦／決策／outcome 追溯整合，與跨市場到個股的其餘呈現／
+> 證據缺口矩陣見
 > [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
 
 ---
@@ -92,8 +97,8 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 - **外部 Gate**：P0 accepted／limited 仍 0；Evidence projection 3/3 仍 `formal_credit_authorized=false`；Paper fills／cost 0；Formal inputs 0/3。
 - **Production Gate**：Runtime environment ready 不等於 Registry writer ready；technical single-writer canary、scheduler approval 與 broker production pool 仍關閉。
 - **容量**：8/30 fresh D free 約 338.9 GiB、retention inventory=`headroom_ok`；舊 6.11/6.56/410.31 GiB status artifact 只作歷史，後續以受控 preflight 產生新觀測，不手改歷史 terminal。
-- **V4.2 每日推薦 calibration**：05:40→05:45 的既有 bounded shadow／receipt path 可觀察；`719cf7a4` 已提交並驗收 C 的 bounded canonical learning runner／training lineage／cutoff／ML boundary 階段（88 tests、508 files guard 0 violations、production-scoped mypy），P1 next-day inference／projection provenance 尚未完成。formal promotion／allocation 仍因 natural forward evidence、production source custody 與 formal review Gate 維持 `formal_candidate_eligible=false`，不改正式推薦。observed fill／實際滑價另屬後續 execution-realism／formal Gate，不是每日 learning 的前置條件。
-- **Decision Workbench／決策連續性**：每日首屏／content-first（`0d9d72af`／`cad07762`）、可比產業讀模型（`25544142`）、typed learning projection（`421ab844`）、唯讀 Decision → Outcome journey（`53b456a0`／`ffb66c6f`）、Increment A/B/C continuity runtime（`5339230f`／`7e029933`）、Position Health（`5a3ed5db`＋`ef594007`）與 R1（`031e11ab`）已分別驗收；完整 market→industry→stock→watchlist／portfolio 使用流程，以及跨頁一致性及推薦／決策／outcome 追溯整合仍待驗收，不宣稱 V5 closeout。
+- **V4.2 每日推薦 calibration**：05:40→05:45 的既有 bounded shadow／receipt path 可觀察；`0219d709` 已提交並驗收 C 的 P1 next-day inference／projection provenance bounded engineering slice（75 tests、mypy 9 source files、ML guard 509 inspected／0 violations），training／inference source 與 PIT hash 分離、shared schema／transform compatibility、immutable receipt、normal UI default UUID→save→exact readback 與 identity conflict fail-closed 均有證據，rule selection authority 不變。formal promotion／allocation 仍因 natural forward evidence、production source custody 與 formal review Gate 維持 `formal_candidate_eligible=false`，不改正式推薦。observed fill／實際滑價另屬後續 execution-realism／formal Gate，不是每日 learning 的前置條件。
+- **Decision Workbench／決策連續性**：每日首屏／content-first（`0d9d72af`／`cad07762`）、可比產業讀模型（`25544142`）、typed learning projection（`421ab844`）、唯讀 Decision → Outcome journey（`53b456a0`／`ffb66c6f`）、Increment A/B/C continuity runtime 與跨程序 readback（`5339230f`／`7e029933`），以及 Qt 關閉修復（`9a9e778b`，`DeferredDelete`、busy 單次 close、實際 OS process exit `0`）、Position Health（`5a3ed5db`＋`ef594007`）與 R1（`031e11ab`）已分別驗收；完整 market→industry→stock→watchlist／portfolio 使用流程，以及跨頁一致性及推薦／決策／outcome 追溯整合仍待驗收，不宣稱 V5 closeout。
 
 以下長列為已落地工程能力清單，不應逐項解讀為產品 closeout：
 
@@ -126,26 +131,26 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 
 本輪 TASK-08 隔離工程整合驗收已完成；真 MainWindow 截圖 smoke／人工 UI 驗收缺口仍明列。以下工程順序與外部 Gate 分開：候選 SQLite 帳本／候選池不自動取代正式 JSONL／JSON；歷史產業篩選須先補已接受的 PIT membership；來源 acceptance、真實 Paper fills／費稅、自然前瞻時間與具名 review 仍不可由離線重跑替代。
 
-### 2026-09-15 Current → Next 校準（基線 `719cf7a4`）
+### 2026-09-15 Current → Next 校準（基線 `0219d709`）
 
 已驗收 baseline 是 `5a3ed5db`＋`ef594007` Position Health、`a4996cba` `user_declared`、
 `031e11ab` Continuity Review Workbench R1、`89a264f6` PIT reader／caller、
 `086ba60c`＋`0aaf0dff` BankTaiwan guard／受控 retry，以及祖先提交 `94d30b51` calendar／inventory
-audit；`719cf7a4` 的 C bounded canonical phase 亦已驗收，但 P1 next-day inference／projection
-provenance、L source chain 與其餘整合仍不是 V4.0 formal、V5 或 V6 closeout。
+audit；`0219d709` 的 C P1 next-day inference／projection provenance bounded phase 亦已驗收，
+但 L source chain 與其餘整合仍不是 V4.0 formal、V5 或 V6 closeout。
 
-C＋L 可在第一階段並行，但整合使用流程排在兩端到端 source chain 之後；V6 contract、baseline、
+C 的 P1 provenance 已完成；目前先推進 L 官方 taxonomy source chain，完整跨頁整合排在 L 之後；V6 contract、baseline、
 歷史回放與離線 learning／calibration 可先設計，user decision／outcome evidence 再決定效果宣稱
 與採用。以下矩陣是本文件的短版 Next 入口：
 
 | Lane／owner | 依賴 | 已完成證據（HEAD 可核對） | 下一驗收 |
 |---|---|---|---|
-| C：canonical learning／lineage | 既有 `421ab844` typed projection、`086ba60c`＋`0aaf0dff` 成本 lane；隔離 shadow root | `719cf7a4` 的 bounded canonical runner／training lineage／cutoff／ML boundary 已提交並驗收：88 tests、508 files guard 0 violations、production-scoped mypy；P1 next-day inference／projection provenance 尚未完成 | 完成 P1 next-day inference／projection provenance 與對應 focused QA；不以 `natural sample=0` 或 replay 取代自然證據 |
+| C：canonical learning／lineage | 既有 `421ab844` typed projection、`086ba60c`＋`0aaf0dff` 成本 lane；隔離 shadow root | `0219d709` 的 bounded canonical runner／training lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已提交並驗收：75 tests、mypy 9 source files、ML guard 509 inspected／0 violations；不同 training／inference source／PIT hash 依 shared schema／transform compatibility 核對，immutable receipt 與 normal UI UUID→save→exact readback 可回查，identity conflict fail-closed、rule selection authority 保留 | 維持 receipt／source／natural maturity 的分層觀察，持續拒絕 future／hash／pointer／identity conflict；不以 `natural sample=0` 或 replay 取代自然證據 |
 | L：官方 taxonomy source chain | `89a264f6` bounded PIT reader／caller、官方 raw／clock／universe custody、owner／license | reader／caller bounded slice 已驗收；官方 taxonomy raw producer／v3／publisher／reader／caller **尚未提交**，PDF／preopen completion time 尚待修正 | full raw→v3→publisher→reader→caller chain、官方 hash／coverage／fixed-date readback 與 PDF／preopen completion-time evidence；缺件維持 fail-closed |
-| 整合使用流程／integration owner | C＋L 端到端輸出；`5a3ed5db`、`a4996cba`、`031e11ab` 的 read-only identity／UI slices | Position Health、`user_declared`、R1 與 PIT reader／caller 各自可核對；尚未證明完整 market→industry→stock→watchlist／portfolio round-trip | 接通同一 decision／source identity 的 read-only journey、跨頁一致性及推薦／決策／outcome 追溯的整合驗收與 degraded fallback；不新增 parallel DB、broker 或正式 writer |
+| 整合使用流程／integration owner | C P1 provenance 與 L source chain 輸出；`5a3ed5db`、`a4996cba`、`031e11ab` 的 read-only identity／UI slices | Position Health、`user_declared`、R1 與 PIT reader／caller 各自可核對；尚未證明完整 market→industry→stock→watchlist／portfolio round-trip | 接通同一 decision／source identity 的 read-only journey、跨頁一致性及推薦／決策／outcome 追溯的整合驗收與 degraded fallback；不新增 parallel DB、broker 或正式 writer |
 | V6：個人化／product owner | 可先做 contract、population baseline、歷史回放、離線 learning／calibration、guardrail／rollback；整合使用流程與 real-user evidence 支持後續採用 | 目前只有產品方向，**未開始 V6 implementation**；不把自然樣本當成設計前置 | 先完成可回放的 user-level projection／baseline／calibration contract；再以真實 user decision／outcome sample、negative evidence 與既有門檻決定效果宣稱與採用；不得保證報酬、隱藏負證據或自動調倉 |
 
-自然 forward、同 scope calibration、05:50／next-day inference 與 V4 formal gates 仍是獨立觀察或
+自然 forward、同 scope calibration、05:50 後續正常排程與 V4 formal gates 仍是獨立觀察或
 外部驗收線；策略／模型效果不保證逐日或逐期單調改善。
 
 ### 2026-08-30 canonical Next
@@ -256,6 +261,9 @@ V3.0 engineering candidate 的 closeout/readiness report 已完成，工程狀�
   acceptance。首次 05:50 實際 run 的 `failed_dependency` 已由
   root guard 修復，受控 retry 成功但後續自然排程仍觀察；順序為 C＋L → 整合使用流程 → V6
   contract／離線設計與 real-user 驗證，不改 V4 formal、V5／V6 定位或正式交易邊界。
+- 2026-09-15（後續校準）：`0219d709` 已完成 C P1 next-day inference／projection provenance
+  bounded engineering acceptance；`9a9e778b` 已完成 MainWindow `DeferredDelete` teardown、busy 單次
+  close 與實際 OS process exit `0`。L source chain、跨頁整合、自然 evidence 與 V4 formal Gate 仍待驗收。
 - 2026-09-15：完成 Continuity Review Workbench R1 bounded engineering acceptance；新增既有
   Journal due projection、Portfolio exact recommendation promotion guard、Workbench exact
   multi-candidate drilldown 與 shared Journey／controls／跨程序 readback QA。此為唯讀 research

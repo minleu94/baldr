@@ -8,14 +8,16 @@ requirements-to-code evidence matrix。它把可交付的 V4.1／V4.2 工程工�
 UI 已能顯示、fixture、historical replay、shadow receipt 或 scheduler Ready 取代自然
 forward evidence、source acceptance、observed fill/cost 或人工 Gate。
 
-> **2026-09-15 current calibration（基線 `719cf7a4`）**：Position Health
+> **2026-09-15 current calibration（基線 `0219d709`）**：Position Health
 > (`5a3ed5db`／`ef594007`)、`user_declared` (`a4996cba`)、Continuity Review Workbench R1
 > (`031e11ab`)、PIT reader／caller (`89a264f6`) 與 BankTaiwan root guard／受控 retry
 > (`086ba60c`／`0aaf0dff`) 已各自有 bounded acceptance。C bounded canonical runner／training
-> lineage／cutoff／ML boundary 已由 `719cf7a4` 提交並驗收（88 tests、508 files guard 0 violations、
-> production-scoped mypy）；P1 next-day inference／projection provenance 與 L 官方 taxonomy
-> source chain 尚待完成；下一順序為
-> C＋L → 整合使用流程 → V6 contract／離線設計，再以 real-user evidence 驗證效果。
+> lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已由 `0219d709`
+> 提交並驗收（75 tests、mypy 9 source files、ML guard 509 inspected／0 violations）；training／
+> inference source／PIT hash 分離、shared schema／transform compatibility、immutable receipt、
+> normal UI UUID→save→exact readback 與 identity conflict fail-closed 可核對，rule selection
+> authority 保留。L 官方 taxonomy source chain 尚待完成；下一順序為
+> L source chain → 整合使用流程 → V6 contract／離線設計，再以 real-user evidence 驗證效果。
 
 本輪結論是：
 
@@ -37,7 +39,7 @@ forward evidence、source acceptance、observed fill/cost 或人工 Gate。
 - **尚未完成真實端到端／外部驗收**：代表股的 current mapping、TPEX／興櫃 coverage 與
   historical PIT membership 仍有限；R1 的 bounded caller／readback 已驗收，但完整
   market→industry→stock→watchlist／portfolio round-trip、跨頁一致性及推薦／決策／outcome
-  追溯整合仍待施工；C／L source chain、natural authority／maturity、source acceptance、
+  追溯整合仍待施工；L source chain、natural authority／maturity、source acceptance、
   observed cost 與 V4 formal Gate 仍待核對。離屏 Qt render、controlled DTO／fixture、
   historical bootstrap、scheduler registration 或 shadow receipt 都不能取代這些證據。
 - **正式安全邊界維持不變**：UI、scheduler、shadow consumer 都不下 broker order、不
@@ -162,9 +164,11 @@ active monitor 與 rollback 接成可審查的 shadow loop：
    reviewer 與 promotion policy 判斷是否可繼續 shadow。2026-09-14 臺銀正常 shadow lane
    的 `natural_matured_sample_count=0` 且 `retain_current`，沒有 adjustment 或 formal
    credit；首次 05:50 實際 run 已 `failed_dependency`，root guard／受控 retry 已處理，
-   後續正常排程仍觀察；legacy 50bp lane 另行判讀，可能為 `blocked`。截至 `719cf7a4`，
-   C bounded canonical runner／training lineage／cutoff／ML boundary 已驗收；P1 next-day
-   inference／projection provenance 與 L 官方 taxonomy source chain 待補。
+   後續正常排程仍觀察；legacy 50bp lane 另行判讀，可能為 `blocked`。截至 `0219d709`，
+   C bounded canonical runner／training lineage／cutoff／ML boundary 與 P1 next-day
+   inference／projection provenance 已驗收；P1 immutable receipt、不同 training／inference
+   source／PIT hash compatibility、normal UI UUID→save→exact readback 與 identity conflict
+   fail-closed 可回查，L 官方 taxonomy source chain 仍待補。
 
 V4.2 的 Exit Criteria 是「shadow loop 可觀察、可回退、能在 evidence 不足時保留現況」，
 不是正式 Recommendation／Portfolio promotion、broker 或 V4.0。
@@ -251,8 +255,8 @@ UX 的前置。尚未取得時
 
 本輪的 content-first 每日首屏、產業強弱／TAIEX 5／20 日基準、daily evidence view 與
 read-only learning paths 已有實際 PySide6／離屏 Qt render 及 typed projection 驗收；
-controlled DTO／fixture screenshot 仍只驗證機率來源摘要與詳情可讀。下一個 product
-increment 先完成 C＋L source chain，再把已驗收的 Position Health／`user_declared`／R1／PIT
+controlled DTO／fixture screenshot 仍只驗證機率來源摘要與詳情可讀。C P1 provenance 已完成，下一個 product
+increment 先完成 L official taxonomy source chain，再把已驗收的 Position Health／`user_declared`／R1／PIT
 bounded slices 接成完整跨頁 read-only journey；V6 的 contract、baseline、歷史回放與離線校準
 可並行設計，效果宣稱／採用仍依 real-user sample。這些 follow-up 仍不能倒推 V4 formal 或完整
 natural market→industry→stock 證據已成立。

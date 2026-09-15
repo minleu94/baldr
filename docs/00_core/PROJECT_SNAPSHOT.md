@@ -1,13 +1,17 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-> **2026-09-15 HEAD 校準**：目前文件基線為已提交 `719cf7a4`（C bounded canonical
-> runner／training lineage／cutoff／ML boundary 階段）。已驗收的 bounded slices 包含
+> **2026-09-15 HEAD 校準**：目前文件基線為已提交 `0219d709`（C P1 bounded
+> next-day inference／projection provenance），並承接 `9a9e778b` 的 Qt 關閉修復。已驗收的 bounded slices 包含
 > `5a3ed5db`＋`ef594007` Position Health、`a4996cba` `user_declared`、`031e11ab` Continuity
 > Review Workbench R1、`89a264f6` PIT reader/caller、`086ba60c`＋`0aaf0dff` BankTaiwan
-> root guard／受控 retry，以及 `94d30b51` calendar／inventory audit。`719cf7a4` 的 C 階段有
-> 88 tests、508 files guard 0 violations 與 production-scoped mypy evidence；P1 next-day
-> inference／projection provenance 與 L 的官方 taxonomy source chain 仍待完成。因此下一
-> 順序是 **C＋L 端到端 → 整合使用流程 → V6 contract／離線設計，再以 user decision/outcome
+> root guard／受控 retry，以及 `94d30b51` calendar／inventory audit。`0219d709` 已完成
+> training／inference source 與 PIT hash 分離、共享 schema／transform compatibility、immutable
+> hash-verified projection receipt、exact result／candidate／date／cost readback、normal UI
+> default UUID → save → exact readback 與 identity conflict fail-closed；rule top-N selection
+> authority 保留不變。相關 bounded QA 為 75 tests、mypy 9 source files、ML boundary guard
+> 509 inspected／0 violations，詳見 [P1 provenance audit](../06_qa/DAILY_PROBABILITY_LEARNING_NEXT_INCREMENT_AUDIT_2026_09_15.md)。
+> L 的官方 taxonomy source chain、完整跨頁整合、自然 evidence 與 V4 formal Gate 仍待完成。因此下一
+> 順序是 **L source chain → 整合使用流程 → V6 contract／離線設計，再以 user decision/outcome
 > evidence 驗證個人化效果**，
 > 不把目前成果縮寫成 V4／V5／V6 完成。
 
@@ -87,15 +91,17 @@ identity 維持不變。
 
 ## 2026-09-15 Decision Continuity Increment C／Qt 關閉驗收
 
-工程修復與隔離驗收已完成：`7e029933` 已交付 Qt `TaskWorker` stale-wrapper 防護、一次 X
-合作式取消／安全自動收尾、TPEX `cancel_requested`／`cancel_completed` receipt 區分，以及
-研究 continuity 的跨頁 identity／journal／Workbench readback。指定的 84 項 Workbench UI
-測試、Update Tab validator（25／0／4）與全域 mypy（614 source files）均已通過；完整證據見
-[Decision Continuity Increment C QA](../06_qa/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)。
+工程修復與隔離驗收已完成：`7e029933` 已交付研究 continuity 的跨頁 identity／journal／Workbench
+readback 與跨程序 writer／reader；`9a9e778b` 另交付 5 檔 Qt 關閉修復，`MainWindow` 以
+`DeferredDelete` 收尾、busy 狀態只合作取消並單次關閉，實際 OS process exit 為 `0`。`TaskWorker／shutdown` 為 25 passed、
+Update UI 為 84 passed、Update Tab validator 為 25／0／4，全域 mypy 為 621 source files clean；
+`7e029933` continuity 證據見 [Decision Continuity Increment C QA](../06_qa/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)，
+`9a9e778b` teardown／OS exit 證據見 [Qt shutdown teardown QA](../06_qa/QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md)。
 
 本段只代表受控、隔離的工程與程序生命週期驗收，不宣稱自然 evidence 已成熟，也不宣稱已
-完整歸因使用者曾見的 memory-write popup；正式資料、live trading 與自然前瞻證據邊界維持
-原狀。Workbench 本次驗證的是顯示與跨程序讀回，不擴大解讀為所有 Workbench 狀態均已接線。
+完整歸因使用者曾見的 memory-write popup；目前沒有把該 popup 的精確 PID／native stack
+對上同一根因。正式資料、live trading 與自然前瞻證據邊界維持原狀。Workbench 本次驗證的是
+顯示與跨程序讀回，不擴大解讀為所有 Workbench 狀態均已接線。
 
 ## 2026-09-15 Continuity Review Workbench R1 唯讀閉環
 
@@ -143,16 +149,18 @@ runner exit `0`。完整記錄見
 本段只代表 bounded engineering／read-only acceptance，不代表自然 forward evidence、
 formal PIT、observed cost、broker execution 或 V4 完成。下一個獨立工程增量是與 Paper
 lane 分離的 `user_declared` research-only layer 已由 `a4996cba`／Increment 2 QA 驗收；自然
-證據仍是持續觀察線，尚未完成。後續不把 `user_declared` 再列為待驗收，改由 C 的 P1
-next-day inference／projection provenance 與 L 的官方 taxonomy source chain 先完成端到端，再接整合使用流程。
+證據仍是持續觀察線，尚未完成。後續不把 `user_declared` 再列為待驗收，改由 L 的官方
+taxonomy source chain 先完成端到端，再接整合使用流程；C 的 P1 provenance 已由 `0219d709` 完成
+bounded engineering acceptance。
 
 ## 2026-09-14 V4.2 prospective source custody 與每日學習現況
 
-本節保存 2026-09-14 既有 shadow receipt 的運行觀察，不等同目前 C 線 P1 next-day
-inference／projection provenance 的完成。`719cf7a4` 已提交並驗收 C 的 bounded canonical
-learning runner、training lineage、cutoff／ML boundary（88 tests、508 files guard 0 violations、
-production-scoped mypy）；P1 next-day inference／projection provenance 仍待完成。下列 receipt
-可作歷史／運行 evidence，但不能把它或 `natural sample=0` 解讀成 C／V4.2 formal 完成。
+本節保存 2026-09-14 既有 shadow receipt 的運行觀察；該日 receipt 不能回溯改成 P1 或
+V4.2 formal evidence。`719cf7a4` 已提交並驗收 C 的 bounded canonical learning runner、
+training lineage、cutoff／ML boundary（88 tests、508 files guard 0 violations、production-scoped
+mypy）；後續 `0219d709` 已補齊 P1 next-day inference／projection provenance 的 bounded
+engineering receipt 與 exact result readback。下列 receipt 仍只能作歷史／運行 evidence，不能把它或
+`natural sample=0` 解讀成 C／V4.2 formal 完成。
 
 05:45 的 `baldr-recommendation-calibration-learning-daily` 已接到同一條有界 pipeline：先跑
 官方日價／技術來源更新，再做 official market-event custody，接著保存正常 scheduled
@@ -242,8 +250,8 @@ scheduler 14 passed、04:22 wrapper true-success 與已交付工程 gate 均已�
 主 Luna 回報 QA 7.1 為 `33 passed`（含 microsecond／nested blocked-capture regression，未杜撰命令）。
 前一輪「主 Luna commit 尚待完成」是當時的 dated record，不作目前 source custody 的完成依據；
 `719cf7a4` 已提交並驗收 C 的 bounded canonical learning／training lineage／cutoff／ML boundary，
-P1 next-day inference／projection provenance 仍待完成。real natural maturity、formal PIT 與
-actual cost 仍維持各自的 pending／out-of-scope 邊界。
+後續 `0219d709` 已完成 P1 next-day inference／projection provenance；real natural maturity、
+formal PIT 與 actual cost 仍維持各自的 pending／out-of-scope 邊界。
 
 目前可分開判讀的 gate 是：price-up calibration 的 prospective source lane 可進入後續自然
 驗證，但整體 promotion 仍等待自然 maturity 與 formal source gate；after-cost 仍因沒有可核驗
@@ -273,15 +281,15 @@ V4 formal completion：
   BankTaiwan 與 legacy 50bp lane 保持分離；就 2026-09-14 臺銀正常 scheduled lane 的觀測，
   natural sample 為 `0`、decision 為 `retain_current`；legacy 50bp 是獨立 lane，可能維持
   `blocked`，不得把兩者合併判讀。這只證明既有 projection／receipt readback；C 的 bounded
-  canonical runner、training lineage、cutoff／ML boundary 已由 `719cf7a4` 提交並驗收；P1 next-day
-  inference／projection provenance 仍待完成。
+  canonical runner、training lineage、cutoff／ML boundary 已由 `719cf7a4` 提交並驗收，P1 next-day
+  inference／projection provenance 則由 `0219d709` 完成 bounded engineering receipt；兩者都不等於
+  natural maturity 或 formal Gate。
   `53b456a0`／`ffb66c6f` 已交付唯讀 Decision → Outcome journey；`5339230f` 與 `031e11ab` 已分別
   驗收 Increment A storage 與 Continuity Review Workbench R1 的 exact reminder／controls／readback。
   完整 market→industry→stock→watchlist／portfolio 的整合使用流程，以及跨頁一致性及推薦／決策／
   outcome 追溯的整合驗收仍待接線，不再把 R1 列為未開始。
 
-仍可施工的工程先是 C＋L 的端到端：C 補 P1 next-day inference／projection provenance；L 補官方
-taxonomy raw producer／v3／
+仍可施工的工程先是 L 的官方 taxonomy 端到端 source chain：補 raw producer／v3／
 publisher／reader／caller，並完成 PDF／preopen completion-time 修正。接著才做 market→industry→
 stock→watchlist／portfolio 的整合使用流程，以及跨頁一致性及推薦／決策／outcome 追溯的整合驗收；
 這些不需等待 V4 formal closeout，但目前尚未驗收。V6 contract、population baseline、歷史回放、

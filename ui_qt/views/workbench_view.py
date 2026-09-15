@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from app_module.workbench_dtos import (
     WORKBENCH_LEGACY_DRILLDOWN_TARGETS,
     WorkbenchDashboardDTO,
+    WorkbenchDailyEvidence,
     WorkbenchEvidenceSummary,
 )
 from app_module.machine_status_classification import (
@@ -43,7 +44,7 @@ from app_module.decision_presentation import (
     format_decision_lineage_detail,
     format_decision_presentation,
 )
-from app_module.research_session import format_research_workflow_path
+from app_module.research_session import ResearchStockContextDTO, format_research_workflow_path
 from ui_qt.models.workbench_table_models import (
     AdvicePortfolioTableModel,
     AdviceCandidateTableModel,
@@ -95,6 +96,11 @@ WORKBENCH_TONES: dict[str, dict[str, str]] = {
     "invalid_evidence": {"fg": "#ef4444", "bg": "#2a1114", "border": "#991b1b"},
     "machine_candidate": {"fg": "#f59e0b", "bg": "#221a10", "border": "#92400e"},
     "machine_degraded": {"fg": "#f59e0b", "bg": "#221a10", "border": "#92400e"},
+    "candidate": {"fg": "#f59e0b", "bg": "#221a10", "border": "#92400e"},
+    "candidate_degraded": {"fg": "#f59e0b", "bg": "#221a10", "border": "#92400e"},
+    "challenger_candidate": {"fg": "#f59e0b", "bg": "#221a10", "border": "#92400e"},
+    "active_model": {"fg": "#22c55e", "bg": "#0d2116", "border": "#166534"},
+    "future_blocked": {"fg": "#ef4444", "bg": "#2a1114", "border": "#991b1b"},
     "stale": {"fg": "#f59e0b", "bg": "#221a10", "border": "#92400e"},
     "unknown": {"fg": "#94a3b8", "bg": "#111827", "border": "#334155"},
     "off": {"fg": "#94a3b8", "bg": "#111827", "border": "#334155"},
@@ -121,6 +127,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         navigate_to_evidence_review_callback: Callable[[], None] | None = None,
         navigate_to_portfolio_callback: Callable[[], None] | None = None,
         navigate_to_watchlist_callback: Callable[[], None] | None = None,
+        navigate_to_stock_research_callback: Callable[[object], None] | None = None,
         navigate_to_update_callback: Callable[[], None] | None = None,
         navigate_to_recommendation_callback: Callable[[], None] | None = None,
         parent=None,
@@ -138,6 +145,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.navigate_to_evidence_review_callback = navigate_to_evidence_review_callback
         self.navigate_to_portfolio_callback = navigate_to_portfolio_callback
         self.navigate_to_watchlist_callback = navigate_to_watchlist_callback
+        self.navigate_to_stock_research_callback = navigate_to_stock_research_callback
         self.navigate_to_update_callback = navigate_to_update_callback
         self.navigate_to_recommendation_callback = navigate_to_recommendation_callback
         self._dashboard: WorkbenchDashboardDTO | None = None
@@ -201,7 +209,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
         title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
         content_layout.addWidget(title)
 
-        workflow_panel, self.workflow_section_title = self._panel_with_title("單一路徑 / Research Workflow")
+        workflow_panel = CollapsibleSectionPanel(
+            "單一路徑 / Research Workflow",
+            collapsed=True,
+        )
+        self.workflow_collapsible = workflow_panel
+        self.workflow_section_title = workflow_panel.title_label
         self.workflow_path_label = QLabel(
             "路徑：" + format_research_workflow_path()
         )
@@ -210,7 +223,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.workflow_path_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
         )
-        workflow_panel.layout.addWidget(self.workflow_path_label)
+        workflow_panel.content_layout.addWidget(self.workflow_path_label)
         workflow_path_layout = QHBoxLayout()
         workflow_path_layout.setContentsMargins(0, 0, 0, 0)
         workflow_path_layout.setSpacing(6)
@@ -252,15 +265,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
             workflow_path_layout.addWidget(button)
             self.workflow_path_buttons[key] = button
         workflow_path_layout.addStretch()
-        workflow_panel.layout.addLayout(workflow_path_layout)
+        workflow_panel.content_layout.addLayout(workflow_path_layout)
         self.workflow_path_note = self._make_state_label()
         self.workflow_path_note.setText(
-            "第 3 段『關鍵股研究』需從市場焦點、觀察清單或持倉列選取個股後開啟；"
-            "此處不替使用者挑股，也不自動下單。"
+            "第 3 段『個股研究』可由每日候選直接開啟，也可從市場焦點、觀察清單或持倉列選取；"
+            "此處不自動新增候選，也不自動下單。"
         )
-        workflow_panel.layout.addWidget(self.workflow_path_note)
+        workflow_panel.content_layout.addWidget(self.workflow_path_note)
         content_layout.addWidget(workflow_panel)
 
+        self._build_daily_investment_journey(content_layout)
         self._build_today_action_center(content_layout)
 
         self.priority_banner = QLabel("")
@@ -763,6 +777,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.workflow_path_layout.setDirection(direction)
         self.drilldown_layout.setDirection(direction)
         self.evidence_summary_layout.setDirection(direction)
+        self.daily_metrics_layout.setDirection(direction)
+        self.daily_action_layout.setDirection(direction)
         self.primary_layout.setDirection(direction)
         self.detail_panel.setMinimumWidth(0 if narrow else 360)
 
@@ -798,6 +814,277 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 ),
             )
         )
+
+    def _build_daily_investment_journey(self, parent_layout: QVBoxLayout) -> None:
+        """建立首頁首屏的每日結論與可追溯下鑽入口。"""
+
+        panel, self.daily_journey_section_title = self._panel_with_title(
+            "今日投資結論／每日決策旅程"
+        )
+        self.daily_journey_panel = panel
+        self.daily_conclusion_label = QLabel("今日結論：等待 WorkbenchDashboardDTO。")
+        conclusion_font = QFont()
+        conclusion_font.setPointSize(14)
+        conclusion_font.setBold(True)
+        self.daily_conclusion_label.setFont(conclusion_font)
+        self.daily_conclusion_label.setWordWrap(True)
+        self.daily_conclusion_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.daily_conclusion_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
+        panel.layout.addWidget(self.daily_conclusion_label)
+
+        self.daily_state_label = self._make_state_label()
+        panel.layout.addWidget(self.daily_state_label)
+
+        metrics_row = QWidget()
+        self.daily_metrics_layout = QHBoxLayout(metrics_row)
+        self.daily_metrics_layout.setContentsMargins(0, 0, 0, 0)
+        self.daily_metrics_layout.setSpacing(8)
+        self.daily_market_card = MetricCard("市場", "等待")
+        self.daily_industry_card = MetricCard("產業", "等待")
+        self.daily_candidate_card = MetricCard("今日候選", "等待")
+        self.daily_portfolio_card = MetricCard("持倉", "等待")
+        self.daily_evidence_card = MetricCard("證據成熟度", "等待")
+        for card in (
+            self.daily_market_card,
+            self.daily_industry_card,
+            self.daily_candidate_card,
+            self.daily_portfolio_card,
+            self.daily_evidence_card,
+        ):
+            card.value_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 11pt; "
+                "font-weight: 700; line-height: 135%;"
+            )
+            card.value_label.setWordWrap(True)
+            self.daily_metrics_layout.addWidget(card, 1)
+        panel.layout.addWidget(metrics_row)
+
+        self.daily_journey_label = self._make_state_label()
+        self.daily_journey_label.setObjectName("dailyJourneySummary")
+        panel.layout.addWidget(self.daily_journey_label)
+
+        self.daily_candidate_detail_label = QLabel("個股研究候選：等待來源。")
+        self.daily_candidate_detail_label.setWordWrap(True)
+        self.daily_candidate_detail_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.daily_candidate_detail_label.setMinimumHeight(48)
+        self.daily_candidate_detail_label.setStyleSheet(
+            f"background: {MIDNIGHT_ANALYST.surface_2}; color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 8px;"
+        )
+        panel.layout.addWidget(self.daily_candidate_detail_label)
+
+        actions_row = QWidget()
+        self.daily_action_layout = QHBoxLayout(actions_row)
+        self.daily_action_layout.setContentsMargins(0, 0, 0, 0)
+        self.daily_action_layout.setSpacing(8)
+        self.daily_candidate_button = QPushButton("開啟候選研究報告")
+        self.daily_candidate_button.setProperty("variant", "primary")
+        self.daily_candidate_button.setAccessibleName("開啟每日候選個股研究報告")
+        self.daily_candidate_button.setToolTip(
+            "以每日候選的股票代號、決策日與來源 identity 開啟既有個股研究報告；不新增觀察清單。"
+        )
+        self.daily_candidate_button.clicked.connect(self._open_daily_candidate_research)
+        self.daily_watchlist_button = QPushButton("查看既有觀察清單")
+        self.daily_watchlist_button.setProperty("variant", "secondary")
+        self.daily_watchlist_button.setAccessibleName("查看既有觀察清單")
+        self.daily_watchlist_button.setToolTip(
+            "查看既有觀察清單；Workbench 不會因每日候選自動新增或修改清單。"
+        )
+        self.daily_watchlist_button.clicked.connect(
+            lambda: self.navigate_to_drilldown_target("watchlist")
+        )
+        self.daily_evidence_button = QPushButton("查看證據成熟度")
+        self.daily_evidence_button.setProperty("variant", "secondary")
+        self.daily_evidence_button.setAccessibleName("查看每日證據成熟度")
+        self.daily_evidence_button.setToolTip(
+            "切到既有證據頁查看範圍、身份與各成熟度窗口；不執行重算。"
+        )
+        self.daily_evidence_button.clicked.connect(lambda: self.select_subtab("Evidence"))
+        self.daily_detail_button = QPushButton("查看每日來源詳情")
+        self.daily_detail_button.setProperty("variant", "secondary")
+        self.daily_detail_button.setCheckable(True)
+        self.daily_detail_button.setAccessibleName("查看每日來源詳情")
+        self.daily_detail_button.setToolTip(
+            "展開每日 snapshot、candidate、event identity、learning receipt 與診斷；唯讀。"
+        )
+        self.daily_detail_button.toggled.connect(self._toggle_daily_detail)
+        for button in (
+            self.daily_candidate_button,
+            self.daily_watchlist_button,
+            self.daily_evidence_button,
+            self.daily_detail_button,
+        ):
+            self.daily_action_layout.addWidget(button)
+        self.daily_action_layout.addStretch()
+        panel.layout.addWidget(actions_row)
+
+        self.daily_trace_label = self._make_detail_box()
+        self.daily_trace_label.setObjectName("dailyJourneyTrace")
+        self.daily_trace_label.setVisible(False)
+        panel.layout.addWidget(self.daily_trace_label)
+        parent_layout.addWidget(panel)
+
+    def _render_daily_investment_journey(
+        self,
+        daily: WorkbenchDailyEvidence | None,
+    ) -> None:
+        self._daily_investment_evidence = daily
+        self.daily_detail_button.blockSignals(True)
+        self.daily_detail_button.setChecked(False)
+        self.daily_detail_button.blockSignals(False)
+        self.daily_trace_label.setVisible(False)
+        if daily is None:
+            self.daily_conclusion_label.setText("今日結論：等待 WorkbenchDashboardDTO。")
+            self.daily_state_label.setText(
+                "狀態：未知｜決策日：未知｜資料日：未知；沒有可信 DTO 時不推定沒有候選或風險。"
+            )
+            self._style_daily_state("unknown")
+            for card in (
+                self.daily_market_card,
+                self.daily_industry_card,
+                self.daily_candidate_card,
+                self.daily_portfolio_card,
+                self.daily_evidence_card,
+            ):
+                card.value_label.setText("等待")
+            self.daily_journey_label.setText(
+                "下一步：重新整理既有唯讀來源。UI 不讀 DB、不執行策略、不補值。"
+            )
+            self.daily_candidate_detail_label.setText(
+                "個股研究候選：尚未載入；空白不等於沒有候選。"
+            )
+            self.daily_candidate_button.setText("開啟候選研究報告")
+            self.daily_candidate_button.setEnabled(False)
+            self.daily_watchlist_button.setEnabled(False)
+            self.daily_evidence_button.setEnabled(False)
+            self.daily_detail_button.setEnabled(False)
+            self.daily_trace_label.setText("每日來源詳情：尚未有可信 DTO。")
+            return
+
+        tone_status = daily.status
+        self.daily_conclusion_label.setText(f"{daily.decision_date} 今日結論：{daily.headline}")
+        self.daily_state_label.setText(
+            f"狀態：{display_workbench_value(daily.status)}｜"
+            f"決策日：{daily.decision_date}｜資料日：{daily.data_as_of_date or '未知'}｜"
+            f"研究候選 {daily.candidate_count} 檔；候選僅供人工研究，非交易指令。"
+        )
+        self._style_daily_state(tone_status)
+        self.daily_market_card.value_label.setText(_compact_daily_text(daily.market_summary))
+        self.daily_industry_card.value_label.setText(_compact_daily_text(daily.industry_summary))
+        self.daily_candidate_card.value_label.setText(
+            f"{daily.candidate_count} 檔\n{_daily_candidate_surface_status(daily)}"
+        )
+        self.daily_portfolio_card.value_label.setText(_compact_daily_text(daily.portfolio_summary))
+        self.daily_evidence_card.value_label.setText(_daily_evidence_card_text(daily))
+        evidence_line = _daily_evidence_surface_line(daily)
+        learning_line = _daily_learning_line(daily.learning)
+        self.daily_journey_label.setText(
+            f"下一步：{daily.next_action}\n{evidence_line}\n{learning_line}"
+        )
+        reasons = daily.candidate_reasons[:5]
+        if reasons:
+            candidate_text = "\n".join(reasons)
+            suffix = (
+                f"\n資料品質：{_daily_quality_text(daily.candidate_quality)}｜"
+                f"資料日：{daily.candidate_data_date or '未知'}"
+            )
+            self.daily_candidate_detail_label.setText(
+                "個股研究候選：\n"
+                f"{candidate_text}{suffix}\n候選僅供研究；不代表已驗證、可成交或應下單。"
+            )
+        else:
+            self.daily_candidate_detail_label.setText(
+                "個股研究候選："
+                "目前沒有可安全呈現的候選列；空結果不等於 Gate 已通過。"
+            )
+        if daily.candidate_symbols:
+            candidate_button_text = f"開啟 {daily.candidate_symbols[0]} 個股研究報告"
+        elif daily.candidate_status == "read_failure":
+            candidate_button_text = "候選來源讀取失敗"
+        else:
+            candidate_button_text = "開啟候選研究報告"
+        self.daily_candidate_button.setText(candidate_button_text)
+        self.daily_candidate_button.setEnabled(
+            bool(daily.candidate_symbols) and self.navigate_to_stock_research_callback is not None
+        )
+        self.daily_watchlist_button.setEnabled(self.navigate_to_watchlist_callback is not None)
+        self.daily_evidence_button.setEnabled(True)
+        self.daily_detail_button.setEnabled(bool(daily.source_trace or daily.diagnostics))
+        self.daily_trace_label.setText(self._format_daily_trace(daily))
+
+    def _style_daily_state(self, status: str) -> None:
+        tone = _workbench_tone(status)
+        self.daily_state_label.setStyleSheet(
+            f"background: {tone['bg']}; color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"border: 1px solid {tone['border']}; border-left: 4px solid {tone['fg']}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 8px;"
+        )
+
+    def _format_daily_trace(self, daily: WorkbenchDailyEvidence) -> str:
+        horizon_text = "；".join(
+            f"{item.window_days}日 total={item.total}/ready={item.ready}/"
+            f"waiting={item.pending}/missing={item.missing}"
+            for item in daily.evidence_windows
+        ) or "未知"
+        lines = [
+            "每日來源詳情（唯讀）",
+            f"決策日={daily.decision_date}｜資料日={daily.data_as_of_date or '未知'}",
+            f"候選 result_id={daily.candidate_result_id or '未知'}｜source_id={daily.candidate_source_id or '未知'}｜"
+            f"source_snapshot_id={daily.candidate_source_snapshot_id or '未知'}",
+            f"candidate identity：{'；'.join(daily.candidate_identity) or '未知'}",
+            f"Evidence scope={daily.evidence_scope_start or '未知'}..{daily.evidence_scope_end or '未知'}｜"
+            f"event_type={daily.evidence_event_type}｜require_cohort_identity={daily.evidence_require_cohort_identity}",
+            f"events={daily.evidence_event_count}｜daily_events={daily.evidence_daily_event_count}｜"
+            f"skipped_incomplete_identity={daily.evidence_skipped_incomplete_identity}",
+            f"horizons：{horizon_text}",
+            f"event_ids：{', '.join(daily.evidence_event_ids[:20]) or '無'}",
+        ]
+        if daily.learning is not None:
+            learning = daily.learning
+            lines.extend(
+                (
+                    f"learning schema={learning.schema_version}｜decision={learning.decision}｜"
+                    f"decision_reason={learning.decision_reason or '未知'}",
+                    f"candidate_id={learning.candidate_id or '無'}｜candidate_status={learning.candidate_status}｜"
+                    f"active_pointer={learning.active_pointer_status}｜active_candidate_id={learning.active_candidate_id or '無'}",
+                    f"receipt natural={learning.natural_matured_sample_count}｜"
+                    f"candidate natural={learning.candidate_natural_matured_sample_count}｜"
+                    f"active natural={learning.active_natural_matured_sample_count}｜"
+                    f"cli_result_updated_at={learning.checked_at or '未知'}",
+                )
+            )
+        lines.append("source trace：" + ("\n".join(daily.source_trace) or "無"))
+        lines.append("diagnostics：" + ("；".join(daily.diagnostics) or "無"))
+        return "\n".join(lines)
+
+    def _toggle_daily_detail(self, expanded: bool) -> None:
+        self.daily_trace_label.setVisible(bool(expanded))
+        self.daily_detail_button.setText(
+            "收合每日來源詳情" if expanded else "查看每日來源詳情"
+        )
+
+    def _open_daily_candidate_research(self) -> bool:
+        daily = getattr(self, "_daily_investment_evidence", None)
+        callback = self.navigate_to_stock_research_callback
+        if daily is None or not daily.candidate_symbols or callback is None:
+            return False
+        stock_code = str(daily.candidate_symbols[0]).strip()
+        if not stock_code:
+            return False
+        callback(
+            ResearchStockContextDTO(
+                stock_code=stock_code,
+                decision_date=daily.decision_date,
+                data_date=daily.candidate_data_date or daily.data_as_of_date or daily.decision_date,
+                result_id=daily.candidate_result_id or "",
+                source_id=daily.candidate_source_id or daily.candidate_result_id or "",
+                source_kind="scheduled_recommendation",
+                source_label="每日推薦研究候選",
+                source_workspace="recommendation",
+            )
+        )
+        return True
 
     def _build_today_action_center(self, parent_layout: QVBoxLayout) -> None:
         """建立首頁的任務導向入口；按鈕只切換既有工作區。"""
@@ -1034,15 +1321,43 @@ class UnifiedDecisionWorkbenchView(QWidget):
         advice = dashboard.advice_dashboard
         advice_rows = tuple(getattr(advice, "recommendations", ())) if advice is not None else ()
         portfolio_rows = tuple(getattr(advice, "portfolio_rows", ())) if advice is not None else ()
+        daily = dashboard.daily_evidence
+        daily_candidate_count = daily.candidate_count if daily is not None else 0
         if advice is None:
-            self._set_today_action_card(
-                "advice",
-                status="尚未載入 Advice",
-                body="尚未有 Advice DTO；可到推薦分析建立並保存研究結果，不能以空白當成結論。",
-                tone="warning",
-                button_text="前往推薦分析",
-                target="recommendation",
-            )
+            if daily_candidate_count:
+                candidate_target = (
+                    "stock_research"
+                    if self.navigate_to_stock_research_callback is not None
+                    else "watchlist"
+                )
+                self._set_today_action_card(
+                    "advice",
+                    status=f"已有 {daily_candidate_count} 檔研究候選",
+                    body=(
+                        "既有 scheduled snapshot 已提供研究候選，但尚未注入 AdviceDashboardDTO；"
+                        "候選不是 current model、不是交易指令，請開啟個股研究報告。"
+                    ),
+                    tone=(
+                        "machine_degraded"
+                        if daily.candidate_status == "candidate_degraded"
+                        else "machine_candidate"
+                    ),
+                    button_text=(
+                        "開啟候選研究"
+                        if candidate_target == "stock_research"
+                        else "查看既有觀察清單"
+                    ),
+                    target=candidate_target,
+                )
+            else:
+                self._set_today_action_card(
+                    "advice",
+                    status="尚未載入 Advice",
+                    body="尚未有 Advice DTO；可到推薦分析建立並保存研究結果，不能以空白當成結論。",
+                    tone="warning",
+                    button_text="前往推薦分析",
+                    target="recommendation",
+                )
         elif not advice_rows and not portfolio_rows:
             self._set_today_action_card(
                 "advice",
@@ -1098,6 +1413,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             primary_label, primary_target = "先確認資料狀態", "update"
         elif action_count:
             primary_label, primary_target = "先檢查持倉事項", "portfolio_review"
+        elif advice is None and daily_candidate_count:
+            primary_target = (
+                "stock_research"
+                if self.navigate_to_stock_research_callback is not None
+                else "watchlist"
+            )
+            primary_label = "開啟今天的候選研究"
         elif review_count:
             primary_label, primary_target = f"查看 {review_count} 項今日待判讀", "daily_decision"
         elif advice is None:
@@ -1118,6 +1440,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             return self.navigate_to_update_callback is not None
         if target == "recommendation":
             return self.navigate_to_recommendation_callback is not None
+        if target == "stock_research":
+            return self.navigate_to_stock_research_callback is not None
+        if target == "watchlist":
+            return self.navigate_to_watchlist_callback is not None
         legacy_target = WORKBENCH_LEGACY_DRILLDOWN_TARGETS.get(target, target)
         callbacks: dict[str, Callable[[], None] | None] = {
             "daily_decision": self.navigate_to_daily_decision_callback,
@@ -1215,12 +1541,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if target == "recommendation" and hasattr(self, "navigate_to_recommendation_callback") and self.navigate_to_recommendation_callback:
             self.navigate_to_recommendation_callback()
             return True
+        if target == "stock_research":
+            return self._open_daily_candidate_research()
 
-        legacy_target = WORKBENCH_LEGACY_DRILLDOWN_TARGETS.get(str(target))
+        legacy_target = WORKBENCH_LEGACY_DRILLDOWN_TARGETS.get(str(target), str(target))
         callbacks: dict[str, Callable[[], None] | None] = {
             "daily_decision": self.navigate_to_daily_decision_callback,
             "evidence_review": self.navigate_to_evidence_review_callback,
             "portfolio": self.navigate_to_portfolio_callback,
+            "watchlist": self.navigate_to_watchlist_callback,
         }
         callback = callbacks.get(str(legacy_target))
         if callback is None:
@@ -1299,6 +1628,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self._set_summary_blocks(dashboard)
         self._set_priority_banner(dashboard)
+        self._render_daily_investment_journey(dashboard.daily_evidence)
         self._render_today_action_center(dashboard)
         self.meta_label.setText(
             f"決策日期={dashboard.as_of_date.isoformat()} | "
@@ -1495,6 +1825,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _display_pending_dashboard(self) -> None:
         self.refresh_button.setEnabled(self.source_service is not None)
+        self._render_daily_investment_journey(None)
         self._render_today_action_center(None)
         self.boundary_banner.setText(
             "安全邊界：正在等待既有工作台狀態；不會將缺資料解讀為可交易結果。"
@@ -1566,6 +1897,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._set_summary_blocks(dashboard)
             for key in self.summary_blocks:
                 self._apply_summary_block_style(key, MACHINE_STATUS_STALE)
+            self._render_daily_investment_journey(dashboard.daily_evidence)
+            self.daily_state_label.setText(
+                self.daily_state_label.text()
+                + "｜Workbench source 讀取失敗，本次內容為 stale；請 Retry。"
+            )
+            self._style_daily_state(MACHINE_STATUS_STALE)
             self._render_today_action_center(dashboard)
             if not dashboard.review_items:
                 self._set_review_empty_state(dashboard)
@@ -1613,6 +1950,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         self._dashboard = None
         self._dashboard_stale = False
+        self._render_daily_investment_journey(None)
         self._render_today_action_center(None)
         self.boundary_banner.setText(
             "安全邊界：工作台狀態未知；尚無可信 DTO 可顯示。"
@@ -1948,6 +2286,83 @@ def _detail_display_title(title: str) -> str:
 
 def _workbench_tone(status: str) -> dict[str, str]:
     return WORKBENCH_TONES.get(str(status), WORKBENCH_TONES["neutral"])
+
+
+def _compact_daily_text(value: str, limit: int = 70) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(1, limit - 1)] + "…"
+
+
+def _daily_quality_text(value: object) -> str:
+    raw = str(value or "unknown").strip().lower()
+    return {
+        "observed": "可讀",
+        "ready": "已就緒",
+        "complete": "完整",
+        "degraded": "降級",
+        "missing": "缺漏",
+        "stale": "過期",
+        "future_blocked": "日期不可用",
+        "unknown": "未知",
+    }.get(raw, raw)
+
+
+def _daily_candidate_surface_status(daily: WorkbenchDailyEvidence) -> str:
+    status = str(daily.candidate_status or "unknown").strip().lower()
+    if status == "candidate":
+        return "待研究"
+    if status == "candidate_degraded":
+        return "資料需複核"
+    if status in {"stale", "future_blocked"}:
+        return "日期不可用"
+    if status in {"missing", "read_failure"}:
+        return "來源待檢查"
+    return _daily_quality_text(status)
+
+
+def _daily_evidence_state_parts(daily: WorkbenchDailyEvidence) -> list[str]:
+    parts: list[str] = []
+    if daily.outcome_ready > 0:
+        parts.append(f"已成熟 {daily.outcome_ready}")
+    if daily.outcome_pending > 0:
+        parts.append(f"尚待成熟 {daily.outcome_pending}")
+    if daily.outcome_missing > 0:
+        parts.append(f"缺件 {daily.outcome_missing}")
+    return parts or ["尚未形成"]
+
+
+def _daily_evidence_card_text(daily: WorkbenchDailyEvidence) -> str:
+    if daily.evidence_event_count == 0:
+        return "合格事件 0 件\n尚無可核對結果"
+    return (
+        f"合格事件 {daily.evidence_event_count} 件\n"
+        f"結果 {daily.outcome_total} 筆｜{'、'.join(_daily_evidence_state_parts(daily))}"
+    )
+
+
+def _daily_evidence_surface_line(daily: WorkbenchDailyEvidence) -> str:
+    if daily.evidence_event_count == 0:
+        return "證據：尚無可核對的合格事件；零事件不等於零風險。"
+    return (
+        f"證據：合格事件 {daily.evidence_event_count} 件；結果 {daily.outcome_total} 筆；"
+        f"{'、'.join(_daily_evidence_state_parts(daily))}。"
+    )
+
+
+def _daily_learning_line(learning) -> str:
+    if learning is None:
+        return "學習：來源缺失，不能判定模型狀態。"
+    active_pointer = str(learning.active_pointer_status or "unknown").strip().lower()
+    active_sample = learning.active_natural_matured_sample_count
+    if active_pointer == "active" and active_sample is not None and active_sample > 0:
+        return "學習：已有自然成熟樣本；模型狀態可進一步複核。"
+    if active_pointer == "rule_only":
+        return "學習：尚待自然成熟樣本；今日候選僅供研究。"
+    if active_sample == 0:
+        return "學習：目前沒有自然成熟樣本；今日候選僅供研究。"
+    return "學習：模型狀態待複核；今日候選僅供研究。"
 
 
 def _detail_status(item) -> str:

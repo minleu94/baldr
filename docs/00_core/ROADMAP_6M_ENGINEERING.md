@@ -512,6 +512,12 @@ journey、daily evidence view 與既有 identity adapter 不必等待 V4 formal 
 5. **成本 read model**：本輪先消費已提交的臺銀 `estimated_research_only` policy／consumer；
    observed fills、partial fill、broker 對帳與實際滑價是後續 execution-realism／formal Gate。
 
+本輪 2026-09-14 bounded slice 的未完成項（不得視為 V5 closeout）：
+
+- **真正產業分類強弱**：目前來源可能是 `industry_indices` 的市場指數代理，且可含槓桿／反向名稱；在建立 PIT 產業分類映射與可比基準前，Workbench 只能標示代理觀察，不能宣稱真實產業領先／落後。
+- **typed 自然驗證權威**：Workbench 只投影既有 learning receipt；若尚未有 verifier 核對的 natural authority receipt，matured sample／active model 不能升格為已驗證或 current champion。
+- **完整決策結果串接**：目前完成候選的唯讀 source identity 與既有個股研究下鑽；Journal、Portfolio ledger、Evidence outcome 與完整 decision continuity 尚未形成單一可回溯結果鏈，仍屬 V5 後續工作。
+
 V5 是可與 V4 formal 並行的完整決策體驗（每日結論、內容優先 journey、research fallback、
 decision／outcome continuity），不是新 Formal version。V6 是更後的 user-level evidence-
 driven personalization，需在 V5 continuity 上另立 sample、guardrail、calibration 與 rollback

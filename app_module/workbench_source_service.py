@@ -18,6 +18,7 @@ from app_module.pre_v2_readiness_service import (
     PreV2ReadinessService,
 )
 from app_module.workbench_dtos import WorkbenchDashboardDTO
+from app_module.daily_investment_journey import DailyInvestmentJourneyService
 from app_module.workbench_read_only_composer import WorkbenchReadOnlyComposer
 from app_module.recommendation_learning_paths import (
     RecommendationLearningPathError,
@@ -51,6 +52,10 @@ class WorkbenchSourceService:
         )
         self.composer = WorkbenchReadOnlyComposer()
         self.scheduled_status_service = ScheduledEvidenceStatusService(config)
+        self.daily_investment_journey_service = DailyInvestmentJourneyService(
+            config,
+            evidence_db_path=self.evidence_db_path,
+        )
 
     def inspect(
         self,
@@ -81,7 +86,7 @@ class WorkbenchSourceService:
         )
         source_diagnostics.extend(learning_diagnostics)
         source_mode = "read_only_sources_plus_historical_replay" if historical_replay_summary else "read_only_sources"
-        return self.composer.compose(
+        dashboard = self.composer.compose(
             decision_snapshot=decision_snapshot,
             readiness_report=readiness_report,
             agent_report_sample=agent_report_sample,
@@ -91,6 +96,13 @@ class WorkbenchSourceService:
             source_diagnostics=tuple(source_diagnostics),
             recommendation_learning_status=recommendation_learning_status,
         )
+        daily_evidence = self.daily_investment_journey_service.build(
+            decision_snapshot=decision_snapshot,
+            scheduled_status=scheduled_status,
+            recommendation_learning_status=recommendation_learning_status,
+            requested_decision_date=dashboard.as_of_date.isoformat(),
+        )
+        return replace(dashboard, daily_evidence=daily_evidence)
 
     def _load_recommendation_learning_status(
         self,

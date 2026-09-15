@@ -1147,7 +1147,28 @@ class MainWindow(QMainWindow):
             view = None
         selector = getattr(view, "select_stock", None)
         if callable(selector):
-            selector(context.stock_code, context.result_id or None)
+            selected = bool(selector(context.stock_code, context.result_id or None))
+            if (
+                not selected
+                and context.source_workspace == "portfolio"
+                and context.result_id
+            ):
+                self._show_research_return_failure(context)
+
+    def _show_research_return_failure(self, context: ResearchStockContextDTO) -> None:
+        """呈現 Portfolio exact identity 失配，避免使用者誤以為已返回。"""
+
+        message = (
+            f"持倉研究返回未精確定位：{context.stock_code} 的目前持倉來源不是 "
+            f"{context.result_id}。為避免同股替代選取，這次未變更持倉列；"
+            "請回推薦分析重新開啟正確結果。"
+        )
+        try:
+            self.statusBar().showMessage(message)
+        except (AttributeError, RuntimeError):
+            # 關閉流程或最小測試 host 可能沒有可用 status bar；不讓提示
+            # 失敗反過來破壞原本的 fail-closed return guard。
+            return
 
     def _request_shutdown_dependencies(
         self,

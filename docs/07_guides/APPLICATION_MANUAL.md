@@ -2313,7 +2313,7 @@ ML 的模型訓練位於 `ml_module/allocation_training_service.py`，凍結模�
 
 每個來源依自己的可得時間與 cadence 判讀。每日行情依官方交易 session，月營收與季報依公告／可得 cadence；週末／假日的上一個官方交易日不會只因資料日早於查詢日就被標為過期。`current` 與合法的 `expected_wait` 只有在個股資料期與 receipt 預期資料期相符時才可保持 fresh，`stale`／`partial` 顯示過期或範圍不足，`failed`／`unknown` 顯示 partial／degraded。freshness receipt 缺失、損壞、日期或資料根不符時不採用，報告保留來源日期但更新狀態為未知，不把它猜成過期。基本面每表最多顯示 24 筆，先依報告期／資料日選最新期，再以可得時間選同一期版本，避免較晚取得的歷史 row 擠掉最新報告。
 
-「缺資料」不等於零值或利空；法人／信用／集保、持倉、Exit、ML 沒有實際 provider 或 row 時不補假資料。Advice 只讀取既有已保存推薦，沒有合格來源時顯示不可用，不重新評分。切換股票時，舊 worker 的晚到結果會被丟棄，不會覆寫新股票；返回或關閉報告會回到原觀察清單／持倉頁並重新選取原股票，保留來源頁的篩選狀態。
+「缺資料」不等於零值或利空；法人／信用／集保、持倉、Exit、ML 沒有實際 provider 或 row 時不補假資料。Advice 只讀取既有已保存推薦，沒有合格來源時顯示不可用，不重新評分。切換股票時，舊 worker 的晚到結果會被丟棄，不會覆寫新股票；返回或關閉報告會回到原觀察清單／持倉頁並重新選取原股票，保留來源頁的篩選狀態。若持倉返回上下文帶有 `result_id`，目前持倉列必須通過同一保存推薦結果的 exact 驗證；失配時不以同股票替代選取，狀態列會提示回推薦分析重新開啟正確結果。沒有 `result_id` 的既有 unlinked 研究仍維持單一股票代號返回相容行為。
 
 若下鑽上下文帶有明示 `result_id`，報告另提供「決策 → 結果」分頁：依同一 `result_id` 與 exact `candidate_key` 顯示 Evidence、5／10／20／60 個交易日的連結／結果狀態、既有 Journal 與 Portfolio event。`已連結` 不代表 outcome 已成熟；`insufficient_future_data` 會顯示「尚待結果成熟」。缺少 `result_id` 時明示未連結，不以同股同日猜測；研究前瞻報酬與個人筆記／持倉事件分開，畫面唯讀且不建立交易。完整 result identity、event key 與來源 snapshot 收在收合的技術詳情中；Journal／Portfolio 缺件不阻擋推薦研究檢視。
 

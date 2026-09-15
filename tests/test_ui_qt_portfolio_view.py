@@ -291,6 +291,32 @@ def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path
     assert "來源追溯：recommendation_result；rec-1" in detail_text
 
 
+def test_portfolio_return_uses_position_id_after_table_sort_and_keeps_trade_filter(tmp_path):
+    result_path = tmp_path / "recommendation" / "runs" / "rec-1.json"
+    result_path.parent.mkdir(parents=True)
+    result_path.write_text(
+        json.dumps(
+            {
+                "result_id": "rec-1",
+                "recommendations": [{"stock_code": "2317"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    view = make_portfolio_view(tmp_path)
+
+    assert view.positions_model is not None
+    stock_column = view.positions_model.getVisibleColumns().index("證券代號")
+    view.positions_model.sort(stock_column, Qt.AscendingOrder)
+    assert tuple(view.positions_model.getDataFrame()["證券代號"]) == ("2317", "2330")
+
+    # The sorted first row is still resolved to the 2317 PositionDTO through
+    # hidden position_id, so the saved recommendation identity remains exact.
+    assert view.select_stock("2317", "rec-1") is True
+    assert view.selected_stock_code == "2317"
+    assert "目前只顯示：2317" in view.trade_filter_status_label.text()
+
+
 def test_portfolio_page_hydrates_summary_and_table_from_one_portfolio_dto(tmp_path):
     class DtoOnlyPortfolioService(FakePortfolioService):
         def list_positions(self):

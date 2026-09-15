@@ -2028,7 +2028,7 @@ class PortfolioView(QWidget):
                     "投入金額", "未實現損益", "未實現損益%", "已實現損益",
                     "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因",
                     "動作適合度", "Advice 動作（研究）", "Position Health", "Health 來源",
-                    "權重差距(bp)", "失效條件"
+                    "權重差距(bp)", "失效條件", "_position_id"
                 ])
             else:
                 data = []
@@ -2089,14 +2089,21 @@ class PortfolioView(QWidget):
                         "Health 來源": health_source,
                         "權重差距(bp)": presentation.weight_gap_bp if presentation.weight_gap_bp is not None else "未知",
                         "失效條件": invalidation_text,
+                        # 只供返回來源時把可排序的 table row 對回同一個
+                        # PositionDTO；不讓 UI 以 stock code 猜 identity。
+                        "_position_id": str(p.position_id),
                         "_tooltip": presentation_text,
                     })
                 df = pd.DataFrame(data)
 
             self.positions_model = PandasTableModel(df)
-            # 隱藏內部輔助用的 _tooltip 欄位
-            if "_tooltip" in df.columns:
-                self.positions_model.setVisibleColumns([col for col in df.columns if col != "_tooltip"])
+            # 隱藏內部輔助欄位；_position_id 讓排序後的 table row 仍能
+            # 精確回到同一 PositionDTO，_tooltip 則只供畫面提示。
+            internal_columns = {"_position_id", "_tooltip"}
+            if internal_columns.intersection(df.columns):
+                self.positions_model.setVisibleColumns(
+                    [col for col in df.columns if col not in internal_columns]
+                )
 
             self.positions_table.setModel(self.positions_model)
             self.positions_table.resizeColumnsToContents()
@@ -2393,6 +2400,35 @@ class PortfolioView(QWidget):
             return ""
         return source_id
 
+    def _position_for_table_row(self, frame: pd.DataFrame, row_number: int) -> object | None:
+        """以隱藏 position identity 把可排序 table row 對回目前 DTO。"""
+
+        portfolio = self._last_portfolio_dto
+        if portfolio is None or row_number < 0 or row_number >= len(frame):
+            return None
+
+        row = frame.iloc[row_number]
+        position_id = str(row.get("_position_id", "") or "").strip()
+        if position_id:
+            return next(
+                (
+                    position
+                    for position in portfolio.positions
+                    if str(getattr(position, "position_id", "") or "").strip() == position_id
+                ),
+                None,
+            )
+
+        # 舊的／測試替身 model 可能沒有內部 identity 欄位；只有在
+        # 目前 stock code 對應到唯一 PositionDTO 時才容許保守相容。
+        code = str(row.get("證券代號", "") or "").strip()
+        candidates = [
+            position
+            for position in portfolio.positions
+            if str(getattr(position, "stock_code", "") or "").strip() == code
+        ]
+        return candidates[0] if len(candidates) == 1 else None
+
     def _open_selected_stock_research(self, index=None) -> None:
         """持倉雙擊／明確按鈕共用的個股研究報告入口。"""
 
@@ -2439,19 +2475,45 @@ class PortfolioView(QWidget):
     def select_stock(self, stock_code: str, result_id: str | None = None) -> bool:
         """返回持倉頁時定位既有列，保留交易歷史篩選狀態。"""
 
-        del result_id
         if not self.positions_model:
             return False
         code = str(stock_code).strip()
         frame = self.positions_model.getDataFrame()
         if "證券代號" not in frame.columns:
             return False
-        for row_number, value in enumerate(frame["證券代號"]):
-            if str(value).strip() == code:
-                self.positions_table.selectRow(row_number)
-                self._on_position_selected(self.positions_model.index(row_number, 0))
-                return True
-        return False
+        matching_rows = [
+            row_number
+            for row_number, value in enumerate(frame["證券代號"])
+            if str(value).strip() == code
+        ]
+        if not matching_rows:
+            return False
+
+        requested_result_id = str(result_id or "").strip()
+        if not requested_result_id:
+            # 沒有 result identity 的舊／unlinked context 維持 stock-only
+            # 相容，但同股多列時不猜第一列。
+            if len(matching_rows) != 1:
+                return False
+            selected_row = matching_rows[0]
+        else:
+            exact_rows = []
+            for row_number in matching_rows:
+                position = self._position_for_table_row(frame, row_number)
+                validated_result_id = self._validated_recommendation_result_id(
+                    position,
+                    code,
+                )
+                if validated_result_id == requested_result_id:
+                    exact_rows.append(row_number)
+            # 明示 result_id 卻沒有唯一 exact match 時，禁止退回同股選取。
+            if len(exact_rows) != 1:
+                return False
+            selected_row = exact_rows[0]
+
+        self.positions_table.selectRow(selected_row)
+        self._on_position_selected(self.positions_model.index(selected_row, 0))
+        return True
 
     def _show_position_context_menu(self, pos):
         """右鍵選單操作"""

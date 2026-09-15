@@ -96,12 +96,22 @@ MainWindow shutdown 原始證據：
 
 ## 已執行驗證
 
+本次指定的三項必要 gate 已保留實際結果與執行時間：
+
+- `tests/test_ui_qt_update_view_workbench.py`：2026-09-15 執行，`84 passed`、1 個既有
+  `PytestCacheWarning`，耗時 `2.17s`。
+- `scripts/qa_validate_update_tab.py`：2026-09-15 00:55:02 PDT 執行，exit code `0`，
+  通過 `25`／失敗 `0`／跳過 `4`；同期 `VALIDATION_REPORT.md` 生成時間相同。
+- 全域 mypy：2026-09-15 00:55:12 PDT（`07:55:12Z`）執行，exit code `0`，
+  `Success: no issues found in 614 source files`。
+
 | 驗證 | 結果 | 備註 |
 | --- | --- | --- |
 | combined focused suite（5 個 test modules） | 118 passed | launcher contract、TPEX backend/UI race、shutdown coordinator、TaskWorker、UpdateView workbench |
 | changed Python `py_compile` | 通過 | launcher、TPEX backend、MainWindow／UpdateView／worker、相關測試 |
-| `scripts/qa_validate_update_tab.py` | 通過 25／失敗 0／跳過 4 | 使用 Temp isolated data/output；未寫入正式資料 |
-| global mypy（`ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`） | 通過 | `Success: no issues found in 614 source files` |
+| `scripts/qa_validate_update_tab.py` | 通過 25／失敗 0／跳過 4 | 2026-09-15 00:55:02 PDT；使用 Temp isolated data/output；未寫入正式資料 |
+| `tests/test_ui_qt_update_view_workbench.py` | 84 passed | 2026-09-15；1 個既有 `PytestCacheWarning`；耗時 2.17s |
+| global mypy（`ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`） | 通過 | 2026-09-15 00:55:12 PDT（07:55:12Z）；`Success: no issues found in 614 source files` |
 | `tests/test_qa_research_journey_subprocess.py` | 4 passed | fake child contract；含 nested PID receipt、Job close failure → launcher error、timeout PID proof |
 | `tests/test_tpex_background_refresh_script.py` | 通過 | backend 讀 marker 並寫 `cancel_completed` receipt |
 | `tests/test_ui_qt_shutdown_coordinator.py` | 6 passed | 含真 QApplication／真 TaskWorker；第一次 X 後自動 close，未重按 |

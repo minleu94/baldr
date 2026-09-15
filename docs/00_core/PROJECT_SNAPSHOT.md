@@ -1,5 +1,17 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-15 Decision Continuity Increment C／Qt 關閉驗收
+
+工程修復與隔離驗收已完成：`7e029933` 已交付 Qt `TaskWorker` stale-wrapper 防護、一次 X
+合作式取消／安全自動收尾、TPEX `cancel_requested`／`cancel_completed` receipt 區分，以及
+研究 continuity 的跨頁 identity／journal／Workbench readback。指定的 84 項 Workbench UI
+測試、Update Tab validator（25／0／4）與全域 mypy（614 source files）均已通過；完整證據見
+[Decision Continuity Increment C QA](../06_qa/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)。
+
+本段只代表受控、隔離的工程與程序生命週期驗收，不宣稱自然 evidence 已成熟，也不宣稱已
+完整歸因使用者曾見的 memory-write popup；正式資料、live trading 與自然前瞻證據邊界維持
+原狀。Workbench 本次驗證的是顯示與跨程序讀回，不擴大解讀為所有 Workbench 狀態均已接線。
+
 ## 2026-09-14 V4.2 prospective source custody 與每日學習現況
 
 05:45 的 `baldr-recommendation-calibration-learning-daily` 已接到同一條有界 pipeline：先跑

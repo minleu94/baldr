@@ -170,6 +170,7 @@ source／cost custody 與可回滾的 model／policy registry；目前僅作產�
 | P0 | Research fallback packet：不足證據時提供 missing reason、補件來源、下一研究問題與 revisit date。 | 既有 quality／warning；不引入未驗證資料。 | fallback fixture、空／降級 UI、禁止正向 action／weight 測試。 |
 | P0 | Immutable decision snapshot identity：市場／產業／個股／watchlist／portfolio 使用同一 key。 | 既有 snapshot／advice identity；需要明確 repository boundary。 | idempotent readback、舊資料 unknown、跨頁同 hash／同 decision date。 |
 | P1 | 既有 Journal／Evidence／Portfolio ledger identity adapter 與 T+N outcome join。 | 既有 `JournalService`、Evidence event/outcome、Portfolio ledger；具名 owner、append-only 治理與自然時間。 | decision／outcome crosswalk、可重跑 receipt、review／override history、無正式交易寫入；不新增平行 decision DB。 |
+| P1 | Increment B：研究操作 → append-only continuity → 跨頁讀回。 | Increment A 的 `DecisionIdentity`／revision／tombstone／idempotency contract，加上 Decision → Outcome Journey 的 exact identity read model 與個股研究唯讀頁；本輪 learning projection 也能由 Workbench 明確決策日讀回。 | B 的 accept／skip／note／next-review caller 尚未由所有研究入口完整接線；完整 Recommendation → Research → Watchlist／Portfolio → Workbench round-trip、review history head 與自然 evidence 回饋仍未完成。這條增量不包含 broker／trade／V4 formal。 |
 | P1 | 臺銀估算成本 read model。 | 既有台灣銀行成本 policy、Decimal／整數契約；observed fill／partial fill 另作後續 Gate。 | `estimated_research_only`、cost version、fill source／未觀測警告；估算淨效用可研究，但不標 paper／live。 |
 | P0/P1 | Typed natural authority projection、champion／challenger／rollback package。 | `RecommendationLearningEvidenceProjectionService`、`ResearchConsoleView` 與 Workbench 已以 read-only 方式消費 candidate／active／capture typed verifier；routine shadow adoption／rollback 仍依既有 policy 自動執行，正式影響另需具名 reviewer／promotion decision。 | 真實 natural matured sample、effective window 與正式 promotion package 仍未完整；BankTaiwan／legacy cost lane、candidate／active identity 不可混合，無 verifier 仍 unknown。 |
 | P1 | Read-only scheduler/action/receipt audit。 | 實機 Task Scheduler 讀取權限、owner／trigger／command hash；不註冊、不重啟。 | task path/state/action/last result、latest receipt、natural sample、decision reason 對帳。 |
@@ -197,13 +198,10 @@ increment：先確保有內容的每日結論與候選／持倉，再將空表�
 
 - `tests/test_decision_presentation.py`：14 passed。
 - `tests/test_decision_presentation.py tests/test_ui_qt_workbench_view.py tests/test_ui_qt_portfolio_view.py`：69 passed，1 warning（pytest cache 權限警告）。
-- 先前基線的強制 UI suite `tests/test_ui_qt_update_view_workbench.py`：81 passed，1 warning；
-  本次依根 AGENTS 重跑時 `portfolio_store` import 已恢復，但因共享工作區其他線尚未提供
-  `app_module.journal_service` 而在 collection 階段 blocked。
-- 先前基線的 `scripts/qa_validate_update_tab.py`：25 pass、0 fail、4 skip；本次重跑同樣在
-  import 階段因 `app_module.journal_service` 缺檔 blocked，未把失敗改標為通過；先前 report
-  位於 `output/qa/update_tab/VALIDATION_REPORT.md`。最後一次 MainWindow offscreen rerun 也
-  因同一缺檔 blocked，舊 summary 只保留最後一次成功 artifact。
+- 依根 AGENTS 最新驗證，`tests/test_ui_qt_update_view_workbench.py` 為 `81 passed`；
+  `scripts/qa_validate_update_tab.py` 為 `25 pass、0 fail、4 skip`。先前共享工作區的
+  `portfolio_store`／`journal_service` 缺檔 blocker 已 resolved，不再作為目前缺口；
+  `output/qa/update_tab/VALIDATION_REPORT.md` 保留既有 validator report。
 - Learning evidence／Workbench focused suites：`72 passed, 1 warning`；完整 case map、
   實際資料 lane readback 與 failure-mode coverage 見
   `docs/06_qa/LEARNING_EVIDENCE_WORKBENCH_2026_09_14.md`。
@@ -211,7 +209,7 @@ increment：先確保有內容的每日結論與候選／持倉，再將空表�
 - focused mypy（`decision_presentation.py`、`workbench_view.py`，skip imports）：passed。
 - 全域指定 mypy（本次依根 AGENTS 重跑，指令為
   `\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`）：
-  `Success: no issues found in 611 source files`；臺銀成本子任務已另外完成其 public API／
+  `Success: no issues found in 612 source files`；臺銀成本子任務已另外完成其 public API／
   consumer 的型別修正，本輪只消費其已提交的 research estimate，不修改成本核心。
 - 已產生並目視檢查的 local render：
   - 離屏實際 Qt learning projection（實際 read-only BankTaiwan／legacy paths；不是 native desktop mouse／screenreader）：

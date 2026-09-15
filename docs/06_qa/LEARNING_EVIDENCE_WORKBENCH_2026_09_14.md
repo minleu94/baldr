@@ -13,6 +13,22 @@
 - candidate／active／capture 與 cost scenario 必須同 lane、同 candidate／model identity、同決策日及同 source contract；horizon 統計只取單一選定 lane，不能跨 candidate／active 或跨成本情境合併。
 - Workbench 的 dashboard decision date 會傳入 Research Console；未明示日期時只接受可信的臺灣官方交易日 resolver。日曆不可用或日期不明時顯示 `unknown`，不以 learning receipt 的最新日期冒充今日。
 
+## Increment B：研究操作、append-only 紀錄、跨頁讀回與自然 evidence
+
+Increment B 的邊界是「把明示的 recommendation／stock／snapshot identity 帶入研究操作，
+並能在頁面往返後讀回同一條 continuity」；它不等於 V4 formal maturity，也不把只讀
+learning projection 當成 user decision。依目前 A／D 增量，狀態如下：
+
+| 面向 | 目前已完成／可核對增量 | 仍缺的 B gate |
+|---|---|---|
+| 研究操作 | 個股研究報告已能以 `ResearchStockContextDTO.result_id` 開啟唯讀 Decision → Outcome Journey；Workbench → Research Console 也已綁定明確決策日與成本 lane。畫面沒有 Apply、Trade 或 implicit accept。 | B 的 accept／skip／note／next-review 操作尚未完整接到每個研究入口；不能因畫面可讀就產生 user decision。 |
+| append-only 紀錄 | Increment A 已提供 `DecisionIdentity`、候選池 revision／tombstone、研究 journal revision、idempotency／optimistic-concurrency 與 unknown／conflict 契約；歷史資料不靠猜測 backfill。 | B caller 仍需在每個明確操作傳入 exact result／stock／snapshot identity，並將操作寫入 A API；不得以 stock／date／排序補 key，也不得把操作轉成 trade／broker event。 |
+| 跨頁讀回 | Journey read model 以 exact result／candidate／event identity 分開讀回 Evidence、outcome、Journal、精確 Portfolio ledger 與 legacy trades；5／10／20／60 horizon 的 linked／maturity 狀態可見，研究 return 與個人交易分離。 | Recommendation → Research → Watchlist／Portfolio → Workbench 的完整 B round-trip、返回後 exact context、review history head 與 UI action result 尚未由同一條 production workflow 全部驗收。 |
+| natural evidence | 本輪 typed candidate／active／capture verifier 與 BankTaiwan／legacy projection 已完成；Research Console 會保留 pending／blocked／unknown，真實 BankTaiwan lane 仍無 matching current capture，legacy lane 仍 provenance blocked。 | 自然 forward capture、後續成熟 outcome、同 candidate／同成本／同 source custody 的有效 receipt 仍須由真實時間累積；UI／append-only decision 不會增加 natural sample，也不解除 formal／promotion gate。 |
+
+因此 B 目前是「A persistence contract + D read-only journey + 本輪 learning read model」的
+分段完成狀態；尚未宣稱 B 的完整操作 round-trip，更未宣稱 V4 formal／投資有效性完成。
+
 ## 實際資料唯讀觀察
 
 | lane | learning root | 最新觀察 | 判讀 |
@@ -63,15 +79,17 @@ manifest：
 
 結果為 `status=passed`、scale 1.0、1366×768、market/runtime Space navigation、600-row PageDown/Home 與 recommendation／portfolio embedded pages 通過。native CUA surface 在本機不可用，因此 `native_windows_interaction`／screenreader 不宣稱已測。
 
-同一 validator 在恢復 `app_module.portfolio_store` import 後的最後一次重跑，仍因其他線的 dirty import `app_module.journal_service` 尚未就緒，導致 child 在 import 階段失敗；這是共享工作區的 in-flight blocker，不是本輪 projection code 的失敗。上述 `summary.json` 保留最後一次成功的 MainWindow offscreen artifact；根 AGENTS 的本次 Update suite／Update validator 也同樣因該缺檔而未能 collection／啟動，詳見下方 QA note。
+先前共享工作區曾因 `app_module.portfolio_store`／`app_module.journal_service` in-flight 缺檔
+而阻擋 import；A／D public modules 恢復後，該 blocker 已 resolved。最新 MainWindow
+offscreen smoke 已重新通過，`summary.json` 為目前可引用的成功 artifact。
 
 ## 根 AGENTS 強制驗證補充
 
-- `pytest tests\test_ui_qt_update_view_workbench.py -q -o addopts=`：`portfolio_store` import check 已通過，但本次 collection blocked，`ModuleNotFoundError: No module named 'app_module.journal_service'`。
-- `scripts\qa_validate_update_tab.py`：本次 import blocked，同一 `app_module.journal_service` 缺檔；未把失敗改標為通過。
-- MainWindow offscreen validator：本次 child 同樣因 `app_module.journal_service` 缺檔 blocked；未把先前成功的 offscreen artifact 冒充為本次通過。
-- 全域 mypy：`Success: no issues found in 611 source files`。
-- 上述 blocked 來自其他線的 portfolio／watchlist／journal journey 變更；本輪 72-case focused suite、16-case Research Console suite、typed projection verifier 與最新 learning PNG 均已在自身邊界完成驗證。
+- `pytest tests\test_ui_qt_update_view_workbench.py -q -o addopts=`：D 線最新驗證 `81 passed`。
+- `scripts\qa_validate_update_tab.py`：D 線最新驗證 `25 pass、0 fail、4 skip`。
+- MainWindow offscreen validator：本次恢復後重跑 `status=passed`；scale 1.0、1366×768、keyboard navigation、600-row table 與 embedded recommendation／portfolio pages 均通過。
+- 全域 mypy：本次實際輸出 `Success: no issues found in 612 source files`。
+- 歷史缺檔 blocker 已標記 resolved；本線 learning focused run 仍保留 `72 passed, 1 warning`、Research Console `16 passed, 1 warning` 與最新 learning PNG 的自身邊界證據。
 
 ## 尚未解除的產品 Gate
 

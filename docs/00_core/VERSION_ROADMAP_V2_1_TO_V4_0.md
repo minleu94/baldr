@@ -1,6 +1,6 @@
 # V2.1 至 V4.0 產品成熟度路線圖
 
-> **最後更新**：2026-09-14
+> **最後更新**：2026-09-15；本輪基線為已提交 `7e029933`，不升級 maturity 版號。
 > **目前狀態**：`V3.3 Engineering Complete` / `V4.0 Evidence Accumulation Track`；不可宣稱正式 V4.0，真實 evidence 與人工 Gate仍待累積。
 > **跨流整合校正**：V3.3 的 engineering shadow chain 已通過 committed-handoff 與跨模組驗證；真實 frozen artifact smoke、formal OOS、必要 shadow days、人工 promotion review 與 production alpha 仍未完成，因此 maturity 不升級。
 > **定位**：本文件是 V2.0 之後的長期產品成熟度與版本階梯權威；版號代表產品能力與證據成熟度，不代表功能數量。
@@ -222,7 +222,7 @@ V4.0 仍不代表：
 - 免人工審核。
 - 所有市場環境都有效。
 
-## 6A. 2026-09-14 工程／產品版本分流
+## 6A. 2026-09-15 工程／產品版本分流
 
 本 companion 仍只負責 V2.1 至 V4.0 的 maturity definition；本次新增的 V4.1／V4.2
 是工程軌名稱，不是本文件新增或提前宣告的 maturity version：
@@ -231,8 +231,9 @@ V4.0 仍不代表：
   每日首屏、`25544142` 的可比產業讀模型、`421ab844` 的每日 evidence／typed learning
   projection，以及 `53b456a0`／`ffb66c6f` 的唯讀 Decision → Outcome journey。rank／
   probability／confidence 分離、model／dataset／source／日期／樣本 provenance、Research
-  fallback 與臺銀 `estimated_research_only` read model 仍保持 read-only；完整跨頁操作接線
-  尚由 Increment B 施工，不提前宣稱 V5。
+  fallback 與臺銀 `estimated_research_only` read model 仍保持 read-only；`7e029933` 另有
+  MainWindow close／跨程序 writer→reader readback 工程實證，下一個施工面是 Position Health
+  source caller／Workbench state projection，不提前宣稱 V5。
 - **V4.2 engineering** 的 shadow／custody slice 已驗收，涵蓋 05:40→05:45 自然時間
   邊界、typed natural authority projection、frozen challenger、既有 policy 內的自動
   shadow adoption／rollback、active monitor 與 durable receipt；`8acf29f0`／`b39fd399`
@@ -240,12 +241,22 @@ V4.0 仍不代表：
   source `available`、hash 或 evidence kind 不等於 authority。就 2026-09-14 臺銀正常 shadow
   lane 觀測，natural sample 為 `0`、`retain_current`；legacy 50bp lane 可為 blocked；05:50 task
   registration／Ready 不等於首個自然執行。
-- **Decision continuity**：`5339230f` 的 Increment A append-only storage contract 已驗收；
-  Increment B 的 accept／skip／note／next-review caller 與 Watchlist round-trip 仍在施工。
+- **Decision continuity**：`5339230f` 的 Increment A append-only storage contract 與
+  `7e029933` 的 A/B/C continuity runtime 已驗收；Workbench state projection／Position Health
+  caller 仍待接線。
 - **V5／V6** 是 Product Roadmap 的後續 handoff，不屬於本文件的 V4.0 maturity closeout。
   V5 的 content-first／真實唯讀 journey／decision continuity 可與 V4 formal evidence
   accumulation 並行；V6 的 user-level evidence-driven personalization 則需在 V5 的
   decision／outcome continuity 上另建治理，兩者都不授權 broker 或自動交易。
+
+本次下一工程順序為：1. Position Health source-backed projection → Portfolio／Workbench
+（Luna task `01a0a414-bafb-79a0-aeff-1c462f5cded6`，施工中未驗收）；2. `user_declared`
+持倉研究層（不需真成交、不冒充 Paper verified）；3. PIT 產業／Recommendation source
+acceptance。三項各自依賴既有 identity／read model、明確的 user source tier 或外部
+owner／license／publication／PIT quality，並以 bounded acceptance 收口；natural forward、
+同 scope calibration、首個 05:50 實際 run 另列觀察線，不宣稱 V4 formal 完工。策略評估效果
+不保證逐日單調改善，正式交易資格不作所有研究功能的前置；V5／V6 仍按 Product／6M
+Roadmap handoff，不為小 patch 發新版。
 
 工程詳情與 acceptance sequence 以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md)
 及 [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)
@@ -288,6 +299,10 @@ V4.0 仍不代表：
 
 ## 更新記錄
 
+- 2026-09-15：以 `7e029933` 的 continuity runtime 工程驗收同步 V4.1／V4.2 工程軌與
+  V5／V6 handoff；收斂下一工程順序為 Position Health projection、`user_declared` 研究、
+  PIT 產業／Recommendation acceptance。natural／05:50 觀察線與 V4.0 formal Gate 不變，
+  不新增 maturity 版號。
 - 2026-09-14：補入已驗收的 content-first／產業／learning projection／唯讀 outcome journey／
   Increment A 工程切片與 Increment B 施工邊界；標明臺銀 05:50 registration 與首次自然執行
   的差異，並保留 natural／PIT／source／observed cost 與 V4.0 formal maturity 的原 Gate。

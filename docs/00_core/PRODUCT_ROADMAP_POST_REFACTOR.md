@@ -5,18 +5,18 @@
 > **2026-07-12 純工程狀態**：Gate 2–7 的批准工程包已完成，涵蓋 Evidence/V3、P0 source contracts/shadow adapters、Paper Portfolio、Position Health/Exit、完整結構化傳統 ML shadow challenger、closeout verifier 與控制中心。這只代表 `pure_engineering_complete`；Gate 2 真實週期、Gate 3 逐來源接受、Gate 4/6 paper/exit 時間證據、Gate 5 人工 pruning 決議、Gate 7 shadow days/revalidation/promotion review 仍由 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) 管理，不能標成 formal product closeout。
 
 > **建立日期**：2026-07-11
+> **最後更新**：2026-09-15；本輪基線為已提交 `7e029933`，不新增產品版號。
 > **定位**：本文件是安全重構完成後的產品方向權威，負責定義 baldr 為何存在、要協助哪些投資決策、能力演進順序與投資有效性 Gate。
 > **工程落地**：未來六個月的交付物、依賴、測試與 Exit Criteria 以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md) 為準。
 > **現況邊界**：目前完成狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準；本文件中的 Target capability 不代表已實作。
 > **安全邊界**：Investment Advice（投資建議）不等於 Broker Execution（券商執行）。本 Roadmap 不授權自動下單、保證獲利、production ML 或自動策略升降級。
 
-> **2026-09-14 Decision Workbench handoff**：本輪新增的是 V4.1／V4.2 engineering slice：
+> **2026-09-15 Decision Workbench handoff**：`7e029933` 已提交，主審已核對 84 UI tests、validator `25/0/4`、全域 mypy 614 與 continuity 的真 MainWindow／跨程序 readback。這些是 V4.1／V4.2 engineering slice 的工程證據，不是 V4 formal closeout：
 > 將 rank、校準機率、成本後機率與 evidence／source／model／dataset metadata 分開呈現，
 > 並在 Workbench 提供唯讀的機率依據詳情。`0d9d72af`／`cad07762` 的每日首屏與
 > content-first 旅程、`25544142` 的可比產業讀模型、`421ab844` 的 typed learning projection、
 > `53b456a0`／`ffb66c6f` 的唯讀 Decision → Outcome journey，以及 `5339230f` 的 Increment A
-> continuity storage contract 已分別驗收為工程切片；Increment B 的研究操作／Watchlist
-> caller 仍在施工。這些不宣稱真實市場→產業→個股端到端已驗收，
+> continuity storage／caller 與 C 的 close／跨程序 readback 已有工程驗收，尚未全面接成 Workbench state projection。這些不宣稱真實市場→產業→個股端到端已驗收，
 > 其中 `25544142` 的真實產業指數強弱與官方 TAIEX 5／20 日基準已可讀，純產業白名單已
 > 排除槓桿／反向產品型指數；current representative-stock mapping、TPEX／興櫃 coverage
 > 與 historical PIT membership 仍有限，不能把 current mapping 回填歷史。
@@ -281,9 +281,9 @@ Evidence 分層：
 - **V4.1 engineering**：Advice／Portfolio presentation 的 rank／probability 分離、
   decision date／data-as-of／horizon／sample、model／dataset／source、evidence kind 與
   missing／warning 的唯讀投影已驗收；每日首屏 content-first、可比產業讀模型、Research
-  fallback 的唯讀邊界與 learning evidence view 已有可核對工程切片。下一個施工面是
-  Increment B 的研究操作／Watchlist caller 與完整跨頁 round-trip，不是把既有 read-only
-  slice 重寫成正式決策。
+  fallback 的唯讀邊界與 learning evidence view 已有可核對工程切片。`7e029933` 也已包含
+  continuity 的 close／跨程序 readback 工程驗收；下一個施工面是 Position Health source
+  caller／Workbench state projection，不是把既有 read-only slice 重寫成正式決策。
 - **V4.2 engineering**：保留既有 05:40 forward outcome → 05:45 shadow learning 的
   自動候選採用／回退 policy、frozen challenger、active monitor、receipt 與 rollback。
   routine shadow adjustment 不要求使用者每日人工批准；只有超出既有 shadow／正式決策
@@ -307,11 +307,12 @@ shadow receipt 或 Task Scheduler `Ready` 都不會自動升級 V4.0，也不授
 #### V5 full decision experience
 
 V5 是把已驗收的 content-first daily conclusion、候選／持倉、market→industry→stock→watchlist／
-portfolio read-only journey、Why／Why Not／Risk、研究 fallback、既有 Journal／Evidence／
-Portfolio ledger continuity 與 T+N outcome view 收斂成單一路徑。V5 的 UX／唯讀資料旅程、
-decision continuity 與 V4 formal evidence accumulation 可並行；V4 formal 不會阻擋現在先
-交付真實唯讀 content。`5339230f` 的 A contract 已具備，B 的 caller／Watchlist round-trip
-仍在施工。Evidence 不足時只限制 Advice scope，轉 `RESEARCH`／`NO_NEW_POSITION`。
+  portfolio read-only journey、Why／Why Not／Risk、研究 fallback、既有 Journal／Evidence／
+  Portfolio ledger continuity 與 T+N outcome view 收斂成單一路徑。V5 的 UX／唯讀資料旅程、
+  decision continuity 與 V4 formal evidence accumulation 可並行；V4 formal 不會阻擋現在先
+  交付真實唯讀 content。`7e029933` 的 A/B/C continuity runtime evidence 已具備，Workbench
+  state projection 與完整產品 caller 仍按下列順序施工。Evidence 不足時只限制 Advice scope，
+  轉 `RESEARCH`／`NO_NEW_POSITION`。
 既有每日 shadow policy 內的 candidate adoption／rollback 仍可自動執行，不能跨到正式
 Recommendation／Portfolio 或 broker。
 
@@ -322,6 +323,32 @@ liquidity／sector preferences 的可解釋個人化排序與 guardrails；每�
 都需與 population baseline、sample、calibration、negative evidence、drift 與 rollback
 分開保存。V6 不保證報酬、不隱藏缺漏、不自動調倉／下單；目前只是後續產品方向，不是本輪
 工程完成狀態。
+
+#### 2026-09-15 下一工程順序（基線 `7e029933`）
+
+自然 forward 收集、同 scope calibration 與首個 05:50 實際 run 是獨立的持續觀察線：現行
+normal lane 的 natural sample 仍為 0，不能因此宣稱 V4 formal 完工；策略／模型效果也不要求
+逐日單調改善。工程增量依序為：
+
+1. **Position Health source-backed projection → Portfolio／Workbench**（Luna task
+   `01a0a414-bafb-79a0-aeff-1c462f5cded6` 施工中，尚未驗收）。沿用既有 Paper identity、
+   thesis、PIT condition、Decimal metrics 與 transition evaluator，將同一 receipt／read model
+   接入 Portfolio 與 Workbench；缺來源維持 `WATCH`／degraded，驗收需包含 source trace、
+   review required、identity conflict fail-closed、無自動 action。依賴是 `7e029933` 的
+   continuity identity／readback 與既有 source artifacts；Paper verified lineage 只約束 Paper／
+   formal health lane，不阻擋其他 research-only holdings view。
+2. **`user_declared` 持倉研究層**。建立獨立的 user-declared source status／research read model，
+   可用使用者聲明的股票、數量、成本、日期與 thesis 文字做目前條件、聲明成本的資訊性觀察、
+   假設覆盤與人工 review；不得命名為 fill／verified，不計入 Paper／formal effectiveness，
+   並維持 `research_only=true`、無 broker／auto action。依賴是第 1 項的 read model 與明確輸入／
+   修改規則，不需要真成交；V6 個人化日後仍須把 user-level evidence 與 population baseline
+   分開治理。
+3. **PIT 產業／Recommendation source acceptance**。補版本化 membership、publication／
+   available time、代表股與 TPEX／OTC scope，讓 current 與 historical caller 不再以 current
+   mapping 回填 PIT；驗收需可重建固定日期 membership、coverage／quality／hash，並讓缺口仍
+   明示為 degraded。依賴是外部來源 owner、license、publication timestamp、公司行動與資料
+   品質接受，不以離線 replay 代替。這是 Gate 3／V5 market journey 的工程資料邊界，不升格
+   V4 formal，也不直接開啟 Portfolio／broker 權限。
 
 ## 11. Data Source Roadmap
 

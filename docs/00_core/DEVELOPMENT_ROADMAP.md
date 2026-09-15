@@ -4,7 +4,7 @@
 
 > **2026-07-13 系統工程整合**：A～F committed handoff 已由 G 依 SHA、ownership 與 focused suite 驗證，跨流 DTO／JSON composition、唯讀 smoke 與 pure verifier 均成立。這只代表工程整合已驗證；下一步仍是 forward evidence、逐來源人工接受與正式 ML OOS／promotion review，不是 scheduler、production automation 或 formal product closeout。
 >
-> **最後更新**：2026-09-14
+> **最後更新**：2026-09-15；本輪基線為已提交 `7e029933`，不新增產品版號。
 > **工程主線**：`V3.3 Engineering Complete`，進入 `V4.0 Evidence Accumulation Track`；這不是正式 V4.0。詳見 [V3.3 Engineering Closeout](../06_qa/V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)。
 > **Evidence rehearsal**：唯讀 replay / shadow 工程底座另以 `engineering_rehearsal_complete` 收口；它只提供可重跑 diagnostics 與 forward handoff，不會改寫 external Gate 狀態。見 [Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)。
 > **定位**：本文件是 Roadmap Hub，不再保存完整歷史長文。它負責指向目前狀態、6 個月工程路線、系統架構與歷史歸檔。
@@ -29,7 +29,8 @@
 > shadow receipt 為 `completed / retain_current`，`natural_matured_sample_count=0`，
 > `formal_order_allowed=false`。正式 source acceptance、natural production evidence、
 > allocation promotion 與 broker 仍維持 external pending。臺銀 05:50 task 的註冊／可觸發
-> 狀態不等於首個自然排程執行；該首次 execution readback 尚未驗證。跨市場到個股的呈現／證據缺口矩陣見
+> 狀態不等於首個自然排程執行；首個實際 run 另列觀察線。`7e029933` 已補真 MainWindow close
+> 與跨程序 writer／reader readback 的工程實證；Workbench state projection 與跨市場到個股的呈現／證據缺口矩陣見
 > [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
 
 ---
@@ -86,7 +87,7 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 - **Production Gate**：Runtime environment ready 不等於 Registry writer ready；technical single-writer canary、scheduler approval 與 broker production pool 仍關閉。
 - **容量**：8/30 fresh D free 約 338.9 GiB、retention inventory=`headroom_ok`；舊 6.11/6.56/410.31 GiB status artifact 只作歷史，後續以受控 preflight 產生新觀測，不手改歷史 terminal。
 - **V4.2 每日推薦 calibration**：05:40 forward outcomes 後的 05:45 bounded shadow learning loop 已完成，包含 frozen challenger、自然成熟度、active monitor／rollback、source／availability／corporate-action／after-cost guards 與 lineage；正式 promotion／allocation 仍因 natural forward evidence、production source custody 與 formal review Gate 維持 `formal_candidate_eligible=false`，不改正式推薦。observed fill／實際滑價另屬後續 execution-realism／formal Gate，不是每日 learning 的前置條件。
-- **Decision Workbench／決策連續性**：每日首屏／content-first（`0d9d72af`／`cad07762`）、可比產業讀模型（`25544142`）、typed learning projection（`421ab844`）、唯讀 Decision → Outcome journey（`53b456a0`／`ffb66c6f`）與 Increment A storage contract（`5339230f`）已分別驗收；Increment B 的研究操作／Watchlist caller 與跨頁 round-trip 仍在施工，不宣稱 V5 closeout。
+- **Decision Workbench／決策連續性**：每日首屏／content-first（`0d9d72af`／`cad07762`）、可比產業讀模型（`25544142`）、typed learning projection（`421ab844`）、唯讀 Decision → Outcome journey（`53b456a0`／`ffb66c6f`）與 Increment A/B/C continuity runtime（`5339230f`／`7e029933`）已分別驗收；真 MainWindow close 與跨程序 writer／reader readback 已有實證，但 Workbench state projection／Position Health caller 仍待接線，不宣稱 V5 closeout。
 
 以下長列為已落地工程能力清單，不應逐項解讀為產品 closeout：
 
@@ -117,18 +118,38 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 
 目前立即順序改為：
 
-本輪 TASK-08 隔離工程整合驗收已完成，接續下列外部 Gate；真 MainWindow 截圖 smoke／人工 UI 驗收缺口仍明列。候選 SQLite 帳本／候選池不自動取代正式 JSONL／JSON；歷史產業篩選須先補已接受的 PIT membership。來源 acceptance、真實 Paper fills／費稅、自然前瞻時間與具名 review 仍不可由離線重跑替代。
+本輪 TASK-08 隔離工程整合驗收已完成；真 MainWindow 截圖 smoke／人工 UI 驗收缺口仍明列。以下工程順序與外部 Gate 分開：候選 SQLite 帳本／候選池不自動取代正式 JSONL／JSON；歷史產業篩選須先補已接受的 PIT membership；來源 acceptance、真實 Paper fills／費稅、自然前瞻時間與具名 review 仍不可由離線重跑替代。
 
-### 2026-09-14 Decision Workbench／continuity Next
+### 2026-09-15 下一工程順序（基線 `7e029933`）
 
-1. 施工 Increment B 的 accept／skip／note／next-review caller 與 Watchlist 跨頁讀回；以
-   `DecisionIdentity`、revision、tombstone、idempotency 與 exact outcome identity 做
-   round-trip QA，保持 A 的 append-only contract，不新增平行 decision DB。
-2. 以 read-only 方式對帳臺銀 05:50 task 的 action／trigger／latest receipt，先分開記錄
-   registration／可觸發與首個自然 execution；不註冊、不重啟、不改 trigger。
-3. 等待真正 natural forward maturity／typed authority、PIT 產業 membership／source
-   acceptance 與具名 review。observed fills／partial fills／實際滑價仍是較後的
-   execution-realism／formal Gate，不是每日 learning 的前置條件。
+自然 forward 收集、同 scope calibration 與首個 05:50 實際 run 是獨立的持續觀察線；目前
+normal lane 的 natural sample 仍為 0，不宣稱 V4 formal 完工，也不以策略／模型效果逐日
+單調改善作為驗收條件。工程增量依序為：
+
+1. **Position Health source-backed projection → Portfolio／Workbench**（Luna task
+   `01a0a414-bafb-79a0-aeff-1c462f5cded6` 施工中，尚未驗收）。沿用既有
+   `position_health_daily_refresh_service.py`、source providers、transition evaluator、
+   `decision_presentation.py` 與 Portfolio／Workbench caller，讓同一 receipt／read model
+   帶 position identity、source trace、quality、review required；缺 source／future date／
+   identity conflict 必須 `WATCH`／degraded、fail closed，維持 `research_only=true`、
+   `auto_action_allowed=false`。依賴 `7e029933` continuity identity／readback、Paper
+   snapshot、official calendar、PIT condition 與 Decimal metrics；verified entry lineage
+   只約束 Paper／formal health lane，不是所有持倉研究的前置。
+2. **`user_declared` 持倉研究層**。建立獨立 source status／research read model，支援使用者
+   聲明的股票、數量、成本、日期、備註與 thesis 做 current condition、聲明成本的資訊性
+   觀察、假設覆盤與人工 review；不得冒充 fill／verified，不進 Paper／formal effectiveness，
+   維持 Decimal／整數單位、`research_only=true`、無 broker／auto action。依賴第 1 項 read
+   model 與輸入／修改規則，不需真成交；正式交易資格不前置於此研究功能。
+3. **PIT 產業／Recommendation source acceptance**。由既有
+   `industry_strength_service.py`、`pit_sector_membership_machine.py`／`formal_pit_sector_publisher.py`、
+   `recommendation_service.py` 與對應 tests 補版本化 membership、publication／available time、
+   代表股與 TPEX／OTC scope；驗收 current／historical fixed-date 可重建、coverage／quality／
+   hash 可核對，且不以 current mapping 回填 PIT。依賴外部 owner、license、publication
+   timestamp、公司行動與資料品質接受；這是 Gate 3／V5 market journey 邊界，不開啟 V4
+   formal、Portfolio 或 broker 權限。
+
+三項均不重做既有 Advice／calibration／historical replay／daily shadow；策略評估效果只代表
+該資料與 cohort 下的觀察，不保證逐日或逐期單調進步。
 
 ### 2026-08-30 canonical Next
 
@@ -230,6 +251,10 @@ V3.0 engineering candidate 的 closeout/readiness report 已完成，工程狀�
 
 ## 7. 更新記錄
 
+- 2026-09-15：依 `7e029933` 與主審核對的 continuity runtime evidence，將下一工程順序收斂為
+  Position Health source-backed projection → Portfolio／Workbench、`user_declared` 持倉研究、
+  PIT 產業／Recommendation source acceptance；natural forward／同 scope calibration／05:50
+  首次實際 run 保留為觀察線，不改 V4 formal、V5／V6 定位或正式交易邊界。
 - 2026-09-14：同步 Decision Workbench 的已驗收工程切片與 Increment B 施工邊界；明確分開
   每日首屏／產業讀模型／learning projection／唯讀 outcome journey／A storage contract、
   05:50 task registration 與首個自然 execution，以及 natural／PIT／source／observed cost

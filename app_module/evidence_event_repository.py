@@ -21,6 +21,9 @@ from data_module.evidence_event_migration import apply_evidence_event_schema
 from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
 
 
+_SQLITE_READ_BIND_CHUNK_SIZE = 900
+
+
 class EvidenceEventRepository:
     """SQLite repository for append-only evidence events and forward outcomes."""
 
@@ -259,6 +262,50 @@ class EvidenceEventRepository:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY event_id ASC, window_days ASC"
         return [self._row_to_outcome(row) for row in self._read_rows("evidence_outcomes", sql, tuple(params))]
+
+    def list_outcomes_for_event_ids(
+        self,
+        event_ids: Iterable[str],
+    ) -> list[EvidenceOutcome]:
+        """Read outcomes for exact event ids with one read-only connection.
+
+        The event ids remain the only join key.  Queries are chunked below the
+        SQLite bind limit so a large, bounded evidence read does not fall back
+        to one connection per event.
+        """
+
+        normalized_ids = tuple(dict.fromkeys(event_ids))
+        if not normalized_ids or not self.db_path.exists():
+            return []
+        uri = self.db_path.resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
+            conn.execute("PRAGMA query_only = ON")
+            conn.execute("BEGIN")
+            conn.row_factory = sqlite3.Row
+            if (
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type='table' AND name=?",
+                    ("evidence_outcomes",),
+                ).fetchone()
+                is None
+            ):
+                return []
+            rows: list[dict[str, Any]] = []
+            for start in range(0, len(normalized_ids), _SQLITE_READ_BIND_CHUNK_SIZE):
+                chunk = normalized_ids[start : start + _SQLITE_READ_BIND_CHUNK_SIZE]
+                placeholders = ", ".join("?" for _ in chunk)
+                rows.extend(
+                    dict(row)
+                    for row in conn.execute(
+                        "SELECT * FROM evidence_outcomes "
+                        f"WHERE event_id IN ({placeholders}) "
+                        "ORDER BY event_id ASC, window_days ASC",
+                        chunk,
+                    ).fetchall()
+                )
+        rows.sort(key=lambda row: (str(row["event_id"]), int(row["window_days"])))
+        return [self._row_to_outcome(row) for row in rows]
 
     def _fetch_event(self, where: str, params: tuple[Any, ...]) -> EvidenceEvent | None:
         rows = self._read_rows("evidence_events", f"SELECT * FROM evidence_events WHERE {where}", params)

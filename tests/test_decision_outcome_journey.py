@@ -65,6 +65,28 @@ class MemoryEvidence:
         return tuple(item for item in self.outcomes if item.get("event_id") == event_id)
 
 
+class BatchMemoryEvidence(MemoryEvidence):
+    def __init__(
+        self,
+        events: Sequence[Mapping[str, Any]],
+        outcomes: Sequence[Mapping[str, Any]] = (),
+        *,
+        has_more: bool = False,
+    ) -> None:
+        super().__init__(events, outcomes, has_more=has_more)
+        self.requested_event_ids: list[tuple[str, ...]] = []
+
+    def list_outcomes_for_event_ids(
+        self,
+        event_ids: Sequence[str],
+    ) -> Sequence[Mapping[str, Any]]:
+        requested = tuple(event_ids)
+        self.requested_event_ids.append(requested)
+        # Return the complete memory set deliberately; the service must still
+        # filter returned rows by the exact event ids it requested.
+        return self.outcomes
+
+
 class MemoryJournal:
     def __init__(self, entries: Sequence[Mapping[str, Any]]) -> None:
         self.entries = tuple(entries)
@@ -401,6 +423,47 @@ def test_conflicting_duplicate_outcome_fails_closed() -> None:
     assert maturity.status is JourneyLinkStatus.CONFLICT
     assert any(item.code == "conflicting_duplicate_outcome" for item in journey.diagnostics)
     assert {item.forward_return_bp for item in journey.outcomes} == {100, 200}
+
+
+def test_batch_outcomes_preserve_duplicate_conflict_and_exact_result_scope() -> None:
+    reader = BatchMemoryEvidence(
+        events=[
+            _event(event_id="event-target", result_id=RESULT_ID),
+            _event(event_id="event-foreign", result_id="different-result"),
+        ],
+        outcomes=[
+            _outcome(
+                event_id="event-target",
+                outcome_id="outcome-target-a",
+                window_days=5,
+                forward_return_bp=100,
+            ),
+            _outcome(
+                event_id="event-target",
+                outcome_id="outcome-target-b",
+                window_days=5,
+                forward_return_bp=200,
+            ),
+            _outcome(
+                event_id="event-foreign",
+                outcome_id="outcome-foreign",
+                window_days=5,
+            ),
+        ],
+    )
+    service = DecisionOutcomeJourneyService(
+        recommendation_reader=MemoryRecommendation(_result()),
+        evidence_reader=reader,
+    )
+
+    journey = service.build(RESULT_ID)
+
+    assert reader.requested_event_ids == [("event-target",)]
+    assert [item.event_id for item in journey.evidence_events] == ["event-target"]
+    assert {item.event_id for item in journey.outcomes} == {"event-target"}
+    maturity = next(item for item in journey.outcome_maturity if item.window_days == 5)
+    assert maturity.status is JourneyLinkStatus.CONFLICT
+    assert any(item.code == "conflicting_duplicate_outcome" for item in journey.diagnostics)
 
 
 def test_outcome_return_basis_is_part_of_natural_key() -> None:

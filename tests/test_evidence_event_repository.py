@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import sqlite3
 from pathlib import Path
 
@@ -127,6 +128,52 @@ def test_repository_upserts_and_lists_outcomes(tmp_path):
     assert rows[0].outcome_id == updated.outcome_id
     assert rows[0].outcome_status == EvidenceOutcomeStatus.READY
     assert rows[0].forward_return_bp == 1000
+
+
+def test_repository_batch_outcomes_matches_single_reads_across_chunks(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    repo = EvidenceEventRepository(config)
+    first = repo.insert_event(_event())
+    second = repo.insert_event(
+        replace(_event("hash-b"), event_id="event-b", symbol="1101")
+    )
+    repo.upsert_outcomes(
+        (
+            EvidenceOutcome(
+                outcome_id="outcome-a",
+                event_id=first.event_id,
+                window_days=5,
+                outcome_status=EvidenceOutcomeStatus.READY,
+                data_quality=EvidenceDataQuality.OBSERVED,
+                metadata={"return_basis": "close_to_close_event_date"},
+            ),
+            EvidenceOutcome(
+                outcome_id="outcome-b",
+                event_id=second.event_id,
+                window_days=10,
+                outcome_status=EvidenceOutcomeStatus.PENDING,
+                data_quality=EvidenceDataQuality.MISSING,
+                metadata={"return_basis": "close_to_close_event_date"},
+            ),
+        )
+    )
+
+    import app_module.evidence_event_repository as repository_module
+
+    monkeypatch.setattr(repository_module, "_SQLITE_READ_BIND_CHUNK_SIZE", 2)
+    requested_ids = (
+        first.event_id,
+        *(f"missing-{index}" for index in range(901)),
+        second.event_id,
+    )
+    batch_rows = repo.list_outcomes_for_event_ids(requested_ids)
+    single_rows = repo.list_outcomes(event_id=first.event_id) + repo.list_outcomes(
+        event_id=second.event_id
+    )
+
+    assert len(requested_ids) > repository_module._SQLITE_READ_BIND_CHUNK_SIZE
+    assert batch_rows == single_rows
+    assert {row.event_id for row in batch_rows} == {first.event_id, second.event_id}
 
 
 def test_apply_migration_requires_existing_db_and_creates_backup(tmp_path):

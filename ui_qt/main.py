@@ -85,6 +85,7 @@ from app_module.research_session import (
     ResearchSessionSnapshotDTO,
     ResearchStockContextDTO,
 )
+from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
 
 # 導入策略模組以觸發註冊
@@ -272,6 +273,17 @@ class MainWindow(QMainWindow):
                 portfolio_service=self.portfolio_service,
                 condition_monitor=PortfolioConditionMonitor(),
                 freshness_status_path=self._data_freshness_status_path(),
+            )
+            self.decision_outcome_journey_service = (
+                DecisionOutcomeJourneyService.from_config(
+                    self.config,
+                    journal_path=Path(self.config.output_root)
+                    / "portfolio"
+                    / "journal_entries.jsonl",
+                    portfolio_trades_path=Path(self.config.output_root)
+                    / "portfolio"
+                    / "trades.jsonl",
+                )
             )
             self._stock_research_report_dialog: StockResearchReportDialog | None = None
 
@@ -1020,6 +1032,11 @@ class MainWindow(QMainWindow):
                 report_service,
                 context,
                 stock_codes=self._stock_codes_for_research_context(context),
+                journey_service=getattr(
+                    self,
+                    "decision_outcome_journey_service",
+                    None,
+                ),
                 parent=self,
             )
             self._stock_research_report_dialog = dialog

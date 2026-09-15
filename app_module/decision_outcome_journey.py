@@ -655,6 +655,15 @@ class EvidenceReadPort(Protocol):
     ) -> Sequence[EvidenceOutcome | Mapping[str, Any]]: ...
 
 
+class EvidenceBatchReadPort(Protocol):
+    """可選的 exact event id 批次 outcome 唯讀 port。"""
+
+    def list_outcomes_for_event_ids(
+        self,
+        event_ids: Iterable[str],
+    ) -> Sequence[EvidenceOutcome | Mapping[str, Any]]: ...
+
+
 class JournalReadPort(Protocol):
     def list_entries(self) -> Sequence[Mapping[str, Any]]: ...
 
@@ -729,6 +738,12 @@ class EvidenceRepositoryReadAdapter:
 
     def list_outcomes(self, *, event_id: str) -> Sequence[EvidenceOutcome]:
         return tuple(self.repository.list_outcomes(event_id=event_id))
+
+    def list_outcomes_for_event_ids(
+        self,
+        event_ids: Iterable[str],
+    ) -> Sequence[EvidenceOutcome]:
+        return tuple(self.repository.list_outcomes_for_event_ids(event_ids))
 
 
 class JsonlJournalReadAdapter:
@@ -1379,21 +1394,58 @@ class DecisionOutcomeJourneyService:
         outcome_records: list[EvidenceOutcomeRecord] = []
         with_outcomes: dict[str, list[EvidenceOutcomeRecord]] = {}
         deferred_outcome_keys: set[tuple[str, int | None, str]] = set()
-        for event in normalized:
+        batch_reader: EvidenceBatchReadPort | None = None
+        batch_method = getattr(
+            self.evidence_reader,
+            "list_outcomes_for_event_ids",
+            None,
+        )
+        if callable(batch_method):
+            batch_reader = cast(EvidenceBatchReadPort, self.evidence_reader)
+        batch_outcomes_by_event: dict[
+            str, tuple[EvidenceOutcome | Mapping[str, Any], ...]
+        ] = {}
+        if batch_reader is not None and normalized:
+            requested_event_ids = tuple(event.event_id for event in normalized)
+            requested_event_id_set = set(requested_event_ids)
             try:
-                raw_outcomes = tuple(
-                    self.evidence_reader.list_outcomes(event_id=event.event_id)
+                batch_rows = tuple(
+                    batch_reader.list_outcomes_for_event_ids(requested_event_ids)
                 )
-            except Exception as exc:
-                _diag(
-                    diagnostics,
-                    "evidence_outcome_read_failure",
-                    f"{type(exc).__name__}: {exc}",
-                    "evidence_event",
-                    event.event_id,
-                    severity="error",
-                )
-                raw_outcomes = ()
+            except Exception:
+                # Keep compatibility with older/custom read ports; the existing
+                # per-event path retains its diagnostics and fail-closed rules.
+                batch_reader = None
+            else:
+                grouped_batch_rows: dict[
+                    str, list[EvidenceOutcome | Mapping[str, Any]]
+                ] = {}
+                for row in batch_rows:
+                    event_id = _outcome_event_id(row)
+                    if event_id in requested_event_id_set:
+                        grouped_batch_rows.setdefault(event_id, []).append(row)
+                batch_outcomes_by_event = {
+                    event_id: tuple(rows)
+                    for event_id, rows in grouped_batch_rows.items()
+                }
+        for event in normalized:
+            if batch_reader is not None:
+                raw_outcomes = batch_outcomes_by_event.get(event.event_id, ())
+            else:
+                try:
+                    raw_outcomes = tuple(
+                        self.evidence_reader.list_outcomes(event_id=event.event_id)
+                    )
+                except Exception as exc:
+                    _diag(
+                        diagnostics,
+                        "evidence_outcome_read_failure",
+                        f"{type(exc).__name__}: {exc}",
+                        "evidence_event",
+                        event.event_id,
+                        severity="error",
+                    )
+                    raw_outcomes = ()
             event_outcomes: list[EvidenceOutcomeRecord] = []
             for raw_outcome in raw_outcomes:
                 try:
@@ -2064,6 +2116,15 @@ def _normalize_evidence_outcome(
         link_status=link_status,
         original_payload=_freeze(payload),
     )
+
+
+def _outcome_event_id(item: EvidenceOutcome | Mapping[str, Any]) -> str | None:
+    value = (
+        item.get("event_id")
+        if isinstance(item, Mapping)
+        else getattr(item, "event_id", None)
+    )
+    return None if value is None else str(value)
 
 
 def _normalize_journal_entry(

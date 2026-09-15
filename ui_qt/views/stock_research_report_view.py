@@ -49,8 +49,10 @@ from app_module.decision_presentation import (
     DecisionPresentationService,
     format_decision_presentation,
 )
+from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.theme_widgets import StatusBadge
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
@@ -1040,6 +1042,7 @@ class StockResearchReportDialog(QDialog):
         context: ResearchStockContextDTO,
         *,
         stock_codes: Sequence[str] = (),
+        journey_service: DecisionOutcomeJourneyService | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -1049,15 +1052,30 @@ class StockResearchReportDialog(QDialog):
         self.setMinimumSize(360, 280)
         self.resize(1120, 760)
         layout = QVBoxLayout(self)
+        self.dialog_tabs = QTabWidget()
+        self.dialog_tabs.setObjectName("stockResearchDialogTabs")
+        self.dialog_tabs.setDocumentMode(True)
         self.report_view = StockResearchReportView(
             service,
             context,
             stock_codes=stock_codes,
             parent=self,
         )
-        self.report_view.readyToClose.connect(self.accept)
-        self.report_view.returnRequested.connect(self.accept)
-        layout.addWidget(self.report_view)
+        self.dialog_tabs.addTab(self.report_view, "個股研究報告")
+        self.journey_view: DecisionOutcomeJourneyWidget | None = None
+        if journey_service is not None:
+            self.journey_view = DecisionOutcomeJourneyWidget(
+                journey_service,
+                context,
+                parent=self,
+            )
+            self.dialog_tabs.addTab(self.journey_view, "決策 → 結果")
+        layout.addWidget(self.dialog_tabs)
+        self._close_requested = False
+        self.report_view.readyToClose.connect(self._maybe_accept_after_close)
+        self.report_view.returnRequested.connect(self._begin_close)
+        if self.journey_view is not None:
+            self.journey_view.readyToClose.connect(self._maybe_accept_after_close)
 
     def set_context(
         self,
@@ -1069,12 +1087,34 @@ class StockResearchReportDialog(QDialog):
         if stock_codes is not None:
             self.report_view.set_stock_codes(stock_codes)
         self.report_view.set_context(context)
+        if self.journey_view is not None:
+            self.journey_view.set_context(context)
 
     def closeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
-        if not self.report_view.request_close():
+        self._close_requested = True
+        report_ready = self.report_view.request_close()
+        journey_ready = (
+            True
+            if self.journey_view is None
+            else self.journey_view.request_close()
+        )
+        if not report_ready or not journey_ready:
             event.ignore()
             return
         super().closeEvent(event)
+
+    def _begin_close(self) -> None:
+        self._close_requested = True
+        self.close()
+
+    def _maybe_accept_after_close(self) -> None:
+        if self._close_requested and not self.is_busy():
+            self.accept()
+
+    def is_busy(self) -> bool:
+        return self.report_view.is_busy() or bool(
+            self.journey_view is not None and self.journey_view.is_busy()
+        )
 
 
 def _quality_label(value: str) -> str:

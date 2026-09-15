@@ -61,7 +61,32 @@ from app_module.recommendation_calibration_consumer import (
     RecommendationCalibrationConsumer,
     build_default_recommendation_calibration_consumer,
 )
+from data_module.pit_sector_membership_reader import (
+    PITMembershipReadResult,
+    PITSectorMembershipReader,
+)
 from ml_module.recommendation_probability_transform import NULL_BENCHMARK_BASELINE_ID
+
+
+def _industry_names_match(actual: str, requested: str) -> bool:
+    """沿用互動篩選的名稱容錯，但輸入必須來自 PIT taxonomy。"""
+
+    actual_text = str(actual or "").strip()
+    requested_text = str(requested or "").strip()
+    if not actual_text or not requested_text:
+        return False
+
+    def normalize(value: str) -> str:
+        normalized = value.casefold().strip()
+        for suffix in ("類報酬指數", "類指數", "業", "類"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+                break
+        return normalized
+
+    left = normalize(actual_text)
+    right = normalize(requested_text)
+    return bool(left and right and (left == right or left in right or right in left))
 
 
 class RecommendationService:
@@ -74,6 +99,7 @@ class RecommendationService:
         market_data_provider: Optional[MarketFrameProvider] = None,
         regime_detector: Optional[MarketRegimeDetector] = None,
         calibration_consumer: RecommendationCalibrationConsumer | None = None,
+        pit_membership_reader: PITSectorMembershipReader | None = None,
     ):
         """初始化推薦服務
 
@@ -99,6 +125,7 @@ class RecommendationService:
             if calibration_consumer is not None
             else build_default_recommendation_calibration_consumer(config)
         )
+        self.pit_membership_reader = pit_membership_reader
         self.last_calibration_projections: Dict[str, Any] = {}
         self.last_screening_matrix: List[Dict[str, Any]] = []
         self.last_excluded_candidates_json: List[Dict[str, Any]] = []
@@ -446,6 +473,53 @@ class RecommendationService:
         frame[stock_col] = frame[stock_col].astype(str)
         return frame.reset_index(drop=True), stock_col, decision_date
 
+    def _read_pit_membership_for_recommendation(
+        self,
+        cutoff: str,
+        config: Dict[str, Any],
+    ) -> PITMembershipReadResult | None:
+        reader = self.pit_membership_reader
+        if reader is None:
+            return None
+        decision_date = date.fromisoformat(cutoff)
+        configured_cutoff = config.get("pit_decision_at") or config.get("decision_at")
+        decision_at = configured_cutoff or reader.default_decision_at(decision_date)
+        market_scope = config.get("pit_market_scope") or getattr(
+            self.config, "pit_market_scope", None
+        )
+        try:
+            return reader.read(
+                as_of_date=decision_date,
+                decision_at=decision_at,
+                market_scope=market_scope,
+            )
+        except Exception as exc:  # noqa: BLE001 - recommendation fails closed
+            return PITMembershipReadResult(
+                as_of_date=decision_date,
+                decision_at=reader.default_decision_at(decision_date),
+                status="unavailable",
+                quality="missing",
+                rows=(),
+                warnings=(f"pit_membership_reader_error:{type(exc).__name__}",),
+                lineage={
+                    "reader_schema_version": "pit-sector-membership-reader.v1",
+                    "status": "unavailable",
+                    "market_scope_requested": None,
+                    "error": str(exc),
+                },
+            )
+
+    @staticmethod
+    def _pit_codes_for_industry(
+        result: PITMembershipReadResult,
+        industry_filter: str,
+    ) -> set[str]:
+        return {
+            row.symbol
+            for row in result.rows
+            if _industry_names_match(row.industry_category or "", industry_filter)
+        }
+
     def run_recommendation(
         self,
         config: Dict[str, Any],
@@ -527,6 +601,35 @@ class RecommendationService:
             for key, value in declared_identity.items()
             if value is not None and str(value).strip()
         })
+        industry_filter = config.get('filters', {}).get('industry', '全部')
+        pit_membership: PITMembershipReadResult | None = None
+        pit_industry_codes: set[str] | None = None
+        if cutoff and industry_filter and industry_filter != '全部':
+            pit_membership = self._read_pit_membership_for_recommendation(
+                cutoff, config
+            )
+            if pit_membership is not None:
+                self.last_run_context["industry_membership"] = dict(
+                    pit_membership.lineage
+                )
+                self.last_run_context["industry_membership_status"] = pit_membership.status
+                self.last_run_context["industry_membership_quality"] = pit_membership.quality
+                self.last_run_context["industry_membership_warnings"] = list(
+                    pit_membership.warnings
+                )
+                self.last_run_context["warnings"].extend(pit_membership.warnings)
+                if pit_membership.industry_filter_usable:
+                    self.last_run_context["warnings"] = [
+                        item
+                        for item in self.last_run_context["warnings"]
+                        if item != "industry_membership_not_point_in_time"
+                    ]
+                    self.last_run_context["warnings"].append(
+                        "industry_membership_pit_verified"
+                    )
+                    pit_industry_codes = self._pit_codes_for_industry(
+                        pit_membership, str(industry_filter)
+                    )
         if df.empty:
             self.last_run_context["eligible_universe_size"] = 0
             self._finalize_negative_evidence_buffers()
@@ -543,26 +646,46 @@ class RecommendationService:
         )
 
         # 應用產業篩選（先篩選產業，再限制數量）
-        industry_filter = config.get('filters', {}).get('industry', '全部')
         all_stocks = df[stock_col].unique()
 
         if cutoff and industry_filter and industry_filter != '全部':
-            self.last_screening_matrix = [self._matrix_row(
-                stock_code=str(code), status="missing", reason_codes=["industry_membership_pit_unavailable"],
-                quality="missing", stage="universe_gate", threshold_mode=threshold_mode,
-            ) for code in all_stocks]
-            self.last_run_context["eligible_universe_size"] = 0
-            self._finalize_negative_evidence_buffers()
-            return []
+            if pit_membership is None or not pit_membership.industry_filter_usable:
+                self.last_screening_matrix = [self._matrix_row(
+                    stock_code=str(code), status="missing", reason_codes=["industry_membership_pit_unavailable"],
+                    quality="missing", stage="universe_gate", threshold_mode=threshold_mode,
+                ) for code in all_stocks]
+                self.last_run_context["eligible_universe_size"] = 0
+                self._finalize_negative_evidence_buffers()
+                return []
+            filtered_stocks = pit_industry_codes or set()
+            if not filtered_stocks:
+                self.last_run_context["warnings"].append("industry_filter_empty")
+                self.last_screening_matrix = [self._matrix_row(
+                    stock_code=str(code), status="excluded", reason_codes=["industry_filter_empty"],
+                    quality="observed", stage="universe_gate", threshold_mode=threshold_mode,
+                ) for code in all_stocks]
+                self.last_run_context["eligible_universe_size"] = 0
+                self._finalize_negative_evidence_buffers()
+                return []
+            stocks = [s for s in all_stocks if str(s) in filtered_stocks]
+            stocks = stocks[:max_stocks]
 
-        if industry_filter and industry_filter != '全部':
+            logger.info(
+                f"[RecommendationService] PIT 產業篩選完成: "
+                f"產業={industry_filter}, "
+                f"篩選前股票數={len(all_stocks)}, "
+                f"篩選後股票數={len(stocks)}"
+            )
+        elif industry_filter and industry_filter != '全部':
+            # 只在沒有明確 cutoff 的互動研究路徑使用 current mapper；
+            # cutoff 路徑永不回退到 companies.csv。
             # 先從所有股票中篩選出屬於指定產業的股票
-            filtered_stocks = self.industry_mapper.filter_stocks_by_industry(
+            current_filtered_stocks = self.industry_mapper.filter_stocks_by_industry(
                 [str(s) for s in all_stocks],
                 industry_filter
             )
 
-            if len(filtered_stocks) == 0:
+            if len(current_filtered_stocks) == 0:
                 # 提供更詳細的錯誤信息，幫助調試
                 all_industries = self.industry_mapper.get_all_industries()
                 similar_industries = [ind for ind in all_industries
@@ -582,7 +705,7 @@ class RecommendationService:
                 self.last_run_context["warnings"].append("industry_filter_empty")
 
             # 只保留屬於該產業的股票
-            stocks = [s for s in all_stocks if str(s) in filtered_stocks]
+            stocks = [s for s in all_stocks if str(s) in current_filtered_stocks]
             # 限制處理數量（在產業篩選後）
             stocks = stocks[:max_stocks]
 

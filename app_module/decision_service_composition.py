@@ -12,6 +12,7 @@ from app_module.decision_data_providers import (
     recent_stock_screen_provider,
 )
 from app_module.application_ports import MarketFrameProvider
+from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ def build_decision_service_composition(
     dependencies: Mapping[str, Any] | None = None,
     industry_index_provider: MarketFrameProvider | None = None,
     market_index_provider: MarketFrameProvider | None = None,
+    pit_membership_reader: PITSectorMembershipReader | None = None,
 ) -> DecisionServiceComposition:
     """建立共享 mapper 與各自獨立的 regime detector。"""
     constructors = dict(dependencies or _default_dependencies())
@@ -66,6 +68,7 @@ def build_decision_service_composition(
     mapper = constructors["IndustryMapper"](
         config, industry_index_provider=industry_provider
     )
+    active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
     stock_screener = constructors["StockScreener"](
         config,
         mapper,
@@ -79,9 +82,16 @@ def build_decision_service_composition(
     industry_strength_service = None
     if "IndustryStrengthService" in constructors:
         try:
-            industry_strength_service = constructors[
-                "IndustryStrengthService"
-            ](config)
+            industry_strength_kwargs: dict[str, Any] = {}
+            if active_pit_reader is not None:
+                industry_strength_kwargs["pit_membership_reader"] = active_pit_reader
+                configured_market_scope = getattr(config, "pit_market_scope", None)
+                if configured_market_scope:
+                    industry_strength_kwargs["pit_market_scope"] = configured_market_scope
+            industry_strength_service = constructors["IndustryStrengthService"](
+                config,
+                **industry_strength_kwargs,
+            )
             screening_kwargs["industry_strength_service"] = industry_strength_service
         except Exception:
             # 產業強弱是可降級的研究 read model；保留既有篩選服務契約。
@@ -100,6 +110,8 @@ def build_decision_service_composition(
         "industry_mapper": mapper,
         "regime_detector": recommendation_detector,
     }
+    if active_pit_reader is not None:
+        recommendation_kwargs["pit_membership_reader"] = active_pit_reader
     # The normal application composition explicitly injects the read-only
     # calibration consumer.  Test/custom service constructors keep the legacy
     # dependency contract and may opt in themselves.
@@ -123,3 +135,14 @@ def build_decision_service_composition(
         recommendation_service=recommendation_service,
         industry_strength_service=industry_strength_service,
     )
+
+
+def _configured_pit_reader(config: Any) -> PITSectorMembershipReader | None:
+    """只在 config 明確指定 artifact path 時組合 PIT reader。"""
+
+    configured = getattr(config, "pit_sector_membership_paths", None)
+    if configured is None:
+        configured = getattr(config, "pit_sector_membership_path", None)
+    if not configured:
+        return None
+    return PITSectorMembershipReader.from_config(config)

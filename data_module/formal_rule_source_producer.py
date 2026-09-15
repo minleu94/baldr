@@ -599,7 +599,7 @@ def _read_current_rule_window(
     target_day: date,
     observed_utc: datetime,
     symbols: Sequence[str],
-) -> tuple[Any, str]:
+) -> tuple[Any, str, tuple[str, ...], tuple[int, ...]]:
     """讀取當日 T-1 視窗並重新計算完整 frozen universe hash。"""
 
     resolved = market_db.expanduser().resolve()
@@ -632,7 +632,18 @@ def _read_current_rule_window(
     universe_hash = _universe_hash(candidates)
     if not _is_sha256(universe_hash):
         raise FormalRuleSourceProducerError("rule_universe_hash_invalid")
-    return window, universe_hash
+    score_values: list[int] = []
+    for candidate in candidates:
+        score = getattr(candidate, "score_bp", None)
+        if type(score) is not int:
+            raise FormalRuleSourceProducerError("rule_candidate_score_missing")
+        score_values.append(score)
+    return (
+        window,
+        universe_hash,
+        tuple(str(candidate.symbol) for candidate in candidates),
+        tuple(score_values),
+    )
 
 
 def _build_machine_acceptance(
@@ -1661,7 +1672,12 @@ def produce_current_rule_source_bundle(
         calendar_cache_root=cache_root,
         target_day=target_day,
     )
-    window, universe_hash = _read_current_rule_window(
+    (
+        window,
+        universe_hash,
+        universe_hash_symbols,
+        universe_scores_bp,
+    ) = _read_current_rule_window(
         market_path,
         target_day=target_day,
         observed_utc=observed_utc,
@@ -1777,6 +1793,8 @@ def produce_current_rule_source_bundle(
         "promotion_eligible": False,
         "broker_order_allowed": False,
     }
+    identity_without_hash["scores_bp"] = list(universe_scores_bp)
+    identity_without_hash["universe_hash_symbols"] = list(universe_hash_symbols)
 
 
     if source_window is not None:

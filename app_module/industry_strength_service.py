@@ -26,6 +26,11 @@ from app_module.decision_desk_dtos import (
     SectorRotationSummary,
 )
 from app_module.dtos.market_loop_dtos import ScreeningResultDTO
+from data_module.pit_sector_membership_reader import (
+    PITMembershipReadResult,
+    PITMembershipRow,
+    PITSectorMembershipReader,
+)
 
 
 # 這份表是刻意維護的 exact mapping；不使用模糊字串猜配，避免把父層、
@@ -161,6 +166,12 @@ def _as_text(value: Any) -> str:
     except (TypeError, ValueError):
         pass
     return str(value).strip()
+
+
+def _as_text_list(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple, set, frozenset)):
+        return []
+    return [str(item) for item in value]
 
 
 def _parse_date(value: Any) -> date | None:
@@ -412,6 +423,8 @@ class IndustryStrengthService:
         provider: IndustryStrengthDataProvider | None = None,
         companies_path: str | Path | None = None,
         representative_limit: int = 3,
+        pit_membership_reader: PITSectorMembershipReader | None = None,
+        pit_market_scope: str | None = None,
     ) -> None:
         self.config = config
         if provider is None:
@@ -423,6 +436,8 @@ class IndustryStrengthService:
             provider = SQLiteIndustryStrengthDataProvider(config.db_file, registry_path)
         self.provider = provider
         self.representative_limit = max(1, int(representative_limit))
+        self.pit_membership_reader = pit_membership_reader
+        self.pit_market_scope = pit_market_scope
 
     def latest_available_date(self) -> date | None:
         latest = getattr(self.provider, "latest_available_date", None)
@@ -434,10 +449,15 @@ class IndustryStrengthService:
             return value if isinstance(value, date) else _parse_date(value)
         return None
 
-    def build_snapshot(self, as_of_date: date) -> SectorRotationSummary:
-        summary = self.build_industry_strength(as_of_date)
+    def build_snapshot(
+        self,
+        as_of_date: date,
+        *,
+        decision_at: datetime | str | None = None,
+    ) -> SectorRotationSummary:
+        summary = self.build_industry_strength(as_of_date, decision_at=decision_at)
         leading, trailing, intensity = self._rotation_headlines(summary)
-        meta = {
+        meta: dict[str, object] = {
             "source": self.source_id,
             "source_version": self.source_version,
             "mapping_source_id": summary.mapping_source_id,
@@ -464,6 +484,25 @@ class IndustryStrengthService:
             "ranking_scope": "within_industry_level",
             "windows": list(summary.windows),
         }
+        if "pit_membership" in summary.coverage:
+            meta["pit_membership"] = dict(summary.coverage["pit_membership"])
+            meta["pit_membership_status"] = summary.coverage.get("pit_membership_status")
+            meta["pit_membership_quality"] = summary.coverage.get("pit_membership_quality")
+            meta["pit_membership_source_ids"] = list(
+                summary.coverage.get("pit_membership_source_ids", ())
+            )
+            meta["pit_membership_source_hashes"] = list(
+                summary.coverage.get("pit_membership_source_hashes", ())
+            )
+            meta["pit_membership_universe_hash"] = summary.coverage.get(
+                "pit_membership_universe_hash"
+            )
+            meta["pit_membership_rows_hash"] = summary.coverage.get(
+                "pit_membership_rows_hash"
+            )
+            meta["pit_membership_canonical_hash"] = summary.coverage.get(
+                "pit_membership_canonical_hash"
+            )
         return SectorRotationSummary(
             as_of_date=summary.as_of_date,
             quality=summary.quality,
@@ -475,7 +514,12 @@ class IndustryStrengthService:
             industry_strength=summary,
         )
 
-    def build_industry_strength(self, as_of_date: date | None) -> IndustryStrengthSummary:
+    def build_industry_strength(
+        self,
+        as_of_date: date | None,
+        *,
+        decision_at: datetime | str | None = None,
+    ) -> IndustryStrengthSummary:
         requested = as_of_date or self.latest_available_date()
         if requested is None:
             return IndustryStrengthSummary(
@@ -503,8 +547,12 @@ class IndustryStrengthService:
                 mapping_source_id=self.mapping_source_id,
                 mapping_version=self.mapping_version,
             )
+        pit_membership = self._read_pit_membership(requested, decision_at=decision_at)
         return self._build_from_data(
-            requested, data, current_source_date=current_source_date
+            requested,
+            data,
+            current_source_date=current_source_date,
+            pit_membership=pit_membership,
         )
 
     def build_screening_result(
@@ -520,22 +568,58 @@ class IndustryStrengthService:
         metric_name = f"excess_{window}d_bp"
         return self._to_screening_result(summary, direction, period, top_n, metric_name, decision_date)
 
+    def _read_pit_membership(
+        self,
+        requested: date,
+        *,
+        decision_at: datetime | str | None,
+    ) -> PITMembershipReadResult | None:
+        reader = self.pit_membership_reader
+        if reader is None:
+            return None
+        cutoff = decision_at or reader.default_decision_at(requested)
+        try:
+            return reader.read(
+                as_of_date=requested,
+                decision_at=cutoff,
+                market_scope=self.pit_market_scope,
+            )
+        except Exception as exc:  # noqa: BLE001 - caller remains fail closed
+            return PITMembershipReadResult(
+                as_of_date=requested,
+                decision_at=reader.default_decision_at(requested),
+                status="unavailable",
+                quality="missing",
+                rows=(),
+                warnings=(f"pit_membership_reader_error:{type(exc).__name__}",),
+                lineage={
+                    "reader_schema_version": "pit-sector-membership-reader.v1",
+                    "status": "unavailable",
+                    "market_scope_requested": self.pit_market_scope,
+                    "error": str(exc),
+                },
+            )
+
     def _build_from_data(
         self,
         requested: date,
         data: IndustryStrengthData,
         *,
         current_source_date: date | None = None,
+        pit_membership: PITMembershipReadResult | None = None,
     ) -> IndustryStrengthSummary:
         warnings = list(data.provider_warnings)
-        warnings.extend(
-            (
-                "industry_mapping_current_research_only",
-                "industry_mapping_historical_pit_unavailable",
-                "industry_mapping_not_for_ml_or_formal_clock",
-                "benchmark_available_at_unrecorded",
+        if pit_membership is None:
+            warnings.extend(
+                (
+                    "industry_mapping_current_research_only",
+                    "industry_mapping_historical_pit_unavailable",
+                    "industry_mapping_not_for_ml_or_formal_clock",
+                    "benchmark_available_at_unrecorded",
+                )
             )
-        )
+        else:
+            warnings.extend(pit_membership.warnings)
 
         clean_index_rows, index_dates, duplicate_index_names = _index_series(data.industry_indices)
         market_series, market_dates, market_warnings = _market_series(data.market_indices)
@@ -550,13 +634,20 @@ class IndustryStrengthService:
                 warnings,
                 mapping_observed_date=data.mapping_observed_date,
                 mapping_available_at=data.mapping_available_at,
+                pit_membership=pit_membership,
             )
         if effective != requested:
             warnings.append(f"industry_strength_as_of_fallback:{effective.isoformat()}")
         if effective not in index_dates:
             warnings.append("industry_strength_index_effective_date_missing")
 
-        mapping = _build_membership_mapping(data.companies)
+        if pit_membership is None:
+            mapping = _build_membership_mapping(data.companies)
+        else:
+            mapping = _build_pit_membership_mapping(
+                pit_membership.rows,
+                market_scope=self.pit_market_scope,
+            )
         warnings.extend(mapping["warnings"])
         mapped_index_names = set(INDUSTRY_CATEGORY_TO_INDEX.values())
         observed_clean_names = set(clean_index_rows)
@@ -567,24 +658,45 @@ class IndustryStrengthService:
         if unmapped_indices:
             warnings.append(f"industry_mapping_unmapped_indices:{len(unmapped_indices)}")
 
-        mapping_allowed = _mapping_is_available_at(
-            effective,
-            data.mapping_observed_date,
-            data.mapping_available_at,
-            current_source_date=current_source_date,
+        mapping_allowed = (
+            pit_membership.industry_filter_usable
+            if pit_membership is not None
+            else _mapping_is_available_at(
+                effective,
+                data.mapping_observed_date,
+                data.mapping_available_at,
+                current_source_date=current_source_date,
+            )
         )
         if not mapping_allowed:
-            warnings.append("industry_mapping_not_available_at_as_of")
+            warnings.append(
+                (
+                    "industry_mapping_pit_taxonomy_unverified"
+                    if pit_membership is not None and pit_membership.usable
+                    else "industry_mapping_pit_not_available_at_as_of"
+                )
+                if pit_membership is not None
+                else "industry_mapping_not_available_at_as_of"
+            )
             return self._summary_without_rows(
                 data,
                 warnings,
                 as_of_date=effective,
-                mapping_observed_date=data.mapping_observed_date,
-                mapping_available_at=data.mapping_available_at,
+                mapping_observed_date=(
+                    pit_membership.as_of_date
+                    if pit_membership is not None
+                    else data.mapping_observed_date
+                ),
+                mapping_available_at=(
+                    _pit_available_at_text(pit_membership)
+                    if pit_membership is not None
+                    else data.mapping_available_at
+                ),
                 unmapped_industry_categories=unmapped_categories,
                 unmapped_index_names=unmapped_indices,
                 duplicate_membership_codes=tuple(mapping["duplicate_codes"]),
                 ambiguous_membership_codes=tuple(mapping["ambiguous_codes"]),
+                pit_membership=pit_membership,
             )
 
         session_dates = sorted(item for item in market_dates if item <= effective)
@@ -621,7 +733,11 @@ class IndustryStrengthService:
                     f"industry_stock_market_scope_gap:{len(excluded_members)}"
                 )
             if not mapping_allowed:
-                row_warnings.append("industry_mapping_current_registry_not_applicable")
+                row_warnings.append(
+                    "industry_mapping_pit_not_applicable"
+                    if pit_membership is not None
+                    else "industry_mapping_current_registry_not_applicable"
+                )
             if index_name not in observed_clean_names:
                 row_warnings.append("industry_index_observation_missing")
             index_values = clean_index_rows.get(index_name, {})
@@ -699,7 +815,7 @@ class IndustryStrengthService:
                     industry_name=category,
                     index_name=index_name,
                     industry_level=industry_level(index_name),
-                    market_scope="twse",
+                    market_scope=str(mapping.get("market_scope", "twse")),
                     index_close=index_close,
                     return_5d_bp=returns[5],
                     return_20d_bp=returns[20],
@@ -728,13 +844,19 @@ class IndustryStrengthService:
         if duplicate_price_codes:
             warnings.append(f"industry_stock_duplicate_price_observations:{len(duplicate_price_codes)}")
 
-        coverage_summary = {
+        coverage_summary: dict[str, object] = {
             "mapping_registry_row_count": mapping["row_count"],
             "mapping_unique_code_count": mapping["unique_code_count"],
             "mapping_unambiguous_mapped_code_count": mapping["mapped_code_count"],
-            "current_research_market_aligned_mapped_code_count": mapping["mapped_code_count"],
+            "current_research_market_aligned_mapped_code_count": (
+                mapping["mapped_code_count"] if pit_membership is None else 0
+            ),
             "historical_pit_eligible_code_count": 0,
-            "mapping_mode": "current_research_only",
+            "mapping_mode": (
+                "current_research_only"
+                if pit_membership is None
+                else "pit_accepted_prospective"
+            ),
             "mapping_unmapped_category_count": len(unmapped_categories),
             "mapping_duplicate_membership_count": len(mapping["duplicate_codes"]),
             "mapping_ambiguous_membership_count": len(mapping["ambiguous_codes"]),
@@ -746,15 +868,60 @@ class IndustryStrengthService:
             "price_missing_or_suspended_count_20d": price_missing_counts[20],
             "market_scope_excluded_code_count": mapping["market_excluded_code_count"],
             "market_scope_ambiguous_code_count": len(mapping["ambiguous_market_codes"]),
-            "coverage_denominator": "current_unambiguous_company_registry",
-            "market_scope": "twse",
-            "market_scope_source_id": "meta_data.companies.csv:type",
+            "coverage_denominator": (
+                "current_unambiguous_company_registry"
+                if pit_membership is None
+                else "accepted_pit_membership_rows"
+            ),
+            "market_scope": mapping.get("market_scope", "twse"),
+            "market_scope_source_id": (
+                "meta_data.companies.csv:type"
+                if pit_membership is None
+                else "pit_sector_membership_reader"
+            ),
             "ranking_scope": "within_industry_level",
             "session_source": "sqlite.market_indices:TAIEX",
             "benchmark_available_at_status": "not_recorded",
-            "pit_history_status": "unavailable_current_research_only",
+            "pit_history_status": (
+                "unavailable_current_research_only"
+                if pit_membership is None
+                else "prospective_accepted_not_historical"
+            ),
             "data_window_end": effective.isoformat(),
         }
+        if pit_membership is not None:
+            coverage_summary["pit_membership"] = dict(pit_membership.lineage)
+            coverage_summary["pit_membership_status"] = pit_membership.status
+            coverage_summary["pit_membership_quality"] = pit_membership.quality
+            coverage_summary["pit_membership_as_of_date"] = pit_membership.as_of_date.isoformat()
+            coverage_summary["pit_membership_decision_at"] = pit_membership.decision_at.isoformat()
+            coverage_summary["pit_membership_source_ids"] = _as_text_list(
+                pit_membership.lineage.get("source_ids", ())
+            )
+            coverage_summary["pit_membership_source_hashes"] = _as_text_list(
+                pit_membership.lineage.get("source_hashes", ())
+            )
+            coverage_summary["pit_membership_universe_hash"] = pit_membership.lineage.get(
+                "universe_hash"
+            )
+            coverage_summary["pit_membership_rows_hash"] = pit_membership.lineage.get(
+                "rows_hash"
+            )
+            coverage_summary["pit_membership_canonical_hash"] = pit_membership.lineage.get(
+                "canonical_hash"
+            )
+            coverage_summary["pit_membership_available_at"] = pit_membership.lineage.get(
+                "available_at", []
+            )
+            coverage_summary["pit_membership_effective_from"] = pit_membership.lineage.get(
+                "effective_from", []
+            )
+            coverage_summary["pit_membership_effective_to"] = pit_membership.lineage.get(
+                "effective_to", []
+            )
+            coverage_summary["pit_membership_market_scopes"] = pit_membership.lineage.get(
+                "market_scopes", []
+            )
         return IndustryStrengthSummary(
             as_of_date=effective,
             quality=DecisionDeskQuality.DEGRADED,
@@ -762,11 +929,31 @@ class IndustryStrengthService:
             windows=(5, 20),
             source_id=self.source_id,
             source_version=self.source_version,
-            mapping_source_id=self.mapping_source_id,
-            mapping_version=self.mapping_version,
-            mapping_observed_date=data.mapping_observed_date,
-            mapping_available_at=data.mapping_available_at,
-            mapping_effective_from=data.mapping_observed_date,
+            mapping_source_id=(
+                self.mapping_source_id
+                if pit_membership is None
+                else "data_module.pit_sector_membership_reader"
+            ),
+            mapping_version=(
+                self.mapping_version
+                if pit_membership is None
+                else "pit-sector-membership-reader.v1"
+            ),
+            mapping_observed_date=(
+                data.mapping_observed_date
+                if pit_membership is None
+                else pit_membership.as_of_date
+            ),
+            mapping_available_at=(
+                data.mapping_available_at
+                if pit_membership is None
+                else _pit_available_at_text(pit_membership)
+            ),
+            mapping_effective_from=(
+                data.mapping_observed_date
+                if pit_membership is None
+                else _pit_effective_from(pit_membership)
+            ),
             historical_pit_eligible=False,
             benchmark_name="TAIEX" if market_series else None,
             benchmark_source_id=self.benchmark_source_id,
@@ -792,18 +979,79 @@ class IndustryStrengthService:
         unmapped_index_names: tuple[str, ...] = (),
         duplicate_membership_codes: tuple[str, ...] = (),
         ambiguous_membership_codes: tuple[str, ...] = (),
+        pit_membership: PITMembershipReadResult | None = None,
     ) -> IndustryStrengthSummary:
+        pit_mode = pit_membership is not None
+        coverage: dict[str, Any] = {
+            "coverage_denominator": (
+                "accepted_pit_membership_rows"
+                if pit_mode
+                else "current_unambiguous_company_registry"
+            ),
+            "current_research_market_aligned_mapped_code_count": 0,
+            "historical_pit_eligible_code_count": 0,
+            "mapping_mode": (
+                "pit_unavailable_fail_closed" if pit_mode else "current_research_only"
+            ),
+            "ranking_scope": "within_industry_level",
+            "pit_history_status": (
+                "prospective_unavailable"
+                if pit_mode
+                else "unavailable_current_research_only"
+            ),
+            "mapping_applicable_at_as_of": False if as_of_date is not None else None,
+        }
+        pit_as_of_date = (
+            pit_membership.as_of_date if pit_membership is not None else None
+        )
+        if pit_membership is not None:
+            coverage["pit_membership"] = dict(pit_membership.lineage)
+            coverage["pit_membership_status"] = pit_membership.status
+            coverage["pit_membership_quality"] = pit_membership.quality
+            coverage["pit_membership_source_ids"] = _as_text_list(
+                pit_membership.lineage.get("source_ids", ())
+            )
+            coverage["pit_membership_source_hashes"] = _as_text_list(
+                pit_membership.lineage.get("source_hashes", ())
+            )
+            coverage["pit_membership_universe_hash"] = pit_membership.lineage.get(
+                "universe_hash"
+            )
+            coverage["pit_membership_rows_hash"] = pit_membership.lineage.get("rows_hash")
+            coverage["pit_membership_canonical_hash"] = pit_membership.lineage.get(
+                "canonical_hash"
+            )
         return IndustryStrengthSummary(
             as_of_date=as_of_date,
             quality=DecisionDeskQuality.MISSING,
             warnings=tuple(dict.fromkeys(warnings)),
             source_id=self.source_id,
             source_version=self.source_version,
-            mapping_source_id=self.mapping_source_id,
-            mapping_version=self.mapping_version,
-            mapping_observed_date=mapping_observed_date,
-            mapping_available_at=mapping_available_at,
-            mapping_effective_from=mapping_observed_date,
+            mapping_source_id=(
+                self.mapping_source_id
+                if not pit_mode
+                else "data_module.pit_sector_membership_reader"
+            ),
+            mapping_version=(
+                self.mapping_version
+                if not pit_mode
+                else "pit-sector-membership-reader.v1"
+            ),
+            mapping_observed_date=(
+                mapping_observed_date
+                if not pit_mode
+                else pit_as_of_date
+            ),
+            mapping_available_at=(
+                mapping_available_at
+                if not pit_mode
+                else _pit_available_at_text(pit_membership)
+            ),
+            mapping_effective_from=(
+                mapping_observed_date
+                if not pit_mode
+                else _pit_effective_from(pit_membership)
+            ),
             historical_pit_eligible=False,
             benchmark_name=None,
             benchmark_source_id=self.benchmark_source_id,
@@ -812,15 +1060,7 @@ class IndustryStrengthService:
             unmapped_index_names=unmapped_index_names,
             duplicate_membership_codes=duplicate_membership_codes,
             ambiguous_membership_codes=ambiguous_membership_codes,
-            coverage={
-                "coverage_denominator": "current_unambiguous_company_registry",
-                "current_research_market_aligned_mapped_code_count": 0,
-                "historical_pit_eligible_code_count": 0,
-                "mapping_mode": "current_research_only",
-                "ranking_scope": "within_industry_level",
-                "pit_history_status": "unavailable_current_research_only",
-                "mapping_applicable_at_as_of": False if as_of_date is not None else None,
-            },
+            coverage=coverage,
         )
 
     def _representatives(
@@ -1177,6 +1417,125 @@ def _build_membership_mapping(frame: pd.DataFrame) -> dict[str, Any]:
             if item
         ),
     }
+
+
+def _build_pit_membership_mapping(
+    rows: tuple[PITMembershipRow, ...],
+    *,
+    market_scope: str | None,
+) -> dict[str, Any]:
+    """把 reader 已驗證的 PIT rows 轉成 service 既有的 in-memory mapping。"""
+
+    members: dict[str, set[str]] = defaultdict(set)
+    market_excluded_members: dict[str, set[str]] = defaultdict(set)
+    stock_names: dict[str, str] = {}
+    code_categories: dict[str, set[str]] = defaultdict(set)
+    code_markets: dict[str, set[str]] = defaultdict(set)
+    duplicate_codes: set[str] = set()
+    unmapped_categories: set[str] = set()
+    seen_natural_keys: set[tuple[str, str, str, str]] = set()
+    row_count = 0
+    for row in rows:
+        if market_scope is not None and row.market_scope != market_scope:
+            continue
+        row_count += 1
+        code = str(row.symbol).strip()
+        category = (row.industry_category or "").strip()
+        category_key = category or f"sector_id:{row.sector_id}"
+        if not category or category not in INDUSTRY_CATEGORY_TO_INDEX:
+            unmapped_categories.add(category_key)
+        code_categories[code].add(category_key)
+        code_markets[code].add(row.market_scope)
+        stock_names.setdefault(code, code)
+        natural_key = (
+            code,
+            row.available_at.isoformat(),
+            row.effective_from.isoformat(),
+            row.sector_id,
+        )
+        if natural_key in seen_natural_keys:
+            duplicate_codes.add(code)
+        seen_natural_keys.add(natural_key)
+
+    for code, categories in code_categories.items():
+        if len(categories) != 1:
+            continue
+        category = next(iter(categories))
+        markets = code_markets.get(code, set())
+        if category in INDUSTRY_CATEGORY_TO_INDEX and len(markets) == 1:
+            members[category].add(code)
+
+    ambiguous_codes = sorted(
+        code for code, categories in code_categories.items() if len(categories) > 1
+    )
+    ambiguous_market_codes = sorted(
+        code for code, markets in code_markets.items() if len(markets) != 1
+    )
+    mapped_code_count = sum(
+        1
+        for code, categories in code_categories.items()
+        if len(categories) == 1
+        and next(iter(categories)) in INDUSTRY_CATEGORY_TO_INDEX
+        and len(code_markets.get(code, set())) == 1
+    )
+    scopes = sorted({row.market_scope for row in rows if market_scope is None or row.market_scope == market_scope})
+    resolved_scope = market_scope or "+".join(scopes) or "none"
+    warnings = tuple(
+        item
+        for item in (
+            f"industry_mapping_duplicate_memberships:{len(duplicate_codes)}"
+            if duplicate_codes
+            else "",
+            f"industry_mapping_ambiguous_memberships:{len(ambiguous_codes)}"
+            if ambiguous_codes
+            else "",
+            f"industry_mapping_unmapped_categories:{len(unmapped_categories)}"
+            if unmapped_categories
+            else "",
+            f"industry_mapping_ambiguous_market_types:{len(ambiguous_market_codes)}"
+            if ambiguous_market_codes
+            else "",
+        )
+        if item
+    )
+    return {
+        "members": {key: tuple(sorted(value)) for key, value in members.items()},
+        "stock_names": stock_names,
+        "duplicate_codes": tuple(sorted(duplicate_codes)),
+        "ambiguous_codes": tuple(ambiguous_codes),
+        "unmapped_categories": tuple(sorted(unmapped_categories)),
+        "row_count": row_count,
+        "unique_code_count": len(code_categories),
+        "mapped_code_count": mapped_code_count,
+        "market_excluded_members": {
+            key: tuple(sorted(value)) for key, value in market_excluded_members.items()
+        },
+        "market_excluded_code_count": 0,
+        "ambiguous_market_codes": tuple(ambiguous_market_codes),
+        "market_scope": resolved_scope,
+        "warnings": warnings,
+    }
+
+
+def _pit_available_at_text(result: PITMembershipReadResult | None) -> str | None:
+    if result is None:
+        return None
+    values = result.lineage.get("available_at", ())
+    if isinstance(values, (list, tuple)):
+        normalized = sorted(str(item) for item in values if str(item).strip())
+        return ",".join(normalized) if normalized else None
+    return str(values) if values else None
+
+
+def _pit_effective_from(result: PITMembershipReadResult | None) -> date | None:
+    if result is None:
+        return None
+    values = [row.effective_from for row in result.rows]
+    if values:
+        return min(values)
+    raw_values = result.lineage.get("effective_from", ())
+    parsed = [_parse_date(item) for item in raw_values] if isinstance(raw_values, (list, tuple)) else []
+    return min(item for item in parsed if item is not None) if any(parsed) else None
 
 
 def _mapping_is_available_at(

@@ -1,5 +1,25 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-15 PIT 產業來源 reader 與 caller 驗收
+
+已完成 prospective PIT 產業 membership 的 bounded engineering slice：新增唯讀
+`PITSectorMembershipReader`，重新驗證 sidecar／machine candidate 的 envelope、rows／canonical
+hash、官方 raw custody、clock manifest、score-bearing universe identity、taxonomy source、
+available／effective cutoff、market scope 與同日衝突。`usable` 與 `industry_filter_usable` 分離；
+缺 taxonomy、未知 classification version／產業代碼、部分分母或特殊證券時，Industry Strength
+與 Recommendation fail closed，不以 current `companies.csv` 冒充歷史 PIT。
+
+`TWStockConfig` 已提供明確的 PIT artifact／raw／clock／universe／taxonomy path 與環境變數入口；
+同一 reader 已接入 Industry Strength、Recommendation 及 non-UI Decision Desk composition。
+`formal_rule_source_producer` 同步保存實際 `scores_bp` 與 universe hash input rank order，供
+reader 重建 score-bound universe hash。完整測試與限制見
+[PIT 產業來源與 caller 驗收 QA](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。
+
+本切片 QA 為 PIT reader／caller 16 passed、相關回歸 66 passed、machine producer／consumer 16
+passed、全域 mypy 619 source files clean。D 槽既有 prospective artifact 的 raw custody 通過，
+但因缺 score-bearing universe identity 與 taxonomy source 仍為 `unavailable`；本段不代表
+historical backfill、Formal OOS、promotion、broker 或 real-money eligibility，也未改寫正式資料。
+
 ## 2026-09-15 user_declared Holding Research Increment 2 工程驗收
 
 已完成與 Paper／正式 Portfolio fill lane 分離的 `user_declared` 持倉研究切片：新增

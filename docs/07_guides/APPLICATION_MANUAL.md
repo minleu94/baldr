@@ -135,6 +135,16 @@ activation 前的 source fixture 可用 `--preactivation-staging`，只產生標
 
 clock 到達 activation day 後，移除 `--preactivation-staging` 才會把同一 producer 的 rows／registry 交給既有 `pit-sector-membership-prospective-manifest-v1` sidecar writer；輸出 parent 必須先存在且既有檔案不會覆寫。這個入口不註冊 scheduler；後續低 CPU daily capture 仍依 PIT publication → Rule snapshot → T−1 Portfolio transition → frozen inference 的既有順序，由 owner 在 strict readiness 全部通過後另行啟用。任何 readiness、calibration、shadow maturity、Formal OOS、promotion 或 broker gate 未通過時，仍固定 `formal_oos_allowed=false`、alpha=`0`、promotion=`false`、`broker_order_allowed=false`。
 
+#### PIT membership reader 與 caller 判讀（2026-09-15）
+
+PIT 產業 membership 是明確設定後才啟用的唯讀輸入。`TWStockConfig` 可用 constructor kw-only fields，或設定下列環境變數：`PIT_SECTOR_MEMBERSHIP_PATH`、`PIT_SECTOR_MEMBERSHIP_RAW_ROOT`、`PIT_SECTOR_MEMBERSHIP_CLOCK_MANIFEST_PATH`、`PIT_SECTOR_MEMBERSHIP_UNIVERSE_SYMBOLS_PATH`、`PIT_SECTOR_MEMBERSHIP_UNIVERSE_IDENTITY_PATH`、`PIT_SECTOR_MEMBERSHIP_TAXONOMY_IDENTITY_PATH`、`PIT_MEMBERSHIP_EXPECTED_CLASSIFICATION_VERSION`、`PIT_MARKET_SCOPE`。未設定 `PIT_SECTOR_MEMBERSHIP_PATH` 時，服務不掃描資料根目錄，也不自動建立 reader。
+
+設定 artifact 後，正常 composition root 會把同一個 read-only reader 注入 Industry Strength、Recommendation 與 non-UI Decision Desk。預設 PIT decision cutoff 是台北時間 08:30；指定 `PIT_MARKET_SCOPE` 時只消費該市場。reader 會重新驗證 raw bytes、source／clock／universe hash、available／effective interval、taxonomy source 與同日衝突；不同時區但同一決策 instant 會先轉為 Asia/Taipei 判斷。
+
+結果判讀時，membership `usable` 與 `industry_filter_usable` 必須分開看：前者只表示 membership custody 可讀，後者還要求已驗證且版本明確的 taxonomy、完整分母與 common-equity security identity。缺 taxonomy、未知 classification version／產業代碼、部分分母、特殊證券、future available time 或 hash mismatch 時，Recommendation／Industry 不回退 `companies.csv`，而是顯示缺證據並停止該產業篩選。machine publication 固定是 `candidate_only`，不會升格成 accepted。
+
+這條路徑只支援 prospective accepted read model，不代表 historical backfill、Formal OOS、promotion、broker 或 real-money eligibility。現有 D 槽 artifact 的 raw custody 雖可重驗，但因 score-bearing universe identity 與 taxonomy source 缺件仍為 unavailable；完整驗收與限制見 [PIT 產業來源與 caller 驗收 QA](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。
+
 ### 先預約 clock，再於未來累積正式輸入
 
 prospective-only 的三份輸入在 activation 前尚不存在是合法狀態；若 strict readiness

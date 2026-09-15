@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketRegimeSummary
+from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
 
 class DecisionDeskMarketRegimeProvider:
@@ -136,6 +137,7 @@ def build_decision_desk_composition(
     smart_money_service: Any = None,
     market_frame_loader: Any = None,
     industry_strength_service: Any = None,
+    pit_membership_reader: PITSectorMembershipReader | None = None,
     dependencies: dict[str, Any],
     report_error: Callable[[str], None] = print,
 ) -> DecisionDeskComposition:
@@ -164,9 +166,24 @@ def build_decision_desk_composition(
         ),
     )
     if industry_strength_service is None and "IndustryStrengthService" in dependencies:
+        active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
         industry_strength_service = optional_service(
             "IndustryStrengthService",
-            lambda: dependencies["IndustryStrengthService"](config),
+            lambda: dependencies["IndustryStrengthService"](
+                config,
+                **(
+                    {
+                        "pit_membership_reader": active_pit_reader,
+                        **(
+                            {"pit_market_scope": getattr(config, "pit_market_scope")}
+                            if getattr(config, "pit_market_scope", None)
+                            else {}
+                        ),
+                    }
+                    if active_pit_reader is not None
+                    else {}
+                ),
+            ),
         )
     sector_rotation_service = industry_strength_service
     if sector_rotation_service is None:
@@ -226,3 +243,14 @@ def build_decision_desk_composition(
         market_data_visibility_service=market_data_visibility_service,
     )
     return DecisionDeskComposition(builder=builder, market_frame_loader=market_frame_loader)
+
+
+def _configured_pit_reader(config: Any) -> PITSectorMembershipReader | None:
+    """只在 config 明確指定 artifact path 時組合 PIT reader。"""
+
+    configured = getattr(config, "pit_sector_membership_paths", None)
+    if configured is None:
+        configured = getattr(config, "pit_sector_membership_path", None)
+    if not configured:
+        return None
+    return PITSectorMembershipReader.from_config(config)

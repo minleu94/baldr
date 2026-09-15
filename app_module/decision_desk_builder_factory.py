@@ -28,6 +28,7 @@ from app_module.watchlist_trigger_service import (
     WatchlistTriggerService,
 )
 from data_module.config import TWStockConfig
+from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ def build_service_backed_decision_desk_snapshot_builder(
     watchlist_service: WatchlistService | None = None,
     broker_flow_service: BrokerFlowService | None = None,
     smart_money_service: Any | None = None,
+    pit_membership_reader: PITSectorMembershipReader | None = None,
 ) -> DecisionDeskSnapshotBuilder:
     """Create the Decision Desk builder used by non-UI batch and CLI flows."""
 
@@ -129,10 +131,29 @@ def build_service_backed_decision_desk_snapshot_builder(
             )
         ),
     )
-    sector_rotation_service = _try_create(
-        "IndustryStrengthService",
-        lambda: IndustryStrengthService(config),
-    )
+    active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
+    if active_pit_reader is not None:
+        sector_rotation_service = _try_create(
+            "IndustryStrengthService",
+            lambda: IndustryStrengthService(
+                config,
+                pit_membership_reader=active_pit_reader,
+                **(
+                    {"pit_market_scope": getattr(config, "pit_market_scope")}
+                    if getattr(config, "pit_market_scope", None)
+                    else {}
+                ),
+            ),
+        )
+    else:
+        # PIT is opt-in.  Preserve the existing current-research Decision Desk
+        # section when no explicit PIT artifact has been configured.
+        sector_rotation_service = _try_create(
+            "SectorRotationService",
+            lambda: SectorRotationService(
+                SQLiteIndustryIndexSectorRotationProvider(config.db_file)
+            ),
+        )
     if sector_rotation_service is None:
         sector_rotation_service = _try_create(
             "SectorRotationService",
@@ -199,3 +220,14 @@ def _try_create(name: str, factory: Callable[[], Any]) -> Any | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Decision Desk %s initialization failed: %s", name, exc)
         return None
+
+
+def _configured_pit_reader(config: Any) -> PITSectorMembershipReader | None:
+    """只在 config 明確指定 artifact path 時組合 PIT reader。"""
+
+    configured = getattr(config, "pit_sector_membership_paths", None)
+    if configured is None:
+        configured = getattr(config, "pit_sector_membership_path", None)
+    if not configured:
+        return None
+    return PITSectorMembershipReader.from_config(config)

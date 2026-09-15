@@ -160,7 +160,10 @@ def _patch_real_source_checks(
     monkeypatch.setattr(
         producer,
         "rank_rule_only_candidates",
-        lambda *_args, **_kwargs: [SimpleNamespace(symbol=s) for s in symbols],
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(symbol=s, score_bp=7000 + index)
+            for index, s in enumerate(symbols)
+        ],
     )
     monkeypatch.setattr(producer, "_universe_hash", lambda _value: UNIVERSE_HASH)
     monkeypatch.setattr(producer, "file_sha256", lambda path: _real_file_hash(path))

@@ -8,6 +8,12 @@ import argparse
 import sys
 import re
 
+
+def _optional_env_path(name: str) -> Path | None:
+    value = os.environ.get(name, "").strip()
+    return Path(value) if value else None
+
+
 @dataclass
 class TWStockConfig:
     """台股數據分析核心配置"""
@@ -37,6 +43,40 @@ class TWStockConfig:
     research_run_parquet_dir: Path = field(init=False)  # Research Run 詳細資料目錄
     research_run_staging_dir: Path = field(init=False)  # Research Run 暫存目錄
     use_sqlite: bool = True  # 是否使用 SQLite 儲存
+
+    # PIT sector membership 是 opt-in 的唯讀輸入；未設定時不做目錄掃描。
+    pit_sector_membership_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_raw_root: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_RAW_ROOT"),
+        kw_only=True,
+    )
+    pit_sector_membership_clock_manifest_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_CLOCK_MANIFEST_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_universe_symbols_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_UNIVERSE_SYMBOLS_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_universe_identity_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_UNIVERSE_IDENTITY_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_taxonomy_identity_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_TAXONOMY_IDENTITY_PATH"),
+        kw_only=True,
+    )
+    pit_membership_expected_classification_version: str | None = field(
+        default_factory=lambda: os.environ.get("PIT_MEMBERSHIP_EXPECTED_CLASSIFICATION_VERSION") or None,
+        kw_only=True,
+    )
+    pit_market_scope: str | None = field(
+        default_factory=lambda: os.environ.get("PIT_MARKET_SCOPE") or None,
+        kw_only=True,
+    )
 
     # 技術指標 process-pool（預設關閉；只有受控 caller 明確開啟才會使用）
     # worker 僅回傳計算結果，CSV／SQLite 一律由父程序單一寫入者處理。

@@ -5,7 +5,7 @@
 ## 2026-09-15 machine refresh
 
 Current filesystem Python files: `836`
-Current registry entries: `831`
+Current registry entries: `833`
 
 | 分類 | 數量 |
 |---|---:|
@@ -16,18 +16,18 @@ Current registry entries: `831`
 | `manual-only` | 14 |
 | `service-oracle-data-market` | 123 |
 | `service-oracle-portfolio-decision-runtime` | 130 |
-| `service-oracle-recommendation` | 33 |
+| `service-oracle-recommendation` | 35 |
 | `service-oracle-research-backtest` | 74 |
 | `slow-e2e-or-environment` | 4 |
 | `ui-healthcheck-candidate-bridge` | 37 |
 | `ui-healthcheck-direct-bridge` | 12 |
 | `write-risk-dry-run-required` | 71 |
 
-- 預設收集檔案：803；support：5；不收集：23。
+- 預設收集檔案：805；support：5；不收集：23；三者合計 registry entries `833`。
 - 2026-09-09 補齊資料工作新增五份測試；本輪再加入四份 V4 effectiveness／FinMind candidate 測試，均僅用隔離資料驗證，不授予 runner 正式資料寫入權限。
 - 歷史對照：本段更新前的機器摘要曾記錄總數 `743`、general `147`、governance `138`、data `110`、portfolio-runtime `106`、research-backtest `71`、UI candidate `26`、write-risk `64`；以上數字保留作舊 QA 快照，不代表目前清冊。
-- 2026-09-15 registry consolidation 依交接預分類補登 22 個 accepted path（含 pit_test_support support）；run_test_inventory_audit() 目前為 5 個 missing、0 個 stale、0 個 count drift、0 個 collection error。新增測試不因此進入 direct bridge。
-- 目前 remaining missing 是 tests/test_db_lock_wait.py、tests/test_review_warning_classification.py、L lane 的 tests/test_pit_taxonomy_daily_source.py，以及 C lane 的 tests/test_recommendation_training_lineage.py、tests/test_recommendation_calibration_learning_runner_lineage.py；均不註冊、不刪除、不隱藏。
+- 2026-09-15 registry consolidation 依交接預分類補登 22 個 accepted path（含 pit_test_support support）；本輪再補登 C lane recommendation lineage 的 2 個 owned test paths。快速 `--skip-pytest-collection` audit 只檢查 filesystem／registry／parser，不執行 pytest collection；隨後完整 audit 實收集 `5502` 測項，目前為 3 個 foreign missing、0 個 stale、0 個 count drift、0 個 collection error。新增測試不因此進入 direct bridge。
+- 目前 remaining missing 是 tests/test_db_lock_wait.py、tests/test_review_warning_classification.py 與 L lane 的 tests/test_pit_taxonomy_daily_source.py；均不註冊、不刪除、不隱藏。C lane 的 tests/test_recommendation_training_lineage.py 與 tests/test_recommendation_calibration_learning_runner_lineage.py 已登錄為 service-oracle-recommendation。
 - 本輪清理前實測為 748 個 Python 檔、4639 測項；舊 679 檔／4005 測項是較早檢查點。
 - 本輪補登 69 個檔案（含既有 ml_teacher_fixture 支援檔），刪除七份一次性診斷，兩份欄位測試合為參數化雙入口測試。
 - 2026-09-08 最終 collection 為 4,655；全量 pytest 為 4,652 passed、3 skipped；missing／stale／count drift 為零。見 [LUNA 三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)；[前次查核](PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留為歷史。

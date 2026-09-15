@@ -1736,13 +1736,23 @@ def _valid_probability_lineage(pointer: Mapping[str, Any], maximum_probability_c
 
 
 def _candidate_training_after_decision(metadata: Mapping[str, Any], decision_date: str) -> bool:
-    value = metadata.get("training_as_of")
-    if value in (None, ""):
-        return False
-    try:
-        return date.fromisoformat(str(value)[:10]) > date.fromisoformat(decision_date[:10])
-    except (TypeError, ValueError):
+    decision = date.fromisoformat(decision_date[:10])
+    for field_name in ("training_as_of", "training_cutoff"):
+        value = metadata.get(field_name)
+        if value in (None, ""):
+            continue
+        try:
+            if date.fromisoformat(str(value)[:10]) > decision:
+                return True
+        except (TypeError, ValueError):
+            return True
+
+    semantics = metadata.get("training_semantics")
+    if semantics not in (None, "decision_time"):
         return True
+    if "decision_time_eligible" in metadata and metadata.get("decision_time_eligible") is not True:
+        return True
+    return False
 
 
 def _pointer_identity(pointer: Mapping[str, Any] | None) -> dict[str, Any] | None:

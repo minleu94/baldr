@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app_module.daily_recommendation_learning_runner import DailyRecommendationLearningRunner
+from ml_module.recommendation_calibration_learning_runner import DailyRecommendationLearningRunner
 from app_module.recommendation_calibration_consumer import (
     RecommendationCalibrationConsumer,
     RecommendationCalibrationProjection,
@@ -36,6 +36,7 @@ from ml_module.recommendation_calibration_training import (
     RecommendationCalibrationTrainingConfig,
     RecommendationCalibrationTrainingService,
     RecommendationPrediction,
+    sample_payload,
 )
 
 
@@ -211,6 +212,8 @@ def _natural_receipt(
 
 def _prospective_price_up_quality() -> dict[str, object]:
     return {
+        "research_only": True,
+        "training_semantics": "historical_research_only",
         "training_data_eligible": True,
         "forward_evidence_eligible": False,
         "formal_candidate_eligible": False,
@@ -331,6 +334,10 @@ def test_daily_runner_is_idempotent_and_does_not_fabricate_natural_maturity(tmp_
         natural_evidence=None,
         drift_status="clean",
         training_as_of="2026-12-31",
+        dataset_quality={
+            "research_only": True,
+            "training_semantics": "historical_research_only",
+        },
     )
     second = runner.run(
         decision_date="2026-06-01",
@@ -338,11 +345,15 @@ def test_daily_runner_is_idempotent_and_does_not_fabricate_natural_maturity(tmp_
         natural_evidence=None,
         drift_status="clean",
         training_as_of="2026-12-31",
+        dataset_quality={
+            "research_only": True,
+            "training_semantics": "historical_research_only",
+        },
     )
 
     assert first.status == "completed"
     assert first.decision == "retain_current"
-    assert "natural_forward_evidence_receipt_missing" in first.decision_reason
+    assert first.decision_reason == "candidate_training_as_of_after_decision_fail_closed"
     assert second.idempotent_replay is True
     assert second.candidate_id == first.candidate_id
     receipt = json.loads(
@@ -648,10 +659,12 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
 
         def to_dict(self) -> dict[str, object]:
             return {
+                "schema_version": "recommendation-historical-replay-dataset.v1",
                 "dataset_id": self.dataset_id,
                 "dataset_hash": self.dataset_hash,
                 "sample_count": len(self.samples),
                 "decision_dates": sorted({row.decision_date for row in self.samples}),
+                "samples": [sample_payload(row) for row in self.samples],
                 "source_fingerprint": self.source_fingerprint,
                 "training_data_eligible": self.training_data_eligible,
                 "forward_evidence_eligible": self.forward_evidence_eligible,

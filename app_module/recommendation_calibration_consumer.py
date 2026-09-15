@@ -288,6 +288,25 @@ class RecommendationCalibrationConsumer:
         except (OSError, json.JSONDecodeError, TypeError, ValueError, RecommendationCostScenarioError):
             self._blocker = "active_pointer_candidate_cost_scenario_invalid"
             return "rule_only"
+        declared_training_cutoff = "training_cutoff" in candidate_payload
+        candidate_training_cutoff = _date_text_or_none(
+            str(candidate_payload.get("training_cutoff") or "")
+        )
+        if declared_training_cutoff and candidate_training_cutoff is None:
+            self._blocker = "candidate_training_cutoff_invalid"
+            return "rule_only"
+        if candidate_training_cutoff is not None and candidate_training_cutoff > current_day:
+            self._blocker = "candidate_training_cutoff_after_decision"
+            return "rule_only"
+        if "training_semantics" in candidate_payload and candidate_payload.get("training_semantics") != "decision_time":
+            self._blocker = "candidate_training_context_not_decision_time"
+            return "rule_only"
+        if "decision_time_eligible" in candidate_payload and candidate_payload.get("decision_time_eligible") is not True:
+            self._blocker = "candidate_training_context_not_decision_time"
+            return "rule_only"
+        if "research_only" in candidate_payload and candidate_payload.get("research_only") is not False:
+            self._blocker = "candidate_training_context_not_decision_time"
+            return "rule_only"
         if candidate_scenario.scenario_hash != scenario.scenario_hash:
             self._blocker = "active_pointer_candidate_cost_scenario_mismatch"
             return "rule_only"

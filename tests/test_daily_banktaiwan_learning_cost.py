@@ -891,7 +891,7 @@ def test_estimated_capture_outcome_authority_consumer_and_tamper_guard(tmp_path:
 def test_existing_legacy_candidate_and_capture_are_readonly_compatible(tmp_path: Path) -> None:
     if not LEGACY_CANDIDATE.is_file() or not LEGACY_CAPTURE.is_file():
         pytest.skip("本機沒有既有 legacy candidate/capture artifact")
-    from app_module.daily_recommendation_learning_runner import DailyRecommendationLearningRunner
+    from ml_module.recommendation_calibration_learning_runner import DailyRecommendationLearningRunner
     from scripts.scheduled.run_daily_recommendation_learning import (
         _load_frozen_challenger,
         _read_verified_candidate_capture,
@@ -1320,3 +1320,129 @@ def test_same_output_root_rejects_second_cost_lane_and_preserves_legacy_state(
     assert isolated_payload["cost_basis"] == "estimated_research_only"
     assert isolated_payload["cost_scenario_hash"] == conflict_payload["cost_scenario_hash"]
     assert {path: path.read_bytes() for path in shared_state_paths} == shared_state_before
+
+
+def test_isolated_legacy_decision_receipt_fails_closed_for_cost_lane_resolution(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "shadow-root"
+    decision_path = (
+        output_root
+        / "recommendation_learning"
+        / "decisions"
+        / "recommendation-calibration-2026-01-02.json"
+    )
+    decision_path.parent.mkdir(parents=True, exist_ok=True)
+    decision_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "recommendation-calibration-decision-receipt.v2",
+                "decision_id": "recommendation-calibration:2026-01-02",
+                "decision_date": "2026-01-02",
+                "decision": "retain_current",
+                "reason": "natural_forward_evidence_insufficient",
+                "candidate_id": None,
+                "previous_candidate_id": None,
+                "pointer_version": 0,
+                "pointer_status": "rule_only",
+                "pointer_content_hash": None,
+                "next_pointer_base": None,
+                "natural_evidence_receipt_hash": None,
+                "natural_matured_sample_count": 0,
+                "natural_matured_decision_date_count": 0,
+                "old_brier_bp": None,
+                "new_brier_bp": None,
+                "brier_improvement_bp": None,
+                "calibration_gap_bp": None,
+                "maximum_probability_change_bp": 1_000,
+                "candidate_freeze_hash": None,
+                "authority_family": "baldr-ml-promotion-authority-daily",
+                "authority_scope": "recommendation_calibration_adapter",
+                "formal_order_allowed": False,
+                "receipt_path": str(decision_path),
+                "pointer_path": str(
+                    output_root
+                    / "recommendation_learning"
+                    / "recommendation-calibration-active-pointer.json"
+                ),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    fixed_conflict = daily_learning._cost_scenario_root_conflict(
+        output_root,
+        build_legacy_cost_scenario(50),
+    )
+    estimated_conflict = daily_learning._cost_scenario_root_conflict(
+        output_root,
+        build_banktaiwan_cost_scenario(research_order_quantity_shares=1_000),
+    )
+    assert fixed_conflict is not None
+    assert "verified_same_lane_anchor" in fixed_conflict
+    assert estimated_conflict is not None
+    assert "legacy_decision_receipt_is_unverifiable" in estimated_conflict
+
+
+def test_legacy_decision_is_allowed_only_with_verified_same_lane_receipt_anchor(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "shadow-root"
+    root = output_root / "recommendation_learning"
+    decision_path = root / "decisions" / "recommendation-calibration-2026-01-02.json"
+    decision_path.parent.mkdir(parents=True, exist_ok=True)
+    decision_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "recommendation-calibration-decision-receipt.v2",
+                "decision_id": "recommendation-calibration:2026-01-02",
+                "decision_date": "2026-01-02",
+                "decision": "retain_current",
+                "reason": "natural_forward_evidence_insufficient",
+                "candidate_id": None,
+                "pointer_status": "rule_only",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    fixed = build_legacy_cost_scenario(50)
+    latest_path = root / "latest_status.json"
+    receipt_path = root / "runs" / "2026-01-02" / "run_receipt.json"
+    latest_payload = {
+        "schema_version": "daily-recommendation-learning-receipt.v1",
+        "receipt_path": str(receipt_path.resolve()),
+        "status": "completed",
+        "finalized": True,
+        "decision": "retain_current",
+        "formal_order_allowed": False,
+        "shadow_only": True,
+        **daily_learning._scenario_cli_metadata(fixed),
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(
+        json.dumps(latest_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    latest_path.write_text(
+        json.dumps(latest_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    assert daily_learning._cost_scenario_root_conflict(output_root, fixed) is None
+    assert (
+        daily_learning._cost_scenario_root_conflict(
+            output_root,
+            build_banktaiwan_cost_scenario(research_order_quantity_shares=1_000),
+        )
+        is not None
+    )
+
+    tampered = json.loads(latest_path.read_text(encoding="utf-8"))
+    tampered["cost_scenario_hash"] = "sha256:" + "f" * 64
+    latest_path.write_text(json.dumps(tampered, sort_keys=True), encoding="utf-8")
+    tampered_conflict = daily_learning._cost_scenario_root_conflict(output_root, fixed)
+    assert tampered_conflict is not None
+    assert "invalid_cost_scenario" in tampered_conflict

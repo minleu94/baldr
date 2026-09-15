@@ -3443,6 +3443,34 @@ scheduler、pipeline、runner、read-only consumer 與 Workbench 共用這個 ro
 `recommendation`、`evidence_outcomes`、Portfolio、Formal 或 broker state，也不改 `ScoringEngine`、
 正式推薦權重或 scheduler write mode。
 
+#### Canonical runner、lineage 與 cutoff 診斷（2026-09-15）
+
+本輪 canonical learning implementation 是
+`ml_module\recommendation_calibration_learning_runner.py` 的
+`DailyRecommendationLearningRunner`；scheduled entrypoint
+`scripts\scheduled\run_daily_recommendation_learning.py` 直接使用它。舊的
+`app_module\daily_recommendation_learning_runner.py` 不再是 runtime entrypoint。要檢查
+ML shadow dependency boundary，可使用：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\check_ml_shadow_boundary.py
+```
+
+fresh candidate 的 `candidate.json` 若宣告 training lineage，必須同時保存
+`training_lineage_manifest_hash` 與 `training_lineage_manifest_path`，並可由 immutable
+manifest 讀回驗證。兩個欄位都不存在的舊 frozen candidate 才能標示
+`legacy_unproven`；只缺其中一個、欄位為空或格式／讀回驗證失敗時，runner 必須寫入
+`failed_lineage`／`invalid` 並保留 `frozen_candidate_lineage_invalid_fail_closed`，不可
+手動刪欄位把 damaged declaration 降級成 legacy 相容。
+
+`training_as_of`／`training_cutoff` 晚於本次 `decision_date` 時，只有在 dataset quality
+明確同時宣告 `research_only=true` 與
+`training_semantics=historical_research_only` 才能建立 historical research artifact；
+其 lineage 的 `decision_time_eligible` 必須是 `false`。沒有這兩個語義時，runner 以
+`failed_training`／`retain_current` fail closed。即使 research artifact 已建立，authority
+與 read-only consumer 仍不得把它當作較早 decision date 可用的 candidate；應回到
+`rule_only`，且 future label 不得進入 decision-time training／inference path。
+
 #### 2026-09-14 source → snapshot → learning 操作順序
 
 正常 wrapper 的環境與預設值如下；若要做 controlled trial，才額外設定

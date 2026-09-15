@@ -441,6 +441,79 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     view.close()
 
 
+def test_real_consumer_rejects_future_research_candidate_context(
+    tmp_path: Path,
+) -> None:
+    """A valid active candidate becomes rule-only when its context is future research."""
+
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _candidate,
+        _natural_receipt,
+    )
+
+    trained_result, candidate_root, _candidate_metadata = _candidate(
+        tmp_path,
+        shift=0,
+        candidate_day="2026-06-01",
+    )
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-06-22",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-06-22",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=json.loads(
+            (candidate_root / "candidate.json").read_text(encoding="utf-8")
+        ),
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "authority" / "recommendation-calibration-active-pointer.json",
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        data_root=tmp_path / "formal-data",
+    )
+    assert consumer.reload(decision_date="2026-06-22") == "active"
+
+    candidate_path = candidate_root / "candidate.json"
+    candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate_payload.update(
+        {
+            "training_cutoff": "2026-12-31",
+            "training_semantics": "historical_research_only",
+            "decision_time_eligible": False,
+            "research_only": True,
+        }
+    )
+    candidate_path.write_text(
+        json.dumps(candidate_payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    assert consumer.reload(decision_date="2026-06-22") == "rule_only"
+    projection = consumer.project(
+        stock_code="AAA",
+        feature_values=(100, 200),
+        rule_probability_bp=5_000,
+        decision_date="2026-06-22",
+    )
+    assert projection.status == "rule_only"
+    assert projection.warnings == ("candidate_training_cutoff_after_decision",)
+
+
 def test_real_consumer_independent_after_cost_baseline_reaches_advice_presentation(
     tmp_path: Path,
     monkeypatch,

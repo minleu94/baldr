@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app_module.daily_recommendation_learning_runner import (  # noqa: E402
+from ml_module.recommendation_calibration_learning_runner import (  # noqa: E402
     DailyRecommendationLearningRunner,
 )
 from app_module.recommendation_learning_paths import (  # noqa: E402
@@ -429,6 +429,11 @@ def _stored_cost_scenario(
         )
     )
     if not marker_has_cost_metadata:
+        if _is_unverifiable_legacy_decision_receipt(payload):
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:legacy_decision_requires_verified_anchor",
+            )
         return _stored_cost_scenario_from_candidate_root(
             payload,
             source_path=source_path,
@@ -481,12 +486,17 @@ def _stored_cost_scenario_from_candidate_root(
     candidate_root_value = payload.get("candidate_root")
     if not isinstance(candidate_root_value, (str, Path)) or not str(candidate_root_value).strip():
         return None, f"{source_path}:unverifiable_cost_scenario:no_candidate_root"
+    dataset_marker_key = (
+        "candidate_dataset_hash"
+        if payload.get("candidate_dataset_hash") not in (None, "")
+        else "dataset_hash"
+    )
     identity_pairs = (
         ("candidate_id", "candidate_id"),
         ("candidate_freeze_hash", "candidate_freeze_hash"),
         ("candidate_manifest_hash", "manifest_hash"),
         ("candidate_artifact_hash", "artifact_hash"),
-        ("dataset_hash", "dataset_hash"),
+        (dataset_marker_key, "dataset_hash"),
     )
     missing_identity = [
         marker_key
@@ -712,6 +722,8 @@ def _cost_scenario_root_conflict(
     if decisions_root.is_dir():
         marker_paths.extend(sorted(decisions_root.glob("recommendation-calibration-*.json"))[:256])
     seen: set[str] = set()
+    unverified_legacy_markers: list[Path] = []
+    verified_markers: list[tuple[Path, RecommendationCostScenario]] = []
     for marker_path in marker_paths:
         if not marker_path.is_file():
             continue
@@ -725,9 +737,24 @@ def _cost_scenario_root_conflict(
         if not isinstance(raw, Mapping):
             return f"cost_scenario_root_conflict:existing_marker_invalid:{marker_path}"
         payload = dict(raw)
+        if _is_unverifiable_legacy_decision_receipt(payload) or (
+            marker_path == root / "recommendation-calibration-active-pointer.json"
+            and _is_unverifiable_rule_only_pointer(payload)
+        ):
+            unverified_legacy_markers.append(marker_path)
+            continue
         scenario, error = _stored_cost_scenario(payload, source_path=marker_path)
         if error is not None or scenario is None:
             return f"cost_scenario_root_conflict:{error or marker_path}"
+        if marker_path == root / "latest_status.json":
+            receipt_error = _verify_latest_status_receipt_anchor(
+                payload,
+                scenario=scenario,
+                source_path=marker_path,
+            )
+            if receipt_error is not None:
+                return f"cost_scenario_root_conflict:{receipt_error}"
+        verified_markers.append((marker_path, scenario))
         marker_identity = scenario.scenario_hash
         if marker_identity in seen:
             continue
@@ -739,6 +766,122 @@ def _cost_scenario_root_conflict(
                 f"{requested_scenario.scenario_id}:{requested_scenario.scenario_hash}; "
                 "use a different --output-root for an isolated cost lane"
             )
+    if unverified_legacy_markers:
+        if requested_scenario.is_estimated:
+            return (
+                "cost_scenario_root_conflict:legacy_decision_receipt_is_unverifiable_"
+                "and_may_belong_to_legacy_fixed_lane:"
+                f"{unverified_legacy_markers[0]}"
+            )
+        if not verified_markers:
+            return (
+                "cost_scenario_root_conflict:legacy_decision_receipt_requires_"
+                "verified_same_lane_anchor:"
+                f"{unverified_legacy_markers[0]}"
+            )
+        if not any(
+            scenario.scenario_hash == requested_scenario.scenario_hash
+            for _, scenario in verified_markers
+        ):
+            return (
+                "cost_scenario_root_conflict:legacy_decision_receipt_has_no_"
+                "verified_same_lane_anchor:"
+                f"{unverified_legacy_markers[0]}"
+            )
+    return None
+
+
+def _is_unverifiable_legacy_decision_receipt(payload: Mapping[str, Any]) -> bool:
+    """Identify the pre-cost decision shape without treating it as authority."""
+
+    if payload.get("schema_version") != "recommendation-calibration-decision-receipt.v2":
+        return False
+    if payload.get("candidate_root"):
+        return False
+    return not any(
+        payload.get(key) not in (None, "")
+        for key in (
+            "cost_scenario",
+            "cost_scenario_id",
+            "cost_scenario_version",
+            "cost_scenario_hash",
+            "cost_basis",
+            "fixed_round_trip_cost_bp",
+            "cost_policy_id",
+            "cost_policy_version",
+            "policy_estimate_date",
+            "research_order_amount_twd",
+            "research_order_quantity_shares",
+            "lot_type",
+            "instrument_type",
+        )
+    )
+
+
+def _is_unverifiable_rule_only_pointer(payload: Mapping[str, Any]) -> bool:
+    """Identify an old rule-only pointer that carries no lane identity."""
+
+    if payload.get("schema_version") != "recommendation-calibration-active-pointer.v2":
+        return False
+    if payload.get("status") != "rule_only" or payload.get("candidate_root"):
+        return False
+    return not any(
+        payload.get(key) not in (None, "")
+        for key in (
+            "cost_scenario",
+            "cost_scenario_id",
+            "cost_scenario_version",
+            "cost_scenario_hash",
+            "cost_basis",
+            "fixed_round_trip_cost_bp",
+            "cost_policy_id",
+            "cost_policy_version",
+            "policy_estimate_date",
+            "research_order_amount_twd",
+            "research_order_quantity_shares",
+            "lot_type",
+            "instrument_type",
+        )
+    )
+
+
+def _verify_latest_status_receipt_anchor(
+    payload: Mapping[str, Any],
+    *,
+    scenario: RecommendationCostScenario,
+    source_path: Path,
+) -> str | None:
+    """Ensure latest-status lane metadata is backed by its immutable receipt."""
+
+    if payload.get("schema_version") != "daily-recommendation-learning-receipt.v1":
+        return None
+    receipt_value = payload.get("receipt_path")
+    if not isinstance(receipt_value, str) or not receipt_value.strip():
+        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_missing"
+    receipt_path = Path(receipt_value).expanduser().resolve()
+    try:
+        receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return (
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_unreadable:"
+            f"{type(exc).__name__}"
+        )
+    if not isinstance(receipt_payload, Mapping):
+        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_invalid"
+    if str(receipt_payload.get("receipt_path") or "") != str(receipt_path):
+        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_identity_mismatch"
+    receipt_scenario, error = _stored_cost_scenario(
+        receipt_payload,
+        source_path=receipt_path,
+    )
+    if error is not None or receipt_scenario is None:
+        return error or f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_lane_missing"
+    if receipt_scenario.scenario_hash != scenario.scenario_hash:
+        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_lane_mismatch"
+    if receipt_payload.get("formal_order_allowed") is not False:
+        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_formal_flag_invalid"
+    if receipt_payload.get("shadow_only") is not True:
+        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_shadow_flag_invalid"
     return None
 
 
@@ -1129,6 +1272,10 @@ def main(argv: list[str] | None = None) -> int:
         data_root=config.data_root,
     )
     training_samples = _merge_samples(replay_result.samples, natural_training_samples)
+    training_lineage_sources = {
+        "replay": tuple(replay_result.samples),
+        "natural": tuple(natural_training_samples),
+    }
     source_contract = dependencies.get("source_contract")
     source_contract = source_contract if isinstance(source_contract, Mapping) else {}
     quality = _build_training_quality(
@@ -1157,6 +1304,7 @@ def main(argv: list[str] | None = None) -> int:
         training_as_of=training_as_of,
         frozen_candidate_root=challenger_path,
         emergency_rollback=emergency_from_preflight,
+        lineage_sources=training_lineage_sources,
     )
     if args.symbols is None and _should_expand_historical_bootstrap(run_result):
         bootstrap_max_dates = min(max(args.max_decision_dates * 3, 300), 500)
@@ -1289,11 +1437,19 @@ def main(argv: list[str] | None = None) -> int:
                 training_as_of=training_as_of,
                 frozen_candidate_root=challenger_path,
                 emergency_rollback=emergency_from_preflight,
+                lineage_sources={
+                    "bootstrap_replay": tuple(bootstrap_replay_result.samples),
+                    "natural": tuple(natural_training_samples),
+                },
             )
             replay_result = bootstrap_replay_result
             replay_config = bootstrap_config
             manifest_path = bootstrap_manifest_path
             training_samples = bootstrap_training_samples
+            training_lineage_sources = {
+                "bootstrap_replay": tuple(bootstrap_replay_result.samples),
+                "natural": tuple(natural_training_samples),
+            }
             quality = bootstrap_quality
             run_result = bootstrap_run_result
             historical_bootstrap.update(
@@ -1440,6 +1596,7 @@ def main(argv: list[str] | None = None) -> int:
             training_as_of=training_as_of,
             frozen_candidate_root=run_result.candidate_root,
             emergency_rollback=emergency_after_scan,
+            lineage_sources=training_lineage_sources,
         )
     if args.symbols is None and historical_bootstrap.get("status") == "not_triggered":
         recovered_bootstrap = _recover_historical_bootstrap_metadata(
@@ -2248,6 +2405,21 @@ def _capture_current_if_requested(
                         "capture_request_fingerprint": request_fingerprint,
                     }
             else:
+                from app_module.recommendation_calibration_consumer import (
+                    RecommendationCalibrationConsumer,
+                )
+
+                champion_pointer_path = (
+                    Path(output_root)
+                    / "recommendation_learning"
+                    / "recommendation-calibration-active-pointer.json"
+                )
+                champion_inference = RecommendationCalibrationConsumer(
+                    pointer_path=champion_pointer_path,
+                    feature_schema=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
+                    feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+                    data_root=config.data_root,
+                )
                 capture = RecommendationPredictionCaptureService().capture(
                     candidate_root=candidate_root,
                     feature_schema=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
@@ -2259,11 +2431,8 @@ def _capture_current_if_requested(
                     fixed_round_trip_cost_bp=effective_fixed_cost,
                     cost_scenario=resolved_scenario,
                     data_root=config.data_root,
-                    champion_pointer_path=(
-                        Path(output_root)
-                        / "recommendation_learning"
-                        / "recommendation-calibration-active-pointer.json"
-                    ),
+                    champion_pointer_path=champion_pointer_path,
+                    champion_inference=champion_inference,
                     capture_origin="scheduled_live",
                     source_contract_binding=source_contract_binding,
                 )
@@ -3625,6 +3794,9 @@ def _cli_payload(
             "dataset_hash": run_result.dataset_hash,
             "candidate_id": run_result.candidate_id,
             "candidate_root": run_result.candidate_root,
+            "training_lineage_manifest_hash": run_result.training_lineage_manifest_hash,
+            "training_lineage_manifest_path": run_result.training_lineage_manifest_path,
+            "training_lineage_status": run_result.training_lineage_status,
             "decision": run_result.decision,
             "decision_reason": run_result.decision_reason,
             "idempotent_replay": run_result.idempotent_replay,

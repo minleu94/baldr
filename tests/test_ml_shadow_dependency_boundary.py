@@ -26,6 +26,41 @@ def test_guard_detects_production_import_of_ml_module(tmp_path: Path) -> None:
     assert any("production_imports_ml_module" in item for item in report.violations)
 
 
+def test_guard_requires_exact_symbol_for_allowlisted_module(tmp_path: Path) -> None:
+    (tmp_path / "app_module").mkdir()
+    (tmp_path / "ml_module").mkdir()
+    (tmp_path / "app_module" / "ml_allocation_inference_service.py").write_text(
+        "from ml_module.allocation_contracts import UnreviewedTrainingHelper\n",
+        encoding="utf-8",
+    )
+
+    report = MLShadowBoundaryGuard(tmp_path).inspect()
+
+    assert any(
+        "production_imports_ml_module" in item
+        and "allocation_contracts:UnreviewedTrainingHelper" in item
+        for item in report.violations
+    )
+
+
+def test_guard_rejects_production_import_of_training_runner(tmp_path: Path) -> None:
+    (tmp_path / "app_module").mkdir()
+    (tmp_path / "ml_module").mkdir()
+    (tmp_path / "app_module" / "consumer.py").write_text(
+        "from ml_module.recommendation_calibration_learning_runner import "
+        "DailyRecommendationLearningRunner\n",
+        encoding="utf-8",
+    )
+
+    report = MLShadowBoundaryGuard(tmp_path).inspect()
+
+    assert any(
+        "production_imports_ml_module" in item
+        and "recommendation_calibration_learning_runner:DailyRecommendationLearningRunner" in item
+        for item in report.violations
+    )
+
+
 def test_guard_allows_only_hash_bound_allocation_inference_contracts(
     tmp_path: Path,
 ) -> None:
@@ -95,6 +130,19 @@ def test_guard_detects_ml_import_of_production_decision_path(tmp_path: Path) -> 
     (tmp_path / "ml_module").mkdir()
     (tmp_path / "ml_module" / "bad.py").write_text(
         "from decision_module.scoring import ScoringEngine\n", encoding="utf-8"
+    )
+
+    report = MLShadowBoundaryGuard(tmp_path).inspect()
+
+    assert any("ml_imports_production_path" in item for item in report.violations)
+
+
+def test_guard_detects_ml_backimport_of_app_path(tmp_path: Path) -> None:
+    (tmp_path / "ml_module").mkdir()
+    (tmp_path / "ml_module" / "bad.py").write_text(
+        "from app_module.recommendation_calibration_consumer import "
+        "RecommendationCalibrationConsumer\n",
+        encoding="utf-8",
     )
 
     report = MLShadowBoundaryGuard(tmp_path).inspect()

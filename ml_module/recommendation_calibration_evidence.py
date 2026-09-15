@@ -22,6 +22,9 @@ import numpy as np
 from ml_module.model_artifact_loader import ArtifactCompatibilityExpectation, SafeShadowModelArtifactLoader
 from ml_module.model_artifact_manifest import FeatureSchema
 from ml_module.recommendation_calibration_authority import RecommendationPromotionPolicy
+from ml_module.recommendation_calibration_inference_contract import (
+    FrozenRecommendationInference,
+)
 from ml_module.recommendation_calibration_training import (
     RecommendationPrediction,
     recommendation_cost_contract_hash,
@@ -607,6 +610,7 @@ class RecommendationPredictionCaptureService:
         maximum_probability_change_bp: int = 1_000,
         data_root: str | Path | None = None,
         champion_pointer_path: str | Path | None = None,
+        champion_inference: FrozenRecommendationInference | None = None,
         capture_origin: str = "scheduled_live",
         source_contract_binding: Mapping[str, Any] | None = None,
     ) -> RecommendationPredictionCapture:
@@ -702,17 +706,13 @@ class RecommendationPredictionCaptureService:
         )
         if loaded.status != "shadow_model_ready" or loaded.model is None:
             raise ValueError(f"candidate artifact is not loadable: {loaded.blockers}")
-        champion_consumer: Any | None = None
-        champion_identity: Mapping[str, Any] | None = None
-        if champion_pointer_path is not None:
-            from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
-
-            champion_consumer = RecommendationCalibrationConsumer(
-                pointer_path=champion_pointer_path,
-                feature_schema=feature_schema,
-                feature_registry_hash=feature_registry_hash,
-                data_root=data_root,
+        if champion_pointer_path is not None and champion_inference is None:
+            raise ValueError(
+                "champion_inference must be injected when champion_pointer_path is provided"
             )
+        champion_consumer = champion_inference
+        champion_identity: Mapping[str, Any] | None = None
+        if champion_consumer is not None:
             if champion_consumer.reload(decision_date=capture_day) != "active":
                 champion_consumer = None
             else:

@@ -197,17 +197,20 @@ increment：先確保有內容的每日結論與候選／持倉，再將空表�
 
 - `tests/test_decision_presentation.py`：14 passed。
 - `tests/test_decision_presentation.py tests/test_ui_qt_workbench_view.py tests/test_ui_qt_portfolio_view.py`：69 passed，1 warning（pytest cache 權限警告）。
-- 強制 UI suite `tests/test_ui_qt_update_view_workbench.py`：81 passed，1 warning。
-- `scripts/qa_validate_update_tab.py`：25 pass、0 fail、4 skip；report 位於
-  `output/qa/update_tab/VALIDATION_REPORT.md`。
+- 先前基線的強制 UI suite `tests/test_ui_qt_update_view_workbench.py`：81 passed，1 warning；
+  本次依根 AGENTS 重跑時因共享工作區其他線尚未提供 `app_module.portfolio_store` 而在
+  collection 階段 blocked。
+- 先前基線的 `scripts/qa_validate_update_tab.py`：25 pass、0 fail、4 skip；本次重跑同樣在
+  import 階段因 `app_module.portfolio_store` 缺檔 blocked，未把失敗改標為通過；先前 report
+  位於 `output/qa/update_tab/VALIDATION_REPORT.md`。
 - Learning evidence／Workbench focused suites：`72 passed, 1 warning`；完整 case map、
   實際資料 lane readback 與 failure-mode coverage 見
   `docs/06_qa/LEARNING_EVIDENCE_WORKBENCH_2026_09_14.md`。
 - changed Python files `py_compile`：passed。
 - focused mypy（`decision_presentation.py`、`workbench_view.py`，skip imports）：passed。
-- 全域指定 mypy（2026-09-14 16:20:46 -07:00，指令為
+- 全域指定 mypy（本次依根 AGENTS 重跑，指令為
   `\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`）：
-  `Success: no issues found in 606 source files`；臺銀成本子任務已另外完成其 public API／
+  `Success: no issues found in 611 source files`；臺銀成本子任務已另外完成其 public API／
   consumer 的型別修正，本輪只消費其已提交的 research estimate，不修改成本核心。
 - 已產生並目視檢查的 local render：
   - 離屏實際 Qt learning projection（實際 read-only BankTaiwan／legacy paths；不是 native desktop mouse／screenreader）：

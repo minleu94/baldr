@@ -42,7 +42,7 @@
 
 結果：`72 passed, 1 warning`。唯一 warning 是 pytest cache 目錄的既有 permission warning，不是測試失敗。
 
-另外，指定 9 個 changed source files 的 mypy 為 `Success: no issues found`；本輪 changed Python files 的 `py_compile` 通過。
+另外，指定 9 個 changed source files 的 mypy 為 `Success: no issues found`；本輪 changed Python files 的 `py_compile` 通過。依根 AGENTS 強制清單重跑的全域指定 mypy（`ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`）目前為 `Success: no issues found in 611 source files`。
 
 ## Qt 實際渲染與 MainWindow smoke
 
@@ -62,6 +62,15 @@ manifest：
 `C:\Users\archi\.codex\visualizations\2026\09\15\01a0a278-54ae-72b3-bae7-ada2025777cb\mainwindow_smoke_20260914\summary.json`
 
 結果為 `status=passed`、scale 1.0、1366×768、market/runtime Space navigation、600-row PageDown/Home 與 recommendation／portfolio embedded pages 通過。native CUA surface 在本機不可用，因此 `native_windows_interaction`／screenreader 不宣稱已測。
+
+同一 validator 在最後一次重跑時，其他線的 dirty import `app_module.portfolio_service → app_module.portfolio_store` 尚未就緒，導致 child 在 import 階段失敗；這是共享工作區的 in-flight blocker，不是本輪 projection code 的失敗。上述 `summary.json` 保留最後一次成功的 MainWindow offscreen artifact；根 AGENTS 的本次 Update suite／Update validator 也同樣因該缺檔而未能 collection／啟動，詳見下方 QA note。
+
+## 根 AGENTS 強制驗證補充
+
+- `pytest tests\test_ui_qt_update_view_workbench.py -q -o addopts=`：本次 collection blocked，`ModuleNotFoundError: No module named 'app_module.portfolio_store'`。
+- `scripts\qa_validate_update_tab.py`：本次 import blocked，同一 `app_module.portfolio_store` 缺檔；未把失敗改標為通過。
+- 全域 mypy：`Success: no issues found in 611 source files`。
+- 上述兩項 blocked 來自其他線的 portfolio／watchlist journey 變更；本輪 72-case focused suite、16-case Research Console suite、typed projection verifier 與最新 learning PNG 均已在自身邊界完成驗證。
 
 ## 尚未解除的產品 Gate
 

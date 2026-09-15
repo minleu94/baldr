@@ -85,6 +85,7 @@ from app_module.research_session import (
     ResearchSessionSnapshotDTO,
     ResearchStockContextDTO,
 )
+from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
 
@@ -248,10 +249,21 @@ class MainWindow(QMainWindow):
 
             self.portfolio_service = PortfolioService(self.config)
             self.journal_service = JournalService(self.config)
+            self.decision_continuity_controller = DecisionContinuityController(
+                self.journal_service
+            )
 
             # 觀察清單服務初始化（可能失敗，需要特別處理）
             try:
-                self.watchlist_service = WatchlistService(self.config)
+                (
+                    watchlist_repository,
+                    self.watchlist_storage_status,
+                ) = WatchlistService.discover_repository(self.config)
+                self.watchlist_service = WatchlistService(
+                    self.config,
+                    repository=watchlist_repository,
+                    storage_status=self.watchlist_storage_status,
+                )
             except Exception as e:
                 logger.error(f"初始化觀察清單服務失敗: {e}")
                 # 創建一個空的服務實例，避免後續錯誤
@@ -1035,6 +1047,11 @@ class MainWindow(QMainWindow):
                 journey_service=getattr(
                     self,
                     "decision_outcome_journey_service",
+                    None,
+                ),
+                continuity_controller=getattr(
+                    self,
+                    "decision_continuity_controller",
                     None,
                 ),
                 parent=self,

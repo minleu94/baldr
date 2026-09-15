@@ -30,6 +30,10 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence, cast
 
 from app_module.evidence_event_dtos import EvidenceEvent, EvidenceOutcome
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.dtos.decision_continuity_dtos import (
+    IDENTITY_STATUS_CONFLICT,
+    DecisionIdentity,
+)
 from data_module.portfolio_ledger_repository import (
     PortfolioLedgerEvent,
     PortfolioLedgerRepository,
@@ -362,13 +366,16 @@ class JournalEntryRecord:
     relationship_target_id: str | None
     link_status: JourneyLinkStatus
     original_payload: FrozenPayload = field(default_factory=lambda: MappingProxyType({}))
+    # 舊 Journal row 沒有這個欄位；保留 ``None`` 作為明示標記，讓 typed
+    # ``unknown``／``conflict`` identity 不會落回 legacy result 層級規則。
+    decision_identity: DecisionIdentity | None = None
 
     @property
     def journal_key(self) -> tuple[str]:
         return (self.journal_id,)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "journal_id": self.journal_id,
             "journal_key": [self.journal_id],
             "linked_type": self.linked_type,
@@ -384,6 +391,9 @@ class JournalEntryRecord:
             "link_status": self.link_status.value,
             "original_payload": _thaw(self.original_payload),
         }
+        if self.decision_identity is not None:
+            result["decision_identity"] = self.decision_identity.to_dict()
+        return result
 
 
 @dataclass(frozen=True)
@@ -2195,29 +2205,39 @@ def _normalize_journal_entry(
         direct = JourneyLinkStatus.LINKED
     if linked_type and linked_type.lower() == "thesis" and linked_id == result.result_id:
         direct = JourneyLinkStatus.CONFLICT
-    typed_identity = payload.get("decision_identity")
-    if isinstance(typed_identity, Mapping) or _optional_text(payload.get("identity_status")):
-        identity_payload = (
-            typed_identity if isinstance(typed_identity, Mapping) else payload
-        )
-        identity_status = _optional_text(identity_payload.get("identity_status"))
-        identity_result_id = _optional_text(identity_payload.get("result_id"))
-        identity_stock_code = _optional_text(identity_payload.get("stock_code"))
-        if identity_status in {"unknown", "unlinked"}:
-            if direct != JourneyLinkStatus.CONFLICT:
+    typed_decision_identity: DecisionIdentity | None = None
+    # 只要 identity key 出現就視為 typed metadata；即使值是 null、字串或
+    # list，也必須明示 unknown／conflict，不能把 malformed row 當 legacy。
+    has_typed_identity = (
+        "decision_identity" in payload
+        or "identity_status" in payload
+        or "result_id" in payload
+    )
+    if has_typed_identity:
+        try:
+            # Parse the complete row so nested and top-level identity fields
+            # are conflict-checked by the shared typed contract.
+            typed_decision_identity = DecisionIdentity.from_mapping(payload)
+        except (TypeError, ValueError):
+            # Keep the row visible as a fail-closed diagnostic, but do not
+            # allow malformed typed metadata to use the legacy shared scope.
+            typed_decision_identity = DecisionIdentity(
+                identity_status=IDENTITY_STATUS_CONFLICT
+            )
+        if not typed_decision_identity.is_linked:
+            if typed_decision_identity.identity_status == IDENTITY_STATUS_CONFLICT:
+                direct = JourneyLinkStatus.CONFLICT
+            elif direct != JourneyLinkStatus.CONFLICT:
                 direct = JourneyLinkStatus.UNKNOWN
-        elif identity_status == "conflict":
-            direct = JourneyLinkStatus.CONFLICT
-        elif identity_status == "linked":
+        else:
             candidate_codes = {
                 item.stock_code
                 for item in result.candidates
                 if item.link_status == JourneyLinkStatus.LINKED
             }
             if (
-                identity_result_id != result.result_id
-                or not identity_stock_code
-                or identity_stock_code not in candidate_codes
+                typed_decision_identity.result_id != result.result_id
+                or typed_decision_identity.stock_code not in candidate_codes
             ):
                 direct = JourneyLinkStatus.CONFLICT
             elif direct == JourneyLinkStatus.UNLINKED:
@@ -2239,6 +2259,7 @@ def _normalize_journal_entry(
         relationship_target_id=relationship_target_id,
         link_status=direct,
         original_payload=_freeze(payload),
+        decision_identity=typed_decision_identity,
     )
 
 

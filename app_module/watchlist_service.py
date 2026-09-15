@@ -4,13 +4,17 @@
 """
 
 import json
+import hashlib
+import os
 from pathlib import Path
 from typing import Any, List, Dict, Optional, Set
 from datetime import date, datetime
 from contextlib import closing
 import sqlite3
+from uuid import uuid4
 import pandas as pd
 from data_module.watchlist_repository import WatchlistRepository
+from data_module.watchlist_migration import migrate_watchlist_copy
 from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 from dataclasses import dataclass, asdict, field
 
@@ -76,10 +80,31 @@ class Watchlist:
             self.updated_at = datetime.now().isoformat()
 
 
+@dataclass(frozen=True)
+class WatchlistStorageStatus:
+    """觀察清單儲存模式與一次性升級結果。"""
+
+    mode: str
+    repository_path: Path
+    legacy_path: Path
+    upgrade_available: bool
+    message: str
+
+    @property
+    def is_repository(self) -> bool:
+        return self.mode == "repository"
+
+
 class WatchlistService:
     """觀察清單服務"""
     
-    def __init__(self, config, *, repository: WatchlistRepository | None = None):
+    def __init__(
+        self,
+        config,
+        *,
+        repository: WatchlistRepository | None = None,
+        storage_status: WatchlistStorageStatus | None = None,
+    ):
         """
         初始化觀察清單服務
         
@@ -94,9 +119,418 @@ class WatchlistService:
         
         # 預設觀察清單檔案
         self.default_watchlist_file = self.watchlist_dir / "default.json"
+        self.canonical_repository_path = self.repository_path(config)
+        self._storage_status = storage_status or self._legacy_storage_status()
         
         # 載入預設觀察清單
         self._ensure_default_watchlist()
+        if storage_status is None and self.repository is None:
+            self._storage_status = self._legacy_storage_status()
+        elif self.repository is None and not self._storage_status.upgrade_available:
+            # discover_repository 可能在預設 JSON 尚不存在時先回報 legacy；
+            # _ensure_default_watchlist 完成後只更新提示，不觸發 migration。
+            self._storage_status = self._legacy_storage_status(
+                message=self._storage_status.message
+            )
+
+    @staticmethod
+    def repository_path(config) -> Path:
+        """回傳既有 OUTPUT_ROOT/watchlist 下的 canonical SQLite 路徑。"""
+
+        output_root = getattr(config, "output_root", None)
+        if output_root is None:
+            raise ValueError("觀察清單需要 config.output_root")
+        return Path(output_root).resolve() / "watchlist" / "watchlists.db"
+
+    @staticmethod
+    def activation_marker_path(repository_path: Path) -> Path:
+        """回傳 migration 完成後的 durable activation marker 路徑。"""
+
+        path = Path(repository_path)
+        return path.with_name(f"{path.name}.active")
+
+    @classmethod
+    def _legacy_source_paths(cls, repository_path: Path) -> tuple[Path, ...]:
+        """列出 bounded upgrade 會處理的原始 JSON；只讀，不建立檔案。"""
+
+        return tuple(sorted(Path(repository_path).parent.glob("*.json")))
+
+    @classmethod
+    def _read_activation_marker(cls, repository_path: Path) -> dict[str, Any] | None:
+        marker_path = cls.activation_marker_path(repository_path)
+        if not marker_path.is_file():
+            return None
+        try:
+            payload = json.loads(marker_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("schema_version") != "watchlist-activation.v1":
+            return None
+        if payload.get("status") != "complete":
+            return None
+        source_hashes = payload.get("source_hashes")
+        if not isinstance(source_hashes, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in source_hashes.items()
+        ):
+            return None
+        return payload
+
+    @classmethod
+    def _canonical_is_active(
+        cls, repository_path: Path, legacy_sources: tuple[Path, ...]
+    ) -> bool:
+        """只接受完整啟用；無 JSON 的既有 V2 DB 保留明確相容讀取。"""
+
+        if not cls._repository_is_ready(repository_path):
+            return False
+        marker_path = cls.activation_marker_path(repository_path)
+        if marker_path.exists():
+            return cls._read_activation_marker(repository_path) is not None
+        # Increment A 已存在且沒有 legacy 副本的 DB 沒有 marker，仍可作為
+        # 明確的既有 schema 相容來源；只要原 JSON 還在，就必須等完整啟用。
+        return not legacy_sources
+
+    @classmethod
+    def _repository_storage_status(
+        cls, repository_path: Path, legacy_path: Path
+    ) -> WatchlistStorageStatus:
+        return WatchlistStorageStatus(
+            mode="repository",
+            repository_path=repository_path,
+            legacy_path=legacy_path,
+            upgrade_available=False,
+            message="已使用 SQLite 觀察清單；後續日常操作只寫 canonical repository。",
+        )
+
+    @classmethod
+    def _repository_is_ready(cls, path: Path) -> bool:
+        """以唯讀方式確認 canonical schema；啟動時不建立或升級 DB。"""
+
+        if not path.is_file():
+            return False
+        try:
+            with closing(
+                sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+            ) as conn:
+                conn.execute("PRAGMA query_only=ON")
+                tables = {
+                    str(row[0])
+                    for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                }
+                if not {"watchlists", "watchlist_revisions"}.issubset(tables):
+                    return False
+                watchlist_columns = {
+                    str(row[1])
+                    for row in conn.execute("PRAGMA table_info(watchlists)")
+                }
+                revision_columns = {
+                    str(row[1])
+                    for row in conn.execute(
+                        "PRAGMA table_info(watchlist_revisions)"
+                    )
+                }
+                return {
+                    "watchlist_id",
+                    "payload_json",
+                    "revision",
+                    "source_hash",
+                    "is_deleted",
+                    "last_revision_id",
+                }.issubset(watchlist_columns) and {
+                    "revision_id",
+                    "watchlist_id",
+                    "revision",
+                    "operation",
+                    "payload_json",
+                    "payload_hash",
+                    "source_hash",
+                    "identity_status",
+                    "continuity_event_id",
+                    "revision_of",
+                    "created_at",
+                }.issubset(revision_columns)
+        except sqlite3.Error:
+            return False
+
+    @classmethod
+    def discover_repository(
+        cls, config
+    ) -> tuple[WatchlistRepository | None, WatchlistStorageStatus]:
+        """發現既有 canonical DB；只讀檢查，不在啟動時觸發 migration。"""
+
+        repository_path = cls.repository_path(config)
+        legacy_path = repository_path.with_name("default.json")
+        legacy_sources = cls._legacy_source_paths(repository_path)
+        if cls._canonical_is_active(repository_path, legacy_sources):
+            return (
+                WatchlistRepository(repository_path),
+                cls._repository_storage_status(repository_path, legacy_path),
+            )
+        if cls._repository_is_ready(repository_path):
+            if cls.activation_marker_path(repository_path).exists():
+                message = (
+                    "SQLite schema 可讀但 activation marker 無效；目前保留原 JSON，"
+                    "未切換 writer。"
+                )
+            else:
+                message = (
+                    "SQLite schema 可讀但尚未完成 activation；目前保留原 JSON，"
+                    "未切換 writer。"
+                )
+        elif repository_path.exists():
+            message = "SQLite 觀察清單尚未通過 schema 檢查；目前保留原 JSON，未切換。"
+        else:
+            message = "目前沿用原 JSON 觀察清單；可由頁面按一次「升級觀察清單儲存」。"
+        return (
+            None,
+            WatchlistStorageStatus(
+                mode="upgrade_available" if legacy_sources else "legacy_json",
+                repository_path=repository_path,
+                legacy_path=legacy_path,
+                upgrade_available=bool(legacy_sources),
+                message=message,
+            ),
+        )
+
+    def _legacy_storage_status(self, *, message: str | None = None) -> WatchlistStorageStatus:
+        available = bool(self._legacy_source_paths(self.canonical_repository_path))
+        return WatchlistStorageStatus(
+            mode="upgrade_available" if available else "legacy_json",
+            repository_path=self.canonical_repository_path,
+            legacy_path=self.default_watchlist_file,
+            upgrade_available=available,
+            message=message
+            or (
+                "目前沿用原 JSON 觀察清單；可由頁面按一次「升級觀察清單儲存」。"
+                if available
+                else "目前使用 JSON 觀察清單；尚未有可升級的既有檔案。"
+            ),
+        )
+
+    def get_storage_status(self) -> WatchlistStorageStatus:
+        """回傳 UI 可核對的目前儲存模式。"""
+
+        return self._storage_status
+
+    @staticmethod
+    def _validate_legacy_payload(payload: Any) -> None:
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise ValueError("候選池 JSON 缺有效 items")
+        codes: list[str] = []
+        required = ("stock_code", "stock_name", "added_at", "source")
+        for item in payload["items"]:
+            if not isinstance(item, dict) or not all(
+                isinstance(item.get(key), str) and item[key].strip()
+                for key in required
+            ):
+                raise ValueError("候選池存在不可遷移的項目")
+            codes.append(item["stock_code"].strip())
+        if len(set(codes)) != len(codes):
+            raise ValueError("候選池存在重複股票身份")
+
+    @classmethod
+    def _verify_repository_payloads(
+        cls,
+        repository: WatchlistRepository,
+        snapshots: dict[Path, tuple[bytes, dict[str, Any], str]],
+    ) -> None:
+        """核對所有來源 bytes、payload 與 repository source hash。"""
+
+        for source, (raw, payload, source_hash) in snapshots.items():
+            if source.read_bytes() != raw:
+                raise RuntimeError("來源 JSON 在升級期間改變；未切換 writer")
+            loaded = repository.load(source.stem)
+            if loaded is None or loaded[0] != payload:
+                raise RuntimeError(
+                    f"候選池 {source.stem} 遷移後內容／source hash 比對失敗"
+                )
+            current = repository.get_current(source.stem)
+            if current is None or str(current.get("source_hash", "")) != source_hash:
+                raise RuntimeError(f"候選池 {source.stem} source hash 比對失敗")
+
+    @classmethod
+    def _activation_payload(
+        cls, snapshots: dict[Path, tuple[bytes, dict[str, Any], str]]
+    ) -> dict[str, Any]:
+        source_hashes = {
+            source.stem: source_hash
+            for source, (_, _, source_hash) in snapshots.items()
+        }
+        return {
+            "schema_version": "watchlist-activation.v1",
+            "status": "complete",
+            "repository_schema_version": WatchlistRepository.SCHEMA_VERSION,
+            "source_hashes": dict(sorted(source_hashes.items())),
+            "watchlist_ids": sorted(source_hashes),
+        }
+
+    @classmethod
+    def _write_activation_marker(
+        cls,
+        repository_path: Path,
+        payload: dict[str, Any],
+    ) -> None:
+        """以不覆寫方式發布 marker；失敗時 canonical 仍維持 inactive。"""
+
+        marker_path = cls.activation_marker_path(repository_path)
+        if marker_path.exists():
+            try:
+                existing = json.loads(marker_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise RuntimeError("activation marker 已存在但無法驗證；未覆寫") from exc
+            if existing == payload:
+                return
+            raise RuntimeError("activation marker 已存在不同內容；禁止覆寫")
+
+        temp_path = marker_path.with_name(f"{marker_path.name}.{uuid4().hex}.tmp")
+        try:
+            temp_path.write_text(
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            try:
+                os.link(temp_path, marker_path)
+            except FileExistsError as exc:
+                raise RuntimeError("activation marker 同時被建立；未覆寫") from exc
+            except OSError as exc:
+                raise RuntimeError("無法以不覆寫方式建立 activation marker") from exc
+        finally:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+    @staticmethod
+    def _publish_staged_repository(staged_path: Path, repository_path: Path) -> None:
+        """以 atomic hard-link 發布新 DB，任何既有目標都不覆寫。"""
+
+        if repository_path.exists():
+            raise RuntimeError("canonical repository 已存在；禁止覆寫")
+        try:
+            os.link(staged_path, repository_path)
+        except FileExistsError as exc:
+            raise RuntimeError("canonical repository 同時被建立；禁止覆寫") from exc
+        except OSError as exc:
+            raise RuntimeError("無法以不覆寫方式啟用 staged repository") from exc
+        try:
+            staged_path.unlink()
+        except OSError as exc:
+            # canonical hard-link 已發布；保留它，讓下次可透過 marker recovery
+            # 重試，並把本次結果明確標成未完成，而不是宣稱升級成功。
+            raise RuntimeError("staged repository 暫存檔清理失敗；尚未完成啟用") from exc
+
+    def upgrade_to_repository(self) -> WatchlistStorageStatus:
+        """經使用者明確按鈕後，bounded migrate 所有 JSON 清單至同一 DB。
+
+        所有來源先完整預檢，實際 migration 只讀來源並保留原 bytes；任何
+        失敗都不切換 service writer，原 JSON 仍是可用來源，可再次重試。
+        """
+
+        legacy_sources = self._legacy_source_paths(self.canonical_repository_path)
+        if self.repository is not None:
+            self._storage_status = self._repository_storage_status(
+                self.canonical_repository_path, self.default_watchlist_file
+            )
+            return self._storage_status
+
+        # 啟動或上一輪成功後的 re-open 只採用已完成 marker；不再重跑 JSON。
+        if self._canonical_is_active(self.canonical_repository_path, legacy_sources):
+            self.repository = WatchlistRepository(self.canonical_repository_path)
+            self._storage_status = self._repository_storage_status(
+                self.canonical_repository_path, self.default_watchlist_file
+            )
+            return self._storage_status
+
+        sources = legacy_sources
+        if not sources:
+            self._storage_status = self._legacy_storage_status(
+                message="沒有可升級的 JSON 觀察清單；尚未切換儲存模式。"
+            )
+            return self._storage_status
+
+        snapshots: dict[Path, tuple[bytes, dict[str, Any], str]] = {}
+        staged_path: Path | None = None
+        activated = False
+        try:
+            for source in sources:
+                raw = source.read_bytes()
+                payload = json.loads(raw.decode("utf-8-sig"))
+                self._validate_legacy_payload(payload)
+                snapshots[source] = (raw, payload, hashlib.sha256(raw).hexdigest())
+
+            if self.canonical_repository_path.exists():
+                if not self._repository_is_ready(self.canonical_repository_path):
+                    raise RuntimeError("已有 canonical DB 未通過 schema；禁止覆寫")
+                # 允許在 marker 尚未落盤的中斷點做安全 recovery，但必須完整
+                # 核對所有來源與 source hash，不能把 partial DB 當成成功。
+                repository = WatchlistRepository(self.canonical_repository_path)
+                self._verify_repository_payloads(repository, snapshots)
+                self._write_activation_marker(
+                    self.canonical_repository_path,
+                    self._activation_payload(snapshots),
+                )
+                activated = True
+            else:
+                staged_path = self.canonical_repository_path.with_name(
+                    f"{self.canonical_repository_path.name}.migration-{uuid4().hex}.tmp"
+                )
+                for source in sources:
+                    migrate_watchlist_copy(
+                        source,
+                        staged_path,
+                        sandbox_root=self.watchlist_dir.parent,
+                        watchlist_id=source.stem,
+                    )
+
+                staged_repository = WatchlistRepository(staged_path)
+                self._verify_repository_payloads(staged_repository, snapshots)
+                if not self._repository_is_ready(staged_path):
+                    raise RuntimeError("staged repository schema 驗證失敗")
+                self._publish_staged_repository(
+                    staged_path, self.canonical_repository_path
+                )
+                activated = True
+                repository = WatchlistRepository(self.canonical_repository_path)
+                self._verify_repository_payloads(repository, snapshots)
+                self._write_activation_marker(
+                    self.canonical_repository_path,
+                    self._activation_payload(snapshots),
+                )
+        except Exception as exc:
+            self._storage_status = self._legacy_storage_status(
+                message=(
+                    f"觀察清單升級失敗，仍使用原 JSON，未切換 writer：{exc}；"
+                    "可核對原檔後再次重試。"
+                )
+            )
+            return self._storage_status
+        finally:
+            if staged_path is not None and staged_path.exists() and not activated:
+                try:
+                    staged_path.unlink()
+                except OSError:
+                    pass
+
+        self.repository = repository
+        self._storage_status = self._repository_storage_status(
+            self.canonical_repository_path, self.default_watchlist_file
+        )
+        self._storage_status = WatchlistStorageStatus(
+            mode=self._storage_status.mode,
+            repository_path=self._storage_status.repository_path,
+            legacy_path=self._storage_status.legacy_path,
+            upgrade_available=False,
+            message="觀察清單已升級、啟用並核對成功；後續日常操作只寫 canonical SQLite repository。",
+        )
+        return self._storage_status
+
+    # 提供語意清楚的相容別名，所有入口仍走同一 bounded upgrade。
+    migrate_to_repository = upgrade_to_repository
     
     def _watchlist_file(self, watchlist_id: str) -> Path:
         if not watchlist_id or Path(watchlist_id).name != watchlist_id or any(char in watchlist_id for char in ("/", "\\", ":")):

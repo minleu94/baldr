@@ -2227,7 +2227,11 @@ ML 的模型訓練位於 `ml_module/allocation_training_service.py`，凍結模�
 
 候選池保存來源、加入時間與備註，用於研究，不是實際持倉。
 
-股票名稱由應用服務查詢；跨頁提供的 source_id／result_id 會保留，重複股票不新增。舊 JSON 損毀時保留原檔並顯示錯誤，請先檢查副本，不會自動換成空池。SQLite 遷移只驗證 caller 指定 sandbox 內的 JSON 副本，不會在 UI 啟動時轉換正式候選池。added_at 截止不代表已具備完整歷史候選池事件帳。
+股票名稱由應用服務查詢；跨頁提供的 source_id／result_id 會保留，重複股票不新增。舊 JSON 損毀時保留原檔並顯示錯誤，請先檢查副本，不會自動換成空池。底層 SQLite 副本 helper 只接受 caller 指定 sandbox 內的 JSON；正式候選池仍不會在 UI 啟動時轉換，必須由下方一次性升級入口明確觸發。added_at 截止不代表已具備完整歷史候選池事件帳。
+
+正式 MainWindow 啟動時只會以唯讀方式尋找 `OUTPUT_ROOT/watchlist/watchlists.db` 與其啟用狀態，不建立、重建或遷移資料庫。若 canonical DB 已有完整的 `watchlists.db.active` 啟用標記，後續觀察清單日常寫入只走 SQLite；保留的 JSON 不會再被雙寫。舊版已存在、且目錄中沒有 legacy JSON 的 Watchlist schema v2 DB 仍可作為明確的相容來源。
+
+若仍使用 JSON，候選池頁會顯示「升級觀察清單儲存」按鈕。只有使用者明確按下後，系統才會先預檢所有 `watchlist/*.json`，在暫存 DB 完成全部清單的 migration、來源 bytes／payload／source hash 核對，再以不覆寫既有 DB 的方式發布 canonical DB 與 durable activation marker。原 JSON 不會刪除、改名或覆寫；任一清單失敗、來源在過程中改變、schema／核對或啟用標記失敗，頁面會明示仍使用 JSON 並可重試。重開程式時，沒有完整 marker 的 canonical DB 不會搶先成為 writer；修復後只有再次通過所有來源核對才會啟用。
 
 ### 7.2 選股清單
 
@@ -2250,6 +2254,8 @@ ML 的模型訓練位於 `ml_module/allocation_training_service.py`，凍結模�
 「缺資料」不等於零值或利空；法人／信用／集保、持倉、Exit、ML 沒有實際 provider 或 row 時不補假資料。Advice 只讀取既有已保存推薦，沒有合格來源時顯示不可用，不重新評分。切換股票時，舊 worker 的晚到結果會被丟棄，不會覆寫新股票；返回或關閉報告會回到原觀察清單／持倉頁並重新選取原股票，保留來源頁的篩選狀態。
 
 若下鑽上下文帶有明示 `result_id`，報告另提供「決策 → 結果」分頁：依同一 `result_id` 與 exact `candidate_key` 顯示 Evidence、5／10／20／60 個交易日的連結／結果狀態、既有 Journal 與 Portfolio event。`已連結` 不代表 outcome 已成熟；`insufficient_future_data` 會顯示「尚待結果成熟」。缺少 `result_id` 時明示未連結，不以同股同日猜測；研究前瞻報酬與個人筆記／持倉事件分開，畫面唯讀且不建立交易。完整 result identity、event key 與來源 snapshot 收在收合的技術詳情中；Journal／Portfolio 缺件不阻擋推薦研究檢視。
+
+當上下文同時帶有 exact `result_id` 與 `stock_code` 時，分頁下方會出現「研究動作（不採用 Advice／不下單）」：可按「納入研究」、「略過」、「記筆記」或用台北時間日期／時間選擇器「設定下次檢視」。目前研究狀態、筆記摘要與下次檢視會在重開報告後由同一份 append-only Journal 讀回；「已納入研究」或「已略過」意向不會被提醒動作覆蓋。缺少或衝突 identity 時，動作會停用並說明原因，不以同股同日或 `source_id` 猜測結果。儲存失敗會保留失敗狀態並提供相同 request id 重試；寫入成功但讀回失敗時只顯示「已寫入、讀回失敗」，不標成已驗證。完整 ID、revision 與歷史收在「顯示技術詳情」中；這些研究動作不採用 Advice、不建立 Portfolio trade，也不呼叫 broker。
 
 ## 8. 每日決策（Daily Decision Desk）
 

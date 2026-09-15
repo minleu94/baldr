@@ -49,6 +49,7 @@ from app_module.decision_presentation import (
     DecisionPresentationService,
     format_decision_presentation,
 )
+from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -1043,6 +1044,7 @@ class StockResearchReportDialog(QDialog):
         *,
         stock_codes: Sequence[str] = (),
         journey_service: DecisionOutcomeJourneyService | None = None,
+        continuity_controller: DecisionContinuityController | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -1067,6 +1069,7 @@ class StockResearchReportDialog(QDialog):
             self.journey_view = DecisionOutcomeJourneyWidget(
                 journey_service,
                 context,
+                continuity_controller=continuity_controller,
                 parent=self,
             )
             self.dialog_tabs.addTab(self.journey_view, "決策 → 結果")

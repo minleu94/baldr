@@ -1,9 +1,9 @@
-"""個股研究中的 Decision → Outcome Journey 唯讀視圖。
+"""個股研究中的 Decision → Outcome Journey 視圖。
 
-這個 widget 只消費 ``DecisionOutcomeJourney`` read model。它不建立交易、
-不寫 Journal／Portfolio，也不以同股同日猜測 ``result_id``。所有背景讀取
-都透過 ``TaskWorker``，以 request generation + stock code + result id 丟棄
-過期回傳，避免使用者切股後舊結果污染目前畫面。
+資料區只消費 ``DecisionOutcomeJourney`` read model；下方研究動作控制項
+只寫既有 Journal append-only history，不建立交易、不採用 Advice，也不以
+同股同日猜測 ``result_id``。所有背景讀取都透過 ``TaskWorker``，以 request
+generation + stock code + result id 丟棄過期回傳，避免切股後舊結果污染畫面。
 """
 
 from __future__ import annotations
@@ -37,8 +37,12 @@ from app_module.decision_outcome_journey import (
     PortfolioTradeRecord,
     project_outcome_maturity,
 )
+from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.research_session import ResearchStockContextDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.decision_continuity_controls import (
+    DecisionContinuityControlsWidget,
+)
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.theme_widgets import StatusBadge
 from ui_qt.workers.task_worker import TaskWorker
@@ -114,10 +118,12 @@ class DecisionOutcomeJourneyWidget(QWidget):
         journey_service: DecisionOutcomeJourneyReadPort,
         context: ResearchStockContextDTO | None = None,
         *,
+        continuity_controller: DecisionContinuityController | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.journey_service = journey_service
+        self.continuity_controller = continuity_controller
         self.context = context
         self.journey: DecisionOutcomeJourney | None = None
         self._request_id = 0
@@ -199,7 +205,8 @@ class DecisionOutcomeJourneyWidget(QWidget):
         root.addWidget(heading)
 
         self.safety_label = QLabel(
-            "唯讀研究：前瞻報酬與個人筆記／持倉事件分開；"
+            "研究資料唯讀；下方動作只保存目前 candidate 的研究狀態／筆記／"
+            "下次檢視，與前瞻報酬及個人持倉事件分開；"
             "不代表實際成交損益或自動交易指令。"
         )
         self.safety_label.setObjectName("decisionOutcomeJourneySafety")
@@ -210,6 +217,14 @@ class DecisionOutcomeJourneyWidget(QWidget):
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; padding: 8px;"
         )
         root.addWidget(self.safety_label)
+
+        self.continuity_controls: DecisionContinuityControlsWidget | None = None
+        if self.continuity_controller is not None:
+            self.continuity_controls = DecisionContinuityControlsWidget(
+                self.continuity_controller,
+                parent=self,
+            )
+            root.addWidget(self.continuity_controls)
 
         scroll = QScrollArea()
         scroll.setObjectName("decisionOutcomeJourneyScroll")
@@ -383,6 +398,8 @@ class DecisionOutcomeJourneyWidget(QWidget):
         self.journey = None
         self._request_id += 1
         self._cancel_active_worker()
+        if self.continuity_controls is not None:
+            self.continuity_controls.set_context(context)
         if context is None or not context.stock_code.strip():
             self._active_code = ""
             self._active_result_id = ""
@@ -719,11 +736,21 @@ class DecisionOutcomeJourneyWidget(QWidget):
         journals = tuple(
             item
             for item in journey.journal_entries
-            if _journal_matches_candidate(item, result_id, candidate_ledger_ids)
+            if _journal_matches_candidate(
+                item,
+                result_id,
+                candidate_ledger_ids,
+                stock_code=code,
+            )
         )
         journal_rows_list: list[tuple[str, ...]] = []
         for item in journals:
-            scope = _journal_scope(item, result_id, candidate_ledger_ids)
+            scope = _journal_scope(
+                item,
+                result_id,
+                candidate_ledger_ids,
+                stock_code=code,
+            )
             if scope is None:
                 continue
             journal_rows_list.append(
@@ -926,16 +953,42 @@ def _journal_matches_candidate(
     entry: JournalEntryRecord,
     result_id: str,
     candidate_ledger_ids: set[str],
+    *,
+    stock_code: str = "",
 ) -> bool:
-    return _journal_scope(entry, result_id, candidate_ledger_ids) is not None
+    return (
+        _journal_scope(
+            entry,
+            result_id,
+            candidate_ledger_ids,
+            stock_code=stock_code,
+        )
+        is not None
+    )
 
 
 def _journal_scope(
     entry: JournalEntryRecord,
     result_id: str,
     candidate_ledger_ids: set[str],
+    *,
+    stock_code: str = "",
 ) -> str | None:
-    """區分整次推薦共用筆記與此股票的精確 ledger 關聯筆記。"""
+    """區分 typed 個股筆記、legacy 共用筆記與精確 ledger 關聯筆記。"""
+
+    # typed identity 是較細的權威範圍；unknown／conflict 不得回退到
+    # linked_id=result_id 的整次推薦共用標籤。
+    if entry.decision_identity is not None:
+        identity = entry.decision_identity
+        if entry.link_status is not JourneyLinkStatus.LINKED or not identity.is_linked:
+            return None
+        if (
+            not stock_code
+            or identity.result_id != result_id
+            or identity.stock_code != stock_code
+        ):
+            return None
+        return "此股票關聯筆記"
 
     if entry.linked_id in candidate_ledger_ids:
         return "此股票關聯筆記"

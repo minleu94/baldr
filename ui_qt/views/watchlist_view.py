@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 from typing import List, Dict, Optional
 
 from ui_qt.models.pandas_table_model import PandasTableModel
-from app_module.watchlist_service import WatchlistService
+from app_module.watchlist_service import WatchlistService, WatchlistStorageStatus
 from app_module.universe_service import UniverseService
 from app_module.watchlist_analysis_service import WatchlistAnalysisService
 from app_module.decision_presentation import (
@@ -140,6 +140,24 @@ class WatchlistView(QWidget):
         page_hint.setObjectName("watchlistPageHint")
         page_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         main_layout.addWidget(page_hint)
+
+        storage_row = QHBoxLayout()
+        self.storage_status_label = QLabel("觀察清單儲存狀態：讀取中…")
+        self.storage_status_label.setObjectName("watchlistStorageStatus")
+        self.storage_status_label.setProperty("role", "status")
+        self.storage_status_label.setWordWrap(True)
+        storage_row.addWidget(self.storage_status_label, 1)
+        self.upgrade_storage_btn = QPushButton("升級觀察清單儲存")
+        self.upgrade_storage_btn.setObjectName("watchlistUpgradeStorage")
+        self.upgrade_storage_btn.setProperty("variant", "secondary")
+        self.upgrade_storage_btn.setAccessibleName("升級觀察清單儲存")
+        self.upgrade_storage_btn.setToolTip(
+            "只在你明確按下後，將既有 JSON 複製核對至 canonical SQLite；原 JSON 不會被刪除。"
+        )
+        self.upgrade_storage_btn.clicked.connect(self._upgrade_watchlist_storage)
+        storage_row.addWidget(self.upgrade_storage_btn)
+        main_layout.addLayout(storage_row)
+        self._refresh_storage_status()
 
         # 桌面版只保留兩個有清楚責任的主面板：候選池與已保存清單；
         # 窄版才回到上下排列，維持同一套閱讀順序。
@@ -552,6 +570,68 @@ class WatchlistView(QWidget):
             style.polish(self.status_label)
         self.status_label.setText(text)
 
+    def _refresh_storage_status(self) -> None:
+        """呈現目前 writer；不在 UI 啟動時建立或遷移資料庫。"""
+
+        getter = getattr(self.watchlist_service, "get_storage_status", None)
+        if not callable(getter):
+            self.storage_status_label.setText("觀察清單儲存狀態：沿用既有服務。")
+            self.upgrade_storage_btn.setVisible(False)
+            return
+        try:
+            status = getter()
+        except Exception as exc:
+            self.storage_status_label.setText(
+                f"觀察清單儲存狀態讀取失敗：{str(exc).splitlines()[0]}"
+            )
+            self.upgrade_storage_btn.setVisible(False)
+            return
+        if not isinstance(status, WatchlistStorageStatus):
+            # 與舊版測試替身／host 相容，不把未知物件誤判成已升級。
+            self.storage_status_label.setText("觀察清單儲存狀態：沿用既有服務。")
+            self.upgrade_storage_btn.setVisible(False)
+            return
+        self.storage_status_label.setText(
+            f"觀察清單儲存狀態：{status.message}"
+        )
+        self.upgrade_storage_btn.setVisible(
+            status.upgrade_available and not status.is_repository
+        )
+        self.upgrade_storage_btn.setEnabled(
+            status.upgrade_available and not status.is_repository
+        )
+
+    def _upgrade_watchlist_storage(self) -> None:
+        """執行一次明確的 JSON→SQLite 升級，失敗時保留 JSON writer。"""
+
+        upgrade = getattr(self.watchlist_service, "upgrade_to_repository", None)
+        if not callable(upgrade):
+            self._set_status_label("目前服務不支援儲存升級。", level="warning")
+            return
+        self.upgrade_storage_btn.setEnabled(False)
+        try:
+            status = upgrade()
+        except Exception as exc:
+            self._refresh_storage_status()
+            self._set_status_label(
+                f"儲存升級失敗，仍使用原 JSON：{str(exc).splitlines()[0]}",
+                level="error",
+            )
+            return
+        self._refresh_storage_status()
+        if isinstance(status, WatchlistStorageStatus) and status.is_repository:
+            self._set_status_label("儲存升級成功，已切換至唯一 canonical SQLite writer。", level="success")
+            QMessageBox.information(self, "觀察清單儲存升級", status.message)
+            self._load_watchlist()
+            return
+        message = (
+            status.message
+            if isinstance(status, WatchlistStorageStatus)
+            else "升級未完成；目前仍使用原 JSON。"
+        )
+        self._set_status_label(message, level="warning")
+        QMessageBox.warning(self, "觀察清單儲存升級未完成", message)
+
     def _load_watchlist(self):
         """載入觀察清單"""
         self._analysis_request_id += 1
@@ -634,6 +714,7 @@ class WatchlistView(QWidget):
                 self.stats_label.setText("共 0 檔股票（目前沒有候選）")
                 self._set_status_label("已更新：0 筆；目前沒有候選", level="warning")
             self._update_research_lab_button_state(len(stocks))
+            self._refresh_storage_status()
             logger.info("[WatchlistView._load_watchlist] 載入完成")
             
         except Exception as e:
@@ -659,6 +740,7 @@ class WatchlistView(QWidget):
                     level="error",
                 )
                 self._update_research_lab_button_state(0)
+                self._refresh_storage_status()
                 logger.error("[WatchlistView._load_watchlist] 已顯示錯誤提示")
             except Exception as e2:
                 logger.error(f"[WatchlistView._load_watchlist] 顯示錯誤提示時也失敗: {e2}")

@@ -18,6 +18,9 @@ from typing import Any, Iterable, Mapping
 from app_module.decision_desk_dtos import DecisionDeskSnapshot
 from app_module.evidence_event_dtos import EvidenceEvent, EvidenceOutcome
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.recommendation_learning_evidence_projection_service import (
+    RecommendationLearningEvidenceProjection,
+)
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
 from app_module.workbench_dtos import (
     WorkbenchDailyEvidence,
@@ -93,6 +96,7 @@ class DailyInvestmentJourneyService:
         decision_snapshot: DecisionDeskSnapshot | None,
         scheduled_status: ScheduledEvidenceStatus,
         recommendation_learning_status: Mapping[str, Any] | None,
+        recommendation_learning_projection: RecommendationLearningEvidenceProjection | None = None,
         requested_decision_date: str | None = None,
     ) -> WorkbenchDailyEvidence:
         decision_date = _date_key(
@@ -122,6 +126,8 @@ class DailyInvestmentJourneyService:
         warnings.extend(evidence.warnings)
         if learning is not None:
             diagnostics.extend(learning.diagnostics)
+        if recommendation_learning_projection is not None:
+            diagnostics.extend(recommendation_learning_projection.diagnostics)
 
         if decision_snapshot is None:
             diagnostics.append("decision_snapshot_missing")
@@ -177,6 +183,11 @@ class DailyInvestmentJourneyService:
             warnings.append("目前 active pointer 為 rule_only；沒有 active model，不可稱為 current champion")
         if learning is not None and learning.natural_matured_sample_count == 0:
             warnings.append("隔離 learning receipt 尚無 natural matured sample；不與正式 evidence outcome 混算")
+        if recommendation_learning_projection is not None:
+            if recommendation_learning_projection.status == "blocked_provenance":
+                warnings.append("learning evidence provenance 未通過；Workbench 不顯示 reliability")
+            elif recommendation_learning_projection.verified_lane is None:
+                warnings.append("learning projection 尚無 typed verified natural evidence；80% 可靠度未知")
 
         source_trace = _source_trace(
             decision_snapshot=decision_snapshot,
@@ -231,6 +242,7 @@ class DailyInvestmentJourneyService:
             outcome_windows=evidence.windows,
             evidence_windows=evidence.evidence_windows,
             learning=learning,
+            learning_projection=recommendation_learning_projection,
             journey_steps=journey_steps,
             warnings=tuple(dict.fromkeys(warnings)),
             diagnostics=tuple(dict.fromkeys(diagnostics)),

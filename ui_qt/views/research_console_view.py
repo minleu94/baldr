@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QGridLayout,
     QHeaderView,
     QLabel,
@@ -21,6 +22,10 @@ from typing import Any
 
 from app_module.research_console_dtos import ResearchConsoleDTO
 from app_module.research_console_source_service import ResearchConsoleSourceService
+from app_module.recommendation_learning_evidence_projection_service import (
+    RecommendationLearningEvidenceProjection,
+    RecommendationLearningEvidenceProjectionService,
+)
 from app_module.p0_source_control_center import P0SourceControlCenterDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.theme_widgets import SectionPanel
@@ -49,6 +54,13 @@ _STATUS_COLORS = {
     "accepted": "#22c55e",
     "not_supplied": "#94a3b8",
     "not_observed": "#94a3b8",
+    "verified": "#22c55e",
+    "pending": "#f59e0b",
+    "not_applicable": "#94a3b8",
+    "future_blocked": "#ef4444",
+    "stale": "#f59e0b",
+    "recorded": "#38bdf8",
+    "research_only_estimated_cost": "#a78bfa",
 }
 
 _STATUS_LABELS = {
@@ -73,6 +85,13 @@ _STATUS_LABELS = {
     "accepted": "已接受",
     "not_supplied": "未提供",
     "not_observed": "未觀測",
+    "verified": "已驗證",
+    "pending": "等待自然成熟",
+    "not_applicable": "不適用",
+    "future_blocked": "未來日期已阻擋",
+    "stale": "過期",
+    "recorded": "已記錄",
+    "research_only_estimated_cost": "研究限定／估計成本",
     "research_shadow": "研究影子",
     "waiting_for_formal_inputs": "等待正式輸入",
     "formal_input_missing": "缺正式輸入",
@@ -107,11 +126,18 @@ class ResearchConsoleView(QWidget):
         *,
         source_service: ResearchConsoleSourceService | None = None,
         console: ResearchConsoleDTO | None = None,
+        learning_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
+        legacy_learning_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
+        decision_date: str | None = None,
         auto_refresh: bool = True,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.source_service = source_service or ResearchConsoleSourceService()
+        self.learning_projection_service = learning_projection_service
+        self.legacy_learning_projection_service = legacy_learning_projection_service
+        self.decision_date = decision_date
+        self._learning_projection: RecommendationLearningEvidenceProjection | None = None
         self._console: ResearchConsoleDTO | None = None
         self._setup_ui()
         if console is not None:
@@ -209,6 +235,56 @@ class ResearchConsoleView(QWidget):
         boundary_panel.layout.addLayout(boundary_grid)
         layout.addWidget(boundary_panel)
 
+        learning_panel = SectionPanel("每日學習／機率校準（唯讀）")
+        learning_header = QGridLayout()
+        learning_header.setSpacing(8)
+        learning_header.addWidget(QLabel("研究成本情境"), 0, 0)
+        self.learning_lane_selector = QComboBox()
+        self.learning_lane_selector.addItem("臺銀公開成本研究（預設）", "banktaiwan_estimated_research")
+        self.learning_lane_selector.addItem("Legacy 固定 50bp（獨立 lane）", "legacy_fixed_bp")
+        self.learning_lane_selector.currentIndexChanged.connect(self._on_learning_lane_changed)
+        learning_header.addWidget(self.learning_lane_selector, 0, 1)
+        self.learning_summary_label = QLabel()
+        self.learning_summary_label.setObjectName("ResearchLearningSummary")
+        self.learning_summary_label.setWordWrap(True)
+        self.learning_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.learning_summary_label.setStyleSheet(
+            f"background: {MIDNIGHT_ANALYST.surface_2}; color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 6px; padding: 10px;"
+        )
+        learning_header.addWidget(self.learning_summary_label, 1, 0, 1, 2)
+        learning_panel.layout.addLayout(learning_header)
+        self.learning_table = _table(
+            (
+                "驗證範圍",
+                "預測機率區間",
+                "實際事件發生比例",
+                "樣本數",
+                "決策日數",
+                "期間",
+                "狀態",
+            )
+        )
+        learning_panel.layout.addWidget(self.learning_table)
+        self.learning_detail_toggle = QToolButton()
+        self.learning_detail_toggle.setText("顯示驗證詳情")
+        self.learning_detail_toggle.setAccessibleName("展開或收合每日學習驗證詳情")
+        self.learning_detail_toggle.setCheckable(True)
+        self.learning_detail_toggle.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.learning_detail_toggle.toggled.connect(self._toggle_learning_details)
+        learning_panel.layout.addWidget(self.learning_detail_toggle)
+        self.learning_detail_label = QLabel()
+        self.learning_detail_label.setObjectName("ResearchLearningDetails")
+        self.learning_detail_label.setWordWrap(True)
+        self.learning_detail_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.learning_detail_label.setStyleSheet(
+            f"background: {MIDNIGHT_ANALYST.surface_1}; color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 6px; padding: 8px;"
+        )
+        self.learning_detail_label.setVisible(False)
+        learning_panel.layout.addWidget(self.learning_detail_label)
+        layout.addWidget(learning_panel)
+
         pipeline_panel = SectionPanel("2. 開發流程（Development Pipeline）")
         self.pipeline_state_label = QLabel()
         self.pipeline_state_label.setWordWrap(True)
@@ -260,6 +336,148 @@ class ResearchConsoleView(QWidget):
 
     def refresh_console(self) -> None:
         self.render_console(self.source_service.inspect())
+        self._refresh_learning_projection()
+
+    def set_decision_date(self, decision_date: str | None) -> None:
+        """Bind learning freshness to the selected Workbench decision date."""
+
+        self.decision_date = decision_date
+        self._refresh_learning_projection()
+
+    def _on_learning_lane_changed(self, _index: int) -> None:
+        self._refresh_learning_projection()
+
+    def _refresh_learning_projection(self) -> None:
+        service = self._selected_learning_service()
+        if service is None:
+            self.render_learning_projection(None)
+            return
+        try:
+            projection = service.inspect(requested_date=self.decision_date)
+        except (OSError, TypeError, ValueError, KeyError) as exc:
+            self.render_learning_projection(None, error=f"{type(exc).__name__}: {exc}")
+            return
+        self.render_learning_projection(projection)
+
+    def _selected_learning_service(self) -> RecommendationLearningEvidenceProjectionService | None:
+        lane = self.learning_lane_selector.currentData()
+        if lane == "legacy_fixed_bp":
+            return self.legacy_learning_projection_service or (
+                self.learning_projection_service
+                if self.learning_projection_service is not None
+                and getattr(self.learning_projection_service, "cost_lane", "") == "legacy_fixed_bp"
+                else None
+            )
+        return self.learning_projection_service
+
+    def render_learning_projection(
+        self,
+        projection: RecommendationLearningEvidenceProjection | None,
+        *,
+        error: str | None = None,
+    ) -> None:
+        self._learning_projection = projection
+        if error:
+            self.learning_summary_label.setText(f"學習 projection 讀取失敗：{error}")
+            self.learning_detail_label.setText("失敗不是零樣本；請檢查隔離 learning root 與 receipt。")
+            self.learning_table.setRowCount(0)
+            return
+        if projection is None:
+            self.learning_summary_label.setText(
+                "尚未接入 recommendation learning projection；不能由 UI 推定模型可靠度。"
+            )
+            self.learning_detail_label.setText("")
+            self.learning_table.setRowCount(0)
+            return
+        candidate = projection.candidate_lane
+        active = projection.active_lane
+        horizon_text = "；".join(
+            f"{item.horizon_days}日：{_status_display(item.status)}／已成熟 {item.matured_sample_count} 筆／"
+            f"{item.matured_decision_date_count} 個決策日"
+            for item in projection.horizons
+        ) or "未知"
+        horizon_scope = (
+            f"{projection.horizon_scope_label or '未知'}／"
+            f"模型={projection.horizon_scope_model_version or '未知'}／"
+            f"成本情境={projection.horizon_scope_cost_scenario_id or '未知'}"
+        )
+        lane_label = _learning_lane_label(projection.cost_lane)
+        cost_summary = _learning_cost_summary(candidate, active, projection.cost_lane)
+        record_summary = _learning_record_summary(projection)
+        candidate_maturity = _maturity_summary(candidate)
+        active_maturity = _maturity_summary(active)
+        verified_summary = _verified_maturity_summary(candidate, active)
+        self.learning_summary_label.setText(
+            f"研究範圍：{lane_label}｜整體狀態：{_status_display(projection.status)}\n"
+            f"目標決策日：{projection.requested_date or '未知'}｜"
+            f"學習資料決策日：{projection.learning_decision_date or '未知'}\n"
+            f"成本：{cost_summary}\n"
+            f"該日預測：{record_summary}\n"
+            f"已成熟樣本：候選 {candidate_maturity}；目前路徑 {active_maturity}\n"
+            f"已驗證自然樣本：{verified_summary}\n"
+            f"判定：{_learning_decision_summary(projection)}\n"
+            f"下一步：{_learning_next_step(projection)}"
+        )
+        rows = []
+        for item in projection.reliability_bins:
+            target = "上漲機率" if item.target == "upside_probability" else "成本後獲利機率"
+            rows.append(
+                (
+                    target,
+                    f"{item.lower_probability_bp / 100:.0f}%–{item.upper_probability_bp / 100:.0f}%",
+                    f"{item.matured_actual_up_ratio_bp / 100:.2f}%",
+                    item.sample_count,
+                    item.decision_date_count,
+                    f"{item.period_start or '未知'}..{item.period_end or '未知'}",
+                    "研究限定／估計成本" if item.research_only else item.status,
+                )
+            )
+        if not rows:
+            rows.append(
+                (
+                    "尚無已驗證自然樣本",
+                    "未知",
+                    "未知",
+                    0,
+                    0,
+                    "未知",
+                    "pending",
+                )
+            )
+        _set_rows(self.learning_table, rows, status_column=6)
+        self.learning_detail_label.setText(
+            f"candidate identity：{candidate.candidate_id or '未知'}\n"
+            f"candidate 狀態／原始原因：{candidate.status}／{candidate.reason or '未知'}\n"
+            f"candidate model／dataset／training-as-of：{candidate.model_version or '未知'}／"
+            f"{candidate.dataset_version or '未知'}／{candidate.training_as_of or '未知'}\n"
+            f"active model／狀態／原始原因：{active.model_version or '未知'}／"
+            f"{active.status}／{active.reason or '未知'}\n"
+            f"horizon scope：{horizon_scope}\n"
+            f"horizon 明細：{horizon_text}\n"
+            f"成本 basis／scenario／version／hash：{candidate.cost_basis or active.cost_basis or '未知'}／"
+            f"{candidate.cost_scenario_id or active.cost_scenario_id or '未知'}／"
+            f"{candidate.cost_scenario_version or active.cost_scenario_version or '未知'}／"
+            f"{candidate.cost_scenario_hash or active.cost_scenario_hash or '未知'}\n"
+            f"capture：{candidate.capture_status}／{candidate.capture_count} 筆 capture／"
+            f"{candidate.recorded_row_count} 筆 rows\n"
+            f"receipt／evidence：{candidate.receipt_path or active.receipt_path or '未知'}／"
+            f"{candidate.receipt_hash or active.receipt_hash or '未知'}／"
+            f"{candidate.evidence_id or active.evidence_id or '未知'}\n"
+            f"decision reason：{projection.decision_reason or '未知'}\n"
+            f"data recorded raw reason：{projection.data_recorded_reason or '未知'}\n"
+            f"next gap raw：{projection.next_gap}\n"
+            f"adoption raw：{projection.adoption_reason}\n"
+            f"Historical evaluation：{projection.historical_evaluation_sample_count} 筆；"
+            f"{projection.historical_evaluation_note}\n"
+            f"diagnostics：{'；'.join(projection.diagnostics) or '無'}\n"
+            f"source trace：{'；'.join(projection.source_trace) or '未知'}"
+        )
+
+    def _toggle_learning_details(self, checked: bool) -> None:
+        self.learning_detail_label.setVisible(bool(checked))
+        self.learning_detail_toggle.setText(
+            "收合驗證詳情" if checked else "顯示驗證詳情"
+        )
 
     def _toggle_diagnostics(self, checked: bool) -> None:
         self.diagnostics_panel.setVisible(bool(checked))
@@ -372,6 +590,8 @@ class ResearchConsoleView(QWidget):
             ((row.artifact_type, row.artifact_id, row.status, row.citation) for row in console.artifacts),
             status_column=2,
         )
+        if self.learning_projection_service is not None:
+            self._refresh_learning_projection()
 
     def visible_text(self) -> str:
         values = [label.text() for label in self.findChildren(QLabel)]
@@ -381,6 +601,7 @@ class ResearchConsoleView(QWidget):
             self.source_table,
             self.control_center_table,
             self.artifact_table,
+            self.learning_table,
         ):
             for row in range(table.rowCount()):
                 for column in range(table.columnCount()):
@@ -427,6 +648,114 @@ def _status_display(value: object) -> str:
     if not raw:
         return "缺漏／未知"
     return _STATUS_LABELS.get(raw, _display(value))
+
+
+def _learning_lane_label(cost_lane: object) -> str:
+    if str(cost_lane) == "legacy_fixed_bp":
+        return "Legacy 固定 50bp（獨立 lane）"
+    return "臺銀公開成本研究"
+
+
+def _learning_cost_summary(candidate: Any, active: Any, cost_lane: object) -> str:
+    if str(cost_lane) == "banktaiwan_estimated_research":
+        return "臺銀費稅估算（研究限定，非實際成交）"
+    return "Legacy 固定 50bp（獨立研究 lane）"
+
+
+def _maturity_summary(lane: Any) -> str:
+    return (
+        f"{getattr(lane, 'matured_sample_count', 0)} 筆／"
+        f"{getattr(lane, 'matured_decision_date_count', 0)} 個決策日"
+    )
+
+
+def _verified_maturity_summary(candidate: Any, active: Any) -> str:
+    lane = active if getattr(active, "status", "") == "verified" else candidate
+    if getattr(lane, "status", "") != "verified":
+        return "0 筆／0 個決策日（可靠度未知）"
+    return _maturity_summary(lane)
+
+
+def _learning_record_summary(projection: RecommendationLearningEvidenceProjection) -> str:
+    status = str(projection.data_recorded_status or "unknown").lower()
+    projection_status = str(projection.status or "unknown").lower()
+    if status == "recorded":
+        record_summary = "已建立該日預測紀錄"
+    elif status == "not_recorded":
+        record_summary = "尚未建立該日預測紀錄"
+    elif status == "stale":
+        record_summary = "資料已過期，未採用"
+    elif status == "future_blocked":
+        record_summary = "資料日期在未來，已阻擋"
+    elif status == "blocked_provenance":
+        record_summary = "預測紀錄無法確認"
+    else:
+        record_summary = "預測紀錄未知，未採用"
+
+    if projection_status == "verified":
+        evidence_summary = "自然證據已完成驗證"
+    elif projection_status == "blocked_provenance":
+        evidence_summary = "自然證據來源追溯受阻，未採用"
+    elif projection_status in {"stale", "future_blocked"}:
+        evidence_summary = "自然證據日期不在有效範圍，未採用"
+    elif projection_status == "pending" and status == "recorded":
+        evidence_summary = "自然證據等待成熟"
+    else:
+        evidence_summary = "自然證據尚未完成驗證"
+    return f"{record_summary}；{evidence_summary}"
+
+
+def _learning_decision_summary(projection: RecommendationLearningEvidenceProjection) -> str:
+    decision = str(projection.decision or "unknown").lower()
+    if decision == "retain_current":
+        reason = _learning_reason_summary(
+            projection.decision_reason or projection.adoption_reason
+        )
+        return f"保留目前模型／規則路徑：{reason}"
+    if decision in {"adopt_candidate", "adopt_challenger", "promote"}:
+        return "候選變更仍受既有 shadow policy 限制"
+    if decision in {"rollback", "rollback_active"}:
+        return "依既有 policy 回退目前 active"
+    return _status_display(projection.status)
+
+
+def _learning_next_step(projection: RecommendationLearningEvidenceProjection) -> str:
+    status = str(projection.data_recorded_status or "unknown").lower()
+    projection_status = str(projection.status or "unknown").lower()
+    if projection_status == "blocked_provenance" or status == "blocked_provenance":
+        return "先修復來源追溯；修復前不顯示可靠度。"
+    if status in {"stale", "future_blocked", "unknown"}:
+        return "先確認目標決策日、來源日期與隔離 learning artifact。"
+    if projection_status == "verified":
+        return projection.next_gap or "已完成自然驗證；依既有 learning gate 進行後續覆核。"
+    if projection_status == "pending" and status == "recorded":
+        return "等待自然成熟與 typed receipt（自然 forward）；目前不解讀為準確率。"
+    if status == "not_recorded":
+        return "先建立同一決策日的 scheduled live prediction capture。"
+    if status == "recorded":
+        return "先確認自然證據驗證狀態；目前不解讀為準確率。"
+    return "依驗證詳情與既有 learning gate 進行下一次唯讀覆核。"
+
+
+def _learning_reason_summary(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "原因見驗證詳情"
+    if "natural_forward_evidence_receipt_missing" in raw:
+        return "自然 forward 證據尚未提供"
+    if "cross-capture" in raw or "provenance" in raw:
+        return "來源追溯受阻"
+    if "blocked_cost_scope" in raw or "cost" in raw and "scope" in raw:
+        return "成本情境不一致"
+    if "calibration" in raw and ("improv" in raw or "gap" in raw):
+        return "校準未改善"
+    if "insufficient" in raw and "evidence" in raw:
+        return "自然證據不足"
+    if "active_pointer_not_available" in raw:
+        return "目前沒有可用 active 路徑"
+    if "capture" in raw and ("missing" in raw or "not" in raw):
+        return "該日預測紀錄不足"
+    return "原因見驗證詳情"
 
 
 def _join(values: tuple[str, ...]) -> str:

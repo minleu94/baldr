@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app_module.advice_dtos import AdviceDashboardDTO
 from app_module.machine_status_classification import classify_machine_status
+
+if TYPE_CHECKING:
+    from app_module.recommendation_learning_evidence_projection_service import (
+        RecommendationLearningEvidenceProjection,
+    )
 
 
 WORKBENCH_LEGACY_DRILLDOWN_TARGETS: dict[str, str] = {
@@ -441,6 +446,7 @@ class WorkbenchDailyEvidence:
     outcome_windows: tuple[int, ...] = ()
     evidence_windows: tuple[WorkbenchEvidenceWindow, ...] = ()
     learning: WorkbenchLearningReceipt | None = None
+    learning_projection: "RecommendationLearningEvidenceProjection | None" = None
     journey_steps: tuple[WorkbenchJourneyStep, ...] = ()
     warnings: tuple[str, ...] = ()
     diagnostics: tuple[str, ...] = ()
@@ -526,6 +532,11 @@ class WorkbenchDailyEvidence:
             "outcome_windows": list(self.outcome_windows),
             "evidence_windows": [item.to_dict() for item in self.evidence_windows],
             "learning": self.learning.to_dict() if self.learning is not None else None,
+            "learning_projection": (
+                self.learning_projection.to_dict()
+                if self.learning_projection is not None
+                else None
+            ),
             "journey_steps": [item.to_dict() for item in self.journey_steps],
             "warnings": list(self.warnings),
             "diagnostics": list(self.diagnostics),

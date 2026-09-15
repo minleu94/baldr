@@ -37,6 +37,9 @@ from app_module.machine_status_classification import (
 )
 from app_module.engineering_closure_dashboard_service import EvidenceRehearsalDashboard
 from app_module.workbench_source_service import WorkbenchSourceService
+from app_module.recommendation_learning_evidence_projection_service import (
+    RecommendationLearningEvidenceProjectionService,
+)
 from app_module.research_console_source_service import ResearchConsoleSourceService
 from app_module.advice_dtos import AdviceClassification
 from app_module.decision_presentation import (
@@ -120,6 +123,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         replay_summary_json: str | Path | None = None,
         evidence_rehearsal_dashboard: EvidenceRehearsalDashboard | None = None,
         research_console_source_service: ResearchConsoleSourceService | None = None,
+        learning_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
+        legacy_learning_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
         auto_refresh: bool = True,
         decision_source_widget: QWidget | None = None,
         navigate_to_daily_decision_callback: Callable[[], None] | None = None,
@@ -140,6 +145,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.research_console_source_service = (
             research_console_source_service or ResearchConsoleSourceService()
         )
+        self.learning_projection_service = (
+            learning_projection_service
+            or getattr(self.source_service, "learning_evidence_projection_service", None)
+        )
+        self.legacy_learning_projection_service = legacy_learning_projection_service
         self.navigate_to_daily_decision_callback = navigate_to_daily_decision_callback
         self.navigate_to_market_explore_callback = navigate_to_market_explore_callback
         self.navigate_to_evidence_review_callback = navigate_to_evidence_review_callback
@@ -635,6 +645,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.subtabs.addTab(self._build_decision_source_page(), "決策來源")
         self.research_console_view = ResearchConsoleView(
             source_service=self.research_console_source_service,
+            learning_projection_service=self.learning_projection_service,
+            legacy_learning_projection_service=self.legacy_learning_projection_service,
+            decision_date=self.decision_date,
             auto_refresh=True,
             parent=self.subtabs,
         )
@@ -978,7 +991,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_portfolio_card.value_label.setText(_compact_daily_text(daily.portfolio_summary))
         self.daily_evidence_card.value_label.setText(_daily_evidence_card_text(daily))
         evidence_line = _daily_evidence_surface_line(daily)
-        learning_line = _daily_learning_line(daily.learning)
+        learning_line = _daily_learning_line(daily.learning, daily.learning_projection)
         self.daily_journey_label.setText(
             f"下一步：{daily.next_action}\n{evidence_line}\n{learning_line}"
         )
@@ -1052,6 +1065,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     f"candidate natural={learning.candidate_natural_matured_sample_count}｜"
                     f"active natural={learning.active_natural_matured_sample_count}｜"
                     f"cli_result_updated_at={learning.checked_at or '未知'}",
+                )
+            )
+        if daily.learning_projection is not None:
+            projection = daily.learning_projection
+            lines.extend(
+                (
+                    f"learning projection lane={projection.cost_lane}｜status={projection.status}｜"
+                    f"capture={projection.data_recorded_status}｜candidate={projection.candidate_id or '無'}",
+                    f"learning next_gap={projection.next_gap}｜latest={projection.latest_evaluation_label}",
                 )
             )
         lines.append("source trace：" + ("\n".join(daily.source_trace) or "無"))
@@ -1629,6 +1651,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._set_summary_blocks(dashboard)
         self._set_priority_banner(dashboard)
         self._render_daily_investment_journey(dashboard.daily_evidence)
+        self.research_console_view.set_decision_date(dashboard.as_of_date.isoformat())
         self._render_today_action_center(dashboard)
         self.meta_label.setText(
             f"決策日期={dashboard.as_of_date.isoformat()} | "
@@ -2351,7 +2374,28 @@ def _daily_evidence_surface_line(daily: WorkbenchDailyEvidence) -> str:
     )
 
 
-def _daily_learning_line(learning) -> str:
+def _daily_learning_line(learning, projection=None) -> str:
+    if projection is not None:
+        if projection.verified_lane is not None:
+            lane = projection.verified_lane
+            horizon_text = "、".join(
+                f"{item.horizon_days}日成熟{item.matured_sample_count}筆／{item.matured_decision_date_count}日"
+                for item in projection.horizons
+            ) or "horizon未知"
+            return (
+                f"學習：{lane.label} 已驗證 {lane.matured_sample_count} 筆／"
+                f"{lane.matured_decision_date_count} 個決策日；scope={projection.horizon_scope_label or lane.label}；"
+                f"{horizon_text}；"
+                f"80% reliability 只看已成熟實際比例，最新 {projection.latest_evaluation_label}。"
+            )
+        if projection.data_recorded_status == "recorded":
+            return (
+                f"學習：{projection.cost_lane} 的 prediction capture 已記錄，"
+                f"尚待自然成熟；80% 機率可靠度未知。"
+            )
+        if projection.status == "blocked_provenance":
+            return "學習：provenance 受阻；不顯示可靠度，也不把歷史 replay 當 natural evidence。"
+        return f"學習：{projection.next_gap}"
     if learning is None:
         return "學習：來源缺失，不能判定模型狀態。"
     active_pointer = str(learning.active_pointer_status or "unknown").strip().lower()

@@ -176,6 +176,44 @@ class RecommendationPredictionCapture:
 
 
 @dataclass(frozen=True)
+class RecommendationPredictionCaptureVerification:
+    """公開唯讀 capture gate 的 typed 結果。"""
+
+    capture_id: str
+    candidate_id: str
+    capture_as_of_date: str
+    captured_at: str
+    capture_origin: str
+    capture_hash: str
+    row_count: int
+    cost_basis: str
+    cost_scenario_id: str
+    cost_scenario_version: str
+    cost_scenario_hash: str
+    fixed_round_trip_cost_bp: int | None
+    source_contract_status: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": "recommendation-prediction-capture-verification.v1",
+            "status": "verified",
+            "capture_id": self.capture_id,
+            "candidate_id": self.candidate_id,
+            "capture_as_of_date": self.capture_as_of_date,
+            "captured_at": self.captured_at,
+            "capture_origin": self.capture_origin,
+            "capture_hash": self.capture_hash,
+            "row_count": self.row_count,
+            "cost_basis": self.cost_basis,
+            "cost_scenario_id": self.cost_scenario_id,
+            "cost_scenario_version": self.cost_scenario_version,
+            "cost_scenario_hash": self.cost_scenario_hash,
+            "fixed_round_trip_cost_bp": self.fixed_round_trip_cost_bp,
+            "source_contract_status": self.source_contract_status,
+        }
+
+
+@dataclass(frozen=True)
 class ActiveModelPredictionCapture:
     """一個已 active pointer 的有效輸出觀測，與 challenger capture 分離。"""
 
@@ -1324,6 +1362,61 @@ def _verify_capture_document(payload: Mapping[str, Any]) -> None:
         _verify_capture_bundle_payload(payload)
         return
     _verify_capture_payload(payload)
+
+
+def verify_prediction_capture_read_only(
+    capture: Mapping[str, Any] | str | Path,
+) -> RecommendationPredictionCaptureVerification:
+    """Verify an immutable prediction capture without writing or maturing it.
+
+    The implementation intentionally delegates all schema/hash/cost/source
+    checks to the existing capture verifier.  This boundary only turns its
+    successful result into a small typed read model for Workbench consumers.
+    """
+
+    if isinstance(capture, Mapping):
+        payload = dict(capture)
+    else:
+        path = Path(capture).resolve()
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("prediction capture must be an object")
+    _verify_capture_document(payload)
+    try:
+        scenario = cost_scenario_from_metadata(
+            payload,
+            fixed_round_trip_cost_bp=(
+                int(payload["fixed_round_trip_cost_bp"])
+                if payload.get("fixed_round_trip_cost_bp") is not None
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        raise ValueError(f"prediction capture cost scenario is invalid: {exc}") from exc
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("prediction capture rows are missing")
+    binding = payload.get("source_contract_binding")
+    source_contract_status = (
+        str(binding.get("price_up_prospective_status") or "unknown")
+        if isinstance(binding, Mapping)
+        else "not_supplied"
+    )
+    return RecommendationPredictionCaptureVerification(
+        capture_id=str(payload["capture_id"]),
+        candidate_id=str(payload["candidate_id"]),
+        capture_as_of_date=_date(str(payload["capture_as_of_date"])).isoformat(),
+        captured_at=str(payload["captured_at"]),
+        capture_origin=str(payload["capture_origin"]),
+        capture_hash=str(payload["capture_hash"]),
+        row_count=len(rows),
+        cost_basis=scenario.cost_basis,
+        cost_scenario_id=scenario.scenario_id,
+        cost_scenario_version=scenario.scenario_version,
+        cost_scenario_hash=scenario.scenario_hash,
+        fixed_round_trip_cost_bp=scenario.fixed_round_trip_cost_bp,
+        source_contract_status=source_contract_status,
+    )
 
 
 def _build_capture_bundle(

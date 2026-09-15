@@ -25,6 +25,9 @@ from app_module.recommendation_learning_paths import (
     resolve_recommendation_learning_paths,
 )
 from app_module.workbench_replay_summary import load_historical_replay_summary
+from app_module.recommendation_learning_evidence_projection_service import (
+    RecommendationLearningEvidenceProjectionService,
+)
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 from app_module.paper_portfolio_time import taiwan_market_today
 
@@ -38,6 +41,7 @@ class WorkbenchSourceService:
         *,
         evidence_db_path: str | Path | None = None,
         research_db_path: str | Path | None = None,
+        learning_evidence_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
     ) -> None:
         self.config = config
         self.evidence_db_path = Path(evidence_db_path) if evidence_db_path is not None else Path(config.db_file)
@@ -52,6 +56,10 @@ class WorkbenchSourceService:
         )
         self.composer = WorkbenchReadOnlyComposer()
         self.scheduled_status_service = ScheduledEvidenceStatusService(config)
+        self.learning_evidence_projection_service = (
+            learning_evidence_projection_service
+            or RecommendationLearningEvidenceProjectionService(config)
+        )
         self.daily_investment_journey_service = DailyInvestmentJourneyService(
             config,
             evidence_db_path=self.evidence_db_path,
@@ -96,10 +104,14 @@ class WorkbenchSourceService:
             source_diagnostics=tuple(source_diagnostics),
             recommendation_learning_status=recommendation_learning_status,
         )
+        learning_projection = self.learning_evidence_projection_service.inspect(
+            requested_date=dashboard.as_of_date.isoformat()
+        )
         daily_evidence = self.daily_investment_journey_service.build(
             decision_snapshot=decision_snapshot,
             scheduled_status=scheduled_status,
             recommendation_learning_status=recommendation_learning_status,
+            recommendation_learning_projection=learning_projection,
             requested_decision_date=dashboard.as_of_date.isoformat(),
         )
         return replace(dashboard, daily_evidence=daily_evidence)

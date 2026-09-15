@@ -111,6 +111,9 @@ from app_module.decision_desk_service import DecisionDeskSnapshotBuilder, SavedR
 from app_module.market_data_visibility_service import MarketDataVisibilityService
 from ui_qt.views.decision_desk_view import DecisionDeskView
 from app_module.workbench_source_service import WorkbenchSourceService
+from app_module.recommendation_learning_evidence_projection_service import (
+    RecommendationLearningEvidenceProjectionService,
+)
 from app_module.research_console_source_service import ResearchConsoleSourceService
 from app_module.engineering_closure_dashboard_service import (
     EngineeringClosureDashboardService,
@@ -616,7 +619,18 @@ class MainWindow(QMainWindow):
             # Phase 2 Unified Decision Workbench shell（唯讀 DTO/service 邊界）
             print("[MainWindow] 開始建立決策工作台...")
             try:
-                self.workbench_source_service = WorkbenchSourceService(self.config)
+                self.learning_projection_service = RecommendationLearningEvidenceProjectionService(
+                    self.config,
+                    cost_lane="banktaiwan_estimated_research",
+                )
+                self.legacy_learning_projection_service = RecommendationLearningEvidenceProjectionService(
+                    self.config,
+                    cost_lane="legacy_fixed_bp",
+                )
+                self.workbench_source_service = WorkbenchSourceService(
+                    self.config,
+                    learning_evidence_projection_service=self.learning_projection_service,
+                )
                 self.research_console_source_service = ResearchConsoleSourceService(
                     projection_path=self._research_console_projection_path(),
                     p0_audit_path=self._p0_source_audit_path(),
@@ -626,6 +640,8 @@ class MainWindow(QMainWindow):
                 workbench_view = UnifiedDecisionWorkbenchView(
                     source_service=self.workbench_source_service,
                     research_console_source_service=self.research_console_source_service,
+                    learning_projection_service=self.learning_projection_service,
+                    legacy_learning_projection_service=self.legacy_learning_projection_service,
                     replay_summary_json=self._default_workbench_replay_summary_path(),
                     evidence_rehearsal_dashboard=self._controlled_rehearsal_dashboard(),
                     navigate_to_daily_decision_callback=self._open_workbench_daily_decision,

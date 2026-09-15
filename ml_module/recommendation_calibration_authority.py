@@ -143,6 +143,312 @@ class RecommendationPromotionDecision:
         }
 
 
+@dataclass(frozen=True)
+class RecommendationNaturalEvidenceComparison:
+    """單筆已通過 authority natural-evidence gate 的比較列。
+
+    這個 DTO 只保存 read-only projection 需要的欄位；它不暴露 ranking
+    score 作為機率，也不接受 caller 傳入的 label／return。
+    """
+
+    capture_row_id: str
+    symbol: str
+    capture_as_of_date: str
+    label_end_date: str
+    label_available_date: str
+    candidate_probability_bp: int
+    champion_probability_bp: int
+    upside_label: int
+    stock_return_bp: int
+    candidate_after_cost_probability_bp: int | None = None
+    champion_after_cost_probability_bp: int | None = None
+    after_cost_profit_label: int | None = None
+    observed_liquidity_cost_bp: int | None = None
+    observed_liquidity_cost_source: str | None = None
+    cost_scenario_hash: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "capture_row_id": self.capture_row_id,
+            "symbol": self.symbol,
+            "capture_as_of_date": self.capture_as_of_date,
+            "label_end_date": self.label_end_date,
+            "label_available_date": self.label_available_date,
+            "candidate_probability_bp": self.candidate_probability_bp,
+            "champion_probability_bp": self.champion_probability_bp,
+            "upside_label": self.upside_label,
+            "stock_return_bp": self.stock_return_bp,
+            "candidate_after_cost_probability_bp": self.candidate_after_cost_probability_bp,
+            "champion_after_cost_probability_bp": self.champion_after_cost_probability_bp,
+            "after_cost_profit_label": self.after_cost_profit_label,
+            "observed_liquidity_cost_bp": self.observed_liquidity_cost_bp,
+            "observed_liquidity_cost_source": self.observed_liquidity_cost_source,
+            "cost_scenario_hash": self.cost_scenario_hash,
+        }
+
+
+@dataclass(frozen=True)
+class RecommendationNaturalEvidenceScope:
+    """Evidence receipt 的日期、來源、capture 與成本 scope。"""
+
+    source_id: str
+    source_kind: str
+    capture_origin: str
+    as_of_date: str
+    capture_as_of_date: str
+    captured_at: str
+    candidate_frozen_at: str
+    candidate_id: str
+    capture_id: str
+    capture_hash: str
+    candidate_freeze_hash: str
+    same_date_same_cost: bool
+    source_capture_ids: tuple[str, ...]
+    source_capture_hashes: tuple[str, ...]
+    source_capture_paths: tuple[str, ...]
+    cost_basis: str
+    cost_scenario_id: str
+    cost_scenario_version: str
+    cost_scenario_hash: str
+    fixed_round_trip_cost_bp: int | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_id": self.source_id,
+            "source_kind": self.source_kind,
+            "capture_origin": self.capture_origin,
+            "as_of_date": self.as_of_date,
+            "capture_as_of_date": self.capture_as_of_date,
+            "captured_at": self.captured_at,
+            "candidate_frozen_at": self.candidate_frozen_at,
+            "candidate_id": self.candidate_id,
+            "capture_id": self.capture_id,
+            "capture_hash": self.capture_hash,
+            "candidate_freeze_hash": self.candidate_freeze_hash,
+            "same_date_same_cost": self.same_date_same_cost,
+            "source_capture_ids": list(self.source_capture_ids),
+            "source_capture_hashes": list(self.source_capture_hashes),
+            "source_capture_paths": list(self.source_capture_paths),
+            "cost_basis": self.cost_basis,
+            "cost_scenario_id": self.cost_scenario_id,
+            "cost_scenario_version": self.cost_scenario_version,
+            "cost_scenario_hash": self.cost_scenario_hash,
+            "fixed_round_trip_cost_bp": self.fixed_round_trip_cost_bp,
+        }
+
+
+@dataclass(frozen=True)
+class RecommendationNaturalEvidenceVerification:
+    """Typed, successful result of the existing natural-evidence verifier."""
+
+    evidence_id: str
+    receipt_path: str
+    receipt_hash: str
+    matured_sample_count: int
+    matured_unique_decision_date_count: int
+    observed_champion_brier_bp: int
+    observed_candidate_brier_bp: int
+    observed_brier_improvement_bp: int
+    observed_calibration_gap_bp: int
+    after_cost_evaluation_status: str
+    after_cost_matured_sample_count: int
+    observed_champion_after_cost_brier_bp: int | None
+    observed_candidate_after_cost_brier_bp: int | None
+    observed_after_cost_brier_improvement_bp: int | None
+    observed_after_cost_calibration_gap_bp: int | None
+    scope: RecommendationNaturalEvidenceScope
+    comparisons: tuple[RecommendationNaturalEvidenceComparison, ...]
+    status: str = "verified"
+
+    def __post_init__(self) -> None:
+        if self.status != "verified":
+            raise ValueError("successful natural evidence verification must be verified")
+        if self.matured_sample_count != len(self.comparisons):
+            raise ValueError("natural evidence verification count mismatch")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": "recommendation-natural-evidence-verification.v1",
+            "status": self.status,
+            "evidence_id": self.evidence_id,
+            "receipt_path": self.receipt_path,
+            "receipt_hash": self.receipt_hash,
+            "matured_sample_count": self.matured_sample_count,
+            "matured_unique_decision_date_count": self.matured_unique_decision_date_count,
+            "observed_champion_brier_bp": self.observed_champion_brier_bp,
+            "observed_candidate_brier_bp": self.observed_candidate_brier_bp,
+            "observed_brier_improvement_bp": self.observed_brier_improvement_bp,
+            "observed_calibration_gap_bp": self.observed_calibration_gap_bp,
+            "after_cost_evaluation_status": self.after_cost_evaluation_status,
+            "after_cost_matured_sample_count": self.after_cost_matured_sample_count,
+            "observed_champion_after_cost_brier_bp": self.observed_champion_after_cost_brier_bp,
+            "observed_candidate_after_cost_brier_bp": self.observed_candidate_after_cost_brier_bp,
+            "observed_after_cost_brier_improvement_bp": self.observed_after_cost_brier_improvement_bp,
+            "observed_after_cost_calibration_gap_bp": self.observed_after_cost_calibration_gap_bp,
+            "scope": self.scope.to_dict(),
+            "comparisons": [item.to_dict() for item in self.comparisons],
+        }
+
+
+def verify_natural_evidence_read_only(
+    evidence: Any,
+    *,
+    decision_date: str,
+    candidate_id: str,
+    candidate_root: str | Path,
+    candidate_metadata: Mapping[str, Any],
+    policy_hash: str | None = None,
+    maximum_probability_change_bp: int | None = None,
+) -> RecommendationNaturalEvidenceVerification:
+    """Expose the existing authority verifier as a side-effect-free public API.
+
+    This is deliberately a thin boundary around ``_verify_natural_evidence``.
+    It performs no promotion decision and never writes a receipt or pointer;
+    callers receive a typed scope plus the rows that the existing verifier
+    already accepted.  Invalid hashes, dates, costs, identity, scope, or
+    historical-sample reuse still raise ``ValueError`` from the same gate.
+    """
+
+    policy = RecommendationPromotionPolicy()
+    resolved_policy_hash = policy_hash or policy.policy_hash
+    resolved_probability_cap = (
+        policy.maximum_probability_change_bp
+        if maximum_probability_change_bp is None
+        else int(maximum_probability_change_bp)
+    )
+    identity_error = _verify_candidate_identity(
+        candidate_id=candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+    )
+    if identity_error is not None:
+        raise ValueError(identity_error)
+    result = _verify_natural_evidence(
+        evidence,
+        decision_date=decision_date,
+        candidate_id=candidate_id,
+        candidate_metadata=candidate_metadata,
+        policy_hash=resolved_policy_hash,
+        maximum_probability_change_bp=resolved_probability_cap,
+    )
+    error = result.get("error")
+    if error:
+        raise ValueError(str(error))
+    receipt_path_text, _receipt_hash_expected = _natural_evidence_reference(evidence)
+    if not receipt_path_text:
+        raise ValueError("natural_forward_evidence_receipt_missing")
+    receipt_path = Path(receipt_path_text).resolve()
+    try:
+        receipt_bytes = receipt_path.read_bytes()
+    except OSError as exc:
+        raise ValueError("natural_evidence_receipt_invalid") from exc
+    receipt_hash_from_same_read = "sha256:" + hashlib.sha256(receipt_bytes).hexdigest()
+    if receipt_hash_from_same_read != str(result.get("receipt_hash") or ""):
+        raise ValueError("natural_evidence_receipt_changed_after_verification")
+    try:
+        receipt_payload = json.loads(receipt_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
+        raise ValueError("natural_evidence_receipt_invalid") from exc
+    if not isinstance(receipt_payload, Mapping):
+        raise ValueError("natural_evidence_receipt_invalid")
+    scenario = _scenario_from_metadata(receipt_payload)
+    raw_source_ids = receipt_payload.get("source_capture_ids") or [receipt_payload.get("capture_id")]
+    raw_source_hashes = receipt_payload.get("source_capture_hashes") or [receipt_payload.get("capture_hash")]
+    raw_source_paths = receipt_payload.get("source_capture_paths") or [receipt_payload.get("capture_path")]
+    comparisons = tuple(
+        RecommendationNaturalEvidenceComparison(
+            capture_row_id=str(row["capture_row_id"]),
+            symbol=str(row["symbol"]),
+            capture_as_of_date=_date_text(str(row["capture_as_of_date"])),
+            label_end_date=_date_text(str(row["label_end_date"])),
+            label_available_date=_date_text(str(row["label_available_date"])),
+            candidate_probability_bp=int(row["candidate_probability_bp"]),
+            champion_probability_bp=int(row["champion_probability_bp"]),
+            upside_label=int(row["upside_label"]),
+            stock_return_bp=int(row["stock_return_bp"]),
+            candidate_after_cost_probability_bp=_optional_int(row.get("candidate_after_cost_probability_bp")),
+            champion_after_cost_probability_bp=_optional_int(row.get("champion_after_cost_probability_bp")),
+            after_cost_profit_label=_optional_int(row.get("after_cost_profit_label")),
+            observed_liquidity_cost_bp=_optional_int(row.get("observed_liquidity_cost_bp")),
+            observed_liquidity_cost_source=(
+                str(row.get("observed_liquidity_cost_source"))
+                if row.get("observed_liquidity_cost_source") is not None
+                else None
+            ),
+            cost_scenario_hash=(
+                str(row.get("cost_scenario_hash"))
+                if row.get("cost_scenario_hash") is not None
+                else scenario.scenario_hash
+            ),
+        )
+        for row in receipt_payload.get("comparisons", ())
+        if isinstance(row, Mapping)
+    )
+    scope = RecommendationNaturalEvidenceScope(
+        source_id=str(receipt_payload.get("source_id") or ""),
+        source_kind=str(receipt_payload.get("source_kind") or ""),
+        capture_origin=str(receipt_payload.get("capture_origin") or ""),
+        as_of_date=_date_text(str(receipt_payload["as_of_date"])),
+        capture_as_of_date=_date_text(str(receipt_payload["capture_as_of_date"])),
+        captured_at=str(receipt_payload.get("captured_at") or ""),
+        candidate_frozen_at=str(receipt_payload.get("candidate_frozen_at") or ""),
+        candidate_id=str(receipt_payload.get("candidate_id") or ""),
+        capture_id=str(receipt_payload.get("capture_id") or ""),
+        capture_hash=str(receipt_payload.get("capture_hash") or ""),
+        candidate_freeze_hash=str(receipt_payload.get("candidate_freeze_hash") or ""),
+        same_date_same_cost=bool(receipt_payload.get("same_date_same_cost")),
+        source_capture_ids=tuple(str(value) for value in raw_source_ids if value),
+        source_capture_hashes=tuple(str(value) for value in raw_source_hashes if value),
+        source_capture_paths=tuple(str(value) for value in raw_source_paths if value),
+        cost_basis=scenario.cost_basis,
+        cost_scenario_id=scenario.scenario_id,
+        cost_scenario_version=scenario.scenario_version,
+        cost_scenario_hash=scenario.scenario_hash,
+        fixed_round_trip_cost_bp=scenario.fixed_round_trip_cost_bp,
+    )
+    return RecommendationNaturalEvidenceVerification(
+        evidence_id=str(receipt_payload.get("evidence_id") or ""),
+        receipt_path=str(receipt_path),
+        receipt_hash=str(result["receipt_hash"]),
+        matured_sample_count=int(result.get("matured_sample_count") or 0),
+        matured_unique_decision_date_count=int(result.get("matured_unique_decision_date_count") or 0),
+        observed_champion_brier_bp=int(result.get("observed_champion_brier_bp") or 0),
+        observed_candidate_brier_bp=int(result.get("observed_candidate_brier_bp") or 0),
+        observed_brier_improvement_bp=int(result.get("observed_brier_improvement_bp") or 0),
+        observed_calibration_gap_bp=int(result.get("observed_calibration_gap_bp") or 0),
+        after_cost_evaluation_status=str(receipt_payload.get("after_cost_evaluation_status") or "unknown"),
+        after_cost_matured_sample_count=int(receipt_payload.get("after_cost_matured_sample_count") or 0),
+        observed_champion_after_cost_brier_bp=_optional_int(
+            receipt_payload.get("observed_champion_after_cost_brier_bp")
+        ),
+        observed_candidate_after_cost_brier_bp=_optional_int(
+            receipt_payload.get("observed_candidate_after_cost_brier_bp")
+        ),
+        observed_after_cost_brier_improvement_bp=_optional_int(
+            receipt_payload.get("observed_after_cost_brier_improvement_bp")
+        ),
+        observed_after_cost_calibration_gap_bp=_optional_int(
+            receipt_payload.get("observed_after_cost_calibration_gap_bp")
+        ),
+        scope=scope,
+        comparisons=comparisons,
+    )
+
+
+def _natural_evidence_reference(evidence: Any) -> tuple[str | None, str | None]:
+    if isinstance(evidence, Mapping):
+        return (
+            str(evidence.get("receipt_path")) if evidence.get("receipt_path") else None,
+            str(evidence.get("receipt_hash")) if evidence.get("receipt_hash") else None,
+        )
+    receipt_path = getattr(evidence, "receipt_path", evidence)
+    receipt_hash = getattr(evidence, "receipt_hash", None)
+    return (
+        str(receipt_path) if receipt_path else None,
+        str(receipt_hash) if receipt_hash else None,
+    )
+
+
 class RecommendationCalibrationPromotionAuthority:
     """只採用證據完整且改善達標的 candidate，其他狀況保留 last-good/rule。"""
 

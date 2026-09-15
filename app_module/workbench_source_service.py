@@ -30,6 +30,9 @@ from app_module.recommendation_learning_evidence_projection_service import (
 )
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 from app_module.paper_portfolio_time import taiwan_market_today
+from app_module.position_health_transition_read_service import (
+    PositionHealthTransitionReadService,
+)
 
 
 class WorkbenchSourceService:
@@ -42,6 +45,7 @@ class WorkbenchSourceService:
         evidence_db_path: str | Path | None = None,
         research_db_path: str | Path | None = None,
         learning_evidence_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
+        position_health_read_service: PositionHealthTransitionReadService | None = None,
     ) -> None:
         self.config = config
         self.evidence_db_path = Path(evidence_db_path) if evidence_db_path is not None else Path(config.db_file)
@@ -63,6 +67,12 @@ class WorkbenchSourceService:
         self.daily_investment_journey_service = DailyInvestmentJourneyService(
             config,
             evidence_db_path=self.evidence_db_path,
+        )
+        self.position_health_read_service = (
+            position_health_read_service
+            or PositionHealthTransitionReadService(
+                Path(config.output_root) / "position_health_transition"
+            )
         )
 
     def inspect(
@@ -114,7 +124,14 @@ class WorkbenchSourceService:
             recommendation_learning_projection=learning_projection,
             requested_decision_date=dashboard.as_of_date.isoformat(),
         )
-        return replace(dashboard, daily_evidence=daily_evidence)
+        position_health = self.position_health_read_service.read_latest(
+            expected_decision_date=dashboard.as_of_date.isoformat(),
+        )
+        return replace(
+            dashboard,
+            daily_evidence=daily_evidence,
+            position_health=position_health,
+        )
 
     def _load_recommendation_learning_status(
         self,

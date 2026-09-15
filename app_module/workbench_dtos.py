@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from app_module.advice_dtos import AdviceDashboardDTO
+from app_module.decision_presentation import PositionHealthReadModel
 from app_module.machine_status_classification import classify_machine_status
 
 if TYPE_CHECKING:
@@ -681,6 +682,7 @@ class WorkbenchDashboardDTO:
     operating_loop_steps: tuple[WorkbenchOperatingLoopStep, ...] = ()
     advice_dashboard: AdviceDashboardDTO | None = None
     daily_evidence: WorkbenchDailyEvidence | None = None
+    position_health: PositionHealthReadModel | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status_strip", tuple(self.status_strip))
@@ -712,4 +714,9 @@ class WorkbenchDashboardDTO:
                 self.advice_dashboard.to_dict() if self.advice_dashboard is not None else None
             ),
             "daily_evidence": self.daily_evidence.to_dict() if self.daily_evidence is not None else None,
+            "position_health": (
+                self.position_health.to_dict()
+                if self.position_health is not None
+                else None
+            ),
         }

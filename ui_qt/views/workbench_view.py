@@ -45,8 +45,11 @@ from app_module.research_console_source_service import ResearchConsoleSourceServ
 from app_module.advice_dtos import AdviceClassification
 from app_module.decision_presentation import (
     DecisionPresentationService,
+    PositionHealthReadModel,
     format_decision_lineage_detail,
     format_decision_presentation,
+    format_position_health_presentation,
+    format_position_health_read_model,
 )
 from app_module.research_session import ResearchStockContextDTO, format_research_workflow_path
 from ui_qt.models.workbench_table_models import (
@@ -60,6 +63,7 @@ from ui_qt.models.workbench_table_models import (
     WorkbenchOperatingLoopTableModel,
     WorkbenchReviewQueueTableModel,
     WorkbenchStatusStripTableModel,
+    PositionHealthTableModel,
     display_workbench_value,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -178,6 +182,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_recommendation_model = AdviceRecommendationTableModel()
         self.advice_candidate_model = AdviceCandidateTableModel()
         self.advice_portfolio_model = AdvicePortfolioTableModel()
+        self.position_health_model = PositionHealthTableModel()
 
         self._setup_ui()
         self._render_evidence_rehearsal_dashboard(self.evidence_rehearsal_dashboard)
@@ -393,6 +398,30 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_empty_widget.setVisible(False)
 
         content_layout.addWidget(advice_panel)
+
+        position_health_panel, self.position_health_section_title = self._panel_with_title(
+            "持倉健康／退出候選 / Paper Position Health"
+        )
+        self.position_health_summary_label = self._make_state_label()
+        self.position_health_table = self._make_table(self.position_health_model)
+        self.position_health_table.clicked.connect(self._show_position_health_row)
+        self.position_health_detail_button = QPushButton("查看 Position Health 技術詳情")
+        self.position_health_detail_button.setProperty("variant", "secondary")
+        self.position_health_detail_button.setCheckable(True)
+        self.position_health_detail_button.setAccessibleName("查看 Position Health 技術詳情")
+        self.position_health_detail_button.setToolTip(
+            "展開來源 hash、available_at、identity、why／why-not 與安全邊界；唯讀。"
+        )
+        self.position_health_detail_button.toggled.connect(
+            self._toggle_position_health_detail
+        )
+        self.position_health_detail_label = self._make_detail_box()
+        self.position_health_detail_label.setVisible(False)
+        position_health_panel.layout.addWidget(self.position_health_summary_label)
+        position_health_panel.layout.addWidget(self.position_health_table)
+        position_health_panel.layout.addWidget(self.position_health_detail_button)
+        position_health_panel.layout.addWidget(self.position_health_detail_label)
+        content_layout.addWidget(position_health_panel)
 
         drilldown_panel, self.drilldown_section_title = self._panel_with_title("操作下鑽 / Drill-down")
         drilldown_layout = QHBoxLayout()
@@ -747,6 +776,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         apply_financial_table_style(table)
+        if isinstance(model, PositionHealthTableModel):
+            health_header = table.horizontalHeader()
+            health_header.setStretchLastSection(False)
+            health_header.setSectionResizeMode(
+                model.column_index("why"), QHeaderView.Stretch
+            )
+            health_header.setSectionResizeMode(
+                model.column_index("review_required"), QHeaderView.ResizeToContents
+            )
         return table
 
     def _make_detail_box(self) -> QLabel:
@@ -1674,6 +1712,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._set_summary_blocks(dashboard)
         self._set_priority_banner(dashboard)
         self._render_daily_investment_journey(dashboard.daily_evidence)
+        self._render_position_health(dashboard.position_health)
         self.research_console_view.set_decision_date(dashboard.as_of_date.isoformat())
         self._render_today_action_center(dashboard)
         self.meta_label.setText(
@@ -1706,6 +1745,78 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.warning_list.set_warnings(tuple(_humanize_warning(item) for item in dashboard.warnings))
         self._show_initial_detail(dashboard)
         self._resize_tables()
+
+    def _render_position_health(
+        self,
+        health: PositionHealthReadModel | None,
+    ) -> None:
+        """只呈現 WorkbenchSourceService 已驗證的共用 health projection。"""
+
+        self.position_health_detail_button.blockSignals(True)
+        self.position_health_detail_button.setChecked(False)
+        self.position_health_detail_button.blockSignals(False)
+        self.position_health_detail_label.setVisible(False)
+        if health is None:
+            self.position_health_model.set_rows(())
+            self.position_health_table.setVisible(False)
+            self.position_health_summary_label.setText(
+                "Paper Position Health：未知；尚未有 source-backed read model。"
+            )
+            self.position_health_detail_button.setEnabled(False)
+            self.position_health_detail_label.setText("尚未載入 Position Health receipt。")
+            return
+
+        self.position_health_model.set_rows(health.positions)
+        self.position_health_table.setVisible(bool(health.positions))
+        self.position_health_summary_label.setText(
+            format_position_health_read_model(health)
+        )
+        self.position_health_detail_button.setEnabled(bool(health.positions))
+        self.position_health_detail_label.setText(
+            self._format_position_health_detail(health)
+        )
+
+    def _show_position_health_row(self, index) -> None:
+        item = self.position_health_model.row_at(index.row())
+        if item is None:
+            return
+        self.position_health_detail_label.setText(
+            format_position_health_presentation(item)
+            + "\n\n來源 hash："
+            + ("；".join(f"{key}={value}" for key, value in item.source_hashes) or "未提供")
+            + "\n來源追溯："
+            + ("；".join(item.source_trace) or "未提供")
+        )
+        self.position_health_detail_button.setChecked(True)
+
+    def _toggle_position_health_detail(self, expanded: bool) -> None:
+        self.position_health_detail_label.setVisible(bool(expanded))
+        self.position_health_detail_button.setText(
+            "收合 Position Health 技術詳情"
+            if expanded
+            else "查看 Position Health 技術詳情"
+        )
+
+    def _format_position_health_detail(self, health) -> str:
+        lines = [
+            "Position Health receipt 詳情（唯讀）",
+            f"receipt：{health.receipt_path or '未知'}",
+            f"result：{health.result_path or '未知'}",
+            f"result hash：{health.result_sha256 or '未知'}",
+            f"receipt bytes hash：{health.receipt_sha256 or '未知'}",
+            f"source snapshot：{health.source_snapshot_id or '未知'}",
+            f"source rows hash：{health.source_snapshot_rows_sha256 or '未知'}",
+            f"安全邊界：research_only={health.research_only}；"
+            f"apply_transition={health.apply_transition}；"
+            f"auto_action_allowed={health.auto_action_allowed}；"
+            f"broker_execution={health.broker_execution}；"
+            f"formal_credit={health.formal_credit}",
+        ]
+        if health.warnings:
+            lines.append("警告：" + "；".join(health.warnings))
+        if health.blockers:
+            lines.append("阻擋：" + "；".join(health.blockers))
+        return "\n".join(lines)
 
     def _set_advice_state(self, state: str, extra_msg: str = ""):
         self._clear_advice_presentation_selection()
@@ -1872,6 +1983,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _display_pending_dashboard(self) -> None:
         self.refresh_button.setEnabled(self.source_service is not None)
         self._render_daily_investment_journey(None)
+        self._render_position_health(None)
         self._render_today_action_center(None)
         self.boundary_banner.setText(
             "安全邊界：正在等待既有工作台狀態；不會將缺資料解讀為可交易結果。"
@@ -1944,6 +2056,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             for key in self.summary_blocks:
                 self._apply_summary_block_style(key, MACHINE_STATUS_STALE)
             self._render_daily_investment_journey(dashboard.daily_evidence)
+            self._render_position_health(dashboard.position_health)
             self.daily_state_label.setText(
                 self.daily_state_label.text()
                 + "｜Workbench source 讀取失敗，本次內容為 stale；請 Retry。"
@@ -1997,6 +2110,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._dashboard = None
         self._dashboard_stale = False
         self._render_daily_investment_journey(None)
+        self._render_position_health(None)
         self._render_today_action_center(None)
         self.boundary_banner.setText(
             "安全邊界：工作台狀態未知；尚無可信 DTO 可顯示。"
@@ -2043,6 +2157,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_recommendation_table,
             self.advice_candidate_table,
             self.advice_portfolio_table,
+            self.position_health_table,
         ):
             table.setHorizontalScrollBarPolicy(
                 Qt.ScrollBarAsNeeded if self._workbench_narrow else Qt.ScrollBarAlwaysOff

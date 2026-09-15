@@ -540,9 +540,58 @@ class DailyPositionHealthTransitionEvaluator:
         if blockers:
             degraded = True
 
+        source_status = _position_source_status(
+            lineage_status=lineage_status,
+            condition_ready=condition_ready,
+            thesis_ready=thesis_ready,
+            metrics_ready=metrics_ready,
+            calendar_ready=calendar_ready,
+            blockers=blockers,
+        )
+        thesis_status = (
+            "verified"
+            if thesis_ready
+            else "missing"
+            if thesis is None
+            else "unverified"
+        )
+        metrics_status = (
+            "verified"
+            if metrics_ready
+            else "missing"
+            if metrics_value is None
+            else "unverified"
+        )
+        availability_by_source = _position_availability_by_source(
+            condition=condition if condition_ready else None,
+            thesis=thesis if thesis_ready else None,
+            metrics=metrics if metrics_ready else (),
+            forward_binding=forward_binding if forward_binding is not None else None,
+        )
+        source_hashes = _position_source_hashes(
+            provenance=provenance,
+            condition=condition if condition_ready else None,
+            forward_binding=forward_binding,
+        )
+        why = "；".join(reasons) if reasons else "position_health_transition_evaluated"
+        why_not = list(dict.fromkeys([*reasons, *required_human_fields]))
+
         row: dict[str, Any] = {
             "position_id": position_id or None,
             "stock_code": code,
+            "decision_date": decision.isoformat(),
+            "available_at": (
+                availability_by_source.get("condition")
+                or availability_by_source.get("thesis")
+                or availability_by_source.get("metrics")
+            ),
+            "available_at_by_source": availability_by_source,
+            "source_status": source_status,
+            "quality": "observed" if source_status == "verified" else source_status,
+            "thesis_status": thesis_status,
+            "metrics_status": metrics_status,
+            "source_snapshot_id": snapshot_id or None,
+            "source_hashes": source_hashes,
             "previous_state": previous_state.value,
             "proposed_state": proposed_state.value,
             "condition_status": (
@@ -552,6 +601,8 @@ class DailyPositionHealthTransitionEvaluator:
             ),
             "reasons": reasons,
             "required_human_fields": list(dict.fromkeys(required_human_fields)),
+            "why": why,
+            "why_not": why_not,
             "thesis_source_type": thesis_source_type,
             "thesis_source_actor": thesis_source_actor,
             # Machine policy contracts can make a proposal deterministic, but
@@ -1062,6 +1113,91 @@ def _metric_to_dict(metric: PositionHealthMetric) -> dict[str, str]:
         "value": str(metric.value),
         "available_date": metric.available_date,
     }
+
+
+def _position_source_status(
+    *,
+    lineage_status: str,
+    condition_ready: bool,
+    thesis_ready: bool,
+    metrics_ready: bool,
+    calendar_ready: bool,
+    blockers: Sequence[str],
+) -> str:
+    """將 evaluator 已驗證的 evidence completeness 寫入 row contract。"""
+
+    if blockers:
+        return "blocked"
+    if lineage_status not in _VERIFIED_LINEAGE_STATUSES:
+        return "unverified"
+    if condition_ready and thesis_ready and metrics_ready and calendar_ready:
+        return "verified"
+    return "degraded"
+
+
+def _position_availability_by_source(
+    *,
+    condition: PITConditionObservation | None,
+    thesis: PositionThesisContract | None,
+    metrics: Sequence[PositionHealthMetric],
+    forward_binding: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    """只輸出已通過 evaluator 驗證的來源可取得時間。"""
+
+    values: dict[str, str] = {}
+    if condition is not None:
+        values["condition"] = str(condition.available_at)
+    if thesis is not None:
+        values["thesis"] = str(thesis.available_date)
+    metric_dates = sorted(
+        str(item.available_date)[:10]
+        for item in metrics
+        if str(item.available_date).strip()
+    )
+    if metric_dates:
+        values["metrics"] = metric_dates[-1]
+    if forward_binding is not None:
+        binding_available = str(forward_binding.get("available_at") or "").strip()
+        if binding_available:
+            values["forward_binding"] = binding_available
+    return values
+
+
+def _position_source_hashes(
+    *,
+    provenance: Mapping[str, Any],
+    condition: PITConditionObservation | None,
+    forward_binding: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    """保留來源 hash identity，供 read model 顯示與再次檢查。"""
+
+    values: dict[str, str] = {}
+    snapshot_hash = str(
+        provenance.get("snapshot_rows_sha256")
+        or provenance.get("source_snapshot_rows_sha256")
+        or ""
+    ).strip()
+    if snapshot_hash:
+        values["paper_snapshot"] = snapshot_hash
+    baseline_hash = str(provenance.get("baseline_sha256") or "").strip()
+    if baseline_hash:
+        values["baseline"] = baseline_hash
+    if condition is not None and condition.source_snapshot_hash:
+        values["condition"] = str(condition.source_snapshot_hash)
+    for source_name in ("thesis", "metrics"):
+        source = provenance.get(source_name)
+        if not isinstance(source, Mapping):
+            continue
+        for hash_name in ("source_snapshot_hash", "file_sha256"):
+            source_hash = str(source.get(hash_name) or "").strip()
+            if source_hash:
+                values[source_name] = source_hash
+                break
+    if forward_binding is not None:
+        binding_hash = str(forward_binding.get("binding_file_sha256") or "").strip()
+        if binding_hash:
+            values["forward_binding"] = binding_hash
+    return values
 
 
 def _integrity_blockers(reasons: Iterable[str], *, prefixes: Sequence[str]) -> list[str]:

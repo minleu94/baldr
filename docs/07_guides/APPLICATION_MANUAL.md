@@ -4983,6 +4983,36 @@ market source 的真實 capture 已接上，但 condition／metrics row 仍為 0
 PIT condition 或 Decimal metrics 也未提供，因此結果維持 `degraded` 是資料品質結論，
 不是 transition 完成。
 
+#### Position Health read model 的 Portfolio／Workbench 呈現契約
+
+`app_module.position_health_transition_read_service.PositionHealthTransitionReadService`
+是 05:15 evaluator receipt 的唯一唯讀 consumer。它會重讀
+`position_health_transition\latest_status.json`、result 與 latest pointer，驗證 result
+hash、producer／schema、安全邊界、decision／observed clock、Paper snapshot id、rows
+hash、cohort、`position_id`、來源 `available_at` 與 freshness；缺檔、future、stale、
+竄改、scope 或 hash 不一致時，會保留實際診斷並撤銷當前 action，顯示 `WATCH`／未知，
+不把 raw dictionary 當成 UI authority。
+
+Portfolio 與 Workbench 都只消費同一份 typed `PositionHealthReadModel`。Workbench 的
+`持倉健康／退出候選` 區塊直接呈現 Paper `HOLD`、`REDUCE_CANDIDATE`、
+`EXIT_CANDIDATE`、`WATCH`、why／why-not、來源與人工 review。Portfolio 的人工交易
+持倉 identity 是 `default:<stock_code>`，Paper health identity 是
+`paper:<portfolio>:<stock_code>:entry-...`；兩者不以股票代號相接。Portfolio 因此把
+Paper rows 放在獨立的唯讀區塊，人工持倉表只有 exact identity 命中才可顯示對應 action，
+否則固定 `觀察／未知`／`未精確對應`。人工持倉的價格日期不會替 Paper receipt 決定
+scope；Portfolio 僅以 receipt 自身日期及一日 freshness gate 判斷是否仍可作當前展示，
+過期資料可被診斷但不稱為當前可用建議。
+
+短版主摘要只保留使用者可採取的狀態、日期、筆數、需要確認與下一步；table 欄位使用
+「研究建議／評估原因／需要確認」，已知 evaluator reason 轉為中文。cohort、hash、
+完整 identity 與原始 blocker 留在選取列／技術詳情，缺 receipt 則顯示「尚無持倉健康
+評估資料」與重新整理指引，不直接顯示 Python 例外路徑。
+
+上述區塊只刷新讀模型與 Qt model，不執行 evaluator、不寫 receipt／registry／scheduler、
+不改 Paper 或人工 ledger、不下單、不自動平倉、不修改 allocation。所有 action 都是
+`research_only=true` 的 proposal，人工 review 仍是必要邊界；本增量不建立
+`user_declared` entry layer。
+
 人工 thesis 只能由 reviewer 明確建立，不能由 recommendation、ML 或 evaluator 捏造。
 使用 `scripts/record_position_thesis.py` 寫入指定的 derived append-only registry：
 

@@ -44,6 +44,16 @@ from app_module.decision_presentation import (
     DecisionPresentationService,
     decision_action_label,
     format_decision_presentation,
+    format_position_health_presentation,
+    format_position_health_read_model,
+    position_health_action_label,
+)
+from app_module.position_health_transition_read_service import (
+    PositionHealthTransitionReadService,
+)
+from app_module.decision_presentation import (
+    PositionHealthPresentationDTO,
+    PositionHealthReadModel,
 )
 from app_module.research_session import (
     ResearchStockContextDTO,
@@ -69,6 +79,7 @@ from app_module.paper_equal_weight_benchmark_builder import (
 )
 from app_module.paper_trade_import_service import PaperTradeImportService
 from app_module.trade_import_service import TradeImportService
+from ui_qt.models.workbench_table_models import PositionHealthTableModel
 
 logger = logging.getLogger(__name__)
 
@@ -391,6 +402,7 @@ class PortfolioView(QWidget):
         *,
         async_refresh: bool = False,
         presentation_service: DecisionPresentationService | None = None,
+        position_health_read_service: PositionHealthTransitionReadService | None = None,
     ):
         super().__init__(parent)
         self.setMinimumWidth(0)
@@ -400,6 +412,13 @@ class PortfolioView(QWidget):
         self.recommendation_service = recommendation_service
         self.condition_monitor = condition_monitor or PortfolioConditionMonitor()
         self.presentation_service = presentation_service or DecisionPresentationService()
+        self.position_health_read_service = (
+            position_health_read_service
+            or PositionHealthTransitionReadService(
+                Path(self.portfolio_service.config.output_root)
+                / "position_health_transition"
+            )
+        )
         self.strategy_version_service = StrategyVersionService(self.portfolio_service.config)
         self.portfolio_feedback_service = PortfolioFeedbackService()
         self.stress_lab_service = PortfolioStressLabService()
@@ -429,10 +448,13 @@ class PortfolioView(QWidget):
 
         self.positions_model: Optional[PandasTableModel] = None
         self.trades_model: Optional[PandasTableModel] = None
+        self.position_health_model = PositionHealthTableModel()
         # Summary 與明細表必須來自同一個 service DTO，避免一次 refresh 中
         # 分別讀取而顯示不同版本的持倉狀態。
         self._last_portfolio_dto: PortfolioDTO | None = None
         self._position_presentations: dict[str, Any] = {}
+        self._position_health_read_model: PositionHealthReadModel | None = None
+        self._position_health_by_id: dict[str, PositionHealthPresentationDTO] = {}
         self.selected_stock_code: str = ""
         self.selected_trade_id: str = ""
         # PortfolioService 讀取可能同時掃描 JSONL、SQLite 與價格來源；主
@@ -516,6 +538,58 @@ class PortfolioView(QWidget):
         self.portfolio_refresh_status_label.setToolTip(evidence_scope_text)
         self.portfolio_refresh_status_label.setAccessibleDescription(evidence_scope_text)
         main_layout.addWidget(self.portfolio_refresh_status_label)
+
+        paper_health_group = QGroupBox(
+            "Paper 持倉健康／退出候選（獨立 Paper identity，唯讀）"
+        )
+        paper_health_layout = QVBoxLayout(paper_health_group)
+        paper_health_layout.setContentsMargins(8, 6, 8, 6)
+        paper_health_layout.setSpacing(4)
+        self.position_health_summary_label = QLabel(
+            "Paper Position Health：未知；尚未有 source-backed read model。"
+        )
+        self.position_health_summary_label.setWordWrap(True)
+        self.position_health_summary_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.position_health_summary_label.setAccessibleName(
+            "Paper 持倉健康摘要"
+        )
+        paper_health_layout.addWidget(self.position_health_summary_label)
+
+        self.position_health_table = QTableView()
+        self.position_health_table.setModel(self.position_health_model)
+        apply_financial_table_style(self.position_health_table)
+        position_health_header = self.position_health_table.horizontalHeader()
+        position_health_header.setStretchLastSection(False)
+        position_health_header.setSectionResizeMode(
+            self.position_health_model.column_index("why"), QHeaderView.Stretch
+        )
+        position_health_header.setSectionResizeMode(
+            self.position_health_model.column_index("review_required"),
+            QHeaderView.ResizeToContents,
+        )
+        self.position_health_table.setSelectionBehavior(QTableView.SelectRows)
+        self.position_health_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.position_health_table.setAccessibleName("Paper 持倉健康表")
+        self.position_health_table.setAccessibleDescription(
+            "只顯示 evaluator receipt 的 Paper identity；與人工 Portfolio 持倉分開，"
+            "缺資料或 identity 不一致時維持觀察／未知。"
+        )
+        self.position_health_table.clicked.connect(self._show_position_health_row)
+        paper_health_layout.addWidget(self.position_health_table)
+
+        self.position_health_detail_label = QLabel(
+            "選取 Paper health 列後顯示 why／why-not 與 source trace。"
+        )
+        self.position_health_detail_label.setWordWrap(True)
+        self.position_health_detail_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.position_health_detail_label.setAccessibleName("Paper 持倉健康詳情")
+        paper_health_layout.addWidget(self.position_health_detail_label)
+        paper_health_group.setMaximumHeight(245)
+        main_layout.addWidget(paper_health_group)
 
         # ========== 2. 中部核心分割區 (Splitter) ==========
         main_splitter = QSplitter(Qt.Horizontal)
@@ -1031,6 +1105,7 @@ class PortfolioView(QWidget):
         """以單一 DTO 更新摘要／持倉表，再刷新其餘只讀區塊。"""
 
         self._last_portfolio_dto = portfolio
+        self._refresh_position_health(portfolio)
         self._load_portfolio_summary(portfolio)
         self._load_positions_table(portfolio)
         self._load_trades_history()
@@ -1044,6 +1119,72 @@ class PortfolioView(QWidget):
             f"持倉資料已更新｜DTO updated_at={portfolio.updated_at or '未提供'}｜"
             "摘要與持倉表使用同一份 DTO；只讀。"
         )
+
+    def _refresh_position_health(self, portfolio: PortfolioDTO) -> None:
+        """刷新同一份 persisted Paper health projection；此處只讀，不執行 evaluator。"""
+
+        try:
+            self._position_health_read_model = self.position_health_read_service.read_latest(
+                max_age_days=1,
+            )
+            self._position_health_by_id = {
+                item.position_id: item
+                for item in self._position_health_read_model.positions
+                if item.position_id
+            }
+        except Exception as exc:  # noqa: BLE001 - reader boundary must keep UI alive
+            logger.error("Failed to read persisted Position Health projection: %s", exc)
+            self._position_health_read_model = None
+            self._position_health_by_id = {}
+        self._render_position_health()
+
+    def _render_position_health(self) -> None:
+        """獨立呈現 Paper rows；不把 Paper identity 猜配到人工持倉。"""
+
+        model = self._position_health_read_model
+        if model is None:
+            self.position_health_model.set_rows(())
+            self.position_health_table.setVisible(False)
+            self.position_health_summary_label.setText(
+                "Paper Position Health：未知；read model 無法取得。"
+            )
+            self.position_health_detail_label.setText(
+                "沒有可安全呈現的 Paper health；未以股票代號推測人工持倉 identity。"
+            )
+            return
+
+        self.position_health_model.set_rows(model.positions)
+        self.position_health_table.setVisible(bool(model.positions))
+        self.position_health_summary_label.setText(
+            format_position_health_read_model(model)
+        )
+        self.position_health_detail_label.setText(
+            "Paper health 投影為唯讀研究建議；選取列查看評估原因／為何不直接執行。"
+            if model.positions
+            else "目前沒有可安全呈現的 Paper health 列；缺資料維持觀察／未知。"
+        )
+
+    def _show_position_health_row(self, index) -> None:
+        """顯示獨立 Paper row 詳情，不改變人工 Portfolio 選取狀態。"""
+
+        item = self.position_health_model.row_at(index.row())
+        if item is None:
+            return
+        self.position_health_detail_label.setText(
+            format_position_health_presentation(item)
+            + "\n\n來源 hash："
+            + ("；".join(f"{key}={value}" for key, value in item.source_hashes) or "未提供")
+            + "\n來源追溯："
+            + ("；".join(item.source_trace) or "未提供")
+        )
+
+    def _health_for_position(self, position: Any) -> PositionHealthPresentationDTO | None:
+        """以 Portfolio position_id 精確查詢；不以 stock code 綁定不同 cohort。"""
+
+        position_id = str(getattr(position, "position_id", "") or "").strip()
+        if not position_id:
+            return None
+        return self._position_health_by_id.get(position_id)
 
     def _start_refresh_worker(self) -> None:
         if self._closing:
@@ -1825,7 +1966,8 @@ class PortfolioView(QWidget):
                     "證券代號", "證券名稱", "持有股數", "平均成本", "目前價格",
                     "投入金額", "未實現損益", "未實現損益%", "已實現損益",
                     "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因",
-                    "動作適合度", "權重差距(bp)", "失效條件"
+                    "動作適合度", "Advice 動作（研究）", "Position Health", "Health 來源",
+                    "權重差距(bp)", "失效條件"
                 ])
             else:
                 data = []
@@ -1838,6 +1980,17 @@ class PortfolioView(QWidget):
                         condition_result=monitor_result,
                     )
                     self._position_presentations[str(p.stock_code).strip()] = presentation
+                    health = self._health_for_position(p)
+                    health_action = (
+                        health.display_action
+                        if health is not None
+                        else position_health_action_label("WATCH")
+                    )
+                    health_source = (
+                        health.source_status
+                        if health is not None
+                        else "未精確對應"
+                    )
                     invalidation_text = "；".join(presentation.invalidation_conditions) or "未提供"
                     presentation_text = format_decision_presentation(presentation)
 
@@ -1860,7 +2013,19 @@ class PortfolioView(QWidget):
                         "目前分數": monitor_result.current_total_score,
                         "狀態監控": monitor_result.label,
                         "監控原因": monitor_reason,
-                        "動作適合度": decision_action_label(presentation.action_suitability),
+                        # Position Health 是本表的持倉 action authority；沒有
+                        # exact receipt row 時維持 WATCH/unknown。舊 Advice
+                        # 只作明確分離的研究欄位，避免悄悄填回 HOLD。
+                        "動作適合度": (
+                            health.display_action
+                            if health is not None
+                            else position_health_action_label("WATCH")
+                        ),
+                        "Advice 動作（研究）": decision_action_label(
+                            presentation.action_suitability
+                        ),
+                        "Position Health": health_action,
+                        "Health 來源": health_source,
                         "權重差距(bp)": presentation.weight_gap_bp if presentation.weight_gap_bp is not None else "未知",
                         "失效條件": invalidation_text,
                         "_tooltip": presentation_text,
@@ -1903,19 +2068,43 @@ class PortfolioView(QWidget):
         )
 
     def _render_selected_position_presentation(self) -> None:
-        """把持倉表同一輪產生的 presentation DTO 顯示在明細區。"""
+        """把共用 Advice 與 exact Position Health projection 顯示在明細區。"""
 
         code = str(self.selected_stock_code or "").strip()
         presentation = self._position_presentations.get(code)
+        selected_position = None
+        if self._last_portfolio_dto is not None:
+            selected_position = next(
+                (
+                    item
+                    for item in self._last_portfolio_dto.positions
+                    if str(item.stock_code).strip() == code
+                ),
+                None,
+            )
+        health = self._health_for_position(selected_position)
+        health_text = (
+            "Paper Position Health（共用唯讀 projection）\n"
+            + format_position_health_presentation(health)
+            if health is not None
+            else (
+                "Paper Position Health：觀察／未知。"
+                "目前 receipt 沒有與此 position_id 精確對應的列；"
+                "不以 stock code 猜測 identity，也不把缺資料當成 HOLD。"
+            )
+        )
         if presentation is None:
             self.position_presentation_label.setText(
                 "研究路徑：" + format_research_workflow_path() +
-                "\n選取持倉列後顯示既有 Health／Exit 與權重來源；缺值維持未知。"
+                "\n選取持倉列後顯示共用 Health／Exit 與權重來源；缺值維持未知。\n\n"
+                + health_text
             )
             return
         self.position_presentation_label.setText(
             f"研究路徑：{format_research_workflow_path()}\n"
             "共用呈現契約（唯讀）\n" + format_decision_presentation(presentation)
+            + "\n\n"
+            + health_text
         )
 
     def _load_trades_history(self):
@@ -2377,7 +2566,11 @@ class PortfolioView(QWidget):
             snapshot = self._current_snapshot_for_position(position_dto.stock_code)
             monitor_result = self.condition_monitor.evaluate(position_dto, snapshot)
             details = monitor_result.details
-            self._update_lifecycle_review(position_dto, monitor_result)
+            self._update_lifecycle_review(
+                position_dto,
+                monitor_result,
+                health=self._health_for_position(position_dto),
+            )
 
             # 價格對照
             self.lbl_mon_entry_price.setText(f"TWD {position_dto.average_cost:,.2f}")
@@ -2623,7 +2816,17 @@ class PortfolioView(QWidget):
         self.lbl_lifecycle_data_quality.setText("-")
         self.lbl_lifecycle_tokens.setText("-")
 
-    def _update_lifecycle_review(self, position_dto, monitor_result) -> None:
+    def _update_lifecycle_review(
+        self,
+        position_dto,
+        monitor_result,
+        *,
+        health: PositionHealthPresentationDTO | None = None,
+    ) -> None:
+        if health is not None:
+            self._render_position_health_lifecycle(health)
+            return
+
         try:
             from app_module.portfolio_feedback_service import FeedbackCategory
             from app_module.strategy_lifecycle_service import GateStatus
@@ -2647,11 +2850,73 @@ class PortfolioView(QWidget):
             self.lbl_lifecycle_signal.setText(self._format_lifecycle_category(report.items, FeedbackCategory.SIGNAL))
             self.lbl_lifecycle_market.setText(self._format_lifecycle_category(report.items, FeedbackCategory.MARKET))
             self.lbl_lifecycle_data_quality.setText(self._format_lifecycle_category(report.items, FeedbackCategory.DATA_QUALITY))
-            self.lbl_lifecycle_tokens.setText("；".join(report.summary_tokens) if report.summary_tokens else "-")
+            legacy_tokens = "；".join(report.summary_tokens) if report.summary_tokens else "-"
+            health_status = (
+                self._position_health_read_model.source_status
+                if self._position_health_read_model is not None
+                else "unknown"
+            )
+            self.lbl_lifecycle_tokens.setText(
+                f"Position Health 未精確對應（source={health_status}）；"
+                f"以下 legacy feedback 僅供研究：{legacy_tokens}"
+            )
         except Exception as exc:
             logger.error("Failed to update lifecycle review: %s", exc)
             self.lbl_lifecycle_status.setText("生命週期回顧不可用")
             self.lbl_lifecycle_status.setStyleSheet("background-color: #7b341e; color: #fffff0; padding: 2px 6px; border-radius: 3px; font-weight: bold;")
+
+    def _render_position_health_lifecycle(
+        self,
+        health: PositionHealthPresentationDTO,
+    ) -> None:
+        """在 Portfolio 顯示與 Workbench 相同的 health state projection。"""
+
+        state_styles = {
+            "HOLD": (
+                "持有（HOLD）",
+                "background-color: #22543d; color: #f0fff4; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+            "WATCH": (
+                "觀察／未知（WATCH）",
+                "background-color: #7b341e; color: #fffff0; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+            "REDUCE_CANDIDATE": (
+                "減碼候選（REDUCE_CANDIDATE）",
+                "background-color: #7b341e; color: #fffff0; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+            "EXIT_CANDIDATE": (
+                "退出候選（EXIT_CANDIDATE）",
+                "background-color: #742a2a; color: #fff5f5; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+        }
+        status_text, style = state_styles.get(
+            health.action_suitability,
+            ("觀察／未知（WATCH）", "color: white;"),
+        )
+        self.lbl_lifecycle_status.setText(status_text)
+        self.lbl_lifecycle_status.setStyleSheet(style)
+        self.lbl_lifecycle_source.setText(
+            f"Paper receipt；source={health.source_status}；"
+            f"identity={health.position_id or '未知'}；cohort={health.cohort_key or '未知'}"
+        )
+        self.lbl_lifecycle_execution.setText(
+            "proposal-only；不自動平倉、不下單、不修改 allocation。"
+        )
+        self.lbl_lifecycle_signal.setText(
+            f"condition={health.condition_status}；thesis={health.thesis_status}；"
+            f"metrics={health.metrics_status}"
+        )
+        self.lbl_lifecycle_market.setText(
+            f"決策日={health.decision_date}；available_at={health.available_at or '未知'}"
+        )
+        self.lbl_lifecycle_data_quality.setText(
+            f"quality={health.quality}；entry_lineage={health.entry_lineage_status}；"
+            f"人工 review={'需要' if health.review_required else '未標記'}"
+        )
+        self.lbl_lifecycle_tokens.setText(
+            f"Why：{health.why}\nWhy not："
+            + ("；".join(health.why_not) if health.why_not else "未提供")
+        )
 
     def _format_lifecycle_category(self, items, category) -> str:
         matched = [item for item in items if item.category == category]

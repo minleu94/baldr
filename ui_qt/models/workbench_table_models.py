@@ -17,6 +17,13 @@ from app_module.workbench_dtos import (
     WorkbenchStatusItem,
 )
 from app_module.advice_dtos import PortfolioAdviceDTO, RecommendationAdviceDTO
+from app_module.decision_presentation import (
+    PositionHealthPresentationDTO,
+    position_health_action_label,
+    position_health_reason_text,
+    position_health_review_label,
+    position_health_source_status_label,
+)
 
 
 ColumnSpec = tuple[tuple[str, str], ...]
@@ -202,6 +209,40 @@ class AdvicePortfolioTableModel(_WorkbenchTableModel):
         super().__init__(rows, parent)
 
 
+class PositionHealthTableModel(_WorkbenchTableModel):
+    """以共用 typed projection 呈現 Paper health，不讀取原始 dictionary。"""
+
+    COLUMNS = (
+        ("stock_code", "標的"),
+        ("decision_date", "決策日"),
+        ("source_status", "來源狀態"),
+        ("action_suitability", "研究建議"),
+        ("why", "評估原因"),
+        ("review_required", "需要確認"),
+    )
+
+    def __init__(
+        self,
+        rows: Sequence[PositionHealthPresentationDTO] = (),
+        parent=None,
+    ) -> None:
+        super().__init__(rows, parent)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        if role == Qt.DisplayRole and index.isValid() and 0 <= index.row() < len(self._rows):
+            field_name = self.COLUMNS[index.column()][0]
+            row = self._rows[index.row()]
+            if field_name == "source_status":
+                return position_health_source_status_label(row.source_status)
+            if field_name == "action_suitability":
+                return position_health_action_label(row.action_suitability)
+            if field_name == "why":
+                return position_health_reason_text(row.why)
+            if field_name == "review_required":
+                return position_health_review_label(row.review_required)
+        return super().data(index, role)
+
+
 def _display_value(value: object) -> str:
     if isinstance(value, Enum):
         return str(value.value)
@@ -262,6 +303,12 @@ def _display_token(value: str) -> str:
         "future_blocked": "未來日期已阻擋",
         "stale": "資料過期（stale）",
         "unknown": "未知",
+        "verified": "已驗證",
+        "unverified": "未驗證",
+        "HOLD": "持有",
+        "WATCH": "觀察／未知",
+        "REDUCE_CANDIDATE": "減碼候選",
+        "EXIT_CANDIDATE": "退出候選",
         "warning": "警告",
         "info": "資訊",
         "observed": "已觀測",
@@ -344,7 +391,14 @@ def _display_token(value: str) -> str:
 
 
 def _row_status(row: object) -> str:
-    return str(getattr(row, "status", getattr(row, "severity", "")) or "")
+    return str(
+        getattr(
+            row,
+            "status",
+            getattr(row, "source_status", getattr(row, "severity", "")),
+        )
+        or ""
+    )
 
 
 def _is_attention_status(status: str) -> bool:

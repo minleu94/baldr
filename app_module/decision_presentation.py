@@ -21,6 +21,18 @@ from app_module.advice_dtos import (
 
 
 DECISION_PRESENTATION_SCHEMA_VERSION = "decision-presentation.v1"
+POSITION_HEALTH_PRESENTATION_SCHEMA_VERSION = "position-health-read-model.v1"
+POSITION_HEALTH_STATES = frozenset(
+    {"HEALTHY", "WATCH", "REDUCE_CANDIDATE", "EXIT_CANDIDATE", "CLOSED"}
+)
+POSITION_HEALTH_LINEAGE_STATUSES = frozenset(
+    {
+        "same_snapshot_verified",
+        "ledger_continuous_no_trade",
+        "natural_entry_verified",
+        "carried_verified",
+    }
+)
 _KNOWN_EVIDENCE_STATUSES = {
     "observed",
     "estimated",
@@ -1236,3 +1248,357 @@ def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
     if presentation.source_trace:
         lines.append("來源追溯：" + "；".join(_short_trace_item(item) for item in presentation.source_trace))
     return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class PositionHealthPresentationDTO:
+    """一筆 Paper Position Health 的共用、唯讀呈現 DTO。
+
+    這個 DTO 只接受 ``PositionHealthTransitionReadService`` 完成檔案 hash、
+    scope、時鐘與欄位契約驗證後的值。UI 不應自行從原始 JSON dictionary 建立
+    action；尤其不能用 stock code 猜測 position identity。
+    """
+
+    position_id: str | None
+    stock_code: str
+    decision_date: str
+    available_at: str | None
+    availability_by_source: tuple[tuple[str, str], ...]
+    source_status: str
+    quality: str
+    source_snapshot_id: str
+    cohort_key: str
+    previous_state: str
+    proposed_state: str
+    raw_proposed_state: str
+    action_suitability: str
+    condition_status: str
+    thesis_status: str
+    metrics_status: str
+    entry_lineage_status: str
+    required_human_fields: tuple[str, ...]
+    reasons: tuple[str, ...]
+    why: str
+    why_not: tuple[str, ...]
+    proposal_event_id: str | None
+    input_hash: str | None
+    policy_hash: str
+    source_trace: tuple[str, ...]
+    source_hashes: tuple[tuple[str, str], ...]
+    review_required: bool
+    research_only: bool
+    auto_action_allowed: bool
+    warnings: tuple[str, ...]
+    blockers: tuple[str, ...]
+
+    @property
+    def is_identity_verified(self) -> bool:
+        return bool(
+            self.position_id
+            and self.entry_lineage_status in POSITION_HEALTH_LINEAGE_STATUSES
+        )
+
+    @property
+    def display_action(self) -> str:
+        return position_health_action_label(self.action_suitability)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "position_id": self.position_id,
+            "stock_code": self.stock_code,
+            "decision_date": self.decision_date,
+            "available_at": self.available_at,
+            "availability_by_source": {
+                key: value for key, value in self.availability_by_source
+            },
+            "source_status": self.source_status,
+            "quality": self.quality,
+            "source_snapshot_id": self.source_snapshot_id,
+            "cohort_key": self.cohort_key,
+            "previous_state": self.previous_state,
+            "proposed_state": self.proposed_state,
+            "raw_proposed_state": self.raw_proposed_state,
+            "action_suitability": self.action_suitability,
+            "condition_status": self.condition_status,
+            "thesis_status": self.thesis_status,
+            "metrics_status": self.metrics_status,
+            "entry_lineage_status": self.entry_lineage_status,
+            "required_human_fields": list(self.required_human_fields),
+            "reasons": list(self.reasons),
+            "why": self.why,
+            "why_not": list(self.why_not),
+            "proposal_event_id": self.proposal_event_id,
+            "input_hash": self.input_hash,
+            "policy_hash": self.policy_hash,
+            "source_trace": list(self.source_trace),
+            "source_hashes": {key: value for key, value in self.source_hashes},
+            "review_required": self.review_required,
+            "research_only": self.research_only,
+            "auto_action_allowed": self.auto_action_allowed,
+            "warnings": list(self.warnings),
+            "blockers": list(self.blockers),
+        }
+
+
+@dataclass(frozen=True)
+class PositionHealthReadModel:
+    """同一份 verified receipt 在 Portfolio／Workbench 的共用 projection。"""
+
+    schema_version: str
+    status: str
+    decision_date: str | None
+    observed_at: str | None
+    available_at: str | None
+    source_status: str
+    quality: str
+    portfolio_id: str | None
+    source_snapshot_id: str | None
+    source_snapshot_rows_sha256: str | None
+    cohort_key: str | None
+    receipt_path: str | None
+    result_path: str | None
+    result_sha256: str | None
+    receipt_sha256: str | None
+    warnings: tuple[str, ...]
+    blockers: tuple[str, ...]
+    research_only: bool
+    apply_transition: bool
+    auto_action_allowed: bool
+    broker_execution: bool
+    formal_credit: bool
+    positions: tuple[PositionHealthPresentationDTO, ...]
+
+    @property
+    def is_readable(self) -> bool:
+        return self.status in {"passed", "degraded"} and bool(self.positions)
+
+    @property
+    def position_ids(self) -> tuple[str, ...]:
+        return tuple(item.position_id for item in self.positions if item.position_id)
+
+    def for_position(self, position_id: str | None) -> PositionHealthPresentationDTO | None:
+        """只用 exact position identity 查找；刻意不提供 stock-code fallback。"""
+
+        key = str(position_id or "").strip()
+        if not key:
+            return None
+        return next(
+            (item for item in self.positions if item.position_id == key),
+            None,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "status": self.status,
+            "decision_date": self.decision_date,
+            "observed_at": self.observed_at,
+            "available_at": self.available_at,
+            "source_status": self.source_status,
+            "quality": self.quality,
+            "portfolio_id": self.portfolio_id,
+            "source_snapshot_id": self.source_snapshot_id,
+            "source_snapshot_rows_sha256": self.source_snapshot_rows_sha256,
+            "cohort_key": self.cohort_key,
+            "receipt_path": self.receipt_path,
+            "result_path": self.result_path,
+            "result_sha256": self.result_sha256,
+            "receipt_sha256": self.receipt_sha256,
+            "warnings": list(self.warnings),
+            "blockers": list(self.blockers),
+            "research_only": self.research_only,
+            "apply_transition": self.apply_transition,
+            "auto_action_allowed": self.auto_action_allowed,
+            "broker_execution": self.broker_execution,
+            "formal_credit": self.formal_credit,
+            "positions": [item.to_dict() for item in self.positions],
+        }
+
+
+def position_health_action_label(value: str) -> str:
+    """將 health proposal 映射成 UI label，不改變其 proposal state。"""
+
+    return {
+        "HOLD": "持有",
+        "WATCH": "觀察／未知",
+        "REDUCE_CANDIDATE": "減碼候選",
+        "EXIT_CANDIDATE": "退出候選",
+    }.get(str(value).upper(), "觀察／未知")
+
+
+def position_health_source_status_label(value: str) -> str:
+    return {
+        "verified": "已驗證",
+        "observed": "已觀測",
+        "degraded": "降級",
+        "unverified": "未驗證",
+        "missing": "缺資料",
+        "blocked": "封鎖",
+        "stale": "過期",
+        "unknown": "未知",
+    }.get(str(value).strip().lower(), "未知")
+
+
+def position_health_quality_label(value: str) -> str:
+    return {
+        "verified": "已驗證",
+        "observed": "已觀測",
+        "degraded": "降級",
+        "unknown": "未知",
+        "missing": "缺資料",
+    }.get(str(value).strip().lower(), "未知")
+
+
+_POSITION_HEALTH_REASON_LABELS = {
+    "regime_stable": "狀態穩定",
+    "invalidation_not_triggered": "尚未觸發失效條件",
+    "position_health_transition_evaluated": "已完成健康狀態評估",
+    "position_identity_missing": "缺少持倉 identity",
+    "position_entry_lineage_unproven": "進場 lineage 未驗證",
+    "condition_observation_missing": "缺少條件觀測",
+    "condition_observation_invalid": "條件觀測無效",
+    "condition_source_missing": "缺少條件來源",
+    "condition_source_future_dated": "條件來源日期超出評估範圍",
+    "condition_source_quality_not_observed": "條件來源品質未達可觀測要求",
+    "thesis_contract_missing": "缺少 thesis 契約",
+    "thesis_contract_unverified": "thesis 契約未驗證",
+    "metric_missing": "缺少 metrics",
+    "metric_unverified": "metrics 未驗證",
+    "official_calendar_invalid": "官方交易日曆無效",
+    "official_calendar_missing": "缺少官方交易日曆",
+}
+
+
+def position_health_reason_label(value: str) -> str:
+    """將已知 evaluator reason 映射成中文；未知 token 原樣保留於詳情。"""
+
+    token = str(value or "").strip()
+    if not token:
+        return ""
+    if token in _POSITION_HEALTH_REASON_LABELS:
+        return _POSITION_HEALTH_REASON_LABELS[token]
+    if token.startswith("metric_duplicate:"):
+        return f"metrics 重複：{token.split(':', 1)[1]}"
+    if token.startswith("metric_date_invalid:"):
+        return f"metrics 日期無效：{token.split(':', 1)[1]}"
+    if token.startswith("metric_future_dated:"):
+        return f"metrics 日期超出評估範圍：{token.split(':', 1)[1]}"
+    if token.startswith("historical_prior_state:"):
+        return f"歷史先前狀態：{position_health_state_label(token.split(':', 1)[1])}"
+    return token
+
+
+def position_health_reason_text(value: str) -> str:
+    """將 reason 字串轉為短版中文顯示，保留 DTO 內的原始值。"""
+
+    tokens = [
+        token.strip()
+        for token in str(value or "").replace("；", ";").split(";")
+        if token.strip()
+    ]
+    return "；".join(position_health_reason_label(token) for token in tokens) or "未提供"
+
+
+def position_health_review_label(value: bool) -> str:
+    return "需要" if bool(value) else "不需要"
+
+
+def position_health_state_label(value: str) -> str:
+    return {
+        "HEALTHY": "健康",
+        "WATCH": "觀察／未知",
+        "REDUCE_CANDIDATE": "減碼候選",
+        "EXIT_CANDIDATE": "退出候選",
+        "CLOSED": "已結束（歷史）",
+    }.get(str(value).upper(), "未知")
+
+
+def format_position_health_presentation(
+    presentation: PositionHealthPresentationDTO,
+) -> str:
+    """顯示單筆 health state、why／why-not 與安全邊界。"""
+
+    why_text = position_health_reason_text(presentation.why)
+    why_not_text = "；".join(
+        position_health_reason_label(item) for item in presentation.why_not
+    ) or "未提供"
+    lines = [
+        f"研究建議：{presentation.display_action}",
+        f"健康狀態：{position_health_state_label(presentation.proposed_state)}",
+        f"原始研究提案：{position_health_state_label(presentation.raw_proposed_state)}",
+        f"來源狀態：{position_health_source_status_label(presentation.source_status)}｜"
+        f"品質：{position_health_quality_label(presentation.quality)}",
+        f"決策日：{presentation.decision_date}｜可取得時間：{presentation.available_at or '未知'}",
+        f"技術 identity：{presentation.position_id or '未知'}｜Entry lineage：{presentation.entry_lineage_status}",
+        f"評估原因：{why_text}",
+        "為何不直接執行：" + why_not_text,
+        f"需要確認：{position_health_review_label(presentation.review_required)}；"
+        "僅供研究，不自動下單／平倉",
+    ]
+    if presentation.required_human_fields:
+        lines.append("缺少人工欄位：" + "；".join(presentation.required_human_fields))
+    if presentation.why and why_text != presentation.why:
+        lines.append("原始評估原因（技術）：" + presentation.why)
+    raw_why_not = "；".join(presentation.why_not)
+    if raw_why_not and raw_why_not != why_not_text:
+        lines.append("原始 why-not（技術）：" + raw_why_not)
+    return "\n".join(lines)
+
+
+def format_position_health_read_model(model: PositionHealthReadModel) -> str:
+    """Workbench／Portfolio 共用的短版 receipt 摘要。"""
+
+    status_text = {
+        "passed": "已驗證",
+        "degraded": "降級",
+        "blocked": "封鎖",
+        "stale": "過期",
+    }.get(model.status, "未知")
+    position_text = f"{len(model.positions)} 筆" if model.positions else "無可安全呈現列"
+    blockers = "；".join(position_health_blocker_label(item) for item in model.blockers[:3])
+    source_text = position_health_source_status_label(model.source_status)
+    quality_text = position_health_quality_label(model.quality)
+    if model.status in {"blocked", "stale"} or not model.positions:
+        receipt_missing = any(
+            str(item).startswith("position_health_receipt_unavailable")
+            for item in model.blockers
+        )
+        next_step = (
+            "下一步：尚無已完成的模擬持倉評估；每日評估完成後，按「重新整理」查看。"
+            if receipt_missing
+            else "下一步：目前沒有可用的模擬持倉評估；修復來源後按「重新整理」查看，期間維持觀察／未知。"
+        )
+        return (
+            "尚無持倉健康評估資料\n"
+            f"狀態：{status_text}（來源：{source_text}／品質：{quality_text}）\n"
+            f"{next_step}\n"
+            f"缺口／阻擋：{blockers or '尚無可用 evaluator receipt'}"
+        )
+    review_count = sum(1 for item in model.positions if item.review_required)
+    return (
+        f"Paper Position Health：{status_text}（來源：{source_text}／品質：{quality_text}）\n"
+        f"決策日：{model.decision_date or '未知'}｜可取得時間：{model.available_at or '未知'}｜持倉：{position_text}\n"
+        f"需要確認：{review_count}/{len(model.positions)} 筆；僅供研究，不自動下單／平倉。\n"
+        f"缺口／阻擋：{blockers or '無'}"
+    )
+
+
+def position_health_blocker_label(value: str) -> str:
+    """將 receipt blocker 轉成主畫面可讀訊息，避免洩漏 Python 例外路徑。"""
+
+    token = str(value or "").strip()
+    prefix = token.split(":", 1)[0]
+    labels = {
+        "position_health_receipt_unavailable": "尚無模擬持倉評估資料；每日評估完成後按「重新整理」查看",
+        "position_health_result_unavailable": "模擬持倉評估尚未完成；按「重新整理」查看",
+        "position_health_result_hash_mismatch": "評估檔完整性驗證失敗；已撤銷研究建議",
+        "position_health_result_schema_invalid": "評估檔格式驗證失敗；已撤銷研究建議",
+        "position_health_stale_artifact": "模擬持倉評估已過期；等待新評估或重新整理",
+        "position_health_stale_artifact_for_requested_date": "指定評估日已過期；請重新整理",
+        "position_health_future_artifact_for_requested_date": "指定評估日尚未到達；維持觀察／未知",
+        "position_health_identity_scope_mismatch": "持倉 identity scope 不一致；未套用研究建議",
+        "position_health_cohort_scope_mismatch": "cohort scope 不一致；未套用研究建議",
+        "position_health_source_snapshot_scope_mismatch": "source snapshot scope 不一致；未套用研究建議",
+        "position_health_evaluator_blocked": "evaluator 有阻擋缺口；維持觀察／未知",
+    }
+    return labels.get(prefix, "健康評估資料未通過讀取契約；維持觀察／未知")

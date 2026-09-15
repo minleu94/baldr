@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from app_module.dtos.decision_continuity_dtos import DecisionIdentity
+
 
 @dataclass
 class TradeDTO:
@@ -121,12 +123,58 @@ class JournalEntryDTO:
     created_at: str = ""
     updated_at: str = ""
     schema_version: str = "4.1"
+    source_snapshot_id: str = ""
+    decision_identity: DecisionIdentity = field(default_factory=DecisionIdentity)
+    record_type: str = "journal_entry"
+    revision_id: str = ""
+    continuity_event_id: str = ""
+    revision_of: str = ""
+    action: str = ""
+    next_review_at: str = ""
+    actor: str = ""
+    identity_status: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        return dict(self.__dict__)
+        data = dict(self.__dict__)
+        identity = DecisionIdentity.from_mapping(
+            self.decision_identity,
+            default_stock_code=self.stock_code,
+        )
+        # Keep legacy rows byte/shape compatible unless a caller supplied an
+        # actual typed identity. New continuity actions use the revision DTO
+        # directly and always carry the explicit envelope.
+        typed_identity = bool(
+            identity.result_id
+            or identity.source_snapshot_id
+            or identity.source_snapshot_hash
+            or identity.decision_date
+            or self.identity_status
+        )
+        data.pop("decision_identity", None)
+        if typed_identity:
+            data["decision_identity"] = identity.to_dict()
+            # Explicit copies make the envelope consumable by legacy adapters
+            # while keeping source_id separate from the typed result identity.
+            data.update(
+                {
+                    "result_id": identity.result_id,
+                    "stock_code": identity.stock_code or self.stock_code,
+                    "source_snapshot_id": identity.source_snapshot_id,
+                    "source_snapshot_hash": identity.source_snapshot_hash
+                    or self.source_snapshot_hash,
+                    "decision_date": identity.decision_date,
+                    "identity_status": identity.identity_status,
+                }
+            )
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "JournalEntryDTO":
+        stock_code = str(data.get("stock_code", "") or "")
+        identity = DecisionIdentity.from_mapping(
+            data,
+            default_stock_code=stock_code,
+        )
         return cls(
             journal_id=str(data.get("journal_id", "")),
             portfolio_id=str(data.get("portfolio_id", "default")),
@@ -142,6 +190,16 @@ class JournalEntryDTO:
             created_at=str(data.get("created_at", "")),
             updated_at=str(data.get("updated_at", "")),
             schema_version=str(data.get("schema_version", "4.1")),
+            source_snapshot_id=str(data.get("source_snapshot_id", "")),
+            decision_identity=identity,
+            record_type=str(data.get("record_type", "journal_entry")),
+            revision_id=str(data.get("revision_id", "")),
+            continuity_event_id=str(data.get("continuity_event_id", "")),
+            revision_of=str(data.get("revision_of", "")),
+            action=str(data.get("action", "")),
+            next_review_at=str(data.get("next_review_at", "")),
+            actor=str(data.get("actor", "")),
+            identity_status=str(data.get("identity_status", "")),
         )
 
 

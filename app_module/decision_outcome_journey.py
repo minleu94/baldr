@@ -668,6 +668,10 @@ class JournalReadPort(Protocol):
     def list_entries(self) -> Sequence[Mapping[str, Any]]: ...
 
 
+class JournalBoundaryReadPort(Protocol):
+    def list_entries_as_of(self, boundary: str) -> Sequence[Mapping[str, Any]]: ...
+
+
 class PortfolioLedgerReadPort(Protocol):
     def list_events(self) -> Sequence[PortfolioLedgerEvent | Mapping[str, Any]]: ...
 
@@ -753,7 +757,31 @@ class JsonlJournalReadAdapter:
         self.path = Path(path).expanduser().resolve()
 
     def list_entries(self) -> Sequence[Mapping[str, Any]]:
-        return _read_jsonl(self.path)
+        records = _read_jsonl(self.path)
+        # The backend writer may append continuity revisions/tombstones to the
+        # same JSONL. Project only active journal notes here so research action
+        # history cannot be mistaken for a mature outcome.
+        from app_module.portfolio_store import project_journal_records
+
+        return project_journal_records(records)
+
+    def list_entries_as_of(self, boundary: str) -> Sequence[Mapping[str, Any]]:
+        """Filter revision observation time before building the projection.
+
+        Otherwise a later tombstone would erase an earlier note even when the
+        journey is explicitly queried at an earlier boundary.
+        """
+
+        records = _read_jsonl(self.path)
+        visible: list[Mapping[str, Any]] = []
+        for record in records:
+            if str(record.get("record_type", "")) == "decision_continuity_revision":
+                if not _available_at_boundary(str(record.get("created_at", "")), boundary):
+                    continue
+            visible.append(record)
+        from app_module.portfolio_store import project_journal_records
+
+        return project_journal_records(visible)
 
 
 class JsonlPortfolioTradeReadAdapter:
@@ -1815,7 +1843,11 @@ class DecisionOutcomeJourneyService:
         if self.journal_reader is None:
             return [], (0, 0, 0, 0, 0)
         try:
-            raw_rows = tuple(self.journal_reader.list_entries())
+            boundary_reader = getattr(self.journal_reader, "list_entries_as_of", None)
+            if boundary is not None and callable(boundary_reader):
+                raw_rows = tuple(boundary_reader(boundary))
+            else:
+                raw_rows = tuple(self.journal_reader.list_entries())
         except Exception as exc:
             _diag(
                 diagnostics,
@@ -2163,6 +2195,33 @@ def _normalize_journal_entry(
         direct = JourneyLinkStatus.LINKED
     if linked_type and linked_type.lower() == "thesis" and linked_id == result.result_id:
         direct = JourneyLinkStatus.CONFLICT
+    typed_identity = payload.get("decision_identity")
+    if isinstance(typed_identity, Mapping) or _optional_text(payload.get("identity_status")):
+        identity_payload = (
+            typed_identity if isinstance(typed_identity, Mapping) else payload
+        )
+        identity_status = _optional_text(identity_payload.get("identity_status"))
+        identity_result_id = _optional_text(identity_payload.get("result_id"))
+        identity_stock_code = _optional_text(identity_payload.get("stock_code"))
+        if identity_status in {"unknown", "unlinked"}:
+            if direct != JourneyLinkStatus.CONFLICT:
+                direct = JourneyLinkStatus.UNKNOWN
+        elif identity_status == "conflict":
+            direct = JourneyLinkStatus.CONFLICT
+        elif identity_status == "linked":
+            candidate_codes = {
+                item.stock_code
+                for item in result.candidates
+                if item.link_status == JourneyLinkStatus.LINKED
+            }
+            if (
+                identity_result_id != result.result_id
+                or not identity_stock_code
+                or identity_stock_code not in candidate_codes
+            ):
+                direct = JourneyLinkStatus.CONFLICT
+            elif direct == JourneyLinkStatus.UNLINKED:
+                direct = JourneyLinkStatus.LINKED
     return JournalEntryRecord(
         journal_id=_required_text(
             _first_value(payload, "journal_id", "entry_id", "id"),

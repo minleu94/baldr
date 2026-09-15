@@ -27,7 +27,11 @@ def migrate_watchlist_copy(source: Path, destination: Path, *, sandbox_root: Pat
     repository = WatchlistRepository(destination, initialize=True)
     existing = repository.load(watchlist_id)
     if existing is None:
-        revision = repository.save(watchlist_id, payload, expected_revision=None, source_hash=source_hash)
+        revision = repository.import_legacy_payload(
+            watchlist_id,
+            payload,
+            source_hash=source_hash,
+        )
     elif existing[0] == payload:
         revision = existing[1]
     else:

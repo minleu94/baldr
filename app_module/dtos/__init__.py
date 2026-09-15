@@ -16,6 +16,26 @@ from app_module.dtos.portfolio_dtos import (
     PositionDTO,
     TradeDTO,
 )
+from app_module.dtos.decision_continuity_dtos import (
+    ACTION_ACCEPTED,
+    ACTION_ADDED,
+    ACTION_CLEARED,
+    ACTION_NOTE,
+    ACTION_REMOVED,
+    ACTION_REVIEW_SCHEDULED,
+    ACTION_SKIPPED,
+    ACTION_UPDATED,
+    DECISION_CONTINUITY_RECORD_TYPE,
+    DECISION_CONTINUITY_SCHEMA_VERSION,
+    DECISION_CONTINUITY_TOMBSTONE_ACTIONS,
+    DECISION_IDENTITY_SCHEMA_VERSION,
+    DecisionContinuityRevision,
+    DecisionIdentity,
+    IDENTITY_STATUS_CONFLICT,
+    IDENTITY_STATUS_LINKED,
+    IDENTITY_STATUS_UNKNOWN,
+    IDENTITY_STATUS_UNLINKED,
+)
 
 
 class ValidationStatus(Enum):

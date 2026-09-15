@@ -4021,6 +4021,15 @@ preview 會驗證 baseline safety flags、首日邊界、snapshot 日期唯一�
 2. 點擊「新增日記」。
 3. 記錄進場假設、風險、觀察結果與出場理由。
 
+日誌的刪除與清空採 append-only continuity 語意：目前列表會隱藏
+`removed`／`cleared` tombstone，但既有 legacy JSONL 行與歷史 revision 不會被
+重寫或抹除。若需要稽核，讀取 `OUTPUT_ROOT/portfolio/journal_entries.jsonl`
+的 history projection；不要把 tombstone 或 `accepted`／`skipped`／
+`review_scheduled` 研究 action 當成新筆記、成交或成熟 outcome。新研究 action
+必須帶明示 `result_id`、`stock_code` 與可用的 source snapshot；缺 key 保持
+`unknown`，不以同股同日猜測。Increment A 只提供 backend contract，尚未把
+Watchlist 預設 writer 切換到 repository，也不對正式資料執行 migration。
+
 ### 10.7 策略與價格監控
 
 顯示：
@@ -4057,7 +4066,9 @@ preview 會驗證 baseline safety flags、首日邊界、snapshot 日期唯一�
 
 ### 10.10 清空全體數據
 
-此操作會永久清空持倉交易與日誌，需要二次確認。執行前應先確認資料是否已備份。
+此操作仍會永久清空持倉交易，需要二次確認並先確認備份；覆盤日誌的清空則
+只追加 tombstone，active 列表變為空但原始 JSONL／history 保留，不能把畫面
+空白解讀成歷史資料已不存在。
 
 ## 11. Runtime Observatory（Owner 營運與治理監控）
 

@@ -11,7 +11,8 @@ from contextlib import closing
 import sqlite3
 import pandas as pd
 from data_module.watchlist_repository import WatchlistRepository
-from dataclasses import dataclass, asdict
+from app_module.dtos.decision_continuity_dtos import DecisionIdentity
+from dataclasses import dataclass, asdict, field
 
 
 @dataclass
@@ -24,13 +25,37 @@ class WatchlistItem:
     notes: str = ""
     tags: Optional[List[str]] = None
     source_id: str = ""
+    decision_identity: DecisionIdentity = field(default_factory=DecisionIdentity)
     
     def __post_init__(self):
         """初始化後處理"""
         if self.tags is None:
             self.tags = []
+        self.decision_identity = DecisionIdentity.from_mapping(
+            self.decision_identity,
+            default_stock_code=str(self.stock_code or ""),
+        )
         if not self.added_at:
             self.added_at = datetime.now().isoformat()
+
+    @classmethod
+    def from_mapping(cls, data: Dict[str, Any]) -> "WatchlistItem":
+        """讀取 legacy／typed item，未知欄位不會破壞舊副本。"""
+
+        stock_code = str(data.get("stock_code", data.get("證券代號", "")) or "").strip()
+        return cls(
+            stock_code=stock_code,
+            stock_name=str(data.get("stock_name", data.get("證券名稱", stock_code)) or stock_code),
+            added_at=str(data.get("added_at", "") or ""),
+            source=str(data.get("source", "manual") or "manual"),
+            notes=str(data.get("notes", "") or ""),
+            tags=list(data.get("tags", []) or []),
+            source_id=str(data.get("source_id", "") or ""),
+            decision_identity=DecisionIdentity.from_mapping(
+                data,
+                default_stock_code=stock_code,
+            ),
+        )
 
 
 @dataclass
@@ -99,19 +124,36 @@ class WatchlistService:
             data = json.loads(watchlist_file.read_text(encoding="utf-8-sig"))
         if not isinstance(data, dict) or not isinstance(data.get("items"), list):
             raise ValueError("候選池資料損毀：必須包含 items 陣列")
-        items = [WatchlistItem(**item) for item in data["items"]]
+        if not all(isinstance(item, dict) for item in data["items"]):
+            raise ValueError("候選池資料損毀：items 必須是 object")
+        items = [WatchlistItem.from_mapping(item) for item in data["items"]]
         return Watchlist(name=data.get("name", "未命名清單"), items=items,
                          created_at=data.get("created_at", ""), updated_at=data.get("updated_at", ""),
                          description=data.get("description", ""), revision=revision)
 
-    def _save_watchlist(self, watchlist_id: str, watchlist: Watchlist):
+    def _save_watchlist(
+        self,
+        watchlist_id: str,
+        watchlist: Watchlist,
+        *,
+        operation: str = "updated",
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
+    ):
         watchlist_file = self._watchlist_file(watchlist_id)
         watchlist.updated_at = datetime.now().isoformat()
         data = {"version": 1, "name": watchlist.name, "description": watchlist.description,
                 "created_at": watchlist.created_at, "updated_at": watchlist.updated_at,
                 "items": [asdict(item) for item in watchlist.items]}
         if self.repository is not None:
-            watchlist.revision = self.repository.save(watchlist_id, data, expected_revision=watchlist.revision)
+            watchlist.revision = self.repository.save(
+                watchlist_id,
+                data,
+                expected_revision=watchlist.revision,
+                operation=operation,
+                revision_id=revision_id,
+                continuity_event_id=continuity_event_id,
+            )
             return
         raw = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False)
         # 同目錄原子取代；不先搬走來源，失敗仍保留既有有效 JSON。
@@ -161,7 +203,10 @@ class WatchlistService:
         self,
         stocks: List[Dict[str, Any]],
         source: str = "manual",
-        watchlist_id: str = "default"
+        watchlist_id: str = "default",
+        *,
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
     ) -> int:
         """
         新增股票到觀察清單
@@ -215,8 +260,25 @@ class WatchlistService:
                         if not stock_name or stock_name.lower() in ['none', 'nan', '-', '']:
                             stock_name = stock_code
                     
-                    # 如果已存在，跳過
-                    if stock_code in existing_codes:
+                    identity = DecisionIdentity.from_mapping(
+                        stock,
+                        default_stock_code=stock_code,
+                    )
+                    has_explicit_candidate_identity = identity.is_linked
+                    # Legacy 未帶 typed identity 時仍依股票代號去重；明確的
+                    # result_id+stock_code 則依 candidate key 去重，避免同股
+                    # 不同研究結果互相覆蓋。
+                    duplicate = (
+                        any(
+                            existing.decision_identity.is_linked
+                            and existing.decision_identity.candidate_key
+                            == identity.candidate_key
+                            for existing in watchlist.items
+                        )
+                        if has_explicit_candidate_identity
+                        else stock_code in existing_codes
+                    )
+                    if duplicate:
                         logger.debug(f"股票 {stock_code} 已在觀察清單中，跳過")
                         continue
                     
@@ -230,7 +292,8 @@ class WatchlistService:
                         source=source,
                         notes=str(stock.get('notes', '')).strip(),
                         tags=[str(tag) for tag in tags],
-                        source_id=str(stock.get("source_id") or stock.get("result_id") or "")
+                        source_id=str(stock.get("source_id") or stock.get("result_id") or ""),
+                        decision_identity=identity,
                     )
                     watchlist.items.append(item)
                     existing_codes.add(stock_code)
@@ -242,7 +305,13 @@ class WatchlistService:
             
             # 儲存
             if added_count > 0:
-                self._save_watchlist(watchlist_id, watchlist)
+                self._save_watchlist(
+                    watchlist_id,
+                    watchlist,
+                    operation="added",
+                    revision_id=revision_id,
+                    continuity_event_id=continuity_event_id,
+                )
                 logger.info(f"成功添加 {added_count} 檔股票到觀察清單")
             
             return added_count
@@ -255,7 +324,10 @@ class WatchlistService:
     def remove_stocks(
         self,
         stock_codes: List[str],
-        watchlist_id: str = "default"
+        watchlist_id: str = "default",
+        *,
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
     ) -> int:
         """
         從觀察清單移除股票
@@ -284,15 +356,25 @@ class WatchlistService:
         # 計算移除數量
         removed_count = original_count - len(watchlist.items)
         
-        # 儲存
-        self._save_watchlist(watchlist_id, watchlist)
+        # 沒有變更時不產生空 revision，讓 retry 保持 idempotent。
+        if removed_count:
+            self._save_watchlist(
+                watchlist_id,
+                watchlist,
+                operation="removed",
+                revision_id=revision_id,
+                continuity_event_id=continuity_event_id,
+            )
         
         return removed_count
     
     def remove_stock(
         self,
         watchlist_id: str = "default",
-        stock_code: str = None
+        stock_code: str = None,
+        *,
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
     ) -> int:
         """
         從觀察清單移除單一股票（便捷方法）
@@ -306,9 +388,20 @@ class WatchlistService:
         """
         if stock_code is None:
             return 0
-        return self.remove_stocks([stock_code], watchlist_id)
+        return self.remove_stocks(
+            [stock_code],
+            watchlist_id,
+            revision_id=revision_id,
+            continuity_event_id=continuity_event_id,
+        )
     
-    def clear_watchlist(self, watchlist_id: str = "default") -> bool:
+    def clear_watchlist(
+        self,
+        watchlist_id: str = "default",
+        *,
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
+    ) -> bool:
         """
         清空觀察清單
         
@@ -322,9 +415,17 @@ class WatchlistService:
         if watchlist is None:
             return False
         
+        if not watchlist.items:
+            return True
         watchlist.items = []
         watchlist.updated_at = datetime.now().isoformat()
-        self._save_watchlist(watchlist_id, watchlist)
+        self._save_watchlist(
+            watchlist_id,
+            watchlist,
+            operation="cleared",
+            revision_id=revision_id,
+            continuity_event_id=continuity_event_id,
+        )
         return True
     
     def get_stock_codes(self, watchlist_id: str = "default") -> List[str]:
@@ -365,10 +466,18 @@ class WatchlistService:
                 'source': item.source,
                 'notes': item.notes,
                 'tags': item.tags,
-                'source_id': item.source_id
+                'source_id': item.source_id,
+                'decision_identity': item.decision_identity.to_dict(),
             }
             for item in watchlist.items
         ]
+
+    def list_watchlist_revisions(self, watchlist_id: str = "default") -> List[Dict[str, Any]]:
+        """讀取 repository 歷史；JSON legacy writer 沒有虛構 history。"""
+
+        if self.repository is None:
+            return []
+        return self.repository.list_revisions(watchlist_id)
     
     def list_watchlists(self) -> List[Dict[str, Any]]:
         """
@@ -426,7 +535,13 @@ class WatchlistService:
         
         return watchlist_id
     
-    def delete_watchlist(self, watchlist_id: str) -> bool:
+    def delete_watchlist(
+        self,
+        watchlist_id: str,
+        *,
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
+    ) -> bool:
         """
         刪除觀察清單
         
@@ -443,7 +558,16 @@ class WatchlistService:
         watchlist_file = self._watchlist_file(watchlist_id)
         if self.repository is not None:
             loaded = self.repository.load(watchlist_id)
-            return self.repository.delete(watchlist_id, expected_revision=loaded[1]) if loaded else False
+            return (
+                self.repository.delete(
+                    watchlist_id,
+                    expected_revision=loaded[1],
+                    revision_id=revision_id,
+                    continuity_event_id=continuity_event_id,
+                )
+                if loaded
+                else False
+            )
         if watchlist_file.exists():
             watchlist_file.unlink()
             return True

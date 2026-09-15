@@ -2,30 +2,32 @@
 
 > 本文件只維護目前分類摘要；逐檔清單以 `qa/full_app_healthcheck/test_inventory.py` 為準。歷史執行紀錄不可當作本次通過證據。
 
-## 2026-09-13 machine refresh
+## 2026-09-15 machine refresh
 
-Current filesystem Python files: `805`
+Current filesystem Python files: `836`
+Current registry entries: `831`
 
 | 分類 | 數量 |
 |---|---:|
-| `general-unit-keep-in-pytest` | 148 |
-| `governance-doc-tooling` | 150 |
+| `general-unit-keep-in-pytest` | 149 |
+| `governance-doc-tooling` | 152 |
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
-| `service-oracle-data-market` | 121 |
-| `service-oracle-portfolio-decision-runtime` | 121 |
-| `service-oracle-recommendation` | 31 |
-| `service-oracle-research-backtest` | 72 |
-| `slow-e2e-or-environment` | 3 |
-| `ui-healthcheck-candidate-bridge` | 30 |
+| `service-oracle-data-market` | 123 |
+| `service-oracle-portfolio-decision-runtime` | 130 |
+| `service-oracle-recommendation` | 33 |
+| `service-oracle-research-backtest` | 74 |
+| `slow-e2e-or-environment` | 4 |
+| `ui-healthcheck-candidate-bridge` | 37 |
 | `ui-healthcheck-direct-bridge` | 12 |
 | `write-risk-dry-run-required` | 71 |
 
-- 預設收集檔案：755；support：4；不收集：23。
+- 預設收集檔案：803；support：5；不收集：23。
 - 2026-09-09 補齊資料工作新增五份測試；本輪再加入四份 V4 effectiveness／FinMind candidate 測試，均僅用隔離資料驗證，不授予 runner 正式資料寫入權限。
 - 歷史對照：本段更新前的機器摘要曾記錄總數 `743`、general `147`、governance `138`、data `110`、portfolio-runtime `106`、research-backtest `71`、UI candidate `26`、write-risk `64`；以上數字保留作舊 QA 快照，不代表目前清冊。
-- 本次 machine refresh 以實際 `tests/` 目錄取得 31 份新增測試並依責任分類登錄；`run_test_inventory_audit()` 的 missing/stale 均為零。新增測試不因此進入 direct bridge。
+- 2026-09-15 registry consolidation 依交接預分類補登 22 個 accepted path（含 pit_test_support support）；run_test_inventory_audit() 目前為 5 個 missing、0 個 stale、0 個 count drift、0 個 collection error。新增測試不因此進入 direct bridge。
+- 目前 remaining missing 是 tests/test_db_lock_wait.py、tests/test_review_warning_classification.py、L lane 的 tests/test_pit_taxonomy_daily_source.py，以及 C lane 的 tests/test_recommendation_training_lineage.py、tests/test_recommendation_calibration_learning_runner_lineage.py；均不註冊、不刪除、不隱藏。
 - 本輪清理前實測為 748 個 Python 檔、4639 測項；舊 679 檔／4005 測項是較早檢查點。
 - 本輪補登 69 個檔案（含既有 ml_teacher_fixture 支援檔），刪除七份一次性診斷，兩份欄位測試合為參數化雙入口測試。
 - 2026-09-08 最終 collection 為 4,655；全量 pytest 為 4,652 passed、3 skipped；missing／stale／count drift 為零。見 [LUNA 三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)；[前次查核](PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留為歷史。

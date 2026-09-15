@@ -168,6 +168,13 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_ui_qt_adaptive_workspace_stack.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ui_qt_p2_status_accessibility.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ui_qt_research_context_status.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_daily_journey.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_decision_continuity_controls.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_decision_outcome_journey.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_journal_scope_increment_b.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_research_fallback.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_user_declared_holding_research.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_watchlist_storage_wiring_increment_b.py": "ui-healthcheck-candidate-bridge",
     "tests/test_watchlist_stock_analysis_navigation.py": "ui-healthcheck-candidate-bridge",
 
     # service-oracle-data-market
@@ -225,6 +232,8 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_p0_source_candidate_contracts.py": "service-oracle-data-market",
     "tests/test_pit_historical_availability_contracts.py": "service-oracle-data-market",
     "tests/test_pit_historical_coverage_audit.py": "service-oracle-data-market",
+    "tests/test_pit_industry_callers.py": "service-oracle-data-market",
+    "tests/test_pit_sector_membership_reader.py": "service-oracle-data-market",
     "tests/test_quarterly_statement_availability_history.py": "service-oracle-data-market",
     "tests/test_trading_restriction_policy.py": "service-oracle-data-market",
     "tests/test_decision_market_frame.py": "service-oracle-data-market",
@@ -315,12 +324,14 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_recommendation_recomputation.py": "service-oracle-recommendation",
     "tests/test_recommendation_v1_7_negative_evidence.py": "service-oracle-recommendation",
     "tests/test_daily_recommendation_learning_loop.py": "service-oracle-recommendation",
+    "tests/test_daily_banktaiwan_learning_cost.py": "service-oracle-recommendation",
     "tests/test_decision_presentation.py": "service-oracle-recommendation",
     "tests/test_recommendation_calibration.py": "service-oracle-recommendation",
     "tests/test_recommendation_calibration_cli.py": "service-oracle-recommendation",
     "tests/test_recommendation_calibration_contract_guards.py": "service-oracle-recommendation",
     "tests/test_recommendation_calibration_source_contract.py": "service-oracle-recommendation",
     "tests/test_recommendation_learning_cache_hit_custody.py": "service-oracle-recommendation",
+    "tests/test_recommendation_learning_evidence_projection.py": "service-oracle-recommendation",
     "tests/test_recommendation_calibration_training.py": "service-oracle-recommendation",
     "tests/test_recommendation_capture_source_binding.py": "service-oracle-recommendation",
     "tests/test_recommendation_historical_replay.py": "service-oracle-recommendation",
@@ -392,6 +403,14 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_signal_decay_service.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_watchlist_trigger_service.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_watchlist_trigger_evidence_importer.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_daily_investment_journey.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_decision_continuity_controller.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_decision_continuity_write_path.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_decision_outcome_journey.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_position_health_transition_read_service.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_research_fallback_packet.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_user_declared_holding_research.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_watchlist_storage_wiring_increment_b.py": "service-oracle-portfolio-decision-runtime",
 
     # governance-doc-tooling
     "tests/test_artifact_lineage_cli.py": "governance-doc-tooling",
@@ -434,6 +453,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_scheduled_scripts_exist.py": "governance-doc-tooling",
     "tests/test_scheduled_scripts_no_trading_language.py": "governance-doc-tooling",
     "tests/test_scheduled_recommendation_snapshot_wrapper.py": "governance-doc-tooling",
+    "tests/test_banktaiwan_recommendation_learning_operational.py": "governance-doc-tooling",
     "tests/test_formal_controlled_handoff.py": "governance-doc-tooling",
     "tests/test_formal_runtime_config.py": "governance-doc-tooling",
     "tests/test_ml_forward_scheduled_wrapper.py": "governance-doc-tooling",
@@ -442,6 +462,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_paper_execution_retry_runner.py": "governance-doc-tooling",
     "tests/test_position_health_transition_scheduled_integration.py": "governance-doc-tooling",
     "tests/test_scheduled_forward_calendar_refresh.py": "governance-doc-tooling",
+    "tests/test_qa_research_journey_subprocess.py": "governance-doc-tooling",
     "tests/test_scheduler_health_observability_cli.py": "governance-doc-tooling",
     "tests/test_signal_decay_no_trading_language.py": "governance-doc-tooling",
     "tests/test_pre_v2_readiness_cli.py": "governance-doc-tooling",
@@ -546,6 +567,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_pattern_analysis/__init__.py": "legacy-or-low-priority",
 
     # general-unit-keep-in-pytest
+    "tests/pit_test_support.py": "general-unit-keep-in-pytest",
     "tests/conftest.py": "general-unit-keep-in-pytest",
     "tests/fixtures/ml_allocation_training_support.py": "general-unit-keep-in-pytest",
     "tests/fixtures/portfolio_ml_ooc_support.py": "general-unit-keep-in-pytest",
@@ -853,6 +875,7 @@ PYTEST_SUPPORT_FILES = frozenset([
     "tests/ml_teacher_fixture.py",
     "tests/fixtures/ml_allocation_training_support.py",
     "tests/fixtures/portfolio_ml_ooc_support.py",
+    "tests/pit_test_support.py",
 ])
 
 PYTEST_COLLECTED_FILES = frozenset(

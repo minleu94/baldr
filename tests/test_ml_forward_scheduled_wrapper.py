@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
 import subprocess
 import time as time_module
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -828,28 +829,76 @@ def test_daily_config_producer_skips_non_trading_and_fails_unknown_calendar(
         )
 
 
-def test_forward_calendar_uses_verified_cache_without_network() -> None:
+def test_forward_calendar_uses_verified_cache_without_network(
+    tmp_path: Path,
+) -> None:
     from data_module.official_trading_calendar import OfficialTradingCalendar
+    from data_module.official_trading_calendar_cache import (
+        build_twse_calendar_cache,
+        write_twse_calendar_cache,
+    )
 
-    cache = Path(
-        "output/paper_execution_eod_replay/calendar_cache/"
-        "twse_holiday_schedule_2026_20260907_capture1.json"
+    observed = datetime(2026, 9, 8, 0, 0, tzinfo=timezone.utc)
+    captured = observed - timedelta(minutes=1)
+    raw = json.dumps(
+        [
+            {
+                "Name": "中華民國開國紀念日",
+                "Date": "1150101",
+                "Weekday": "四",
+                "Description": "依規定放假1日。",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache_payload = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=raw,
+        requested_at=captured - timedelta(seconds=1),
+        captured_at=captured,
+        response_status=200,
+        response_headers={"Content-Type": "application/json"},
     )
-    closure = cache.parent / "twse_temporary_closure_20260710_af23f921a3376a5a.json"
-    calendar = OfficialTradingCalendar(
-        db_path=Path("this-database-does-not-exist.sqlite"),
-        calendar_cache_path=cache,
-        temporary_closure_path=closure,
+    cache_path = tmp_path / "calendar-cache" / "twse_holiday_schedule_2026.json"
+    cache_path.parent.mkdir()
+    write_twse_calendar_cache(
+        cache_path,
+        cache_payload,
+        allowed_root=tmp_path,
     )
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 9), allow_online_probe=False
-    ) == (True, "twse_holiday_schedule_cache_open")
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 8), allow_online_probe=False
-    ) == (True, "twse_holiday_schedule_cache_open")
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 7), allow_online_probe=False
-    ) == (True, "twse_holiday_schedule_cache_open")
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 6), allow_online_probe=False
-    ) == (False, "weekend_closed")
+
+    with (
+        patch("data_module.official_trading_calendar.datetime") as clock,
+        patch(
+            "data_module.official_trading_calendar.safe_request",
+            side_effect=AssertionError("valid cache must be consumed before network"),
+        ),
+    ):
+        clock.now.return_value = observed
+        calendar = OfficialTradingCalendar(
+            db_path=tmp_path / "this-database-does-not-exist.sqlite",
+            calendar_cache_path=cache_path,
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 9)) == (
+            True,
+            "twse_holiday_schedule_cache_open",
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 8)) == (
+            True,
+            "twse_holiday_schedule_cache_open",
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 7)) == (
+            True,
+            "twse_holiday_schedule_cache_open",
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 6)) == (
+            False,
+            "weekend_closed",
+        )
+
+    evidence = calendar.evidence_for(date(2026, 9, 9))
+    assert evidence["mode"] == "hash_bound_official_calendar_cache"
+    source = cache_payload["source"]
+    assert isinstance(source, dict)
+    assert evidence["source_hash"] == source["response_sha256"]

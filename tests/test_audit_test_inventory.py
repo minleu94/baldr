@@ -66,6 +66,43 @@ def test_read_documented_current_counts_accepts_a_new_machine_refresh_date(
     }
 
 
+def test_read_documented_current_counts_prefers_explicit_registry_total(
+    tmp_path: Path, monkeypatch
+) -> None:
+    documentation = (
+        tmp_path
+        / "docs"
+        / "06_qa"
+        / "TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md"
+    )
+    documentation.parent.mkdir(parents=True)
+    documentation.write_text(
+        "\n".join(
+            (
+                "# Test inventory",
+                "",
+                "## 2030-01-02 machine refresh",
+                "",
+                "Current filesystem Python files: `12`",
+                "Current registry entries: `9`",
+                "",
+                "| 分類 | 數量 |",
+                "|---|---:|",
+                "| `service-oracle-data-market` | 9 |",
+                "",
+                "## Historical section",
+            )
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(audit_test_inventory, "PROJECT_ROOT", tmp_path)
+
+    assert audit_test_inventory._read_documented_current_counts() == {
+        "total": 9,
+        "service-oracle-data-market": 9,
+    }
+
+
 def test_governance_markdown_checks_cover_positive_and_negative_fixtures(tmp_path: Path):
     root = tmp_path
     source = root / "docs" / "index.md"

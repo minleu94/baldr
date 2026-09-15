@@ -1357,10 +1357,14 @@ def test_real_paper_consumer_reads_hash_bound_calendar_cache(
         calendar_cache_path=cache_dir,
     )
 
-    with patch(
-        "data_module.official_trading_calendar.safe_request",
-        side_effect=AssertionError("valid cache must be consumed before network"),
+    with (
+        patch("data_module.official_trading_calendar.datetime") as clock,
+        patch(
+            "data_module.official_trading_calendar.safe_request",
+            side_effect=AssertionError("valid cache must be consumed before network"),
+        ),
     ):
+        clock.now.return_value = EOD_REPLAY_NOW.astimezone(timezone.utc)
         result = run_paper_execution_daily(
             paths,
             now=EOD_REPLAY_NOW,

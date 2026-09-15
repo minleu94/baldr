@@ -4,6 +4,7 @@ PySide6 主應用程式
 
 import os
 import sys
+import time
 from pathlib import Path
 
 # 添加項目根目錄到系統路徑
@@ -134,6 +135,7 @@ from ui_qt.main_window_coordinator import WORKSPACE_DEFINITIONS, resolve_workspa
 from ui_qt.runtime_composition import build_runtime_ui_composition
 from ui_qt.workers.task_worker import (
     request_cooperative_task_worker_shutdown,
+    running_task_workers,
 )
 from app_module.decision_desk_composition import (
     DecisionDeskMarketRegimeProvider,
@@ -213,6 +215,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("baldr")
         self.setGeometry(100, 100, 1400, 800)
         self._navigation_collapsed_by_window = False
+        self._shutdown_close_requested = False
+        self._shutdown_close_finalizing = False
+        self._shutdown_close_started_monotonic: float | None = None
+        self._shutdown_close_last_blockers: tuple[str, ...] = ()
+        self._shutdown_close_last_diagnostic_monotonic: float | None = None
+        self._shutdown_close_timer = QTimer(self)
+        self._shutdown_close_timer.setInterval(100)
+        self._shutdown_close_timer.timeout.connect(self._poll_shutdown_close)
 
         # 設置窗口 icon
         icon_path = Path(__file__).parent / "app_icon.png"
@@ -965,6 +975,9 @@ class MainWindow(QMainWindow):
                 "decision_date",
                 "data_date",
                 "result_id",
+                "identity_status",
+                "source_snapshot_id",
+                "source_snapshot_hash",
                 "profile_id",
                 "profile_version",
                 "source_id",
@@ -1006,6 +1019,9 @@ class MainWindow(QMainWindow):
                             decision_date=context.decision_date,
                             data_date=context.data_date,
                             result_id=context.result_id,
+                            identity_status=context.identity_status,
+                            source_snapshot_id=context.source_snapshot_id,
+                            source_snapshot_hash=context.source_snapshot_hash,
                             profile_id=context.profile_id,
                             profile_version=context.profile_version,
                             source_id=context.source_id,
@@ -1133,42 +1149,197 @@ class MainWindow(QMainWindow):
         if callable(selector):
             selector(context.stock_code, context.result_id or None)
 
-    def closeEvent(self, event):
-        """只在所有受管背景工作安全結束後才允許關閉。"""
-        report_dialog = getattr(self, "_stock_research_report_dialog", None)
-        report_view = getattr(report_dialog, "report_view", None)
-        request_report_close = getattr(report_view, "request_close", None)
-        if callable(request_report_close):
-            request_report_close()
-        # MainWindow 的 closeEvent 不會可靠地逐一傳遞到子 QWidget。Portfolio
-        # 頁有自己的 pending generation；先撤銷它，避免全域 worker coordinator
-        # 取消目前一輪後，子頁又把排隊中的下一輪重新啟動。
-        portfolio_view = getattr(self, "portfolio_view", None)
-        cancel_portfolio_refresh = getattr(portfolio_view, "cancel_refresh", None)
-        if callable(cancel_portfolio_refresh):
-            cancel_portfolio_refresh()
-        remaining_workers = request_cooperative_task_worker_shutdown()
+    def _request_shutdown_dependencies(
+        self,
+        *,
+        send_cancel: bool,
+    ) -> tuple[tuple[Any, ...], bool]:
+        """送出冪等取消並回報仍未完成的背景依賴。"""
+
         update_view = getattr(self, "update_view", None)
-        background_process_running = bool(
-            update_view is not None
-            and getattr(
-                update_view,
-                "has_running_background_process",
-                lambda: False,
-            )()
+        if send_cancel:
+            update_shutdown = getattr(update_view, "begin_shutdown", None)
+            if not callable(update_shutdown):
+                update_shutdown = getattr(update_view, "request_cooperative_shutdown", None)
+            if callable(update_shutdown):
+                try:
+                    # UpdateView 會建立本次 TPEX cancel marker，並阻止 queued
+                    # callback 在收尾期間重新啟動 worker。
+                    update_shutdown()
+                except Exception as exc:  # pragma: no cover - defensive UI path
+                    self._record_shutdown_message(f"UpdateView 關閉協調失敗：{exc}")
+
+        if send_cancel:
+            try:
+                remaining_workers = request_cooperative_task_worker_shutdown()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self._record_shutdown_message(f"背景 worker 關閉協調失敗：{exc}")
+                remaining_workers = (exc,)
+        else:
+            try:
+                remaining_workers = running_task_workers()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self._record_shutdown_message(f"背景 worker 狀態查詢失敗：{exc}")
+                remaining_workers = (exc,)
+
+        try:
+            background_process_running = bool(
+                update_view is not None
+                and getattr(
+                    update_view,
+                    "has_running_background_process",
+                    lambda: False,
+                )()
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI path
+            self._record_shutdown_message(f"TPEX 背景程序狀態未知：{exc}")
+            background_process_running = True
+        return tuple(remaining_workers), background_process_running
+
+    def _record_shutdown_message(self, message: str) -> None:
+        """把關閉生命週期寫入既有 logger，避免只靠使用者重按 X。"""
+
+        import logging
+
+        logging.getLogger(__name__).info(message)
+
+    def _freeze_child_refresh_sources(self) -> None:
+        """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
+
+        for attribute in ("decision_desk_view", "portfolio_view"):
+            view = getattr(self, attribute, None)
+            begin_shutdown = getattr(view, "begin_shutdown", None)
+            if not callable(begin_shutdown):
+                continue
+            try:
+                begin_shutdown()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self._record_shutdown_message(
+                    f"{attribute} 關閉 gate 設定失敗：{exc}"
+                )
+
+    def _set_shutdown_ui(self) -> None:
+        """鎖住內容操作但保留事件迴圈與狀態列可更新。"""
+
+        central_widget = getattr(self, "centralWidget", None)
+        central = central_widget() if callable(central_widget) else None
+        if central is not None:
+            central.setEnabled(False)
+
+    def _poll_shutdown_close(self) -> None:
+        """在 worker／外部 process 安全完成後自動完成原本的 close。"""
+
+        if not self._shutdown_close_requested or self._shutdown_close_finalizing:
+            return
+        remaining_workers, background_process_running = (
+            MainWindow._request_shutdown_dependencies(self, send_cancel=False)
+        )
+        blockers: list[str] = []
+        if remaining_workers:
+            blockers.append(f"{len(remaining_workers)} 個合作式取消中的背景工作")
+        if background_process_running:
+            blockers.append("TPEX 背景更新程序（等待 cancel-completed）")
+        blocker_tuple = tuple(blockers)
+        if blocker_tuple:
+            now = time.monotonic()
+            if blocker_tuple != self._shutdown_close_last_blockers:
+                self._shutdown_close_last_blockers = blocker_tuple
+                self._shutdown_close_last_diagnostic_monotonic = now
+                MainWindow._record_shutdown_message(
+                    self,
+                    "主視窗關閉仍在等待：" + "、".join(blocker_tuple)
+                )
+            elif (
+                self._shutdown_close_last_diagnostic_monotonic is None
+                or now - self._shutdown_close_last_diagnostic_monotonic >= 5.0
+            ):
+                self._shutdown_close_last_diagnostic_monotonic = now
+                started = self._shutdown_close_started_monotonic
+                elapsed = now - started if started is not None else 0.0
+                MainWindow._record_shutdown_message(
+                    self,
+                    "主視窗關閉仍在等待（UI event loop 持續運作）："
+                    f"elapsed={elapsed:.1f}s，原因=" + "、".join(blocker_tuple),
+                )
+            return
+
+        timer = getattr(self, "_shutdown_close_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._shutdown_close_finalizing = True
+        started = self._shutdown_close_started_monotonic
+        elapsed = time.monotonic() - started if started is not None else 0.0
+        MainWindow._record_shutdown_message(
+            self,
+            f"主視窗背景工作已安全收尾，關閉耗時 {elapsed:.3f} 秒；自動完成 close。"
+        )
+        self.statusBar().showMessage("背景工作已安全收尾，正在關閉…", 3_000)
+        QTimer.singleShot(0, self.close)
+
+    def closeEvent(self, event):
+        """一次 X 請求合作式取消，完成後自動關閉，不要求再次按 X。"""
+
+        if getattr(self, "_shutdown_close_finalizing", False):
+            timer = getattr(self, "_shutdown_close_timer", None)
+            if timer is not None:
+                timer.stop()
+            event.accept()
+            return
+
+        first_request = not getattr(self, "_shutdown_close_requested", False)
+        if first_request:
+            self._shutdown_close_requested = True
+            self._shutdown_close_started_monotonic = time.monotonic()
+            self._shutdown_close_last_blockers = ()
+            self._shutdown_close_last_diagnostic_monotonic = None
+            MainWindow._freeze_child_refresh_sources(self)
+
+            report_dialog = getattr(self, "_stock_research_report_dialog", None)
+            report_view = getattr(report_dialog, "report_view", None)
+            request_report_close = getattr(report_view, "request_close", None)
+            if callable(request_report_close):
+                request_report_close()
+            # MainWindow 的 closeEvent 不會可靠地逐一傳遞到子 QWidget；
+            # _freeze_child_refresh_sources 已撤銷 Portfolio／每日決策頁的
+            # pending generation，避免全域取消目前一輪後又補起下一輪。
+
+        remaining_workers, background_process_running = (
+            MainWindow._request_shutdown_dependencies(self, send_cancel=first_request)
         )
         if remaining_workers or background_process_running:
+            MainWindow._set_shutdown_ui(self)
             parts: list[str] = []
             if remaining_workers:
                 parts.append(f"{len(remaining_workers)} 個合作式取消中的背景工作")
             if background_process_running:
-                parts.append("TPEX 背景更新程序")
+                parts.append("TPEX 背景更新程序（等待安全收尾）")
+            blocker_tuple = tuple(parts)
+            self._shutdown_close_last_blockers = blocker_tuple
             self.statusBar().showMessage(
-                "已暫停關閉：" + "、".join(parts) + "。工作安全結束後請再次關閉。",
+                "已暫停關閉：" + "、".join(parts) + "；完成後將自動關閉。",
                 10_000,
             )
+            MainWindow._record_shutdown_message(
+                self,
+                "主視窗收到 close request，已進入合作式收尾："
+                + "、".join(parts)
+            )
+            timer = getattr(self, "_shutdown_close_timer", None)
+            if timer is not None:
+                timer.start()
             event.ignore()
             return
+
+        self._shutdown_close_finalizing = True
+        timer = getattr(self, "_shutdown_close_timer", None)
+        if timer is not None:
+            timer.stop()
+        started = self._shutdown_close_started_monotonic
+        elapsed = time.monotonic() - started if started is not None else 0.0
+        MainWindow._record_shutdown_message(
+            self,
+            f"主視窗閒置關閉耗時 {elapsed:.3f} 秒；沒有背景依賴。"
+        )
         event.accept()
 
 

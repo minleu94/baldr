@@ -154,6 +154,45 @@ def test_unknown_conflict_and_invalid_review_are_not_writable(tmp_path: Path) ->
     assert journal.list_decision_revisions() == []
 
 
+def test_known_provenance_mismatch_blocks_read_and_write_instead_of_using_old_head(
+    tmp_path: Path,
+) -> None:
+    journal = JournalService(_config(tmp_path))
+    controller = DecisionContinuityController(journal)
+    original = controller.accept(_identity(), request_id="snapshot-a-accept")
+    assert original.success
+
+    changed = _identity(snapshot_hash="sha256:changed")
+    state = controller.read_state(changed)
+    assert state.identity.identity_status == "conflict"
+    assert not state.can_write
+    assert "source_snapshot_hash" in state.blocked_reason
+    assert state.history == ()
+
+    blocked = controller.note(changed, note="不可誤接舊來源", request_id="snapshot-b-note")
+    assert not blocked.success
+    assert blocked.error_code == "decision_identity_not_writable"
+    assert len(journal.list_decision_revisions()) == 1
+
+
+def test_object_context_preserves_explicit_snapshot_identity() -> None:
+    class Context:
+        result_id = "result-object"
+        stock_code = "2330"
+        decision_date = "2026-09-14"
+        source_snapshot_id = "snapshot-object"
+        source_snapshot_hash = "sha256:object"
+        identity_status = "linked"
+
+    identity = DecisionContinuityController.identity_from_context(Context())
+    assert identity.result_id == "result-object"
+    assert identity.stock_code == "2330"
+    assert identity.decision_date == "2026-09-14"
+    assert identity.source_snapshot_id == "snapshot-object"
+    assert identity.source_snapshot_hash == "sha256:object"
+    assert identity.is_linked
+
+
 def test_write_success_with_readback_failure_is_explicit_and_retry_does_not_duplicate(
     tmp_path: Path,
 ) -> None:

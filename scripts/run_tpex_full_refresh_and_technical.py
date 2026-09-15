@@ -26,6 +26,12 @@ def _write_state(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _cancel_requested(cancel_file: Path | None) -> bool:
+    """只以本次工作明確提供的 marker 請求合作式停止。"""
+
+    return cancel_file is not None and cancel_file.exists()
+
+
 def _step(name: str, ok: bool, message: str, rows: int = 0, warnings: List[str] | None = None) -> Dict[str, Any]:
     return {
         "name": name,
@@ -88,6 +94,7 @@ def _run_tpex_parallel(
     start_date: str,
     end_date: str,
     workers: int,
+    cancel_callback=None,
 ) -> Dict[str, Any]:
     date_keys = service._iter_weekday_date_keys(start_date, end_date)
     source = service._create_tpex_daily_price_source()
@@ -103,11 +110,28 @@ def _run_tpex_parallel(
     total_rows = 0
     total_skipped_rows = 0
     total = len(pending_dates)
+    cancellation_seen = False
 
     if total == 0:
         return {
             "success": True,
             "message": "TPEX daily price CSV already complete for requested range",
+            "requested_dates": date_keys,
+            "updated_dates": [],
+            "fallback_dates": [],
+            "skipped_dates": skipped_dates,
+            "failed_dates": [],
+            "tpex_rows": 0,
+            "skipped_rows": 0,
+            "diagnostic_count": 0,
+            "source_dates": [],
+        }
+
+    if cancel_callback is not None and cancel_callback():
+        return {
+            "success": False,
+            "cancelled": True,
+            "message": "TPEX 平行更新已合作式取消（尚未開始）",
             "requested_dates": date_keys,
             "updated_dates": [],
             "fallback_dates": [],
@@ -135,6 +159,8 @@ def _run_tpex_parallel(
         future_map = {executor.submit(fetch_one, date_key): date_key for date_key in pending_dates}
         for future in as_completed(future_map):
             requested_date = future_map[future]
+            if future.cancelled():
+                continue
             try:
                 result = future.result()
             except Exception as exc:
@@ -151,6 +177,14 @@ def _run_tpex_parallel(
                 failed_dates.append(requested_date)
             total_skipped_rows += int(result.get("skipped_count", 0))
             completed += 1
+
+            if cancel_callback is not None and cancel_callback():
+                # 已送出的 HTTP request 讓它在自己的有限 timeout 內完成；
+                # 不再提交後續日期，且保留已完成的結果供狀態檔追蹤。
+                cancellation_seen = True
+                for pending in future_map:
+                    if not pending.done():
+                        pending.cancel()
 
             if completed == total or completed % 10 == 0:
                 state["steps"]["tpex_daily"] = {
@@ -174,6 +208,21 @@ def _run_tpex_parallel(
 
     unique_updated_dates = sorted(set(updated_dates))
     unique_failed_dates = sorted(set(failed_dates))
+    if cancellation_seen or (cancel_callback is not None and cancel_callback()):
+        return {
+            "success": False,
+            "cancelled": True,
+            "message": "TPEX 平行更新已合作式取消（已完成目前安全邊界）",
+            "requested_dates": date_keys,
+            "updated_dates": unique_updated_dates,
+            "fallback_dates": sorted(set(fallback_dates)),
+            "skipped_dates": sorted(set(skipped_dates)),
+            "failed_dates": unique_failed_dates,
+            "tpex_rows": total_rows,
+            "skipped_rows": total_skipped_rows,
+            "diagnostic_count": 0,
+            "source_dates": unique_updated_dates,
+        }
     warnings = _tpex_warning_messages({"failed_dates": unique_failed_dates})
     has_any_local_data = bool(unique_updated_dates or skipped_dates)
     return {
@@ -208,9 +257,15 @@ def main() -> int:
     parser.add_argument("--twse-update", action="store_true")
     parser.add_argument("--technical-force-all", action="store_true")
     parser.add_argument("--tpex-workers", type=int, default=1)
+    parser.add_argument(
+        "--cancel-file",
+        default=None,
+        help="可選合作式取消 marker；只在安全的日期／寫入邊界停止",
+    )
     args = parser.parse_args()
 
     state_file = Path(args.state_file)
+    cancel_file = Path(args.cancel_file).expanduser() if args.cancel_file else None
     state: Dict[str, Any] = {
         "status": "running",
         "started_at": datetime.now().isoformat(timespec="seconds"),
@@ -223,8 +278,22 @@ def main() -> int:
             "sqlite": {"status": "pending", "message": "waiting", "rows": 0, "warnings": []},
             "technical": {"status": "pending", "message": "waiting", "rows": 0, "warnings": []},
         },
+        "cancel_file": str(cancel_file) if cancel_file is not None else None,
+        "cancel_requested": False,
+        "cancel_completed": False,
     }
     _write_state(state_file, state)
+
+    def cancellation_requested() -> bool:
+        return _cancel_requested(cancel_file)
+
+    def finish_cancelled(message: str) -> int:
+        state["status"] = "cancelled"
+        state["cancel_requested"] = True
+        state["cancel_completed"] = True
+        state["message"] = message
+        _write_state(state_file, state)
+        return 0
 
     # keep data-root stable for this job
     data_root = os.environ.get("DATA_ROOT")
@@ -241,7 +310,12 @@ def main() -> int:
             state["steps"]["twse_daily"] = {"status": "running", "message": "running", "rows": 0, "warnings": []}
             _write_state(state_file, state)
 
-            twse_result = service.update_daily(args.start_date, args.end_date, delay_seconds=args.delay_seconds)
+            twse_result = service.update_daily(
+                args.start_date,
+                args.end_date,
+                delay_seconds=args.delay_seconds,
+                cancel_callback=cancellation_requested,
+            )
             state["steps"]["twse_daily"] = _step(
                 "twse_daily",
                 bool(twse_result.get("success", False)),
@@ -251,6 +325,10 @@ def main() -> int:
             if not twse_result.get("success", False):
                 all_warnings.append(f"TWSE 每日股價更新失敗：{twse_result.get('message', 'unknown')}")
             _write_state(state_file, state)
+            if twse_result.get("cancelled"):
+                return finish_cancelled(
+                    str(twse_result.get("message") or "TWSE 更新已合作式取消")
+                )
         else:
             state["steps"]["twse_daily"] = {
                 "status": "skipped",
@@ -271,6 +349,7 @@ def main() -> int:
                 start_date=args.start_date,
                 end_date=args.end_date,
                 workers=args.tpex_workers,
+                cancel_callback=cancellation_requested,
             )
         else:
             tpex_result = service.update_tpex_daily_price_range(
@@ -280,6 +359,7 @@ def main() -> int:
                 force_refresh=False,
                 break_on_repeated_source_date=False,
                 sync_to_sqlite=False,
+                cancel_callback=cancellation_requested,
             )
         state["steps"]["tpex_daily"] = _step(
             "tpex_daily",
@@ -295,11 +375,22 @@ def main() -> int:
         state["tpex_fallback_dates"] = tpex_result.get("fallback_dates", [])
         state["tpex_skipped_dates"] = tpex_result.get("skipped_dates", [])
         _write_state(state_file, state)
+        if tpex_result.get("cancelled"):
+            return finish_cancelled(
+                str(tpex_result.get("message") or "TPEX 更新已合作式取消")
+            )
 
         if args.sync_sqlite:
+            if cancellation_requested():
+                return finish_cancelled("已取消：尚未開始 SQLite 同步")
             state["steps"]["sqlite"] = {"status": "running", "message": "running", "rows": 0, "warnings": []}
             _write_state(state_file, state)
-            sync_result = service.sync_source_to_sqlite("daily_price_files", args.start_date, args.end_date)
+            sync_result = service.sync_source_to_sqlite(
+                "daily_price_files",
+                args.start_date,
+                args.end_date,
+                cancel_callback=cancellation_requested,
+            )
             sync_rows = int(sync_result.get("synced_records", 0))
             state["steps"]["sqlite"] = _step(
                 "sqlite",
@@ -310,6 +401,10 @@ def main() -> int:
             if not sync_result.get("success", False):
                 all_warnings.append(f"SQLite 同步失敗：{sync_result.get('message', 'unknown')}")
             _write_state(state_file, state)
+            if sync_result.get("cancelled"):
+                return finish_cancelled(
+                    str(sync_result.get("message") or "SQLite 同步已合作式取消")
+                )
         else:
             state["steps"]["sqlite"] = {
                 "status": "skipped",
@@ -319,6 +414,8 @@ def main() -> int:
             }
             _write_state(state_file, state)
 
+        if cancellation_requested():
+            return finish_cancelled("已取消：尚未開始技術指標計算")
         status = service.check_data_overview() if hasattr(service, "check_data_overview") else service.check_data_status()
         technical_coverage = service.check_technical_indicator_latest_coverage()
         should_skip_technical, skip_message = _should_skip_technical_indicators(
@@ -342,6 +439,7 @@ def main() -> int:
                 force_all=args.technical_force_all,
                 start_date=None,
                 progress_callback=None,
+                cancel_callback=cancellation_requested,
                 incremental_lookback_days=120,
             )
             tech_stocks = tech_result.get("updated_stocks", [])
@@ -354,6 +452,10 @@ def main() -> int:
             )
             if not tech_result.get("success", False):
                 all_warnings.append(f"技術指標計算失敗：{tech_result.get('message', 'unknown')}")
+            if tech_result.get("cancelled"):
+                return finish_cancelled(
+                    str(tech_result.get("message") or "技術指標計算已合作式取消")
+                )
         _write_state(state_file, state)
 
         all_warnings = list(dict.fromkeys(all_warnings))

@@ -407,6 +407,7 @@ class StockResearchReportView(QWidget):
             f"研究路徑：{format_research_workflow_path()}\n"
             f"來源：{source}｜狀態：{return_text}｜"
             f"決策日：{context.decision_date or '未知'}｜資料日：{context.data_date or '未知'}｜"
+            f"來源 snapshot：{context.source_snapshot_id or context.source_snapshot_hash or '未知'}｜"
             f"來源版本：{context.source_version or '未知'}｜映射版本：{context.mapping_version or '未知'}"
         )
 

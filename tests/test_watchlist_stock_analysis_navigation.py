@@ -86,7 +86,17 @@ def test_saved_analysis_reads_exact_source_and_rejects_future_without_writing(tm
     assert {p.name: p.read_bytes() for p in runs.iterdir()} == before
 
     app = QApplication.instance() or QApplication([])
-    view = WatchlistView(WatchlistStub())
+    class ExplicitSourceWatchlistStub(WatchlistStub):
+        def get_stocks(self):
+            return [
+                {
+                    "stock_code": "2330",
+                    "stock_name": "台積電",
+                    "source_id": "saved-1",
+                }
+            ]
+
+    view = WatchlistView(ExplicitSourceWatchlistStub())
     view.analysis_service = service
     view.stocks_table.selectRow(0)
     for _ in range(100):

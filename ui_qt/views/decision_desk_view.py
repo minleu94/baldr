@@ -58,6 +58,7 @@ class DecisionDeskView(QWidget):
         self._refresh_generation = 0
         self._worker_generation = 0
         self._refresh_pending = False
+        self._closing = False
 
         self._setup_ui()
         self._display_pending_snapshot()
@@ -295,6 +296,8 @@ class DecisionDeskView(QWidget):
         return row
 
     def refresh_snapshot(self):
+        if self._closing:
+            return
         self._refresh_generation += 1
         if self.async_refresh:
             self._start_refresh_worker()
@@ -347,6 +350,8 @@ class DecisionDeskView(QWidget):
         self.refresh_btn.setEnabled(False)
 
     def _start_refresh_worker(self) -> None:
+        if self._closing:
+            return
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
             self._refresh_pending = True
             return
@@ -368,8 +373,23 @@ class DecisionDeskView(QWidget):
         self._refresh_worker = None
         if worker is not None:
             worker.deleteLater()
-        if self._refresh_pending:
+        if self._refresh_pending and not self._closing:
             self._start_refresh_worker()
+
+    def begin_shutdown(self) -> None:
+        """撤銷 pending refresh，避免取消舊 worker 後自動補起新一輪。"""
+
+        self._closing = True
+        self._refresh_generation += 1
+        self._refresh_pending = False
+        worker = self._refresh_worker
+        if worker is not None:
+            try:
+                is_running = bool(worker.isRunning())
+            except RuntimeError:
+                is_running = False
+            if is_running:
+                worker.cancel(cooperative=True, wait=False)
 
     def _on_refresh_worker_finished(self, snapshot: DecisionDeskSnapshot, generation: int | None = None, request_date: date | None = None) -> None:
         if generation is not None and generation != self._worker_generation:
@@ -392,10 +412,8 @@ class DecisionDeskView(QWidget):
         self._release_refresh_worker()
 
     def closeEvent(self, event) -> None:
-        self._refresh_generation += 1
-        self._refresh_pending = False
+        self.begin_shutdown()
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
-            self._refresh_worker.cancel(cooperative=True, wait=False)
             event.ignore()
             return
         super().closeEvent(event)

@@ -482,11 +482,24 @@ class UpdateView(QWidget):
         self._active_update_end_date: str | None = None
         self.tpex_refresh_state_file = Path(meta_data_dir) / "tpex_full_refresh_status.json"
         self._tpex_background_process: Optional[subprocess.Popen] = None
+        self._tpex_cancel_file = self.tpex_refresh_state_file.with_name(
+            self.tpex_refresh_state_file.name + ".cancel"
+        )
+        self._tpex_cancel_requested = False
+        self._tpex_process_exit_code: int | None = None
+        self._shutdown_requested = False
 
         self._setup_ui()
 
     def _start_worker(self, worker: TaskWorker, *, operation_kind: str = "read") -> TaskWorker:
         """保留背景 worker 生命週期，並阻擋寫入型工作彼此重疊。"""
+        if self._shutdown_requested:
+            # 關閉請求後，queued UI callback 仍可能抵達；預先標記 worker
+            # 取消，讓呼叫端既有的 ``worker.start()`` 只完成一個短生命週期，
+            # 不會在收尾期間重新啟動資料／網路／SQLite 工作。
+            cancel = getattr(worker, "cancel", None)
+            if callable(cancel):
+                cancel(cooperative=True, wait=False)
         self.worker = self._worker_coordinator.start(
             worker,
             kind=operation_kind,
@@ -612,6 +625,11 @@ class UpdateView(QWidget):
 
     def _reject_busy_write(self, operation_name: str) -> bool:
         """拒絕重疊寫入／匯出工作；唯讀狀態查詢仍可並行。"""
+        if self._shutdown_requested:
+            message = f"視窗正在安全關閉，略過「{operation_name}」的新工作。"
+            if hasattr(self, "log_text"):
+                self._log(message)
+            return True
         if not self._has_active_write_worker() and not self.has_running_background_process():
             return False
         message = f"已有背景工作進行中，無法同時執行「{operation_name}」。請等待目前工作完成。"
@@ -778,19 +796,179 @@ class UpdateView(QWidget):
         """寫入型工作完成後，強制下一次進入來源頁重新查詢。"""
         self._loaded_detail_sources.clear()
 
+    def _read_tpex_background_state(self) -> Dict[str, Any]:
+        """讀取目前 TPEX 狀態；狀態損壞時回傳空 payload 但不阻塞 UI。"""
+
+        try:
+            raw = json.loads(self.tpex_refresh_state_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return raw if isinstance(raw, dict) else {}
+
+    def _restore_tpex_background_controls(self) -> None:
+        button = getattr(self, "tpex_background_btn", None)
+        if button is None:
+            return
+        button.setEnabled(True)
+        button.setText("背景補齊 TPEX + 技術指標")
+
+    def _observe_tpex_background_process(self) -> bool:
+        """回收已結束的 TPEX process，並把異常退出寫回明確狀態。"""
+
+        process = self._tpex_background_process
+        if process is None:
+            return False
+        try:
+            exit_code = process.poll()
+        except Exception as exc:  # pragma: no cover - OS handle failure path
+            # Popen 的 process handle 不應在 view 壽命內失效；若 OS 回報
+            # 例外，保留 process reference 並持續阻擋關閉，避免把未知的
+            # 外部 writer 留在背景而造成資料／lock 風險。
+            self._log(f"TPEX 背景程序狀態查詢失敗，暫緩關閉：{exc}")
+            return True
+        if exit_code is None:
+            return True
+
+        self._tpex_background_process = None
+        try:
+            self._tpex_process_exit_code = int(exit_code)
+        except (TypeError, ValueError):
+            self._tpex_process_exit_code = None
+
+        state = self._read_tpex_background_state()
+        status = str(state.get("status") or "").strip().lower()
+        cancelled_completed = status == "cancelled" and bool(
+            state.get("cancel_completed")
+        )
+        terminal_statuses = {"done", "done_with_warning", "failed"}
+        # A non-zero child exit always wins over a stale success/cancellation
+        # receipt.  The process has ended, so the UI may release the close
+        # blocker, but the durable diagnostic must remain ``failed`` with the
+        # observed exit code rather than claiming a safe cancellation.
+        nonzero_exit_conflict = (
+            self._tpex_process_exit_code is not None
+            and self._tpex_process_exit_code != 0
+            and (status in {"done", "done_with_warning"} or cancelled_completed)
+        )
+        if nonzero_exit_conflict:
+            cancel_requested = bool(state.get("cancel_requested")) or self._tpex_cancel_file.exists()
+            state.update(
+                {
+                    "status": "failed",
+                    "cancel_requested": cancel_requested,
+                    "cancel_completed": False,
+                    "message": (
+                        "TPEX 背景程序退出碼非零，覆寫舊的完成／取消收據，"
+                        f"退出碼={exit_code}"
+                    ),
+                    "process_exit_code": self._tpex_process_exit_code,
+                }
+            )
+            self._write_tpex_background_status(state)
+        elif status not in terminal_statuses and not cancelled_completed:
+            cancel_requested = bool(state.get("cancel_requested")) or self._tpex_cancel_file.exists()
+            state.update(
+                {
+                    # A marker is only a request.  The child must write
+                    # cancel_completed=True before the UI may call this a
+                    # safe cancellation; a crash or partial state is failed.
+                    "status": "failed",
+                    "cancel_requested": cancel_requested,
+                    "cancel_completed": False,
+                    "message": f"TPEX 背景程序已結束但未完成安全收尾，退出碼={exit_code}",
+                    "process_exit_code": self._tpex_process_exit_code,
+                }
+            )
+            self._write_tpex_background_status(state)
+        self._restore_tpex_background_controls()
+        self._log(
+            "TPEX 背景程序已結束："
+            f"exit_code={self._tpex_process_exit_code}，狀態={state.get('status', status or 'unknown')}"
+        )
+        return False
+
+    def _request_tpex_background_cancel(self) -> bool:
+        """以 cancel marker 通知獨立流程在安全邊界停止。"""
+
+        process = self._tpex_background_process
+        if process is None or not self._observe_tpex_background_process():
+            return False
+        if self._tpex_cancel_requested:
+            return True
+        try:
+            self._tpex_cancel_file.parent.mkdir(parents=True, exist_ok=True)
+            self._tpex_cancel_file.write_text(
+                datetime.now().isoformat(timespec="seconds"),
+                encoding="ascii",
+            )
+            # The child owns the execution state JSON while it is alive.  Do
+            # not read-then-write ``status=cancelling`` here: the child could
+            # publish a terminal done/cancelled receipt between those two
+            # operations and the UI would overwrite it.  The marker is the
+            # sole cancellation request; the visible label is UI-local.
+            self._tpex_cancel_requested = True
+            self._set_tpex_background_status_label(
+                "cancelling",
+                message="已送出合作式取消，等待安全收尾…",
+                level="warning",
+            )
+            self._log(
+                f"已通知 TPEX 背景程序合作式取消：PID={getattr(process, 'pid', '-') }；"
+                "不強制終止外部 writer。"
+            )
+            return True
+        except Exception as exc:  # pragma: no cover - filesystem failure path
+            self._log(f"TPEX 合作式取消通知失敗：{exc}")
+            return False
+
+    def _running_update_workers(self) -> list[TaskWorker]:
+        """取得仍在跑的 local worker，丟棄已刪除／已結束 wrapper。"""
+
+        running: list[TaskWorker] = []
+        for worker in list(self._active_workers):
+            try:
+                is_running = bool(worker.isRunning())
+            except RuntimeError:
+                self._release_worker(worker)
+                continue
+            if is_running:
+                running.append(worker)
+            else:
+                # native QThread 已停止但 queued result/cleanup 尚未抵達；
+                # 不再把它當作關閉阻塞，且仍由 TaskWorker native finished
+                # lifecycle 負責 QObject deferred deletion。
+                self._release_worker(worker)
+        return running
+
+    def begin_shutdown(self) -> bool:
+        """鎖住新工作並送出一次冪等的合作式關閉請求。"""
+
+        self._shutdown_requested = True
+        return self.request_cooperative_shutdown()
+
     def has_running_background_process(self) -> bool:
         """TPEX 獨立程序未結束時，主視窗不得假裝可安全關閉。"""
-        process = self._tpex_background_process
-        return process is not None and process.poll() is None
+
+        return self._observe_tpex_background_process()
 
     def request_cooperative_shutdown(self) -> bool:
-        """送出取消但不強制終止；回傳是否已能安全釋放本 view。"""
-        for worker in list(self._active_workers):
-            if worker.isRunning() and hasattr(worker, "cancel"):
-                worker.cancel(cooperative=True, wait=False)
-        return not any(
-            worker.isRunning() for worker in self._active_workers
-        ) and not self.has_running_background_process()
+        """停止新工作、通知既有 worker／TPEX，回傳是否已安全完成。"""
+
+        self._shutdown_requested = True
+        for worker in self._running_update_workers():
+            try:
+                cancel = getattr(worker, "cancel", None)
+            except RuntimeError:
+                self._release_worker(worker)
+                continue
+            if not callable(cancel):
+                continue
+            try:
+                cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                self._release_worker(worker)
+        self._request_tpex_background_cancel()
+        return not self._running_update_workers() and not self.has_running_background_process()
 
     def _setup_ui(self):
         """設置 UI"""
@@ -1415,8 +1593,11 @@ class UpdateView(QWidget):
 
         status_text = {
             "running": "執行中",
+            "cancelling": "取消收尾中",
             "done": "完成",
+            "done_with_warning": "完成（有警告）",
             "failed": "失敗",
+            "cancelled": "已取消",
             "unknown": "未知",
             "not_started": "尚未啟動",
         }.get(status, status or "未知")
@@ -3856,7 +4037,7 @@ class UpdateView(QWidget):
         """以獨立進程背景執行 TPEX + TWSE + 技術指標完整流程。"""
         if self._reject_busy_write("TPEX 背景補齊"):
             return
-        if self._tpex_background_process is not None and self._tpex_background_process.poll() is None:
+        if self.has_running_background_process():
             QMessageBox.information(
                 self,
                 "背景任務進行中",
@@ -3870,6 +4051,14 @@ class UpdateView(QWidget):
             QMessageBox.critical(self, "背景任務啟動失敗", f"找不到背景腳本：{script_path}")
             return
 
+        # 測試／嵌入頁可注入不同 status path；cancel marker 必須跟著同一
+        # 次 process state 走，不能沿用 constructor 的舊資料根目錄。
+        self._tpex_cancel_file = self.tpex_refresh_state_file.with_name(
+            self.tpex_refresh_state_file.name + ".cancel"
+        )
+        self._tpex_cancel_requested = False
+        self._tpex_process_exit_code = None
+
         self.tpex_background_btn.setEnabled(False)
         self.tpex_background_btn.setText("背景補齊中...")
 
@@ -3879,8 +4068,23 @@ class UpdateView(QWidget):
             "mode": "tpex_full_refresh_and_technical",
             "start_date": start_date,
             "end_date": end_date,
+            "cancel_file": str(self._tpex_cancel_file),
             "steps": {},
         }
+        try:
+            # 這是本 view 自己建立的 control marker；每次新 run 先清除
+            # 上一次的取消請求，避免 stale marker 讓新工作一啟動就退出。
+            self._tpex_cancel_file.unlink(missing_ok=True)
+        except OSError as exc:
+            self.tpex_background_btn.setEnabled(True)
+            self.tpex_background_btn.setText("背景補齊 TPEX + 技術指標")
+            self._log(f"無法清除上一輪 TPEX 取消 marker：{exc}")
+            QMessageBox.critical(
+                self,
+                "背景任務啟動失敗",
+                f"無法準備合作式取消控制檔：{self._tpex_cancel_file}\n{exc}",
+            )
+            return
         if not self._write_tpex_background_status(initial_status):
             self.tpex_background_btn.setEnabled(True)
             self.tpex_background_btn.setText("背景補齊 TPEX + 技術指標")
@@ -3905,6 +4109,8 @@ class UpdateView(QWidget):
             end_date,
             "--state-file",
             str(self.tpex_refresh_state_file),
+            "--cancel-file",
+            str(self._tpex_cancel_file),
             "--delay-seconds",
             "1.0",
             "--sync-sqlite",
@@ -3934,6 +4140,7 @@ class UpdateView(QWidget):
 
     def _show_tpex_background_status(self):
         """讀取並顯示背景任務 JSON 狀態。"""
+        self._observe_tpex_background_process()
         if not self.tpex_refresh_state_file.exists():
             self._set_tpex_background_status_label("not_started", level="warning")
             QMessageBox.information(self, "背景任務狀態", "目前尚未啟動 TPEX 背景補齊任務。")
@@ -3971,7 +4178,15 @@ class UpdateView(QWidget):
                 lines.append(f"錯誤訊息：{raw.get('message', '-')}")
 
             status = str(raw.get("status", "unknown"))
-            level = "success" if status == "done" else "error" if status == "failed" else "warning" if status == "unknown" else "info"
+            level = (
+                "success"
+                if status in {"done", "done_with_warning"}
+                else "error"
+                if status == "failed"
+                else "warning"
+                if status in {"unknown", "cancelling", "cancelled"}
+                else "info"
+            )
             self._set_tpex_background_status_label(
                 status,
                 message=str(raw.get("message", "") or ""),
@@ -3985,7 +4200,7 @@ class UpdateView(QWidget):
             self._log("\n".join(lines))
             QMessageBox.information(self, "背景任務狀態", "\n".join(lines))
 
-            if raw.get("status") in {"done", "failed"}:
+            if raw.get("status") in {"done", "done_with_warning", "failed", "cancelled"}:
                 self._invalidate_detail_cache()
                 self.tpex_background_btn.setEnabled(True)
                 self.tpex_background_btn.setText("背景補齊 TPEX + 技術指標")

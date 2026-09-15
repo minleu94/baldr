@@ -161,6 +161,115 @@ def test_native_thread_cleanup_is_deferred_while_worker_is_running():
     assert worker._delete_later_requested is False
 
 
+def test_native_finished_worker_is_removed_from_shutdown_registry():
+    import ui_qt.workers.task_worker as task_worker_module
+
+    class _FinishedWorker(TaskWorker):
+        def isRunning(self):
+            return False
+
+    worker = _FinishedWorker(lambda **_kwargs: None)
+    assert worker in task_worker_module._MANAGED_TASK_WORKERS
+
+    worker._on_native_thread_finished()
+
+    assert worker not in task_worker_module._MANAGED_TASK_WORKERS
+
+
+def test_unstarted_delete_later_worker_is_removed_from_shutdown_registry():
+    from PySide6.QtWidgets import QApplication
+    import ui_qt.workers.task_worker as task_worker_module
+
+    app = QApplication.instance() or QApplication([])
+    worker = TaskWorker(lambda **_kwargs: None)
+    assert worker in task_worker_module._MANAGED_TASK_WORKERS
+
+    worker.deleteLater()
+
+    try:
+        assert worker not in task_worker_module._MANAGED_TASK_WORKERS
+    finally:
+        app.processEvents()
+
+
+def test_start_failure_cleans_both_worker_registries(monkeypatch):
+    from PySide6.QtCore import QThread
+    import ui_qt.workers.task_worker as task_worker_module
+
+    worker = TaskWorker(lambda **_kwargs: None)
+
+    def fail_start(_worker, _priority):
+        raise RuntimeError("synthetic QThread.start failure")
+
+    monkeypatch.setattr(QThread, "start", fail_start)
+
+    with pytest.raises(RuntimeError, match="synthetic QThread.start failure"):
+        worker.start()
+
+    assert worker not in task_worker_module._MANAGED_TASK_WORKERS
+    assert worker not in task_worker_module._LIVE_TASK_WORKERS
+
+
+def test_deleted_cpp_worker_is_discarded_by_shutdown_probe():
+    from PySide6.QtWidgets import QApplication
+    import shiboken6
+    import ui_qt.workers.task_worker as task_worker_module
+
+    app = QApplication.instance() or QApplication([])
+    worker = TaskWorker(lambda **_kwargs: None)
+    assert worker in task_worker_module._MANAGED_TASK_WORKERS
+
+    shiboken6.delete(worker)
+
+    assert task_worker_module.running_task_workers() == ()
+    assert worker not in task_worker_module._MANAGED_TASK_WORKERS
+    app.processEvents()
+
+
+def test_restarting_finished_worker_restores_shutdown_registry():
+    from PySide6.QtWidgets import QApplication
+    import threading
+    import ui_qt.workers.task_worker as task_worker_module
+
+    app = QApplication.instance() or QApplication([])
+    first_finished = []
+    second_started = threading.Event()
+    release_second = threading.Event()
+
+    def task():
+        if not first_finished:
+            first_finished.append(True)
+            return "first"
+        second_started.set()
+        release_second.wait(5)
+        return "second"
+
+    worker = TaskWorker(task)
+    worker.start()
+    assert worker.wait(5_000) is True
+    app.processEvents()
+    assert worker not in task_worker_module._MANAGED_TASK_WORKERS
+
+    started = False
+    waited = False
+    try:
+        worker.start()
+        started = True
+        assert second_started.wait(5) is True
+        assert worker in task_worker_module._MANAGED_TASK_WORKERS
+        assert worker in task_worker_module._LIVE_TASK_WORKERS
+    finally:
+        if started:
+            release_second.set()
+            waited = worker.wait(5_000)
+        app.processEvents()
+
+    assert waited is True
+    assert worker not in task_worker_module._MANAGED_TASK_WORKERS
+    worker.deleteLater()
+    app.processEvents()
+
+
 def test_native_finished_signal_is_available_separately_from_task_result():
     from PySide6.QtWidgets import QApplication
 

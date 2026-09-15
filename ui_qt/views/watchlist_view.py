@@ -3,12 +3,14 @@
 管理跨 Tab 共用的股票觀察清單
 """
 
+from collections.abc import Mapping
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QTableView, QMessageBox, QDialog,
     QDialogButtonBox, QLineEdit, QTextEdit, QListWidget,
     QListWidgetItem, QHeaderView, QMenu, QAbstractItemView,
-    QGroupBox, QSplitter, QSizePolicy
+    QGroupBox, QSplitter, QSizePolicy, QInputDialog
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QAction
@@ -22,6 +24,11 @@ from typing import List, Dict, Optional
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.watchlist_service import WatchlistService, WatchlistStorageStatus
+from app_module.dtos.decision_continuity_dtos import (
+    DecisionIdentity,
+    IDENTITY_STATUS_CONFLICT,
+    IDENTITY_STATUS_UNKNOWN,
+)
 from app_module.universe_service import UniverseService
 from app_module.watchlist_analysis_service import WatchlistAnalysisService
 from app_module.decision_presentation import (
@@ -279,6 +286,15 @@ class WatchlistView(QWidget):
         self.stock_research_btn = self.stock_analysis_btn
         self.stock_analysis_btn.clicked.connect(self._open_stock_analysis)
         analysis_header_layout.addWidget(self.stock_analysis_btn)
+        self.choose_source_btn = QPushButton("選擇原推薦來源")
+        self.choose_source_btn.setProperty("variant", "secondary")
+        self.choose_source_btn.setAccessibleName("選擇原推薦來源")
+        self.choose_source_btn.setToolTip(
+            "legacy 候選沒有 exact result_id 時，明確選取保存結果；不會自動套用最新結果。"
+        )
+        self.choose_source_btn.setVisible(False)
+        self.choose_source_btn.clicked.connect(self._choose_recommendation_source)
+        analysis_header_layout.addWidget(self.choose_source_btn)
         analysis_layout.addLayout(analysis_header_layout)
 
         self.analysis_context_label = QLabel(
@@ -635,6 +651,7 @@ class WatchlistView(QWidget):
     def _load_watchlist(self):
         """載入觀察清單"""
         self._analysis_request_id += 1
+        self._set_source_choice_state(None)
         self.analysis_text.clear()
         self.analysis_context_label.setText(
             "狀態：載入中｜決策日：未知｜資料日：未知｜來源：讀取候選池"
@@ -933,6 +950,7 @@ class WatchlistView(QWidget):
         selection = self.stocks_table.selectionModel()
         rows = selection.selectedRows() if selection else []
         if self.stocks_model is None or len(rows) != 1:
+            self._set_source_choice_state(None)
             self.analysis_context_label.setText(
                 "狀態：尚未選取｜決策日：未知｜資料日：未知｜來源：未知"
             )
@@ -941,8 +959,138 @@ class WatchlistView(QWidget):
         row = self.stocks_model.getDataFrame().iloc[rows[0].row()]
         code = str(row["證券代號"]).strip()
         source = row.get("source_id", "")
-        source_id = source.strip() if isinstance(source, str) else ""
+        legacy_source_id = source.strip() if isinstance(source, str) else ""
+        identity = self._row_decision_identity(row, code)
+        # typed candidate 的 exact result_id 才是保存結果讀取鍵；source_id
+        # 可能只是 provider lineage，不能讓同股不同 result 共用同一個摘要。
+        source_id = identity.result_id if identity.is_linked else legacy_source_id
+        self._set_source_choice_state(row)
         self._request_stock_summary(code, source_id, request_id)
+
+    @staticmethod
+    def _row_decision_identity(row: object, stock_code: str) -> DecisionIdentity:
+        """從 model row 讀 typed identity；legacy row 明確維持 unknown。"""
+
+        raw = row.get("decision_identity", {}) if hasattr(row, "get") else {}
+        if isinstance(raw, DecisionIdentity):
+            try:
+                return DecisionIdentity.from_mapping(raw, default_stock_code=stock_code)
+            except (TypeError, ValueError):
+                return DecisionIdentity(
+                    stock_code=stock_code,
+                    identity_status=IDENTITY_STATUS_CONFLICT,
+                )
+        if isinstance(raw, Mapping):
+            try:
+                return DecisionIdentity.from_mapping(raw, default_stock_code=stock_code)
+            except (TypeError, ValueError):
+                return DecisionIdentity(
+                    stock_code=stock_code,
+                    identity_status=IDENTITY_STATUS_CONFLICT,
+                )
+        return DecisionIdentity(stock_code=stock_code, identity_status=IDENTITY_STATUS_UNKNOWN)
+
+    def _set_source_choice_state(self, row: object | None) -> None:
+        """顯示 legacy row 的 explicit source selection path。"""
+
+        button = getattr(self, "choose_source_btn", None)
+        if button is None:
+            return
+        if row is None or not hasattr(row, "get"):
+            button.setVisible(False)
+            button.setEnabled(False)
+            return
+        code = str(row.get("證券代號", "") or "").strip()
+        identity = self._row_decision_identity(row, code)
+        needs_choice = bool(code) and not identity.is_linked
+        button.setVisible(needs_choice)
+        button.setEnabled(needs_choice and bool(self._saved_source_options()))
+
+    def _selected_watchlist_row(self) -> tuple[object, str] | None:
+        model = self.stocks_model
+        selection = self.stocks_table.selectionModel()
+        rows = selection.selectedRows() if selection else []
+        if model is None or len(rows) != 1:
+            return None
+        frame = model.getDataFrame()
+        row_number = rows[0].row()
+        if row_number < 0 or row_number >= len(frame):
+            return None
+        row = frame.iloc[row_number]
+        return row, str(row.get("證券代號", "") or "").strip()
+
+    def _saved_source_options(self) -> list[dict[str, str]]:
+        service = self.analysis_service
+        list_sources = getattr(service, "list_saved_sources", None)
+        if not callable(list_sources):
+            return []
+        try:
+            values = list_sources()
+        except Exception as error:
+            logger.warning("[WatchlistView] 讀取保存結果選項失敗：%s", error)
+            return []
+        return [item for item in values if isinstance(item, dict) and item.get("result_id")]
+
+    def _choose_recommendation_source(self) -> None:
+        selected = self._selected_watchlist_row()
+        if selected is None:
+            self._set_status_label("請先選取一檔 legacy 候選。", level="info")
+            return
+        row, code = selected
+        if not code:
+            return
+        options = self._saved_source_options()
+        if not options:
+            self._set_status_label(
+                "目前沒有可選的保存推薦結果；請先到推薦分析保存原始結果。",
+                level="warning",
+            )
+            return
+        labels = [
+            f"{item['result_id']}｜{item.get('result_name') or '未命名結果'}"
+            for item in options
+        ]
+        selected_label, accepted = QInputDialog.getItem(
+            self,
+            "選擇原推薦來源",
+            f"為 {code} 明確選取保存結果（不會自動套用最新結果）：",
+            labels,
+            0,
+            False,
+        )
+        if not accepted or selected_label not in labels:
+            return
+        source = options[labels.index(selected_label)]
+        result_id = str(source["result_id"]).strip()
+        identity = DecisionIdentity(result_id=result_id, stock_code=code)
+        source_value = row.get("source_id", "")
+        expected_source_id = source_value.strip() if isinstance(source_value, str) else ""
+        binder = getattr(self.watchlist_service, "bind_stock_decision_identity", None)
+        if not callable(binder):
+            self._set_status_label("目前候選池服務不支援來源綁定。", level="error")
+            return
+        try:
+            bound = binder(
+                code,
+                identity,
+                expected_source_id=expected_source_id,
+            )
+        except Exception as error:
+            self._set_status_label(f"原推薦來源綁定失敗：{error}", level="error")
+            return
+        if not bound:
+            self._set_status_label(
+                "無法唯一定位此候選；未寫入來源，請先處理同股多列的既有 identity。",
+                level="warning",
+            )
+            return
+        self._load_watchlist()
+        self._set_status_label(
+            f"已明確綁定 {code} → {result_id}；後續研究會沿用此來源。",
+            level="success",
+        )
+        # 重載後依 exact result_id 定位該列，避免同股不同結果回到第一列。
+        self.select_stock(code, result_id)
 
     def _request_stock_summary(self, code, source_id, request_id):
         if self.analysis_service is None:
@@ -1045,12 +1193,14 @@ class WatchlistView(QWidget):
         if code:
             source_value = row.get("source_id", "")
             source_id = source_value.strip() if isinstance(source_value, str) else ""
+            decision_identity = self._row_decision_identity(row, code)
             self.stockAnalysisRequested.emit(code)
             self.stockResearchRequested.emit(
                 self._build_stock_research_context(
                     code,
                     str(row.get("證券名稱", "") or "").strip(),
                     source_id,
+                    decision_identity=decision_identity,
                 )
             )
 
@@ -1071,40 +1221,78 @@ class WatchlistView(QWidget):
         stock_code: str,
         stock_name: str = "",
         source_id: str = "",
+        *,
+        decision_identity: DecisionIdentity | Mapping[str, object] | None = None,
     ) -> ResearchStockContextDTO:
         """從觀察清單的保存來源建立唯讀上下文，不重新計算。"""
 
         code = str(stock_code).strip()
         source = str(source_id or "").strip()
+        identity = self._row_decision_identity(
+            {"decision_identity": decision_identity} if decision_identity is not None else {},
+            code,
+        )
         result = None
-        if self.analysis_service is not None and source:
+        explicit_result_id = identity.result_id if identity.is_linked else ""
+        lookup_source = explicit_result_id or source
+        if self.analysis_service is not None and lookup_source:
             try:
                 cutoff = datetime.now(ZoneInfo("Asia/Taipei")).date()
-                result = self.analysis_service.fetch(code, source, cutoff)
+                result = self.analysis_service.fetch(code, lookup_source, cutoff)
             except Exception as error:
                 logger.warning("[WatchlistView] 讀取保存來源 metadata 失敗：%s", error)
 
-        result_id = str(getattr(result, "result_id", "") or source)
+        # result_id 只接受 row 的 typed identity，或已由 exact source lookup
+        # 驗證成功的保存結果；不能把 legacy source_id 直接升格成結果身份。
+        result_id = explicit_result_id
+        if not result_id and result is not None and getattr(result, "status", "") in {
+            "saved",
+            "not_in_result",
+        }:
+            result_id = str(getattr(result, "result_id", "") or "").strip()
         decision_date = str(
             getattr(result, "decision_date", "")
             or getattr(result, "analysis_date", "")
+            or identity.decision_date
             or ""
         )
         data_date = str(getattr(result, "data_date", "") or "")
         profile_id = str(getattr(result, "profile_id", "") or "")
         profile_version = str(getattr(result, "profile_version", "") or "")
         lineage_id = str(getattr(result, "source_id", "") or "")
+        source_snapshot_id = str(
+            getattr(result, "source_snapshot_id", "")
+            or identity.source_snapshot_id
+            or ""
+        )
+        source_snapshot_hash = str(
+            getattr(result, "source_snapshot_hash", "")
+            or identity.source_snapshot_hash
+            or ""
+        )
+        identity_status = identity.identity_status
+        for field_name in ("decision_date", "source_snapshot_id", "source_snapshot_hash"):
+            context_value = getattr(identity, field_name)
+            result_value = str(getattr(result, field_name, "") or "").strip()
+            if context_value and result_value and context_value != result_value:
+                identity_status = IDENTITY_STATUS_CONFLICT
+        if result_id and not identity.is_linked:
+            if identity_status != IDENTITY_STATUS_CONFLICT:
+                identity_status = "linked"
         return ResearchStockContextDTO(
             stock_code=code,
             stock_name=stock_name,
             decision_date=decision_date,
             data_date=data_date,
             result_id=result_id,
+            identity_status=identity_status,
+            source_snapshot_id=source_snapshot_id,
+            source_snapshot_hash=source_snapshot_hash,
             profile_id=profile_id,
             profile_version=profile_version,
             source_id=source or lineage_id,
             source_kind=str(getattr(result, "source_kind", "") or "recommendation"),
-            source_label=("已保存推薦結果" if result_id else "觀察清單"),
+            source_label=("已保存推薦結果" if result_id else "觀察清單（尚未選定原始推薦）"),
             source_workspace="watchlist",
         )
 
@@ -1118,9 +1306,21 @@ class WatchlistView(QWidget):
         for row_number, value in enumerate(frame.get("證券代號", ())):
             if str(value).strip() == code:
                 if result_id:
-                    source = str(frame.iloc[row_number].get("source_id", "") or "").strip()
-                    if source and source != str(result_id).strip():
-                        return False
+                    row = frame.iloc[row_number]
+                    row_identity = self._row_decision_identity(row, code)
+                    source = str(row.get("source_id", "") or "").strip()
+                    requested = str(result_id).strip()
+                    exact_row_result = (
+                        row_identity.result_id
+                        if row_identity.is_linked
+                        else ""
+                    )
+                    if exact_row_result and exact_row_result != requested:
+                        continue
+                    if not exact_row_result and source and source != requested:
+                        continue
+                    if not exact_row_result and not source:
+                        continue
                 self.stocks_table.selectRow(row_number)
                 return True
         return False
@@ -1162,13 +1362,36 @@ class WatchlistView(QWidget):
             if not isinstance(source_id, str) or not source_id.strip():
                 source_id = row.get('result_id')
             source_id = source_id.strip() if isinstance(source_id, str) else ''
+
+            raw_identity = row.get("decision_identity", {})
+            if isinstance(raw_identity, Mapping):
+                decision_identity = dict(raw_identity)
+            else:
+                def _clean(value: object) -> str:
+                    if value is None:
+                        return ""
+                    try:
+                        if bool(pd.isna(value)):
+                            return ""
+                    except (TypeError, ValueError):
+                        pass
+                    return str(value).strip()
+
+                decision_identity = {
+                    "result_id": _clean(row.get("result_id", "")),
+                    "stock_code": _clean(stock_code),
+                    "source_snapshot_id": _clean(row.get("source_snapshot_id", "")),
+                    "source_snapshot_hash": _clean(row.get("source_snapshot_hash", "")),
+                    "decision_date": _clean(row.get("decision_date", "")),
+                }
             
             if stock_code:
                 stocks.append({
                     'stock_code': str(stock_code),
                     'stock_name': str(stock_name),
                     'notes': '',
-                    'source_id': source_id
+                    'source_id': source_id,
+                    'decision_identity': decision_identity,
                 })
         
         if stocks:

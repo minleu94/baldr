@@ -26,6 +26,8 @@ class WatchlistAnalysisDTO:
     profile_version: str = ""
     source_id: str = ""
     source_kind: str = ""
+    source_snapshot_id: str = ""
+    source_snapshot_hash: str = ""
     # 只沿用保存結果中的 ranking metadata；不在觀察清單頁重新計算。
     sample_size: int | None = None
     score_percentile_bp: int | None = None
@@ -68,13 +70,18 @@ class WatchlistAnalysisService:
         這個檢查讓個股報告可以重用既有結果而不引入 look-ahead。
         """
 
-        path = self._resolve_result_path(source_id)
+        source_key = str(source_id or "").strip()
+        # 空 source 代表 caller 沒有選定原始推薦；不可退回 registry 的
+        # latest row，否則同股不同 result 會被錯誤串接成目前來源。
+        if not source_key:
+            return None
+        path = self._resolve_result_path(source_key)
         if path is None:
             return None
         result = RecommendationResultDTO.from_dict(
             json.loads(path.read_text(encoding="utf-8"))
         )
-        if source_id and result.result_id != source_id:
+        if result.result_id != source_key:
             raise ValueError("推薦內容與指定來源 ID 不一致")
         if as_of_date is not None:
             cutoff = str(result.run_context.get("as_of_date") or "")
@@ -83,24 +90,34 @@ class WatchlistAnalysisService:
         return result
 
     def fetch(self, stock_code: str, source_id: str, as_of_date: date) -> WatchlistAnalysisDTO:
-        result = self.load_result(source_id, as_of_date=as_of_date)
+        source_key = str(source_id or "").strip()
+        if not source_key:
+            return WatchlistAnalysisDTO(
+                stock_code,
+                "missing",
+                message=(
+                    "尚未選定原始推薦來源；不會以同股或最新結果猜測。"
+                    "請回到推薦分析保存結果，或明確選擇原始推薦來源。"
+                ),
+            )
+        result = self.load_result(source_key, as_of_date=as_of_date)
         if result is None:
             if not (self.runs_dir / "recommendation_runs.db").is_file():
                 return WatchlistAnalysisDTO(stock_code, "missing", message="尚無已保存推薦分析；可到推薦分析產生並保存結果。")
-            if self._resolve_result_path(source_id) is None:
+            if self._resolve_result_path(source_key) is None:
                 return WatchlistAnalysisDTO(
                     stock_code,
                     "missing",
-                    result_id=source_id,
+                    source_id=source_key,
                     message="找不到對應的已保存推薦來源。",
                 )
             return WatchlistAnalysisDTO(
                 stock_code,
                 "unavailable",
-                result_id=source_id,
+                source_id=source_key,
                 message="分析日期缺失或晚於查詢日期，不能作為當下分析。",
             )
-        if source_id and result.result_id != source_id:
+        if result.result_id != source_key:
             raise ValueError("推薦內容與指定來源 ID 不一致")
         run_context = result.run_context or {}
         cutoff = str(run_context.get("as_of_date") or "")
@@ -117,6 +134,16 @@ class WatchlistAnalysisService:
         )
         source_kind = str(run_context.get("source_kind") or "recommendation")
         source_lineage_id = str(run_context.get("source_id") or "")
+        source_snapshot_id = str(
+            run_context.get("source_snapshot_id")
+            or result.config.get("source_snapshot_id")
+            or ""
+        )
+        source_snapshot_hash = str(
+            run_context.get("source_snapshot_hash")
+            or result.config.get("source_snapshot_hash")
+            or ""
+        )
         if not cutoff or date.fromisoformat(cutoff) > as_of_date:
             return WatchlistAnalysisDTO(
                 stock_code,
@@ -129,6 +156,8 @@ class WatchlistAnalysisService:
                 profile_version=profile_version,
                 source_id=source_lineage_id,
                 source_kind=source_kind,
+                source_snapshot_id=source_snapshot_id,
+                source_snapshot_hash=source_snapshot_hash,
             )
         for recommendation in result.recommendations:
             if recommendation.stock_code == stock_code:
@@ -143,6 +172,8 @@ class WatchlistAnalysisService:
                     profile_version=profile_version,
                     source_id=source_lineage_id,
                     source_kind=source_kind,
+                    source_snapshot_id=source_snapshot_id,
+                    source_snapshot_hash=source_snapshot_hash,
                     sample_size=(
                         recommendation.sample_size
                         if recommendation.sample_size is not None
@@ -185,12 +216,45 @@ class WatchlistAnalysisService:
             profile_version=profile_version,
             source_id=source_lineage_id,
             source_kind=source_kind,
+            source_snapshot_id=source_snapshot_id,
+            source_snapshot_hash=source_snapshot_hash,
             message="這份推薦未包含此股票；未入選不等於看空，可查看主力流向或重新分析。",
         )
+
+    def list_saved_sources(self, stock_code: str = "") -> list[dict[str, str]]:
+        """列出可供使用者明確選取的保存結果；不自動選 latest。"""
+
+        database = self.runs_dir / "recommendation_runs.db"
+        if not database.is_file():
+            return []
+        with closing(sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            columns = {
+                str(row[1])
+                for row in conn.execute("PRAGMA table_info(runs)").fetchall()
+            }
+            result_name_sql = "result_name" if "result_name" in columns else "''"
+            created_at_sql = "created_at" if "created_at" in columns else "''"
+            order_sql = "created_at DESC, result_id" if "created_at" in columns else "result_id"
+            rows = conn.execute(
+                f"SELECT result_id, {result_name_sql}, {created_at_sql} FROM runs "
+                f"ORDER BY {order_sql}"
+            ).fetchall()
+        return [
+            {
+                "result_id": str(row[0] or "").strip(),
+                "result_name": str(row[1] or "").strip(),
+                "created_at": str(row[2] or "").strip(),
+            }
+            for row in rows
+            if str(row[0] or "").strip()
+        ]
 
     def _resolve_result_path(self, source_id: str) -> Path | None:
         """只解析 runs registry 指向 runs_dir 內的保存檔，且關閉 SQLite。"""
 
+        if not str(source_id or "").strip():
+            return None
         db_path = self.runs_dir / "recommendation_runs.db"
         if not db_path.is_file():
             return None

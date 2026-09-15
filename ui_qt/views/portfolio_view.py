@@ -1157,6 +1157,21 @@ class PortfolioView(QWidget):
                 "正在取消持倉背景刷新；目前資料仍保留。"
             )
 
+    def begin_shutdown(self) -> None:
+        """鎖住新的 refresh，並撤銷完成後重啟的 pending generation。"""
+
+        self._closing = True
+        self._refresh_generation += 1
+        self._refresh_pending = False
+        worker = self._refresh_worker
+        if worker is not None:
+            try:
+                is_running = bool(worker.isRunning())
+            except RuntimeError:
+                is_running = False
+            if is_running:
+                worker.cancel(cooperative=True, wait=False)
+
     def closeEvent(self, event) -> None:
         """關閉前合作式取消 worker，避免回呼在 widget 銷毀後套用。"""
 

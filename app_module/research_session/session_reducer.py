@@ -45,6 +45,9 @@ def reduce_session_event(
                 decision_date=None,
                 data_date=None,
                 result_id=None,
+                identity_status=None,
+                source_snapshot_id=None,
+                source_snapshot_hash=None,
                 profile_id=None,
                 profile_version=None,
                 source_id=None,
@@ -70,6 +73,21 @@ def reduce_session_event(
             ) or "",
             result_id=_normalize(
                 supplied_context.result_id if supplied_context is not None else event.result_id
+            ) or "",
+            identity_status=_normalize(
+                supplied_context.identity_status
+                if supplied_context is not None
+                else event.identity_status
+            ) or "",
+            source_snapshot_id=_normalize(
+                supplied_context.source_snapshot_id
+                if supplied_context is not None
+                else event.source_snapshot_id
+            ) or "",
+            source_snapshot_hash=_normalize(
+                supplied_context.source_snapshot_hash
+                if supplied_context is not None
+                else event.source_snapshot_hash
             ) or "",
             profile_id=_normalize(
                 supplied_context.profile_id if supplied_context is not None else event.profile_id
@@ -114,6 +132,9 @@ def reduce_session_event(
             decision_date=context.decision_date or None,
             data_date=context.data_date or None,
             result_id=context.result_id or None,
+            identity_status=context.identity_status or None,
+            source_snapshot_id=context.source_snapshot_id or None,
+            source_snapshot_hash=context.source_snapshot_hash or None,
             profile_id=context.profile_id or None,
             profile_version=context.profile_version or None,
             source_id=context.source_id or None,

@@ -5055,3 +5055,21 @@ common identity 任一不完整，caller 以 blocked／degraded 與非零狀態�
 
 dependency gate 對週末 `not_trading_day` 與官方明示無資料日都在 Paper adapter 前
 作明確 no-op；它不建立 fill，並保留同一 bounded roll-forward 以準備下一個官方開市日。
+
+## 2026-09-15 關閉與跨頁研究 continuity
+
+主視窗閒置時按一次右上角 `X` 即可關閉。若仍有背景 worker 或 TPEX 背景更新，
+第一次 `X` 會暫停關閉、凍結新的 refresh，並顯示等待原因；背景工作在安全邊界完成後
+會由 UI 自動完成關閉，不需要再次按 `X`，也不要用工作管理員 End Task。
+
+TPEX 背景更新的取消是合作式請求：UI 只建立 cancel marker，背景程序完成目前網路、
+檔案或 SQLite 安全邊界後，才會寫出 `status=cancelled` 且
+`cancel_completed=true` 的收尾收據。若程序非零退出或只留下不完整狀態，畫面會保留
+失敗與退出碼，不可把它解讀成已安全取消。
+
+跨頁研究時，從推薦分析選取股票後開啟個股研究；返回或切到觀察清單時，系統依
+`result_id + stock_code` exact identity 還原原推薦來源。相同股票但不同推薦結果仍是
+不同 candidate；若來源 identity 不完整或互相衝突，畫面會限制寫入，需回到推薦分析
+明確選擇來源，不會以「最新結果」猜測。觀察清單與個股研究的 accepted、note、下次
+檢視時間及歷史會從 append-only journal 讀回；這些 continuity 記錄不等同交易指令，
+也不會自動送出 broker 或改變正式行情資料。

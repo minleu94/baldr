@@ -1,6 +1,9 @@
+import json
+import sys
 from types import SimpleNamespace
 
 from scripts.run_tpex_full_refresh_and_technical import (
+    _cancel_requested,
     _run_tpex_parallel,
     _should_skip_technical_indicators,
 )
@@ -100,3 +103,55 @@ def test_parallel_tpex_refresh_fails_when_pending_date_is_missing(tmp_path):
     assert result["success"] is False
     assert result["failed_dates"] == ["20260706"]
     assert result["warnings"] == ["TPEX 每日股價缺少日期：20260706"]
+
+
+def test_tpex_backend_reads_cancel_marker_and_writes_completion_receipt(
+    tmp_path,
+    monkeypatch,
+):
+    import scripts.run_tpex_full_refresh_and_technical as module
+
+    state_file = tmp_path / "state.json"
+    cancel_file = tmp_path / "state.json.cancel"
+    cancel_file.write_text("requested", encoding="ascii")
+
+    class FakeService:
+        def update_tpex_daily_price_range(self, *args, cancel_callback=None, **kwargs):
+            assert cancel_callback is not None
+            assert cancel_callback() is True
+            return {
+                "success": False,
+                "cancelled": True,
+                "message": "cancelled at safe boundary",
+                "requested_dates": [],
+                "updated_dates": [],
+                "fallback_dates": [],
+                "skipped_dates": [],
+                "failed_dates": [],
+                "warnings": [],
+            }
+
+    monkeypatch.setattr(module, "TWStockConfig", lambda: object())
+    monkeypatch.setattr(module, "UpdateService", lambda _config: FakeService())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_tpex_full_refresh_and_technical.py",
+            "--start-date",
+            "2026-07-01",
+            "--end-date",
+            "2026-07-06",
+            "--state-file",
+            str(state_file),
+            "--cancel-file",
+            str(cancel_file),
+        ],
+    )
+
+    assert module.main() == 0
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert state["status"] == "cancelled"
+    assert state["cancel_requested"] is True
+    assert state["cancel_completed"] is True
+    assert _cancel_requested(cancel_file) is True

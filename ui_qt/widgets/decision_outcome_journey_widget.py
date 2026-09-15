@@ -410,6 +410,12 @@ class DecisionOutcomeJourneyWidget(QWidget):
         self._active_code = context.stock_code.strip()
         self._active_result_id = context.result_id.strip()
         self._render_context(context)
+        if context.identity_status == "conflict":
+            self._set_unlinked(
+                f"{self._active_code} 未連結：研究來源 identity 衝突；"
+                "不會把此 context 連到任何 Journal／Evidence。"
+            )
+            return
         if not self._active_result_id:
             self._set_unlinked(
                 f"{self._active_code} 未連結：研究上下文缺少 result_id；"
@@ -430,11 +436,15 @@ class DecisionOutcomeJourneyWidget(QWidget):
         self.context_label.setText(
             f"來源：{source}｜工作區：{context.source_workspace or '未標示'}｜"
             f"決策日：{context.decision_date or '未知'}｜資料日：{context.data_date or '未知'}｜"
+            f"來源 snapshot：{context.source_snapshot_id or context.source_snapshot_hash or '未知'}｜"
             "期限：5／10／20／60 個交易日"
         )
         self.technical_identity_label.setText(
             f"result_id：{context.result_id or '未知'}\n"
             f"candidate_key：{context.result_id or '未知'}:{context.stock_code}\n"
+            f"source_snapshot_id：{context.source_snapshot_id or '未知'}｜"
+            f"source_snapshot_hash：{context.source_snapshot_hash or '未知'}\n"
+            f"identity_status：{context.identity_status or 'implicit'}\n"
             "完整來源 identity 會在載入後顯示。"
         )
 

@@ -33,6 +33,9 @@ class ResearchStockContextDTO:
     decision_date: str = ""
     data_date: str = ""
     result_id: str = ""
+    identity_status: str = ""
+    source_snapshot_id: str = ""
+    source_snapshot_hash: str = ""
     profile_id: str = ""
     profile_version: str = ""
     source_id: str = ""
@@ -51,6 +54,9 @@ class ResearchStockContextDTO:
             "decision_date",
             "data_date",
             "result_id",
+            "identity_status",
+            "source_snapshot_id",
+            "source_snapshot_hash",
             "profile_id",
             "profile_version",
             "source_id",
@@ -92,6 +98,9 @@ class ResearchSessionSnapshotDTO:
     decision_date: Optional[str] = None
     data_date: Optional[str] = None
     result_id: Optional[str] = None
+    identity_status: Optional[str] = None
+    source_snapshot_id: Optional[str] = None
+    source_snapshot_hash: Optional[str] = None
     profile_id: Optional[str] = None
     profile_version: Optional[str] = None
     source_id: Optional[str] = None

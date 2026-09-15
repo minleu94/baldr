@@ -211,8 +211,21 @@ class DecisionContinuityControlsWidget(QWidget):
         self._render_state(self.state)
         self.stateChanged.emit(self.state)
 
-    def _render_blocked(self, message: str) -> None:
-        self.identity_label.setText("身份：未連結")
+    def _render_blocked(
+        self,
+        message: str,
+        *,
+        identity: DecisionIdentity | None = None,
+    ) -> None:
+        if identity is None:
+            self.identity_label.setText("身份：未連結")
+        else:
+            self.identity_label.setText(
+                "身份："
+                f"result_id={identity.result_id or '未知'}｜"
+                f"stock_code={identity.stock_code or '未知'}｜"
+                f"identity_status={identity.identity_status}"
+            )
         self.status_label.setText(f"操作已停用：{message}")
         self.status_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.warning};")
         self.note_summary_label.setText("筆記：未讀取。")
@@ -230,7 +243,7 @@ class DecisionContinuityControlsWidget(QWidget):
             f"identity_status={identity.identity_status}"
         )
         if not state.can_write:
-            self._render_blocked(state.blocked_reason)
+            self._render_blocked(state.blocked_reason, identity=identity)
             return
 
         decision_text = {

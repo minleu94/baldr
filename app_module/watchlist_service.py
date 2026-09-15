@@ -906,6 +906,60 @@ class WatchlistService:
             for item in watchlist.items
         ]
 
+    def bind_stock_decision_identity(
+        self,
+        stock_code: str,
+        decision_identity: DecisionIdentity | Dict[str, Any],
+        *,
+        expected_source_id: str = "",
+        watchlist_id: str = "default",
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
+    ) -> bool:
+        """把使用者明確選定的推薦來源寫回既有候選池項目。
+
+        這是 legacy／unknown item 的 explicit repair path；若同股有多列且
+        無法用既有 source_id 唯一定位，直接拒絕，不以最新結果或第一列猜測。
+        """
+
+        code = str(stock_code or "").strip()
+        if not code:
+            return False
+        identity = DecisionIdentity.from_mapping(
+            decision_identity,
+            default_stock_code=code,
+        )
+        if not identity.is_linked:
+            raise ValueError("需要完整的 result_id + stock_code 才能綁定推薦來源")
+
+        watchlist = self._load_watchlist(watchlist_id)
+        if watchlist is None:
+            return False
+        candidates = [item for item in watchlist.items if item.stock_code == code]
+        expected_source = str(expected_source_id or "").strip()
+        if expected_source:
+            candidates = [item for item in candidates if item.source_id == expected_source]
+        if len(candidates) != 1:
+            return False
+        item = candidates[0]
+        if item.decision_identity.is_linked and item.decision_identity != identity:
+            raise ValueError("候選池既有推薦來源與選定來源衝突")
+        if item.decision_identity == identity:
+            return True
+        item.decision_identity = identity
+        # 保留既有 lineage；legacy 空值則填入已驗證的 result_id，讓舊顯示與
+        # 新 typed identity 都能在重啟後讀回同一來源。
+        if not item.source_id:
+            item.source_id = identity.result_id
+        self._save_watchlist(
+            watchlist_id,
+            watchlist,
+            operation="identity_bound",
+            revision_id=revision_id,
+            continuity_event_id=continuity_event_id,
+        )
+        return True
+
     def list_watchlist_revisions(self, watchlist_id: str = "default") -> List[Dict[str, Any]]:
         """讀取 repository 歷史；JSON legacy writer 沒有虛構 history。"""
 

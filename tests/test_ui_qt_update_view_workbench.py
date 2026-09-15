@@ -4,6 +4,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QDate, Qt
@@ -1828,6 +1830,90 @@ def test_background_tpex_status_is_visible_and_write_failure_is_fail_closed(monk
 
     assert started["value"] is False
     assert view.tpex_background_btn.isEnabled()
+
+
+def test_tpex_cancel_marker_does_not_overwrite_child_terminal_receipt(tmp_path):
+    """UI marker request must not race with the child-owned status writer."""
+
+    view = make_view()
+    view.tpex_refresh_state_file = tmp_path / "state.json"
+    view._tpex_cancel_file = tmp_path / "state.json.cancel"
+    view._write_tpex_background_status({"status": "running", "message": "fetching"})
+
+    class TerminalAfterMarkerProcess:
+        pid = 54321
+
+        def __init__(self):
+            self.poll_count = 0
+
+        def poll(self):
+            self.poll_count += 1
+            return None if self.poll_count == 1 else 0
+
+    class InterleavingCancelPath:
+        def __init__(self, path: Path, state_path: Path):
+            self.path = path
+            self.state_path = state_path
+            self.parent = path.parent
+
+        def exists(self):
+            return self.path.exists()
+
+        def write_text(self, *args, **kwargs):
+            result = self.path.write_text(*args, **kwargs)
+            self.state_path.write_text(
+                '{"status": "done", "cancel_requested": true}',
+                encoding="utf-8",
+            )
+            writes.append("marker")
+            return result
+
+    process = TerminalAfterMarkerProcess()
+    view._tpex_background_process = process
+    writes = []
+    # The child may publish its terminal receipt immediately after the marker
+    # write.  Simulate that interleaving before the next observer poll.
+    view._tpex_cancel_file = InterleavingCancelPath(
+        tmp_path / "state.json.cancel",
+        view.tpex_refresh_state_file,
+    )
+    assert view._request_tpex_background_cancel() is True
+    assert json.loads(view.tpex_refresh_state_file.read_text(encoding="utf-8"))["status"] == "done"
+    assert writes == ["marker"]
+
+
+@pytest.mark.parametrize(
+    "terminal_state",
+    [
+        {"status": "done"},
+        {"status": "cancelled", "cancel_requested": True, "cancel_completed": True},
+    ],
+)
+def test_tpex_nonzero_exit_overrides_stale_terminal_receipt(tmp_path, terminal_state):
+    view = make_view()
+    view.tpex_refresh_state_file = tmp_path / "state.json"
+    view._tpex_cancel_file = tmp_path / "state.json.cancel"
+    view.tpex_refresh_state_file.write_text(
+        json.dumps(terminal_state),
+        encoding="utf-8",
+    )
+
+    class FailedProcess:
+        pid = 54322
+
+        def poll(self):
+            return 7
+
+    view._tpex_background_process = FailedProcess()
+    assert view._observe_tpex_background_process() is False
+
+    state = json.loads(view.tpex_refresh_state_file.read_text(encoding="utf-8"))
+    assert state["status"] == "failed"
+    assert state["cancel_completed"] is False
+    assert state["process_exit_code"] == 7
+    assert "退出碼=7" in state["message"]
+    assert view._tpex_process_exit_code == 7
+    assert view._tpex_background_process is None
 
 
 def test_monthly_revenue_tab_runs_mops_dry_run(monkeypatch):

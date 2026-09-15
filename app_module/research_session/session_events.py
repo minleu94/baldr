@@ -45,6 +45,9 @@ class StockResearchContextChanged:
     decision_date: Optional[str] = None
     data_date: Optional[str] = None
     result_id: Optional[str] = None
+    identity_status: Optional[str] = None
+    source_snapshot_id: Optional[str] = None
+    source_snapshot_hash: Optional[str] = None
     profile_id: Optional[str] = None
     profile_version: Optional[str] = None
     source_id: Optional[str] = None

@@ -8,7 +8,7 @@ API。它不採用 Advice、不建立 trade、不呼叫 broker，也不把缺少
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -52,6 +52,7 @@ class DecisionContinuityState:
     next_review_at: str = ""
     active_note_count: int = 0
     read_error: str = ""
+    identity_conflict_reason: str = ""
 
     @property
     def can_write(self) -> bool:
@@ -62,7 +63,8 @@ class DecisionContinuityState:
         if self.read_error:
             return f"研究狀態讀取失敗：{self.read_error}"
         if self.identity.identity_status == IDENTITY_STATUS_CONFLICT:
-            return "decision identity 衝突；不會猜測要綁定的結果。"
+            detail = f"（{self.identity_conflict_reason}）" if self.identity_conflict_reason else ""
+            return f"decision identity 衝突{detail}；不會猜測要綁定的結果。"
         if self.identity.identity_status in {
             IDENTITY_STATUS_UNKNOWN,
             IDENTITY_STATUS_UNLINKED,
@@ -86,6 +88,10 @@ class DecisionContinuityCommandResult:
     readback_verified: bool = False
 
 
+class _DecisionIdentityProvenanceConflict(ValueError):
+    """同一 candidate 的已知來源欄位互相矛盾。"""
+
+
 class DecisionContinuityController:
     """提供 UI 使用的 exact-identity 研究動作 facade。"""
 
@@ -102,11 +108,19 @@ class DecisionContinuityController:
             return DecisionIdentity.from_mapping(context)
         if context is None:
             return DecisionIdentity()
+
+        def _context_value(name: str) -> str:
+            value = getattr(context, name, "")
+            return "" if value is None else str(value).strip()
+
         return DecisionIdentity.from_mapping(
             {
-                "result_id": getattr(context, "result_id", ""),
-                "stock_code": getattr(context, "stock_code", ""),
-                "decision_date": getattr(context, "decision_date", ""),
+                "result_id": _context_value("result_id"),
+                "stock_code": _context_value("stock_code"),
+                "decision_date": _context_value("decision_date"),
+                "source_snapshot_id": _context_value("source_snapshot_id"),
+                "source_snapshot_hash": _context_value("source_snapshot_hash"),
+                "identity_status": _context_value("identity_status"),
             }
         )
 
@@ -160,8 +174,32 @@ class DecisionContinuityController:
                     continue
             else:
                 continue
+            conflict = self._provenance_conflict(identity, revision_identity)
+            if conflict:
+                raise _DecisionIdentityProvenanceConflict(conflict)
             matching.append(revision)
         return tuple(matching)
+
+    @staticmethod
+    def _provenance_conflict(
+        requested: DecisionIdentity,
+        recorded: DecisionIdentity,
+    ) -> str:
+        """比較雙方都明示的 provenance；未知值不被猜成相符。"""
+
+        for field_name in (
+            "source_snapshot_id",
+            "source_snapshot_hash",
+            "decision_date",
+        ):
+            expected = getattr(requested, field_name)
+            actual = getattr(recorded, field_name)
+            if expected and actual and expected != actual:
+                return (
+                    f"研究來源 {field_name} 衝突："
+                    f"目前={expected}；歷史={actual}"
+                )
+        return ""
 
     @staticmethod
     def _same_command(
@@ -182,6 +220,17 @@ class DecisionContinuityController:
             and revision.next_review_at == next_review_at.strip()
             and revision.actor == actor.strip()
         )
+
+    def _revision_for_request_id(
+        self, request_id: str
+    ) -> DecisionContinuityRevision | None:
+        """讀取 request id 的原始 revision，不依賴目前 candidate head。"""
+
+        for raw_revision in self.journal_service.list_decision_revisions():
+            revision = self._coerce_revision(raw_revision)
+            if revision is not None and revision.revision_id == request_id:
+                return revision
+        return None
 
     @staticmethod
     def _normalize_review_time(value: str) -> str:
@@ -239,6 +288,12 @@ class DecisionContinuityController:
             )
         try:
             history = self._matching_history(identity, candidate_entity_id)
+        except _DecisionIdentityProvenanceConflict as exc:
+            return DecisionContinuityState(
+                identity=replace(identity, identity_status=IDENTITY_STATUS_CONFLICT),
+                candidate_entity_id=candidate_entity_id,
+                identity_conflict_reason=str(exc),
+            )
         except Exception as exc:
             message = str(exc).splitlines()[0].strip() or type(exc).__name__
             return DecisionContinuityState(
@@ -330,27 +385,16 @@ class DecisionContinuityController:
                     error_code="invalid_next_review_at",
                     readback_verified=False,
                 )
+        # 先以 request id 尋找原始事件，再讀目前 candidate projection。
+        # 這讓「同一 request id 但換了 snapshot」回報 event conflict，
+        # 不會因 provenance conflict 先把 retry 藏成一般不可寫狀態。
+        try:
+            existing = self._revision_for_request_id(resolved_request_id)
+        except Exception:
+            # 讀取錯誤要由 read_state 統一投影成不可寫狀態；不要讓
+            # request-id lookup 自己把正常的 continuity read error 冒成例外。
+            existing = None
         state = self.read_state(identity)
-        if not state.can_write:
-            return DecisionContinuityCommandResult(
-                success=False,
-                request_id=resolved_request_id,
-                message=f"研究動作未保存：{state.blocked_reason}",
-                state=state,
-                retryable=False,
-                error_code="decision_identity_not_writable"
-                if not state.read_error
-                else "decision_continuity_read_failed",
-                readback_verified=False,
-            )
-        existing = next(
-            (
-                item
-                for item in state.history
-                if item.revision_id == resolved_request_id
-            ),
-            None,
-        )
         if existing is not None:
             if not self._same_command(
                 existing,
@@ -384,6 +428,18 @@ class DecisionContinuityController:
                 revision=existing,
                 retryable=False,
                 readback_verified=not state.read_error,
+            )
+        if not state.can_write:
+            return DecisionContinuityCommandResult(
+                success=False,
+                request_id=resolved_request_id,
+                message=f"研究動作未保存：{state.blocked_reason}",
+                state=state,
+                retryable=False,
+                error_code="decision_identity_not_writable"
+                if not state.read_error
+                else "decision_continuity_read_failed",
+                readback_verified=False,
             )
         candidate_entity_id = state.candidate_entity_id
         if action == ACTION_NOTE:

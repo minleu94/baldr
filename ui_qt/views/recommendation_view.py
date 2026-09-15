@@ -2205,6 +2205,28 @@ class RecommendationView(QWidget):
         # 取得選中的股票
         df = self.recommendations_model.getDataFrame()
         stocks = []
+        recommendation_service = getattr(self, "recommendation_service", None)
+        run_context = getattr(recommendation_service, "last_run_context", {}) or {}
+        if not isinstance(run_context, dict):
+            run_context = {}
+        current_config = getattr(self, "current_config", None)
+        config = current_config if isinstance(current_config, dict) else {}
+        result_id = str(getattr(self, "current_result_id", "") or "").strip()
+        decision_date = str(
+            run_context.get("as_of_date")
+            or config.get("as_of_date")
+            or ""
+        ).strip()
+        source_snapshot_id = str(
+            run_context.get("source_snapshot_id")
+            or config.get("source_snapshot_id")
+            or ""
+        ).strip()
+        source_snapshot_hash = str(
+            run_context.get("source_snapshot_hash")
+            or config.get("source_snapshot_hash")
+            or ""
+        ).strip()
         for index in selection:
             row = index.row()
             if row < len(df):
@@ -2214,7 +2236,15 @@ class RecommendationView(QWidget):
                     stocks.append({
                         'stock_code': str(stock_code),
                         'stock_name': str(stock_name),
-                        'source_id': getattr(self, "current_result_id", "") or ""
+                        # source_id 維持既有 lineage；typed candidate identity
+                        # 另以 result_id + stock_code 保存，不能只靠 source_id。
+                        'source_id': str(
+                            run_context.get("source_id") or result_id or ""
+                        ).strip(),
+                        'result_id': result_id,
+                        'decision_date': decision_date,
+                        'source_snapshot_id': source_snapshot_id,
+                        'source_snapshot_hash': source_snapshot_hash,
                     })
 
         if stocks:
@@ -2449,6 +2479,16 @@ class RecommendationView(QWidget):
         result_id = str(getattr(self, "current_result_id", "") or "")
         source_id = str(run_context.get("source_id") or result_id or "")
         source_kind = str(run_context.get("source_kind") or "recommendation")
+        source_snapshot_id = str(
+            run_context.get("source_snapshot_id")
+            or config.get("source_snapshot_id")
+            or ""
+        )
+        source_snapshot_hash = str(
+            run_context.get("source_snapshot_hash")
+            or config.get("source_snapshot_hash")
+            or ""
+        )
         fallback_data_date = getattr(recommendation, "eligible_universe_date", "") or ""
         return ResearchStockContextDTO(
             stock_code=stock_code,
@@ -2461,6 +2501,9 @@ class RecommendationView(QWidget):
                 or ""
             ),
             result_id=result_id,
+            source_snapshot_id=source_snapshot_id,
+            source_snapshot_hash=source_snapshot_hash,
+            identity_status=("linked" if result_id else "unknown"),
             profile_id=profile_id,
             profile_version=profile_version,
             source_id=source_id,

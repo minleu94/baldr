@@ -63,14 +63,15 @@ manifest：
 
 結果為 `status=passed`、scale 1.0、1366×768、market/runtime Space navigation、600-row PageDown/Home 與 recommendation／portfolio embedded pages 通過。native CUA surface 在本機不可用，因此 `native_windows_interaction`／screenreader 不宣稱已測。
 
-同一 validator 在最後一次重跑時，其他線的 dirty import `app_module.portfolio_service → app_module.portfolio_store` 尚未就緒，導致 child 在 import 階段失敗；這是共享工作區的 in-flight blocker，不是本輪 projection code 的失敗。上述 `summary.json` 保留最後一次成功的 MainWindow offscreen artifact；根 AGENTS 的本次 Update suite／Update validator 也同樣因該缺檔而未能 collection／啟動，詳見下方 QA note。
+同一 validator 在恢復 `app_module.portfolio_store` import 後的最後一次重跑，仍因其他線的 dirty import `app_module.journal_service` 尚未就緒，導致 child 在 import 階段失敗；這是共享工作區的 in-flight blocker，不是本輪 projection code 的失敗。上述 `summary.json` 保留最後一次成功的 MainWindow offscreen artifact；根 AGENTS 的本次 Update suite／Update validator 也同樣因該缺檔而未能 collection／啟動，詳見下方 QA note。
 
 ## 根 AGENTS 強制驗證補充
 
-- `pytest tests\test_ui_qt_update_view_workbench.py -q -o addopts=`：本次 collection blocked，`ModuleNotFoundError: No module named 'app_module.portfolio_store'`。
-- `scripts\qa_validate_update_tab.py`：本次 import blocked，同一 `app_module.portfolio_store` 缺檔；未把失敗改標為通過。
+- `pytest tests\test_ui_qt_update_view_workbench.py -q -o addopts=`：`portfolio_store` import check 已通過，但本次 collection blocked，`ModuleNotFoundError: No module named 'app_module.journal_service'`。
+- `scripts\qa_validate_update_tab.py`：本次 import blocked，同一 `app_module.journal_service` 缺檔；未把失敗改標為通過。
+- MainWindow offscreen validator：本次 child 同樣因 `app_module.journal_service` 缺檔 blocked；未把先前成功的 offscreen artifact 冒充為本次通過。
 - 全域 mypy：`Success: no issues found in 611 source files`。
-- 上述兩項 blocked 來自其他線的 portfolio／watchlist journey 變更；本輪 72-case focused suite、16-case Research Console suite、typed projection verifier 與最新 learning PNG 均已在自身邊界完成驗證。
+- 上述 blocked 來自其他線的 portfolio／watchlist／journal journey 變更；本輪 72-case focused suite、16-case Research Console suite、typed projection verifier 與最新 learning PNG 均已在自身邊界完成驗證。
 
 ## 尚未解除的產品 Gate
 

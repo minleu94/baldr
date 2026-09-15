@@ -198,11 +198,12 @@ increment：先確保有內容的每日結論與候選／持倉，再將空表�
 - `tests/test_decision_presentation.py`：14 passed。
 - `tests/test_decision_presentation.py tests/test_ui_qt_workbench_view.py tests/test_ui_qt_portfolio_view.py`：69 passed，1 warning（pytest cache 權限警告）。
 - 先前基線的強制 UI suite `tests/test_ui_qt_update_view_workbench.py`：81 passed，1 warning；
-  本次依根 AGENTS 重跑時因共享工作區其他線尚未提供 `app_module.portfolio_store` 而在
-  collection 階段 blocked。
+  本次依根 AGENTS 重跑時 `portfolio_store` import 已恢復，但因共享工作區其他線尚未提供
+  `app_module.journal_service` 而在 collection 階段 blocked。
 - 先前基線的 `scripts/qa_validate_update_tab.py`：25 pass、0 fail、4 skip；本次重跑同樣在
-  import 階段因 `app_module.portfolio_store` 缺檔 blocked，未把失敗改標為通過；先前 report
-  位於 `output/qa/update_tab/VALIDATION_REPORT.md`。
+  import 階段因 `app_module.journal_service` 缺檔 blocked，未把失敗改標為通過；先前 report
+  位於 `output/qa/update_tab/VALIDATION_REPORT.md`。最後一次 MainWindow offscreen rerun 也
+  因同一缺檔 blocked，舊 summary 只保留最後一次成功 artifact。
 - Learning evidence／Workbench focused suites：`72 passed, 1 warning`；完整 case map、
   實際資料 lane readback 與 failure-mode coverage 見
   `docs/06_qa/LEARNING_EVIDENCE_WORKBENCH_2026_09_14.md`。

@@ -1,5 +1,16 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+> **2026-09-15 HEAD 校準**：目前文件基線為已提交 `719cf7a4`（C bounded canonical
+> runner／training lineage／cutoff／ML boundary 階段）。已驗收的 bounded slices 包含
+> `5a3ed5db`＋`ef594007` Position Health、`a4996cba` `user_declared`、`031e11ab` Continuity
+> Review Workbench R1、`89a264f6` PIT reader/caller、`086ba60c`＋`0aaf0dff` BankTaiwan
+> root guard／受控 retry，以及 `94d30b51` calendar／inventory audit。`719cf7a4` 的 C 階段有
+> 88 tests、508 files guard 0 violations 與 production-scoped mypy evidence；P1 next-day
+> inference／projection provenance 與 L 的官方 taxonomy source chain 仍待完成。因此下一
+> 順序是 **C＋L 端到端 → 整合使用流程 → V6 contract／離線設計，再以 user decision/outcome
+> evidence 驗證個人化效果**，
+> 不把目前成果縮寫成 V4／V5／V6 完成。
+
 ## 2026-09-15 PIT 產業來源 reader 與 caller 驗收
 
 已完成 prospective PIT 產業 membership 的 bounded engineering slice：新增唯讀
@@ -19,6 +30,10 @@ reader 重建 score-bound universe hash。完整測試與限制見
 passed、全域 mypy 619 source files clean。D 槽既有 prospective artifact 的 raw custody 通過，
 但因缺 score-bearing universe identity 與 taxonomy source 仍為 `unavailable`；本段不代表
 historical backfill、Formal OOS、promotion、broker 或 real-money eligibility，也未改寫正式資料。
+
+本段驗收的是 `89a264f6` 的既有 PIT reader／caller bounded slice；L 線尚未提交的官方
+taxonomy raw producer／v3／publisher／reader／caller，以及 PDF 與 preopen completion-time
+修正仍屬待驗收，不得把本段當成 L 線官方 taxonomy 端到端完成。
 
 ## 2026-09-15 BankTaiwan 首次 05:50 排程失敗與成本 root guard 修復
 
@@ -127,10 +142,17 @@ runner exit `0`。完整記錄見
 
 本段只代表 bounded engineering／read-only acceptance，不代表自然 forward evidence、
 formal PIT、observed cost、broker execution 或 V4 完成。下一個獨立工程增量是與 Paper
-lane 分離的 `user_declared` research-only layer（I task `01a0a457-2c28-7880-ae1c-64427d13341f`
-施工中，尚未驗收）；自然證據仍是持續觀察線，尚未完成。
+lane 分離的 `user_declared` research-only layer 已由 `a4996cba`／Increment 2 QA 驗收；自然
+證據仍是持續觀察線，尚未完成。後續不把 `user_declared` 再列為待驗收，改由 C 的 P1
+next-day inference／projection provenance 與 L 的官方 taxonomy source chain 先完成端到端，再接整合使用流程。
 
 ## 2026-09-14 V4.2 prospective source custody 與每日學習現況
+
+本節保存 2026-09-14 既有 shadow receipt 的運行觀察，不等同目前 C 線 P1 next-day
+inference／projection provenance 的完成。`719cf7a4` 已提交並驗收 C 的 bounded canonical
+learning runner、training lineage、cutoff／ML boundary（88 tests、508 files guard 0 violations、
+production-scoped mypy）；P1 next-day inference／projection provenance 仍待完成。下列 receipt
+可作歷史／運行 evidence，但不能把它或 `natural sample=0` 解讀成 C／V4.2 formal 完成。
 
 05:45 的 `baldr-recommendation-calibration-learning-daily` 已接到同一條有界 pipeline：先跑
 官方日價／技術來源更新，再做 official market-event custody，接著保存正常 scheduled
@@ -218,8 +240,10 @@ custody QA 已以 `currentity→verified receipt reuse` 修復並通過：三日
 fixture 的跨 root custody 缺口，不等於 real natural maturity、formal PIT、actual cost 或 V4 完成。
 scheduler 14 passed、04:22 wrapper true-success 與已交付工程 gate 均已由父任務接受；
 主 Luna 回報 QA 7.1 為 `33 passed`（含 microsecond／nested blocked-capture regression，未杜撰命令）。
-目前只剩主 Luna 的 git commit 尚待完成；real natural maturity、formal PIT 與 actual cost 仍維持
-各自的 pending／out-of-scope 邊界。
+前一輪「主 Luna commit 尚待完成」是當時的 dated record，不作目前 source custody 的完成依據；
+`719cf7a4` 已提交並驗收 C 的 bounded canonical learning／training lineage／cutoff／ML boundary，
+P1 next-day inference／projection provenance 仍待完成。real natural maturity、formal PIT 與
+actual cost 仍維持各自的 pending／out-of-scope 邊界。
 
 目前可分開判讀的 gate 是：price-up calibration 的 prospective source lane 可進入後續自然
 驗證，但整體 promotion 仍等待自然 maturity 與 formal source gate；after-cost 仍因沒有可核驗
@@ -239,24 +263,31 @@ V4 formal completion：
   真實產業指數強弱與官方 TAIEX 5／20 日基準的可比研究讀模型，並排除槓桿／反向產品型
   指數。市場 → 產業 → 個股的唯讀下鑽可讀，但 current representative-stock mapping、
   TPEX／興櫃 coverage、historical PIT membership 與完整每日歸因仍待外部資料 Gate。
-- `8acf29f0`／`b39fd399` 已隔離臺銀 `estimated_research_only` 成本 lane 與學習排程；
-  05:50 task 的註冊／可觸發狀態不等於首個自然排程執行，首個 05:50 執行 readback 仍未驗證。
-  observed fill／實際滑價是後續 execution-realism／formal Gate，不是每日學習的前置條件。
+- `8acf29f0`／`b39fd399` 已隔離臺銀 `estimated_research_only` 成本 lane 與學習排程；首次
+  05:50 實際 run 已於 `05:50:03–05:50:05 -07:00` 以 `failed_dependency` 結束，root guard
+  已由 `086ba60c` 修復；`0aaf0dff` 的受控 shadow retry 已完成並為
+  `completed_waiting_natural_maturity`，natural sample 仍為 `0`，也不等於 next-day inference
+  provenance，後續正常排程持續觀察。observed fill／實際滑價是後續 execution-realism／formal
+  Gate，不是每日學習的前置條件。
 - `421ab844` 已交付 candidate／active／capture typed verifier 的唯讀 learning projection，
   BankTaiwan 與 legacy 50bp lane 保持分離；就 2026-09-14 臺銀正常 scheduled lane 的觀測，
   natural sample 為 `0`、decision 為 `retain_current`；legacy 50bp 是獨立 lane，可能維持
-  `blocked`，不得把兩者合併判讀。
-  `53b456a0`／`ffb66c6f` 已交付唯讀 Decision → Outcome journey；`5339230f` 已驗收
-  Increment A 的 append-only continuity storage contract。Increment B 的 accept／skip／note／
-  next-review caller 與 Watchlist 跨頁接線仍在施工，尚未驗收。
+  `blocked`，不得把兩者合併判讀。這只證明既有 projection／receipt readback；C 的 bounded
+  canonical runner、training lineage、cutoff／ML boundary 已由 `719cf7a4` 提交並驗收；P1 next-day
+  inference／projection provenance 仍待完成。
+  `53b456a0`／`ffb66c6f` 已交付唯讀 Decision → Outcome journey；`5339230f` 與 `031e11ab` 已分別
+  驗收 Increment A storage 與 Continuity Review Workbench R1 的 exact reminder／controls／readback。
+  完整 market→industry→stock→watchlist／portfolio 的整合使用流程，以及跨頁一致性及推薦／決策／
+  outcome 追溯的整合驗收仍待接線，不再把 R1 列為未開始。
 
-仍可施工的工程是 Increment B 的 accept／skip／note／next-review caller、Watchlist 跨頁
-round-trip 與 review history readback；這些不需等待 V4 formal closeout，但尚未驗收。
-必須等待／外部證據則是 natural forward maturity／authority receipt、首個 05:50 臺銀自然
-執行的 readback，以及 PIT／source／具名 review 等 Gate；historical bootstrap、controlled
-capture、shadow natural sample `0` 與任何 scheduler registration 都不折抵這些門檻。產品方向
-仍是每日市場 → 產業 → 股票、觀察／持倉決策連續性、可校準機率、historical bootstrap +
-natural forward + controlled shadow 日學習，以及個人決策連續性。
+仍可施工的工程先是 C＋L 的端到端：C 補 P1 next-day inference／projection provenance；L 補官方
+taxonomy raw producer／v3／
+publisher／reader／caller，並完成 PDF／preopen completion-time 修正。接著才做 market→industry→
+stock→watchlist／portfolio 的整合使用流程，以及跨頁一致性及推薦／決策／outcome 追溯的整合驗收；
+這些不需等待 V4 formal closeout，但目前尚未驗收。V6 contract、population baseline、歷史回放、
+離線 learning／calibration、guardrail 與 rollback 可先設計；效果宣稱與 user-level adoption 再依
+使用者 decision／outcome 的長期證據、sample、negative evidence 與既有門檻推進。historical bootstrap、controlled capture、shadow natural sample `0`
+與任何 scheduler registration 都不折抵 natural／formal 門檻；策略評估也不保證逐日準確率改善。
 
 ## 2026-09-12 V4.1 A 線第二輪歷史研究與候選方法包
 

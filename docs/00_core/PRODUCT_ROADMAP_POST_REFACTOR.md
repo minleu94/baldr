@@ -5,7 +5,7 @@
 > **2026-07-12 純工程狀態**：Gate 2–7 的批准工程包已完成，涵蓋 Evidence/V3、P0 source contracts/shadow adapters、Paper Portfolio、Position Health/Exit、完整結構化傳統 ML shadow challenger、closeout verifier 與控制中心。這只代表 `pure_engineering_complete`；Gate 2 真實週期、Gate 3 逐來源接受、Gate 4/6 paper/exit 時間證據、Gate 5 人工 pruning 決議、Gate 7 shadow days/revalidation/promotion review 仍由 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) 管理，不能標成 formal product closeout。
 
 > **建立日期**：2026-07-11
-> **最後更新**：2026-09-15；本輪基線為已提交 `7e029933`，不新增產品版號。
+> **最後更新**：2026-09-15；本輪基線為已提交 `719cf7a4`，不新增產品版號。
 > **定位**：本文件是安全重構完成後的產品方向權威，負責定義 baldr 為何存在、要協助哪些投資決策、能力演進順序與投資有效性 Gate。
 > **工程落地**：未來六個月的交付物、依賴、測試與 Exit Criteria 以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md) 為準。
 > **現況邊界**：目前完成狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準；本文件中的 Target capability 不代表已實作。
@@ -18,7 +18,8 @@
 > `53b456a0`／`ffb66c6f` 的唯讀 Decision → Outcome journey，以及 `5339230f` 的 Increment A
 > continuity storage／caller 與 C 的 close／跨程序 readback 已有工程驗收；2026-09-15 R1 再把
 > Journal due projection、exact candidate drilldown 與 shared Journey／controls 接回 Workbench，
-> 但尚未全面接成所有 Workbench state projection。這些不宣稱真實市場→產業→個股端到端已驗收，
+> R1 的 bounded caller／readback 已驗收，但尚未全面接成完整 market→industry→stock→watchlist／
+> portfolio 的整合使用流程。這些不宣稱真實市場→產業→個股端到端已驗收，
 > 其中 `25544142` 的真實產業指數強弱與官方 TAIEX 5／20 日基準已可讀，純產業白名單已
 > 排除槓桿／反向產品型指數；current representative-stock mapping、TPEX／興櫃 coverage
 > 與 historical PIT membership 仍有限，不能把 current mapping 回填歷史。
@@ -285,8 +286,9 @@ Evidence 分層：
   missing／warning 的唯讀投影已驗收；每日首屏 content-first、可比產業讀模型、Research
   fallback 的唯讀邊界與 learning evidence view 已有可核對工程切片。`7e029933` 也已包含
   continuity 的 close／跨程序 readback 工程驗收；R1 已完成 continuity review 的 Workbench
-  state projection 與 exact shared Journey caller；下一個施工面是 Position Health source
-  caller／formal outcome 對應，不是把既有 read-only slice 重寫成正式決策。
+  state projection 與 exact shared Journey caller，Position Health source-backed read model
+  也已由 `5a3ed5db`／`ef594007` 驗收。下一個施工面是 C＋L source chain，再做跨頁一致性及
+  推薦／決策／outcome 追溯的整合驗收，不是把既有 read-only slice 重寫成正式決策。
 - **V4.2 engineering**：保留既有 05:40 forward outcome → 05:45 shadow learning 的
   自動候選採用／回退 policy、frozen challenger、active monitor、receipt 與 rollback。
   routine shadow adjustment 不要求使用者每日人工批准；只有超出既有 shadow／正式決策
@@ -294,7 +296,13 @@ Evidence 分層：
   已驗收；就 2026-09-14 臺銀正常 shadow lane 觀測，natural sample 為 `0`、receipt 為
   `retain_current`，legacy 50bp lane 另行判讀且可能 `blocked`。沒有 verifier
   的 natural receipt 仍只可顯示 unknown，source `available`、hash 或 evidence kind 不是
-  authority；05:50 臺銀 task 的註冊／可觸發狀態也不等於首個自然執行。
+  authority；05:50 臺銀 task 的註冊／可觸發狀態不等於自然證據。首次實際 run 已於
+  `05:50:03–05:50:05 -07:00` 以 `failed_dependency` 結束，root guard 已由 `086ba60c` 修復，
+  `0aaf0dff` 受控 retry 已成功但仍為 `completed_waiting_natural_maturity`；後續正常排程仍須
+  觀察。這些是既有 shadow／projection observation；截至 `719cf7a4`，C 的 bounded canonical
+  learning runner／training lineage／cutoff／ML boundary 已提交並驗收（88 tests、508 files guard
+  0 violations、production-scoped mypy），P1 next-day inference／projection provenance 與 L 的
+  官方 taxonomy source chain 仍待完成。
 - **成本接線**：產品工程先消費臺銀 `estimated_research_only` 的成本 policy，形成可判讀
   的估算淨效用（`8acf29f0`／`b39fd399`）；observed fills、partial fill、broker 對帳與
   實際滑價另列 execution-realism／formal Gate，不阻擋 content-first 唯讀體驗，也不是
@@ -314,19 +322,21 @@ V5 是把已驗收的 content-first daily conclusion、候選／持倉、market�
   Portfolio ledger continuity 與 T+N outcome view 收斂成單一路徑。V5 的 UX／唯讀資料旅程、
   decision continuity 與 V4 formal evidence accumulation 可並行；V4 formal 不會阻擋現在先
   交付真實唯讀 content。`7e029933` 的 A/B/C continuity runtime evidence 已具備，R1 已接上
-  continuity review Workbench state projection 與 shared product caller；Position Health／formal
-  outcome 等完整產品面仍按下列順序施工。Evidence 不足時只限制 Advice scope，
+  continuity review Workbench state projection 與 shared product caller，Position Health read
+  model 也已驗收；完整 market→industry→stock→watchlist／portfolio 的跨頁一致性及推薦／
+  決策／outcome 追溯整合仍按下列順序施工。Evidence 不足時只限制 Advice scope，
   轉 `RESEARCH`／`NO_NEW_POSITION`。
 既有每日 shadow policy 內的 candidate adoption／rollback 仍可自動執行，不能跨到正式
 Recommendation／Portfolio 或 broker。
 
 #### V6 evidence-driven personalization
 
-V6 只在 V5 的 decision／outcome continuity 形成後，研究 user profile、risk budget、horizon、
-liquidity／sector preferences 的可解釋個人化排序與 guardrails；每個 user-level projection
-都需與 population baseline、sample、calibration、negative evidence、drift 與 rollback
-分開保存。V6 不保證報酬、不隱藏缺漏、不自動調倉／下單；目前只是後續產品方向，不是本輪
-工程完成狀態。
+V6 的 contract、population baseline、歷史回放、離線 learning／calibration、negative evidence、
+guardrails、drift 與 rollback 設計可在 V5 continuity 尚未完整收斂前先行；實際 user-level
+projection 的效果宣稱與採用，仍須等真實 user decision／outcome sample 依既有門檻驗證。每個
+projection 都需與 population baseline、sample、calibration、negative evidence、drift 與
+rollback 分開保存。V6 不保證報酬、不隱藏缺漏、不自動調倉／下單；目前仍是後續產品方向，
+不是本輪工程完成狀態。
 
 #### 2026-09-15 `user_declared` Increment 2 工程驗收
 
@@ -339,31 +349,26 @@ historical availability custody 與 real condition／saved-recommendation baseli
 1366×768／1700×1100 UI 與 focused／required QA 見
 [Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。
 
-#### 2026-09-15 下一工程順序（基線 `7e029933`）
+#### 2026-09-15 下一工程順序（基線 `719cf7a4`）
 
-自然 forward 收集、同 scope calibration 與首個 05:50 實際 run 是獨立的持續觀察線：現行
-normal lane 的 natural sample 仍為 0，不能因此宣稱 V4 formal 完工；策略／模型效果也不要求
-逐日單調改善。工程增量依序為：
+自然 forward 收集、同 scope calibration 與 05:50 後續正常排程是獨立的持續觀察線：首次實際
+run 已以 `failed_dependency` 結束，root guard／受控 retry 已處理，但現行 normal lane 的
+natural sample 仍為 0，不能因此宣稱 V4 formal 完工；策略／模型效果也不要求逐日單調改善。
+工程增量依序為：
 
-1. **Position Health source-backed projection → Portfolio／Workbench**（Luna task
-   `01a0a414-bafb-79a0-aeff-1c462f5cded6` 施工中，尚未驗收）。沿用既有 Paper identity、
-   thesis、PIT condition、Decimal metrics 與 transition evaluator，將同一 receipt／read model
-   接入 Portfolio 與 Workbench；缺來源維持 `WATCH`／degraded，驗收需包含 source trace、
-   review required、identity conflict fail-closed、無自動 action。依賴是 `7e029933` 的
-   continuity identity／readback 與既有 source artifacts；Paper verified lineage 只約束 Paper／
-   formal health lane，不阻擋其他 research-only holdings view。
-2. **`user_declared` 持倉研究層（Increment 2 已完成）**。上述獨立 source status／research
-   read model 已可用使用者聲明的股票、數量、成本、日期與研究假設文字做目前條件、聲明成本
-   的資訊性觀察、假設覆盤與人工 review；不得命名為 fill／verified，不計入 Paper／formal
-   effectiveness，並維持 `research_only=true`、無 broker／auto action。後續只收集使用回饋與
-   真實來源改善，不把此 lane 擴張成 Paper／formal writer；V6 個人化日後仍須把 user-level
-   evidence 與 population baseline 分開治理。
-3. **PIT 產業／Recommendation source acceptance**。補版本化 membership、publication／
-   available time、代表股與 TPEX／OTC scope，讓 current 與 historical caller 不再以 current
-   mapping 回填 PIT；驗收需可重建固定日期 membership、coverage／quality／hash，並讓缺口仍
-   明示為 degraded。依賴是外部來源 owner、license、publication timestamp、公司行動與資料
-   品質接受，不以離線 replay 代替。這是 Gate 3／V5 market journey 的工程資料邊界，不升格
-   V4 formal，也不直接開啟 Portfolio／broker 權限。
+1. **C＋L source chain 端到端**：C 已由 `719cf7a4` 完成 bounded canonical runner／training
+   lineage／cutoff／ML boundary 階段，下一步補 P1 next-day inference／projection provenance；
+   L 補官方 taxonomy raw producer／v3／publisher／reader／caller，並完成 PDF／preopen
+   completion-time 修正。C／L 的端到端 source chain 尚未完成，不以既有 shadow receipt 或
+   natural sample `0` 折抵。
+2. **整合使用流程**：在已驗收的 Position Health、`user_declared`、Continuity Review Workbench
+   R1 與 PIT reader／caller bounded slices 上，接通 market→industry→stock→watchlist／portfolio
+   的同一 identity read-only journey，完成跨頁一致性及推薦／決策／outcome 追溯的整合驗收；
+   不新增平行 DB、不開啟 broker／auto action，也不重做 R1。
+3. **V6 evidence-driven personalization**：可先建立 contract、population baseline、歷史回放、
+   離線 learning／calibration、negative evidence、guardrail、drift 與 rollback；整合流程與
+   真實 user decision／outcome evidence 則決定何時可宣稱效果、採用 user-level projection。
+   V6 不保證報酬、不自動調倉／下單。
 
 ## 11. Data Source Roadmap
 
@@ -600,6 +605,15 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 ---
 
 ## 更新記錄
+
+- 2026-09-15：以已提交 `719cf7a4` 校準目前／下一步：C bounded canonical runner／training
+  lineage／cutoff／ML boundary 已驗收（88 tests、508 files guard 0 violations、production-scoped
+  mypy），P1 next-day inference／projection provenance 與 L official taxonomy source chain 尚待完成；
+  Position Health、`user_declared`、
+  Continuity Review Workbench R1、PIT reader／caller 與 BankTaiwan 受控 retry 已各自有 bounded
+  acceptance；BankTaiwan 首次 05:50 實際 run 的 `failed_dependency` 已由 root guard 修復，
+  受控 retry 成功但後續自然排程仍觀察。順序收斂為 C＋L → 整合使用流程 → V6 contract／離線
+  設計與後續 real-user 驗證，不升級 maturity 版號。
 
 - 2026-09-14：新增 Decision Workbench integration handoff，記錄每日首屏／產業讀模型、
   typed learning projection、唯讀 Decision → Outcome journey 與 Increment A continuity

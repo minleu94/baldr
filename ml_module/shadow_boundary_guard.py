@@ -122,6 +122,20 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
                 "RecommendationProbabilityTransform",
             }
         ),
+        "ml_module.recommendation_inference_provenance": frozenset(
+            {
+                "RecommendationProvenanceError",
+                "build_training_provenance",
+                "validate_provenance_compatibility",
+                "verify_inference_provenance",
+            }
+        ),
+        "ml_module.recommendation_training_lineage": frozenset(
+            {
+                "RecommendationTrainingLineageError",
+                "read_recommendation_training_lineage",
+            }
+        ),
     },
     "app_module/recommendation_learning_evidence_projection_service.py": {
         "ml_module.feature_registry": frozenset({"CORE_LONG_HISTORY_FEATURE_REGISTRY"}),
@@ -154,7 +168,16 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
         "ml_module.feature_registry": frozenset({"CORE_LONG_HISTORY_FEATURE_REGISTRY"}),
         "ml_module.historical_feature_builder": frozenset({"HistoricalFeatureBuilder"}),
         "ml_module.recommendation_probability_transform": frozenset(
-            {"NULL_BENCHMARK_BASELINE_ID"}
+            {"NULL_BENCHMARK_BASELINE_ID", "PROBABILITY_TRANSFORM_ID"}
+        ),
+        "ml_module.recommendation_inference_provenance": frozenset(
+            {
+                "RecommendationProvenanceError",
+                "build_inference_projection_receipt",
+                "build_inference_provenance",
+                "persist_inference_projection_receipt",
+                "read_inference_projection_receipt",
+            }
         ),
     },
 }

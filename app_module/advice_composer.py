@@ -443,6 +443,37 @@ class AdviceComposer:
         )
         if not calibration_source and source_trace:
             calibration_source = str(source_trace[0])
+        raw_provenance = value("calibration_provenance", None)
+        if isinstance(raw_provenance, Mapping):
+            calibration_provenance = dict(raw_provenance)
+        else:
+            calibration_provenance = {}
+            for name in (
+                "training_provenance",
+                "inference_provenance",
+                "provenance_compatibility",
+                "provenance_status",
+                "projection_contract_hash",
+                "selection_authority",
+                "selection_score_kind",
+                "selection_percentile_kind",
+                "model_ranking_kind",
+            ):
+                item = value(name, None)
+                if item not in (None, "", {}, ()):
+                    calibration_provenance[name] = item
+        provenance_trace = tuple(
+            f"{key}:{calibration_provenance[key]}"
+            for key in (
+                "provenance_status",
+                "projection_receipt_path",
+                "projection_receipt_hash",
+                "inference_source_hash",
+                "inference_pit_hash",
+                "feature_snapshot_fingerprint",
+            )
+            if calibration_provenance.get(key) not in (None, "")
+        )
         return {
             "ranking_score_bp": value("ranking_score_bp"),
             "ranking_percentile_bp": value("ranking_percentile_bp"),
@@ -486,7 +517,8 @@ class AdviceComposer:
             "holding_horizon": str(
                 value("horizon", value("holding_horizon", value("calibration_horizon", ""))) or ""
             ),
-            "_source_trace": tuple(str(item) for item in source_trace),
+            "calibration_provenance": calibration_provenance,
+            "_source_trace": tuple(str(item) for item in source_trace) + provenance_trace,
         }
 
     @staticmethod

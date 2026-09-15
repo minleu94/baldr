@@ -160,6 +160,8 @@ def _natural_receipt(
     candidate_day: str,
     evaluation_day: str,
     capture_dates: tuple[date, ...] | None = None,
+    feature_schema: tuple[tuple[str, str, str], ...] = FEATURE_SCHEMA,
+    feature_registry_hash: str = FEATURE_REGISTRY_HASH,
 ) -> object:
     captures: list[Path] = []
     outcomes: list[MaturedRecommendationOutcome] = []
@@ -172,14 +174,23 @@ def _natural_receipt(
             decision_date=capture_day.isoformat(),
             feature_as_of_date=(capture_day - timedelta(days=1)).isoformat(),
             feature_available_date=(capture_day - timedelta(days=1)).isoformat(),
-            feature_values=(((index % 6) - 2) * 1000, 1000 + index * 10),
+            feature_values=tuple(
+                (
+                    ((index % 6) - 2) * 1000
+                    if feature_index == 0
+                    else 1000 + index * 10
+                    if feature_index == 1
+                    else (index + 1) * (feature_index + 1)
+                )
+                for feature_index in range(len(feature_schema))
+            ),
             rule_probability_bp=5000,
             rule_after_cost_probability_bp=5000,
         )
         capture = RecommendationPredictionCaptureService().capture(
             candidate_root=root,
-            feature_schema=FEATURE_SCHEMA,
-            feature_registry_hash=FEATURE_REGISTRY_HASH,
+            feature_schema=feature_schema,
+            feature_registry_hash=feature_registry_hash,
             policy_hash=RecommendationPromotionPolicy().policy_hash,
             decision_date=capture_day.isoformat(),
             captured_at=f"{capture_day.isoformat()}T09:00:00+00:00",

@@ -13,6 +13,7 @@ class MarketFrameProvider(Protocol):
 
 
 class RecommendationEvidencePort(Protocol):
+    last_run_context: dict[str, object]
     last_excluded_candidates_json: list[dict[str, object]]
     last_screening_matrix: list[dict[str, object]]
     last_why_not_payload_json: list[dict[str, object]]

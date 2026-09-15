@@ -26,6 +26,10 @@ def market_frame(codes=("2330", "2317"), start="2026-05-01", periods=20):
     ])
 
 
+def _without_result_id(context):
+    return {key: value for key, value in context.items() if key != "result_id"}
+
+
 def make_service(tmp_path, frame, *, scores=None):
     mapper = MagicMock()
     mapper.get_stock_industries.return_value = []
@@ -56,11 +60,23 @@ def test_future_append_and_late_revision_preserve_historical_result(tmp_path):
     first = a.run_recommendation(config, as_of_date="2026-05-20", max_stocks=2, top_n=1)
     second = b.run_recommendation(config, as_of_date="2026-05-20", max_stocks=2, top_n=1)
     assert [r.to_dict() for r in first] == [r.to_dict() for r in second]
-    assert a.last_run_context == b.last_run_context
+    assert a.last_run_context["result_id"] != b.last_run_context["result_id"]
+    assert _without_result_id(a.last_run_context) == _without_result_id(b.last_run_context)
     assert a.last_why_not_payload_json == b.last_why_not_payload_json
     assert first[0].eligible_universe_size == 2
     assert "mutated_by_engine" not in config.get("filters", {})
     assert "mutated_by_engine" not in a.last_run_context["strategy_config"].get("filters", {})
+
+
+def test_explicit_result_id_remains_authoritative(tmp_path):
+    service = make_service(tmp_path, market_frame(("2330",)))
+
+    assert service.run_recommendation(
+        {},
+        as_of_date="2026-05-20",
+        result_id="explicit-run-id",
+    )
+    assert service.last_run_context["result_id"] == "explicit-run-id"
 
 
 @pytest.mark.parametrize("score", [None, Decimal("NaN"), Decimal("Infinity")])
@@ -138,7 +154,8 @@ def test_pe_future_append_candidate_quality_and_input_fingerprint(tmp_path):
         conn.execute("INSERT INTO fundamental_valuation_metrics(stock_code, as_of_date, available_date, metric_name, value, source, source_version, quality) VALUES ('2330','2026-05-19','2026-05-21','pe','99.00','fixture','v2','observed')")
         conn.execute("INSERT INTO fundamental_valuation_metrics(stock_code, as_of_date, available_date, metric_name, value, source, source_version, quality) VALUES ('2330','2026-05-18','2026-05-18','pe','99.00','fixture','candidate','candidate')")
     assert service.run_recommendation(config, as_of_date="2026-05-20")
-    assert service.last_run_context == original
+    assert service.last_run_context["result_id"] != original["result_id"]
+    assert _without_result_id(service.last_run_context) == _without_result_id(original)
     assert service.last_run_context["fundamental_inputs"][0]["source_version"] == "v1"
     assert service.run_recommendation(config, as_of_date="2026-05-21") == []
     assert service.last_run_context["data_fingerprint"] != original["data_fingerprint"]

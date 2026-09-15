@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 
 class AdviceAction(str, Enum):
@@ -124,6 +124,8 @@ class RecommendationAdviceDTO:
     calibration_probability_baseline_probability_bp: int | None = None
     calibration_raw_probability_bp: int | None = None
     calibration_raw_after_cost_probability_bp: int | None = None
+    # P1 immutable projection receipt/provenance; presentation never recomputes it.
+    calibration_provenance: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if (
@@ -191,6 +193,7 @@ class RecommendationAdviceDTO:
             "calibration_probability_baseline_probability_bp": self.calibration_probability_baseline_probability_bp,
             "calibration_raw_probability_bp": self.calibration_raw_probability_bp,
             "calibration_raw_after_cost_probability_bp": self.calibration_raw_after_cost_probability_bp,
+            "calibration_provenance": dict(self.calibration_provenance),
         }
 
     @classmethod
@@ -241,6 +244,11 @@ class RecommendationAdviceDTO:
             ),
             calibration_raw_probability_bp=payload.get("calibration_raw_probability_bp"),
             calibration_raw_after_cost_probability_bp=payload.get("calibration_raw_after_cost_probability_bp"),
+            calibration_provenance=(
+                dict(cast(Mapping[str, Any], payload.get("calibration_provenance")))
+                if isinstance(payload.get("calibration_provenance"), Mapping)
+                else {}
+            ),
         )
 
 
@@ -287,6 +295,9 @@ class PortfolioAdviceDTO:
     calibration_probability_baseline_probability_bp: int | None = None
     calibration_raw_probability_bp: int | None = None
     calibration_raw_after_cost_probability_bp: int | None = None
+    # Same read-only provenance shape for portfolio advice sourced from a
+    # recommendation projection; absent means legacy/other portfolio data.
+    calibration_provenance: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _validate_bp("target_weight_bp", self.target_weight_bp, minimum=0, maximum=10000)
@@ -362,6 +373,7 @@ class PortfolioAdviceDTO:
             "calibration_probability_baseline_probability_bp": self.calibration_probability_baseline_probability_bp,
             "calibration_raw_probability_bp": self.calibration_raw_probability_bp,
             "calibration_raw_after_cost_probability_bp": self.calibration_raw_after_cost_probability_bp,
+            "calibration_provenance": dict(self.calibration_provenance),
         }
 
     @classmethod
@@ -411,6 +423,11 @@ class PortfolioAdviceDTO:
             ),
             calibration_raw_probability_bp=payload.get("calibration_raw_probability_bp"),
             calibration_raw_after_cost_probability_bp=payload.get("calibration_raw_after_cost_probability_bp"),
+            calibration_provenance=(
+                dict(cast(Mapping[str, Any], payload.get("calibration_provenance")))
+                if isinstance(payload.get("calibration_provenance"), Mapping)
+                else {}
+            ),
         )
 
 

@@ -1,6 +1,8 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 from app_module.dtos import RecommendationDTO
 from app_module.recommendation_save_coordinator import RecommendationSaveRequest
 
@@ -57,6 +59,84 @@ def test_save_request_builds_profile_regime_and_negative_evidence_snapshot() -> 
     assert result.config["profile_version"] == "2.0"
     assert result.config["regime_snapshot"]["regime"] == "Trend"
     assert result.excluded_candidates_json == [{"stock": "x"}]
+
+
+def test_save_request_uses_producer_result_id_before_repository_save() -> None:
+    service = SimpleNamespace(last_run_context={"result_id": "run-20260711"})
+    saved: list[object] = []
+    repository = SimpleNamespace(
+        save_result=lambda result: (saved.append(result), result.result_id)[1]
+    )
+    request = RecommendationSaveRequest(
+        result_name="研究結果",
+        config={"_recommendation_run_context": service.last_run_context},
+        recommendations=(_recommendation(),),
+        current_profile=None,
+        profile_meta={},
+        current_regime=None,
+    )
+
+    outcome = request.persist(
+        recommendation_repository=repository,
+        universe_service=None,
+        recommendation_service=service,
+        regime_service=SimpleNamespace(),
+    )
+
+    assert len(saved) == 1
+    assert saved[0].result_id == "run-20260711"
+    assert outcome.result_id == "run-20260711"
+
+
+def test_save_request_rejects_live_and_frozen_projection_identity_conflict() -> None:
+    service = SimpleNamespace(
+        last_run_context={
+            "result_id": "result-B",
+            "calibration_projection_receipt": {"result_id": "result-B"},
+        }
+    )
+    recommendation = _recommendation()
+    recommendation.calibration_provenance = {
+        "projection_receipt_result_id": "result-A"
+    }
+    request = RecommendationSaveRequest(
+        result_name="研究結果",
+        config={
+            "_recommendation_run_context": {
+                "result_id": "result-A",
+                "calibration_projection_receipt": {"result_id": "result-A"},
+            }
+        },
+        recommendations=(recommendation,),
+        current_profile=None,
+        profile_meta={},
+        current_regime=None,
+    )
+
+    with pytest.raises(ValueError, match="result identity conflict"):
+        request.build_result(
+            recommendation_service=service,
+            regime_service=SimpleNamespace(),
+        )
+
+
+def test_save_request_preserves_legacy_generated_result_id_shape() -> None:
+    request = RecommendationSaveRequest(
+        result_name="研究結果",
+        config={},
+        recommendations=(_recommendation(),),
+        current_profile=None,
+        profile_meta={},
+        current_regime=None,
+    )
+
+    result = request.build_result(
+        recommendation_service=SimpleNamespace(),
+        regime_service=SimpleNamespace(),
+        now=lambda: datetime(2026, 7, 11, 12, 0),
+    )
+
+    assert result.result_id == "rec_20260711_120000"
 
 
 def test_save_request_builds_watchlist_payload_after_repository_id() -> None:

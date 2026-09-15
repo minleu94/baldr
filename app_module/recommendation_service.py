@@ -5,7 +5,7 @@
 
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any, Optional, cast
+from typing import List, Dict, Any, Mapping, Optional, cast
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -15,6 +15,7 @@ from contextlib import closing
 import hashlib
 import json
 import sqlite3
+from uuid import uuid4
 
 # 確保 pd.isna 可用（pandas 兼容性）
 if not hasattr(pd, 'isna'):
@@ -59,13 +60,24 @@ from app_module.v4_evidence_identity import (
 )
 from app_module.recommendation_calibration_consumer import (
     RecommendationCalibrationConsumer,
+    RecommendationCalibrationProjection,
     build_default_recommendation_calibration_consumer,
 )
 from data_module.pit_sector_membership_reader import (
     PITMembershipReadResult,
     PITSectorMembershipReader,
 )
-from ml_module.recommendation_probability_transform import NULL_BENCHMARK_BASELINE_ID
+from ml_module.recommendation_probability_transform import (
+    NULL_BENCHMARK_BASELINE_ID,
+    PROBABILITY_TRANSFORM_ID,
+)
+from ml_module.recommendation_inference_provenance import (
+    RecommendationProvenanceError,
+    build_inference_projection_receipt,
+    build_inference_provenance,
+    persist_inference_projection_receipt,
+    read_inference_projection_receipt,
+)
 
 
 def _industry_names_match(actual: str, requested: str) -> bool:
@@ -152,6 +164,10 @@ class RecommendationService:
         recommendations: List[RecommendationDTO],
         *,
         decision_date: str,
+        selection_authority: str = "rule_top_n",
+        selection_score_kind: str = "rule_total_score",
+        selection_percentile_kind: str = "rule_percentile",
+        top_n_changed_by_model: bool = False,
     ) -> None:
         """Inject the verified active pointer projection into the normal DTO path.
 
@@ -180,7 +196,8 @@ class RecommendationService:
                 symbols=tuple(sorted({str(item.stock_code) for item in recommendations})),
                 industry_index_names=(),
             )
-            rows = HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY).compute(
+            feature_builder = HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY)
+            rows = feature_builder.compute(
                 snapshot,
                 industry_index_name_by_symbol={},
             )
@@ -188,6 +205,83 @@ class RecommendationService:
                 row.symbol: tuple(value for _, value in row.values)
                 for row in rows
             }
+            provenance_rows = [
+                {
+                    "symbol": row.symbol,
+                    "decision_date": getattr(row, "decision_date", snapshot.decision_date),
+                    "feature_as_of_date": getattr(
+                        row, "feature_as_of_date", snapshot.feature_as_of_date
+                    ),
+                    "feature_available_date": getattr(
+                        row, "feature_available_date", snapshot.decision_date
+                    ),
+                    "values": row.values,
+                    "snapshot_hash": getattr(row, "snapshot_hash", ""),
+                }
+                for row in rows
+            ]
+            active_identity_provider = getattr(consumer, "active_identity", None)
+            active_identity = (
+                active_identity_provider(decision_date=decision_date)
+                if callable(active_identity_provider)
+                else None
+            )
+            active_identity = active_identity if isinstance(active_identity, Mapping) else {}
+            active_cost_provider = getattr(consumer, "active_cost_scenario", None)
+            active_cost_scenario = (
+                active_cost_provider(decision_date=decision_date)
+                if callable(active_cost_provider)
+                else None
+            )
+            active_cost_hash = active_identity.get("cost_scenario_hash")
+            active_cost_id = active_identity.get("cost_scenario_id")
+            active_cost_version = active_identity.get("cost_scenario_version")
+            if active_cost_scenario is not None:
+                active_cost_hash = getattr(active_cost_scenario, "scenario_hash", None)
+                active_cost_id = getattr(active_cost_scenario, "scenario_id", None)
+                active_cost_version = getattr(active_cost_scenario, "scenario_version", None)
+            inference_feature_schema = getattr(
+                consumer,
+                "feature_schema",
+                CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
+            )
+            inference_feature_registry_hash = str(
+                getattr(
+                    consumer,
+                    "feature_registry_hash",
+                    CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+                )
+            )
+            inference_provenance = build_inference_provenance(
+                snapshot=snapshot,
+                feature_rows=provenance_rows,
+                feature_schema=inference_feature_schema,
+                feature_registry_hash=inference_feature_registry_hash,
+                feature_builder_schema_hash=feature_builder.load_contract.schema_hash,
+                source_database=str(provider.database_path),
+                history_start_date=str(
+                    getattr(self.config, "default_start_date", "2014-01-01")
+                )[:10],
+                cost_scenario_hash=(
+                    str(active_cost_hash)
+                    if active_cost_hash
+                    else None
+                ),
+                cost_scenario_id=(
+                    str(active_cost_id)
+                    if active_cost_id
+                    else None
+                ),
+                cost_scenario_version=(
+                    str(active_cost_version)
+                    if active_cost_version
+                    else None
+                ),
+                probability_transform_id=PROBABILITY_TRANSFORM_ID,
+                source_contract_binding=getattr(
+                    self.config, "recommendation_source_contract_binding", None
+                ),
+            )
         except Exception as exc:  # noqa: BLE001 - consumer must fail closed
             self.last_run_context["calibration_projection_status"] = "unavailable"
             self.last_run_context.setdefault("warnings", []).append(
@@ -231,6 +325,11 @@ class RecommendationService:
             decision_date=decision_date,
             data_quality="observed",
             rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
+            inference_provenance=inference_provenance,
+            selection_authority=selection_authority,
+            selection_score_kind=selection_score_kind,
+            selection_percentile_kind=selection_percentile_kind,
+            top_n_changed_by_model=top_n_changed_by_model,
         )
         self.last_calibration_projections = dict(projections)
         self.last_run_context["calibration_projection_status"] = (
@@ -246,6 +345,54 @@ class RecommendationService:
         self.last_run_context["calibration_projection_rows"] = {
             code: projection.to_dict() for code, projection in sorted(projections.items())
         }
+        try:
+            receipt_path = self._persist_calibration_projection_receipt(
+                consumer=consumer,
+                decision_date=decision_date,
+                projections=projections,
+                inference_provenance=inference_provenance,
+                result_id=(
+                    str(self.last_run_context.get("result_id") or "") or None
+                ),
+                selection_authority=selection_authority,
+                selection_score_kind=selection_score_kind,
+                selection_percentile_kind=selection_percentile_kind,
+                top_n_changed_by_model=top_n_changed_by_model,
+            )
+        except (OSError, TypeError, ValueError, RecommendationProvenanceError) as exc:
+            receipt_path = None
+            self.last_run_context.setdefault("warnings", []).append(
+                f"calibration_projection_receipt_unavailable:{type(exc).__name__}"
+            )
+            self.last_run_context["calibration_projection_receipt_status"] = "unavailable"
+            self.last_run_context["calibration_projection_receipt_error"] = type(exc).__name__
+            self.last_run_context["calibration_projection_receipt_error_detail"] = str(exc)
+        receipt_required = callable(getattr(consumer, "active_identity", None)) and getattr(
+            consumer, "pointer_path", None
+        ) is not None
+        if receipt_required and receipt_path is None:
+            # A real active candidate is only allowed to reach the DTO path
+            # with a durable, hash-checked receipt.  Keep the rule-selected
+            # recommendation list and all rule scores intact, but withdraw
+            # every model-derived field when receipt publication fails.
+            projections = {
+                symbol: RecommendationCalibrationProjection.unavailable(
+                    stock_code=symbol,
+                    warning="projection_receipt_not_persisted_fail_closed",
+                    ranking_percentile_bp=projection.ranking_percentile_bp,
+                )
+                for symbol, projection in projections.items()
+            }
+            self.last_calibration_projections = dict(projections)
+            self.last_run_context["calibration_projection_status"] = "unavailable"
+            self.last_run_context["calibration_projection_receipt_status"] = "unavailable"
+        elif receipt_path is not None:
+            self.last_run_context["calibration_projection_receipt_status"] = "persisted"
+        self.last_run_context["calibration_projection_rows"] = {
+            code: projection.to_dict() for code, projection in sorted(projections.items())
+        }
+        if receipt_path is not None:
+            self.last_run_context["calibration_projection_receipt"] = receipt_path
         for recommendation in recommendations:
             projection = projections.get(recommendation.stock_code)
             if projection is None:
@@ -275,6 +422,119 @@ class RecommendationService:
             recommendation.calibration_raw_after_cost_probability_bp = (
                 projection.raw_after_cost_profit_probability_bp
             )
+            recommendation.calibration_provenance = dict(projection.inference_provenance)
+            recommendation.calibration_provenance.update(
+                {
+                    "training_provenance": dict(projection.training_provenance),
+                    "provenance_compatibility": dict(projection.provenance_compatibility),
+                    "provenance_status": projection.provenance_status,
+                    "projection_contract_hash": projection.projection_contract_hash,
+                    "selection_authority": projection.selection_authority,
+                    "selection_score_kind": projection.selection_score_kind,
+                    "selection_percentile_kind": projection.selection_percentile_kind,
+                    "model_ranking_kind": projection.model_ranking_kind,
+                }
+            )
+            if receipt_path is not None:
+                recommendation.calibration_provenance["projection_receipt_path"] = receipt_path[
+                    "path"
+                ]
+                recommendation.calibration_provenance["projection_receipt_hash"] = receipt_path[
+                    "receipt_hash"
+                ]
+                if receipt_path.get("result_id"):
+                    recommendation.calibration_provenance[
+                        "projection_receipt_result_id"
+                    ] = receipt_path["result_id"]
+            elif receipt_required:
+                recommendation.calibration_provenance.update(
+                    {
+                        "provenance_status": "unavailable",
+                        "projection_receipt_status": "not_persisted",
+                        "projection_receipt_required": True,
+                    }
+                )
+
+    @staticmethod
+    def _persist_calibration_projection_receipt(
+        *,
+        consumer: Any,
+        decision_date: str,
+        projections: Mapping[str, Any],
+        inference_provenance: Mapping[str, Any],
+        result_id: str | None,
+        selection_authority: str,
+        selection_score_kind: str,
+        selection_percentile_kind: str,
+        top_n_changed_by_model: bool,
+    ) -> dict[str, str] | None:
+        """Persist the exact bounded projection batch when a real consumer is loaded."""
+
+        identity_provider = getattr(consumer, "active_identity", None)
+        pointer_path = getattr(consumer, "pointer_path", None)
+        if not callable(identity_provider) or pointer_path is None:
+            return None
+        identity = identity_provider(decision_date=decision_date)
+        if not isinstance(identity, Mapping) or not identity.get("candidate_id"):
+            return None
+        candidate_id = str(identity.get("candidate_id") or "")
+        projection_rows = [
+            projection.to_dict()
+            for _, projection in sorted(projections.items(), key=lambda item: str(item[0]))
+        ]
+        first = next(iter(projections.values()), None)
+        if first is None:
+            return None
+        training_provenance = getattr(first, "training_provenance", {})
+        compatibility = getattr(first, "provenance_compatibility", {})
+        receipt = build_inference_projection_receipt(
+            decision_date=decision_date,
+            result_id=result_id,
+            candidate_identity=identity,
+            training_provenance=(
+                training_provenance if isinstance(training_provenance, Mapping) else {}
+            ),
+            inference_provenance=inference_provenance,
+            compatibility=(compatibility if isinstance(compatibility, Mapping) else {}),
+            projections=projection_rows,
+            selection_contract={
+                "authority": selection_authority,
+                "score_kind": selection_score_kind,
+                "percentile_kind": selection_percentile_kind,
+                "model_ranking_kind": "model_return_bp",
+                "top_n_changed_by_model": bool(top_n_changed_by_model),
+            },
+        )
+        path = persist_inference_projection_receipt(Path(pointer_path).parent, receipt)
+        read_inference_projection_receipt(
+            path,
+            expected_receipt_hash=receipt.receipt_hash,
+            expected_decision_date=decision_date,
+            expected_candidate_id=candidate_id,
+            expected_result_id=result_id,
+            expected_cost_scenario_hash=receipt.payload.get("cost_scenario_hash"),
+        )
+        post_identity = identity_provider(decision_date=decision_date)
+        if not isinstance(post_identity, Mapping):
+            raise RecommendationProvenanceError(
+                "active candidate identity unavailable after projection receipt"
+            )
+        for key in (
+            "candidate_id",
+            "candidate_manifest_hash",
+            "candidate_artifact_hash",
+            "candidate_freeze_hash",
+            "pointer_version",
+        ):
+            if post_identity.get(key) != identity.get(key):
+                raise RecommendationProvenanceError(
+                    "active candidate changed during projection receipt publication"
+                )
+        return {
+            "path": str(path),
+            "receipt_hash": receipt.receipt_hash,
+            "result_id": str(result_id or ""),
+        }
 
     def _matrix_row(
         self,
@@ -528,6 +788,7 @@ class RecommendationService:
         *,
         as_of_date: str | date | None = None,
         universe: Optional[List[str]] = None,
+        result_id: str | None = None,
     ) -> List[RecommendationDTO]:
         """執行推薦分析
 
@@ -589,6 +850,14 @@ class RecommendationService:
             "warnings": ["industry_membership_not_point_in_time"] if cutoff else [],
             **strategy_identity,
         }
+        resolved_result_id = str(result_id or config.get("result_id") or "").strip()
+        if not resolved_result_id:
+            # Allocate the run identity before calibration receipt publication.
+            # UUID entropy prevents same-second runs from sharing a saved result
+            # or projection receipt identity; the context keeps it stable for
+            # every save performed from this run.
+            resolved_result_id = f"rec_{uuid4().hex}"
+        self.last_run_context["result_id"] = resolved_result_id
         declared_identity = {
             "strategy_version_id": config.get("strategy_version_id") or config.get("strategy_version"),
             "cost_model_id": config.get("cost_model_id"),
@@ -1282,6 +1551,10 @@ class RecommendationService:
         self._apply_recommendation_calibration(
             all_recommendations,
             decision_date=decision_cutoff or latest_date_str,
+            selection_authority="rule_top_n",
+            selection_score_kind="rule_total_score",
+            selection_percentile_kind="rule_percentile",
+            top_n_changed_by_model=False,
         )
         self._finalize_negative_evidence_buffers()
         return all_recommendations

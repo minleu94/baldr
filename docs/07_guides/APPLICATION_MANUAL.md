@@ -2245,6 +2245,27 @@ V1.7 後，「保存結果」會一併保存推薦當下的 screening matrix：�
 
 推薦分析不會自動下單、不會自動調整持倉，也不會把自訂 Profile 視為已通過回測驗證。策略版本 Profile 只代表該版本通過既有 gate，可作推薦設定來源，仍需自行判讀資料品質、風險與研究證據。
 
+#### 隔日校準 projection 與 provenance（唯讀）
+
+若結果列或「決策工作台」顯示校準機率，先在 provenance 詳情核對
+`projection_receipt_path`、`projection_receipt_hash`、`result_id`、`decision_date`、
+candidate 與 cost scenario。receipt 的預設路徑為
+`<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\inference_projection\<decision_date>\<safe_candidate>\<receipt_digest>.json`；
+保存結果的 `run_context.calibration_projection_receipt` 也會保留 path、hash 與 result identity。
+一般按「執行推薦分析」未另傳 `result_id` 時，服務會在本輪 receipt 發布前產生含 UUID 的唯一 `rec_...` identity，
+同一輪重複保存沿用該 ID；明確傳入的 ID 會原樣保留。保存 coordinator 若發現 live run context、frozen context、
+receipt 或推薦列 provenance 的 identity 不一致，會拒絕保存並提示衝突。
+查詢時必須使用 exact `result_id`、股票代號、決策日、candidate 與成本 lane 交叉核對，
+並確認 receipt hash readback 通過；不可用 latest、同股同日或第一筆結果替代。這些欄位只供唯讀追溯，
+不會因開啟 receipt 而重跑推薦、寫入資料庫或改變持倉。
+
+- `provenance_status=verified` 且 receipt 已 `persisted`：表示 training／inference source、PIT、feature transform 與共享 cost／probability contract 已核對，可讀取該筆 model projection；正式 top-N 仍由 rule selection authority 決定，不能把機率當成未授權的選股改排依據。
+- `legacy_unproven`：舊 candidate 缺少 P1 training lineage 的相容標記，不代表已驗證，也不等於策略失敗；不可計入 verified evidence 或據此自動升級。
+- `unavailable`／`not_persisted`：receipt、source、pointer 或 identity 核對失敗；系統保留原 rule selection，但撤回 model-derived probability／ranking 欄位，不應手動補成 verified。
+- `estimated`：成本或成交資料是研究估算（例如 fees/tax-only），不是 observed fill；只可作 research-only 判讀，不得當成正式成本、promotion、績效或 broker 依據。
+
+缺少自然成熟 evidence 時，receipt 仍只證明工程 provenance 與當次 projection，不會自動 promotion、產生自然證據信用或下單；看到 identity conflict、future row 或 hash mismatch 時，應停止採用該 projection，保留 rule-only 結果並處理警告。
+
 ### 6.5 結果後續操作
 
 保存時一併保留執行當時的 Profile／設定、決策日、行情與實際基本面輸入指紋、母體及負面證據。送推薦回放會傳送獨立設定快照，後續修改畫面設定不改已送出內容。歷史 as_of_date 目前是應用服務接點；若歷史產業篩選缺當時成分證據，回報 `industry_membership_pit_unavailable`，不能改用今日產業分類解鎖。

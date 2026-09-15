@@ -7,7 +7,7 @@ rule-only/unavailable；不補零、不回填、不把 shadow model 變成正式
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 import hashlib
@@ -46,6 +46,16 @@ from ml_module.recommendation_probability_transform import (
     PROBABILITY_LINEAGE_SCHEMA_VERSION,
     PROBABILITY_TRANSFORM_ID,
     RecommendationProbabilityTransform,
+)
+from ml_module.recommendation_training_lineage import (
+    RecommendationTrainingLineageError,
+    read_recommendation_training_lineage,
+)
+from ml_module.recommendation_inference_provenance import (
+    RecommendationProvenanceError,
+    build_training_provenance,
+    validate_provenance_compatibility,
+    verify_inference_provenance,
 )
 
 
@@ -87,6 +97,15 @@ class RecommendationCalibrationProjection:
     lot_type: str | None = None
     instrument_type: str | None = None
     cost_estimate_source: str = "legacy_fixed_assumption"
+    training_provenance: Mapping[str, Any] = field(default_factory=dict)
+    inference_provenance: Mapping[str, Any] = field(default_factory=dict)
+    provenance_compatibility: Mapping[str, Any] = field(default_factory=dict)
+    provenance_status: str = "unavailable"
+    projection_contract_hash: str | None = None
+    selection_authority: str = "rule_top_n"
+    selection_score_kind: str = "rule_total_score"
+    selection_percentile_kind: str = "rule_percentile"
+    model_ranking_kind: str = "model_return_bp"
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -135,6 +154,18 @@ class RecommendationCalibrationProjection:
             raw_after_cost_profit_probability_bp=None,
             warnings=(warning,),
             status="rule_only",
+            training_provenance=_legacy_training_provenance("projection_unavailable"),
+            inference_provenance={},
+            provenance_compatibility={
+                "schema_version": "recommendation-calibration-provenance-compatibility.v1",
+                "status": "blocked",
+                "reason": warning,
+            },
+            provenance_status="unavailable",
+            selection_authority="rule_top_n",
+            selection_score_kind="rule_total_score",
+            selection_percentile_kind="rule_percentile",
+            model_ranking_kind="model_return_bp",
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -175,6 +206,15 @@ class RecommendationCalibrationProjection:
             "lot_type": self.lot_type,
             "instrument_type": self.instrument_type,
             "cost_estimate_source": self.cost_estimate_source,
+            "training_provenance": dict(self.training_provenance),
+            "inference_provenance": dict(self.inference_provenance),
+            "provenance_compatibility": dict(self.provenance_compatibility),
+            "provenance_status": self.provenance_status,
+            "projection_contract_hash": self.projection_contract_hash,
+            "selection_authority": self.selection_authority,
+            "selection_score_kind": self.selection_score_kind,
+            "selection_percentile_kind": self.selection_percentile_kind,
+            "model_ranking_kind": self.model_ranking_kind,
         }
 
 
@@ -201,6 +241,9 @@ class RecommendationCalibrationConsumer:
         self._baseline_identity: Mapping[str, Any] | None = None
         self._lineage_models: tuple[tuple[Mapping[str, Any], Any], ...] = ()
         self._probability_lineage: tuple[Mapping[str, Any], ...] = ()
+        self._training_provenance: Mapping[str, Any] = _legacy_training_provenance(
+            "active_pointer_missing"
+        )
         self._blocker: str = "active_pointer_missing"
         self._cost_scenario: RecommendationCostScenario | None = None
         self._pointer_stat: tuple[int, int] | None = None
@@ -215,6 +258,9 @@ class RecommendationCalibrationConsumer:
         self._baseline_identity = None
         self._lineage_models = ()
         self._probability_lineage = ()
+        self._training_provenance = _legacy_training_provenance(
+            "training_lineage_not_loaded"
+        )
         self._blocker = "active_pointer_missing"
         self._cost_scenario = None
         self._pointer_stat = None
@@ -344,9 +390,18 @@ class RecommendationCalibrationConsumer:
         if training_as_of is None or training_as_of > current_day:
             self._blocker = "candidate_training_cutoff_after_decision"
             return "rule_only"
+        training_provenance, training_error = _load_candidate_training_provenance(
+            candidate_root=candidate_root,
+            candidate_payload=candidate_payload,
+            decision_date=current_day,
+        )
+        if training_error is not None:
+            self._blocker = training_error
+            return "rule_only"
         self._loaded_pointer = pointer
         self._model = loaded.model
         self._cost_scenario = scenario
+        self._training_provenance = training_provenance
         lineage, lineage_error = self._load_probability_lineage(pointer, loaded.model, current_day)
         if lineage_error is not None:
             self._loaded_pointer = None
@@ -382,6 +437,17 @@ class RecommendationCalibrationConsumer:
         if baseline_id != AFTER_COST_NULL_BENCHMARK_BASELINE_ID:
             return None
         return baseline_id, AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+
+    def active_cost_scenario(
+        self,
+        *,
+        decision_date: str,
+    ) -> RecommendationCostScenario | None:
+        """Return the loaded cost lane without changing legacy identity shape."""
+
+        if self.reload(decision_date=decision_date) != "active":
+            return None
+        return self._cost_scenario
 
     def predict_active(
         self,
@@ -441,10 +507,13 @@ class RecommendationCalibrationConsumer:
             "candidate_manifest_hash": self._loaded_pointer.get("candidate_manifest_hash"),
             "candidate_artifact_hash": self._loaded_pointer.get("candidate_artifact_hash"),
             "candidate_freeze_hash": self._loaded_pointer.get("candidate_freeze_hash"),
+            "dataset_hash": self._loaded_pointer.get("dataset_hash"),
+            "effective_date": self._loaded_pointer.get("effective_date"),
             "model_id": getattr(self._model, "model_id", ""),
             "probability_lineage_schema_version": PROBABILITY_LINEAGE_SCHEMA_VERSION,
             "probability_lineage": [dict(item) for item in self._probability_lineage],
             "probability_lineage_hash": _hash_payload(self._probability_lineage),
+            "training_provenance": dict(self._training_provenance),
             # 舊版 legacy pointer 的 active identity 必須維持原始欄位形狀，
             # 否則既有 active capture 的 identity hash 會被無意間改寫。
             **scenario_fields,
@@ -641,6 +710,11 @@ class RecommendationCalibrationConsumer:
         ranking_percentile_bp: int | None = None,
         decision_date: str = "",
         data_quality: str = "observed",
+        inference_provenance: Mapping[str, Any] | None = None,
+        selection_authority: str = "rule_top_n",
+        selection_score_kind: str = "rule_total_score",
+        selection_percentile_kind: str = "rule_percentile",
+        top_n_changed_by_model: bool = False,
     ) -> RecommendationCalibrationProjection:
         current_day = _date_text_or_none(decision_date)
         if current_day is None:
@@ -660,6 +734,29 @@ class RecommendationCalibrationConsumer:
             return RecommendationCalibrationProjection.unavailable(
                 stock_code=stock_code,
                 warning=self._blocker or "active_pointer_unavailable",
+                ranking_percentile_bp=ranking_percentile_bp,
+            )
+        scenario_for_provenance = self._cost_scenario or _legacy_scenario_from_pointer(
+            self._loaded_pointer
+        )
+        (
+            resolved_inference_provenance,
+            provenance_compatibility,
+            provenance_status,
+            provenance_warning,
+        ) = _resolve_projection_provenance(
+            training_provenance=self._training_provenance,
+            inference_provenance=inference_provenance,
+            decision_date=current_day,
+            stock_code=stock_code,
+            expected_registry_hash=self.feature_registry_hash,
+            expected_schema=self.feature_schema,
+            expected_cost_scenario_hash=scenario_for_provenance.scenario_hash,
+        )
+        if provenance_warning is not None:
+            return RecommendationCalibrationProjection.unavailable(
+                stock_code=stock_code,
+                warning=provenance_warning,
                 ranking_percentile_bp=ranking_percentile_bp,
             )
         if feature_values is None:
@@ -799,6 +896,29 @@ class RecommendationCalibrationConsumer:
             f"cost_policy:{scenario.policy_id or 'legacy'}@{scenario.policy_version or 'v1'}",
             f"cost_estimate_source:{cost_estimate_source}",
             "cost_label_role:fees_tax_only" if scenario.is_estimated else "cost_label_role:legacy_fixed_plus_observed_liquidity",
+            f"provenance_status:{provenance_status}",
+            f"training_source_hash:{resolved_inference_provenance.get('training_source_hash') or self._training_provenance.get('training_source_hash') or 'unproven'}",
+            f"training_pit_hash:{self._training_provenance.get('training_pit_hash') or 'unproven'}",
+            f"inference_source_hash:{resolved_inference_provenance.get('inference_source_hash') or 'unproven'}",
+            f"inference_pit_hash:{resolved_inference_provenance.get('inference_pit_hash') or 'unproven'}",
+            f"feature_snapshot_fingerprint:{resolved_inference_provenance.get('feature_snapshot_fingerprint') or 'unproven'}",
+            f"selection_authority:{selection_authority}",
+            f"selection_score_kind:{selection_score_kind}",
+            f"selection_percentile_kind:{selection_percentile_kind}",
+            f"model_ranking_kind:model_return_bp",
+        )
+        projection_contract_hash = _projection_contract_hash(
+            stock_code=stock_code,
+            decision_date=current_day,
+            candidate_id=str(prediction.model_id),
+            prediction=prediction,
+            inference_provenance=resolved_inference_provenance,
+            training_provenance=self._training_provenance,
+            provenance_compatibility=provenance_compatibility,
+            selection_authority=selection_authority,
+            selection_score_kind=selection_score_kind,
+            selection_percentile_kind=selection_percentile_kind,
+            top_n_changed_by_model=top_n_changed_by_model,
         )
         return RecommendationCalibrationProjection(
             stock_code=stock_code,
@@ -834,6 +954,15 @@ class RecommendationCalibrationConsumer:
             ),
             status="active_candidate",
             **_projection_scenario_fields(scenario, cost_estimate_source),
+            training_provenance=dict(self._training_provenance),
+            inference_provenance=dict(resolved_inference_provenance),
+            provenance_compatibility=dict(provenance_compatibility),
+            provenance_status=provenance_status,
+            projection_contract_hash=projection_contract_hash,
+            selection_authority=selection_authority,
+            selection_score_kind=selection_score_kind,
+            selection_percentile_kind=selection_percentile_kind,
+            model_ranking_kind="model_return_bp",
         )
 
     def project_many(
@@ -847,6 +976,11 @@ class RecommendationCalibrationConsumer:
         rule_baseline_id: str = NULL_BENCHMARK_BASELINE_ID,
         ranking_percentile_by_symbol: Mapping[str, int] | None = None,
         data_quality: str = "observed",
+        inference_provenance: Mapping[str, Any] | None = None,
+        selection_authority: str = "rule_top_n",
+        selection_score_kind: str = "rule_total_score",
+        selection_percentile_kind: str = "rule_percentile",
+        top_n_changed_by_model: bool = False,
     ) -> dict[str, RecommendationCalibrationProjection]:
         percentiles = ranking_percentile_by_symbol or {}
         after_cost_baselines = after_cost_rule_probability_by_symbol or {}
@@ -863,9 +997,226 @@ class RecommendationCalibrationConsumer:
                 ranking_percentile_bp=percentiles.get(symbol),
                 decision_date=decision_date,
                 data_quality=data_quality,
+                inference_provenance=inference_provenance,
+                selection_authority=selection_authority,
+                selection_score_kind=selection_score_kind,
+                selection_percentile_kind=selection_percentile_kind,
+                top_n_changed_by_model=top_n_changed_by_model,
             )
             for symbol in symbols
         }
+
+
+def _legacy_training_provenance(reason: str) -> dict[str, Any]:
+    return {
+        "schema_version": "recommendation-inference-provenance.v1",
+        "status": "legacy_unproven",
+        "reason": reason,
+        "training_source_hash": None,
+        "training_pit_hash": None,
+        "feature_registry_hash": None,
+        "feature_schema_hash": None,
+        "feature_transform_contract": None,
+        "dataset_id": None,
+        "dataset_hash": None,
+        "decision_date": None,
+        "training_as_of": None,
+        "training_semantics": None,
+        "decision_time_eligible": None,
+        "research_only": None,
+        "cost_scenario_hash": None,
+    }
+
+
+def _legacy_inference_provenance(decision_date: str, stock_code: str) -> dict[str, Any]:
+    return {
+        "schema_version": "recommendation-inference-provenance.v1",
+        "status": "legacy_unproven",
+        "reason": "inference_provenance_not_supplied",
+        "decision_date": decision_date,
+        "symbols": [str(stock_code)],
+        "inference_source_hash": None,
+        "inference_pit_hash": None,
+        "feature_snapshot_fingerprint": None,
+    }
+
+
+def _load_candidate_training_provenance(
+    *,
+    candidate_root: Path,
+    candidate_payload: Mapping[str, Any],
+    decision_date: str,
+) -> tuple[Mapping[str, Any], str | None]:
+    hash_declared = "training_lineage_manifest_hash" in candidate_payload
+    path_declared = "training_lineage_manifest_path" in candidate_payload
+    lineage_hash = str(candidate_payload.get("training_lineage_manifest_hash") or "").strip()
+    lineage_path_text = str(candidate_payload.get("training_lineage_manifest_path") or "").strip()
+    if not hash_declared and not path_declared:
+        return _legacy_training_provenance("training_lineage_not_declared"), None
+    if not lineage_hash or not lineage_path_text:
+        return _legacy_training_provenance("training_lineage_declaration_incomplete"), (
+            "candidate_training_lineage_declaration_incomplete"
+        )
+    lineage_path = Path(lineage_path_text)
+    if not lineage_path.is_absolute():
+        lineage_path = (candidate_root / lineage_path).resolve()
+    if lineage_path.is_symlink() or not lineage_path.is_file():
+        return _legacy_training_provenance("training_lineage_manifest_missing"), (
+            "candidate_training_lineage_manifest_missing"
+        )
+    try:
+        lineage = read_recommendation_training_lineage(
+            lineage_path,
+            expected_manifest_hash=lineage_hash,
+            expected_dataset_hash=(
+                str(candidate_payload.get("dataset_hash"))
+                if candidate_payload.get("dataset_hash") not in (None, "")
+                else None
+            ),
+            expected_candidate_id=(
+                str(candidate_payload.get("candidate_id"))
+                if candidate_payload.get("candidate_id") not in (None, "")
+                else None
+            ),
+        )
+        lineage_decision = _date_text_or_none(str(lineage.payload.get("decision_date") or ""))
+        if lineage_decision is None or lineage_decision > decision_date:
+            raise RecommendationTrainingLineageError(
+                "training lineage decision date is after inference decision"
+            )
+        provenance = build_training_provenance(
+            lineage_payload=lineage.payload,
+            manifest_hash=lineage.manifest_hash,
+            manifest_path=str(lineage_path),
+            candidate_payload=candidate_payload,
+        )
+        for key in ("feature_registry_hash", "feature_schema_hash"):
+            candidate_value = candidate_payload.get(key)
+            lineage_value = provenance.get(key)
+            if candidate_value not in (None, "") and lineage_value not in (None, ""):
+                if candidate_value != lineage_value:
+                    raise RecommendationProvenanceError(
+                        f"candidate training {key} does not match lineage"
+                    )
+        return provenance, None
+    except (
+        OSError,
+        UnicodeError,
+        TypeError,
+        ValueError,
+        RecommendationTrainingLineageError,
+        RecommendationProvenanceError,
+    ) as exc:
+        return _legacy_training_provenance(type(exc).__name__), (
+            "candidate_training_lineage_invalid_fail_closed"
+        )
+
+
+def _resolve_projection_provenance(
+    *,
+    training_provenance: Mapping[str, Any],
+    inference_provenance: Mapping[str, Any] | None,
+    decision_date: str,
+    stock_code: str,
+    expected_registry_hash: str,
+    expected_schema: Any,
+    expected_cost_scenario_hash: str,
+) -> tuple[dict[str, Any], dict[str, Any], str, str | None]:
+    if inference_provenance is None:
+        legacy_inference = _legacy_inference_provenance(decision_date, stock_code)
+        compatibility = validate_provenance_compatibility(
+            training_provenance,
+            legacy_inference,
+            expected_cost_scenario_hash=None,
+        )
+        compatibility["status"] = "legacy_unproven"
+        compatibility["reason"] = "inference_provenance_not_supplied"
+        return legacy_inference, compatibility, "legacy_unproven", None
+    try:
+        verify_inference_provenance(
+            inference_provenance,
+            expected_decision_date=decision_date,
+            expected_registry_hash=expected_registry_hash,
+            expected_schema=expected_schema,
+            expected_probability_transform_id=PROBABILITY_TRANSFORM_ID,
+        )
+        symbols = {
+            str(item).strip()
+            for item in inference_provenance.get("symbols", ())
+            if str(item).strip()
+        }
+        if stock_code not in symbols:
+            raise RecommendationProvenanceError(
+                "inference provenance does not cover projected stock"
+            )
+        compatibility = validate_provenance_compatibility(
+            training_provenance,
+            inference_provenance,
+            expected_cost_scenario_hash=expected_cost_scenario_hash,
+            expected_probability_transform_id=PROBABILITY_TRANSFORM_ID,
+        )
+        if compatibility.get("status") == "blocked":
+            return (
+                dict(inference_provenance),
+                compatibility,
+                "unavailable",
+                "provenance_compatibility_mismatch_fail_closed",
+            )
+        return (
+            dict(inference_provenance),
+            compatibility,
+            str(compatibility.get("status") or "legacy_unproven"),
+            None,
+        )
+    except (TypeError, ValueError, RecommendationProvenanceError):
+        return (
+            dict(inference_provenance),
+            {
+                "schema_version": "recommendation-calibration-provenance-compatibility.v1",
+                "status": "blocked",
+                "reason": "inference_provenance_invalid",
+            },
+            "unavailable",
+            "inference_provenance_invalid_fail_closed",
+        )
+
+
+def _projection_contract_hash(
+    *,
+    stock_code: str,
+    decision_date: str,
+    candidate_id: str,
+    prediction: RecommendationPrediction,
+    inference_provenance: Mapping[str, Any],
+    training_provenance: Mapping[str, Any],
+    provenance_compatibility: Mapping[str, Any],
+    selection_authority: str,
+    selection_score_kind: str,
+    selection_percentile_kind: str,
+    top_n_changed_by_model: bool,
+) -> str:
+    return _hash_payload(
+        {
+            "schema_version": "recommendation-calibration-projection.v1",
+            "stock_code": stock_code,
+            "decision_date": decision_date,
+            "candidate_id": candidate_id,
+            "ranking_score_bp": prediction.ranking_score_bp,
+            "calibrated_probability_bp": prediction.calibrated_probability_bp,
+            "after_cost_profit_probability_bp": prediction.after_cost_profit_probability_bp,
+            "dataset_id": prediction.dataset_id,
+            "training_as_of": prediction.training_as_of,
+            "horizon_trading_days": prediction.horizon_trading_days,
+            "training_provenance": dict(training_provenance),
+            "inference_provenance": dict(inference_provenance),
+            "provenance_compatibility": dict(provenance_compatibility),
+            "selection_authority": selection_authority,
+            "selection_score_kind": selection_score_kind,
+            "selection_percentile_kind": selection_percentile_kind,
+            "model_ranking_kind": "model_return_bp",
+            "top_n_changed_by_model": bool(top_n_changed_by_model),
+        }
+    )
 
 
 def _clamp_to_baseline(value: int | None, baseline: int, cap: int) -> int | None:

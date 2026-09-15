@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
@@ -39,8 +40,14 @@ class RecommendationSaveRequest:
         regime_service: RegimeServicePort,
         now: Callable[[], datetime] = datetime.now,
     ) -> RecommendationResultDTO:
-        timestamp = now().isoformat()
+        now_value = now()
+        timestamp = now_value.isoformat()
         config_with_meta = dict(self.config)
+        result_id = self._result_id(
+            recommendation_service=recommendation_service,
+            config=config_with_meta,
+            now_value=now_value,
+        )
         if self.current_profile and self.profile_meta:
             config_with_meta["profile_id"] = self.current_profile
             config_with_meta["profile_name"] = self.profile_meta.get("name", "")
@@ -51,7 +58,7 @@ class RecommendationSaveRequest:
         if regime_snapshot:
             config_with_meta["regime_snapshot"] = regime_snapshot
         return RecommendationResultDTO(
-            result_id="",
+            result_id=result_id,
             result_name=self.result_name,
             config=config_with_meta,
             recommendations=list(self.recommendations),
@@ -80,6 +87,72 @@ class RecommendationSaveRequest:
                 getattr(recommendation_service, "last_exclusion_warnings_json", [])
             ),
         )
+
+    def _result_id(
+        self,
+        *,
+        recommendation_service: RecommendationEvidencePort,
+        config: Mapping[str, Any],
+        now_value: datetime,
+    ) -> str:
+        """Resolve the save identity before any repository side effect.
+
+        The recommendation producer may already have published a projection
+        receipt under ``last_run_context.result_id``.  The saved DTO must use
+        that same identity; otherwise the repository-generated ID would break
+        receipt reverse lookup.  The config snapshot is a compatibility
+        fallback for callers that only pass the copied run context.
+        """
+
+        declarations: list[tuple[str, str]] = []
+
+        def add_declaration(label: str, value: object) -> None:
+            value_text = str(value or "").strip()
+            if value_text:
+                declarations.append((label, value_text))
+
+        service_context = getattr(recommendation_service, "last_run_context", {})
+        contexts: tuple[tuple[str, object], ...] = (
+            ("producer_context", service_context),
+            ("frozen_context", config.get("_recommendation_run_context", {})),
+        )
+        for label, context in contexts:
+            if not isinstance(context, Mapping):
+                continue
+            add_declaration(f"{label}.result_id", context.get("result_id"))
+            receipt = context.get("calibration_projection_receipt")
+            if isinstance(receipt, Mapping):
+                add_declaration(
+                    f"{label}.calibration_projection_receipt.result_id",
+                    receipt.get("result_id"),
+                )
+        add_declaration("config.result_id", config.get("result_id"))
+        for index, recommendation in enumerate(self.recommendations):
+            provenance = getattr(recommendation, "calibration_provenance", {})
+            if not isinstance(provenance, Mapping):
+                continue
+            add_declaration(
+                f"recommendation[{index}].projection_receipt_result_id",
+                provenance.get("projection_receipt_result_id"),
+            )
+            receipt = provenance.get("projection_receipt")
+            if isinstance(receipt, Mapping):
+                add_declaration(
+                    f"recommendation[{index}].projection_receipt.result_id",
+                    receipt.get("result_id"),
+                )
+
+        declared_ids = {value for _, value in declarations}
+        if len(declared_ids) > 1:
+            details = ", ".join(f"{label}={value}" for label, value in declarations)
+            raise ValueError(
+                "recommendation save result identity conflict: " + details
+            )
+        if declarations:
+            return declarations[0][1]
+        # Preserve the repository's legacy identifier shape, but resolve it
+        # here so build_result() and the producer share one immutable identity.
+        return f"rec_{now_value.strftime('%Y%m%d_%H%M%S')}"
 
     def _regime_snapshot(
         self, regime_service: RegimeServicePort, timestamp: str

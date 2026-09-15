@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Mapping, Optional, Dict, Any, cast
 from enum import Enum
 from copy import deepcopy
 from decimal import Decimal
@@ -90,6 +90,8 @@ class RecommendationDTO:
     calibration_probability_baseline_probability_bp: Optional[int] = None
     calibration_raw_probability_bp: Optional[int] = None
     calibration_raw_after_cost_probability_bp: Optional[int] = None
+    # P1 structured provenance; empty means legacy rule-only/old persisted data.
+    calibration_provenance: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> dict:
         """轉換為字典"""
@@ -133,6 +135,7 @@ class RecommendationDTO:
             'calibration_probability_baseline_probability_bp': self.calibration_probability_baseline_probability_bp,
             'calibration_raw_probability_bp': self.calibration_raw_probability_bp,
             'calibration_raw_after_cost_probability_bp': self.calibration_raw_after_cost_probability_bp,
+            'calibration_provenance': deepcopy(self.calibration_provenance),
         })
         if self.threshold_mode == "quantile":
             result['百分位'] = f"{self.score_percentile_bp / 100:.2f}%" if self.score_percentile_bp is not None else "N/A"
@@ -214,6 +217,11 @@ class RecommendationDTO:
             ),
             calibration_raw_probability_bp=data.get('calibration_raw_probability_bp'),
             calibration_raw_after_cost_probability_bp=data.get('calibration_raw_after_cost_probability_bp'),
+            calibration_provenance=(
+                dict(cast(Mapping[str, Any], data.get('calibration_provenance')))
+                if isinstance(data.get('calibration_provenance'), Mapping)
+                else {}
+            ),
         )
 
 

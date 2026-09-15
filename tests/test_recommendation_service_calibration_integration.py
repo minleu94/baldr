@@ -9,11 +9,16 @@ from pathlib import Path
 import sqlite3
 import sys
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
+
+import pandas as pd
+import pytest
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
 from app_module.recommendation_service import RecommendationService
+from ml_module.recommendation_inference_provenance import read_inference_projection_receipt
 
 
 def _make_database(path: Path, *, days: int = 90, start: date = date(2014, 1, 1)) -> None:
@@ -127,6 +132,134 @@ def _recommendation() -> RecommendationDTO:
     )
 
 
+def _verified_candidate(
+    tmp_path: Path,
+    *,
+    candidate_day: str,
+    training_as_of: str,
+    samples: tuple[Any, ...] | None = None,
+    feature_names: tuple[str, ...] | None = None,
+    feature_schema: tuple[tuple[str, str, str], ...] | None = None,
+    feature_registry_hash: str | None = None,
+    dataset_id: str = "dataset-verified-integration",
+) -> tuple[object, Path, dict[str, object]]:
+    """Build a real candidate package carrying the P1 training lineage."""
+
+    from ml_module.recommendation_calibration_training import (
+        RecommendationCalibrationTrainingConfig,
+        RecommendationCalibrationTrainingService,
+    )
+    from ml_module.recommendation_cost_scenario import build_legacy_cost_scenario
+    from ml_module.recommendation_training_lineage import (
+        build_recommendation_training_lineage,
+        persist_recommendation_training_lineage,
+        recommendation_training_dataset_hash,
+    )
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_NAMES,
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _samples,
+    )
+
+    resolved_samples = samples if samples is not None else _samples(0)
+    resolved_feature_names = feature_names if feature_names is not None else FEATURE_NAMES
+    resolved_feature_schema = feature_schema if feature_schema is not None else FEATURE_SCHEMA
+    resolved_registry_hash = (
+        feature_registry_hash
+        if feature_registry_hash is not None
+        else FEATURE_REGISTRY_HASH
+    )
+    dataset_hash = recommendation_training_dataset_hash(resolved_samples)
+    result = RecommendationCalibrationTrainingService().fit(
+        dataset_id=dataset_id,
+        dataset_hash=dataset_hash,
+        samples=resolved_samples,
+        feature_names=resolved_feature_names,
+        feature_schema=resolved_feature_schema,
+        feature_registry_hash=resolved_registry_hash,
+        training_as_of=training_as_of,
+        fixed_round_trip_cost_bp=50,
+        dataset_quality={"formal_candidate_eligible": True},
+        created_at=f"{candidate_day}T00:00:00+00:00",
+        config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+    )
+    candidate_root = tmp_path / "candidate-verified"
+    result.persist(candidate_root)
+    candidate_metadata = json.loads(
+        (candidate_root / "candidate.json").read_text(encoding="utf-8")
+    )
+    lineage = build_recommendation_training_lineage(
+        learning_root=tmp_path / "learning",
+        run_id=f"daily-recommendation-learning:{candidate_day}:verified",
+        run_scope="integration",
+        decision_date=candidate_day,
+        training_as_of=training_as_of,
+        dataset_id=dataset_id,
+        dataset_hash=dataset_hash,
+        samples=resolved_samples,
+        feature_schema=resolved_feature_schema,
+        feature_registry_hash=resolved_registry_hash,
+        fixed_round_trip_cost_bp=50,
+        cost_scenario=build_legacy_cost_scenario(50),
+        dataset_quality={"formal_candidate_eligible": True},
+        training_result=result,
+        training_config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+        candidate_id=result.candidate_id,
+        candidate_manifest_hash=result.manifest.manifest_hash,
+        candidate_artifact_hash=result.artifact_hash,
+        source_groups={"replay": resolved_samples},
+    )
+    lineage_path = persist_recommendation_training_lineage(tmp_path / "learning", lineage)
+    candidate_metadata.update(
+        {
+            "training_lineage_manifest_hash": lineage.manifest_hash,
+            "training_lineage_manifest_path": str(lineage_path),
+            "training_source_hash": lineage.payload["training_source_hash"],
+            "training_pit_hash": lineage.payload["training_pit_hash"],
+            "feature_transform_contract": lineage.payload["feature_transform_contract"],
+            "feature_transform_contract_hash": lineage.payload[
+                "feature_transform_contract"
+            ]["contract_hash"],
+        }
+    )
+    (candidate_root / "candidate.json").write_text(
+        json.dumps(candidate_metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return result, candidate_root, candidate_metadata
+
+
+def _core_feature_samples() -> tuple[Any, ...]:
+    from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
+    from test_daily_recommendation_learning_loop import _samples
+
+    feature_count = len(CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema)
+    return tuple(
+        replace(
+            row,
+            feature_values=(
+                tuple(row.feature_values[:2])
+                + tuple(
+                    (row_index + 1) * (feature_index + 1)
+                    for feature_index in range(2, feature_count)
+                )
+            ),
+        )
+        for row_index, row in enumerate(_samples(0))
+    )
+
+
 def test_normal_recommendation_service_consumes_injected_projection_adapter(tmp_path: Path) -> None:
     database = tmp_path / "source.db"
     _make_database(database)
@@ -170,6 +303,95 @@ def test_normal_recommendation_service_consumes_injected_projection_adapter(tmp_
         service.last_run_context["calibration_after_cost_baseline_id"]
         == "after_cost_null_benchmark_50pct_v1"
     )
+
+
+@pytest.mark.parametrize("failure", (PermissionError("receipt directory denied"), ValueError("immutable receipt conflict")))
+def test_active_projection_receipt_storage_failure_withdraws_model_fields_but_keeps_rule_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    consumer.pointer_path = tmp_path / "active-pointer.json"
+    consumer.active_identity = lambda *, decision_date: {
+        "candidate_id": "candidate-model-1",
+    }
+    service = RecommendationService(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2014-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    monkeypatch.setattr(
+        RecommendationService,
+        "_persist_calibration_projection_receipt",
+        staticmethod(lambda **_: (_ for _ in ()).throw(failure)),
+    )
+    recommendation = _recommendation()
+    original_total_score = recommendation.total_score
+
+    service._apply_recommendation_calibration([recommendation], decision_date="2014-03-31")
+
+    assert recommendation.total_score == original_total_score
+    assert recommendation.calibrated_probability_bp is None
+    assert recommendation.after_cost_profit_probability_bp is None
+    assert recommendation.ranking_score_bp is None
+    assert recommendation.calibration_status == "rule_only"
+    assert recommendation.calibration_provenance["provenance_status"] == "unavailable"
+    assert recommendation.calibration_provenance["projection_receipt_status"] == "not_persisted"
+    assert service.last_run_context["calibration_projection_status"] == "unavailable"
+    assert service.last_run_context["calibration_projection_receipt_status"] == "unavailable"
+    assert any(
+        warning.startswith("calibration_projection_receipt_unavailable:")
+        for warning in service.last_run_context["warnings"]
+    )
+
+
+def test_active_projection_receipt_candidate_race_fails_closed(tmp_path: Path) -> None:
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    consumer.pointer_path = tmp_path / "active-pointer.json"
+    identities = iter(
+        (
+            {"candidate_id": "candidate-model-1"},
+            {"candidate_id": "candidate-model-2"},
+        )
+    )
+    consumer.active_identity = lambda *, decision_date: next(identities)
+    service = RecommendationService(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2014-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    recommendation = _recommendation()
+    original_total_score = recommendation.total_score
+
+    service._apply_recommendation_calibration([recommendation], decision_date="2014-03-31")
+
+    assert recommendation.total_score == original_total_score
+    assert recommendation.calibrated_probability_bp is None
+    assert recommendation.after_cost_profit_probability_bp is None
+    assert recommendation.calibration_status == "rule_only"
+    assert recommendation.calibration_provenance["provenance_status"] == "unavailable"
+    assert "candidate/model race" in service.last_run_context[
+        "calibration_projection_receipt_error_detail"
+    ]
 
 
 def test_isolated_producer_consumer_advice_workbench_ui_path(tmp_path: Path) -> None:
@@ -276,7 +498,12 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Exercise a minimal real pointer/artifact consumer through the same UI path."""
+    """Exercise real consumer/receipt to DTO/Advice/UI wiring in isolation.
+
+    The feature builder is intentionally replaced and the result DTO is
+    assembled in this test; the public-service, real-builder, and repository
+    readback boundary is covered separately below.
+    """
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     import pytest
@@ -294,7 +521,6 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     from test_daily_recommendation_learning_loop import (
         FEATURE_REGISTRY_HASH,
         FEATURE_SCHEMA,
-        _candidate,
         _natural_receipt,
     )
     from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
@@ -303,10 +529,10 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     if instance is None:
         instance = QApplication(sys.argv)
 
-    trained_result, candidate_root, candidate_metadata = _candidate(
+    trained_result, candidate_root, candidate_metadata = _verified_candidate(
         tmp_path,
-        shift=0,
         candidate_day="2026-06-01",
+        training_as_of="2026-05-31",
     )
     natural_evidence = _natural_receipt(
         tmp_path,
@@ -332,12 +558,13 @@ def test_real_consumer_producer_advice_workbench_ui_path(
         feature_registry_hash=FEATURE_REGISTRY_HASH,
         data_root=tmp_path / "formal-data",
     )
+    assert real_consumer.reload(decision_date="2026-06-22") == "active"
 
     database = tmp_path / "source.db"
     _make_database(database, start=date(2026, 1, 1))
-    # The minimal fixture intentionally has the consumer's two-feature schema;
-    # the production adapter and UI are still exercised with a bounded feature
-    # source, without creating a formal data artifact.
+    # Adapter/UI wiring is the isolated boundary here: the builder is replaced
+    # with a two-feature row.  The public-service test below keeps the real
+    # HistoricalFeatureBuilder and repository path intact.
     monkeypatch.setattr(
         HistoricalFeatureBuilder,
         "compute",
@@ -361,6 +588,7 @@ def test_real_consumer_producer_advice_workbench_ui_path(
         regime_detector=MagicMock(),
         calibration_consumer=real_consumer,
     )
+    recommendation_service.last_run_context["result_id"] = "rec-real-consumer-20260622"
     recommendation = _recommendation()
     recommendation_service._apply_recommendation_calibration(
         [recommendation],
@@ -376,6 +604,34 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     assert projection.horizon == "20 trading days"
     assert any(item.startswith("candidate:") for item in projection.source_trace)
     assert any(item.startswith("cost_scenario:") for item in projection.source_trace)
+    receipt_metadata = recommendation_service.last_run_context["calibration_projection_receipt"]
+    receipt = read_inference_projection_receipt(
+        receipt_metadata["path"],
+        expected_decision_date="2026-06-22",
+        expected_candidate_id=trained_result.candidate_id,
+        expected_result_id="rec-real-consumer-20260622",
+        expected_stock_code="AAA",
+    )
+    assert receipt.receipt_hash == receipt_metadata["receipt_hash"]
+    assert receipt.payload["training_provenance"]["status"] == "verified"
+    assert receipt.payload["provenance_compatibility"]["status"] == "verified"
+    assert receipt.payload["training_provenance"]["training_source_hash"] != receipt.payload[
+        "inference_provenance"
+    ]["inference_source_hash"]
+    assert receipt.payload["training_provenance"]["training_pit_hash"] != receipt.payload[
+        "inference_provenance"
+    ]["inference_pit_hash"]
+    assert recommendation.calibration_provenance["provenance_status"] == "verified"
+    assert recommendation.calibration_provenance["projection_receipt_hash"] == receipt.receipt_hash
+    result_round_trip = RecommendationResultDTO.from_dict(
+        RecommendationResultDTO(
+            result_id="rec-real-consumer-20260622",
+            result_name="round-trip",
+            config={},
+            recommendations=[recommendation],
+        ).to_dict()
+    )
+    assert result_round_trip.recommendations[0].calibration_provenance["projection_receipt_hash"] == receipt.receipt_hash
     assert "after_cost_baseline:unavailable" in projection.source_trace
     assert "after_cost_baseline_contract:declared_or_unavailable" in projection.source_trace
     mismatched_after_cost = real_consumer.project(
@@ -415,6 +671,7 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     assert advice.calibrated_probability_bp == projection.calibrated_probability_bp
     assert advice.after_cost_profit_probability_bp is None
     assert advice.sample_size == projection.sample_size
+    assert advice.calibration_provenance["projection_receipt_hash"] == receipt.receipt_hash
 
     dashboard = WorkbenchDashboardDTO(
         as_of_date=date(2026, 6, 22),
@@ -437,8 +694,174 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     assert "適用期間：20 trading days" in rendered
     assert f"樣本：{projection.sample_size:,}" in rendered
     assert "cost_scenario:" in rendered
+    assert "projection_receipt_path:" in rendered
     assert "自然前瞻驗證" not in rendered
     view.close()
+
+
+def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
+    tmp_path: Path,
+) -> None:
+    """Exercise public service, real builder, repository, and exact receipt lookup."""
+
+    from app_module.recommendation_repository import RecommendationRepository
+    from app_module.recommendation_save_coordinator import RecommendationSaveRequest
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from test_daily_recommendation_learning_loop import _natural_receipt
+    from ml_module.recommendation_inference_provenance import (
+        find_inference_projection_receipts,
+        read_inference_projection_receipt,
+    )
+
+    class _RepositoryConfig(SimpleNamespace):
+        def resolve_output_path(self, relative_path: str) -> Path:
+            return Path(self.output_root) / relative_path
+
+    feature_registry = CORE_LONG_HISTORY_FEATURE_REGISTRY
+    feature_schema = feature_registry.canonical_schema
+    feature_names = feature_registry.canonical_ids
+    trained_result, candidate_root, candidate_metadata = _verified_candidate(
+        tmp_path,
+        candidate_day="2026-06-01",
+        training_as_of="2026-05-31",
+        samples=_core_feature_samples(),
+        feature_names=feature_names,
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry.registry_hash,
+        dataset_id="dataset-public-service-integration",
+    )
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-06-22",
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry.registry_hash,
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-06-22",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    database = tmp_path / "source.db"
+    _make_database(database, start=date(2026, 1, 1))
+    market_frame = pd.DataFrame(
+        [
+            {
+                "日期": date(2026, 1, 1) + timedelta(days=offset),
+                "證券代號": "AAA",
+                "證券名稱": "測試股票",
+                "收盤價": 100 + offset,
+                "成交股數": 1_000 + offset,
+            }
+            for offset in range(173)
+        ]
+    )
+    config = _RepositoryConfig(
+        db_file=database,
+        default_start_date="2026-01-01",
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "formal-data",
+        use_sqlite=False,
+    )
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "authority" / "recommendation-calibration-active-pointer.json",
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry.registry_hash,
+        data_root=config.data_root,
+    )
+    service = RecommendationService(
+        config,
+        industry_mapper=MagicMock(),
+        market_data_provider=lambda: market_frame.copy(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+
+    # Only the rule scorer is deterministic here.  The public service still
+    # runs its real SQLite snapshot provider and HistoricalFeatureBuilder.
+    service.strategy_configurator.generate_recommendations = lambda _stock_df, _config: pd.DataFrame(
+        {
+            "TotalScore": [80],
+            "FinalScore": [80],
+            "收盤價": [Decimal("100")],
+            "成交股數": [1_000],
+        }
+    )
+    recommendations = service.run_recommendation(
+        {"recommendation_ranking": {"threshold_mode": "fixed"}},
+        max_stocks=1,
+        top_n=1,
+        as_of_date="2026-06-22",
+        universe=["AAA"],
+    )
+    assert len(recommendations) == 1
+    result_id = str(service.last_run_context["result_id"])
+    assert result_id.startswith("rec_")
+    assert len(result_id) > len("rec_") + 16
+    assert service.last_run_context["calibration_projection_receipt_status"] == "persisted"
+    assert service.last_run_context["calibration_projection_receipt"]["result_id"] == result_id
+    inference = recommendations[0].calibration_provenance
+    assert len(inference["feature_rows"][0]["feature_ids"]) == len(feature_schema)
+    assert inference["feature_builder_schema_hash"]
+    assert inference["projection_receipt_result_id"] == result_id
+
+    save_request = RecommendationSaveRequest(
+        result_name="public service provenance integration",
+        config={"_recommendation_run_context": service.last_run_context},
+        recommendations=tuple(recommendations),
+        current_profile=None,
+        profile_meta={},
+        current_regime=None,
+    )
+    result = save_request.build_result(
+        recommendation_service=service,
+        regime_service=MagicMock(),
+    )
+    # The save coordinator resolves the producer identity before repository I/O;
+    # there is no post-hoc result_id binding after receipt publication.
+    assert result.result_id == result_id
+    repeated_result = save_request.build_result(
+        recommendation_service=service,
+        regime_service=MagicMock(),
+    )
+    assert repeated_result.result_id == result_id
+    repository = RecommendationRepository(config)
+    assert repository.save_result(result) == result_id
+    loaded = repository.load_result(result_id)
+    assert loaded is not None
+    assert loaded.result_id == result_id
+    receipt_metadata = loaded.run_context["calibration_projection_receipt"]
+    persisted_provenance = loaded.recommendations[0].calibration_provenance
+    assert persisted_provenance["projection_receipt_hash"] == receipt_metadata["receipt_hash"]
+
+    matches = find_inference_projection_receipts(
+        tmp_path / "authority",
+        decision_date="2026-06-22",
+        candidate_id=trained_result.candidate_id,
+        result_id=loaded.result_id,
+        stock_code="AAA",
+    )
+    assert len(matches) == 1
+    receipt_path = matches[0].receipt_path
+    assert receipt_path is not None
+    receipt = read_inference_projection_receipt(
+        receipt_path,
+        expected_decision_date="2026-06-22",
+        expected_candidate_id=trained_result.candidate_id,
+        expected_result_id=loaded.result_id,
+        expected_stock_code="AAA",
+    )
+    assert receipt.receipt_hash == receipt_metadata["receipt_hash"]
 
 
 def test_real_consumer_rejects_future_research_candidate_context(

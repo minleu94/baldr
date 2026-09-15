@@ -30,6 +30,12 @@ from ml_module.recommendation_cost_scenario import (
     RecommendationCostScenarioError,
     normalize_cost_scenario,
 )
+from ml_module.recommendation_inference_provenance import (
+    build_feature_transform_contract,
+    training_pit_hash_from_payload,
+    training_source_hash_from_payload,
+    verify_feature_transform_contract,
+)
 from ml_module.purged_walk_forward import MLTimeWindowRow, PurgedWalkForwardSplitter
 
 
@@ -124,6 +130,7 @@ def build_recommendation_training_lineage(
     dataset_hash: str,
     samples: Sequence[RecommendationCalibrationSample],
     feature_schema: tuple[tuple[str, str, str], ...],
+    feature_registry_hash: str | None = None,
     fixed_round_trip_cost_bp: int | None,
     cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None,
     dataset_quality: Mapping[str, Any] | None,
@@ -192,6 +199,10 @@ def build_recommendation_training_lineage(
         training_config=training_config,
     )
     scenario_payload = scenario.to_dict()
+    feature_transform_contract = build_feature_transform_contract(
+        feature_registry_hash=feature_registry_hash,
+        feature_schema=feature_schema,
+    )
     body: dict[str, Any] = {
         "schema_version": TRAINING_LINEAGE_SCHEMA_VERSION,
         "run_id": run_id,
@@ -210,6 +221,8 @@ def build_recommendation_training_lineage(
         "candidate_artifact_hash": candidate_artifact_hash,
         "feature_schema": [list(item) for item in feature_schema],
         "feature_schema_hash": feature_schema_hash(feature_schema),
+        "feature_registry_hash": feature_registry_hash,
+        "feature_transform_contract": feature_transform_contract,
         "cost_scenario": scenario_payload,
         "cost_scenario_id": scenario.scenario_id,
         "cost_scenario_version": scenario.scenario_version,
@@ -263,6 +276,8 @@ def build_recommendation_training_lineage(
         "formal_order_allowed": False,
         "production_action_allowed": False,
     }
+    body["training_source_hash"] = training_source_hash_from_payload(body)
+    body["training_pit_hash"] = training_pit_hash_from_payload(body)
     manifest_hash = _hash_payload(body)
     lineage = RecommendationTrainingLineage(payload=body, manifest_hash=manifest_hash)
     _validate_lineage_payload(lineage.to_dict())
@@ -847,6 +862,59 @@ def _validate_lineage_payload(payload: Mapping[str, Any]) -> None:
         raise RecommendationTrainingLineageError(
             "decision-time training lineage contains a future label"
         )
+    source_declared = "training_source_hash" in payload
+    pit_declared = "training_pit_hash" in payload
+    if source_declared != pit_declared:
+        raise RecommendationTrainingLineageError(
+            "training source and PIT hashes must be declared together"
+        )
+    if source_declared:
+        declared_source_hash = str(payload.get("training_source_hash") or "")
+        declared_pit_hash = str(payload.get("training_pit_hash") or "")
+        if not declared_source_hash or not declared_pit_hash:
+            raise RecommendationTrainingLineageError(
+                "training source and PIT hashes must both be non-empty"
+            )
+        _require_sha256(declared_source_hash, "training_source_hash")
+        _require_sha256(declared_pit_hash, "training_pit_hash")
+        try:
+            expected_source_hash = training_source_hash_from_payload(payload)
+            expected_pit_hash = training_pit_hash_from_payload(payload)
+        except (TypeError, ValueError) as exc:
+            raise RecommendationTrainingLineageError(
+                "training provenance hash payload is invalid"
+            ) from exc
+        if declared_source_hash != expected_source_hash:
+            raise RecommendationTrainingLineageError("training source hash mismatch")
+        if declared_pit_hash != expected_pit_hash:
+            raise RecommendationTrainingLineageError("training PIT hash mismatch")
+    transform = payload.get("feature_transform_contract")
+    if (transform is not None) != source_declared:
+        raise RecommendationTrainingLineageError(
+            "training P1 provenance declarations are incomplete"
+        )
+    if transform is not None:
+        if not isinstance(transform, Mapping):
+            raise RecommendationTrainingLineageError(
+                "training feature transform contract is invalid"
+            )
+        try:
+            verify_feature_transform_contract(
+                transform,
+                expected_registry_hash=(
+                    str(payload.get("feature_registry_hash"))
+                    if payload.get("feature_registry_hash") not in (None, "")
+                    else None
+                ),
+                expected_schema=tuple(
+                    tuple(str(item) for item in row)
+                    for row in payload.get("feature_schema", ())
+                ),
+            )
+        except (TypeError, ValueError) as exc:
+            raise RecommendationTrainingLineageError(
+                "training feature transform contract is invalid"
+            ) from exc
 
 
 def _infer_source_role(row_id: str) -> str:

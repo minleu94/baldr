@@ -382,6 +382,7 @@ class DailyRecommendationLearningRunner:
                     dataset_hash=dataset_hash,
                     samples=eligible_samples,
                     feature_schema=self.feature_schema,
+                    feature_registry_hash=self.feature_registry_hash,
                     fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
                     cost_scenario=self.cost_scenario,
                     dataset_quality=dataset_quality,
@@ -402,6 +403,17 @@ class DailyRecommendationLearningRunner:
                     {
                         "training_lineage_manifest_hash": lineage_hash,
                         "training_lineage_manifest_path": lineage_path,
+                        "training_source_hash": lineage.payload.get("training_source_hash"),
+                        "training_pit_hash": lineage.payload.get("training_pit_hash"),
+                        "feature_registry_hash": lineage.payload.get("feature_registry_hash"),
+                        "feature_transform_contract": lineage.payload.get(
+                            "feature_transform_contract"
+                        ),
+                        "feature_transform_contract_hash": (
+                            lineage.payload.get("feature_transform_contract", {}).get("contract_hash")
+                            if isinstance(lineage.payload.get("feature_transform_contract"), Mapping)
+                            else None
+                        ),
                         "training_cutoff": training_cutoff,
                         "training_semantics": training_semantics,
                         "decision_time_eligible": decision_time_eligible,
@@ -523,6 +535,11 @@ class DailyRecommendationLearningRunner:
             "training_lineage_manifest_hash": lineage_hash,
             "training_lineage_manifest_path": lineage_path,
             "training_lineage_status": lineage_status,
+            "training_source_hash": candidate_metadata.get("training_source_hash"),
+            "training_pit_hash": candidate_metadata.get("training_pit_hash"),
+            "feature_transform_contract_hash": candidate_metadata.get(
+                "feature_transform_contract_hash"
+            ),
             "training_row_count": (
                 result.training_row_count if result is not None else candidate_metadata.get("training_row_count")
             ),

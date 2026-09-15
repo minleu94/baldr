@@ -1,5 +1,29 @@
 # baldr 完整操作手冊
 
+## 2026-09-15 Continuity Review Workbench R1
+
+### 入口與操作
+
+1. 開啟「決策工作台」，在 review table 找到「研究檢討提醒」列。
+2. 以列的 `result_id:stock_code` exact candidate 選取提醒；右側 Inspector 會顯示股票、研究意向、檢討時間（台北）、提醒原因與 source trace。
+3. 按「開啟下鑽」進入既有「個股研究報告」；「決策 → 結果」頁會以同一 `result_id` 顯示 5／10／20／60 個交易日 maturity、Evidence、既有 Journal 與 continuity controls。
+4. 只有明確需要改變研究狀態或下次檢視時間時，才在 Journey 的 controls 按「納入研究／略過／設定下次檢視／記筆記」。這些是既有 append-only Journal action；Workbench table 本身沒有完成、清除、重排或交易按鈕。
+
+### 判讀與安全邊界
+
+- 提醒列的 `scheduled`／`due`／`overdue`／`invalid` 是以 `next_review_at` 與讀取時的 `Asia/Taipei` clock 投影；尚未到期的 `scheduled` 仍會出列，時間只影響 due 分類；`invalid` 需人工確認，不猜測時間。
+- `decision_date` 是推薦／市場決策日，`continuity_as_of` 是提醒投影的歷史邊界，兩者不同。目前 UI 沒有歷史回放入口，畫面依實際讀取時間投影；只有 API／測試進行歷史重播時，才傳明確帶時區的 `continuity_as_of`，不可用畫面日期代替。
+- `result_id` 是推薦結果根；同一股票出現在多個結果時，必須依選取列的 exact candidate 下鑽，不以股票代碼、日期或第一筆候選猜配。只有保存的 Recommendation JSON 通過 exact stock 檢查時，Portfolio 才會沿用推薦 `result_id`。
+- Journey 的 linked 只代表來源 identity 可連結；`ready`、`pending`、`unknown` 是各 maturity window 的結果狀態，不能把 linked 或 ready 解讀成實際成交損益、投資有效性或正式 evidence credit。
+- Workbench／Journey 的 projection 與詳情是唯讀研究資料；不會自動下單、調倉、改寫 Recommendation／Evidence／Portfolio ledger，也不會因開啟報告而寫入 Journal。
+
+### 排錯
+
+- 沒有 reminder：先確認 `output_root/portfolio/journal_entries.jsonl` 存在、JSONL chain 完整，再核對 exact candidate 是否有在查詢 `as_of` 前已建立、且尚未被清除的 schedule revision；不以 `as_of` 必須晚於 `next_review_at` 作為出列條件。缺檔或 identity conflict 會維持空／降級並列 diagnostic。
+- 看見 `unknown`／`pending`：表示 outcome 尚未有足夠可得資料或來源缺漏；不可手動改成 ready。先看 Journey 的 source trace、available time 與說明欄。
+- 看見 identity conflict：停止下鑽與任何動作，核對 `result_id`、`stock_code`、source snapshot id／hash；不要以同股同日資料補接。
+- 關閉忙碌中的報告視窗時，系統會先合作式取消背景讀取，待 worker 自然結束後才關閉；不要以工作管理員強殺程序判定成功。
+
 ## 2026-09-09 官方基本面現況資料
 
 持倉／觀察清單開啟「個股研究報告」，基本面頁會列出已實際取得的最新月營收；來源標示「官方基本面現況快照（非歷史公告證據）」。金額為 TWD 元，MOPS 千元在讀取／匯入邊界轉換。新月份還在公告時，不同股票最新月份可能不同，不能以其他股票已有公告推定本股缺漏。

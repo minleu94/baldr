@@ -30,7 +30,9 @@
 > `formal_order_allowed=false`。正式 source acceptance、natural production evidence、
 > allocation promotion 與 broker 仍維持 external pending。臺銀 05:50 task 的註冊／可觸發
 > 狀態不等於首個自然排程執行；首個實際 run 另列觀察線。`7e029933` 已補真 MainWindow close
-> 與跨程序 writer／reader readback 的工程實證；Workbench state projection 與跨市場到個股的呈現／證據缺口矩陣見
+> 與跨程序 writer／reader readback 的工程實證；2026-09-15 Continuity Review Workbench R1 已補
+> Journal reminder projection、exact candidate 下鑽與 shared Journey／controls readback；Position Health、
+> formal outcome 與跨市場到個股的其餘呈現／證據缺口矩陣見
 > [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
 
 ---
@@ -140,7 +142,14 @@ normal lane 的 natural sample 仍為 0，不宣稱 V4 formal 完工，也不以
    `research_only=true`、無 broker／auto action。工程證據見
    [Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。後續若擴充，
    仍不得把正式交易資格前置於此研究功能。
-3. **PIT 產業／Recommendation source acceptance**。由既有
+3. **Continuity Review Workbench R1（已完成 bounded engineering acceptance）**。既有
+   Journal 的 exact `(result_id, stock_code)` reminders 已接入 Workbench review table，選取後可
+   下鑽同一 shared stock research／Decision → Outcome Journey；Journey 的 maturity 與 continuity
+   controls 仍分離，Workbench 不寫 Journal。QA 見
+   [Continuity Review Workbench R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)。
+   這只完成 continuity review loop 的唯讀接線，不折抵 natural forward、formal evidence、
+   Position Health 或 broker Gate。
+4. **PIT 產業／Recommendation source acceptance**。由既有
    `industry_strength_service.py`、`pit_sector_membership_machine.py`／`formal_pit_sector_publisher.py`、
    `recommendation_service.py` 與對應 tests 補版本化 membership、publication／available time、
    代表股與 TPEX／OTC scope；驗收 current／historical fixed-date 可重建、coverage／quality／
@@ -148,7 +157,7 @@ normal lane 的 natural sample 仍為 0，不宣稱 V4 formal 完工，也不以
    timestamp、公司行動與資料品質接受；這是 Gate 3／V5 market journey 邊界，不開啟 V4
    formal、Portfolio 或 broker 權限。
 
-三項均不重做既有 Advice／calibration／historical replay／daily shadow；策略評估效果只代表
+四項均不重做既有 Advice／calibration／historical replay／daily shadow；策略評估效果只代表
 該資料與 cohort 下的觀察，不保證逐日或逐期單調進步。
 
 ### 2026-08-30 canonical Next
@@ -255,6 +264,10 @@ V3.0 engineering candidate 的 closeout/readiness report 已完成，工程狀�
   Position Health source-backed projection → Portfolio／Workbench、`user_declared` 持倉研究、
   PIT 產業／Recommendation source acceptance；natural forward／同 scope calibration／05:50
   首次實際 run 保留為觀察線，不改 V4 formal、V5／V6 定位或正式交易邊界。
+- 2026-09-15：完成 Continuity Review Workbench R1 bounded engineering acceptance；新增既有
+  Journal due projection、Portfolio exact recommendation promotion guard、Workbench exact
+  multi-candidate drilldown 與 shared Journey／controls／跨程序 readback QA。此為唯讀 research
+  continuity 接線，不新增 parallel Journal／outcome store，不授予 natural evidence 或 formal credit。
 - 2026-09-15：完成 `user_declared` Holding Research Increment 2；新增 append-only exact
   revision、PIT／source custody read model、Portfolio research UI、自然關窗與獨立 writer／reader
   QA。此為 research-only bounded slice，不改 Paper／formal／broker 權限。

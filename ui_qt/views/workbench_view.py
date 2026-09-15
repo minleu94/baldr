@@ -554,6 +554,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.detail_drilldown_button.setProperty("variant", "secondary")
         self.detail_drilldown_button.clicked.connect(self._open_selected_detail_target)
         self._selected_detail_target = ""
+        self._selected_detail_item = None
         detail_panel.layout.addWidget(self.detail_title_label)
         detail_header_row = QWidget()
         detail_header_layout = QHBoxLayout(detail_header_row)
@@ -1169,6 +1170,41 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         return True
 
+    def _open_continuity_review_research(self, item: object) -> bool:
+        """Open one due row through the existing exact stock research callback."""
+
+        callback = self.navigate_to_stock_research_callback
+        result_id = str(getattr(item, "result_id", "") or "").strip()
+        stock_code = str(getattr(item, "stock_code", "") or "").strip()
+        identity_status = str(getattr(item, "identity_status", "") or "").strip()
+        if callback is None or not result_id or not stock_code or identity_status != "linked":
+            return False
+        decision_date = str(getattr(item, "decision_date", "") or "").strip()
+        revision_id = str(
+            getattr(item, "reminder_revision_id", "")
+            or getattr(item, "revision_id", "")
+            or ""
+        ).strip()
+        callback(
+            ResearchStockContextDTO(
+                stock_code=stock_code,
+                decision_date=decision_date,
+                # Continuity only records decision provenance; it must not
+                # pretend that decision_date is a separately observed market
+                # data date.  The shared report service owns its read cutoff.
+                data_date="",
+                result_id=result_id,
+                identity_status=identity_status,
+                source_snapshot_id=str(getattr(item, "source_snapshot_id", "") or "").strip(),
+                source_snapshot_hash=str(getattr(item, "source_snapshot_hash", "") or "").strip(),
+                source_id=revision_id,
+                source_kind="decision_continuity_review",
+                source_label="Workbench／到期研究檢討",
+                source_workspace="workbench",
+            )
+        )
+        return True
+
     def _build_today_action_center(self, parent_layout: QVBoxLayout) -> None:
         """建立首頁的任務導向入口；按鈕只切換既有工作區。"""
 
@@ -1648,6 +1684,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if model is self.review_model and hasattr(item, "item_id"):
             self._viewed_review_item_ids.add(str(item.item_id))
             self.review_state_label.setText(self._review_queue_state_text(self._dashboard))
+        if model is self.review_model and str(getattr(item, "source", "")) == "continuity_review":
+            # Continuity rows carry their own exact candidate identity.  Do
+            # not fall back to the daily candidate button, whose historical
+            # compatibility contract intentionally opens candidate_symbols[0].
+            self._open_continuity_review_research(item)
+            return
         target = getattr(item, "drilldown_target", "")
         self.navigate_to_drilldown_target(str(target))
 
@@ -1660,6 +1702,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         status = _detail_status(item)
         target = str(getattr(item, "drilldown_target", "") or "")
         self._selected_detail_target = target
+        self._selected_detail_item = item
         self.detail_title_label.setText(_detail_display_title(title))
         self.detail_status_label.setText(
             f"狀態：{display_workbench_value(status)}"
@@ -1678,6 +1721,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _set_detail_placeholder(self, title: str, body: str) -> None:
         self._selected_detail_target = ""
+        self._selected_detail_item = None
         self.detail_title_label.setText(_detail_display_title(title))
         self.detail_status_label.setText("狀態：等待選取")
         self.detail_status_badge.setText("WAIT")
@@ -1690,6 +1734,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.detail_drilldown_button.setEnabled(False)
 
     def _open_selected_detail_target(self) -> None:
+        item = getattr(self, "_selected_detail_item", None)
+        if item is not None and str(getattr(item, "source", "")) == "continuity_review":
+            self._open_continuity_review_research(item)
+            return
         target = self._selected_detail_target
         if target:
             self.navigate_to_drilldown_target(target)
@@ -2732,6 +2780,24 @@ def _format_detail_body(item) -> str:
         ("來源名稱", "source_label"),
         ("機器處理分類", "status_classification"),
         ("來源追蹤", "source_trace"),
+        ("推薦結果 ID", "result_id"),
+        ("股票代號", "stock_code"),
+        ("Candidate key", "candidate_key"),
+        ("身份狀態", "identity_status"),
+        ("研究意向", "decision_status"),
+        ("提醒狀態", "reminder_status"),
+        ("到期狀態", "due_status"),
+        ("下次檢視時間", "next_review_at"),
+        ("Journal 原始檢視時間", "recorded_next_review_at"),
+        ("Revision ID", "revision_id"),
+        ("提醒 Revision ID", "reminder_revision_id"),
+        ("Revision of", "revision_of"),
+        ("Continuity event ID", "continuity_event_id"),
+        ("來源 snapshot ID", "source_snapshot_id"),
+        ("來源 snapshot hash", "source_snapshot_hash"),
+        ("決策日期", "decision_date"),
+        ("歷史筆數", "history_count"),
+        ("研究筆記", "note"),
         ("降級原因", "degraded_reason"),
         ("節奏", "cadence"),
         ("關聯項目", "linked_item_ids"),

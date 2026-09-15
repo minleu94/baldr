@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from dataclasses import replace
 from copy import deepcopy
 from contextlib import closing
@@ -18,6 +18,9 @@ from app_module.pre_v2_readiness_service import (
     PreV2ReadinessService,
 )
 from app_module.workbench_dtos import WorkbenchDashboardDTO
+from app_module.continuity_review_projection import (
+    ContinuityReviewProjectionService,
+)
 from app_module.daily_investment_journey import DailyInvestmentJourneyService
 from app_module.workbench_read_only_composer import WorkbenchReadOnlyComposer
 from app_module.recommendation_learning_paths import (
@@ -46,6 +49,7 @@ class WorkbenchSourceService:
         research_db_path: str | Path | None = None,
         learning_evidence_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
         position_health_read_service: PositionHealthTransitionReadService | None = None,
+        continuity_review_projection_service: ContinuityReviewProjectionService | None = None,
     ) -> None:
         self.config = config
         self.evidence_db_path = Path(evidence_db_path) if evidence_db_path is not None else Path(config.db_file)
@@ -74,6 +78,13 @@ class WorkbenchSourceService:
                 Path(config.output_root) / "position_health_transition"
             )
         )
+        # This is deliberately a direct read adapter.  Do not construct
+        # JournalService/PortfolioJsonlStore here: their constructors can
+        # create output directories on an otherwise read-only Workbench load.
+        self.continuity_review_projection_service = (
+            continuity_review_projection_service
+            or ContinuityReviewProjectionService.from_output_root(config.output_root)
+        )
 
     def inspect(
         self,
@@ -85,6 +96,7 @@ class WorkbenchSourceService:
         agent_report_limit: int = 5,
         replay_summary_json: str | Path | None = None,
         recommendation_learning_status_json: str | Path | None = None,
+        continuity_as_of: datetime | str | None = None,
     ) -> WorkbenchDashboardDTO:
         decision_snapshot, source_diagnostics = self._load_decision_snapshot(decision_date)
         readiness_report = self.readiness_service.inspect(
@@ -103,6 +115,9 @@ class WorkbenchSourceService:
             recommendation_learning_status_json
         )
         source_diagnostics.extend(learning_diagnostics)
+        continuity_reviews = self.continuity_review_projection_service.project(
+            as_of=continuity_as_of,
+        )
         source_mode = "read_only_sources_plus_historical_replay" if historical_replay_summary else "read_only_sources"
         dashboard = self.composer.compose(
             decision_snapshot=decision_snapshot,
@@ -113,6 +128,7 @@ class WorkbenchSourceService:
             source_mode=source_mode,
             source_diagnostics=tuple(source_diagnostics),
             recommendation_learning_status=recommendation_learning_status,
+            continuity_reviews=continuity_reviews,
         )
         learning_projection = self.learning_evidence_projection_service.inspect(
             requested_date=dashboard.as_of_date.isoformat()

@@ -16,7 +16,9 @@
 > 並在 Workbench 提供唯讀的機率依據詳情。`0d9d72af`／`cad07762` 的每日首屏與
 > content-first 旅程、`25544142` 的可比產業讀模型、`421ab844` 的 typed learning projection、
 > `53b456a0`／`ffb66c6f` 的唯讀 Decision → Outcome journey，以及 `5339230f` 的 Increment A
-> continuity storage／caller 與 C 的 close／跨程序 readback 已有工程驗收，尚未全面接成 Workbench state projection。這些不宣稱真實市場→產業→個股端到端已驗收，
+> continuity storage／caller 與 C 的 close／跨程序 readback 已有工程驗收；2026-09-15 R1 再把
+> Journal due projection、exact candidate drilldown 與 shared Journey／controls 接回 Workbench，
+> 但尚未全面接成所有 Workbench state projection。這些不宣稱真實市場→產業→個股端到端已驗收，
 > 其中 `25544142` 的真實產業指數強弱與官方 TAIEX 5／20 日基準已可讀，純產業白名單已
 > 排除槓桿／反向產品型指數；current representative-stock mapping、TPEX／興櫃 coverage
 > 與 historical PIT membership 仍有限，不能把 current mapping 回填歷史。
@@ -282,8 +284,9 @@ Evidence 分層：
   decision date／data-as-of／horizon／sample、model／dataset／source、evidence kind 與
   missing／warning 的唯讀投影已驗收；每日首屏 content-first、可比產業讀模型、Research
   fallback 的唯讀邊界與 learning evidence view 已有可核對工程切片。`7e029933` 也已包含
-  continuity 的 close／跨程序 readback 工程驗收；下一個施工面是 Position Health source
-  caller／Workbench state projection，不是把既有 read-only slice 重寫成正式決策。
+  continuity 的 close／跨程序 readback 工程驗收；R1 已完成 continuity review 的 Workbench
+  state projection 與 exact shared Journey caller；下一個施工面是 Position Health source
+  caller／formal outcome 對應，不是把既有 read-only slice 重寫成正式決策。
 - **V4.2 engineering**：保留既有 05:40 forward outcome → 05:45 shadow learning 的
   自動候選採用／回退 policy、frozen challenger、active monitor、receipt 與 rollback。
   routine shadow adjustment 不要求使用者每日人工批准；只有超出既有 shadow／正式決策
@@ -310,8 +313,9 @@ V5 是把已驗收的 content-first daily conclusion、候選／持倉、market�
   portfolio read-only journey、Why／Why Not／Risk、研究 fallback、既有 Journal／Evidence／
   Portfolio ledger continuity 與 T+N outcome view 收斂成單一路徑。V5 的 UX／唯讀資料旅程、
   decision continuity 與 V4 formal evidence accumulation 可並行；V4 formal 不會阻擋現在先
-  交付真實唯讀 content。`7e029933` 的 A/B/C continuity runtime evidence 已具備，Workbench
-  state projection 與完整產品 caller 仍按下列順序施工。Evidence 不足時只限制 Advice scope，
+  交付真實唯讀 content。`7e029933` 的 A/B/C continuity runtime evidence 已具備，R1 已接上
+  continuity review Workbench state projection 與 shared product caller；Position Health／formal
+  outcome 等完整產品面仍按下列順序施工。Evidence 不足時只限制 Advice scope，
   轉 `RESEARCH`／`NO_NEW_POSITION`。
 既有每日 shadow policy 內的 candidate adoption／rollback 仍可自動執行，不能跨到正式
 Recommendation／Portfolio 或 broker。

@@ -8,6 +8,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import json
 import pandas as pd
 from uuid import uuid4
 
@@ -2331,6 +2332,67 @@ class PortfolioView(QWidget):
                 return str(frame.iloc[row_number].get("證券名稱", "") or "").strip()
         return ""
 
+    def _validated_recommendation_result_id(self, position: object | None, stock_code: str) -> str:
+        """Return a result id only when the saved result contains this stock.
+
+        ``PositionDTO.source_id`` is a generic lineage field.  It can be a
+        backtest run id, a declared holding id, or another provider key, so it
+        must never be promoted to a continuity candidate identity by shape or
+        by same-stock/date coincidence.  The saved recommendation JSON is
+        read directly here to avoid constructing a writer repository from a
+        read-only navigation action.
+        """
+
+        source_type = str(getattr(position, "source_type", "") or "").strip()
+        source_id = str(getattr(position, "source_id", "") or "").strip()
+        code = str(stock_code or "").strip()
+        if source_type != "recommendation_result" or not source_id or not code:
+            return ""
+        # Result ids are filenames in the existing repository.  Reject path
+        # traversal/ambiguous path values before forming the read target.
+        if Path(source_id).name != source_id or source_id in {".", ".."}:
+            return ""
+
+        source_summary = getattr(position, "source_summary", {})
+        if not isinstance(source_summary, dict):
+            source_summary = {}
+        summary_result_id = str(source_summary.get("result_id", "") or "").strip()
+        summary_stock_code = str(source_summary.get("stock_code", "") or "").strip()
+        if summary_result_id and summary_result_id != source_id:
+            return ""
+        if summary_stock_code and summary_stock_code != code:
+            return ""
+
+        config = getattr(self.portfolio_service, "config", None)
+        output_root = getattr(config, "output_root", None)
+        if output_root is None:
+            return ""
+        saved_result_path = Path(output_root) / "recommendation" / "runs" / f"{source_id}.json"
+        if not saved_result_path.is_file():
+            return ""
+        try:
+            payload = json.loads(saved_result_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+            return ""
+        if not isinstance(payload, dict):
+            return ""
+        if str(payload.get("result_id", "") or "").strip() != source_id:
+            return ""
+        recommendations = payload.get("recommendations")
+        if not isinstance(recommendations, list):
+            return ""
+        matches = [
+            row
+            for row in recommendations
+            if isinstance(row, dict)
+            and str(row.get("stock_code", "") or "").strip() == code
+        ]
+        # Duplicate rows would make the source-to-candidate mapping
+        # ambiguous, so only a single exact saved row can be promoted.
+        if len(matches) != 1:
+            return ""
+        return source_id
+
     def _open_selected_stock_research(self, index=None) -> None:
         """持倉雙擊／明確按鈕共用的個股研究報告入口。"""
 
@@ -2351,13 +2413,22 @@ class PortfolioView(QWidget):
         position_source_summary = getattr(position, "source_summary", {}) if position is not None else {}
         if not isinstance(position_source_summary, dict):
             position_source_summary = {}
+        validated_result_id = self._validated_recommendation_result_id(position, code)
+        identity_status = "linked" if validated_result_id else "unlinked"
         self.stockResearchRequested.emit(
             ResearchStockContextDTO(
                 stock_code=code,
                 stock_name=self._selected_position_name(),
                 decision_date=str(position_source_summary.get("decision_date", "") or ""),
                 data_date=(presentation.data_as_of_date if presentation is not None else ""),
-                result_id=str(getattr(position, "source_id", "") or ""),
+                result_id=validated_result_id,
+                identity_status=identity_status,
+                source_snapshot_id=str(position_source_summary.get("source_snapshot_id", "") or ""),
+                source_snapshot_hash=str(
+                    getattr(position, "source_snapshot_hash", "")
+                    or position_source_summary.get("source_snapshot_hash", "")
+                    or ""
+                ),
                 source_id=str(getattr(position, "source_id", "") or ""),
                 source_label="持倉管理／共用證據詳情",
                 source_kind=str(getattr(position, "source_type", "") or "portfolio"),

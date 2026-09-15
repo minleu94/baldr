@@ -67,12 +67,20 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
         _real_service(tmp_path),
         ResearchStockContextDTO(stock_code="2330", stock_name="台積電", source_workspace="watchlist"),
     )
+    loaded: list[StockResearchReportDTO] = []
+    view.reportLoaded.connect(loaded.append)
     view.resize(860, 620)
     view.show()
-    _wait_for(view, lambda: "100" in view._summary_values["latest_price"].text())
+    _wait_for(view, lambda: "100" in view._summary_values["latest_price"].text() and bool(loaded))
 
     assert "2330 台積電" in view.identity_label.text()
-    assert any(token in view._summary_values["advice"].text() for token in ("尚無", "沒有", "資料不足"))
+    report = loaded[-1]
+    assert report.advice.status == "unavailable"
+    assert report.advice.recommendation is None
+    assert report.advice.limitations == (
+        "尚未選定原始推薦來源；不會以同股或最新結果猜測。請回到推薦分析保存結果，或明確選擇原始推薦來源。",
+    )
+    assert view._summary_values["advice"].text() == report.advice.limitations[0]
     assert "ML" in view.tabs.tabText(5)
     assert view.sources_table.model() is not None
     headers = [

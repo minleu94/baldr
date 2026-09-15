@@ -503,7 +503,7 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
 | 市場 → 產業 → 個股 | **工程切片已驗收**（`25544142`） | 真實產業指數強弱與官方 TAIEX 5／20 日基準可讀，並排除槓桿／反向產品型指數；current representative-stock mapping、TPEX／興櫃 coverage 與 historical PIT membership 仍有限。 |
 | 每日 evidence／learning view | **已驗收**（`421ab844`） | 2026-09-14 臺銀正常 scheduled lane 的 typed candidate／active／capture projection 為 natural sample `0`、`retain_current`；legacy 50bp 是獨立 lane，可能為 `blocked`，不得合併。 |
 | 成本／排程 | **工程邊界已驗收**（`8acf29f0`／`b39fd399`） | 臺銀 `estimated_research_only` 可供研究；05:50 task registration／可觸發仍不等於首個自然執行，首次自然 run 另列觀察線。 |
-| Decision → Outcome／Increment A/B/C | **工程驗收**（`53b456a0`／`ffb66c6f`／`5339230f`／`7e029933`） | 唯讀 journey、exact identity、append-only storage、MainWindow close 與跨程序 writer／reader readback 可核對；Workbench state projection 仍待接線。 |
+| Decision → Outcome／Increment A/B/C | **工程驗收**（`53b456a0`／`ffb66c6f`／`5339230f`／`7e029933` + R1 QA） | 唯讀 journey、exact identity、append-only storage、MainWindow close、跨程序 writer／reader readback 與 continuity review Workbench projection 可核對；Position Health／formal outcome 仍待接線。 |
 
 已驗收的內容優先、每日 evidence、typed verifier 與 A storage slice 不必等待 V4 formal
 closeout；這些是接下來施工的已驗收基礎：
@@ -516,16 +516,16 @@ closeout；這些是接下來施工的已驗收基礎：
 3. **P0/P1 typed verifier projection（已驗收 read-only slice）**：只有 verifier 已核對的 natural authority receipt
    才能顯示已驗證；`available`、hash、evidence kind 或 shadow label 不能升格。routine daily
    shadow adoption／rollback 依既有已授權 policy 自動執行，不要求每日人工批准。
-4. **P0/P1 identity reuse（A/B/C runtime 已驗收）**：`5339230f` 已保存 append-only
+4. **P0/P1 identity reuse（A/B/C runtime + R1 review loop 已驗收）**：`5339230f` 已保存 append-only
    revision／tombstone 與原始列，並具備 idempotency／optimistic concurrency；`7e029933`
-   已補 continuity close／cross-process readback 證據。接下來只需把同一 identity／receipt
-   接入 Workbench state projection 與 Position Health caller，不另建平行 decision database。
+   已補 continuity close／cross-process readback 證據；R1 已把同一 identity 接入 Journal reminder
+   projection、Workbench exact drilldown 與 shared Journey／controls，不另建平行 decision database。
 5. **成本 read model（工程邊界已驗收）**：本輪先消費已提交的臺銀 `estimated_research_only` policy／consumer；
    observed fills、partial fill、broker 對帳與實際滑價是後續 execution-realism／formal Gate。
 
 本輪 2026-09-15 bounded slice 的未完成項（不得視為 V5 closeout）：
 
-- **Workbench state／Position Health caller（Increment 1 已完成）**：A/B/C 的 continuity runtime close／cross-process writer→reader readback 已有驗收；`5a3ed5db` 已把 Position Health source-backed receipt 接入 Portfolio／Workbench 共用 read model；尚未完成的是 continuity review loop 與正式 decision outcome 對應，不在本增量內重做。
+- **Position Health／formal outcome caller**：A/B/C 的 continuity runtime close／cross-process writer→reader readback 已有驗收；`5a3ed5db` 已把 Position Health source-backed receipt 接入 Portfolio／Workbench 共用 read model；R1 已完成 continuity review loop 的唯讀接線，尚未完成的是 Position Health 與正式 decision outcome 的完整對應。
 - **代表股／歷史產業歸因**：真實產業指數強弱與 TAIEX 5／20 日相對基準已可讀，純產業白名單已排除槓桿／反向產品型指數；current registry 的代表股 mapping、TPEX／興櫃 coverage 與 historical PIT membership／available-time 仍待補齊，因此不能把 current mapping 回填為歷史成分或宣稱完整產業回測。
 - **typed 自然驗證權威**：Workbench 只投影既有 learning receipt；若尚未有 verifier 核對的 natural authority receipt，matured sample／active model 不能升格為已驗證或 current champion。2026-09-14 臺銀正常 lane 仍為 sample `0`／`retain_current`，legacy lane 可為 `blocked`；首個 05:50 臺銀自然排程實際 run 仍屬觀察線，註冊／Ready 不等於執行。
 - **觀測成交成本**：observed fill、partial fill、broker 對帳與實際滑價仍是後續 execution-realism／formal Gate，刻意不作每日 learning 的前置條件。

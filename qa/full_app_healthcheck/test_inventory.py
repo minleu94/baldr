@@ -384,6 +384,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_workbench_read_only_composer.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_workbench_replay_summary.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_workbench_source_service.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_continuity_review_workbench_r1.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_risk_prompt_evidence_importer.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_signal_decay_dashboard_service.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_signal_decay_lifecycle_payload.py": "service-oracle-portfolio-decision-runtime",
@@ -521,6 +522,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/e2e/test_data_path_isolation.py": "slow-e2e-or-environment",
     "tests/test_cross_workstream_system_integration.py": "slow-e2e-or-environment",
     "tests/test_evidence_rehearsal_real_e2e.py": "slow-e2e-or-environment",
+    "tests/test_continuity_review_workbench_r1_integration.py": "slow-e2e-or-environment",
 
     # manual-only
     "tests/manual/legacy_advanced_patterns_check.py": "manual-only",

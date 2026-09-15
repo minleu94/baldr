@@ -2023,14 +2023,12 @@ def _normalize_evidence_event(
         _object_value(item, "source_snapshot_id", payload.get("source_snapshot_id"))
     )
     metadata_result_id = _optional_text(metadata.get("source_result_id"))
-    link_status = _identity_link_status(
-        result.result_id,
-        (
-            ("source_id", source_id),
-            ("source_snapshot_id", source_snapshot_id),
-            ("metadata.source_result_id", metadata_result_id),
-        ),
-        conflict_when_other=True,
+    link_status = _evidence_identity_link_status(
+        expected_result_id=result.result_id,
+        source_id=source_id,
+        source_snapshot_id=source_snapshot_id,
+        metadata_result_id=metadata_result_id,
+        expected_snapshot_id=result.source_identity.source_snapshot_id,
     )
     symbol = _optional_text(_object_value(item, "symbol", payload.get("symbol")))
     candidate_key = None
@@ -2704,6 +2702,47 @@ def _identity_link_status(
     if other_nonempty:
         return JourneyLinkStatus.UNLINKED
     return JourneyLinkStatus.UNLINKED
+
+
+def _evidence_identity_link_status(
+    *,
+    expected_result_id: str,
+    source_id: str | None,
+    source_snapshot_id: str | None,
+    metadata_result_id: str | None,
+    expected_snapshot_id: str | None,
+) -> JourneyLinkStatus:
+    """Link an evidence row only after an explicit result discriminator.
+
+    ``source_snapshot_id`` is a consistency check for an already identified
+    result, never a standalone join key.  A missing root snapshot therefore
+    leaves a correctly identified event linkable, while a snapshot-only row
+    remains unlinked and a known snapshot mismatch fails closed as conflict.
+    The older ``_identity_link_status`` contract remains unchanged for the
+    journal/ledger/trade adapters that intentionally support their legacy
+    source-hash identity rules.
+    """
+
+    result_values = (source_id, metadata_result_id)
+    has_result_match = any(value == expected_result_id for value in result_values)
+    has_result_conflict = any(
+        value is not None and value != expected_result_id for value in result_values
+    )
+    if has_result_conflict:
+        return (
+            JourneyLinkStatus.CONFLICT
+            if has_result_match
+            else JourneyLinkStatus.UNLINKED
+        )
+    if not has_result_match:
+        return JourneyLinkStatus.UNLINKED
+    if (
+        expected_snapshot_id is not None
+        and source_snapshot_id is not None
+        and source_snapshot_id != expected_snapshot_id
+    ):
+        return JourneyLinkStatus.CONFLICT
+    return JourneyLinkStatus.LINKED
 
 
 def _consistent_identity(

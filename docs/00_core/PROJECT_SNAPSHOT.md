@@ -60,6 +60,32 @@ identity 維持不變。
 完整歸因使用者曾見的 memory-write popup；正式資料、live trading 與自然前瞻證據邊界維持
 原狀。Workbench 本次驗證的是顯示與跨程序讀回，不擴大解讀為所有 Workbench 狀態均已接線。
 
+## 2026-09-15 Continuity Review Workbench R1 唯讀閉環
+
+R1 已把既有 decision-continuity Journal 的 exact `(result_id, stock_code)` reminder projection
+接回 Workbench review table 與既有 shared stock research／Decision → Outcome Journey。Portfolio
+只有在保存的 Recommendation JSON 通過 `recommendation_result`、result id 與唯一 stock row 檢查時，
+才沿用 recommendation identity；其他 source 不會升格。Workbench 主摘要顯示中文股票、研究意向、
+台北檢討 cutoff 與原因，technical revision／snapshot／trace 留在詳情。
+
+R1 的 producer-backed isolated acceptance 以 RecommendationRepository、EvidenceEventRepository、
+JournalService／DecisionContinuityController、WorkbenchSourceService 與真實 Qt shared dialog 串接：
+R1/R2 同股 2330、R3 多候選 2330／2317 均以 exact candidate 進列；Journey 顯示 5 日 ready、
+10 日 pending、20／60 缺資料 unknown。Workbench click 前後 Journal bytes／SHA-256 不變；
+透過既有 controls 明確改期後，獨立 reader 讀回同一 candidate、原始 accepted intent、新 revision
+與 next_review_at。Evidence snapshot 只作已識別 result 的一致性檢查，不可單獨作 join key。
+
+工程 QA 為 R1 projection／identity 8 passed、producer-backed Workbench／Journey／readback 與
+barrier standalone busy-close 的合併驗收 9 passed；既有 Workbench／Portfolio／continuity focused
+regression 93 passed，Journey regression 17 passed。1366×768 Workbench／Journey 截圖及 child
+`app.exec()=0`、外部 process exit `0` receipt 均已保存。完整範圍、artifact 路徑、全域 pytest 的 12 個
+failure node、目前 targeted recheck 與已確認／尚未判定分類見
+[Continuity Review Workbench R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)。
+
+本段仍只代表隔離、唯讀 research engineering acceptance：不代表正式 scheduler／broker、自然
+forward evidence、投資有效性、V4 formal closeout 或 V5 product closeout；20／60 缺資料與全域
+既有 governance／ML／PIT／UI lane failures 仍維持 fail-closed，不以 fixture 通過補發 formal credit。
+
 ## 2026-09-15 Position Health Increment 1 工程驗收
 
 `5a3ed5db` 已完成既有 Paper `DailyPositionHealthTransitionEvaluator` receipt 到

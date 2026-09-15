@@ -24,6 +24,13 @@ from app_module.pre_v2_readiness_service import (
     STATUS_WAITING_FOR_TIME,
 )
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+from app_module.continuity_review_projection import (
+    CONTINUITY_DUE,
+    CONTINUITY_DUE_INVALID,
+    CONTINUITY_DUE_OVERDUE,
+    CONTINUITY_DUE_SCHEDULED,
+    ContinuityReviewProjectionResult,
+)
 from app_module.workbench_dtos import (
     WorkbenchAccessBoundary,
     WorkbenchActionItem,
@@ -52,6 +59,7 @@ class WorkbenchReadOnlyComposer:
         source_diagnostics: tuple[str, ...] = (),
         advice_dashboard: AdviceDashboardDTO | None = None,
         recommendation_learning_status: dict[str, Any] | None = None,
+        continuity_reviews: ContinuityReviewProjectionResult | None = None,
     ) -> WorkbenchDashboardDTO:
         warnings = self._warnings(
             readiness_report,
@@ -60,12 +68,19 @@ class WorkbenchReadOnlyComposer:
             source_diagnostics,
             recommendation_learning_status,
         )
+        if continuity_reviews is not None:
+            warnings.extend(
+                f"continuity_review:{item}"
+                for item in continuity_reviews.diagnostics
+                if str(item).strip()
+            )
         if decision_snapshot is not None:
             warnings.extend(item for item in decision_snapshot.warnings if item not in warnings)
         review_items = self._review_items(
             decision_snapshot,
             readiness_report,
             source_diagnostics=source_diagnostics,
+            continuity_reviews=continuity_reviews,
         )
         daily_checklist = self._daily_checklist(decision_snapshot, readiness_report)
         background_evidence_feed = self._background_evidence_feed(
@@ -159,8 +174,11 @@ class WorkbenchReadOnlyComposer:
         readiness_report: PreV2ReadinessReport,
         *,
         source_diagnostics: tuple[str, ...] = (),
+        continuity_reviews: ContinuityReviewProjectionResult | None = None,
     ) -> tuple[WorkbenchReviewItem, ...]:
         items: list[WorkbenchReviewItem] = []
+        if continuity_reviews is not None:
+            items.extend(self._continuity_review_items(continuity_reviews))
         source_gap_item = _source_diagnostic_review_item(source_diagnostics)
         if source_gap_item is not None:
             items.append(source_gap_item)
@@ -221,6 +239,68 @@ class WorkbenchReadOnlyComposer:
                     )
                 )
         return tuple(items)
+
+    @staticmethod
+    def _continuity_review_items(
+        projection: ContinuityReviewProjectionResult,
+    ) -> tuple[WorkbenchReviewItem, ...]:
+        """Map exact Journal reminders into the existing read-only queue."""
+
+        result: list[WorkbenchReviewItem] = []
+        for item in projection.items:
+            due_status = item.due_status
+            severity = {
+                CONTINUITY_DUE_OVERDUE: "critical",
+                CONTINUITY_DUE: "warning",
+                CONTINUITY_DUE_INVALID: "critical",
+            }.get(due_status, "info")
+            next_review = item.next_review_at or item.recorded_next_review_at or "無效／未提供"
+            decision_text = {
+                "accepted": "已納入研究",
+                "skipped": "已略過",
+                "unrecorded": "尚未記錄",
+            }.get(item.decision_status, "狀態未知")
+            reason_text = {
+                CONTINUITY_DUE_OVERDUE: "已逾期，應優先檢討",
+                CONTINUITY_DUE: "已到檢討時間",
+                CONTINUITY_DUE_INVALID: "檢討時間無效，需人工確認",
+                CONTINUITY_DUE_SCHEDULED: "尚未到檢討時間",
+            }.get(due_status, "尚未形成可用檢討提醒")
+            result.append(
+                WorkbenchReviewItem(
+                    item_id=f"continuity_review:{item.result_id}:{item.stock_code}",
+                    title=f"研究檢討提醒｜{item.stock_code}",
+                    severity=severity,
+                    source="continuity_review",
+                    summary=(
+                        f"股票 {item.stock_code}｜研究意向：{decision_text}｜"
+                        f"檢討時間（台北）：{next_review}｜待檢討原因：{reason_text}。"
+                    ),
+                    drilldown_target="stock_research",
+                    code=item.stock_code,
+                    result_id=item.result_id,
+                    stock_code=item.stock_code,
+                    candidate_key=item.candidate_key_text,
+                    identity_status=item.identity_status,
+                    decision_status=item.decision_status,
+                    reminder_status=item.reminder_status,
+                    due_status=item.due_status,
+                    next_review_at=item.next_review_at,
+                    recorded_next_review_at=item.recorded_next_review_at,
+                    revision_id=item.revision_id,
+                    reminder_revision_id=item.reminder_revision_id,
+                    revision_of=item.revision_of,
+                    continuity_event_id=item.continuity_event_id,
+                    source_snapshot_id=item.source_snapshot_id,
+                    source_snapshot_hash=item.source_snapshot_hash,
+                    decision_date=item.decision_date,
+                    source_trace=item.source_trace,
+                    note=item.note,
+                    history_count=item.history_count,
+                    diagnostics=item.diagnostics,
+                )
+            )
+        return tuple(result)
 
     def _background_evidence_feed(
         self,

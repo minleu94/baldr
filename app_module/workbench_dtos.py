@@ -97,6 +97,64 @@ class WorkbenchReviewItem:
     summary: str
     drilldown_target: str
     code: str | None = None
+    # Continuity review fields are optional so existing non-continuity review
+    # rows and positional callers remain compatible.  They are populated only
+    # for an exact (result_id, stock_code) reminder projection.
+    result_id: str = ""
+    stock_code: str = ""
+    candidate_key: str = ""
+    identity_status: str = "unknown"
+    decision_status: str = "unrecorded"
+    reminder_status: str = ""
+    due_status: str = ""
+    next_review_at: str = ""
+    recorded_next_review_at: str = ""
+    revision_id: str = ""
+    reminder_revision_id: str = ""
+    revision_of: str = ""
+    continuity_event_id: str = ""
+    source_snapshot_id: str = ""
+    source_snapshot_hash: str = ""
+    decision_date: str = ""
+    source_trace: str = ""
+    note: str = ""
+    history_count: int = 0
+    diagnostics: tuple[str, ...] = ()
+    read_only: bool = True
+    writes_allowed: bool = False
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "result_id",
+            "stock_code",
+            "candidate_key",
+            "identity_status",
+            "decision_status",
+            "reminder_status",
+            "due_status",
+            "next_review_at",
+            "recorded_next_review_at",
+            "revision_id",
+            "reminder_revision_id",
+            "revision_of",
+            "continuity_event_id",
+            "source_snapshot_id",
+            "source_snapshot_hash",
+            "decision_date",
+            "source_trace",
+            "note",
+        ):
+            object.__setattr__(self, field_name, str(getattr(self, field_name) or "").strip())
+        object.__setattr__(self, "decision_status", self.decision_status or "unrecorded")
+        object.__setattr__(self, "history_count", max(0, int(self.history_count)))
+        object.__setattr__(
+            self,
+            "diagnostics",
+            _normalize_strings(self.diagnostics),
+        )
+        # Review queue rows are always read-only; no row may opt into writes.
+        object.__setattr__(self, "read_only", True)
+        object.__setattr__(self, "writes_allowed", False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -107,6 +165,28 @@ class WorkbenchReviewItem:
             "summary": self.summary,
             "drilldown_target": self.drilldown_target,
             "code": self.code,
+            "result_id": self.result_id,
+            "stock_code": self.stock_code,
+            "candidate_key": self.candidate_key,
+            "identity_status": self.identity_status,
+            "decision_status": self.decision_status,
+            "reminder_status": self.reminder_status,
+            "due_status": self.due_status,
+            "next_review_at": self.next_review_at,
+            "recorded_next_review_at": self.recorded_next_review_at,
+            "revision_id": self.revision_id,
+            "reminder_revision_id": self.reminder_revision_id,
+            "revision_of": self.revision_of,
+            "continuity_event_id": self.continuity_event_id,
+            "source_snapshot_id": self.source_snapshot_id,
+            "source_snapshot_hash": self.source_snapshot_hash,
+            "decision_date": self.decision_date,
+            "source_trace": self.source_trace,
+            "note": self.note,
+            "history_count": self.history_count,
+            "diagnostics": list(self.diagnostics),
+            "read_only": self.read_only,
+            "writes_allowed": self.writes_allowed,
         }
 
 

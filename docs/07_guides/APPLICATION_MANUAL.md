@@ -1374,6 +1374,20 @@ Workbench 仍只透過 `WorkbenchSourceService` / `WorkbenchDashboardDTO` 讀取
 
 窄版（例如 390×844）會把今日行動卡、主要內容與 Inspector 依序堆疊；推薦、Research Lab 與 Portfolio 的設定／結果或操作列也會改為垂直排列。只有真正的資料表保留水平捲動，主要錯誤、取消與下一步不會藏在不可見的右側。Workbench Inspector 的技術欄位預設收合，按「查看技術欄位（DTO raw）」才展開 hash、schema 與 Gate 細項；DTO 沒有提供時顯示未知，不由 view 重建。
 
+#### 每日投資結論／每日決策旅程
+
+這是目前「決策工作台 > 總覽」的首屏唯讀入口。畫面依序呈現決策日與資料日、盤勢、產業／市場指數代理、今日研究候選、持倉警示、證據成熟度與下一步；`Research Workflow` 預設收合，按「展開」才查看市場→產業→個股→觀察清單／持倉的既有導覽。
+
+操作每日候選時，按「開啟 <股票代號> 個股研究報告」會把候選的股票代號、決策日、資料日、result/source identity 交給既有 `StockResearchReport`。這條路徑不要求候選先存在觀察清單，也不會自動新增觀察清單；「查看既有觀察清單」仍只開啟目前清單。按「查看證據成熟度」會切到既有 Evidence／Research Console，按「查看每日來源詳情」才展開完整 identity、hash、scope 分母、各 horizon、learning receipt 與 diagnostics。
+
+參數意義以來源 payload 為準：決策日是 Workbench 的比較基準；資料日是候選或 snapshot 明示的有效資料日；Evidence 只採用 forward receipt 指定的 `event_type`、日期範圍、`require_cohort_identity`、`max_events` 與 outcome windows；Learning 分開顯示 receipt、候選／challenger 與 active pointer 的自然成熟樣本。UI 不重算推薦、forward outcome、模型或產業排名，也不把 `available`、hash、evidence kind 或 shadow 標籤升格為自然驗證權威。
+
+結果判讀時，`研究候選` 只代表可下鑽的研究輸入；資料降級、缺漏、過期、未來日期與來源讀取失敗都要依狀態處理。`尚待成熟` 代表需要等待後續官方交易日的可見價格，不回填、不補未來資料；`0` 件／筆是明確零計數，不等於安全或 Gate 通過。產業卡若顯示「市場指數代理／缺產業分類」，不能直接解讀成真實產業領先／落後。Learning 顯示 `rule_only` 或尚無 natural matured sample 時，不得稱為 current champion、正式模型或下單依據。
+
+安全限制：每日旅程只讀取既有 DTO、排程 JSON、EvidenceEvent／Outcome 與隔離 learning receipt；不寫正式 SQLite／FA_Data、不啟用 production scheduler、不執行策略或 runner、不改 Advice／Portfolio、不新增候選、不下單。真實 Evidence、typed verifier、PIT 產業分類、Journal／Portfolio ledger continuity 與正式 promotion 仍由各自 Gate 判定。
+
+排錯順序：先按「重新整理狀態」，再核對數據更新的資料日與排程 `latest_status.json`；若候選為來源待檢查，確認 recommendation snapshot 與其 result 對應的 run JSON；若證據為待成熟，等待合法官方交易日；若顯示來源讀取失敗、過期或未來日期，保留詳情供人工核對後重試，不把舊畫面或空結果當成今日結論。若產業名稱含槓桿／反向產品字樣，回到來源詳情確認代理來源，不自行改標產業強弱。
+
 ### 2.7 顯示縮放、鍵盤與長表格驗證
 
 PySide6 主視窗的可重跑縮放／鍵盤 smoke 使用真實 `MainWindow`、左側工作區導覽、Runtime 狀態元件，以及實際嵌入的「推薦分析」`results_table` 與「持倉管理」`positions_table`。它在隔離 `DATA_ROOT`／`OUTPUT_ROOT` 中以 Qt `offscreen` 平台執行，不會寫入正式資料；會在 150% 與 200% scale factor 下以固定 1366×768 logical viewport 執行 `QTest`，以 `Space` 切換「市場探索」與「Runtime」，確認焦點保留，並把隔離 DTO 注入兩個實際頁面的 600 列表格，以 `PageDown`／`Ctrl+Home` 驗證捲動及返回頂端。執行命令：

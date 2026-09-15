@@ -33,10 +33,14 @@ receipt 與 candidate 實際屬於 `banktaiwan-electronic-estimate`，hash 為
 修復已補上新 challenger writer 的完整 scenario metadata，並將舊 pointer 相容讀取限制為完整
 candidate identity anchor 與 canonical manifest／artifact bytes／freeze／cost contract／label
 registry 重驗成功；欄位缺失、篡改或 artifact 遺失均 fail closed。隔離成本測試為 `14 passed`，
-真實 BankTaiwan 舊 pointer read-only 回驗成功且 root conflict 為 `None`。完整 receipt、hash、
-回歸矩陣與限制見 [BankTaiwan 首次排程失敗 QA](../06_qa/BANKTAIWAN_FIRST_SCHEDULED_RUN_FAILURE_2026_09_15.md)。
-正式 Shadow root 未刪除或重建，也尚未重跑正式排程；待釋出後再由受控 retry 驗證新的 scheduled
-receipt，不能以本次隔離測試代替正式自然日執行。
+真實 BankTaiwan 舊 pointer read-only 回驗成功且 root conflict 為 `None`。其後受控 shadow retry
+已於 `06:33:12–06:33:25 -07:00` 完成，wrapper／child 均 exit `0`，產生
+`completed_waiting_natural_maturity`；`shadow_only=true`、`formal_order_allowed=false`，natural
+sample 仍為 `0`，沒有 promotion 或正式 order side effect。第二次同參數驗收回報
+`idempotent_replay=true` 且未啟動 child。完整 receipt、hash、回歸矩陣與限制見
+[BankTaiwan 首次排程失敗 QA](../06_qa/BANKTAIWAN_FIRST_SCHEDULED_RUN_FAILURE_2026_09_15.md)。
+正式 scheduler 未被重跑；本次受控 retry 也不能代替自然 forward evidence、formal PIT 或 observed
+cost 門檻。
 
 ## 2026-09-15 user_declared Holding Research Increment 2 工程驗收
 

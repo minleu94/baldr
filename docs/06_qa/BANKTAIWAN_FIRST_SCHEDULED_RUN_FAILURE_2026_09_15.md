@@ -4,7 +4,7 @@
 
 2026-09-15 05:50 的 BankTaiwan recommendation-learning shadow task 不是資料擷取或 candidate 訓練失敗，而是 shared authority root 的成本情境防護被錯誤觸發。舊版 `challenger/current.json` 沒有成本情境欄位，reader 將缺少欄位的 marker 依相容預設解讀成 legacy fixed 50 bp；同一 root 的 `latest_status`、decision receipt 與 candidate 實際屬於 BankTaiwan electronic estimate，因此被判定為跨 lane 衝突。
 
-正式資料、candidate、manifest、artifact 與 receipt 均保留，未刪除、重建或覆寫；本次修復也沒有重跑正式 05:50 任務。
+正式資料、candidate、manifest、artifact 與 receipt 均保留，未刪除、重建或覆寫；本次未透過 scheduler 重跑正式 05:50 任務，後續受控 shadow retry 已另行完成並保留完整 lineage。
 
 ## 實際失敗證據
 
@@ -79,6 +79,56 @@ ROOT_CONFLICT None
 
 針對排程 script 的 mypy 執行被並行工作樹 `data_module/pit_sector_membership_reader.py` 的當時錯誤阻擋（行 2133、2183、2222、2315）；本次沒有修改該檔案。
 
+## 受控 shadow retry 實績（2026-09-15）
+
+修復 commit `086ba60c0fe48e737b06c2018841b32d730a6410` 後，依主審批准以固定的 2026-09-15 snapshot 與既有 source custody 執行一次 dry-run，再執行一次真實 BankTaiwan 專用 wrapper。沒有啟動 scheduler、重跑正式 producer、改寫 formal DB／Portfolio／broker 或 order。
+
+前置 dry-run 結果為 exit `0`：官方交易日判定 `true`、snapshot `verified`，snapshot hash 仍為 `sha256:8d88147cd56815bce3ac06da12d3231ac2d973dc60a92c1db6902520c07ac4cc`，成本情境為 `banktaiwan-electronic-estimate`／`sha256:73ad38fa8a5cd983535f50fcaf99e168aea44400ac2e7428d58400a21f55e450`，且 `shadow_only=true`、`formal_order_allowed=false`。
+
+真實 retry 使用的實際命令如下（wrapper 會將 child 的 `--capture-current` 固定帶入；source audit 仍以既有來源為 read-only input）：
+
+```powershell
+$env:PYTHONUTF8='1'
+$env:PYTHONIOENCODING='utf-8'
+.\.venv\Scripts\python.exe scripts\scheduled\run_banktaiwan_recommendation_learning_daily.py `
+  --data-root D:\Min\Python\Project\FA_Data `
+  --output-root D:\Min\Python\Project\FA_Data_Shadow_BankTaiwan `
+  --snapshot-output-root D:\Min\Python\Project\FA_Data\output `
+  --source-artifact-root D:\Min\Python\Project\FA_Data_Shadow `
+  --source-db D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
+  --decision-date 2026-09-15 `
+  --history-start-date 2014-01-01 `
+  --max-decision-dates 100 `
+  --cost-policy-estimate-date 2026-01-01 `
+  --research-order-quantity-shares 1000 `
+  --research-order-lot-type full_lot `
+  --research-instrument-type ordinary_stock `
+  --child-timeout-seconds 7200
+```
+
+| 項目 | 實際結果 |
+|---|---|
+| wrapper/session | 首次真實 retry 的 exec PTY session `85079`；wrapper receipt 未持久化 child PID，故以 session、child command、receipt 與檔案 mtime 作為可追溯 handle |
+| 首次真實 retry 時間 | `2026-09-15 06:33:12–06:33:25 -07:00`；外層 exit `0`，child `returncode=0` |
+| operational receipt | `D:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\scheduled\recommendation_learning_banktaiwan\runs\2026-09-15-attempt-002-848408b70b64.json`；SHA-256 `sha256:3a4e38a0bb0ecfa54f405936814350231536b32cb030f9d806fb9c92eff945cd` |
+| retry 結果 | `status=completed_waiting_natural_maturity`、`reason=natural_forward_evidence_receipt_missing`；沒有 `cost_scenario_root_conflict` |
+| child receipt | `D:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning\runs\2026-09-15\scheduled-snapshot-440e18cdaa2036d1-efed573\run_receipt.json`；SHA-256 `sha256:1363dab6020e9f047f73cb81f244a6337b09f083e30d319d10e383e8f54aae04`；`status=completed`、`decision=retain_current` |
+| shadow flags | `broker_action=false`、`shadow_only=true`、`formal_order_allowed=false` |
+| natural sample | `natural_matured_sample_count=0`、`natural_training_sample_count=0`、`active_pointer=null`；未形成 natural forward evidence，未 promotion |
+| coverage | eligible symbols `1463, 1528`；`eligible_count=2`、`degraded_count=198`、`missing_count=0` |
+
+受控 retry 只在 BankTaiwan shadow lane 產生當日 dataset／decision／capture／child receipt／challenger pointer projection 與 operational receipt。原 attempt-001 保持原檔與 hash：`sha256:7f18a633324817fa41d4bad26ef8b2a7dbcd76da9bb0a62eb3cbad5511e7792c`。既有 immutable candidate、manifest、artifact 亦保持不變：
+
+- candidate `candidate.json`：`sha256:c35bb83e01d9758f8adce815b98923fafe541285737204e527afab5856e6d2ab`
+- candidate `manifest.json`：`sha256:723b21b42261bd32abe3bc374abcea75d62d79c9ae3eebcea86efff782f19466`
+- `recommendation_calibration.joblib`：`sha256:90d1828c84b53c1f929f1929fd17a29a4b7578ffeb307870ada39ea867f4a6b7`
+
+舊 challenger pointer 的 hash 為 `sha256:6b8cb4b6ca086e9667b6c61852ba0ef94dbcdc0b17836c93fd6a84b390401f76`；retry 後由正常 writer 補齊完整 BankTaiwan scenario metadata，pointer hash 為 `sha256:45e5117f32cc5052a50380dd2c16bb8e419a529cc9901cbb9e7ae17fce719846`，candidate identity、freeze／manifest／artifact／dataset hash 與 scenario hash 均一致。source contract 亦在 BankTaiwan shadow lane 產生當日 immutable contract `D:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning\source_contract\2026-09-15\d5f473ecd81ddab0\contract.json`（file SHA-256 `sha256:77a3234562bcb630585901c5b7b34461926cb2b71ae2014a92c34d12edabb013`），再原子更新 mutable `source_contract/latest.json`；這不是正式來源重建。
+
+以 retry 前保存的 14 個 baseline 檔案逐一重算 SHA-256，snapshot、snapshot status、attempt-001、candidate／manifest／artifact、舊 source contract、source DB、官方事件／corporate-action manifest/status、technical publication receipt、TPEx／TWSE source receipt 全部 `MATCH`，`PREPOST_CHECK_BAD_COUNT=0`。其中 source contract 新指向的 2026-09-15 source manifests／receipts，其檔案最後寫入時間均早於本次 retry（最晚 `05:46:35 -07:00`），非本次 retry 寫入。
+
+同一組參數第二次執行作冪等驗收，時間為 `2026-09-15T13:39:06.1961851Z–13:39:08.1062254Z`（`06:39:06.196–06:39:08.106 -07:00`），exit `0`。operational status 回報 `idempotent_replay=true`、`reused_run_id=2026-09-15-attempt-002-848408b70b64`、`reused_receipt_path` 指向同一 receipt；沒有新增 attempt-003，child receipt／candidate／manifest／artifact／pointer 的 mtime/hash 均未改變，只有 shadow operational `latest_status.json` projection 更新（post hash `sha256:10c6708761b8304b48966da59951ef7137308d9c2ea1afa60b953f805a1d5d01`）。
+
 ## 尚未執行事項
 
-本次沒有直接重跑正式 BankTaiwan schedule，也沒有改寫正式 Shadow root。待審核並釋出修復後，由後續排程窗口或受控人工 retry 驗證 wrapper 產生 completed receipt；若仍遇 dependency failure，應保留新 receipt 並依其新的 `decision_reason` 判讀，不覆寫既有 candidate/manifest/artifact。
+本次仍沒有直接重跑正式 BankTaiwan scheduler，也沒有觸發自然 forward evidence 或 promotion。`completed_waiting_natural_maturity` 只表示 shadow learning／gate evaluation 已完成；`natural_forward_evidence_receipt_missing`、formal PIT、observed cost、actual execution 與 broker eligibility 仍按原門檻維持 pending／blocked。若後續再次遇到 dependency failure，應保留新 receipt 並依其新的 `decision_reason` 判讀，不覆寫既有 candidate/manifest/artifact。

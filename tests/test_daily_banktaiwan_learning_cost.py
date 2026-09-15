@@ -1096,6 +1096,144 @@ def test_new_lane_daily_cli_runs_bounded_shadow_cycle(tmp_path: Path, capsys) ->
     assert receipt["cost_scenario_hash"] == payload["cost_scenario_hash"]
     assert receipt["formal_order_allowed"] is False
     assert receipt["shadow_only"] is True
+    challenger_pointer_path = output_root / "recommendation_learning" / "challenger" / "current.json"
+    challenger_pointer = json.loads(challenger_pointer_path.read_text(encoding="utf-8"))
+    assert challenger_pointer["cost_scenario_id"] == payload["cost_scenario_id"]
+    assert challenger_pointer["cost_scenario_hash"] == payload["cost_scenario_hash"]
+    assert challenger_pointer["cost_scenario"]["scenario_hash"] == payload["cost_scenario_hash"]
+    assert daily_learning._cost_scenario_root_conflict(
+        output_root,
+        build_banktaiwan_cost_scenario(research_order_quantity_shares=1_000),
+    ) is None
+
+
+def test_old_estimated_challenger_pointer_resolves_from_anchored_candidate(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "shadow-root"
+    scenario, _, candidate_root, candidate_metadata = _fit_estimated_candidate(tmp_path)
+    pointer_path = output_root / "recommendation_learning" / "challenger" / "current.json"
+    pointer_path.parent.mkdir(parents=True, exist_ok=True)
+    pointer = {
+        "schema_version": "recommendation-calibration-challenger-pointer.v1",
+        "status": "pending",
+        "candidate_id": candidate_metadata["candidate_id"],
+        "candidate_root": str(candidate_root),
+        "candidate_freeze_hash": candidate_metadata["candidate_freeze_hash"],
+        "candidate_manifest_hash": candidate_metadata["manifest_hash"],
+        "candidate_artifact_hash": candidate_metadata["artifact_hash"],
+        "dataset_hash": candidate_metadata["dataset_hash"],
+    }
+    pointer_path.write_text(json.dumps(pointer, sort_keys=True), encoding="utf-8")
+
+    stored, error = daily_learning._stored_cost_scenario(
+        pointer,
+        source_path=pointer_path,
+    )
+    assert error is None
+    assert stored is not None
+    assert stored.scenario_hash == scenario.scenario_hash
+    assert daily_learning._cost_scenario_root_conflict(output_root, scenario) is None
+
+
+def test_anchored_old_pointer_rejects_candidate_cost_field_changed_under_old_hash(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "shadow-root"
+    scenario, _, candidate_root, candidate_metadata = _fit_estimated_candidate(tmp_path)
+    candidate_metadata["research_order_quantity_shares"] = 999
+    (candidate_root / "candidate.json").write_text(
+        json.dumps(candidate_metadata, sort_keys=True),
+        encoding="utf-8",
+    )
+    pointer_path = output_root / "recommendation_learning" / "challenger" / "current.json"
+    pointer_path.parent.mkdir(parents=True, exist_ok=True)
+    pointer = {
+        "schema_version": "recommendation-calibration-challenger-pointer.v1",
+        "status": "pending",
+        "candidate_id": candidate_metadata["candidate_id"],
+        "candidate_root": str(candidate_root),
+        "candidate_freeze_hash": candidate_metadata["candidate_freeze_hash"],
+        "candidate_manifest_hash": candidate_metadata["manifest_hash"],
+        "candidate_artifact_hash": candidate_metadata["artifact_hash"],
+        "dataset_hash": candidate_metadata["dataset_hash"],
+    }
+    pointer_path.write_text(json.dumps(pointer, sort_keys=True), encoding="utf-8")
+
+    stored, error = daily_learning._stored_cost_scenario(
+        pointer,
+        source_path=pointer_path,
+    )
+    assert stored is None
+    assert error is not None
+    assert "flat_cost_metadata_mismatch:research_order_quantity_shares" in error
+    assert daily_learning._cost_scenario_root_conflict(output_root, scenario) is not None
+
+
+def test_anchored_old_pointer_rejects_hash_mismatch_and_missing_artifact(
+    tmp_path: Path,
+) -> None:
+    scenario, _, candidate_root, candidate_metadata = _fit_estimated_candidate(tmp_path)
+    pointer_path = tmp_path / "shadow-root" / "recommendation_learning" / "challenger" / "current.json"
+    pointer_path.parent.mkdir(parents=True, exist_ok=True)
+    pointer = {
+        "schema_version": "recommendation-calibration-challenger-pointer.v1",
+        "status": "pending",
+        "candidate_id": candidate_metadata["candidate_id"],
+        "candidate_root": str(candidate_root),
+        "candidate_freeze_hash": candidate_metadata["candidate_freeze_hash"],
+        "candidate_manifest_hash": candidate_metadata["manifest_hash"],
+        "candidate_artifact_hash": candidate_metadata["artifact_hash"],
+        "dataset_hash": candidate_metadata["dataset_hash"],
+    }
+    pointer_path.write_text(json.dumps(pointer, sort_keys=True), encoding="utf-8")
+
+    manifest = json.loads((candidate_root / "manifest.json").read_text(encoding="utf-8"))
+    artifact_path = candidate_root / manifest["artifact_filename"]
+    artifact_path.write_bytes(artifact_path.read_bytes() + b"tampered")
+    stored, error = daily_learning._stored_cost_scenario(
+        pointer,
+        source_path=pointer_path,
+    )
+    assert stored is None
+    assert error is not None
+    assert "artifact_hash_mismatch" in error
+
+    artifact_path.unlink()
+    stored, error = daily_learning._stored_cost_scenario(
+        pointer,
+        source_path=pointer_path,
+    )
+    assert stored is None
+    assert error is not None
+    assert "artifact_missing_or_uncontrolled" in error
+    assert daily_learning._cost_scenario_root_conflict(
+        tmp_path / "shadow-root",
+        scenario,
+    ) is not None
+
+
+def test_unanchored_old_challenger_pointer_fails_closed(tmp_path: Path) -> None:
+    output_root = tmp_path / "shadow-root"
+    pointer_path = output_root / "recommendation_learning" / "challenger" / "current.json"
+    pointer_path.parent.mkdir(parents=True, exist_ok=True)
+    pointer_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "recommendation-calibration-challenger-pointer.v1",
+                "status": "pending",
+                "candidate_id": "candidate-without-root",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    conflict = daily_learning._cost_scenario_root_conflict(
+        output_root,
+        build_banktaiwan_cost_scenario(research_order_quantity_shares=1_000),
+    )
+    assert conflict is not None
+    assert "unverifiable_cost_scenario" in conflict
 
 
 def test_same_output_root_rejects_second_cost_lane_and_preserves_legacy_state(
@@ -1148,6 +1286,9 @@ def test_same_output_root_rejects_second_cost_lane_and_preserves_legacy_state(
         if path.is_file()
     )
     assert shared_state_paths
+    legacy_pointer = json.loads(challenger_pointer_path.read_text(encoding="utf-8"))
+    assert legacy_pointer["cost_scenario_id"] == "legacy-fixed-round-trip-bp"
+    assert legacy_pointer["fixed_round_trip_cost_bp"] == 50
     shared_state_before = {path: path.read_bytes() for path in shared_state_paths}
 
     estimated_args = [

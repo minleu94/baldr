@@ -59,6 +59,9 @@ from ml_module.recommendation_calibration_training import (  # noqa: E402
     AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
     RecommendationCalibrationTrainingConfig,
     RecommendationCalibrationSample,
+    candidate_freeze_hash,
+    recommendation_cost_contract_hash,
+    recommendation_label_registry_hash,
 )
 from ml_module.recommendation_historical_replay import (  # noqa: E402
     RecommendationHistoricalReplayConfig,
@@ -72,6 +75,7 @@ from ml_module.recommendation_cost_scenario import (  # noqa: E402
     cost_scenario_from_metadata,
     normalize_cost_scenario,
 )
+from ml_module.model_artifact_manifest import ModelArtifactManifest  # noqa: E402
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -393,19 +397,295 @@ def _stored_cost_scenario(
     *,
     source_path: Path,
 ) -> tuple[RecommendationCostScenario | None, str | None]:
-    """Resolve one shared-root marker without ever inventing a new lane."""
+    """Resolve one shared-root marker without ever inventing a new lane.
+
+    Early challenger pointers predate the cost-scenario fields.  They can be
+    read only when their candidate identity points to a candidate document
+    whose immutable hashes and cost contract agree; an unanchored marker is
+    unverifiable and remains fail-closed.
+    """
+
+    marker_has_cost_metadata = any(
+        (
+            isinstance(payload.get(key), Mapping)
+            and bool(payload.get(key))
+            if key == "cost_scenario"
+            else payload.get(key) not in (None, "")
+        )
+        for key in (
+            "cost_scenario",
+            "cost_scenario_id",
+            "cost_scenario_version",
+            "cost_scenario_hash",
+            "cost_basis",
+            "fixed_round_trip_cost_bp",
+            "cost_policy_id",
+            "cost_policy_version",
+            "policy_estimate_date",
+            "research_order_amount_twd",
+            "research_order_quantity_shares",
+            "lot_type",
+            "instrument_type",
+        )
+    )
+    if not marker_has_cost_metadata:
+        return _stored_cost_scenario_from_candidate_root(
+            payload,
+            source_path=source_path,
+        )
 
     try:
         fixed_value = _metadata_int_or_none(payload.get("fixed_round_trip_cost_bp"))
-        return (
-            cost_scenario_from_metadata(
-                payload,
-                fixed_round_trip_cost_bp=fixed_value,
-            ),
-            None,
+        scenario = cost_scenario_from_metadata(
+            payload,
+            fixed_round_trip_cost_bp=fixed_value,
         )
     except (TypeError, ValueError, RecommendationCostScenarioError) as exc:
         return None, f"{source_path}:invalid_cost_scenario:{type(exc).__name__}:{exc}"
+    anchored_identity_keys = (
+        "candidate_root",
+        "candidate_id",
+        "candidate_freeze_hash",
+        "candidate_manifest_hash",
+        "candidate_artifact_hash",
+        "dataset_hash",
+    )
+    if all(payload.get(key) not in (None, "") for key in anchored_identity_keys):
+        candidate_scenario, error = _stored_cost_scenario_from_candidate_root(
+            payload,
+            source_path=source_path,
+        )
+        if error is not None or candidate_scenario is None:
+            return None, error or f"{source_path}:unverifiable_cost_scenario:candidate_missing"
+        if candidate_scenario.scenario_hash != scenario.scenario_hash:
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:candidate_cost_scenario_mismatch",
+            )
+    return scenario, None
+
+
+def _stored_cost_scenario_from_candidate_root(
+    payload: Mapping[str, Any],
+    *,
+    source_path: Path,
+) -> tuple[RecommendationCostScenario | None, str | None]:
+    """Recover a legacy pointer's lane from verified candidate artifacts.
+
+    A pointer without scenario fields is only a historical metadata shape; it
+    is not itself authority.  The candidate root must therefore provide a
+    complete identity anchor and pass the same canonical manifest, artifact,
+    freeze, and cost-contract checks used by the consumer contract.
+    """
+
+    candidate_root_value = payload.get("candidate_root")
+    if not isinstance(candidate_root_value, (str, Path)) or not str(candidate_root_value).strip():
+        return None, f"{source_path}:unverifiable_cost_scenario:no_candidate_root"
+    identity_pairs = (
+        ("candidate_id", "candidate_id"),
+        ("candidate_freeze_hash", "candidate_freeze_hash"),
+        ("candidate_manifest_hash", "manifest_hash"),
+        ("candidate_artifact_hash", "artifact_hash"),
+        ("dataset_hash", "dataset_hash"),
+    )
+    missing_identity = [
+        marker_key
+        for marker_key, _ in identity_pairs
+        if payload.get(marker_key) in (None, "")
+    ]
+    if missing_identity:
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:incomplete_candidate_identity:"
+            f"{','.join(missing_identity)}",
+        )
+    for marker_key in (
+        "candidate_freeze_hash",
+        "candidate_manifest_hash",
+        "candidate_artifact_hash",
+        "dataset_hash",
+    ):
+        if not _is_sha256_digest(payload.get(marker_key)):
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:invalid_candidate_identity:"
+                f"{marker_key}",
+            )
+    try:
+        candidate_root = Path(str(candidate_root_value)).expanduser().resolve()
+        candidate_path = candidate_root / "candidate.json"
+        manifest_path = candidate_root / "manifest.json"
+        candidate_metadata = json.loads(candidate_path.read_text(encoding="utf-8"))
+        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, RuntimeError, UnicodeError, json.JSONDecodeError) as exc:
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:candidate_metadata_unreadable:"
+            f"{type(exc).__name__}",
+        )
+    if not isinstance(candidate_metadata, Mapping):
+        return None, f"{source_path}:unverifiable_cost_scenario:candidate_metadata_invalid"
+    if not isinstance(manifest_payload, Mapping):
+        return None, f"{source_path}:unverifiable_cost_scenario:candidate_manifest_invalid"
+    for marker_key, candidate_key in identity_pairs:
+        expected = payload.get(marker_key)
+        actual = candidate_metadata.get(candidate_key)
+        if actual in (None, "") or str(actual) != str(expected):
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:"
+                f"candidate_identity_mismatch:{marker_key}",
+            )
+
+    try:
+        manifest = ModelArtifactManifest.from_dict(manifest_payload)
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:candidate_manifest_invalid:"
+            f"{type(exc).__name__}:{exc}",
+        )
+    if not _is_sha256_digest(candidate_metadata.get("candidate_freeze_hash")):
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_metadata:"
+            "candidate_freeze_hash",
+        )
+    if not _is_sha256_digest(candidate_metadata.get("manifest_hash")):
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_metadata:"
+            "manifest_hash",
+        )
+    if not _is_sha256_digest(candidate_metadata.get("artifact_hash")):
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_metadata:"
+            "artifact_hash",
+        )
+    if not _is_sha256_digest(candidate_metadata.get("dataset_hash")):
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_metadata:"
+            "dataset_hash",
+        )
+    if str(candidate_metadata.get("model_id") or "") != str(candidate_metadata.get("candidate_id") or ""):
+        return None, f"{source_path}:unverifiable_cost_scenario:candidate_model_identity_mismatch"
+    if str(manifest.model_id) != str(candidate_metadata.get("candidate_id") or ""):
+        return None, f"{source_path}:unverifiable_cost_scenario:manifest_candidate_id_mismatch"
+    if str(candidate_metadata.get("dataset_id") or "") != str(manifest.dataset_id):
+        return None, f"{source_path}:unverifiable_cost_scenario:manifest_dataset_id_mismatch"
+    if str(candidate_metadata.get("manifest_hash") or "") != manifest.manifest_hash:
+        return None, f"{source_path}:unverifiable_cost_scenario:manifest_hash_mismatch"
+    if str(candidate_metadata.get("artifact_hash") or "") != manifest.artifact_hash:
+        return None, f"{source_path}:unverifiable_cost_scenario:artifact_hash_manifest_mismatch"
+
+    artifact_path = (candidate_root / manifest.artifact_filename).resolve()
+    if artifact_path.parent != candidate_root or not artifact_path.is_file():
+        return None, f"{source_path}:unverifiable_cost_scenario:artifact_missing_or_uncontrolled"
+    try:
+        actual_artifact_hash = _sha256_file(artifact_path)
+    except OSError as exc:
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:artifact_unreadable:"
+            f"{type(exc).__name__}",
+        )
+    if actual_artifact_hash != manifest.artifact_hash:
+        return None, f"{source_path}:unverifiable_cost_scenario:artifact_hash_mismatch"
+
+    evaluation = candidate_metadata.get("evaluation")
+    if not isinstance(evaluation, Mapping):
+        return None, f"{source_path}:unverifiable_cost_scenario:candidate_evaluation_missing"
+    expected_freeze_hash = candidate_freeze_hash(
+        candidate_id=str(candidate_metadata.get("candidate_id") or ""),
+        dataset_hash=str(candidate_metadata.get("dataset_hash") or ""),
+        manifest_hash=str(candidate_metadata.get("manifest_hash") or ""),
+        artifact_hash=str(candidate_metadata.get("artifact_hash") or ""),
+        evaluation=evaluation,
+    )
+    if expected_freeze_hash != candidate_metadata.get("candidate_freeze_hash"):
+        return None, f"{source_path}:unverifiable_cost_scenario:candidate_freeze_hash_mismatch"
+
+    try:
+        fixed_value = _metadata_int_or_none(candidate_metadata.get("fixed_round_trip_cost_bp"))
+        scenario = cost_scenario_from_metadata(
+            candidate_metadata,
+            fixed_round_trip_cost_bp=fixed_value,
+        )
+    except (TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:"
+            f"candidate_cost_scenario_invalid:{type(exc).__name__}:{exc}",
+        )
+    expected_flat_metadata = {
+        "cost_scenario_id": scenario.scenario_id,
+        "cost_scenario_version": scenario.scenario_version,
+        "cost_scenario_hash": scenario.scenario_hash,
+        "cost_basis": scenario.cost_basis,
+        "fixed_round_trip_cost_bp": scenario.fixed_round_trip_cost_bp,
+        "cost_policy_id": scenario.policy_id,
+        "cost_policy_version": scenario.policy_version,
+        "policy_estimate_date": scenario.policy_estimate_date,
+        "research_order_amount_twd": (
+            str(scenario.research_order_amount_twd)
+            if scenario.research_order_amount_twd is not None
+            else None
+        ),
+        "research_order_quantity_shares": scenario.research_order_quantity_shares,
+        "lot_type": scenario.lot_type,
+        "instrument_type": scenario.instrument_type,
+    }
+    if scenario.is_estimated:
+        required_cost_keys = ("cost_scenario", *expected_flat_metadata)
+        missing_cost_keys = [
+            key for key in required_cost_keys if key not in candidate_metadata
+        ]
+        if missing_cost_keys:
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:incomplete_candidate_cost_metadata:"
+                f"{','.join(missing_cost_keys)}",
+            )
+        expected_nested = scenario.metadata()
+        if candidate_metadata.get("cost_scenario") != expected_nested:
+            return None, f"{source_path}:unverifiable_cost_scenario:nested_cost_scenario_mismatch"
+    elif "fixed_round_trip_cost_bp" not in candidate_metadata:
+        return None, f"{source_path}:unverifiable_cost_scenario:legacy_fixed_cost_missing"
+    for key, expected in expected_flat_metadata.items():
+        if key in candidate_metadata and candidate_metadata.get(key) != expected:
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:flat_cost_metadata_mismatch:{key}",
+            )
+    expected_cost_contract_hash = recommendation_cost_contract_hash(
+        scenario.fixed_round_trip_cost_bp,
+        cost_scenario=scenario if scenario.is_estimated else None,
+    )
+    if candidate_metadata.get("cost_contract_hash") != expected_cost_contract_hash:
+        return None, f"{source_path}:unverifiable_cost_scenario:cost_contract_hash_mismatch"
+    expected_label_registry_hash = recommendation_label_registry_hash(
+        cost_scenario=scenario if scenario.is_estimated else None
+    )
+    if candidate_metadata.get("label_registry_hash") != expected_label_registry_hash:
+        return None, f"{source_path}:unverifiable_cost_scenario:label_registry_hash_mismatch"
+    return scenario, None
+
+
+def _is_sha256_digest(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        return False
+    digest = value[len("sha256:") :]
+    return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _cost_scenario_root_conflict(
@@ -1051,6 +1331,7 @@ def main(argv: list[str] | None = None) -> int:
         challenger_path = _ensure_challenger_pointer(
             output_root=learning_output_root,
             run_result=run_result,
+            cost_scenario=cost_scenario,
             status="pending",
             natural_result=None,
             retrain_trigger=(
@@ -1175,6 +1456,7 @@ def main(argv: list[str] | None = None) -> int:
         challenger_path = _ensure_challenger_pointer(
             output_root=learning_output_root,
             run_result=run_result,
+            cost_scenario=cost_scenario,
             status=challenger_status,
             natural_result=natural_result,
             retrain_trigger=(
@@ -2299,6 +2581,7 @@ def _ensure_challenger_pointer(
     *,
     output_root: Path,
     run_result: Any,
+    cost_scenario: RecommendationCostScenario,
     status: str,
     natural_result: Mapping[str, Any] | None = None,
     retrain_trigger: str = "",
@@ -2337,6 +2620,7 @@ def _ensure_challenger_pointer(
         training_cycle += 1
     payload = {
         "schema_version": "recommendation-calibration-challenger-pointer.v1",
+        **_scenario_cli_metadata(cost_scenario),
         "status": status,
         "candidate_id": str(run_result.candidate_id),
         "candidate_root": str(root),

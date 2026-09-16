@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 import gzip
 import hashlib
 import json
@@ -35,6 +35,17 @@ from data_module.prospective_official_pit_source import (
     OFFICIAL_COMPANY_SOURCE_DEFINITIONS,
     OFFICIAL_PROSPECTIVE_PIT_SOURCE_SCHEMA_VERSION,
 )
+from data_module.pit_taxonomy_definition_adapter import (
+    PIT_TAXONOMY_TWSE_B1212_COMPOSITE_SOURCE_KIND,
+    OfficialTaxonomyDefinitionError,
+    parse_official_classification_definition,
+    parse_official_twse_b1212_composite_classification_definition,
+)
+from data_module.pit_taxonomy_security_adapter import (
+    OfficialSecurityTypingError,
+    build_security_evidence_map,
+    parse_official_isin_security_source,
+)
 
 
 PIT_MEMBERSHIP_READER_SCHEMA_VERSION = "pit-sector-membership-reader.v1"
@@ -44,6 +55,9 @@ PIT_FORMAL_MANIFEST_SCHEMA_VERSION = "pit-sector-membership-manifest-v1"
 PIT_MACHINE_PUBLICATION_SCHEMA_VERSION = "pit-sector-membership-machine-publication.v1"
 PIT_TAXONOMY_IDENTITY_SCHEMA_VERSION = "pit-industry-taxonomy-identity.v2"
 PIT_TAXONOMY_SOURCE_SCHEMA_VERSION = "pit-industry-taxonomy-source.v1"
+PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION = "pit-industry-taxonomy-identity.v3"
+PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION = "pit-industry-taxonomy-source.v2"
+PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION = "pit-industry-taxonomy-raw-manifest.v1"
 PIT_UNIVERSE_IDENTITY_SCHEMA_VERSION = "manual-rule-only-universe.v1"
 TAIPEI_TIMEZONE = ZoneInfo("Asia/Taipei")
 
@@ -51,6 +65,12 @@ _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SYMBOL_RE = re.compile(r"^[0-9]{4,6}$")
 _SECTOR_RE = re.compile(r"^[0-9]{2}$")
 _SUPPORTED_MARKETS = frozenset({"twse_listed", "tpex_otc", "tpex_emerging"})
+_TWSE_B1212_COMPOSITE_COMPONENTS = (
+    "base_definition",
+    "change_notice",
+    "revision_history",
+    "current_regulation",
+)
 _ROW_REQUIRED_FIELDS = frozenset(
     {
         "symbol",
@@ -103,6 +123,64 @@ _TAXONOMY_SOURCE_REQUIRED_FIELDS = frozenset(
         "security_type_by_symbol",
     }
 )
+_TAXONOMY_V3_REQUIRED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "classification_version_by_market",
+        "source_id",
+        "source_version",
+        "source_hash",
+        "source_path",
+        "available_at",
+        "effective_from",
+        "universe_hash",
+        "symbols",
+        "universe_hash_symbols",
+        "scores_bp",
+        "rank_order",
+        "mapping_by_market",
+        "classification_sources_by_market",
+        "security_sources_by_market",
+        "market_by_symbol",
+        "security_type_by_symbol",
+        "security_eligibility_by_symbol",
+        "eligible_symbols",
+        "excluded_by_security",
+        "unknown_symbols",
+        "license_scope",
+        "raw_manifest_path",
+        "raw_manifest_hash",
+        "mapping_hash",
+    }
+)
+_TAXONOMY_SOURCE_V2_REQUIRED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "producer_version",
+        "capture_date",
+        "source_id",
+        "source_version",
+        "available_at",
+        "effective_from",
+        "universe_hash",
+        "symbols",
+        "universe_hash_symbols",
+        "scores_bp",
+        "rank_order",
+        "mapping_by_market",
+        "classification_sources_by_market",
+        "security_sources_by_market",
+        "market_by_symbol",
+        "security_type_by_symbol",
+        "security_eligibility_by_symbol",
+        "eligible_symbols",
+        "excluded_by_security",
+        "unknown_symbols",
+        "license_scope",
+        "raw_manifest_path",
+        "raw_manifest_hash",
+    }
+)
 _MANIFEST_REQUIRED_FIELDS = frozenset(
     {
         "schema_version",
@@ -128,7 +206,11 @@ _COMMON_EQUITY_SECURITY_TYPES = frozenset(
     {"common_equity", "common_stock", "ordinary_share", "ordinary_stock", "普通股"}
 )
 _SUPPORTED_PIT_CLASSIFICATION_VERSIONS = frozenset(
-    {"tw-industry-code-map.v1", "tw-industry-explicit-map.v1"}
+    {
+        "tw-industry-code-map.v1",
+        "tw-industry-explicit-map.v1",
+        "twse-industry-definition.v1",
+    }
 )
 _KNOWN_SPECIAL_SECURITY_TOKENS = (
     "etf",
@@ -166,6 +248,8 @@ class PITMembershipRow:
     classification_version: str | None = None
     security_type: str | None = None
     industry_category: str | None = None
+    security_eligible: bool = True
+    security_exclusion_reason: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -183,6 +267,8 @@ class PITMembershipRow:
             "classification_version": self.classification_version,
             "security_type": self.security_type,
             "industry_category": self.industry_category,
+            "security_eligible": self.security_eligible,
+            "security_exclusion_reason": self.security_exclusion_reason,
         }
         return payload
 
@@ -275,6 +361,22 @@ class _ParsedArtifact:
     blocking_warnings: tuple[str, ...]
     source_lineage: tuple[dict[str, object], ...]
     taxonomy_lineage: dict[str, object]
+
+
+@dataclass(frozen=True)
+class _TaxonomyVerification:
+    """v2/v3 taxonomy verification 的共同輸出形狀。"""
+
+    mapping: dict[str, str]
+    mapping_by_market: dict[str, dict[str, str]]
+    security_by_symbol: dict[str, str]
+    security_eligibility_by_symbol: dict[str, bool]
+    security_exclusion_reason_by_symbol: dict[str, str]
+    taxonomy_version: str | None
+    taxonomy_version_by_market: dict[str, str]
+    lineage: dict[str, object]
+    warnings: list[str]
+    verified: bool
 
 
 class PITSectorMembershipReader:
@@ -785,21 +887,23 @@ class PITSectorMembershipReader:
         if universe_warnings:
             blocking.extend(universe_warnings)
 
-        (
-            taxonomy_mapping,
-            taxonomy_security_by_symbol,
-            taxonomy_version,
-            taxonomy_lineage,
-            taxonomy_warnings,
-            taxonomy_verified,
-        ) = self._load_and_verify_taxonomy(
+        taxonomy = self._load_and_verify_taxonomy(
             path,
             universe_hash=universe_hash,
             rows=normalized_rows,
             as_of_date=coverage_start,
             decision_at=decision_at,
         )
-        warnings.extend(taxonomy_warnings)
+        warnings.extend(taxonomy.warnings)
+        taxonomy_mapping = taxonomy.mapping
+        taxonomy_mapping_by_market = taxonomy.mapping_by_market
+        taxonomy_security_by_symbol = taxonomy.security_by_symbol
+        taxonomy_eligibility_by_symbol = taxonomy.security_eligibility_by_symbol
+        taxonomy_exclusion_reasons = taxonomy.security_exclusion_reason_by_symbol
+        taxonomy_version = taxonomy.taxonomy_version
+        taxonomy_version_by_market = taxonomy.taxonomy_version_by_market
+        taxonomy_lineage = taxonomy.lineage
+        taxonomy_verified = taxonomy.verified
 
         source_raw_lineage, raw_warnings = self._verify_raw_sources(
             path,
@@ -843,11 +947,13 @@ class PITSectorMembershipReader:
         typed_rows = _materialize_rows(
             normalized_rows,
             source_map,
-            taxonomy_mapping=taxonomy_mapping if taxonomy_verified else {},
-            taxonomy_security_by_symbol=(
-                taxonomy_security_by_symbol if taxonomy_verified else {}
-            ),
-            taxonomy_version=taxonomy_version if taxonomy_verified else None,
+            taxonomy_mapping=taxonomy_mapping,
+            taxonomy_mapping_by_market=taxonomy_mapping_by_market,
+            taxonomy_security_by_symbol=taxonomy_security_by_symbol,
+            taxonomy_eligibility_by_symbol=taxonomy_eligibility_by_symbol,
+            taxonomy_exclusion_reason_by_symbol=taxonomy_exclusion_reasons,
+            taxonomy_version=taxonomy_version,
+            taxonomy_version_by_market=taxonomy_version_by_market,
         )
         return _ParsedArtifact(
             artifact=artifact,
@@ -1428,6 +1534,116 @@ class PITSectorMembershipReader:
         rows: Sequence[Mapping[str, object]],
         as_of_date: date,
         decision_at: datetime,
+    ) -> _TaxonomyVerification:
+        """依 schema dispatch v2 相容路徑或 market-scoped v3 路徑。"""
+
+        candidates = list(self.taxonomy_identity_paths)
+        auto = artifact_path.parent.parent / "metadata" / "taxonomy_identity.json"
+        if auto not in candidates:
+            candidates.append(auto)
+        identity_path = next((path for path in candidates if path.is_file()), None)
+        if identity_path is None:
+            return _TaxonomyVerification(
+                mapping={},
+                mapping_by_market={},
+                security_by_symbol={},
+                security_eligibility_by_symbol={},
+                security_exclusion_reason_by_symbol={},
+                taxonomy_version=None,
+                taxonomy_version_by_market={},
+                lineage={
+                    "taxonomy_identity_path": None,
+                    "taxonomy_status": "missing",
+                    "taxonomy_verified": False,
+                },
+                warnings=["membership_taxonomy_identity_missing"],
+                verified=False,
+            )
+        try:
+            raw_identity = _loads_no_duplicate_keys(
+                identity_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            return _TaxonomyVerification(
+                mapping={},
+                mapping_by_market={},
+                security_by_symbol={},
+                security_eligibility_by_symbol={},
+                security_exclusion_reason_by_symbol={},
+                taxonomy_version=None,
+                taxonomy_version_by_market={},
+                lineage={
+                    "taxonomy_identity_path": str(identity_path),
+                    "taxonomy_status": "missing",
+                    "taxonomy_verified": False,
+                },
+                warnings=[f"membership_taxonomy_identity_unreadable:{identity_path}"],
+                verified=False,
+            )
+        if isinstance(raw_identity, Mapping) and raw_identity.get(
+            "schema_version"
+        ) == PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION:
+            return self._load_and_verify_taxonomy_v3(
+                artifact_path,
+                identity_path=identity_path,
+                identity=dict(raw_identity),
+                universe_hash=universe_hash,
+                rows=rows,
+                as_of_date=as_of_date,
+                decision_at=decision_at,
+            )
+        return self._legacy_taxonomy_verification(
+            self._load_and_verify_taxonomy_v2(
+                artifact_path,
+                universe_hash=universe_hash,
+                rows=rows,
+                as_of_date=as_of_date,
+                decision_at=decision_at,
+            )
+        )
+
+    def _legacy_taxonomy_verification(
+        self,
+        value: tuple[
+            dict[str, str],
+            dict[str, str],
+            str | None,
+            dict[str, object],
+            list[str],
+            bool,
+        ],
+    ) -> _TaxonomyVerification:
+        mapping, security, version, lineage, warnings, verified = value
+        eligible = {
+            symbol: security.get(symbol) in _COMMON_EQUITY_SECURITY_TYPES
+            for symbol in security
+        }
+        reasons = {
+            symbol: "official_security_type_unsupported"
+            for symbol, is_eligible in eligible.items()
+            if not is_eligible
+        }
+        return _TaxonomyVerification(
+            mapping=mapping,
+            mapping_by_market={"*": dict(mapping)},
+            security_by_symbol=security,
+            security_eligibility_by_symbol=eligible,
+            security_exclusion_reason_by_symbol=reasons,
+            taxonomy_version=version,
+            taxonomy_version_by_market={"*": version} if version else {},
+            lineage=lineage,
+            warnings=warnings,
+            verified=verified,
+        )
+
+    def _load_and_verify_taxonomy_v2(
+        self,
+        artifact_path: Path,
+        *,
+        universe_hash: str,
+        rows: Sequence[Mapping[str, object]],
+        as_of_date: date,
+        decision_at: datetime,
     ) -> tuple[
         dict[str, str],
         dict[str, str],
@@ -1750,6 +1966,516 @@ class PITSectorMembershipReader:
             verified,
         )
 
+    def _load_and_verify_taxonomy_v3(
+        self,
+        artifact_path: Path,
+        *,
+        identity_path: Path,
+        identity: Mapping[str, object],
+        universe_hash: str,
+        rows: Sequence[Mapping[str, object]],
+        as_of_date: date,
+        decision_at: datetime,
+    ) -> _TaxonomyVerification:
+        """重新驗證 market-scoped v3 identity 及每個官方 raw component。"""
+
+        warnings: list[str] = []
+        row_symbols = tuple(sorted(str(row["symbol"]) for row in rows))
+        row_symbol_set = set(row_symbols)
+        base_lineage: dict[str, object] = {
+            "taxonomy_identity_path": str(identity_path),
+            "taxonomy_schema_version": PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION,
+            "taxonomy_status": "partial",
+            "taxonomy_verified": False,
+        }
+        if set(identity) != _TAXONOMY_V3_REQUIRED_FIELDS:
+            warnings.append("membership_taxonomy_identity_schema_invalid")
+
+        source_id = _text_or_none(identity.get("source_id"), warnings, "membership_taxonomy_source_id_missing")
+        source_version = _text_or_none(
+            identity.get("source_version"), warnings, "membership_taxonomy_source_version_missing"
+        )
+        source_hash = identity.get("source_hash")
+        if not _is_sha256(source_hash):
+            warnings.append("membership_taxonomy_source_hash_invalid")
+        available_at = _datetime_or_none(
+            identity.get("available_at"), warnings, "membership_taxonomy_available_at_invalid"
+        )
+        if available_at is not None and available_at > decision_at:
+            warnings.append("membership_taxonomy_available_at_after_decision")
+        effective_from = _date_or_none(
+            identity.get("effective_from"), warnings, "membership_taxonomy_effective_from_invalid"
+        )
+        if effective_from is not None and effective_from > as_of_date:
+            warnings.append("membership_taxonomy_not_effective_at_as_of")
+        if identity.get("universe_hash") != universe_hash:
+            warnings.append("membership_taxonomy_universe_hash_mismatch")
+
+        identity_symbols = _v3_symbol_list(identity.get("symbols"), warnings, "membership_taxonomy_symbols_invalid")
+        if identity_symbols is not None:
+            if identity_symbols != tuple(sorted(set(identity_symbols))):
+                warnings.append("membership_taxonomy_symbols_not_sorted_unique")
+            if identity_symbols != row_symbols:
+                warnings.append("membership_taxonomy_partial_denominator")
+        hash_symbols = _v3_symbol_list(
+            identity.get("universe_hash_symbols"),
+            warnings,
+            "membership_taxonomy_universe_hash_symbols_invalid",
+            require_sorted=False,
+        )
+        scores = identity.get("scores_bp")
+        if not isinstance(scores, list) or any(
+            isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= 10000
+            for item in scores
+        ):
+            warnings.append("membership_taxonomy_scores_invalid")
+            score_values: list[int] = []
+        else:
+            score_values = [int(item) for item in scores]
+        if hash_symbols is None or len(score_values) != len(hash_symbols):
+            warnings.append("membership_taxonomy_scores_symbols_length_mismatch")
+        elif _sha256_json(
+            {
+                "schema_version": PIT_UNIVERSE_IDENTITY_SCHEMA_VERSION,
+                "symbols": list(hash_symbols),
+                "scores_bp": score_values,
+            }
+        ) != universe_hash:
+            warnings.append("membership_taxonomy_universe_hash_reconstruction_mismatch")
+        if hash_symbols is not None and set(hash_symbols) != row_symbol_set:
+            warnings.append("membership_taxonomy_universe_hash_symbols_mismatch")
+
+        rank_order = _v3_symbol_list(
+            identity.get("rank_order"), warnings, "membership_taxonomy_rank_order_invalid", require_sorted=False
+        )
+        if rank_order is not None and set(rank_order) != row_symbol_set:
+            warnings.append("membership_taxonomy_rank_order_partial_denominator")
+
+        versions_value = identity.get("classification_version_by_market")
+        versions = _v3_text_mapping(
+            versions_value, warnings, "membership_taxonomy_classification_versions_invalid"
+        )
+        for version in versions.values():
+            if version not in _SUPPORTED_PIT_CLASSIFICATION_VERSIONS and not version.startswith(
+                "tw-industry-"
+            ):
+                warnings.append("membership_taxonomy_classification_version_unsupported")
+            if self.expected_classification_version is not None and version != self.expected_classification_version:
+                warnings.append(
+                    "membership_taxonomy_classification_version_mismatch:"
+                    f"expected={self.expected_classification_version}:actual={version}"
+                )
+
+        mapping_by_market = _v3_mapping_by_market(
+            identity.get("mapping_by_market"), warnings
+        )
+        market_by_symbol = _v3_text_mapping(
+            identity.get("market_by_symbol"), warnings, "membership_taxonomy_market_mapping_invalid"
+        )
+        if set(market_by_symbol) != row_symbol_set:
+            warnings.append("membership_taxonomy_market_mapping_partial_denominator")
+        if any(value not in _SUPPORTED_MARKETS for value in market_by_symbol.values()):
+            warnings.append("membership_taxonomy_market_mapping_unsupported")
+
+        security_by_symbol = _v3_text_mapping(
+            identity.get("security_type_by_symbol"),
+            warnings,
+            "membership_taxonomy_security_type_mapping_invalid",
+        )
+        if set(security_by_symbol) != row_symbol_set:
+            warnings.append("membership_taxonomy_security_type_partial_denominator")
+        # v3 carries an explicit full-denominator eligibility projection.  A
+        # known non-common instrument (for example TDR/ETF/warrant) is a
+        # verified exclusion, not a missing denominator row; only an
+        # unrecognised type remains a taxonomy blocker.
+        known_excluded_security_types = frozenset(
+            {"tdr", "etf", "etn", "warrant", "preferred_equity", "bond"}
+        )
+        unsupported_security = sorted(
+            symbol
+            for symbol in row_symbol_set & set(security_by_symbol)
+            if security_by_symbol[symbol] not in _COMMON_EQUITY_SECURITY_TYPES
+            and security_by_symbol[symbol] not in known_excluded_security_types
+        )
+        if unsupported_security:
+            warnings.append("membership_taxonomy_security_type_unsupported")
+            warnings.append("membership_taxonomy_partial_denominator")
+        eligibility_value = identity.get("security_eligibility_by_symbol")
+        eligibility_details = (
+            {str(key): dict(value) for key, value in eligibility_value.items() if isinstance(value, Mapping)}
+            if isinstance(eligibility_value, Mapping)
+            else {}
+        )
+        if set(eligibility_details) != row_symbol_set:
+            warnings.append("membership_taxonomy_security_eligibility_partial_denominator")
+        eligibility_by_symbol: dict[str, bool] = {
+            symbol: value.get("eligible") is True
+            for symbol, value in eligibility_details.items()
+        }
+        exclusion_reasons: dict[str, str] = {}
+        for symbol, value in eligibility_details.items():
+            if value.get("eligible") is not True:
+                reason = value.get("reason")
+                if not isinstance(reason, str) or not reason.strip():
+                    warnings.append(f"membership_taxonomy_exclusion_reason_missing:{symbol}")
+                else:
+                    exclusion_reasons[symbol] = reason.strip()
+                    if reason.strip().startswith("unknown"):
+                        warnings.append(f"membership_taxonomy_unknown_security:{symbol}")
+
+        eligible_symbols = _v3_string_array(identity.get("eligible_symbols"), warnings, "membership_taxonomy_eligible_symbols_invalid")
+        excluded_symbols = _v3_string_array(identity.get("excluded_by_security"), warnings, "membership_taxonomy_excluded_symbols_invalid")
+        unknown_symbols = _v3_string_array(identity.get("unknown_symbols"), warnings, "membership_taxonomy_unknown_symbols_invalid")
+        eligibility_sets = (set(eligible_symbols), set(excluded_symbols), set(unknown_symbols))
+        if set().union(*eligibility_sets) != row_symbol_set:
+            warnings.append("membership_taxonomy_security_projection_incomplete")
+        if any(eligibility_sets[index] & eligibility_sets[other] for index in range(3) for other in range(index + 1, 3)):
+            warnings.append("membership_taxonomy_security_projection_overlap")
+        if set(eligible_symbols) != {symbol for symbol, value in eligibility_by_symbol.items() if value}:
+            warnings.append("membership_taxonomy_eligible_projection_mismatch")
+        if set(excluded_symbols) != {
+            symbol for symbol, value in eligibility_by_symbol.items() if not value
+        } - set(unknown_symbols):
+            warnings.append("membership_taxonomy_excluded_projection_mismatch")
+        if unknown_symbols:
+            warnings.append("membership_taxonomy_unknown_security_present")
+
+        license_scope = identity.get("license_scope")
+        if not isinstance(license_scope, Mapping):
+            warnings.append("membership_taxonomy_license_scope_missing")
+        else:
+            if license_scope.get("formal_acceptance_granted") is not True:
+                warnings.append("membership_taxonomy_license_not_formally_accepted")
+
+        # v3 source bytes and raw manifest are independently re-read.  The
+        # identity cannot pass by merely self-declaring source_hashes.
+        taxonomy_source_path = _v3_resolve_file(
+            identity_path.parent, identity.get("source_path"), warnings, "membership_taxonomy_source_missing"
+        )
+        taxonomy_source_payload: Mapping[str, object] | None = None
+        source_actual_hash = _sha256_file(taxonomy_source_path) if taxonomy_source_path else None
+        if source_actual_hash != source_hash:
+            warnings.append("membership_taxonomy_source_hash_mismatch")
+        if taxonomy_source_path is not None:
+            try:
+                source_value = _loads_no_duplicate_keys(
+                    taxonomy_source_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+                warnings.append("membership_taxonomy_source_unreadable")
+            else:
+                if isinstance(source_value, Mapping):
+                    taxonomy_source_payload = dict(source_value)
+                else:
+                    warnings.append("membership_taxonomy_source_schema_invalid")
+        if taxonomy_source_payload is not None:
+            if set(taxonomy_source_payload) != _TAXONOMY_SOURCE_V2_REQUIRED_FIELDS or taxonomy_source_payload.get(
+                "schema_version"
+            ) != PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION:
+                warnings.append("membership_taxonomy_source_schema_invalid")
+            compare_fields = (
+                "source_id",
+                "source_version",
+                "available_at",
+                "effective_from",
+                "universe_hash",
+                "symbols",
+                "universe_hash_symbols",
+                "scores_bp",
+                "rank_order",
+                "mapping_by_market",
+                "classification_sources_by_market",
+                "security_sources_by_market",
+                "market_by_symbol",
+                "security_type_by_symbol",
+                "security_eligibility_by_symbol",
+                "eligible_symbols",
+                "excluded_by_security",
+                "unknown_symbols",
+                "license_scope",
+                "raw_manifest_path",
+                "raw_manifest_hash",
+            )
+            for field_name in compare_fields:
+                if taxonomy_source_payload.get(field_name) != identity.get(field_name):
+                    warnings.append(f"membership_taxonomy_source_{field_name}_mismatch")
+
+        raw_manifest_path = _v3_resolve_file(
+            identity_path.parent, identity.get("raw_manifest_path"), warnings, "membership_taxonomy_raw_manifest_missing"
+        )
+        raw_manifest_payload: Mapping[str, object] | None = None
+        raw_manifest_actual_hash = _sha256_file(raw_manifest_path) if raw_manifest_path else None
+        if raw_manifest_actual_hash != identity.get("raw_manifest_hash"):
+            warnings.append("membership_taxonomy_raw_manifest_hash_mismatch")
+        raw_files_by_key: dict[tuple[str, str], dict[str, object]] = {}
+        if raw_manifest_path is not None:
+            try:
+                raw_manifest_value = _loads_no_duplicate_keys(
+                    raw_manifest_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+                warnings.append("membership_taxonomy_raw_manifest_unreadable")
+            else:
+                if isinstance(raw_manifest_value, Mapping):
+                    raw_manifest_payload = dict(raw_manifest_value)
+                else:
+                    warnings.append("membership_taxonomy_raw_manifest_schema_invalid")
+        if raw_manifest_payload is not None:
+            raw_body = dict(raw_manifest_payload)
+            logical_hash = raw_body.pop("manifest_hash", None)
+            if raw_manifest_payload.get("schema_version") != PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION:
+                warnings.append("membership_taxonomy_raw_manifest_schema_invalid")
+            if not _is_sha256(logical_hash) or _sha256_json(raw_body) != logical_hash:
+                warnings.append("membership_taxonomy_raw_manifest_logical_hash_mismatch")
+            files_value = raw_manifest_payload.get("files")
+            if not isinstance(files_value, list):
+                warnings.append("membership_taxonomy_raw_manifest_files_invalid")
+            else:
+                bundle_root = identity_path.parent.parent
+                for raw_file in files_value:
+                    if not isinstance(raw_file, Mapping):
+                        warnings.append("membership_taxonomy_raw_manifest_file_invalid")
+                        continue
+                    source_key = (
+                        str(raw_file.get("source_id", "")),
+                        str(raw_file.get("market_scope", "")),
+                    )
+                    path_value = raw_file.get("path")
+                    candidate = _v3_resolve_file(bundle_root, path_value, warnings, "membership_taxonomy_raw_file_missing")
+                    expected_raw_hash = raw_file.get("source_file_hash")
+                    if candidate is None or not _is_sha256(expected_raw_hash) or _sha256_file(candidate) != expected_raw_hash:
+                        warnings.append(f"membership_taxonomy_raw_file_hash_mismatch:{path_value}")
+                    elif raw_file.get("content_bytes") != candidate.stat().st_size:
+                        warnings.append(f"membership_taxonomy_raw_file_byte_count_mismatch:{path_value}")
+                    raw_available = _datetime_or_none(
+                        raw_file.get("available_at"), warnings, "membership_taxonomy_raw_available_at_invalid"
+                    )
+                    if raw_available is not None and (
+                        raw_available > decision_at
+                        or raw_available
+                        >= datetime.combine(
+                            as_of_date, time(8, 30), tzinfo=TAIPEI_TIMEZONE
+                        )
+                    ):
+                        warnings.append(f"membership_taxonomy_raw_available_at_after_cutoff:{path_value}")
+                    if source_key in raw_files_by_key:
+                        warnings.append(f"membership_taxonomy_raw_manifest_duplicate:{source_key[0]}")
+                    raw_files_by_key[source_key] = dict(raw_file)
+
+        classification_sources = _v3_source_mapping(
+            identity.get("classification_sources_by_market"), warnings, "membership_taxonomy_classification_sources_invalid"
+        )
+        security_sources = _v3_source_mapping(
+            identity.get("security_sources_by_market"), warnings, "membership_taxonomy_security_sources_invalid"
+        )
+        mapping_flat: dict[str, str] = {}
+        for market_mapping in mapping_by_market.values():
+            for code, name in market_mapping.items():
+                mapping_flat.setdefault(code, name)
+
+        for market, source in classification_sources.items():
+            component = raw_files_by_key.get((str(source.get("source_id", "")), market))
+            if component is None:
+                warnings.append(f"membership_taxonomy_classification_raw_missing:{market}")
+                continue
+            if source.get("source_file_hash") != component.get("source_file_hash") or source.get("path") != component.get("path"):
+                warnings.append(f"membership_taxonomy_classification_raw_binding_mismatch:{market}")
+            for field_name in (
+                "source_version",
+                "effective_from",
+                "parser_version",
+                "effective_date_basis",
+                "effective_date_evidence",
+            ):
+                if field_name in source or field_name in component:
+                    if source.get(field_name) != component.get(field_name):
+                        warnings.append(
+                            f"membership_taxonomy_classification_{field_name}_binding_mismatch:{market}"
+                        )
+            component_path = _v3_component_path(identity_path.parent.parent, component.get("path"))
+            if component_path is None:
+                continue
+            try:
+                component_payload = component_path.read_bytes()
+            except OSError as error:
+                warnings.append(
+                    f"membership_taxonomy_classification_parse_failed:{market}:{_one_line(error)}"
+                )
+                continue
+            effective_date_basis_value = source.get("effective_date_basis")
+            effective_date_basis = (
+                effective_date_basis_value
+                if isinstance(effective_date_basis_value, str)
+                else None
+            )
+            effective_date_evidence_value = source.get("effective_date_evidence")
+            effective_date_evidence = (
+                dict(effective_date_evidence_value)
+                if isinstance(effective_date_evidence_value, Mapping)
+                else None
+            )
+            classification_effective_from = _date_or_none(
+                source.get("effective_from"),
+                warnings,
+                "membership_taxonomy_classification_effective_invalid",
+            )
+            if classification_effective_from is not None and classification_effective_from > as_of_date:
+                warnings.append(
+                    f"membership_taxonomy_classification_not_effective_at_as_of:{market}"
+                )
+            try:
+                source_kind = source.get("source_kind")
+                if source_kind == PIT_TAXONOMY_TWSE_B1212_COMPOSITE_SOURCE_KIND:
+                    composite_payloads = _load_composite_classification_components(
+                        bundle_root=identity_path.parent.parent,
+                        market=market,
+                        source=source,
+                        raw_files_by_key=raw_files_by_key,
+                        warnings=warnings,
+                    )
+                    if composite_payloads is None:
+                        continue
+                    parsed_definition = parse_official_twse_b1212_composite_classification_definition(
+                        base_raw_payload=composite_payloads["base_definition"],
+                        change_raw_payload=composite_payloads["change_notice"],
+                        revision_history_raw_payload=composite_payloads["revision_history"],
+                        current_regulation_raw_payload=composite_payloads["current_regulation"],
+                        classification_version=str(versions.get(market, "")),
+                        source_id=str(source.get("source_id", "")),
+                        source_version=str(source.get("source_version", "")),
+                        effective_from=classification_effective_from or as_of_date,
+                        effective_date_basis=effective_date_basis,
+                        effective_date_evidence=effective_date_evidence,
+                        mapping=mapping_by_market.get(market, {}),
+                        require_effective_date_evidence=True,
+                    )
+                else:
+                    parsed_definition = parse_official_classification_definition(
+                        component_payload,
+                        market_scope=market,
+                        classification_version=str(versions.get(market, "")),
+                        source_id=str(source.get("source_id", "")),
+                        source_version=str(source.get("source_version", "")),
+                        effective_from=classification_effective_from or as_of_date,
+                        effective_date_basis=effective_date_basis,
+                        effective_date_evidence=effective_date_evidence,
+                        require_effective_date_evidence=component_payload.startswith(b"%PDF"),
+                    )
+            except (OSError, OfficialTaxonomyDefinitionError, ValueError) as error:
+                warnings.append(f"membership_taxonomy_classification_parse_failed:{market}:{_one_line(error)}")
+            else:
+                if parsed_definition.mapping != mapping_by_market.get(market, {}):
+                    warnings.append(f"membership_taxonomy_classification_mapping_mismatch:{market}")
+                if parsed_definition.source_id != source.get("source_id") or parsed_definition.source_version != source.get("source_version"):
+                    warnings.append(f"membership_taxonomy_classification_identity_mismatch:{market}")
+                if parsed_definition.parser_version != source.get("parser_version"):
+                    warnings.append(f"membership_taxonomy_classification_parser_mismatch:{market}")
+
+        records = []
+        seen_security_rows: set[str] = set()
+        for market, source in security_sources.items():
+            component = raw_files_by_key.get((str(source.get("source_id", "")), market))
+            if component is None:
+                warnings.append(f"membership_taxonomy_security_raw_missing:{market}")
+                continue
+            if source.get("source_file_hash") != component.get("source_file_hash") or source.get("path") != component.get("path"):
+                warnings.append(f"membership_taxonomy_security_raw_binding_mismatch:{market}")
+            component_path = _v3_component_path(identity_path.parent.parent, component.get("path"))
+            if component_path is None:
+                continue
+            try:
+                parsed_records = parse_official_isin_security_source(
+                    component_path.read_bytes(),
+                    default_market_scope=market,
+                )
+            except (OSError, OfficialSecurityTypingError, ValueError) as error:
+                warnings.append(f"membership_taxonomy_security_parse_failed:{market}:{_one_line(error)}")
+                continue
+            for record in parsed_records:
+                if record.row_hash not in seen_security_rows:
+                    records.append(record)
+                    seen_security_rows.add(record.row_hash)
+        try:
+            expected_types, expected_eligibility, _ = build_security_evidence_map(
+                records,
+                expected_symbols=tuple(sorted(row_symbol_set)),
+                market_by_symbol=market_by_symbol,
+            )
+        except (OfficialSecurityTypingError, ValueError) as error:
+            warnings.append(f"membership_taxonomy_security_revalidation_failed:{_one_line(error)}")
+            expected_types = {}
+            expected_eligibility = {}
+        if expected_types != security_by_symbol:
+            warnings.append("membership_taxonomy_security_type_reverification_mismatch")
+        for symbol, detail in expected_eligibility.items():
+            actual = eligibility_details.get(symbol, {})
+            if actual.get("eligible") is not detail.get("eligible"):
+                warnings.append(f"membership_taxonomy_security_eligibility_mismatch:{symbol}")
+            if actual.get("reason") != detail.get("reason"):
+                warnings.append(f"membership_taxonomy_security_reason_mismatch:{symbol}")
+
+        for row in rows:
+            symbol = str(row["symbol"])
+            market = str(row.get("market_scope") or "")
+            if not market:
+                # _normalize_rows already binds source market; the raw row does
+                # not necessarily repeat it, so recover it from source registry
+                # below through the declared market mapping when possible.
+                market = market_by_symbol.get(symbol, "")
+            if market_by_symbol.get(symbol) not in (None, market):
+                warnings.append(f"membership_taxonomy_row_market_mismatch:{symbol}")
+            if market not in mapping_by_market or str(row["sector_id"]) not in mapping_by_market.get(market, {}):
+                warnings.append(f"membership_taxonomy_code_unsupported:{row['sector_id']}:{market}")
+            row_version = row.get("classification_version")
+            if row_version not in (None, "") and row_version != versions.get(market):
+                warnings.append(f"membership_taxonomy_row_classification_version_mismatch:{symbol}")
+
+        warnings = list(dict.fromkeys(warnings))
+        verified = not warnings and bool(mapping_by_market) and bool(security_by_symbol)
+        taxonomy_version_values = sorted(set(versions.values()))
+        taxonomy_version = taxonomy_version_values[0] if len(taxonomy_version_values) == 1 else (
+            "market-scoped:v3" if versions else None
+        )
+        lineage = {
+            **base_lineage,
+            "taxonomy_status": "verified" if verified else "partial",
+            "taxonomy_verified": verified,
+            "classification_version": taxonomy_version,
+            "classification_version_by_market": dict(versions),
+            "taxonomy_source_id": source_id,
+            "taxonomy_source_version": source_version,
+            "taxonomy_source_hash": source_hash if isinstance(source_hash, str) else None,
+            "taxonomy_source_actual_hash": source_actual_hash,
+            "taxonomy_source_path": str(taxonomy_source_path) if taxonomy_source_path else None,
+            "taxonomy_available_at": available_at.isoformat() if available_at else None,
+            "taxonomy_effective_from": effective_from.isoformat() if effective_from else None,
+            "taxonomy_mapping_hash": identity.get("mapping_hash"),
+            "mapping_by_market": dict(mapping_by_market),
+            "market_by_symbol": dict(market_by_symbol),
+            "security_type_by_symbol": dict(security_by_symbol),
+            "security_eligibility_by_symbol": dict(eligibility_by_symbol),
+            "eligible_symbols": list(eligible_symbols),
+            "excluded_by_security": list(excluded_symbols),
+            "unknown_symbols": list(unknown_symbols),
+            "raw_manifest_path": str(raw_manifest_path) if raw_manifest_path else None,
+            "raw_manifest_hash": identity.get("raw_manifest_hash"),
+            "license_scope": dict(license_scope) if isinstance(license_scope, Mapping) else None,
+            "taxonomy_covered_symbol_count": len(row_symbol_set & set(identity_symbols or ())),
+            "taxonomy_row_symbol_count": len(row_symbol_set),
+        }
+        return _TaxonomyVerification(
+            mapping=mapping_flat,
+            mapping_by_market=dict(mapping_by_market),
+            security_by_symbol=dict(security_by_symbol),
+            security_eligibility_by_symbol=eligibility_by_symbol,
+            security_exclusion_reason_by_symbol=exclusion_reasons,
+            taxonomy_version=taxonomy_version,
+            taxonomy_version_by_market=dict(versions),
+            lineage=lineage,
+            warnings=warnings,
+            verified=verified,
+        )
+
     def _verify_raw_sources(
         self,
         artifact_path: Path,
@@ -1982,6 +2708,17 @@ class PITSectorMembershipReader:
                 ),
             }
         )
+        if selected_items and selected_items[0].taxonomy_lineage:
+            # Preserve the full per-market taxonomy list while exposing the
+            # single-artifact path aliases expected by read-side callers.
+            for key in (
+                "taxonomy_identity_path",
+                "taxonomy_source_path",
+                "raw_manifest_path",
+            ):
+                value = selected_items[0].taxonomy_lineage.get(key)
+                if value is not None:
+                    lineage[key] = value
         return lineage
 
     def _lineage(
@@ -2307,12 +3044,20 @@ def _materialize_rows(
     source_map: Mapping[tuple[str, str, str], Mapping[str, object]],
     *,
     taxonomy_mapping: Mapping[str, str] | None = None,
+    taxonomy_mapping_by_market: Mapping[str, Mapping[str, str]] | None = None,
     taxonomy_security_by_symbol: Mapping[str, str] | None = None,
+    taxonomy_eligibility_by_symbol: Mapping[str, bool] | None = None,
+    taxonomy_exclusion_reason_by_symbol: Mapping[str, str] | None = None,
     taxonomy_version: str | None = None,
+    taxonomy_version_by_market: Mapping[str, str] | None = None,
 ) -> tuple[PITMembershipRow, ...]:
     materialized: list[PITMembershipRow] = []
     taxonomy_mapping = taxonomy_mapping or {}
+    taxonomy_mapping_by_market = taxonomy_mapping_by_market or {}
     taxonomy_security_by_symbol = taxonomy_security_by_symbol or {}
+    taxonomy_eligibility_by_symbol = taxonomy_eligibility_by_symbol or {}
+    taxonomy_exclusion_reason_by_symbol = taxonomy_exclusion_reason_by_symbol or {}
+    taxonomy_version_by_market = taxonomy_version_by_market or {}
     for row in rows:
         key = (str(row["source_id"]), str(row["license_id"]), str(row["source_hash"]))
         source = source_map.get(key, {})
@@ -2324,11 +3069,25 @@ def _materialize_rows(
             if effective_to_value in (None, "")
             else _required_date(effective_to_value, "row.effective_to")
         )
+        market_scope = str(source.get("market", row.get("market_scope", "")))
+        symbol = str(row["symbol"])
+        market_mapping = taxonomy_mapping_by_market.get(market_scope)
+        if market_mapping is None:
+            market_mapping = taxonomy_mapping_by_market.get("*")
+        if market_mapping is None:
+            market_mapping = taxonomy_mapping
+        security_type = (
+            str(row["security_type"])
+            if row.get("security_type") not in (None, "")
+            else taxonomy_security_by_symbol.get(symbol)
+        )
+        eligible = taxonomy_eligibility_by_symbol.get(symbol, True)
+        version = taxonomy_version_by_market.get(market_scope, taxonomy_version)
         materialized.append(
             PITMembershipRow(
-                symbol=str(row["symbol"]),
+                symbol=symbol,
                 sector_id=str(row["sector_id"]),
-                market_scope=str(source.get("market", row.get("market_scope", ""))),
+                market_scope=market_scope,
                 available_at=available_at,
                 effective_from=effective_from,
                 effective_to=effective_to,
@@ -2340,17 +3099,411 @@ def _materialize_rows(
                 classification_version=(
                     str(row["classification_version"])
                     if row.get("classification_version") not in (None, "")
-                    else taxonomy_version
+                    else version
                 ),
-                security_type=(
-                    str(row["security_type"])
-                    if row.get("security_type") not in (None, "")
-                    else taxonomy_security_by_symbol.get(str(row["symbol"]))
-                ),
-                industry_category=taxonomy_mapping.get(str(row["sector_id"])),
+                security_type=security_type,
+                industry_category=market_mapping.get(str(row["sector_id"])),
+                security_eligible=bool(eligible),
+                security_exclusion_reason=taxonomy_exclusion_reason_by_symbol.get(symbol),
             )
         )
     return tuple(materialized)
+
+
+def _text_or_none(value: object, warnings: list[str], warning_name: str) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        warnings.append(warning_name)
+        return None
+    return value.strip()
+
+
+def _datetime_or_none(
+    value: object,
+    warnings: list[str],
+    warning_name: str,
+) -> datetime | None:
+    try:
+        return _parse_aware_datetime(value, warning_name)
+    except PITMembershipReaderError:
+        warnings.append(warning_name)
+        return None
+
+
+def _date_or_none(
+    value: object,
+    warnings: list[str],
+    warning_name: str,
+) -> date | None:
+    try:
+        return _required_date(value, warning_name)
+    except PITMembershipReaderError:
+        warnings.append(warning_name)
+        return None
+
+
+def _v3_symbol_list(
+    value: object,
+    warnings: list[str],
+    warning_name: str,
+    *,
+    require_sorted: bool = True,
+) -> tuple[str, ...] | None:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or _SYMBOL_RE.fullmatch(item) is None for item in value
+    ):
+        warnings.append(warning_name)
+        return None
+    result = tuple(str(item) for item in value)
+    if len(result) != len(set(result)):
+        warnings.append(warning_name + ":duplicate")
+    if require_sorted and result != tuple(sorted(result)):
+        warnings.append(warning_name + ":not_sorted")
+    return result
+
+
+def _v3_string_array(value: object, warnings: list[str], warning_name: str) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        warnings.append(warning_name)
+        return []
+    result = [str(item) for item in value]
+    if result != sorted(set(result)):
+        warnings.append(warning_name + ":not_sorted_unique")
+    return result
+
+
+def _v3_text_mapping(
+    value: object,
+    warnings: list[str],
+    warning_name: str,
+) -> dict[str, str]:
+    if not isinstance(value, Mapping) or any(
+        not isinstance(key, str) or not isinstance(item, str) or not item.strip()
+        for key, item in (value.items() if isinstance(value, Mapping) else ())
+    ):
+        warnings.append(warning_name)
+        return {}
+    return {str(key): str(item).strip() for key, item in value.items()}
+
+
+def _v3_mapping_by_market(
+    value: object,
+    warnings: list[str],
+) -> dict[str, dict[str, str]]:
+    if not isinstance(value, Mapping):
+        warnings.append("membership_taxonomy_mapping_by_market_invalid")
+        return {}
+    result: dict[str, dict[str, str]] = {}
+    for market, mapping in value.items():
+        if not isinstance(market, str) or market not in _SUPPORTED_MARKETS:
+            warnings.append("membership_taxonomy_mapping_market_invalid")
+            continue
+        if not isinstance(mapping, Mapping) or any(
+            not isinstance(code, str)
+            or _SECTOR_RE.fullmatch(code) is None
+            or code == "00"
+            or not isinstance(name, str)
+            or not name.strip()
+            for code, name in (mapping.items() if isinstance(mapping, Mapping) else ())
+        ):
+            warnings.append(f"membership_taxonomy_mapping_invalid:{market}")
+            continue
+        result[market] = {
+            str(code): str(name).strip() for code, name in sorted(mapping.items())
+        }
+    return result
+
+
+def _v3_source_mapping(
+    value: object,
+    warnings: list[str],
+    warning_name: str,
+) -> dict[str, dict[str, object]]:
+    if not isinstance(value, Mapping):
+        warnings.append(warning_name)
+        return {}
+    result: dict[str, dict[str, object]] = {}
+    for market, item in value.items():
+        if not isinstance(market, str) or not isinstance(item, Mapping):
+            warnings.append(warning_name)
+            continue
+        result[market] = {str(key): value for key, value in item.items()}
+    return result
+
+
+def _v3_resolve_file(
+    base: Path,
+    value: object,
+    warnings: list[str],
+    warning_name: str,
+) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        warnings.append(warning_name)
+        return None
+    candidate = Path(value.strip()).expanduser()
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    try:
+        candidate = candidate.resolve()
+        candidate.relative_to(base.resolve())
+    except (OSError, ValueError):
+        warnings.append(warning_name)
+        return None
+    if not candidate.is_file():
+        warnings.append(warning_name)
+        return None
+    return candidate
+
+
+def _v3_component_path(base: Path, value: object) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    candidate = Path(value.strip())
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+    else:
+        resolved = (base / candidate).resolve()
+    try:
+        resolved.relative_to(base.resolve())
+    except ValueError:
+        return None
+    return resolved if resolved.is_file() else None
+
+
+def _load_composite_classification_components(
+    *,
+    bundle_root: Path,
+    market: str,
+    source: Mapping[str, object],
+    raw_files_by_key: Mapping[tuple[str, str], Mapping[str, object]],
+    warnings: list[str],
+) -> dict[str, bytes] | None:
+    """從 manifest 的四個真實 raw component 重新組合 TWSE definition。
+
+    Composite 的 primary classification entry 是 B12.00 base PDF；其餘三個
+    component 以獨立 raw-manifest entry 保存。這裡不接受 source lineage
+    自稱的 hash 或 derived aggregate，而是逐一找 entry、讀檔、驗 hash，
+    再交給 composite adapter 解析。
+    """
+
+    component_paths = source.get("component_raw_paths")
+    if not isinstance(component_paths, Mapping) or set(component_paths) != set(
+        _TWSE_B1212_COMPOSITE_COMPONENTS
+    ):
+        warnings.append(f"membership_taxonomy_classification_component_paths_invalid:{market}")
+        return None
+    lineage = source.get("source_lineage")
+    lineage_components = lineage.get("components") if isinstance(lineage, Mapping) else None
+    if not isinstance(lineage_components, Mapping) or set(lineage_components) != set(
+        _TWSE_B1212_COMPOSITE_COMPONENTS
+    ):
+        warnings.append(f"membership_taxonomy_classification_component_lineage_invalid:{market}")
+        return None
+
+    source_id = str(source.get("source_id", ""))
+    result: dict[str, bytes] = {}
+    actual_component_times: dict[str, datetime] = {}
+    for component_name in _TWSE_B1212_COMPOSITE_COMPONENTS:
+        component_source_id = (
+            source_id
+            if component_name == "base_definition"
+            else f"{source_id}:component:{component_name}"
+        )
+        entry = raw_files_by_key.get((component_source_id, market))
+        if entry is None:
+            warnings.append(
+                f"membership_taxonomy_classification_component_raw_missing:{market}:{component_name}"
+            )
+            continue
+        expected_path = component_paths.get(component_name)
+        actual_path = entry.get("path")
+        if not isinstance(expected_path, str) or actual_path != expected_path:
+            warnings.append(
+                f"membership_taxonomy_classification_component_path_mismatch:{market}:{component_name}"
+            )
+            continue
+        if component_name == "base_definition" and actual_path != source.get("path"):
+            warnings.append(
+                f"membership_taxonomy_classification_component_base_path_mismatch:{market}"
+            )
+        if component_name == "base_definition" and (
+            entry.get("source_file_hash") != source.get("source_file_hash")
+            or entry.get("content_bytes") != source.get("content_bytes")
+            or entry.get("http") != source.get("http")
+        ):
+            warnings.append(
+                f"membership_taxonomy_classification_component_base_binding_mismatch:{market}"
+            )
+        expected_role = (
+            "classification_definition"
+            if component_name == "base_definition"
+            else "classification_definition_component"
+        )
+        if entry.get("role") != expected_role:
+            warnings.append(
+                f"membership_taxonomy_classification_component_role_mismatch:{market}:{component_name}"
+            )
+        candidate = _v3_component_path(bundle_root, expected_path)
+        if candidate is None:
+            warnings.append(
+                f"membership_taxonomy_classification_component_file_missing:{market}:{component_name}"
+            )
+            continue
+        try:
+            payload = candidate.read_bytes()
+        except OSError:
+            warnings.append(
+                f"membership_taxonomy_classification_component_read_failed:{market}:{component_name}"
+            )
+            continue
+        actual_hash = _sha256_file(candidate)
+        if not _is_sha256(entry.get("source_file_hash")) or actual_hash != entry.get(
+            "source_file_hash"
+        ):
+            warnings.append(
+                f"membership_taxonomy_classification_component_hash_mismatch:{market}:{component_name}"
+            )
+        if entry.get("content_bytes") != len(payload):
+            warnings.append(
+                f"membership_taxonomy_classification_component_byte_count_mismatch:{market}:{component_name}"
+            )
+        lineage_item = lineage_components.get(component_name)
+        if not isinstance(lineage_item, Mapping):
+            warnings.append(
+                f"membership_taxonomy_classification_component_lineage_missing:{market}:{component_name}"
+            )
+        else:
+            lineage_hash = lineage_item.get("sha256")
+            if not _is_sha256(lineage_hash) or actual_hash != lineage_hash:
+                warnings.append(
+                    f"membership_taxonomy_classification_component_lineage_hash_mismatch:{market}:{component_name}"
+                )
+            if lineage_item.get("content_bytes") != len(payload):
+                warnings.append(
+                    f"membership_taxonomy_classification_component_lineage_byte_count_mismatch:{market}:{component_name}"
+                )
+        captured_at = _verify_composite_raw_http(
+            entry,
+            market,
+            component_name,
+            warnings,
+            allow_derived_available=(component_name == "base_definition"),
+        )
+        if captured_at is not None:
+            actual_component_times[component_name] = captured_at
+        result[component_name] = payload
+
+    derived_metadata = source.get("derived_metadata")
+    if not isinstance(derived_metadata, Mapping) or derived_metadata.get(
+        "metadata_kind"
+    ) != "derived_composite":
+        warnings.append(
+            f"membership_taxonomy_classification_derived_metadata_invalid:{market}"
+        )
+    elif any(
+        field in derived_metadata
+        for field in ("requested_url", "final_url", "http_status", "content_type")
+    ):
+        warnings.append(
+            f"membership_taxonomy_classification_derived_metadata_http_shape:{market}"
+        )
+    else:
+        base_entry = raw_files_by_key.get((source_id, market))
+        if not isinstance(base_entry, Mapping) or base_entry.get(
+            "derived_metadata"
+        ) != derived_metadata:
+            warnings.append(
+                f"membership_taxonomy_classification_derived_metadata_binding_mismatch:{market}"
+            )
+        component_captured_at = derived_metadata.get("component_captured_at")
+        if not isinstance(component_captured_at, Mapping) or set(
+            component_captured_at
+        ) != set(_TWSE_B1212_COMPOSITE_COMPONENTS):
+            warnings.append(
+                f"membership_taxonomy_classification_component_completion_invalid:{market}"
+            )
+        else:
+            declared_times: dict[str, datetime] = {}
+            for component_name in _TWSE_B1212_COMPOSITE_COMPONENTS:
+                declared = _datetime_or_none(
+                    component_captured_at.get(component_name),
+                    warnings,
+                    f"membership_taxonomy_classification_component_completion_invalid:{market}:{component_name}",
+                )
+                if declared is not None:
+                    declared_times[component_name] = declared
+                actual = actual_component_times.get(component_name)
+                if actual is not None and declared != actual:
+                    warnings.append(
+                        f"membership_taxonomy_classification_component_completion_mismatch:{market}:{component_name}"
+                    )
+            derived_at = _datetime_or_none(
+                derived_metadata.get("derived_at"),
+                warnings,
+                f"membership_taxonomy_classification_derived_at_invalid:{market}",
+            )
+            if derived_at is not None:
+                if actual_component_times and derived_at != max(actual_component_times.values()):
+                    warnings.append(
+                        f"membership_taxonomy_classification_derived_completion_mismatch:{market}"
+                    )
+                if declared_times and derived_at != max(declared_times.values()):
+                    warnings.append(
+                        f"membership_taxonomy_classification_declared_completion_mismatch:{market}"
+                    )
+    return (
+        result
+        if set(result) == set(_TWSE_B1212_COMPOSITE_COMPONENTS)
+        else None
+    )
+
+
+def _verify_composite_raw_http(
+    entry: Mapping[str, object],
+    market: str,
+    component_name: str,
+    warnings: list[str],
+    *,
+    allow_derived_available: bool = False,
+) -> datetime | None:
+    http = entry.get("http")
+    prefix = f"membership_taxonomy_classification_component_http:{market}:{component_name}"
+    if not isinstance(http, Mapping):
+        warnings.append(prefix + ":missing")
+        return None
+    if not isinstance(http.get("requested_url"), str) or not str(
+        http.get("requested_url")
+    ).strip():
+        warnings.append(prefix + ":requested_url_invalid")
+    if not isinstance(http.get("final_url"), str) or not str(http.get("final_url")).strip():
+        warnings.append(prefix + ":final_url_invalid")
+    status = http.get("http_status")
+    if isinstance(status, bool) or status != 200:
+        warnings.append(prefix + ":status_invalid")
+    if not isinstance(http.get("content_type"), str) or not str(
+        http.get("content_type")
+    ).strip():
+        warnings.append(prefix + ":content_type_invalid")
+    captured_at = _datetime_or_none(http.get("captured_at"), warnings, prefix + ":captured_at_invalid")
+    available_at = _datetime_or_none(entry.get("available_at"), warnings, prefix + ":available_at_invalid")
+    if captured_at is not None and available_at is not None:
+        if not allow_derived_available and captured_at != available_at:
+            warnings.append(prefix + ":completion_mismatch")
+        if allow_derived_available:
+            derived_metadata = entry.get("derived_metadata")
+            derived_at = (
+                _datetime_or_none(
+                    derived_metadata.get("derived_at"),
+                    warnings,
+                    prefix + ":derived_at_invalid",
+                )
+                if isinstance(derived_metadata, Mapping)
+                else None
+            )
+            if derived_at is None or derived_at != available_at:
+                warnings.append(prefix + ":derived_completion_mismatch")
+            elif captured_at > derived_at:
+                warnings.append(prefix + ":captured_after_derived")
+    return captured_at
 
 
 def _one_line(error: Exception) -> str:
@@ -2364,7 +3517,10 @@ __all__ = [
     "PIT_PROSPECTIVE_MANIFEST_SCHEMA_VERSION",
     "PIT_SIDECAR_SCHEMA_VERSION",
     "PIT_TAXONOMY_IDENTITY_SCHEMA_VERSION",
+    "PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION",
     "PIT_TAXONOMY_SOURCE_SCHEMA_VERSION",
+    "PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION",
+    "PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION",
     "PITMembershipArtifact",
     "PITMembershipReadResult",
     "PITMembershipReaderError",

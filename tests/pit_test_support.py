@@ -50,6 +50,7 @@ def build_pit_fixture(
     *,
     symbols: Sequence[str] = ("2330",),
     market: str = "twse",
+    raw_payloads: Mapping[str, bytes] | None = None,
     include_taxonomy: bool = True,
     taxonomy_symbols: Sequence[str] | None = None,
     taxonomy_mapping: Mapping[str, str] | None = None,
@@ -91,7 +92,13 @@ def build_pit_fixture(
     clock_path.write_text(canonical_json(clock_manifest), encoding="utf-8")
     clock = load_clock_manifest_for_capture(clock_path, now=DECISION_AT)
 
-    raw_payload = _twse_raw_payload() if market == "twse" else _tpex_raw_payload()
+    raw_payload = (
+        dict(raw_payloads or {}).get(market)
+        if raw_payloads is not None
+        else None
+    )
+    if raw_payload is None:
+        raw_payload = _twse_raw_payload() if market == "twse" else _tpex_raw_payload()
     raw_path.write_bytes(raw_payload)
     source_market = "twse" if market == "twse" else "tpex"
     license_id = (

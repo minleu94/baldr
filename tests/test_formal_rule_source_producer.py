@@ -746,6 +746,27 @@ def test_postopen_first_attempt_is_blocked_without_prepublished_bundle(
     assert not (tmp_path / "publication").exists()
 
 
+def test_research_output_root_preflight_rejects_misrouted_api_call_before_reads(
+    tmp_path: Path,
+) -> None:
+    expected_root = tmp_path / "research" / "rule_source"
+    routed_root = tmp_path / "formal" / "rule_source"
+    with pytest.raises(
+        producer.FormalRuleSourceProducerError,
+        match="rule_source_expected_output_root_mismatch",
+    ):
+        producer.produce_current_rule_source_bundle(
+            output_root=routed_root,
+            expected_output_root=expected_root,
+            market_db=tmp_path / "missing-market.sqlite",
+            baseline_root=tmp_path / "missing-baseline",
+            calendar_cache_root=tmp_path / "missing-calendar",
+            now=PREOPEN,
+        )
+    assert not routed_root.exists()
+    assert not expected_root.exists()
+
+
 def test_scheduled_rule_wrapper_creates_preopen_then_reuses_postopen(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

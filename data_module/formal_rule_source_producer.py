@@ -1625,6 +1625,7 @@ def _persist_bundle(
 def produce_current_rule_source_bundle(
     *,
     output_root: str | Path,
+    expected_output_root: str | Path | None = None,
     market_db: str | Path,
     baseline_root: str | Path,
     calendar_cache_root: str | Path,
@@ -1638,8 +1639,21 @@ def produce_current_rule_source_bundle(
     只可重驗已存在的 bundle，讓 daily Rule producer 使用相同的 source
     identity。任何 cutoff 後的新建嘗試都保持 blocked，避免用事後時間
     冒充 pre-open clock。
+
+    ``expected_output_root`` 是 research caller 的 optional route preflight。
+    提供時會在任何 baseline／market read 或 bundle write 前比較兩個
+    resolved paths；不相同即拒絕。正式 scheduler 不提供此 override，
+    因而維持既有 date-scoped runtime binding 與 repository output guard。
     """
 
+    output_path = Path(output_root).expanduser().resolve()
+    if expected_output_root is not None:
+        expected_path = Path(expected_output_root).expanduser().resolve()
+        if output_path != expected_path:
+            raise FormalRuleSourceProducerError(
+                "rule_source_expected_output_root_mismatch:"
+                f"resolved={output_path};expected={expected_path}"
+            )
     observed_utc, observed_taipei = _normalise_observed(now)
     target_day = observed_taipei.date()
     rule_local_time = observed_taipei.timetz().replace(tzinfo=None)
@@ -1654,7 +1668,6 @@ def produce_current_rule_source_bundle(
 
     market_path = Path(market_db).expanduser().resolve()
     cache_root = Path(calendar_cache_root).expanduser().resolve()
-    output_path = Path(output_root).expanduser().resolve()
     (
         parent_clock_path,
         parent_owner_path,

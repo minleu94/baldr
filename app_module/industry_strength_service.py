@@ -846,6 +846,15 @@ class IndustryStrengthService:
 
         coverage_summary: dict[str, object] = {
             "mapping_registry_row_count": mapping["row_count"],
+            "pit_full_row_count": mapping.get("full_row_count", mapping["row_count"]),
+            "pit_eligible_row_count": mapping.get("eligible_row_count", mapping["row_count"]),
+            "pit_excluded_row_count": mapping.get("excluded_row_count", 0),
+            "pit_full_symbol_count": mapping.get("full_symbol_count", mapping["unique_code_count"]),
+            "pit_eligible_symbol_count": mapping.get("eligible_symbol_count", mapping["unique_code_count"]),
+            "pit_excluded_symbol_count": mapping.get("excluded_symbol_count", 0),
+            "pit_unknown_symbol_count": mapping.get("unknown_symbol_count", 0),
+            "pit_excluded_symbols": list(mapping.get("excluded_symbols", ())),
+            "pit_unknown_symbols": list(mapping.get("unknown_symbols", ())),
             "mapping_unique_code_count": mapping["unique_code_count"],
             "mapping_unambiguous_mapped_code_count": mapping["mapped_code_count"],
             "current_research_market_aligned_mapped_code_count": (
@@ -890,6 +899,24 @@ class IndustryStrengthService:
             "data_window_end": effective.isoformat(),
         }
         if pit_membership is not None:
+            coverage_summary["pit_full_symbol_count"] = mapping.get(
+                "full_symbol_count", mapping["unique_code_count"]
+            )
+            coverage_summary["pit_eligible_symbol_count"] = mapping.get(
+                "eligible_symbol_count", mapping["unique_code_count"]
+            )
+            coverage_summary["pit_excluded_symbol_count"] = mapping.get(
+                "excluded_symbol_count", 0
+            )
+            coverage_summary["pit_unknown_symbol_count"] = mapping.get(
+                "unknown_symbol_count", 0
+            )
+            coverage_summary["pit_excluded_symbols"] = list(
+                mapping.get("excluded_symbols", ())
+            )
+            coverage_summary["pit_unknown_symbols"] = list(
+                mapping.get("unknown_symbols", ())
+            )
             coverage_summary["pit_membership"] = dict(pit_membership.lineage)
             coverage_summary["pit_membership_status"] = pit_membership.status
             coverage_summary["pit_membership_quality"] = pit_membership.quality
@@ -1005,6 +1032,26 @@ class IndustryStrengthService:
             pit_membership.as_of_date if pit_membership is not None else None
         )
         if pit_membership is not None:
+            full_rows = tuple(pit_membership.rows)
+            eligible_rows = tuple(row for row in full_rows if row.security_eligible)
+            excluded_rows = tuple(row for row in full_rows if not row.security_eligible)
+            full_symbols = {row.symbol for row in full_rows}
+            eligible_symbols = {row.symbol for row in eligible_rows}
+            excluded_symbols = {row.symbol for row in excluded_rows}
+            unknown_symbols = {
+                row.symbol
+                for row in excluded_rows
+                if (row.security_exclusion_reason or "").startswith("unknown")
+            }
+            coverage["pit_full_row_count"] = len(full_rows)
+            coverage["pit_eligible_row_count"] = len(eligible_rows)
+            coverage["pit_excluded_row_count"] = len(excluded_rows)
+            coverage["pit_full_symbol_count"] = len(full_symbols)
+            coverage["pit_eligible_symbol_count"] = len(eligible_symbols)
+            coverage["pit_excluded_symbol_count"] = len(excluded_symbols)
+            coverage["pit_unknown_symbol_count"] = len(unknown_symbols)
+            coverage["pit_excluded_symbols"] = sorted(excluded_symbols)
+            coverage["pit_unknown_symbols"] = sorted(unknown_symbols)
             coverage["pit_membership"] = dict(pit_membership.lineage)
             coverage["pit_membership_status"] = pit_membership.status
             coverage["pit_membership_quality"] = pit_membership.quality
@@ -1435,11 +1482,24 @@ def _build_pit_membership_mapping(
     unmapped_categories: set[str] = set()
     seen_natural_keys: set[tuple[str, str, str, str]] = set()
     row_count = 0
+    eligible_row_count = 0
+    excluded_symbols: set[str] = set()
+    excluded_row_count = 0
+    unknown_symbols: set[str] = set()
     for row in rows:
         if market_scope is not None and row.market_scope != market_scope:
             continue
         row_count += 1
         code = str(row.symbol).strip()
+        if not row.security_eligible:
+            excluded_row_count += 1
+            excluded_symbols.add(code)
+            reason = row.security_exclusion_reason or "security_not_eligible"
+            if reason.startswith("unknown"):
+                unknown_symbols.add(code)
+            market_excluded_members["security:" + reason].add(code)
+            continue
+        eligible_row_count += 1
         category = (row.industry_category or "").strip()
         category_key = category or f"sector_id:{row.sector_id}"
         if not category or category not in INDUSTRY_CATEGORY_TO_INDEX:
@@ -1505,12 +1565,27 @@ def _build_pit_membership_mapping(
         "ambiguous_codes": tuple(ambiguous_codes),
         "unmapped_categories": tuple(sorted(unmapped_categories)),
         "row_count": row_count,
+        "full_row_count": row_count,
+        "eligible_row_count": eligible_row_count,
+        "excluded_row_count": excluded_row_count,
+        "full_symbol_count": len(
+            {
+                str(row.symbol).strip()
+                for row in rows
+                if market_scope is None or row.market_scope == market_scope
+            }
+        ),
+        "eligible_symbol_count": len(code_categories),
+        "excluded_symbol_count": len(excluded_symbols),
+        "excluded_symbols": tuple(sorted(excluded_symbols)),
+        "unknown_symbol_count": len(unknown_symbols),
+        "unknown_symbols": tuple(sorted(unknown_symbols)),
         "unique_code_count": len(code_categories),
         "mapped_code_count": mapped_code_count,
         "market_excluded_members": {
             key: tuple(sorted(value)) for key, value in market_excluded_members.items()
         },
-        "market_excluded_code_count": 0,
+        "market_excluded_code_count": sum(len(value) for value in market_excluded_members.values()),
         "ambiguous_market_codes": tuple(ambiguous_market_codes),
         "market_scope": resolved_scope,
         "warnings": warnings,

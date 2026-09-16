@@ -54,7 +54,8 @@ class DBManager:
     @contextmanager
     def connect(self) -> Generator[sqlite3.Connection, None, None]:
         """資料庫連線上下文管理器，支援自動 Commit/Rollback 與 Transaction 安全"""
-        conn = sqlite3.connect(self.db_path)
+        # 排程與桌面更新可能短暫競爭 writer；有界等待後仍保留錯誤及回滾。
+        conn = sqlite3.connect(self.db_path, timeout=30)
         # 啟用 WAL 模式 (Write-Ahead Logging) 以極大提升讀寫併發效能與穩定性
         try:
             conn.execute("PRAGMA journal_mode=WAL;")

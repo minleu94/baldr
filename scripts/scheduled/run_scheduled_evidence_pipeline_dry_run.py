@@ -68,7 +68,7 @@ def _pipeline_status_fields(summary: dict[str, Any] | None) -> dict[str, Any]:
     natural_maturity_warning_counts = {
         token: count
         for token, count in warning_counts.items()
-        if token == "insufficient_future_data"
+        if token in {"insufficient_future_data", "forward_summary_status:INSUFFICIENT_SAMPLE"}
     }
     actionable_warning_counts = {
         token: count

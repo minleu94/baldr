@@ -980,6 +980,11 @@ def _canonical_advisory_token(token: str) -> str | None:
         if normalized.startswith(prefix):
             normalized = normalized.removeprefix(prefix)
             break
+    if normalized in {
+        "position_health_baseline_is_not_an_exit_instruction",
+        "position_health_daily_refresh_does_not_evaluate_transition",
+    }:
+        return normalized
     if normalized.startswith((
         "portfolio_alert_top_source:",
         "portfolio_alerts_chip_estimated:",

@@ -146,6 +146,7 @@ temp_downloads/
 
 # QA Outputs
 output/
+/qa-cache*/
 
 # Local QA report exports; share conclusions through docs/06_qa/ instead.
 qa/reports/

@@ -1,5 +1,11 @@
 # baldr 完整操作手冊
 
+## 2026-09-14 排程警告與 SQLite 鎖定判讀
+
+`database is locked` 表示連線競爭，不等於檔案毀損。DBManager 對短暫鎖定最多等待 30 秒；超時仍失敗並回滾，不能將失敗 status 手改為通過。先核對更新 log 與最新資料日，再確認需要重試的同步範圍。
+
+Evidence 的 `forward_summary_status:INSUFFICIENT_SAMPLE` 列為樣本累積等待；價格缺漏、pipeline errors 與 blocking gaps 仍需處理。`position_health_baseline_is_not_an_exit_instruction` 和 `position_health_daily_refresh_does_not_evaluate_transition` 為說明性 advisory。Paper 進場來源未驗證與 thesis 缺漏仍保留，不可解讀成實際持倉的出場訊號。
+
 ## 2026-09-15 Continuity Review Workbench R1
 
 ### 入口與操作
@@ -8,12 +14,14 @@
 2. 以列的 `result_id:stock_code` exact candidate 選取提醒；右側 Inspector 會顯示股票、研究意向、檢討時間（台北）、提醒原因與 source trace。
 3. 按「開啟下鑽」進入既有「個股研究報告」；「決策 → 結果」頁會以同一 `result_id` 顯示 5／10／20／60 個交易日 maturity、Evidence、既有 Journal 與 continuity controls。
 4. 只有明確需要改變研究狀態或下次檢視時間時，才在 Journey 的 controls 按「納入研究／略過／設定下次檢視／記筆記」。這些是既有 append-only Journal action；Workbench table 本身沒有完成、清除、重排或交易按鈕。
+5. 由觀察清單或持倉列開啟的個股研究報告，需等待「報告已載入」及「決策 → 結果」完成 exact candidate 驗證；驗證期間、讀取失敗、candidate 缺件或 identity conflict 時，Journey 的研究動作會停用。驗證成功後才會恢復目前 candidate 的 controls。
 
 ### 判讀與安全邊界
 
 - 提醒列的 `scheduled`／`due`／`overdue`／`invalid` 是以 `next_review_at` 與讀取時的 `Asia/Taipei` clock 投影；尚未到期的 `scheduled` 仍會出列，時間只影響 due 分類；`invalid` 需人工確認，不猜測時間。
 - `decision_date` 是推薦／市場決策日，`continuity_as_of` 是提醒投影的歷史邊界，兩者不同。目前 UI 沒有歷史回放入口，畫面依實際讀取時間投影；只有 API／測試進行歷史重播時，才傳明確帶時區的 `continuity_as_of`，不可用畫面日期代替。
 - `result_id` 是推薦結果根；同一股票出現在多個結果時，必須依選取列的 exact candidate 下鑽，不以股票代碼、日期或第一筆候選猜配。只有保存的 Recommendation JSON 通過 exact stock 檢查時，Portfolio 才會沿用推薦 `result_id`。
+- Portfolio 同一股票可能有多個持倉來源；研究入口依目前選取列的 `position_id` 及其保存的 `result_id` 定位，不會取第一筆同股持倉。Recommendation 保存列若缺少 exact stock、重複或雙語代號矛盾，保持未連結。
 - Journey 的 linked 只代表來源 identity 可連結；`ready`、`pending`、`unknown` 是各 maturity window 的結果狀態，不能把 linked 或 ready 解讀成實際成交損益、投資有效性或正式 evidence credit。
 - Workbench／Journey 的 projection 與詳情是唯讀研究資料；不會自動下單、調倉、改寫 Recommendation／Evidence／Portfolio ledger，也不會因開啟報告而寫入 Journal。
 
@@ -21,7 +29,8 @@
 
 - 沒有 reminder：先確認 `output_root/portfolio/journal_entries.jsonl` 存在、JSONL chain 完整，再核對 exact candidate 是否有在查詢 `as_of` 前已建立、且尚未被清除的 schedule revision；不以 `as_of` 必須晚於 `next_review_at` 作為出列條件。缺檔或 identity conflict 會維持空／降級並列 diagnostic。
 - 看見 `unknown`／`pending`：表示 outcome 尚未有足夠可得資料或來源缺漏；不可手動改成 ready。先看 Journey 的 source trace、available time 與說明欄。
-- 看見 identity conflict：停止下鑽與任何動作，核對 `result_id`、`stock_code`、source snapshot id／hash；不要以同股同日資料補接。
+- Journey 顯示「待成熟（未有足夠未來資料）」時，只代表未有足夠 future observation，不是 ready，也不是成交損益；缺件／讀取失敗／identity conflict 時，可重新載入原結果，但不能視為已驗證或手動猜配對。
+- 看見 identity conflict：停止下鑽與任何動作，核對 `result_id`、`stock_code`、source snapshot id／hash；可重新載入原結果，但不能視為已驗證或手動猜配對。
 - 關閉忙碌中的報告視窗時，系統會先合作式取消背景讀取，待 worker 自然結束後才關閉；不要以工作管理員強殺程序判定成功。
 
 ## 2026-09-09 官方基本面現況資料
@@ -163,7 +172,7 @@ clock 到達 activation day 後，移除 `--preactivation-staging` 才會把同�
 
 PIT 產業 membership 是明確設定後才啟用的唯讀輸入。`TWStockConfig` 可用 constructor kw-only fields，或設定下列環境變數：`PIT_SECTOR_MEMBERSHIP_PATH`、`PIT_SECTOR_MEMBERSHIP_RAW_ROOT`、`PIT_SECTOR_MEMBERSHIP_CLOCK_MANIFEST_PATH`、`PIT_SECTOR_MEMBERSHIP_UNIVERSE_SYMBOLS_PATH`、`PIT_SECTOR_MEMBERSHIP_UNIVERSE_IDENTITY_PATH`、`PIT_SECTOR_MEMBERSHIP_TAXONOMY_IDENTITY_PATH`、`PIT_MEMBERSHIP_EXPECTED_CLASSIFICATION_VERSION`、`PIT_MARKET_SCOPE`。未設定 `PIT_SECTOR_MEMBERSHIP_PATH` 時，服務不掃描資料根目錄，也不自動建立 reader。
 
-設定 artifact 後，正常 composition root 會把同一個 read-only reader 注入 Industry Strength、Recommendation 與 non-UI Decision Desk。預設 PIT decision cutoff 是台北時間 08:30；指定 `PIT_MARKET_SCOPE` 時只消費該市場。reader 會重新驗證 raw bytes、source／clock／universe hash、available／effective interval、taxonomy source 與同日衝突；不同時區但同一決策 instant 會先轉為 Asia/Taipei 判斷。
+設定 artifact 後，正常 composition root 會把同一個 read-only reader 注入 Industry Strength、Recommendation 與 non-UI Decision Desk。預設 PIT decision cutoff 是台北時間 08:30；指定 `PIT_MARKET_SCOPE` 時只消費該市場。reader 會重新驗證 raw bytes、source／clock／universe hash、available／effective interval、taxonomy source 與同日衝突；不同時區但同一決策 instant 會先轉為 Asia/Taipei 判斷。TWSE target classification 可使用 `official_twse_b1212_composite_rederived`：由 B12.00 base PDF、2023 產業變更公告、B12.13 B12.00–B12.12 歷程與現行法規頁四份 raw component 重算 33 碼，safe boundary 為 `2026-05-01`；B12.13 本身的 `115/12` 只作 target 後 history evidence，不直接作 target-date mapping。設定 composite 時四個 component 必須各自提供可讀 raw path 或官方 URL 加保存的 HTTP metadata，producer 會 custody component bytes／hash，並在 reparse 時驗證 lineage；不能只填一份 mapping 或把 current B12.13 直接 backdate。TPEx V12.18 仍須提供相符的 official applicability evidence。分類 PDF 的 `effective_from` 必須是官方分類／附錄適用日，並伴隨 `effective_date_basis`／`effective_date_evidence`；HTTP `captured_at`、`Date`、`Last-Modified` 與文件頁更新日只代表可取得／傳輸，不可回填適用日。adapter 會先核對 PDF 封面 current revision，再核對該版實施紀錄；未知 current revision 只可 research-only parse，不能進 `industry_filter_usable`。履歷只有月份精度時，該月仍視為 unknown，至少到次月 1 日才可作 no-early-use 判定。
 
 結果判讀時，membership `usable` 與 `industry_filter_usable` 必須分開看：前者只表示 membership custody 可讀，後者還要求已驗證且版本明確的 taxonomy、完整分母與 common-equity security identity。缺 taxonomy、未知 classification version／產業代碼、部分分母、特殊證券、future available time 或 hash mismatch 時，Recommendation／Industry 不回退 `companies.csv`，而是顯示缺證據並停止該產業篩選。machine publication 固定是 `candidate_only`，不會升格成 accepted。
 

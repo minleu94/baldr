@@ -98,6 +98,43 @@ def _first_error_line(message: object) -> str:
     return "未提供錯誤訊息"
 
 
+def _saved_recommendation_stock_aliases(row: dict[str, Any]) -> tuple[str, str]:
+    """Return normalized English and Chinese stock-code aliases."""
+
+    english_code = str(row.get("stock_code") or "").strip()
+    chinese_code = str(row.get("證券代號") or "").strip()
+    return english_code, chinese_code
+
+
+def _saved_recommendation_stock_code(row: dict[str, Any]) -> str | None:
+    """Resolve bilingual aliases without guessing on a row-level conflict."""
+
+    english_code, chinese_code = _saved_recommendation_stock_aliases(row)
+    if english_code and chinese_code and english_code != chinese_code:
+        return None
+    return english_code or chinese_code
+
+
+def _saved_recommendation_alias_conflicts_for_code(
+    row: dict[str, Any],
+    stock_code: str,
+) -> bool:
+    """Detect a conflicting alias row that claims the requested stock code.
+
+    An unrelated stock's conflicting row is ignored; a conflict involving the
+    requested code makes that candidate ambiguous even if another row is
+    otherwise valid.
+    """
+
+    english_code, chinese_code = _saved_recommendation_stock_aliases(row)
+    return bool(
+        english_code
+        and chinese_code
+        and english_code != chinese_code
+        and stock_code in {english_code, chinese_code}
+    )
+
+
 def _paper_status_text(value: Any) -> str:
     """Render Paper readiness tokens with a Chinese explanation and raw token."""
 
@@ -2140,16 +2177,7 @@ class PortfolioView(QWidget):
 
         code = str(self.selected_stock_code or "").strip()
         presentation = self._position_presentations.get(code)
-        selected_position = None
-        if self._last_portfolio_dto is not None:
-            selected_position = next(
-                (
-                    item
-                    for item in self._last_portfolio_dto.positions
-                    if str(item.stock_code).strip() == code
-                ),
-                None,
-            )
+        selected_position = self._selected_position_for_current_row()
         health = self._health_for_position(selected_position)
         health_text = (
             "Paper Position Health（共用唯讀 projection）\n"
@@ -2326,17 +2354,44 @@ class PortfolioView(QWidget):
             self._load_journal_entries()
             self._update_monitoring_tab()
 
+    def _selected_position_for_current_row(self) -> object | None:
+        """Return the PositionDTO behind the one selected table row.
+
+        The table can contain more than one position for the same stock code
+        (for example, different recommendation results or entry cohorts).
+        Callers must therefore resolve through the hidden ``position_id``
+        column instead of selecting the first matching stock code.
+        """
+
+        if self._last_portfolio_dto is None or self.positions_model is None:
+            return None
+        selection = self.positions_table.selectionModel()
+        selected_rows = selection.selectedRows() if selection else []
+        if len(selected_rows) != 1:
+            return None
+        return self._position_for_table_row(
+            self.positions_model.getDataFrame(),
+            selected_rows[0].row(),
+        )
+
     def _selected_position_name(self) -> str:
         """從目前顯示的持倉 model 取得名稱，不重新查詢或重算。"""
 
         if not self.positions_model or not self.selected_stock_code:
             return ""
+        selected_position = self._selected_position_for_current_row()
+        if selected_position is not None:
+            return str(getattr(selected_position, "stock_name", "") or "").strip()
         frame = self.positions_model.getDataFrame()
         if "證券代號" not in frame.columns:
             return ""
-        for row_number, value in enumerate(frame["證券代號"]):
-            if str(value).strip() == self.selected_stock_code:
-                return str(frame.iloc[row_number].get("證券名稱", "") or "").strip()
+        matching_rows = [
+            row_number
+            for row_number, value in enumerate(frame["證券代號"])
+            if str(value).strip() == self.selected_stock_code
+        ]
+        if len(matching_rows) == 1:
+            return str(frame.iloc[matching_rows[0]].get("證券名稱", "") or "").strip()
         return ""
 
     def _validated_recommendation_result_id(self, position: object | None, stock_code: str) -> str:
@@ -2388,11 +2443,19 @@ class PortfolioView(QWidget):
         recommendations = payload.get("recommendations")
         if not isinstance(recommendations, list):
             return ""
+        if any(
+            isinstance(row, dict)
+            and _saved_recommendation_alias_conflicts_for_code(row, code)
+            for row in recommendations
+        ):
+            # Do not let a valid row hide another row whose bilingual aliases
+            # claim this same requested stock inconsistently.
+            return ""
         matches = [
             row
             for row in recommendations
             if isinstance(row, dict)
-            and str(row.get("stock_code", "") or "").strip() == code
+            and _saved_recommendation_stock_code(row) == code
         ]
         # Duplicate rows would make the source-to-candidate mapping
         # ambiguous, so only a single exact saved row can be promoted.
@@ -2440,12 +2503,10 @@ class PortfolioView(QWidget):
             self.btn_stock_research.setEnabled(False)
             return
         presentation = self._position_presentations.get(code)
-        position = None
-        if self._last_portfolio_dto is not None:
-            position = next(
-                (item for item in self._last_portfolio_dto.positions if item.stock_code == code),
-                None,
-            )
+        position = self._selected_position_for_current_row()
+        # A button click should normally have exactly one selected table row.
+        # Do not silently substitute the first same-stock position when the
+        # selection is absent or ambiguous.
         position_source_summary = getattr(position, "source_summary", {}) if position is not None else {}
         if not isinstance(position_source_summary, dict):
             position_source_summary = {}

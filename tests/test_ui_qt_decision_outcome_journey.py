@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sys
 import time
+from types import SimpleNamespace
 from typing import Mapping
 
 import pytest
@@ -32,6 +33,8 @@ from app_module.decision_outcome_journey import (
     RecommendationResultRecord,
     RecommendationSourceIdentity,
 )
+from app_module.decision_continuity_controller import DecisionContinuityController
+from app_module.journal_service import JournalService
 from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_dtos import StockResearchReportDTO
 from ui_qt.theme import build_global_stylesheet
@@ -403,9 +406,20 @@ def test_switching_stock_and_result_discards_old_response() -> None:
     widget.close()
 
 
-def test_load_error_keeps_retry_available_without_freezing_widget() -> None:
+def test_load_error_keeps_retry_available_and_recovers_to_success(
+    tmp_path: Path,
+) -> None:
     service = JourneyServiceStub({"result-1": _journey()}, error="synthetic read failure")
-    widget = DecisionOutcomeJourneyWidget(service, _context())
+    config = SimpleNamespace(
+        output_root=tmp_path / "output",
+        resolve_output_path=lambda name: tmp_path / "output" / name,
+    )
+    controller = DecisionContinuityController(JournalService(config))
+    widget = DecisionOutcomeJourneyWidget(
+        service,
+        _context(),
+        continuity_controller=controller,
+    )
     widget.show()
     _wait_for(lambda: "讀取失敗" in widget.status_label.text())
 
@@ -414,6 +428,22 @@ def test_load_error_keeps_retry_available_without_freezing_widget() -> None:
     assert widget.reload_button.isEnabled()
     assert widget.isEnabled()
     assert widget.maturity_table.model().rowCount() == 0
+
+    controls = widget.continuity_controls
+    assert controls is not None
+    assert not controls.accept_button.isEnabled()
+    assert not controls.review_button.isEnabled()
+
+    # A fresh exact request must be able to recover after the prior request
+    # failed; the stale failure must not leave candidate actions disabled.
+    service.error = None
+    widget.set_context(_context())
+    _wait_for(lambda: widget.journey is not None)
+    assert controls.identity is not None
+    assert controls.identity.candidate_key == ("result-1", "2330")
+    assert controls.state is not None
+    assert controls.accept_button.isEnabled()
+    assert controls.review_button.isEnabled()
     widget.close()
 
 

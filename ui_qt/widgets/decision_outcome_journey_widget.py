@@ -9,6 +9,7 @@ generation + stock code + result id 丟棄過期回傳，避免切股後舊結�
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any, Protocol
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSize, Qt, Signal
@@ -38,6 +39,7 @@ from app_module.decision_outcome_journey import (
     project_outcome_maturity,
 )
 from app_module.decision_continuity_controller import DecisionContinuityController
+from app_module.dtos.decision_continuity_dtos import IDENTITY_STATUS_UNKNOWN
 from app_module.research_session import ResearchStockContextDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.decision_continuity_controls import (
@@ -413,7 +415,8 @@ class DecisionOutcomeJourneyWidget(QWidget):
         if context.identity_status == "conflict":
             self._set_unlinked(
                 f"{self._active_code} 未連結：研究來源 identity 衝突；"
-                "不會把此 context 連到任何 Journal／Evidence。"
+                "不會把此 context 連到任何 Journal／Evidence。",
+                quality="conflict",
             )
             return
         if not self._active_result_id:
@@ -568,6 +571,9 @@ class DecisionOutcomeJourneyWidget(QWidget):
         self._set_table_rows("evidence", (), "Journey 讀取失敗；尚未顯示 Evidence。")
         self._set_table_rows("journal", (), "Journal 尚未讀取；讀取失敗不建立任何紀錄。")
         self._set_table_rows("portfolio", (), "Portfolio 尚未讀取；讀取失敗不建立任何交易。")
+        self._block_continuity_controls(
+            f"Journey 讀取失敗；研究動作已停用：{message}"
+        )
         self.journeyFailed.emit(message)
 
     def _on_cancelled(self, request_id: int, code: str, result_id: str) -> None:
@@ -591,10 +597,13 @@ class DecisionOutcomeJourneyWidget(QWidget):
         self._set_table_rows("evidence", (), "讀取中…")
         self._set_table_rows("journal", (), "讀取中…")
         self._set_table_rows("portfolio", (), "讀取中…")
+        self._block_continuity_controls(
+            "正在驗證 exact result_id + stock_code；驗證完成前研究動作已停用。"
+        )
         self._set_navigation_state()
 
-    def _set_unlinked(self, text: str) -> None:
-        self._set_status(text, "warning")
+    def _set_unlinked(self, text: str, *, quality: str = "warning") -> None:
+        self._set_status(text, quality)
         self._set_table_rows(
             "maturity",
             (),
@@ -684,8 +693,18 @@ class DecisionOutcomeJourneyWidget(QWidget):
                 (),
                 "沒有可安全顯示的 candidate Portfolio event。",
             )
+            self._block_continuity_controls(
+                "此 result_id 沒有目前股票的 exact candidate_key；研究動作已停用，"
+                "不以同股同日猜測要綁定的結果。"
+            )
             self._set_navigation_state()
             return
+
+        if self.continuity_controls is not None:
+            # Controls initially read Journal from the incoming context.  Keep
+            # them blocked until the Journey read has proved that the same
+            # result_id actually contains this stock's candidate row.
+            self.continuity_controls.set_context(self.context)
 
         maturity = tuple(
             item
@@ -843,6 +862,17 @@ class DecisionOutcomeJourneyWidget(QWidget):
         else:
             self._set_status(summary, quality)
         self._set_navigation_state()
+
+    def _block_continuity_controls(self, message: str) -> None:
+        """Fail closed when Journey has not verified a candidate row."""
+
+        controls = self.continuity_controls
+        if controls is None:
+            return
+        identity = controls.identity
+        if identity is not None and identity.identity_status == "linked":
+            identity = replace(identity, identity_status=IDENTITY_STATUS_UNKNOWN)
+        controls.set_blocked(message, identity=identity)
 
     def _restore_identity_label(
         self,

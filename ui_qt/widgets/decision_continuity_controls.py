@@ -193,6 +193,19 @@ class DecisionContinuityControlsWidget(QWidget):
             return
         self.set_identity(identity)
 
+    def set_blocked(
+        self,
+        message: str,
+        *,
+        identity: DecisionIdentity | None = None,
+    ) -> None:
+        """停用研究動作，直到呼叫端重新驗證 exact candidate。"""
+
+        self.identity = identity
+        self.state = None
+        self._pending_retry = None
+        self._render_blocked(message, identity=identity)
+
     def set_identity(self, identity: DecisionIdentity | None) -> None:
         self.identity = identity
         self._pending_retry = None

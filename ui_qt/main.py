@@ -738,6 +738,7 @@ class MainWindow(QMainWindow):
                 watchlist_service=self.watchlist_service,
                 config=self.config,
                 universe_service=self.universe_service,
+                journal_service=self.journal_service,
                 parent=self,
             )
             # 連接一鍵送回測信號（Phase 3.3）

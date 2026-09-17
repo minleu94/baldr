@@ -42,9 +42,13 @@ class _DummyView(QWidget):
 
 
 class _DummyRecommendationView(_DummyView):
+    instances = []
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.kwargs = kwargs
         self.sendToBacktestRequested = _DummySignal()
+        type(self).instances.append(self)
 
 
 class _RecordedDecisionDeskView(_DummyView):
@@ -231,6 +235,7 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     app()
     _TrackingDecisionDeskBuilder.instances = []
     _RecordedDecisionDeskView.instances = []
+    _DummyRecommendationView.instances = []
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
@@ -245,6 +250,7 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     assert len(_RecordedDecisionDeskView.instances) == 1
     assert target_window.market_tabs.tabText(0) == "市場總覽"
     assert target_window.market_tabs.widget(0) is target_window.decision_desk_view
+    assert target_window.recommendation_view.kwargs["journal_service"] is target_window.journal_service
     assert "decision_source_widget" not in target_window.workbench_view.kwargs
     assert _TrackingDecisionDeskBuilder.instances
     builder = _TrackingDecisionDeskBuilder.instances[-1]

@@ -687,6 +687,18 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
                 str(tmp_path / "cross_page_mainwindow_readback_receipt.json"),
             )
         ).expanduser().resolve()
+        readback_stdout_path = Path(
+            os.environ.get(
+                "CROSS_PAGE_READBACK_STDOUT_PATH",
+                str(tmp_path / "cross_page_mainwindow_readback_stdout.log"),
+            )
+        ).expanduser().resolve()
+        readback_stderr_path = Path(
+            os.environ.get(
+                "CROSS_PAGE_READBACK_STDERR_PATH",
+                str(tmp_path / "cross_page_mainwindow_readback_stderr.log"),
+            )
+        ).expanduser().resolve()
         readback = subprocess.run(
             [
                 sys.executable,
@@ -703,13 +715,18 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             cwd=ROOT,
             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=False,
             check=False,
             timeout=30,
         )
-        assert readback.returncode == 0, readback.stderr
+        readback_stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        readback_stdout_path.write_bytes(readback.stdout or b"")
+        readback_stderr_path.parent.mkdir(parents=True, exist_ok=True)
+        readback_stderr_path.write_bytes(readback.stderr or b"")
+        assert readback.returncode == 0, (readback.stderr or b"").decode(
+            "utf-8",
+            errors="replace",
+        )
         readback_payload = json.loads(readback_receipt_path.read_text(encoding="utf-8"))
         assert readback_payload["persisted_readback"] is True
         assert readback_payload["persisted_identity_consistent"] is True
@@ -718,6 +735,10 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert readback_payload["journey_loaded"] is True
         assert readback_payload["dialog_finished"] is True
         assert readback_payload["exact_identity_visible"] is True
+        assert readback_payload["idle_close_requests"] == 1
+        assert readback_payload["main_window_close_event_count"] == 1
+        assert readback_payload["app_exec_returncode"] == 0
+        assert readback_payload["process_exit_code"] == 0
         persisted_identity = readback_payload["persisted_identity"]
         assert persisted_identity["result"] == {
             "result_id": saved_id,
@@ -811,6 +832,11 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
                     ],
                     "read_only_hashes_before_review": before_read_only,
                     "readback": readback_payload,
+                    "readback_process": {
+                        "return_code": readback.returncode,
+                        "stdout_path": str(readback_stdout_path),
+                        "stderr_path": str(readback_stderr_path),
+                    },
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -1004,6 +1030,7 @@ def test_actual_mainwindow_journey_fail_closed_for_missing_future_and_conflict(
 
 def test_portfolio_exact_route_keeps_same_stock_positions_separate(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """同股多 position 時，真 Portfolio 按鈕不取第一列。"""
 
@@ -1024,6 +1051,7 @@ def test_portfolio_exact_route_keeps_same_stock_positions_separate(
         )
 
     from app_module.dtos.portfolio_dtos import PortfolioDTO, PositionDTO
+    from ui_qt.views import portfolio_view as portfolio_view_module
     from ui_qt.views.portfolio_view import PortfolioView
 
     class PortfolioFixture:
@@ -1101,6 +1129,34 @@ def test_portfolio_exact_route_keeps_same_stock_positions_separate(
         assert context.stock_name == "台積電 R2"
         assert context.decision_date == "2026-09-11"
         assert context.source_snapshot_id == "snap-r2"
+
+        # 右鍵點擊另一列時，必須先更新目前列的 position identity。
+        class FakeMenu:
+            def __init__(self, *_args) -> None:
+                self._actions: list[object] = []
+
+            def addAction(self, _label: str) -> object:  # noqa: N802
+                action = object()
+                self._actions.append(action)
+                return action
+
+            def exec(self, *_args) -> object:
+                return self._actions[1]
+
+        monkeypatch.setattr(portfolio_view_module, "QMenu", FakeMenu)
+        view.resize(1200, 800)
+        view.show()
+        app.processEvents()
+        view.positions_table.selectRow(0)
+        target_rect = view.positions_table.visualRect(
+            view.positions_model.index(1, 0)
+        )
+        assert target_rect.isValid()
+        view._show_position_context_menu(target_rect.center())
+        assert len(emitted) == 2
+        context = emitted[-1]
+        assert context.result_id == "R2"
+        assert context.stock_name == "台積電 R2"
     finally:
         view.close()
         view.deleteLater()
@@ -1170,6 +1226,28 @@ def test_portfolio_bilingual_saved_stock_alias_conflict_fails_closed(
             "stock_code": "2330",
             "證券代號": "1101",
         },
+    ]
+    saved_result_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    assert view._validated_recommendation_result_id(position, "2330") == ""
+
+    # 同一個精確保存列重複時，source-to-candidate 對應不唯一，必須拒絕。
+    payload["recommendations"] = [dict(valid_row), dict(valid_row)]
+    saved_result_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    assert view._validated_recommendation_result_id(position, "2330") == ""
+
+    # 兩個股票代號欄位都缺漏時，不能從同股／日期或其他列猜回候選。
+    payload["recommendations"] = [
+        {
+            key: value
+            for key, value in valid_row.items()
+            if key not in {"stock_code", "證券代號"}
+        }
     ]
     saved_result_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),

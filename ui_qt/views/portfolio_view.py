@@ -99,7 +99,7 @@ def _first_error_line(message: object) -> str:
 
 
 def _saved_recommendation_stock_aliases(row: dict[str, Any]) -> tuple[str, str]:
-    """Return normalized English and Chinese stock-code aliases."""
+    """回傳正規化後的英文／中文股票代號別名。"""
 
     english_code = str(row.get("stock_code") or "").strip()
     chinese_code = str(row.get("證券代號") or "").strip()
@@ -107,7 +107,7 @@ def _saved_recommendation_stock_aliases(row: dict[str, Any]) -> tuple[str, str]:
 
 
 def _saved_recommendation_stock_code(row: dict[str, Any]) -> str | None:
-    """Resolve bilingual aliases without guessing on a row-level conflict."""
+    """解析雙語別名；同列矛盾時不猜測。"""
 
     english_code, chinese_code = _saved_recommendation_stock_aliases(row)
     if english_code and chinese_code and english_code != chinese_code:
@@ -119,11 +119,10 @@ def _saved_recommendation_alias_conflicts_for_code(
     row: dict[str, Any],
     stock_code: str,
 ) -> bool:
-    """Detect a conflicting alias row that claims the requested stock code.
+    """判斷矛盾別名列是否宣稱目前要求的股票代號。
 
-    An unrelated stock's conflicting row is ignored; a conflict involving the
-    requested code makes that candidate ambiguous even if another row is
-    otherwise valid.
+    與目前要求無關的股票矛盾列不影響結果；只要矛盾涉及目前要求的
+    代號，即使另有有效列，也必須視為候選身份不明確。
     """
 
     english_code, chinese_code = _saved_recommendation_stock_aliases(row)
@@ -2077,7 +2076,9 @@ class PortfolioView(QWidget):
                         p,
                         condition_result=monitor_result,
                     )
-                    self._position_presentations[str(p.stock_code).strip()] = presentation
+                    position_id = str(getattr(p, "position_id", "") or "").strip()
+                    if position_id:
+                        self._position_presentations[position_id] = presentation
                     health = self._health_for_position(p)
                     health_action = (
                         health.display_action
@@ -2172,12 +2173,40 @@ class PortfolioView(QWidget):
             current_price=current_price,
         )
 
+    def _presentation_for_position(
+        self,
+        position: object | None,
+        stock_code: str = "",
+    ) -> Any | None:
+        """依 position identity 取得呈現；同股多列時不退回股票代號猜測。"""
+
+        if position is not None:
+            position_id = str(getattr(position, "position_id", "") or "").strip()
+            if position_id:
+                presentation = self._position_presentations.get(position_id)
+                if presentation is not None:
+                    return presentation
+
+        code = str(stock_code or "").strip()
+        portfolio = self._last_portfolio_dto
+        if not code or portfolio is None:
+            return None
+        candidates = [
+            candidate
+            for candidate in portfolio.positions
+            if str(getattr(candidate, "stock_code", "") or "").strip() == code
+        ]
+        if len(candidates) != 1:
+            return None
+        position_id = str(getattr(candidates[0], "position_id", "") or "").strip()
+        return self._position_presentations.get(position_id) if position_id else None
+
     def _render_selected_position_presentation(self) -> None:
         """把共用 Advice 與 exact Position Health projection 顯示在明細區。"""
 
         code = str(self.selected_stock_code or "").strip()
-        presentation = self._position_presentations.get(code)
         selected_position = self._selected_position_for_current_row()
+        presentation = self._presentation_for_position(selected_position, code)
         health = self._health_for_position(selected_position)
         health_text = (
             "Paper Position Health（共用唯讀 projection）\n"
@@ -2355,13 +2384,7 @@ class PortfolioView(QWidget):
             self._update_monitoring_tab()
 
     def _selected_position_for_current_row(self) -> object | None:
-        """Return the PositionDTO behind the one selected table row.
-
-        The table can contain more than one position for the same stock code
-        (for example, different recommendation results or entry cohorts).
-        Callers must therefore resolve through the hidden ``position_id``
-        column instead of selecting the first matching stock code.
-        """
+        """取得目前選取列背後的 PositionDTO，不以同股第一列代替。"""
 
         if self._last_portfolio_dto is None or self.positions_model is None:
             return None
@@ -2395,14 +2418,12 @@ class PortfolioView(QWidget):
         return ""
 
     def _validated_recommendation_result_id(self, position: object | None, stock_code: str) -> str:
-        """Return a result id only when the saved result contains this stock.
+        """只有保存結果精確包含目前股票時，才回傳可串接的結果 ID。
 
-        ``PositionDTO.source_id`` is a generic lineage field.  It can be a
-        backtest run id, a declared holding id, or another provider key, so it
-        must never be promoted to a continuity candidate identity by shape or
-        by same-stock/date coincidence.  The saved recommendation JSON is
-        read directly here to avoid constructing a writer repository from a
-        read-only navigation action.
+        ``PositionDTO.source_id`` 是泛用 lineage 欄位，可能指向回測、人工
+        持倉或其他 provider；不可只依字串形狀或同股／同日巧合升格為
+        continuity candidate identity。此處直接讀取保存的推薦 JSON，保持
+        導航動作唯讀。
         """
 
         source_type = str(getattr(position, "source_type", "") or "").strip()
@@ -2410,8 +2431,7 @@ class PortfolioView(QWidget):
         code = str(stock_code or "").strip()
         if source_type != "recommendation_result" or not source_id or not code:
             return ""
-        # Result ids are filenames in the existing repository.  Reject path
-        # traversal/ambiguous path values before forming the read target.
+        # result id 是既有儲存庫的檔名；組合讀取路徑前先拒絕 traversal／歧義值。
         if Path(source_id).name != source_id or source_id in {".", ".."}:
             return ""
 
@@ -2448,8 +2468,7 @@ class PortfolioView(QWidget):
             and _saved_recommendation_alias_conflicts_for_code(row, code)
             for row in recommendations
         ):
-            # Do not let a valid row hide another row whose bilingual aliases
-            # claim this same requested stock inconsistently.
+            # 有效列不可遮蔽另一列對同一要求股票的雙語別名矛盾。
             return ""
         matches = [
             row
@@ -2457,14 +2476,13 @@ class PortfolioView(QWidget):
             if isinstance(row, dict)
             and _saved_recommendation_stock_code(row) == code
         ]
-        # Duplicate rows would make the source-to-candidate mapping
-        # ambiguous, so only a single exact saved row can be promoted.
+        # 重複列會讓 source-to-candidate 對應不明確，只允許單一精確保存列升格。
         if len(matches) != 1:
             return ""
         return source_id
 
     def _position_for_table_row(self, frame: pd.DataFrame, row_number: int) -> object | None:
-        """以隱藏 position identity 把可排序 table row 對回目前 DTO。"""
+        """以隱藏 position identity 把可排序表格列對回目前 DTO。"""
 
         portfolio = self._last_portfolio_dto
         if portfolio is None or row_number < 0 or row_number >= len(frame):
@@ -2482,8 +2500,8 @@ class PortfolioView(QWidget):
                 None,
             )
 
-        # 舊的／測試替身 model 可能沒有內部 identity 欄位；只有在
-        # 目前 stock code 對應到唯一 PositionDTO 時才容許保守相容。
+        # 舊的／測試替身 model 可能沒有內部 identity 欄位；只有在目前
+        # stock code 對應唯一 PositionDTO 時才容許保守相容。
         code = str(row.get("證券代號", "") or "").strip()
         candidates = [
             position
@@ -2502,11 +2520,9 @@ class PortfolioView(QWidget):
             self.portfolio_refresh_status_label.setText("請先選取一檔持倉，再查看個股研究報告。")
             self.btn_stock_research.setEnabled(False)
             return
-        presentation = self._position_presentations.get(code)
         position = self._selected_position_for_current_row()
-        # A button click should normally have exactly one selected table row.
-        # Do not silently substitute the first same-stock position when the
-        # selection is absent or ambiguous.
+        presentation = self._presentation_for_position(position, code)
+        # 按鈕通常應有單一選取列；選取不存在或不明確時，不靜默代入同股第一列。
         position_source_summary = getattr(position, "source_summary", {}) if position is not None else {}
         if not isinstance(position_source_summary, dict):
             position_source_summary = {}
@@ -2599,6 +2615,10 @@ class PortfolioView(QWidget):
 
         action = menu.exec(self.positions_table.viewport().mapToGlobal(pos))
         if action == action_research:
+            # 右鍵選單的 index 不一定先改變表格選取；先綁定被點擊的實體列，
+            # 再共用按鈕入口，避免同股多 position 沿用舊選取。
+            self.positions_table.selectRow(row)
+            self._on_position_selected(self.positions_model.index(row, 0))
             self.selected_stock_code = str(stock_code).strip()
             self.btn_stock_research.setEnabled(True)
             self._open_selected_stock_research()

@@ -16,7 +16,7 @@ import pandas as pd
 from copy import deepcopy
 import time
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ui_qt.models.pandas_table_model import PandasTableModel
@@ -61,6 +61,7 @@ from ui_qt.views.recommendation.execution_coordinator import (
     RecommendationExecutionRequest,
 )
 from app_module.recommendation_save_coordinator import RecommendationSaveRequest
+from app_module.journal_service import JournalService
 from app_module.research_session import ResearchStockContextDTO
 
 
@@ -139,7 +140,8 @@ class RecommendationView(QWidget):
         config: Optional[TWStockConfig] = None,
         universe_service: Optional[UniverseService] = None,
         parent=None,
-        profile_service: Optional[RecommendationProfileService] = None
+        profile_service: Optional[RecommendationProfileService] = None,
+        journal_service: Optional[JournalService] = None,
     ):
         """初始化推薦視圖
 
@@ -155,6 +157,7 @@ class RecommendationView(QWidget):
         self.recommendation_service = recommendation_service
         self.regime_service = regime_service
         self.watchlist_service = watchlist_service
+        self.journal_service = journal_service
 
         # 初始化 Repository（如果提供了 config）
         if config:
@@ -2358,6 +2361,45 @@ class RecommendationView(QWidget):
                 recommendation_service=self.recommendation_service,
                 regime_service=self.regime_service,
             )
+            delivery_ack_error = ""
+            journal_service = getattr(self, "journal_service", None)
+            if (
+                journal_service is not None
+                and outcome.personalization_captures
+                and outcome.personalization_scope_id
+                and outcome.personalization_delivery_id
+                and outcome.personalization_persisted_at
+                and len(outcome.personalization_capture_hashes)
+                == len(outcome.personalization_captures)
+            ):
+                ack_at = datetime.now(timezone.utc).isoformat(
+                    timespec="microseconds"
+                )
+                expected_capture_hashes = {
+                    capture.stock_code: capture_hash
+                    for capture, capture_hash in zip(
+                        outcome.personalization_captures,
+                        outcome.personalization_capture_hashes,
+                    )
+                }
+                try:
+                    request.acknowledge_delivery(
+                        recommendation_repository=self.recommendation_repository,
+                        journal_service=journal_service,
+                        result_id=outcome.result_id,
+                        scope_id=outcome.personalization_scope_id,
+                        delivery_id=outcome.personalization_delivery_id,
+                        persisted_at=outcome.personalization_persisted_at,
+                        delivered_at=ack_at,
+                        recorded_at=ack_at,
+                        expected_capture_hashes=expected_capture_hashes,
+                    )
+                except Exception as exc:  # noqa: BLE001 - result save remains visible; ACK stays fail-closed
+                    delivery_ack_error = str(exc)
+                    print(
+                        "[RecommendationView] personalisation delivery ACK 未保存："
+                        f"{delivery_ack_error}"
+                    )
             self.current_result_id = outcome.result_id
             if outcome.watchlist_error:
                 print(
@@ -2384,6 +2426,8 @@ class RecommendationView(QWidget):
                     f"\n\n已自動創建選股清單：{outcome.watchlist_name}\n"
                     "可在「策略回測」Tab 的選股清單中查看。"
                 )
+            if delivery_ack_error:
+                success_msg = "推薦已儲存，但送達紀錄未完成，暫不納入個人化評估。"
 
             QMessageBox.information(
                 self,

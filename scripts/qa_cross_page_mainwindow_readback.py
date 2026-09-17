@@ -51,11 +51,61 @@ def _mapping(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _saved_recommendation_stock_code(row: object) -> str | None:
+    """解析保存推薦列的雙語代號；同列矛盾時不猜測。"""
+
+    if not isinstance(row, dict):
+        return None
+    english_code = _text(row, "stock_code")
+    chinese_code = _text(row, "證券代號")
+    if english_code and chinese_code and english_code != chinese_code:
+        return None
+    return english_code or chinese_code or None
+
+
+def _exact_saved_recommendation(
+    recommendations: object,
+    stock_code: str,
+) -> dict[str, Any] | None:
+    """只接受單一精確保存列，並拒絕要求股票的 alias 矛盾。"""
+
+    if not isinstance(recommendations, list) or not stock_code:
+        return None
+    matches: list[dict[str, Any]] = []
+    for row in recommendations:
+        if not isinstance(row, dict):
+            continue
+        english_code = _text(row, "stock_code")
+        chinese_code = _text(row, "證券代號")
+        if (
+            english_code
+            and chinese_code
+            and english_code != chinese_code
+            and stock_code in {english_code, chinese_code}
+        ):
+            return None
+        if _saved_recommendation_stock_code(row) == stock_code:
+            matches.append(row)
+    return matches[0] if len(matches) == 1 else None
+
+
 def _not_visible(widget: object) -> bool:
     try:
         return not bool(widget.isVisible())  # type: ignore[attr-defined]
     except RuntimeError:
         return True
+
+
+class _ProbeMainWindow(MainWindow):
+    """保留正式 MainWindow 關閉流程，並記錄 idle close 次數。"""
+
+    def __init__(self) -> None:
+        self.close_event_count = 0
+        super().__init__()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self.close_event_count += 1
+        super().closeEvent(event)
 
 
 def main() -> int:
@@ -76,12 +126,14 @@ def main() -> int:
         "journey_loaded": False,
         "dialog_finished": False,
         "exact_identity_visible": False,
+        "idle_close_requests": 0,
+        "main_window_close_event_count": 0,
         "watchdog_fired": False,
         "forced_termination": False,
         "app_exec_returncode": None,
         "process_exit_code": 1,
     }
-    window: MainWindow | None = None
+    window: _ProbeMainWindow | None = None
 
     try:
         result_path = output_root / "recommendation" / "runs" / f"{args.result_id}.json"
@@ -99,6 +151,11 @@ def main() -> int:
             for item in watchlist["items"]
             if _text(item.get("decision_identity"), "result_id") == args.result_id
         )
+        watch_identity = _mapping(watch_item.get("decision_identity"))
+        watch_stock_code = _text(watch_identity, "stock_code") or _text(
+            watch_item,
+            "stock_code",
+        )
         trade = next(item for item in trades if _text(item, "source_id") == args.result_id)
         projection = ContinuityReviewProjectionService.from_output_root(output_root).project(
             as_of="2099-01-01T00:00:00+00:00"
@@ -112,16 +169,17 @@ def main() -> int:
         config = _mapping(result.get("config"))
         run_context = _mapping(result.get("run_context"))
         recommendations = result.get("recommendations")
-        recommendation = (
-            recommendations[0]
-            if isinstance(recommendations, list) and recommendations
-            else {}
+        recommendation = _exact_saved_recommendation(
+            recommendations,
+            watch_stock_code,
         )
-        watch_identity = _mapping(watch_item.get("decision_identity"))
+        if recommendation is None:
+            raise ValueError(
+                "saved recommendation lacks one exact, non-conflicting row "
+                f"for stock_code={watch_stock_code!r}"
+            )
         result_id = _text(result, "result_id")
-        result_stock_code = _text(recommendation, "證券代號") or _text(
-            recommendation, "stock_code"
-        )
+        result_stock_code = _saved_recommendation_stock_code(recommendation) or ""
         result_decision_date = _text(config, "as_of_date") or _text(
             run_context, "as_of_date"
         )
@@ -235,7 +293,7 @@ def main() -> int:
         }
 
         app = QApplication.instance() or QApplication(sys.argv)
-        window = MainWindow()
+        window = _ProbeMainWindow()
         receipt["main_window_recreated"] = isinstance(window, MainWindow)
         window.show()
         window._open_stock_research_context(context)
@@ -263,6 +321,9 @@ def main() -> int:
             if close_started or not report_loaded or not journey_loaded:
                 return
             close_started = True
+            receipt["idle_close_requests"] = int(
+                receipt["idle_close_requests"]
+            ) + 1
             dialog.close()
             window.close()
             QTimer.singleShot(0, finish_after_close)
@@ -437,6 +498,7 @@ def main() -> int:
         app_exec_returncode = int(app.exec())
         receipt["app_exec_returncode"] = app_exec_returncode
         receipt["window_hidden_after_exec"] = _not_visible(window)
+        receipt["main_window_close_event_count"] = window.close_event_count
         receipt["remaining_workers_after_exec"] = len(running_task_workers())
         rendered_identity = receipt.get("rendered_identity")
         report_identity = (
@@ -513,6 +575,8 @@ def main() -> int:
             and receipt["persisted_identity_consistent"] is True
             and receipt["report_loaded"] is True
             and receipt["dialog_finished"] is True
+            and receipt["idle_close_requests"] == 1
+            and receipt["main_window_close_event_count"] == 1
             and receipt["journey_loaded"] is True
             and receipt["exact_identity_visible"] is True
             and receipt["watchdog_fired"] is False
@@ -532,6 +596,7 @@ def main() -> int:
                     _drain_qt_deferred_deletes(app, (window,))
                 except (RuntimeError, TypeError):
                     pass
+            receipt["main_window_close_event_count"] = window.close_event_count
         receipt["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         receipt_path.write_text(

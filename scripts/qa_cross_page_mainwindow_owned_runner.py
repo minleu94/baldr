@@ -97,6 +97,9 @@ def _run_case(
         "root_pid": None,
         "root_running_after_tree_close": None,
         "stdout_path": str(stdout_path),
+        "raw_output_path": str(stdout_path),
+        "raw_output_streams": ["stdout", "stderr"],
+        "raw_output_streams_combined": True,
         "process_json_path": str(process_path),
     }
     _write_json(process_path, metadata)
@@ -249,6 +252,12 @@ def main(argv: list[str] | None = None) -> int:
     readback_environment["CROSS_PAGE_READBACK_RECEIPT_PATH"] = str(
         run_dir / "readback_receipt.json"
     )
+    readback_environment["CROSS_PAGE_READBACK_STDOUT_PATH"] = str(
+        run_dir / "readback_child_stdout.log"
+    )
+    readback_environment["CROSS_PAGE_READBACK_STDERR_PATH"] = str(
+        run_dir / "readback_child_stderr.log"
+    )
     readback_command = [
         sys.executable,
         "-u",
@@ -280,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
         "cwd": str(repo_root),
         "run_dir": str(run_dir),
         "started_at": _now(),
+        "process_exit_code": None,
         "cases": {},
     }
     _write_json(summary_path, summary)
@@ -301,24 +311,30 @@ def main(argv: list[str] | None = None) -> int:
         _write_json(summary_path, summary)
 
     all_passed = all(case.get("status") == "passed" for case in summary["cases"].values())
+    process_exit_code = 0 if all_passed else 1
     summary.update(
         {
             "status": "passed" if all_passed else "failed",
             "ended_at": _now(),
+            "process_exit_code": process_exit_code,
             "processes_json": str(summary_path),
         }
     )
     _write_json(summary_path, summary)
-    print(f"bounded owned runner status={summary['status']} processes.json={summary_path}")
+    print(
+        f"bounded owned runner status={summary['status']} "
+        f"process_exit_code={process_exit_code} processes.json={summary_path}"
+    )
     for name, case in summary["cases"].items():
         print(
             f"case={name} status={case.get('status')} "
             f"return_code={case.get('return_code')} timed_out={case.get('timed_out')} "
             f"root_pid={case.get('root_pid')} "
             f"root_running_after_tree_close={case.get('root_running_after_tree_close')} "
-            f"stdout={case.get('stdout_path')} process_json={case.get('process_json_path')}"
+            f"raw_output={case.get('raw_output_path')} "
+            f"process_json={case.get('process_json_path')}"
         )
-    return 0 if all_passed else 1
+    return process_exit_code
 
 
 if __name__ == "__main__":

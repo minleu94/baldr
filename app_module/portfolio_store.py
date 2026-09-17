@@ -208,11 +208,18 @@ def project_journal_records(
 class PortfolioJsonlStore:
     """Small storage adapter kept behind app_module services."""
 
-    def __init__(self, output_root: Path):
+    def __init__(self, output_root: Path, *, journal_file: Path | None = None):
         self.portfolio_dir = Path(output_root) / "portfolio"
-        self.portfolio_dir.mkdir(parents=True, exist_ok=True)
+        if journal_file is None:
+            self.portfolio_dir.mkdir(parents=True, exist_ok=True)
         self.trades_file = self.portfolio_dir / "trades.jsonl"
-        self.journal_file = self.portfolio_dir / "journal_entries.jsonl"
+        self.journal_file = (
+            Path(journal_file).expanduser().resolve()
+            if journal_file is not None
+            else self.portfolio_dir / "journal_entries.jsonl"
+        )
+        if journal_file is not None:
+            self.journal_file.parent.mkdir(parents=True, exist_ok=True)
 
     def append_trade(self, trade: Dict[str, Any]) -> None:
         self._append_jsonl(self.trades_file, trade)

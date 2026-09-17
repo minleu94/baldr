@@ -9,6 +9,8 @@ from app_module.evidence_event_importer_dtos import (
     EvidenceCaptureSummary,
     EvidenceImportDiagnostic,
     EvidenceImportResult,
+    capture_context_identity,
+    capture_context_is_valid,
 )
 from app_module.evidence_event_importers import EvidenceImporter
 from app_module.evidence_event_service import EvidenceEventService
@@ -68,7 +70,10 @@ class EvidenceCaptureService:
             advisory_counts.update(_warning_tokens(import_result.advisory_tokens))
         payloads = [
             self._with_declared_evidence_tier(
-                self._with_replay_context(payload, request.replay_context)
+                self._with_capture_context(
+                    self._with_replay_context(payload, request.replay_context),
+                    request,
+                )
             )
             for payload in payloads
         ]
@@ -90,12 +95,44 @@ class EvidenceCaptureService:
         events_inserted = 0
         events_skipped_duplicate = 0
         events_failed = 0
+        persisted_capture_context: dict[str, Any] | None = None
         if not effective_dry_run:
             for payload in payloads:
                 try:
                     event_hash = self._event_hash(payload)
                     existing = self.event_service.repository.get_event_by_hash(event_hash)
-                    self.event_service.record_event(**payload)
+                    existing_context = (
+                        existing.metadata.get("capture_context")
+                        if existing is not None
+                        else None
+                    )
+                    if existing_context is not None and not capture_context_is_valid(existing_context):
+                        raise ValueError("persisted capture_context hash mismatch")
+                    expected_context = request.capture_context
+                    if existing is not None and expected_context is not None and existing_context is None:
+                        raise ValueError("persisted capture_context missing")
+                    if (
+                        existing_context is not None
+                        and expected_context is not None
+                        and capture_context_identity(existing_context)
+                        != capture_context_identity(expected_context)
+                    ):
+                        raise ValueError("persisted capture_context identity mismatch")
+                    saved_event = self.event_service.record_event(**payload)
+                    saved_context = saved_event.metadata.get("capture_context")
+                    if expected_context is not None and saved_context is None:
+                        raise ValueError("readback capture_context missing")
+                    if saved_context is not None and not capture_context_is_valid(saved_context):
+                        raise ValueError("readback capture_context hash mismatch")
+                    if (
+                        saved_context is not None
+                        and expected_context is not None
+                        and capture_context_identity(saved_context)
+                        != capture_context_identity(expected_context)
+                    ):
+                        raise ValueError("readback capture_context identity mismatch")
+                    if isinstance(saved_context, dict) and persisted_capture_context is None:
+                        persisted_capture_context = dict(saved_context)
                     if existing is None:
                         events_inserted += 1
                     else:
@@ -113,6 +150,7 @@ class EvidenceCaptureService:
                     )
 
         diagnostics_by_code = Counter(item.code for item in diagnostics)
+        temporal = request.temporal_summary
         return EvidenceCaptureSummary(
             source_name=request.source,
             decision_date=request.decision_date_text,
@@ -132,6 +170,27 @@ class EvidenceCaptureService:
             quality_counts={key: value for key, value in quality_counts.items() if key},
             diagnostics=tuple(diagnostics),
             sample_events=sample_events,
+            decision_at=temporal["decision_at"],
+            as_of=temporal["as_of"],
+            captured_at=temporal["captured_at"],
+            capture_mode=str(temporal["capture_mode"]),
+            temporal_status=str(temporal["temporal_status"]),
+            research_only=bool(temporal["research_only"]),
+            preopen_authority=bool(temporal["preopen_authority"]),
+            natural_authority=bool(temporal["natural_authority"]),
+            source_availability_preserved=bool(temporal["source_availability_preserved"]),
+            source_availability_policy=str(temporal["source_availability_policy"]),
+            capture_context_hash=(
+                str(temporal["capture_context_hash"])
+                if temporal["capture_context_hash"] is not None
+                else None
+            ),
+            capture_context_identity_hash=(
+                str(temporal["capture_context_identity_hash"])
+                if temporal["capture_context_identity_hash"] is not None
+                else None
+            ),
+            persisted_capture_context=persisted_capture_context,
         )
 
     def _sources_for_request(self, request: EvidenceCaptureRequest) -> tuple[str, ...]:
@@ -144,6 +203,12 @@ class EvidenceCaptureService:
 
     def _event_hash(self, payload: Mapping[str, Any]) -> str:
         metadata = dict(payload.get("metadata") or {})
+        # ``captured_at`` is retry-varying custody, while decision/as-of and
+        # authority flags are semantic identity.  The full context hash is
+        # still persisted and verified separately.
+        context = metadata.get("capture_context")
+        if isinstance(context, Mapping):
+            metadata["capture_context"] = capture_context_identity(context)
         evidence_tier = str(payload.get("evidence_tier") or "").strip()
         if evidence_tier in {"replay", "forward", "paper", "live"}:
             metadata["evidence_lineage"] = {
@@ -185,6 +250,55 @@ class EvidenceCaptureService:
         enriched = dict(payload)
         metadata = dict(enriched.get("metadata") or {})
         metadata.update({str(key): value for key, value in replay_context.items()})
+        enriched["metadata"] = metadata
+        return enriched
+
+    def _with_capture_context(
+        self,
+        payload: Mapping[str, Any],
+        request: EvidenceCaptureRequest,
+    ) -> dict[str, Any]:
+        context = request.capture_context
+        if context is None:
+            return dict(payload)
+        enriched = dict(payload)
+        metadata = dict(enriched.get("metadata") or {})
+        metadata["capture_context"] = dict(context)
+        source_timestamp = None
+        source_timestamp_field = None
+        for key in (
+            "source_available_at",
+            "available_at",
+            "source_created_at",
+            "decision_desk_snapshot_generated_at",
+        ):
+            if metadata.get(key) not in (None, ""):
+                source_timestamp = metadata[key]
+                source_timestamp_field = key
+                break
+        source_availability = metadata.get("source_availability")
+        preserved_source_availability = (
+            dict(source_availability)
+            if isinstance(source_availability, Mapping)
+            else {}
+        )
+        if enriched.get("available_date") not in (None, ""):
+            # The event's explicit available_date is the canonical date
+            # field; retain any other source metadata without creating a
+            # contradictory nested date.
+            preserved_source_availability["available_date"] = enriched["available_date"]
+        else:
+            preserved_source_availability.setdefault("available_date", None)
+        preserved_source_availability.setdefault("source_timestamp", source_timestamp)
+        preserved_source_availability.setdefault("source_timestamp_field", source_timestamp_field)
+        preserved_source_availability.setdefault(
+            "source_timestamp_is_availability",
+            source_timestamp_field in {"source_available_at", "available_at"},
+        )
+        # The capture clock is never a source availability timestamp, even if
+        # an importer supplied richer availability metadata above.
+        preserved_source_availability["capture_at_overrides_source_timestamp"] = False
+        metadata["source_availability"] = preserved_source_availability
         enriched["metadata"] = metadata
         return enriched
 

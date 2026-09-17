@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, datetime
 import json
 from pathlib import Path
 import sys
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -27,6 +28,9 @@ from app_module.recommendation_repository import RecommendationRepository
 from data_module.config import TWStockConfig
 
 
+TAIPEI = ZoneInfo("Asia/Taipei")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Capture evidence events from persisted or DTO sources.")
     parser.add_argument(
@@ -35,6 +39,24 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument("--decision-date")
+    parser.add_argument(
+        "--as-of",
+        "--as-of-date",
+        dest="as_of",
+        help="Explicit source as-of date; date-only legacy callers remain temporally unproven.",
+    )
+    parser.add_argument(
+        "--decision-at",
+        help="Explicit aware decision/evaluation timestamp; after-close values remain research-only.",
+    )
+    parser.add_argument(
+        "--captured-at",
+        help="Explicit aware capture timestamp.",
+    )
+    parser.add_argument(
+        "--capture-mode",
+        help="Explicit research capture mode, e.g. eod_research.",
+    )
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
     parser.add_argument("--result-id")
@@ -62,6 +84,15 @@ def _config_from_args(args: argparse.Namespace) -> TWStockConfig:
     return config
 
 
+def _parse_aware_datetime(value: str | None, *, field_name: str) -> datetime | None:
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"--{field_name.replace('_', '-')} 必須是含時區 ISO timestamp")
+    return parsed.astimezone(TAIPEI)
+
+
 class _DecisionDeskSnapshotSectionProvider:
     def __init__(self, stored_snapshot, section_name: str) -> None:
         self.stored_snapshot = stored_snapshot
@@ -71,6 +102,11 @@ class _DecisionDeskSnapshotSectionProvider:
             "decision_desk_snapshot_id": stored_snapshot.snapshot_id,
             "decision_desk_snapshot_hash": stored_snapshot.snapshot_hash,
             "decision_desk_snapshot_source": "durable_snapshot",
+            "decision_desk_snapshot_generated_at": (
+                stored_snapshot.metadata_json.get("generated_at")
+                or stored_snapshot.created_at
+                or None
+            ),
         }
 
     def build_snapshot(self, as_of_date):
@@ -87,7 +123,9 @@ class _DecisionDeskSnapshotSectionProvider:
 def _decision_date_for_snapshot(args: argparse.Namespace) -> str:
     if args.decision_date:
         return str(args.decision_date)[:10]
-    return date.today().isoformat()
+    if args.as_of:
+        return str(args.as_of)[:10]
+    return datetime.now(TAIPEI).date().isoformat()
 
 
 def _decision_desk_importers(config: TWStockConfig, decision_date: str):
@@ -118,6 +156,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = _config_from_args(args)
 
+    decision_at = _parse_aware_datetime(args.decision_at, field_name="decision_at")
+    captured_at = _parse_aware_datetime(args.captured_at, field_name="captured_at")
+    if decision_at is not None and captured_at is not None and captured_at < decision_at:
+        raise ValueError("captured_at 不得早於 decision_at")
+
     repository = EvidenceEventRepository(config)
     event_service = EvidenceEventService(repository)
     recommendation_repository = RecommendationRepository(config)
@@ -129,9 +172,10 @@ def main(argv: list[str] | None = None) -> int:
             **ddd_importers,
         },
     )
+    resolved_decision_date = args.decision_date or args.as_of
     request = EvidenceCaptureRequest(
         source=args.source,
-        decision_date=args.decision_date,
+        decision_date=resolved_decision_date,
         start_date=args.start_date,
         end_date=args.end_date,
         result_id=args.result_id,
@@ -139,6 +183,10 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         dry_run=(args.dry_run or not args.confirm),
         confirm=bool(args.confirm),
+        decision_at=decision_at,
+        as_of=args.as_of,
+        captured_at=captured_at,
+        capture_mode=args.capture_mode,
     )
     summary = capture_service.capture(request)
     print(json.dumps(summary.to_dict(), ensure_ascii=False, sort_keys=True, indent=2))

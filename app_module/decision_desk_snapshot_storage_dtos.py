@@ -21,6 +21,7 @@ from app_module.decision_desk_dtos import (
     SectorRotationSummary,
     WatchlistTriggerSummary,
 )
+from app_module.evidence_event_importer_dtos import capture_context_identity
 from app_module.research_run_dtos import canonical_json
 
 
@@ -78,6 +79,18 @@ def _warnings(value: Any) -> tuple[str, ...]:
 
 def _section_quality(payload: SnapshotJson) -> str:
     return str(payload.get("quality") or DecisionDeskQuality.MISSING.value)
+
+
+def _snapshot_hash_metadata(metadata_json: SnapshotJson) -> SnapshotJson:
+    """Return metadata that defines snapshot identity, excluding retry custody."""
+
+    hash_metadata_json = {
+        key: value for key, value in metadata_json.items() if key != "generated_at"
+    }
+    context = hash_metadata_json.get("capture_context")
+    if isinstance(context, dict):
+        hash_metadata_json["capture_context"] = capture_context_identity(context)
+    return hash_metadata_json
 
 
 def _snapshot_hash_payload(
@@ -155,7 +168,7 @@ class StoredDecisionDeskSnapshot:
             portfolio_alert_json=dict(self.portfolio_alert_json),
             risk_prompt_json=dict(self.risk_prompt_json),
             fundamental_diagnostics_json=dict(self.fundamental_diagnostics_json),
-            metadata_json=dict(self.metadata_json),
+            metadata_json=_snapshot_hash_metadata(dict(self.metadata_json)),
         )
 
     def to_decision_desk_snapshot(self) -> DecisionDeskSnapshot:
@@ -193,7 +206,10 @@ def build_stored_decision_desk_snapshot(
             "schema_version": snapshot.schema_version,
         }
     )
-    hash_metadata_json = {key: value for key, value in metadata_json.items() if key != "generated_at"}
+    # Capture clock metadata is custody, not snapshot content identity.  A
+    # retry at another minute must resolve to the same snapshot hash, while
+    # decision/as-of and authority flags remain identity-bound.
+    hash_metadata_json = _snapshot_hash_metadata(metadata_json)
     payload = _snapshot_hash_payload(
         decision_date=decision_date_text,
         as_of_date=as_of_date_text,

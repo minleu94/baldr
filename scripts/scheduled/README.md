@@ -17,7 +17,7 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | Task | State | Trigger | Behavior |
 |---|---:|---|---|
 | `baldr-data-update-quick-daily` | enabled after register | daily local time 04:20 | Runs the non-UI quick data update path for the recent weekday window. Writes market data CSV / SQLite updates plus status and logs under `OUTPUT_ROOT/scheduled/data_update_quick/`. If TPEX has failed dates, the task continues later steps and writes `passed_with_warnings`. |
-| `baldr-official-market-events-daily` | enabled after register | daily local time 04:50 | 以官方來源建立 append-only market-event vintages；無公告／生效／修訂時間的事件 fail closed，不反推歷史可得時間。若 verified latest publication 的歷史起點被縮窄，task 會自動切換到 2014–當年度做 recovery；coverage 完整後才恢復兩年增量，避免 pointer 長期遺失歷史。 |
+| `baldr-official-market-events-daily` | enabled after register | daily local time 04:50 | 以官方來源建立 append-only market-event vintages；無公告／生效／修訂時間的事件 fail closed，不反推歷史可得時間。若 verified latest publication 的歷史起點被縮窄，task 會自動切換到 2014–當年度做 recovery；coverage 完整後才恢復兩年增量，避免 pointer 長期遺失歷史。TWT49U 若只變更 `股票名稱`，必須保留兩版 raw／hash，並在 `economic_content_hash`、`display_revision_of`、`revision_sequence` 與後來 raw `retrieved_at` 可重驗時標為 `display_name_only`；不同價格、日期、代號、source 或無法連結的 predecessor 繼續 fail closed。 |
 | `baldr-data-freshness-check-daily` | enabled after register | daily local time 05:00 | Read-only SQLite / `DATA_ROOT` freshness check. Also verifies raw TWSE / TPEX daily price files for the latest SQLite daily date. Writes only status and logs under `OUTPUT_ROOT/scheduled/data_freshness/`. |
 | `baldr-ml-raw-pit-refresh-daily` | enabled after register | daily local time 05:05 | 先讀取 data-update quick 的 terminal freshness proof；daily／technical core date 就緒且輸出磁碟通過唯讀容量 preflight 時，以 SQLite `mode=ro/query_only` 建立全市場 immutable raw PIT publication。正式 safety reserve 固定至少 200 GiB；低於此值的 CLI 參數 fail closed。scheduled raw 的 35 GiB persistent 與 40 GiB temporary 上限另計，required headroom 至少 275 GiB。空間不足只寫 `blocked_insufficient_storage`，不啟動 builder；既有同 cutoff 且較新的 publication 會跳過，不寫回來源 SQLite、不改變 formal gate；完成後由 Direct/OOC maintenance watcher 依 pointer/hash 自動接續。 |
 | `baldr-recommendation-snapshot-daily` | enabled after register | daily local time 05:10 | Runs the research-only recommendation snapshot path after freshness. Saves one recommendation result under `OUTPUT_ROOT/recommendation/runs/` and writes status/logs under `OUTPUT_ROOT/scheduled/recommendation_snapshot/`. The scheduled result explicitly carries strategy `scheduled-recommendation-default-v1`, market benchmark `TAIEX`, primary cohort horizon `20`, and gross/unpriced cost identity `gross-close-to-close-no-cost-v1`; the latter is not a cost-adjusted claim. The scheduled caller also emits immutable candidate-only packets under the repository `output/forward_position_thesis/YYYY-MM-DD/`; recommendation reasons and Decimal-text scores are preserved, while missing explicit invalidation／horizon policy remains `awaiting_explicit_policy`. It does not write the production evidence DB, does not confirm evidence, does not change portfolio state, and does not automate trading. |
@@ -25,10 +25,10 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-ml-promotion-evidence-daily` | enabled after register | daily local time 05:17 | 固定 discovery 並重驗 formal OOC v5、雙 replay、Shadow outcome、逐 horizon calibration／drift 與 hash custody。證據不完整時只寫 blocked status，不更新 compatible pointer；若 OOC readiness 不足，blocker 會附上 `formal_ooc_dataset_full_market_not_ready:<readiness_check,...>` 的具體檢查名；若 direct store 落後最新 verified official market-event publication，會輸出 `formal_ooc_corporate_action_custody_stale:<field,...>`；完整時也只發布 unsigned evidence。 |
 | `baldr-ml-promotion-authority-daily` | enabled after register | daily local time 05:18 | 由獨立 DPAPI user-scope authority 重驗 compatible evidence、Gate registry 與決策有效窗。只有所有機器門檻通過才簽章；否則成功 fail closed，維持 alpha 0。 |
 | `baldr-ml-allocation-copilot-daily` | enabled after register | daily local time 05:20 | 執行配置型 ML promotion 評估並寫入 append-only sidecar、promotion artifact 與 `latest_status.json`。缺少、無效或未授權證據時仍成功完成每日流程，但固定輸出 `formal_oos_allowed=false`、`selected_alpha_bp=0` 與四條未通過 lane；不改寫來源資料庫或投組狀態。 |
-| `baldr-decision-evidence-capture-daily` | enabled after register | daily local time 05:25 | 依台北時間選擇最近一個**已到達**的 08:30 日曆決策日，依序確認保存 durable Decision Desk snapshot 與 Evidence Event；不再把隔日 cutoff 當成已發生資料。既有 hash／unique key 使重跑轉為 duplicate；任一步失敗即回傳失敗並保留下一次重跑能力。它不推定交易日／成熟日、不改 Rule／Advice／Portfolio 狀態，也不連接券商執行。 |
+| `baldr-decision-evidence-capture-daily` | enabled after register | daily local time 05:25 | 依台北時間選擇最近一個**已到達**的 08:30 `calendar_decision_at` 作為日曆選擇器；實際保存的 aware `decision_at`／`captured_at` 則使用本次 capture 的真實時鐘，`as_of` 明確綁定該選擇日。05:25 Pacific 約為台北 20:25，預設標為 `capture_mode=eod_research`、`research_only=true`，不宣告 `preopen_authority`／`natural_authority`，也不以 capture clock 改寫 source availability。既有 hash／unique key 使重跑轉為 duplicate；任一步失敗即回傳失敗並保留下一次重跑能力。它不推定交易日／成熟日、不改 Rule／Advice／Portfolio 狀態，也不連接券商執行。 |
 | `baldr-forward-outcomes-daily` | enabled after register | daily local time 05:40 | 在 Decision/Evidence capture 之後，wrapper 預設只處理帶有身份契約的 `recommendation_included` 事件，並在計算前跳過缺少策略／成本／benchmark／policy／snapshot／horizon 的事件，以台北當日可見資料及固定 120 個曆日／2,500 個合格事件上限，重算 5／10／20／60 交易日 close-to-close research outcome。選取先把未完成 outcome 排到前面，再以完整 policy／snapshot identity 套用 bounded 上限，避免新事件排擠舊 60 日 pending；`health` receipt 會分類 normal completion／normal no-op／natural maturity／engineering blocker／external source missing，列出 cohort／決策日與各 horizon ready／pending／missing。可用 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換事件類型；只有 wrapper 明確傳入 `--confirm --allow-production-db-confirm` 才更新 `evidence_outcomes`；事件、推薦、Paper／Formal、模型與券商狀態不變。自然未成熟保留明確 warning／degraded；confirmed run 遇到工程 blocker 或外部來源缺失會以 `blocked`／`exit_code=2` fail closed，並留下 blocking reason／next action／recovery verification。不補未來價格、不做 historical backfill。 |
 | `baldr-recommendation-calibration-learning-daily` | enabled after register | daily local time 05:45 | 接續 05:40 forward outcome source，執行 bounded、read-only 的 recommendation calibration learning loop。若未設定 `RECOMMENDATION_LEARNING_SYMBOLS`，只會讀取同日已保存的 scheduled recommendation snapshot 明確股票群組，不做 universe discovery；原生 snapshot 的 `證券代號` 也會被視為 symbol source。snapshot 尚未到位或 provider 暫時不可用時，以 exit 2 寫入 `failed_dependency`、`finalized=false`、`recoverable=true` 的 attempt；同一 decision date 資料到齊後可直接重跑，舊 receipt 不覆寫。只有來源完整性破壞、active model fault 或明確 emergency rollback 才進入 fail-closed rollback。replay 使用 latest bounded decision-date window，讓新成熟資料可進入下一 training cycle。candidate 一次 freeze，之後每日 live capture 只保存當下 feature／candidate／active champion identity；自然成熟由可驗證 capture + market close source 產生，缺 observed liquidity cost 時 after-cost 維度保持 missing。promotion 沿 `baldr-ml-promotion-authority-daily` authority family，固定 distinct decision-date／Brier／gap／probability-cap／cooldown gates；不足、無改善或正常成熟不足只保留 current/rule-only，成功 receipt 才鎖定同日冪等。輸出位於 `RECOMMENDATION_LEARNING_OUTPUT_ROOT/recommendation_learning/`；永遠不寫 recommendation result、evidence DB、Portfolio、Formal 或 broker state。非 Asia/Taipei 交易日明確跳過 live capture。 |
-| `baldr-paper-portfolio-daily` | enabled after register | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，adapter guard 至 08:30） | 由 `run_paper_portfolio_daily_isolated.py` 先以 D 槽 snapshot 的 SQLite read-only consistent backup 建立 repository state；兩種 offset 都等待真實台北 08:30，再 append preopen/T-1 估值 snapshot。之後 D snapshot 永遠只讀，EOD 與 Formal 共用 repository state。盤前只以 `mode=ro/query_only` 讀市場 SQLite 與 EOD ledger；不覆寫既有 snapshot、不把 snapshot 當成交、不自動調倉、不修改 Advice，也不具券商執行能力。 |
+| `baldr-paper-portfolio-daily` | enabled after register | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，adapter guard 至 08:30） | 由 `run_paper_portfolio_daily_isolated.py` 先以 D 槽 snapshot 的 SQLite read-only consistent backup 建立 repository state；兩種 offset 都等待真實台北 08:30，再 append preopen/T-1 估值 snapshot。isolated status 固定使用 `paper-portfolio-daily-isolated-scope.v1`，並發布 `paper-preopen-coverage.v1` 與 `paper-state-write-contract.v1`，供 Forward child 綁定當日 producer receipt。之後 D snapshot 永遠只讀，EOD 與 Formal 共用 repository state。盤前只以 `mode=ro/query_only` 讀市場 SQLite 與 EOD ledger；不覆寫既有 snapshot、不把 snapshot 當成交、不自動調倉、不修改 Advice，也不具券商執行能力。 |
 | `baldr-ml-allocation-forward-daily` | registered by dedicated XML | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，等待 Asia/Taipei 08:30，08:35 後 fail closed） | 只執行 repository-isolated、candidate-only ML forward shadow。每日 config producer 依 offline official calendar、單一交易日 freshness、archive custody 與固定 V2 release manifest hash 建立 create-only config；child 必須保留完整 outer payload，`forward_credit_granted=false`。不寫市場 SQLite、不下單、不改正式 Paper／Formal 狀態；註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`，aggregate registration 不會替換其設定。 |
 | `baldr-pit-sector-membership-preopen-capture-daily` | enabled after dedicated register | daily local time 16:00（PDT 台北 07:00；PST 台北 08:00） | 在台北 08:30 前以官方 TWSE／TPEx response completion timestamp 建立 current-day PIT machine candidate，保存 raw custody、machine consumer readback 與 durable archive；同一 task 會先重驗當日獨立 denominator，缺少時自動以 data.gov dataset/resource、官方 Swagger 與授權文件建立 bounded create-only refresh；來源失敗會保留具體 status 並讓 sidecar 下輪重試。若 clock 或 response 越過 cutoff，fail closed，不建立可被當日 handoff 消費的 archive。 |
 | `baldr-formal-pit-sidecar-postcutoff-daily` | enabled after dedicated register | daily local time 18:00（PDT 台北 09:00；PST 台北 10:00） | 先只讀盤前已完成的 PIT archive，以當下 Taipei decision clock 重建 handoff；sidecar 階段通過獨立 denominator、coverage、license scope 與 assembler readback 才 create-only 發布 sidecar，隨後同一 action 呼叫 `run_paper_event_source_capture_daily.py`，在台北 09:00..13:30 以固定 TWSE MIS endpoint 保存 Paper session-open raw bytes。沒有完整證據寫 blocked receipt，不重新抓取同一自然日 PIT HTTP source；Paper capture 缺來源時只保留 bounded retry 診斷，不建立 fill。 |
@@ -100,6 +100,16 @@ reference session 收盤成交量、Decimal 成本與自然日界線。preopen s
 Queue root 不存在、沒有待執行 source 或 source JSON 無法解析時，會輸出
 `skipped_no_pending_recommendation` 及原始 blocker；不會靜默以 exit 0 偽裝成已處理。
 
+Forward child 使用 Paper state 時，T-1 reader 必須把 weekly snapshot 對齊 official
+calendar 的每個 session，且最後日期必須是 strict T-1；成交政策 turnover 只取
+`paper_trade_transitions` 的 canonical integer bp，fill gross bp 只作 Decimal audit。
+state 與 transaction ledger 讀取均保存 hash-before／after。若 08:30 preopen writer 與
+derived wrapper 的外層 stat 同時變動，只有 inner `paper_read_consistency`、完整
+`preopen_coverage`、write scope、receipt bytes 與最新 state head 全部一致，才會標為
+`expected_preopen_producer_overlap`；沒有 receipt、空／過期／範圍錯誤 receipt 或
+receipt 在 hash/read 間變動，一律 `failed_read_only_integrity`。snapshot-only turnover、
+缺 coverage 或舊 8-row ledger 不得被補算成 Forward 證據。
+
 若唯讀 scheduler query 顯示 `baldr-paper-portfolio-daily` 尚未採用最新時序，使用專用的
 `scripts\scheduled\register_paper_portfolio_task.cmd dryrun` 核對後，再以同一腳本的
 `register` 模式只更新這一個 task。既有 task 使用 `schtasks /Change` 只改 16:15
@@ -126,6 +136,14 @@ adapter 每輪先重驗同年度 cache；有效 cache 不發 request，缺失／
 create-only 檔案，舊檔永不覆寫或刪除。每次結果另保存於 `receipts\calendar_refresh_*.json`，
 因此失敗、保留舊檔與下一次重試都有可讀回狀態；refresh 只允許 operation root 內的 repo
 output，不能使用 D 或既有正式 ledger。
+
+05:10 recommendation forward candidate 若帶 approved policy，不直接把 policy 的
+immutable `calendar_cache_path` 當成永遠有效的 current cache。caller 會讀同一個
+`v4_ml_forward_scheduler/calendar_cache_refresh/latest_status.json`，只接受
+`cache_valid_for_forward_horizon`／`refreshed` 的 read-only receipt，使用 receipt 指定的
+exact cache path／file hash 並重新驗證；candidate 會保留 policy pin custody，另記
+`calendar_observed_path`／`calendar_observed_sha256`。refresh receipt 缺失、過期、篡改或
+安全邊界不符時，forward candidate 維持 blocked／degraded，不掃描或猜測舊檔。
 
 每個 cache 保存原始 response bytes、HTTP status／headers、request／response URL、response
 SHA-256、實際 `captured_at_utc`、七日 freshness window 及完整年度正規化 projection；consumer
@@ -323,6 +341,40 @@ owner，或把安全跳過誤讀成 Direct/OOC 已完成。若 live owner 命令
 `writes_source_database=false`、`formal_oos_allowed=false`、`production_alpha_bp=0`
 與 `broker_order_allowed=false`。完成排程註冊後不需要人工重新執行 Direct、OOC 或
 promotion；每日觸發會自動重試，既有 lock 與 hash-bound checkpoint 負責冪等續接。
+
+若要診斷既有 Direct checkpoint 的 provenance，使用唯讀入口：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\inspect_ml_direct_checkpoint_provenance.py `
+  --store-root <DIRECT_STORE_ROOT>
+```
+
+它只讀取 `runs/<run_id>/checkpoint.json` 與同 run 的 manifest，先保存檔案
+SHA-256，再區分 `legacy_missing_computation_provenance`、
+`computation_identity_drift`、checkpoint／manifest custody corruption，以及
+`resumable_under_current_computation_identity`。`checkpoint_provenance_valid`
+只代表 checkpoint 的計算身分可驗證；`resume_allowed` 還必須通過已存在
+manifest 的 canonical hash、run／identity 對應與 complete checkpoint 對帳。
+未完成 checkpoint 尚未有 manifest 時可按 in-progress 語意檢查；已存在但損壞、
+竄改或 identity 不符的 manifest 一律阻擋。穩定 computation identity 只綁定
+明確 dependency source bytes／compiled source fingerprint，不把 loaded-module
+或 runtime constants 的整包 hash 放進 run identity。Legacy checkpoint 絕不由目前
+source 自動補 hash；完整 legacy artifact 只保留 audit-only，後續必須經 owner
+review、容量與 process custody 檢查後，以新的 run identity 建立 fresh Direct。
+
+OOC handoff 在訓練前還會重新驗證 Direct manifest 與 checkpoint 的 stable identity、
+dependency snapshot、runtime custody 及兩者一致性；legacy、drift 或任何 manifest／
+checkpoint corruption 都會 fail closed，不會直接把舊 current-v4 store 送進 OOC。
+若要一併檢查 lock／gate／process custody，可加
+`--maintenance-output-dir <OOC_TRAINING_OUTPUT_DIR>`；工具會保留
+`probe_stage`、`errno`、`winerror` 與 unlock 結果，並以 `rb` 做不寫入的 advisory-lock
+probe。read-only open 被 permission denied 時只標為 `inspection_permission_unknown`，
+不把 sandbox/access denied 推論成 holder 或 stale；`free_observed` 只表示該瞬間未
+觀察到 holder，正式 execution 仍必須由 canonical owner protocol 原子取得 reservation；
+只有 advisory-lock stage 的明確 lock violation 才能當作該時間點的 holder 證據；
+before／after bytes 不一致會標為 `probe_file_changed`，handoff gate enumeration
+失敗會標為 `handoff_gate_enumeration_incomplete`，兩者都不會被 aggregate 成
+`no_active_lock_observed`。
 
 ## OOC refresh continuation
 
@@ -608,6 +660,8 @@ Rollback 時禁止自動 drop sidecar SQLite table；保留 `pending_human_revie
 
 TPEx 官方端點暫時不可用時，wrapper 會保留最後一個完整 formal publication，將本次失敗的 raw custody 移入 quarantine，並在 `latest_status.json` 記錄 `failure_class`、`formal_publication_preserved` 與可重試狀態；不會寫入 active SQLite，也不需要人工確認。若 latest pointer 仍可驗證但只涵蓋近兩年，下一次成功執行會自動 recovery 到 2014 起點；只有通過完整年度覆蓋與 hash 驗證的 publication 才能繼續供 PIT／ML evidence 使用。
 
+TWT49U 的名稱修訂是受限的顯示觀測例外，不是 last-write-wins：只有同一 natural key、source identity 與所有經濟欄位完全相同，且差異只在 `股票名稱` 時，才建立 `revision_kind=display_name_only`。舊版與新版 raw response 都留在下一份 publication 的 `raw_index.jsonl`；新版 canonical row 的 `available_at` 取該 raw 的 `retrieved_at`，所以 historical `as_of` 不會把後來才觀測到的名稱倒灌到較早日期。adjustment sidecar 仍保留每個 revision 的 source lineage，但 `portfolio_ml_dataset_assembler` 以 `available_at` 選可用 revision、以 set 聚合 effective date；兩版不會形成兩個 eligible effective dates，也不會把 adjustment factor 乘兩次。sidecar 固定 `prospective_only=true`、`historical_pit_eligible=false`，不得直接當 historical price adjustment 或 Formal feature。經濟欄位、日期、代號、source identity、schema／endpoint 異常或 predecessor 不明時，維持 quarantine／fail closed；不覆寫舊 raw、canonical history、SQLite 或 last-known-good pointer。
+
 Data freshness:
 
 The quick update publishes `status=running` with a run/process identity before its long-running steps begin, then records `started_at` and `completed_at` on the terminal status. Downstream freshness and ML evidence checks treat a running or stale update as not-ready, so a partially completed update cannot be consumed.
@@ -792,7 +846,7 @@ Decision Desk / Evidence confirmed capture：
 <OUTPUT_ROOT>/scheduled/decision_evidence_capture/latest_status.json
 ```
 
-`latest_status.json` 記錄台北 `decision_at`、`snapshot.saved`／`snapshot.duplicate`、`evidence.events_inserted`／`evidence.duplicates`／`evidence.failures`，以及整體 `passed`／`failed`。排程預設選擇最近一個已到達的台北 08:30 cutoff；明確指定未到達的日期則由 capture CLI 以 `decision_date cannot be future-dated` fail closed。它明確輸出 `trading_calendar_validated=false`、`maturity_date_inferred=false`，不把週末、休市或未成熟資料偽裝成正式交易日證據。snapshot 成功、event capture 失敗時，下次執行會重用 snapshot hash 並再次嘗試 event unique-key capture。
+`latest_status.json` 記錄 `calendar_decision_at`（只負責選擇已到達的台北 08:30 日曆日）、實際 aware `decision_at`、`as_of`、`captured_at`、`capture_mode`、`temporal_status` 與 authority flags，另保存本次 `current_capture_context` 及首次持久化的 `persisted_snapshot_capture_context`／`persisted_event_capture_context`。05:25 Pacific 的正常路徑是台北收盤後 `eod_research`；不得把它標成盤前，也不得用它推定自然成熟。明確指定未到達的日期仍由 capture CLI 以 `decision_date cannot be future-dated` fail closed。舊的 date-only CLI caller 可相容執行，但 `temporal_status=temporal_precision_unproven`，不會隱式補 08:30。source `available_date` 與 source metadata 時間戳保持原值；不把 capture time 當作歷史可得時間，也不回寫／回填歷史事件。`trading_calendar_validated=false`、`maturity_date_inferred=false` 的既有 safety flags 仍不變，不把週末、休市或未成熟資料偽裝成正式交易日證據。snapshot 成功、event capture 失敗時，下次執行會重用 snapshot identity 並再次嘗試 event unique-key capture；若 child 未回讀相同 temporal context／hash，外層 runner fail closed。
 
 Paper Portfolio 每日估值（repository isolated）：
 

@@ -49,6 +49,7 @@ PORTFOLIO_ID = "paper-main"
 SCHEMA_VERSION = "paper-portfolio-daily-status.v1"
 SNAPSHOT_SEMANTICS = "preopen_t_minus_one_mark_to_market"
 EXECUTION_TRANSITION_CONTRACT = "t_plus_one_next_official_session_open"
+PAPER_STATE_WRITE_CONTRACT_SCHEMA_VERSION = "paper-state-write-contract.v1"
 PAPER_EXECUTION_SOURCE_TYPES = frozenset(
     {
         "paper_daily_execution_delayed_eod_replay_v1",
@@ -532,6 +533,19 @@ def run(
         "total_value": str(result_snapshot.total_value),
         "snapshot_appended": appended,
         "skipped_duplicate": not appended,
+        "paper_state_write_contract": {
+            "schema_version": PAPER_STATE_WRITE_CONTRACT_SCHEMA_VERSION,
+            "writer": "scripts.run_paper_portfolio_daily.run",
+            "write_scope": "repository_paper_snapshot_append_only",
+            "state_db": str(state_db.resolve()),
+            "snapshot_id": result_snapshot.snapshot_id,
+            "decision_date": decision_date,
+            "snapshot_appended": appended,
+            "append_only": True,
+            "research_only": True,
+            "formal_credit": False,
+            "broker_execution": False,
+        },
         "diagnostics": list(diagnostics),
         "paper_ledger_db": (
             None if ledger_db is None else str(ledger_db.expanduser().resolve())

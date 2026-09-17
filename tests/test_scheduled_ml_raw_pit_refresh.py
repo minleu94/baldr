@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from data_module import portfolio_ml_dataset_assembler as dataset_assembler
+from data_module import ml_daily_price_source_quality as source_quality
 from data_module.ml_daily_price_source_quality import DailyPriceSourceQualityError
 from data_module.ml_storage_capacity import (
     SCHEDULED_REQUIRED_FREE_BYTES,
@@ -117,6 +118,51 @@ def _write_raw_publication(
     return publication_path
 
 
+def _write_source_quality_report(
+    path: Path,
+    *,
+    candidate_count: int = 0,
+    candidate_sample_limit: int = 64,
+    candidates: list[dict[str, object]] | None = None,
+    full_candidates: list[dict[str, object]] | None = None,
+    candidate_samples_truncated: bool | None = None,
+) -> dict[str, object]:
+    samples = [] if candidates is None else candidates
+    full_rows = samples if full_candidates is None else full_candidates
+    if candidate_samples_truncated is None:
+        candidate_samples_truncated = candidate_count > len(samples)
+    evidence_path = path.with_suffix(".candidates.jsonl")
+    evidence_writer = source_quality._CandidateEvidenceWriter(
+        evidence_path,
+        source_roots=(),
+    )
+    for candidate in full_rows:
+        evidence_writer.write(candidate)
+    evidence_manifest = evidence_writer.finalize()
+    report: dict[str, object] = {
+        "schema_version": "portfolio-ml-daily-price-source-quality.v1",
+        "status": "source_quality_pass" if candidate_count == 0 else "quarantine_required",
+        "read_only": True,
+        "repair_performed": False,
+        "formal_training_allowed": candidate_count == 0,
+        "source": {"sqlite_mode": "ro", "sqlite_query_only": True},
+        "candidate_count": candidate_count,
+        "candidate_sample_count": len(samples),
+        "candidate_sample_limit": candidate_sample_limit,
+        "candidate_samples_truncated": candidate_samples_truncated,
+        "candidate_digest": evidence_manifest["candidate_digest"],
+        "candidates": samples,
+        "candidate_evidence": evidence_manifest,
+    }
+    report["report_hash"] = runner._canonical_sha256(report)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(report, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    return report
+
+
 def test_core_freshness_proof_requires_current_core_dates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -157,6 +203,159 @@ def test_extract_source_quality_summary_keeps_only_bounded_builder_payload() -> 
     )
 
     assert extracted == summary
+
+
+def test_builder_command_persists_per_run_source_quality_report_and_bound(
+    tmp_path: Path,
+) -> None:
+    proof = runner._CoreFreshnessProof(
+        latest_core_date=date(2026, 8, 12),
+        decision_at="2026-08-12T08:30:00+08:00",
+        completed_at=datetime(2026, 8, 12, 7, 0, tzinfo=_TAIPEI),
+        data_update_status="passed",
+    )
+    report_path = tmp_path / "scheduled" / "source_quality" / "run-001.json"
+
+    command = runner._builder_command(
+        database=tmp_path / "twstock.db",
+        raw_root=tmp_path / "raw",
+        proof=proof,
+        history_start_date="2014-01-01",
+        batch_size=128,
+        compression_level=6,
+        daily_price_source_dirs=(tmp_path / "daily_price",),
+        source_quality_report_path=report_path,
+        source_quality_candidate_sample_limit=32,
+    )
+
+    assert command[command.index("--source-quality-report") + 1] == str(
+        report_path.resolve()
+    )
+    assert command[
+        command.index("--source-quality-candidate-evidence") + 1
+    ] == str(report_path.with_suffix(".candidates.jsonl").resolve())
+    assert command[
+        command.index("--source-quality-candidate-sample-limit") + 1
+    ] == "32"
+
+
+def test_source_quality_evidence_readback_rejects_sample_count_above_total(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "source-quality.json"
+    _write_source_quality_report(
+        report_path,
+        candidate_count=1,
+        candidates=[
+            {"date": "2026-08-12", "symbol": "2330"},
+            {"date": "2026-08-13", "symbol": "2330"},
+        ],
+        candidate_samples_truncated=False,
+    )
+
+    readback = runner._source_quality_evidence_readback(
+        report_path,
+        expected_candidate_sample_limit=64,
+    )
+
+    assert readback["readback_status"] == "invalid"
+    assert readback["reason"] == "source_quality_report_metadata_invalid"
+    assert readback["candidate_rows_complete"] is False
+
+
+def test_source_quality_evidence_readback_rejects_duplicate_sample_keys(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "source-quality.json"
+    _write_source_quality_report(
+        report_path,
+        candidate_count=2,
+        candidates=[
+            {"date": "2026-08-12", "symbol": "2330"},
+            {"date": "2026-08-12", "symbol": "2330"},
+        ],
+        candidate_samples_truncated=False,
+    )
+
+    readback = runner._source_quality_evidence_readback(
+        report_path,
+        expected_candidate_sample_limit=64,
+    )
+
+    assert readback["readback_status"] == "invalid"
+    assert readback["reason"] == "source_quality_report_metadata_invalid"
+    assert readback["candidate_unique_key_scope"] == "bounded_samples_only"
+
+
+def test_source_quality_evidence_readback_rejects_missing_sidecar(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "source-quality.json"
+    _write_source_quality_report(
+        report_path,
+        candidate_count=1,
+        candidates=[{"date": "2026-08-12", "symbol": "2330"}],
+    )
+    report_path.with_suffix(".candidates.jsonl").unlink()
+
+    readback = runner._source_quality_evidence_readback(
+        report_path,
+        expected_candidate_sample_limit=64,
+    )
+
+    assert readback["readback_status"] == "invalid"
+    assert readback["candidate_evidence_status"] == "missing"
+    assert readback["candidate_rows_complete"] is False
+
+
+def test_source_quality_evidence_readback_rejects_tampered_sidecar(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "source-quality.json"
+    _write_source_quality_report(
+        report_path,
+        candidate_count=1,
+        candidates=[{"date": "2026-08-12", "symbol": "2330"}],
+    )
+    sidecar_path = report_path.with_suffix(".candidates.jsonl")
+    sidecar_path.write_text(
+        sidecar_path.read_text(encoding="utf-8")
+        + json.dumps({"date": "2026-08-13", "symbol": "2330"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    readback = runner._source_quality_evidence_readback(
+        report_path,
+        expected_candidate_sample_limit=64,
+    )
+
+    assert readback["readback_status"] == "invalid"
+    assert readback["candidate_evidence_status"] == "invalid"
+    assert readback["candidate_rows_complete"] is False
+
+
+def test_source_quality_evidence_identity_is_non_overwriting_across_retries(
+    tmp_path: Path,
+) -> None:
+    started_at = datetime(2026, 8, 12, 8, 30, tzinfo=_TAIPEI)
+    first_id, first_path = runner._new_source_quality_evidence_identity(
+        run_root=tmp_path / "scheduled" / "ml_raw_pit_refresh",
+        started_at=started_at,
+    )
+    second_id, second_path = runner._new_source_quality_evidence_identity(
+        run_root=tmp_path / "scheduled" / "ml_raw_pit_refresh",
+        started_at=started_at,
+    )
+    first_bytes = b"first-run"
+    first_path.parent.mkdir(parents=True, exist_ok=True)
+    first_path.write_bytes(first_bytes)
+    second_path.parent.mkdir(parents=True, exist_ok=True)
+    second_path.write_bytes(b"second-run")
+
+    assert first_id != second_id
+    assert first_path != second_path
+    assert first_path.read_bytes() == first_bytes
 
 
 def test_builder_quality_summary_bounds_candidates_and_keeps_report_hash() -> None:
@@ -318,13 +517,20 @@ def test_main_persists_bounded_source_quality_summary_on_builder_failure(
         lambda _lock, *, environment, parent_pid: environment,
     )
     summary = {
-        "candidate_count": 4_476_508,
+        "candidate_count": 100,
         "classification_counts": {
-            "canonical_daily_row_missing": 6_488,
-            "sqlite_row_mismatch_against_canonical_daily_csv": 990,
+            "canonical_daily_row_missing": 100,
         },
         "samples": [{"symbol": "2330", "classification": "test"}],
     }
+    full_candidates = [
+        {
+            "date": "2026-08-12",
+            "symbol": f"{index:04d}",
+            "classification": "test",
+        }
+        for index in range(100)
+    ]
 
     class _FakeBuilderProcess:
         pid = 424_243
@@ -342,10 +548,22 @@ def test_main_persists_bounded_source_quality_summary_on_builder_failure(
                 "",
             )
 
+    def fake_popen(command: list[str], **_kwargs: object) -> _FakeBuilderProcess:
+        report_path = Path(
+            command[command.index("--source-quality-report") + 1]
+        )
+        _write_source_quality_report(
+            report_path,
+            candidate_count=100,
+            candidates=full_candidates[:64],
+            full_candidates=full_candidates,
+        )
+        return _FakeBuilderProcess()
+
     monkeypatch.setattr(
         runner.subprocess,
         "Popen",
-        lambda *_args, **_kwargs: _FakeBuilderProcess(),
+        fake_popen,
     )
 
     exit_code = runner.main(
@@ -371,6 +589,14 @@ def test_main_persists_bounded_source_quality_summary_on_builder_failure(
     assert receipt["status"] == "failed"
     assert receipt["builder_returncode"] == 2
     assert receipt["source_quality_summary"] == summary
+    assert receipt["source_quality_evidence"]["readback_status"] == "verified"
+    assert receipt["source_quality_evidence"]["candidate_count"] == 100
+    assert receipt["source_quality_evidence"]["candidate_sample_count"] == 64
+    assert receipt["source_quality_evidence"]["candidate_samples_truncated"] is True
+    assert receipt["source_quality_evidence"]["candidate_rows_complete"] is True
+    assert receipt["source_quality_evidence"]["candidate_evidence_row_count"] == 100
+    assert receipt["source_quality_evidence"]["candidate_full_unique_key_count"] == 100
+    assert receipt["source_quality_evidence"]["candidate_full_unique_key_count_verified"] is True
 
 
 def test_core_freshness_proof_blocks_lagging_technical_date(
@@ -524,6 +750,10 @@ def test_main_runs_builder_and_validates_new_publication(
     def fake_popen(command: list[str], **kwargs: object) -> _FakeBuilderProcess:
         observed["command"] = command
         observed["kwargs"] = kwargs
+        report_path = Path(
+            command[command.index("--source-quality-report") + 1]
+        )
+        _write_source_quality_report(report_path)
         return _FakeBuilderProcess()
 
     monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
@@ -548,6 +778,11 @@ def test_main_runs_builder_and_validates_new_publication(
     assert exit_code == 0
     assert refresh_payload["status"] == "completed"
     assert "--all-universe" in command
+    assert "--source-quality-report" in command
+    assert "--source-quality-candidate-evidence" in command
+    assert refresh_payload["source_quality_evidence"]["readback_status"] == "verified"
+    assert refresh_payload["source_quality_evidence"]["candidate_rows_complete"] is True
+    assert refresh_payload["source_quality_evidence"]["candidate_count"] == 0
     assert command[command.index("--decision-at") + 1] == "2026-08-12T08:30:00+08:00"
     assert command[command.index("--database") + 1] == str(database.resolve())
     source_flags = [
@@ -561,6 +796,88 @@ def test_main_runs_builder_and_validates_new_publication(
     ]
     assert refresh_payload["daily_price_source_dirs"] == source_flags
     assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "passed"
+
+
+def test_main_fails_closed_when_builder_does_not_write_source_quality_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    _write_freshness_status(output_root)
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
+    monkeypatch.setattr(
+        runner,
+        "_taipei_now",
+        lambda: datetime(2026, 8, 12, 12, 0, tzinfo=_TAIPEI),
+    )
+    monkeypatch.setattr(
+        runner.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(
+            total=700 * 1024**3,
+            used=100 * 1024**3,
+            free=600 * 1024**3,
+        ),
+    )
+    monkeypatch.setattr(runner, "_latest_raw_publication", lambda _root: None)
+    monkeypatch.setattr(runner, "_direct_chain_instance_lock_present", lambda _root: False)
+
+    class _FakeLock:
+        owner_pid = 424_242
+
+        def authorize_child(self, _child_pid: int) -> None:
+            return None
+
+    fake_lock = _FakeLock()
+    monkeypatch.setattr(runner, "_acquire_lock", lambda _path: fake_lock)
+    monkeypatch.setattr(runner, "_release_lock", lambda _lock: None)
+    monkeypatch.setattr(
+        runner,
+        "build_heavy_chain_reservation_handoff_environment",
+        lambda _lock, *, environment, parent_pid: environment,
+    )
+
+    class _FakeBuilderProcess:
+        pid = 424_243
+        returncode = 0
+
+        def communicate(self) -> tuple[str, str]:
+            return "builder ok", ""
+
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: _FakeBuilderProcess(),
+    )
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+        ]
+    )
+
+    receipt = json.loads(
+        (
+            output_root
+            / "scheduled"
+            / "ml_raw_pit_refresh"
+            / "latest_status.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert exit_code == 1
+    assert receipt["status"] == "failed"
+    assert receipt["builder_returncode"] == 0
+    assert receipt["error"] == "source_quality_evidence_readback_failed"
+    assert receipt["source_quality_evidence"]["readback_status"] == "missing"
+    assert receipt["source_quality_evidence"]["candidate_evidence_complete"] is False
+    assert receipt["source_quality_evidence"]["candidate_rows_complete"] is False
 
 
 def test_main_records_upstream_block_without_running_builder(

@@ -255,6 +255,50 @@ def _fetch_raw_response(
     }, completed_at
 
 
+def _validate_persisted_response_binding(
+    capture_payload: Mapping[str, object],
+    *,
+    role: str,
+) -> str:
+    """驗證持久化 envelope 仍綁定固定 TWSE MIS request。
+
+    Producer 端的 ``_fetch_raw_response`` 已驗證網路 response；這個 helper
+    讓 partial-recovery、durable persist 與 durable loader 也不能信任被改寫
+    的 response metadata。requested symbols 的完整性仍由共用 raw parser
+    驗證，避免把 partial quote rows 當成完整 source。
+    """
+
+    request_value = capture_payload.get("request")
+    request_channels = (
+        request_value.get("ex_ch")
+        if isinstance(request_value, Mapping)
+        else None
+    )
+    if not isinstance(request_channels, str) or not request_channels.strip():
+        raise PaperEventSourceCaptureError(f"{role} request channels missing")
+    if (
+        not isinstance(request_value, Mapping)
+        or request_value.get("json") != "1"
+        or request_value.get("delay") != "0"
+    ):
+        raise PaperEventSourceCaptureError(f"{role} request parameters invalid")
+    expected_url = _twse_mis_request_url(request_channels)
+    response_value = capture_payload.get("response")
+    if not isinstance(response_value, Mapping):
+        raise PaperEventSourceCaptureError(f"{role} response metadata missing")
+    if response_value.get("http_status") != 200:
+        raise PaperEventSourceCaptureError(f"{role} response status invalid")
+    if response_value.get("final_url") != expected_url:
+        raise PaperEventSourceCaptureError(
+            f"{role} response final URL 與固定 request 不一致"
+        )
+    if response_value.get("content_encoding") not in {None, "", "identity"}:
+        raise PaperEventSourceCaptureError(
+            f"{role} response 使用不支援的 content encoding"
+        )
+    return request_channels
+
+
 def capture_twse_session_open_prices(
     *,
     symbols: Sequence[str],
@@ -589,16 +633,10 @@ def _rebuild_partial_durable_capture(
         raise PaperEventSourceCaptureError(
             "partial durable capture content is not source-valid"
         )
-    request_value = capture_payload.get("request")
-    request_channels = (
-        request_value.get("ex_ch")
-        if isinstance(request_value, Mapping)
-        else None
+    request_channels = _validate_persisted_response_binding(
+        capture_payload,
+        role="partial durable capture",
     )
-    if not isinstance(request_channels, str) or not request_channels:
-        raise PaperEventSourceCaptureError(
-            "partial durable capture request channels missing"
-        )
     try:
         captured_at = _aware(
             datetime.fromisoformat(str(capture_payload.get("captured_at"))),
@@ -797,6 +835,10 @@ def persist_twse_event_source_capture(
         raise PaperEventSourceCaptureError("capture envelope content hash not bound")
     if capture_payload.get("execution_date") != execution_date.isoformat():
         raise PaperEventSourceCaptureError("capture execution date not bound")
+    _validate_persisted_response_binding(
+        capture_payload,
+        role="capture envelope",
+    )
 
     bucket = root / execution_date.isoformat() / recommendation_file_hash[7:23]
     _reject_reparse_chain(bucket, root=root)
@@ -1268,10 +1310,10 @@ def load_persisted_twse_event_source_capture(
         )
     except (TypeError, ValueError) as error:
         raise PaperEventSourceCaptureError("durable capture timestamps invalid") from error
-    request = capture_payload.get("request")
-    request_channels = request.get("ex_ch") if isinstance(request, Mapping) else None
-    if not isinstance(request_channels, str) or not request_channels:
-        raise PaperEventSourceCaptureError("durable capture request channels missing")
+    request_channels = _validate_persisted_response_binding(
+        capture_payload,
+        role="durable capture",
+    )
     rows, parse_reason = _parse_twse_mis_raw_rows(
         raw_response,
         request_channels=request_channels,

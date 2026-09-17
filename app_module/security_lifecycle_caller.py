@@ -520,14 +520,13 @@ class SecurityLifecycleIndustryCaller:
                 )
             if is_trading is True:
                 official_open_dates.add(target)
+            raw_evidence = record.get("evidence")
             evidence_by_date[target] = {
                 "date": target.isoformat(),
                 "date_str": str(record.get("date_str") or target.isoformat()),
                 "is_trading_day": is_trading,
                 "reason_code": str(record.get("reason_code") or ""),
-                "evidence": dict(record.get("evidence") or {})
-                if isinstance(record.get("evidence"), Mapping)
-                else {},
+                "evidence": dict(raw_evidence) if isinstance(raw_evidence, Mapping) else {},
             }
         if official_open_dates != set(dates):
             raise SecurityLifecycleCallerError(

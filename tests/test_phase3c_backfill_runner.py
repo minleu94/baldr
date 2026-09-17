@@ -1,5 +1,9 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+import hashlib
+import json
+from pathlib import Path
 import sqlite3
+import time
 from unittest.mock import patch
 
 import pandas as pd
@@ -32,6 +36,15 @@ def _institutional_frame():
     }])
 
 
+def _institutional_frame_two_rows():
+    second = _institutional_frame().copy()
+    second.loc[0, "stock_code"] = "2317"
+    second.loc[0, "foreign_investor_buy"] = 80
+    second.loc[0, "foreign_investor_sell"] = 30
+    second.loc[0, "foreign_investor_net"] = 50
+    return pd.concat([_institutional_frame(), second], ignore_index=True)
+
+
 def _credit_frame():
     return pd.DataFrame([{
         "stock_code": "2330", "decision_date": "2024-07-22", "source_version": "test-v1",
@@ -40,6 +53,39 @@ def _credit_frame():
         "margin_purchase": 100, "margin_balance": 200, "short_sale": 10, "short_balance": 20,
         "financing": None, "securities_lending": None,
     }])
+
+
+def _seed_source_rows(
+    runner: Phase3CBackfillRunner,
+    candidate_db: Path,
+    source: str,
+    frame: pd.DataFrame,
+    *,
+    checkpoint_status: str | None = "FAILED_RETRYABLE",
+):
+    table_name = {
+        "institutional": "institutional_flows",
+        "credit": "credit_transactions",
+    }[source]
+    with sqlite3.connect(candidate_db) as conn:
+        runner._ensure_candidate_tables(conn)
+        frame.to_sql(table_name, conn, if_exists="append", index=False)
+        if checkpoint_status is not None:
+            conn.execute(
+                """
+                INSERT INTO phase3c_backfill_checkpoints (
+                    decision_date, source, status, row_count, fetched_at, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "2024-07-22",
+                    source,
+                    checkpoint_status,
+                    0,
+                    "2024-07-22T10:00:00+00:00",
+                    "seeded fixture checkpoint",
+                ),
+            )
 
 
 def _tdcc_frame():
@@ -159,6 +205,574 @@ def test_runner_resume_uses_success_checkpoint_without_refetch(tmp_path):
 
     assert fetch.call_count == 1
     assert resumed.daily_results[0]["status"] == "SKIPPED_ALREADY_EXISTS"
+
+
+@pytest.mark.parametrize(
+    ("source", "frame_factory", "fetch_name"),
+    [
+        ("institutional", _institutional_frame, "fetch_institutional_flows"),
+        ("credit", _credit_frame, "fetch_credit_transactions"),
+    ],
+)
+def test_runner_reconciles_failed_checkpoint_when_existing_rows_match(
+    tmp_path, source, frame_factory, fetch_name
+):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / f"{source}.db"
+    frame = frame_factory()
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=(source,),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    _seed_source_rows(runner, candidate_db, source, frame)
+
+    with patch(
+        f"data_module.phase3c_backfill_runner.{fetch_name}",
+        return_value=frame,
+    ) as fetch:
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    result = summary.daily_results[0]
+    assert fetch.call_count == 1
+    assert result["status"] == "SUCCESS"
+    assert summary.total_rows_inserted == 0
+    assert result["reconciliation"]["status"] == "RECONCILED"
+    assert result["reconciliation"]["matched_row_count"] == 1
+    assert result["reconciliation"]["missing_key_count"] == 0
+    assert result["reconciliation"]["inserted_row_count"] == 0
+    with sqlite3.connect(candidate_db) as conn:
+        checkpoint = conn.execute(
+            "SELECT status, row_count FROM phase3c_backfill_checkpoints "
+            "WHERE decision_date = '2024-07-22' AND source = ?",
+            (source,),
+        ).fetchone()
+        row_count = conn.execute(
+            f"SELECT COUNT(*) FROM {('institutional_flows' if source == 'institutional' else 'credit_transactions')} "
+            "WHERE decision_date = '2024-07-22'"
+        ).fetchone()[0]
+    assert checkpoint == ("SUCCESS", 1)
+    assert row_count == 1
+
+
+def test_runner_does_not_use_row_presence_as_legacy_completion_shortcut(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    frame = _institutional_frame()
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    _seed_source_rows(
+        runner,
+        candidate_db,
+        "institutional",
+        frame,
+        checkpoint_status=None,
+    )
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=frame,
+    ) as fetch:
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert fetch.call_count == 1
+    assert summary.daily_results[0]["status"] == "SUCCESS"
+    assert summary.daily_results[0]["status"] != "SKIPPED_ALREADY_EXISTS"
+    assert summary.daily_results[0]["reconciliation"]["matched_row_count"] == 1
+
+
+def test_runner_reconciliation_starts_under_immediate_transaction(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    frame = _institutional_frame()
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    transaction_states = []
+    original_reconcile = runner._reconcile_source_frame
+
+    def wrapped_reconcile(conn, *args):
+        transaction_states.append(conn.in_transaction)
+        return original_reconcile(conn, *args)
+
+    with patch.object(
+        runner, "_reconcile_source_frame", side_effect=wrapped_reconcile
+    ), patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=frame,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert summary.daily_results[0]["status"] == "SUCCESS"
+    assert transaction_states == [True]
+
+
+@pytest.mark.parametrize(
+    ("existing_value", "incoming_value"),
+    [
+        ("2026-09-03", "2026-09-17"),
+        ("2026-09-03T00:00:00", "2026-09-17T00:00:00+00:00"),
+        ("2026-09-03T00:00:00+00:00", "2026-09-17T00:00:00"),
+        ("2026-09-17T00:00:00+00:00", "2026-09-16T00:00:00+00:00"),
+    ],
+)
+def test_observation_clock_requires_timezone_aware_timestamps(
+    existing_value, incoming_value
+):
+    assert not Phase3CBackfillRunner._observation_timestamp_is_monotonic(
+        existing_value, incoming_value
+    )
+
+
+def test_runner_records_observation_at_after_slow_fetch(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    existing = _institutional_frame()
+    incoming_observed_at = None
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    _seed_source_rows(runner, candidate_db, "institutional", existing)
+
+    def slow_fetch(_decision_date):
+        nonlocal incoming_observed_at
+        incoming_observed_at = datetime.now(timezone.utc)
+        time.sleep(0.03)
+        incoming = existing.copy()
+        incoming["first_observed_at"] = incoming_observed_at.isoformat()
+        incoming["available_at"] = incoming_observed_at.isoformat()
+        return incoming
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        side_effect=slow_fetch,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert incoming_observed_at is not None
+    result = summary.daily_results[0]
+    report = result["reconciliation"]
+    observation_at = datetime.fromisoformat(report["observation_at"])
+    assert result["status"] == "SUCCESS"
+    assert observation_at >= incoming_observed_at
+    assert report["observation_timing_error"] is None
+    assert report["observation_mode"] == "new_observation_reconciled"
+    with sqlite3.connect(candidate_db) as conn:
+        preserved = conn.execute(
+            "SELECT first_observed_at, available_at FROM institutional_flows "
+            "WHERE stock_code = '2330' AND decision_date = '2024-07-22'"
+        ).fetchone()
+    assert preserved == ("2024-07-22T10:00:00Z", "2024-07-22T10:00:00Z")
+
+
+def test_runner_rejects_observation_at_before_incoming_custody(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    incoming = _institutional_frame()
+    future_observed_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    incoming["first_observed_at"] = future_observed_at.isoformat()
+    incoming["available_at"] = future_observed_at.isoformat()
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=incoming,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    result = summary.daily_results[0]
+    report = result["reconciliation"]
+    assert result["status"] == "FAILED_RETRYABLE"
+    assert report["status"] == "CONFLICT"
+    assert "observation_at" in report["observation_timing_error"]
+    assert "observation_at" in result["error_message"]
+    with sqlite3.connect(candidate_db) as conn:
+        row_count = conn.execute(
+            "SELECT COUNT(*) FROM institutional_flows "
+            "WHERE decision_date = '2024-07-22'"
+        ).fetchone()[0]
+        checkpoint = conn.execute(
+            "SELECT status FROM phase3c_backfill_checkpoints "
+            "WHERE decision_date = '2024-07-22' AND source = 'institutional'"
+        ).fetchone()[0]
+        observation_mode = conn.execute(
+            "SELECT observation_mode FROM phase3c_source_observations "
+            "WHERE source = 'institutional' AND decision_date = '2024-07-22'"
+        ).fetchone()[0]
+    assert row_count == 0
+    assert checkpoint == "FAILED_RETRYABLE"
+    assert observation_mode == "conflict"
+
+
+def test_runner_preserves_first_observation_for_newer_reobservation(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    existing = _institutional_frame()
+    incoming = existing.copy()
+    incoming["first_observed_at"] = "2024-07-23T10:00:00+00:00"
+    incoming["available_at"] = "2024-07-23T10:00:00+00:00"
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    _seed_source_rows(runner, candidate_db, "institutional", existing)
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=incoming,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    result = summary.daily_results[0]
+    assert result["status"] == "SUCCESS"
+    assert result["reconciliation"]["observation_mode"] == "new_observation_reconciled"
+    assert result["reconciliation"]["exact_match_row_count"] == 0
+    assert result["reconciliation"]["new_observation_match_row_count"] == 1
+    assert result["reconciliation"]["inserted_row_count"] == 0
+    with sqlite3.connect(candidate_db) as conn:
+        preserved = conn.execute(
+            "SELECT first_observed_at, available_at FROM institutional_flows "
+            "WHERE stock_code = '2330' AND decision_date = '2024-07-22'"
+        ).fetchone()
+        observation = conn.execute(
+            "SELECT observation_mode, first_observed_at_min, available_at_max, "
+            "observation_hash, canonical_payload_json "
+            "FROM phase3c_source_observations "
+            "WHERE source = 'institutional' AND decision_date = '2024-07-22'"
+        ).fetchone()
+    assert preserved == ("2024-07-22T10:00:00Z", "2024-07-22T10:00:00Z")
+    assert observation[:3] == (
+        "new_observation_reconciled",
+        "2024-07-23T10:00:00+00:00",
+        "2024-07-23T10:00:00+00:00",
+    )
+    observation_hash = observation[3]
+    canonical_payload_json = observation[4]
+    assert observation_hash == (
+        "sha256:" + hashlib.sha256(canonical_payload_json.encode("utf-8")).hexdigest()
+    )
+    canonical_payload = json.loads(canonical_payload_json)
+    assert canonical_payload["schema_version"] == "phase3c-canonical-observation.v1"
+    assert canonical_payload["rows"][0]["first_observed_at"] == (
+        "2024-07-23T10:00:00+00:00"
+    )
+
+
+def test_runner_reconciles_known_failed_checkpoint_scope_in_isolated_copy(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "known-failed-scope.db"
+    affected = [
+        ("2026-09-03", "institutional"),
+        ("2026-09-03", "credit"),
+        ("2026-09-04", "institutional"),
+        ("2026-09-04", "credit"),
+        ("2026-09-07", "institutional"),
+        ("2026-09-07", "credit"),
+        ("2026-09-08", "institutional"),
+        ("2026-09-08", "credit"),
+        ("2026-09-09", "institutional"),
+        ("2026-09-09", "credit"),
+        ("2026-09-10", "institutional"),
+        ("2026-09-10", "credit"),
+        ("2026-09-11", "institutional"),
+    ]
+    trading_dates = sorted({day for day, _source in affected})
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional", "credit"),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+
+    def frame_for(source: str, day: str, hour: str) -> pd.DataFrame:
+        frame = (_institutional_frame() if source == "institutional" else _credit_frame()).copy()
+        frame["decision_date"] = day
+        frame["first_observed_at"] = f"{day}T{hour}:00:00+00:00"
+        frame["available_at"] = f"{day}T{hour}:00:00+00:00"
+        return frame
+
+    with sqlite3.connect(candidate_db) as conn:
+        runner._ensure_candidate_tables(conn)
+        for day, source in affected:
+            frame = frame_for(source, day, "10")
+            table_name = (
+                "institutional_flows" if source == "institutional" else "credit_transactions"
+            )
+            frame.to_sql(table_name, conn, if_exists="append", index=False)
+            conn.execute(
+                """
+                INSERT INTO phase3c_backfill_checkpoints (
+                    decision_date, source, status, row_count, fetched_at, error_message
+                ) VALUES (?, ?, 'FAILED_RETRYABLE', 0, ?, ?)
+                """,
+                (
+                    day,
+                    source,
+                    "2026-09-16T11:30:00+00:00",
+                    "UNIQUE constraint failed: fixture natural key",
+                ),
+            )
+
+    trading_days = [
+        {
+            "date": date.fromisoformat(day),
+            "date_str": day,
+            "is_trading_day": True,
+            "reason_code": "fixture_official_session",
+        }
+        for day in trading_dates
+    ]
+    with (
+        patch.object(
+            runner.calendar,
+            "get_trading_days_in_range",
+            return_value=trading_days,
+        ),
+        patch(
+            "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+            side_effect=lambda day: frame_for("institutional", day.isoformat(), "11"),
+        ),
+        patch(
+            "data_module.phase3c_backfill_runner.fetch_credit_transactions",
+            side_effect=lambda day: frame_for("credit", day.isoformat(), "11"),
+        ),
+    ):
+        summary = runner.run_backfill(
+            date(2026, 9, 3),
+            date(2026, 9, 11),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert len(summary.daily_results) == 14
+    assert summary.failed_days_count == 0
+    assert summary.succeeded_days_count == 14
+    assert summary.total_rows_inserted == 1
+    assert sum(
+        result["reconciliation"]["observation_mode"] == "new_observation_reconciled"
+        for result in summary.daily_results
+        if result["reconciliation"] is not None
+    ) == 13
+    with sqlite3.connect(candidate_db) as conn:
+        failed_count = conn.execute(
+            "SELECT COUNT(*) FROM phase3c_backfill_checkpoints "
+            "WHERE decision_date >= '2026-09-03' AND status = 'FAILED_RETRYABLE'"
+        ).fetchone()[0]
+        success_count = conn.execute(
+            "SELECT COUNT(*) FROM phase3c_backfill_checkpoints "
+            "WHERE decision_date >= '2026-09-03' AND status = 'SUCCESS'"
+        ).fetchone()[0]
+        observations = conn.execute(
+            "SELECT observation_mode, COUNT(*) FROM phase3c_source_observations "
+            "WHERE decision_date >= '2026-09-03' GROUP BY observation_mode"
+        ).fetchall()
+        preserved = conn.execute(
+            "SELECT first_observed_at, available_at FROM institutional_flows "
+            "WHERE stock_code = '2330' AND decision_date = '2026-09-03'"
+        ).fetchone()
+    assert failed_count == 0
+    assert success_count == 14
+    assert sorted(observations) == [
+        ("new_observation_insert", 1),
+        ("new_observation_reconciled", 13),
+    ]
+    assert preserved == ("2026-09-03T10:00:00+00:00", "2026-09-03T10:00:00+00:00")
+
+
+def test_runner_reconciles_partial_coverage_without_overwriting_existing_rows(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    frame = _institutional_frame_two_rows()
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    _seed_source_rows(
+        runner,
+        candidate_db,
+        "institutional",
+        frame.iloc[[0]],
+    )
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=frame,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    result = summary.daily_results[0]
+    assert result["status"] == "SUCCESS"
+    assert result["reconciliation"]["matched_row_count"] == 2
+    assert result["reconciliation"]["missing_key_count"] == 0
+    assert result["reconciliation"]["inserted_row_count"] == 1
+    assert summary.total_rows_inserted == 1
+    with sqlite3.connect(candidate_db) as conn:
+        rows = conn.execute(
+            "SELECT stock_code, foreign_investor_net FROM institutional_flows "
+            "WHERE decision_date = '2024-07-22' ORDER BY stock_code"
+        ).fetchall()
+    assert rows == [("2317", 50), ("2330", 50)]
+
+
+def test_runner_preserves_conflict_diagnostic_and_original_row(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    incoming = _institutional_frame()
+    existing = incoming.copy()
+    existing.loc[0, "source_version"] = "conflicting-source"
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    _seed_source_rows(runner, candidate_db, "institutional", existing)
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=incoming,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    result = summary.daily_results[0]
+    assert result["status"] == "FAILED_RETRYABLE"
+    assert "reconciliation_conflict" in result["error_message"]
+    assert "source_version" in result["error_message"]
+    assert result["reconciliation"]["status"] == "CONFLICT"
+    assert result["reconciliation"]["conflict_key_count"] == 1
+    with sqlite3.connect(candidate_db) as conn:
+        source_version = conn.execute(
+            "SELECT source_version FROM institutional_flows "
+            "WHERE stock_code = '2330' AND decision_date = '2024-07-22'"
+        ).fetchone()[0]
+        checkpoint = conn.execute(
+            "SELECT status, error_message FROM phase3c_backfill_checkpoints "
+            "WHERE decision_date = '2024-07-22' AND source = 'institutional'"
+        ).fetchone()
+    assert source_version == "conflicting-source"
+    assert checkpoint[0] == "FAILED_RETRYABLE"
+    assert "reconciliation_conflict" in checkpoint[1]
+
+
+def test_runner_rolls_back_partial_insert_when_candidate_write_fails(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    frame = _institutional_frame_two_rows()
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+    )
+    with sqlite3.connect(candidate_db) as conn:
+        runner._ensure_candidate_tables(conn)
+        conn.execute(
+            """
+            CREATE TRIGGER reject_fixture_second_row
+            BEFORE INSERT ON institutional_flows
+            WHEN NEW.stock_code = '2317'
+            BEGIN
+                SELECT RAISE(ABORT, 'fixture insert failure');
+            END;
+            """
+        )
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=frame,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22),
+            date(2024, 7, 22),
+            dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    result = summary.daily_results[0]
+    assert result["status"] == "FAILED_RETRYABLE"
+    assert "reconciliation_write_failed" in result["error_message"]
+    assert "fixture insert failure" in result["error_message"]
+    with sqlite3.connect(candidate_db) as conn:
+        row_count = conn.execute(
+            "SELECT COUNT(*) FROM institutional_flows "
+            "WHERE decision_date = '2024-07-22'"
+        ).fetchone()[0]
+        checkpoint = conn.execute(
+            "SELECT status FROM phase3c_backfill_checkpoints "
+            "WHERE decision_date = '2024-07-22' AND source = 'institutional'"
+        ).fetchone()[0]
+    assert row_count == 0
+    assert checkpoint == "FAILED_RETRYABLE"
 
 
 def test_runner_tdcc_default_preserves_historical_block(tmp_path):

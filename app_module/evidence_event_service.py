@@ -12,6 +12,7 @@ from app_module.evidence_event_dtos import (
     normalize_data_quality,
     normalize_event_type,
 )
+from app_module.evidence_event_importer_dtos import capture_context_identity
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.research_run_dtos import canonical_json as canonical_evidence_json
 from app_module.research_run_dtos import EvidenceReviewProposalDTO
@@ -247,6 +248,13 @@ class EvidenceEventService:
         run_id: str,
         metadata: dict[str, Any] | None = None,
     ) -> str:
+        normalized_metadata = self._normalize_metadata(metadata)
+        # A retry may change only captured_at.  Keep decision/as-of and the
+        # authority flags in event identity; the full context hash remains in
+        # the persisted metadata for custody verification.
+        context = normalized_metadata.get("capture_context")
+        if isinstance(context, dict):
+            normalized_metadata["capture_context"] = capture_context_identity(context)
         payload = {
             "event_date": event_date,
             "decision_date": decision_date,
@@ -261,7 +269,7 @@ class EvidenceEventService:
             "strategy_version_id": strategy_version_id,
             "profile_id": profile_id,
             "run_id": run_id,
-            "metadata": self._normalize_metadata(metadata),
+            "metadata": normalized_metadata,
         }
         digest = hashlib.sha256(canonical_evidence_json(payload).encode("utf-8")).hexdigest()
         return f"sha256:{digest}"

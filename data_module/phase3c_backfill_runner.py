@@ -6,15 +6,16 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
+import hashlib
 import json
 import logging
 import os
 from pathlib import Path
 import sqlite3
 import time
-from typing import Callable, Iterable, Optional, Sequence
+from typing import Any, Callable, Iterable, Optional, Sequence
 
 import pandas as pd
 
@@ -33,6 +34,9 @@ logger = logging.getLogger(__name__)
 APPLY_CONFIRM_TOKEN = "apply-phase3c-candidate-ingestion"
 SUPPORTED_SOURCES = frozenset({"institutional", "credit", "tdcc"})
 CANDIDATE_DB_PATH_ENV = "PHASE3C_CANDIDATE_DB_PATH"
+OBSERVATION_CUSTODY_COLUMNS = frozenset({"first_observed_at", "available_at"})
+RECONCILIATION_SAMPLE_LIMIT = 10
+CANONICAL_OBSERVATION_SCHEMA_VERSION = "phase3c-canonical-observation.v1"
 
 
 def configured_candidate_db_path() -> Optional[Path]:
@@ -73,6 +77,7 @@ class DailyFetchResult:
     row_count: int
     error_message: Optional[str]
     fetched_at: str
+    reconciliation: Optional[dict[str, Any]] = None
 
 
 @dataclass
@@ -94,6 +99,66 @@ class BackfillSummary:
     started_at: str
     finished_at: str
     daily_results: list[dict]
+
+
+@dataclass
+class SourceReconciliationReport:
+    """單一來源／資料日的 candidate natural-key reconciliation 結果。"""
+
+    source: str
+    table_name: str
+    decision_date: str
+    status: str
+    expected_row_count: int
+    existing_row_count: int
+    matched_row_count: int
+    missing_key_count: int
+    conflict_key_count: int
+    unexpected_existing_key_count: int
+    inserted_row_count: int = 0
+    exact_match_row_count: int = 0
+    new_observation_match_row_count: int = 0
+    observation_hash: Optional[str] = None
+    observation_at: Optional[str] = None
+    observation_timing_error: Optional[str] = None
+    observation_mode: str = "unclassified"
+    source_versions: list[str] = field(default_factory=list)
+    first_observed_at_min: Optional[str] = None
+    available_at_max: Optional[str] = None
+    compared_columns: list[str] = field(default_factory=list)
+    provenance_columns: list[str] = field(default_factory=list)
+    missing_keys: list[str] = field(default_factory=list)
+    conflict_keys: list[str] = field(default_factory=list)
+    unexpected_existing_keys: list[str] = field(default_factory=list)
+    conflict_fields: dict[str, list[str]] = field(default_factory=dict)
+
+
+@dataclass
+class SourceReconciliationOutcome:
+    """reconciliation 報告與可重算的完整 canonical custody payload。"""
+
+    report: dict[str, Any]
+    canonical_payload_json: str
+
+
+class SourceReconciliationError(RuntimeError):
+    """reconciliation 或 atomic write/verify 失敗時保留結構化診斷。"""
+
+    def __init__(
+        self,
+        report: SourceReconciliationReport,
+        kind: str,
+        canonical_payload_json: str,
+        detail: Optional[str] = None,
+    ) -> None:
+        self.report = report
+        self.kind = kind
+        self.canonical_payload_json = canonical_payload_json
+        diagnostic = json.dumps(
+            asdict(report), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        detail_text = f":{detail}" if detail else ""
+        super().__init__(f"{kind}{detail_text}:{diagnostic}")
 
 
 class Phase3CBackfillRunner:
@@ -197,13 +262,41 @@ class Phase3CBackfillRunner:
                 error_message TEXT,
                 PRIMARY KEY (decision_date, source)
             );
+
+            CREATE TABLE IF NOT EXISTS phase3c_source_observations (
+                source TEXT NOT NULL,
+                decision_date TEXT NOT NULL,
+                observation_hash TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                row_count INTEGER NOT NULL,
+                observation_mode TEXT NOT NULL,
+                source_versions TEXT NOT NULL,
+                first_observed_at_min TEXT,
+                available_at_max TEXT,
+                canonical_payload_json TEXT NOT NULL,
+                diagnostic_json TEXT,
+                PRIMARY KEY (source, decision_date, observation_hash)
+            );
             """
         )
+        observation_columns = {
+            str(row[1])
+            for row in conn.execute(
+                "PRAGMA table_info(phase3c_source_observations)"
+            ).fetchall()
+        }
+        if observation_columns and "canonical_payload_json" not in observation_columns:
+            # 僅升級 candidate-only ledger；舊 observation 若無 payload 會保留
+            # 為 legacy，不冒造內容，新的 observation 一律保存完整 payload。
+            conn.execute(
+                "ALTER TABLE phase3c_source_observations "
+                "ADD COLUMN canonical_payload_json TEXT"
+            )
 
     def is_date_already_completed(
         self, conn: sqlite3.Connection, decision_date_str: str, source: str
     ) -> bool:
-        """只以成功 checkpoint 判定可續跑完成，失敗日必須可重試。"""
+        """只以成功 checkpoint 判定完成；無 checkpoint 也必須先 reconciliation。"""
         checkpoint = conn.execute(
             """
             SELECT status FROM phase3c_backfill_checkpoints
@@ -214,22 +307,9 @@ class Phase3CBackfillRunner:
         if checkpoint is not None:
             return str(checkpoint[0]) == "SUCCESS"
 
-        # 相容於早期手動建立的 candidate DB：既有資料列不可覆寫。
-        table_map = {
-            "institutional": "institutional_flows",
-            "credit": "credit_transactions",
-            "tdcc": "tdcc_shareholding",
-        }
-        table_name = table_map.get(source)
-        if not table_name:
-            return False
-        cursor = conn.cursor()
-        cursor.execute(
-            f"SELECT COUNT(*) FROM {table_name} WHERE decision_date = ? LIMIT 1",
-            (decision_date_str,),
-        )
-        row = cursor.fetchone()
-        return bool(row and row[0] > 0)
+        # 早期 candidate DB 可能只有資料列沒有 checkpoint；不能再用
+        # 「該日有任何 row」當成完整來源覆蓋，必須抓取後做逐欄 reconciliation。
+        return False
 
     @staticmethod
     def _record_checkpoint(
@@ -259,6 +339,504 @@ class Phase3CBackfillRunner:
                 result.fetched_at,
                 result.error_message,
             ),
+        )
+
+    @staticmethod
+    def _record_source_observation(
+        conn: sqlite3.Connection,
+        result: DailyFetchResult,
+        canonical_payload_json: Optional[str] = None,
+    ) -> None:
+        """保存每次有 payload 的 observation custody，不覆寫既有資料列。"""
+        report = result.reconciliation
+        if not isinstance(report, dict) or not report.get("observation_hash"):
+            return
+        if not isinstance(canonical_payload_json, str) or not canonical_payload_json:
+            raise ValueError("observation custody 缺少 canonical payload")
+        conn.execute(
+            """
+            INSERT INTO phase3c_source_observations (
+                source, decision_date, observation_hash, observed_at, row_count,
+                observation_mode, source_versions, first_observed_at_min,
+                available_at_max, canonical_payload_json, diagnostic_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source, decision_date, observation_hash) DO NOTHING
+            """,
+            (
+                result.source,
+                result.decision_date,
+                report["observation_hash"],
+                report.get("observation_at") or result.fetched_at,
+                int(report.get("expected_row_count") or result.row_count),
+                str(report.get("observation_mode") or "unclassified"),
+                json.dumps(
+                    report.get("source_versions", []),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                report.get("first_observed_at_min"),
+                report.get("available_at_max"),
+                canonical_payload_json,
+                json.dumps(report, ensure_ascii=False, sort_keys=True),
+            ),
+        )
+
+    @staticmethod
+    def _source_table_name(source: str) -> str:
+        table_map = {
+            "institutional": "institutional_flows",
+            "credit": "credit_transactions",
+            "tdcc": "tdcc_shareholding",
+        }
+        try:
+            return table_map[source]
+        except KeyError as exc:
+            raise ValueError(f"不支援的 reconciliation source: {source}") from exc
+
+    @staticmethod
+    def _quote_identifier(identifier: str) -> str:
+        return '"' + identifier.replace('"', '""') + '"'
+
+    @staticmethod
+    def _canonical_cell(value: Any) -> Any:
+        """把 pandas/SQLite 的缺值與 scalar 正規化為可比較值。"""
+        if value is None:
+            return None
+        try:
+            if bool(pd.isna(value)):
+                return None
+        except (TypeError, ValueError):
+            pass
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        item_method = getattr(value, "item", None)
+        if callable(item_method) and not isinstance(value, (str, bytes)):
+            try:
+                value = item_method()
+            except (TypeError, ValueError):
+                pass
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        return value
+
+    @classmethod
+    def _sqlite_value(cls, value: Any) -> Any:
+        normalized = cls._canonical_cell(value)
+        if normalized is None or isinstance(normalized, (str, bytes, int, float)):
+            return normalized
+        return str(normalized)
+
+    @classmethod
+    def _natural_key(cls, row: dict[str, Any]) -> tuple[str, str]:
+        stock_code = cls._canonical_cell(row.get("stock_code"))
+        decision_date = cls._canonical_cell(row.get("decision_date"))
+        return str(stock_code), str(decision_date)
+
+    @classmethod
+    def _key_text(cls, key: tuple[str, str]) -> str:
+        return f"{key[0]}|{key[1]}"
+
+    @classmethod
+    def _parse_aware_observation_timestamp(
+        cls, value: Any
+    ) -> Optional[datetime]:
+        timestamp = cls._canonical_cell(value)
+        if not isinstance(timestamp, str):
+            return None
+        try:
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.utcoffset() is None:
+            return None
+        return parsed
+
+    @staticmethod
+    def _observation_timestamp_is_monotonic(
+        existing_value: Any,
+        incoming_value: Any,
+    ) -> bool:
+        existing_dt = Phase3CBackfillRunner._parse_aware_observation_timestamp(
+            existing_value
+        )
+        incoming_dt = Phase3CBackfillRunner._parse_aware_observation_timestamp(
+            incoming_value
+        )
+        # custody clock 必須是 timezone-aware；date-only 或 naive datetime
+        # 沒有可驗證的絕對時間基準，不得被當成 newer observation。
+        if existing_dt is None or incoming_dt is None:
+            return False
+        try:
+            return incoming_dt >= existing_dt
+        except TypeError:
+            return False
+
+    @classmethod
+    def _observation_timing_error(
+        cls,
+        expected_records: Sequence[dict[str, Any]],
+        observation_at: str,
+    ) -> Optional[str]:
+        observation_dt = cls._parse_aware_observation_timestamp(observation_at)
+        if observation_dt is None:
+            return "observation_at 必須是 timezone-aware ISO timestamp"
+
+        for record in expected_records:
+            key_text = cls._key_text(cls._natural_key(record))
+            for column in sorted(OBSERVATION_CUSTODY_COLUMNS):
+                raw_value = record.get(column)
+                incoming_dt = cls._parse_aware_observation_timestamp(raw_value)
+                incoming_text = cls._canonical_cell(raw_value)
+                if incoming_dt is None:
+                    return (
+                        f"{column} 必須是 timezone-aware ISO timestamp："
+                        f"{key_text}={incoming_text}"
+                    )
+                if incoming_dt > observation_dt:
+                    return (
+                        f"observation_at {observation_at} 早於 {column} "
+                        f"{incoming_text}：{key_text}"
+                    )
+        return None
+
+    @classmethod
+    def _canonical_observation_payload(
+        cls,
+        frame: pd.DataFrame,
+        table_columns: Sequence[str],
+        observation_at: str,
+    ) -> str:
+        records = []
+        for record in frame.to_dict(orient="records"):
+            canonical = {
+                column: cls._canonical_cell(record.get(column))
+                for column in table_columns
+            }
+            records.append(canonical)
+        records.sort(key=lambda row: cls._natural_key(row))
+        return json.dumps(
+            {
+                "schema_version": CANONICAL_OBSERVATION_SCHEMA_VERSION,
+                "observation_at": observation_at,
+                "rows": records,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+
+    @classmethod
+    def _observation_hash(
+        cls,
+        frame: pd.DataFrame,
+        table_columns: Sequence[str],
+        observation_at: str,
+    ) -> str:
+        payload = cls._canonical_observation_payload(
+            frame, table_columns, observation_at
+        )
+        return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _read_candidate_rows(
+        cls,
+        conn: sqlite3.Connection,
+        table_name: str,
+        table_columns: Sequence[str],
+        decision_date_str: str,
+    ) -> list[dict[str, Any]]:
+        selected_columns = ", ".join(
+            cls._quote_identifier(column) for column in table_columns
+        )
+        quoted_table = cls._quote_identifier(table_name)
+        rows = conn.execute(
+            f"SELECT {selected_columns} FROM {quoted_table} "
+            f"WHERE {cls._quote_identifier('decision_date')} = ?",
+            (decision_date_str,),
+        ).fetchall()
+        return [dict(zip(table_columns, tuple(row))) for row in rows]
+
+    @classmethod
+    def _inspect_source_reconciliation(
+        cls,
+        conn: sqlite3.Connection,
+        source: str,
+        decision_date_str: str,
+        frame: pd.DataFrame,
+        table_name: str,
+        table_columns: Sequence[str],
+        observation_at: str,
+    ) -> tuple[
+        SourceReconciliationReport,
+        list[dict[str, Any]],
+        str,
+    ]:
+        frame_columns = [str(column) for column in frame.columns]
+        unsupported_columns = sorted(set(frame_columns) - set(table_columns))
+        if unsupported_columns:
+            raise ValueError(
+                f"來源資料含候選表未支援欄位: {', '.join(unsupported_columns)}"
+            )
+
+        expected_records = [
+            {column: record.get(column) for column in frame_columns}
+            for record in frame.to_dict(orient="records")
+        ]
+        expected_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        for record in expected_records:
+            key = cls._natural_key(record)
+            if key in expected_by_key:
+                raise ValueError(
+                    "來源資料含重複 stock_code + decision_date："
+                    f"{cls._key_text(key)}"
+                )
+            expected_by_key[key] = record
+
+        existing_rows = cls._read_candidate_rows(
+            conn, table_name, table_columns, decision_date_str
+        )
+        existing_by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for record in existing_rows:
+            existing_by_key.setdefault(cls._natural_key(record), []).append(record)
+
+        expected_keys = set(expected_by_key)
+        existing_keys = set(existing_by_key)
+        missing_keys = sorted(expected_keys - existing_keys)
+        unexpected_keys = sorted(existing_keys - expected_keys)
+        conflict_keys: list[tuple[str, str]] = []
+        conflict_fields: dict[str, list[str]] = {}
+        observation_timing_error = cls._observation_timing_error(
+            expected_records, observation_at
+        )
+        if observation_timing_error:
+            conflict_fields["<observation_clock>"] = [observation_timing_error]
+        matched_count = 0
+        exact_match_count = 0
+        new_observation_match_count = 0
+
+        for key in sorted(expected_keys & existing_keys):
+            key_text = cls._key_text(key)
+            rows_for_key = existing_by_key[key]
+            if len(rows_for_key) != 1:
+                conflict_keys.append(key)
+                conflict_fields[key_text] = ["<duplicate_natural_key>"]
+                continue
+            expected = expected_by_key[key]
+            existing = rows_for_key[0]
+            mismatches = [
+                column
+                for column in table_columns
+                if cls._canonical_cell(existing.get(column))
+                != cls._canonical_cell(expected.get(column))
+            ]
+            if not mismatches:
+                exact_match_count += 1
+                matched_count += 1
+                continue
+
+            # 官方 fetcher 在沒有 publication timestamp 時，會以每次實際
+            # 觀測時間填入 first_observed_at/available_at。這兩個欄位若只
+            # 向前推進，視為新的 observation custody；原始資料列仍不可更新。
+            custody_only = set(mismatches).issubset(OBSERVATION_CUSTODY_COLUMNS)
+            custody_is_newer = custody_only and all(
+                cls._observation_timestamp_is_monotonic(
+                    existing.get(column), expected.get(column)
+                )
+                for column in mismatches
+            )
+            if custody_is_newer:
+                new_observation_match_count += 1
+                matched_count += 1
+            else:
+                conflict_keys.append(key)
+                conflict_fields[key_text] = mismatches
+
+        provenance_columns = [
+            column
+            for column in (
+                "source_version",
+                "publication_at",
+                "first_observed_at",
+                "available_at",
+                "available_date",
+                "quality",
+            )
+            if column in table_columns
+        ]
+        source_versions = sorted(
+            {
+                str(cls._canonical_cell(record.get("source_version")))
+                for record in expected_records
+                if cls._canonical_cell(record.get("source_version")) is not None
+            }
+        )
+        first_observed_values = sorted(
+            str(cls._canonical_cell(record.get("first_observed_at")))
+            for record in expected_records
+            if cls._canonical_cell(record.get("first_observed_at")) is not None
+        )
+        available_at_values = sorted(
+            str(cls._canonical_cell(record.get("available_at")))
+            for record in expected_records
+            if cls._canonical_cell(record.get("available_at")) is not None
+        )
+        has_conflict = bool(
+            conflict_keys or unexpected_keys or observation_timing_error
+        )
+        if has_conflict:
+            observation_mode = "conflict"
+        elif new_observation_match_count or missing_keys:
+            observation_mode = (
+                "new_observation_reconciled" if existing_rows else "new_observation_insert"
+            )
+        else:
+            observation_mode = "exact_replay"
+        canonical_payload_json = cls._canonical_observation_payload(
+            frame, table_columns, observation_at
+        )
+        report = SourceReconciliationReport(
+            source=source,
+            table_name=table_name,
+            decision_date=decision_date_str,
+            status=("CONFLICT" if has_conflict else "READY"),
+            expected_row_count=len(expected_records),
+            existing_row_count=len(existing_rows),
+            matched_row_count=matched_count,
+            missing_key_count=len(missing_keys),
+            conflict_key_count=len(conflict_keys),
+            unexpected_existing_key_count=len(unexpected_keys),
+            exact_match_row_count=exact_match_count,
+            new_observation_match_row_count=new_observation_match_count,
+            observation_hash=(
+                cls._observation_hash(frame, table_columns, observation_at)
+            ),
+            observation_at=observation_at,
+            observation_timing_error=observation_timing_error,
+            observation_mode=observation_mode,
+            source_versions=source_versions,
+            first_observed_at_min=(first_observed_values[0] if first_observed_values else None),
+            available_at_max=(available_at_values[-1] if available_at_values else None),
+            compared_columns=list(table_columns),
+            provenance_columns=provenance_columns,
+            missing_keys=[
+                cls._key_text(key) for key in missing_keys[:RECONCILIATION_SAMPLE_LIMIT]
+            ],
+            conflict_keys=[
+                cls._key_text(key) for key in conflict_keys[:RECONCILIATION_SAMPLE_LIMIT]
+            ],
+            unexpected_existing_keys=[
+                cls._key_text(key)
+                for key in unexpected_keys[:RECONCILIATION_SAMPLE_LIMIT]
+            ],
+            conflict_fields={
+                key: fields
+                for key, fields in list(conflict_fields.items())[
+                    :RECONCILIATION_SAMPLE_LIMIT
+                ]
+            },
+        )
+        missing_records = [expected_by_key[key] for key in missing_keys]
+        return report, missing_records, canonical_payload_json
+
+    @staticmethod
+    def _reconciliation_error(
+        report: SourceReconciliationReport,
+        kind: str,
+        canonical_payload_json: str,
+    ) -> SourceReconciliationError:
+        report.status = kind.upper()
+        return SourceReconciliationError(
+            report,
+            f"reconciliation_{kind.lower()}",
+            canonical_payload_json,
+        )
+
+    def _reconcile_source_frame(
+        self,
+        conn: sqlite3.Connection,
+        source: str,
+        decision_date_str: str,
+        frame: pd.DataFrame,
+        observation_at: str,
+    ) -> SourceReconciliationOutcome:
+        """在既有 transaction 內做完整比對、補齊與 post-write verify。"""
+        table_name = self._source_table_name(source)
+        table_info = conn.execute(
+            f"PRAGMA table_info({self._quote_identifier(table_name)})"
+        ).fetchall()
+        table_columns = [str(row[1]) for row in table_info]
+        if not table_columns:
+            raise ValueError(f"candidate table 不存在或無欄位: {table_name}")
+
+        report, missing_records, canonical_payload_json = self._inspect_source_reconciliation(
+            conn,
+            source,
+            decision_date_str,
+            frame,
+            table_name,
+            table_columns,
+            observation_at,
+        )
+        if report.status == "CONFLICT":
+            raise self._reconciliation_error(
+                report, "conflict", canonical_payload_json
+            )
+
+        insert_columns = [str(column) for column in frame.columns]
+        if missing_records:
+            quoted_columns = ", ".join(
+                self._quote_identifier(column) for column in insert_columns
+            )
+            placeholders = ", ".join("?" for _ in insert_columns)
+            insert_sql = (
+                f"INSERT INTO {self._quote_identifier(table_name)} "
+                f"({quoted_columns}) VALUES ({placeholders})"
+            )
+            values = [
+                tuple(self._sqlite_value(record.get(column)) for column in insert_columns)
+                for record in missing_records
+            ]
+            try:
+                conn.executemany(insert_sql, values)
+            except Exception as exc:
+                report.status = "WRITE_FAILED"
+                raise SourceReconciliationError(
+                    report,
+                    "reconciliation_write_failed",
+                    canonical_payload_json,
+                    detail=f"{type(exc).__name__}:{exc}",
+                ) from exc
+
+        verified, _, verified_payload_json = self._inspect_source_reconciliation(
+            conn,
+            source,
+            decision_date_str,
+            frame,
+            table_name,
+            table_columns,
+            observation_at,
+        )
+        verified.inserted_row_count = len(missing_records)
+        if (
+            verified.status == "CONFLICT"
+            or verified.missing_key_count > 0
+            or verified.unexpected_existing_key_count > 0
+        ):
+            verified.status = "VERIFY_FAILED"
+            raise SourceReconciliationError(
+                verified,
+                "reconciliation_verify_failed",
+                verified_payload_json,
+            )
+        verified.status = "RECONCILED"
+        # post-write verify 看到剛插入的列必然會是 exact match；保留寫入前
+        # 的 observation mode，讓報告仍能區分 exact replay、re-observation
+        # reconciliation 與真正的 new observation insert。
+        verified.observation_mode = report.observation_mode
+        return SourceReconciliationOutcome(
+            report=asdict(verified),
+            canonical_payload_json=verified_payload_json,
         )
 
     @staticmethod
@@ -315,6 +893,7 @@ class Phase3CBackfillRunner:
             self.candidate_db_path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(self.candidate_db_path)
             self._ensure_candidate_tables(conn)
+            conn.commit()
         else:
             conn = None
 
@@ -329,9 +908,16 @@ class Phase3CBackfillRunner:
             results: list[DailyFetchResult] = []
             total_rows_inserted = 0
 
-            def append_result(result: DailyFetchResult) -> None:
+            def append_result(
+                result: DailyFetchResult,
+                *,
+                canonical_payload_json: Optional[str] = None,
+            ) -> None:
                 results.append(result)
                 if conn is not None:
+                    self._record_source_observation(
+                        conn, result, canonical_payload_json
+                    )
                     self._record_checkpoint(conn, result)
                     conn.commit()
 
@@ -441,7 +1027,13 @@ class Phase3CBackfillRunner:
                     progress_callback(f"處理 {d_str} ({idx + 1}/{total_days})...", pct)
 
                 for src in self.sources:
-                    fetched_at = datetime.now(timezone.utc).isoformat()
+                    fetch_started_at = datetime.now(timezone.utc).isoformat()
+                    # 保留既有 fetched_at 的 fetch-start 語意；完整 payload
+                    # 的 observation_at 會在 fetcher 返回後另行建立。
+                    fetched_at = fetch_started_at
+                    reconciliation: Optional[dict[str, Any]] = None
+                    canonical_payload_json: Optional[str] = None
+                    observation_at: Optional[str] = None
 
                     # TDCC 歷史邊界處理 (歷史日期不論交易日與否，均明確標示不支援歷史端點)
                     if src == "tdcc":
@@ -508,6 +1100,10 @@ class Phase3CBackfillRunner:
                         elif src == "credit":
                             df = fetch_credit_transactions(d_obj)
 
+                        # 官方 fetcher 內部建立的 first_observed_at／available_at
+                        # 發生在 HTTP 觀測期間；不可沿用 fetch 開始前的 fetched_at
+                        # 作為整份新 payload 的 observation_at。
+                        observation_at = datetime.now(timezone.utc).isoformat()
                         if df is None or df.empty:
                             append_result(
                                 DailyFetchResult(
@@ -527,28 +1123,82 @@ class Phase3CBackfillRunner:
                             self._validate_source_frame(df, src, d_str)
                             row_cnt = len(df)
                             if not dry_run and conn is not None:
-                                table_name = (
-                                    "institutional_flows"
-                                    if src == "institutional"
-                                    else "credit_transactions"
+                                try:
+                                    # Candidate rows and SUCCESS checkpoint must share
+                                    # one transaction; any conflict/write/verify error
+                                    # therefore rolls back all newly inserted rows.
+                                    with conn:
+                                        # Acquire the write lock before the first
+                                        # reconciliation SELECT so two retries cannot
+                                        # both observe the same missing natural keys.
+                                        conn.execute("BEGIN IMMEDIATE")
+                                        assert observation_at is not None
+                                        reconciliation_outcome = self._reconcile_source_frame(
+                                            conn, src, d_str, df, observation_at
+                                        )
+                                        reconciliation = reconciliation_outcome.report
+                                        canonical_payload_json = (
+                                            reconciliation_outcome.canonical_payload_json
+                                        )
+                                        result = DailyFetchResult(
+                                            decision_date=d_str,
+                                            source=src,
+                                            is_trading_day=True,
+                                            trading_day_reason=td_reason,
+                                            status="SUCCESS",
+                                            http_status=None,
+                                            row_count=row_cnt,
+                                            error_message=None,
+                                            fetched_at=fetched_at,
+                                            reconciliation=reconciliation,
+                                        )
+                                        self._record_source_observation(
+                                            conn, result, canonical_payload_json
+                                        )
+                                        self._record_checkpoint(conn, result)
+                                except SourceReconciliationError as exc:
+                                    reconciliation = asdict(exc.report)
+                                    canonical_payload_json = exc.canonical_payload_json
+                                    logger.error(
+                                        f"候選資料 reconciliation {src} ({d_str}) 失敗: {exc}"
+                                    )
+                                    append_result(
+                                        DailyFetchResult(
+                                            decision_date=d_str,
+                                            source=src,
+                                            is_trading_day=True,
+                                            trading_day_reason=td_reason,
+                                            status="FAILED_RETRYABLE",
+                                            http_status=None,
+                                            row_count=0,
+                                            error_message=str(exc),
+                                            fetched_at=fetched_at,
+                                            reconciliation=reconciliation,
+                                        ),
+                                        canonical_payload_json=canonical_payload_json,
+                                    )
+                                    failed_count += 1
+                                    continue
+                                total_rows_inserted += int(
+                                    reconciliation["inserted_row_count"]
                                 )
-                                df.to_sql(table_name, conn, if_exists="append", index=False)
-                                conn.commit()
-                                total_rows_inserted += row_cnt
-
-                            append_result(
-                                DailyFetchResult(
-                                    decision_date=d_str,
-                                    source=src,
-                                    is_trading_day=True,
-                                    trading_day_reason=td_reason,
-                                    status="SUCCESS",
-                                    http_status=None,
-                                    row_count=row_cnt,
-                                    error_message=None,
-                                    fetched_at=fetched_at,
+                                # The context manager committed both candidate rows
+                                # and the SUCCESS checkpoint atomically.
+                                results.append(result)
+                            else:
+                                append_result(
+                                    DailyFetchResult(
+                                        decision_date=d_str,
+                                        source=src,
+                                        is_trading_day=True,
+                                        trading_day_reason=td_reason,
+                                        status="SUCCESS",
+                                        http_status=None,
+                                        row_count=row_cnt,
+                                        error_message=None,
+                                        fetched_at=fetched_at,
+                                    )
                                 )
-                            )
                             succeeded_count += 1
 
                     except Exception as exc:
@@ -564,7 +1214,9 @@ class Phase3CBackfillRunner:
                                 row_count=0,
                                 error_message=str(exc),
                                 fetched_at=fetched_at,
-                            )
+                                reconciliation=reconciliation,
+                            ),
+                            canonical_payload_json=canonical_payload_json,
                         )
                         failed_count += 1
 

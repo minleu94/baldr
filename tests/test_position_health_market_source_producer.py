@@ -154,6 +154,27 @@ def test_producer_writes_hash_bound_sources_from_verified_daily_rows(tmp_path: P
     assert all(type(item.value).__name__ == "Decimal" for item in metrics.values["paper:2330:entry-a"])
 
 
+def test_producer_rejects_baseline_from_different_decision_date(tmp_path: Path) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
+    baseline_payload["decision_date"] = "2026-09-07"
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    with pytest.raises(PositionHealthMarketSourceError, match="health_baseline_date_mismatch"):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: OBSERVED,
+        ).produce(
+            baseline_path=baseline,
+            output_dir=output,
+            decision_date=DECISION,
+            decision_at=CUTOFF,
+            observed_at=OBSERVED,
+        )
+
+
 def test_producer_keeps_unresolved_identity_out_of_source_rows(tmp_path: Path) -> None:
     baseline, quick, freshness, market, output = _make_inputs(tmp_path, with_identity=False)
     result = PositionHealthMarketSourceProducer(

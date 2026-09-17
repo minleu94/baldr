@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from scripts.scheduled import run_scheduled_decision_evidence_capture as runner
 
 
@@ -66,6 +67,29 @@ def _evidence_result(
             "diagnostics": [],
         },
         stderr="",
+    )
+
+
+def _with_command_temporal(result: runner.CliRunResult, command: list[str]) -> runner.CliRunResult:
+    def value(flag: str) -> str:
+        return command[command.index(flag) + 1]
+
+    request = EvidenceCaptureRequest(
+        source="test",
+        decision_date=value("--as-of"),
+        as_of=value("--as-of"),
+        decision_at=value("--decision-at"),
+        captured_at=value("--captured-at"),
+        capture_mode=value("--capture-mode"),
+    )
+    payload = {**dict(result.payload or {}), **request.temporal_summary}
+    payload["persisted_capture_context"] = request.capture_context
+    return runner.CliRunResult(
+        returncode=result.returncode,
+        payload=payload,
+        stderr=result.stderr,
+        timed_out=result.timed_out,
+        timeout_seconds=result.timeout_seconds,
     )
 
 
@@ -137,7 +161,7 @@ def test_successful_run_writes_atomic_status_and_uses_confirmed_existing_clis(
 
     def fake_run(command, **_kwargs):
         calls.append(list(command))
-        return next(results)
+        return _with_command_temporal(next(results), list(command))
 
     monkeypatch.setattr(runner, "_run_json_cli", fake_run)
     payload = runner.run(
@@ -159,7 +183,14 @@ def test_successful_run_writes_atomic_status_and_uses_confirmed_existing_clis(
     persisted = json.loads(status_path.read_text(encoding="utf-8"))
     assert persisted == payload
     assert payload["status"] == "passed"
-    assert payload["decision_at"] == "2026-07-30T08:30:00+08:00"
+    assert payload["calendar_decision_at"] == "2026-07-30T08:30:00+08:00"
+    assert payload["decision_at"] == "2026-07-30T09:00:00+08:00"
+    assert payload["as_of"] == "2026-07-30"
+    assert payload["captured_at"] == "2026-07-30T09:00:00+08:00"
+    assert payload["capture_mode"] == "research_only"
+    assert payload["research_only"] is True
+    assert payload["preopen_authority"] is False
+    assert payload["natural_authority"] is False
     assert payload["snapshot_saved"] is True
     assert payload["snapshot_duplicate"] is False
     assert payload["events_inserted"] == 3
@@ -176,6 +207,98 @@ def test_successful_run_writes_atomic_status_and_uses_confirmed_existing_clis(
     assert "capture_evidence_events.py" in calls[1][1]
     assert calls[1][2:4] == ["--source", "all"]
     assert not list(status_path.parent.glob("*.tmp"))
+
+
+def test_after_close_capture_passes_real_clock_and_marks_eod_research(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    results = iter(
+        (
+            _snapshot_result(saved=True, duplicate=False),
+            _evidence_result(inserted=1, duplicates=0),
+        )
+    )
+
+    def fake_run(command, **_kwargs):
+        calls.append(list(command))
+        return _with_command_temporal(next(results), list(command))
+
+    monkeypatch.setattr(runner, "_run_json_cli", fake_run)
+    payload = runner.run(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "output",
+        now=datetime.fromisoformat("2026-09-16T20:25:00+08:00"),
+        calendar=_OpenCalendar(),
+    )
+
+    assert payload["status"] == "passed"
+    assert payload["calendar_decision_at"] == "2026-09-16T08:30:00+08:00"
+    assert payload["decision_at"] == "2026-09-16T20:25:00+08:00"
+    assert payload["captured_at"] == "2026-09-16T20:25:00+08:00"
+    assert payload["capture_mode"] == "eod_research"
+    assert payload["preopen_authority"] is False
+    assert calls[0][calls[0].index("--decision-at") + 1] == "2026-09-16T20:25:00+08:00"
+    assert calls[0][calls[0].index("--as-of") + 1] == "2026-09-16"
+    assert calls[0][calls[0].index("--capture-mode") + 1] == "eod_research"
+
+
+def test_runner_fails_closed_when_child_does_not_echo_temporal_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    results = iter(
+        (
+            _snapshot_result(saved=True, duplicate=False),
+            _evidence_result(inserted=1, duplicates=0),
+        )
+    )
+
+    def fake_run(command, **_kwargs):
+        result = _with_command_temporal(next(results), list(command))
+        if "capture_decision_desk_snapshot.py" in command[1]:
+            payload = dict(result.payload or {})
+            payload["decision_at"] = "2026-09-16T08:30:00+08:00"
+            result = runner.CliRunResult(result.returncode, payload, result.stderr)
+        return result
+
+    monkeypatch.setattr(runner, "_run_json_cli", fake_run)
+    payload = runner.run(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "output",
+        now=datetime.fromisoformat("2026-09-16T20:25:00+08:00"),
+        calendar=_OpenCalendar(),
+    )
+
+    assert payload["status"] == "failed"
+    assert "temporal_receipt_mismatch:decision_at" in payload["failure_reasons"]
+    assert payload["evidence"]["status"] == "not_run"
+
+
+def test_runner_fails_closed_when_child_persisted_context_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    results = iter((_snapshot_result(saved=True, duplicate=False),))
+
+    def fake_run(command, **_kwargs):
+        result = _with_command_temporal(next(results), list(command))
+        payload = dict(result.payload or {})
+        payload.pop("persisted_capture_context", None)
+        return runner.CliRunResult(result.returncode, payload, result.stderr)
+
+    monkeypatch.setattr(runner, "_run_json_cli", fake_run)
+    payload = runner.run(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "output",
+        now=datetime.fromisoformat("2026-09-16T20:25:00+08:00"),
+        calendar=_OpenCalendar(),
+    )
+
+    assert payload["status"] == "failed"
+    assert "snapshot_persisted_capture_context_missing" in payload["failure_reasons"]
+    assert payload["evidence"]["status"] == "not_run"
 
 
 def test_snapshot_failure_stops_before_evidence_and_remains_retryable(
@@ -254,7 +377,7 @@ def test_evidence_event_failure_marks_whole_run_failed(
     monkeypatch.setattr(
         runner,
         "_run_json_cli",
-        lambda _command, **_kwargs: next(results),
+        lambda command, **_kwargs: _with_command_temporal(next(results), list(command)),
     )
 
     payload = runner.run(
@@ -313,11 +436,14 @@ def test_explicit_closed_decision_at_fails_closed_without_capture(
         output_root=tmp_path / "output",
         now=datetime.fromisoformat("2026-07-30T07:00:00+08:00"),
         decision_at=datetime.fromisoformat("2026-08-01T08:30:00+08:00"),
+        as_of="2026-08-01",
+        captured_at=datetime.fromisoformat("2026-08-01T08:30:00+08:00"),
+        calendar_decision_at=datetime.fromisoformat("2026-08-01T08:30:00+08:00"),
         calendar=_ClosedCalendar(),
     )
 
     assert payload["status"] == "skipped_non_trading_day"
-    assert payload["decision_date_basis"] == "explicit_decision_at"
+    assert payload["decision_date_basis"] == "explicit_calendar_decision_at"
     assert payload["snapshot_saved"] is False
 
 

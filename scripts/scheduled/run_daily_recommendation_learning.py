@@ -396,13 +396,16 @@ def _stored_cost_scenario(
     payload: Mapping[str, Any],
     *,
     source_path: Path,
+    allow_legacy_marker_missing_freeze: bool = False,
 ) -> tuple[RecommendationCostScenario | None, str | None]:
     """Resolve one shared-root marker without ever inventing a new lane.
 
     Early challenger pointers predate the cost-scenario fields.  They can be
     read only when their candidate identity points to a candidate document
     whose immutable hashes and cost contract agree; an unanchored marker is
-    unverifiable and remains fail-closed.
+    unverifiable and remains fail-closed.  The narrowly scoped compatibility
+    flag permits only a missing marker-level freeze field; the root guard
+    still requires a same-cohort full-freeze peer before accepting it.
     """
 
     marker_has_cost_metadata = any(
@@ -437,6 +440,7 @@ def _stored_cost_scenario(
         return _stored_cost_scenario_from_candidate_root(
             payload,
             source_path=source_path,
+            allow_missing_candidate_freeze_hash=allow_legacy_marker_missing_freeze,
         )
 
     try:
@@ -447,18 +451,30 @@ def _stored_cost_scenario(
         )
     except (TypeError, ValueError, RecommendationCostScenarioError) as exc:
         return None, f"{source_path}:invalid_cost_scenario:{type(exc).__name__}:{exc}"
+    dataset_marker_key = (
+        "candidate_dataset_hash"
+        if payload.get("candidate_dataset_hash") not in (None, "")
+        else "dataset_hash"
+    )
     anchored_identity_keys = (
         "candidate_root",
         "candidate_id",
         "candidate_freeze_hash",
         "candidate_manifest_hash",
         "candidate_artifact_hash",
-        "dataset_hash",
+        dataset_marker_key,
     )
-    if all(payload.get(key) not in (None, "") for key in anchored_identity_keys):
+    anchored_keys_missing = [
+        key for key in anchored_identity_keys if payload.get(key) in (None, "")
+    ]
+    if not anchored_keys_missing or (
+        allow_legacy_marker_missing_freeze
+        and anchored_keys_missing == ["candidate_freeze_hash"]
+    ):
         candidate_scenario, error = _stored_cost_scenario_from_candidate_root(
             payload,
             source_path=source_path,
+            allow_missing_candidate_freeze_hash=allow_legacy_marker_missing_freeze,
         )
         if error is not None or candidate_scenario is None:
             return None, error or f"{source_path}:unverifiable_cost_scenario:candidate_missing"
@@ -474,13 +490,16 @@ def _stored_cost_scenario_from_candidate_root(
     payload: Mapping[str, Any],
     *,
     source_path: Path,
+    allow_missing_candidate_freeze_hash: bool = False,
 ) -> tuple[RecommendationCostScenario | None, str | None]:
     """Recover a legacy pointer's lane from verified candidate artifacts.
 
     A pointer without scenario fields is only a historical metadata shape; it
     is not itself authority.  The candidate root must therefore provide a
     complete identity anchor and pass the same canonical manifest, artifact,
-    freeze, and cost-contract checks used by the consumer contract.
+    freeze, and cost-contract checks used by the consumer contract.  A
+    compatibility caller may omit only the marker-level freeze field; the
+    candidate document's own freeze remains mandatory and is recomputed.
     """
 
     candidate_root_value = payload.get("candidate_root")
@@ -503,18 +522,28 @@ def _stored_cost_scenario_from_candidate_root(
         for marker_key, _ in identity_pairs
         if payload.get(marker_key) in (None, "")
     ]
-    if missing_identity:
+    if missing_identity and not (
+        allow_missing_candidate_freeze_hash
+        and missing_identity == ["candidate_freeze_hash"]
+    ):
         return (
             None,
             f"{source_path}:unverifiable_cost_scenario:incomplete_candidate_identity:"
             f"{','.join(missing_identity)}",
         )
-    for marker_key in (
+    hash_marker_keys = (
         "candidate_freeze_hash",
         "candidate_manifest_hash",
         "candidate_artifact_hash",
-        "dataset_hash",
-    ):
+        dataset_marker_key,
+    )
+    for marker_key in hash_marker_keys:
+        if (
+            marker_key == "candidate_freeze_hash"
+            and allow_missing_candidate_freeze_hash
+            and payload.get(marker_key) in (None, "")
+        ):
+            continue
         if not _is_sha256_digest(payload.get(marker_key)):
             return (
                 None,
@@ -540,6 +569,12 @@ def _stored_cost_scenario_from_candidate_root(
     for marker_key, candidate_key in identity_pairs:
         expected = payload.get(marker_key)
         actual = candidate_metadata.get(candidate_key)
+        if (
+            marker_key == "candidate_freeze_hash"
+            and allow_missing_candidate_freeze_hash
+            and expected in (None, "")
+        ):
+            continue
         if actual in (None, "") or str(actual) != str(expected):
             return (
                 None,
@@ -709,7 +744,9 @@ def _cost_scenario_root_conflict(
     intentionally shared legacy paths.  A mismatched lane must therefore use
     another explicit output root; silently replacing those files would make a
     fixed-cost champion appear to belong to an estimated-cost experiment (or
-    the reverse).
+    the reverse).  A legacy marker missing only its marker-level freeze hash
+    is accepted only after a same-cohort full-freeze anchor and the immutable
+    latest-status receipt agree on candidate identity and path.
     """
 
     root = Path(output_root).resolve() / "recommendation_learning"
@@ -723,7 +760,14 @@ def _cost_scenario_root_conflict(
         marker_paths.extend(sorted(decisions_root.glob("recommendation-calibration-*.json"))[:256])
     seen: set[str] = set()
     unverified_legacy_markers: list[Path] = []
-    verified_markers: list[tuple[Path, RecommendationCostScenario]] = []
+    verified_markers: list[
+        tuple[
+            Path,
+            RecommendationCostScenario,
+            tuple[str, str, str, str, str, str] | None,
+            bool,
+        ]
+    ] = []
     for marker_path in marker_paths:
         if not marker_path.is_file():
             continue
@@ -743,18 +787,83 @@ def _cost_scenario_root_conflict(
         ):
             unverified_legacy_markers.append(marker_path)
             continue
-        scenario, error = _stored_cost_scenario(payload, source_path=marker_path)
+        receipt_anchor_payload: Mapping[str, Any] | None = None
+        receipt_anchor_path: Path | None = None
+        receipt_anchor_scenario: RecommendationCostScenario | None = None
+        scenario, error = _stored_cost_scenario(
+            payload,
+            source_path=marker_path,
+            allow_legacy_marker_missing_freeze=True,
+        )
         if error is not None or scenario is None:
             return f"cost_scenario_root_conflict:{error or marker_path}"
         if marker_path == root / "latest_status.json":
-            receipt_error = _verify_latest_status_receipt_anchor(
+            (
+                receipt_anchor_path,
+                receipt_anchor_payload,
+                receipt_anchor_scenario,
+                receipt_error,
+            ) = _load_latest_status_receipt_anchor(
                 payload,
                 scenario=scenario,
                 source_path=marker_path,
             )
             if receipt_error is not None:
                 return f"cost_scenario_root_conflict:{receipt_error}"
-        verified_markers.append((marker_path, scenario))
+        marker_missing_freeze = (
+            payload.get("candidate_freeze_hash") in (None, "")
+            and payload.get("candidate_root") not in (None, "")
+        )
+        marker_anchor, anchor_error = _candidate_marker_anchor(
+            payload,
+            source_path=marker_path,
+            require_cohort=marker_missing_freeze,
+        )
+        if anchor_error is not None:
+            return f"cost_scenario_root_conflict:{anchor_error}"
+        verified_markers.append(
+            (marker_path, scenario, marker_anchor, marker_missing_freeze)
+        )
+        if (
+            receipt_anchor_path is not None
+            and receipt_anchor_payload is not None
+            and receipt_anchor_scenario is not None
+        ):
+            receipt_missing_freeze = (
+                receipt_anchor_payload.get("candidate_freeze_hash") in (None, "")
+                and receipt_anchor_payload.get("candidate_root") not in (None, "")
+            )
+            receipt_anchor, receipt_anchor_error = _candidate_marker_anchor(
+                receipt_anchor_payload,
+                source_path=receipt_anchor_path,
+                require_cohort=receipt_missing_freeze,
+            )
+            if receipt_anchor_error is not None:
+                return f"cost_scenario_root_conflict:{receipt_anchor_error}"
+            if marker_anchor != receipt_anchor:
+                return (
+                    "cost_scenario_root_conflict:latest_status_receipt_anchor_"
+                    f"mismatch:{marker_path}:{receipt_anchor_path}"
+                )
+            marker_freeze = payload.get("candidate_freeze_hash")
+            receipt_freeze = receipt_anchor_payload.get("candidate_freeze_hash")
+            if (
+                marker_freeze not in (None, "")
+                and receipt_freeze not in (None, "")
+                and str(marker_freeze) != str(receipt_freeze)
+            ):
+                return (
+                    "cost_scenario_root_conflict:latest_status_receipt_candidate_"
+                    f"freeze_hash_mismatch:{marker_path}:{receipt_anchor_path}"
+                )
+            verified_markers.append(
+                (
+                    receipt_anchor_path,
+                    receipt_anchor_scenario,
+                    receipt_anchor,
+                    receipt_missing_freeze,
+                )
+            )
         marker_identity = scenario.scenario_hash
         if marker_identity in seen:
             continue
@@ -765,6 +874,22 @@ def _cost_scenario_root_conflict(
                 f"{scenario.scenario_id}:{scenario.scenario_hash}; requested="
                 f"{requested_scenario.scenario_id}:{requested_scenario.scenario_hash}; "
                 "use a different --output-root for an isolated cost lane"
+            )
+    for marker_path, scenario, marker_anchor, needs_cross_anchor in verified_markers:
+        if not needs_cross_anchor:
+            continue
+        if marker_anchor is None or not any(
+            peer_path != marker_path
+            and not peer_needs_cross_anchor
+            and peer_anchor is not None
+            and peer_anchor == marker_anchor
+            and peer_scenario.scenario_hash == scenario.scenario_hash
+            for peer_path, peer_scenario, peer_anchor, peer_needs_cross_anchor in verified_markers
+        ):
+            return (
+                "cost_scenario_root_conflict:legacy_marker_missing_candidate_"
+                "freeze_hash_requires_verified_same_cohort_anchor:"
+                f"{marker_path}"
             )
     if unverified_legacy_markers:
         if requested_scenario.is_estimated:
@@ -781,7 +906,7 @@ def _cost_scenario_root_conflict(
             )
         if not any(
             scenario.scenario_hash == requested_scenario.scenario_hash
-            for _, scenario in verified_markers
+            for _, scenario, _, _ in verified_markers
         ):
             return (
                 "cost_scenario_root_conflict:legacy_decision_receipt_has_no_"
@@ -789,6 +914,97 @@ def _cost_scenario_root_conflict(
                 f"{unverified_legacy_markers[0]}"
             )
     return None
+
+
+def _candidate_marker_anchor(
+    payload: Mapping[str, Any],
+    *,
+    source_path: Path,
+    require_cohort: bool,
+) -> tuple[tuple[str, str, str, str, str, str] | None, str | None]:
+    """Return the identity/cohort anchor used for legacy compatibility.
+
+    A missing-freeze marker may only be accepted when the remaining candidate
+    identity and its run scope can be compared with a separate full-freeze
+    marker.  Full historical pointers may omit ``run_scope`` and therefore
+    return no cross-anchor value; their existing candidate-root validation
+    remains unchanged.
+    """
+
+    candidate_id = payload.get("candidate_id")
+    candidate_root_value = payload.get("candidate_root")
+    candidate_manifest_hash = payload.get("candidate_manifest_hash")
+    candidate_artifact_hash = payload.get("candidate_artifact_hash")
+    dataset_marker_key = (
+        "candidate_dataset_hash"
+        if payload.get("candidate_dataset_hash") not in (None, "")
+        else "dataset_hash"
+    )
+    candidate_dataset_hash = payload.get(dataset_marker_key)
+    missing = [
+        key
+        for key, value in (
+            ("candidate_id", candidate_id),
+            ("candidate_root", candidate_root_value),
+            ("candidate_manifest_hash", candidate_manifest_hash),
+            ("candidate_artifact_hash", candidate_artifact_hash),
+            (dataset_marker_key, candidate_dataset_hash),
+        )
+        if value in (None, "")
+    ]
+    run_scope = payload.get("run_scope")
+    if require_cohort and run_scope in (None, ""):
+        missing.append("run_scope")
+    if missing:
+        if require_cohort:
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:incomplete_candidate_anchor:"
+                f"{','.join(missing)}",
+            )
+        return None, None
+    if run_scope in (None, ""):
+        return None, None
+    if not isinstance(candidate_id, str) or not candidate_id.strip():
+        return None, f"{source_path}:unverifiable_cost_scenario:invalid_candidate_anchor:candidate_id"
+    if not isinstance(candidate_root_value, (str, Path)) or not str(candidate_root_value).strip():
+        return None, f"{source_path}:unverifiable_cost_scenario:invalid_candidate_anchor:candidate_root"
+    if not _is_sha256_digest(candidate_manifest_hash):
+        return None, (
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_anchor:"
+            "candidate_manifest_hash"
+        )
+    if not _is_sha256_digest(candidate_artifact_hash):
+        return None, (
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_anchor:"
+            "candidate_artifact_hash"
+        )
+    if not _is_sha256_digest(candidate_dataset_hash):
+        return None, (
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_anchor:"
+            f"{dataset_marker_key}"
+        )
+    if not isinstance(run_scope, str) or not run_scope.strip():
+        return None, f"{source_path}:unverifiable_cost_scenario:invalid_candidate_anchor:run_scope"
+    try:
+        canonical_candidate_root = str(Path(str(candidate_root_value)).expanduser().resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
+        return (
+            None,
+            f"{source_path}:unverifiable_cost_scenario:invalid_candidate_anchor:"
+            f"candidate_root:{type(exc).__name__}",
+        )
+    return (
+        (
+            candidate_id,
+            canonical_candidate_root,
+            str(candidate_manifest_hash),
+            str(candidate_artifact_hash),
+            str(candidate_dataset_hash),
+            run_scope,
+        ),
+        None,
+    )
 
 
 def _is_unverifiable_legacy_decision_receipt(payload: Mapping[str, Any]) -> bool:
@@ -845,6 +1061,90 @@ def _is_unverifiable_rule_only_pointer(payload: Mapping[str, Any]) -> bool:
     )
 
 
+def _load_latest_status_receipt_anchor(
+    payload: Mapping[str, Any],
+    *,
+    scenario: RecommendationCostScenario,
+    source_path: Path,
+) -> tuple[
+    Path | None,
+    Mapping[str, Any] | None,
+    RecommendationCostScenario | None,
+    str | None,
+]:
+    """Load and validate the immutable receipt referenced by latest status."""
+
+    if payload.get("schema_version") != "daily-recommendation-learning-receipt.v1":
+        return None, None, None, None
+    receipt_value = payload.get("receipt_path")
+    if not isinstance(receipt_value, str) or not receipt_value.strip():
+        return (
+            None,
+            None,
+            None,
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_missing",
+        )
+    receipt_path = Path(receipt_value).expanduser().resolve()
+    try:
+        receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return (
+            None,
+            None,
+            None,
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_unreadable:"
+            f"{type(exc).__name__}",
+        )
+    if not isinstance(receipt_payload, Mapping):
+        return (
+            None,
+            None,
+            None,
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_invalid",
+        )
+    if str(receipt_payload.get("receipt_path") or "") != str(receipt_path):
+        return (
+            None,
+            None,
+            None,
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_identity_mismatch",
+        )
+    receipt_scenario, error = _stored_cost_scenario(
+        receipt_payload,
+        source_path=receipt_path,
+        allow_legacy_marker_missing_freeze=True,
+    )
+    if error is not None or receipt_scenario is None:
+        return (
+            receipt_path,
+            receipt_payload,
+            None,
+            error or f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_lane_missing",
+        )
+    if receipt_scenario.scenario_hash != scenario.scenario_hash:
+        return (
+            receipt_path,
+            receipt_payload,
+            receipt_scenario,
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_lane_mismatch",
+        )
+    if receipt_payload.get("formal_order_allowed") is not False:
+        return (
+            receipt_path,
+            receipt_payload,
+            receipt_scenario,
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_formal_flag_invalid",
+        )
+    if receipt_payload.get("shadow_only") is not True:
+        return (
+            receipt_path,
+            receipt_payload,
+            receipt_scenario,
+            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_shadow_flag_invalid",
+        )
+    return receipt_path, receipt_payload, receipt_scenario, None
+
+
 def _verify_latest_status_receipt_anchor(
     payload: Mapping[str, Any],
     *,
@@ -853,36 +1153,12 @@ def _verify_latest_status_receipt_anchor(
 ) -> str | None:
     """Ensure latest-status lane metadata is backed by its immutable receipt."""
 
-    if payload.get("schema_version") != "daily-recommendation-learning-receipt.v1":
-        return None
-    receipt_value = payload.get("receipt_path")
-    if not isinstance(receipt_value, str) or not receipt_value.strip():
-        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_missing"
-    receipt_path = Path(receipt_value).expanduser().resolve()
-    try:
-        receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        return (
-            f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_unreadable:"
-            f"{type(exc).__name__}"
-        )
-    if not isinstance(receipt_payload, Mapping):
-        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_invalid"
-    if str(receipt_payload.get("receipt_path") or "") != str(receipt_path):
-        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_identity_mismatch"
-    receipt_scenario, error = _stored_cost_scenario(
-        receipt_payload,
-        source_path=receipt_path,
+    _, _, _, error = _load_latest_status_receipt_anchor(
+        payload,
+        scenario=scenario,
+        source_path=source_path,
     )
-    if error is not None or receipt_scenario is None:
-        return error or f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_lane_missing"
-    if receipt_scenario.scenario_hash != scenario.scenario_hash:
-        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_lane_mismatch"
-    if receipt_payload.get("formal_order_allowed") is not False:
-        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_formal_flag_invalid"
-    if receipt_payload.get("shadow_only") is not True:
-        return f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_shadow_flag_invalid"
-    return None
+    return error
 
 
 def _scenario_cli_metadata(scenario: RecommendationCostScenario) -> dict[str, Any]:

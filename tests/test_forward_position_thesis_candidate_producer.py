@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -28,6 +28,10 @@ from app_module.position_thesis_contract import (
     PositionInvalidationRule,
     PositionThesisContract,
 )
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    write_twse_calendar_cache,
+)
 
 
 UTC = timezone.utc
@@ -46,6 +50,8 @@ def _recommendation(
     *,
     result_id: str = "scheduled_rec_20260908_051000",
     created_at: str = "2026-09-08T05:10:00-07:00",
+    decision_at: str | None = None,
+    available_at: str | None = None,
     decision_date: str = "2026-09-08",
     stock_code: str = "2330",
 ) -> dict[str, object]:
@@ -74,6 +80,10 @@ def _recommendation(
                 "threshold_mode": "fixed",
             }
         ],
+        "run_context": {
+            "decision_at": decision_at or created_at,
+            "available_at": available_at or created_at,
+        },
     }
 
 
@@ -104,6 +114,44 @@ def _policy(calendar_path: Path) -> dict[str, object]:
         "holding_horizon_trading_days": 3,
         "source_trace": ["rule:fixture-v1", "policy:rule-policy-v1"],
     }
+
+
+def _write_official_calendar_cache(
+    path: Path,
+    *,
+    captured_at: datetime,
+    year: int = 2026,
+) -> Path:
+    roc_year = year - 1911
+    raw = json.dumps(
+        [
+            {
+                "Name": "中華民國開國紀念日",
+                "Date": f"{roc_year:03d}0101",
+                "Weekday": "四",
+                "Description": "依規定放假1日。",
+            },
+            {
+                "Name": "國曆新年開始交易日",
+                "Date": f"{roc_year:03d}0102",
+                "Weekday": "五",
+                "Description": "國曆新年開始交易。",
+            },
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    requested_at = captured_at - timedelta(seconds=1)
+    cache = build_twse_calendar_cache(
+        calendar_year=year,
+        raw_response=raw,
+        requested_at=requested_at,
+        captured_at=captured_at,
+        response_status=200,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_twse_calendar_cache(path, cache, allowed_root=path.parents[1])
+    return path
 
 
 def _baseline(
@@ -287,9 +335,14 @@ def test_missing_policy_preserves_observation_and_never_invents_thesis(tmp_path:
 def test_explicit_policy_is_hash_bound_and_calendar_computes_review_date(tmp_path: Path) -> None:
     source = _write_json(tmp_path / "recommendation.json", _recommendation())
     calendar_path = _write_json(tmp_path / "calendar.json", {"captured": "fixture"})
+    observed_calendar_path = _write_json(
+        tmp_path / "calendar-renewed.json",
+        {"captured": "renewed-fixture"},
+    )
     policy_path = _write_json(tmp_path / "policy.json", _policy(calendar_path))
     producer = ForwardPositionThesisCandidateProducer(
         tmp_path / "forward",
+        calendar_cache_path=observed_calendar_path,
         calendar=_WeekdayCalendar(),
         now_provider=lambda: datetime(2026, 9, 8, 13, 0, tzinfo=UTC),
     )
@@ -306,6 +359,95 @@ def test_explicit_policy_is_hash_bound_and_calendar_computes_review_date(tmp_pat
     assert packet["invalidation"]["policy_path"] == str(policy_path.resolve())
     assert packet["invalidation"]["policy_actor"] == "forward_position_policy_producer"
     assert packet["invalidation"]["calendar_cache_hash"] == _policy(calendar_path)["calendar_cache_hash"]
+    assert packet["invalidation"]["calendar_cache_path"] == str(calendar_path.resolve())
+    assert packet["invalidation"]["calendar_observed_path"] == str(
+        observed_calendar_path.resolve()
+    )
+    assert packet["invalidation"]["calendar_observed_sha256"] == (
+        "sha256:" + hashlib.sha256(observed_calendar_path.read_bytes()).hexdigest()
+    )
+    assert receipt["policy"]["calendar_cache_path"] == str(calendar_path.resolve())
+    assert receipt["policy"]["calendar_observed_path"] == str(
+        observed_calendar_path.resolve()
+    )
+
+
+def test_direct_producer_rejects_official_calendar_captured_after_decision_clock(
+    tmp_path: Path,
+) -> None:
+    decision_at = datetime(2026, 9, 8, 12, 10, tzinfo=UTC)
+    source = _write_json(
+        tmp_path / "recommendation.json",
+        _recommendation(
+            created_at="2026-09-08T05:10:05-07:00",
+            decision_at="2026-09-08T05:10:00-07:00",
+            available_at="2026-09-08T04:59:00-07:00",
+        ),
+    )
+    policy_calendar = _write_official_calendar_cache(
+        tmp_path / "calendar-policy.json",
+        captured_at=decision_at - timedelta(minutes=5),
+    )
+    observed_calendar = _write_official_calendar_cache(
+        tmp_path / "calendar-observed.json",
+        captured_at=decision_at + timedelta(minutes=1),
+    )
+    policy_path = _write_json(tmp_path / "policy.json", _policy(policy_calendar))
+    producer = ForwardPositionThesisCandidateProducer(
+        tmp_path / "forward",
+        calendar_cache_path=observed_calendar,
+        calendar=_WeekdayCalendar(),
+        now_provider=lambda: datetime(2026, 9, 8, 12, 20, tzinfo=UTC),
+    )
+
+    blocked = producer.produce(source, policy_path=policy_path)
+
+    assert blocked["status"] == "blocked"
+    assert any(
+        "calendar_observation_captured_after_decision_at" in item
+        for item in blocked["blockers"]
+    )
+    assert not list((tmp_path / "forward" / "2026-09-08").glob("*.json"))
+
+
+def test_direct_producer_allows_save_delay_after_decision_when_inputs_are_causal(
+    tmp_path: Path,
+) -> None:
+    decision_at = datetime(2026, 9, 8, 12, 10, tzinfo=UTC)
+    source = _write_json(
+        tmp_path / "recommendation.json",
+        _recommendation(
+            created_at="2026-09-08T05:10:05-07:00",
+            decision_at="2026-09-08T05:10:00-07:00",
+            available_at="2026-09-08T04:59:00-07:00",
+        ),
+    )
+    policy_calendar = _write_official_calendar_cache(
+        tmp_path / "calendar-policy.json",
+        captured_at=decision_at - timedelta(minutes=5),
+    )
+    observed_calendar = _write_official_calendar_cache(
+        tmp_path / "calendar-observed.json",
+        captured_at=decision_at - timedelta(minutes=1),
+    )
+    policy_path = _write_json(tmp_path / "policy.json", _policy(policy_calendar))
+    producer = ForwardPositionThesisCandidateProducer(
+        tmp_path / "forward",
+        calendar_cache_path=observed_calendar,
+        calendar=_WeekdayCalendar(),
+        now_provider=lambda: datetime(2026, 9, 8, 12, 20, tzinfo=UTC),
+    )
+
+    receipt = producer.produce(source, policy_path=policy_path)
+
+    assert receipt["status"] == "passed"
+    packet = json.loads(
+        Path(receipt["candidates"][0]["path"]).read_text(encoding="utf-8")
+    )
+    recommendation_source = packet["recommendation_source"]
+    assert recommendation_source["decision_at"] == decision_at.isoformat()
+    assert recommendation_source["available_at"] == "2026-09-08T11:59:00+00:00"
+    assert recommendation_source["created_at"] == "2026-09-08T12:10:05+00:00"
 
 
 def test_binding_rebuilds_machine_policy_contract_from_verified_new_entry(
@@ -313,9 +455,14 @@ def test_binding_rebuilds_machine_policy_contract_from_verified_new_entry(
 ) -> None:
     source = _write_json(tmp_path / "recommendation.json", _recommendation())
     calendar_path = _write_json(tmp_path / "calendar.json", {"captured": "fixture"})
+    observed_calendar_path = _write_json(
+        tmp_path / "calendar-renewed.json",
+        {"captured": "renewed-fixture"},
+    )
     policy_path = _write_json(tmp_path / "policy.json", _policy(calendar_path))
     producer = ForwardPositionThesisCandidateProducer(
         tmp_path / "forward",
+        calendar_cache_path=observed_calendar_path,
         calendar=_WeekdayCalendar(),
         now_provider=lambda: datetime(2026, 9, 8, 13, 0, tzinfo=UTC),
     )
@@ -364,6 +511,14 @@ def test_binding_rebuilds_machine_policy_contract_from_verified_new_entry(
     assert any(item.startswith("policy_file_sha256:sha256:") for item in contract.source_trace)
     assert any(
         item.startswith("recommendation_content_sha256:sha256:")
+        for item in contract.source_trace
+    )
+    assert any(
+        item == f"calendar_observed_path:{observed_calendar_path.resolve()}"
+        for item in contract.source_trace
+    )
+    assert any(
+        item.startswith("calendar_observed_sha256:sha256:")
         for item in contract.source_trace
     )
     assert "forward_position_thesis_binding_machine_policy_available_human_approval_required" in consumed.warnings

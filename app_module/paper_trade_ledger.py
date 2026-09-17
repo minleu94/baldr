@@ -11,9 +11,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 
 PAPER_TRADE_LEDGER_SCHEMA_VERSION = "paper-trade-ledger.v1"
@@ -28,6 +29,7 @@ PAPER_TRADE_SIDES = frozenset({"buy", "sell"})
 # single-portfolio consumer still rejects cross-portfolio input explicitly.
 PAPER_TRADE_SOURCE_IDENTITY_SCOPE = "portfolio_id:source_event_id"
 MONEY_QUANTUM = Decimal("0.01")
+PAPER_TRADE_TRANSITION_SCHEMA_VERSION = "paper-trade-transition.v1"
 
 
 @dataclass(frozen=True)
@@ -204,6 +206,160 @@ class PaperTradeFill:
         }
 
 
+@dataclass(frozen=True)
+class PaperTradeTransition:
+    """Immutable batch boundary used to rebuild canonical portfolio turnover.
+
+    ``turnover_bp`` on :class:`PaperTradeFill` remains a gross-notional audit
+    field.  The allocation policy consumes a transition reconstructed from
+    pre/post quantities and a single common NAV/price basis, so a sell and a
+    buy in the same batch cannot be accidentally treated as two independent
+    target rebalances.
+    """
+
+    transition_id: str
+    batch_id: str
+    portfolio_id: str
+    event_date: str
+    fill_ids: tuple[str, ...]
+    pre_cash: Decimal
+    pre_total_value: Decimal
+    post_cash: Decimal
+    post_total_value: Decimal
+    common_nav: Decimal
+    common_prices: Mapping[str, Decimal]
+    pre_positions: Mapping[str, int]
+    post_positions: Mapping[str, int]
+    source_type: str = "paper_daily_execution_delayed_eod_replay_v1"
+    research_only: bool = True
+    broker_order_allowed: bool = False
+    auto_rebalance_allowed: bool = False
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "transition_id",
+            "batch_id",
+            "portfolio_id",
+            "event_date",
+            "source_type",
+        ):
+            if not str(getattr(self, field_name)).strip():
+                raise ValueError(f"{field_name} is required")
+        try:
+            parsed_date = date.fromisoformat(self.event_date)
+        except ValueError as exc:
+            raise ValueError("transition event_date must be an ISO date") from exc
+        if parsed_date.isoformat() != self.event_date:
+            raise ValueError("transition event_date must use YYYY-MM-DD")
+        if not self.fill_ids:
+            raise ValueError("transition fill_ids are required")
+        if any(not isinstance(value, str) or not value.strip() for value in self.fill_ids):
+            raise ValueError("transition fill_ids must be non-empty strings")
+        if len(set(self.fill_ids)) != len(self.fill_ids):
+            raise ValueError("transition fill_ids must be unique")
+        for field_name in (
+            "pre_cash",
+            "pre_total_value",
+            "post_cash",
+            "post_total_value",
+            "common_nav",
+        ):
+            value = getattr(self, field_name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, Decimal)
+                or not value.is_finite()
+                or value < Decimal("0")
+            ):
+                raise ValueError(f"{field_name} must be a finite non-negative Decimal")
+        if self.pre_total_value <= Decimal("0"):
+            raise ValueError("pre_total_value must be positive")
+        if self.post_total_value <= Decimal("0"):
+            raise ValueError("post_total_value must be positive")
+        if self.common_nav <= Decimal("0"):
+            raise ValueError("common_nav must be positive")
+        _validate_transition_prices(self.common_prices)
+        _validate_transition_positions(self.pre_positions, "pre_positions")
+        _validate_transition_positions(self.post_positions, "post_positions")
+        required_symbols = set(self.pre_positions) | set(self.post_positions)
+        if not required_symbols.issubset(self.common_prices):
+            raise ValueError("transition common_prices do not cover positions")
+        if not self.source_type.startswith("paper_"):
+            raise ValueError("transition source_type must be paper_*")
+        if self.research_only is not True:
+            raise ValueError("paper transitions must remain research_only")
+        if self.broker_order_allowed is not False:
+            raise ValueError("paper transitions cannot authorize broker orders")
+        if self.auto_rebalance_allowed is not False:
+            raise ValueError("paper transitions cannot authorize auto rebalance")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": PAPER_TRADE_TRANSITION_SCHEMA_VERSION,
+            "transition_id": self.transition_id,
+            "batch_id": self.batch_id,
+            "portfolio_id": self.portfolio_id,
+            "event_date": self.event_date,
+            "fill_ids": list(self.fill_ids),
+            "pre_cash": str(self.pre_cash),
+            "pre_total_value": str(self.pre_total_value),
+            "post_cash": str(self.post_cash),
+            "post_total_value": str(self.post_total_value),
+            "common_nav": str(self.common_nav),
+            "common_prices": {
+                symbol: str(price)
+                for symbol, price in sorted(self.common_prices.items())
+            },
+            "pre_positions": dict(sorted(self.pre_positions.items())),
+            "post_positions": dict(sorted(self.post_positions.items())),
+            "source_type": self.source_type,
+            "research_only": self.research_only,
+            "broker_order_allowed": self.broker_order_allowed,
+            "auto_rebalance_allowed": self.auto_rebalance_allowed,
+        }
+
+
+def _validate_transition_prices(value: Mapping[str, Decimal]) -> None:
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError("transition common_prices are required")
+    for symbol, price in value.items():
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("transition common_prices symbols are invalid")
+        if (
+            isinstance(price, bool)
+            or not isinstance(price, Decimal)
+            or not price.is_finite()
+            or price <= Decimal("0")
+        ):
+            raise ValueError("transition common_prices must be positive Decimals")
+
+
+def _validate_transition_positions(
+    value: Mapping[str, int],
+    field_name: str,
+) -> None:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field_name} must be a mapping")
+    for symbol, quantity in value.items():
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError(f"{field_name} symbols are invalid")
+        if (
+            isinstance(quantity, bool)
+            or not isinstance(quantity, int)
+            or quantity < 0
+        ):
+            raise ValueError(f"{field_name} quantities must be non-negative integers")
+
+
+def _canonical_transition_json(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 class PaperTradeLedgerRepository:
     """Append-only SQLite writer for explicit paper fill events.
 
@@ -224,6 +380,36 @@ class PaperTradeLedgerRepository:
         entries = tuple(fills)
         if not entries:
             raise ValueError("at least one paper trade fill is required")
+        self._append_entries(entries, transition=None)
+
+    def append_batch(
+        self,
+        fills: Iterable[PaperTradeFill],
+        transition: PaperTradeTransition,
+    ) -> None:
+        """Atomically append fills with their immutable batch transition."""
+
+        entries = tuple(fills)
+        if not entries:
+            raise ValueError("at least one paper trade fill is required")
+        if transition.portfolio_id != entries[0].portfolio_id:
+            raise ValueError("paper transition portfolio does not match fills")
+        if set(transition.fill_ids) != {item.fill_id for item in entries}:
+            raise ValueError("paper transition fill identity does not match fills")
+        if any(
+            item.portfolio_id != transition.portfolio_id
+            or item.event_date != transition.event_date
+            for item in entries
+        ):
+            raise ValueError("paper transition date or portfolio does not match fills")
+        self._append_entries(entries, transition=transition)
+
+    def _append_entries(
+        self,
+        entries: tuple[PaperTradeFill, ...],
+        *,
+        transition: PaperTradeTransition | None,
+    ) -> None:
         fill_ids = tuple(item.fill_id for item in entries)
         source_event_keys = tuple(
             (item.portfolio_id, item.source_event_id) for item in entries
@@ -304,6 +490,46 @@ class PaperTradeLedgerRepository:
                             int(item.auto_rebalance_allowed),
                         )
                         for item in entries
+                ),
+            )
+            if transition is not None:
+                transition_values = transition.to_dict()
+                connection.execute(
+                    """
+                    INSERT INTO paper_trade_transitions (
+                        schema_version, transition_id, batch_id, portfolio_id,
+                        event_date, fill_ids_json, pre_cash, pre_total_value,
+                        post_cash, post_total_value, common_nav,
+                        common_prices_json, pre_positions_json,
+                        post_positions_json, source_type, research_only,
+                        broker_order_allowed, auto_rebalance_allowed
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        PAPER_TRADE_TRANSITION_SCHEMA_VERSION,
+                        transition.transition_id,
+                        transition.batch_id,
+                        transition.portfolio_id,
+                        transition.event_date,
+                        _canonical_transition_json(transition_values["fill_ids"]),
+                        str(transition.pre_cash),
+                        str(transition.pre_total_value),
+                        str(transition.post_cash),
+                        str(transition.post_total_value),
+                        str(transition.common_nav),
+                        _canonical_transition_json(
+                            transition_values["common_prices"]
+                        ),
+                        _canonical_transition_json(
+                            transition_values["pre_positions"]
+                        ),
+                        _canonical_transition_json(
+                            transition_values["post_positions"]
+                        ),
+                        transition.source_type,
+                        int(transition.research_only),
+                        int(transition.broker_order_allowed),
+                        int(transition.auto_rebalance_allowed),
                     ),
                 )
             connection.commit()
@@ -315,6 +541,34 @@ class PaperTradeLedgerRepository:
             raise
         finally:
             connection.close()
+
+    def list_transitions(
+        self,
+        *,
+        portfolio_id: str = "paper-main",
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> tuple[PaperTradeTransition, ...]:
+        clauses = ["portfolio_id = ?"]
+        params: list[Any] = [portfolio_id]
+        if start_date is not None:
+            clauses.append("event_date >= ?")
+            params.append(start_date)
+        if end_date is not None:
+            clauses.append("event_date <= ?")
+            params.append(end_date)
+        query = (
+            "SELECT * FROM paper_trade_transitions WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY event_date, transition_id"
+        )
+        connection = sqlite3.connect(self.db_path)
+        try:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(query, tuple(params)).fetchall()
+        finally:
+            connection.close()
+        return tuple(_row_to_transition(row) for row in rows)
 
     def list(
         self,
@@ -378,6 +632,28 @@ class PaperTradeLedgerRepository:
                     ON paper_trade_ledger (portfolio_id, event_date, fill_id);
                 CREATE INDEX IF NOT EXISTS idx_paper_trade_ledger_source_event
                     ON paper_trade_ledger (source_event_id);
+                CREATE TABLE IF NOT EXISTS paper_trade_transitions (
+                    schema_version TEXT NOT NULL,
+                    transition_id TEXT PRIMARY KEY,
+                    batch_id TEXT NOT NULL,
+                    portfolio_id TEXT NOT NULL,
+                    event_date TEXT NOT NULL,
+                    fill_ids_json TEXT NOT NULL,
+                    pre_cash TEXT NOT NULL,
+                    pre_total_value TEXT NOT NULL,
+                    post_cash TEXT NOT NULL,
+                    post_total_value TEXT NOT NULL,
+                    common_nav TEXT NOT NULL,
+                    common_prices_json TEXT NOT NULL,
+                    pre_positions_json TEXT NOT NULL,
+                    post_positions_json TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    research_only INTEGER NOT NULL,
+                    broker_order_allowed INTEGER NOT NULL,
+                    auto_rebalance_allowed INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_paper_trade_transitions_portfolio_date
+                    ON paper_trade_transitions (portfolio_id, event_date, transition_id);
                 """
             )
         finally:
@@ -413,10 +689,63 @@ def _row_to_fill(row: sqlite3.Row) -> PaperTradeFill:
     )
 
 
+def _row_to_transition(row: sqlite3.Row) -> PaperTradeTransition:
+    if row["schema_version"] != PAPER_TRADE_TRANSITION_SCHEMA_VERSION:
+        raise ValueError("transition schema_version is not governed")
+
+    def decode_json(field_name: str) -> object:
+        try:
+            return json.loads(str(row[field_name]))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(f"transition {field_name} is invalid JSON") from exc
+
+    fill_ids_value = decode_json("fill_ids_json")
+    common_prices_value = decode_json("common_prices_json")
+    pre_positions_value = decode_json("pre_positions_json")
+    post_positions_value = decode_json("post_positions_json")
+    if (
+        not isinstance(fill_ids_value, list)
+        or not isinstance(common_prices_value, dict)
+        or not isinstance(pre_positions_value, dict)
+        or not isinstance(post_positions_value, dict)
+    ):
+        raise ValueError("transition JSON fields have invalid shapes")
+    return PaperTradeTransition(
+        transition_id=str(row["transition_id"]),
+        batch_id=str(row["batch_id"]),
+        portfolio_id=str(row["portfolio_id"]),
+        event_date=str(row["event_date"]),
+        fill_ids=tuple(str(item) for item in fill_ids_value),
+        pre_cash=Decimal(str(row["pre_cash"])),
+        pre_total_value=Decimal(str(row["pre_total_value"])),
+        post_cash=Decimal(str(row["post_cash"])),
+        post_total_value=Decimal(str(row["post_total_value"])),
+        common_nav=Decimal(str(row["common_nav"])),
+        common_prices={
+            str(symbol): Decimal(str(price))
+            for symbol, price in common_prices_value.items()
+        },
+        pre_positions={
+            str(symbol): int(quantity)
+            for symbol, quantity in pre_positions_value.items()
+        },
+        post_positions={
+            str(symbol): int(quantity)
+            for symbol, quantity in post_positions_value.items()
+        },
+        source_type=str(row["source_type"]),
+        research_only=bool(row["research_only"]),
+        broker_order_allowed=bool(row["broker_order_allowed"]),
+        auto_rebalance_allowed=bool(row["auto_rebalance_allowed"]),
+    )
+
+
 __all__ = [
     "PAPER_TRADE_EVENT_STATUSES",
     "PAPER_TRADE_LEDGER_SCHEMA_VERSION",
     "PAPER_TRADE_SOURCE_IDENTITY_SCOPE",
+    "PAPER_TRADE_TRANSITION_SCHEMA_VERSION",
     "PaperTradeFill",
     "PaperTradeLedgerRepository",
+    "PaperTradeTransition",
 ]

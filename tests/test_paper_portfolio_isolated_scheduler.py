@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 import json
 from pathlib import Path
@@ -9,6 +9,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    write_twse_calendar_cache,
+)
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
     PaperPortfolioSnapshot,
@@ -18,19 +23,25 @@ from scripts.scheduled import run_paper_execution_daily_isolated as eod_adapter
 from scripts.scheduled import run_paper_portfolio_daily_isolated as preopen_adapter
 from scripts.scheduled import run_formal_input_producer_daily as formal_adapter
 
+TAIPEI = ZoneInfo("Asia/Taipei")
+
 
 class _OpenCalendar:
     def is_official_trading_day(self, _target_date):
         return True, "test_official_schedule_open"
 
 
-def _make_source_state(path: Path) -> None:
+def _make_source_state(
+    path: Path,
+    *,
+    decision_date: str = "2026-07-12",
+) -> None:
     repository = PaperPortfolioSnapshotRepository(path)
     repository.append(
         PaperPortfolioSnapshot(
-            snapshot_id="paper-main-20260712-baseline",
+            snapshot_id=f"paper-main-{decision_date.replace('-', '')}-baseline",
             portfolio_id="paper-main",
-            decision_date="2026-07-12",
+            decision_date=decision_date,
             source_result_id="source-baseline-1",
             cash=Decimal("80000.00"),
             total_value=Decimal("100000.00"),
@@ -47,12 +58,16 @@ def _make_source_state(path: Path) -> None:
     )
 
 
-def _make_baseline(path: Path) -> None:
+def _make_baseline(
+    path: Path,
+    *,
+    decision_date: str = "2026-07-12",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
-                "decision_date": "2026-07-12",
+                "decision_date": decision_date,
                 "source_result_id": "source-baseline-1",
                 "residual_cash": "80000.00",
                 "allocations": [
@@ -69,7 +84,11 @@ def _make_baseline(path: Path) -> None:
     )
 
 
-def _make_market(path: Path) -> None:
+def _make_market(
+    path: Path,
+    *,
+    price_date: str = "20260713",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as connection:
         connection.execute(
@@ -77,8 +96,57 @@ def _make_market(path: Path) -> None:
         )
         connection.execute(
             "INSERT INTO daily_prices VALUES (?, ?, ?)",
-            ("20260713", "2330", "21.00"),
+            (price_date, "2330", "21.00"),
         )
+
+
+def _make_calendar_cache(
+    path: Path,
+    *,
+    captured_at: datetime | None = None,
+    max_age: timedelta = timedelta(days=7),
+) -> None:
+    captured = captured_at or (datetime.now(timezone.utc) - timedelta(hours=1))
+    raw = json.dumps(
+        [
+            {
+                "Name": "中華民國開國紀念日",
+                "Date": "1150101",
+                "Weekday": "四",
+                "Description": "依規定放假1日。",
+            },
+            {
+                "Name": "國曆新年開始交易日",
+                "Date": "1150102",
+                "Weekday": "五",
+                "Description": "國曆新年開始交易。",
+            },
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=raw,
+        requested_at=captured - timedelta(seconds=1),
+        captured_at=captured,
+        response_status=200,
+        max_age=max_age,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_twse_calendar_cache(path, cache, allowed_root=path.parents[1])
+
+
+def _recent_test_decision_at() -> datetime:
+    """Choose a recent weekday 08:30 whose 31-day cache remains fresh."""
+
+    current = datetime.now(timezone.utc).astimezone(TAIPEI)
+    candidate = current.date()
+    if current.timetz().replace(tzinfo=None) < time(8, 35):
+        candidate -= timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return datetime.combine(candidate, time(8, 30), tzinfo=TAIPEI)
 
 
 def _patch_preopen_paths(
@@ -86,6 +154,8 @@ def _patch_preopen_paths(
     *,
     data_root: Path,
     operation_root: Path,
+    source_decision_date: str = "2026-07-12",
+    market_price_date: str = "20260713",
 ) -> tuple[Path, Path, Path, Path]:
     source_state = data_root / "output" / "paper_portfolio" / "paper_portfolio.sqlite"
     baseline = data_root / "output" / "paper_portfolio" / "baseline_20260712.json"
@@ -93,9 +163,9 @@ def _patch_preopen_paths(
     state = operation_root / "paper_portfolio" / "paper_portfolio.sqlite"
     manifest = operation_root / "paper_portfolio" / "state_seed_manifest.json"
     ledger = operation_root / "paper_trade_ledger.sqlite"
-    _make_source_state(source_state)
-    _make_baseline(baseline)
-    _make_market(market)
+    _make_source_state(source_state, decision_date=source_decision_date)
+    _make_baseline(baseline, decision_date=source_decision_date)
+    _make_market(market, price_date=market_price_date)
     monkeypatch.setattr(preopen_adapter, "ROOT", operation_root.parents[1])
     monkeypatch.setattr(preopen_adapter, "DEFAULT_DATA_ROOT", data_root)
     monkeypatch.setattr(preopen_adapter, "SOURCE_STATE_DB", source_state)
@@ -132,7 +202,17 @@ def test_isolated_preopen_seeds_readonly_source_then_calls_public_runner(
         calendar=_OpenCalendar(),  # type: ignore[arg-type]
     )
     assert first["status"] == "passed"
+    assert first["schema_version"] == preopen_adapter.SCHEMA_VERSION
     assert first["state_db"] == str(state)
+    coverage = first["preopen_coverage"]
+    assert isinstance(coverage, dict)
+    assert coverage["schema_version"] == "paper-preopen-coverage.v1"
+    assert coverage["state_db"] == str(state.resolve())
+    write_contract = first["paper_state_write_contract"]
+    assert isinstance(write_contract, dict)
+    assert write_contract["write_scope"] == (
+        "repository_paper_snapshot_append_only"
+    )
     scope = first["isolated_scope"]
     assert isinstance(scope, dict)
     seed = scope["state_seed"]
@@ -199,11 +279,23 @@ def test_scheduled_adapter_main_waits_then_calls_public_runner(
     monkeypatch.setattr(
         preopen_adapter,
         "_wait_until_taipei_cutoff",
-        lambda: datetime.fromisoformat("2026-07-14T08:31:00+08:00"),
+        lambda **_kwargs: datetime.fromisoformat("2026-07-14T08:31:00+08:00"),
     )
 
     assert preopen_adapter.main([]) == 0
     assert PaperPortfolioSnapshotRepository(state).get("paper-main-20260714") is not None
+    run_state = json.loads(
+        (
+            operation_root
+            / "scheduled"
+            / "paper_portfolio_isolated"
+            / "run_state"
+            / "latest.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert run_state["phase"] == "terminal"
+    assert run_state["terminal"] is True
+    assert run_state["terminal_status"] == "passed"
 
 
 def test_isolated_preopen_rejects_missing_source_without_creating_repo_state(
@@ -330,6 +422,116 @@ def test_isolated_adapter_blocks_before_taipei_cutoff_without_reading_sources(
     assert result["writes_D_source"] is False
 
 
+def test_isolated_preopen_runs_through_hash_bound_official_calendar_loader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "D-source"
+    operation_root = tmp_path / "repo" / "output" / "paper_execution_eod_replay"
+    decision_at = _recent_test_decision_at()
+    decision_date = decision_at.date().isoformat()
+    source_decision_date = (
+        decision_at.date() - timedelta(days=2)
+    ).isoformat()
+    previous_price_date = (
+        decision_at.date() - timedelta(days=1)
+    ).strftime("%Y%m%d")
+    _source_state, _baseline, market, _state = _patch_preopen_paths(
+        monkeypatch,
+        data_root=data_root,
+        operation_root=operation_root,
+        source_decision_date=source_decision_date,
+        market_price_date=previous_price_date,
+    )
+    cache_path = operation_root / "calendar_cache" / (
+        "twse_holiday_schedule_2026_isolated.json"
+    )
+    _make_calendar_cache(
+        cache_path,
+        captured_at=decision_at - timedelta(minutes=30),
+        max_age=timedelta(days=31),
+    )
+    monkeypatch.setattr(preopen_adapter, "CALENDAR_CACHE_ROOT", cache_path.parent)
+
+    def _network_is_forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("valid official cache must avoid the network")
+
+    monkeypatch.setattr(
+        "data_module.official_trading_calendar.safe_request",
+        _network_is_forbidden,
+    )
+    result = preopen_adapter.run_isolated(
+        now=decision_at + timedelta(minutes=1),
+        decision_at=decision_at,
+    )
+
+    assert result["status"] == "passed"
+    assert result["trading_calendar_validated"] is True
+    assert result["trading_calendar_is_open"] is True
+    assert result["trading_calendar_reason"] == "twse_holiday_schedule_cache_open"
+    coverage = result["preopen_coverage"]
+    assert isinstance(coverage, dict)
+    assert coverage["trading_calendar_validated"] is True
+
+
+def test_isolated_preopen_rejects_late_official_calendar_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "D-source"
+    operation_root = tmp_path / "repo" / "output" / "paper_execution_eod_replay"
+    decision_at = _recent_test_decision_at()
+    decision_date = decision_at.date().isoformat()
+    source_decision_date = (
+        decision_at.date() - timedelta(days=2)
+    ).isoformat()
+    previous_price_date = (
+        decision_at.date() - timedelta(days=1)
+    ).strftime("%Y%m%d")
+    _source_state, _baseline, market, state = _patch_preopen_paths(
+        monkeypatch,
+        data_root=data_root,
+        operation_root=operation_root,
+        source_decision_date=source_decision_date,
+        market_price_date=previous_price_date,
+    )
+    cache_path = operation_root / "calendar_cache" / (
+        "twse_holiday_schedule_2026_late_capture.json"
+    )
+    _make_calendar_cache(
+        cache_path,
+        captured_at=decision_at + timedelta(minutes=1),
+        max_age=timedelta(days=31),
+    )
+    calendar = OfficialTradingCalendar(
+        market,
+        calendar_cache_path=cache_path.parent,
+    )
+
+    def _network_is_forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("late-cache validation must not use the network")
+
+    monkeypatch.setattr(
+        "data_module.official_trading_calendar.safe_request",
+        _network_is_forbidden,
+    )
+    result = preopen_adapter.run_isolated(
+        now=decision_at + timedelta(minutes=2),
+        decision_at=decision_at,
+        calendar=calendar,
+    )
+
+    assert result["status"] == "degraded_calendar_unknown"
+    assert result["trading_calendar_validated"] is False
+    assert result["trading_calendar_is_open"] is None
+    assert result["trading_calendar_reason"] == (
+        "official_calendar_capture_after_decision_at"
+    )
+    assert PaperPortfolioSnapshotRepository(state).get(
+        f"paper-main-{decision_date.replace('-', '')}"
+    ) is None
+
+
 def test_scheduled_wakeup_waits_on_injected_clock_until_taipei_cutoff() -> None:
     readings = iter(
         (
@@ -347,6 +549,194 @@ def test_scheduled_wakeup_waits_on_injected_clock_until_taipei_cutoff() -> None:
 
     assert reached == datetime.fromisoformat("2026-07-14T08:30:00+08:00")
     assert sleeps == [60.0, 1.0]
+
+
+def test_scheduled_wakeup_emits_heartbeat_on_each_clock_observation() -> None:
+    readings = iter(
+        (
+            datetime.fromisoformat("2026-07-14T07:30:00+08:00"),
+            datetime.fromisoformat("2026-07-14T08:29:59+08:00"),
+            datetime.fromisoformat("2026-07-14T08:30:00+08:00"),
+        )
+    )
+    heartbeats: list[datetime] = []
+
+    reached = preopen_adapter._wait_until_taipei_cutoff(
+        now_fn=lambda: next(readings),
+        sleep_fn=lambda _seconds: None,
+        heartbeat_fn=heartbeats.append,
+    )
+
+    assert reached == datetime.fromisoformat("2026-07-14T08:30:00+08:00")
+    assert heartbeats == [
+        datetime.fromisoformat("2026-07-14T07:30:00+08:00"),
+        datetime.fromisoformat("2026-07-14T08:29:59+08:00"),
+        datetime.fromisoformat("2026-07-14T08:30:00+08:00"),
+    ]
+
+
+def test_run_state_records_phases_and_marks_stale_nonterminal_previous_run(
+    tmp_path: Path,
+) -> None:
+    operation_root = tmp_path / "repo" / "output" / "paper_execution_eod_replay"
+    started = datetime(2026, 7, 14, 0, 0, tzinfo=timezone.utc)
+    first = preopen_adapter._PaperRunState(operation_root)
+    first.start(observed_at=started)
+    first.heartbeat(
+        observed_at=started + timedelta(minutes=1),
+        phase="waiting_for_taipei_cutoff",
+    )
+    first.transition(
+        phase="producer_starting",
+        observed_at=started + timedelta(minutes=2),
+    )
+
+    second = preopen_adapter._PaperRunState(operation_root)
+    second.start(observed_at=started + timedelta(minutes=6))
+
+    latest = json.loads(
+        (
+            operation_root
+            / "scheduled"
+            / "paper_portfolio_isolated"
+            / "run_state"
+            / "latest.json"
+        ).read_text(encoding="utf-8")
+    )
+    receipt_names = {
+        item.name
+        for item in (
+            operation_root
+            / "scheduled"
+            / "paper_portfolio_isolated"
+            / "run_state"
+            / "receipts"
+        ).iterdir()
+    }
+
+    assert latest["phase"] == "starting"
+    assert latest["terminal"] is False
+    previous = latest["previous_run"]
+    assert previous["classification"] == "stale_nonterminal_run"
+    assert previous["reason"] == "heartbeat_expired"
+    assert previous["terminator"] == "unknown"
+    assert previous["phase"] == "producer_starting"
+    assert any(name.startswith("starting_") for name in receipt_names)
+    assert any(name.startswith("waiting_") for name in receipt_names)
+    assert any(name.startswith("producer_starting_") for name in receipt_names)
+    assert any(name.startswith("stale_") for name in receipt_names)
+
+
+def test_run_state_diagnoses_event_receipt_conflict_and_incomplete_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operation_root = tmp_path / "repo" / "output" / "paper_execution_eod_replay"
+    run_state = preopen_adapter._PaperRunState(operation_root)
+    run_state.start(observed_at=datetime(2026, 7, 14, 0, 0, tzinfo=timezone.utc))
+
+    event_state = dict(run_state.state)
+    run_state._write_event("manual_diagnostic", state=event_state)
+    receipt = next(
+        (
+            operation_root
+            / "scheduled"
+            / "paper_portfolio_isolated"
+            / "run_state"
+            / "receipts"
+        ).glob("manual_diagnostic_*.json")
+    )
+    receipt.write_bytes(b"tampered\n")
+
+    run_state._write_event("manual_diagnostic", state=event_state)
+    latest = json.loads(run_state.latest_path.read_text(encoding="utf-8"))
+    assert latest["event_write_status"] == "conflict"
+    assert latest["event_write_error"] == "immutable_event_receipt_bytes_mismatch"
+
+    original_open = Path.open
+
+    class _PartialWriter:
+        def __init__(self, stream):
+            self._stream = stream
+            self._raised = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            self._stream.close()
+
+        def write(self, payload: bytes) -> int:
+            if not self._raised:
+                self._raised = True
+                self._stream.write(payload[: max(1, len(payload) // 2)])
+                self._stream.flush()
+                raise OSError("simulated_partial_event_write")
+            return self._stream.write(payload)
+
+        def flush(self) -> None:
+            self._stream.flush()
+
+        def fileno(self) -> int:
+            return self._stream.fileno()
+
+    def _partial_event_write(
+        path: Path,
+        mode: str = "r",
+        *args: object,
+        **kwargs: object,
+    ):
+        stream = original_open(path, mode, *args, **kwargs)
+        if path.parent == run_state.receipt_root and mode == "xb":
+            return _PartialWriter(stream)
+        return stream
+
+    monkeypatch.setattr(Path, "open", _partial_event_write)
+    run_state._write_event("partial_diagnostic", state=event_state)
+    latest = json.loads(run_state.latest_path.read_text(encoding="utf-8"))
+    assert latest["event_write_status"] == "incomplete"
+    assert latest["event_write_error"] == "OSError:simulated_partial_event_write"
+    assert not list(run_state.receipt_root.glob("partial_diagnostic_*.json"))
+    assert not list(run_state.receipt_root.glob(".partial_diagnostic_*.tmp"))
+
+    monkeypatch.setattr(Path, "open", original_open)
+    run_state._write_event("partial_diagnostic", state=event_state)
+    receipt = next(run_state.receipt_root.glob("partial_diagnostic_*.json"))
+    published = receipt.read_bytes()
+    assert json.loads(published.decode("utf-8"))["event"] == "partial_diagnostic"
+    latest = json.loads(run_state.latest_path.read_text(encoding="utf-8"))
+    assert latest["event_write_status"] == "persisted"
+
+    run_state._write_event("partial_diagnostic", state=event_state)
+    assert receipt.read_bytes() == published
+    latest = json.loads(run_state.latest_path.read_text(encoding="utf-8"))
+    assert latest["event_write_status"] == "already_present_verified"
+
+    original_fsync = preopen_adapter.os.fsync
+    fsync_calls = 0
+
+    def _interrupt_fsync(file_descriptor: int) -> None:
+        nonlocal fsync_calls
+        fsync_calls += 1
+        if fsync_calls == 1:
+            raise OSError("simulated_fsync_interruption")
+        original_fsync(file_descriptor)
+
+    monkeypatch.setattr(preopen_adapter.os, "fsync", _interrupt_fsync)
+    run_state._write_event("fsync_diagnostic", state=event_state)
+    latest = json.loads(run_state.latest_path.read_text(encoding="utf-8"))
+    assert latest["event_write_status"] == "incomplete"
+    assert latest["event_write_error"] == "OSError:simulated_fsync_interruption"
+    assert not list(run_state.receipt_root.glob("fsync_diagnostic_*.json"))
+    assert not list(run_state.receipt_root.glob(".fsync_diagnostic_*.tmp"))
+
+    monkeypatch.setattr(preopen_adapter.os, "fsync", original_fsync)
+    run_state._write_event("fsync_diagnostic", state=event_state)
+    fsync_receipt = next(run_state.receipt_root.glob("fsync_diagnostic_*.json"))
+    fsync_bytes = fsync_receipt.read_bytes()
+    assert json.loads(fsync_bytes.decode("utf-8"))["event"] == "fsync_diagnostic"
+    run_state._write_event("fsync_diagnostic", state=event_state)
+    assert fsync_receipt.read_bytes() == fsync_bytes
 
 
 def test_paper_portfolio_schedule_wakes_before_or_at_taipei_cutoff_in_both_dst_modes() -> None:

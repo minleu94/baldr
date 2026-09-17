@@ -18,8 +18,8 @@ sklearn 等模型內部浮點邊界不在本模組內；所有持久化金融數
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
-from decimal import Decimal, ROUND_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP
 import hashlib
 import json
 from pathlib import Path
@@ -30,6 +30,12 @@ from app_module.paper_portfolio_policy import PaperPortfolioPolicyConfig
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
     PaperPortfolioSnapshot,
+)
+from app_module.paper_trade_ledger import (
+    PAPER_TRADE_LEDGER_SCHEMA_VERSION,
+    PAPER_TRADE_TRANSITION_SCHEMA_VERSION,
+    PaperTradeFill,
+    PaperTradeTransition,
 )
 from app_module.portfolio_allocation_dtos import (
     TOTAL_WEIGHT_BP,
@@ -61,6 +67,79 @@ _CASH = "CASH"
 _BUY_COST_BP = 25
 _SELL_COST_BP = 55
 _TAIPEI_EOD_SUFFIX = "T23:59:59+08:00"
+_PAPER_EXECUTED_STATUSES = frozenset({"filled", "partially_filled"})
+_PAPER_TURNOVER_CONTRACT_VERSION = "paper-trade-turnover-bp.v1"
+_PAPER_TRANSITION_CONTRACT_VERSION = "paper-trade-transition-canonical-bp.v1"
+_PAPER_TURNOVER_CONTRACT = {
+    "schema_version": _PAPER_TURNOVER_CONTRACT_VERSION,
+    "unit": "integer_bp",
+    "policy_aggregation": (
+        "sum_transition_canonical_turnover_bp_in_rolling_window"
+    ),
+    "gross_audit_aggregation": (
+        "sum_executed_fill_turnover_bp_in_rolling_window"
+    ),
+    "numerator": "reference_price * filled_quantity",
+    "denominator": (
+        "paper_trade_transition.pre_total_value_from_execution_state"
+    ),
+    "rounding": "Decimal.ROUND_HALF_UP",
+    "formula": (
+        "ROUND_HALF_UP(reference_price * filled_quantity * 10000 "
+        "/ paper_trade_transition.pre_total_value)"
+    ),
+    "producer": "data_module.paper_daily_execution_producer._trade_financials",
+    "policy_contract": _PAPER_TRANSITION_CONTRACT_VERSION,
+}
+_PAPER_TRADE_LEDGER_COLUMNS = frozenset(
+    {
+        "schema_version",
+        "fill_id",
+        "order_id",
+        "portfolio_id",
+        "event_date",
+        "stock_code",
+        "side",
+        "requested_quantity",
+        "filled_quantity",
+        "reference_price",
+        "fill_price",
+        "commission",
+        "tax",
+        "slippage_cost",
+        "turnover_bp",
+        "execution_gap_bp",
+        "status",
+        "source_event_id",
+        "override_reason",
+        "source_type",
+        "research_only",
+        "broker_order_allowed",
+        "auto_rebalance_allowed",
+    }
+)
+_PAPER_TRADE_TRANSITION_COLUMNS = frozenset(
+    {
+        "schema_version",
+        "transition_id",
+        "batch_id",
+        "portfolio_id",
+        "event_date",
+        "fill_ids_json",
+        "pre_cash",
+        "pre_total_value",
+        "post_cash",
+        "post_total_value",
+        "common_nav",
+        "common_prices_json",
+        "pre_positions_json",
+        "post_positions_json",
+        "source_type",
+        "research_only",
+        "broker_order_allowed",
+        "auto_rebalance_allowed",
+    }
+)
 
 
 def _canonical_json(payload: object) -> str:
@@ -280,6 +359,1208 @@ def _position_quantities(
     }
 
 
+def _sqlite_custody_hash(path: Path) -> str:
+    """Hash a SQLite file and any sidecars visible to a read-only reader."""
+
+    resolved = path.expanduser().resolve()
+    members: list[dict[str, object]] = []
+    for candidate in (
+        resolved,
+        Path(f"{resolved}-wal"),
+        Path(f"{resolved}-shm"),
+    ):
+        if candidate.is_file():
+            members.append(
+                {
+                    "name": candidate.name,
+                    "sha256": _file_hash(candidate),
+                }
+            )
+        else:
+            members.append({"name": candidate.name, "sha256": None})
+    return _payload_hash(members)
+
+
+def _strict_sqlite_bool(value: object, field_name: str) -> bool:
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"{field_name} must be SQLite 0 or 1")
+    return bool(value)
+
+
+def _required_ledger_text(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value.strip()
+
+
+def _ledger_decimal(value: object, field_name: str) -> Decimal:
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"{field_name} must be a finite Decimal")
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a finite Decimal") from exc
+    if not parsed.is_finite():
+        raise ValueError(f"{field_name} must be a finite Decimal")
+    return parsed
+
+
+def _ledger_optional_decimal(value: object, field_name: str) -> Decimal | None:
+    if value is None:
+        return None
+    return _ledger_decimal(value, field_name)
+
+
+def _ledger_optional_int(value: object, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field_name} must be an integer or None")
+    return value
+
+
+def _expected_paper_turnover_bp(
+    fill: PaperTradeFill,
+    *,
+    execution_total_value: Decimal,
+) -> int:
+    """Rebuild the producer's integer-bp turnover contract with Decimal."""
+
+    if fill.status not in _PAPER_EXECUTED_STATUSES or fill.filled_quantity <= 0:
+        return 0
+    if execution_total_value <= Decimal("0"):
+        raise ValueError("paper trade turnover denominator must be positive")
+    expected = (
+        fill.reference_price
+        * Decimal(fill.filled_quantity)
+        * Decimal(TOTAL_WEIGHT_BP)
+        / execution_total_value
+    ).to_integral_value(rounding=ROUND_HALF_UP)
+    if expected < Decimal("0") or expected > Decimal(TOTAL_WEIGHT_BP):
+        raise ValueError("paper trade turnover bp is outside policy range")
+    return int(expected)
+
+
+def _read_paper_trade_fills_read_only(
+    *,
+    ledger_db_path: Path,
+    portfolio_id: str,
+    start_date: date,
+    end_date: date,
+) -> tuple[PaperTradeFill, ...]:
+    """Read bounded Paper fills without allowing the reader to create schema."""
+
+    if not ledger_db_path.is_file():
+        raise FileNotFoundError(
+            f"paper trade ledger not found: {ledger_db_path}"
+        )
+    uri = ledger_db_path.expanduser().resolve().as_uri() + "?mode=ro"
+    try:
+        connection = sqlite3.connect(uri, uri=True)
+    except sqlite3.Error as exc:
+        raise ValueError("paper trade ledger read-only open failed") from exc
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        if connection.execute("PRAGMA query_only").fetchone() != (1,):
+            raise RuntimeError("paper trade ledger query_only could not be enabled")
+        connection.execute("BEGIN")
+        connection.row_factory = sqlite3.Row
+        columns = {
+            str(row[1])
+            for row in connection.execute(
+                'PRAGMA table_info("paper_trade_ledger")'
+            )
+        }
+        if not _PAPER_TRADE_LEDGER_COLUMNS.issubset(columns):
+            raise ValueError("paper trade ledger schema is missing required columns")
+        rows = connection.execute(
+            """
+            SELECT schema_version, fill_id, order_id, portfolio_id, event_date,
+                   stock_code, side, requested_quantity, filled_quantity,
+                   reference_price, fill_price, commission, tax, slippage_cost,
+                   turnover_bp, execution_gap_bp, status, source_event_id,
+                   override_reason, source_type, research_only,
+                   broker_order_allowed, auto_rebalance_allowed
+            FROM paper_trade_ledger
+            WHERE portfolio_id = ? AND event_date >= ? AND event_date < ?
+            ORDER BY event_date, fill_id
+            """,
+            (portfolio_id, start_date.isoformat(), end_date.isoformat()),
+        ).fetchall()
+        fills: list[PaperTradeFill] = []
+        seen_fill_ids: set[str] = set()
+        seen_source_events: set[str] = set()
+        for row in rows:
+            if row["schema_version"] != PAPER_TRADE_LEDGER_SCHEMA_VERSION:
+                raise ValueError(
+                    "paper trade ledger schema_version is not governed"
+                )
+            fill_id = _required_ledger_text(row["fill_id"], "paper fill_id")
+            source_event_id = _required_ledger_text(
+                row["source_event_id"],
+                "paper source_event_id",
+            )
+            if fill_id in seen_fill_ids:
+                raise ValueError("paper trade ledger contains duplicate fill_id")
+            if source_event_id in seen_source_events:
+                raise ValueError(
+                    "paper trade ledger contains duplicate source_event_id"
+                )
+            seen_fill_ids.add(fill_id)
+            seen_source_events.add(source_event_id)
+            event_date = _required_ledger_text(
+                row["event_date"],
+                "paper fill event_date",
+            )
+            try:
+                parsed_event_date = date.fromisoformat(event_date)
+            except ValueError as exc:
+                raise ValueError("paper fill event_date must be YYYY-MM-DD") from exc
+            if parsed_event_date.isoformat() != event_date:
+                raise ValueError("paper fill event_date must be canonical YYYY-MM-DD")
+            source_type = _required_ledger_text(
+                row["source_type"],
+                "paper fill source_type",
+            )
+            if not source_type.startswith("paper_"):
+                raise ValueError("paper fill source_type must be paper_*")
+            fill = PaperTradeFill(
+                fill_id=fill_id,
+                order_id=_required_ledger_text(row["order_id"], "paper fill order_id"),
+                portfolio_id=_required_ledger_text(
+                    row["portfolio_id"],
+                    "paper fill portfolio_id",
+                ),
+                event_date=event_date,
+                stock_code=_required_ledger_text(
+                    row["stock_code"],
+                    "paper fill stock_code",
+                ),
+                side=_required_ledger_text(row["side"], "paper fill side"),
+                requested_quantity=row["requested_quantity"],
+                filled_quantity=row["filled_quantity"],
+                reference_price=_ledger_decimal(
+                    row["reference_price"],
+                    "paper fill reference_price",
+                ),
+                fill_price=_ledger_optional_decimal(
+                    row["fill_price"],
+                    "paper fill fill_price",
+                ),
+                commission=_ledger_decimal(row["commission"], "paper fill commission"),
+                tax=_ledger_decimal(row["tax"], "paper fill tax"),
+                slippage_cost=_ledger_decimal(
+                    row["slippage_cost"],
+                    "paper fill slippage_cost",
+                ),
+                turnover_bp=_ledger_optional_int(
+                    row["turnover_bp"],
+                    "paper fill turnover_bp",
+                ),
+                execution_gap_bp=_ledger_optional_int(
+                    row["execution_gap_bp"],
+                    "paper fill execution_gap_bp",
+                ),
+                status=_required_ledger_text(row["status"], "paper fill status"),
+                source_event_id=source_event_id,
+                override_reason=(
+                    None
+                    if row["override_reason"] is None
+                    else str(row["override_reason"])
+                ),
+                source_type=source_type,
+                research_only=_strict_sqlite_bool(
+                    row["research_only"],
+                    "paper fill research_only",
+                ),
+                broker_order_allowed=_strict_sqlite_bool(
+                    row["broker_order_allowed"],
+                    "paper fill broker_order_allowed",
+                ),
+                auto_rebalance_allowed=_strict_sqlite_bool(
+                    row["auto_rebalance_allowed"],
+                    "paper fill auto_rebalance_allowed",
+                ),
+            )
+            if fill.portfolio_id != portfolio_id:
+                raise ValueError("paper trade ledger portfolio identity mismatch")
+            fills.append(fill)
+        return tuple(fills)
+    except sqlite3.Error as exc:
+        raise ValueError("paper trade ledger read failed") from exc
+    finally:
+        connection.close()
+
+
+def _ledger_json_value(value: object, field_name: str) -> object:
+    try:
+        return json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{field_name} must be valid JSON") from exc
+
+
+def _read_paper_trade_transitions_read_only(
+    *,
+    ledger_db_path: Path,
+    portfolio_id: str,
+    start_date: date,
+    end_date: date,
+) -> tuple[PaperTradeTransition, ...]:
+    """Read immutable batch boundaries from the same governed ledger DB."""
+
+    if not ledger_db_path.is_file():
+        raise FileNotFoundError(
+            f"paper trade ledger not found: {ledger_db_path}"
+        )
+    uri = ledger_db_path.expanduser().resolve().as_uri() + "?mode=ro"
+    try:
+        connection = sqlite3.connect(uri, uri=True)
+    except sqlite3.Error as exc:
+        raise ValueError("paper trade transition read-only open failed") from exc
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        if connection.execute("PRAGMA query_only").fetchone() != (1,):
+            raise RuntimeError(
+                "paper trade transition query_only could not be enabled"
+            )
+        connection.execute("BEGIN")
+        connection.row_factory = sqlite3.Row
+        columns = {
+            str(row[1])
+            for row in connection.execute(
+                'PRAGMA table_info("paper_trade_transitions")'
+            )
+        }
+        if not columns:
+            raise ValueError("paper trade transition table is missing")
+        if not _PAPER_TRADE_TRANSITION_COLUMNS.issubset(columns):
+            raise ValueError(
+                "paper trade transition schema is missing required columns"
+            )
+        rows = connection.execute(
+            """
+            SELECT schema_version, transition_id, batch_id, portfolio_id,
+                   event_date, fill_ids_json, pre_cash, pre_total_value,
+                   post_cash, post_total_value, common_nav,
+                   common_prices_json, pre_positions_json,
+                   post_positions_json, source_type, research_only,
+                   broker_order_allowed, auto_rebalance_allowed
+            FROM paper_trade_transitions
+            WHERE portfolio_id = ? AND event_date >= ? AND event_date < ?
+            ORDER BY event_date, transition_id
+            """,
+            (portfolio_id, start_date.isoformat(), end_date.isoformat()),
+        ).fetchall()
+        transitions: list[PaperTradeTransition] = []
+        seen_transition_ids: set[str] = set()
+        seen_batch_ids: set[str] = set()
+        for row in rows:
+            if row["schema_version"] != PAPER_TRADE_TRANSITION_SCHEMA_VERSION:
+                raise ValueError(
+                    "paper trade transition schema_version is not governed"
+                )
+            transition_id = _required_ledger_text(
+                row["transition_id"],
+                "paper transition_id",
+            )
+            batch_id = _required_ledger_text(row["batch_id"], "paper batch_id")
+            if transition_id in seen_transition_ids:
+                raise ValueError("paper trade transition contains duplicate transition_id")
+            if batch_id in seen_batch_ids:
+                raise ValueError("paper trade transition contains duplicate batch_id")
+            seen_transition_ids.add(transition_id)
+            seen_batch_ids.add(batch_id)
+            event_date = _required_ledger_text(
+                row["event_date"],
+                "paper transition event_date",
+            )
+            try:
+                parsed_event_date = date.fromisoformat(event_date)
+            except ValueError as exc:
+                raise ValueError(
+                    "paper transition event_date must be YYYY-MM-DD"
+                ) from exc
+            if parsed_event_date.isoformat() != event_date:
+                raise ValueError(
+                    "paper transition event_date must be canonical YYYY-MM-DD"
+                )
+            fill_ids_value = _ledger_json_value(
+                row["fill_ids_json"],
+                "paper transition fill_ids_json",
+            )
+            common_prices_value = _ledger_json_value(
+                row["common_prices_json"],
+                "paper transition common_prices_json",
+            )
+            pre_positions_value = _ledger_json_value(
+                row["pre_positions_json"],
+                "paper transition pre_positions_json",
+            )
+            post_positions_value = _ledger_json_value(
+                row["post_positions_json"],
+                "paper transition post_positions_json",
+            )
+            if not isinstance(fill_ids_value, list):
+                raise ValueError("paper transition fill_ids_json must be an array")
+            if not isinstance(common_prices_value, Mapping):
+                raise ValueError(
+                    "paper transition common_prices_json must be an object"
+                )
+            if not isinstance(pre_positions_value, Mapping):
+                raise ValueError(
+                    "paper transition pre_positions_json must be an object"
+                )
+            if not isinstance(post_positions_value, Mapping):
+                raise ValueError(
+                    "paper transition post_positions_json must be an object"
+                )
+            fill_ids = tuple(
+                _required_ledger_text(item, "paper transition fill_id")
+                for item in fill_ids_value
+            )
+            common_prices = {
+                _required_ledger_text(symbol, "paper transition price symbol"):
+                _ledger_decimal(price, "paper transition common price")
+                for symbol, price in common_prices_value.items()
+            }
+            pre_positions = {
+                _required_ledger_text(symbol, "paper transition pre symbol"):
+                _ledger_optional_int(quantity, "paper transition pre quantity")
+                for symbol, quantity in pre_positions_value.items()
+            }
+            post_positions = {
+                _required_ledger_text(symbol, "paper transition post symbol"):
+                _ledger_optional_int(quantity, "paper transition post quantity")
+                for symbol, quantity in post_positions_value.items()
+            }
+            if any(quantity is None for quantity in pre_positions.values()):
+                raise ValueError("paper transition pre quantity cannot be None")
+            if any(quantity is None for quantity in post_positions.values()):
+                raise ValueError("paper transition post quantity cannot be None")
+            transition = PaperTradeTransition(
+                transition_id=transition_id,
+                batch_id=batch_id,
+                portfolio_id=_required_ledger_text(
+                    row["portfolio_id"],
+                    "paper transition portfolio_id",
+                ),
+                event_date=event_date,
+                fill_ids=fill_ids,
+                pre_cash=_ledger_decimal(row["pre_cash"], "paper transition pre_cash"),
+                pre_total_value=_ledger_decimal(
+                    row["pre_total_value"],
+                    "paper transition pre_total_value",
+                ),
+                post_cash=_ledger_decimal(
+                    row["post_cash"],
+                    "paper transition post_cash",
+                ),
+                post_total_value=_ledger_decimal(
+                    row["post_total_value"],
+                    "paper transition post_total_value",
+                ),
+                common_nav=_ledger_decimal(
+                    row["common_nav"],
+                    "paper transition common_nav",
+                ),
+                common_prices=common_prices,
+                pre_positions={
+                    symbol: cast(int, quantity)
+                    for symbol, quantity in pre_positions.items()
+                },
+                post_positions={
+                    symbol: cast(int, quantity)
+                    for symbol, quantity in post_positions.items()
+                },
+                source_type=_required_ledger_text(
+                    row["source_type"],
+                    "paper transition source_type",
+                ),
+                research_only=_strict_sqlite_bool(
+                    row["research_only"],
+                    "paper transition research_only",
+                ),
+                broker_order_allowed=_strict_sqlite_bool(
+                    row["broker_order_allowed"],
+                    "paper transition broker_order_allowed",
+                ),
+                auto_rebalance_allowed=_strict_sqlite_bool(
+                    row["auto_rebalance_allowed"],
+                    "paper transition auto_rebalance_allowed",
+                ),
+            )
+            if transition.portfolio_id != portfolio_id:
+                raise ValueError("paper trade transition portfolio identity mismatch")
+            transitions.append(transition)
+        return tuple(transitions)
+    except sqlite3.Error as exc:
+        raise ValueError("paper trade transition read failed") from exc
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def _quantity_delta(
+    before: Mapping[str, int],
+    after: Mapping[str, int],
+) -> dict[str, int]:
+    return {
+        symbol: after.get(symbol, 0) - before.get(symbol, 0)
+        for symbol in sorted(set(before) | set(after))
+        if after.get(symbol, 0) - before.get(symbol, 0) != 0
+    }
+
+
+def _common_price_weights(
+    *,
+    positions: Mapping[str, int],
+    prices: Mapping[str, Decimal],
+    common_nav: Decimal,
+) -> AllocationWeightContract:
+    if common_nav <= Decimal("0"):
+        raise ValueError("paper transition common NAV must be positive")
+    position_amounts = {
+        symbol: prices[symbol] * Decimal(quantity)
+        for symbol, quantity in positions.items()
+        if quantity > 0
+    }
+    position_total = sum(position_amounts.values(), Decimal("0"))
+    cash_amount = common_nav - position_total
+    if cash_amount < Decimal("0"):
+        raise ValueError("paper transition common cash is negative")
+    amounts: dict[str, Decimal] = {
+        **position_amounts,
+        _CASH: cash_amount,
+    }
+    floors: dict[str, int] = {}
+    remainders: dict[str, Decimal] = {}
+    for symbol, amount in amounts.items():
+        exact = amount * Decimal(TOTAL_WEIGHT_BP) / common_nav
+        floor = int(exact.to_integral_value(rounding=ROUND_DOWN))
+        floors[symbol] = floor
+        remainders[symbol] = exact - Decimal(floor)
+    remainder_count = TOTAL_WEIGHT_BP - sum(floors.values())
+    for symbol in sorted(amounts, key=lambda item: (-remainders[item], item))[
+        :remainder_count
+    ]:
+        floors[symbol] += 1
+    return AllocationWeightContract(
+        symbol_weights_bp={
+            symbol: floors[symbol]
+            for symbol in sorted(floors)
+            if symbol != _CASH and floors[symbol] > 0
+        },
+        cash_weight_bp=floors[_CASH],
+    )
+
+
+def _official_calendar_range_rows(
+    official_calendar: object | None,
+    *,
+    start_date: date,
+    end_date: date,
+) -> tuple[dict[str, object], ...]:
+    """取得 bounded official-session evidence without weekday inference."""
+
+    if official_calendar is None:
+        raise ValueError(
+            "paper trade weekly coverage official calendar evidence missing"
+        )
+    if end_date < start_date:
+        raise ValueError("paper trade weekly coverage calendar range is invalid")
+    get_range = getattr(official_calendar, "get_trading_days_in_range", None)
+    raw_rows: object
+    if callable(get_range):
+        try:
+            raw_rows = get_range(
+                start_date,
+                end_date,
+                allow_online_probe=False,
+            )
+        except TypeError:
+            # Small test adapters and older local calendar facades may expose
+            # only the two positional arguments.  They still have to provide
+            # an explicit per-date decision; no weekday fallback is allowed.
+            raw_rows = get_range(start_date, end_date)
+    else:
+        get_day = getattr(official_calendar, "is_official_trading_day", None)
+        if not callable(get_day):
+            raise ValueError(
+                "paper trade weekly coverage official calendar range evidence unavailable"
+            )
+        generated: list[dict[str, object]] = []
+        cursor = start_date
+        while cursor <= end_date:
+            try:
+                decision = get_day(cursor, allow_online_probe=False)
+            except TypeError:
+                decision = get_day(cursor)
+            if (
+                not isinstance(decision, tuple)
+                or len(decision) != 2
+                or decision[0] not in (True, False, None)
+                or not isinstance(decision[1], str)
+            ):
+                raise ValueError(
+                    "paper trade weekly coverage official calendar day evidence invalid"
+                )
+            generated.append(
+                {
+                    "date": cursor,
+                    "date_str": cursor.isoformat(),
+                    "is_trading_day": decision[0],
+                    "reason_code": decision[1],
+                }
+            )
+            cursor += timedelta(days=1)
+        raw_rows = generated
+    if not isinstance(raw_rows, Sequence) or isinstance(raw_rows, (str, bytes)):
+        raise ValueError(
+            "paper trade weekly coverage official calendar range evidence invalid"
+        )
+    expected_days = (end_date - start_date).days + 1
+    if len(raw_rows) != expected_days:
+        raise ValueError(
+            "paper trade weekly coverage official calendar range is incomplete"
+        )
+    rows: list[dict[str, object]] = []
+    expected_date = start_date
+    for raw in raw_rows:
+        if not isinstance(raw, Mapping):
+            raise ValueError(
+                "paper trade weekly coverage official calendar row is invalid"
+            )
+        date_text = raw.get("date_str")
+        if not isinstance(date_text, str) or date_text != expected_date.isoformat():
+            raise ValueError(
+                "paper trade weekly coverage official calendar dates are not contiguous"
+            )
+        is_trading_day = raw.get("is_trading_day")
+        if is_trading_day not in (True, False, None):
+            raise ValueError(
+                "paper trade weekly coverage official calendar status is invalid"
+            )
+        if is_trading_day is None:
+            raise ValueError(
+                "paper trade weekly coverage official calendar contains unknown date"
+                f":{date_text}"
+            )
+        rows.append(
+            {
+                "date": date_text,
+                "is_trading_day": is_trading_day,
+                "reason_code": raw.get("reason_code"),
+            }
+        )
+        expected_date += timedelta(days=1)
+    if not any(bool(row["is_trading_day"]) for row in rows):
+        raise ValueError(
+            "paper trade weekly coverage official calendar has no trading session"
+        )
+    return tuple(rows)
+
+
+def _validate_paper_snapshot_calendar_coverage(
+    *,
+    eligible_snapshots: Sequence[PaperPortfolioSnapshot],
+    weekly_snapshots: Sequence[PaperPortfolioSnapshot],
+    window_start: date,
+    decision_date: date,
+    official_calendar: object | None,
+) -> dict[str, object]:
+    """Require every official session boundary through strict T-1."""
+
+    calendar_rows = _official_calendar_range_rows(
+        official_calendar,
+        start_date=window_start,
+        end_date=decision_date - timedelta(days=1),
+    )
+    expected_sessions = tuple(
+        str(row["date"])
+        for row in calendar_rows
+        if row["is_trading_day"] is True
+    )
+    snapshot_dates = tuple(item.decision_date for item in weekly_snapshots)
+    if len(snapshot_dates) != len(set(snapshot_dates)):
+        raise ValueError(
+            "paper trade weekly coverage contains duplicate snapshot dates"
+        )
+    unexpected = tuple(
+        item for item in snapshot_dates if item not in set(expected_sessions)
+    )
+    missing = tuple(item for item in expected_sessions if item not in snapshot_dates)
+    if unexpected:
+        raise ValueError(
+            "paper trade snapshot is not an official session boundary:"
+            + ",".join(unexpected)
+        )
+    if missing:
+        raise ValueError(
+            "paper trade snapshot coverage missing official session boundary:"
+            + ",".join(missing)
+        )
+    if snapshot_dates != expected_sessions:
+        raise ValueError(
+            "paper trade snapshot coverage does not match official session order"
+        )
+    opening_candidates = [
+        item
+        for item in eligible_snapshots
+        if date.fromisoformat(item.decision_date) <= window_start
+    ]
+    first_expected = date.fromisoformat(expected_sessions[0])
+    if first_expected > window_start and not opening_candidates:
+        raise ValueError("paper trade weekly coverage opening boundary missing")
+    last_expected = date.fromisoformat(expected_sessions[-1])
+    if not snapshot_dates or date.fromisoformat(snapshot_dates[-1]) != last_expected:
+        raise ValueError(
+            "paper trade weekly coverage strict T-1 tail boundary missing"
+        )
+    return {
+        "calendar_rows": list(calendar_rows),
+        "expected_session_dates": list(expected_sessions),
+        "opening_snapshot_id": (
+            opening_candidates[-1].snapshot_id if opening_candidates else None
+        ),
+        "last_expected_session_date": expected_sessions[-1],
+        "strict_t_minus_one_tail_complete": True,
+    }
+
+
+def _validate_paper_trade_transitions(
+    *,
+    transitions: Sequence[PaperTradeTransition],
+    fills: Sequence[PaperTradeFill],
+    portfolio_id: str,
+) -> tuple[dict[str, object], ...]:
+    """Rebuild policy turnover from immutable pre/post batch boundaries."""
+
+    if not fills:
+        if transitions:
+            raise ValueError("paper trade transition has no linked fill rows")
+        return ()
+    if not transitions:
+        raise ValueError("paper trade transition evidence missing")
+    fills_by_id = {fill.fill_id: fill for fill in fills}
+    linked_fill_ids: set[str] = set()
+    basis: list[dict[str, object]] = []
+    for transition in transitions:
+        if transition.portfolio_id != portfolio_id:
+            raise ValueError("paper trade transition portfolio identity mismatch")
+        if linked_fill_ids.intersection(transition.fill_ids):
+            raise ValueError("paper trade transition fill identity is duplicated")
+        transition_fills: list[PaperTradeFill] = []
+        for fill_id in transition.fill_ids:
+            fill = fills_by_id.get(fill_id)
+            if fill is None:
+                raise ValueError(
+                    "paper trade transition references an unbounded fill"
+                    f":{fill_id}"
+                )
+            if (
+                fill.portfolio_id != transition.portfolio_id
+                or fill.event_date != transition.event_date
+            ):
+                raise ValueError(
+                    "paper trade transition fill date or portfolio mismatch"
+                    f":{fill_id}"
+                )
+            if fill.stock_code not in transition.common_prices:
+                raise ValueError(
+                    "paper trade transition common price missing"
+                    f":{fill_id}"
+                )
+            if fill.reference_price != transition.common_prices[fill.stock_code]:
+                raise ValueError(
+                    "paper trade transition reference price mismatch"
+                    f":{fill_id}"
+                )
+            transition_fills.append(fill)
+        linked_fill_ids.update(transition.fill_ids)
+
+        expected_positions = dict(transition.pre_positions)
+        expected_cash = transition.pre_cash
+        gross_turnover_bp = 0
+        gross_turnover_basis: list[dict[str, object]] = []
+        for fill in transition_fills:
+            if fill.filled_quantity == 0:
+                if fill.turnover_bp not in (None, 0):
+                    raise ValueError(
+                        "paper trade ledger non-executed turnover must be zero"
+                        f":{fill.fill_id}"
+                    )
+                continue
+            if fill.status not in _PAPER_EXECUTED_STATUSES:
+                raise ValueError(
+                    "paper trade transition contains non-executed quantity"
+                    f":{fill.fill_id}"
+                )
+            if fill.turnover_bp is None:
+                raise ValueError(
+                    "paper trade ledger turnover_bp missing"
+                    f":{fill.fill_id}"
+                )
+            expected_turnover_bp = _expected_paper_turnover_bp(
+                fill,
+                execution_total_value=transition.pre_total_value,
+            )
+            if fill.turnover_bp != expected_turnover_bp:
+                raise ValueError(
+                    "paper trade ledger turnover_bp definition mismatch"
+                    f":{fill.fill_id}"
+                )
+            gross_turnover_bp += fill.turnover_bp
+            gross_turnover_basis.append(
+                {
+                    "fill_id": fill.fill_id,
+                    "event_date": fill.event_date,
+                    "status": fill.status,
+                    "side": fill.side,
+                    "reference_price": str(fill.reference_price),
+                    "filled_quantity": fill.filled_quantity,
+                    "execution_total_value": str(transition.pre_total_value),
+                    "turnover_bp": fill.turnover_bp,
+                    "expected_turnover_bp": expected_turnover_bp,
+                    "denominator_source": (
+                        "paper_trade_transition.pre_total_value"
+                    ),
+                }
+            )
+            quantity = expected_positions.get(fill.stock_code, 0)
+            if fill.side == "buy":
+                expected_positions[fill.stock_code] = (
+                    quantity + fill.filled_quantity
+                )
+                expected_cash -= fill.gross_amount + fill.cash_settlement_cost
+            else:
+                quantity -= fill.filled_quantity
+                if quantity < 0:
+                    raise ValueError(
+                        "paper trade transition sell exceeds pre quantity"
+                        f":{fill.fill_id}"
+                    )
+                if quantity > 0:
+                    expected_positions[fill.stock_code] = quantity
+                else:
+                    expected_positions.pop(fill.stock_code, None)
+                expected_cash += fill.gross_amount - fill.cash_settlement_cost
+        expected_positions = {
+            symbol: quantity
+            for symbol, quantity in expected_positions.items()
+            if quantity > 0
+        }
+        if expected_positions != dict(transition.post_positions):
+            raise ValueError(
+                "paper trade transition position identity mismatch"
+                f":{transition.transition_id}"
+            )
+        if expected_cash.quantize(Decimal("0.01")) != transition.post_cash.quantize(
+            Decimal("0.01")
+        ):
+            raise ValueError(
+                "paper trade transition cash identity mismatch"
+                f":{transition.transition_id}"
+            )
+        pre_amount = sum(
+            (
+                transition.common_prices[symbol] * Decimal(quantity)
+                for symbol, quantity in transition.pre_positions.items()
+            ),
+            Decimal("0"),
+        )
+        post_amount = sum(
+            (
+                transition.common_prices[symbol] * Decimal(quantity)
+                for symbol, quantity in transition.post_positions.items()
+            ),
+            Decimal("0"),
+        )
+        if (
+            (transition.pre_cash + pre_amount).quantize(Decimal("0.01"))
+            != transition.common_nav.quantize(Decimal("0.01"))
+            or transition.common_nav < post_amount
+        ):
+            raise ValueError(
+                "paper trade transition common NAV/price identity mismatch"
+                f":{transition.transition_id}"
+            )
+        pre_weights = _common_price_weights(
+            positions=transition.pre_positions,
+            prices=transition.common_prices,
+            common_nav=transition.common_nav,
+        )
+        post_weights = _common_price_weights(
+            positions=transition.post_positions,
+            prices=transition.common_prices,
+            common_nav=transition.common_nav,
+        )
+        symbols = tuple(
+            sorted(
+                set(pre_weights.symbol_weights_bp)
+                | set(post_weights.symbol_weights_bp)
+            )
+        )
+        canonical_bp = canonical_turnover_bp(
+            current_position_weights_bp=tuple(
+                pre_weights.weight_for(symbol) for symbol in symbols
+            ),
+            current_cash_bp=pre_weights.cash_weight_bp,
+            target_position_weights_bp=tuple(
+                post_weights.weight_for(symbol) for symbol in symbols
+            ),
+            target_cash_bp=post_weights.cash_weight_bp,
+        )
+        basis.append(
+            {
+                "transition_id": transition.transition_id,
+                "batch_id": transition.batch_id,
+                "event_date": transition.event_date,
+                "fill_ids": list(transition.fill_ids),
+                "pre_cash": str(transition.pre_cash),
+                "post_cash": str(transition.post_cash),
+                "pre_total_value": str(transition.pre_total_value),
+                "post_total_value": str(transition.post_total_value),
+                "common_nav": str(transition.common_nav),
+                "common_prices": {
+                    symbol: str(price)
+                    for symbol, price in sorted(transition.common_prices.items())
+                },
+                "pre_positions": dict(sorted(transition.pre_positions.items())),
+                "post_positions": dict(sorted(transition.post_positions.items())),
+                "pre_weights": pre_weights.to_dict(),
+                "post_weights": post_weights.to_dict(),
+                "gross_turnover_bp": gross_turnover_bp,
+                "gross_turnover_basis": gross_turnover_basis,
+                "canonical_turnover_bp": canonical_bp,
+            }
+        )
+    if linked_fill_ids != set(fills_by_id):
+        raise ValueError("paper trade transition does not cover every fill")
+    return tuple(sorted(basis, key=lambda item: str(item["transition_id"])))
+
+
+def _validate_paper_trade_snapshot_coverage(
+    *,
+    eligible_snapshots: Sequence[PaperPortfolioSnapshot],
+    weekly_snapshots: Sequence[PaperPortfolioSnapshot],
+    fills: Sequence[PaperTradeFill],
+    window_start: date,
+    decision_date: date,
+) -> tuple[dict[str, object], ...]:
+    """Reconcile filled share deltas to the T+1 snapshot boundaries."""
+
+    if not weekly_snapshots:
+        raise ValueError("paper trade ledger weekly coverage missing")
+    if len(weekly_snapshots) < 2:
+        raise ValueError(
+            "paper trade ledger weekly coverage requires at least two snapshots"
+        )
+    weekly_dates = tuple(
+        date.fromisoformat(item.decision_date) for item in weekly_snapshots
+    )
+    if any(
+        current <= previous
+        for previous, current in zip(weekly_dates, weekly_dates[1:])
+    ):
+        raise ValueError("paper trade ledger weekly snapshot dates are not increasing")
+    if weekly_dates[-1] >= decision_date:
+        raise ValueError("paper trade ledger snapshot freshness is not strictly T-1")
+    first_weekly_date = date.fromisoformat(weekly_snapshots[0].decision_date)
+    first_prior = [
+        item
+        for item in eligible_snapshots
+        if date.fromisoformat(item.decision_date) < first_weekly_date
+    ]
+    if not first_prior and first_weekly_date != window_start:
+        raise ValueError("paper trade ledger weekly coverage start missing")
+    if first_prior and date.fromisoformat(first_prior[-1].decision_date) > window_start:
+        raise ValueError("paper trade ledger weekly coverage start missing")
+
+    covered_fill_ids: set[str] = set()
+    turnover_basis_by_fill_id: dict[str, dict[str, object]] = {}
+    for current in weekly_snapshots:
+        current_date = date.fromisoformat(current.decision_date)
+        prior_candidates = [
+            item
+            for item in eligible_snapshots
+            if date.fromisoformat(item.decision_date) < current_date
+        ]
+        if not prior_candidates:
+            # A snapshot exactly on the rolling-window boundary is itself a
+            # valid opening state.  The next in-window snapshot still has to
+            # reconcile against it; an isolated boundary row is rejected by
+            # the two-snapshot rule above.
+            if current_date == window_start:
+                continue
+            raise ValueError("paper trade ledger snapshot coverage predecessor missing")
+        prior = prior_candidates[-1]
+        prior_date = date.fromisoformat(prior.decision_date)
+        interval_fills = tuple(
+            fill
+            for fill in fills
+            if prior_date
+            <= date.fromisoformat(fill.event_date)
+            < current_date
+        )
+        actual_delta: dict[str, int] = {}
+        expected_cash = prior.cash
+        for fill in interval_fills:
+            covered_fill_ids.add(fill.fill_id)
+            if fill.filled_quantity == 0:
+                if fill.turnover_bp not in (None, 0):
+                    raise ValueError(
+                        "paper trade ledger non-executed turnover must be zero"
+                        f":{fill.fill_id}"
+                    )
+                continue
+            if fill.status not in _PAPER_EXECUTED_STATUSES:
+                raise ValueError(
+                    "paper trade ledger non-executed fill quantity is invalid"
+                    f":{fill.fill_id}"
+                )
+            if fill.turnover_bp is None:
+                raise ValueError(
+                    "paper trade ledger turnover_bp missing"
+                    f":{fill.fill_id}"
+                )
+            turnover_basis_by_fill_id[fill.fill_id] = {
+                "fill_id": fill.fill_id,
+                "event_date": fill.event_date,
+                "status": fill.status,
+                "side": fill.side,
+                "reference_price": str(fill.reference_price),
+                "filled_quantity": fill.filled_quantity,
+                "turnover_bp": fill.turnover_bp,
+                "gross_basis_deferred_to_transition": True,
+            }
+            direction = 1 if fill.side == "buy" else -1
+            if fill.side == "buy":
+                expected_cash -= fill.gross_amount + fill.cash_settlement_cost
+            else:
+                expected_cash += fill.gross_amount - fill.cash_settlement_cost
+            actual_delta[fill.stock_code] = (
+                actual_delta.get(fill.stock_code, 0)
+                + direction * fill.filled_quantity
+            )
+        expected_delta = _quantity_delta(
+            _position_quantities(prior),
+            _position_quantities(current),
+        )
+        if _quantity_delta({}, actual_delta) != expected_delta:
+            raise ValueError(
+                "paper trade ledger snapshot coverage mismatch"
+                f":{prior_date.isoformat()}->{current_date.isoformat()}"
+            )
+        if expected_cash.quantize(Decimal("0.01")) != current.cash.quantize(
+            Decimal("0.01")
+        ):
+            raise ValueError(
+                "paper trade ledger snapshot cash coverage mismatch"
+                f":{prior_date.isoformat()}->{current_date.isoformat()}"
+            )
+
+    # A filled event after the last available snapshot is not yet represented
+    # by the T-1 state and cannot be silently included in policy turnover.
+    for fill in fills:
+        fill_date = date.fromisoformat(fill.event_date)
+        if (
+            window_start <= fill_date < decision_date
+            and fill.filled_quantity > 0
+            and fill.fill_id not in covered_fill_ids
+        ):
+            raise ValueError("paper trade ledger snapshot coverage incomplete")
+
+    return tuple(
+        turnover_basis_by_fill_id[fill_id]
+        for fill_id in sorted(turnover_basis_by_fill_id)
+    )
+
+
+def _read_paper_preopen_coverage_receipt(
+    *,
+    state_db_path: Path,
+    state_snapshot: PaperPortfolioSnapshot,
+    available_snapshots: Sequence[PaperPortfolioSnapshot],
+    ledger_db_path: Path,
+    decision_date: date,
+    configured_path: Path | None,
+) -> dict[str, object] | None:
+    """Read the isolated preopen producer receipt when one is available."""
+
+    inferred = (
+        state_db_path.expanduser().resolve().parent.parent
+        / "scheduled"
+        / "paper_portfolio_isolated"
+        / "latest_status.json"
+    )
+    candidate = (
+        configured_path.expanduser().resolve()
+        if configured_path is not None
+        else inferred
+    )
+    if not candidate.is_file():
+        if configured_path is not None:
+            raise FileNotFoundError(
+                f"paper preopen coverage receipt not found: {candidate}"
+            )
+        return None
+    before_hash = _file_hash(candidate)
+    try:
+        payload_value = json.loads(candidate.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("paper preopen coverage receipt is invalid") from exc
+    after_hash = _file_hash(candidate)
+    if before_hash != after_hash:
+        raise ValueError("paper preopen coverage receipt changed during read")
+    if not isinstance(payload_value, Mapping):
+        raise ValueError("paper preopen coverage receipt must be an object")
+    payload = {str(key): value for key, value in payload_value.items()}
+    if payload.get("schema_version") != "paper-portfolio-daily-isolated-scope.v1":
+        raise ValueError("paper preopen coverage receipt schema is not governed")
+    if payload.get("status") != "passed":
+        raise ValueError("paper preopen coverage receipt is not a completed pass")
+    safe_flags = (
+        ("writes_D_source", False),
+        ("writes_market_database", False),
+        ("formal_credit", False),
+        ("broker_execution", False),
+    )
+    if any(payload.get(field) is not expected for field, expected in safe_flags):
+        raise ValueError("paper preopen coverage receipt safety flags are invalid")
+    receipt_state_path = payload.get("state_db")
+    if not isinstance(receipt_state_path, str):
+        raise ValueError("paper preopen coverage receipt state path is missing")
+    if Path(receipt_state_path).expanduser().resolve() != state_db_path.resolve():
+        raise ValueError("paper preopen coverage receipt state path mismatch")
+    isolated_scope = payload.get("isolated_scope")
+    if not isinstance(isolated_scope, Mapping):
+        raise ValueError("paper preopen coverage receipt isolated scope is missing")
+    repository_state_path = isolated_scope.get("repository_state_db")
+    if not isinstance(repository_state_path, str) or (
+        Path(repository_state_path).expanduser().resolve() != state_db_path.resolve()
+    ):
+        raise ValueError("paper preopen coverage receipt repository state mismatch")
+    receipt_ledger_path = payload.get("paper_ledger_db")
+    if not isinstance(receipt_ledger_path, str) or (
+        Path(receipt_ledger_path).expanduser().resolve() != ledger_db_path.resolve()
+    ):
+        raise ValueError("paper preopen coverage receipt ledger path mismatch")
+    if payload.get("portfolio_id") != state_snapshot.portfolio_id:
+        raise ValueError("paper preopen coverage receipt portfolio mismatch")
+    receipt_snapshot_id = payload.get("snapshot_id")
+    receipt_decision_date = payload.get("decision_date")
+    if not isinstance(receipt_snapshot_id, str) or not isinstance(
+        receipt_decision_date, str
+    ):
+        raise ValueError("paper preopen coverage receipt snapshot binding is missing")
+    receipt_snapshot = next(
+        (
+            item
+            for item in available_snapshots
+            if item.snapshot_id == receipt_snapshot_id
+        ),
+        None,
+    )
+    if receipt_snapshot is None:
+        raise ValueError("paper preopen coverage receipt snapshot is not in state db")
+    if receipt_snapshot.portfolio_id != state_snapshot.portfolio_id:
+        raise ValueError("paper preopen coverage receipt snapshot portfolio mismatch")
+    if receipt_snapshot.decision_date != receipt_decision_date:
+        raise ValueError("paper preopen coverage receipt snapshot date mismatch")
+    if receipt_snapshot_id == state_snapshot.snapshot_id and (
+        receipt_decision_date == state_snapshot.decision_date
+    ):
+        snapshot_relation = "strict_t_minus_one"
+    elif (
+        receipt_snapshot_id
+        == f"{state_snapshot.portfolio_id}-{decision_date.strftime('%Y%m%d')}"
+        and receipt_decision_date == decision_date.isoformat()
+    ):
+        # The scheduled preopen writer normally appends today's repository
+        # snapshot before the 08:30 ML consumer starts.  The consumer still
+        # reads the strict T-1 snapshot for its decision basis, so today's
+        # receipt is accepted only as a producer-coverage witness.
+        snapshot_relation = "current_decision_date_producer_receipt"
+    else:
+        raise ValueError("paper preopen coverage receipt snapshot mismatch")
+    coverage_value = payload.get("preopen_coverage")
+    if not isinstance(coverage_value, Mapping):
+        raise ValueError("paper preopen coverage receipt coverage is missing")
+    coverage = {str(key): value for key, value in coverage_value.items()}
+    if coverage.get("schema_version") != "paper-preopen-coverage.v1":
+        raise ValueError("paper preopen coverage receipt coverage schema is invalid")
+    if coverage.get("status") != "passed":
+        raise ValueError("paper preopen coverage receipt coverage is not passed")
+    for field_name, expected in (
+        ("portfolio_id", state_snapshot.portfolio_id),
+        ("snapshot_id", receipt_snapshot_id),
+        ("decision_date", receipt_decision_date),
+        ("state_db", str(state_db_path.resolve())),
+        ("ledger_db", str(ledger_db_path.resolve())),
+        ("snapshot_semantics", "preopen_t_minus_one_mark_to_market"),
+    ):
+        value = coverage.get(field_name)
+        if field_name in {"state_db", "ledger_db"}:
+            if not isinstance(value, str) or Path(value).expanduser().resolve() != Path(expected).resolve():
+                raise ValueError(
+                    f"paper preopen coverage receipt {field_name} mismatch"
+                )
+        elif value != expected:
+            raise ValueError(
+                f"paper preopen coverage receipt {field_name} mismatch"
+            )
+    if coverage.get("trading_calendar_validated") is not True or coverage.get(
+        "trading_calendar_is_open"
+    ) is not True:
+        raise ValueError("paper preopen coverage receipt calendar validation is invalid")
+    if not isinstance(coverage.get("snapshot_appended"), bool):
+        raise ValueError("paper preopen coverage receipt append flag is invalid")
+    if coverage.get("snapshot_relation") != snapshot_relation:
+        raise ValueError("paper preopen coverage receipt snapshot relation mismatch")
+    if payload.get("snapshot_relation") != snapshot_relation:
+        raise ValueError("paper preopen coverage receipt top-level relation mismatch")
+    write_contract_value = payload.get("paper_state_write_contract")
+    if not isinstance(write_contract_value, Mapping):
+        raise ValueError("paper preopen coverage receipt write contract is missing")
+    write_contract = {
+        str(key): value for key, value in write_contract_value.items()
+    }
+    if write_contract.get("schema_version") != "paper-state-write-contract.v1":
+        raise ValueError("paper preopen coverage receipt write contract schema is invalid")
+    if write_contract.get("write_scope") != "repository_paper_snapshot_append_only":
+        raise ValueError("paper preopen coverage receipt write scope is invalid")
+    if write_contract.get("writer") != "scripts.run_paper_portfolio_daily.run":
+        raise ValueError("paper preopen coverage receipt writer is invalid")
+    if (
+        not isinstance(write_contract.get("state_db"), str)
+        or Path(str(write_contract["state_db"])).expanduser().resolve()
+        != state_db_path.resolve()
+    ):
+        raise ValueError("paper preopen coverage receipt write state path mismatch")
+    if write_contract.get("snapshot_id") != receipt_snapshot_id or write_contract.get(
+        "decision_date"
+    ) != receipt_decision_date:
+        raise ValueError("paper preopen coverage receipt write snapshot mismatch")
+    if write_contract.get("snapshot_appended") != coverage.get("snapshot_appended"):
+        raise ValueError("paper preopen coverage receipt write append flag mismatch")
+    return {
+        "path": str(candidate),
+        "file_hash": before_hash,
+        "schema_version": payload["schema_version"],
+        "status": payload["status"],
+        "snapshot_id": receipt_snapshot_id,
+        "decision_date": receipt_decision_date,
+        "snapshot_relation": snapshot_relation,
+        "trading_calendar_validated": payload.get("trading_calendar_validated"),
+        "trading_calendar_is_open": payload.get("trading_calendar_is_open"),
+        "snapshot_appended": payload.get("snapshot_appended"),
+        "preopen_coverage": coverage,
+        "paper_state_write_contract": write_contract,
+        "isolated_scope_manifest_path": isolated_scope.get("scope_manifest_path"),
+        "state_head": isolated_scope.get("state_head"),
+    }
+
+
 @dataclass(frozen=True)
 class PaperLedgerContext:
     snapshot: PaperPortfolioSnapshot
@@ -287,6 +1568,14 @@ class PaperLedgerContext:
     weekly_turnover_used_bp: int
     cooldown_days: Mapping[str, int | None]
     ledger_hash: str
+    paper_trade_ledger_path: str | None = None
+    paper_trade_ledger_file_hash: str | None = None
+    weekly_turnover_fill_count: int = 0
+    weekly_turnover_source: str = "paper_trade_transition.canonical_turnover_bp"
+    weekly_turnover_coverage: Mapping[str, object] | None = None
+    paper_read_consistency: Mapping[str, object] | None = None
+    paper_preopen_coverage_receipt_path: str | None = None
+    paper_preopen_coverage_receipt_file_hash: str | None = None
 
 
 def load_t_minus_one_paper_ledger(
@@ -294,15 +1583,22 @@ def load_t_minus_one_paper_ledger(
     state_db_path: Path,
     portfolio_id: str,
     decision_date: date,
+    paper_trade_ledger_db_path: Path | None = None,
+    official_calendar: object | None = None,
+    paper_preopen_coverage_receipt_path: Path | None = None,
 ) -> PaperLedgerContext:
     """讀取嚴格早於決策日的 Paper ledger；缺檔或不完整即 fail closed。"""
 
     if not state_db_path.is_file():
         raise FileNotFoundError(f"paper ledger not found: {state_db_path}")
+    state_file_hash_before = _sqlite_custody_hash(state_db_path)
     snapshots = _read_paper_snapshots_read_only(
         state_db_path=state_db_path,
         portfolio_id=portfolio_id,
     )
+    state_file_hash_after = _sqlite_custody_hash(state_db_path)
+    if state_file_hash_before != state_file_hash_after:
+        raise ValueError("paper state database changed during read")
     eligible = tuple(
         snapshot
         for snapshot in snapshots
@@ -313,18 +1609,182 @@ def load_t_minus_one_paper_ledger(
     snapshot = eligible[-1]
     current_weights = exact_weights_from_snapshot(snapshot)
 
-    # 只有在可觀察到的歷史 quantity 未變時才把 weekly turnover 記為 0。
-    # 有變化而缺交易明細時維持未知並 fail closed，絕不由權重漂移猜交易量。
-    window_start = decision_date.toordinal() - 7
+    window_start = date.fromordinal(decision_date.toordinal() - 7)
     weekly = tuple(
         item
         for item in eligible
-        if date.fromisoformat(item.decision_date).toordinal() >= window_start
+        if date.fromisoformat(item.decision_date) >= window_start
     )
-    quantity_states = tuple(_position_quantities(item) for item in weekly)
-    if len(quantity_states) >= 2 and len(set(map(_canonical_json, quantity_states))) > 1:
-        raise ValueError("paper ledger weekly turnover is not derivable from snapshots")
-    weekly_turnover_used_bp = 0
+    paper_trade_ledger_file_hash: str | None = None
+    paper_trade_ledger_file_hash_after: str | None = None
+    paper_trade_ledger_path: str | None = None
+    weekly_turnover_fill_count = 0
+    weekly_turnover_source = "paper_trade_transition.canonical_turnover_bp"
+    turnover_basis: tuple[dict[str, object], ...] = ()
+    transition_basis: tuple[dict[str, object], ...] = ()
+    weekly_turnover_coverage: dict[str, object] = {}
+    paper_read_consistency: dict[str, object] = {}
+    calendar_coverage: dict[str, object] = {}
+    paper_preopen_coverage_receipt: dict[str, object] | None = None
+    if paper_trade_ledger_db_path is None:
+        raise ValueError(
+            "paper trade ledger path is required for weekly turnover evidence"
+        )
+    else:
+        paper_trade_ledger_db_path = (
+            paper_trade_ledger_db_path.expanduser().resolve()
+        )
+        paper_trade_ledger_path = str(paper_trade_ledger_db_path)
+        paper_trade_ledger_file_hash = _sqlite_custody_hash(
+            paper_trade_ledger_db_path
+        )
+        paper_preopen_coverage_receipt = _read_paper_preopen_coverage_receipt(
+            state_db_path=state_db_path,
+            state_snapshot=snapshot,
+            available_snapshots=snapshots,
+            ledger_db_path=paper_trade_ledger_db_path,
+            decision_date=decision_date,
+            configured_path=paper_preopen_coverage_receipt_path,
+        )
+        coverage_start = window_start
+        if weekly:
+            first_weekly_date = date.fromisoformat(weekly[0].decision_date)
+            prior_for_coverage = [
+                item
+                for item in eligible
+                if date.fromisoformat(item.decision_date) < first_weekly_date
+            ]
+            if prior_for_coverage:
+                coverage_start = date.fromisoformat(
+                    prior_for_coverage[-1].decision_date
+                )
+        fills = _read_paper_trade_fills_read_only(
+            ledger_db_path=paper_trade_ledger_db_path,
+            portfolio_id=portfolio_id,
+            # Read the predecessor interval as well.  A T+1 transition can
+            # be reflected by the first in-window snapshot even when its
+            # execution date is one day before the rolling turnover window.
+            start_date=coverage_start,
+            end_date=decision_date,
+        )
+        transitions = _read_paper_trade_transitions_read_only(
+            ledger_db_path=paper_trade_ledger_db_path,
+            portfolio_id=portfolio_id,
+            start_date=coverage_start,
+            end_date=decision_date,
+        )
+        turnover_basis = _validate_paper_trade_snapshot_coverage(
+            eligible_snapshots=eligible,
+            weekly_snapshots=weekly,
+            fills=fills,
+            window_start=window_start,
+            decision_date=decision_date,
+        )
+        calendar_coverage = _validate_paper_snapshot_calendar_coverage(
+            eligible_snapshots=eligible,
+            weekly_snapshots=weekly,
+            window_start=window_start,
+            decision_date=decision_date,
+            official_calendar=official_calendar,
+        )
+        transition_basis = _validate_paper_trade_transitions(
+            transitions=transitions,
+            fills=fills,
+            portfolio_id=portfolio_id,
+        )
+        paper_trade_ledger_file_hash_after = _sqlite_custody_hash(
+            paper_trade_ledger_db_path
+        )
+        if paper_trade_ledger_file_hash != paper_trade_ledger_file_hash_after:
+            raise ValueError("paper trade ledger database changed during read")
+        turnover_fills = tuple(
+            fill
+            for fill in fills
+            if (
+                fill.status in _PAPER_EXECUTED_STATUSES
+                and window_start <= date.fromisoformat(fill.event_date) < decision_date
+            )
+        )
+        missing_turnover = tuple(
+            fill.fill_id for fill in turnover_fills if fill.turnover_bp is None
+        )
+        if missing_turnover:
+            raise ValueError(
+                "paper trade ledger turnover_bp missing"
+                f":{','.join(missing_turnover)}"
+            )
+        gross_turnover_used_bp = sum(
+            (fill.turnover_bp or 0) for fill in turnover_fills
+        )
+        canonical_basis = tuple(
+            item
+            for item in transition_basis
+            if window_start
+            <= date.fromisoformat(str(item["event_date"]))
+            < decision_date
+        )
+        weekly_turnover_used_bp = sum(
+            int(cast(int, item["canonical_turnover_bp"]))
+            for item in canonical_basis
+        )
+        weekly_turnover_fill_count = len(turnover_fills)
+        weekly_turnover_source = "paper_trade_transition.canonical_turnover_bp"
+        gross_turnover_basis = tuple(
+            fill_basis
+            for item in transition_basis
+            for fill_basis in cast(
+                Sequence[Mapping[str, object]],
+                item.get("gross_turnover_basis", ()),
+            )
+            if window_start
+            <= date.fromisoformat(str(fill_basis["event_date"]))
+            < decision_date
+        )
+        weekly_turnover_coverage = {
+            "schema_version": "paper-trade-weekly-coverage.v1",
+            "window_start": window_start.isoformat(),
+            "decision_date_exclusive": decision_date.isoformat(),
+            "coverage_start": coverage_start.isoformat(),
+            "first_snapshot_date": weekly[0].decision_date,
+            "last_snapshot_date": weekly[-1].decision_date,
+            "snapshot_count": len(weekly),
+            "snapshot_dates": [item.decision_date for item in weekly],
+            **calendar_coverage,
+            "transition_count": len(canonical_basis),
+            "filled_event_count": weekly_turnover_fill_count,
+            "canonical_turnover_bp": weekly_turnover_used_bp,
+            "gross_turnover_bp": gross_turnover_used_bp,
+            "snapshot_boundary_semantics": (
+                "T+1 snapshot quantity and cash transitions reconcile to bounded fills"
+            ),
+            "complete": True,
+            "zero_trade_accepted": (
+                not turnover_fills and not canonical_basis
+            ),
+            "gross_turnover_basis": list(gross_turnover_basis),
+            "canonical_transition_basis": list(canonical_basis),
+        }
+        paper_read_consistency = {
+            "state_db": {
+                "path": str(state_db_path.expanduser().resolve()),
+                "mode": "ro/query_only",
+                "hash_before": state_file_hash_before,
+                "hash_after": state_file_hash_after,
+                "unchanged": state_file_hash_before == state_file_hash_after,
+            },
+            "trade_ledger_db": {
+                "path": paper_trade_ledger_path,
+                "mode": "ro/query_only",
+                "hash_before": paper_trade_ledger_file_hash,
+                "hash_after": paper_trade_ledger_file_hash_after,
+                "unchanged": (
+                    paper_trade_ledger_file_hash
+                    == paper_trade_ledger_file_hash_after
+                ),
+            },
+            "preopen_coverage_receipt": paper_preopen_coverage_receipt,
+            "cross_database_atomicity": "not_claimed; independent custody hashes",
+        }
 
     current_quantities = _position_quantities(snapshot)
     cooldown_days: dict[str, int | None] = {}
@@ -358,6 +1818,16 @@ def load_t_minus_one_paper_ledger(
         ],
         "exact_weights": current_weights.to_dict(),
         "weekly_turnover_used_bp": weekly_turnover_used_bp,
+        "weekly_turnover_fill_count": weekly_turnover_fill_count,
+        "weekly_turnover_source": weekly_turnover_source,
+        "weekly_turnover_coverage": weekly_turnover_coverage,
+        "turnover_contract": dict(_PAPER_TURNOVER_CONTRACT),
+        "turnover_basis": list(turnover_basis),
+        "transition_basis": list(transition_basis),
+        "paper_read_consistency": paper_read_consistency,
+        "paper_trade_ledger_path": paper_trade_ledger_path,
+        "paper_trade_ledger_file_hash": paper_trade_ledger_file_hash,
+        "paper_state_file_hash": state_file_hash_after,
         "cooldown_days": cooldown_days,
     }
     return PaperLedgerContext(
@@ -366,6 +1836,28 @@ def load_t_minus_one_paper_ledger(
         weekly_turnover_used_bp=weekly_turnover_used_bp,
         cooldown_days=cooldown_days,
         ledger_hash=_payload_hash(ledger_payload),
+        paper_trade_ledger_path=paper_trade_ledger_path,
+        paper_trade_ledger_file_hash=paper_trade_ledger_file_hash_after,
+        weekly_turnover_fill_count=weekly_turnover_fill_count,
+        weekly_turnover_source=weekly_turnover_source,
+        weekly_turnover_coverage=cast(
+            Mapping[str, object],
+            ledger_payload["weekly_turnover_coverage"],
+        ),
+        paper_read_consistency=cast(
+            Mapping[str, object],
+            ledger_payload["paper_read_consistency"],
+        ),
+        paper_preopen_coverage_receipt_path=(
+            None
+            if paper_preopen_coverage_receipt is None
+            else str(paper_preopen_coverage_receipt["path"])
+        ),
+        paper_preopen_coverage_receipt_file_hash=(
+            None
+            if paper_preopen_coverage_receipt is None
+            else str(paper_preopen_coverage_receipt["file_hash"])
+        ),
     )
 
 
@@ -375,10 +1867,12 @@ def _read_paper_snapshots_read_only(
     portfolio_id: str,
 ) -> tuple[PaperPortfolioSnapshot, ...]:
     uri = state_db_path.resolve().as_uri() + "?mode=ro"
-    with sqlite3.connect(uri, uri=True) as connection:
+    connection = sqlite3.connect(uri, uri=True)
+    try:
         connection.execute("PRAGMA query_only=ON")
         if connection.execute("PRAGMA query_only").fetchone() != (1,):
             raise RuntimeError("paper ledger query_only could not be enabled")
+        connection.execute("BEGIN")
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
             """
@@ -391,7 +1885,22 @@ def _read_paper_snapshots_read_only(
             (portfolio_id,),
         ).fetchall()
         result: list[PaperPortfolioSnapshot] = []
+        seen_dates: set[str] = set()
         for row in rows:
+            decision_date = str(row["decision_date"])
+            try:
+                parsed_decision_date = date.fromisoformat(decision_date)
+            except ValueError as exc:
+                raise ValueError(
+                    "paper snapshot decision_date must be an ISO date"
+                ) from exc
+            if parsed_decision_date.isoformat() != decision_date:
+                raise ValueError(
+                    "paper snapshot decision_date must be canonical YYYY-MM-DD"
+                )
+            if decision_date in seen_dates:
+                raise ValueError("paper snapshot contains duplicate decision date")
+            seen_dates.add(decision_date)
             positions = connection.execute(
                 """
                 SELECT stock_code, quantity, mark_price, market_value, weight_bp
@@ -405,7 +1914,7 @@ def _read_paper_snapshots_read_only(
                 PaperPortfolioSnapshot(
                     snapshot_id=str(row["snapshot_id"]),
                     portfolio_id=str(row["portfolio_id"]),
-                    decision_date=str(row["decision_date"]),
+                    decision_date=decision_date,
                     source_result_id=str(row["source_result_id"]),
                     cash=Decimal(str(row["cash"])),
                     total_value=Decimal(str(row["total_value"])),
@@ -421,7 +1930,10 @@ def _read_paper_snapshots_read_only(
                     ),
                 )
             )
-    return tuple(result)
+        return tuple(result)
+    finally:
+        connection.rollback()
+        connection.close()
 
 
 @dataclass(frozen=True)
@@ -1714,6 +3226,7 @@ class MLAllocationShadowCollector:
         *,
         market_database_path: Path,
         paper_state_db_path: Path | None,
+        paper_trade_ledger_db_path: Path | None = None,
         sidecar_database_path: Path,
         artifact_root: Path,
         portfolio_id: str = "paper-main",
@@ -1721,6 +3234,7 @@ class MLAllocationShadowCollector:
         promotion_reference_path: Path | None = None,
         promotion_reference_file_hash: str | None = None,
         official_market_event_pointer_path: Path | None = None,
+        official_calendar: object | None = None,
         ensure_sidecar_schema: bool = True,
     ) -> None:
         if (promotion_reference_path is None) != (
@@ -1730,7 +3244,15 @@ class MLAllocationShadowCollector:
                 "promotion reference path and file hash must be configured together"
             )
         self._market = SQLiteTMinusOneMarketReader(market_database_path)
+        if official_calendar is None:
+            from data_module.official_trading_calendar import (  # noqa: PLC0415
+                OfficialTradingCalendar,
+            )
+
+            official_calendar = OfficialTradingCalendar(db_path=market_database_path)
+        self._official_calendar = official_calendar
         self._paper_state_db_path = paper_state_db_path
+        self._paper_trade_ledger_db_path = paper_trade_ledger_db_path
         self._repository = ShadowEvidenceRepository(
             sidecar_database_path,
             ensure_schema=ensure_sidecar_schema,
@@ -1780,6 +3302,7 @@ class MLAllocationShadowCollector:
         return cls(
             market_database_path=market_database_path,
             paper_state_db_path=None,
+            paper_trade_ledger_db_path=None,
             sidecar_database_path=sidecar_database_path,
             artifact_root=artifact_root,
             official_market_event_pointer_path=(
@@ -1859,6 +3382,8 @@ class MLAllocationShadowCollector:
             state_db_path=paper_state_db_path,
             portfolio_id=self._portfolio_id,
             decision_date=decision_date,
+            paper_trade_ledger_db_path=self._paper_trade_ledger_db_path,
+            official_calendar=self._official_calendar,
         )
         symbols = tuple(
             sorted(
@@ -2051,6 +3576,20 @@ class MLAllocationShadowCollector:
                 "total_value": str(ledger.snapshot.total_value),
                 "current_weights": ledger.current_weights.to_dict(),
                 "weekly_turnover_used_bp": ledger.weekly_turnover_used_bp,
+                "weekly_turnover_fill_count": ledger.weekly_turnover_fill_count,
+                "weekly_turnover_source": ledger.weekly_turnover_source,
+                "weekly_turnover_coverage": (
+                    None
+                    if ledger.weekly_turnover_coverage is None
+                    else dict(ledger.weekly_turnover_coverage)
+                ),
+                "paper_read_consistency": (
+                    None
+                    if ledger.paper_read_consistency is None
+                    else dict(ledger.paper_read_consistency)
+                ),
+                "paper_trade_ledger_path": ledger.paper_trade_ledger_path,
+                "paper_trade_ledger_file_hash": ledger.paper_trade_ledger_file_hash,
                 "cooldown_days": dict(ledger.cooldown_days),
                 "complete": True,
             },
@@ -2249,6 +3788,17 @@ class MLAllocationShadowCollector:
             "production_action_allowed": False,
             "broker_order_allowed": False,
             "writes_source_database": False,
+            "paper_read_consistency": (
+                None
+                if ledger.paper_read_consistency is None
+                else dict(ledger.paper_read_consistency)
+            ),
+            "paper_preopen_coverage_receipt_path": (
+                ledger.paper_preopen_coverage_receipt_path
+            ),
+            "paper_preopen_coverage_receipt_file_hash": (
+                ledger.paper_preopen_coverage_receipt_file_hash
+            ),
         }
 
     def mature_and_summarize(

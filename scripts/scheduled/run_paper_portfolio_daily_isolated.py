@@ -14,13 +14,15 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping
 from collections.abc import Callable
-from datetime import datetime, time as datetime_time, timezone
+from datetime import date, datetime, time as datetime_time, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
 import time as time_module
+from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,6 +58,84 @@ LEDGER_DB = OPERATIONAL_ROOT / "paper_trade_ledger.sqlite"
 SCHEMA_VERSION = "paper-portfolio-daily-isolated-scope.v1"
 TAIPEI_PREOPEN_CUTOFF = datetime_time(8, 30)
 SCHEDULED_WAKE_LOCAL_TIME = "16:15"
+RUN_STATE_SCHEMA_VERSION = "paper-portfolio-isolated-run-state.v1"
+RUN_STATE_HEARTBEAT_INTERVAL_SECONDS = 60
+RUN_STATE_STALE_AFTER_SECONDS = 180
+RUN_STATE_TERMINAL_PHASES = frozenset({"terminal"})
+CALENDAR_CACHE_ROOT = OPERATIONAL_ROOT / "calendar_cache"
+
+
+def _parse_calendar_timestamp(value: object, field_name: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name}_missing")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"{field_name}_invalid") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field_name}_must_be_timezone_aware")
+    return parsed.astimezone(timezone.utc)
+
+
+class _DecisionBoundOfficialCalendar:
+    """將 official calendar source custody 綁定至 Paper decision clock。"""
+
+    def __init__(
+        self,
+        delegate: OfficialTradingCalendar,
+        *,
+        decision_at: datetime,
+    ) -> None:
+        self._delegate = delegate
+        self._decision_at = decision_at.astimezone(timezone.utc)
+
+    def is_official_trading_day(
+        self,
+        target_date: date,
+        allow_online_probe: bool = True,
+    ) -> tuple[bool | None, str]:
+        # Wrapper 對 Paper producer 固定使用已保存的 official cache；若 cache
+        # 不可用，不能在 08:30 之後用 live response 補成因果日曆。
+        is_trading_day, reason = self._delegate.is_official_trading_day(
+            target_date,
+            allow_online_probe=False,
+        )
+        if target_date.weekday() >= 5:
+            return is_trading_day, reason
+        evidence_for = getattr(self._delegate, "evidence_for", None)
+        if not callable(evidence_for):
+            return None, "official_calendar_evidence_missing"
+        try:
+            evidence = evidence_for(target_date)
+        except Exception as error:  # noqa: BLE001 - producer must fail closed
+            return None, f"official_calendar_evidence_exception:{type(error).__name__}"
+        if not isinstance(evidence, Mapping):
+            return None, "official_calendar_evidence_missing"
+        available_at = evidence.get("available_at")
+        if available_at is None:
+            available_at = evidence.get("captured_at")
+        if available_at is None:
+            return None, "official_calendar_capture_missing"
+        try:
+            captured_at = _parse_calendar_timestamp(
+                available_at,
+                "official_calendar_available_at",
+            )
+        except ValueError as error:
+            return None, f"official_calendar_capture_invalid:{error}"
+        if captured_at > self._decision_at:
+            return None, "official_calendar_capture_after_decision_at"
+        return is_trading_day, reason
+
+
+def _bind_calendar_to_decision(
+    calendar: OfficialTradingCalendar | object | None,
+    *,
+    decision_at: datetime,
+) -> object | None:
+    if isinstance(calendar, OfficialTradingCalendar):
+        return _DecisionBoundOfficialCalendar(calendar, decision_at=decision_at)
+    return calendar
 
 
 def _canonical_json(value: object) -> str:
@@ -105,6 +185,323 @@ def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
 
         os.fsync(stream.fileno())
     os.replace(temporary, resolved)
+
+
+def _parse_run_state_timestamp(value: object, field_name: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name}_missing")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"{field_name}_invalid") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field_name}_must_be_timezone_aware")
+    return parsed.astimezone(timezone.utc)
+
+
+def _run_state_root(operation_root: Path) -> Path:
+    return _resolved(
+        operation_root
+        / "scheduled"
+        / "paper_portfolio_isolated"
+        / "run_state"
+    )
+
+
+def _read_json_object(path: Path) -> dict[str, object] | None:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, Mapping):
+        return None
+    return dict(raw)
+
+
+def _stale_previous_run_state(
+    previous: Mapping[str, object] | None,
+    *,
+    observed_at: datetime,
+) -> dict[str, object] | None:
+    """Classify only stale non-terminal state; do not identify a terminator."""
+
+    if previous is None:
+        return None
+    phase = str(previous.get("phase") or "").strip()
+    if previous.get("terminal") is True or phase in RUN_STATE_TERMINAL_PHASES:
+        return None
+    heartbeat_value = previous.get("last_heartbeat_at") or previous.get(
+        "heartbeat_at"
+    )
+    if heartbeat_value is None:
+        return {
+            "classification": "stale_nonterminal_run",
+            "reason": "heartbeat_missing",
+            "terminator": "unknown",
+            "run_id": previous.get("run_id"),
+            "phase": phase or None,
+            "last_heartbeat_at": None,
+        }
+    try:
+        heartbeat_at = _parse_run_state_timestamp(
+            heartbeat_value,
+            "previous_run_last_heartbeat_at",
+        )
+    except ValueError:
+        return {
+            "classification": "stale_nonterminal_run",
+            "reason": "heartbeat_invalid",
+            "terminator": "unknown",
+            "run_id": previous.get("run_id"),
+            "phase": phase or None,
+            "last_heartbeat_at": heartbeat_value,
+        }
+    observed = observed_at.astimezone(timezone.utc)
+    age_seconds = int((observed - heartbeat_at).total_seconds())
+    if age_seconds < RUN_STATE_STALE_AFTER_SECONDS:
+        return None
+    return {
+        "classification": "stale_nonterminal_run",
+        "reason": "heartbeat_expired",
+        "terminator": "unknown",
+        "run_id": previous.get("run_id"),
+        "phase": phase or None,
+        "last_heartbeat_at": heartbeat_at.isoformat(),
+        "observed_at": observed.isoformat(),
+        "age_seconds": age_seconds,
+        "stale_after_seconds": RUN_STATE_STALE_AFTER_SECONDS,
+    }
+
+
+class _PaperRunState:
+    """Persist wrapper lifecycle state separately from the Paper status schema."""
+
+    def __init__(self, operation_root: Path) -> None:
+        self.operation_root = _resolved(operation_root)
+        self.root = _run_state_root(self.operation_root)
+        self.latest_path = self.root / "latest.json"
+        self.receipt_root = self.root / "receipts"
+        self.run_id = uuid4().hex
+        self.state: dict[str, object] = {}
+
+    def _write_event(self, event: str, *, state: Mapping[str, object]) -> None:
+        self.receipt_root.mkdir(parents=True, exist_ok=True)
+        body = {"event": event, **dict(state)}
+        encoded = (_canonical_json(body) + "\n").encode("utf-8")
+        digest = hashlib.sha256(encoded).hexdigest()[:20]
+        event_name = {
+            "waiting_for_taipei_cutoff": "waiting",
+            "stale_previous_run": "stale",
+        }.get(event, event)
+        # Keep the immutable receipt name short enough for Windows Task
+        # Scheduler workspaces whose temporary/test roots may already be long.
+        target = self.receipt_root / f"{event_name}_{self.run_id[:12]}_{digest[:12]}.json"
+        temporary = self.receipt_root / (
+            f".{event_name}_{self.run_id[:12]}_{uuid4().hex[:12]}.tmp"
+        )
+
+        def _mark_existing() -> None:
+            try:
+                existing = target.read_bytes()
+            except OSError as error:
+                self._mark_event_write(
+                    event,
+                    "incomplete",
+                    error=f"{type(error).__name__}:{error}",
+                )
+            else:
+                self._mark_event_write(
+                    event,
+                    "already_present_verified"
+                    if existing == encoded
+                    else "conflict",
+                    error=(
+                        None
+                        if existing == encoded
+                        else "immutable_event_receipt_bytes_mismatch"
+                    ),
+                )
+
+        try:
+            if target.exists():
+                _mark_existing()
+                return
+
+            # 絕不直接寫入 immutable final path。partial stream 或 fsync 中斷
+            # 只能留下可丟棄的暫存檔，讓後續 retry 以 create-only 發布同一份 bytes。
+            with temporary.open("xb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                # hard-link publish 是 create-only，因此不會取代競爭 instance
+                # 已經發布的 receipt。
+                os.link(temporary, target)
+            except FileExistsError:
+                _mark_existing()
+            else:
+                published = target.read_bytes()
+                if published != encoded:
+                    self._mark_event_write(
+                        event,
+                        "conflict",
+                        error="immutable_event_receipt_readback_mismatch",
+                    )
+                else:
+                    self._mark_event_write(event, "persisted")
+        except OSError as error:
+            self._mark_event_write(
+                event,
+                "incomplete",
+                error=f"{type(error).__name__}:{error}",
+            )
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # cleanup 失敗會在下一輪保留為可觀測狀態；不可因此移除或
+                # 覆寫 immutable final receipt。
+                pass
+
+    def _mark_event_write(
+        self,
+        event: str,
+        status: str,
+        *,
+        error: str | None = None,
+    ) -> None:
+        self.state["last_event"] = event
+        self.state["event_write_status"] = status
+        self.state.pop("pending_event", None)
+        if error is None:
+            self.state.pop("event_write_error", None)
+        else:
+            self.state["event_write_error"] = error
+        try:
+            _atomic_write_json(self.latest_path, self.state)
+        except OSError:
+            # The event status is best-effort diagnostics.  The earlier
+            # lifecycle write remains the durable evidence if this follow-up
+            # status write is itself interrupted.
+            return
+
+    def _persist(self, *, event: str | None = None) -> None:
+        if event is not None:
+            self.state["pending_event"] = event
+            self.state["event_write_status"] = "pending"
+        _atomic_write_json(self.latest_path, self.state)
+        if event is not None:
+            self._write_event(event, state=self.state)
+
+    def start(self, *, observed_at: datetime) -> None:
+        observed = observed_at.astimezone(timezone.utc)
+        previous = _read_json_object(self.latest_path)
+        stale = _stale_previous_run_state(previous, observed_at=observed)
+        self.state = {
+            "schema_version": RUN_STATE_SCHEMA_VERSION,
+            "task": "baldr-paper-portfolio-daily",
+            "run_id": self.run_id,
+            "status": "running",
+            "phase": "starting",
+            "terminal": False,
+            "started_at": observed.isoformat(),
+            "last_heartbeat_at": observed.isoformat(),
+            "heartbeat_interval_seconds": RUN_STATE_HEARTBEAT_INTERVAL_SECONDS,
+            "stale_after_seconds": RUN_STATE_STALE_AFTER_SECONDS,
+            "operation_root": str(self.operation_root),
+            "latest_status_path": str(
+                self.operation_root
+                / "scheduled"
+                / "paper_portfolio_isolated"
+                / "latest_status.json"
+            ),
+            "candidate_only": True,
+            "writes_D_source": False,
+            "writes_market_database": False,
+            "formal_credit": False,
+            "broker_execution": False,
+            "terminator": "unknown",
+        }
+        if stale is not None:
+            self.state["previous_run"] = stale
+        self._persist(event="starting")
+        if stale is not None:
+            self._write_event("stale_previous_run", state=stale)
+
+    def heartbeat(self, *, observed_at: datetime, phase: str) -> None:
+        if self.state.get("terminal") is True:
+            return
+        observed = observed_at.astimezone(timezone.utc)
+        previous_phase = str(self.state.get("phase") or "")
+        self.state.update(
+            {
+                "status": "running",
+                "phase": phase,
+                "last_heartbeat_at": observed.isoformat(),
+                "heartbeat_count": int(self.state.get("heartbeat_count") or 0) + 1,
+            }
+        )
+        self._persist(event=phase if phase != previous_phase else None)
+
+    def transition(
+        self,
+        *,
+        phase: str,
+        observed_at: datetime,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        if self.state.get("terminal") is True:
+            return
+        observed = observed_at.astimezone(timezone.utc)
+        self.state.update(
+            {
+                "status": "running",
+                "phase": phase,
+                "last_heartbeat_at": observed.isoformat(),
+            }
+        )
+        if details is not None:
+            self.state.update(dict(details))
+        self._persist(event=phase)
+
+    def finish(
+        self,
+        *,
+        observed_at: datetime,
+        result: Mapping[str, object],
+    ) -> None:
+        observed = observed_at.astimezone(timezone.utc)
+        self.state.update(
+            {
+                "status": "terminal",
+                "phase": "terminal",
+                "terminal": True,
+                "terminal_status": str(result.get("status") or "unknown"),
+                "finished_at": observed.isoformat(),
+                "last_heartbeat_at": observed.isoformat(),
+                "result_decision_date": result.get("decision_date"),
+                "result_snapshot_id": result.get("snapshot_id"),
+            }
+        )
+        self._persist(event="terminal")
+
+    def fail(self, *, observed_at: datetime, error: BaseException) -> None:
+        observed = observed_at.astimezone(timezone.utc)
+        self.state.update(
+            {
+                "status": "terminal",
+                "phase": "terminal",
+                "terminal": True,
+                "terminal_status": "wrapper_exception",
+                "error_type": type(error).__name__,
+                "error": str(error),
+                "finished_at": observed.isoformat(),
+                "last_heartbeat_at": observed.isoformat(),
+            }
+        )
+        self._persist(event="terminal")
 
 
 def _scope_paths() -> dict[str, Path]:
@@ -325,6 +722,7 @@ def _wait_until_taipei_cutoff(
     *,
     now_fn: Callable[[], datetime] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
+    heartbeat_fn: Callable[[datetime], None] | None = None,
 ) -> datetime:
     """在排程的早期喚醒後等待真實台北 08:30，再回傳可用時間。
 
@@ -340,6 +738,8 @@ def _wait_until_taipei_cutoff(
         if current_raw.tzinfo is None or current_raw.utcoffset() is None:
             raise ValueError("scheduled Taipei clock must include timezone")
         current = current_raw.astimezone(TAIPEI)
+        if heartbeat_fn is not None:
+            heartbeat_fn(current)
         cutoff = _taipei_cutoff_for(current)
         if current >= cutoff:
             return current
@@ -378,13 +778,22 @@ def run_isolated(
             None,
             now=observed.astimezone(TAIPEI),
         )
+        calendar_service = calendar or OfficialTradingCalendar(
+            db_path=paths["market_db"],
+            calendar_cache_path=CALENDAR_CACHE_ROOT,
+            temporary_closure_path=CALENDAR_CACHE_ROOT,
+        )
+        decision_bound_calendar = _bind_calendar_to_decision(
+            calendar_service,
+            decision_at=resolved_decision,
+        )
         result = run_paper_portfolio_daily(
             baseline_path=paths["source_baseline"],
             state_db=paths["state_db"],
             market_db=paths["market_db"],
             output_root=paths["operation_root"],
             decision_at=resolved_decision,
-            calendar=calendar,
+            calendar=decision_bound_calendar,  # type: ignore[arg-type]
             now=observed.astimezone(TAIPEI),
             ledger_db=paths["ledger_db"],
         )
@@ -393,9 +802,46 @@ def run_isolated(
             manifest_path=paths["state_seed_manifest"],
             observed_at=observed,
         )
+        preopen_coverage: dict[str, object] | None = None
+        if result.get("status") == "passed":
+            preopen_coverage = {
+                "schema_version": "paper-preopen-coverage.v1",
+                "status": "passed",
+                "portfolio_id": result.get("portfolio_id"),
+                "snapshot_id": result.get("snapshot_id"),
+                "decision_date": result.get("decision_date"),
+                "snapshot_relation": (
+                    "current_decision_date_producer_receipt"
+                ),
+                "snapshot_appended": result.get("snapshot_appended"),
+                "snapshot_semantics": result.get("snapshot_semantics"),
+                "trading_calendar_validated": result.get(
+                    "trading_calendar_validated"
+                ),
+                "trading_calendar_is_open": result.get(
+                    "trading_calendar_is_open"
+                ),
+                "state_db": str(paths["state_db"]),
+                "ledger_db": str(paths["ledger_db"]),
+                "state_head": state_head,
+                "write_scope": "repository_paper_snapshot_append_only",
+                "writer": "scripts.run_paper_portfolio_daily.run",
+            }
+            write_contract = result.get("paper_state_write_contract")
+            if not isinstance(write_contract, Mapping):
+                raise RuntimeError(
+                    "paper preopen writer did not publish its write contract"
+                )
         combined: dict[str, object] = {
             **result,
+            "schema_version": SCHEMA_VERSION,
             "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
+            "candidate_only": True,
+            "formal_credit": False,
+            "writes_D_source": False,
+            "writes_market_database": False,
+            "broker_execution": False,
+            "historical_backfill_claimed": False,
             "isolated_scope": {
                 "scope_manifest_path": str(manifest_path),
                 "scope_manifest_file_sha256": manifest_hash,
@@ -414,6 +860,9 @@ def run_isolated(
                 "broker_execution": False,
             },
         }
+        if preopen_coverage is not None:
+            combined["preopen_coverage"] = preopen_coverage
+            combined["snapshot_relation"] = preopen_coverage["snapshot_relation"]
         _atomic_write_json(
             paths["operation_root"]
             / "scheduled"
@@ -464,11 +913,40 @@ def main(argv: list[str] | None = None) -> int:
         explicit_decision = datetime.fromisoformat(str(args.decision_at).replace("Z", "+00:00"))
     # Task Scheduler 在 Pacific 16:15 喚醒；兩種 DST offset 都早於台北 cutoff，
     # 故此處只等待真實時鐘到 08:30，絕不以「最近已到達」把前一日當成今日輸入。
-    reached_taipei = _wait_until_taipei_cutoff()
-    result = run_isolated(
-        now=reached_taipei,
-        decision_at=explicit_decision,
-    )
+    run_state = _PaperRunState(OPERATIONAL_ROOT)
+    run_state.start(observed_at=datetime.now(timezone.utc))
+    try:
+        reached_taipei = _wait_until_taipei_cutoff(
+            heartbeat_fn=lambda current: run_state.heartbeat(
+                observed_at=current,
+                phase="waiting_for_taipei_cutoff",
+            )
+        )
+        run_state.transition(
+            phase="cutoff_reached",
+            observed_at=reached_taipei,
+            details={"taipei_cutoff": _taipei_cutoff_for(reached_taipei).isoformat()},
+        )
+        run_state.transition(
+            phase="producer_starting",
+            observed_at=datetime.now(timezone.utc),
+        )
+        result = run_isolated(
+            now=reached_taipei,
+            decision_at=explicit_decision,
+        )
+        run_state.transition(
+            phase="producer_completed",
+            observed_at=datetime.now(timezone.utc),
+            details={"producer_status": result.get("status")},
+        )
+        run_state.finish(
+            observed_at=datetime.now(timezone.utc),
+            result=result,
+        )
+    except Exception as error:
+        run_state.fail(observed_at=datetime.now(timezone.utc), error=error)
+        raise
     _print_json(result)
     return 0 if str(result.get("status")) in {
         "passed",

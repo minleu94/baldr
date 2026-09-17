@@ -32,6 +32,9 @@ from zoneinfo import ZoneInfo
 
 from app_module.position_thesis_contract import PositionInvalidationRule
 from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.official_trading_calendar_cache import (
+    OFFICIAL_CALENDAR_CACHE_SCHEMA_VERSION,
+)
 
 
 UTC = timezone.utc
@@ -66,6 +69,8 @@ class _PolicySnapshot:
     file_sha256: str
     calendar_path: Path
     calendar_sha256: str
+    calendar_observed_path: Path
+    calendar_observed_sha256: str
     rules: tuple[PositionInvalidationRule, ...]
     holding_horizon_trading_days: int
     review_cadence_trading_days: int
@@ -83,6 +88,7 @@ class _RecommendationSource:
     decision_date: date
     decision_at: datetime
     created_at: datetime
+    available_at: datetime
     config_sha256: str
 
 
@@ -313,6 +319,52 @@ def _calendar_hash_from_policy(policy: Mapping[str, Any]) -> str:
     return str(raw)
 
 
+def _validate_calendar_observation_custody(
+    path: Path,
+    *,
+    decision_at: datetime,
+    observed_at: datetime,
+    custom_calendar: Any | None,
+) -> None:
+    """Require official cache capture metadata when the file exposes it.
+
+    The scheduled caller performs the full refresh-receipt verification.  The
+    direct producer CLI still needs a bounded defense: a real official cache
+    captured after the recommendation decision cannot become the calendar
+    observation merely because the candidate is saved later.  Small injected
+    calendar doubles used by callers without official cache metadata remain
+    compatible with the existing optional-calendar contract.
+    """
+
+    try:
+        payload, _ = _read_json_with_hash(path, "calendar_observed")
+    except (ForwardPositionThesisError, OSError, ValueError):
+        if custom_calendar is not None:
+            return
+        raise ForwardPositionThesisError(
+            "calendar_observation_metadata_missing"
+        )
+    if payload.get("schema_version") != OFFICIAL_CALENDAR_CACHE_SCHEMA_VERSION:
+        if custom_calendar is not None:
+            return
+        raise ForwardPositionThesisError(
+            "calendar_observation_schema_invalid"
+        )
+    captured_at = _parse_aware(
+        payload.get("captured_at_utc"),
+        "calendar_observation_captured_at",
+    )
+    observed = observed_at.astimezone(UTC)
+    if captured_at > observed:
+        raise ForwardPositionThesisError(
+            "calendar_observation_captured_in_future"
+        )
+    if captured_at > decision_at.astimezone(UTC):
+        raise ForwardPositionThesisError(
+            "calendar_observation_captured_after_decision_at"
+        )
+
+
 class ForwardPositionThesisCandidateProducer:
     """Produce candidate packets and bind them to verified Paper entries."""
 
@@ -463,7 +515,7 @@ class ForwardPositionThesisCandidateProducer:
                 "file_sha256": source.file_sha256,
                 "content_sha256": source.content_sha256,
                 "created_at": source.created_at.isoformat(),
-                "available_at": source.created_at.isoformat(),
+                "available_at": source.available_at.isoformat(),
                 "decision_date": source.decision_date.isoformat(),
                 "config_sha256": source.config_sha256,
             },
@@ -550,15 +602,50 @@ class ForwardPositionThesisCandidateProducer:
         current = _parse_aware(self.now_provider(), "observed_at")
         if created_at > current:
             raise ForwardPositionThesisError("recommendation_created_at_future")
+        raw_run_context = payload.get("run_context")
+        run_context = (
+            raw_run_context
+            if isinstance(raw_run_context, Mapping)
+            else {}
+        )
+        context_decision_at = run_context.get("decision_at")
+        parsed_context_decision_at = (
+            None
+            if context_decision_at is None
+            else _parse_aware(context_decision_at, "recommendation_run_context_decision_at")
+        )
+        explicit_decision_at = (
+            None if decision_at is None else _parse_aware(decision_at, "decision_at")
+        )
+        if explicit_decision_at is not None and explicit_decision_at > current:
+            raise ForwardPositionThesisError("recommendation_decision_at_future")
+        if (
+            explicit_decision_at is not None
+            and parsed_context_decision_at is not None
+            and explicit_decision_at != parsed_context_decision_at
+        ):
+            raise ForwardPositionThesisError(
+                "recommendation_decision_at_context_mismatch"
+            )
         effective_decision_at = (
-            created_at
-            if decision_at is None
-            else _parse_aware(decision_at, "decision_at")
+            explicit_decision_at
+            or parsed_context_decision_at
+            or created_at
         )
         if effective_decision_at > current:
             raise ForwardPositionThesisError("recommendation_decision_at_future")
-        if created_at > effective_decision_at:
-            raise ForwardPositionThesisError("recommendation_available_after_decision")
+        raw_available_at = run_context.get("available_at") or run_context.get(
+            "captured_at"
+        )
+        available_at = (
+            created_at
+            if raw_available_at is None
+            else _parse_aware(raw_available_at, "recommendation_available_at")
+        )
+        if available_at > effective_decision_at:
+            raise ForwardPositionThesisError(
+                "recommendation_available_after_decision"
+            )
         if created_at.astimezone(TAIPEI).date() != decision_date:
             raise ForwardPositionThesisError("recommendation_created_date_mismatch")
         return _RecommendationSource(
@@ -570,6 +657,7 @@ class ForwardPositionThesisCandidateProducer:
             decision_date=decision_date,
             decision_at=effective_decision_at,
             created_at=created_at,
+            available_at=available_at,
             config_sha256=_sha256_json(dict(config)),
         )
 
@@ -631,9 +719,20 @@ class ForwardPositionThesisCandidateProducer:
         actual_calendar_hash = _read_file_hash(calendar_path, "calendar_cache")
         if actual_calendar_hash != calendar_hash:
             raise ForwardPositionThesisError("calendar_cache_hash_mismatch")
+        calendar_observed_path = self.calendar_cache_path or calendar_path
+        calendar_observed_hash = _read_file_hash(
+            calendar_observed_path,
+            "calendar_observed",
+        )
+        _validate_calendar_observation_custody(
+            calendar_observed_path,
+            decision_at=decision_at,
+            observed_at=_parse_aware(self.now_provider(), "observed_at"),
+            custom_calendar=self.calendar,
+        )
         calendar = self.calendar or OfficialTradingCalendar(
-            db_path=calendar_path,
-            calendar_cache_path=calendar_path,
+            db_path=calendar_observed_path,
+            calendar_cache_path=calendar_observed_path,
         )
         review_cadence = payload.get(
             "review_cadence_trading_days",
@@ -665,6 +764,8 @@ class ForwardPositionThesisCandidateProducer:
             file_sha256=policy_hash,
             calendar_path=calendar_path,
             calendar_sha256=calendar_hash,
+            calendar_observed_path=calendar_observed_path,
+            calendar_observed_sha256=calendar_observed_hash,
             rules=tuple(rules),
             holding_horizon_trading_days=horizon,
             review_cadence_trading_days=review_cadence,
@@ -728,6 +829,7 @@ class ForwardPositionThesisCandidateProducer:
             }
             status = "awaiting_explicit_policy"
             policy_trace: tuple[str, ...] = ()
+            calendar_trace: tuple[str, ...] = ()
         else:
             invalidation = {
                 "status": "explicit_policy",
@@ -742,6 +844,8 @@ class ForwardPositionThesisCandidateProducer:
                 "rules": [rule.to_dict() for rule in policy.rules],
                 "calendar_cache_path": str(policy.calendar_path),
                 "calendar_cache_hash": policy.calendar_sha256,
+                "calendar_observed_path": str(policy.calendar_observed_path),
+                "calendar_observed_sha256": policy.calendar_observed_sha256,
             }
             horizon = {
                 "status": "explicit_policy",
@@ -751,6 +855,10 @@ class ForwardPositionThesisCandidateProducer:
             }
             status = "candidate_ready"
             policy_trace = policy.source_trace
+            calendar_trace = (
+                f"calendar_observed_path:{policy.calendar_observed_path}",
+                f"calendar_observed_sha256:{policy.calendar_observed_sha256}",
+            )
         return {
             "schema_version": SCHEMA_VERSION,
             "candidate_id": candidate_id,
@@ -765,7 +873,7 @@ class ForwardPositionThesisCandidateProducer:
                 "file_sha256": source.file_sha256,
                 "content_sha256": source.content_sha256,
                 "created_at": source.created_at.isoformat(),
-                "available_at": source.created_at.isoformat(),
+                "available_at": source.available_at.isoformat(),
                 "decision_at": source.decision_at.isoformat(),
                 "decision_date": source.decision_date.isoformat(),
                 "config_sha256": source.config_sha256,
@@ -787,6 +895,7 @@ class ForwardPositionThesisCandidateProducer:
                     f"recommendation:{source.result_id}",
                     f"recommendation_source_hash:{source.file_sha256}",
                     f"recommendation_config_hash:{source.config_sha256}",
+                    *calendar_trace,
                     *policy_trace,
                 ],
             },
@@ -1527,6 +1636,8 @@ def _policy_to_dict(policy: _PolicySnapshot | None) -> dict[str, Any] | None:
         "file_sha256": policy.file_sha256,
         "calendar_cache_path": str(policy.calendar_path),
         "calendar_cache_hash": policy.calendar_sha256,
+        "calendar_observed_path": str(policy.calendar_observed_path),
+        "calendar_observed_sha256": policy.calendar_observed_sha256,
         "holding_horizon_trading_days": policy.holding_horizon_trading_days,
         "review_cadence_trading_days": policy.review_cadence_trading_days,
         "next_review_date": policy.next_review_date.isoformat(),

@@ -32,6 +32,7 @@ from ml_module.recommendation_calibration_training import (
     sample_payload,
 )
 from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenario,
     RecommendationCostScenarioError,
     build_banktaiwan_cost_scenario,
     build_legacy_cost_scenario,
@@ -204,6 +205,7 @@ def _estimated_samples(
     scenario,
     *,
     date_count: int = 90,
+    fixed_round_trip_cost_bp: int | None = None,
 ) -> tuple[RecommendationCalibrationSample, ...]:
     rows: list[RecommendationCalibrationSample] = []
     start = date(2025, 8, 1)
@@ -223,7 +225,10 @@ def _estimated_samples(
                 buy_price_twd=buy_price,
                 sell_price_twd=sell_price,
             )
-            assert estimate.status in {"estimated", "unavailable"}
+            if fixed_round_trip_cost_bp is None:
+                assert estimate.status in {"estimated", "unavailable"}
+            else:
+                assert estimate.status == "fixed_assumption"
             rows.append(
                 RecommendationCalibrationSample.from_forward_return(
                     row_id=f"estimated:{decision.isoformat()}:{symbol}",
@@ -239,7 +244,7 @@ def _estimated_samples(
                     ),
                     stock_return_bp=_return_bp(buy_price, sell_price),
                     benchmark_return_bp=100,
-                    fixed_round_trip_cost_bp=None,
+                    fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
                     # This intentionally extreme value proves that the new
                     # fees/tax-only label does not consume observed liquidity.
                     observed_liquidity_cost_bp=9_999,
@@ -256,6 +261,7 @@ def _fit_estimated_candidate(
     tmp_path: Path,
     *,
     scenario=None,
+    fixed_round_trip_cost_bp: int | None = None,
 ):
     scenario = scenario or build_banktaiwan_cost_scenario(
         research_order_quantity_shares=1_000
@@ -263,12 +269,15 @@ def _fit_estimated_candidate(
     result = RecommendationCalibrationTrainingService().fit(
         dataset_id="estimated-dataset-v1",
         dataset_hash="sha256:" + "a" * 64,
-        samples=_estimated_samples(scenario),
+        samples=_estimated_samples(
+            scenario,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        ),
         feature_names=FEATURE_NAMES,
         feature_schema=FEATURE_SCHEMA,
         feature_registry_hash=FEATURE_REGISTRY_HASH,
         training_as_of="2026-01-01",
-        fixed_round_trip_cost_bp=None,
+        fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
         cost_scenario=scenario,
         dataset_quality={"formal_candidate_eligible": True},
         created_at="2026-01-01T00:00:00+00:00",
@@ -283,6 +292,92 @@ def _fit_estimated_candidate(
     result.persist(candidate_root)
     metadata = json.loads((candidate_root / "candidate.json").read_text(encoding="utf-8"))
     return scenario, result, candidate_root, metadata
+
+
+def _legacy_missing_freeze_cross_anchor_fixture(
+    tmp_path: Path,
+) -> tuple[
+    Path,
+    RecommendationCostScenario,
+    Path,
+    Path,
+    Path,
+    Path,
+    dict[str, object],
+    dict[Path, bytes],
+]:
+    candidate_workspace = tmp_path / "candidate-fixture"
+    candidate_workspace.mkdir(parents=True, exist_ok=True)
+    scenario, _, candidate_root, candidate_metadata = _fit_estimated_candidate(
+        candidate_workspace,
+        scenario=build_legacy_cost_scenario(50),
+        fixed_round_trip_cost_bp=50,
+    )
+    output_root = tmp_path / "shadow-root"
+    root = output_root / "recommendation_learning"
+    challenger_path = root / "challenger" / "current.json"
+    latest_path = root / "latest_status.json"
+    receipt_path = root / "runs" / "2026-09-15" / "run_receipt.json"
+    anchor = {
+        "candidate_id": candidate_metadata["candidate_id"],
+        "candidate_root": str(candidate_root.resolve()),
+        "candidate_manifest_hash": candidate_metadata["manifest_hash"],
+        "candidate_artifact_hash": candidate_metadata["artifact_hash"],
+        "candidate_dataset_hash": candidate_metadata["dataset_hash"],
+        "candidate_dataset_id": candidate_metadata["dataset_id"],
+        "run_scope": "scheduled-snapshot-legacy-0545-fixture",
+    }
+    challenger_payload = {
+        "schema_version": "recommendation-calibration-challenger-pointer.v1",
+        "status": "pending",
+        **anchor,
+        "candidate_freeze_hash": candidate_metadata["candidate_freeze_hash"],
+    }
+    receipt_payload = {
+        "schema_version": "daily-recommendation-learning-receipt.v1",
+        "receipt_path": str(receipt_path.resolve()),
+        "status": "completed",
+        "finalized": True,
+        "decision": "retain_current",
+        "formal_order_allowed": False,
+        "shadow_only": True,
+        "dataset_hash": "sha256:" + "4" * 64,
+        **anchor,
+    }
+    challenger_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    challenger_path.write_text(
+        json.dumps(challenger_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    receipt_path.write_text(
+        json.dumps(receipt_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    latest_path.write_text(
+        json.dumps(receipt_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    source_paths: tuple[Path, ...] = (
+        challenger_path,
+        latest_path,
+        receipt_path,
+        candidate_root / "candidate.json",
+        candidate_root / "manifest.json",
+    )
+    manifest = json.loads((candidate_root / "manifest.json").read_text(encoding="utf-8"))
+    source_paths += (candidate_root / manifest["artifact_filename"],)
+    source_bytes = {path: path.read_bytes() for path in source_paths}
+    return (
+        output_root,
+        scenario,
+        latest_path,
+        challenger_path,
+        receipt_path,
+        candidate_root,
+        receipt_payload,
+        source_bytes,
+    )
 
 
 def _persist_estimated_captures(
@@ -1017,7 +1112,9 @@ def test_existing_legacy_candidate_and_capture_are_readonly_compatible(tmp_path:
         data_root=tmp_path / "formal-data-root",
     )
     assert consumer.reload(decision_date="2026-09-14") == "active", consumer._blocker
-    assert consumer.active_identity(decision_date="2026-09-14")["candidate_id"] == candidate["candidate_id"]
+    active_identity = consumer.active_identity(decision_date="2026-09-14")
+    assert active_identity is not None
+    assert active_identity["candidate_id"] == candidate["candidate_id"]
     assert (isolated_candidate / "candidate.json").read_bytes() == candidate_bytes_before
     assert isolated_capture.read_bytes() == capture_bytes_before
     legacy = build_legacy_cost_scenario(50)
@@ -1134,6 +1231,166 @@ def test_old_estimated_challenger_pointer_resolves_from_anchored_candidate(
     assert stored is not None
     assert stored.scenario_hash == scenario.scenario_hash
     assert daily_learning._cost_scenario_root_conflict(output_root, scenario) is None
+
+
+def test_legacy_missing_freeze_marker_resolves_from_same_cohort_full_anchor(
+    tmp_path: Path,
+) -> None:
+    (
+        output_root,
+        scenario,
+        latest_path,
+        _,
+        _,
+        _,
+        latest_payload,
+        source_bytes,
+    ) = _legacy_missing_freeze_cross_anchor_fixture(tmp_path)
+
+    stored_without_compatibility, error_without_compatibility = (
+        daily_learning._stored_cost_scenario(
+            latest_payload,
+            source_path=latest_path,
+        )
+    )
+    assert stored_without_compatibility is None
+    assert error_without_compatibility is not None
+    assert "candidate_freeze_hash" in error_without_compatibility
+
+    stored, error = daily_learning._stored_cost_scenario(
+        latest_payload,
+        source_path=latest_path,
+        allow_legacy_marker_missing_freeze=True,
+    )
+    assert error is None
+    assert stored is not None
+    assert stored.scenario_hash == scenario.scenario_hash
+    assert daily_learning._cost_scenario_root_conflict(output_root, scenario) is None
+    assert {path: path.read_bytes() for path in source_bytes} == source_bytes
+
+
+@pytest.mark.parametrize(
+    "tamper_kind, expected_fragment",
+    (
+        ("swapped_root", "latest_status_receipt_anchor_mismatch"),
+        ("swapped_candidate", "candidate_identity_mismatch:candidate_id"),
+        ("swapped_dataset", "candidate_identity_mismatch:candidate_dataset_hash"),
+        ("manifest_hash_tamper", "candidate_identity_mismatch:candidate_manifest_hash"),
+        ("freeze_hash_conflict", "candidate_identity_mismatch:candidate_freeze_hash"),
+        ("missing_anchor", "no_candidate_root"),
+        ("missing_cohort", "incomplete_candidate_anchor:run_scope"),
+        ("cohort_tamper", "latest_status_receipt_anchor_mismatch"),
+    ),
+)
+def test_legacy_missing_freeze_cross_anchor_fails_closed_for_tampering(
+    tmp_path: Path,
+    tamper_kind: str,
+    expected_fragment: str,
+) -> None:
+    (
+        output_root,
+        scenario,
+        latest_path,
+        _,
+        _,
+        _,
+        latest_payload,
+        source_bytes,
+    ) = _legacy_missing_freeze_cross_anchor_fixture(tmp_path)
+    tampered = dict(latest_payload)
+    if tamper_kind == "swapped_root":
+        swapped_root = tmp_path / "swapped-candidate-root"
+        shutil.copytree(
+            Path(str(tampered["candidate_root"])),
+            swapped_root,
+        )
+        tampered["candidate_root"] = str(swapped_root.resolve())
+    elif tamper_kind == "swapped_candidate":
+        tampered["candidate_id"] = "rec-cal-swapped-candidate"
+    elif tamper_kind == "swapped_dataset":
+        tampered["candidate_dataset_hash"] = "sha256:" + "b" * 64
+    elif tamper_kind == "manifest_hash_tamper":
+        tampered["candidate_manifest_hash"] = "sha256:" + "c" * 64
+    elif tamper_kind == "freeze_hash_conflict":
+        tampered["candidate_freeze_hash"] = "sha256:" + "d" * 64
+    elif tamper_kind == "missing_anchor":
+        tampered.pop("candidate_root")
+    elif tamper_kind == "missing_cohort":
+        tampered.pop("run_scope")
+    elif tamper_kind == "cohort_tamper":
+        tampered["run_scope"] = "different-cohort"
+    else:
+        raise AssertionError(f"unexpected tamper kind: {tamper_kind}")
+    latest_path.write_text(
+        json.dumps(tampered, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    tampered_latest_bytes = latest_path.read_bytes()
+
+    conflict = daily_learning._cost_scenario_root_conflict(output_root, scenario)
+    assert conflict is not None
+    assert expected_fragment in conflict
+    assert latest_path.read_bytes() == tampered_latest_bytes
+    for path, before in source_bytes.items():
+        if path != latest_path:
+            assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "tamper_kind, expected_fragment",
+    (
+        ("receipt_cohort", "latest_status_receipt_anchor_mismatch"),
+        ("receipt_candidate", "candidate_identity_mismatch:candidate_id"),
+        ("receipt_root", "latest_status_receipt_anchor_mismatch"),
+        ("receipt_dataset", "candidate_identity_mismatch:candidate_dataset_hash"),
+    ),
+)
+def test_legacy_missing_freeze_immutable_receipt_tamper_fails_closed(
+    tmp_path: Path,
+    tamper_kind: str,
+    expected_fragment: str,
+) -> None:
+    (
+        output_root,
+        scenario,
+        latest_path,
+        challenger_path,
+        receipt_path,
+        _,
+        _,
+        source_bytes,
+    ) = _legacy_missing_freeze_cross_anchor_fixture(tmp_path)
+    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if tamper_kind == "receipt_cohort":
+        receipt_payload["run_scope"] = "different-receipt-cohort"
+    elif tamper_kind == "receipt_candidate":
+        receipt_payload["candidate_id"] = "rec-cal-swapped-receipt-candidate"
+    elif tamper_kind == "receipt_root":
+        swapped_root = tmp_path / "swapped-receipt-candidate-root"
+        shutil.copytree(
+            Path(str(receipt_payload["candidate_root"])),
+            swapped_root,
+        )
+        receipt_payload["candidate_root"] = str(swapped_root.resolve())
+    elif tamper_kind == "receipt_dataset":
+        receipt_payload["candidate_dataset_hash"] = "sha256:" + "e" * 64
+    else:
+        raise AssertionError(f"unexpected receipt tamper kind: {tamper_kind}")
+    receipt_path.write_text(
+        json.dumps(receipt_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    tampered_receipt_bytes = receipt_path.read_bytes()
+
+    conflict = daily_learning._cost_scenario_root_conflict(output_root, scenario)
+    assert conflict is not None
+    assert expected_fragment in conflict
+    assert receipt_path.read_bytes() == tampered_receipt_bytes
+    assert latest_path.read_bytes() == source_bytes[latest_path]
+    assert challenger_path.read_bytes() == source_bytes[challenger_path]
+    for path, before in source_bytes.items():
+        if path not in {latest_path, challenger_path, receipt_path}:
+            assert path.read_bytes() == before
 
 
 def test_anchored_old_pointer_rejects_candidate_cost_field_changed_under_old_hash(

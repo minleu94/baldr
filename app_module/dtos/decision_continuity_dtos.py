@@ -38,6 +38,9 @@ ACTION_NOTE = "note"
 ACTION_REVIEW_SCHEDULED = "review_scheduled"
 ACTION_REMOVED = "removed"
 ACTION_CLEARED = "cleared"
+# Technical append-only event; this is deliberately not part of the research
+# action command set and must never be presented as a human decision.
+ACTION_DELIVERY_ACK = "delivery_ack"
 DECISION_CONTINUITY_ACTIONS = frozenset(
     {
         ACTION_ADDED,
@@ -50,6 +53,7 @@ DECISION_CONTINUITY_ACTIONS = frozenset(
         ACTION_CLEARED,
     }
 )
+DECISION_CONTINUITY_EVENT_ACTIONS = frozenset({ACTION_DELIVERY_ACK})
 DECISION_CONTINUITY_TOMBSTONE_ACTIONS = frozenset(
     {ACTION_REMOVED, ACTION_CLEARED}
 )
@@ -257,7 +261,9 @@ class DecisionContinuityRevision:
             raise ValueError("revision_id is required")
         if not event_id:
             raise ValueError("continuity_event_id is required")
-        if not action or action not in DECISION_CONTINUITY_ACTIONS:
+        if not action or action not in (
+            DECISION_CONTINUITY_ACTIONS | DECISION_CONTINUITY_EVENT_ACTIONS
+        ):
             raise ValueError(f"unsupported decision continuity action: {action}")
         if not entity_type or not entity_id:
             raise ValueError("entity_type and entity_id are required")
@@ -341,12 +347,14 @@ __all__ = [
     "ACTION_ACCEPTED",
     "ACTION_ADDED",
     "ACTION_CLEARED",
+    "ACTION_DELIVERY_ACK",
     "ACTION_NOTE",
     "ACTION_REMOVED",
     "ACTION_REVIEW_SCHEDULED",
     "ACTION_SKIPPED",
     "ACTION_UPDATED",
     "DECISION_CONTINUITY_ACTIONS",
+    "DECISION_CONTINUITY_EVENT_ACTIONS",
     "DECISION_CONTINUITY_RECORD_TYPE",
     "DECISION_CONTINUITY_SCHEMA_VERSION",
     "DECISION_CONTINUITY_TOMBSTONE_ACTIONS",

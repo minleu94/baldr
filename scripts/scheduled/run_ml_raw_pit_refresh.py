@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any, Mapping, Sequence
+import uuid
 from zoneinfo import ZoneInfo
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +28,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from data_module import portfolio_ml_dataset_assembler as dataset_assembler
+from data_module import ml_daily_price_source_quality as source_quality
 from data_module.ml_storage_capacity import (
     BYTES_PER_GIB,
     build_heavy_chain_reservation_handoff_environment,
@@ -66,6 +68,7 @@ _DEFAULT_RAW_TEMPORARY_STORAGE_BUDGET_BYTES = (
 _DIRECT_TRAINING_OUTPUT_DIR_NAME = (
     "portfolio_ml_direct_ooc_training_production_v4_v5"
 )
+_DEFAULT_SOURCE_QUALITY_CANDIDATE_SAMPLE_LIMIT = 64
 _ALLOWED_DATA_UPDATE_STATUSES = frozenset(
     {"passed", "passed_with_warnings"}
 )
@@ -99,6 +102,39 @@ def _extract_source_quality_summary(
         if isinstance(summary, Mapping):
             return dict(summary)
     return None
+
+
+def _new_source_quality_evidence_identity(
+    *,
+    run_root: Path,
+    started_at: datetime,
+) -> tuple[str, Path]:
+    """Allocate a unique per-run evidence path without touching source data."""
+
+    started_utc = started_at.astimezone(timezone.utc)
+    run_id = (
+        "raw-pit-"
+        + started_utc.strftime("%Y%m%dT%H%M%S%fZ")
+        + "-"
+        + str(os.getpid())
+        + "-"
+        + uuid.uuid4().hex
+    )
+    report_path = (
+        run_root.resolve() / "source_quality" / f"{run_id}.json"
+    ).resolve()
+    candidate_evidence_path = _source_quality_candidate_evidence_path(report_path)
+    if report_path.exists() or candidate_evidence_path.exists():
+        raise FileExistsError(
+            f"source-quality evidence path collision: {report_path}"
+        )
+    return run_id, report_path
+
+
+def _source_quality_candidate_evidence_path(report_path: Path) -> Path:
+    """Return the sidecar path paired with one report path."""
+
+    return report_path.resolve().with_suffix(".candidates.jsonl")
 
 
 @dataclass(frozen=True)
@@ -160,6 +196,16 @@ def _parser() -> argparse.ArgumentParser:
         "--safety-reserve-bytes",
         type=int,
         help="publication 完成後必須保留的 filesystem bytes",
+    )
+    parser.add_argument(
+        "--source-quality-candidate-sample-limit",
+        type=int,
+        default=_DEFAULT_SOURCE_QUALITY_CANDIDATE_SAMPLE_LIMIT,
+        help=(
+            "bounded source-quality candidate evidence rows retained per run; "
+            "full candidate_count/digest remain in the report metadata and "
+            "truncation is explicit"
+        ),
     )
     parser.add_argument("--status-path", type=Path)
     parser.add_argument("--log-path", type=Path)
@@ -302,6 +348,557 @@ def _required_sha256(value: object, *, field_name: str) -> str:
     if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
         raise ValueError(f"{field_name} must be sha256")
     return value
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
+def _source_quality_evidence_not_run(
+    path: Path,
+    *,
+    candidate_sample_limit: int,
+    reason: str,
+) -> dict[str, Any]:
+    """Describe a planned report that the builder has not written."""
+
+    candidate_evidence_path = _source_quality_candidate_evidence_path(path)
+    return {
+        "path": str(path.resolve()),
+        "candidate_evidence_path": str(candidate_evidence_path),
+        "readback_status": "not_run",
+        "report_readable": False,
+        "report_hash_verified": False,
+        "candidate_evidence_status": "not_run",
+        "candidate_evidence_readable": False,
+        "candidate_evidence_hash_verified": False,
+        "candidate_evidence_complete": False,
+        "candidate_count": None,
+        "candidate_sample_count": None,
+        "candidate_sample_limit": candidate_sample_limit,
+        "candidate_samples_truncated": None,
+        "candidate_rows_complete": False,
+        "candidate_sample_key_count": None,
+        "candidate_sample_unique_key_count": None,
+        "candidate_full_unique_key_count": None,
+        "candidate_full_unique_key_count_verified": False,
+        "candidate_unique_key_scope": "bounded_samples_only",
+        "candidate_count_scope": "full_source_guard_scan",
+        "candidate_digest_scope": "full_source_guard_scan",
+        "candidate_sample_scope": "bounded_report_samples",
+        "candidate_digest": None,
+        "candidate_key_digest": None,
+        "reason": reason,
+    }
+
+
+def _source_quality_evidence_pending(
+    path: Path,
+    *,
+    candidate_sample_limit: int,
+) -> dict[str, Any]:
+    evidence = _source_quality_evidence_not_run(
+        path,
+        candidate_sample_limit=candidate_sample_limit,
+        reason="builder_report_pending",
+    )
+    evidence["readback_status"] = "pending"
+    evidence["candidate_evidence_status"] = "pending"
+    return evidence
+
+
+def _read_candidate_evidence_sidecar(
+    path: Path,
+    *,
+    expected_candidate_count: int,
+    expected_candidate_digest: str,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Independently verify every row in the complete candidate JSONL sidecar."""
+
+    result: dict[str, Any] = {
+        "candidate_evidence_path": str(path.resolve()),
+        "candidate_evidence_status": "missing",
+        "candidate_evidence_readable": False,
+        "candidate_evidence_hash_verified": False,
+        "candidate_evidence_complete": False,
+        "candidate_evidence_file_sha256": None,
+        "candidate_evidence_row_count": None,
+        "candidate_full_unique_key_count": None,
+        "candidate_full_unique_key_count_verified": False,
+        "candidate_key_digest": None,
+    }
+    if not path.is_file():
+        result["reason"] = "source_quality_candidate_evidence_missing"
+        return result
+
+    try:
+        expected_schema = (
+            "portfolio-ml-daily-price-source-quality-candidates.v1"
+        )
+        if manifest.get("schema_version") != expected_schema:
+            raise ValueError("candidate evidence schema version is invalid")
+        if manifest.get("format") != "jsonl":
+            raise ValueError("candidate evidence format is invalid")
+        if manifest.get("path") != str(path.resolve()):
+            raise ValueError("candidate evidence path does not match scheduled path")
+        if manifest.get("key_fields") != ["date", "symbol"]:
+            raise ValueError("candidate evidence key fields are invalid")
+        if manifest.get("key_order") != "date_symbol_ascending":
+            raise ValueError("candidate evidence key order is invalid")
+        if manifest.get("complete") is not True:
+            raise ValueError("candidate evidence is marked incomplete")
+
+        def _non_negative_int(value: object, *, field_name: str) -> int:
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+            return value
+
+        manifest_row_count = _non_negative_int(
+            manifest.get("row_count"),
+            field_name="candidate_evidence.row_count",
+        )
+        manifest_unique_key_count = _non_negative_int(
+            manifest.get("unique_key_count"),
+            field_name="candidate_evidence.unique_key_count",
+        )
+        manifest_duplicate_count = _non_negative_int(
+            manifest.get("duplicate_key_count"),
+            field_name="candidate_evidence.duplicate_key_count",
+        )
+        manifest_out_of_order_count = _non_negative_int(
+            manifest.get("out_of_order_key_count"),
+            field_name="candidate_evidence.out_of_order_key_count",
+        )
+        manifest_candidate_digest = _required_sha256(
+            manifest.get("candidate_digest"),
+            field_name="candidate_evidence.candidate_digest",
+        )
+        manifest_key_digest = _required_sha256(
+            manifest.get("key_digest"),
+            field_name="candidate_evidence.key_digest",
+        )
+        manifest_file_sha256 = _required_sha256(
+            manifest.get("file_sha256"),
+            field_name="candidate_evidence.file_sha256",
+        )
+        if manifest_row_count != expected_candidate_count:
+            raise ValueError("candidate evidence row count does not match report")
+        if manifest_duplicate_count != 0 or manifest_out_of_order_count != 0:
+            raise ValueError("candidate evidence keys are not unique and ordered")
+        if manifest_candidate_digest != expected_candidate_digest:
+            raise ValueError("candidate evidence digest does not match report")
+
+        file_digest = hashlib.sha256()
+        row_digest = hashlib.sha256()
+        key_digest = hashlib.sha256()
+        row_count = 0
+        unique_key_count = 0
+        duplicate_key_count = 0
+        out_of_order_key_count = 0
+        previous_key: tuple[str, str] | None = None
+        with path.open("rb") as stream:
+            for raw_line in stream:
+                file_digest.update(raw_line)
+                if not raw_line.endswith(b"\n"):
+                    raise ValueError("candidate evidence JSONL line is not terminated")
+                candidate = json.loads(raw_line[:-1].decode("utf-8"))
+                if not isinstance(candidate, Mapping):
+                    raise ValueError("candidate evidence row must be an object")
+                candidate_date = candidate.get("date")
+                candidate_symbol = candidate.get("symbol")
+                if not isinstance(candidate_date, str) or not isinstance(
+                    candidate_symbol, str
+                ):
+                    raise ValueError("candidate evidence row key is invalid")
+                source_quality._update_candidate_digest(row_digest, candidate)
+                source_quality._update_candidate_key_digest(
+                    key_digest,
+                    candidate_date,
+                    candidate_symbol,
+                )
+                key = (candidate_date, candidate_symbol)
+                if previous_key is None or key > previous_key:
+                    unique_key_count += 1
+                elif key == previous_key:
+                    duplicate_key_count += 1
+                else:
+                    out_of_order_key_count += 1
+                previous_key = key
+                row_count += 1
+
+        actual_file_sha256 = "sha256:" + file_digest.hexdigest()
+        actual_candidate_digest = "sha256:" + row_digest.hexdigest()
+        actual_key_digest = "sha256:" + key_digest.hexdigest()
+        if actual_file_sha256 != manifest_file_sha256:
+            raise ValueError("candidate evidence file hash mismatch")
+        if row_count != manifest_row_count or row_count != expected_candidate_count:
+            raise ValueError("candidate evidence row count readback mismatch")
+        if unique_key_count != manifest_unique_key_count:
+            raise ValueError("candidate evidence unique key count mismatch")
+        if duplicate_key_count != manifest_duplicate_count:
+            raise ValueError("candidate evidence duplicate count mismatch")
+        if out_of_order_key_count != manifest_out_of_order_count:
+            raise ValueError("candidate evidence order count mismatch")
+        if actual_candidate_digest != manifest_candidate_digest:
+            raise ValueError("candidate evidence row digest mismatch")
+        if actual_key_digest != manifest_key_digest:
+            raise ValueError("candidate evidence key digest mismatch")
+    except (OSError, UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        result.update(
+            {
+                "candidate_evidence_status": "invalid",
+                "reason": "source_quality_candidate_evidence_invalid",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return result
+
+    result.update(
+        {
+            "candidate_evidence_status": "verified",
+            "candidate_evidence_readable": True,
+            "candidate_evidence_hash_verified": True,
+            "candidate_evidence_complete": True,
+            "candidate_evidence_file_sha256": actual_file_sha256,
+            "candidate_evidence_row_count": row_count,
+            "candidate_full_unique_key_count": unique_key_count,
+            "candidate_full_unique_key_count_verified": True,
+            "candidate_key_digest": actual_key_digest,
+        }
+    )
+    return result
+
+
+def _source_quality_evidence_readback(
+    path: Path,
+    *,
+    expected_candidate_sample_limit: int,
+    expected_candidate_evidence_path: Path | None = None,
+) -> dict[str, Any]:
+    """Read and independently verify the builder's persisted quality report.
+
+    ``candidate_count`` and ``candidate_digest`` cover the complete source
+    guard scan.  The report's candidate list is intentionally bounded by the
+    explicit sample limit, while the paired JSONL sidecar is independently
+    read back row by row so ``candidate_rows_complete`` refers to the full
+    sidecar rather than the bounded summary sample.
+    """
+
+    resolved = path.resolve()
+    expected_evidence_path = (
+        _source_quality_candidate_evidence_path(resolved)
+        if expected_candidate_evidence_path is None
+        else expected_candidate_evidence_path.resolve()
+    )
+    base: dict[str, Any] = {
+        "path": str(resolved),
+        "candidate_evidence_path": str(expected_evidence_path),
+        "readback_status": "missing",
+        "report_readable": False,
+        "report_hash_verified": False,
+        "candidate_evidence_status": "not_checked",
+        "candidate_evidence_readable": False,
+        "candidate_evidence_hash_verified": False,
+        "candidate_evidence_complete": False,
+        "candidate_count": None,
+        "candidate_sample_count": None,
+        "candidate_sample_limit": expected_candidate_sample_limit,
+        "candidate_samples_truncated": None,
+        "candidate_rows_complete": False,
+        "candidate_sample_key_count": None,
+        "candidate_sample_unique_key_count": None,
+        "candidate_full_unique_key_count": None,
+        "candidate_full_unique_key_count_verified": False,
+        "candidate_unique_key_scope": "bounded_samples_only",
+        "candidate_count_scope": "full_source_guard_scan",
+        "candidate_digest_scope": "full_source_guard_scan",
+        "candidate_sample_scope": "bounded_report_samples",
+        "candidate_digest": None,
+        "candidate_key_digest": None,
+    }
+    if not resolved.is_file():
+        base["reason"] = "source_quality_report_missing"
+        return base
+    try:
+        report = _read_object(resolved)
+    except (OSError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        base.update(
+            {
+                "readback_status": "unreadable",
+                "reason": "source_quality_report_unreadable",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return base
+
+    try:
+        base["file_sha256"] = _file_sha256(resolved)
+    except (OSError, UnicodeError) as exc:
+        base.update(
+            {
+                "readback_status": "unreadable",
+                "reason": "source_quality_report_unreadable",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return base
+    supplied_report_hash = report.get("report_hash")
+    if not isinstance(supplied_report_hash, str):
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_hash_missing",
+            }
+        )
+        return base
+    try:
+        _required_sha256(
+            supplied_report_hash,
+            field_name="source_quality.report_hash",
+        )
+    except (TypeError, ValueError) as exc:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_hash_invalid",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return base
+    logical_report = dict(report)
+    logical_report.pop("report_hash", None)
+    expected_report_hash = _canonical_sha256(logical_report)
+    if supplied_report_hash != expected_report_hash:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_hash_mismatch",
+                "report_hash": supplied_report_hash,
+                "expected_report_hash": expected_report_hash,
+            }
+        )
+        return base
+
+    if report.get("read_only") is not True or report.get("repair_performed") is not False:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_safety_flags_invalid",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+    source = report.get("source")
+    if (
+        not isinstance(source, Mapping)
+        or source.get("sqlite_mode") != "ro"
+        or source.get("sqlite_query_only") is not True
+    ):
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_source_flags_invalid",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+
+    def _non_negative_int(value: object, *, field_name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{field_name} must be a non-negative integer")
+        return value
+
+    try:
+        candidate_count = _non_negative_int(
+            report.get("candidate_count"),
+            field_name="source_quality.candidate_count",
+        )
+        sample_count = _non_negative_int(
+            report.get("candidate_sample_count"),
+            field_name="source_quality.candidate_sample_count",
+        )
+        sample_limit = report.get("candidate_sample_limit")
+        if (
+            isinstance(sample_limit, bool)
+            or not isinstance(sample_limit, int)
+            or sample_limit < 0
+            or sample_limit != expected_candidate_sample_limit
+        ):
+            raise ValueError(
+                "source_quality.candidate_sample_limit does not match the scheduled bound"
+            )
+        truncated = report.get("candidate_samples_truncated")
+        if not isinstance(truncated, bool):
+            raise ValueError(
+                "source_quality.candidate_samples_truncated must be boolean"
+            )
+        candidates = report.get("candidates")
+        if not isinstance(candidates, list) or len(candidates) != sample_count:
+            raise ValueError(
+                "source_quality.candidates does not match candidate_sample_count"
+            )
+        sample_keys: list[tuple[str, str]] = []
+        for position, candidate in enumerate(candidates):
+            if not isinstance(candidate, Mapping):
+                raise ValueError(
+                    f"source_quality.candidates[{position}] must be an object"
+                )
+            candidate_date = candidate.get("date")
+            candidate_symbol = candidate.get("symbol")
+            if not isinstance(candidate_date, str) or not isinstance(
+                candidate_symbol, str
+            ):
+                raise ValueError(
+                    "source_quality candidate sample must include date and symbol"
+                )
+            sample_keys.append((candidate_date, candidate_symbol))
+        if len(set(sample_keys)) != sample_count:
+            raise ValueError(
+                "source_quality candidate sample contains duplicate keys"
+            )
+        if sample_count > candidate_count:
+            raise ValueError(
+                "source_quality candidate sample count exceeds candidate count"
+            )
+        if sample_count > sample_limit:
+            raise ValueError("source_quality candidate sample exceeds scheduled bound")
+        if truncated != (candidate_count > sample_count):
+            raise ValueError(
+                "source_quality candidate truncation flag does not match counts"
+            )
+        candidate_digest = _required_sha256(
+            report.get("candidate_digest"),
+            field_name="source_quality.candidate_digest",
+        )
+        if "research_price_unavailable_count" in report:
+            _non_negative_int(
+                report.get("research_price_unavailable_count"),
+                field_name="source_quality.research_price_unavailable_count",
+            )
+        if "research_price_invalid_count" in report:
+            _non_negative_int(
+                report.get("research_price_invalid_count"),
+                field_name="source_quality.research_price_invalid_count",
+            )
+    except (TypeError, ValueError) as exc:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_metadata_invalid",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+
+    base.update(
+        {
+            "report_hash": supplied_report_hash,
+            "report_status": report.get("status"),
+            "candidate_count": candidate_count,
+            "candidate_sample_count": sample_count,
+            "candidate_sample_limit": sample_limit,
+            "candidate_samples_truncated": truncated,
+            "candidate_sample_key_count": sample_count,
+            "candidate_sample_unique_key_count": len(set(sample_keys)),
+            "candidate_digest": candidate_digest,
+            "formal_training_allowed": report.get("formal_training_allowed"),
+            "quality_timing": report.get("quality_timing"),
+        }
+    )
+    candidate_evidence = report.get("candidate_evidence")
+    if not isinstance(candidate_evidence, Mapping):
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_candidate_evidence_missing",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+    sidecar_readback = _read_candidate_evidence_sidecar(
+        expected_evidence_path,
+        expected_candidate_count=candidate_count,
+        expected_candidate_digest=candidate_digest,
+        manifest=candidate_evidence,
+    )
+    if sidecar_readback["candidate_evidence_status"] != "verified":
+        base.update(sidecar_readback)
+        base.update(
+            {
+                "readback_status": "invalid",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+
+    base.update(
+        {
+            "readback_status": "verified",
+            "report_readable": True,
+            "report_hash_verified": True,
+            "report_hash": supplied_report_hash,
+            "report_status": report.get("status"),
+            "candidate_count": candidate_count,
+            "candidate_sample_count": sample_count,
+            "candidate_sample_limit": sample_limit,
+            "candidate_samples_truncated": truncated,
+            "candidate_rows_complete": bool(
+                sidecar_readback["candidate_evidence_complete"]
+            ),
+            "candidate_sample_key_count": sample_count,
+            "candidate_sample_unique_key_count": len(set(sample_keys)),
+            "candidate_unique_key_scope": "full_candidate_evidence",
+            "candidate_full_unique_key_count": sidecar_readback[
+                "candidate_full_unique_key_count"
+            ],
+            "candidate_full_unique_key_count_verified": sidecar_readback[
+                "candidate_full_unique_key_count_verified"
+            ],
+            "candidate_count_scope": "full_source_guard_scan",
+            "candidate_digest_scope": "full_source_guard_scan",
+            "candidate_sample_scope": "bounded_report_samples",
+            "candidate_digest": candidate_digest,
+            "candidate_key_digest": sidecar_readback["candidate_key_digest"],
+            "formal_training_allowed": report.get("formal_training_allowed"),
+            "quality_timing": report.get("quality_timing"),
+        }
+    )
+    base.update(sidecar_readback)
+    base["candidate_unique_key_scope"] = "full_candidate_evidence"
+    base["readback_status"] = "verified"
+    base["report_hash"] = supplied_report_hash
+    return base
+
+
+def _compare_source_quality_summary(
+    summary: Mapping[str, object],
+    evidence: Mapping[str, Any],
+) -> tuple[bool, list[str]]:
+    """Cross-check builder stdout against the persisted report metadata."""
+
+    mismatches: list[str] = []
+    for field in (
+        "candidate_count",
+        "candidate_digest",
+        "report_hash",
+        "candidate_sample_count",
+        "candidate_sample_limit",
+        "candidate_samples_truncated",
+    ):
+        if field in summary and summary.get(field) != evidence.get(field):
+            mismatches.append(field)
+    return not mismatches, mismatches
 
 
 def _capacity_budget_from_args(args: argparse.Namespace) -> MLStorageCapacityBudget:
@@ -519,7 +1116,20 @@ def _builder_command(
     safety_reserve_bytes: int | None = None,
     daily_price_source_dir: Path | None = None,
     daily_price_source_dirs: Sequence[Path] | None = None,
+    source_quality_report_path: Path | None = None,
+    source_quality_candidate_evidence_path: Path | None = None,
+    source_quality_candidate_sample_limit: int = (
+        _DEFAULT_SOURCE_QUALITY_CANDIDATE_SAMPLE_LIMIT
+    ),
 ) -> list[str]:
+    if (
+        isinstance(source_quality_candidate_sample_limit, bool)
+        or not isinstance(source_quality_candidate_sample_limit, int)
+        or source_quality_candidate_sample_limit < 0
+    ):
+        raise ValueError(
+            "source-quality-candidate-sample-limit must be a non-negative integer"
+        )
     command = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "build_ml_pit_year_shards.py"),
@@ -567,6 +1177,22 @@ def _builder_command(
         command.extend(
             ["--daily-price-source-dir", str(resolved_source_dir)]
         )
+    if source_quality_report_path is not None:
+        candidate_evidence_path = (
+            _source_quality_candidate_evidence_path(source_quality_report_path)
+            if source_quality_candidate_evidence_path is None
+            else source_quality_candidate_evidence_path.resolve()
+        )
+        command.extend(
+            [
+                "--source-quality-report",
+                str(source_quality_report_path.resolve()),
+                "--source-quality-candidate-evidence",
+                str(candidate_evidence_path),
+                "--source-quality-candidate-sample-limit",
+                str(source_quality_candidate_sample_limit),
+            ]
+        )
     return command
 
 
@@ -610,6 +1236,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError("batch-size must be within 1..100000")
     if args.minimum_free_space_bytes <= 0:
         raise ValueError("minimum-free-space-bytes must be positive")
+    if (
+        isinstance(args.source_quality_candidate_sample_limit, bool)
+        or not isinstance(args.source_quality_candidate_sample_limit, int)
+        or args.source_quality_candidate_sample_limit < 0
+    ):
+        raise ValueError(
+            "source-quality-candidate-sample-limit must be non-negative"
+        )
     output_root = args.output_root.resolve()
     release_root = (
         args.release_root.resolve()
@@ -643,12 +1277,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     # 消耗同一 filesystem 的預算；raw private lock 名稱不再另開一把鎖。
     lock_path = heavy_chain_lock_path(release_root)
     started_at = scheduled_now()
+    run_id, source_quality_report_path = _new_source_quality_evidence_identity(
+        run_root=run_root,
+        started_at=started_at,
+    )
+    source_quality_candidate_evidence_path = (
+        _source_quality_candidate_evidence_path(source_quality_report_path)
+    )
+    source_quality_evidence = _source_quality_evidence_not_run(
+        source_quality_report_path,
+        candidate_sample_limit=args.source_quality_candidate_sample_limit,
+        reason="builder_not_started",
+    )
     lock: MLStorageChainReservation | None = None
     builder_returncode: int | None = None
     builder_source_quality_summary: dict[str, object] | None = None
+    builder_started = False
     inherited_env_value = os.environ.get(HEAVY_CHAIN_RESERVATION_HELD_ENV)
-    _write_json(
-        status_path,
+
+    def _write_status(payload: Mapping[str, Any]) -> None:
+        enriched = dict(payload)
+        enriched.update(
+            {
+                "run_id": run_id,
+                "source_quality_report_path": str(source_quality_report_path),
+                "source_quality_candidate_evidence_path": str(
+                    source_quality_candidate_evidence_path
+                ),
+                "source_quality_candidate_sample_limit": (
+                    args.source_quality_candidate_sample_limit
+                ),
+                "source_quality_evidence": dict(source_quality_evidence),
+            }
+        )
+        _write_json(status_path, enriched)
+
+    _write_status(
         _base_status(
             status="running",
             output_root=output_root,
@@ -686,7 +1350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ),
                     reason="raw_pit_publication_current",
                 )
-                _write_json(status_path, payload)
+                _write_status(payload)
                 return 0
             storage_preflight = _storage_preflight(
                 raw_root,
@@ -728,11 +1392,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "configured capacity policy"
                     ),
                 )
-                _write_json(status_path, payload)
+                _write_status(payload)
                 return 0
             if _direct_chain_instance_lock_present(release_root):
-                _write_json(
-                    status_path,
+                _write_status(
                     _base_status(
                         status="skipped_locked",
                         output_root=output_root,
@@ -761,8 +1424,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             lock = _acquire_lock(lock_path)
             if lock is None:
-                _write_json(
-                    status_path,
+                _write_status(
                     _base_status(
                         status="skipped_locked",
                         output_root=output_root,
@@ -790,8 +1452,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ),
                 )
                 return 0
-            _write_json(
-                status_path,
+            _write_status(
                 _base_status(
                     status="running",
                     output_root=output_root,
@@ -850,7 +1511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "the heavy-chain reservation"
                     ),
                 )
-                _write_json(status_path, payload)
+                _write_status(payload)
                 return 0
             if not database.is_file():
                 raise RuntimeError(f"database_missing:{database}")
@@ -869,6 +1530,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 safety_reserve_bytes=capacity_budget.safety_reserve_bytes,
                 daily_price_source_dirs=daily_price_source_dirs,
+                source_quality_report_path=source_quality_report_path,
+                source_quality_candidate_evidence_path=(
+                    source_quality_candidate_evidence_path
+                ),
+                source_quality_candidate_sample_limit=(
+                    args.source_quality_candidate_sample_limit
+                ),
             )
             # raw runner 已持有 canonical reservation；builder CLI 仍會執行
             # 自己的容量 preflight，但只接受綁定 owner sidecar、canonical
@@ -882,6 +1550,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     parent_pid=os.getpid(),
                 )
             )
+            source_quality_evidence = _source_quality_evidence_pending(
+                source_quality_report_path,
+                candidate_sample_limit=args.source_quality_candidate_sample_limit,
+            )
             _append_log(log_path, json.dumps({"event": "builder_start", "command": command}, ensure_ascii=False))
             builder_process = subprocess.Popen(
                 command,
@@ -893,6 +1565,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 encoding="utf-8",
                 errors="replace",
             )
+            builder_started = True
             try:
                 lock.authorize_child(builder_process.pid)
             except Exception:
@@ -910,6 +1583,37 @@ def main(argv: Sequence[str] | None = None) -> int:
             builder_source_quality_summary = _extract_source_quality_summary(
                 builder_stdout
             )
+            source_quality_evidence = _source_quality_evidence_readback(
+                source_quality_report_path,
+                expected_candidate_sample_limit=(
+                    args.source_quality_candidate_sample_limit
+                ),
+                expected_candidate_evidence_path=(
+                    source_quality_candidate_evidence_path
+                ),
+            )
+            if (
+                builder_source_quality_summary is not None
+                and source_quality_evidence["readback_status"] == "verified"
+            ):
+                summary_matches, summary_mismatches = (
+                    _compare_source_quality_summary(
+                        builder_source_quality_summary,
+                        source_quality_evidence,
+                    )
+                )
+                source_quality_evidence["builder_summary_readback"] = {
+                    "status": "matched" if summary_matches else "mismatch",
+                    "mismatched_fields": summary_mismatches,
+                }
+                if not summary_matches:
+                    source_quality_evidence.update(
+                        {
+                            "readback_status": "invalid",
+                            "candidate_rows_complete": False,
+                            "reason": "builder_summary_readback_mismatch",
+                        }
+                    )
             if builder_stdout:
                 _append_log(log_path, builder_stdout)
             if builder_stderr:
@@ -918,6 +1622,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise RuntimeError(
                     f"raw_pit_builder_failed:{builder_returncode}"
                 )
+            if source_quality_evidence["readback_status"] != "verified":
+                raise RuntimeError("source_quality_evidence_readback_failed")
             published = _latest_raw_publication(raw_root)
             if published is None:
                 raise RuntimeError("raw_pit_pointer_validation_failed")
@@ -947,7 +1653,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     str(path) for path in daily_price_source_dirs
                 ],
             )
-            _write_json(status_path, payload)
+            _write_status(payload)
             return 0
         except _UpstreamNotReady as exc:
             payload = _base_status(
@@ -961,9 +1667,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 completed_at=scheduled_now().isoformat(timespec="seconds"),
                 reason=str(exc),
             )
-            _write_json(status_path, payload)
+            _write_status(payload)
             return 0
         except Exception as exc:  # noqa: BLE001 - preserve machine-readable failure
+            if (
+                builder_started
+                and source_quality_evidence.get("readback_status") == "pending"
+            ):
+                source_quality_evidence = _source_quality_evidence_readback(
+                    source_quality_report_path,
+                    expected_candidate_sample_limit=(
+                        args.source_quality_candidate_sample_limit
+                    ),
+                    expected_candidate_evidence_path=(
+                        source_quality_candidate_evidence_path
+                    ),
+                )
             failure_fields: dict[str, object] = {
                 "error_type": type(exc).__name__,
                 "error": str(exc),
@@ -985,7 +1704,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 completed_at=scheduled_now().isoformat(timespec="seconds"),
                 **failure_fields,
             )
-            _write_json(status_path, payload)
+            _write_status(payload)
             _append_log(log_path, f"failure: {type(exc).__name__}: {exc}")
             return 1
     finally:

@@ -65,6 +65,7 @@ class ForwardScheduleConfig:
     run_date: date
     database: Path
     paper_state_db: Path
+    paper_trade_ledger_db: Path
     output_root: Path
     release_root: Path
     release_manifest_file_hash: str
@@ -161,6 +162,7 @@ def load_schedule_config(
         "run_date",
         "database",
         "paper_state_db",
+        "paper_trade_ledger_db",
         "output_root",
         "release_root",
         "release_manifest_file_hash",
@@ -246,6 +248,7 @@ def load_schedule_config(
         run_date=run_date,
         database=_required_path(decoded, "database"),
         paper_state_db=_required_path(decoded, "paper_state_db"),
+        paper_trade_ledger_db=_required_path(decoded, "paper_trade_ledger_db"),
         output_root=_required_path(decoded, "output_root"),
         release_root=_required_path(decoded, "release_root"),
         release_manifest_file_hash=_required_sha256(
@@ -328,6 +331,8 @@ def build_child_command(
         str(config.database),
         "--paper-state-db",
         str(config.paper_state_db),
+        "--paper-trade-ledger-db",
+        str(config.paper_trade_ledger_db),
         "--output-root",
         str(config.output_root),
         "--release-root",
@@ -469,6 +474,7 @@ def run_preflight(
         default_database,
         default_output_root,
         default_paper_state_db,
+        default_paper_trade_ledger_db,
         default_release_manifest_file_hash,
         default_release_root,
         default_temporary_closure_path,
@@ -493,6 +499,11 @@ def run_preflight(
     check_path("derived_script", derived_script, kind="file")
     check_path("market_database", default_database(), kind="file")
     check_path("paper_state_database", default_paper_state_db(), kind="file")
+    check_path(
+        "paper_trade_ledger_database",
+        default_paper_trade_ledger_db(),
+        kind="file",
+    )
     check_path("shadow_output_root", default_output_root(), kind="directory")
     check_path("archive_root", default_archive_root(), kind="directory")
     check_path("calendar_cache_root", default_calendar_cache_root(), kind="directory")
@@ -908,6 +919,7 @@ def run_once(
                 default_database,
                 default_output_root,
                 default_paper_state_db,
+                default_paper_trade_ledger_db,
                 default_release_root,
                 default_temporary_closure_path,
                 prepare_daily_config,
@@ -921,6 +933,7 @@ def run_once(
                 now=local_now,
                 database=default_database(),
                 paper_state_db=default_paper_state_db(),
+                paper_trade_ledger_db=default_paper_trade_ledger_db(),
                 output_root=default_output_root(),
                 release_root=default_release_root(),
                 calendar_cache_path=default_calendar_cache_root(),

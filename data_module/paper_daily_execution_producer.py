@@ -45,6 +45,7 @@ from app_module.paper_portfolio_policy import PaperPortfolioPolicyConfig
 from app_module.paper_trade_ledger import (
     PaperTradeFill,
     PaperTradeLedgerRepository,
+    PaperTradeTransition,
 )
 from app_module.portfolio_construction_dtos import (
     PortfolioConstructionCandidate,
@@ -430,6 +431,18 @@ def run_paper_execution_daily(
             policy=policy,
         )
         fill_records = _fill_candidate_records(fills, projection)
+        transition = (
+            _build_paper_trade_transition(
+                state=state,
+                fills=fills,
+                prices=market.prices,
+                projection=projection,
+                execution_date=execution_date,
+                recommendation_hash=recommendation.content_hash,
+            )
+            if fills
+            else None
+        )
         target_policy = _policy_projection(policy, target, recommendation)
         target_policy.update(
             {
@@ -511,6 +524,15 @@ def run_paper_execution_daily(
                     "append_requested": bool(confirm_append),
                     "appended": False,
                     "readback_verified": False,
+                    "transition_id": (
+                        None if transition is None else transition.transition_id
+                    ),
+                    "batch_id": (
+                        None if transition is None else transition.batch_id
+                    ),
+                    "transition_contract": (
+                        "paper_trade_transition.pre_post_common_price_canonical_bp_v1"
+                    ),
                 },
             }
         )
@@ -522,9 +544,12 @@ def run_paper_execution_daily(
                 raise PaperExecutionProducerError(
                     "paper ledger path is required for explicit append"
                 )
+            if transition is None:  # pragma: no cover - guarded by non-empty fills
+                raise PaperExecutionProducerError("paper transition is missing")
             idempotent_replay = _append_and_read_back(
                 paths.ledger_db,
                 fills,
+                transition=transition,
             )
             ledger = base["ledger"]
             if not isinstance(ledger, dict):  # pragma: no cover - local construction
@@ -3530,9 +3555,113 @@ def _policy_projection(
     }
 
 
+def _build_paper_trade_transition(
+    *,
+    state: _State,
+    fills: Sequence[PaperTradeFill],
+    prices: Mapping[str, Decimal],
+    projection: Mapping[str, object],
+    execution_date: date,
+    recommendation_hash: str,
+) -> PaperTradeTransition:
+    """Build the immutable common-price boundary for one execution batch."""
+
+    if not fills:
+        raise PaperExecutionProducerError(
+            "cannot build a transition for an empty Paper fill batch"
+        )
+    pre_positions = {
+        item.stock_code: item.quantity
+        for item in state.positions
+        if item.quantity > 0
+    }
+    post_positions = dict(pre_positions)
+    for fill in fills:
+        if fill.filled_quantity <= 0:
+            continue
+        quantity = post_positions.get(fill.stock_code, 0)
+        if fill.side == "sell":
+            quantity -= fill.filled_quantity
+            if quantity < 0:
+                raise PaperExecutionProducerError(
+                    f"paper transition sell exceeds pre quantity:{fill.fill_id}"
+                )
+        else:
+            quantity += fill.filled_quantity
+        if quantity > 0:
+            post_positions[fill.stock_code] = quantity
+        else:
+            post_positions.pop(fill.stock_code, None)
+
+    symbols = tuple(sorted(set(pre_positions) | set(post_positions) | {
+        fill.stock_code for fill in fills
+    }))
+    common_prices: dict[str, Decimal] = {}
+    for symbol in symbols:
+        price = prices.get(symbol)
+        if not isinstance(price, Decimal) or not price.is_finite() or price <= 0:
+            raise PaperExecutionProducerError(
+                f"paper transition common price is missing:{symbol}"
+            )
+        common_prices[symbol] = price
+    for fill in fills:
+        if fill.stock_code not in common_prices:
+            raise PaperExecutionProducerError(
+                f"paper transition fill price basis is missing:{fill.fill_id}"
+            )
+        if fill.reference_price != common_prices[fill.stock_code]:
+            raise PaperExecutionProducerError(
+                f"paper transition reference price basis mismatch:{fill.fill_id}"
+            )
+
+    common_nav = quantize_money(
+        state.cash
+        + sum(
+            (
+                common_prices[symbol] * Decimal(quantity)
+                for symbol, quantity in pre_positions.items()
+            ),
+            Decimal("0.00"),
+        )
+    )
+    if common_nav <= Decimal("0"):
+        raise PaperExecutionProducerError("paper transition common NAV is invalid")
+    try:
+        post_cash = Decimal(str(projection["cash_after"]))
+        post_total_value = Decimal(str(projection["total_value_after_mark"]))
+    except (KeyError, InvalidOperation, ValueError) as error:
+        raise PaperExecutionProducerError(
+            "paper transition post cash/NAV projection is invalid"
+        ) from error
+    return PaperTradeTransition(
+        transition_id=(
+            "paper-transition:"
+            f"{execution_date.isoformat()}:{recommendation_hash.replace('sha256:', '')}"
+        ),
+        batch_id=(
+            "paper-batch:"
+            f"{execution_date.isoformat()}:{recommendation_hash.replace('sha256:', '')}"
+        ),
+        portfolio_id=state.portfolio_id,
+        event_date=execution_date.isoformat(),
+        fill_ids=tuple(sorted(fill.fill_id for fill in fills)),
+        pre_cash=state.cash,
+        pre_total_value=state.total_value,
+        post_cash=post_cash,
+        post_total_value=post_total_value,
+        common_nav=common_nav,
+        common_prices=common_prices,
+        pre_positions=pre_positions,
+        post_positions=post_positions,
+        source_type=PAPER_EXECUTION_SOURCE_TYPE,
+    )
+
+
 def _append_and_read_back(
     path: Path,
     fills: Sequence[PaperTradeFill],
+    *,
+    transition: PaperTradeTransition | None = None,
 ) -> bool:
     """Append a batch once and verify it; return True for an exact replay.
 
@@ -3553,12 +3682,28 @@ def _append_and_read_back(
                 raise PaperExecutionProducerError(
                     "paper ledger contains a partial or divergent generated fill batch"
                 )
+            if transition is not None:
+                existing_transitions = PaperTradeLedgerRepository(
+                    resolved
+                ).list_transitions(
+                    portfolio_id=transition.portfolio_id,
+                    start_date=transition.event_date,
+                    end_date=transition.event_date,
+                )
+                if existing_transitions != (transition,):
+                    raise PaperExecutionProducerError(
+                        "paper ledger contains a partial or divergent generated transition"
+                    )
             return True
     # A preopen snapshot is the T-1 starting state.  The first EOD replay may
     # append its independent postfill transition even when that snapshot was
     # written earlier in the day; only a partial or divergent existing batch is
     # rejected above.
-    PaperTradeLedgerRepository(resolved).append_many(fills)
+    repository = PaperTradeLedgerRepository(resolved)
+    if transition is None:
+        repository.append_many(fills)
+    else:
+        repository.append_batch(fills, transition)
     observed = _read_ledger_rows(resolved, [fill.fill_id for fill in fills])
     if len(observed) != len(fills):
         raise PaperExecutionProducerError("paper ledger append readback row count mismatch")
@@ -3566,6 +3711,16 @@ def _append_and_read_back(
         if actual != expected:
             raise PaperExecutionProducerError(
                 f"paper ledger append readback mismatch:{expected.fill_id}"
+            )
+    if transition is not None:
+        observed_transitions = repository.list_transitions(
+            portfolio_id=transition.portfolio_id,
+            start_date=transition.event_date,
+            end_date=transition.event_date,
+        )
+        if observed_transitions != (transition,):
+            raise PaperExecutionProducerError(
+                "paper ledger transition append readback mismatch"
             )
     return False
 

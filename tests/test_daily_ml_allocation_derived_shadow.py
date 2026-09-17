@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 import json
 from pathlib import Path
+import sqlite3
 from types import SimpleNamespace
 from typing import Any, cast
 from zoneinfo import ZoneInfo
@@ -14,6 +16,15 @@ from data_module.ml_storage_capacity import (
     acquire_heavy_chain_reservation,
     release_heavy_chain_reservation,
 )
+from app_module.ml_allocation_shadow_evidence import (
+    load_t_minus_one_paper_ledger,
+)
+from app_module.paper_portfolio_snapshot_repository import (
+    PaperPortfolioPositionSnapshot,
+    PaperPortfolioSnapshot,
+    PaperPortfolioSnapshotRepository,
+)
+from app_module.paper_trade_ledger import PaperTradeLedgerRepository
 from data_module.pit_sector_machine_publisher import (
     consume_machine_pit_operational_candidate,
     publish_machine_pit_operational_candidate,
@@ -23,6 +34,7 @@ from data_module.pit_sector_membership_machine import (
     write_machine_pit_receipt,
 )
 from scripts import run_daily_ml_allocation_derived_shadow as shadow
+from scripts.scheduled import run_paper_portfolio_daily_isolated as preopen_adapter
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -39,6 +51,47 @@ class _Calendar:
         target_date: date,
     ) -> tuple[bool | None, str]:
         return self.states.get(target_date, (None, "calendar_missing"))
+
+
+class _RangeCalendar:
+    def __init__(self, sessions: set[date]) -> None:
+        self.sessions = sessions
+
+    def is_official_trading_day(
+        self,
+        target_date: date,
+    ) -> tuple[bool, str]:
+        return (
+            target_date in self.sessions,
+            "test_official_session"
+            if target_date in self.sessions
+            else "test_non_trading_day",
+        )
+
+    def get_trading_days_in_range(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        allow_online_probe: bool = False,
+    ) -> list[dict[str, object]]:
+        del allow_online_probe
+        rows: list[dict[str, object]] = []
+        cursor = start_date
+        while cursor <= end_date:
+            rows.append(
+                {
+                    "date_str": cursor.isoformat(),
+                    "is_trading_day": cursor in self.sessions,
+                    "reason_code": (
+                        "test_official_session"
+                        if cursor in self.sessions
+                        else "test_non_trading_day"
+                    ),
+                }
+            )
+            cursor = cursor.fromordinal(cursor.toordinal() + 1)
+        return rows
 
 
 def _preflight() -> SimpleNamespace:
@@ -120,6 +173,361 @@ def _release_evidence_fixture(release: SimpleNamespace) -> dict[str, object]:
         "required_file_mtime_diagnostics": [],
         "required_files": required,
     }
+
+
+def _run_shadow_with_paper_state_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    include_coordination_contract: bool,
+    receipt_variant: str = "valid",
+) -> dict[str, Any]:
+    """Run the complete outer wrapper while a fake preopen writer changes state."""
+
+    release = _release_fixture(tmp_path)
+    database = tmp_path / "twstock.db"
+    paper = tmp_path / "paper.sqlite"
+    ledger = tmp_path / "paper-trade-ledger.sqlite"
+    output_root = tmp_path / "output"
+    database.write_bytes(b"readonly-db")
+    paper.write_bytes(b"paper-before")
+    ledger.write_bytes(b"ledger-before")
+    receipt_path = tmp_path / "preopen-receipt.json"
+    real_file_hash = shadow._file_hash
+
+    monkeypatch.setattr(shadow, "preflight_capacity", lambda **_: _preflight())
+    monkeypatch.setattr(
+        shadow.AllocationReleaseAdapter,
+        "load",
+        lambda _self, _root: release,
+    )
+    monkeypatch.setattr(
+        shadow,
+        "_release_evidence",
+        lambda **_: _release_evidence_fixture(release),
+    )
+    monkeypatch.setattr(
+        shadow,
+        "_source_date_evidence",
+        lambda **_: {
+            "status": "completed",
+            "latest_date_by_table": {},
+            "symbol_latest_date": {},
+            "strict_t_minus_one_rows_by_symbol": {},
+        },
+    )
+
+    def fake_daily_run(**_kwargs: Any) -> dict[str, object]:
+        state_hash = real_file_hash(paper)
+        ledger_hash = real_file_hash(ledger)
+        paper.write_bytes(b"paper-after-preopen-writer")
+        state_after_hash = shadow._file_hash(paper)
+        daily_status: dict[str, object] = {
+            "status": "passed_rule_only",
+            "orchestration_status": "completed",
+            "shadow_observation_recorded": True,
+            "decision_at": "2026-07-31T08:30:00+08:00",
+            "strict_t_minus_one": "2026-07-30",
+            "production_blend_alpha_bp": 0,
+            "formal_oos_allowed": False,
+            "broker_order_allowed": False,
+        }
+        if include_coordination_contract:
+            write_contract = {
+                "schema_version": "paper-state-write-contract.v1",
+                "writer": "scripts.run_paper_portfolio_daily.run",
+                "write_scope": "repository_paper_snapshot_append_only",
+                "state_db": str(paper.resolve()),
+                "snapshot_id": "paper-main-20260731",
+                "decision_date": "2026-07-31",
+                "snapshot_appended": True,
+                "append_only": True,
+                "research_only": True,
+                "formal_credit": False,
+                "broker_execution": False,
+            }
+            coverage = {
+                "schema_version": "paper-preopen-coverage.v1",
+                "status": "passed",
+                "portfolio_id": "paper-main",
+                "snapshot_id": "paper-main-20260731",
+                "decision_date": "2026-07-31",
+                "snapshot_relation": "current_decision_date_producer_receipt",
+                "snapshot_appended": True,
+                "snapshot_semantics": "preopen_t_minus_one_mark_to_market",
+                "trading_calendar_validated": True,
+                "trading_calendar_is_open": True,
+                "state_db": str(paper.resolve()),
+                "ledger_db": str(ledger.resolve()),
+                "state_head": {"target_file_sha256": state_after_hash},
+                "write_scope": "repository_paper_snapshot_append_only",
+                "writer": "scripts.run_paper_portfolio_daily.run",
+            }
+            receipt_document = {
+                "schema_version": "paper-portfolio-daily-isolated-scope.v1",
+                "status": "passed",
+                "portfolio_id": "paper-main",
+                "snapshot_id": "paper-main-20260731",
+                "decision_date": "2026-07-31",
+                "state_db": str(paper.resolve()),
+                "paper_ledger_db": str(ledger.resolve()),
+                "writes_D_source": False,
+                "writes_market_database": False,
+                "formal_credit": False,
+                "broker_execution": False,
+                "snapshot_relation": "current_decision_date_producer_receipt",
+                "preopen_coverage": coverage,
+                "paper_state_write_contract": write_contract,
+                "isolated_scope": {
+                    "repository_state_db": str(paper.resolve()),
+                    "ledger_db": str(ledger.resolve()),
+                    "repository_state_scope": "repository_output_only",
+                    "source_state_read_mode": (
+                        "sqlite_uri_mode_ro_and_query_only"
+                    ),
+                    "writes_D_source": False,
+                    "writes_market_database": False,
+                    "formal_credit": False,
+                    "broker_execution": False,
+                    "state_head": {"target_file_sha256": state_after_hash},
+                },
+            }
+            document_to_write: object = receipt_document
+            if receipt_variant == "empty":
+                document_to_write = {}
+            elif receipt_variant == "inline_mismatch":
+                document_to_write = {
+                    **receipt_document,
+                    "preopen_coverage": {
+                        **coverage,
+                        "ledger_db": str(tmp_path / "wrong-ledger.sqlite"),
+                    },
+                }
+            elif receipt_variant == "stale":
+                stale_date = "2026-07-30"
+                document_to_write = {
+                    **receipt_document,
+                    "snapshot_id": "paper-main-20260730",
+                    "decision_date": stale_date,
+                    "preopen_coverage": {
+                        **coverage,
+                        "snapshot_id": "paper-main-20260730",
+                        "decision_date": stale_date,
+                    },
+                    "paper_state_write_contract": {
+                        **write_contract,
+                        "snapshot_id": "paper-main-20260730",
+                        "decision_date": stale_date,
+                    },
+                }
+            elif receipt_variant == "scope":
+                wrong_state = tmp_path / "wrong-paper.sqlite"
+                wrong_state.write_bytes(b"wrong-state")
+                document_to_write = {
+                    **receipt_document,
+                    "state_db": str(wrong_state.resolve()),
+                    "preopen_coverage": {
+                        **coverage,
+                        "state_db": str(wrong_state.resolve()),
+                    },
+                    "paper_state_write_contract": {
+                        **write_contract,
+                        "state_db": str(wrong_state.resolve()),
+                    },
+                    "isolated_scope": {
+                        **cast(dict[str, object], receipt_document["isolated_scope"]),
+                        "repository_state_db": str(wrong_state.resolve()),
+                    },
+                }
+            elif receipt_variant == "stale_same_day":
+                pass
+            elif receipt_variant == "receipt_race":
+                pass
+            elif receipt_variant != "valid":
+                raise AssertionError(f"unsupported receipt variant: {receipt_variant}")
+            receipt_path.write_text(
+                json.dumps(document_to_write, sort_keys=True),
+                encoding="utf-8",
+            )
+            receipt = {
+                **receipt_document,
+                "path": str(receipt_path.resolve()),
+                "file_hash": real_file_hash(receipt_path),
+            }
+            daily_status.update(
+                {
+                    "paper_read_consistency": {
+                        "state_db": {
+                            "path": str(paper.resolve()),
+                            "mode": "ro/query_only",
+                            "hash_before": state_hash,
+                            "hash_after": state_hash,
+                            "unchanged": True,
+                        },
+                        "trade_ledger_db": {
+                            "path": str(ledger.resolve()),
+                            "mode": "ro/query_only",
+                            "hash_before": ledger_hash,
+                            "hash_after": ledger_hash,
+                            "unchanged": True,
+                        },
+                        "preopen_coverage_receipt": receipt,
+                    },
+                    "paper_preopen_coverage_receipt_path": str(
+                        receipt_path.resolve()
+                    ),
+                    "paper_preopen_coverage_receipt_file_hash": receipt[
+                        "file_hash"
+                    ],
+                }
+            )
+            if receipt_variant == "stale_same_day":
+                paper.write_bytes(b"paper-after-unaccounted-modification")
+        return daily_status
+
+    monkeypatch.setattr(shadow.daily, "run", fake_daily_run)
+    if receipt_variant == "receipt_race":
+        race_state = {"triggered": False}
+
+        def racing_file_hash(path: Path) -> str:
+            result = real_file_hash(path)
+            if path.resolve() == receipt_path.resolve() and not race_state[
+                "triggered"
+            ]:
+                race_state["triggered"] = True
+                receipt_path.write_text("{}", encoding="utf-8")
+            return result
+
+        monkeypatch.setattr(shadow, "_file_hash", racing_file_hash)
+    result = shadow.run(
+        database_path=database,
+        output_root=output_root,
+        release_root=release.release_root,
+        paper_state_db_path=paper,
+        paper_trade_ledger_db_path=ledger,
+        mode=shadow.RESEARCH_MODE,
+        now=datetime(2026, 7, 31, 10, 0, tzinfo=TAIPEI),
+        calendar=_Calendar({date(2026, 7, 31): (True, "open")}),
+        lock_path=tmp_path / "shared.lock",
+    )
+    return cast(dict[str, Any], result)
+
+
+def _patch_real_preopen_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path, Path, Path, Path, _RangeCalendar]:
+    """Prepare the real isolated preopen producer with a bounded fixture."""
+
+    data_root = tmp_path / "D-source"
+    operation_root = tmp_path / "repo" / "output" / "paper_execution_eod_replay"
+    source_state = data_root / "output" / "paper_portfolio" / "paper_portfolio.sqlite"
+    baseline = data_root / "output" / "paper_portfolio" / "baseline_20260712.json"
+    market = data_root / "sqlite" / "twstock.db"
+    state = operation_root / "paper_portfolio" / "paper_portfolio.sqlite"
+    manifest = operation_root / "paper_portfolio" / "state_seed_manifest.json"
+    ledger = operation_root / "paper_trade_ledger.sqlite"
+    source_repository = PaperPortfolioSnapshotRepository(source_state)
+    source_repository.append(
+        PaperPortfolioSnapshot(
+            snapshot_id="paper-main-20260707",
+            portfolio_id="paper-main",
+            decision_date="2026-07-07",
+            source_result_id="source-20260707",
+            cash=Decimal("80000.00"),
+            total_value=Decimal("100000.00"),
+            positions=(
+                PaperPortfolioPositionSnapshot(
+                    stock_code="2330",
+                    quantity=1000,
+                    mark_price=Decimal("20.00"),
+                    market_value=Decimal("20000.00"),
+                    weight_bp=2000,
+                ),
+            ),
+        )
+    )
+    source_repository.append(
+        PaperPortfolioSnapshot(
+            snapshot_id="paper-main-20260712-baseline",
+            portfolio_id="paper-main",
+            decision_date="2026-07-12",
+            source_result_id="source-baseline-1",
+            cash=Decimal("80000.00"),
+            total_value=Decimal("100000.00"),
+            positions=(
+                PaperPortfolioPositionSnapshot(
+                    stock_code="2330",
+                    quantity=1000,
+                    mark_price=Decimal("20.00"),
+                    market_value=Decimal("20000.00"),
+                    weight_bp=2000,
+                ),
+            ),
+        )
+    )
+    source_repository.append(
+        PaperPortfolioSnapshot(
+            snapshot_id="paper-main-20260713",
+            portfolio_id="paper-main",
+            decision_date="2026-07-13",
+            source_result_id="source-20260713",
+            cash=Decimal("80000.00"),
+            total_value=Decimal("101000.00"),
+            positions=(
+                PaperPortfolioPositionSnapshot(
+                    stock_code="2330",
+                    quantity=1000,
+                    mark_price=Decimal("21.00"),
+                    market_value=Decimal("21000.00"),
+                    weight_bp=2079,
+                ),
+            ),
+        )
+    )
+    baseline.parent.mkdir(parents=True, exist_ok=True)
+    baseline.write_text(
+        json.dumps(
+            {
+                "decision_date": "2026-07-12",
+                "source_result_id": "source-baseline-1",
+                "residual_cash": "80000.00",
+                "allocations": [
+                    {
+                        "stock_code": "2330",
+                        "executable_shares": 1000,
+                        "reference_price": "20.00",
+                        "executable_amount": "20000.00",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    market.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(market) as connection:
+        connection.execute(
+            "CREATE TABLE daily_prices (日期 TEXT, 證券代號 TEXT, 收盤價 TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?)",
+            ("20260713", "2330", "21.00"),
+        )
+    PaperTradeLedgerRepository(ledger)
+    monkeypatch.setattr(preopen_adapter, "ROOT", operation_root.parents[1])
+    monkeypatch.setattr(preopen_adapter, "DEFAULT_DATA_ROOT", data_root)
+    monkeypatch.setattr(preopen_adapter, "SOURCE_STATE_DB", source_state)
+    monkeypatch.setattr(preopen_adapter, "SOURCE_BASELINE_PATH", baseline)
+    monkeypatch.setattr(preopen_adapter, "OPERATIONAL_ROOT", operation_root)
+    monkeypatch.setattr(preopen_adapter, "PAPER_STATE_ROOT", state.parent)
+    monkeypatch.setattr(preopen_adapter, "STATE_DB", state)
+    monkeypatch.setattr(preopen_adapter, "STATE_SEED_MANIFEST", manifest)
+    monkeypatch.setattr(preopen_adapter, "MARKET_DB", market)
+    monkeypatch.setattr(preopen_adapter, "LEDGER_DB", ledger)
+    calendar = _RangeCalendar(
+        {date(2026, 7, 7), date(2026, 7, 12), date(2026, 7, 13), date(2026, 7, 14)}
+    )
+    return source_state, baseline, market, state, ledger, calendar
 
 
 def _machine_operational_candidate(
@@ -212,6 +620,182 @@ def test_release_receipt_preserves_first_observation_across_capture_times(
     assert shadow._file_hash(receipt_path) == second[
         "observation_receipt_file_hash"
     ]
+
+
+def test_outer_wrapper_accepts_only_receipted_preopen_state_writer_overlap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _run_shadow_with_paper_state_change(
+        tmp_path,
+        monkeypatch,
+        include_coordination_contract=True,
+    )
+
+    assert payload["status"] == "completed"
+    coordination = cast(dict[str, Any], payload["paper_state_coordination"])
+    assert coordination["status"] == "expected_preopen_producer_overlap"
+    assert coordination["authorized"] is True
+    checks = cast(dict[str, Any], coordination["contract_checks"])
+    assert all(checks.values())
+    source = cast(dict[str, Any], payload["source"])
+    paper_source = cast(dict[str, Any], source["paper_state_db"])
+    assert paper_source["unchanged"] is False
+    assert paper_source["integrity_verified"] is True
+
+
+def test_real_preopen_producer_and_inner_reader_authorize_current_state_overlap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The positive overlap path must consume real producer/reader evidence."""
+
+    _source, _baseline, market, state, ledger, calendar = _patch_real_preopen_scope(
+        tmp_path,
+        monkeypatch,
+    )
+    seed = preopen_adapter.ensure_repo_state_from_readonly_source(
+        source=preopen_adapter.SOURCE_STATE_DB,
+        target=state,
+        manifest_path=preopen_adapter.STATE_SEED_MANIFEST,
+        observed_at=datetime(2026, 7, 14, 8, 20, tzinfo=TAIPEI),
+    )
+    assert seed["status"] == "seeded"
+    release = _release_fixture(tmp_path)
+    output_root = tmp_path / "derived-output"
+    monkeypatch.setattr(shadow, "preflight_capacity", lambda **_: _preflight())
+    monkeypatch.setattr(
+        shadow.AllocationReleaseAdapter,
+        "load",
+        lambda _self, _root: release,
+    )
+    monkeypatch.setattr(
+        shadow,
+        "_release_evidence",
+        lambda **_: _release_evidence_fixture(release),
+    )
+    monkeypatch.setattr(
+        shadow,
+        "_source_date_evidence",
+        lambda **_: {
+            "status": "completed",
+            "latest_date_by_table": {},
+            "symbol_latest_date": {},
+            "strict_t_minus_one_rows_by_symbol": {},
+        },
+    )
+
+    def fake_daily_run(**_kwargs: Any) -> dict[str, object]:
+        producer_result = preopen_adapter.run_isolated(
+            now=datetime(2026, 7, 14, 8, 31, tzinfo=TAIPEI),
+            decision_at=datetime(2026, 7, 14, 8, 30, tzinfo=TAIPEI),
+            calendar=calendar,  # type: ignore[arg-type]
+        )
+        assert producer_result["status"] == "passed"
+        context = load_t_minus_one_paper_ledger(
+            state_db_path=state,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 7, 14),
+            paper_trade_ledger_db_path=ledger,
+            official_calendar=calendar,
+        )
+        consistency = context.paper_read_consistency
+        assert consistency is not None
+        return {
+            "status": "passed_rule_only",
+            "orchestration_status": "completed",
+            "shadow_observation_recorded": True,
+            "decision_at": "2026-07-14T08:30:00+08:00",
+            "strict_t_minus_one": "2026-07-13",
+            "production_blend_alpha_bp": 0,
+            "formal_oos_allowed": False,
+            "broker_order_allowed": False,
+            "paper_read_consistency": dict(consistency),
+            "paper_preopen_coverage_receipt_path": (
+                context.paper_preopen_coverage_receipt_path
+            ),
+            "paper_preopen_coverage_receipt_file_hash": (
+                context.paper_preopen_coverage_receipt_file_hash
+            ),
+        }
+
+    monkeypatch.setattr(shadow.daily, "run", fake_daily_run)
+    payload = cast(
+        dict[str, Any],
+        shadow.run(
+            database_path=market,
+            output_root=output_root,
+            release_root=release.release_root,
+            paper_state_db_path=state,
+            paper_trade_ledger_db_path=ledger,
+            mode=shadow.RESEARCH_MODE,
+            now=datetime(2026, 7, 14, 10, 0, tzinfo=TAIPEI),
+            calendar=calendar,
+        ),
+    )
+
+    assert payload["status"] == "completed"
+    coordination = cast(dict[str, Any], payload["paper_state_coordination"])
+    assert coordination["status"] == "expected_preopen_producer_overlap"
+    assert coordination["authorized"] is True
+    checks = cast(dict[str, Any], coordination["contract_checks"])
+    assert all(checks.values())
+    assert Path(str(payload["record_path"])).is_file()
+
+
+def test_outer_wrapper_blocks_unaccounted_paper_state_writer_overlap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _run_shadow_with_paper_state_change(
+        tmp_path,
+        monkeypatch,
+        include_coordination_contract=False,
+    )
+
+    assert payload["status"] == "failed_read_only_integrity"
+    coordination = cast(dict[str, Any], payload["paper_state_coordination"])
+    assert coordination["status"] == "unaccounted_change"
+    assert coordination["authorized"] is False
+    assert cast(dict[str, Any], payload["production_boundaries"])[
+        "production_action_allowed"
+    ] is False
+
+
+@pytest.mark.parametrize(
+    "receipt_variant",
+    (
+        "empty",
+        "inline_mismatch",
+        "stale",
+        "stale_same_day",
+        "scope",
+        "receipt_race",
+    ),
+)
+def test_outer_wrapper_blocks_invalid_preopen_receipt_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_variant: str,
+) -> None:
+    payload = _run_shadow_with_paper_state_change(
+        tmp_path,
+        monkeypatch,
+        include_coordination_contract=True,
+        receipt_variant=receipt_variant,
+    )
+
+    assert payload["status"] == "failed_read_only_integrity"
+    coordination = cast(dict[str, Any], payload["paper_state_coordination"])
+    assert coordination["authorized"] is False
+    checks = cast(dict[str, Any], coordination["contract_checks"])
+    assert checks["receipt_content_matches_inline"] is (
+        receipt_variant == "stale_same_day"
+    )
+    if receipt_variant == "stale_same_day":
+        assert checks["receipt_scope_and_current_state_bound"] is False
+    if receipt_variant == "receipt_race":
+        assert checks["preopen_receipt_valid"] is False
 
 
 def test_select_natural_decision_rejects_invalid_clock_and_unknown_calendar() -> None:

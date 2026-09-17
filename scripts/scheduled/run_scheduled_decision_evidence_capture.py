@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 import json
 import os
 from pathlib import Path
@@ -24,12 +24,32 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from data_module.official_trading_calendar import OfficialTradingCalendar
+from app_module.evidence_event_importer_dtos import (
+    EvidenceCaptureRequest,
+    capture_context_identity,
+    capture_context_is_valid,
+)
 
 
 TASK_NAME = "baldr-decision-evidence-capture-daily"
 TAIPEI = ZoneInfo("Asia/Taipei")
 DECISION_TIME = time(hour=8, minute=30)
+EOD_RESEARCH_START = time(hour=13, minute=30)
 SCHEMA_VERSION = "decision-evidence-capture.v1"
+TEMPORAL_RECEIPT_FIELDS = (
+    "decision_at",
+    "as_of",
+    "captured_at",
+    "capture_mode",
+    "temporal_status",
+    "research_only",
+    "preopen_authority",
+    "natural_authority",
+    "source_availability_preserved",
+    "source_availability_policy",
+    "capture_context_hash",
+    "capture_context_identity_hash",
+)
 DEFAULT_SUBPROCESS_TIMEOUT_SECONDS = 120
 REQUIRED_SNAPSHOT_SECTIONS = frozenset(
     {
@@ -79,7 +99,9 @@ def latest_reached_taipei_decision_at(now: datetime | None = None) -> datetime:
 
     Windows 排程在台灣 08:30 前執行時，若選下一個尚未到達的 cutoff，
     capture CLI 會收到 future decision date。排程入口因此只選已到達的
-    cutoff；回放／明確 ``decision_at`` 仍可保留原有語意並由下游驗證。
+    日曆 cutoff；這個值只作為 ``calendar_decision_at`` 的日期選擇器，
+    不會冒充實際的 ``decision_at``。實際決策與 capture 時間由 caller
+    明確傳入或使用本次 aware capture clock，再由下游驗證。
     """
 
     current = now or datetime.now(TAIPEI)
@@ -167,7 +189,51 @@ def _non_negative_int(value: object, *, label: str) -> int:
     return value
 
 
-def _snapshot_step(result: CliRunResult) -> tuple[dict[str, Any], list[str]]:
+def _temporal_receipt_failures(
+    payload: Mapping[str, Any],
+    expected: Mapping[str, Any] | None,
+) -> list[str]:
+    if expected is None:
+        return []
+    return [
+        f"temporal_receipt_mismatch:{field}"
+        for field in TEMPORAL_RECEIPT_FIELDS
+        if payload.get(field) != expected.get(field)
+    ]
+
+
+def _temporal_receipt_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {field: payload.get(field) for field in TEMPORAL_RECEIPT_FIELDS}
+
+
+def _persisted_capture_context(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    value = payload.get("persisted_capture_context")
+    return dict(value) if isinstance(value, Mapping) else None
+
+
+def _persisted_context_failures(
+    payload: Mapping[str, Any],
+    expected: Mapping[str, Any] | None,
+    *,
+    prefix: str,
+) -> list[str]:
+    if expected is None:
+        return []
+    persisted = _persisted_capture_context(payload)
+    if persisted is None:
+        return [f"{prefix}_persisted_capture_context_missing"]
+    if not capture_context_is_valid(persisted):
+        return [f"{prefix}_persisted_capture_context_invalid"]
+    if capture_context_identity(persisted) != capture_context_identity(expected):
+        return [f"{prefix}_persisted_capture_context_identity_mismatch"]
+    return []
+
+
+def _snapshot_step(
+    result: CliRunResult,
+    *,
+    expected_temporal: Mapping[str, Any] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     payload = result.payload
     failures: list[str] = []
     if result.timed_out:
@@ -220,6 +286,14 @@ def _snapshot_step(result: CliRunResult) -> tuple[dict[str, Any], list[str]]:
                 sorted(set(sections_missing))
             )
         )
+    failures.extend(_temporal_receipt_failures(payload, expected_temporal))
+    failures.extend(
+        _persisted_context_failures(
+            payload,
+            expected_temporal,
+            prefix="snapshot",
+        )
+    )
     step = {
         "status": "passed" if not failures else "failed",
         "saved": saved,
@@ -231,13 +305,19 @@ def _snapshot_step(result: CliRunResult) -> tuple[dict[str, Any], list[str]]:
         "sections_missing": sections_missing,
         "required_sections": sorted(REQUIRED_SNAPSHOT_SECTIONS),
         "warnings_count": payload.get("warnings_count"),
+        **_temporal_receipt_payload(payload),
+        "persisted_capture_context": _persisted_capture_context(payload),
     }
     if result.stderr and failures:
         step["stderr"] = result.stderr
     return step, failures
 
 
-def _evidence_step(result: CliRunResult) -> tuple[dict[str, Any], list[str]]:
+def _evidence_step(
+    result: CliRunResult,
+    *,
+    expected_temporal: Mapping[str, Any] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     payload = result.payload
     failures: list[str] = []
     if result.timed_out:
@@ -301,6 +381,14 @@ def _evidence_step(result: CliRunResult) -> tuple[dict[str, Any], list[str]]:
         ]
     if error_diagnostics:
         failures.append(f"evidence_error_diagnostics:{len(error_diagnostics)}")
+    failures.extend(_temporal_receipt_failures(payload, expected_temporal))
+    failures.extend(
+        _persisted_context_failures(
+            payload,
+            expected_temporal,
+            prefix="evidence",
+        )
+    )
 
     step = {
         "status": "passed" if not failures else "failed",
@@ -312,6 +400,8 @@ def _evidence_step(result: CliRunResult) -> tuple[dict[str, Any], list[str]]:
         "diagnostics_by_code": dict(payload.get("diagnostics_by_code") or {}),
         "event_type_counts": dict(payload.get("event_type_counts") or {}),
         "quality_counts": dict(payload.get("quality_counts") or {}),
+        **_temporal_receipt_payload(payload),
+        "persisted_capture_context": _persisted_capture_context(payload),
     }
     if result.stderr and failures:
         step["stderr"] = result.stderr
@@ -320,7 +410,12 @@ def _evidence_step(result: CliRunResult) -> tuple[dict[str, Any], list[str]]:
 
 def _base_payload(
     *,
+    calendar_decision_at: datetime,
     decision_at: datetime,
+    as_of_date: date,
+    captured_at: datetime,
+    capture_mode: str,
+    temporal: Mapping[str, Any],
     checked_at: datetime,
     status_path: Path,
     db_path: Path | None,
@@ -331,10 +426,23 @@ def _base_payload(
         "task": TASK_NAME,
         "status": "running",
         "checked_at": checked_at.isoformat(timespec="seconds"),
+        "calendar_decision_at": calendar_decision_at.isoformat(timespec="seconds"),
         "decision_at": decision_at.isoformat(timespec="seconds"),
-        "decision_date": decision_at.date().isoformat(),
+        "decision_date": as_of_date.isoformat(),
+        "as_of": as_of_date.isoformat(),
+        "captured_at": captured_at.isoformat(timespec="seconds"),
         "decision_timezone": "Asia/Taipei",
-        "decision_time": "08:30:00",
+        "decision_time": decision_at.timetz().replace(tzinfo=None).isoformat(),
+        "calendar_decision_time": DECISION_TIME.isoformat(),
+        "capture_mode": capture_mode,
+        "temporal_status": temporal["temporal_status"],
+        "research_only": temporal["research_only"],
+        "preopen_authority": temporal["preopen_authority"],
+        "natural_authority": temporal["natural_authority"],
+        "source_availability_preserved": temporal["source_availability_preserved"],
+        "source_availability_policy": temporal["source_availability_policy"],
+        "capture_context_hash": temporal["capture_context_hash"],
+        "capture_context_identity_hash": temporal["capture_context_identity_hash"],
         "decision_date_basis": decision_date_basis,
         "trading_calendar_validated": False,
         "trading_calendar_is_open": None,
@@ -354,6 +462,29 @@ def _base_payload(
     }
 
 
+def _taipei_datetime(value: datetime, *, field_name: str) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} 必須包含時區")
+    return value.astimezone(TAIPEI)
+
+
+def _as_of_date(value: date | str | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value).strip()[:10])
+
+
+def _default_capture_mode(captured_at: datetime, requested: str | None) -> str:
+    if requested is not None and str(requested).strip():
+        return str(requested).strip()
+    local = captured_at.astimezone(TAIPEI)
+    return "eod_research" if local.time() >= EOD_RESEARCH_START else "research_only"
+
+
 def run(
     *,
     data_root: Path,
@@ -361,24 +492,77 @@ def run(
     db_path: Path | None = None,
     now: datetime | None = None,
     decision_at: datetime | None = None,
+    as_of: date | str | None = None,
+    captured_at: datetime | None = None,
+    capture_mode: str | None = None,
+    calendar_decision_at: datetime | None = None,
     python_executable: str | None = None,
     subprocess_timeout_seconds: int = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
     calendar: OfficialTradingCalendar | None = None,
 ) -> dict[str, Any]:
     checked_raw = now or datetime.now(TAIPEI)
-    if checked_raw.tzinfo is None or checked_raw.utcoffset() is None:
-        raise ValueError("now 必須包含時區")
-    checked_at = checked_raw.astimezone(TAIPEI)
-    if decision_at is None:
-        resolved_decision_at = latest_reached_taipei_decision_at(checked_at)
-        decision_date_basis = "latest_reached_calendar_decision_at"
+    checked_at = _taipei_datetime(checked_raw, field_name="now")
+    resolved_captured_at = _taipei_datetime(
+        captured_at or checked_at,
+        field_name="captured_at",
+    )
+    resolved_decision_at = _taipei_datetime(
+        decision_at or resolved_captured_at,
+        field_name="decision_at",
+    )
+    if resolved_captured_at < resolved_decision_at:
+        raise ValueError("captured_at 不得早於 decision_at")
+
+    explicit_as_of = _as_of_date(as_of)
+    explicit_calendar_decision_at = (
+        _taipei_datetime(calendar_decision_at, field_name="calendar_decision_at")
+        if calendar_decision_at is not None
+        else None
+    )
+    if explicit_calendar_decision_at is not None:
+        if (
+            explicit_calendar_decision_at.timetz().replace(tzinfo=None)
+            != DECISION_TIME
+        ):
+            raise ValueError("calendar_decision_at 必須對應 Asia/Taipei 08:30")
+        resolved_calendar_decision_at = explicit_calendar_decision_at
+        decision_date_basis = "explicit_calendar_decision_at"
+    elif explicit_as_of is not None:
+        resolved_calendar_decision_at = datetime.combine(
+            explicit_as_of,
+            DECISION_TIME,
+            tzinfo=TAIPEI,
+        )
+        decision_date_basis = "explicit_as_of_date"
+    elif decision_at is not None:
+        # An explicit actual decision timestamp also supplies the natural-day
+        # selector when no separate as-of/calendar selector is given.
+        resolved_calendar_decision_at = datetime.combine(
+            resolved_decision_at.date(),
+            DECISION_TIME,
+            tzinfo=TAIPEI,
+        )
+        decision_date_basis = "explicit_decision_at_calendar_date"
     else:
-        if decision_at.tzinfo is None or decision_at.utcoffset() is None:
-            raise ValueError("decision_at 必須包含時區")
-        resolved_decision_at = decision_at.astimezone(TAIPEI)
-        if resolved_decision_at.timetz().replace(tzinfo=None) != DECISION_TIME:
-            raise ValueError("decision_at 必須對應 Asia/Taipei 08:30")
-        decision_date_basis = "explicit_decision_at"
+        resolved_calendar_decision_at = latest_reached_taipei_decision_at(checked_at)
+        decision_date_basis = "latest_reached_calendar_decision_at"
+
+    if explicit_as_of is not None and explicit_as_of != resolved_calendar_decision_at.date():
+        raise ValueError("as_of 必須與 calendar_decision_at 同一台北自然日")
+    resolved_as_of_date = explicit_as_of or resolved_calendar_decision_at.date()
+    resolved_capture_mode = _default_capture_mode(
+        resolved_captured_at,
+        capture_mode,
+    )
+    capture_request = EvidenceCaptureRequest(
+        source="scheduled-decision-evidence",
+        decision_date=resolved_as_of_date,
+        as_of=resolved_as_of_date,
+        decision_at=resolved_decision_at,
+        captured_at=resolved_captured_at,
+        capture_mode=resolved_capture_mode,
+    )
+    temporal = capture_request.temporal_summary
     status_path = (
         output_root
         / "scheduled"
@@ -386,7 +570,12 @@ def run(
         / "latest_status.json"
     )
     payload = _base_payload(
+        calendar_decision_at=resolved_calendar_decision_at,
         decision_at=resolved_decision_at,
+        as_of_date=resolved_as_of_date,
+        captured_at=resolved_captured_at,
+        capture_mode=resolved_capture_mode,
+        temporal=temporal,
         checked_at=checked_at,
         status_path=status_path,
         db_path=db_path,
@@ -398,7 +587,7 @@ def run(
     try:
         is_trading_day, calendar_reason = (
             calendar_service.is_official_trading_day(
-                resolved_decision_at.date()
+                resolved_calendar_decision_at.date()
             )
         )
     except Exception as exc:  # noqa: BLE001 - 必須持久化 fail-closed 狀態
@@ -453,7 +642,15 @@ def run(
     interpreter = python_executable or sys.executable
     common_args = [
         "--decision-date",
-        resolved_decision_at.date().isoformat(),
+        resolved_as_of_date.isoformat(),
+        "--as-of",
+        resolved_as_of_date.isoformat(),
+        "--decision-at",
+        resolved_decision_at.isoformat(timespec="seconds"),
+        "--captured-at",
+        resolved_captured_at.isoformat(timespec="seconds"),
+        "--capture-mode",
+        resolved_capture_mode,
         "--data-root",
         str(data_root),
         "--output-root",
@@ -478,7 +675,11 @@ def run(
             ],
             timeout_seconds=subprocess_timeout_seconds,
         )
-        snapshot, snapshot_failures = _snapshot_step(snapshot_result)
+        expected_temporal = _temporal_receipt_payload(payload)
+        snapshot, snapshot_failures = _snapshot_step(
+            snapshot_result,
+            expected_temporal=expected_temporal,
+        )
     except Exception as exc:  # noqa: BLE001
         snapshot = {
             "status": "failed",
@@ -518,7 +719,10 @@ def run(
                 ],
                 timeout_seconds=subprocess_timeout_seconds,
             )
-            evidence, evidence_failures = _evidence_step(evidence_result)
+            evidence, evidence_failures = _evidence_step(
+                evidence_result,
+                expected_temporal=expected_temporal,
+            )
         except Exception as exc:  # noqa: BLE001
             evidence = {
                 "status": "failed",
@@ -548,6 +752,9 @@ def run(
             "events_inserted": evidence_payload["events_inserted"],
             "events_duplicates": evidence_payload["duplicates"],
             "events_failures": evidence_payload["failures"],
+            "current_capture_context": _temporal_receipt_payload(payload),
+            "persisted_snapshot_capture_context": _persisted_capture_context(snapshot),
+            "persisted_event_capture_context": _persisted_capture_context(evidence_payload),
             "subprocess_timeout_seconds": subprocess_timeout_seconds,
         }
     )
@@ -558,10 +765,10 @@ def run(
 def _parse_now(value: str | None) -> datetime | None:
     if value is None:
         return None
-    parsed = datetime.fromisoformat(value)
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("--now 必須是含時區 ISO timestamp")
-    return parsed
+    return parsed.astimezone(TAIPEI)
 
 
 def _parse_decision_at(value: str | None) -> datetime | None:
@@ -570,16 +777,22 @@ def _parse_decision_at(value: str | None) -> datetime | None:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("--decision-at 必須是含時區 ISO timestamp")
-    local = parsed.astimezone(TAIPEI)
-    if local.timetz().replace(tzinfo=None) != DECISION_TIME:
-        raise ValueError("--decision-at 必須對應 Asia/Taipei 08:30")
-    return local
+    return parsed.astimezone(TAIPEI)
+
+
+def _parse_captured_at(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("--captured-at 必須是含時區 ISO timestamp")
+    return parsed.astimezone(TAIPEI)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "保存下一個尚未到達之台北 08:30 Decision Desk 快照與 Evidence Event。"
+            "保存已通過台北交易日驗證的 Decision Desk 快照與研究型 Evidence Event。"
         )
     )
     parser.add_argument(
@@ -606,7 +819,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--decision-at",
-        help="明確指定含時區的決策時間；必須對應台北 08:30 並通過官方交易日驗證。",
+        help="明確指定含時區的實際決策／評估時間；不會被補成台北 08:30。",
+    )
+    parser.add_argument(
+        "--as-of",
+        "--as-of-date",
+        dest="as_of",
+        help="明確指定來源 as-of 日期；省略時由已到達的台北 08:30 日曆日選取。",
+    )
+    parser.add_argument(
+        "--captured-at",
+        help="明確指定含時區的實際 capture 時間；省略時使用 runner checked clock。",
+    )
+    parser.add_argument(
+        "--capture-mode",
+        help="研究 capture mode，例如 eod_research；不授予 preopen/natural authority。",
+    )
+    parser.add_argument(
+        "--calendar-decision-at",
+        help="可選的台北 08:30 日曆選擇器；與實際 decision_at 分離。",
     )
     parser.add_argument(
         "--subprocess-timeout-seconds",
@@ -625,6 +856,10 @@ def main(argv: list[str] | None = None) -> int:
             db_path=args.db_path,
             now=_parse_now(args.now),
             decision_at=_parse_decision_at(args.decision_at),
+            as_of=_as_of_date(args.as_of),
+            captured_at=_parse_captured_at(args.captured_at),
+            capture_mode=args.capture_mode,
+            calendar_decision_at=_parse_decision_at(args.calendar_decision_at),
             subprocess_timeout_seconds=args.subprocess_timeout_seconds,
         )
     except Exception as exc:  # noqa: BLE001

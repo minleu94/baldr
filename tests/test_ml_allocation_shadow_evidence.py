@@ -23,8 +23,14 @@ from app_module.ml_allocation_shadow_evidence import (
 )
 from ml_module.allocation_promotion_reference import PROMOTION_HORIZONS
 from app_module.paper_portfolio_snapshot_repository import (
+    PaperPortfolioPositionSnapshot,
     PaperPortfolioSnapshot,
     PaperPortfolioSnapshotRepository,
+)
+from app_module.paper_trade_ledger import (
+    PaperTradeFill,
+    PaperTradeLedgerRepository,
+    PaperTradeTransition,
 )
 from app_module.portfolio_allocation_dtos import (
     AllocationWeightContract,
@@ -41,6 +47,58 @@ def _hash(payload: object) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+class _ExplicitTradingCalendar:
+    """Fixture calendar with explicit session evidence for bounded tests."""
+
+    def __init__(self, trading_dates: tuple[date, ...] | set[date]) -> None:
+        self._trading_dates = frozenset(trading_dates)
+
+    def is_official_trading_day(
+        self,
+        target_date: date,
+        *,
+        allow_online_probe: bool = False,
+    ) -> tuple[bool, str]:
+        del allow_online_probe
+        return (
+            target_date in self._trading_dates,
+            "fixture_explicit_session"
+            if target_date in self._trading_dates
+            else "fixture_explicit_closed",
+        )
+
+    def get_trading_days_in_range(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        allow_online_probe: bool = False,
+    ) -> list[dict[str, object]]:
+        del allow_online_probe
+        rows: list[dict[str, object]] = []
+        cursor = start_date
+        while cursor <= end_date:
+            is_trading = cursor in self._trading_dates
+            rows.append(
+                {
+                    "date": cursor,
+                    "date_str": cursor.isoformat(),
+                    "is_trading_day": is_trading,
+                    "reason_code": (
+                        "fixture_explicit_session"
+                        if is_trading
+                        else "fixture_explicit_closed"
+                    ),
+                }
+            )
+            cursor += timedelta(days=1)
+        return rows
+
+
+def _calendar_for(*dates: date) -> _ExplicitTradingCalendar:
+    return _ExplicitTradingCalendar(set(dates))
 
 
 def _make_market_db(path: Path) -> tuple[date, date]:
@@ -211,6 +269,29 @@ def _make_paper_db(path: Path, *, snapshot_date: date) -> None:
             positions=(),
         )
     )
+
+
+def _add_complete_zero_trade_coverage(
+    state_db: Path,
+    *,
+    decision_date: date,
+    ledger_db: Path,
+) -> None:
+    """Add rolling-window boundary evidence for a legal zero-trade week."""
+
+    boundary_date = decision_date - timedelta(days=7)
+    PaperPortfolioSnapshotRepository(state_db).append(
+        PaperPortfolioSnapshot(
+            snapshot_id=f"paper-main-coverage-{boundary_date:%Y%m%d}",
+            portfolio_id="paper-main",
+            decision_date=boundary_date.isoformat(),
+            source_result_id=f"coverage-{boundary_date.isoformat()}",
+            cash=Decimal("10000.00"),
+            total_value=Decimal("10000.00"),
+            positions=(),
+        )
+    )
+    PaperTradeLedgerRepository(ledger_db)
 
 
 def _write_proposal(path: Path, *, decision_date: date) -> tuple[str, str]:
@@ -463,6 +544,12 @@ def test_collector_records_four_lanes_then_matures_all_four_horizons(
         paper_db,
         snapshot_date=strict_t_minus_one - timedelta(days=1),
     )
+    paper_trade_ledger_db = tmp_path / "paper-trade-ledger.sqlite"
+    _add_complete_zero_trade_coverage(
+        paper_db,
+        decision_date=decision_date,
+        ledger_db=paper_trade_ledger_db,
+    )
     proposal_path = tmp_path / "proposal.json"
     proposal_hash, replay_hash = _write_proposal(
         proposal_path,
@@ -475,9 +562,13 @@ def test_collector_records_four_lanes_then_matures_all_four_horizons(
     collector = MLAllocationShadowCollector(
         market_database_path=market_db,
         paper_state_db_path=paper_db,
+        paper_trade_ledger_db_path=paper_trade_ledger_db,
         sidecar_database_path=tmp_path / "shadow.sqlite",
         artifact_root=tmp_path / "artifacts",
         official_market_event_pointer_path=official_event_pointer,
+        official_calendar=_calendar_for(
+            date(2026, 1, 26), date(2026, 1, 31)
+        ),
     )
     forward_deadline = datetime.now(timezone.utc) + timedelta(minutes=1)
 
@@ -581,6 +672,989 @@ def test_collector_records_four_lanes_then_matures_all_four_horizons(
         assert all(row["why_not"] for row in lane["advice"]["rows"])
 
 
+def _make_transaction_backed_paper_state(
+    tmp_path: Path,
+    *,
+    turnover_bp: int | None,
+) -> tuple[Path, Path]:
+    state_db = tmp_path / "paper-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    state_repository.append(
+        PaperPortfolioSnapshot(
+            snapshot_id="paper-main-20260202",
+            portfolio_id="paper-main",
+            decision_date="2026-02-02",
+            source_result_id="preopen-20260202",
+            cash=Decimal("10000.00"),
+            total_value=Decimal("10000.00"),
+            positions=(),
+        )
+    )
+    state_repository.append(
+        PaperPortfolioSnapshot(
+            snapshot_id="paper-main-20260203",
+            portfolio_id="paper-main",
+            decision_date="2026-02-03",
+            source_result_id="preopen-20260203",
+            cash=Decimal("8999.00"),
+            total_value=Decimal("9999.00"),
+            positions=(
+                PaperPortfolioPositionSnapshot(
+                    stock_code="2330",
+                    quantity=10,
+                    mark_price=Decimal("100.00"),
+                    market_value=Decimal("1000.00"),
+                    weight_bp=1000,
+                ),
+            ),
+        )
+    )
+    ledger_db = tmp_path / "paper-trade-ledger.sqlite"
+    fill = PaperTradeFill(
+        fill_id="fill-20260202-2330",
+        order_id="order-20260202-2330",
+        portfolio_id="paper-main",
+        event_date="2026-02-02",
+        stock_code="2330",
+        side="buy",
+        requested_quantity=10,
+        filled_quantity=10,
+        reference_price=Decimal("100.00"),
+        fill_price=Decimal("100.00"),
+        commission=Decimal("1.00"),
+        tax=Decimal("0.00"),
+        slippage_cost=Decimal("0.00"),
+        turnover_bp=turnover_bp,
+        execution_gap_bp=0,
+        status="filled",
+        source_event_id="paper-event-20260202-2330",
+    )
+    PaperTradeLedgerRepository(ledger_db).append_batch(
+        (fill,),
+        PaperTradeTransition(
+            transition_id="transition-20260202-2330",
+            batch_id="batch-20260202-2330",
+            portfolio_id="paper-main",
+            event_date="2026-02-02",
+            fill_ids=("fill-20260202-2330",),
+            pre_cash=Decimal("10000.00"),
+            pre_total_value=Decimal("10000.00"),
+            post_cash=Decimal("8999.00"),
+            post_total_value=Decimal("9999.00"),
+            common_nav=Decimal("10000.00"),
+            common_prices={"2330": Decimal("100.00")},
+            pre_positions={},
+            post_positions={"2330": 10},
+        ),
+    )
+    return state_db, ledger_db
+
+
+def _append_snapshot(
+    repository: PaperPortfolioSnapshotRepository,
+    *,
+    snapshot_id: str,
+    decision_date: date,
+    cash: str,
+    total_value: str,
+    positions: tuple[PaperPortfolioPositionSnapshot, ...] = (),
+) -> None:
+    repository.append(
+        PaperPortfolioSnapshot(
+            snapshot_id=snapshot_id,
+            portfolio_id="paper-main",
+            decision_date=decision_date.isoformat(),
+            source_result_id=f"source-{snapshot_id}",
+            cash=Decimal(cash),
+            total_value=Decimal(total_value),
+            positions=positions,
+        )
+    )
+
+
+def _make_fill(
+    *,
+    fill_id: str,
+    event_date: date,
+    stock_code: str,
+    side: str,
+    requested_quantity: int,
+    filled_quantity: int,
+    reference_price: str,
+    turnover_bp: int | None,
+    fill_price: str | None = None,
+    commission: str = "0.00",
+    status: str | None = None,
+) -> PaperTradeFill:
+    resolved_status = status or (
+        "filled" if filled_quantity == requested_quantity else "partially_filled"
+    )
+    return PaperTradeFill(
+        fill_id=fill_id,
+        order_id=f"order-{fill_id}",
+        portfolio_id="paper-main",
+        event_date=event_date.isoformat(),
+        stock_code=stock_code,
+        side=side,
+        requested_quantity=requested_quantity,
+        filled_quantity=filled_quantity,
+        reference_price=Decimal(reference_price),
+        fill_price=(
+            None
+            if fill_price is None
+            else Decimal(fill_price)
+        ),
+        commission=Decimal(commission),
+        tax=Decimal("0.00"),
+        slippage_cost=Decimal("0.00"),
+        turnover_bp=turnover_bp,
+        execution_gap_bp=(0 if filled_quantity > 0 else None),
+        status=resolved_status,
+        source_event_id=f"event-{fill_id}",
+    )
+
+
+def test_t_minus_one_reader_uses_transaction_ledger_for_turnover_and_coverage(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=1000,
+    )
+
+    context = load_t_minus_one_paper_ledger(
+        state_db_path=state_db,
+        paper_trade_ledger_db_path=ledger_db,
+        portfolio_id="paper-main",
+        decision_date=date(2026, 2, 9),
+        official_calendar=_calendar_for(date(2026, 2, 2), date(2026, 2, 3)),
+    )
+
+    assert context.snapshot.snapshot_id == "paper-main-20260203"
+    assert context.weekly_turnover_used_bp == 1000
+    assert context.weekly_turnover_fill_count == 1
+    assert context.weekly_turnover_source == (
+        "paper_trade_transition.canonical_turnover_bp"
+    )
+    assert context.paper_trade_ledger_path == str(ledger_db.resolve())
+    assert context.paper_trade_ledger_file_hash is not None
+    assert context.weekly_turnover_coverage is not None
+    assert context.weekly_turnover_coverage["canonical_turnover_bp"] == 1000
+    assert context.weekly_turnover_coverage["gross_turnover_bp"] == 1000
+    assert context.paper_read_consistency is not None
+    assert context.paper_read_consistency["state_db"]["unchanged"] is True
+    assert context.paper_read_consistency["trade_ledger_db"]["unchanged"] is True
+
+
+def test_t_minus_one_reader_rejects_missing_transaction_coverage(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=1000,
+    )
+    with sqlite3.connect(ledger_db) as connection:
+        connection.execute("DELETE FROM paper_trade_ledger")
+
+    with pytest.raises(ValueError, match="snapshot coverage mismatch"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+            official_calendar=_calendar_for(date(2026, 2, 2), date(2026, 2, 3)),
+        )
+
+
+def test_t_minus_one_reader_rejects_missing_transaction_turnover(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=None,
+    )
+
+    with pytest.raises(ValueError, match="turnover_bp missing"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+            official_calendar=_calendar_for(date(2026, 2, 2), date(2026, 2, 3)),
+        )
+
+
+def test_t_minus_one_reader_requires_trade_ledger_path_even_for_stable_snapshot(
+    tmp_path: Path,
+) -> None:
+    state_db, _ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=1000,
+    )
+
+    with pytest.raises(ValueError, match="ledger path is required"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+        )
+
+
+def test_t_minus_one_reader_rejects_stale_only_snapshot_and_no_weekly_coverage(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "stale-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    _append_snapshot(
+        state_repository,
+        snapshot_id="stale-only",
+        decision_date=date(2026, 1, 20),
+        cash="10000.00",
+        total_value="10000.00",
+    )
+    ledger_db = tmp_path / "stale-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db)
+
+    with pytest.raises(ValueError, match="weekly coverage missing"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+        )
+
+
+def test_t_minus_one_reader_rejects_two_snapshots_without_rolling_window_start(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "no-window-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    for snapshot_date in (date(2026, 1, 20), date(2026, 1, 25)):
+        _append_snapshot(
+            state_repository,
+            snapshot_id=f"before-window-{snapshot_date:%Y%m%d}",
+            decision_date=snapshot_date,
+            cash="10000.00",
+            total_value="10000.00",
+        )
+    ledger_db = tmp_path / "no-window-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db)
+
+    with pytest.raises(ValueError, match="weekly coverage missing"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+        )
+
+
+def test_t_minus_one_reader_rejects_empty_ledger_without_two_snapshot_boundaries(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "empty-unproven-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    _append_snapshot(
+        state_repository,
+        snapshot_id="empty-unproven",
+        decision_date=date(2026, 2, 3),
+        cash="10000.00",
+        total_value="10000.00",
+    )
+    ledger_db = tmp_path / "empty-unproven-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db)
+
+    with pytest.raises(ValueError, match="at least two snapshots"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+        )
+
+
+def test_t_minus_one_reader_accepts_complete_coverage_with_legal_zero_trades(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "zero-trade-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    _append_snapshot(
+        state_repository,
+        snapshot_id="zero-boundary",
+        decision_date=date(2026, 2, 2),
+        cash="10000.00",
+        total_value="10000.00",
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="zero-t1",
+        decision_date=date(2026, 2, 8),
+        cash="10000.00",
+        total_value="10000.00",
+    )
+    ledger_db = tmp_path / "zero-trade-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db)
+
+    context = load_t_minus_one_paper_ledger(
+        state_db_path=state_db,
+        paper_trade_ledger_db_path=ledger_db,
+        portfolio_id="paper-main",
+        decision_date=date(2026, 2, 9),
+        official_calendar=_calendar_for(date(2026, 2, 2), date(2026, 2, 8)),
+    )
+
+    assert context.weekly_turnover_used_bp == 0
+    assert context.weekly_turnover_fill_count == 0
+    assert context.weekly_turnover_source == (
+        "paper_trade_transition.canonical_turnover_bp"
+    )
+    assert context.weekly_turnover_coverage is not None
+    assert context.weekly_turnover_coverage["zero_trade_accepted"] is True
+    assert context.weekly_turnover_coverage["snapshot_count"] == 2
+
+
+def _make_zero_trade_tail_fixture(
+    tmp_path: Path,
+    *,
+    snapshot_dates: tuple[date, ...],
+) -> tuple[Path, Path]:
+    state_db = tmp_path / "tail-coverage-state.sqlite"
+    repository = PaperPortfolioSnapshotRepository(state_db)
+    for snapshot_date in snapshot_dates:
+        _append_snapshot(
+            repository,
+            snapshot_id=f"tail-{snapshot_date:%Y%m%d}",
+            decision_date=snapshot_date,
+            cash="10000.00",
+            total_value="10000.00",
+        )
+    ledger_db = tmp_path / "tail-coverage-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db)
+    return state_db, ledger_db
+
+
+_TAIL_COVERAGE_SESSIONS = (
+    date(2026, 9, 10),
+    date(2026, 9, 11),
+    date(2026, 9, 14),
+    date(2026, 9, 15),
+    date(2026, 9, 16),
+)
+
+
+def test_t_minus_one_reader_rejects_missing_strict_t_minus_one_tail_sessions(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_zero_trade_tail_fixture(
+        tmp_path,
+        snapshot_dates=_TAIL_COVERAGE_SESSIONS[:2],
+    )
+
+    with pytest.raises(ValueError, match="missing official session boundary"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 9, 17),
+            official_calendar=_ExplicitTradingCalendar(_TAIL_COVERAGE_SESSIONS),
+        )
+
+
+def test_t_minus_one_reader_rejects_missing_middle_official_session_boundary(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_zero_trade_tail_fixture(
+        tmp_path,
+        snapshot_dates=(
+            date(2026, 9, 10),
+            date(2026, 9, 11),
+            date(2026, 9, 15),
+            date(2026, 9, 16),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="missing official session boundary"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 9, 17),
+            official_calendar=_ExplicitTradingCalendar(_TAIL_COVERAGE_SESSIONS),
+        )
+
+
+def test_t_minus_one_reader_accepts_full_window_zero_trade_with_tail_evidence(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_zero_trade_tail_fixture(
+        tmp_path,
+        snapshot_dates=_TAIL_COVERAGE_SESSIONS,
+    )
+
+    context = load_t_minus_one_paper_ledger(
+        state_db_path=state_db,
+        paper_trade_ledger_db_path=ledger_db,
+        portfolio_id="paper-main",
+        decision_date=date(2026, 9, 17),
+        official_calendar=_ExplicitTradingCalendar(_TAIL_COVERAGE_SESSIONS),
+    )
+
+    assert context.weekly_turnover_used_bp == 0
+    assert context.weekly_turnover_coverage is not None
+    assert context.weekly_turnover_coverage["zero_trade_accepted"] is True
+    assert context.weekly_turnover_coverage["strict_t_minus_one_tail_complete"] is True
+    assert context.weekly_turnover_coverage["expected_session_dates"] == [
+        item.isoformat() for item in _TAIL_COVERAGE_SESSIONS
+    ]
+
+
+def test_t_minus_one_reader_requires_official_calendar_for_full_window_claim(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_zero_trade_tail_fixture(
+        tmp_path,
+        snapshot_dates=_TAIL_COVERAGE_SESSIONS,
+    )
+
+    with pytest.raises(ValueError, match="official calendar evidence missing"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 9, 17),
+        )
+
+
+def test_t_minus_one_reader_rebuilds_same_batch_rotation_as_canonical_turnover(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "rotation-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    _append_snapshot(
+        state_repository,
+        snapshot_id="rotation-before",
+        decision_date=date(2026, 2, 2),
+        cash="8000.00",
+        total_value="10000.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=20,
+                mark_price=Decimal("100.00"),
+                market_value=Decimal("2000.00"),
+                weight_bp=2000,
+            ),
+        ),
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="rotation-after",
+        decision_date=date(2026, 2, 3),
+        cash="8000.00",
+        total_value="10000.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2317",
+                quantity=20,
+                mark_price=Decimal("100.00"),
+                market_value=Decimal("2000.00"),
+                weight_bp=2000,
+            ),
+        ),
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="rotation-t1",
+        decision_date=date(2026, 2, 8),
+        cash="8000.00",
+        total_value="10000.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2317",
+                quantity=20,
+                mark_price=Decimal("100.00"),
+                market_value=Decimal("2000.00"),
+                weight_bp=2000,
+            ),
+        ),
+    )
+    sell = _make_fill(
+        fill_id="rotation-sell",
+        event_date=date(2026, 2, 2),
+        stock_code="2330",
+        side="sell",
+        requested_quantity=20,
+        filled_quantity=20,
+        reference_price="100.00",
+        fill_price="100.00",
+        turnover_bp=2000,
+    )
+    buy = _make_fill(
+        fill_id="rotation-buy",
+        event_date=date(2026, 2, 2),
+        stock_code="2317",
+        side="buy",
+        requested_quantity=20,
+        filled_quantity=20,
+        reference_price="100.00",
+        fill_price="100.00",
+        turnover_bp=2000,
+    )
+    ledger_db = tmp_path / "rotation-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db).append_batch(
+        (sell, buy),
+        PaperTradeTransition(
+            transition_id="rotation-transition",
+            batch_id="rotation-batch",
+            portfolio_id="paper-main",
+            event_date="2026-02-02",
+            fill_ids=("rotation-buy", "rotation-sell"),
+            pre_cash=Decimal("8000.00"),
+            pre_total_value=Decimal("10000.00"),
+            post_cash=Decimal("8000.00"),
+            post_total_value=Decimal("10000.00"),
+            common_nav=Decimal("10000.00"),
+            common_prices={
+                "2317": Decimal("100.00"),
+                "2330": Decimal("100.00"),
+            },
+            pre_positions={"2330": 20},
+            post_positions={"2317": 20},
+        ),
+    )
+
+    context = load_t_minus_one_paper_ledger(
+        state_db_path=state_db,
+        paper_trade_ledger_db_path=ledger_db,
+        portfolio_id="paper-main",
+        decision_date=date(2026, 2, 9),
+        official_calendar=_calendar_for(
+            date(2026, 2, 2), date(2026, 2, 3), date(2026, 2, 8)
+        ),
+    )
+
+    assert context.weekly_turnover_used_bp == 2000
+    assert context.weekly_turnover_coverage is not None
+    assert context.weekly_turnover_coverage["gross_turnover_bp"] == 4000
+    assert context.weekly_turnover_coverage["canonical_turnover_bp"] == 2000
+
+
+def test_t_minus_one_reader_keeps_same_batch_roundtrip_gross_audit_separate(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "intraday-roundtrip-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    for snapshot_id, snapshot_date in (
+        ("roundtrip-boundary", date(2026, 2, 2)),
+        ("roundtrip-middle", date(2026, 2, 3)),
+        ("roundtrip-t1", date(2026, 2, 8)),
+    ):
+        _append_snapshot(
+            state_repository,
+            snapshot_id=snapshot_id,
+            decision_date=snapshot_date,
+            cash="10000.00",
+            total_value="10000.00",
+        )
+    buy = _make_fill(
+        fill_id="roundtrip-buy",
+        event_date=date(2026, 2, 2),
+        stock_code="2330",
+        side="buy",
+        requested_quantity=10,
+        filled_quantity=10,
+        reference_price="100.00",
+        fill_price="100.00",
+        turnover_bp=1000,
+    )
+    sell = _make_fill(
+        fill_id="roundtrip-sell",
+        event_date=date(2026, 2, 2),
+        stock_code="2330",
+        side="sell",
+        requested_quantity=10,
+        filled_quantity=10,
+        reference_price="100.00",
+        fill_price="100.00",
+        turnover_bp=1000,
+    )
+    ledger_db = tmp_path / "intraday-roundtrip-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db).append_batch(
+        (buy, sell),
+        PaperTradeTransition(
+            transition_id="roundtrip-transition",
+            batch_id="roundtrip-batch",
+            portfolio_id="paper-main",
+            event_date="2026-02-02",
+            fill_ids=("roundtrip-buy", "roundtrip-sell"),
+            pre_cash=Decimal("10000.00"),
+            pre_total_value=Decimal("10000.00"),
+            post_cash=Decimal("10000.00"),
+            post_total_value=Decimal("10000.00"),
+            common_nav=Decimal("10000.00"),
+            common_prices={"2330": Decimal("100.00")},
+            pre_positions={},
+            post_positions={},
+        ),
+    )
+
+    context = load_t_minus_one_paper_ledger(
+        state_db_path=state_db,
+        paper_trade_ledger_db_path=ledger_db,
+        portfolio_id="paper-main",
+        decision_date=date(2026, 2, 9),
+        official_calendar=_calendar_for(
+            date(2026, 2, 2), date(2026, 2, 3), date(2026, 2, 8)
+        ),
+    )
+
+    assert context.weekly_turnover_used_bp == 0
+    assert context.weekly_turnover_coverage is not None
+    assert context.weekly_turnover_coverage["gross_turnover_bp"] == 2000
+    assert context.weekly_turnover_coverage["canonical_turnover_bp"] == 0
+
+
+def test_t_minus_one_reader_sums_different_batch_roundtrip_without_netting(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "multi-batch-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    _append_snapshot(
+        state_repository,
+        snapshot_id="multi-batch-boundary",
+        decision_date=date(2026, 2, 2),
+        cash="10000.00",
+        total_value="10000.00",
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="multi-batch-buy",
+        decision_date=date(2026, 2, 3),
+        cash="8000.00",
+        total_value="10000.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=20,
+                mark_price=Decimal("100.00"),
+                market_value=Decimal("2000.00"),
+                weight_bp=2000,
+            ),
+        ),
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="multi-batch-sell",
+        decision_date=date(2026, 2, 4),
+        cash="10000.00",
+        total_value="10000.00",
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="multi-batch-t1",
+        decision_date=date(2026, 2, 8),
+        cash="10000.00",
+        total_value="10000.00",
+    )
+    buy = _make_fill(
+        fill_id="multi-batch-buy-fill",
+        event_date=date(2026, 2, 2),
+        stock_code="2330",
+        side="buy",
+        requested_quantity=20,
+        filled_quantity=20,
+        reference_price="100.00",
+        fill_price="100.00",
+        turnover_bp=2000,
+    )
+    sell = _make_fill(
+        fill_id="multi-batch-sell-fill",
+        event_date=date(2026, 2, 3),
+        stock_code="2330",
+        side="sell",
+        requested_quantity=20,
+        filled_quantity=20,
+        reference_price="100.00",
+        fill_price="100.00",
+        turnover_bp=2000,
+    )
+    ledger_db = tmp_path / "multi-batch-ledger.sqlite"
+    ledger_repository = PaperTradeLedgerRepository(ledger_db)
+    ledger_repository.append_batch(
+        (buy,),
+        PaperTradeTransition(
+            transition_id="multi-batch-transition-buy",
+            batch_id="multi-batch-buy",
+            portfolio_id="paper-main",
+            event_date="2026-02-02",
+            fill_ids=("multi-batch-buy-fill",),
+            pre_cash=Decimal("10000.00"),
+            pre_total_value=Decimal("10000.00"),
+            post_cash=Decimal("8000.00"),
+            post_total_value=Decimal("10000.00"),
+            common_nav=Decimal("10000.00"),
+            common_prices={"2330": Decimal("100.00")},
+            pre_positions={},
+            post_positions={"2330": 20},
+        ),
+    )
+    ledger_repository.append_batch(
+        (sell,),
+        PaperTradeTransition(
+            transition_id="multi-batch-transition-sell",
+            batch_id="multi-batch-sell",
+            portfolio_id="paper-main",
+            event_date="2026-02-03",
+            fill_ids=("multi-batch-sell-fill",),
+            pre_cash=Decimal("8000.00"),
+            pre_total_value=Decimal("10000.00"),
+            post_cash=Decimal("10000.00"),
+            post_total_value=Decimal("10000.00"),
+            common_nav=Decimal("10000.00"),
+            common_prices={"2330": Decimal("100.00")},
+            pre_positions={"2330": 20},
+            post_positions={},
+        ),
+    )
+
+    context = load_t_minus_one_paper_ledger(
+        state_db_path=state_db,
+        paper_trade_ledger_db_path=ledger_db,
+        portfolio_id="paper-main",
+        decision_date=date(2026, 2, 9),
+        official_calendar=_calendar_for(
+            date(2026, 2, 2), date(2026, 2, 3), date(2026, 2, 4), date(2026, 2, 8)
+        ),
+    )
+
+    assert context.weekly_turnover_used_bp == 4000
+    assert context.weekly_turnover_coverage is not None
+    assert context.weekly_turnover_coverage["transition_count"] == 2
+
+
+def test_t_minus_one_reader_handles_multi_day_nav_partial_and_rejected_fill(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "partial-state.sqlite"
+    state_repository = PaperPortfolioSnapshotRepository(state_db)
+    _append_snapshot(
+        state_repository,
+        snapshot_id="partial-before",
+        decision_date=date(2026, 2, 2),
+        cash="9000.00",
+        total_value="10000.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=10,
+                mark_price=Decimal("100.00"),
+                market_value=Decimal("1000.00"),
+                weight_bp=1000,
+            ),
+        ),
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="partial-after",
+        decision_date=date(2026, 2, 3),
+        cash="9500.00",
+        total_value="10000.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=5,
+                mark_price=Decimal("100.00"),
+                market_value=Decimal("500.00"),
+                weight_bp=500,
+            ),
+        ),
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="partial-revalued",
+        decision_date=date(2026, 2, 4),
+        cash="9500.00",
+        total_value="10050.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=5,
+                mark_price=Decimal("110.00"),
+                market_value=Decimal("550.00"),
+                weight_bp=547,
+            ),
+        ),
+    )
+    _append_snapshot(
+        state_repository,
+        snapshot_id="partial-t1",
+        decision_date=date(2026, 2, 8),
+        cash="9500.00",
+        total_value="10050.00",
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=5,
+                mark_price=Decimal("110.00"),
+                market_value=Decimal("550.00"),
+                weight_bp=547,
+            ),
+        ),
+    )
+    partial = _make_fill(
+        fill_id="partial-sell",
+        event_date=date(2026, 2, 2),
+        stock_code="2330",
+        side="sell",
+        requested_quantity=10,
+        filled_quantity=5,
+        reference_price="100.00",
+        fill_price="100.00",
+        turnover_bp=500,
+        status="partially_filled",
+    )
+    rejected = _make_fill(
+        fill_id="rejected-buy",
+        event_date=date(2026, 2, 2),
+        stock_code="2317",
+        side="buy",
+        requested_quantity=10,
+        filled_quantity=0,
+        reference_price="200.00",
+        turnover_bp=0,
+        status="rejected",
+    )
+    ledger_db = tmp_path / "partial-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger_db).append_batch(
+        (partial, rejected),
+        PaperTradeTransition(
+            transition_id="partial-transition",
+            batch_id="partial-batch",
+            portfolio_id="paper-main",
+            event_date="2026-02-02",
+            fill_ids=("partial-sell", "rejected-buy"),
+            pre_cash=Decimal("9000.00"),
+            pre_total_value=Decimal("10000.00"),
+            post_cash=Decimal("9500.00"),
+            post_total_value=Decimal("10000.00"),
+            common_nav=Decimal("10000.00"),
+            common_prices={
+                "2317": Decimal("200.00"),
+                "2330": Decimal("100.00"),
+            },
+            pre_positions={"2330": 10},
+            post_positions={"2330": 5},
+        ),
+    )
+
+    context = load_t_minus_one_paper_ledger(
+        state_db_path=state_db,
+        paper_trade_ledger_db_path=ledger_db,
+        portfolio_id="paper-main",
+        decision_date=date(2026, 2, 9),
+        official_calendar=_calendar_for(
+            date(2026, 2, 2), date(2026, 2, 3), date(2026, 2, 4), date(2026, 2, 8)
+        ),
+    )
+
+    assert context.snapshot.snapshot_id == "partial-t1"
+    assert context.weekly_turnover_used_bp == 500
+    assert context.weekly_turnover_coverage is not None
+    assert context.weekly_turnover_coverage["gross_turnover_bp"] == 500
+    assert context.weekly_turnover_coverage["canonical_turnover_bp"] == 500
+
+
+def test_t_minus_one_reader_rejects_state_writer_overlap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_db, ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=1000,
+    )
+    original_reader = evidence_module._read_paper_snapshots_read_only
+
+    def overlapping_reader(**kwargs: object) -> tuple[PaperPortfolioSnapshot, ...]:
+        result = original_reader(**kwargs)  # type: ignore[arg-type]
+        _append_snapshot(
+            PaperPortfolioSnapshotRepository(state_db),
+            snapshot_id="writer-overlap-state",
+            decision_date=date(2026, 2, 4),
+            cash="8999.00",
+            total_value="9999.00",
+            positions=(
+                PaperPortfolioPositionSnapshot(
+                    stock_code="2330",
+                    quantity=10,
+                    mark_price=Decimal("100.00"),
+                    market_value=Decimal("1000.00"),
+                    weight_bp=1000,
+                ),
+            ),
+        )
+        return result
+
+    monkeypatch.setattr(
+        evidence_module,
+        "_read_paper_snapshots_read_only",
+        overlapping_reader,
+    )
+    with pytest.raises(ValueError, match="state database changed during read"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+            official_calendar=_calendar_for(
+                date(2026, 2, 2), date(2026, 2, 3)
+            ),
+        )
+
+
+def test_t_minus_one_reader_rejects_trade_ledger_writer_overlap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_db, ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=1000,
+    )
+    original_reader = evidence_module._read_paper_trade_fills_read_only
+
+    def overlapping_reader(**kwargs: object) -> tuple[PaperTradeFill, ...]:
+        result = original_reader(**kwargs)  # type: ignore[arg-type]
+        PaperTradeLedgerRepository(ledger_db).append(
+            _make_fill(
+                fill_id="writer-overlap-rejected",
+                event_date=date(2026, 2, 2),
+                stock_code="2317",
+                side="buy",
+                requested_quantity=10,
+                filled_quantity=0,
+                reference_price="200.00",
+                turnover_bp=0,
+                status="rejected",
+            )
+        )
+        return result
+
+    monkeypatch.setattr(
+        evidence_module,
+        "_read_paper_trade_fills_read_only",
+        overlapping_reader,
+    )
+    with pytest.raises(ValueError, match="ledger database changed during read"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+            official_calendar=_calendar_for(
+                date(2026, 2, 2), date(2026, 2, 3)
+            ),
+        )
+
+
 def test_forward_deadline_rolls_back_slow_observation_emission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -594,6 +1668,12 @@ def test_forward_deadline_rolls_back_slow_observation_emission(
         paper_db,
         snapshot_date=strict_t_minus_one - timedelta(days=1),
     )
+    paper_trade_ledger_db = tmp_path / "paper-trade-ledger.sqlite"
+    _add_complete_zero_trade_coverage(
+        paper_db,
+        decision_date=decision_date,
+        ledger_db=paper_trade_ledger_db,
+    )
     proposal_path = tmp_path / "proposal.json"
     proposal_hash, replay_hash = _write_proposal(
         proposal_path,
@@ -606,9 +1686,13 @@ def test_forward_deadline_rolls_back_slow_observation_emission(
     collector = MLAllocationShadowCollector(
         market_database_path=market_db,
         paper_state_db_path=paper_db,
+        paper_trade_ledger_db_path=paper_trade_ledger_db,
         sidecar_database_path=tmp_path / "shadow.sqlite",
         artifact_root=tmp_path / "artifacts",
         official_market_event_pointer_path=official_event_pointer,
+        official_calendar=_calendar_for(
+            date(2026, 1, 26), date(2026, 1, 31)
+        ),
     )
     deadline = datetime(2026, 2, 2, 23, 0, tzinfo=timezone.utc)
     before = deadline - timedelta(seconds=1)

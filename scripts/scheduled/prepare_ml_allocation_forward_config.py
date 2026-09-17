@@ -151,6 +151,15 @@ def default_paper_state_db() -> Path:
     )
 
 
+def default_paper_trade_ledger_db() -> Path:
+    return _env_path("ML_FORWARD_PAPER_TRADE_LEDGER_DB") or (
+        ROOT
+        / "output"
+        / "paper_execution_eod_replay"
+        / "paper_trade_ledger.sqlite"
+    )
+
+
 def default_release_root() -> Path:
     return _env_path("BALDR_ML_RELEASE_ROOT") or DEFAULT_RELEASE_ROOT
 
@@ -487,6 +496,7 @@ def prepare_daily_config(
     now: datetime,
     database: Path,
     paper_state_db: Path,
+    paper_trade_ledger_db: Path | None = None,
     output_root: Path,
     release_root: Path,
     release_manifest_file_hash: str | None = None,
@@ -624,6 +634,9 @@ def prepare_daily_config(
         "run_date": decision.date().isoformat(),
         "database": str(_path(database)),
         "paper_state_db": str(_path(paper_state_db)),
+        "paper_trade_ledger_db": str(
+            _path(paper_trade_ledger_db or default_paper_trade_ledger_db())
+        ),
         "output_root": str(_path(output_root)),
         "release_root": str(_path(release_root)),
         "release_manifest_file_hash": _validated_release_manifest_hash(
@@ -684,6 +697,12 @@ def build_parser() -> Any:
     parser.add_argument("--archive-root", type=Path, default=default_archive_root())
     parser.add_argument("--database", type=Path, default=default_database())
     parser.add_argument("--paper-state-db", type=Path, default=default_paper_state_db())
+    parser.add_argument(
+        "--paper-trade-ledger-db",
+        type=Path,
+        default=default_paper_trade_ledger_db(),
+        help="append-only Paper transaction ledger；forward reader 以 query-only 讀取。",
+    )
     parser.add_argument("--output-root", type=Path, default=default_output_root())
     parser.add_argument("--release-root", type=Path, default=default_release_root())
     parser.add_argument(
@@ -732,6 +751,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             now=now,
             database=args.database,
             paper_state_db=args.paper_state_db,
+            paper_trade_ledger_db=args.paper_trade_ledger_db,
             output_root=args.output_root,
             release_root=args.release_root,
             release_manifest_file_hash=args.release_manifest_file_hash,

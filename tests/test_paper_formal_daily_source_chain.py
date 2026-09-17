@@ -907,9 +907,14 @@ def test_twse_event_source_producer_preserves_raw_bytes_and_quote_observation_wi
     )
     assert payload["capture_window"]["start_at"] == "2026-09-07T01:00:00+00:00"
     assert payload["capture_window"]["end_at"] == "2026-09-07T01:00:03+00:00"
+    expected_request_url = formal_daily_input_producer_module._twse_mis_request_url(
+        "tse_2317.tw|tse_2330.tw"
+    )
+    assert payload["response"]["final_url"] == expected_request_url
     assert len(calls) == 1
-    assert calls[0].startswith(
-        formal_daily_input_producer_module.TWSE_MIS_STOCK_INFO_ENDPOINT + "?"
+    assert calls[0] == expected_request_url
+    assert result["market_source"]["execution_source_request_url"] == (
+        expected_request_url
     )
 
     fill = {
@@ -940,6 +945,116 @@ def test_twse_event_source_producer_preserves_raw_bytes_and_quote_observation_wi
     )
     assert eligible is True
     assert reason is None
+
+
+def test_twse_event_source_producer_rejects_missing_requested_symbol_before_write(
+    tmp_path: Path,
+) -> None:
+    raw = formal_daily_input_producer_module._canonical_json(
+        {
+            "rtcode": "000",
+            "rtmessage": "OK",
+            "msgArray": [
+                {
+                    "c": "2330",
+                    "ex": "tse",
+                    "d": "20260907",
+                    "t": "09:00:00",
+                    "tlong": "1788742800000",
+                    "o": "10.20",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    request_url = formal_daily_input_producer_module._twse_mis_request_url(
+        "tse_2317.tw|tse_2330.tw"
+    )
+
+    class _Response:
+        status = 200
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def geturl(self) -> str:
+            return request_url
+
+        def read(self, limit: int) -> bytes:
+            del limit
+            return raw
+
+    output_dir = tmp_path / "missing-symbol-capture"
+    with pytest.raises(
+        PaperEventSourceCaptureError,
+        match="requested_symbol_missing",
+    ):
+        capture_twse_session_open_prices(
+            symbols=("2330", "2317"),
+            execution_date=date(2026, 9, 7),
+            output_dir=output_dir,
+            now=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
+            fetcher=lambda request, timeout: _Response(),
+        )
+    assert not (output_dir / "raw_response.bin").exists()
+
+
+def test_twse_event_source_producer_rejects_wrong_final_url_before_write(
+    tmp_path: Path,
+) -> None:
+    raw = formal_daily_input_producer_module._canonical_json(
+        {
+            "rtcode": "000",
+            "rtmessage": "OK",
+            "msgArray": [
+                {
+                    "c": "2330",
+                    "ex": "tse",
+                    "d": "20260907",
+                    "t": "09:00:00",
+                    "tlong": "1788742800000",
+                    "o": "10.20",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    expected_url = formal_daily_input_producer_module._twse_mis_request_url(
+        "tse_2330.tw"
+    )
+
+    class _Response:
+        status = 200
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def geturl(self) -> str:
+            return expected_url + "&unexpected=1"
+
+        def read(self, limit: int) -> bytes:
+            del limit
+            return raw
+
+    output_dir = tmp_path / "wrong-final-url-capture"
+    with pytest.raises(
+        PaperEventSourceCaptureError,
+        match="response final URL",
+    ):
+        capture_twse_session_open_prices(
+            symbols=("2330",),
+            execution_date=date(2026, 9, 7),
+            output_dir=output_dir,
+            now=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
+            fetcher=lambda request, timeout: _Response(),
+        )
+    assert not (output_dir / "raw_response.bin").exists()
 
 
 def test_twse_event_source_production_clock_uses_response_completion_and_rejects_close(

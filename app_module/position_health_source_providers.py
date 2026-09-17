@@ -1126,9 +1126,31 @@ class ForwardPositionThesisBindingProvider:
         actual_calendar_hash = _safe_file_hash(policy_calendar_path)
         if actual_calendar_hash != policy_calendar_hash:
             raise ValueError("forward_machine_thesis_calendar_file_hash_mismatch")
+        observed_path_value = invalidation.get("calendar_observed_path")
+        observed_hash_value = invalidation.get("calendar_observed_sha256")
+        if (observed_path_value is None) != (observed_hash_value is None):
+            raise ValueError("forward_machine_thesis_calendar_observation_incomplete")
+        if observed_path_value is None:
+            observed_calendar_path = policy_calendar_path
+            observed_calendar_hash = policy_calendar_hash
+        else:
+            observed_calendar_path = Path(
+                _required_text(
+                    observed_path_value,
+                    "forward_candidate_observed_calendar_path",
+                )
+            ).expanduser().resolve()
+            observed_calendar_hash = _required_sha256(
+                observed_hash_value
+            )
+            actual_observed_calendar_hash = _safe_file_hash(observed_calendar_path)
+            if actual_observed_calendar_hash != observed_calendar_hash:
+                raise ValueError(
+                    "forward_machine_thesis_calendar_observation_file_hash_mismatch"
+                )
         calendar = self.calendar or OfficialTradingCalendar(
-            db_path=policy_calendar_path,
-            calendar_cache_path=policy_calendar_path,
+            db_path=observed_calendar_path,
+            calendar_cache_path=observed_calendar_path,
         )
         next_review = _next_machine_review_date(
             entry_date=date.fromisoformat(entry_date),
@@ -1196,6 +1218,8 @@ class ForwardPositionThesisBindingProvider:
                     f"policy_available_at:{policy_available_at.isoformat()}",
                     f"policy_effective_from:{effective_from}",
                     f"calendar_cache_sha256:{policy_calendar_hash}",
+                    f"calendar_observed_path:{observed_calendar_path}",
+                    f"calendar_observed_sha256:{observed_calendar_hash}",
                     f"entry_available_at:{entry_available_at.isoformat()}",
                     f"entry_review_date:{next_review.isoformat()}",
                     *raw_policy_trace,

@@ -404,6 +404,38 @@ def _run_formal(
     )
 
 
+class _MockHttpResponse:
+    """隔離測試專用 TWSE HTTP 回應物件，支援 Context Manager 協議。"""
+
+    def __init__(
+        self,
+        raw_bytes: bytes,
+        *,
+        url: str = "",
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        self.status = status
+        self.headers = headers or {"Content-Type": "application/json"}
+        self._raw_bytes = raw_bytes
+        self._url = url or formal_daily_input_producer_module._twse_mis_request_url(
+            "tse_2330.tw"
+        )
+
+    def __enter__(self) -> "_MockHttpResponse":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def geturl(self) -> str:
+        return self._url
+
+    def read(self, limit: int) -> bytes:
+        del limit
+        return self._raw_bytes
+
+
 def test_isolated_paper_open_data_queue_fill_and_formal_consumer_chain(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -970,23 +1002,6 @@ def test_twse_event_source_producer_rejects_missing_requested_symbol_before_writ
         "tse_2317.tw|tse_2330.tw"
     )
 
-    class _Response:
-        status = 200
-        headers = {"Content-Type": "application/json"}
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def geturl(self) -> str:
-            return request_url
-
-        def read(self, limit: int) -> bytes:
-            del limit
-            return raw
-
     output_dir = tmp_path / "missing-symbol-capture"
     with pytest.raises(
         PaperEventSourceCaptureError,
@@ -997,7 +1012,10 @@ def test_twse_event_source_producer_rejects_missing_requested_symbol_before_writ
             execution_date=date(2026, 9, 7),
             output_dir=output_dir,
             now=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
-            fetcher=lambda request, timeout: _Response(),
+            fetcher=lambda request, timeout: _MockHttpResponse(
+                raw,
+                url=request_url,
+            ),
         )
     assert not (output_dir / "raw_response.bin").exists()
 
@@ -1025,23 +1043,6 @@ def test_twse_event_source_producer_rejects_wrong_final_url_before_write(
         "tse_2330.tw"
     )
 
-    class _Response:
-        status = 200
-        headers = {"Content-Type": "application/json"}
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def geturl(self) -> str:
-            return expected_url + "&unexpected=1"
-
-        def read(self, limit: int) -> bytes:
-            del limit
-            return raw
-
     output_dir = tmp_path / "wrong-final-url-capture"
     with pytest.raises(
         PaperEventSourceCaptureError,
@@ -1052,7 +1053,10 @@ def test_twse_event_source_producer_rejects_wrong_final_url_before_write(
             execution_date=date(2026, 9, 7),
             output_dir=output_dir,
             now=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
-            fetcher=lambda request, timeout: _Response(),
+            fetcher=lambda request, timeout: _MockHttpResponse(
+                raw,
+                url=expected_url + "&unexpected=1",
+            ),
         )
     assert not (output_dir / "raw_response.bin").exists()
 
@@ -1369,25 +1373,6 @@ def test_paper_candidate_binding_to_durable_capture_reaches_formal_validator(
         "utf-8"
     )
 
-    class _Response:
-        status = 200
-        headers = {"Content-Type": "application/json"}
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def geturl(self) -> str:
-            return formal_daily_input_producer_module._twse_mis_request_url(
-                "tse_2330.tw"
-            )
-
-        def read(self, limit: int) -> bytes:
-            del limit
-            return raw
-
     capture = capture_twse_session_open_prices_for_recommendation(
         recommendation_path=recommendation_path,
         execution_date=date(2026, 9, 7),
@@ -1395,7 +1380,7 @@ def test_paper_candidate_binding_to_durable_capture_reaches_formal_validator(
         durable_root=tmp_path / "controlled-output" / "event_captures",
         allowed_durable_root=tmp_path / "controlled-output",
         now=datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
-        fetcher=lambda request, timeout: _Response(),
+        fetcher=lambda request, timeout: _MockHttpResponse(raw),
     )
     recommendation = capture["recommendation"]
     assert isinstance(recommendation, dict)
@@ -1497,31 +1482,12 @@ def test_paper_event_capture_custody_replay_rejects_modified_or_missing_raw(
         "utf-8"
     )
 
-    class _Response:
-        status = 200
-        headers = {"Content-Type": "application/json"}
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def geturl(self) -> str:
-            return formal_daily_input_producer_module._twse_mis_request_url(
-                "tse_2330.tw"
-            )
-
-        def read(self, limit: int) -> bytes:
-            del limit
-            return raw
-
     capture_result = capture_twse_session_open_prices(
         symbols=("2330",),
         execution_date=date(2026, 9, 7),
         output_dir=tmp_path / "source-capture",
         now=datetime(2026, 9, 7, 1, 0, 1, tzinfo=ZoneInfo("UTC")),
-        fetcher=lambda request, timeout: _Response(),
+        fetcher=lambda request, timeout: _MockHttpResponse(raw),
     )
     source = dict(capture_result["market_source"])
     source["execution_event_time_proven"] = True
@@ -1754,25 +1720,6 @@ def test_paper_event_capture_resolver_binds_exact_recommendation_bucket(
         }
     ).encode("utf-8")
 
-    class _Response:
-        status = 200
-        headers = {"Content-Type": "application/json"}
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def geturl(self) -> str:
-            return formal_daily_input_producer_module._twse_mis_request_url(
-                "tse_2330.tw"
-            )
-
-        def read(self, limit: int) -> bytes:
-            del limit
-            return raw
-
     controlled = tmp_path / "controlled"
     capture = capture_twse_session_open_prices_for_recommendation(
         recommendation_path=recommendation_path,
@@ -1781,7 +1728,7 @@ def test_paper_event_capture_resolver_binds_exact_recommendation_bucket(
         durable_root=controlled / "event_captures",
         allowed_durable_root=controlled,
         now=datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
-        fetcher=lambda request, timeout: _Response(),
+        fetcher=lambda request, timeout: _MockHttpResponse(raw),
     )
     resolved = resolve_persisted_twse_event_source_capture_for_recommendation(
         recommendation_path=recommendation_path,
@@ -1857,29 +1804,10 @@ def test_scheduled_event_capture_reads_queue_persists_and_replays_without_refetc
     ).encode("utf-8")
     requested: list[str] = []
 
-    class _Response:
-        status = 200
-        headers = {"Content-Type": "application/json"}
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def geturl(self) -> str:
-            return formal_daily_input_producer_module._twse_mis_request_url(
-                "tse_2330.tw"
-            )
-
-        def read(self, limit: int) -> bytes:
-            del limit
-            return raw
-
-    def fetcher(request: object, timeout: float) -> _Response:
+    def fetcher(request: object, timeout: float) -> _MockHttpResponse:
         del timeout
         requested.append(str(request.full_url))  # type: ignore[attr-defined]
-        return _Response()
+        return _MockHttpResponse(raw)
 
     first, first_exit = run_capture(
         now=datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
@@ -2046,25 +1974,6 @@ def test_isolated_eod_writer_binds_durable_capture_then_formal_reads_receipt(
         }
     ).encode("utf-8")
 
-    class _Response:
-        status = 200
-        headers = {"Content-Type": "application/json"}
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def geturl(self) -> str:
-            return formal_daily_input_producer_module._twse_mis_request_url(
-                "tse_2330.tw"
-            )
-
-        def read(self, limit: int) -> bytes:
-            del limit
-            return raw
-
     capture = capture_twse_session_open_prices_for_recommendation(
         recommendation_path=recommendation_path,
         execution_date=date(2026, 9, 7),
@@ -2072,7 +1981,7 @@ def test_isolated_eod_writer_binds_durable_capture_then_formal_reads_receipt(
         durable_root=capture_root,
         allowed_durable_root=operation_root,
         now=datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
-        fetcher=lambda request, timeout: _Response(),
+        fetcher=lambda request, timeout: _MockHttpResponse(raw),
     )
     assert capture["durable_readback_verified"] is True
 

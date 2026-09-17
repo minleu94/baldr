@@ -111,6 +111,76 @@ class RecommendationRepository:
         
         conn.commit()
         conn.close()
+
+    @staticmethod
+    def _contains_personalization_capture(data_file: Path) -> bool:
+        """Return whether a saved result carries an immutable personal capture.
+
+        This deliberately inspects the persisted JSON directly so the repository
+        can enforce the boundary without importing the personalization adapter
+        (and without turning the repository into a second projection writer).
+        """
+        try:
+            payload = json.loads(data_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "recommendation legacy save cannot classify existing data "
+                f"file; refusing overwrite: {data_file}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError(
+                "recommendation legacy save found an invalid existing data "
+                f"file; refusing overwrite: {data_file}"
+            )
+
+        run_context = payload.get("run_context")
+        if isinstance(run_context, dict):
+            captures = run_context.get("personalization_delivery_captures")
+            if isinstance(captures, list) and captures:
+                return True
+
+        recommendations = payload.get("recommendations")
+        if not isinstance(recommendations, list):
+            return False
+        for recommendation in recommendations:
+            if not isinstance(recommendation, dict):
+                continue
+            provenance = recommendation.get("calibration_provenance")
+            if not isinstance(provenance, dict):
+                continue
+            if isinstance(provenance.get("personalization_delivery_capture"), dict):
+                return True
+        return False
+
+    @staticmethod
+    def _create_or_reuse_data_file(
+        data_file: Path,
+        serialized_data: str,
+    ) -> bool:
+        """Create a JSON file exclusively, or reuse an identical orphan.
+
+        Returns ``True`` only when this call created the file.  An identical
+        file without a metadata row is a recoverable prior-attempt orphan and is
+        safe to reuse; a different file is never overwritten.
+        """
+        try:
+            with data_file.open("x", encoding="utf-8") as handle:
+                handle.write(serialized_data)
+            return True
+        except FileExistsError as exc:
+            try:
+                existing_data = data_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as read_exc:
+                raise RuntimeError(
+                    "recommendation create-only data path exists but cannot be "
+                    f"inspected for safe retry: {data_file}"
+                ) from read_exc
+            if existing_data != serialized_data:
+                raise RuntimeError(
+                    "recommendation create-only data path contains a different "
+                    f"orphan; refusing overwrite: {data_file}"
+                ) from exc
+            return False
     
     def save_result(
         self,
@@ -138,41 +208,151 @@ class RecommendationRepository:
         
         result.result_name = result_name
         
-        # 儲存完整數據到 JSON 文件
         data_file = self.runs_dir / f"{result.result_id}.json"
         data = result.to_dict()
         # 清理數據，確保所有類型都是 JSON 可序列化的
         data = _make_json_serializable(data)
-        data_file.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding='utf-8'
+        serialized_data = json.dumps(data, ensure_ascii=False, indent=2)
+
+        # Keep the legacy replace behavior for ordinary results, but serialize
+        # the check and replacement under the same SQLite write lock used by
+        # save_result_create_only().
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT data_path FROM runs WHERE result_id = ?",
+                (result.result_id,),
+            )
+            existing_row = cursor.fetchone()
+            if existing_row and existing_row[0]:
+                existing_file = Path(existing_row[0])
+                if self._contains_personalization_capture(existing_file):
+                    raise RuntimeError(
+                        "recommendation legacy save refused: existing result "
+                        "contains an immutable personal capture"
+                    )
+            elif existing_row:
+                raise RuntimeError(
+                    "recommendation legacy save found an existing metadata row "
+                    "without a data path; refusing overwrite"
+                )
+            elif data_file.exists():
+                raise RuntimeError(
+                    "recommendation legacy save found an existing data path "
+                    "without metadata; refusing overwrite: "
+                    f"{data_file}"
+                )
+
+            # 清理 config，確保 JSON 可序列化
+            config_cleaned = _make_json_serializable(result.config)
+            data_file.write_text(serialized_data, encoding="utf-8")
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO runs
+                (result_id, result_name, regime, stock_count, config, notes, created_at, data_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.result_id,
+                    result.result_name,
+                    result.regime,
+                    len(result.recommendations),
+                    json.dumps(config_cleaned, ensure_ascii=False),
+                    result.notes,
+                    result.created_at,
+                    str(data_file),
+                ),
+            )
+            conn.commit()
+            return result.result_id
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def save_result_create_only(
+        self,
+        result: RecommendationResultDTO,
+        result_name: Optional[str] = None,
+    ) -> str:
+        """Create a result exactly once without replacing an existing row.
+
+        Personal delivery capture uses this additive boundary so two callers
+        that both observed a missing result cannot race into a JSON overwrite.
+        The SQLite transaction is held while the new JSON path is created; an
+        existing metadata row is an idempotent create-only hit and is read
+        back by the caller for exact capture verification.
+        """
+
+        if not result.result_id:
+            result.result_id = f"rec_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if not result.created_at:
+            result.created_at = datetime.now().isoformat()
+        resolved_name = result_name or result.result_name or (
+            f"推薦結果_{datetime.now().strftime('%Y%m%d_%H%M')}"
         )
-        
-        # 儲存元數據到 SQLite
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # 清理 config，確保 JSON 可序列化
-        config_cleaned = _make_json_serializable(result.config)
-        cursor.execute("""
-            INSERT OR REPLACE INTO runs 
-            (result_id, result_name, regime, stock_count, config, notes, created_at, data_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            result.result_id,
-            result.result_name,
-            result.regime,
-            len(result.recommendations),
-            json.dumps(config_cleaned, ensure_ascii=False),
-            result.notes,
-            result.created_at,
-            str(data_file)
-        ))
-        
-        conn.commit()
-        conn.close()
-        
-        return result.result_id
+        result.result_name = resolved_name
+
+        data_file = self.runs_dir / f"{result.result_id}.json"
+        data = _make_json_serializable(result.to_dict())
+        serialized_data = json.dumps(data, ensure_ascii=False, indent=2)
+        connection = sqlite3.connect(self.db_path, timeout=30.0)
+        data_file_created = False
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT result_id FROM runs WHERE result_id = ?",
+                (result.result_id,),
+            )
+            if cursor.fetchone() is not None:
+                connection.commit()
+                return result.result_id
+            # _create_or_reuse_data_file() accepts only an exact, recoverable
+            # orphan and never overwrites an existing path.
+            data_file_created = self._create_or_reuse_data_file(
+                data_file,
+                serialized_data,
+            )
+            config_cleaned = _make_json_serializable(result.config)
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO runs
+                    (result_id, result_name, regime, stock_count, config, notes, created_at, data_path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        result.result_id,
+                        result.result_name,
+                        result.regime,
+                        len(result.recommendations),
+                        json.dumps(config_cleaned, ensure_ascii=False),
+                        result.notes,
+                        result.created_at,
+                        str(data_file),
+                    ),
+                )
+                connection.commit()
+            except Exception as exc:
+                connection.rollback()
+                if data_file_created:
+                    raise RuntimeError(
+                        "recommendation create-only metadata write failed; "
+                        "retained data file for safe retry: "
+                        f"{data_file}"
+                    ) from exc
+                raise
+            return result.result_id
+        except Exception:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        finally:
+            connection.close()
     
     def load_result(self, result_id: str) -> Optional[RecommendationResultDTO]:
         """

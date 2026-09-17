@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Any, Mapping, Optional, cast
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from copy import deepcopy
@@ -146,6 +146,7 @@ class RecommendationService:
         self.last_exclusion_quality: str = "observed"
         self.last_exclusion_warnings_json: List[str] = []
         self.last_run_context: Dict[str, Any] = {}
+        self._personalization_execution_clocks: Dict[str, str] = {}
         self._fundamental_sqlite_provider: FundamentalSQLiteProvider | None = None
         self._fundamental_provider_initialization_attempted = False
 
@@ -348,6 +349,7 @@ class RecommendationService:
         try:
             receipt_path = self._persist_calibration_projection_receipt(
                 consumer=consumer,
+                active_identity=active_identity,
                 decision_date=decision_date,
                 projections=projections,
                 inference_provenance=inference_provenance,
@@ -392,7 +394,39 @@ class RecommendationService:
             code: projection.to_dict() for code, projection in sorted(projections.items())
         }
         if receipt_path is not None:
+            # Persist real execution clocks only when the immutable receipt is
+            # actually available for the save/readback path.  This keeps the
+            # ordinary rule-only context deterministic while preserving the
+            # caller-owned temporal envelope for personal captures.
+            self.last_run_context.update(
+                getattr(self, "_personalization_execution_clocks", {})
+            )
             self.last_run_context["calibration_projection_receipt"] = receipt_path
+            receipt_created_at = str(receipt_path.get("receipt_created_at") or "").strip()
+            if receipt_created_at:
+                self.last_run_context[
+                    "calibration_projection_receipt_created_at"
+                ] = receipt_created_at
+            try:
+                from app_module.personalization_save_adapter import (
+                    PersonalizationRecommendationSaveAdapter,
+                )
+
+                scope = PersonalizationRecommendationSaveAdapter().build_local_scope(
+                    context=self.last_run_context,
+                    result_id=str(self.last_run_context.get("result_id") or ""),
+                    request_id=None,
+                    receipt_hash=str(receipt_path.get("receipt_hash") or ""),
+                )
+                if scope is not None:
+                    self.last_run_context["personalization_scope"] = scope.to_dict()
+                    self.last_run_context[
+                        "personalization_delivery_scope"
+                    ] = scope.to_dict()
+            except (TypeError, ValueError):
+                self.last_run_context.setdefault("warnings", []).append(
+                    "personalization_scope_unavailable"
+                )
         for recommendation in recommendations:
             projection = projections.get(recommendation.stock_code)
             if projection is None:
@@ -459,6 +493,7 @@ class RecommendationService:
     def _persist_calibration_projection_receipt(
         *,
         consumer: Any,
+        active_identity: Mapping[str, Any] | None = None,
         decision_date: str,
         projections: Mapping[str, Any],
         inference_provenance: Mapping[str, Any],
@@ -474,18 +509,78 @@ class RecommendationService:
         pointer_path = getattr(consumer, "pointer_path", None)
         if not callable(identity_provider) or pointer_path is None:
             return None
-        identity = identity_provider(decision_date=decision_date)
+        identity = (
+            active_identity
+            if isinstance(active_identity, Mapping)
+            else identity_provider(decision_date=decision_date)
+        )
         if not isinstance(identity, Mapping) or not identity.get("candidate_id"):
             return None
         candidate_id = str(identity.get("candidate_id") or "")
-        projection_rows = [
-            projection.to_dict()
-            for _, projection in sorted(projections.items(), key=lambda item: str(item[0]))
-        ]
+        identity_training = identity.get("training_provenance")
+        if not isinstance(identity_training, Mapping):
+            # Preserve the existing candidate-race guard even for a legacy
+            # identity that cannot carry the new training custody fields.  A
+            # second identity read is still read-only; if it changed, report
+            # the race before reporting the missing provenance.
+            post_identity = identity_provider(decision_date=decision_date)
+            if not isinstance(post_identity, Mapping):
+                raise RecommendationProvenanceError(
+                    "active candidate identity unavailable after projection receipt"
+                )
+            for key in (
+                "candidate_id",
+                "candidate_manifest_hash",
+                "candidate_artifact_hash",
+                "candidate_freeze_hash",
+                "pointer_version",
+            ):
+                if post_identity.get(key) != identity.get(key):
+                    raise RecommendationProvenanceError(
+                        "candidate/model race: active candidate changed during projection receipt publication"
+                    )
+            raise RecommendationProvenanceError(
+                "active training provenance is missing from candidate identity"
+            )
+        training_provenance = dict(identity_training)
+        if str(training_provenance.get("status") or "") != "verified":
+            raise RecommendationProvenanceError(
+                "active training provenance is not verified for projection receipt"
+            )
+        label_registry_hash = str(
+            training_provenance.get("label_registry_hash") or ""
+        ).strip()
+        label_contract_id = str(
+            training_provenance.get("label_contract_id") or ""
+        ).strip()
+        return_basis = str(training_provenance.get("return_basis") or "").strip()
+        if not label_registry_hash or not label_contract_id or not return_basis:
+            raise RecommendationProvenanceError(
+                "active training label contract provenance is incomplete"
+            )
+        projection_rows = []
+        for _, projection in sorted(projections.items(), key=lambda item: str(item[0])):
+            row = projection.to_dict()
+            # These immutable fields are custodial data from the verified
+            # active training provenance.  A projection may omit them for a
+            # rule-only/unavailable row, but it may not contradict the active
+            # candidate contract and the receipt never supplies a new label
+            # contract from a current global default.
+            for key, expected in (
+                ("label_registry_hash", label_registry_hash),
+                ("label_contract_id", label_contract_id),
+                ("return_basis", return_basis),
+            ):
+                declared = str(row.get(key) or "").strip()
+                if declared and declared != expected:
+                    raise RecommendationProvenanceError(
+                        f"projection {key} conflicts with active training provenance"
+                    )
+                row[key] = expected
+            projection_rows.append(row)
         first = next(iter(projections.values()), None)
         if first is None:
             return None
-        training_provenance = getattr(first, "training_provenance", {})
         compatibility = getattr(first, "provenance_compatibility", {})
         receipt = build_inference_projection_receipt(
             decision_date=decision_date,
@@ -506,6 +601,9 @@ class RecommendationService:
             },
         )
         path = persist_inference_projection_receipt(Path(pointer_path).parent, receipt)
+        receipt_created_at = datetime.now(timezone.utc).isoformat(
+            timespec="microseconds"
+        )
         read_inference_projection_receipt(
             path,
             expected_receipt_hash=receipt.receipt_hash,
@@ -528,12 +626,13 @@ class RecommendationService:
         ):
             if post_identity.get(key) != identity.get(key):
                 raise RecommendationProvenanceError(
-                    "active candidate changed during projection receipt publication"
+                    "candidate/model race: active candidate changed during projection receipt publication"
                 )
         return {
             "path": str(path),
             "receipt_hash": receipt.receipt_hash,
             "result_id": str(result_id or ""),
+            "receipt_created_at": receipt_created_at,
         }
 
     def _matrix_row(
@@ -789,6 +888,8 @@ class RecommendationService:
         as_of_date: str | date | None = None,
         universe: Optional[List[str]] = None,
         result_id: str | None = None,
+        historical_research: bool = False,
+        select_latest_available_cutoff: bool = False,
     ) -> List[RecommendationDTO]:
         """執行推薦分析
 
@@ -798,6 +899,12 @@ class RecommendationService:
             config: 策略配置字典（包含 technical, patterns, signals, filters, regime 等）
             max_stocks: 最大處理股票數量（用於性能優化）
             top_n: 返回前 N 名推薦
+            as_of_date: 顯式資料 cutoff；歷史研究必須由 caller 明示提供
+            universe: 可選的明示股票母體
+            result_id: 可選的既有結果 identity
+            historical_research: 將顯式 cutoff 隔離標為歷史研究，不宣稱自然可得
+            select_latest_available_cutoff: 由 producer 從實際來源選取最新可得 cutoff；
+                不接受 caller 另傳的 cutoff
 
         Returns:
             List[RecommendationDTO]: 推薦股票列表，按總分降序排列
@@ -807,15 +914,63 @@ class RecommendationService:
         config = deepcopy(config)
         if max_stocks < 1 or top_n < 0:
             raise ValueError("max_stocks 必須為正數，top_n 不得為負數")
+        if not isinstance(historical_research, bool):
+            raise ValueError("historical_research 必須是布林值")
+        if not isinstance(select_latest_available_cutoff, bool):
+            raise ValueError("select_latest_available_cutoff 必須是布林值")
+        config_cutoff = config.get("as_of_date")
+        has_config_cutoff = config_cutoff not in (None, "")
+        if historical_research and select_latest_available_cutoff:
+            raise ValueError(
+                "historical_research 不得與 select_latest_available_cutoff 同時啟用"
+            )
+        if historical_research and as_of_date is None:
+            raise ValueError("historical_research 必須明示 as_of_date")
+        if select_latest_available_cutoff and (
+            as_of_date is not None or has_config_cutoff
+        ):
+            raise ValueError(
+                "select_latest_available_cutoff 不得搭配 caller cutoff"
+            )
         ranking_config, threshold_mode = self._validate_ranking_config(config)
         self._reset_negative_evidence_buffers()
-        cutoff_input = as_of_date if as_of_date is not None else config.get("as_of_date")
+        cutoff_input = (
+            as_of_date
+            if historical_research
+            else None
+            if select_latest_available_cutoff
+            else as_of_date
+            if as_of_date is not None
+            else config_cutoff
+        )
         cutoff = self._normalize_decision_date(cutoff_input) if cutoff_input is not None else None
+        temporal_mode = (
+            "historical_research_not_as_if_available"
+            if historical_research
+            else "natural_producer_clock"
+            if select_latest_available_cutoff or not (as_of_date is not None or has_config_cutoff)
+            else "explicit_cutoff_not_natural"
+        )
+        cutoff_selection = (
+            "explicit_historical_cutoff"
+            if historical_research
+            else "producer_selected_latest_available_cutoff"
+            if select_latest_available_cutoff or not (as_of_date is not None or has_config_cutoff)
+            else "caller_requested_cutoff"
+        )
+        cutoff_policy = (
+            "explicit_historical_research"
+            if historical_research
+            else "source_latest_available_exact"
+            if cutoff_selection == "producer_selected_latest_available_cutoff"
+            else "caller_explicit_cutoff_not_natural"
+        )
         strategy_identity = build_strategy_config_identity(
             config,
             max_stocks=max_stocks,
             top_n=top_n,
         )
+        run_started_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
         # ✅ 記錄輸入參數
         logger.info(
@@ -832,6 +987,13 @@ class RecommendationService:
             else self.market_data_provider()
         )
         df, stock_col, decision_cutoff = self._decision_frame(source, cutoff)
+        source_available_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        self._personalization_execution_clocks = {
+            "run_started_at": run_started_at,
+            "available_at": source_available_at,
+            "captured_at": source_available_at,
+            "personalization_scope_declared_at": run_started_at,
+        }
         if universe is not None and not df.empty:
             df = df[df[stock_col].isin({str(code) for code in universe})].copy()
         canonical = df.sort_values([stock_col, "日期"], kind="stable") if not df.empty else df
@@ -848,6 +1010,14 @@ class RecommendationService:
             "fundamental_inputs": [],
             "data_date": canonical["日期"].max().strftime("%Y-%m-%d") if not canonical.empty else "",
             "warnings": ["industry_membership_not_point_in_time"] if cutoff else [],
+            "temporal_contract": "recommendation-producer-clock.v1",
+            "temporal_mode": temporal_mode,
+            "cutoff_selection": cutoff_selection,
+            "cutoff_policy": cutoff_policy,
+            "decision_clock_timezone": "UTC",
+            "market_calendar_timezone": "Asia/Taipei",
+            "prediction_decision_anchor": "actual_producer_decision_at",
+            "horizon_anchor": "immutable_projection_receipt",
             **strategy_identity,
         }
         resolved_result_id = str(result_id or config.get("result_id") or "").strip()
@@ -1548,6 +1718,13 @@ class RecommendationService:
         all_recommendations = [
             recommendations_by_code[code] for code in ranking_plan.selected_codes
         ]
+        decision_clock = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        self._personalization_execution_clocks["decision_at"] = decision_clock
+        # Persist the actual producer decision clock even when an optional
+        # calibration receipt is unavailable.  Downstream forward-custody
+        # checks must not infer decision time from the later saved
+        # ``RecommendationResultDTO.created_at`` timestamp.
+        self.last_run_context["decision_at"] = decision_clock
         self._apply_recommendation_calibration(
             all_recommendations,
             decision_date=decision_cutoff or latest_date_str,

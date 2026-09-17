@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
@@ -14,6 +15,14 @@ from app_module.application_ports import (
     RegimeServicePort,
     UniverseWatchlistPort,
 )
+from app_module.personalization_contract import (
+    PersonalizationDeliveryCapture,
+    PersonalizationDeliveryScope,
+)
+from app_module.personalization_save_adapter import (
+    PersonalizationRecommendationSaveAdapter,
+    RecommendationDeliveryAckOutcome,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +31,12 @@ class RecommendationSaveOutcome:
     watchlist_id: str | None
     watchlist_name: str
     watchlist_error: str | None = None
+    personalization_capture_hashes: tuple[str, ...] = ()
+    personalization_delivery_statuses: tuple[str, ...] = ()
+    personalization_captures: tuple[PersonalizationDeliveryCapture, ...] = ()
+    personalization_scope_id: str | None = None
+    personalization_delivery_id: str | None = None
+    personalization_persisted_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -32,6 +47,8 @@ class RecommendationSaveRequest:
     current_profile: str | None
     profile_meta: dict[str, Any]
     current_regime: str | None
+    personalization_scope: PersonalizationDeliveryScope | None = None
+    personalization_request_id: str | None = None
 
     def build_result(
         self,
@@ -57,11 +74,11 @@ class RecommendationSaveRequest:
         regime_snapshot = self._regime_snapshot(regime_service, timestamp)
         if regime_snapshot:
             config_with_meta["regime_snapshot"] = regime_snapshot
-        return RecommendationResultDTO(
+        result = RecommendationResultDTO(
             result_id=result_id,
             result_name=self.result_name,
             config=config_with_meta,
-            recommendations=list(self.recommendations),
+            recommendations=[deepcopy(item) for item in self.recommendations],
             regime=self.current_regime,
             created_at=timestamp,
             notes=(
@@ -87,6 +104,12 @@ class RecommendationSaveRequest:
                 getattr(recommendation_service, "last_exclusion_warnings_json", [])
             ),
         )
+        result, _ = PersonalizationRecommendationSaveAdapter().bind_result(
+            result,
+            personalization_scope=self.personalization_scope,
+            request_id=self.personalization_request_id,
+        )
+        return result
 
     def _result_id(
         self,
@@ -194,17 +217,92 @@ class RecommendationSaveRequest:
         recommendation_service: RecommendationEvidencePort,
         regime_service: RegimeServicePort,
     ) -> RecommendationSaveOutcome:
+        adapter = PersonalizationRecommendationSaveAdapter()
         result = self.build_result(
             recommendation_service=recommendation_service,
             regime_service=regime_service,
         )
-        result_id = str(recommendation_repository.save_result(result))
+        captures = adapter.captures_from_result(result)
+        persisted_captures: tuple[PersonalizationDeliveryCapture, ...] = ()
+        if not captures:
+            # A later caller can lose its scope/receipt context.  Never let
+            # that ordinary fallback downgrade an already persisted personal
+            # result through RecommendationRepository's legacy replace path.
+            load_method = getattr(recommendation_repository, "load_result", None)
+            if callable(load_method):
+                try:
+                    existing_result = load_method(result.result_id)
+                except Exception as exc:  # noqa: BLE001 - fail closed before any overwrite
+                    raise RuntimeError(
+                        "recommendation existing-result readback failed; save refused"
+                    ) from exc
+                if existing_result is not None:
+                    existing_captures = adapter.captures_from_result(existing_result)
+                    if existing_captures:
+                        raise RuntimeError(
+                            "recommendation save would downgrade an existing personal capture"
+                        )
+            result_id = str(recommendation_repository.save_result(result))
+        else:
+            existing = adapter.load_existing_for_retry(
+                recommendation_repository,
+                result_id=result.result_id,
+            )
+            if existing is not None:
+                result, captures = adapter.merge_existing_retry(
+                    candidate_result=result,
+                    existing_result=existing,
+                    candidate_captures=captures,
+                )
+            else:
+                adapter.save_and_readback(
+                    recommendation_repository=recommendation_repository,
+                    result=result,
+                    captures=captures,
+                )
+            # Readback above proves the immutable generated capture was saved.
+            # The persisted lifecycle view is kept in the caller outcome only;
+            # the result JSON is not rewritten. A later explicit ACK appends a
+            # delivery event to the existing Journal stream.
+            persisted_at = datetime.now(timezone.utc).isoformat(
+                timespec="microseconds"
+            )
+            persisted_rows: list[PersonalizationDeliveryCapture] = []
+            for capture in captures:
+                if capture.status == "generated":
+                    persisted_rows.append(
+                        adapter.capture_service.mark_persisted(
+                            capture,
+                            persisted_at=persisted_at,
+                        )
+                    )
+                else:
+                    persisted_rows.append(capture)
+            persisted_captures = tuple(persisted_rows)
+            result_id = _text(result.result_id)
+
+        capture_hashes = tuple(capture.capture_hash for capture in captures)
+        delivery_statuses = tuple(
+            capture.status for capture in (persisted_captures or captures)
+        )
+        outcome_captures = persisted_captures or captures
+        scope_id = outcome_captures[0].scope.scope_id if outcome_captures else None
+        delivery_id = outcome_captures[0].delivery_id if outcome_captures else None
+        persisted_at_value = (
+            outcome_captures[0].persisted_at if outcome_captures else None
+        )
         payload = self.watchlist_payload(result_id)
         if universe_service is None or not self.recommendations:
             return RecommendationSaveOutcome(
                 result_id=result_id,
                 watchlist_id=None,
                 watchlist_name=str(payload["name"]),
+                personalization_capture_hashes=capture_hashes,
+                personalization_delivery_statuses=delivery_statuses,
+                personalization_captures=outcome_captures,
+                personalization_scope_id=scope_id,
+                personalization_delivery_id=delivery_id,
+                personalization_persisted_at=persisted_at_value,
             )
         try:
             watchlist_id = universe_service.save_watchlist(**payload)
@@ -212,6 +310,12 @@ class RecommendationSaveRequest:
                 result_id=result_id,
                 watchlist_id=str(watchlist_id) if watchlist_id is not None else None,
                 watchlist_name=str(payload["name"]),
+                personalization_capture_hashes=capture_hashes,
+                personalization_delivery_statuses=delivery_statuses,
+                personalization_captures=outcome_captures,
+                personalization_scope_id=scope_id,
+                personalization_delivery_id=delivery_id,
+                personalization_persisted_at=persisted_at_value,
             )
         except Exception as exc:  # noqa: BLE001 - watchlist 是既有 soft-failure 副作用
             return RecommendationSaveOutcome(
@@ -219,4 +323,41 @@ class RecommendationSaveRequest:
                 watchlist_id=None,
                 watchlist_name=str(payload["name"]),
                 watchlist_error=str(exc),
+                personalization_capture_hashes=capture_hashes,
+                personalization_delivery_statuses=delivery_statuses,
+                personalization_captures=outcome_captures,
+                personalization_scope_id=scope_id,
+                personalization_delivery_id=delivery_id,
+                personalization_persisted_at=persisted_at_value,
             )
+
+    @staticmethod
+    def acknowledge_delivery(
+        *,
+        recommendation_repository: RecommendationRepositoryPort,
+        journal_service: Any,
+        result_id: str,
+        scope_id: str,
+        delivery_id: str,
+        persisted_at: str,
+        delivered_at: str,
+        recorded_at: str | None = None,
+        expected_capture_hashes: Mapping[str, str] | None = None,
+    ) -> RecommendationDeliveryAckOutcome:
+        """Explicit caller ACK; it never records an action or order."""
+
+        return PersonalizationRecommendationSaveAdapter().acknowledge_delivery(
+            recommendation_repository=recommendation_repository,
+            journal_service=journal_service,
+            result_id=result_id,
+            scope_id=scope_id,
+            delivery_id=delivery_id,
+            persisted_at=persisted_at,
+            delivered_at=delivered_at,
+            recorded_at=recorded_at,
+            expected_capture_hashes=expected_capture_hashes,
+        )
+
+
+def _text(value: object) -> str:
+    return str(value or "").strip()

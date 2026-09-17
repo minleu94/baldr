@@ -2,11 +2,13 @@
 
 from datetime import datetime, timezone
 import logging
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 from uuid import uuid4
 
 from app_module.dtos.decision_continuity_dtos import (
     ACTION_ACCEPTED,
+    ACTION_DELIVERY_ACK,
     ACTION_NOTE,
     ACTION_REMOVED,
     ACTION_REVIEW_SCHEDULED,
@@ -16,6 +18,10 @@ from app_module.dtos.decision_continuity_dtos import (
     DecisionIdentity,
 )
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
+from app_module.personalization_contract import (
+    PERSONALIZATION_DELIVERY_ACK_SCHEMA_VERSION,
+    canonical_aware_datetime,
+)
 from app_module.portfolio_store import PortfolioJsonlStore, project_journal_records
 from data_module.config import TWStockConfig
 
@@ -25,9 +31,17 @@ logger = logging.getLogger(__name__)
 class JournalService:
     """Coordinates legacy journal rows and immutable research revisions."""
 
-    def __init__(self, config: TWStockConfig):
+    def __init__(
+        self,
+        config: TWStockConfig,
+        *,
+        journal_path: Path | None = None,
+    ):
         self.config = config
-        self.store = PortfolioJsonlStore(config.output_root)
+        self.store = PortfolioJsonlStore(
+            config.output_root,
+            journal_file=journal_path,
+        )
 
     @staticmethod
     def _identity(
@@ -141,6 +155,214 @@ class JournalService:
     def list_decision_revisions(self) -> List[DecisionContinuityRevision]:
         return self.store.load_decision_revisions()
 
+    def list_personalization_delivery_acks(
+        self,
+        result_id: str,
+        stock_code: str,
+        delivery_id: str = "",
+    ) -> List[DecisionContinuityRevision]:
+        """Read exact technical delivery ACK events from the existing stream.
+
+        Delivery ACKs are separate append-only technical events. They are not
+        returned as human research actions by ``DecisionContinuityController``
+        and never authorize an order or mutate the recommendation receipt.
+        """
+
+        result_text = str(result_id or "").strip()
+        stock_text = str(stock_code or "").strip()
+        delivery_text = str(delivery_id or "").strip()
+        if not result_text or not stock_text:
+            return []
+        matched: List[DecisionContinuityRevision] = []
+        for raw in self.store.load_journal_history():
+            if not isinstance(raw, Mapping):
+                continue
+            if str(raw.get("record_type") or "") != "decision_continuity_revision":
+                continue
+            revision = DecisionContinuityRevision.from_mapping(raw)
+            if revision.action != ACTION_DELIVERY_ACK or revision.entity_type != "personalization_delivery":
+                continue
+            payload = revision.payload
+            if str(payload.get("event_kind") or "") != PERSONALIZATION_DELIVERY_ACK_SCHEMA_VERSION:
+                continue
+            if str(payload.get("result_id") or "") != result_text:
+                continue
+            if str(payload.get("stock_code") or "") != stock_text:
+                continue
+            if delivery_text and str(payload.get("delivery_id") or "") != delivery_text:
+                continue
+            matched.append(revision)
+        return matched
+
+    def record_personalization_delivery_ack(
+        self,
+        *,
+        result_id: str,
+        stock_code: str,
+        personalization_scope_id: str,
+        scope_envelope_hash: str,
+        delivery_id: str,
+        capture_hash: str,
+        request_id: str,
+        persisted_at: str,
+        delivered_at: str,
+        recorded_at: str | None = None,
+        revision_id: str | None = None,
+        expected_revision_id: str = "",
+    ) -> DecisionContinuityRevision:
+        """Append one idempotent, technical delivery ACK to journal history."""
+
+        rows = self.record_personalization_delivery_acks(
+            [
+                {
+                    "result_id": result_id,
+                    "stock_code": stock_code,
+                    "personalization_scope_id": personalization_scope_id,
+                    "scope_envelope_hash": scope_envelope_hash,
+                    "delivery_id": delivery_id,
+                    "capture_hash": capture_hash,
+                    "request_id": request_id,
+                    "persisted_at": persisted_at,
+                    "delivered_at": delivered_at,
+                    "recorded_at": recorded_at,
+                    "revision_id": revision_id,
+                    "expected_revision_id": expected_revision_id,
+                }
+            ]
+        )
+        return rows[0]
+
+    def record_personalization_delivery_acks(
+        self,
+        acknowledgements: Sequence[Mapping[str, Any]],
+        *,
+        expected_history_token: str | None = None,
+    ) -> List[DecisionContinuityRevision]:
+        """Append a batch of delivery ACKs with stream-level CAS.
+
+        The batch is validated before any bytes are appended. An exact retry
+        reuses the original immutable revision; a different payload for the
+        same request/delivery identity is rejected.
+        """
+
+        if not acknowledgements:
+            return []
+        history, history_token = self.store.load_journal_snapshot()
+        if expected_history_token is not None and history_token != expected_history_token:
+            raise RuntimeError("journal_delivery_ack_stream_conflict")
+
+        existing_by_revision: dict[str, DecisionContinuityRevision] = {}
+        delivery_heads: dict[str, DecisionContinuityRevision] = {}
+        for raw in history:
+            if not isinstance(raw, Mapping):
+                continue
+            if str(raw.get("record_type") or "") != "decision_continuity_revision":
+                continue
+            revision = DecisionContinuityRevision.from_mapping(raw)
+            existing_by_revision[revision.revision_id] = revision
+            if (
+                revision.action == ACTION_DELIVERY_ACK
+                and revision.entity_type == "personalization_delivery"
+            ):
+                delivery_heads[revision.entity_id] = revision
+
+        normalized: list[tuple[DecisionContinuityRevision, dict[str, Any]]] = []
+        seen_entities: set[str] = set()
+        results: list[DecisionContinuityRevision] = []
+        for item in acknowledgements:
+            if not isinstance(item, Mapping):
+                raise ValueError("personalization delivery ACK must be an object")
+            result_id = str(item.get("result_id") or "").strip()
+            stock_code = str(item.get("stock_code") or "").strip()
+            scope_id = str(item.get("personalization_scope_id") or "").strip()
+            scope_hash = str(item.get("scope_envelope_hash") or "").strip()
+            delivery_id = str(item.get("delivery_id") or "").strip()
+            capture_hash = str(item.get("capture_hash") or "").strip()
+            request_id = str(item.get("request_id") or "").strip()
+            if not all((result_id, stock_code, scope_id, scope_hash, delivery_id, capture_hash, request_id)):
+                raise ValueError("personalization delivery ACK identity is incomplete")
+            if not scope_hash.startswith("sha256:") or not capture_hash.startswith("sha256:"):
+                raise ValueError("personalization delivery ACK hashes are invalid")
+            persisted_at = canonical_aware_datetime(item.get("persisted_at"), "persisted_at")
+            delivered_at = canonical_aware_datetime(item.get("delivered_at"), "delivered_at")
+            if delivered_at < persisted_at:
+                raise ValueError("delivered_at must not precede persisted_at")
+            recorded_at = canonical_aware_datetime(
+                item.get("recorded_at") or datetime.now(timezone.utc).isoformat(),
+                "recorded_at",
+            )
+            if recorded_at < delivered_at:
+                raise ValueError("recorded_at must not precede delivered_at")
+            resolved_revision_id = str(item.get("revision_id") or request_id).strip()
+            if not resolved_revision_id:
+                raise ValueError("personalization delivery ACK revision_id is required")
+            entity_id = f"personalization-delivery:{result_id}:{stock_code}:{delivery_id}"
+            payload = {
+                "event_kind": PERSONALIZATION_DELIVERY_ACK_SCHEMA_VERSION,
+                "result_id": result_id,
+                "stock_code": stock_code,
+                "personalization_scope_id": scope_id,
+                "scope_envelope_hash": scope_hash,
+                "delivery_id": delivery_id,
+                "capture_hash": capture_hash,
+                "request_id": request_id,
+                "persisted_at": persisted_at,
+                "delivered_at": delivered_at,
+                "recorded_at": recorded_at,
+                "status": "delivered",
+                "formal_order_allowed": False,
+                "auto_action_allowed": False,
+            }
+            existing = existing_by_revision.get(resolved_revision_id)
+            if existing is not None:
+                existing_payload = dict(existing.payload)
+                stable_existing = dict(existing_payload)
+                stable_existing.pop("recorded_at", None)
+                stable_payload = dict(payload)
+                stable_payload.pop("recorded_at", None)
+                if (
+                    existing.action != ACTION_DELIVERY_ACK
+                    or existing.entity_type != "personalization_delivery"
+                    or stable_existing != stable_payload
+                ):
+                    raise RuntimeError("journal_delivery_ack_event_conflict")
+                results.append(existing)
+                continue
+            prior = delivery_heads.get(entity_id)
+            if prior is not None:
+                raise RuntimeError("journal_delivery_ack_event_conflict")
+            if entity_id in seen_entities:
+                raise RuntimeError("journal_delivery_ack_event_conflict")
+            seen_entities.add(entity_id)
+            expected_revision = str(item.get("expected_revision_id") or "").strip()
+            if expected_revision and (prior is None or prior.revision_id != expected_revision):
+                raise RuntimeError("journal_delivery_ack_cas_conflict")
+            identity = DecisionIdentity(
+                result_id=result_id,
+                stock_code=stock_code,
+            )
+            revision = DecisionContinuityRevision(
+                revision_id=resolved_revision_id,
+                continuity_event_id=resolved_revision_id,
+                action=ACTION_DELIVERY_ACK,
+                entity_type="personalization_delivery",
+                entity_id=entity_id,
+                decision_identity=identity,
+                revision_of=prior.revision_id if prior is not None else "",
+                actor="system:recommendation_delivery",
+                created_at=recorded_at,
+                payload=payload,
+            )
+            normalized.append((revision, payload))
+            results.append(revision)
+
+        if normalized:
+            self.store.append_journal_revisions(
+                [revision.to_dict() for revision, _ in normalized],
+                expected_history_token=history_token,
+            )
+        return results
+
     @staticmethod
     def _revision_record(
         revision: DecisionContinuityRevision,
@@ -223,6 +445,8 @@ class JournalService:
         revision_id: str | None = None,
         continuity_event_id: str | None = None,
         revision_of: str = "",
+        recorded_at: str | None = None,
+        personalization_action: Mapping[str, Any] | None = None,
     ) -> DecisionContinuityRevision:
         if action not in DECISION_CONTINUITY_ACTIONS:
             raise ValueError(f"unsupported decision continuity action: {action}")
@@ -270,12 +494,19 @@ class JournalService:
             revision_of
             or (prior_revision.revision_of if prior_revision is not None else "")
         ).strip()
-        now = prior_revision.created_at if prior_revision is not None else datetime.now(timezone.utc).isoformat()
+        now = (
+            prior_revision.created_at
+            if prior_revision is not None
+            else canonical_aware_datetime(
+                recorded_at or datetime.now(timezone.utc).isoformat(),
+                "recorded_at",
+            )
+        )
         journal_body = body or note
         if is_journal and not linked_id and identity.result_id:
             linked_type = linked_type or "recommendation_result"
             linked_id = identity.result_id
-        payload = {
+        payload: dict[str, Any] = {
             "journal_id": resolved_entity_id if is_journal else "",
             "portfolio_id": portfolio_id,
             "title": title,
@@ -292,6 +523,14 @@ class JournalService:
             "updated_at": now,
             "schema_version": "4.1",
         }
+        if personalization_action is not None:
+            if not isinstance(personalization_action, Mapping):
+                raise ValueError("personalization_action must be an object")
+            # Keep the typed envelope nested inside the existing revision
+            # payload.  No parallel personalization ledger is introduced;
+            # read adapters can validate the envelope without rewriting the
+            # continuity record.
+            payload["personalization_action"] = dict(personalization_action)
         revision = DecisionContinuityRevision(
             revision_id=resolved_revision_id,
             continuity_event_id=resolved_event_id,

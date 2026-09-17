@@ -36,6 +36,10 @@ class RegimeServicePort(Protocol):
 class RecommendationRepositoryPort(Protocol):
     def save_result(self, result: RecommendationResultDTO) -> str: ...
 
+    def load_result(self, result_id: str) -> RecommendationResultDTO | None: ...
+
+    def save_result_create_only(self, result: RecommendationResultDTO) -> str: ...
+
 
 class UniverseWatchlistPort(Protocol):
     def save_watchlist(

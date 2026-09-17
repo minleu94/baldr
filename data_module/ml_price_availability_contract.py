@@ -1,9 +1,11 @@
 """Research-only contract for daily rows whose price inputs are unavailable.
 
 This module deliberately does not infer why a price is unavailable.  It keeps
-the source row and its date so downstream feature/label builders can exclude
-the affected window without filling values or treating surrounding dates as
-adjacent observations.
+the source row and its anchor date so downstream feature/label builders can
+exclude only the affected feature or label path without filling values or
+treating surrounding dates as adjacent observations.  Explicit feature and
+label windows are context evidence; their dates are not additional missing
+rows.
 """
 
 from __future__ import annotations
@@ -15,7 +17,24 @@ from typing import Any, Mapping, Sequence
 
 PRICE_AVAILABILITY_CONTRACT_VERSION = "ml-daily-price-availability.v1"
 PRICE_FIELDS: tuple[str, ...] = ("open", "high", "low", "close")
-_UNAVAILABLE_MARKERS = frozenset({"", "--", "—", "－", "N/A", "NA", "null", "None"})
+_UNAVAILABLE_MARKERS = frozenset(
+    {
+        "",
+        "-",
+        "--",
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "—",
+        "–",
+        "―",
+        "−",
+        "－",
+        "﹘",
+        "﹣",
+    }
+)
 
 
 def _canonical_date(value: str, *, field_name: str) -> str:
@@ -52,7 +71,7 @@ def _field_status(value: Any) -> str:
         return "missing"
     if isinstance(value, str):
         stripped = value.strip()
-        if stripped in _UNAVAILABLE_MARKERS:
+        if stripped.casefold() in _UNAVAILABLE_MARKERS:
             return "missing_marker"
         value = stripped
     try:

@@ -67,7 +67,10 @@ def test_resume_requires_matching_dependency_snapshot(tmp_path: Path) -> None:
     changed = json.loads(json.dumps(dependencies))
     changed["files"][0]["sha256"] = "sha256:" + "b" * 64
     changed_hash = direct_store._sha256_json(changed)
-    with pytest.raises(ValueError, match="computation dependency mismatch"):
+    with pytest.raises(
+        direct_store.DirectCheckpointProvenanceError,
+        match="computation identity drift",
+    ) as error:
         direct_store._load_checkpoint(
             path=checkpoint_path,
             run_id="run-1",
@@ -75,6 +78,7 @@ def test_resume_requires_matching_dependency_snapshot(tmp_path: Path) -> None:
             computation_dependency_hash=changed_hash,
             computation_dependencies=changed,
         )
+    assert error.value.classification == "computation_identity_drift"
 
 
 def test_legacy_checkpoint_without_dependency_snapshot_fails_closed(
@@ -95,7 +99,11 @@ def test_legacy_checkpoint_without_dependency_snapshot_fails_closed(
         encoding="utf-8",
     )
     dependencies, dependency_hash = _dependency_snapshot()
-    with pytest.raises(ValueError, match="dependency snapshot is missing"):
+    before = checkpoint_path.read_bytes()
+    with pytest.raises(
+        direct_store.DirectCheckpointProvenanceError,
+        match="legacy and missing",
+    ) as error:
         direct_store._load_checkpoint(
             path=checkpoint_path,
             run_id="run-1",
@@ -103,6 +111,8 @@ def test_legacy_checkpoint_without_dependency_snapshot_fails_closed(
             computation_dependency_hash=dependency_hash,
             computation_dependencies=dependencies,
         )
+    assert error.value.classification == "legacy_missing_computation_provenance"
+    assert checkpoint_path.read_bytes() == before
 
 
 def test_build_boundary_rejects_dependency_drift_after_snapshot(
@@ -318,6 +328,10 @@ def test_interrupted_builder_resume_reuses_custodied_year(
     assert checkpoint["complete"] is False
     assert checkpoint["completed_years"] == []
     assert isinstance(checkpoint["computation_dependencies"], dict)
+    assert isinstance(checkpoint["computation_identity"], dict)
+    assert checkpoint["computation_identity_hash"] == (
+        direct_store._sha256_json(checkpoint["computation_identity"])
+    )
     assert (run_directories[0] / "year=2022").is_dir()
 
     monkeypatch.setattr(direct_store, "preflight_capacity", real_preflight)
@@ -333,6 +347,17 @@ def test_interrupted_builder_resume_reuses_custodied_year(
         checkpoint_path.read_text(encoding="utf-8")
     )
     assert final_checkpoint["complete"] is True
+    assert final_checkpoint["computation_identity_hash"] == manifest[
+        "computation_identity_hash"
+    ]
     assert final_checkpoint["computation_dependency_hash"] == manifest[
         "computation_dependency_hash"
     ]
+    recovery_plan = direct_store.inspect_direct_checkpoint_provenance(
+        request.output_root
+    )
+    assert recovery_plan["status"] == "ready_for_root_review"
+    recovery_record = recovery_plan["runs"][0]
+    assert recovery_record["checkpoint_provenance_valid"] is True
+    assert recovery_record["manifest_custody_valid"] is True
+    assert recovery_record["resume_allowed"] is True

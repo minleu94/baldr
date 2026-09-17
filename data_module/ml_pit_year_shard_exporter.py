@@ -156,10 +156,13 @@ class PITYearShardBuildRequest:
     # routing is performed per symbol and never by directory order alone.
     daily_price_source_dirs: tuple[Path, ...] | None = None
     source_quality_report_path: Path | None = None
+    # Optional full-candidate JSONL sidecar; the report itself remains bounded.
+    source_quality_candidate_evidence_path: Path | None = None
     # 來源 receipt 的實際可得時間；不提供時不得以 mtime 或當前時間代替。
     source_quality_known_at: str | None = None
-    # 全歷史 source guard 只保留有限 evidence sample；candidate_count 與
-    # classification/date counts 仍計算全量候選。
+    # Report 只保留有限 evidence sample；有 sidecar path 時，candidate rows
+    # 另以串流 JSONL 保存全量，candidate_count 與 classification/date counts
+    # 仍計算全量候選。
     source_quality_candidate_sample_limit: int = 64
 
     def __post_init__(self) -> None:
@@ -181,6 +184,14 @@ class PITYearShardBuildRequest:
             raise TypeError("source_quality_candidate_sample_limit must be an integer")
         if self.source_quality_candidate_sample_limit < 0:
             raise ValueError("source_quality_candidate_sample_limit must be non-negative")
+        if (
+            self.source_quality_candidate_evidence_path is not None
+            and self.source_quality_report_path is None
+        ):
+            raise ValueError(
+                "source_quality_candidate_evidence_path requires "
+                "source_quality_report_path"
+            )
         if self.symbols is not None:
             normalized = _normalized_texts(self.symbols)
             if not normalized:
@@ -612,6 +623,9 @@ class PITYearShardExporter:
                     quality_mode="ingest_guard",
                     quality_known_at=request.source_quality_known_at,
                     candidate_sample_limit=request.source_quality_candidate_sample_limit,
+                    candidate_evidence_path=(
+                        request.source_quality_candidate_evidence_path
+                    ),
                 )
             except DailyPriceSourceQualityError as exc:
                 if _source_quality_is_price_unavailable_only(exc.report):

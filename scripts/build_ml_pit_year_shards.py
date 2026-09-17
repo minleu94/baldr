@@ -48,10 +48,10 @@ def _compact_source_quality_summary(
     """Return bounded quarantine evidence for a failed builder invocation.
 
     The exporter already has the full in-memory report when the guard raises.
-    A scheduled caller must not persist that potentially multi-million-row
-    candidate list, so the execution boundary emits counts, top affected dates,
-    and a small deterministic sample only.  The report hash still binds this
-    summary to the complete report that caused the failure.
+    Complete candidate rows are persisted separately by the source-quality
+    JSONL sidecar; this process boundary emits counts, top affected dates, and
+    a small deterministic sample only.  The report hash still binds this
+    summary to the report that caused the failure.
     """
 
     def _string_int_mapping(value: object) -> dict[str, int]:
@@ -322,6 +322,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional repo output path for the source-quality report",
     )
     parser.add_argument(
+        "--source-quality-candidate-evidence",
+        type=Path,
+        help=(
+            "optional output path for the complete source-quality candidate "
+            "JSONL sidecar"
+        ),
+    )
+    parser.add_argument(
         "--source-quality-known-at",
         help=(
             "optional timezone-aware source receipt time; never inferred from "
@@ -333,8 +341,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=64,
         help=(
-            "maximum source-quality candidate evidence rows retained; "
-            "full counts remain available"
+            "maximum source-quality candidate rows retained in the report "
+            "summary; full rows use the optional JSONL sidecar"
         ),
     )
     parser.add_argument(
@@ -403,6 +411,9 @@ def main(argv: list[str] | None = None) -> int:
                     else tuple(args.daily_price_source_dirs)
                 ),
                 source_quality_report_path=args.source_quality_report,
+                source_quality_candidate_evidence_path=(
+                    args.source_quality_candidate_evidence
+                ),
                 source_quality_known_at=args.source_quality_known_at,
                 source_quality_candidate_sample_limit=(
                     args.source_quality_candidate_sample_limit
@@ -410,9 +421,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     except DailyPriceSourceQualityError as exc:
-        # The full report remains an in-memory guard artifact.  Emit only a
-        # bounded summary at this process boundary so scheduled receipts do
-        # not grow to millions of candidate rows.
+        # The complete candidate rows are persisted in the requested JSONL
+        # sidecar before this exception reaches the process boundary.  Emit
+        # only a bounded summary on stdout so scheduled receipts stay small.
         print(
             json.dumps(
                 {

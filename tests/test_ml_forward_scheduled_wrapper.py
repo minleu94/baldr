@@ -60,6 +60,7 @@ def _write_config(
         "run_date": run_date,
         "database": str(tmp_path / "twstock.db"),
         "paper_state_db": str(tmp_path / "paper.sqlite"),
+        "paper_trade_ledger_db": str(tmp_path / "paper_trade_ledger.sqlite"),
         "output_root": str(tmp_path / "output"),
         "release_root": str(release_root),
         "release_manifest_file_hash": _sha256(release_manifest),

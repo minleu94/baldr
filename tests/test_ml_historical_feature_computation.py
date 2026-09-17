@@ -3,11 +3,16 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
+import pytest
+
 from data_module.ml_historical_snapshot_provider import (
     HistoricalIndexObservation,
     HistoricalPriceObservation,
     HistoricalRawSnapshot,
     HistoricalTechnicalObservation,
+)
+from data_module.ml_price_availability_contract import (
+    build_price_unavailable_research_contract,
 )
 from ml_module.historical_feature_builder import HistoricalFeatureBuilder
 
@@ -103,3 +108,141 @@ def test_three_day_price_gap_is_consumed_as_a_feature_window_break() -> None:
     assert values["stock_return_1d_bp"] is None
     assert values["close_to_ma_5d_bp"] is None
     assert values["volume_ratio_5d_bp"] is None
+
+
+def test_missing_middle_market_session_is_not_compressed_into_feature_window() -> None:
+    snapshot = _snapshot()
+    prices = tuple(
+        row for row in snapshot.prices if row.trading_date != "2024-01-20"
+    )
+
+    row = HistoricalFeatureBuilder().compute(
+        replace(snapshot, prices=prices),
+        industry_index_name_by_symbol={"2330": "半導體類指數"},
+    )[0]
+    values = dict(row.values)
+
+    # The observed market-date path still expects 2024-01-20.  Its absent
+    # stock row stays an empty slot, so a trailing helper cannot bridge it by
+    # taking an earlier observation as the prior session.
+    assert values["stock_return_1d_bp"] is None
+    assert values["close_to_ma_5d_bp"] is None
+    assert values["volume_ratio_5d_bp"] is None
+
+
+def test_missing_market_cutoff_does_not_relabel_prior_date_as_feature_cutoff() -> None:
+    snapshot = _snapshot()
+    market = tuple(row for row in snapshot.market if row.trading_date != "2024-01-21")
+
+    row = HistoricalFeatureBuilder().compute(
+        replace(snapshot, market=market),
+        industry_index_name_by_symbol={"2330": "半導體類指數"},
+    )[0]
+    values = dict(row.values)
+
+    assert row.feature_as_of_date == "2024-01-21"
+    assert values["stock_return_1d_bp"] == 500
+    assert values["turnover_amount_minor"] == 21000
+    assert values["market_return_5d_bp"] is None
+
+
+def test_missing_middle_market_session_remains_an_empty_index_slot() -> None:
+    snapshot = _snapshot()
+    market = tuple(row for row in snapshot.market if row.trading_date != "2024-01-20")
+
+    row = HistoricalFeatureBuilder().compute(
+        replace(snapshot, market=market),
+        industry_index_name_by_symbol={"2330": "半導體類指數"},
+    )[0]
+    values = dict(row.values)
+
+    assert values["stock_return_1d_bp"] == 500
+    assert values["market_return_5d_bp"] is None
+    assert values["industry_relative_return_20d_bp"] == 0
+    assert values["stock_minus_market_20d_bp"] is None
+
+
+def test_explicit_price_contract_blocks_complete_snapshot_without_none_row() -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2024-01-20",
+        raw_row={
+            "symbol": "2330",
+            "open": "--",
+            "high": "--",
+            "low": "--",
+            "close": "--",
+            "volume": 100,
+        },
+        feature_window_dates=tuple(
+            f"2024-01-{day:02d}" for day in range(1, 22)
+        ),
+    )
+
+    row = HistoricalFeatureBuilder().compute(
+        _snapshot(),
+        industry_index_name_by_symbol={"2330": "半導體類指數"},
+        price_unavailable_contracts=(contract,),
+    )[0]
+    values = dict(row.values)
+
+    assert values["stock_return_1d_bp"] is None
+    assert values["stock_return_5d_bp"] is None
+    assert values["trailing_volatility_20d_bp"] is None
+    assert values["volume_ratio_5d_bp"] is None
+
+
+def test_early_gap_preserves_short_lookbacks_but_blocks_long_lookbacks() -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2024-01-10",
+        raw_row={
+            "symbol": "2330",
+            "open": "--",
+            "high": "--",
+            "low": "--",
+            "close": "--",
+            "volume": 100,
+        },
+        feature_window_dates=tuple(
+            f"2024-01-{day:02d}" for day in range(1, 22)
+        ),
+    )
+
+    row = HistoricalFeatureBuilder().compute(
+        _snapshot(),
+        industry_index_name_by_symbol={"2330": "半導體類指數"},
+        price_unavailable_contracts=(contract,),
+    )[0]
+    values = dict(row.values)
+
+    # The context window proves the anchor exists, but only the anchor is a
+    # source gap.  Therefore the recent windows remain usable while the
+    # 20-session lookback that crosses 2024-01-10 is missing.
+    assert values["stock_return_1d_bp"] == 500
+    assert values["stock_return_5d_bp"] == 3125
+    assert values["stock_return_20d_bp"] is None
+    assert values["close_to_ma_5d_bp"] is not None
+    assert values["close_to_ma_20d_bp"] is None
+
+
+def test_anchor_only_price_contract_is_rejected_by_feature_consumer() -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2024-01-10",
+        raw_row={
+            "symbol": "2330",
+            "open": "--",
+            "high": "--",
+            "low": "--",
+            "close": "--",
+            "volume": 100,
+        },
+    )
+
+    with pytest.raises(ValueError, match="feature window is incomplete"):
+        HistoricalFeatureBuilder().compute(
+            _snapshot(),
+            industry_index_name_by_symbol={},
+            price_unavailable_contracts=(contract,),
+        )

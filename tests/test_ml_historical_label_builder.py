@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
+import pytest
+
 from data_module.ml_historical_snapshot_provider import (
     HistoricalIndexObservation,
     HistoricalPriceObservation,
@@ -16,6 +18,7 @@ from ml_module.historical_label_builder import (
     CorporateActionLabelEligibility,
     HistoricalLabelBuilder,
 )
+from ml_module.label_registry import CORE_LONG_HISTORY_LABEL_REGISTRY
 
 
 def _feature(symbol: str) -> HistoricalFeatureRow:
@@ -132,6 +135,66 @@ def test_price_unavailable_contract_blocks_label_window_without_bridging() -> No
     assert result.excluded_diagnostics == {
         "price_unavailable_in_label_window": 1
     }
+
+
+def test_label_context_dates_are_not_treated_as_source_gaps() -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2023-12-31",
+        raw_row={
+            "symbol": "2330",
+            "open": "--",
+            "high": "--",
+            "low": "--",
+            "close": "--",
+            "volume": 100,
+        },
+        feature_window_dates=("2023-12-31",),
+        label_window_dates=tuple(
+            f"2024-01-{day:02d}" for day in range(1, 22)
+        ),
+    )
+    result = HistoricalLabelBuilder().build(
+        feature_rows=(_feature("2330"),),
+        prices=_prices("2330", 2),
+        market=_market(),
+        label_as_of="2024-01-21",
+        corporate_action_by_row=_gates("2330"),
+        mode="strict",
+        price_unavailable_contracts=(contract,),
+    )
+
+    # The source gap is outside the forward label path.  The label context
+    # dates are evidence of the path, not additional unavailable rows.
+    assert len(result.labels) == len(CORE_LONG_HISTORY_LABEL_REGISTRY.specs)
+    assert result.excluded_diagnostics == {}
+    assert result.formal_oos_allowed is True
+
+
+def test_anchor_only_price_contract_is_rejected_by_label_consumer() -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2024-01-10",
+        raw_row={
+            "symbol": "2330",
+            "open": "--",
+            "high": "--",
+            "low": "--",
+            "close": "--",
+            "volume": 100,
+        },
+    )
+
+    with pytest.raises(ValueError, match="label window is incomplete"):
+        HistoricalLabelBuilder().build(
+            feature_rows=(_feature("2330"),),
+            prices=_prices("2330", 2),
+            market=_market(),
+            label_as_of="2024-01-21",
+            corporate_action_by_row=_gates("2330"),
+            mode="strict",
+            price_unavailable_contracts=(contract,),
+        )
 
 
 def test_label_builder_auto_contracts_in_row_price_gap() -> None:

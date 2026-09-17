@@ -207,6 +207,19 @@ def _adjustment_row(
     body: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "source_event_id": event.get("event_id"),
+        "source_revision_id": event.get("revision_id"),
+        "source_supersedes_revision_id": event.get(
+            "supersedes_revision_id"
+        ),
+        "source_revision_kind": event.get(
+            "revision_kind",
+            "source_content",
+        ),
+        "source_revision_sequence": event.get("revision_sequence", 0),
+        "source_economic_content_hash": event.get(
+            "economic_content_hash"
+        ),
+        "source_display_revision_of": event.get("display_revision_of"),
         "source_id": event.get("source_id"),
         "source_version": event.get("source_version"),
         "source_record_hash": event.get("source_record_hash"),
@@ -214,6 +227,7 @@ def _adjustment_row(
         "source_manifest_hash": manifest_hash,
         "source_manifest_file_hash": manifest_file_hash,
         "symbol": str(event.get("symbol") or "").strip(),
+        "security_name": str(event.get("security_name") or "").strip(),
         "event_type": event_type,
         "event_date": effective_at[:10],
         "available_at": available_at,

@@ -2645,6 +2645,7 @@ def _load_corporate_action_custody(
                 datetime,
                 datetime | None,
                 int,
+                int,
                 str,
                 str | None,
                 bool,
@@ -2816,8 +2817,19 @@ def _load_corporate_action_custody(
                 else _required_positive_int(
                     ordinal_raw,
                     field_name="corporate action source_row_ordinal",
+                    )
                 )
-            )
+            revision_sequence_raw = event.get("revision_sequence", 0)
+            if (
+                isinstance(revision_sequence_raw, bool)
+                or not isinstance(revision_sequence_raw, int)
+                or revision_sequence_raw < 0
+            ):
+                raise TypeError(
+                    "corporate action revision_sequence must be "
+                    "a non-negative integer"
+                )
+            revision_sequence = revision_sequence_raw
             supersedes_raw = event.get("supersedes_revision_id")
             supersedes_revision_id = (
                 None
@@ -2848,6 +2860,7 @@ def _load_corporate_action_custody(
                     available,
                     announced,
                     source_row_ordinal,
+                    revision_sequence,
                     revision_id,
                     supersedes_revision_id,
                     ambiguity,
@@ -2926,6 +2939,9 @@ def _load_corporate_action_custody(
                 field_name="corporate action symbol",
             )
             effective_date = effective.date().isoformat()
+            # Display-only revision vintages retain the same economic event
+            # and effective date; the set is the consumer boundary that keeps
+            # them from becoming duplicate label/exclusion dates.
             eligible_effective_dates.setdefault(symbol, set()).add(
                 effective_date
             )
@@ -2981,6 +2997,7 @@ def _validate_corporate_action_revision_chains(
                 datetime,
                 datetime | None,
                 int,
+                int,
                 str,
                 str | None,
                 bool,
@@ -3002,22 +3019,23 @@ def _validate_corporate_action_revision_chains(
                 revision[1] or minimum_announced,
                 revision[2],
                 revision[3],
+                revision[4],
             ),
         )
         previous_revision_id: str | None = None
         for revision in ordered:
-            if revision[4] != previous_revision_id:
+            if revision[5] != previous_revision_id:
                 raise ValueError(
                     "corporate action revision chain is unlinked: "
                     f"{natural_key}"
                 )
             expected_ambiguity = availability_counts[revision[0]] > 1
-            if revision[5] != expected_ambiguity:
+            if revision[6] != expected_ambiguity:
                 raise ValueError(
                     "corporate action revision ambiguity diagnostic "
                     f"mismatch: {natural_key}"
                 )
-            previous_revision_id = revision[3]
+            previous_revision_id = revision[4]
 
 
 def _is_current_company_snapshot_source(source_id: str) -> bool:

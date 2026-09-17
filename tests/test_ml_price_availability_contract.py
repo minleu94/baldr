@@ -65,6 +65,43 @@ def test_price_unavailable_contract_preserves_row_mask_and_explicit_windows() ->
     assert contract["disposition"]["source_quality_research_eligible"] is True
 
 
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "",
+        "-",
+        "--",
+        "N/A",
+        "n/a",
+        "NA",
+        "na",
+        "None",
+        "none",
+        "null",
+        "NULL",
+        "—",
+        "–",
+        "―",
+        "−",
+        "－",
+        "﹘",
+        "﹣",
+    ],
+)
+def test_missing_marker_variants_are_research_eligible(marker: str) -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2026-09-07",
+        raw_row=_raw_row(open_value=marker),
+    )
+
+    assert set(contract["field_status"].values()) == {"missing_marker"}
+    assert contract["disposition"]["source_quality_research_eligible"] is True
+    assert contract["disposition"]["source_quality_disposition"] == (
+        "price_unavailable_missing_or_marker"
+    )
+
+
 def test_anchor_only_contract_cannot_be_used_as_complete_horizon() -> None:
     contract = build_price_unavailable_research_contract(
         symbol="2330",

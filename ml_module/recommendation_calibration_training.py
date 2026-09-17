@@ -55,6 +55,10 @@ from ml_module.recommendation_cost_scenario import (
 
 
 RECOMMENDATION_LABEL_CONTRACT_ID = "recommendation-absolute-labels-v1"
+RECOMMENDATION_ESTIMATED_LABEL_CONTRACT_ID = (
+    "recommendation-absolute-labels-banktaiwan-estimated-v1"
+)
+RECOMMENDATION_RETURN_BASIS = "close_to_close_event_date"
 RECOMMENDATION_LABEL_DEFINITIONS: Mapping[str, str] = {
     "upside": "absolute forward stock return over 20 trading days > 0 bp",
     "after_cost_profit": (
@@ -63,6 +67,16 @@ RECOMMENDATION_LABEL_DEFINITIONS: Mapping[str, str] = {
     ),
 }
 RECOMMENDATION_HORIZON_TRADING_DAYS = 20
+
+
+def recommendation_label_contract_id(
+    cost_scenario: RecommendationCostScenario | None = None,
+) -> str:
+    """Return the label registry id declared by the active cost lane."""
+
+    if cost_scenario is not None and cost_scenario.is_estimated:
+        return RECOMMENDATION_ESTIMATED_LABEL_CONTRACT_ID
+    return RECOMMENDATION_LABEL_CONTRACT_ID
 
 
 def _label_definitions_for_scenario(
@@ -87,7 +101,7 @@ def recommendation_label_registry_hash(
 
     if cost_scenario is None or not cost_scenario.is_estimated:
         payload = {
-            "registry_id": RECOMMENDATION_LABEL_CONTRACT_ID,
+            "registry_id": recommendation_label_contract_id(cost_scenario),
             "horizon_trading_days": RECOMMENDATION_HORIZON_TRADING_DAYS,
             "definitions": dict(RECOMMENDATION_LABEL_DEFINITIONS),
             "missing_policy": "pending_is_not_zero",
@@ -95,7 +109,7 @@ def recommendation_label_registry_hash(
         }
     else:
         payload = {
-            "registry_id": "recommendation-absolute-labels-banktaiwan-estimated-v1",
+            "registry_id": recommendation_label_contract_id(cost_scenario),
             "horizon_trading_days": RECOMMENDATION_HORIZON_TRADING_DAYS,
             "definitions": {
                 "upside": "absolute forward stock return over 20 trading days > 0 bp",
@@ -731,6 +745,8 @@ class RecommendationCalibrationTrainingResult:
             "feature_registry_hash": self.manifest.feature_registry_hash,
             "feature_schema_hash": feature_schema_hash(self.model.feature_schema),
             "label_registry_hash": self.manifest.label_registry_hash,
+            "label_contract_id": recommendation_label_contract_id(self._cost_scenario()),
+            "return_basis": RECOMMENDATION_RETURN_BASIS,
             "training_as_of": self.model.training_as_of,
             "horizon_trading_days": self.model.horizon_trading_days,
             "training_row_count": self.model.training_row_count,

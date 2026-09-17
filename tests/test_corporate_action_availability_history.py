@@ -1,4 +1,5 @@
 import importlib
+import hashlib
 import json
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -28,8 +29,10 @@ class _OfficialFixtureFetcher:
         self,
         *,
         overrides: dict[str, bytes] | None = None,
+        retrieved_at: str = "2026-07-30T16:00:00+00:00",
     ) -> None:
         self._overrides = overrides or {}
+        self._retrieved_at = retrieved_at
         self.calls: list[tuple[str, int]] = []
 
     def fetch(
@@ -64,7 +67,7 @@ class _OfficialFixtureFetcher:
                 f"{getattr(endpoint, 'endpoint_url')}?"
                 f"{urlencode(parameters)}"
             ),
-            retrieved_at="2026-07-30T16:00:00+00:00",
+            retrieved_at=self._retrieved_at,
             http_status=200,
             content_type="application/json",
             http_date="Thu, 30 Jul 2026 16:00:00 GMT",
@@ -98,6 +101,73 @@ def _raw_fixture(
         etag=None,
         last_modified=None,
         payload=(_OFFICIAL_FIXTURE_ROOT / fixture_name).read_bytes(),
+    )
+
+
+def _twt49u_revision_payload(
+    *,
+    security_name: str,
+    reference_price: str = "348.11",
+    event_date: str = "114年12月10日",
+    symbol: str = "6949",
+) -> bytes:
+    fields = [
+        "資料日期",
+        "股票代號",
+        "股票名稱",
+        "除權息前收盤價",
+        "除權息參考價",
+        "權值+息值",
+        "權/息",
+        "漲停價格",
+        "跌停價格",
+        "開盤競價基準",
+        "減除股利參考價",
+    ]
+    row = [
+        event_date,
+        symbol,
+        security_name,
+        "352.00",
+        reference_price,
+        "3.889036",
+        "權",
+        "387.00",
+        "313.50",
+        "352.00",
+        "352.00",
+    ]
+    return json.dumps(
+        {
+            "stat": "OK",
+            "title": "114年01月01日 至 114年12月31日 除權除息計算結果表",
+            "fields": fields,
+            "data": [row],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _twt49u_builder(
+    payload: bytes,
+    *,
+    now: datetime,
+    retrieved_at: str = "2026-07-30T16:00:00+00:00",
+) -> OfficialMarketEventBackfillBuilder:
+    endpoint = next(
+        item
+        for item in OFFICIAL_MARKET_ENDPOINTS
+        if item.parser_id == "twse_twt49u.v1"
+    )
+    return OfficialMarketEventBackfillBuilder(
+        endpoints=(endpoint,),
+        fetcher=_OfficialFixtureFetcher(
+            overrides={"twse_twt49u.v1": payload},
+            retrieved_at=retrieved_at,
+        ),
+        now=lambda: now,
+        sleep=lambda _: None,
     )
 
 
@@ -922,6 +992,264 @@ def test_official_backfill_is_append_only_across_exact_replay(
     )
     assert first.publication_directory.exists()
     assert second.publication_directory.exists()
+
+
+def test_twt49u_name_only_revision_preserves_raw_lineage_and_readers(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "release_v4"
+    request = OfficialMarketEventBackfillRequest(
+        output_root=output_root,
+        start_year=2025,
+        end_year=2025,
+        request_delay_seconds=0,
+    )
+    original_payload = _twt49u_revision_payload(
+        security_name="沛爾生醫-創",
+    )
+    revised_payload = _twt49u_revision_payload(
+        security_name="沛爾生醫*-創",
+    )
+    first = _twt49u_builder(
+        original_payload,
+        now=datetime(2026, 9, 6, 12, tzinfo=timezone.utc),
+        retrieved_at="2026-09-06T11:50:30+00:00",
+    ).build(request)
+    second = _twt49u_builder(
+        revised_payload,
+        now=datetime(2026, 9, 16, 12, tzinfo=timezone.utc),
+        retrieved_at="2026-09-16T11:50:34+00:00",
+    ).build(request)
+
+    canonical_rows = [
+        json.loads(line)
+        for line in second.canonical_events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.strip()
+    ]
+    assert len(canonical_rows) == 2
+    original, revised = sorted(
+        canonical_rows,
+        key=lambda row: int(row["revision_sequence"]),
+    )
+    assert original["event_id"] == revised["event_id"]
+    assert original["natural_key"] == revised["natural_key"]
+    assert original["security_name"] == "沛爾生醫-創"
+    assert revised["security_name"] == "沛爾生醫*-創"
+    assert original["revision_id"] == (
+        "sha256:8b4e6154f61ced9a11c94960de30360190d8279af162066a4002845bcfe01e88"
+    )
+    assert revised["revision_id"] == (
+        "sha256:b45ca41c345e238fa695a08d73ebf2ffdb0b2750d78c78d557bd6e6a92a5f808"
+    )
+    assert original["revision_kind"] == "source_content"
+    assert revised["revision_kind"] == "display_name_only"
+    assert revised["display_revision_of"] == original["revision_id"]
+    assert revised["supersedes_revision_id"] == original["revision_id"]
+    assert original["revision_availability_ambiguous"] is False
+    assert revised["revision_availability_ambiguous"] is False
+    assert original["available_at"] == "2025-12-10T23:59:59+08:00"
+    assert revised["available_at"] == "2026-09-16T11:50:34+00:00"
+    assert revised["available_at"] > original["available_at"]
+    assert revised["economic_content_hash"] == original[
+        "economic_content_hash"
+    ]
+    assert revised["source_record"] != original["source_record"]
+    assert {
+        key: value
+        for key, value in revised["source_record"].items()
+        if key != "股票名稱"
+    } == {
+        key: value
+        for key, value in original["source_record"].items()
+        if key != "股票名稱"
+    }
+    assert revised["raw_response_sha256"] != original[
+        "raw_response_sha256"
+    ]
+
+    raw_index = [
+        json.loads(line)
+        for line in (second.publication_directory / "raw_index.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    assert len(raw_index) == 2
+    assert {
+        row["response_sha256"] for row in raw_index
+    } == {
+        original["raw_response_sha256"],
+        revised["raw_response_sha256"],
+    }
+    for raw_entry in raw_index:
+        raw_path = second.publication_directory / raw_entry["response_path"]
+        assert raw_path.is_file()
+        assert (
+            "sha256:"
+            + hashlib.sha256(raw_path.read_bytes()).hexdigest()
+            == raw_entry["response_sha256"]
+        )
+    manifest = json.loads(
+        second.manifest_path.read_text(encoding="utf-8")
+    )
+    assert manifest["raw_index"]["response_count"] == 2
+    assert manifest["raw_index"]["lineage_response_count"] == 1
+    assert manifest["safety"]["raw_revision_lineage_preserved"] is True
+    assert (
+        manifest["safety"]["display_name_revision_equivalence_supported"]
+        is True
+    )
+    assert (
+        manifest["safety"][
+            "display_name_revision_requires_later_raw_observation"
+        ]
+        is True
+    )
+
+    from data_module.corporate_action_adjustment_custody import (
+        publish_corporate_action_adjustment_custody,
+    )
+    from data_module.portfolio_ml_dataset_assembler import (
+        _load_corporate_action_custody,
+    )
+
+    adjustment = publish_corporate_action_adjustment_custody(
+        publication_root=output_root,
+        output_root=tmp_path / "adjustment-output",
+    )
+    adjustment_rows = [
+        json.loads(line)
+        for line in (
+            tmp_path
+            / "adjustment-output"
+            / "release_v4"
+            / "corporate_action_adjustments"
+            / "runs"
+            / str(adjustment["custody_id"])
+            / "adjustments.jsonl"
+        )
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    assert {
+        row["source_revision_id"] for row in adjustment_rows
+    } == {original["revision_id"], revised["revision_id"]}
+    assert {
+        row["source_revision_kind"] for row in adjustment_rows
+    } == {"source_content", "display_name_only"}
+    assert {
+        row["source_economic_content_hash"] for row in adjustment_rows
+    } == {original["economic_content_hash"]}
+
+    custody = _load_corporate_action_custody(
+        second.manifest_path,
+        training_as_of=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    assert custody.canonical_event_count == 2
+    assert custody.label_ledger_event_count == 2
+    assert custody.eligible_label_ledger_event_count == 1
+    assert custody.eligible_effective_date_count == 1
+    assert custody.effective_dates_by_symbol["6949"] == ("2025-12-10",)
+    historical_visible = [
+        row
+        for row in canonical_rows
+        if datetime.fromisoformat(row["available_at"])
+        <= datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ]
+    assert len(historical_visible) == 1
+    assert historical_visible[0]["security_name"] == "沛爾生醫-創"
+    assert all(
+        row["historical_pit_eligible"] is False
+        and row["prospective_only"] is True
+        for row in adjustment_rows
+    )
+
+    from ml_module.recommendation_historical_replay import (
+        _validate_corporate_action_windows,
+    )
+
+    window_reasons, affected_windows = _validate_corporate_action_windows(
+        adjustment_rows,
+        [
+            {
+                "symbol": "6949",
+                "decision_date": "2025-12-10",
+                "label_end_date": "2025-12-31",
+            }
+        ],
+    )
+    assert affected_windows == {
+        ("6949", "2025-12-10", "2025-12-31")
+    }
+    assert window_reasons.count(
+        "corporate_action_unadjusted_label_window:6949:2025-12-10:2025-12-10"
+    ) == 1
+
+    third = _twt49u_builder(
+        revised_payload,
+        now=datetime(2026, 9, 17, 12, tzinfo=timezone.utc),
+        retrieved_at="2026-09-17T11:50:34+00:00",
+    ).build(request)
+    assert third.canonical_event_count == 2
+    assert third.new_event_count == 0
+    third_manifest = json.loads(
+        third.manifest_path.read_text(encoding="utf-8")
+    )
+    assert third_manifest["canonical_events"]["exact_duplicate_count"] == 1
+    assert third_manifest["raw_index"]["response_count"] == 2
+    assert third_manifest["raw_index"]["lineage_response_count"] == 1
+    assert third.canonical_events_path.read_bytes() == (
+        second.canonical_events_path.read_bytes()
+    )
+    third_rows = [
+        json.loads(line)
+        for line in third.canonical_events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.strip()
+    ]
+    assert len(third_rows) == 2
+    assert {
+        (row["revision_id"], row["revision_sequence"])
+        for row in third_rows
+    } == {
+        (original["revision_id"], 0),
+        (revised["revision_id"], 1),
+    }
+
+
+def test_twt49u_same_name_economic_revision_stays_fail_closed(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "release_v4"
+    request = OfficialMarketEventBackfillRequest(
+        output_root=output_root,
+        start_year=2025,
+        end_year=2025,
+        request_delay_seconds=0,
+    )
+    _twt49u_builder(
+        _twt49u_revision_payload(security_name="沛爾生醫-創"),
+        now=datetime(2026, 9, 6, 12, tzinfo=timezone.utc),
+    ).build(request)
+    pointer_path = output_root / "latest_manifest.json"
+    original_pointer = pointer_path.read_bytes()
+
+    with pytest.raises(ValueError, match="unlinked_revision_conflict"):
+        _twt49u_builder(
+            _twt49u_revision_payload(
+                security_name="沛爾生醫-創",
+                reference_price="348.10",
+            ),
+            now=datetime(2026, 9, 16, 12, tzinfo=timezone.utc),
+        ).build(request)
+
+    assert pointer_path.read_bytes() == original_pointer
+    assert len(tuple((output_root / "runs").iterdir())) == 1
+    assert len(tuple((output_root / "quarantine").iterdir())) == 1
 
 
 def test_unlinked_revision_fails_without_moving_latest_pointer(

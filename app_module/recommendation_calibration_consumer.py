@@ -24,9 +24,10 @@ from ml_module.model_artifact_loader import ArtifactCompatibilityExpectation, Sa
 from ml_module.model_artifact_manifest import FeatureSchema
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.recommendation_calibration_training import (
-    RECOMMENDATION_LABEL_CONTRACT_ID,
+    RECOMMENDATION_RETURN_BASIS,
     RecommendationPrediction,
     recommendation_cost_contract_hash,
+    recommendation_label_contract_id,
     recommendation_label_registry_hash,
     candidate_freeze_hash,
 )
@@ -106,6 +107,12 @@ class RecommendationCalibrationProjection:
     selection_score_kind: str = "rule_total_score"
     selection_percentile_kind: str = "rule_percentile"
     model_ranking_kind: str = "model_return_bp"
+    # These fields are part of the active model's forward-label contract, not
+    # reader-time defaults.  Publishing them with each projection row lets a
+    # later action/outcome retain the exact training/evaluation identity.
+    label_registry_hash: str = ""
+    label_contract_id: str = ""
+    return_basis: str = ""
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -166,6 +173,9 @@ class RecommendationCalibrationProjection:
             selection_score_kind="rule_total_score",
             selection_percentile_kind="rule_percentile",
             model_ranking_kind="model_return_bp",
+            label_registry_hash="",
+            label_contract_id="",
+            return_basis="",
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -191,6 +201,7 @@ class RecommendationCalibrationProjection:
             "probability_baseline_id": self.probability_baseline_id,
             "probability_baseline_kind": self.probability_baseline_kind,
             "probability_baseline_probability_bp": self.probability_baseline_probability_bp,
+            "population_probability_bp": self.probability_baseline_probability_bp,
             "raw_calibrated_probability_bp": self.raw_calibrated_probability_bp,
             "raw_after_cost_profit_probability_bp": self.raw_after_cost_profit_probability_bp,
             "warnings": list(self.warnings),
@@ -215,6 +226,9 @@ class RecommendationCalibrationProjection:
             "selection_score_kind": self.selection_score_kind,
             "selection_percentile_kind": self.selection_percentile_kind,
             "model_ranking_kind": self.model_ranking_kind,
+            "label_registry_hash": self.label_registry_hash,
+            "label_contract_id": self.label_contract_id,
+            "return_basis": self.return_basis,
         }
 
 
@@ -739,6 +753,19 @@ class RecommendationCalibrationConsumer:
         scenario_for_provenance = self._cost_scenario or _legacy_scenario_from_pointer(
             self._loaded_pointer
         )
+        try:
+            label_registry_hash, label_contract_id, return_basis = (
+                _verified_training_label_contract(
+                    self._training_provenance,
+                    scenario_for_provenance,
+                )
+            )
+        except RecommendationProvenanceError:
+            return RecommendationCalibrationProjection.unavailable(
+                stock_code=stock_code,
+                warning="active_training_label_contract_unavailable_fail_closed",
+                ranking_percentile_bp=ranking_percentile_bp,
+            )
         (
             resolved_inference_provenance,
             provenance_compatibility,
@@ -854,7 +881,7 @@ class RecommendationCalibrationConsumer:
         after_cost = prediction.after_cost_profit_probability_bp
         after_cost_status = prediction.after_cost_profit_probability_status
         after_cost_baseline_kind = _after_cost_baseline_kind(after_cost_baseline_id)
-        scenario = self._cost_scenario or _legacy_scenario_from_pointer(self._loaded_pointer)
+        scenario = scenario_for_provenance
         if scenario.is_estimated:
             projection_cost_basis = (
                 "estimated_research_only:banktaiwan-electronic-order-v1; "
@@ -890,7 +917,8 @@ class RecommendationCalibrationConsumer:
             f"probability_lineage:{_hash_payload(self._probability_lineage)}",
             f"dataset:{prediction.dataset_id}",
             f"training_as_of:{prediction.training_as_of}",
-            f"label_contract:{RECOMMENDATION_LABEL_CONTRACT_ID}",
+            f"label_contract:{label_contract_id}",
+            f"label_registry_hash:{label_registry_hash}",
             "benchmark_role:evaluation_only",
             f"cost_scenario:{scenario.scenario_hash}",
             f"cost_policy:{scenario.policy_id or 'legacy'}@{scenario.policy_version or 'v1'}",
@@ -963,6 +991,9 @@ class RecommendationCalibrationConsumer:
             selection_score_kind=selection_score_kind,
             selection_percentile_kind=selection_percentile_kind,
             model_ranking_kind="model_return_bp",
+            label_registry_hash=label_registry_hash,
+            label_contract_id=label_contract_id,
+            return_basis=return_basis,
         )
 
     def project_many(
@@ -1039,6 +1070,40 @@ def _legacy_inference_provenance(decision_date: str, stock_code: str) -> dict[st
         "inference_pit_hash": None,
         "feature_snapshot_fingerprint": None,
     }
+
+
+def _verified_training_label_contract(
+    training_provenance: Mapping[str, Any],
+    scenario: RecommendationCostScenario,
+) -> tuple[str, str, str]:
+    """Resolve label identity only from the verified active training record."""
+
+    if str(training_provenance.get("status") or "") != "verified":
+        raise RecommendationProvenanceError(
+            "active training provenance is not verified for projection labels"
+        )
+    expected_registry_hash = recommendation_label_registry_hash(
+        cost_scenario=scenario if scenario.is_estimated else None
+    )
+    registry_hash = str(training_provenance.get("label_registry_hash") or "").strip()
+    if not registry_hash or registry_hash != expected_registry_hash:
+        raise RecommendationProvenanceError(
+            "active training label registry hash is missing or mismatched"
+        )
+    label_contract_id = str(training_provenance.get("label_contract_id") or "").strip()
+    expected_contract_id = recommendation_label_contract_id(
+        scenario if scenario.is_estimated else None
+    )
+    if label_contract_id != expected_contract_id:
+        raise RecommendationProvenanceError(
+            "active training label contract is missing or mismatched"
+        )
+    return_basis = str(training_provenance.get("return_basis") or "").strip()
+    if return_basis != RECOMMENDATION_RETURN_BASIS:
+        raise RecommendationProvenanceError(
+            "active training return basis is missing or mismatched"
+        )
+    return registry_hash, label_contract_id, return_basis
 
 
 def _load_candidate_training_provenance(

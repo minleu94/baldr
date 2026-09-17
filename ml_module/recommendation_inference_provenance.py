@@ -162,6 +162,9 @@ def build_training_provenance(
             "feature_transform_contract_hash": None,
             "dataset_id": None,
             "dataset_hash": None,
+            "label_registry_hash": None,
+            "label_contract_id": None,
+            "return_basis": None,
             "decision_date": None,
             "training_as_of": None,
             "training_semantics": None,
@@ -208,6 +211,37 @@ def build_training_provenance(
     reason = None if has_p1_hashes else "training_lineage_pre_p1_hashes_missing"
 
     candidate = candidate_payload if isinstance(candidate_payload, Mapping) else {}
+    lineage_label_hash = str(payload.get("label_registry_hash") or "").strip()
+    candidate_label_hash = str(candidate.get("label_registry_hash") or "").strip()
+    if lineage_label_hash and candidate_label_hash and lineage_label_hash != candidate_label_hash:
+        raise RecommendationProvenanceError(
+            "candidate label registry hash does not match training lineage"
+        )
+    label_registry_hash = lineage_label_hash or candidate_label_hash or None
+    if label_registry_hash is not None:
+        _require_hash(label_registry_hash, "training label registry hash")
+    lineage_label_contract = str(payload.get("label_contract_id") or "").strip()
+    candidate_label_contract = str(candidate.get("label_contract_id") or "").strip()
+    if (
+        lineage_label_contract
+        and candidate_label_contract
+        and lineage_label_contract != candidate_label_contract
+    ):
+        raise RecommendationProvenanceError(
+            "candidate label contract does not match training lineage"
+        )
+    label_contract_id = lineage_label_contract or candidate_label_contract or None
+    lineage_return_basis = str(payload.get("return_basis") or "").strip()
+    candidate_return_basis = str(candidate.get("return_basis") or "").strip()
+    if (
+        lineage_return_basis
+        and candidate_return_basis
+        and lineage_return_basis != candidate_return_basis
+    ):
+        raise RecommendationProvenanceError(
+            "candidate return basis does not match training lineage"
+        )
+    return_basis = lineage_return_basis or candidate_return_basis or None
     candidate_hash_values = [
         candidate.get(key)
         for key in (
@@ -276,6 +310,9 @@ def build_training_provenance(
         ),
         "dataset_id": payload.get("dataset_id"),
         "dataset_hash": payload.get("dataset_hash"),
+        "label_registry_hash": label_registry_hash,
+        "label_contract_id": label_contract_id,
+        "return_basis": return_basis,
         "decision_date": payload.get("decision_date"),
         "training_as_of": payload.get("training_as_of"),
         "training_semantics": (

@@ -159,6 +159,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "status": "blocked",
                     "error_type": type(exc).__name__,
                     "message": str(exc),
+                    "provenance_classification": getattr(
+                        exc, "classification", None
+                    ),
                     "direct_numeric_store": True,
                     "formal_oos_allowed": False,
                     "production_alpha_bp": 0,

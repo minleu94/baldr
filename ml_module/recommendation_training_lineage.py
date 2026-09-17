@@ -20,8 +20,10 @@ from typing import Any, Mapping, Sequence
 
 from ml_module.recommendation_calibration_training import (
     RECOMMENDATION_HORIZON_TRADING_DAYS,
+    RECOMMENDATION_RETURN_BASIS,
     RecommendationCalibrationSample,
     feature_schema_hash,
+    recommendation_label_contract_id,
     recommendation_cost_contract_hash,
     sample_payload,
 )
@@ -216,6 +218,8 @@ def build_recommendation_training_lineage(
         },
         "dataset_id": dataset_id,
         "dataset_hash": dataset_hash,
+        "label_contract_id": recommendation_label_contract_id(scenario),
+        "return_basis": RECOMMENDATION_RETURN_BASIS,
         "candidate_id": candidate_id,
         "candidate_manifest_hash": candidate_manifest_hash,
         "candidate_artifact_hash": candidate_artifact_hash,

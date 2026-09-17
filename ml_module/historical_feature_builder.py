@@ -7,7 +7,7 @@ from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 import hashlib
 import json
 from collections import defaultdict
-from typing import Mapping
+from typing import Any, Mapping, Sequence
 
 from data_module.ml_historical_snapshot_provider import (
     HistoricalIndexObservation,
@@ -17,6 +17,7 @@ from data_module.ml_historical_snapshot_provider import (
 )
 from data_module.ml_price_availability_contract import (
     build_price_unavailable_research_contract,
+    validate_price_unavailable_research_contract,
 )
 from ml_module.feature_registry import (
     CORE_LONG_HISTORY_FEATURE_REGISTRY,
@@ -175,9 +176,13 @@ class HistoricalFeatureBuilder:
         snapshot: HistoricalRawSnapshot,
         *,
         industry_index_name_by_symbol: Mapping[str, str],
+        price_unavailable_contracts: Sequence[Mapping[str, Any]] = (),
     ) -> tuple[HistoricalFeatureRow, ...]:
         """Compute prefix-invariant integer features using only snapshot T-1 rows."""
         cutoff = snapshot.feature_as_of_date
+        explicit_gap_dates, feature_context_dates = (
+            _validated_feature_contract_scope(price_unavailable_contracts)
+        )
         price_by_symbol: dict[str, list[HistoricalPriceObservation]] = defaultdict(list)
         for price_observation in snapshot.prices:
             if price_observation.trading_date <= cutoff:
@@ -186,26 +191,73 @@ class HistoricalFeatureBuilder:
         for technical_observation in snapshot.technicals:
             if technical_observation.trading_date <= cutoff:
                 technical_by_symbol[technical_observation.symbol].append(technical_observation)
-        market = _index_closes(snapshot.market, cutoff=cutoff, index_name="market")
+        market_dates, market_by_date = _index_by_date(
+            snapshot.market, cutoff=cutoff, index_name="market"
+        )
+        observed_price_dates = {
+            observation.trading_date
+            for symbol_rows in price_by_symbol.values()
+            for observation in symbol_rows
+        }
+        # Keep the requested cutoff and every observed source date in the
+        # assembly timeline.  A market row can be missing at the cutoff (or
+        # in the middle) while a stock row is present.  Appending the cutoff
+        # as an empty market slot prevents silently re-labelling the prior
+        # market date as feature_as_of_date; unioning price dates prevents a
+        # missing market session from being compressed out of index windows.
+        timeline_dates = tuple(
+            sorted(set(market_dates) | observed_price_dates | {cutoff})
+        )
+        market_values = [market_by_date.get(trading_date) for trading_date in timeline_dates]
         industry_names = {row.index_name for row in snapshot.industries}
         industries = {
-            name: _index_closes(snapshot.industries, cutoff=cutoff, index_name=name)
+            name: {
+                trading_date: close
+                for trading_date, close in _index_by_date(
+                    snapshot.industries,
+                    cutoff=cutoff,
+                    index_name=name,
+                )[1].items()
+            }
             for name in industry_names
         }
-        market_5 = _return_bp(market, 5)
-        market_20 = _return_bp(market, 20)
-        market_60 = _return_bp(market, 60)
+        market_5 = _return_bp(market_values, 5)
+        market_20 = _return_bp(market_values, 20)
+        market_60 = _return_bp(market_values, 60)
+        observed_dates_by_symbol = {
+            symbol: {observation.trading_date for observation in observations}
+            for symbol, observations in price_by_symbol.items()
+        }
+        for symbol, context_dates in feature_context_dates.items():
+            required_dates = {
+                date_iso for date_iso in context_dates if date_iso <= cutoff
+            }
+            missing_context_dates = sorted(
+                required_dates - observed_dates_by_symbol.get(symbol, set())
+            )
+            if missing_context_dates:
+                raise ValueError(
+                    "price availability feature context is incomplete for "
+                    f"{symbol}: {','.join(missing_context_dates)}"
+                )
+
         rows: list[HistoricalFeatureRow] = []
         for symbol in sorted(price_by_symbol):
             observations = sorted(price_by_symbol[symbol], key=lambda row: row.trading_date)
+            explicit_dates = {
+                date_iso
+                for date_iso in explicit_gap_dates.get(symbol, set())
+                if date_iso <= cutoff
+            }
             # Build the same research contract used by source-quality audit for
             # every incomplete OHLC row.  A missing middle row becomes an
             # explicit gap for all price windows; surrounding observations are
-            # never silently bridged into a synthetic adjacent sequence.
-            price_unavailable_dates = {
-                contract["date"]
-                for observation in observations
-                if any(
+            # never silently bridged into a synthetic adjacent sequence.  The
+            # explicit contract's feature_window_dates are context evidence,
+            # not additional missing rows; only its source anchor is masked.
+            price_unavailable_dates = set(explicit_dates)
+            for observation in observations:
+                if not any(
                     value is None
                     for value in (
                         observation.open_price,
@@ -213,24 +265,23 @@ class HistoricalFeatureBuilder:
                         observation.low_price,
                         observation.close_price,
                     )
+                ):
+                    continue
+                contract = build_price_unavailable_research_contract(
+                    symbol=symbol,
+                    date_iso=observation.trading_date,
+                    raw_row={
+                        "symbol": observation.symbol,
+                        "open": observation.open_price,
+                        "high": observation.high_price,
+                        "low": observation.low_price,
+                        "close": observation.close_price,
+                        "volume": observation.volume,
+                    },
                 )
-                for contract in (
-                    build_price_unavailable_research_contract(
-                        symbol=symbol,
-                        date_iso=observation.trading_date,
-                        raw_row={
-                            "symbol": observation.symbol,
-                            "open": observation.open_price,
-                            "high": observation.high_price,
-                            "low": observation.low_price,
-                            "close": observation.close_price,
-                            "volume": observation.volume,
-                        }
-                    ),
-                )
-            }
-            effective_observations = [
-                (
+                price_unavailable_dates.add(str(contract["date"]))
+            effective_by_date = {
+                observation.trading_date: (
                     replace(
                         observation,
                         open_price=None,
@@ -244,17 +295,51 @@ class HistoricalFeatureBuilder:
                     else observation
                 )
                 for observation in observations
+            }
+            # Assemble every stock feature on the observed market-date path.
+            # A missing stock row becomes an explicit empty slot; it is never
+            # compressed away by the trailing-window helpers.  The source
+            # calendar remains observational only, so this protects joins
+            # without claiming an official complete session horizon.
+            symbol_timeline_dates = tuple(
+                sorted(
+                    set(timeline_dates)
+                    | {observation.trading_date for observation in observations}
+                )
+            )
+            effective_observations = [
+                effective_by_date.get(
+                    trading_date,
+                    _missing_price_observation(symbol, trading_date),
+                )
+                for trading_date in symbol_timeline_dates
             ]
             closes = [row.close_price for row in effective_observations]
             volumes = [row.volume for row in effective_observations]
-            latest = effective_observations[-1]
+            latest = (
+                effective_observations[-1]
+                if effective_observations
+                else _missing_price_observation(symbol, cutoff)
+            )
             latest_close = latest.close_price
-            technicals = sorted(technical_by_symbol[symbol], key=lambda row: row.trading_date)
-            technical = technicals[-1] if technicals else None
+            technical_by_date = {
+                row.trading_date: row for row in technical_by_symbol[symbol]
+            }
+            technical = technical_by_date.get(cutoff)
             stock_20 = _return_bp(closes, 20)
             industry_name = industry_index_name_by_symbol.get(symbol)
+            industry_by_date = (
+                industries.get(industry_name, {})
+                if industry_name is not None
+                else {}
+            )
+            industry_values = [
+                industry_by_date.get(trading_date)
+                for trading_date in timeline_dates
+            ]
             industry_20 = _return_bp(
-                industries.get(industry_name, []) if industry_name is not None else [], 20
+                industry_values,
+                20,
             )
             values = {
                 "stock_return_1d_bp": _return_bp(closes, 1),
@@ -288,6 +373,44 @@ class HistoricalFeatureBuilder:
                 values=tuple((feature_id, values[feature_id]) for feature_id in self.load_contract.canonical_ids),
             ))
         return tuple(rows)
+
+
+def _validated_feature_contract_scope(
+    contracts: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """Validate feature context and return source anchors separately.
+
+    Anchor-only contracts are intentionally rejected here.  A feature caller
+    must provide the actual T-1 window dates so the builder can prove that the
+    source context exists.  The context dates are never themselves treated as
+    unavailable: only the contract's source row anchor is a price gap.  This
+    lets a gap early in the context block long lookbacks while preserving
+    shorter lookbacks whose windows do not include that anchor.
+    """
+
+    gap_dates: dict[str, set[str]] = {}
+    context_dates_by_symbol: dict[str, set[str]] = {}
+    for contract in contracts:
+        symbol, anchor_date, _affected_dates = (
+            validate_price_unavailable_research_contract(contract)
+        )
+        affected_window = contract.get("affected_window")
+        if not isinstance(affected_window, Mapping):
+            raise ValueError("price availability feature window is invalid")
+        if affected_window.get("feature_window_complete") is not True:
+            raise ValueError(
+                "price availability contract feature window is incomplete"
+            )
+        feature_dates = affected_window.get("feature_window_dates")
+        if not isinstance(feature_dates, list) or not feature_dates:
+            raise ValueError(
+                "price availability contract feature window is empty"
+            )
+        gap_dates.setdefault(symbol, set()).add(anchor_date)
+        context_dates_by_symbol.setdefault(symbol, set()).update(
+            str(value) for value in feature_dates
+        )
+    return gap_dates, context_dates_by_symbol
 
 
 def _hash_payload(payload: object) -> str:
@@ -383,6 +506,37 @@ def _rsi_bp(value: Decimal | None) -> int | None:
 
 def _scaled_bp(value: Decimal | None) -> int | None:
     return None if value is None else _quantized_integer(value * Decimal(100))
+
+
+def _missing_price_observation(symbol: str, trading_date: str) -> HistoricalPriceObservation:
+    return HistoricalPriceObservation(
+        symbol=symbol,
+        trading_date=trading_date,
+        open_price=None,
+        high_price=None,
+        low_price=None,
+        close_price=None,
+        volume=None,
+        turnover_amount_minor=None,
+    )
+
+
+def _index_by_date(
+    rows: tuple[HistoricalIndexObservation, ...],
+    *,
+    cutoff: str,
+    index_name: str,
+) -> tuple[tuple[str, ...], dict[str, Decimal | None]]:
+    selected = sorted(
+        (
+            row
+            for row in rows
+            if row.index_name == index_name and row.trading_date <= cutoff
+        ),
+        key=lambda row: row.trading_date,
+    )
+    by_date = {row.trading_date: row.close_value for row in selected}
+    return tuple(sorted(by_date)), by_date
 
 
 def _index_closes(

@@ -280,8 +280,23 @@ def _validated_price_unavailable_dates(
 ) -> dict[str, set[str]]:
     blocked: dict[str, set[str]] = {}
     for contract in contracts:
-        symbol, _anchor_date, affected_dates = (
+        symbol, anchor_date, _affected_dates = (
             validate_price_unavailable_research_contract(contract)
         )
-        blocked.setdefault(symbol, set()).update(affected_dates)
+        affected_window = contract.get("affected_window")
+        if not isinstance(affected_window, Mapping):
+            raise ValueError("price availability label window is invalid")
+        if affected_window.get("label_window_complete") is not True:
+            raise ValueError(
+                "price availability contract label window is incomplete"
+            )
+        label_dates = affected_window.get("label_window_dates")
+        if not isinstance(label_dates, list) or not label_dates:
+            raise ValueError("price availability contract label window is empty")
+        # label_window_dates are the required forward-path context, not a
+        # list of unavailable rows.  Block this label only when the source
+        # anchor is actually on that path; do not turn the whole union of
+        # feature/label context dates into raw price gaps.
+        if anchor_date in {str(value) for value in label_dates}:
+            blocked.setdefault(symbol, set()).add(anchor_date)
     return blocked

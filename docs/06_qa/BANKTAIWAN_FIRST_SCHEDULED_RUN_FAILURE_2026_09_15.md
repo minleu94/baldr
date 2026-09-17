@@ -2,7 +2,7 @@
 
 ## 結論
 
-2026-09-15 05:50 的 BankTaiwan recommendation-learning shadow task 不是資料擷取或 candidate 訓練失敗，而是 shared authority root 的成本情境防護被錯誤觸發。舊版 `challenger/current.json` 沒有成本情境欄位，reader 將缺少欄位的 marker 依相容預設解讀成 legacy fixed 50 bp；同一 root 的 `latest_status`、decision receipt 與 candidate 實際屬於 BankTaiwan electronic estimate，因此被判定為跨 lane 衝突。
+2026-09-15 05:50 的 BankTaiwan recommendation-learning shadow task 不是資料擷取或 candidate 訓練失敗，而是 shared authority root 的成本情境防護被錯誤觸發。當時的舊版 `challenger/current.json` 沒有成本情境欄位，舊 reader 將缺少欄位的 marker 依相容預設解讀成 legacy fixed 50 bp；同一 root 的 `latest_status`、decision receipt 與 candidate 實際屬於 BankTaiwan electronic estimate，因此被判定為跨 lane 衝突。
 
 正式資料、candidate、manifest、artifact 與 receipt 均保留，未刪除、重建或覆寫；本次未透過 scheduler 重跑正式 05:50 任務，後續受控 shadow retry 已另行完成並保留完整 lineage。
 
@@ -45,6 +45,50 @@ ERROR None
 ROOT_CONFLICT None
 ```
 
+## 2026-09-16 legacy 05:45 缺 freeze 的 cross-anchor 相容性
+
+同日期 evidence review 的 root anchor 為：
+
+`C:\Users\archi\.codex\visualizations\2026\09\16\01a0a838-652d-74b3-8665-08f29501acbf\evidence_review\legacy_verified_challenger_anchor.json`
+
+該 evidence 指向 `D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning` 的
+`latest_status.json`、`challenger/current.json` 與 immutable
+`runs/2026-09-15/scheduled-snapshot-440e18cdaa2036d1-eff4d2a/run_receipt.json`。
+唯讀比對確認 latest 與 receipt 都缺 top-level `candidate_freeze_hash`，challenger
+具有完整 freeze；三者的 candidate id、candidate root、manifest／artifact hash、
+candidate dataset 與 `run_scope=scheduled-snapshot-440e18cdaa2036d1-eff4d2a` 對齊。
+`candidate_dataset_hash` 與 run-level `dataset_hash` 仍按各自欄位語意讀取，不互相
+覆蓋。evidence 的 `challenger_verification_error=null`、`latest_missing_freeze=true`、
+`receipt_missing_freeze=true`、`writes_to_source=false`，且未執行 recovery。
+
+讀取端現在只對這個窄例外開啟 compatibility：marker 只能缺
+`candidate_freeze_hash`，candidate root 仍須通過 candidate metadata、canonical
+`ModelArtifactManifest`、實際 artifact bytes SHA-256、candidate freeze 重算、cost
+contract、label registry 與 cost scenario 驗證；再由 full-freeze challenger anchor
+確認同 cohort。latest status 與 immutable receipt 也必須 exact match candidate／root／
+manifest／artifact／dataset／`run_scope`。缺欄位不會推測或填入目前預設 50 bp，所有
+marker、receipt、candidate、manifest、artifact 與 freeze 均維持原 bytes；任何 swapped
+root／candidate／dataset、hash 或 freeze 衝突、缺 anchor、不同 cohort、receipt 只改
+cohort 或同成本改 candidate／root 都 fail-closed。
+
+本次使用隔離 fixture 的正負回歸與真實 root 純讀取 probe：
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests\test_daily_banktaiwan_learning_cost.py -q -o addopts=
+29 passed, 1 warning in 5.62s
+
+REAL_ROOT_PROBE
+latest_missing_freeze=true
+receipt_missing_freeze=true
+challenger_freeze_present=true
+same_run_scope=true
+stored_scenario_id=legacy-fixed-round-trip-bp
+stored_scenario_hash=sha256:1e50e15cf30f3bd25f1a142f264d9755fed486fee234c9c794d5534122906d5e
+stored_error=None
+root_conflict=None
+writes_to_source=false
+```
+
 ## 根因與修復
 
 ### 根因
@@ -54,7 +98,7 @@ ROOT_CONFLICT None
 ### 修復
 
 - `_ensure_challenger_pointer()` 的兩條 writer 路徑現在都寫入完整 `_scenario_cli_metadata(cost_scenario)`，因此新建立的 challenger pointer 自帶 scenario id、version、hash、basis、policy、sizing 與 nested scenario metadata。
-- 舊 pointer 仍可相容讀取，但只有在完整 candidate identity anchor 存在時才允許推導 lane：`candidate_id`、`candidate_root`、`candidate_freeze_hash`、`candidate_manifest_hash`、`candidate_artifact_hash`、`dataset_hash` 缺一即 fail-closed。
+- 舊 pointer 仍可相容讀取，但一般情況只有完整 candidate identity anchor 才允許推導 lane：`candidate_id`、`candidate_root`、`candidate_freeze_hash`、`candidate_manifest_hash`、`candidate_artifact_hash`、`dataset_hash` 缺一即 fail-closed。唯一限縮例外是已核驗的 legacy 05:45 marker 僅缺 top-level `candidate_freeze_hash`：必須另有同 cohort、完整 freeze 的 challenger anchor，且 latest status 與 immutable receipt 的 candidate／root／manifest／artifact／dataset／`run_scope` exact match；不從缺欄位補回 50 bp，不改寫 marker、receipt、candidate 或 freeze。
 - 相容 reader 不再只相信 candidate.json 自宣告的 hash：會重算 canonical `ModelArtifactManifest`、實際 artifact bytes SHA-256、candidate freeze hash，並檢查 manifest/artifact/candidate identity、nested/flat cost metadata、cost contract hash 與 label registry hash 的一致性。
 - 若 marker 已有完整新 scenario 且也帶完整 candidate anchor，仍會用同一套 candidate verification 比對 candidate scenario；避免只讀 pointer metadata 就解除 root guard。
 
@@ -64,7 +108,7 @@ ROOT_CONFLICT None
 
 ```text
 .\.venv\Scripts\python.exe -m pytest tests\test_daily_banktaiwan_learning_cost.py -q -o addopts=
-14 passed, 1 warning in 4.47s
+29 passed, 1 warning in 5.62s
 ```
 
 另已通過：
@@ -76,8 +120,9 @@ ROOT_CONFLICT None
 - artifact bytes 被篡改或 artifact 遺失：拒絕。
 - candidate_id-only / 不完整 identity pointer：拒絕。
 - legacy fixed 50 bp root 與 BankTaiwan lane：仍拒絕跨 root 重用，且既有 legacy state bytes 不變。
+- legacy 05:45 缺 `candidate_freeze_hash` 的 same-cohort cross-anchor 正例：通過 candidate freeze 重算、canonical artifact path／bytes、manifest／dataset／cost contract／label registry 驗證後唯讀解析；swapped root／candidate／dataset、manifest／freeze hash 衝突、缺 root、不同 cohort，以及 immutable receipt 只改 cohort 或同成本改 candidate／root，均 fail-closed。
 
-針對排程 script 的 mypy 執行被並行工作樹 `data_module/pit_sector_membership_reader.py` 的當時錯誤阻擋（行 2133、2183、2222、2315）；本次沒有修改該檔案。
+本 slice 的 scoped mypy 已通過：`mypy --explicit-package-bases scripts\scheduled\run_daily_recommendation_learning.py tests\test_daily_banktaiwan_learning_cost.py`，`Success: no issues found in 2 source files`。全 repo mypy 未在本 slice 重跑；此前的並行工作樹錯誤（`data_module/pit_sector_membership_reader.py` 行 2133、2183、2222、2315）仍不屬於本次修改。
 
 ## 受控 shadow retry 實績（2026-09-15）
 

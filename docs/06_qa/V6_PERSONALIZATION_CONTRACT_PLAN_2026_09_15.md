@@ -4,7 +4,7 @@
 
 本文件是 V6 evidence-driven personalization 的 code-backed design／acceptance plan，不是 V6 功能完成報告，也不是自然效果宣稱。它以 2026-09-15 的現有程式與 QA 文件為基準，目的在於先把 identity、PIT、outcome、baseline／challenger、統計 denominators、daily loop、rollback 與可驗收 runner 定義清楚。
 
-本輪只新增本文件，沒有修改既有程式、資料、Manual、SSOT、Roadmap、Git index 或 scheduler，也沒有執行大型 backtest、full pytest、Qt 或排程。既有 working tree 的其他未提交變更均不屬於本計畫。
+本輪已完成 C-owned bounded slice：新增／更新 typed contract、read-only projection、固定 Decimal/bp evaluator、deterministic fixture runner 與負向測試，並把 caller-owned local research scope 接到既有 Recommendation save/readback 與 Journal technical delivery ACK 路徑；另以獨立 process 驗證正式 `MainWindow()` 的 save／ACK／readback／close。`PersonalizationDecisionRecorder` 與明示 action CLI 也已接到既有 Journal revision，並以 verified training lineage custody 核對 label contract／return basis。正式 D 槽、自然效果、A/B/L/K 及 V6 adoption 仍不因此完成；Snapshot、Roadmap 與 Manual 只同步本 C-owned 狀態，未改 Git index、scheduler、formal order 或既有 human action 語意。
 
 本文件遵守以下邊界：
 
@@ -12,7 +12,7 @@
 - L（PIT official taxonomy/source chain）與 K（cross-page continuity integration）是獨立 follow-up dependency；本計畫可以先做 contract、offline evaluation、shadow receipt 與 guardrails，不把 L/K 尚未完成誤報成 V6 已完成。
 - 不另造 parallel recommendation、portfolio、paper、user-decision ledger；先重用既有 Recommendation result／projection、EvidenceEvent／EvidenceOutcome、DecisionContinuity／Journal、User-declared research lane 與 Paper research ledger 的 identity，再建立 read-side join/projection。
 - 策略、回測、推薦、資金、風控與績效核心欄位以整數 bp、股數、分鐘或 Decimal 表示；任何 sklearn／統計套件的 float 僅能被隔離在既有 analytics boundary，contract 與 receipt 不保存裸 float。
-+ 所有 prediction、feature、label、cost、action 與 baseline 都做 look-ahead audit；決策日必須使用 timezone-aware `available_at <= decision_at` 且 `captured_at <= decision_at` 的資料，`available_date`／`decision_date` 只作 trading-day grouping；label 只能在 `label_available_date` 後進入成熟 evaluation。
+- 所有 prediction、feature、label、cost、action 與 baseline 都做 look-ahead audit；決策日必須使用 timezone-aware `available_at <= decision_at` 且 `captured_at <= decision_at` 的資料，`available_date`／`decision_date` 只作 trading-day grouping；label 只能在 `label_available_date` 後進入成熟 evaluation。
 
 ## 1. 結論摘要
 
@@ -59,8 +59,8 @@ V6 的真正缺口不是再寫一個 learner，而是把以下五類資料以同
 | 現有路徑 | 已可重用 | V6 必須保留的邊界 |
 |---|---|---|
 | `app_module/dtos/decision_continuity_dtos.py:94-234` 的 `DecisionIdentity`／`DecisionContinuityRevision` | exact candidate key 是 `(result_id, stock_code)`；snapshot id/hash、decision date 獨立保存；revision、payload、tombstone、revision_of 可保存 append-only history | 不得 fallback 到 `source_id`、`profile_id`、portfolio 或 holding_id；缺 result identity 必須 unknown/conflict/fail-closed，不得猜候選人 |
-| `app_module/decision_continuity_controller.py:95,128,144,276,353` | exact identity readback、CAS/request id idempotency、conflict/read error fail-closed、accepted/skipped/review 等 action 已有 controller | controller 現在沒有 typed `personalization_scope_id`／decision kind／prediction receipt 的 payload API；第一 slice 只做向後相容的 typed payload extension，仍由既有 controller/Journal 寫入，不新增 ledger |
-| `app_module/journal_service.py:25,138,141,203,334` | `record_decision_action`／`record_research_action` 及 `list_decision_revisions`、append-only journal store 可作 user action source | action payload 目前以 continuity identity 為主；需加明確 optional personalization envelope，並保留 request id／revision chain；任意 note 或 tag 不足以作統計 identity |
+| `app_module/decision_continuity_controller.py:95,128,144,276,353` | exact identity readback、CAS/request id idempotency、conflict/read error fail-closed、accepted/skipped/review 等 action 已有 controller；C slice 由 `PersonalizationDecisionRecorder` 在 delivered projection 後委派既有 writer | controller 本身仍不自動產生 personal action；typed scope／prediction receipt 只可由新 recorder 明示放入既有 revision payload，不能由 profile／holding／delivery 推導或替代 user intent |
+| `app_module/journal_service.py:25,138,141,203,334` | `record_decision_action`／`record_research_action` 及 `list_decision_revisions`、append-only journal store 可作 user action source；technical delivery ACK 與 typed personal action 都沿用 revision stream | action payload 已支援 optional `personalization_action` envelope；仍須保留 request id／revision chain，且 Journal 的 head CAS／human action 競態不能被 personal wrapper 假定為已完成；任意 note 或 tag 不足以作統計 identity |
 | `app_module/user_declared_holding_research.py:476,1339,1396,1476,1613,1946` | user-declared holding 有 immutable holding/revision、PIT custody、Decimal mark、research-only、`calibration_status=excluded_user_declared`、`effectiveness_cohort=excluded_user_declared` | `holding_id` 不得變成 recommendation decision id；沒有 exact `result_id + stock_code` 時只能當 held/position context，不能當 prediction label、calibration credit 或 effectiveness evidence |
 | `app_module/paper_trade_ledger.py:34,207,220`、`data_module/paper_daily_execution_producer.py:118,178` | Paper fill 有 exact fill/order/source_event identity、Decimal fill/cost、research-only、broker/auto-rebalance false；producer 以 frozen recommendation `result_id`／`source_result_id` 驗證 source chain | Paper 是 research execution tier，不是 natural user decision；`PaperTradeFill.source_event_id` 不得直接當 user action id；要經 `source_result_id`、candidate/symbol 與 scope join 才能成為 paper outcome row，且仍與 natural outcome 分 cohort |
 
@@ -73,8 +73,8 @@ V6 的真正缺口不是再寫一個 learner，而是把以下五類資料以同
 | 欄位 | 必填規則 | 語意與禁止事項 |
 |---|---|---|
 | `schema_version` | 固定 `personalization-decision-evidence.v1` | schema version 必須進 receipt hash；不可無版本解析 |
-| `personalization_scope_id` | 非空、穩定、明確提供 | V6 的 user scope。可以是 opaque user id 或明確宣告的 profile scope；不可由 portfolio、holding、source、strategy 自動推導。scope 不存在時 row 只能 population-only，不能稱 personal |
-| `scope_type` | `user`、`profile` 或明確 future enum | `profile_id` 只有在上游明確宣告它就是 scope 時才能使用；既有 recommendation profile 不自動等於 user |
+| `personalization_scope_id` | 非空、穩定、明確提供 | 可是 opaque user scope，或本機單安裝研究用的明確 local scope；不可由 portfolio、holding、source、strategy 自動推導。scope 不存在時 row 只能 population-only，不能稱 personal |
+| `scope_type` | `user`、`profile`、`local` 或明確 future enum | `local` 只表示本機研究 lane，不代表人類身份；`profile_id` 只有在上游明確宣告它就是 scope 時才能使用，既有 recommendation profile 不自動等於 user |
 | `result_id` | 必須是既有 persisted Recommendation result identity | 與 `stock_code` 組成 exact candidate identity；空值、模糊 source id、目前畫面 index 均 fail closed |
 | `stock_code` | 非空 canonical code | 不以股票名稱、顯示列號或 Paper fill id 代替 |
 | `decision_date` | ISO trading date，且與 recommendation／event identity 一致 | 不可以 action timestamp 的日期覆寫決策日 |
@@ -103,7 +103,7 @@ PIT 的 canonical ordering 是 timezone-aware decision_at、available_at、captu
 
 ### 3.3 User action envelope
 
-個人 scope 必須在 delivered prediction 產生時已存在，而不是等 user action 才補。第一片重用既有持久化 envelope：batch 寫入 RecommendationResultDTO.run_context["personalization_scope"] 與 inference projection receipt 的 selection_contract["personalization_scope"]；per-candidate 由 RecommendationDTO.calibration_provenance["personalization_scope"] 連回同一 envelope/hash。source_contract_binding 仍只表示資料來源；未明確提供 scope 時標示 scope_status=unbound，後續 action 不得事後回填成當時的 personal prediction。
+個人 scope 必須在 delivered prediction 產生時已存在，而不是等 user action 才補。C slice 以獨立 `personalization-delivery-capture.v1` envelope 保存 scope、request/delivery/prediction identity、PIT clock、既有 projection receipt hash 與 generated/persisted/delivered/not_delivered 狀態；既有 `recommendation-calibration-projection-receipt.v1` 與其 hash 不改寫。Recommendation save/readback 已接入明確的 local caller-owned scope，post-save delivery ACK 追加到既有 Journal 技術事件；在 scope 或 exact readback 缺失時只能輸出 population-only／not_delivered，後續 action 不得事後回填成當時的 personal prediction。
 
 action 必須保存：
 
@@ -182,7 +182,7 @@ population baseline 是「同一個 delivered recommendation row、同一個 fea
 
 ### 5.2 固定 personal challenger：calibration overlay，不重寫 learner
 
-personal calibration 的 fit 與 evaluation 是兩個不可互換的 API。fit 只讀取 fit_rows，產生不可變的 PersonalizationFitArtifact（fit_as_of、fit_row_fingerprint、fit_policy_hash、overlay_hash、bin/prior contract）；evaluate 只接受該 artifact 與 evaluation_rows，並以 prediction_id/row_id exact disjoint check 拒絕 overlap。evaluation labels 不得先被用來計算該 artifact 的 bin rate。
+personal calibration 的 fit 與 evaluation 是兩個不可互換的 API。fit 只讀取 fit_rows，產生不可變的 PersonalizationFitArtifact（fit_as_of、aware `created_at`、fit_row_fingerprint、row/prediction/statistical/receipt IDs、scope/cohort contract、fit_policy_hash、overlay_hash、bin/prior contract）；ready fit row 必須有精確 `label_available_at`、`outcome_recorded_at` 與 receipt clock，且 artifact `created_at` 不得早於 fit cutoff 日期或任何依賴資料。evaluate 只接受該 artifact 與 evaluation_rows，並以 prediction_id/row_id/statistical identity exact disjoint check 拒絕 overlap。evaluation labels 不得先被用來計算該 artifact 的 bin rate。
 
 第一個 challenger family 定義為 fixed bin-wise personal shrinkage calibrator：
 
@@ -204,7 +204,7 @@ personal calibration 的 fit 與 evaluation 是兩個不可互換的 API。fit �
 對每個 `personalization_scope_id`：
 
 1. 先依 `decision_date` 排序，所有 feature／prediction provenance 必須在決策日可取得。
-2. train/fit cohort 只包含 `label_available_date <= training_cutoff` 的 matured rows；label end、outcome data_as_of、action timestamp 不能穿越 cutoff。
+2. train/fit cohort 只包含 `label_available_date <= training_cutoff` 的 matured rows；label/outcome 必須有 timezone-aware availability／recorded clock，`created_at` 不得早於 `fit_as_of` 日期或其依賴時間；label end、outcome data_as_of、action timestamp 不能穿越 cutoff。
 3. 使用 expanding time split；保留與 population learner 相同的 purge/embargo 邏輯，避免 horizon overlap。若 personal rows 太少，不自行縮短 purge，也不把 future labels 借給前一 fold。
 4. challenger policy、bin、prior strength、minimum sample/date gates 在 holdout 前 freeze；untouched holdout 只評估一次，不能用結果回頭改 policy。
 5. baseline 與 challenger 必須在完全相同 `row_id`／`prediction_id`、label、horizon、cost、benchmark、data quality cohort 上 pairwise compare；被 personal action selection 排除的 row 仍保留為 coverage diagnostic。
@@ -256,11 +256,14 @@ Wilson／Beta 只作 per-bin descriptive reliability CI。由於同一 decision 
 既有 Recommendation / projection receipt
         │ exact result_id + stock_code + prediction/provenance
         ▼
-DecisionContinuity / Journal typed action envelope
-        │ explicit personalization_scope_id + action revision
+PersonalizationDeliveryCaptureService
+        │ explicit scope + delivery/prediction identity + PIT clocks
         ▼
 Read-only PersonalizationProjectionService
-        │ join EvidenceEvent / EvidenceOutcome / Paper read adapter
+        │ exact result/candidate/receipt；未交付不進 prediction denominator
+        ▼
+DecisionContinuity / Journal exact action read adapter
+        │ action absence = not_recorded；不反推 skipped
         ▼
 OutcomeMaturityService + matured natural/paper/replay tier separation
         ▼
@@ -275,12 +278,13 @@ future scoped authority only after explicit gate and natural evidence
 
 ### 7.1 Decision-day capture
 
-- delivery caller 在 prediction 交付時明確提供 PersonalizationDeliveryScope；batch 寫入 RecommendationResultDTO.run_context["personalization_scope"] 與 inference projection receipt selection_contract["personalization_scope"]，per-candidate calibration_provenance 只保存同一 envelope/hash 的連結。沒有 scope 的 delivery 永久是 unbound，不能在 action 時回補。
+- `PersonalizationDeliveryCaptureService.capture()` 在 prediction 交付前接收 caller 明確提供的 `PersonalizationDeliveryScope`，建立 immutable `delivery_id + request_id + prediction_id + projection_receipt_hash` capture。沒有 scope 的 delivery 永久是 unbound，不能在 action 時回補。
 - capture 保存 timezone-aware decision_at、available_at、captured_at 並正規化 UTC；date 欄位只作 trading-day grouping。captured_at > decision_at 或 available_at > decision_at 一律 temporal/PIT invalid。
-
-- 在 recommendation result/projection 已持久化後，保存 exact `result_id`、`stock_code`、decision date、scope、prediction receipt hash、source snapshot/PIT/provenance、model/dataset/cost/horizon。
+- capture 的 `generated` → `persisted` → `delivered` transition 是 immutable DTO transition；`PersonalizationDeliveryCaptureService.verify_saved_capture()` 只做既有 RecommendationResult readback 驗證，不自行寫檔或建立 ledger。
+- 在 recommendation result/projection 持久化邊界，保存 exact `result_id`、`stock_code`、decision date、scope、prediction receipt hash、source snapshot/PIT/provenance、model/dataset/cost/horizon。若沒有通過保存 readback，capture 不能進 prediction denominator，projection 以 `not_delivered` 或 `unavailable` 表示。
+- `delivered_at` 是 UI／caller 的實際交付 clock，不是 captured_at 的替代品；late delivery 只作 exposure diagnostic，不給 natural delivery credit。first slice 不回寫已保存的 immutable result；post-save ACK 需另指定既有 append-only persistence 後再審查。
 - `RecommendationPredictionCaptureService`／active capture 的 source contract 仍是 prediction lineage；V6 不在 capture 中自行計算 future label。
-- 使用者 action 走 `PersonalizationDecisionRecorder` → `DecisionContinuityController` → `JournalService`，同一 request id 重試回傳原 revision；不能直接寫 personal ledger。
+- 既有 Controller action 的一般 UI 語意維持不變；新增的 bounded `PersonalizationDecisionRecorder` 只作明確 personal action 入口，驗證 delivered prediction 的 scope／result／stock／prediction／receipt／horizon／cost／label／return contract 後，委派既有 `DecisionContinuityController`／`JournalService` revision。舊 action 沒有 personal envelope 時只作 legacy diagnostic，禁止 retrofit；任何入口都不能直接寫 personal ledger。
 - 若使用者沒有做 action，顯式保存或投影 `not_recorded`；不能在 daily job 以 absence 推成 skipped。
 
 ### 7.2 Maturity 與 outcome
@@ -310,27 +314,37 @@ future scoped authority only after explicit gate and natural evidence
 
 rollback receipt 必須保存 reason、previous population identity、scope、evaluated_as_of、matched sample fingerprint、formal/action flags；失敗時不得 silently fallback 到另一個 versionless model。
 
-## 8. 第一個可實作 slice（只作為後續 engineering ticket，不在本輪實作）
+## 8. 第一個可實作 slice 與 shared hook gate
 
 ### 8.1 建議新增／最小修改範圍
 
-First-slice ownership is intentionally narrow：
+First-slice ownership is intentionally narrow；本輪已完成下列 C-owned read／offline 部分，並已獲准把 caller-owned local research scope 接到既有 recommendation save/readback path，以及提供受控、明示的 action writer entry：
 
-- delivery binding 由 app_module/recommendation_service.py 接收明確的 PersonalizationDeliveryScope，寫入 last_run_context，並傳給既有 inference projection receipt builder；不從 profile_id、portfolio 或 action 猜 scope。
-- batch save/readback 由 app_module/recommendation_save_coordinator.py 負責：build_result() 將 last_run_context 的 canonical scope 放進 RecommendationResultDTO.run_context，persist() save 後立即 read back，驗證 result_id、scope envelope/hash、projection receipt hash 與每個 RecommendationDTO.calibration_provenance 一致；無 action 也必須保留 delivery scope。
-- receipt/provenance 由 ml_module/recommendation_inference_provenance.py 與既有 recommendation_calibration_evidence.py 負責最小向後相容欄位擴充：optional decision_at/available_at/captured_at、selection_contract.personalization_scope、legacy temporal_precision_unproven；不改既有 candidate/model/learner semantics。
-- Journal/Continuity 只負責 action revision，Evidence/Paper 只負責 outcome，personalization_projection.py 只做 read-side exact join，personalization_calibration.py 只做 frozen artifact 之後的 evaluation。K 只處理 UI/widgets/tests 接線，不修改上述 production services；本 slice 的 service/save/readback 接線由此 ownership 負責。任何模組都不得建立 parallel personal ledger。
+- `PersonalizationDeliveryCaptureService` 接收明確 `PersonalizationDeliveryScope`，建立 immutable capture；不從 profile_id、portfolio、holding、source_id 或 action 猜 scope。
+- `PersonalizationProjectionService` 只做 read-side exact join；不建立 repository、資料表、ledger、active pointer 或寫入副作用。
+- `PersonalizationCalibrationEvaluator` 只做 frozen artifact 之後的 fixed bin-wise Decimal/integer-bp evaluation；fit/evaluation identity、PIT、purge/embargo、delivery status、outcome status 都 fail closed。
+- `RecommendationSaveRequest` 的 save/readback binding 只接受明確 caller-owned scope；正常 recommendation composition 由 `PersonalizationRecommendationSaveAdapter` 產生 `scope_type=local` 的本機研究 scope，不能以 profile／holding 假扮 user，也不能讀 live `last_run_context` 作最後 identity。capture 會附在既有 `RecommendationResultDTO.run_context` 與 candidate provenance，並沿用既有 result persistence 做 exact readback；舊 projection receipt body 不改寫。
+- post-save delivery ACK、retry、CAS/identity conflict、repository save error、cross-scope、late delivery 與未送達狀態只走同一個 capture/result path；沒有 ACK 不能升級成 delivered，也不會把 action 缺失編成 accepted。
+- `app_module/decision_continuity_controller.py` 的既有 human action semantics 維持不變；`PersonalizationDecisionRecorder` 只在 read-side verified delivered projection 後，委派既有 `JournalService` JSONL revision append，且本輪不寫 broker、Portfolio order、scheduler 或 active pointer。
+- `scripts/inspect_personalization_contract.py --fixture` 僅使用 in-memory fixture；不讀正式資料根目錄、不啟動 scheduler、不建立 active pointer。任何模組都不得建立 parallel personal ledger。
 
 | 檔案／模組 | 目的 | 邊界 |
 |---|---|---|
 | `app_module/personalization_contract.py`（新增） | typed identity、prediction/outcome/action envelope、status、hash、denominator DTO 與 validation | 不保存資料；只定義 contract，不複製 `DecisionIdentity` 或 Evidence DTO 的既有語意 |
 | `app_module/personalization_projection.py`（新增） | read-only assembler：Recommendation result/projection + Journal revisions + Evidence event/outcome + Paper read adapter + user-declared context | 不建立新 ledger；所有 source 都 exact join；read path 不呼叫會 mkdir/schema/write 的 repository constructor |
-| `ml_module/personalization_calibration.py`（新增） | fixed bin-wise Decimal/integer-bp shrinkage、matched baseline/challenger metrics、CI、cold-start policy | 不呼叫／修改 learner fit；不改 global active pointer；不使用 post-hoc best-model selection |
-| `app_module/journal_service.py`、`app_module/decision_continuity_controller.py`（最小向後相容修改） | 讓既有 revision payload 可帶 typed personalization envelope、scope、prediction receipt hash、decision kind | 仍使用既有 request id/CAS/revision chain；不新增 `personalization.jsonl`、SQLite ledger 或 parallel portfolio state |
-| `scripts/inspect_personalization_contract.py`（新增） | deterministic fixture/readback runner，產生 contract receipt、hash、counts、metrics、negative-case diagnostics | 使用 temporary fixture root；不得寫正式 DATA_ROOT、formal DB、broker、scheduler 或 active pointer |
-| `tests/test_personalization_contract.py`、`tests/test_personalization_projection.py`、`tests/test_personalization_calibration.py`（新增） | contract、join、metrics、cold-start、dedupe、PIT、rollback negative tests | bounded targeted tests；不先開 full pytest/Qt/scheduler |
+| `app_module/personalization_calibration.py`（新增） | fixed bin-wise Decimal/integer-bp shrinkage、matched baseline/challenger metrics、CI、cold-start policy | 不呼叫／修改 learner fit；不改 global active pointer；不使用 post-hoc best-model selection |
+| `app_module/personalization_projection.py` 內的 `PersonalizationDeliveryCaptureService` | 建立／驗證 generated/persisted/delivered capture、retry identity、既有 result readback contract | 不自行建立新 ledger；save adapter 以既有 recommendation result persistence 保存 capture 狀態，post-save ACK 仍要求 exact result/scope/prediction/CAS identity，舊 projection receipt 不改寫 |
+| `app_module/personalization_save_adapter.py`、`app_module/recommendation_save_coordinator.py` | caller-owned local research scope → generated capture → existing save → exact load/readback → explicit delivery ACK 的 composition binding | 只處理 prediction delivery；scope 不從 profile／holding 推導，無 ACK 保持 persisted/not_delivered，錯誤與跨 scope fail closed，不寫 action 或正式交易狀態 |
+| `app_module/journal_service.py`、`app_module/decision_continuity_controller.py` | human action writer/controller 維持既有語意；JournalService 提供技術性 delivery ACK 的 append/readback | ACK 沿用既有 JSONL revision chain、request identity 與 history-token CAS；不新增 `personalization.jsonl`、SQLite ledger 或 parallel portfolio state |
+| `app_module/personalization_action_recorder.py` | 新 personal action 的受控 facade；保存完整 envelope 並沿用既有 Journal revision／retry | 不 retrofit legacy action；action 必須在 delivery 後，`action_at` 不得早於 `delivered_at`，不寫新 ledger |
+| `app_module/personalization_read_service.py`、`scripts/inspect_personalization_sources.py` | 真實 Recommendation／Journal／Evidence／receipt 的 bounded readonly projection、fingerprint、inventory、分母與 optional evaluator | 不建立 writer constructor、lock、DDL、source writes、learner、promotion 或 order；來源變動時 invalidated |
+| `scripts/record_personalization_action.py` | 明示 scope/result/stock/action/request 的 CLI preflight → 既有 Journal append → exact readback | preflight 失敗不建立 writer；不自動建立 scope、不 retrofit legacy action、不新增 ledger、不授權 order |
+| `scripts/run_personalization_recommendation.py` | 明示 scope/data root/config 執行既有 RecommendationService → save/readback → technical delivery ACK | 無 durable receipt 不保存普通結果；不建立 human action、order 或 parallel ledger |
+| `scripts/inspect_personalization_contract.py`（新增） | deterministic in-memory fixture/readback runner，產生 contract receipt、hash、counts、metrics、negative-case diagnostics | `--output` 只 create-only；不得寫正式 DATA_ROOT、formal DB、broker、scheduler 或 active pointer |
+| `scripts/qa_personalization_mainwindow_save_readback.py`（新增） | 以獨立 process 呼叫正式 `MainWindow()` constructor，走實際 RecommendationView save → result/Journal ACK → read projection → close/workers probe | 只接受明確隔離的 DATA_ROOT／OUTPUT_ROOT；producer 可用 bounded fixture；不替換 window composition、不寫正式 DB、broker、scheduler 或 active pointer |
+| `tests/test_personalization_contract.py`、`tests/test_personalization_projection.py`、`tests/test_personalization_calibration.py`、`tests/test_personalization_runner.py`、`tests/test_personalization_save_integration.py`、`tests/test_personalization_action_recorder.py`、`tests/test_personalization_read_service.py`、`tests/test_personalization_generation_cli.py`（新增） | contract、join、metrics、cold-start、dedupe、PIT、runner、save/readback、ACK、action retry/clock、CLI preflight/append/readback/no-writer gate、producer→save→ACK/custom Journal retry、read source race/WAL/inventory/identity bounds 與 delivery negative tests；另驗證 host integration 與獨立 MainWindow process receipt | bounded targeted tests；不先開 full pytest/scheduler |
 
-production first-slice 的 acceptance 不能只 instantiate DTO：使用既有 RecommendationService → RecommendationSaveCoordinator → RecommendationRepository save/readback 路徑，傳入 delivery_scope、故意不寫任何 action，驗證 persisted RecommendationResultDTO.run_context 與每個 candidate calibration_provenance 仍有相同 scope envelope/hash、projection receipt/result_id 可反查。測試 owner 是既有 tests/test_recommendation_save_coordinator.py 與 tests/test_recommendation_service_calibration_integration.py，必要時只新增 bounded integration case；K 不修改這些 production service。
+shared production first-slice acceptance：使用既有 RecommendationService → RecommendationSaveRequest → RecommendationRepository save/readback 路徑，透過 composition adapter 綁定明確 `scope_type=local` 的 caller-owned research scope，故意不寫任何 action；save 後以 exact `load_result()` 驗證 persisted `RecommendationResultDTO.run_context`、每個 candidate `calibration_provenance` 的 scope envelope/hash，以及 projection receipt/result_id 反查。delivery ACK、retry、CAS/identity conflict、save error、cross-scope、late／未送達均在同一路徑隔離測試；另以獨立 process 的正式 `MainWindow()` constructor probe 驗證真實頁面、window-owned Journal／Repository、save button、ACK、read projection 與單次 close/workers=0；任何未具備 exact readback 的 capture 不可升級成 delivered。
 
 ### 8.2 介面草案
 
@@ -340,72 +354,94 @@ production first-slice 的 acceptance 不能只 instantiate DTO：使用既有 R
 PersonalizationDeliveryScope(
     scope_id: str,
     scope_type: str,
+    delivery_id: str,
     declared_at: str,
     decision_at: str,
-    envelope_hash: str,
+    available_at: str | None,
+    captured_at: str | None,
+    receipt_created_at: str,
+    envelope_hash: str,  # init=False；由 canonical payload 計算
 )
 
-RecommendationService.run_recommendation(
-    ...,
-    delivery_scope: PersonalizationDeliveryScope | None = None,
-) -> list[RecommendationDTO]
+PersonalizationDeliveryCaptureService.capture(
+    *,
+    scope: PersonalizationDeliveryScope,
+    request_id: str,
+    result_id: str,
+    stock_code: str,
+    prediction_id: str,
+    projection_receipt_hash: str,
+    generated_at: str,
+) -> PersonalizationDeliveryCapture
 
-RecommendationSaveCoordinator.persist(
+PersonalizationDeliveryCaptureService.verify_saved_capture(
+    saved_result: RecommendationResultDTO | Mapping[str, Any],
+    capture: PersonalizationDeliveryCapture,
+) -> None
+
+request = RecommendationSaveRequest(
     ...,
-    delivery_scope: PersonalizationDeliveryScope | None = None,
+    personalization_scope=PersonalizationDeliveryScope | None,
+    personalization_request_id=str | None,
+)
+request.persist(
+    *,
+    recommendation_repository: RecommendationRepositoryPort,
+    universe_service: UniverseWatchlistPort | None,
+    recommendation_service: RecommendationEvidencePort,
+    regime_service: RegimeServicePort,
 ) -> RecommendationSaveOutcome
 
-build_inference_projection_receipt(
-    ...,
-    delivery_scope: Mapping[str, Any] | None = None,
-)
-
-PersonalizationDecisionRecorder.record_action(
+PersonalizationRecommendationSaveAdapter.acknowledge_delivery(
     *,
-    personalization_scope_id: str,
-    decision_identity: DecisionIdentity,
-    action: str,
-    decision_kind: str,
-    prediction_receipt_hash: str,
-    request_id: str,
-    action_at: str,
-    actor: str,
-    payload: Mapping[str, Any] | None = None,
-) -> DecisionContinuityRevision
+    recommendation_repository: RecommendationRepositoryPort,
+    journal_service: JournalService,
+    result_id: str,
+    scope_id: str,
+    delivery_id: str,
+    persisted_at: str,
+    delivered_at: str,
+    recorded_at: str | None = None,
+    expected_capture_hashes: Mapping[str, str] | None = None,
+) -> RecommendationDeliveryAckOutcome
 
 PersonalizationProjectionService.build_for_candidate(
     *,
-    personalization_scope_id: str,
     result_id: str,
     stock_code: str,
-    evaluated_as_of: str,
-) -> PersonalizationDecisionEvidence
+    personalization_scope_id: str | None = None,
+    evaluated_as_of: str | None = None,
+    evaluation_cutoff_at: str | None = None,
+    result: Mapping[str, Any] | None = None,
+) -> PersonalizationProjectionResult
 
 PersonalizationCalibrationEvaluator.fit(
-    *,
     fit_rows: Sequence[PersonalizationEvaluationRow],
+    *,
     fit_as_of: str,
     policy: PersonalizationCalibrationPolicy,
-) -> PersonalizationFitArtifact
+) -> PersonalizationCalibrationFitArtifact
 
 PersonalizationCalibrationEvaluator.evaluate(
     *,
-    artifact: PersonalizationFitArtifact,
+    artifact: PersonalizationCalibrationFitArtifact,
     evaluation_rows: Sequence[PersonalizationEvaluationRow],
     evaluated_as_of: str,
-) -> PersonalizationEvaluationReceipt
+) -> PersonalizationCalibrationEvaluation
 ```
 
-實際實作須將 mutable default 改為 immutable／`None` 形式，並沿用現有 DTO 的 strict mapping、date、bp、hash validation。`PersonalizationProjectionService` 回傳 `population_only`、`personal_shadow`、`pending`、`blocked` 等 explicit status，不能只回傳 probability。
+實際實作已將 mutable collection default 改為 immutable／`None` 形式，並沿用 strict mapping、date、bp、hash validation。缺少 `captured_at` 不會補成 `decision_at` 或升級成 verified；delivery capture service 只接受有 verified captured clock 的 scope。`PersonalizationRecommendationSaveAdapter` 僅消費明確 `local` research scope，將 generated capture 綁入既有 result/run_context 與 candidate provenance，save 後 exact load/readback，再由 caller 將 technical ACK 追加到既有 Journal stream 才可在 read-side 視為 delivered；沒有 ACK 保持 persisted/not_delivered。`PersonalizationProjectionService` 回傳 `linked_prediction`、`population_only`、`not_delivered`、`unavailable`、`duplicate_exact`、`duplicate_conflict` 等 explicit status，不能只回傳 probability；receipt 才是 probability／horizon／decision date／model／dataset 的 verified source，context row 不得覆蓋。Calibration artifact 另存 row、prediction、statistical、receipt identity、scope 與 cohort contract hash，並在 evaluate 邊界重新驗證；`PersonalizationDecisionRecorder`／`scripts/record_personalization_action.py` 已提供受控 human-action writer，只有明示且已 delivered 的 projection 才能追加既有 Journal revision，沒有 UI save 自動 action 或 legacy retrofit。
 
 ### 8.3 First-slice definition of done
 
-- fit artifact 與 evaluation rows 分離；任何 exact row/prediction overlap、fit cutoff 後 label 或 policy/overlay hash 不一致都拒絕。
-- delivered scope 在 result/run receipt 產生時已存在；只在 action 時才出現的 scope 不得回填 prediction denominator。
-- evaluation receipt 保存 evaluation_cutoff_at 與當時最後合法 revision；事後 skip/tombstone/edit 不改寫舊 receipt。
+- fit artifact 與 evaluation rows 分離；exact retry 只計一次，任何 row/prediction/statistical identity overlap、fit cutoff 後 label 或 policy/overlay hash 不一致都拒絕。
+- fit/evaluation 必須具有相同 scope 與可比較 cohort contract（tier、source、receipt schema、model、dataset、universe、label、return basis、horizon、cost）；missing lineage 不得推成 verified，natural/replay/fixture 不混樣本。
+- delivered scope contract 在 capture 產生時已存在；只在 action 時才出現的 scope 不得回填 prediction denominator。正常 save path 會先保存並 exact readback capture；只有明確 ACK 才是 delivered，沒有 ACK 仍是 persisted/not_delivered。
+- calibration evaluation 保存 `evaluation_cutoff_at`；cutoff 不得晚於 `evaluated_as_of`，label/outcome 的 exact availability／recorded clock 必須不晚於 cutoff，日期-only 不進 ready denominator。projection 對 action reader 只讀 cutoff 前最後合法 revision，並以 timezone-aware action/recorded/created clock 排序；事後 skip/tombstone/edit 不改寫既有 capture／receipt。
 - reliability CI 明確標 descriptive-only；在 paired decision-day/overlap-block method 未完成前，adoption_confidence_status 必須是 adoption_not_evaluable。
-- 相同 scope + exact result/stock + same request id 的 retry 不增加 revision；不同 payload 被拒絕並留下 conflict receipt。
-- 無 result id、scope 缺失、`source_id` 偽裝 result、holding-only、future available date、source/hash/cost/horizon mismatch 全部 fail closed。
+- 相同 scope + exact result/stock + same delivery/request/prediction identity 的 retry 不增加 calibration row；不同 payload 被拒絕並留下 conflict diagnostic。save/readback ACK 的 CAS 在既有 result path 內做 exact compare-and-set；`PersonalizationDecisionRecorder` 具備 request/revision idempotency、既有 Journal append/readback 與 stream lock，但不把一次 read-state 後的 human action head CAS 宣稱為本輪已完成。
+- save error、readback 缺 row、cross-scope／cross-result、ACK 重複或 identity conflict、late delivery 與未送達均不污染 prediction identity／denominator；ACK writer 只可在既有 result persistence 內做 exact compare-and-set，不建立 parallel ledger。
+- 無 result id、scope 缺失、`source_id` 偽裝 result、holding-only、future available date、source/hash/cost/horizon mismatch、context row 覆蓋 verified receipt、outcome prediction/horizon/label/return contract alias 全部 fail closed。
 - projection 可從既有 sources 重建 exact prediction provenance；不在 UI 或 evaluator 中重算 model output。
 - pending、matured_missing、invalid、natural、paper、declared、replay、synthetic 的 counts 與 denominators 可區分。
 - n=0／sparse 的 effective probability 等於 population；personal challenger 只在 fixed policy 下產生 shadow metrics。
@@ -427,38 +463,18 @@ PersonalizationCalibrationEvaluator.evaluate(
 
 ### 9.2 新 runner receipt contract
 
-`scripts/inspect_personalization_contract.py --fixture` 後續應輸出 `personalization-contract-runner-receipt.v1`，至少包含：
+`scripts/inspect_personalization_contract.py --fixture` 已輸出 `personalization-contract-runner-receipt.v1`；目前採 nested `counts`／`metrics`／`hashes`，至少包含：
 
 ```json
 {
   "schema_version": "personalization-contract-runner-receipt.v1",
-  "run_id": "...",
-  "evaluated_as_of": "YYYY-MM-DD",
-  "personalization_scope_id": "explicit-scope",
-  "scope_type": "user",
-  "input_prediction_count": 0,
-  "linked_prediction_count": 0,
-  "prediction_available_count": 0,
-  "outcome_ready_count": 0,
-  "action_utility_count": 0,
-  "pending_maturity_count": 0,
-  "matured_missing_count": 0,
-  "invalid_count": 0,
-  "duplicate_exact_count": 0,
-  "duplicate_conflict_count": 0,
-  "baseline_metrics": {},
-  "personal_challenger_metrics": {},
-  "cohort_counts": {},
-  "source_hashes": {},
-  "delivery_scope_hash": "...",
-  "decision_at": "...+00:00",
-  "captured_at": "...+00:00",
-  "fit_as_of": "YYYY-MM-DD",
-  "fit_row_fingerprint": "...",
-  "fit_policy_hash": "...",
-  "overlay_hash": "...",
-  "evaluation_row_fingerprint": "...",
-  "independence_assumption": "descriptive_only",
+  "mode": "fixture",
+  "bounded": true,
+  "counts": {},
+  "metrics": {"baseline": {}, "personal_challenger": {}},
+  "hashes": {"scope_envelope_hash": "...", "capture_hash": "...", "projection_receipt_hash": "...", "policy_hash": "..."},
+  "projection": {},
+  "calibration": {"evaluation_cutoff_at": "...+00:00", "independence_assumption": "descriptive_only"},
   "adoption_confidence_status": "adoption_not_evaluable",
   "policy_hash": "...",
   "matched_sample_fingerprint": "...",
@@ -468,7 +484,7 @@ PersonalizationCalibrationEvaluator.evaluate(
   "shadow_only": true,
   "formal_order_allowed": false,
   "auto_action_allowed": false,
-  "receipt_hash": "..."
+  "runner_receipt_hash": "..."
 }
 ```
 
@@ -498,29 +514,87 @@ PersonalizationCalibrationEvaluator.evaluate(
 | P-20 | natural sample=0 | offline contract runner 可成功；decision 為 insufficient/retain，不宣稱效果 |
 
 | P-21 | available_at 或 captured_at 在 decision_at 之後、只有同日 date | temporal/PIT invalid；不得只因 available_date 等於 decision_date 而通過 |
-| P-22 | 無任何 action，但 delivery 已帶明確 scope；save coordinator 寫入後 read back | prediction_available denominator 保留 scope；action 狀態為 not_recorded，不需等 action 才成立 |
+| P-22 | 無任何 action，但 delivery 已帶明確 scope；save coordinator 寫入後 read back | （shared hook gate）prediction_available denominator 保留 scope；action 狀態為 not_recorded，不需等 action 才成立 |
 | P-23 | fit/evaluation row id overlap，或 population probability 缺失 | fit/eval 拒絕 overlap；缺 population probability 回傳 unavailable，不使用 rank/percentile |
 | P-24 | evaluation cutoff 後才來的 skip/tombstone/edit | 舊 frozen receipt/denominator 不變；只產生 current/correction 新 receipt |
 | P-25 | 多股同日或 overlap horizon 的普通 Wilson CI | 只標 descriptive_only；adoption_confidence_status=adoption_not_evaluable |
+| P-26 | exact duplicate evaluation row 或 row/prediction/statistical identity alias | exact retry 去重；conflicting alias 或 fit/eval overlap 拒絕 |
+| P-27 | fit/eval scope、tier、source、model、dataset、receipt schema、universe、label contract 不一致 | cohort contract mismatch；不產生 evaluated metrics |
+| P-28 | cutoff 早於 label availability、future outcome clock、evaluated_as_of/cutoff 不一致、date-only ready row | pending/temporal blocked 或 fail closed；不進 denominator |
+| P-29 | action/outcome scope、prediction、horizon、cost、label/return basis 缺失或 alias | not_recorded/conflict；不得升格 action/outcome |
+| P-30 | fit artifact mapping、fit identity、cohort 或 overlay hash 被事後修改 | immutable write failure 或 artifact validation failure |
+| P-31 | context probability/horizon/model/dataset 與 immutable receipt 不同；scope 缺 captured_at | unavailable／population_only；不得使用 context 覆蓋 receipt |
+| P-32 | ready fit row 缺 `outcome_recorded_at` 或僅有 date-level availability | fit precision unproven；拒絕建立 fit artifact |
+| P-33 | artifact `created_at` 早於 `fit_as_of` 或 label/outcome/receipt dependency | fit creation clock conflict；拒絕建立 artifact |
+| P-34 | 正常 RecommendationSaveRequest 由 local composition adapter 建立 scope；不能用 profile／holding 偽裝 user | capture 僅接受明確 `scope_type=local`、verified clock；candidate 與 run_context scope hash 一致 |
+| P-35 | 既有 RecommendationRepository save 後 `load_result()` exact readback | capture、scope envelope、receipt hash/result_id 與 candidate provenance 均可反查；舊 receipt body 不變 |
+| P-36 | delivery ACK／retry／save error／CAS conflict／cross-scope／late／未送達 | 同一 prediction identity 只保留一次有效 delivery；未 ACK 不進 delivered denominator，錯誤與 late 狀態隔離 |
 
-後續實作完成後的 bounded command 建議為：
+### 9.4 真實來源 read／evaluation operational slice
+
+`PersonalizationReadService` 與 `scripts/inspect_personalization_sources.py` 已把上述 projection 從 fixture-only runner 接到既有 Recommendation JSON／metadata、Journal revision／delivery ACK、EvidenceEvent／outcome 與 receipt source。入口要求明確 `scope_id`、`evaluated_as_of`，可選 exact `result_id`／`stock_code`、cutoff、fit artifact 與 bounds；不建立 writer constructor，不 mkdir／DDL／lock，不寫任何正式來源。
+
+Read report 會保存 source fingerprint（bytes、size、mtime、hash），並在任何內容讀取前建立 baseline；Recommendation metadata／JSON、Journal、receipt files 與 Evidence SQLite 主檔及 `-wal`／`-shm` 都納入。Evidence event 與 outcomes 使用同一 read transaction；若來源在讀取期間變動，report 會 `source_consistency_status=invalidated`，不輸出 ready evaluation row 或 evaluator 結果。`source_completeness_status` 另行表示 bounded Journal／Evidence 掃描是否完整：malformed／non-object／read error，以及 exact identity matching rows 超過 bound 會是 `incomplete`，evaluation 與 action preflight 都 fail closed；不會把未知誤標成 `not_recorded`。
+
+bounded inventory 不再靜默切片：report 列出 result／candidate 的 available、selected、excluded、limit、selection order、truncated 與 exclusion reason；exact Evidence result identity 在 `max_events` 前過濾，避免同 symbol 的 sibling rows 擠掉較舊 target。Journal 的 exact `(result_id, stock_code, scope_id)` action／ACK 也在 bound 前過濾，並保留 alias conflict。讀取 service 會 reset in-memory source cache，重用 instance 不會沿用舊 JSONL／Evidence／receipt bytes。
+
+Producer temporal contract 另行區分三種情況：自然 personal entry 由實際 RecommendationService 以 source-latest exact cutoff 產生，caller 的 `--as-of-date` 只作一致性 assertion；顯式舊 cutoff 必須使用 `historical_research_not_as_if_available`，而沒有 mode、cutoff policy、actual decision anchor 或 immutable receipt horizon anchor 一律 fail closed。合法 T-1 只依 aware clock 的 `Asia/Taipei` market date 檢查，不以日期差或 weekday 猜測 session；真實 RecommendationService／receipt integration 同時覆蓋 source-latest T-1 與 explicit historical separation。
+
+目前正式 D 槽 probe 的 `local_research_scope_v1`（2026-09-16）讀到最新 scheduled Recommendation 的 2 個 candidates，但沒有可驗證 personal scope／delivery capture；正式 Journal 為空，故 `population_only=2`、`prediction_available=0`、action／outcome／natural_forward／evaluation rows 皆為 0，並保留 `scope_missing_population_only` 與 `fit_artifact_missing:evaluation_not_run`。這是樣本 pending／missing，不是效果為零；fixture、Paper、user-declared context 與 `source_id` 均不得代替 natural personal evidence。完整 command、hash、WAL coverage 與回歸清單見 [Personalization 唯讀來源 QA](PERSONALIZATION_READONLY_SOURCE_QA_2026_09_16.md)。
+
+本輪已執行的 bounded command：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/test_personalization_contract.py tests/test_personalization_projection.py tests/test_personalization_calibration.py -q -o addopts=
+.\.venv\Scripts\python.exe -m pytest tests/test_personalization_contract.py tests/test_personalization_projection.py tests/test_personalization_calibration.py tests/test_personalization_runner.py tests/test_personalization_save_integration.py tests/test_recommendation_save_coordinator.py tests/test_recommendation_service_calibration_integration.py tests/test_decision_continuity_controller.py tests/test_decision_continuity_write_path.py tests/test_ui_qt_decision_desk_main_integration.py -q -o addopts=
+.\.venv\Scripts\python.exe -m pytest tests/test_personalization_read_service.py tests/test_personalization_action_recorder.py tests/test_personalization_generation_cli.py -q -o addopts=
+.\.venv\Scripts\python.exe -m pytest tests/test_ui_qt_update_view_workbench.py -q -o addopts=
+.\.venv\Scripts\python.exe scripts\qa_validate_update_tab.py
 .\.venv\Scripts\python.exe scripts\inspect_personalization_contract.py --fixture
-.\.venv\Scripts\python.exe -m py_compile app_module\personalization_contract.py app_module\personalization_projection.py ml_module\personalization_calibration.py scripts\inspect_personalization_contract.py
+$env:PYTHONIOENCODING = "utf-8"
+$env:QT_QPA_PLATFORM = "offscreen"
+.\.venv\Scripts\python.exe scripts\qa_personalization_mainwindow_save_readback.py `
+  --data-root output\qa\personalization_mainwindow_probe_20260916\data `
+  --output-root output\qa\personalization_mainwindow_probe_20260916\output `
+  --receipt output\qa\personalization_mainwindow_probe_20260916\receipt.json
+.\.venv\Scripts\python.exe -m py_compile app_module\application_ports.py app_module\personalization_contract.py app_module\personalization_calibration.py app_module\personalization_projection.py app_module\personalization_save_adapter.py app_module\recommendation_save_coordinator.py app_module\recommendation_service.py app_module\journal_service.py app_module\recommendation_repository.py app_module\dtos\decision_continuity_dtos.py ui_qt\views\recommendation_view.py ui_qt\main.py scripts\inspect_personalization_contract.py scripts\run_personalization_recommendation.py tests\test_personalization_contract.py tests\test_personalization_projection.py tests\test_personalization_calibration.py tests\test_personalization_runner.py tests\test_personalization_save_integration.py tests\test_personalization_generation_cli.py tests\test_recommendation_service_calibration_integration.py tests\test_ui_qt_decision_desk_main_integration.py
+.\.venv\Scripts\python.exe -m mypy app_module\application_ports.py app_module\personalization_contract.py app_module\personalization_projection.py app_module\personalization_calibration.py app_module\personalization_save_adapter.py app_module\recommendation_save_coordinator.py app_module\recommendation_service.py app_module\journal_service.py app_module\recommendation_repository.py app_module\dtos\decision_continuity_dtos.py ui_qt\views\recommendation_view.py ui_qt\main.py
+.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime
+.\.venv\Scripts\python.exe -m compileall -q ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime
 ```
 
-本輪不執行以上命令；它們是下一個 implementation/QA turn 的驗收路徑，不是本文件的測試結果。
+結果：本輪 training／lineage focused suite 為 `17 passed`；RecommendationService consumer／real receipt temporal integration 為 `12 passed`；personalization read／projection／generation／contract／calibration suite 為 `62 passed`；action／save integration 為 `20 passed`；UI update／workbench 為 `84 passed`；獨立 real MainWindow process probe 為 `1 passed`，`qa_validate_update_tab.py` 為 `25 passed／0 failed／4 skipped`。producer 相關 11 個 source files 的 `mypy` 為 `Success: no issues found`，changed-file `py_compile` 通過。pytest cache 寫入受環境權限警告不影響結果；fixture runner 與 MainWindow probe 只證明隔離工程鏈，不是正式 personal sample。RecommendationService 已補實際 execution clocks、source-latest exact cutoff、可選 clock assertion、合法 T-1 cutoff、explicit historical tier；consumer／receipt 另核對 verified training label registry／contract／return basis，readback 另覆蓋 Journal exact bound／overflow／malformed incomplete、late delivery 與 immutable retry。正式 D 槽仍只做 bounded read-only probe，未執行 scheduler、full runner、資料重建或 generation writer；本輪 shared gate 仍不證明自然效果或 adoption。
 
 ## 10. 具備、待做、自然效果待證
 
 | 分類 | 目前狀態 | 證據／下一步 |
 |---|---|---|
 | 已具備 | population dataset、PIT labels、purged/OOF calibration、candidate/manifest/artifact lineage、inference provenance、active/champion consumer、natural capture/maturity/authority、exact continuity identity/CAS、research-only user-declared、Decimal Paper ledger | 既有 `recommendation_calibration*`、`recommendation_calibration_evidence.py`、`recommendation_calibration_authority.py`、DecisionContinuity/Journal、EvidenceEvent、Paper tests/QA docs |
-| Engineering to do | explicit scope contract、typed action payload、read-only cross-source assembler、fixed personal shrinkage evaluator、same-row metric/CI receipt、negative cases、deterministic inspection runner、scope-specific rollback receipt | 本文件第 3、5、8、9 節；不重寫既有 learner、不新增 ledger |
+| C slice 已完成 | explicit scope/delivery capture contract、三個 clock 分離與 late exclusion、read-only exact assembler、fixed personal shrinkage evaluator、same-row metric/CI receipt、negative cases、deterministic in-memory inspection runner | `app_module/personalization_contract.py`、`app_module/personalization_projection.py`、`app_module/personalization_calibration.py`、`scripts/inspect_personalization_contract.py` 與 bounded tests；不重寫既有 learner、不新增 ledger |
+| Shared gate 已完成 | RecommendationService → RecommendationSaveRequest → existing RecommendationRepository 的 caller-owned local capture/save/readback 接線；MainWindow 注入既有 JournalService，UI save 後由 caller 明確追加 technical delivery ACK，read-side 才可視為 delivered；另有受控明示 action recorder／CLI | `app_module/personalization_save_adapter.py`、`recommendation_save_coordinator.py`、`recommendation_repository.py`、`recommendation_service.py`、`journal_service.py`、`ui_qt/main.py`、`ui_qt/views/recommendation_view.py`、`personalization_action_recorder.py`、real MainWindow process probe 與 action/save integration tests；不回寫 immutable result／receipt，不自動寫 human action |
+| 真實來源 read slice 已完成 | bounded source read／exact projection／diagnostic 與 optional evaluator composition；source bytes／mtime/hash consistency、SQLite WAL snapshot、result/candidate inventory bounds、cache reset 與 no-write missing-root gate | `app_module/personalization_read_service.py`、`scripts/inspect_personalization_sources.py`、`tests/test_personalization_read_service.py`、[read-only source QA](PERSONALIZATION_READONLY_SOURCE_QA_2026_09_16.md)；正式 `local_research_scope_v1` 仍 `population_only=2`，不宣稱 natural effect |
 | Natural effect to prove | 真實 user decision 數量與成熟 natural outcomes、個人 challenger 在 untouched post-cutoff cohort 相對 population 的 calibration/utility/risk 結果、coverage/survivorship、drift、rollback、source/data quality | 必須等 real scope-linked decision/outcome evidence；historical replay、fixture、Paper、user-declared 不能代替 natural proof |
-| 不在本輪 | UI 跨頁接線、Manual、SSOT/Roadmap、L official taxonomy、K cross-page integration、global active pointer、formal order/portfolio/broker | 另立 dependency ticket；本文件只提供 contract/acceptance boundary |
+| Manual 最小同步已完成 | 推薦保存／送達紀錄操作、未採納與 `not_recorded` 判讀、缺 scope、不可覆寫與排錯；增加真實來源唯讀 CLI、inventory／fingerprint／pending 判讀，以及 producer source-latest／historical／T-1 時間語意 | `APPLICATION_MANUAL.md` 與 `PERSONALIZATION_READONLY_SOURCE_QA_2026_09_16.md`；clock 由 RecommendationService actual context／receipt 提供，CLI 只作 optional assertion |
+| 不在本輪 | L official taxonomy、K cross-page integration、global active pointer、formal order/portfolio/broker、個人化 fit artifact 的正式 producer/persistence | RecommendationView/MainWindow 的本輪 save/ACK composition 已接線；本輪只同步 SSOT/Roadmap 的 C 段落；完整跨頁 K、正式 authority 與 real-source fit artifact 另立 dependency |
+
+### 10.1 C 線 completion audit（2026-09-17 working tree）
+
+下表只描述 C-owned bounded engineering 與正式 D 槽目前的證據狀態；fixture／隔離
+MainWindow probe 的通過不計為正式 personal sample，表內測試數字彼此可能有套件重疊，不能相加宣稱效果。
+
+| 項目 | 工程接線狀態 | 正式個人化仍缺／責任歸屬 |
+|---|---|---|
+| training／lineage／consumer | training provenance、label registry／contract／return basis custody、inference provenance、immutable projection receipt 與 fail-closed consumer 已核對；training／lineage `17 passed`、consumer／service integration `12 passed` | 仍是 population／shadow calibration；不把 active candidate 或 receipt 當 personal fit 或 natural effect，需後續 scoped evidence gate。 |
+| service／save／UI prediction capture | RecommendationService 實際 producer clocks → `RecommendationSaveRequest`／existing Repository create-only save/readback → MainWindow／Journal technical ACK 已接線；正常 ACK 不誤報 late，遲交相對 human anchor 會排除 natural credit；action/save `20 passed`、real MainWindow probe `1 passed` | D 槽目前沒有可驗證的 scope-linked capture／delivery ACK。要取得真實 production row，必須由合法 producer／caller 在 intended root 執行新結果並保存 exact readback；不得拿 probe fixture 冒充。 |
+| read／projection／CLI／evaluator | `PersonalizationReadService`、exact Recommendation／Journal／Evidence join、三個 clock、cohort／exclusion／pending／mature denominators、late delivery diagnostics、`record_personalization_action.py` preflight／append／readback 與 fixed Decimal/bp evaluator 已接線；相關 suite `62 passed` | D 槽目前 `prediction_available=0`、action／outcome／evaluation rows 為 `0`；這是 source evidence 缺少，不是 evaluator 宣稱零效果。 |
+| 真實 scope | local research scope 只能在 capture 產生時由 producer context／receipt 綁定，不能由 profile、holding、portfolio 或 source id 猜出；normal local path 可用，但 `local` 不代表人類身份 | 真實 user scope／使用者身份不會由工程自動生成。需由真實使用流程明示或接受 local research scope，並保留 scope envelope；本任務不替使用者創建。 |
+| technical delivery | UI save 與 CLI generation 後的 technical ACK、CAS／retry／readback 已有 bounded path；ACK 只是交付，不是採納 | D 槽沒有真實 ACK。需由實際 producer delivery 產生 persisted／delivered receipt；不能把 saved result 或 producer inference 單獨視為 delivered。 |
+| human action | `PersonalizationDecisionRecorder`／CLI 只在 delivered projection、exact prediction identity 與 label／return／cost／horizon contract 通過後，追加既有 Journal revision；不自動由 UI save 產生 action，不 retrofit legacy action | D 槽沒有 personal human action。必須由真實使用者明示 action／actor／action clock；工程不代填 accepted、skipped、held、buy 或 sell。 |
+| natural outcome／maturity | reader／evaluator 可 exact join EvidenceEvent／Outcome、辨識 pending／matured missing／invalid／duplicate，並分離 natural／paper／declared／replay tier | D 槽沒有 scope-linked natural outcome；需等待同一 prediction 的官方自然價格／outcome producer 在 horizon 後提供可驗證 maturity／availability。Paper、fixture、historical replay、user-declared 不可替代。 |
+| personal fit artifact | evaluator 可驗證 supplied frozen fit artifact 的 row／prediction／statistical／cohort／overlay hash；fixture runner 可在記憶體產生 artifact | 尚無 real-source personal fit artifact 的 producer／durable persistence／operational runner，且缺少足量 eligible／mature rows。這是工程 follow-up，資料樣本仍須由真實 scope／action／natural outcome 提供。 |
+
+因此目前結論是：C 的 capture／read／action／evaluation bounded wiring 已可操作，但正式
+個人化證據鏈仍停在 `population_only`／missing／pending 邊界；不能宣稱 V6 完成、自然效果、
+adoption、promotion 或收益改善。
 
 ## 11. 風險與回滾清單
 
@@ -537,12 +611,23 @@ PersonalizationCalibrationEvaluator.evaluate(
 
 | 檔案 | 變更類型 | 摘要 | 回滾方式 | 風險 |
 |---|---|---|---|---|
-| `docs/06_qa/V6_PERSONALIZATION_CONTRACT_PLAN_2026_09_15.md` | 新增 | V6 identity/statistical/daily-loop/QA engineering plan | 經確認未被引用後移除本新增文件；不還原、不碰其他 dirty files | 僅文件移除風險；無資料、程式、DB 或 scheduler 變更 |
+| `app_module/personalization_contract.py` | 修改 | typed scope/capture/action/evaluation row contract；增加 delivery status/PIT validation | 只回滾本檔 C-owned diff；不還原其他 agent dirty files | 無資料／DB／scheduler 寫入 |
+| `app_module/personalization_calibration.py` | 修改 | fixed bin-wise Decimal/bp fit/evaluate、purge/embargo、maturity/status/CI | 只回滾本檔 C-owned diff；不還原其他 agent dirty files | 無資料／DB／scheduler 寫入 |
+| `app_module/personalization_projection.py` | 新增 | read-only exact projection 與 capture verifier | 移除本新增檔前須確認未被引用；不使用 destructive command | 不建立 repository、ledger 或 pointer |
+| `scripts/inspect_personalization_contract.py` | 新增 | bounded in-memory fixture runner；output create-only | 移除本新增檔前須確認未被引用；不清理正式輸出 | 不讀正式 DATA_ROOT／DB／scheduler |
+| `scripts/qa_personalization_mainwindow_save_readback.py` | 新增 | 隔離根目錄下的 real MainWindow process save／ACK／projection／close receipt probe | 移除本新增檔前須確認未被引用；不清理保留的 QA receipt | 僅 bounded fixture 與 research-only output；不碰正式資料 |
+| `tests/test_personalization_contract.py`、`tests/test_personalization_projection.py`、`tests/test_personalization_calibration.py`、`tests/test_personalization_runner.py`、`tests/test_personalization_save_integration.py`、`tests/test_ui_qt_decision_desk_main_integration.py` | 新增／修改 | bounded contract/projection/calibration/runner/save/readback/ACK/CAS/race/orphan、host integration／Journal injection 與獨立 real MainWindow process receipt probe | 移除本新增測試前須確認未被引用；不碰既有 tests | 僅測試／fixture；worker 關閉狀態有 probe |
+| `app_module/recommendation_save_coordinator.py`、`app_module/recommendation_repository.py`、`app_module/recommendation_service.py` | 修改 | local scope composition、existing result create-only/save/readback、shared SQLite write lock 與 personal capture immutable overwrite guard、正常 execution clocks | 只回滾本檔 C-owned diff；不還原其他 agent dirty files | 既有 recommendation save 相容；personal capture 不可降級或被競態覆寫 |
+| `app_module/journal_service.py`、`app_module/dtos/decision_continuity_dtos.py` | 修改 | 沿用既有 JSONL revision chain 的 technical delivery ACK、history-token CAS 與 readback；human action semantics 不變 | 只回滾本檔 C-owned diff；不還原其他 agent dirty files | 不新增 personal ledger；不寫 human action／order |
+| `ui_qt/main.py`、`ui_qt/views/recommendation_view.py` | 修改 | MainWindow 傳入既有 JournalService；UI save 成功後明確 ACK，失敗顯示簡短 fail-closed 訊息 | 只回滾本檔 C-owned diff；不還原其他 agent dirty files | save 成功但 ACK 失敗時不隱藏結果、不升級 delivered |
+| `docs/06_qa/V6_PERSONALIZATION_CONTRACT_PLAN_2026_09_15.md` | 修改 | 同步實際 C slice、路徑、QA 結果與 shared gate | 只回滾本檔 C-owned diff；不還原其他 agent dirty files | 僅文件變更；無資料、DB 或 scheduler 變更 |
+| `docs/07_guides/APPLICATION_MANUAL.md` | 修改 | 補推薦保存／送達紀錄、未採納／`not_recorded`、缺 scope、不可覆寫與排錯操作說明，以及 source-latest／historical／T-1 時間語意 | 只回滾本段 C-owned diff；不還原其他 agent dirty files | 僅使用手冊變更；不以 CLI clock 取代 producer actual clock |
+| `docs/06_qa/PERSONALIZATION_READONLY_SOURCE_QA_2026_09_16.md` | 新增 | 真實來源 read／evaluation operational gate、WAL／race／inventory regression 與 D 槽唯讀 probe | 移除本新增 QA 文件前須確認未被引用；不清理正式資料 | 僅文件；未寫正式來源 |
 
-本輪不執行任何 destructive rollback command、不清理 `qa-cache-*`、不 reset/checkout 其他檔案、不 stage/commit。後續 implementation 若需要修改 Journal、authority 或 pointer，必須先另開明確 change scope、backup／read-only audit、bounded QA 與專屬 rollback plan。
+本輪未執行任何 destructive rollback command、未清理 `qa-cache-*`、未 reset/checkout 其他檔案、未 stage/commit；Manual 已同步保存／送達、source-latest／historical／T-1 時間語意與上述排錯邊界。create-only metadata failure 若留下 orphan，Repository 保留原檔並允許內容完全相同的 create-only retry，legacy save 對 unknown／orphan／personal data path 均拒絕覆寫。後續若要修改 authority、pointer、正式交易或 scheduler，必須先另開明確 change scope、backup／read-only audit、bounded QA 與專屬 rollback plan。
 
 ## 12. 最終判定
 
-V6 現在最安全、可驗收的下一步不是再造一套 personal learner 或 user ledger，而是把既有 Recommendation／Evidence／Continuity／Paper identity 用 `personalization-decision-evidence.v1` 明確封裝，先完成 offline matched evaluation、cold-start/shrinkage、negative cases、receipt 與 population fallback。
+截至本次 C handoff，最小 `personalization-decision-evidence.v1` contract、capture／read／ACK／明示 action、offline evaluator、negative cases、receipt 與 population fallback 已具備可驗收的 bounded wiring；下一步不是再造 user ledger，而是補 real-source personal fit artifact 的 producer／persistence，並由合法使用流程累積 scope-linked delivery、human decision 與 natural outcome。
 
-只有在 scope-linked natural decision/outcome 足夠、PIT/provenance/cost/label contract 可重算、untouched post-cutoff holdout 與 uncertainty 結果支持時，才可另行審查個人化 adoption；即使如此，仍須保留 fail-closed rollback、no return guarantee、no auto rebalance、no broker order 與 natural/research tier separation。
+只有在上述真實 evidence 足夠、PIT/provenance/cost/label contract 可重算、untouched post-cutoff holdout 與 uncertainty 結果支持時，才可另行審查個人化 adoption；在此之前正式 D 槽維持 read-only／population-only，仍須保留 fail-closed rollback、no return guarantee、no auto rebalance、no broker order 與 natural/research tier separation。

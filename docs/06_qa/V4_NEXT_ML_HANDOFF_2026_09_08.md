@@ -10,7 +10,7 @@
 - `data_module/portfolio_ml_dataset_assembler.py`、`scripts/build_ml_allocation_post_freeze_shadow_input.py`：把已完成 custody readback 的 archive rows 以 memory spool 接到 post-freeze input；archive 與 operational branch 互斥，不複製或改寫 Formal archive。
 - `scripts/run_daily_ml_allocation_orchestration.py`、`scripts/run_daily_ml_allocation_derived_shadow.py`：傳遞 archive／operational source、實際驗 operational bytes hash、嚴格驗 deadline 等於 `decision_at + 5 分鐘`，並保留完整 outer status。
 - `app_module/ml_allocation_shadow_evidence.py`：在 post-inference、collector append 前及 SQLite INSERT 後檢查真實 emission clock；逾時 transaction rollback，不留下 observation 或日 credit。
-- `data_module/ml_daily_price_source_quality.py`、`data_module/ml_pit_year_shard_exporter.py`、`scripts/build_ml_pit_year_shards.py`、`scripts/audit_ml_daily_price_source_quality.py`、`scripts/scheduled/run_ml_raw_pit_refresh.py`：明示 TWSE/TPEX source roots、以 Decimal 語義比對、拒絕跨市場 duplicate、以 bounded route/CSV cache 執行 source-quality guard；scheduled trigger 仍由 Ops 管理，ML wrapper 定義雙 root argv contract。
+- `data_module/ml_daily_price_source_quality.py`、`data_module/ml_pit_year_shard_exporter.py`、`scripts/build_ml_pit_year_shards.py`、`scripts/audit_ml_daily_price_source_quality.py`、`scripts/scheduled/run_ml_raw_pit_refresh.py`：明示 TWSE/TPEX source roots、以 Decimal 語義比對、拒絕跨市場 duplicate、以 bounded route/CSV cache 執行 source-quality guard；scheduled trigger 仍由 Ops 管理，ML wrapper 定義雙 root argv contract，並把完整 candidate rows 串流保存到每次執行獨立的 JSONL sidecar。
 - `data_module/ml_price_availability_contract.py`、`data_module/portfolio_ml_dataset_assembler.py`、`ml_module/historical_feature_builder.py`、`ml_module/historical_label_builder.py`、`scripts/train_ml_allocation_copilot.py`：把 shard 內的 `price_unavailable` contract 綁到 bounded assembler／feature／label consumer；source-quality 研究豁免不會升級為 formal training input。
 - `ml_module/model_lifecycle_registry.py`、`ml_module/shadow_monitoring_service.py`：以既有 lifecycle registry 的單一交易寫入 drift decision／rollback evidence pair，支援 crash rollback、精確 prefix recovery、重跑冪等及矛盾 suffix 拒絕。
 - `ml_module/natural_shadow_pruning_evidence.py`、`scripts/inspect_ml_natural_shadow_pruning_evidence.py`：以既有 shadow sidecar 建立 bounded evidence-only natural maturity／pruning projection；不建立第二 registry、不執行 pruning 或 promotion。
@@ -92,7 +92,9 @@ ML raw source guard 現在要求 production caller 明示兩個 canonical roots�
 
 `daily_price` 固定標為 TWSE、`daily_price_tpex` 固定標為 TPEX；同一 symbol 只在一個 root 出現才選取。兩 root 同值重複列為 `ambiguous`、數值不同列為 `conflict`，兩者都 quarantine，不能以目錄順序覆蓋。價格用 Decimal 值比較，`990.0` 與 `990.00` 相等，但真正價差仍拒絕；每個 selected row 保存 source path、market 與 file SHA。Root 的 2026-09-07 全市場雙 root 唯一路由 read-only 結果為 1,970 rows（TWSE 1,095、TPEX 875、missing／ambiguous／conflict 均 0），證據在 [raw_quality_dual_market_full_day.json](../../output/v4_next_root/raw_quality_dual_market_full_day.json)。
 
-source guard 的 full-history 邊界是 `candidate_sample_limit=64`：`candidate_count`、`classification_counts`、`affected_date_counts` 和長度框架的 `candidate_digest` 累計全量，report 只保留 64 個 evidence samples，並列 `candidate_sample_count` 與 `candidate_samples_truncated`。digest 綁定每一列的日期、代號、分類、detector 關鍵值、SQLite/canonical 關鍵原值、context 與 source file identity，因此 sample limit 不會改變候選集合身份。route cache 最多 8 個日期，兩市場 CSV cache 最多 16 個 date/root entries；不把 4.4m 候選列寫成完整 JSON，也不讓候選列表無界留在記憶體。bounded 回歸包含 sample-limit、digest、同日 route reuse 與 >8-date cache eviction。
+source guard 的 report summary 預設邊界是 `candidate_sample_limit=64`：`candidate_count`、`classification_counts`、`affected_date_counts` 和長度框架的 `candidate_digest` 累計全量，report 只保留 64 個 evidence samples，並列 `candidate_sample_count` 與 `candidate_samples_truncated`。digest 綁定每一列的日期、代號、分類、detector 關鍵值、SQLite/canonical 關鍵原值、context 與 source file identity，因此 sample limit 不會改變候選集合身份。route cache 最多 8 個日期，兩市場 CSV cache 最多 16 個 date/root entries；summary 不把 4.4m 候選列載入無界 list。
+
+scheduled `run_ml_raw_pit_refresh.py` 會為每次執行建立不可覆寫的 `source_quality/<run-id>.json` 與同名 `.candidates.jsonl`。64 筆只屬於 report summary；sidecar 以 JSONL 串流保存全量 candidate rows，manifest 綁定完整 `row_count`、`candidate_digest`、`key_digest`、`unique_key_count`、檔案 SHA、日期／代號排序與 `complete`。wrapper 會獨立逐行重算 file hash、candidate／key digest、row count 及唯一 key；只有 sidecar 完整且 readback 通過時，status 才會標 `candidate_rows_complete=true`。因此 `candidate_samples_truncated=true` 可以與完整 sidecar 的 `candidate_rows_complete=true` 同時出現；兩者不可混讀。sidecar 缺件、截斷、重複／亂序 key、篡改、report／summary mismatch 或寫入失敗都 fail closed，不能發布新 raw PIT。retry 使用新的 run id，不覆寫前一次 report／sidecar。這是 evidence custody 與可還原性補強，不提升 source authority、historical PIT credit、formal training 或 promotion eligibility。
 
 全歷史 read-only 分類已啟動，精確命令如下；它只開 SQLite `mode=ro`／`query_only`、使用 `ingest_guard`（不讀 next row）、不建立 PIT publication：
 
@@ -101,6 +103,12 @@ source guard 的 full-history 邊界是 `candidate_sample_limit=64`：`candidate
 ```
 
 程序於 `2026-09-08T12:52:36.1602195Z` 啟動，於 `2026-09-08T12:56:09.2565722Z` 結束，exit code 為 2（只表示 source gate 有 quarantine candidate）。log 為 [raw_quality_full_history_ingest_guard_20260908.log](../../output/v4_next_ml/raw_quality_full_history_ingest_guard_20260908.log)，報告為 [raw_quality_full_history_ingest_guard_20260908.json](../../output/v4_next_ml/raw_quality_full_history_ingest_guard_20260908.json)，report SHA 為 `sha256:2405da2dc4d34f284494fc2b05feec22c318b154139b1df1d6bf44644c950660`。2014-01-01 至 2026-09-07 的 SQLite scope 有 5,295,781 rows；全量候選 17,830，保留 sample 64，`candidate_digest=sha256:1065040e9faa677fed4c64963b6ddd61d86c4d7050c9deb3ba4950519ebcd276`。分類為 invalid 16,892、CSV mismatch 827、canonical row missing 55、both-sources one-sided scale 33、canonical one-sided scale 23；route selected 5,278,839、missing 16,942、ambiguous/conflict 0。這些數字是 9/7 cutoff 的新 read-only scope，不能與舊 9/8 run 的 4,476,508 candidate 直接計算修復率。process 觀測到約 127.8 MB working set、約 603 MB private bytes；這是該次 bounded read-only run 的觀測，不宣稱硬性上限。此程序不使用 200 GiB reserve 以外的重型 chain，不持有 Raw publish lock，也不讀 fold006+。
+上述 9/8 standalone audit 只有 bounded report，沒有 scheduled builder 的 full-candidate sidecar；因此其 17,830 候選仍只能由 count／digest／分類與 64 samples 對帳，不能宣稱逐筆可還原。新的 scheduled wrapper sidecar contract 只適用於其後以新 run id 產出的 report，不回填或改寫這份歷史 report。
+
+2026-09-17 source-quality follow-up 補強了兩個 fail-closed 邊界：SQLite／canonical raw row 的 `NULL`、空字串、`-`、`--`、`N/A`、`null` 與常見 Unicode dash 只有在四個 OHLC 逐欄同為明確 missing 時，才可進入 research-only `price_unavailable` contract；missing 與真實數值、partial OHLC、volume 不一致、負值／非數值及多 market invalid route 都維持 quarantine。若 canonical raw invalid row 只出現在單一 market，source file 綁定該實際 root；多個 invalid source 不猜檔案。PIT `ingest_guard` 與 retrospective context 以 SQLite 嚴格 `< current`／`> current` 的實際 observation date 路由，不能用 calendar day 或固定 weekday 補 predecessor；ingest guard 仍不讀 future row。source-quality／research pipeline／PIT exporter／scheduled wrapper 的相關回歸為 `63 passed`，mypy 通過；此修補不寫 D、不重建 SQLite、不回填既有 PIT 或授予 formal training credit。
+
+2026-09-17 scheduled evidence follow-up 已把 scheduled builder 的 source-quality report 接成每次執行獨立的 full-candidate sidecar：report summary 仍 bounded 64 rows，但 `.candidates.jsonl` 逐列保存完整候選，manifest／wrapper readback 逐一核對完整 row count、candidate digest、key digest、唯一 key、排序、sidecar file SHA 與 report hash。repo/temp fixture 的 scheduled wrapper 為 `22 passed`，source-quality／PIT exporter 為 `47 passed`；涵蓋 `>64` candidate 的 builder-failure path、成功 path、sidecar 缺件／篡改、duplicate key、retry 不覆寫與 writer abort。readback 只證明本次 builder evidence 可還原，不把 bounded current mapping 變成 historical decision-time authority；不寫 D、不重建 SQLite、不發布新正式 credit，也不代表完整 production consumer、正式訓練或 promotion 已完成。
+截至本交接尚未取得這次修改後的正式下一次 scheduler receipt；需由既有 Ops 排程在正式環境自然產出後，再以 status 的 report／sidecar path、file hash、全量 count／digest／unique key 與 `candidate_rows_complete` 對讀。舊有歷史 report 若只有 bounded samples，候選仍不可逐筆恢復，不能以新 fixture 或新 receipt 回填其缺失。
 
 同一 bounded source route 仍發現 6949 在 2026-09-07 的一側尺度斷裂，不能 blanket 放行。隔離證據為 [raw_quality_6949_source_evidence_20260908.json](../../output/v4_next_ml/raw_quality_6949_source_evidence_20260908.json)，其 previous close `1490.0`（2026-08-26）與 current open `81.9`（2026-09-07）在 SQLite／TWSE CSV 逐值相等，故問題不是 DB/CSV mismatch。TWSE 官方 TWTB7U raw response 明示 6949 於 2026-08-27 停止、2026-09-07 恢復，面額由 `10.00` 變更為 `0.50`，換股率 `20.00000000`；官方 2026-09-07 MI_INDEX raw response 亦保存當日 6949 的 volume `24,486,488`、open `81.90`、close `67.10`。raw bytes、HTTP metadata、SHA 與 receipt 在 [official_sources/twse_20260908](../../output/v4_next_ml/official_sources/twse_20260908)；隔離 candidate 是 [raw_quality_6949_official_action_candidate_20260908.json](../../output/v4_next_ml/raw_quality_6949_official_action_candidate_20260908.json)（SHA `sha256:d98416129df084412d4c3e0033cc8cc6854b10c92964d7c9cbdf9539c0224724`）。
 
@@ -115,6 +123,8 @@ source-quality report 的 candidate count 仍是全量 gate；只有 SQLite 與 
 `ml_pit_year_shard_exporter` 將 contract 寫入 daily-price raw observation；`portfolio_ml_dataset_assembler` 逐行驗證 contract 的 symbol／日期與內容 hash，使用只保留目前 symbol 的 gap lookup，並把 contract schema、gap count、digest 寫入 training header／manifest。label spool 對 benchmark 與 stock 的每個 horizon path 都要求四價完整且不得命中 gap；partial row 因此不會沿用 open／close 產生 outcome。raw dataset 的 `source_quality.research_only=true` 或 `formal_training_allowed=false` 會在 assembler 入口拒絕，不能藉 child dataset manifest 改寫用途；training loader 接受 provenance 欄位但同樣對 research-only source fail closed。
 
 真 shard→assembler→feature／label bounded regression 是 synthetic raw shard（2330 在 2024-01-10 缺 high）：shard 內 contract 可讀，assembler manifest `gap_count=1`，2024-01-06 至 2024-01-10 的 5/10/20/60 日 label sample 不產生；2024-01-11 的 T-1 feature 保留 `daily_prices.最高價` missing，四個成熟 label 仍可讀。測試 log 為 [ml_shard_feature_label_e2e_20260908.log](../../output/v4_next_ml/ml_shard_feature_label_e2e_20260908.log)，1 passed（僅 pytest cache permission warning）。
+
+2026-09-17 current invalid-row follow-up 已完成 8 個不重疊 canonical date batches 的 union：`16,919/16,919` unique keys scanned、`0` not-scanned、`row_field_mismatches=0`。其中 literal marker `15,445/15,445` 與 SQL NULL／空值 `1,467/1,474` 可逐欄判定為等價 unavailable；`20260520/0058`、`1469` 為 canonical missing，`3701`、`6225`、`8467`、`9928`、`9931` 為 selected 但欄位不等價，7 筆全部維持 quarantine。對前述 `16,912` 筆建立並 validate `ml-daily-price-availability.v1` 後，既有 raw-shard exception 對混合 `16,919` 報告仍為 `False`，只有明確 scoped 的 `16,912` research-only subset 為 `True`；feature gap／label-window probe 通過，但 `formal_training_allowed`、formal OOS 與 promotion 仍為 `False`。這是 current source mapping 與 consumer boundary 證據，不是歷史 decision-time custody，也不等於 RawPIT 全部完成。相關 C 槽 receipts 為 `raw_pit_current_invalid_mapping_20260917_cumulative_all_batches_actual_previous.json` 與 `raw_pit_price_unavailable_consumer_diagnostic_20260917.json`；沒有寫 D、重建 SQLite、回填舊 PIT 或啟動訓練。
 
 ## 自然 shadow 與有效性判斷
 
@@ -642,5 +652,17 @@ ledger 8 rows、market price bounded read 491 rows；結果為 `degraded` 且 wa
 `no_exit_transition_rows`，沒有任何自然 closed 或 counterfactual credit。這次 readback
 也明示 market SQLite 沒有 row-level availability 欄位，因此目前資料只能供成熟 outcome
 的 read-time fallback，不能替 proposal 建立 anchor PIT credit。calendar 與 market、ledger
-皆是 `query_only/read_only`，此 probe 沒有寫 D 或改來源。實際自然 caller
-仍需由 Ops 將上述參數接到既有每日任務；本片沒有改 Ops source／health／caller 檔案。
+皆是 `query_only/read_only`，此 probe 沒有寫 D 或改來源。上述 9/8 readback 是歷史
+基線；2026-09-17 對正式 D 的唯讀核對已確認 9/9–9/16 八次自然執行都產出
+`exit_effectiveness` artifact，且八份均為 `degraded`、`transition_count=0`、
+`no_exit_transition_rows`，hash 都與各自 child log receipt 相符。9/16 outer receipt
+另顯示 child return code `0`，所以 Exit caller 已接到既有每日任務；目前零 rows
+是因 transition SQLite 的五筆資料都是 `WATCH→WATCH` proposal，並沒有
+`EXIT_CANDIDATE`。
+
+剩餘工作是補同日 Paper health baseline、stable entry lineage、reviewer thesis、
+PIT condition／Decimal metrics 與正式 policy，讓 evaluator 在真實來源下有機會產生
+可治理的 `EXIT_CANDIDATE`；再等 reviewer-approved transition 與實際 Paper fill／
+closed ledger 才能形成 Exit effectiveness credit。沒有這些 input 前，不能把
+`no_exit_transition_rows` 轉成 closed、counterfactual 或人工 action，也不應把
+outer `failed/exit_code=2` 誤診為 Exit caller 未接線。

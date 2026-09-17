@@ -601,6 +601,26 @@ calendar renewal consumer、遞增 clock idempotence 與 human precedence；同�
 source／evaluator／scheduled caller 回歸套件合計 `90 passed`。source／candidate／
 evaluator／policy producer 目標檔案的 mypy 與 py_compile 均通過。
 
+2026-09-17 的 follow-up 進一步確認兩條線不可混讀。9/16 的
+`baldr-paper-portfolio-daily` Task Scheduler task 確實在 16:15 啟動，但最後結果為
+`-1073741510 (0xC000013A)`；isolated Paper producer 在等待 Taipei 08:30 時被終止，
+所以 repository state 的最新 snapshot 仍是 9/14。Health reader 取 9/14 是「最新可得
+且不跨日冒充」的正確 fallback，不是錯 root，也不能把它改成 9/16。Task Scheduler
+Operational log disabled，確切終止者保持 unknown；排程 principal／trigger 未在本輪
+修改。
+
+同日 recommendation forward branch 的真正 repo 缺口是 calendar selector：approved
+policy 的 immutable 9/7 calendar pin 已過期，但 repository calendar refresh 已在 9/14
+產生 renewed exact cache，9/15／9/16 status 亦選到該檔。已修 scheduled recommendation
+caller 讀取並 hash-revalidate `official-calendar-refresh-status.v1` 的 current selection；
+candidate／binder 同時保留 policy pin custody 與 `calendar_observed_path`／
+`calendar_observed_sha256`，不改 approved policy bytes。這只能讓 future run 有正確的
+current official-calendar observation；不會回填 9/15／9/16 candidate、entry、binding 或
+human thesis。entry 仍須 policy 生效後的 `natural_entry_verified` Paper fill lineage，
+machine contract 仍標示 `human_approval_required=true`、`auto_action_allowed=false`。
+定向隔離測試與 mypy 結果已記於
+`docs/06_qa/DECISION_EVIDENCE_CAPTURE_CLOCK_QA_2026_09_16.md`。
+
 ### 工作區清理與測試清冊收尾（2026-09-08）
 
 本輪採兩批有限清理。第一批只處理受保護根目錄之外的 repo bytecode／pytest cache：
@@ -647,6 +667,14 @@ wrapper 回傳非零；`degraded` 仍保留研究證據但會在狀態中顯示�
 `broker_order_allowed=false` 契約不變，未寫 transition、未下單。
 
 Exit caller、producer、CMD、scheduled wrapper 與 read-only guard 定向驗證為
-`31 passed`（pytest cache 因活動程序／權限限制的既有 warning 不影響結果）。尚待
-下一個自然 05:15 run 以真實 source 產出第一份 child receipt；在自然 receipt 出現
-前，不把 registration 或 mock subprocess 測試宣稱為 live Exit evidence。
+`31 passed`（pytest cache 因活動程序／權限限制的既有 warning 不影響結果）。這段
+歷史測試敘述已由 2026-09-17 的正式 D 唯讀 readback 更新：9/9–9/16 已有八份
+`exit_effectiveness/YYYYMMDD.json` 與對應 child log，八份均為
+`status=degraded`、`transition_count=0`、`no_exit_transition_rows`，且 artifact
+file hash 與各自 log receipt 相符；9/16 child return code 為 `0`。因此 caller 已
+在既有 05:15 path 實際執行，剩餘問題是 source／thesis／condition／metrics 與
+真正 transition input，不是 registration 或 subprocess wiring。
+
+目前五筆 Position Health transition rows 全部是 `WATCH→WATCH` proposal，沒有
+`EXIT_CANDIDATE`；Exit producer 回報零 rows 是正確的 fail-closed／research-only
+結果，不能被解讀為漏接 caller，也不能用人工 JSON／SQLite 補出 transition。

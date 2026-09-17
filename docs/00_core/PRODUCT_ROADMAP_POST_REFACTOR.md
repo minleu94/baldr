@@ -5,11 +5,43 @@
 > **2026-07-12 純工程狀態**：Gate 2–7 的批准工程包已完成，涵蓋 Evidence/V3、P0 source contracts/shadow adapters、Paper Portfolio、Position Health/Exit、完整結構化傳統 ML shadow challenger、closeout verifier 與控制中心。這只代表 `pure_engineering_complete`；Gate 2 真實週期、Gate 3 逐來源接受、Gate 4/6 paper/exit 時間證據、Gate 5 人工 pruning 決議、Gate 7 shadow days/revalidation/promotion review 仍由 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) 管理，不能標成 formal product closeout。
 
 > **建立日期**：2026-07-11
-> **最後更新**：2026-09-15；本輪基線為已提交 `0219d709`，並承接 Qt 修復 `9a9e778b`，不新增產品版號。
+> **最後更新**：2026-09-17；本輪基線為已提交 `0219d709`，並承接 Qt 修復 `9a9e778b`，不新增產品版號。
 > **定位**：本文件是安全重構完成後的產品方向權威，負責定義 baldr 為何存在、要協助哪些投資決策、能力演進順序與投資有效性 Gate。
 > **工程落地**：未來六個月的交付物、依賴、測試與 Exit Criteria 以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md) 為準。
 > **現況邊界**：目前完成狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準；本文件中的 Target capability 不代表已實作。
 > **安全邊界**：Investment Advice（投資建議）不等於 Broker Execution（券商執行）。本 Roadmap 不授權自動下單、保證獲利、production ML 或自動策略升降級。
+
+> **2026-09-17 ABC bounded status**：A 的 Paper／calendar／Recommendation receipt 已完成
+> bounded readback；9/17 Recommendation receipt 的 source、calendar 與全部 14 candidate file hash
+> 已由 root 逐欄核對，calendar capture／availability 為 9/14，早於 9/17 candidate decision。
+> 14 筆仍是 candidate-only；`1418` 只有 rejected sell、沒有 filled entry source，維持 unproven。
+> Paper completion 仍要求同一 decision date 的 terminal run、latest／immutable phase receipt、
+> `calendar.available <= decision` 與 source／state hash；heartbeat 舊 snapshot 不構成完成。
+> official-events 的 `prior canonical raw lineage missing` 已定位並修復為 reader compatibility gap；A
+> lineage path 跨檔 `8 passed`（prior-lineage 單檔含 3 tests），isolated next-publication real chain
+> output-only readback（`output/qa/official_event_next_publication_output_only`）為 `40` chain／
+> `28,636` events／`95` raw，coverage gap `0` 且 source bindings 均在 self-contained output 內。
+> 先前 failed latest receipt 仍保留，正式 job 尚未重跑；不能歸類為 raw 缺件或純 external missing。
+> 唯讀 ancestor custody review 亦核對 current 37＋ancestor 43 共 80 個 required raw hash、missing 0
+> 且 raw bytes 全驗證，artifact
+> `official_event_ancestor_custody_review.json` SHA256=`bc4607a46c10513700e1a9c531be81f502e87aac1219327b464f5f703207f280`。
+> formal input readiness artifact 的原始 aware clock 為 `training_as_of=2026-09-17T11:19:45.4764372-07:00`、
+> `created_at=2026-09-17T11:19:46.502565-07:00`；loader 以 `Asia/Taipei` 轉出 `training_as_of_date=2026-09-18`，
+> readiness 為 `0/3`。三個 configured input path 仍為 `clock-20260819`／`prospective_output_not_published`；
+> 這只代表 configured input 缺失，不能外推 D 槽沒有其他產物。
+>
+> B historical context assembly 已保留 observed market／stock date union 的 explicit empty slot，
+> 並將 row-count、observed-calendar exact join、value completeness 與 horizon completeness 分開。
+> `market_indices` DISTINCT 日期不是 official complete session calendar，故 horizon／formal／training
+> credit 均為 false；bounded report `report_hash`=`sha256:06304a44340e3cfad623c2710e6bd84cd1d479950df0c344623ba3a2ad8f1b72` 是排除自身欄位後的
+> canonical logical hash，JSON file SHA256=`f6c3d15bb04f93782c1b42a903a3934fdd30109f6039c0d541c3bf14a7fef698`。
+>
+> C 的 fit producer／persistence／CLI、artifact persistence 與 readback engineering 已 bounded
+> accepted：fit runner／CLI／calibration／read service focused suite `41 passed`，wrong-scope
+> empty-evaluation exit `2` 且不產生 evaluation／verified binding；source fingerprint artifact
+> `c_personalization_fit_acceptance_20260917.json` SHA256=`d45033e0ea8a4c418150df685e96d26d7425872a6c633695f0aa752054f0a3d3`。
+> 正式 D 的 real scope／delivery／human action／natural outcome 仍缺；fixture／replay／`natural sample=0`
+> 不授予 formal／natural credit 或 V6 adoption。全局 ABC 仍 `in_progress`。
 
 > **2026-09-15 Decision Workbench handoff**：`7e029933` 已提交並驗收 A/B/C continuity runtime／跨程序 readback；`9a9e778b` 另驗收 `MainWindow DeferredDelete`、busy 單次 close、實際 OS process exit `0`、TaskWorker／shutdown 25 passed、Update UI 84 passed、validator `25/0/4` 與全域 mypy 621。這些是 V4.1／V4.2 engineering slice 的工程證據，不是 V4 formal closeout：
 > 將 rank、校準機率、成本後機率與 evidence／source／model／dataset metadata 分開呈現，

@@ -4,7 +4,7 @@
 
 > **2026-07-13 系統工程整合**：A～F committed handoff 已由 G 依 SHA、ownership 與 focused suite 驗證，跨流 DTO／JSON composition、唯讀 smoke 與 pure verifier 均成立。這只代表工程整合已驗證；下一步仍是 forward evidence、逐來源人工接受與正式 ML OOS／promotion review，不是 scheduler、production automation 或 formal product closeout。
 >
-> **最後更新**：2026-09-15；本輪基線為已提交 `0219d709`，並承接 Qt 修復 `9a9e778b`，不新增產品版號。
+> **最後更新**：2026-09-17；本輪基線為已提交 `0219d709`，並承接 Qt 修復 `9a9e778b`，不新增產品版號。
 > **工程主線**：`V3.3 Engineering Complete`，進入 `V4.0 Evidence Accumulation Track`；這不是正式 V4.0。詳見 [V3.3 Engineering Closeout](../06_qa/V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)。
 > **Evidence rehearsal**：唯讀 replay / shadow 工程底座另以 `engineering_rehearsal_complete` 收口；它只提供可重跑 diagnostics 與 forward handoff，不會改寫 external Gate 狀態。見 [Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)。
 > **定位**：本文件是 Roadmap Hub，不再保存完整歷史長文。它負責指向目前狀態、6 個月工程路線、系統架構與歷史歸檔。
@@ -43,6 +43,49 @@
 > taxonomy source chain、跨頁一致性及推薦／決策／outcome 追溯整合，與跨市場到個股的其餘呈現／
 > 證據缺口矩陣見
 > [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)。
+
+> **2026-09-17 ABC bounded status**：A 的 Paper／calendar／Recommendation receipt 已完成
+> bounded readback：9/17 Recommendation receipt 的 source、calendar 與 14 candidate file hash
+> 已由 root 逐欄核對；calendar capture／availability 為 9/14，早於 9/17 candidate decision。
+> 14 筆仍是 candidate-only；`1418` 只有 rejected sell、沒有 filled entry source，維持 unproven。
+> Paper completion 仍要求同一 decision date 的 terminal run、latest／immutable phase receipt、
+> `calendar.available <= decision` 與 source／state hash；heartbeat 舊 snapshot 不構成完成。
+> default `calendar=None` → `CALENDAR_CACHE_ROOT` actual-loader 正反例已通過 2 tests。legacy
+> 05:45 9/17 run 為 `passed_with_warnings`；BankTaiwan pending 18／matured 0；raw PIT
+> invalid 7／unavailable 16,913。official-events 的 `prior canonical raw lineage missing` 已定位並
+> 修復為 reader compatibility gap；A lineage path 跨檔 focused QA 為 `8 passed`（prior-lineage
+> 單檔含 3 tests），隔離 next-publication real chain output-only readback（`output/qa/official_event_next_publication_output_only`）
+> 為 `runs=1`、`events=28,636`、`raw=95`、`missing=0` 且 source bindings 均在 self-contained output 內。
+> 先前 failed latest receipt 仍保留，正式 job 尚未重跑；不能歸類為 raw 缺件或純 external missing。
+> 唯讀 ancestor custody review 已核對 current 37＋ancestor 43 共 80 個 required raw hash、missing 0
+> 且 raw bytes 全驗證。artifact `official_event_ancestor_custody_review.json` SHA256=
+> `bc4607a46c10513700e1a9c531be81f502e87aac1219327b464f5f703207f280`。A 的完整狀態見
+> [A operations latest status review](../06_qa/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17.md)。
+> formal input readiness artifact 的原始 aware clock 為 `training_as_of=2026-09-17T11:19:45.4764372-07:00`、
+> `created_at=2026-09-17T11:19:46.502565-07:00`；loader 以 `Asia/Taipei` 轉出 `training_as_of_date=2026-09-18`，
+> readiness 為 `0/3`。三個 configured input path 仍為 `clock-20260819`／`prospective_output_not_published`；
+> 這只代表 configured input 缺失，不能外推 D 槽沒有其他產物。
+>
+> B 已完成 historical feature／label context assembly 修正與 bounded actual-source inventory：
+> feature 依 observed market／stock date union 保留 requested cutoff、market gap 與 stock gap，
+> 不壓縮 missing-middle；label 依 market keyed lookup，缺 stock row 直接 diagnostic／block。
+> `market_indices DISTINCT 日期` 僅為 observed calendar join aid，官方完整 session calendar 未供，
+> 所以 horizon complete、formal/training credit 均 false。最新 report `report_hash` 為
+> `sha256:06304a44340e3cfad623c2710e6bd84cd1d479950df0c344623ba3a2ad8f1b72`（排除自身欄位後的
+> canonical logical hash），JSON file SHA256=`f6c3d15bb04f93782c1b42a903a3934fdd30109f6039c0d541c3bf14a7fef698`；詳細 path／residual
+> 依 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md) 與 B handoff 為準。
+>
+> C 的 fit producer／persistence／CLI、artifact persistence 與 readback engineering 已 bounded
+> accepted：fit runner／CLI／calibration／read service focused suite `41 passed`，wrong-scope
+> empty-evaluation exit `2` 且不產生 evaluation／verified binding；五檔 explicit-package-bases mypy
+> clean。source fingerprint artifact `c_personalization_fit_acceptance_20260917.json` SHA256=
+> `d45033e0ea8a4c418150df685e96d26d7425872a6c633695f0aa752054f0a3d3`。正式 D 的 real scope／delivery／
+> human action／natural outcome 仍缺；fixture／replay／`natural sample=0` 不授予 formal／natural credit。
+> 9/17 PIT completion audit 另確認 same-day denominator 未驗證、taxonomy publication blocked、security
+> lifecycle 僅 historical research replay、formal sidecar 不存在；DNS pre-response failure 未進 parser，
+> `5371`／`3718` 不 carry-forward，維持 source／formal gate evidence residual。
+> 全局仍 `in_progress`，不因任一 bounded slice 宣稱 V4／V6／formal 完成；目前 module trees mypy 為
+> 630 source files clean（scripts excluded，僅 2 untyped-body notes）。
 
 ---
 
@@ -139,16 +182,17 @@ baldr 是一套可觀察市場、產生有條件且可追溯的結構化投資�
 audit；`0219d709` 的 C P1 next-day inference／projection provenance bounded phase 亦已驗收，
 但 L source chain 與其餘整合仍不是 V4.0 formal、V5 或 V6 closeout。
 
-C 的 P1 provenance 已完成；目前先推進 L 官方 taxonomy source chain，完整跨頁整合排在 L 之後；V6 contract、baseline、
-歷史回放與離線 learning／calibration 可先設計，user decision／outcome evidence 再決定效果宣稱
-與採用。以下矩陣是本文件的短版 Next 入口：
+C 的 P1 provenance 已完成，C-owned personal capture／read／ACK／明示 action／evaluation bounded
+wiring 亦已在工作樹接線；目前先推進 L 官方 taxonomy source chain，完整跨頁整合排在 L 之後。
+V6 的真實 scope／user decision／natural outcome／fit artifact 與 adoption 仍未完成，不能把工程
+fixture／replay／`natural sample=0` 當成效果證據。以下矩陣是本文件的短版 Next 入口：
 
 | Lane／owner | 依賴 | 已完成證據（HEAD 可核對） | 下一驗收 |
 |---|---|---|---|
-| C：canonical learning／lineage | 既有 `421ab844` typed projection、`086ba60c`＋`0aaf0dff` 成本 lane；隔離 shadow root | `0219d709` 的 bounded canonical runner／training lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已提交並驗收：75 tests、mypy 9 source files、ML guard 509 inspected／0 violations；不同 training／inference source／PIT hash 依 shared schema／transform compatibility 核對，immutable receipt 與 normal UI UUID→save→exact readback 可回查，identity conflict fail-closed、rule selection authority 保留 | 維持 receipt／source／natural maturity 的分層觀察，持續拒絕 future／hash／pointer／identity conflict；不以 `natural sample=0` 或 replay 取代自然證據 |
+| C：canonical learning／lineage | 既有 `421ab844` typed projection、`086ba60c`＋`0aaf0dff` 成本 lane；隔離 shadow root | `0219d709` 的 bounded canonical runner／training lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已提交並驗收；本工作樹另完成 C-owned personal contract、verified label custody、Recommendation save/readback、MainWindow technical ACK、read-only projection、明示 action／CLI、late／missing／pending diagnostics、fit producer／persistence／CLI 與 evaluator bounded integration；fit runner／CLI／calibration／read service focused suite `41 passed` 且 wrong-scope exit `2` fail-closed；source fingerprint artifact 已保存，不改 rule selection authority | 維持 receipt／source／natural maturity 的分層觀察；正式 D 槽尚無 real scope／delivery／human action／natural outcome；C engineering bounded acceptance 已完成，正式 scope／natural outcome／formal credit 仍需真實來源與合法使用流程；持續拒絕 future／hash／pointer／identity conflict，不以 fixture／replay／`natural sample=0` 取代自然證據 |
 | L：官方 taxonomy source chain | `89a264f6` bounded PIT reader／caller、官方 raw／clock／universe custody、owner／license | reader／caller bounded slice 已驗收；官方 taxonomy raw producer／v3／publisher／reader／caller **尚未提交**，PDF／preopen completion time 尚待修正 | full raw→v3→publisher→reader→caller chain、官方 hash／coverage／fixed-date readback 與 PDF／preopen completion-time evidence；缺件維持 fail-closed |
 | 整合使用流程／integration owner | C P1 provenance 與 L source chain 輸出；`5a3ed5db`、`a4996cba`、`031e11ab` 的 read-only identity／UI slices | Position Health、`user_declared`、R1 與 PIT reader／caller 各自可核對；尚未證明完整 market→industry→stock→watchlist／portfolio round-trip | 接通同一 decision／source identity 的 read-only journey、跨頁一致性及推薦／決策／outcome 追溯的整合驗收與 degraded fallback；不新增 parallel DB、broker 或正式 writer |
-| V6：個人化／product owner | 可先做 contract、population baseline、歷史回放、離線 learning／calibration、guardrail／rollback；整合使用流程與 real-user evidence 支持後續採用 | 目前只有產品方向，**未開始 V6 implementation**；不把自然樣本當成設計前置 | 先完成可回放的 user-level projection／baseline／calibration contract；再以真實 user decision／outcome sample、negative evidence 與既有門檻決定效果宣稱與採用；不得保證報酬、隱藏負證據或自動調倉 |
+| V6：個人化／product owner | C-owned contract、population fallback、歷史／fixture evaluator、real-source read／save／ACK／明示 action、fit producer／persistence／CLI bounded slice 已具備；fit runner／CLI／calibration／read service 的工程 bounded acceptance 已完成，仍維持 shadow／research-only | C 工程入口已接線，但 **完整 V6 implementation／adoption 尚未完成**：正式 D 槽仍無 real scope／delivery／human action／natural outcome；不把 fixture／replay／`natural sample=0` 當 real-source sample 或效果證據 | 累積真實 scope-linked user decision／natural outcome 與 negative evidence，再以既有門檻決定效果宣稱與採用；不得保證報酬、隱藏負證據或自動調倉 |
 
 自然 forward、同 scope calibration、05:50 後續正常排程與 V4 formal gates 仍是獨立觀察或
 外部驗收線；策略／模型效果不保證逐日或逐期單調改善。

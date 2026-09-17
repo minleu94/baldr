@@ -70,6 +70,8 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_official_trading_calendar.py": "service-oracle-data-market",
     "tests/test_official_calendar_bundle.py": "governance-doc-tooling",
     "tests/test_official_phase3c_fetcher.py": "service-oracle-data-market",
+    # A official market-event prior-lineage reader compatibility / isolated chain QA
+    "tests/test_official_market_event_prior_lineage.py": "service-oracle-data-market",
     "tests/test_ml_direct_chain_maintenance.py": "governance-doc-tooling",
     "tests/test_phase3c_backfill_runner.py": "service-oracle-data-market",
     "tests/test_tdcc_shareholding_historical_boundary.py": "service-oracle-data-market",
@@ -853,7 +855,9 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_portfolio_ml_direct_volume_carry.py": "service-oracle-data-market",
     "tests/test_portfolio_ml_target_diagnostics.py": "service-oracle-research-backtest",
     "tests/test_post_freeze_shadow_decision_scope.py": "governance-doc-tooling",
+    "tests/test_ml_direct_checkpoint_provenance_recovery.py": "governance-doc-tooling",
     "tests/test_qa_ml_direct_ooc_shared_reuse.py": "governance-doc-tooling",
+    "tests/test_qa_validate_price_unavailable_consumer_scope.py": "governance-doc-tooling",
     "tests/test_recommendation_profile_policy.py": "service-oracle-recommendation",
     "tests/test_scheduled_formal_input_producer.py": "write-risk-dry-run-required",
     "tests/test_scheduled_paper_execution_wrapper.py": "governance-doc-tooling",
@@ -869,6 +873,24 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_stock_research_report_service.py": "general-unit-keep-in-pytest",
     "tests/test_ui_qt_stock_research_report.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ui_qt_stock_research_navigation.py": "ui-healthcheck-candidate-bridge",
+    # Previously foreign residuals now explicitly classified; no direct bridge implied
+    "tests/test_cross_page_decision_journey_mainwindow.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_db_lock_wait.py": "service-oracle-data-market",
+    "tests/test_pit_taxonomy_daily_source.py": "service-oracle-data-market",
+    "tests/test_review_warning_classification.py": "governance-doc-tooling",
+    "tests/test_security_lifecycle_caller.py": "service-oracle-data-market",
+    "tests/test_security_lifecycle_contract.py": "general-unit-keep-in-pytest",
+    # C V6 personalization bounded engineering QA; pytest-only, no direct UI bridge
+    "tests/test_personalization_action_recorder.py": "service-oracle-recommendation",
+    "tests/test_personalization_calibration.py": "service-oracle-recommendation",
+    "tests/test_personalization_contract.py": "service-oracle-recommendation",
+    "tests/test_personalization_fit_cli.py": "service-oracle-recommendation",
+    "tests/test_personalization_fit_runner.py": "service-oracle-recommendation",
+    "tests/test_personalization_generation_cli.py": "service-oracle-recommendation",
+    "tests/test_personalization_projection.py": "service-oracle-recommendation",
+    "tests/test_personalization_read_service.py": "service-oracle-recommendation",
+    "tests/test_personalization_runner.py": "service-oracle-recommendation",
+    "tests/test_personalization_save_integration.py": "service-oracle-recommendation",
 }
 
 

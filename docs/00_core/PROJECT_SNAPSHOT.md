@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-> **2026-09-15 HEAD 校準**：目前文件基線為已提交 `0219d709`（C P1 bounded
+> **2026-09-17 HEAD 校準**：目前文件基線為已提交 `0219d709`（C P1 bounded
 > next-day inference／projection provenance），並承接 `9a9e778b` 的 Qt 關閉修復。已驗收的 bounded slices 包含
 > `5a3ed5db`＋`ef594007` Position Health、`a4996cba` `user_declared`、`031e11ab` Continuity
 > Review Workbench R1、`89a264f6` PIT reader/caller、`086ba60c`＋`0aaf0dff` BankTaiwan
@@ -10,10 +10,109 @@
 > default UUID → save → exact readback 與 identity conflict fail-closed；rule top-N selection
 > authority 保留不變。相關 bounded QA 為 75 tests、mypy 9 source files、ML boundary guard
 > 509 inspected／0 violations，詳見 [P1 provenance audit](../06_qa/DAILY_PROBABILITY_LEARNING_NEXT_INCREMENT_AUDIT_2026_09_15.md)。
-> L 的官方 taxonomy source chain、完整跨頁整合、自然 evidence 與 V4 formal Gate 仍待完成。因此下一
-> 順序是 **L source chain → 整合使用流程 → V6 contract／離線設計，再以 user decision/outcome
-> evidence 驗證個人化效果**，
-> 不把目前成果縮寫成 V4／V5／V6 完成。
+> L 的官方 taxonomy source chain、完整跨頁整合、自然 evidence 與 V4 formal Gate 仍待完成；本工作樹另已
+> 接上 C-owned V6 personal capture／read／ACK／明示 action／evaluation bounded slice，但尚未形成正式
+> personal sample。下一順序仍是 **L source chain → 整合使用流程 → 以真實 user decision/outcome evidence
+> 驗證個人化效果**，不把工程接線、fixture、replay 或 `natural sample=0` 縮寫成 V4／V5／V6 完成。
+
+## 2026-09-17 A／B／C bounded status（working tree）
+
+### A Paper／calendar／Recommendation
+
+2026-09-17 的正式 Recommendation receipt 已由 root 逐欄核對 source、calendar 與全部 14
+candidate file hash；calendar capture／availability 為 2026-09-14，早於 candidate decision
+2026-09-17。這 14 筆仍是 candidate-only，不能當 Paper 或 Formal evidence；`1418` 目前只有
+rejected sell、沒有 filled entry source，維持 unproven。Paper 完成判定必須同時有同一 decision
+date 的 terminal run、latest／immutable phase receipt、`calendar.available <= decision` 以及
+source／state hash；heartbeat 舊 snapshot 不構成完成。
+
+Paper 的 default `calendar=None` → `CALENDAR_CACHE_ROOT` actual-loader 正反例已通過 2 tests。
+legacy 05:45 的 2026-09-17 實跑已恢復為 `passed_with_warnings`；BankTaiwan 為 pending 18、
+matured 0；raw PIT 為 invalid 7、unavailable 16,913。official-events 的
+`prior canonical raw lineage missing` 已定位並修復為 reader compatibility gap；A lineage path
+跨檔 focused QA 為 `8 passed`（`tests/test_official_market_event_prior_lineage.py` 單檔含 3 tests），
+隔離 next-publication real chain output-only readback（`output/qa/official_event_next_publication_output_only`）
+為 `runs=1`、`events=28,636`、`raw=95`、`missing=0` 且 source bindings 均在 self-contained output 內。
+先前 failed latest receipt 仍保留；output-only readback 已由 root 以 `_load_prior_publication` 驗證，
+但正式 job 尚未重跑。因此不能歸類為真實 raw 缺件或純 external missing，也不能宣稱 Paper／Formal
+完成。唯讀 ancestor custody review 已核對 current 37＋ancestor 43 共 80 個 required raw hash、
+missing 0 且 raw bytes 全驗證；artifact 為
+`official_event_ancestor_custody_review.json`（SHA256 `bc4607a46c10513700e1a9c531be81f502e87aac1219327b464f5f703207f280`）。Paper 既有
+9/7 與 repository 9/14 狀態及 runstate 缺口仍保留，詳見
+[A operations latest status review](../06_qa/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17.md)。
+
+正式 input readiness artifact（`formal_input_readiness_20260917.json`，SHA256
+`e75d4130d486dd2b6bae0dae532afc8040765ff51e2f8f53497738b24a839614`）的原始 aware clock 為
+`training_as_of=2026-09-17T11:19:45.4764372-07:00`、`created_at=2026-09-17T11:19:46.502565-07:00`；
+loader 以 `Asia/Taipei` 轉出的 `training_as_of_date` 是 `2026-09-18`，readiness 為 `0/3`。
+三個 configured input path 仍指向 `clock-20260819` 且 `prospective_output_not_published`；這只證明
+configured input 缺失，不能外推 D 槽沒有其他產物。
+
+### B historical context／label assembly
+
+B 已修正 historical feature 的 observed market／stock date union assembly：requested cutoff、
+market gap 與 stock gap 保留 explicit empty slot，不把上一個 market date 冒充 cutoff，也不以
+trailing row count 壓縮 missing-middle session。label builder 以 market calendar keyed lookup，
+缺 stock row 直接 diagnostic／block。bounded report 以 row-count、observed-calendar exact join、
+value completeness 與 horizon completeness 分開；`market_indices DISTINCT 日期` 不是 official
+complete session calendar，因此 horizon complete、formal/training credit 均為 false。報告與 residual
+見 `C:\Users\archi\.codex\visualizations\2026\09\17\01a0aea7-bd95-70c2-8ff6-a355b6b1f216\b_historical_context_inventory_20260917.json`
+及同資料夾同名 `.md`；report `report_hash`=`sha256:06304a44340e3cfad623c2710e6bd84cd1d479950df0c344623ba3a2ad8f1b72` 是排除自身欄位後的
+canonical logical hash，JSON file SHA256=`f6c3d15bb04f93782c1b42a903a3934fdd30109f6039c0d541c3bf14a7fef698`。
+
+### C personalization
+
+C 的 fit producer／persistence／CLI、artifact persistence 與 readback engineering 已 bounded
+accepted：fit runner／CLI／calibration／read service focused suite `41 passed`，wrong-scope
+empty-evaluation 為 exit `2` 且不產生 evaluation／verified binding；C 五檔 explicit-package-bases
+mypy clean。source fingerprint artifact 為
+`c_personalization_fit_acceptance_20260917.json`（SHA256 `d45033e0ea8a4c418150df685e96d26d7425872a6c633695f0aa752054f0a3d3`）。
+正式 D 的 real scope／delivery／human action／natural outcome 仍缺，不能授予 formal／natural
+credit 或 V6 adoption。
+
+9/17 PIT completion audit 亦維持 read-only candidate-only：artifact
+`C:\Users\archi\.codex\visualizations\2026\09\17\01a0aea7-bd95-70c2-8ff6-a355b6b1f216\PIT_COMPLETION_AUDIT_20260917.json`
+SHA256=`38fbb42fd6134e70068a01454b659094610d3783c160c39eb42991fe8d7796cf` 記錄的 denominator
+refresh attempt 在 DNS／HTTP response 前失敗，未進 CSV parser；同 URL 的 9/11 已有可解析 artifact，故不定性
+為 parser code defect。另有晚到的唯讀 transport probe receipt
+`output/qa/pit_denominator_urlopen_transport_probe_20260917_receipt.json`：單次
+`_fetch_one`＋`urlopen` 於 `2026-09-17T19:18:23Z–19:18:26Z` 得 HTTP 200、672,624 bytes，body
+SHA-256=`7954eb03c42e22704f71ff39ef7e20c900b0334b9661cb97d1f086f813b53e30`，與 requests
+結果相同且 URL metadata 無漂移。這只證明該觀測時點的 transport／URL metadata 可用；觀測晚於
+9/17 PIT cutoff，不能回補 same-day denominator，也不能授予 formal sidecar／Paper／formal credit。
+9/17 same-day denominator／taxonomy publication 仍未完成，security lifecycle 僅 historical research
+replay、formal input／owner license gate 與 real scope／human action／natural outcome 仍缺；parent `5371`
+與 current `3718` 不得 carry-forward。既有 residual 依序分為 D read-only／candidate10 apply 與 heavy
+rebuild holds、未來合法時窗的新 PIT／Paper capture 與 actual terminal receipt、真實 human thesis／actions／
+entry custody 缺件、historical source 缺件、natural maturity，以及 formal input／owner license gates；
+全局 ABC 仍為 `in_progress`，不得宣稱 formal job／Paper／V4 完成。
+
+目前 module trees 全域 mypy 已由 root 以指定範圍驗證為 `Success: no issues found in 630 source files`
+（scripts excluded，僅 2 untyped-body notes）；全局 ABC 仍 `in_progress`，不因 A／B bounded slice
+或 C fit producer 存在而宣稱正式完成。
+
+## 2026-09-17 C 線個人化真實來源接線與 completion audit（working tree）
+
+本工作樹已完成 C-owned 的 bounded wiring：`RecommendationService` 的實際 producer temporal
+context 與 verified training label custody 可經 `RecommendationSaveRequest`／既有
+`RecommendationRepository` create-only save/readback 綁定 local research capture；MainWindow
+save 後由 window-owned `JournalService` 追加 technical delivery ACK。`PersonalizationReadService`
+與 `PersonalizationProjectionService` 以 exact `result_id`／stock／scope／prediction／receipt／
+horizon／cost／label／return identity 讀取既有 Recommendation、Journal 與 Evidence sources，
+分開呈現 prediction／action／outcome／evaluation 分母、pending／missing／exclusion 與 late delivery。
+`PersonalizationDecisionRecorder`／CLI 只在 delivered projection 通過後追加新的 typed Journal
+revision；舊 action 不 retrofit，UI save 也不推導 human action。
+
+| 項目 | C 工程狀態 | 正式 production 尚缺／責任 |
+|---|---|---|
+| prediction／capture／delivery | normal save、technical ACK、retry／CAS／readback 與獨立 real MainWindow process probe 已驗收；probe `1 passed` | 正式 D 槽沒有 scope-linked capture／ACK；需由合法 producer／caller 在 intended root 產生真實新紀錄，fixture 不算樣本。 |
+| 真實 scope | local scope 只在 producer capture 時由明確 context／receipt 綁定，不從 profile／holding／portfolio／source 猜測 | D 槽沒有 real user scope；local scope 不代表人類身份，需真實使用者／owner 明示或接受本機 research scope；本任務不代創。 |
+| human action | recorder／CLI 已有 preflight、exact Journal revision、request retry 與 clock／delivery gate；不自動 action、不改 legacy | D 槽沒有 personal human action；必須由真實使用者明示 action／actor／action clock。 |
+| natural outcome／maturity | read／evaluator 可 exact join、辨識 pending／matured missing／invalid／duplicate，並區分 natural／paper／declared／replay | D 槽沒有 scope-linked natural outcome；需等待同一 prediction 的自然市場結果成熟，Paper／fixture／replay／user-declared 不可替代。 |
+| personal fit artifact | fit producer／persistence／CLI、artifact persistence、reader 與 evaluator bounded engineering 已驗收；fit runner／CLI／calibration／read service `41 passed`，wrong-scope empty-evaluation exit `2` fail-closed | 正式 D 槽仍無 real scope／delivery／human action／natural outcome；fixture／replay／`natural sample=0` 不算 formal／natural sample，不能宣稱 V6 adoption。 |
+
+本段只更新 C 狀態；A／B、L official taxonomy、K cross-page integration、正式 D、scheduler、
+global active pointer、promotion、broker／order 與 V4 formal Gate 的未完成／外部責任維持原判定。
 
 ## 2026-09-15 PIT 產業來源 reader 與 caller 驗收
 
@@ -292,10 +391,13 @@ V4 formal completion：
 仍可施工的工程先是 L 的官方 taxonomy 端到端 source chain：補 raw producer／v3／
 publisher／reader／caller，並完成 PDF／preopen completion-time 修正。接著才做 market→industry→
 stock→watchlist／portfolio 的整合使用流程，以及跨頁一致性及推薦／決策／outcome 追溯的整合驗收；
-這些不需等待 V4 formal closeout，但目前尚未驗收。V6 contract、population baseline、歷史回放、
-離線 learning／calibration、guardrail 與 rollback 可先設計；效果宣稱與 user-level adoption 再依
-使用者 decision／outcome 的長期證據、sample、negative evidence 與既有門檻推進。historical bootstrap、controlled capture、shadow natural sample `0`
-與任何 scheduler registration 都不折抵 natural／formal 門檻；策略評估也不保證逐日準確率改善。
+這些不需等待 V4 formal closeout，但目前尚未驗收。C 的 personal capture／read／明示 action／
+evaluation bounded wiring 與 fit producer／persistence／CLI 已在工作樹可核對並完成工程 bounded
+acceptance；fit runner／CLI／calibration／read service 的 source fingerprints 與 41-pass QA 見
+ `c_personalization_fit_acceptance_20260917.json`。正式 D 仍需真實 user decision／natural outcome
+ 的長期證據、sample、negative evidence 與既有門檻，才能推進 adoption。
+historical bootstrap、controlled capture、fixture、shadow natural sample `0` 與任何 scheduler
+registration 都不折抵 natural／formal 門檻；策略評估也不保證逐日準確率改善。
 
 ## 2026-09-12 V4.1 A 線第二輪歷史研究與候選方法包
 

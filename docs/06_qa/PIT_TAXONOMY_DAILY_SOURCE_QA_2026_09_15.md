@@ -12,7 +12,7 @@
 - 1,928 個 common-equity、3 個明確 TDR excluded、0 個修正後真實 type/market conflict；相對於舊的 2026-08-25 frozen parent 與本次 2026-09-16 score-bearing parent，研究 join 都保留 `5371` missing，故沒有取得 formal acceptance；這不把舊 parent 的缺漏／缺 scores 變成未來每日 source 的永久前提。
 - request start 與 source bundle completion 已分離；實際 live fetch 完成後重新取得 clock，completion 跨台北 08:30 會阻擋，不把 metadata completion 改寫成 request start。
 
-未執行 stage／commit；本 QA 檔、source card 與 implementation 變更均保留在 working tree，待主 agent 依 repo gate 審查。
+B data／lifecycle implementation 已由分批提交任務記錄於 `0bfd69ac`；目前共同基線為 `f4d0744b`。本輪釋出後追加的 caller 型別收窄與本段 QA 更新刻意保留為未提交工作樹變更，交由主 agent 依 repo gate 整合；本紀錄仍不是 formal credit 或 production promotion。
 
 ## 來源 custody 與可重現 evidence
 
@@ -217,6 +217,18 @@ timing contract：
 - postcutoff runner 只讀指定 `pit_taxonomy_preopen/YYYY-MM-DD/bundle_manifest.json`，不 refetch、不以 latest bundle 代替當日 preopen evidence。
 - publisher 只做 custody／schema／license／readback gates，不把 candidate 推成 formal recommendation；industry caller 不對缺漏或 excluded security 產生 industry strength input。
 
+### Security lifecycle caller → publisher → reader → industry traceability
+
+同日 lifecycle contract 的研究 fixture 已完成完整唯讀接線，且沒有把 predecessor `5371` 的舊價格、分數或 ticker carry-forward 到 successor `3718`：
+
+- source publication date 為 `2026-09-03`；company／classification／security source completion 分別為台北 `06:00`／`06:10`／`06:20`，preopen capture 為 `07:55`，decision cutoff 為 `08:30`。所有來源完成時間均早於 cutoff，publication、available、captured 與 decision 時間維持分離。
+- publisher receipt 的 `status=formal_source_publication` 僅表示 sidecar 通過 custody／schema／license/readback gate，不代表 production formal credit；reader 回傳 `status=accepted`、`industry_filter_usable=true`。
+- reader 以 verified taxonomy identity map 補足 row-level optional `security_type`：`3718=common_equity`、`9103=tdr`；因此可保留已知的 `membership_security_type_unrecorded` warning，但 TDR 仍以 taxonomy eligibility 明確 excluded，不把此 degraded warning 升格為 publisher blocker，也不放寬 special-security guard。
+- full PIT denominator 為 `2`，eligible `1`、excluded `1`、unknown `0`；industry coverage 使用 `mapping_mode=pit_accepted_prospective` 與 `coverage_denominator=accepted_pit_membership_rows`，只將 `3718` 送入光電業 constituent，且 readback lineage 暴露 `taxonomy_identity_path` 與 source／sidecar hashes。
+- successor 只使用自己的 `2026-09-03`、`09-04`、`09-07`、`09-08`、`09-09` trading sessions；warm-up `5` 完成後仍維持 `HISTORY_WARMUP_COMPLETE_REQUIRES_SCORER`，不產生新 score，也不授予 formal／natural credit。
+
+這條 caller chain 的適用邊界仍是 research-only：2026-09-16 的 real-source capture 不是 production historical PIT，`5371` 的 current official exact join 仍缺件，`3718` 必須使用自己的價格／交易日／warm-up evidence；不得以舊 parent、broker、scheduler 或自然重跑補足。
+
 ## Test／static verification evidence
 
 以下均在 repository root `C:\Projects\PythonProjects\technical_analysis` 執行；pytest 的唯一 warning 是既有 `.pytest_cache` 權限不足，非 test failure。
@@ -240,10 +252,26 @@ $env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m pytest tests\test_p
 
 stdout／result：`81 passed, 1 warning`。warning 是既有 `.pytest_cache` 權限不足，非 test failure。
 
+### Lifecycle caller focused verification
+
+分批提交任務在同一 B baseline 執行完整 data／PIT regression：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_pit_taxonomy_daily_source.py tests\test_security_lifecycle_caller.py tests\test_formal_rule_source_producer.py tests\test_pit_industry_callers.py tests\test_pit_sector_membership_reader.py tests\test_pit_preopen_schedule.py tests\test_formal_pit_sector_publisher.py tests\test_formal_pit_sector_publisher_cli.py tests\test_formal_runtime_roll_forward.py -q -o addopts=
+```
+
+delegated result：`103 passed, 1 warning`；warning 為既有 `.pytest_cache` 權限不足。釋出後本線以以下精確命令聚焦執行 `test_lifecycle_caller_wires_published_new_cohort_to_pit_and_industry`：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_security_lifecycle_caller.py -k lifecycle_caller_wires_published_new_cohort_to_pit_and_industry -q -o addopts= --tb=short
+```
+
+結果為 `1 passed, 1 deselected, 1 warning`；warning 同樣不是 test failure。原始 tool evidence 由 reviewer 以提交任務 command execution 定位：targeted mypy `exec-a7a13180-ba38-426d-859b-5a73711ae677`、focused pytest `exec-7dcd7307-30f3-43e4-b44c-7e7721291e75`、py_compile `exec-94b5550b-f81b-423c-bb70-841a700f96d9`。
+
 ### Python syntax
 
 ```powershell
-$env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m py_compile data_module\pit_taxonomy_definition_adapter.py data_module\pit_taxonomy_security_adapter.py data_module\pit_taxonomy_source_producer.py data_module\pit_sector_membership_reader.py data_module\formal_pit_sector_publisher.py data_module\formal_rule_source_producer.py app_module\industry_strength_service.py scripts\scheduled\run_pit_sector_membership_preopen_capture.py scripts\scheduled\run_formal_pit_sidecar_postcutoff.py tests\test_pit_taxonomy_daily_source.py tests\test_formal_rule_source_producer.py
+$env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m py_compile app_module\industry_strength_service.py app_module\security_lifecycle_caller.py data_module\formal_pit_sector_publisher.py data_module\formal_rule_source_producer.py data_module\pit_sector_membership_reader.py data_module\pit_taxonomy_definition_adapter.py data_module\pit_taxonomy_security_adapter.py data_module\pit_taxonomy_source_producer.py scripts\scheduled\run_formal_pit_sidecar_postcutoff.py scripts\scheduled\run_pit_sector_membership_preopen_capture.py tests\pit_test_support.py tests\test_formal_rule_source_producer.py tests\test_pit_taxonomy_daily_source.py tests\test_security_lifecycle_caller.py
 ```
 
 exit code `0`；stdout empty。
@@ -251,10 +279,10 @@ exit code `0`；stdout empty。
 ### Targeted mypy
 
 ```powershell
-$env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m mypy data_module\pit_taxonomy_definition_adapter.py data_module\pit_taxonomy_security_adapter.py data_module\pit_taxonomy_source_producer.py data_module\pit_sector_membership_reader.py data_module\formal_pit_sector_publisher.py data_module\formal_rule_source_producer.py app_module\industry_strength_service.py scripts\scheduled\run_pit_sector_membership_preopen_capture.py scripts\scheduled\run_formal_pit_sidecar_postcutoff.py --show-error-codes
+$env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m mypy data_module\pit_taxonomy_definition_adapter.py data_module\pit_taxonomy_security_adapter.py data_module\pit_taxonomy_source_producer.py data_module\pit_sector_membership_reader.py data_module\formal_pit_sector_publisher.py data_module\formal_rule_source_producer.py app_module\industry_strength_service.py app_module\security_lifecycle_caller.py scripts\scheduled\run_pit_sector_membership_preopen_capture.py scripts\scheduled\run_formal_pit_sidecar_postcutoff.py --show-error-codes
 ```
 
-本次最後增量檢查的 9 檔 stdout：`Success: no issues found in 9 source files`。較早的原指定 8 檔與依 repo gate 執行的 `ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime --show-error-codes` 也通過，後者為 `Success: no issues found in 621 source files`；只有兩個既有 untyped-function note，沒有 error。
+本次釋出後增量檢查的 10 檔 stdout：`Success: no issues found in 10 source files`。較早的原指定 8 檔與依 repo gate 執行的 `ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime --show-error-codes` 也通過，後者為 `Success: no issues found in 621 source files`；只有兩個既有 untyped-function note，沒有 error。
 
 ## 變更範圍與待辦 blocker
 
@@ -266,8 +294,9 @@ $env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m mypy data_module\pi
 - `data_module/formal_rule_source_producer.py`：研究 caller 的 resolved output-root preflight；正式 scheduler 的 date-scoped default 不變。
 - `data_module/pit_sector_membership_reader.py`、`data_module/formal_pit_sector_publisher.py`：strict bundle/raw/readback gate。
 - `app_module/industry_strength_service.py`：只使用 eligible membership，保留 coverage／excluded／unknown diagnostics。
+- `app_module/security_lifecycle_caller.py`：研究用 predecessor／successor identity、官方交易日驗證、PIT publisher／reader／industry readback 與 no-carry-forward gate。
 - `scripts/scheduled/run_pit_sector_membership_preopen_capture.py`、`run_formal_pit_sidecar_postcutoff.py`：preopen injection 與 exact-date postcutoff read path。
-- `tests/test_pit_taxonomy_daily_source.py`、`tests/test_formal_rule_source_producer.py`、`requirements-runtime.txt` 與本 QA evidence。
+- `tests/pit_test_support.py`、`tests/test_pit_taxonomy_daily_source.py`、`tests/test_security_lifecycle_caller.py`、`tests/test_formal_rule_source_producer.py`、`requirements-runtime.txt` 與本 QA evidence。
 
 尚未跨越的 production gate：
 
@@ -279,3 +308,18 @@ $env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m mypy data_module\pi
 6. 即使 parent／source chain 都齊全，正式 preopen credit 仍須等自然日台北 08:30 前的 raw／metadata／hash custody；本輪 2026-09-16 evidence 為研究 probe，不作 formal／recommendation credit。
 
 相關旁證卡：`output/research_qa/pit_taxonomy/2026-09-15/security_map_qa_card.md`。本檔與旁證卡都只記錄可重現 evidence 與 blocker，不代表 release approval。
+
+## 2026-09-17 late denominator transport probe addendum
+
+Root 另以唯讀方式核對 receipt `output/qa/pit_denominator_urlopen_transport_probe_20260917_receipt.json`：
+實際 `_fetch_one`＋`urlopen` 僅發出一次請求，時間為 `2026-09-17T19:18:23Z–19:18:26Z`，HTTP
+`200`、`672,624` bytes，body SHA-256=`7954eb03c42e22704f71ff39ef7e20c900b0334b9661cb97d1f086f813b53e30`；
+與 requests 取得的 bytes／hash 相同，URL metadata 無漂移。這項證據只表示該晚到觀測時點的 transport
+可用，不能回補已過的 9/17 PIT cutoff，也不能把 same-day denominator、taxonomy publication、formal
+sidecar 或 Paper／formal credit 寫成完成。先前 `PIT_COMPLETION_AUDIT_20260917.json` 所記錄的 DNS／
+HTTP response 前失敗仍是該次 audit 的歷史結果；同 URL 9/11 可解析不代表 9/17 cutoff 已驗證。
+
+目前既有條件維持精確分類：D read-only／既有 candidate10 apply 與 heavy rebuild holds；未來合法時窗的
+新 PIT／Paper capture 與 actual terminal receipt；真實 human thesis／actions／entry custody 缺件；
+historical source 缺件；natural maturity；formal input／owner license gates。正式 D、formal job、Paper 與
+V4 均未完成，亦未啟動 scheduler 或修改正式資料。

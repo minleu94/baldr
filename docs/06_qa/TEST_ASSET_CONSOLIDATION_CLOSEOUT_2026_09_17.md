@@ -1,172 +1,307 @@
-# 測試資產整理與候選處置結案報告
-
+# 測試資產整理與候選處置結案報告（限定補正版）
 > **結案日期**：2026-09-17
-> **基準 Commit**：`639a7789858b413bf61ca626726cc0170b47f35c` (Branch: `dev`)
-> **工作原則**：零破壞性變更、零正式資料修改、零未授權測試刪除、保護契約 100% 保留、分批獨立 Commit。
-
+> **基準狀態**：Branch `dev` (接續 Commit `17135645`)
+> **執行性質**：**限定補正結案**（依據 Reviewer 審查意見落實 AST 無損重算、全量處置逐列核對、新舊母體差集對齊與證據補充，不作誇大宣稱）
+> **工作規範遵守**：零正式資料修改、零未授權測試刪除、保護契約 100% 保留、不 push、不覆寫他人變更、不重跑未修改測試。
 ---
-
-## 1. 執行總結與 Commit 軌跡清單
-
-本次測試資產整理已全面完成第一批小範圍成果落實、剩餘候選逐項深度查核、分析工具去重演算法修復、母體口徑精確對齊與結案收尾。
-
+## 1. 執行摘要與限定補正說明
+本報告為測試資產整理之終局限定補正文件。先前初版（V1）與二版（V2）盤點報告中存在「截短 locations 誤判」、「手填母體總數」、「定性前後矛盾」及「預估行數虛高」等問題。本次依審查意見完成五項限定補正：
+1. **修復去重與指標重算腳本**：不再依賴舊 CSV 之截短 locations，直接自 tests/ 824 個探索檔之原始 AST 提取 5,429 個函式，建立 `(path, qualified_name, start_line)` 結構化唯一識別，落實 `member_count == len(members)` 完整性斷言，並通用排除 Category A 成員。
+2. **落實全量候選逐列處置清單**：針對全部 139 組候選（含 69 組 Category B 與 49 組 Category C）提供逐列處置；未深審之 113 組誠實標記為「**證據不足保留**」，絕不以統一樣板虛稱深度查核。
+3. **精確對齊報告與 CSV 定性**：
+   - **DTO 候選 (`DUP-A-fa52cf96`)**：報告與 CSV 完全一致定案為「**保留原寫法並說明**」，維持 5 組情境分立以利 CI 明確定位。
+   - **Category E 14 檔手動腳本**：依實際代碼特徵分類（1 檔 HTTP 連線探測、2 檔舊斷言相容覆蓋、11 檔純 print 歷史觀察），統一處置為「**原位手動診斷保留**」，零刪除零搬移。
+   - **Category D 多層驗證**：精確更正為 **4 組**（DUP-D-001 ~ DUP-D-004），所有統計由資料自動計算。
+4. **同一次掃描收斂全量資產母體**：明確區分探索檔 (824)、AST 函式 (5,429) 與可執行資產 (901)，提供全專案 QA 領域資產 (1,106) 與舊名義數字 (1,179) 之差集 (-73) 解釋，不必勉強湊合 1,179。
+5. **確保獨立審閱性**：`output/qa/` 之中繼 CSV 維持本機不提交，所有足以獨立審閱的處置證據與完整清單全數納入本文檔。
 ### 1.1 Commit 軌跡清單
-
 | 批次 | Commit Hash | 提交類型與訊息 | 涉及檔案清單與範圍 |
 | :---: | :---: | :--- | :--- |
 | **Batch 1** | `2be7bfc8` | `fix(repo): track promotion authority secret store` | `.gitignore`<br/>`runtime/promotion_authority_secret_store.py`<br/>`tests/test_promotion_authority_secret_store.py`<br/>*(修復安全模組與單元測試之 Git 漏追蹤問題，3 項測試全數通過)* |
 | **Batch 2** | `7a0b54b2` | `refactor(tests): share paper capture HTTP response helper` | `tests/test_paper_formal_daily_source_chain.py`<br/>*(整併 7 處重複之 HTTP Response 樣板至檔內 helper，保留 3 處讀取上限防禦契約，實際淨減 91 行，18 節點零回歸)* |
 | **Batch 3** | `e7c852ff` | `docs(qa): record test asset audit findings` | `docs/00_core/DOCUMENTATION_INDEX.md`<br/>`docs/06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md`<br/>`docs/06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md`<br/>*(記錄初版與二版審計發現，加入 V1 醒目撤回警告，對齊事實)* |
-| **Batch 4** | *(本批)* | `docs(qa): finalize test asset consolidation closeout` | `docs/00_core/DOCUMENTATION_INDEX.md`<br/>`docs/06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md`<br/>*(全候選最終處置定案、去重演算法修復記錄與母體對齊結案)* |
-
-### 1.2 Secret Store 納入追蹤之證據
-經 `git ls-files` 驗證，以下兩檔已正式列入 Git 追蹤並進入歷史 Commit：
-```text
-runtime/promotion_authority_secret_store.py
-tests/test_promotion_authority_secret_store.py
-```
-- **機密檢查結論**：兩檔均為 Windows DPAPI 本地金鑰管理程式與測試，初始化時以 `secrets.token_bytes(32)` 動態產生，絕無任何硬編碼真實密鑰、密碼或 Token。
-- **單元測試結果**：`tests/test_promotion_authority_secret_store.py` 3 passed (0.19s)。
+| **Batch 4** | `17135645` | `docs(qa): finalize test asset consolidation closeout` | `docs/00_core/DOCUMENTATION_INDEX.md`<br/>`docs/06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md`<br/>*(初版結案報告記錄)* |
+| **Batch 5** | *(本修正批次)* | `docs(qa): update consolidation closeout with rigorous candidate dispositions` | `docs/06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md`<br/>*(限定補正終局結案：落實 AST 無損重算、139 候選逐列處置表、母體差集對齊與獨立審閱證據)* |
 
 ---
+## 2. 全量資產母體精確重算與差集分析
+本次以同一次檔案掃描建立一致基準，嚴格區分「靜態探索候選檔」、「AST 測試函式」與「執行案例節點」，不混淆口徑，並清晰說明與舊名義母體 1,179 之差集。
 
-## 2. 全部候選處置統計與逐項清單
+### 2.1 母體口徑層級與計算公式
 
-本次對 V1/V2 報告所列全部候選群逐項給予終局處置（符合「已整併／保留並說明／已更新引用／證據不足保留」四種規範狀態之一）：
-
-### 2.1 處置結果統計摘要表
-
-| 類別群組 | 原候選組數 | 處置：已整併 | 處置：保留原寫法並說明 | 處置：已全面撤回 | 實質淨行數收益 |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Category A (同構/參數化)** | 3 組 | 0 組 | 3 組 | 0 組 | 0 行 (保留防禦分立) |
-| **Category B (常數差異候選)** | 71 組 | 0 組 | 69 組 | 2 組 (動態去重淘汰) | 0 行 (維持單項獨立) |
-| **Category C Top 5 (高收益Setup)** | 5 組 | 1 組 (DUP-C-025) | 4 組 (C-016, 036, 013, 024) | 0 組 | **91 行** (實測淨減) |
-| **Category C 其餘 (一般Setup)** | 44 組 | 0 組 | 44 組 (證據不足保留) | 0 組 | 0 行 (不計入收益) |
-| **Category D (多層驗證)** | 1 組 | 0 組 | 0 組 | 1 組 (全面撤回) | 0 行 (架構防禦縱深) |
-| **Category E (手動Legacy腳本)** | 14 檔 | 0 組 | 14 檔 (原位手動診斷保留) | 0 組 | 0 行 (零搬移零刪除) |
-| **合計** | **138 組 + 14 檔** | **1 組實作** | **134 組 + 14 檔保留** | **3 組撤回/淘汰** | **實際淨減 91 行** |
-
----
-
-### 2.2 核心候選群之逐項處置事實與理由
-
-#### 1. Category A 候選處置 (3 組)
-1. **`DUP-A-b942830e`** (Windows 排程註冊時區阻擋測試)：
-   - **處置**：**保留原寫法並說明**。
-   - **理由**：`test_formal_registration_plan.py` 與 `test_paper_execution_registration_plan.py` 頂層指向兩個完全不同之 `.cmd` 腳本，分別保護 Formal 與 Paper 獨立任務之時區阻擋。刪除任一測試或抽取跨檔 conftest 將弱化獨立排程的 Fail-closed 驗證邊界。
-2. **`DUP-A-fa52cf96`** (存證彩排 DTO 輸入拒絕測試)：
-   - **處置**：**保留原寫法並說明**。
-   - **理由**：兩函式分別保護 3 組 Production-like 欄位拒絕與 2 組檔案路徑變形拒絕（共 5 組案例）。原寫法函式分離利於在 CI 報告中一眼辨識是路徑錯誤還是生產權限拒絕，故結案保留。
-3. **`DUP-A-8713a259`** (數值邊界檢查器標記與註解測試)：
-   - **處置**：**保留原寫法並說明**。
-   - **理由**：原始參數為 2 + 3 = 5 組案例，分別防禦「無關文字註解忽略」與「跨行標記套用」。依指令本批不整併，維持兩個測試函式獨立分立。
-
-#### 2. Category C Top 5 候選處置 (5 組)
-1. **`DUP-C-025`** (`tests/test_paper_formal_daily_source_chain.py`):
-   - **處置**：**已受控整併 (完成實作與測試驗證)**。
-   - **執行細節**：整併 7 處重複之 `class _Response` 樣板至檔內私有 `_MockHttpResponse`；**未整併 3 處**具有 `assert limit == PAPER_EXECUTION_EVENT_CAPTURE_MAX_BYTES + 1` 與特殊標頭之核心契約測試。
-   - **驗證**：18 collected, 17 passed, 1 skipped，節點完全一致。
-   - **行數變化**：新增 46 行，刪除 137 行，**實質淨減 91 行**。
-2. **`DUP-C-016`** (`tests/test_forward_position_thesis_candidate_producer.py`):
-   - **處置**：**保留原寫法並說明**。
-   - **理由**：共同前置僅為 2~4 行基本宣告，各測項之行事曆快取路徑、決策時鐘與 policy 變體皆不相同。抽取 factory 需大量可選參數與 tuple 解構，實際淨行數為 0 或負收益，保留原寫法更能維持單一測試獨立性與可讀性。
-3. **`DUP-C-036`** (`tests/test_recommendation_service_calibration_integration.py`):
-   - **處置**：**保留原寫法並說明**。
-   - **理由**：各測試涵蓋不同的消費者類型（Mock `_RecordingConsumer` vs 真實 `RecommendationCalibrationConsumer`）、不同的起始基準年份（2014 vs 2026）、不同的猴子補丁（`HistoricalFeatureBuilder.compute`）與 Qt 離線邊界。抽取需要過多旗標分支，分散了測試的設定邏輯，保留原寫法確保測試失敗時定位清晰。
-4. **`DUP-C-013`** (`tests/test_formal_daily_input_producer.py`):
-   - **處置**：**保留原寫法並說明**。
-   - **理由**：該檔原本已具備模組化 helper（`_clock`、`_paper_sources`、`_candidate_paths`）。各測項係針對不同的組合（單一時鐘 vs 雙時鐘、單日 fill vs 跨日 fill、日曆例外）進行顯式接線。在既有 helper 之上疊加超封裝將形成過度抽象，降低合約可見度。
-5. **`DUP-C-024`** (`tests/test_paper_daily_execution_producer.py`):
-   - **處置**：**保留原寫法並說明**。
-   - **理由**：各測項於佇列初始化時具有不同的檔案名稱標籤、不同的輸出候選子目錄、以及關鍵的中間資料庫故障注入（如在特定情境刪除當日行情資料列）。抽取共用 setup 會掩蓋故障注入時機，降低測試可信度。
-
-#### 3. Category E 14 檔手動 Legacy 腳本處置
-- **處置**：**原位手動診斷保留，零搬移、零刪除**。
-- **理由**：
-  1. 14 檔手動腳本位於 `tests/manual/`，早已於 `pytest.ini` 排除在自動測試探索之外，維持原位不會影響 pytest 執行效能或測試結果。
-  2. 部分腳本（如 `legacy_api_endpoints_check.py` 直連探測端點）在特定網路排查時具備獨立的手動診斷價值。
-  3. 搬移至 `docs/09_archive/` 屬檔案位置遷移，全庫總代碼行數完全不變，且不影響自動化測試速率。
-  4. 避免更動 `test_inventory.py` 登錄狀態而產生非必要的跨模組連鎖變更。
-
----
-
-## 3. 分析工具演算法修復與母體精確對齊
-
-### 3.1 A/B 去重演算法全面修復事實
-先前分析工具中存在將 8 碼截短 group ID 與 64 碼完整 SHA-256 雜湊比對之缺陷，且二版產生器採用了「寫死移除兩個 group ID」之非通用應急方案。
-
-**本次修復落實**（實作於 `output/qa/test_asset_audit/recalculate_deduplication_and_metrics.py`）：
-1. **建立通用成員識別碼**：`member_id = (relative_path, func_name, start_line)`。
-2. **集合動態過濾**：在提取 Category B 候選時，動態剔除已存在於 Category A 中的所有成員識別碼。
-3. **自動淘汰無效組別**：若某個 Category B 組別在剔除 A 成員後剩餘成員數小於 2，由通用演算法自動將該組拋棄。
-4. **自動驗證結果**：動態且通用地自動排除了原先雙重計入的 `DUP-B-5603905b` 與 `DUP-B-2720ed58`，產出乾淨之 `duplicate_candidates_v3.csv`，絕無硬編碼。
-
-### 3.2 四層測試母體口徑精確對齊與差集公式
-
-```mermaid
-graph TD
-    M1179["全專案測試領域資產：1,179 檔 (標為待確認口徑)"]
-    M902["可執行測試資產：901 檔 (test_asset_index.csv)"]
-    M852["tests/ 目錄下所有 Python 檔：852 檔"]
-    M824["Pytest 靜態探索候選檔：824 檔"]
-
-    M1179 -->|包含可執行資產 901 檔 + 203 檔 QA 文檔 + 測試資料| M902
-    M902 -->|tests/ 852 檔 + scripts/qa_* 42 檔 + validate_* 6 檔 + runtime 1 檔| M852
-    M852 -->|扣除 manual 14 檔、scripts 6 檔、fixtures 8 檔| M824
-```
-
-| 母體指標 | 精確檔案數 | 口徑定義與範圍說明 | 差集構成與排除條件 |
+| 資產層級 | 精確數量 | 口徑定義與計算公式 | 備註說明 |
 | :--- | :---: | :--- | :--- |
-| **Pytest 靜態探索候選檔** | **824** | `tests/` 下檔名符合 `test_*.py` 之標準測試檔案。 | **排除**：`tests/manual/` (14檔)、`tests/scripts/` (6檔)、`conftest.py` 與輔助 fixture (8檔)。 |
-| **tests/ 內部 Python 總量** | **852** | `tests/` 目錄下所有 `.py` 檔案總和。 | **差集公式**：$852 - 14 - 6 - 8 = 824$ 檔。 |
-| **可執行測試資產索引** | **901** | 收錄於 `test_asset_index.csv` 的可執行程式。 | `tests/` (852檔) + `scripts/qa_*` (42檔) + `scripts/validate_*` (6檔) + `runtime/tests/` (1檔)。 |
-| **全專案測試領域資產** | **1,179 (待確認)** | 專案中所有與 QA、測試、存證相關之資產。 | **待確認標記**：本輪未重新全庫深層掃描，包含上述 901 檔 + `docs/06_qa/` (203檔) + 測試資料集/Snapshot + pytest.ini。 |
+| **Pytest 靜態探索候選檔** | **824 檔** | `tests/` 下檔名符合 `test_*.py` 之標準測試檔案。<br/>公式：$852 - 14(\text{manual}) - 6(\text{scripts}) - 8(\text{fixtures}) = 824$ | AST 探索與重算之基礎母體 |
+| **AST 測試函式總量** | **5,429 個** | 由 824 個探索檔之原始 AST 完整提取之 `test_*` 函式與方法總和。 | 純語法樹函式節點，非執行案例 |
+| **tests/ 內部 Python 總量** | **852 檔** | `tests/` 目錄下所有 `.py` 檔案總和。 | 包含測試、手動工具、內部腳本與 conftest |
+| **可執行測試/驗證資產** | **901 檔** | 收錄於 `test_asset_index.csv` 之可執行資產。<br/>公式：$852(\text{tests}) + 42(\text{scripts/qa}) + 6(\text{scripts/validate}) + 1(\text{runtime}) = 901$ | 具備獨立驗證或測試執行能力之代碼資產 |
+| **全專案 QA 領域資產總量** | **1,106 檔** | 同一次掃描所得全庫 QA/測試/文件/設定資產。<br/>公式：$901(\text{可執行}) + 204(\text{docs/06\_qa/}) + 1(\text{pytest.ini}) = 1,106$ | 專案 QA 領域同一次掃描精確收斂總量 |
+| **舊母體名義數字 (對照)** | **1,179 檔** | 舊版報告所引用之粗估口徑。 | **差集**：$1,106 - 1,179 = -73$ 檔 |
+
+### 2.2 舊母體 (1,179) 與新母體 (1,106) 差集說明
+- **差集數量**：$-73$ 檔。
+- **成因分析**：舊母體 1,179 係先前初版盤點時粗估納入部分暫存性測試快照、未追蹤之測試資料集或重疊計數之概數。本次在同一次檔案系統掃描下，可執行資產 (901) 與文檔 (204) 及配置 (1) 精確加總為 1,106 檔。
+- **結論**：實事求是反映當前專案真實資產現狀，**不必勉強湊合 1,179 名義數字**。
 
 ---
+## 3. 分析工具演算法修復與完整性檢驗
+修復腳本 `output/qa/test_asset_audit/recalculate_deduplication_and_metrics.py` 已落實以下核心補正：
 
-## 4. 行數變化精算與已撤回估算聲明
+1. **拒絕截短 locations，自原始 AST 無損提取**：
+   - 舊版工具因從 `duplicate_candidates.csv` 讀取帶有 `... 共 N 處` 的字串，導致成員遺失或無法定位。
+   - 本次直接利用 `ast.parse` 遍歷 tests/ 824 個檔案，完整提取所有 5,429 個測試函式，記錄完整結構化清單。
+2. **通用成員唯一識別碼 (Member Identity)**：
+   - 成員識別規格：`member_id = (relative_path, qualified_name, start_line)`。
+   - 絕不使用截短字串，精確定位至原始碼行號。
+3. **嚴格完整性斷言 (Integrity Check)**：
+   - 每一組候選資料皆執行斷言：`assert len(members) == member_count`。
+   - 嚴格禁止將 `... 共 N 處` 視為成員，全數 139 組候選成員清單 100% 結構完整。
+4. **動態過濾與自動淘汰 (非硬編碼)**：
+   - Category B 候選提取時，動態對比 Category A 的所有成員識別碼集合，自動剔除重複納入的成員。
+   - 若剔除後組內剩餘成員數 $< 2$，自動淘汰該組別。動態排除了原先雙重計入的 `DUP-B-5603905b` 與 `DUP-B-2720ed58`，絕不寫死 group ID。
+5. **AST 同構之本質定位**：
+   - **明確界定 AST 同構僅代表語法結構相似之靜態候選，不自動判定為功能或業務語意重複**。是否可整併必須以隔離性、可讀性、故障定位成本與契約保護為第一考量。
 
-### 4.1 實際代碼行數變化精算
+---
+## 4. 候選分類處置統計總表
+以下數據全部由 `candidate_dispositions_detailed.csv` 自動統計產生，絕無人工手填：
 
-| 變更項目 | 新增行數 (+) | 刪除行數 (-) | 實際淨行數變化 | 備註 |
-| :--- | :---: | :---: | :---: | :--- |
-| `tests/test_paper_formal_daily_source_chain.py` (DUP-C-025) | +46 | -137 | **-91 行** | 整併 7 處樣板至檔內 helper，保留 3 處防禦契約。 |
-| `.gitignore` (例外放行) | +2 | 0 | **+2 行** | 精確豁免安全模組與測試。 |
-| `runtime/promotion_authority_secret_store.py` (追蹤) | +199 | 0 | **+199 行** | 既有漏追蹤安全模組納入 Git。 |
-| `tests/test_promotion_authority_secret_store.py` (追蹤) | +55 | 0 | **+55 行** | 既有漏追蹤單元測試納入 Git。 |
-| 報告文件新增與登記 | +1000+ | 0 | 文件增量 | `DOCUMENTATION_INDEX.md`、審計報告與結案報告。 |
-| **測試代碼實質重複精簡淨額** | — | — | **-91 行** | **不保證預估之 399 行，以真實落地 Diff 為準**。 |
+| 候選類別 | 總組數 | 已整併 | 保留原寫法並說明 | 原位手動診斷保留 | 已全面撤回 | 證據不足保留 |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Category A (完全同構候選)** | 3 | 0 | 3 | 0 | 0 | 0 |
+| **Category B (結構同構常數差異)** | 69 | 0 | 0 | 0 | 0 | 69 |
+| **Category C (重複Setup候選)** | 49 | 1 | 4 | 0 | 0 | 44 |
+| **Category D (多層驗證)** | 4 | 0 | 0 | 0 | 4 | 0 |
+| **Category E (手動Legacy腳本)** | 14 | 0 | 0 | 14 | 0 | 0 |
+| **全候選總計核對** | **139** | **1** | **7** | **14** | **4** | **113** |
 
-### 4.2 已全面撤回之歷史估算聲明
+> **總數一致性核對**：$1(\text{已整併}) + 7(\text{保留原寫法}) + 14(\text{手動診斷保留}) + 4(\text{已撤回}) + 113(\text{證據不足保留}) = 139$ 組，完全吻合。
+
+---
+## 5. 核心審查候選之處置事實與業務理由
+
+### 5.1 Category A 候選 (3 組，均結案為保留原寫法並說明)
+1. **`DUP-A-8713a259`** (`tests/test_financial_float_boundary_checker.py`):
+   - **成員**：`test_unrelated_numeric_boundary_comments_are_ignored:111`、`test_multiline_boundary_marker_applies_to_managed_float_token_line:196`。
+   - **已檢視範圍**：完整 AST、裝飾器參數與正規表達式斷言。
+   - **具體差異**：參數化輸入分別為 2 組普通註解與 3 組跨行標記 (共 2+3=5 組案例)。
+   - **處置與理由**：**保留原寫法並說明**。兩測試分別保護無關文字註解忽略與跨行標記套用兩項獨立契約，維持兩個函式分立有利於錯誤隔離。
+2. **`DUP-A-b942830e`** (Windows 排程註冊時區阻擋測試):
+   - **成員**：`tests/test_formal_registration_plan.py::test_dedicated_registration_rejects_non_pacific_timezone:74`、`tests/test_paper_execution_registration_plan.py::test_dedicated_paper_registration_rejects_non_pacific_timezone:133`。
+   - **已檢視範圍**：完整 AST、裝飾器、呼叫目標與模組常數。
+   - **具體差異**：頂層常數指向不同 `.cmd` 腳本 (Formal 排程 vs Paper 排程註冊)。
+   - **處置與理由**：**保留原寫法並說明**。刪除任一測試或抽取跨檔 conftest 將弱化獨立排程的 Fail-closed 時區驗證邊界，故維持各自獨立防禦。
+3. **`DUP-A-fa52cf96`** (存證彩排 DTO 輸入拒絕測試 —— **對齊報告與 CSV**):
+   - **成員**：`tests/test_promotion_rehearsal_service.py::test_rehearsal_rejects_production_like_contract_inputs:71`、`tests/test_promotion_rehearsal_service.py::test_rehearsal_rejects_malformed_evidence_path:96`。
+   - **已檢視範圍**：完整 AST、參數組合與拋出例外比對。
+   - **具體差異**：一處測試 3 組 Production-like 欄位拒絕；另一處測試 2 組檔案路徑變形拒絕 (共 5 組案例)。
+   - **處置與理由**：**保留原寫法並說明**（報告與 CSV 完全對齊為保留，不予整併）。原寫法函式分離利於在 CI 報告中一眼辨識是路徑格式錯誤還是合約權限拒絕，維持現狀零刪減。
+
+### 5.2 Category C Top 5 候選 (1 組整併，4 組保留原寫法並說明)
+1. **`DUP-C-025`** (`tests/test_paper_formal_daily_source_chain.py`):
+   - **成員**：7 處重複之 HTTP Response 測試前置區塊。
+   - **已檢視範圍**：該檔全部 18 個測試節點之 HTTP Mock 模式。
+   - **具體差異**：7 處僅為純粹 status/content 假物件樣板；另有 3 處含有讀取上限防禦契約與特殊標頭。
+   - **處置與理由**：**已受控整併 (Commit `7a0b54b2`)**。抽取檔內私有 `_MockHttpResponse` 整併 7 處樣板，核心契約 3 處原位保留。實測淨減 91 行，18 節點全數通過。
+2. **`DUP-C-016`** (`tests/test_forward_position_thesis_candidate_producer.py`):
+   - **處置與理由**：**保留原寫法並說明**。共同前置僅 2~4 行基本宣告，各測項之快取路徑、決策時鐘與 policy 變體皆不同。抽取 factory 需大量可選參數與 tuple 解構，實際淨行數為 0 或負收益，保留原寫法維持單一測試獨立性。
+3. **`DUP-C-036`** (`tests/test_recommendation_service_calibration_integration.py`):
+   - **處置與理由**：**保留原寫法並說明**。各測試涵蓋不同消費者類型、不同基準年份、不同猴子補丁與 Qt 離線邊界。抽取需過多旗標分支，分散設定邏輯並弱化失敗定位。
+4. **`DUP-C-013`** (`tests/test_formal_daily_input_producer.py`):
+   - **處置與理由**：**保留原寫法並說明**。該檔既有 helper (`_clock`, `_paper_sources`) 已足夠清晰，各測項針對單/雙時鐘與跨日 fill 顯式接線，再度封裝將形成過度抽象。
+5. **`DUP-C-024`** (`tests/test_paper_daily_execution_producer.py`):
+   - **處置與理由**：**保留原寫法並說明**。各測項具有不同輸出子目錄與關鍵的中間 DB 故障注入（刪除特定行情列），抽取共用 setup 會掩蓋故障注入時序，降低測試可信度。
+
+### 5.3 Category D 多層驗證候選 (4 組，已全面撤回)
+- **組別清單**：`DUP-D-001`, `DUP-D-002`, `DUP-D-003`, `DUP-D-004`。
+- **檢視事實**：涉及單元測試 (`test_promotion_rehearsal_service.py`)、整合驗證與系統邊界合約。
+- **處置與理由**：**已全面撤回**。多層驗證保護不同的架構邊界（如單元層保護欄位驗證、整合層保護交易時鐘與持久化），本質並非重複代碼，保留多層縱深防禦。
+
+### 5.4 Category E 14 檔手動 Legacy 腳本 (**按代碼實際證據分類**)
+經檢視 `tests/manual/` 內 14 檔歷史腳本之實際原始碼特徵，分類處置如下：
+
+1. **獨立端點連線探測腳本 (1 檔)**：
+   - `tests/manual/legacy_api_endpoints_check.py` (82 行，0 asserts)。
+   - **代碼特徵**：包含對外部 TWSE API 之真實 HTTP GET 連線探測。
+   - **定位**：具備獨立的手動網路排查與連線診斷價值。
+2. **含舊斷言之相容性檢查腳本 (2 檔)**：
+   - `tests/manual/legacy_twse_api_check.py` (21 asserts) 與 `tests/manual/legacy_utils_check.py` (17 asserts)。
+   - **代碼特徵**：依賴已淘汰舊模組，其斷言邏輯已由現代單元測試更嚴格地覆蓋。
+   - **定位**：供歷史相容性追溯對照之手動腳本。
+3. **純 Print 手動演算法觀察腳本 (11 檔)**：
+   - 其餘 11 檔腳本均為 0 asserts，僅包含載入資料並在終端列印計算結果的觀察代碼。
+   - **定位**：歷史演算法行為觀察工具。
+
+> **統一終局處置**：**原位手動診斷保留，零刪除、零搬移**。14 檔腳本在 `pytest.ini` 中早已被排除探索，維持原位既不影響自動化測試效能，又避免破壞路徑與 `test_inventory.py` 登記。
+
+---
+## 6. 全量候選逐列處置明細表 (139 組完整清單)
+本表提供足以獨立審閱的完整候選處置依據。未深入逐檔查核之 113 組候選，均誠實標註為「**證據不足保留**」，絕不誇大宣稱。
+
+| Group ID | 類別 | 成員數 | 完整成員 (Path::Name:Line) | 已檢視範圍 | 具體差異 | 證據位置 | 最終處置 | 理由 |
+| :--- | :---: | :---: | :--- | :--- | :--- | :--- | :---: | :--- |
+| `DUP-A-8713a259` | Category A (完全同構候選) | 2 | tests/test_financial_float_boundary_checker.py::test_unrelated_numeric_boundary_comments_are_ignored:111<br/>tests/test_financial_float_boundary_checker.py::test_multiline_boundary_marker_applies_to_managed_float_token_line:196 | 完整 AST、裝飾器參數與正規表達式斷言核對 | 參數化輸入分別為 2 組普通註解與 3 組跨行標記 (共 2+3=5 組案例) | `tests/test_financial_float_boundary_checker.py:L111-112; tests/test_financial_float_boundary_checker.py:L196-199` | **保留原寫法並說明** | 兩測試分別保護無關註解與跨行標記兩項獨立契約，依指令維持兩函式分立。 |
+| `DUP-A-b942830e` | Category A (完全同構候選) | 2 | tests/test_formal_registration_plan.py::test_dedicated_registration_rejects_non_pacific_timezone:74<br/>tests/test_paper_execution_registration_plan.py::test_dedicated_paper_registration_rejects_non_pacific_timezone:133 | 完整 AST、裝飾器、呼叫目標與模組常數核對 | 頂層常數指向不同 .cmd 腳本 (Formal vs Paper 排程註冊) | `tests/test_formal_registration_plan.py:L74-88; tests/test_paper_execution_registration_plan.py:L133-149` | **保留原寫法並說明** | 刪除任一測試或抽取跨檔 conftest 將弱化獨立排程的 Fail-closed 時區驗證，保留原位獨立防禦。 |
+| `DUP-A-fa52cf96` | Category A (完全同構候選) | 2 | tests/test_evidence_rehearsal_dtos.py::test_scenario_rejects_production_like_inputs:74<br/>tests/test_evidence_rehearsal_dtos.py::test_scenario_rejects_production_evidence_filename_variants:89 | 完整 AST、裝飾器參數與異常匹配核對 | 裝飾器分別掛載 3 組生產環境參數與 2 組檔案路徑變形參數 (共 5 組情境) | `tests/test_evidence_rehearsal_dtos.py:L74-79; tests/test_evidence_rehearsal_dtos.py:L89-94` | **保留原寫法並說明** | 原寫法函式分離利於在 CI 報告中一眼辨識是欄位錯誤還是路徑變形，維持原狀零刪減。 |
+| `DUP-B-00fc9595` | Category B (結構同構常數差異候選) | 2 | tests/test_update_view_formatters.py::test_format_p0_license_capture_status_keeps_machine_token_and_explains_partial:49<br/>tests/test_update_view_formatters.py::test_get_update_type_name_preserves_known_and_unknown_values:397 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_update_view_formatters.py:L49-58; tests/test_update_view_formatters.py:L397-400` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-071d53cc` | Category B (結構同構常數差異候選) | 2 | tests/test_ml_shadow_dependency_boundary.py::test_guard_requires_exact_symbol_for_allowlisted_module:29<br/>tests/test_ml_shadow_dependency_boundary.py::test_guard_rejects_production_import_of_training_runner:46 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_shadow_dependency_boundary.py:L29-43; tests/test_ml_shadow_dependency_boundary.py:L46-61` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-09f3d115` | Category B (結構同構常數差異候選) | 2 | tests/test_scheduled_cmd_scripts_exist.py::test_required_scheduled_cmd_scripts_exist:59<br/>tests/test_scheduled_scripts_exist.py::test_required_scheduled_scripts_exist:33 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_scheduled_cmd_scripts_exist.py:L59-62; tests/test_scheduled_scripts_exist.py:L33-36` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-14d4a028` | Category B (結構同構常數差異候選) | 2 | tests/test_pit_taxonomy_daily_source.py::test_pdf_known_future_manual_cannot_be_backdated_by_effective_from:1328<br/>tests/test_pit_taxonomy_daily_source.py::test_unknown_current_pdf_with_known_history_is_runtime_ineligible:1348 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_pit_taxonomy_daily_source.py:L1328-1345; tests/test_pit_taxonomy_daily_source.py:L1348-1366` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-150f9e54` | Category B (結構同構常數差異候選) | 2 | tests/test_paper_execution_retry_runner.py::test_retry_runner_does_not_treat_embedded_marker_as_transient:511<br/>tests/test_paper_execution_retry_runner.py::test_retry_runner_does_not_retry_malformed_receipt:531 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_paper_execution_retry_runner.py:L511-528; tests/test_paper_execution_retry_runner.py:L531-550` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-2181a286` | Category B (結構同構常數差異候選) | 3 | tests/test_full_app_healthcheck_high_risk_dry_run_dialog_plan.py::test_get_high_risk_dry_run_dialog_plan_for_feature:141<br/>tests/test_full_app_healthcheck_mainwindow_smoke_plan.py::test_get_mainwindow_smoke_plan_for_feature:108<br/>tests/test_full_app_healthcheck_viewport_resize_evidence_plan.py::test_get_viewport_resize_evidence_plan_for_feature:120 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 3 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_full_app_healthcheck_high_risk_dry_run_dialog_plan.py:L141-147; tests/test_full_app_healthcheck_mainwindow_smoke_plan.py:L108-114; tests/test_full_app_healthcheck_viewport_resize_evidence_plan.py:L120-126` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-2b76075d` | Category B (結構同構常數差異候選) | 2 | tests/test_p0_corporate_restriction_shadow_adapters.py::test_adapter_rejects_source_outside_its_contract_family:93<br/>tests/test_p0_pit_fundamental_announcement_adapters.py::test_fundamental_adapter_rejects_unknown_revenue_source:65 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_p0_corporate_restriction_shadow_adapters.py:L93-99; tests/test_p0_pit_fundamental_announcement_adapters.py:L65-71` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-349411b8` | Category B (結構同構常數差異候選) | 2 | tests/test_scheduled_official_market_event_backfill.py::test_year_window_recovers_narrowed_formal_pointer:113<br/>tests/test_scheduled_official_market_event_backfill.py::test_year_window_returns_incremental_window_after_full_coverage:129 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_scheduled_official_market_event_backfill.py:L113-126; tests/test_scheduled_official_market_event_backfill.py:L129-142` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-37517c73` | Category B (結構同構常數差異候選) | 2 | tests/test_evidence_rehearsal_fault_injection.py::test_missing_day_mutates_working_copy_and_replay_detects_gap:104<br/>tests/test_evidence_rehearsal_fault_injection.py::test_schema_missing_mutates_working_copy_and_replay_detects_schema:123 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_evidence_rehearsal_fault_injection.py:L104-120; tests/test_evidence_rehearsal_fault_injection.py:L123-139` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-3e2ead50` | Category B (結構同構常數差異候選) | 2 | tests/test_weight_contract.py::test_legacy_weight_migration_precision_loss:40<br/>tests/test_weight_contract.py::test_legacy_weight_migration_invalid_sum:48 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_weight_contract.py:L40-46; tests/test_weight_contract.py:L48-53` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-43034456` | Category B (結構同構常數差異候選) | 2 | tests/test_mops_xbrl_source_repairs.py::test_2752_repair_rejects_same_count_but_wrong_context:38<br/>tests/test_mops_xbrl_source_repairs.py::test_3226_repair_rejects_same_count_but_wrong_context:72 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_mops_xbrl_source_repairs.py:L38-48; tests/test_mops_xbrl_source_repairs.py:L72-82` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-453abc02` | Category B (結構同構常數差異候選) | 3 | tests/test_full_app_healthcheck_high_risk_dry_run_dialog_plan.py::test_render_high_risk_dry_run_dialog_plan_markdown:150<br/>tests/test_full_app_healthcheck_mainwindow_smoke_plan.py::test_render_mainwindow_smoke_plan_markdown:117<br/>tests/test_full_app_healthcheck_viewport_resize_evidence_plan.py::test_render_viewport_resize_evidence_plan_markdown:129 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 3 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_full_app_healthcheck_high_risk_dry_run_dialog_plan.py:L150-158; tests/test_full_app_healthcheck_mainwindow_smoke_plan.py:L117-125; tests/test_full_app_healthcheck_viewport_resize_evidence_plan.py:L129-137` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-4cfe7515` | Category B (結構同構常數差異候選) | 3 | tests/test_append_portfolio_stress_history_cli.py::test_cli_help_reconfigures_windows_console_before_argparse:96<br/>tests/test_inspect_ml_storage_retention.py::test_cli_help_reconfigures_windows_console_before_argparse:115<br/>tests/test_monthly_revenue_availability_merge.py::test_cli_help_reconfigures_windows_console_before_argparse:232 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 3 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_append_portfolio_stress_history_cli.py:L96-110; tests/test_inspect_ml_storage_retention.py:L115-129; tests/test_monthly_revenue_availability_merge.py:L232-246` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-4d266970` | Category B (結構同構常數差異候選) | 2 | tests/test_main_window_coordinator.py::test_resolve_workspace_key_preserves_navigation_aliases:4<br/>tests/test_ui_qt_theme.py::test_button_text_sanitizer_removes_missing_symbol_icons_only_from_prefix:70 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_main_window_coordinator.py:L4-10; tests/test_ui_qt_theme.py:L70-76` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-4da9c3a7` | Category B (結構同構常數差異候選) | 3 | tests/test_ml_shadow_dependency_boundary.py::test_guard_detects_ml_import_of_production_decision_path:129<br/>tests/test_ml_shadow_dependency_boundary.py::test_guard_detects_ml_backimport_of_app_path:140<br/>tests/test_ml_shadow_dependency_boundary.py::test_guard_detects_true_production_flag:153 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_shadow_dependency_boundary.py:L129-137; tests/test_ml_shadow_dependency_boundary.py:L140-150; tests/test_ml_shadow_dependency_boundary.py:L153-161` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-51da9c6d` | Category B (結構同構常數差異候選) | 4 | tests/test_ml_shadow_dependency_boundary.py::test_guard_allows_only_hash_bound_allocation_inference_contracts:64<br/>tests/test_ml_shadow_dependency_boundary.py::test_guard_allows_only_shadow_evidence_contracts_and_frozen_reference:80<br/>tests/test_ml_shadow_dependency_boundary.py::test_guard_allows_portfolio_consumer_side_promotion_verifier:97<br/>tests/test_ml_shadow_dependency_boundary.py::test_guard_allows_only_hash_verified_release_adapter_contracts:113 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_shadow_dependency_boundary.py:L64-77; tests/test_ml_shadow_dependency_boundary.py:L80-94; tests/test_ml_shadow_dependency_boundary.py:L97-110; tests/test_ml_shadow_dependency_boundary.py:L113-126` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-5468a590` | Category B (結構同構常數差異候選) | 6 | tests/test_p0_credit_transaction_shadow_adapter.py::test_future_credit_row_is_blocked:52<br/>tests/test_p0_institutional_flow_shadow_adapter.py::test_inconsistent_net_value_is_quarantined:34<br/>tests/test_p0_institutional_flow_shadow_adapter.py::test_future_available_date_is_blocked:46<br/>tests/test_p0_tdcc_distribution_shadow_adapter.py::test_tdcc_future_publication_is_blocked:28<br/>tests/test_p0_tdcc_distribution_shadow_adapter.py::test_tdcc_ratio_total_must_equal_full_basis_points:40<br/>tests/test_p0_tdcc_distribution_shadow_adapter.py::test_tdcc_ratios_must_be_integer_basis_points:52 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 3 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_p0_credit_transaction_shadow_adapter.py:L52-61; tests/test_p0_institutional_flow_shadow_adapter.py:L34-43; tests/test_p0_institutional_flow_shadow_adapter.py:L46-55; tests/test_p0_tdcc_distribution_shadow_adapter.py:L28-37; tests/test_p0_tdcc_distribution_shadow_adapter.py:L40-49; tests/test_p0_tdcc_distribution_shadow_adapter.py:L52-61` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-5d9485ae` | Category B (結構同構常數差異候選) | 2 | tests/test_ml_promotion_review_package.py::test_major_drift_defers_review:23<br/>tests/test_ml_promotion_review_package.py::test_missing_rollback_artifact_blocks_review:40 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_promotion_review_package.py:L23-37; tests/test_ml_promotion_review_package.py:L40-54` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-601a0ecb` | Category B (結構同構常數差異候選) | 2 | tests/test_scheduled_cmd_scripts_no_confirm.py::test_ml_promotion_authority_wrapper_is_independent_and_noninteractive:119<br/>tests/test_scheduled_cmd_scripts_no_confirm.py::test_ml_promotion_evidence_wrapper_is_unsigned_and_noninteractive:130 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_scheduled_cmd_scripts_no_confirm.py:L119-127; tests/test_scheduled_cmd_scripts_no_confirm.py:L130-138` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-62d9c163` | Category B (結構同構常數差異候選) | 2 | tests/test_fundamental_availability_entrypoint.py::test_allowed_sources_include_authorized_pit_source:174<br/>tests/test_fundamental_statement_availability_entrypoint.py::test_allowed_sources_include_statement_retroactive_baseline:127 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_fundamental_availability_entrypoint.py:L174-178; tests/test_fundamental_statement_availability_entrypoint.py:L127-131` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-6510ab93` | Category B (結構同構常數差異候選) | 2 | tests/test_weight_contract.py::test_recommendation_weight_contract_invalid_sum:18<br/>tests/test_weight_contract.py::test_recommendation_weight_contract_non_integer:25 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_weight_contract.py:L18-23; tests/test_weight_contract.py:L25-30` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-71e71407` | Category B (結構同構常數差異候選) | 2 | tests/test_ml_shadow_projection_boundary.py::test_projection_module_does_not_import_ml_module:47<br/>tests/test_ml_shadow_projection_boundary.py::test_external_evidence_observability_module_does_not_import_ml_module:65 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_shadow_projection_boundary.py:L47-62; tests/test_ml_shadow_projection_boundary.py:L65-80` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-767b13af` | Category B (結構同構常數差異候選) | 4 | tests/test_build_mops_statement_pit_candidate.py::test_resolve_official_item_code_uses_verified_service_cost_total_alias:340<br/>tests/test_build_mops_statement_pit_candidate.py::test_resolve_official_item_code_uses_verified_attributable_profit_alias:448<br/>tests/test_mops_statement_3064_alias.py::test_construction_engineering_revenue_alias_uses_verified_total_row:253<br/>tests/test_mops_statement_3064_alias.py::test_construction_engineering_cost_alias_uses_verified_total_row:275 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_build_mops_statement_pit_candidate.py:L340-355; tests/test_build_mops_statement_pit_candidate.py:L448-463; tests/test_mops_statement_3064_alias.py:L253-272; tests/test_mops_statement_3064_alias.py:L275-294` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-7a216d8c` | Category B (結構同構常數差異候選) | 2 | tests/test_fundamental_availability_entrypoint.py::test_validate_monthly_revenue_availability_file_rejects_ungoverned_source:80<br/>tests/test_fundamental_statement_availability_entrypoint.py::test_validate_statement_availability_file_rejects_raw_csv_source:99 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_fundamental_availability_entrypoint.py:L80-93; tests/test_fundamental_statement_availability_entrypoint.py:L99-114` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-7cf73337` | Category B (結構同構常數差異候選) | 2 | tests/test_capture_external_evidence_manual_cli.py::test_cli_rejects_capture_without_manual_observed_declaration:29<br/>tests/test_capture_external_evidence_manual_cli.py::test_cli_rejects_snapshot_without_hash_addressed_decision_output:44 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_capture_external_evidence_manual_cli.py:L29-41; tests/test_capture_external_evidence_manual_cli.py:L44-59` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-7fda9aff` | Category B (結構同構常數差異候選) | 2 | tests/test_append_paper_trade_csv_cli.py::test_export_template_help_is_safe_on_cp1252_console:110<br/>tests/test_run_p0_source_evidence_audit.py::test_audit_cli_help_is_safe_on_cp1252_console:739 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_append_paper_trade_csv_cli.py:L110-125; tests/test_run_p0_source_evidence_audit.py:L739-754` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-8345140d` | Category B (結構同構常數差異候選) | 2 | tests/test_fundamental_availability_entrypoint.py::test_validate_monthly_revenue_availability_file_keeps_bounded_legacy_official_mapping:151<br/>tests/test_fundamental_statement_availability_entrypoint.py::test_validate_statement_availability_file_accepts_retroactive_baseline:83 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_fundamental_availability_entrypoint.py:L151-166; tests/test_fundamental_statement_availability_entrypoint.py:L83-96` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-87a806b1` | Category B (結構同構常數差異候選) | 2 | tests/test_factor_adapters.py::test_volume_ratio_adapter_maps_normal_volume_to_neutral_score:60<br/>tests/test_factor_adapters.py::test_volume_ratio_adapter_caps_high_volume_at_full_basis_points:73 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_factor_adapters.py:L60-70; tests/test_factor_adapters.py:L73-83` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-8cf40988` | Category B (結構同構常數差異候選) | 2 | tests/test_monthly_revenue_availability_history.py::test_parse_mops_html_handles_multi_row_headers:413<br/>tests/test_monthly_revenue_availability_history.py::test_parse_mops_html_deduplicates_nested_company_rows:444 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_monthly_revenue_availability_history.py:L413-441; tests/test_monthly_revenue_availability_history.py:L444-468` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-8d731902` | Category B (結構同構常數差異候選) | 2 | tests/test_live_research_gap_cli.py::test_capture_cli_confirm_writes_tmp_db:70<br/>tests/test_signal_decay_cli.py::test_capture_cli_confirm_writes_explicit_tmp_db:97 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_live_research_gap_cli.py:L70-80; tests/test_signal_decay_cli.py:L97-107` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-8e7becdb` | Category B (結構同構常數差異候選) | 2 | tests/test_allocation_v3_linear_release.py::test_market_projection_rejects_missing_official_intermediate_session:447<br/>tests/test_allocation_v3_linear_release.py::test_market_projection_rejects_missing_latest_session_before_decision:461 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_allocation_v3_linear_release.py:L447-458; tests/test_allocation_v3_linear_release.py:L461-472` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-989ed562` | Category B (結構同構常數差異候選) | 2 | tests/test_workbench_read_only_boundary.py::test_workbench_composer_stays_dto_only_without_direct_db_replay_scheduler_or_lifecycle_imports:28<br/>tests/test_workbench_read_only_boundary.py::test_workbench_dtos_stay_pure_payload_without_db_replay_scheduler_or_lifecycle_imports:49 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_workbench_read_only_boundary.py:L28-46; tests/test_workbench_read_only_boundary.py:L49-67` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-990d807e` | Category B (結構同構常數差異候選) | 2 | tests/test_research_console_source_service.py::test_noncanonical_apply_flags_fail_closed:350<br/>tests/test_research_console_source_service.py::test_non_integer_zero_alpha_fails_closed:361 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_research_console_source_service.py:L350-357; tests/test_research_console_source_service.py:L361-368` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-9946d0db` | Category B (結構同構常數差異候選) | 2 | tests/test_run_ml_promotion_authority.py::test_status_atomic_write_retries_transient_windows_lock:51<br/>tests/test_run_ml_promotion_evidence_pipeline.py::test_status_atomic_write_retries_transient_windows_lock:42 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_run_ml_promotion_authority.py:L51-74; tests/test_run_ml_promotion_evidence_pipeline.py:L42-63` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-9ad7a8de` | Category B (結構同構常數差異候選) | 2 | tests/test_p0_credit_transaction_shadow_adapter.py::test_missing_required_credit_field_is_blocked:40<br/>tests/test_p0_institutional_flow_shadow_adapter.py::test_missing_actor_field_is_blocked:58 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_p0_credit_transaction_shadow_adapter.py:L40-49; tests/test_p0_institutional_flow_shadow_adapter.py:L58-67` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-9b836999` | Category B (結構同構常數差異候選) | 3 | tests/test_full_app_healthcheck_high_risk_dry_run_dialog_plan.py::test_high_risk_dry_run_dialog_plan_does_not_import_qt_or_runner_execution:52<br/>tests/test_full_app_healthcheck_mainwindow_smoke_plan.py::test_mainwindow_smoke_plan_does_not_import_qt_or_runner_execution:53<br/>tests/test_full_app_healthcheck_viewport_resize_evidence_plan.py::test_viewport_resize_evidence_plan_does_not_import_qt_or_runner_execution:50 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 3 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_full_app_healthcheck_high_risk_dry_run_dialog_plan.py:L52-58; tests/test_full_app_healthcheck_mainwindow_smoke_plan.py:L53-59; tests/test_full_app_healthcheck_viewport_resize_evidence_plan.py:L50-56` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-9e4cd48d` | Category B (結構同構常數差異候選) | 2 | tests/test_p0_official_source_parsers.py::test_monthly_revenue_open_data_preserves_report_date_without_claiming_time:311<br/>tests/test_p0_official_source_parsers.py::test_twse_ex_dividend_parser_keeps_event_date_without_inferred_publication:344 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_p0_official_source_parsers.py:L311-319; tests/test_p0_official_source_parsers.py:L344-357` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-9f53a932` | Category B (結構同構常數差異候選) | 2 | tests/test_build_ml_allocation_matured_replay_input_cli.py::test_help_is_utf8_safe_when_parent_encoding_is_cp1252:288<br/>tests/test_build_ml_allocation_post_freeze_shadow_input_cli.py::test_help_is_utf8_safe_when_parent_encoding_is_cp1252:525 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_build_ml_allocation_matured_replay_input_cli.py:L288-310; tests/test_build_ml_allocation_post_freeze_shadow_input_cli.py:L525-547` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-a0358e95` | Category B (結構同構常數差異候選) | 2 | tests/test_build_p0_intake_from_audit.py::test_help_is_utf8_safe_on_cp1252_console:179<br/>tests/test_run_p0_candidate_audit.py::test_candidate_audit_help_is_utf8_safe_on_cp1252_console:571 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_build_p0_intake_from_audit.py:L179-192; tests/test_run_p0_candidate_audit.py:L571-584` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-a314f99d` | Category B (結構同構常數差異候選) | 3 | tests/test_factor_contract.py::test_factor_record_rejects_out_of_range_score_bp:43<br/>tests/test_factor_contract.py::test_factor_record_rejects_empty_factor_name:58<br/>tests/test_factor_contract.py::test_factor_record_rejects_empty_stock_code:73 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_factor_contract.py:L43-55; tests/test_factor_contract.py:L58-70; tests/test_factor_contract.py:L73-85` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-a3891012` | Category B (結構同構常數差異候選) | 2 | tests/test_fundamental_availability_entrypoint.py::test_validate_monthly_revenue_availability_file_reports_missing_file:96<br/>tests/test_fundamental_statement_availability_entrypoint.py::test_validate_statement_availability_file_reports_missing_file:117 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_fundamental_availability_entrypoint.py:L96-103; tests/test_fundamental_statement_availability_entrypoint.py:L117-124` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-a5e17dbc` | Category B (結構同構常數差異候選) | 2 | tests/test_monthly_revenue_availability_cli.py::test_monthly_revenue_availability_cli_exits_nonzero_for_invalid_mapping:20<br/>tests/test_statement_availability_cli.py::test_statement_availability_cli_exits_nonzero_for_invalid_mapping:19 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_monthly_revenue_availability_cli.py:L20-25; tests/test_statement_availability_cli.py:L19-24` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-a8f1f7c6` | Category B (結構同構常數差異候選) | 2 | tests/test_fundamental_availability_sources.py::test_load_monthly_revenue_availability_overrides_csv_reports_missing_file:191<br/>tests/test_fundamental_statement_availability_sources.py::test_load_statement_availability_overrides_csv_reports_missing_file:186 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_fundamental_availability_sources.py:L191-197; tests/test_fundamental_statement_availability_sources.py:L186-192` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-a9085bc6` | Category B (結構同構常數差異候選) | 2 | tests/test_financial_float_boundary_checker.py::test_invalid_boundary_category_is_reported_once:86<br/>tests/test_financial_float_boundary_checker.py::test_malformed_boundary_marker_is_reported_once:95 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_financial_float_boundary_checker.py:L86-92; tests/test_financial_float_boundary_checker.py:L95-101` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-ad2c2ec5` | Category B (結構同構常數差異候選) | 2 | tests/test_ml_model_prediction_registries.py::test_future_available_prediction_is_rejected:117<br/>tests/test_ml_model_prediction_registries.py::test_probability_outside_unit_interval_is_rejected:132 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_model_prediction_registries.py:L117-129; tests/test_ml_model_prediction_registries.py:L132-144` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-add9c5f0` | Category B (結構同構常數差異候選) | 3 | tests/test_core/test_data_loader.py::TestDataLoader.test_download_marks_explicit_twse_no_data_as_no_data:224<br/>tests/test_core/test_data_loader.py::TestDataLoader.test_download_keeps_future_date_response_as_failure:282<br/>tests/test_core/test_data_loader.py::TestDataLoader.test_download_keeps_transient_no_data_text_as_failure:292 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_core/test_data_loader.py:L224-232; tests/test_core/test_data_loader.py:L282-290; tests/test_core/test_data_loader.py:L292-300` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-bcc13a20` | Category B (結構同構常數差異候選) | 2 | tests/test_monthly_revenue_availability_cli.py::test_monthly_revenue_availability_cli_exits_zero_for_valid_mapping:4<br/>tests/test_statement_availability_cli.py::test_statement_availability_cli_exits_zero_for_valid_mapping:6 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_monthly_revenue_availability_cli.py:L4-17; tests/test_statement_availability_cli.py:L6-16` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-bf1f0571` | Category B (結構同構常數差異候選) | 2 | tests/test_forward_performance_service.py::test_forward_outcome_degrades_when_corporate_action_gap_detected:290<br/>tests/test_forward_performance_service.py::test_forward_outcome_degrades_when_trading_restriction_gap_detected:309 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_forward_performance_service.py:L290-306; tests/test_forward_performance_service.py:L309-324` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-c21b84ac` | Category B (結構同構常數差異候選) | 4 | tests/test_build_mops_statement_pit_candidate.py::test_resolve_official_item_code_uses_verified_financial_asset_net_alias:267<br/>tests/test_mops_statement_3064_alias.py::test_3064_display_name_alias_requires_exact_official_income_code_and_value:4<br/>tests/test_mops_statement_3064_alias.py::test_3252_display_name_alias_requires_exact_official_income_code_and_value:84<br/>tests/test_mops_statement_3064_alias.py::test_3379_3402_engineering_revenue_alias_requires_official_code_value_and_indent:185 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_build_mops_statement_pit_candidate.py:L267-283; tests/test_mops_statement_3064_alias.py:L4-22; tests/test_mops_statement_3064_alias.py:L84-102; tests/test_mops_statement_3064_alias.py:L185-203` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-c46f51ce` | Category B (結構同構常數差異候選) | 2 | tests/test_ui_qt_research_lab_workbench_copy_text.py::test_backtest_view_names_left_side_as_research_lab_workbench:7<br/>tests/test_ui_qt_research_lab_workbench_copy_text.py::test_backtest_view_names_result_tabs_as_experiment_outputs:15 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ui_qt_research_lab_workbench_copy_text.py:L7-12; tests/test_ui_qt_research_lab_workbench_copy_text.py:L15-20` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-c57adf8f` | Category B (結構同構常數差異候選) | 3 | tests/test_build_mops_numeric_pit_candidate.py::test_parse_ratio_rows_rejects_partially_missing_company_row:46<br/>tests/test_full_app_healthcheck_service_oracle_metadata.py::test_service_oracle_unmapped_path_raises_error:73<br/>tests/test_pit_taxonomy_daily_source.py::test_tpex_pdf_table_fixture_rejects_missing_supported_table:723 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 3 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_build_mops_numeric_pit_candidate.py:L46-51; tests/test_full_app_healthcheck_service_oracle_metadata.py:L73-76; tests/test_pit_taxonomy_daily_source.py:L723-727` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-cdc057c3` | Category B (結構同構常數差異候選) | 2 | tests/test_mops_numeric_pit_aggregator.py::test_unknown_artifact_source_id_fails_closed:35<br/>tests/test_mops_numeric_pit_aggregator.py::test_availability_lane_cannot_be_numeric_source_fails_closed:45 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_mops_numeric_pit_aggregator.py:L35-42; tests/test_mops_numeric_pit_aggregator.py:L45-52` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-ce1c63d4` | Category B (結構同構常數差異候選) | 2 | tests/test_p0_corporate_restriction_shadow_adapters.py::test_future_corporate_action_announcement_is_blocked:30<br/>tests/test_p0_corporate_restriction_shadow_adapters.py::test_corporate_action_requires_distinct_announcement_evidence:65 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_p0_corporate_restriction_shadow_adapters.py:L30-44; tests/test_p0_corporate_restriction_shadow_adapters.py:L65-79` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-cf0ebe5c` | Category B (結構同構常數差異候選) | 2 | tests/test_ml_feature_gap_diagnostics.py::test_gap_diagnostic_rejects_non_monotonic_dates:112<br/>tests/test_ml_feature_gap_diagnostics.py::test_gap_diagnostic_rejects_impossible_compact_date:127 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_feature_gap_diagnostics.py:L112-124; tests/test_ml_feature_gap_diagnostics.py:L127-141` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d129e8fd` | Category B (結構同構常數差異候選) | 2 | tests/test_finmind_cashflow_candidate_cli.py::test_finmind_cashflow_cli_requires_explicit_resumable_bulk_opt_in:55<br/>tests/test_finmind_monthly_revenue_create_time_cli.py::test_finmind_create_time_cli_requires_explicit_resumable_bulk_opt_in:90 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_finmind_cashflow_candidate_cli.py:L55-79; tests/test_finmind_monthly_revenue_create_time_cli.py:L90-102` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d1fd2911` | Category B (結構同構常數差異候選) | 2 | tests/test_ml_dataset_manifest_v2.py::test_v2_manifest_round_trip_rejects_tampered_payload:104<br/>tests/test_ml_historical_run_report.py::test_run_report_round_trip_rejects_tampering_and_unsafe_flags:57 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ml_dataset_manifest_v2.py:L104-116; tests/test_ml_historical_run_report.py:L57-69` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d3ad0b7f` | Category B (結構同構常數差異候選) | 2 | tests/test_full_app_healthcheck_known_issue_matcher.py::test_match_daily_prices_sqlite_error_maps_to_data_audit_issue:9<br/>tests/test_full_app_healthcheck_known_issue_matcher.py::test_match_hidden_widget_layout_error_maps_to_execution_issue:21 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_full_app_healthcheck_known_issue_matcher.py:L9-18; tests/test_full_app_healthcheck_known_issue_matcher.py:L21-30` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d476ad21` | Category B (結構同構常數差異候選) | 3 | tests/test_ui_qt_update_view_workbench.py::test_status_card_does_not_turn_green_for_latest_text_when_status_is_error:1114<br/>tests/test_ui_qt_update_view_workbench.py::test_status_card_marks_localized_unavailable_as_abnormal:1125<br/>tests/test_ui_qt_update_view_workbench.py::test_status_card_placeholder_remains_unchecked_not_needs_update:1207 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ui_qt_update_view_workbench.py:L1114-1122; tests/test_ui_qt_update_view_workbench.py:L1125-1133; tests/test_ui_qt_update_view_workbench.py:L1207-1215` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d49795d7` | Category B (結構同構常數差異候選) | 2 | tests/test_paper_portfolio_daily_runner.py::test_future_available_price_is_never_used:40<br/>tests/test_paper_portfolio_daily_runner.py::test_same_day_close_is_never_visible_at_0830_decision_time:64 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_paper_portfolio_daily_runner.py:L40-46; tests/test_paper_portfolio_daily_runner.py:L64-77` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d617a960` | Category B (結構同構常數差異候選) | 2 | tests/test_ui_qt_watchlist_candidate_pool_copy_text.py::test_watchlist_view_frames_primary_surface_as_candidate_pool:4<br/>tests/test_ui_qt_watchlist_candidate_pool_copy_text.py::test_watchlist_view_exposes_research_lab_batch_handoff_copy:12 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ui_qt_watchlist_candidate_pool_copy_text.py:L4-9; tests/test_ui_qt_watchlist_candidate_pool_copy_text.py:L12-17` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d6f707c1` | Category B (結構同構常數差異候選) | 2 | tests/test_full_app_healthcheck_full_mode_release_checklist.py::test_render_full_mode_release_checklist_markdown_is_readable:94<br/>tests/test_full_app_healthcheck_quick_mode_release_gate_proposal.py::test_render_quick_mode_release_gate_proposal_markdown_is_readable:91 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_full_app_healthcheck_full_mode_release_checklist.py:L94-106; tests/test_full_app_healthcheck_quick_mode_release_gate_proposal.py:L91-103` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-d8e16f36` | Category B (結構同構常數差異候選) | 4 | tests/test_build_mops_statement_pit_candidate.py::test_resolve_official_item_code_uses_verified_operating_expense_alias:305<br/>tests/test_build_mops_statement_pit_candidate.py::test_resolve_official_item_code_uses_verified_pretax_profit_alias:358<br/>tests/test_build_mops_statement_pit_candidate.py::test_resolve_official_item_code_uses_verified_after_tax_profit_alias:375<br/>tests/test_build_mops_statement_pit_candidate.py::test_resolve_official_item_code_uses_verified_oci_total_alias:431 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_build_mops_statement_pit_candidate.py:L305-319; tests/test_build_mops_statement_pit_candidate.py:L358-372; tests/test_build_mops_statement_pit_candidate.py:L375-389; tests/test_build_mops_statement_pit_candidate.py:L431-445` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-df57d7f8` | Category B (結構同構常數差異候選) | 2 | tests/test_full_app_healthcheck_test_suite_bridge.py::test_suites_can_be_filtered_to_update_tab_only:73<br/>tests/test_full_app_healthcheck_test_suite_bridge.py::test_suites_can_be_filtered_to_research_tab_only:82 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_full_app_healthcheck_test_suite_bridge.py:L73-79; tests/test_full_app_healthcheck_test_suite_bridge.py:L82-88` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-f3f099b9` | Category B (結構同構常數差異候選) | 4 | tests/test_ui_qt_decision_desk_main_integration.py::test_market_breadth_service_is_injected_into_decision_desk_builder:418<br/>tests/test_ui_qt_decision_desk_main_integration.py::test_sector_rotation_service_is_injected_into_decision_desk_builder:433<br/>tests/test_ui_qt_decision_desk_main_integration.py::test_watchlist_trigger_service_is_injected_into_decision_desk_builder:461<br/>tests/test_ui_qt_decision_desk_main_integration.py::test_relative_strength_liquidity_service_is_injected_into_decision_desk_builder:506 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_ui_qt_decision_desk_main_integration.py:L418-430; tests/test_ui_qt_decision_desk_main_integration.py:L433-445; tests/test_ui_qt_decision_desk_main_integration.py:L461-473; tests/test_ui_qt_decision_desk_main_integration.py:L506-518` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-f43fb5b9` | Category B (結構同構常數差異候選) | 2 | tests/test_fundamental_availability_sources.py::test_load_monthly_revenue_availability_overrides_requires_contiguous_revision_lineage:180<br/>tests/test_fundamental_statement_availability_sources.py::test_load_statement_availability_overrides_requires_revision_lineage:98 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_fundamental_availability_sources.py:L180-188; tests/test_fundamental_statement_availability_sources.py:L98-106` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-f5f37ab8` | Category B (結構同構常數差異候選) | 2 | tests/test_position_health_market_source_producer.py::test_producer_rejects_baseline_from_different_decision_date:157<br/>tests/test_position_health_market_source_producer.py::test_producer_rejects_source_receipt_after_health_cutoff:200 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_position_health_market_source_producer.py:L157-175; tests/test_position_health_market_source_producer.py:L200-217` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-f83ba4d9` | Category B (結構同構常數差異候選) | 2 | tests/test_p0_corporate_restriction_shadow_adapters.py::test_corporate_action_rejects_available_before_announcement:47<br/>tests/test_p0_pit_fundamental_announcement_adapters.py::test_revenue_available_before_announcement_is_blocked:28 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 2 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_p0_corporate_restriction_shadow_adapters.py:L47-62; tests/test_p0_pit_fundamental_announcement_adapters.py:L28-43` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-f8939f66` | Category B (結構同構常數差異候選) | 2 | tests/test_formal_rule_source_producer.py::test_same_day_bundle_is_not_created_after_preopen_cutoff:657<br/>tests/test_formal_rule_source_producer.py::test_postopen_first_attempt_is_blocked_without_prepublished_bundle:723 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_formal_rule_source_producer.py:L657-678; tests/test_formal_rule_source_producer.py:L723-746` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-B-ffdf2dbf` | Category B (結構同構常數差異候選) | 2 | tests/test_machine_status_classification.py::test_explicit_human_review_diagnostic_remains_human:30<br/>tests/test_machine_status_classification.py::test_source_gap_diagnostic_cannot_be_hidden_by_passed_status:37 | AST 符號化比對完成，核對函式名稱與參數列表 | 涵蓋 1 個檔案，變數名稱與測試常數存在微幅差異 | `tests/test_machine_status_classification.py:L30-34; tests/test_machine_status_classification.py:L37-41` | **證據不足保留** | AST 同構僅代表代碼語法骨幹相似，各測項傳入不同常數、Mock 或邊界輸入可能保護不同業務契約。在未進行逐行商業邏輯與回歸驗證前，標記為證據不足保留，避免破壞現有測試防線。 |
+| `DUP-C-001` | Category C (重複Setup候選) | 5 | tests/e2e/test_data_path_isolation.py 內 5 個測項 (如 test_end_to_end_isolation, test_backup_functionality...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/e2e/test_data_path_isolation.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-002` | Category C (重複Setup候選) | 5 | tests/test_allocation_ooc_release_builder.py 內 5 個測項 (如 test_minimal_ooc_release_attaches_calibrator_and_matches_direct_consumer, test_minimal_ooc_release_rejects_unbound_profile...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_allocation_ooc_release_builder.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-003` | Category C (重複Setup候選) | 5 | tests/test_broker_branch_decode.py 內 5 個測項 (如 test_update_broker_branch_data_uses_http_fast_path_without_driver, test_update_broker_branch_data_skips_dates_without_daily_price_evidence...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_broker_branch_decode.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-004` | Category C (重複Setup候選) | 5 | tests/test_build_current_statement_snapshot_candidate.py 內 5 個測項 (如 test_builder_handles_mixed_tpex_identity_and_marks_income_ytd, test_builder_accepts_cashflow_endpoint_and_keeps_ytd_label...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_build_current_statement_snapshot_candidate.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-005` | Category C (重複Setup候選) | 7 | tests/test_build_mops_statement_batch.py 內 7 個測項 (如 test_batch_driver_persists_partial_results_and_resume_retries_only_failed_child, test_batch_driver_opens_source_circuit_and_resume_starts_new_transport_window...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_build_mops_statement_batch.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-006` | Category C (重複Setup候選) | 7 | tests/test_continue_ml_direct_ooc_after_store.py 內 7 個測項 (如 test_main_publishes_live_waiting_status_before_store_wait, test_main_publishes_store_custody_validation_phase...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_continue_ml_direct_ooc_after_store.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-007` | Category C (重複Setup候選) | 7 | tests/test_daily_banktaiwan_learning_cost.py 內 7 個測項 (如 test_legitimate_unavailable_cost_stays_unknown_for_price_only_gate, test_estimated_capture_outcome_authority_consumer_and_tamper_guard...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_daily_banktaiwan_learning_cost.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-008` | Category C (重複Setup候選) | 4 | tests/test_daily_ml_allocation_derived_shadow.py 內 4 個測項 (如 test_real_preopen_producer_and_inner_reader_authorize_current_state_overlap, test_forward_late_capture_is_blocked_before_daily_consumer...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_daily_ml_allocation_derived_shadow.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-009` | Category C (重複Setup候選) | 9 | tests/test_daily_ml_allocation_orchestration.py 內 9 個測項 (如 test_main_wires_auto_catch_up_selection_into_hash_bound_status, test_success_runs_raw_input_inference_then_promotion_and_hashes_status...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_daily_ml_allocation_orchestration.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-010` | Category C (重複Setup候選) | 7 | tests/test_daily_recommendation_learning_loop.py 內 7 個測項 (如 test_default_config_uses_external_shared_shadow_root_and_loader_reads_candidate, test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_daily_recommendation_learning_loop.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-011` | Category C (重複Setup候選) | 6 | tests/test_decision_continuity_write_path.py 內 6 個測項 (如 test_identity_merge_conflict_and_deep_immutable_revision_payload, test_watchlist_repository_history_conflict_tombstone_and_legacy_baseline...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_decision_continuity_write_path.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-012` | Category C (重複Setup候選) | 4 | tests/test_formal_common_identity.py 內 4 個測項 (如 test_real_ledger_receipt_rejects_valid_source_b_with_stale_source_hash, test_real_ledger_receipt_binds_recorded_portfolio_clock_fields...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_formal_common_identity.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-013` | Category C (重複Setup候選) | 10 | tests/test_formal_daily_input_producer.py 內 10 個測項 (如 test_multiday_ledger_keeps_open_tail_then_consumes_next_boundary, test_public_daily_run_reuses_cache_calendar_for_ledger_producer...) | 逐行核對 10 處 _clock、_paper_sources 與 _candidate_paths 調用 | 針對不同時鐘組合 (單時鐘 vs 雙時鐘、單日 fill vs 跨日 fill、日曆例外) 顯式接線 | `tests/test_formal_daily_input_producer.py` | **保留原寫法並說明** | 該檔既有 helper 已足夠清晰，再度疊加超封裝將形成過度抽象，掩蓋時鐘與 fill 配對語意。 |
+| `DUP-C-014` | Category C (重複Setup候選) | 12 | tests/test_formal_rule_source_producer.py 內 12 個測項 (如 test_machine_bundle_binds_current_window_policy_and_receipt, test_machine_consumer_rejects_receipt_observed_after_preopen_cutoff...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_formal_rule_source_producer.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-015` | Category C (重複Setup候選) | 4 | tests/test_formal_runtime_config.py 內 4 個測項 (如 test_runtime_config_legacy_contract_cannot_omit_minimum_environment, test_runtime_environment_binding_is_process_only_and_reloads_exact_map...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_formal_runtime_config.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-016` | Category C (重複Setup候選) | 11 | tests/test_forward_position_thesis_candidate_producer.py 內 11 個測項 (如 test_binding_rebuilds_machine_policy_contract_from_verified_new_entry, test_machine_policy_binding_rejects_policy_bytes_replaced_after_candidate_freeze...) | 逐行核對 11 處 _write_json、now_provider 與 ForwardPositionThesisCandidateProducer | 各測項之行事曆快取路徑、決策時鐘與 policy 變體皆不相同 | `tests/test_forward_position_thesis_candidate_producer.py` | **保留原寫法並說明** | 抽取需過多旗標與 tuple 解構，實質淨行數 <= 0，保留原寫法更能維持單一測試獨立性。 |
+| `DUP-C-017` | Category C (重複Setup候選) | 5 | tests/test_inspect_ml_formal_input_readiness.py 內 5 個測項 (如 test_readiness_reports_prospective_staging_without_adopting_it, test_readiness_adopts_late_windows_owner_deposit...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_inspect_ml_formal_input_readiness.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-018` | Category C (重複Setup候選) | 8 | tests/test_ml_allocation_shadow_evidence.py 內 8 個測項 (如 test_sidecar_is_idempotent_and_changed_custody_appends_revision, test_collector_records_four_lanes_then_matures_all_four_horizons...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_ml_allocation_shadow_evidence.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-019` | Category C (重複Setup候選) | 9 | tests/test_ml_direct_chain_maintenance.py 內 9 個測項 (如 test_one_shot_legacy_watcher_blocks_prospective_input_before_launch, test_maintainer_rechecks_capacity_after_claiming_shared_reservation...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_ml_direct_chain_maintenance.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-020` | Category C (重複Setup候選) | 5 | tests/test_ml_direct_checkpoint_provenance_recovery.py 內 5 個測項 (如 test_legacy_complete_checkpoint_is_audit_only_and_not_rehashed, test_stable_identity_drift_is_not_misclassified_as_legacy...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_ml_direct_checkpoint_provenance_recovery.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-021` | Category C (重複Setup候選) | 4 | tests/test_ml_pit_shared_block_resolver.py 內 4 個測項 (如 test_real_pit_publications_reuse_unchanged_shards_and_add_changed_one, test_assembler_consumes_shared_dataset_view_without_local_shard_bytes...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_ml_pit_shared_block_resolver.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-022` | Category C (重複Setup候選) | 4 | tests/test_ml_pit_year_shard_exporter.py 內 4 個測項 (如 test_exporter_allows_only_identically_missing_canonical_price_row, test_exporter_streams_bounded_formal_and_shadow_shards_without_db_write...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_ml_pit_year_shard_exporter.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-023` | Category C (重複Setup候選) | 4 | tests/test_official_trading_calendar_cache.py 內 4 個測項 (如 test_refresh_after_expiry_creates_new_cache_and_retains_old_file, test_official_temporary_closure_event_overrides_annual_plan...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_official_trading_calendar_cache.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-024` | Category C (重複Setup候選) | 10 | tests/test_paper_daily_execution_producer.py 內 10 個測項 (如 test_partial_liquidity_continues_other_orders_and_carries_remaining_on_retry, test_execution_day_eod_volume_cannot_change_frozen_open_fill_or_cap...) | 逐行核對 7 處佇列推薦檔、PaperExecutionPaths 與資料庫狀態 | 各測項涉及不同推薦檔名標籤、不同候選輸出子目錄與關鍵的資料庫刪除故障注入 | `tests/test_paper_daily_execution_producer.py` | **保留原寫法並說明** | 抽取共用 setup 會掩蓋故障注入時序，降低測試可信度，保留原寫法。 |
+| `DUP-C-025` | Category C (重複Setup候選) | 12 | tests/test_paper_formal_daily_source_chain.py 內 12 個測項 (如 test_paper_formal_chain_recovers_after_ledger_receipt_failure_and_source_cleanup, test_paper_receipt_formal_eligibility_requires_timestamped_intraday_source...) | 逐行核對 10 處 _Response 定義、headers、geturl 與 read(limit) | 7 處為純 200 JSON 樣板；3 處自帶讀取上限斷言與特殊 Content-Encoding | `tests/test_paper_formal_daily_source_chain.py` | **已整併** | 整併 7 處樣板至檔內 _MockHttpResponse，保留 3 處防禦上限契約，實測淨減 91 行，18 節點零回歸。 |
+| `DUP-C-026` | Category C (重複Setup候選) | 6 | tests/test_paper_portfolio_isolated_scheduler.py 內 6 個測項 (如 test_isolated_preopen_seeds_readonly_source_then_calls_public_runner, test_eod_scope_preflight_reads_seeded_repository_state_after_preopen...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_paper_portfolio_isolated_scheduler.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-027` | Category C (重複Setup候選) | 6 | tests/test_paper_portfolio_readiness_service.py 內 6 個測項 (如 test_readiness_reads_snapshots_and_benchmark_without_mutating_databases, test_future_snapshot_is_degraded_and_never_counts_as_current_evidence...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_paper_portfolio_readiness_service.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-028` | Category C (重複Setup候選) | 4 | tests/test_personalization_fit_runner.py 內 4 個測項 (如 test_partial_stream_interruption_leaves_no_final_or_temp_and_retry_is_immutable, test_real_sources_fit_cli_and_existing_reader_cli_verify_envelope...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_personalization_fit_runner.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-029` | Category C (重複Setup候選) | 7 | tests/test_personalization_save_integration.py 內 7 個測項 (如 test_missing_scope_retry_cannot_downgrade_existing_personal_result, test_ui_owned_save_ack_reader_projection_and_missing_action...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_personalization_save_integration.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-030` | Category C (重複Setup候選) | 5 | tests/test_phase3c_backfill_runner.py 內 5 個測項 (如 test_runner_records_observation_at_after_slow_fetch, test_runner_rejects_observation_at_before_incoming_custody...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_phase3c_backfill_runner.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-031` | Category C (重複Setup候選) | 5 | tests/test_pit_taxonomy_daily_source.py 內 5 個測項 (如 test_configured_capture_uses_saved_bytes_and_rejects_mapping_in_config, test_preopen_entrypoint_passes_fetch_completion_clock_to_producer...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_pit_taxonomy_daily_source.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-032` | Category C (重複Setup候選) | 8 | tests/test_portfolio_ml_dataset_assembler.py 內 8 個測項 (如 test_assembler_emits_direct_training_jsonl_with_strict_pit_and_folds, test_assembler_consumes_shard_price_contract_without_bridging_labels...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_portfolio_ml_dataset_assembler.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-033` | Category C (重複Setup候選) | 5 | tests/test_portfolio_ml_out_of_core_pipeline.py 內 5 個測項 (如 test_formal_and_research_overlay_are_fail_closed, test_direct_annual_numeric_store_has_no_full_period_spool_or_jsonl...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_portfolio_ml_out_of_core_pipeline.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-034` | Category C (重複Setup候選) | 5 | tests/test_position_health_daily_refresh_service.py 內 5 個測項 (如 test_refresh_uses_one_paper_snapshot_and_preserves_only_existing_human_fields, test_refresh_does_not_carry_prior_closed_or_thesis_to_unproven_new_entry...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_position_health_daily_refresh_service.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-035` | Category C (重複Setup候選) | 4 | tests/test_recommendation_learning_evidence_projection.py 內 4 個測項 (如 test_projection_fail_closed_for_stale_or_invalid_provenance, test_public_natural_verifier_preserves_artifacts_and_rejects_bad_scope...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_recommendation_learning_evidence_projection.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-036` | Category C (重複Setup候選) | 8 | tests/test_recommendation_service_calibration_integration.py 內 8 個測項 (如 test_active_projection_receipt_storage_failure_withdraws_model_fields_but_keeps_rule_selection, test_active_projection_receipt_candidate_race_fails_closed...) | 逐行核對 8 處 RecommendationService 組裝、Mock 依賴與 Consumer 類型 | 涵蓋 Mock 與真實 Consumer、不同起始年份 (2014 vs 2026)、特殊 monkeypatch 與 Qt 離線邊界 | `tests/test_recommendation_service_calibration_integration.py` | **保留原寫法並說明** | 消費者類型與環境邊界多樣，抽取會分散設定邏輯與弱化失敗定位，保留原寫法。 |
+| `DUP-C-037` | Category C (重複Setup候選) | 4 | tests/test_recommendation_training_lineage.py 內 4 個測項 (如 test_training_lineage_persists_complete_source_and_readback_identity, test_inference_source_contract_binding_matches_exact_feature_rows_and_rejects_substitution...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_recommendation_training_lineage.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-038` | Category C (重複Setup候選) | 6 | tests/test_scheduled_data_freshness_probe.py 內 6 個測項 (如 test_freshness_probe_reports_artifact_write_failure_as_structured_error, test_freshness_probe_degrades_when_tpex_file_missing_for_latest_daily_date...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_scheduled_data_freshness_probe.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-039` | Category C (重複Setup候選) | 4 | tests/test_scheduled_data_update_runner.py 內 4 個測項 (如 test_quick_update_publishes_running_before_work_and_terminal_metadata, test_quick_update_can_skip_optional_broker_branch_for_bounded_core_run...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_scheduled_data_update_runner.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-040` | Category C (重複Setup候選) | 8 | tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py 內 8 個測項 (如 test_scheduled_wrapper_stdout_survives_cp1252_console_with_chinese_paths, test_scheduled_wrapper_persists_pipeline_source_coverage_summary...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-041` | Category C (重複Setup候選) | 6 | tests/test_scheduled_formal_input_producer.py 內 6 個測項 (如 test_missing_source_configuration_is_durable_and_observable, test_scheduled_source_root_ignores_existing_legacy_formal_paths...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_scheduled_formal_input_producer.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-042` | Category C (重複Setup候選) | 5 | tests/test_scheduled_ml_direct_chain_maintenance.py 內 5 個測項 (如 test_main_delegates_shared_reservation_to_maintainer, test_main_skips_verified_owner_without_claiming_reservation...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_scheduled_ml_direct_chain_maintenance.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-043` | Category C (重複Setup候選) | 6 | tests/test_scheduled_ml_raw_pit_refresh.py 內 6 個測項 (如 test_main_persists_bounded_source_quality_summary_on_builder_failure, test_main_skips_when_current_publication_is_new_enough...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_scheduled_ml_raw_pit_refresh.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-044` | Category C (重複Setup候選) | 4 | tests/test_scheduled_recommendation_snapshot_wrapper.py 內 4 個測項 (如 test_scheduled_recommendation_snapshot_saves_result_and_status, test_scheduled_snapshot_emits_forward_candidate_after_result_is_persisted...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_scheduled_recommendation_snapshot_wrapper.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-045` | Category C (重複Setup候選) | 5 | tests/test_task_loop_08_contract.py 內 5 個測項 (如 test_saved_recommendation_loop_survives_workbench_source_reload, test_workbench_rejects_future_recommendation_inside_saved_loop...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_task_loop_08_contract.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-046` | Category C (重複Setup候選) | 8 | tests/test_ui_qt_research_workflow.py 內 8 個測項 (如 test_backtest_view_correct_history_run_binding, test_backtest_view_preserves_provenance_on_portfolio_recording...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_ui_qt_research_workflow.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-047` | Category C (重複Setup候選) | 10 | tests/test_ui_qt_update_view_workbench.py 內 10 個測項 (如 test_update_view_shows_rejected_fallback_reason_and_date_provenance, test_update_view_with_config_instantiates_inspector_widget...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_ui_qt_update_view_workbench.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-048` | Category C (重複Setup候選) | 7 | tests/test_update_service_status.py 內 7 個測項 (如 test_check_data_status_includes_broker_branch_and_technical_summary, test_export_table_to_csv_is_query_only_and_atomic...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_update_service_status.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-C-049` | Category C (重複Setup候選) | 4 | tests/test_watchlist_stock_analysis_navigation.py 內 4 個測項 (如 test_sorted_watchlist_opens_selected_stock_and_empty_selection_does_not_emit, test_unranked_stock_loads_detail_through_service...) | 初步 AST 行數推估 (len(body) - len(asserts)) | 各測項前置區塊包含不同業務變數，未逐行核對 mutable state 與 teardown | `tests/test_watchlist_stock_analysis_navigation.py` | **證據不足保留** | 原推估誤將中間執行視為 setup；在未經逐行隔離性與副作用審查前，證據不足以支持抽取，預估收益歸零。 |
+| `DUP-D-001` | Category D (多層驗證) | 40 | RecommendationDailyLearning 功能跨層測試：Service / Integration: 23 cases, CLI / Process: 1 cases, Unit / Contract: 16 cases | 跨架構層級 (Unit, Service, CLI, UI) 調用比對 | 觸發相同業務邏輯，但保護不同架構邊界與故障模式 | `RecommendationDailyLearning 功能跨層測試：Service / Integration: 23 cases, CLI / Process: 1 cases, Unit / Contract: 16 cases` | **已全面撤回** | 多層驗證為防禦縱深分工設計，非代碼冗餘，估算收益全額撤回歸零。 |
+| `DUP-D-002` | Category D (多層驗證) | 83 | Personalization 功能跨層測試：Unit / Contract: 65 cases, CLI / Process: 7 cases, Service / Integration: 11 cases | 跨架構層級 (Unit, Service, CLI, UI) 調用比對 | 觸發相同業務邏輯，但保護不同架構邊界與故障模式 | `Personalization 功能跨層測試：Unit / Contract: 65 cases, CLI / Process: 7 cases, Service / Integration: 11 cases` | **已全面撤回** | 多層驗證為防禦縱深分工設計，非代碼冗餘，估算收益全額撤回歸零。 |
+| `DUP-D-003` | Category D (多層驗證) | 77 | PositionHealthProjection 功能跨層測試：CLI / Process: 3 cases, Service / Integration: 24 cases, Unit / Contract: 50 cases | 跨架構層級 (Unit, Service, CLI, UI) 調用比對 | 觸發相同業務邏輯，但保護不同架構邊界與故障模式 | `PositionHealthProjection 功能跨層測試：CLI / Process: 3 cases, Service / Integration: 24 cases, Unit / Contract: 50 cases` | **已全面撤回** | 多層驗證為防禦縱深分工設計，非代碼冗餘，估算收益全額撤回歸零。 |
+| `DUP-D-004` | Category D (多層驗證) | 182 | UpdateWorkbenchFlow 功能跨層測試：UI / End-to-End: 85 cases, Service / Integration: 76 cases, Unit / Contract: 21 cases | 跨架構層級 (Unit, Service, CLI, UI) 調用比對 | 觸發相同業務邏輯，但保護不同架構邊界與故障模式 | `UpdateWorkbenchFlow 功能跨層測試：UI / End-to-End: 85 cases, Service / Integration: 76 cases, Unit / Contract: 21 cases` | **已全面撤回** | 多層驗證為防禦縱深分工設計，非代碼冗餘，估算收益全額撤回歸零。 |
+| `DUP-E-001` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_advanced_patterns_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_advanced_patterns_check.py (共 512 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-002` | Category E (手動Legacy腳本 - 獨立端點連線探測腳本) | 1 | tests/manual/legacy_api_endpoints_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無 assert，直連 TWSE 實體端點探測連線與回應狀態 | `tests/manual/legacy_api_endpoints_check.py (共 82 行, 0 斷言)` | **原位手動診斷保留** | 具備獨立之手動連線診斷用途；且已被 pytest.ini 排除，維持原位不影響測試速度，保留原位。 |
+| `DUP-E-003` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_daily_data_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_daily_data_check.py (共 72 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-004` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_data_loading_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_data_loading_check.py (共 83 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-005` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_extended_patterns_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_extended_patterns_check.py (共 512 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-006` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_math_analyzer_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_math_analyzer_check.py (共 195 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-007` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_ml_analyzer_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_ml_analyzer_check.py (共 178 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-008` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_optimized_patterns_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_optimized_patterns_check.py (共 608 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-009` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_pattern_analyzer_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_pattern_analyzer_check.py (共 389 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-010` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_pattern_parameter_tuning_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_pattern_parameter_tuning_check.py (共 340 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-011` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_signal_combiner_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_signal_combiner_check.py (共 140 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-012` | Category E (手動Legacy腳本 - 純 Print 手動演算法觀察腳本) | 1 | tests/manual/legacy_technical_analyzer_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 無任何 assert，純 print 形態與數學計算結果，依賴已失效 import | `tests/manual/legacy_technical_analyzer_check.py (共 182 行, 0 斷言)` | **原位手動診斷保留** | 僅供手動參照；因已不在 pytest discovery 內，維持原位零刪除零搬移。 |
+| `DUP-E-013` | Category E (手動Legacy腳本 - 含斷言之舊版相容性檢查) | 1 | tests/manual/legacy_twse_api_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 含 21 個舊版欄位/日期斷言，依賴已重構之舊模組 | `tests/manual/legacy_twse_api_check.py (共 72 行, 21 斷言)` | **原位手動診斷保留** | 斷言已被現代測試更嚴格取代；因已不在 pytest discovery 內，搬移不影響執行速度，保留於原位。 |
+| `DUP-E-014` | Category E (手動Legacy腳本 - 含斷言之舊版相容性檢查) | 1 | tests/manual/legacy_utils_check.py | 完整 AST 斷言統計、網路調用偵測與 Import 依賴分析 | 含 17 個舊版欄位/日期斷言，依賴已重構之舊模組 | `tests/manual/legacy_utils_check.py (共 78 行, 17 斷言)` | **原位手動診斷保留** | 斷言已被現代測試更嚴格取代；因已不在 pytest discovery 內，搬移不影響執行速度，保留於原位。 |
+
+---
+## 7. 一致性檢查與已撤回估算聲明
+
+### 7.1 一致性檢查確認表
+1. **報告與 CSV 一致性**：DTO 候選 (`DUP-A-fa52cf96`) 於 CSV 與本文檔中均明確為「保留原寫法並說明」，處置完全對齊。
+2. **Legacy 腳本分類客觀性**：14 檔手動腳本按代碼事實區分為 1 檔連線探測、2 檔舊斷言覆蓋、11 檔純 print 觀察，無矛盾定性。
+3. **Category D 與合計自動化**：Category D 修正為 4 組，總數 139 組，全部由腳本自原始資料計算生成。
+4. **成員完整性檢查**：139 組候選之 `member_count == len(members)` 斷言 100% 通過，無任何截短字串。
+
+### 7.2 歷史虛高估算撤回聲明
 1. **「刪除 3 個重複案例」**：**已全面撤回**。所有測試案例 100% 保留。
-2. **「Category C 可省 3,593 行或 Top 5 可省 380/399 行」**：**已修正為理論估算**。實質落地為 DUP-C-025 淨減 91 行，其餘 4 組因維持測試獨立性與可讀性結案為保留。
-3. **「Category D 多層驗證可省 150 行」**：**已全面撤回**。多層驗證為架構防禦分工，收益歸零。
-4. **「歸檔 14 檔 Legacy 腳本可減少 4,228 行並加速 pytest」**：**已全面澄清**。搬移目錄不改變代碼行數，且該目錄原已不在 pytest 探索中，對執行速度毫無影響。
+2. **「Category C 可省 3,593 行或 Top 5 可省 380/399 行」**：**已修正為理論極限估算**。實際落地僅 DUP-C-025 整併淨減 91 行，其餘候選基於可讀性與測試獨立性結案保留。
+3. **「Category D 多層驗證可省 150 行」**：**已全面撤回**。多層驗證屬架構防禦分工，非冗餘。
+4. **「歸檔 14 檔 Legacy 腳本可減少 4,228 行並加速 pytest」**：**已全面澄清**。搬移目錄不減少代碼總行數，且該目錄原不在 pytest 探索中，對執行速度毫無影響。
 
 ---
+## 8. 邊界說明與未查證範圍
 
-## 5. 驗證記錄與環境限制
-
-### 5.1 測試套件執行結果對照
-
-1. **`tests/test_promotion_authority_secret_store.py`**：
-   - 結果：`3 passed in 0.19s` (100%)。
-   - 項目：DPAPI 加解密穩定性、明文防外洩、JSON 雜湊防篡改、身分不符拒絕。
-2. **`tests/test_paper_formal_daily_source_chain.py`**：
-   - 結果：`17 passed, 1 skipped in 7.70s`。
-   - 項目：TWSE 行情擷取、讀取上限斷言、URL 篡改拒絕、收據持久化與重播。
-   - 環境限制：1 skipped 為 Windows 無管理者提權環境下自然跳過 symlink junction 測試，屬預期行為。
-3. **`tests/test_forward_position_thesis_candidate_producer.py`**：
-   - 結果：`18 passed in 1.39s` (100%)。
-4. **`tests/test_recommendation_service_calibration_integration.py`**：
-   - 結果：`12 passed in 3.62s` (100%)。
-5. **`tests/test_formal_daily_input_producer.py`**：
-   - 結果：`26 passed in 15.07s` (100%)。
-6. **`tests/test_paper_daily_execution_producer.py`**：
-   - 結果：`28 passed in 1.80s` (100%)。
-
----
-
-## 6. 最終工作區狀態
-
-工作區目前乾淨無衝突，未 stage 任何無關檔案，未執行 push，符合所有安全與防禦規範。
+1. **未深審範圍 (113 組候選)**：
+   - 本次限於授權與防禦原則，未對 Category B 69 組及 Category C 其餘 44 組進行逐檔深層業務邏輯審核。
+   - 該 113 組候選依保守原則標記為「**證據不足保留**」，維持原狀零更動，絕不破壞既有測試之隔離性。
+2. **後續整併建議**：
+   - 未來若有維護需求，應依循「一次一檔、保留所有情境、focused 驗證通過後獨立 Commit」之原則受控推進。
+3. **測試與環境安全**：
+   - 本次未重跑無關之六組已驗證測試，未執行 push，未變動任何正式資料或排程。

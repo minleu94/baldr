@@ -32,7 +32,7 @@
 
 ## 2026-09-08 整併與下一輪工作
 
-- [測試資產整理與候選處置結案報告 (2026-09-17)](../06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：全候選終局處置定案、動態去重演算法修復、母體差集對齊與分批驗證結案。
+- [測試資產整理與候選處置結案報告 (2026-09-17)](../06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：限定補正結案、AST無損重算、全候選逐列處置表、母體差集對齊與獨立審閱證據。
 - [測試資產關聯與重複／過時盤點報告 V2](../06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md)：方法補正、母體口徑對齊、候選事實查核與第一批受控整併。
 - [測試資產關聯與重複／過時盤點報告 V1 (初版，已撤回部分結論)](../06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)：初版盤點記錄，附帶重要撤回聲明。
 - [產業強弱與產業→個股決策旅程 QA](../06_qa/INDUSTRY_DECISION_JOURNEY_2026_09_14.md)：current-research 產業映射、TAIEX 可比 5／20 日排名、coverage／PIT 限制與代表股明確下鑽證據。

@@ -32,7 +32,7 @@
 
 ## 2026-09-08 整併與下一輪工作
 
-- [測試資產整理與候選處置結案報告 (2026-09-17)](../06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：限定補正結案、AST無損重算、全候選逐列處置表、母體差集對齊與獨立審閱證據。
+- [測試資產整理與候選處置結案報告 (2026-09-17)](../06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：限定補正結案、AST無損重算、全候選逐列處置表、bounded 母體邊界與獨立審閱證據。
 - [Graphify 程式碼引用複核 (2026-09-17)](../06_qa/GRAPHIFY_CODE_REFERENCE_REVIEW_2026_09_17.md)：記錄 Graphify 無 caller 查核範圍、實際引用證據與仍待人工確認的邊界。
 - [測試資產關聯與重複／過時盤點報告 V2](../06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md)：方法補正、母體口徑對齊、候選事實查核與第一批受控整併。
 - [測試資產關聯與重複／過時盤點報告 V1 (初版，已撤回部分結論)](../06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)：初版盤點記錄，附帶重要撤回聲明。

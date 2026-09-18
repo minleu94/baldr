@@ -1,5 +1,8 @@
 # 測試資產關聯與重複／過時盤點報告 (第二輪：方法補正與候選驗證 V2)
 
+> [!WARNING]
+> 本文件是 2026-09-17 第二輪的歷史方法補正版，保留原始審計基準與當時的中間產物口徑；其中 `902`、`1,179`、`docs/06_qa` 檔案數與 Secret Store 未追蹤狀態均不可當作目前工作區狀態。最新的 bounded identity inventory、候選逐列處置與人口計數邊界請以 [測試資產整理與候選處置結案報告（證據邊界修正版）](TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) 為準。
+
 > **審計日期**：2026-09-17
 > **審計版本**：V2 (第二輪方法補正版，第一版報告完整保留於 [TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md](file:///c:/Projects/PythonProjects/technical_analysis/docs/06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md))
 > **基準 Commit**：`639a7789858b413bf61ca626726cc0170b47f35c` (Branch: `dev`)

@@ -108,7 +108,7 @@
 
 **對應模組**：
 - `analysis_module/technical_analysis/technical_indicators.py`
-- `analysis_module/technical_analysis/talib_compatibility.py`（TA-Lib 兼容性）
+- `analysis_module/technical_analysis/talib_compatibility.py`（保留的 TA-Lib 相容實作；2026-09-17 靜態查核未找到外部接線。`technical_analyzer.py`／`technical_indicators.py` 直接 `import talib`，不能將此檔視為目前主流程已啟用的自動 fallback。）
 
 ---
 

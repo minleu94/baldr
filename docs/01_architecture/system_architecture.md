@@ -10,7 +10,7 @@
 - 2026-09-14 的呈現增量將校準機率、成本後機率、rank／score、decision／data-as-of、horizon／sample、model／dataset／source、evidence kind 與 natural receipt metadata 留在同一 DTO；短摘要遮蔽完整 hash，Workbench 的「查看機率依據」才展開完整唯讀 lineage。`status=available` 不推導 natural validation；沒有 typed authority verifier 時自然驗證狀態保持 unknown。這是 presentation boundary，不是 authority receipt，也不新增第二套 decision／journal database。
 - 呈現契約對 `calibrated_probability_bp` 採 fail-closed：沒有明確校準來源時狀態為 `research`／`unavailable`。目標／目前／差距權重只接受上游已提供的整數 bp；缺件時保留未知與 warning，不以 current=0 或 UI 相減補值。Condition Monitor 的狀態映射只是唯讀候選分類，不是 broker 或 lifecycle action。
 - 個股報告使用有限唯讀查詢、可取消worker與request identity，區分股票資料期間、來源可得時間與報告cutoff；來源新鮮度應消費既有probe契約，不將月／季資料一律當每日資料。來源不足時維持可用區塊，並明示缺失。
-- `ForwardMachinePolicyProducer`、候選binding、持倉行情來源producer與transition evaluator串接為提案流程；不自動核准或修改正式倉位。`ExitEffectivenessProducer` 以transition與Paper ledger讀取結果，分開實際平倉與假設提案成效；沒有可得時間、執行或成熟證據時不得納入成熟成效。
+- `ForwardMachinePolicyProducer`、候選binding、持倉行情來源producer與transition evaluator串接為提案流程；不自動核准或修改正式倉位。`scripts/run_exit_effectiveness_daily.py` 呼叫 `app_module.exit_effectiveness_producer.produce_exit_effectiveness()`，以transition與Paper ledger讀取結果，分開實際平倉與假設提案成效；沒有可得時間、執行或成熟證據時不得納入成熟成效。同模組的 `ExitEffectivenessProducer` 類別只是包裝介面，2026-09-17 靜態查核未找到外部 caller，不能以類別無 caller 推論整個模組未使用。
 - 既有 `JournalService`／`JournalEntryDTO`、`EvidenceEvent`／`EvidenceOutcome` 與 `PortfolioLedgerEvent` 各自保存 journal／event／outcome／ledger identity 及 source snapshot；後續 decision journey 應先以 application adapter／crosswalk 重用它們，不能再建立平行 decision store。既有 Journal legacy delete／overwrite API 也不能直接宣稱為 formal append-only decision journal。
 - 日常caller、實際產物及驗收限制見 [本輪整合驗收](../06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)，模組存在不代表自然閉環已完成。
 

@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -18,6 +18,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from app_module.update_service import UpdateService
 from data_module.config import TWStockConfig
+from data_module.recommendation_calibration_source_contract import (
+    build_technical_computation_evidence,
+    capture_technical_input_snapshot,
+    publish_technical_indicator_receipt,
+    reuse_verified_technical_computation_receipt,
+)
 
 
 def _write_state(path: Path, payload: Dict[str, Any]) -> None:
@@ -304,6 +310,12 @@ def main() -> int:
     service = UpdateService(config)
     all_warnings: List[str] = []
     sync_rows = 0
+    twse_result: Dict[str, Any] = {}
+    technical_result: Dict[str, Any] = {
+        "success": False,
+        "message": "技術指標尚未執行",
+    }
+    technical_step_status = "failed"
 
     try:
         if args.twse_update:
@@ -418,12 +430,59 @@ def main() -> int:
             return finish_cancelled("已取消：尚未開始技術指標計算")
         status = service.check_data_overview() if hasattr(service, "check_data_overview") else service.check_data_status()
         technical_coverage = service.check_technical_indicator_latest_coverage()
+        source_dates = [
+            str(value).strip()
+            for value in tpex_result.get("source_dates", [])
+            if str(value).strip()
+        ]
+        evidence_start = min(source_dates) if source_dates else args.start_date
+        evidence_end = max(source_dates) if source_dates else args.end_date
         should_skip_technical, skip_message = _should_skip_technical_indicators(
             status,
             force_all=args.technical_force_all,
             technical_coverage=technical_coverage,
         )
         if should_skip_technical:
+            technical_step_status = "skipped"
+            technical_result = {
+                "success": True,
+                "skipped": True,
+                "skip_reason": "technical_indicators_current",
+                "message": skip_message,
+            }
+            reuse_result = reuse_verified_technical_computation_receipt(
+                authorized_output_roots=(config.output_root,),
+                source_db=config.db_file,
+                source_date_start=evidence_start,
+                source_date_end=evidence_end,
+                availability_cutoff_at=datetime.now(timezone.utc),
+            )
+            if reuse_result.get("status") == "reused":
+                technical_result.update(
+                    {
+                        "technical_reuse_status": "reused",
+                        "technical_computation": reuse_result.get(
+                            "technical_computation"
+                        ),
+                        "technical_computation_reuse": reuse_result.get(
+                            "source_publication_receipt"
+                        ),
+                    }
+                )
+            else:
+                # currentity skip 沒有新計算 witness 時，不以本次 checked clock
+                # 偽造新的 technical availability；只有已驗證的舊 receipt 可重用。
+                technical_result.update(
+                    {
+                        "technical_reuse_status": "not_found",
+                        "technical_reuse_reason": str(
+                            reuse_result.get("reason") or "not_found"
+                        ),
+                        "technical_reuse_diagnostics": reuse_result.get(
+                            "diagnostics", []
+                        ),
+                    }
+                )
             state["steps"]["technical"] = {
                 "status": "skipped",
                 "message": skip_message,
@@ -434,6 +493,12 @@ def main() -> int:
         else:
             state["steps"]["technical"] = {"status": "running", "message": "running", "rows": 0, "warnings": []}
             _write_state(state_file, state)
+            calculation_started_at = datetime.now(timezone.utc)
+            input_snapshot = capture_technical_input_snapshot(
+                config.db_file,
+                source_date_start=evidence_start,
+                source_date_end=evidence_end,
+            )
             tech_result = service.calculate_technical_indicators(
                 target_stock=None,
                 force_all=args.technical_force_all,
@@ -442,6 +507,33 @@ def main() -> int:
                 cancel_callback=cancellation_requested,
                 incremental_lookback_days=120,
             )
+            technical_result = dict(tech_result)
+            technical_step_status = (
+                "passed" if tech_result.get("success", False) else "failed"
+            )
+            if tech_result.get("success") is True and input_snapshot.get("verified") is True:
+                try:
+                    technical_result["technical_computation"] = (
+                        build_technical_computation_evidence(
+                            source_db=config.db_file,
+                            calculation_result=technical_result,
+                            source_date_start=evidence_start,
+                            source_date_end=evidence_end,
+                            started_at=calculation_started_at,
+                            completed_at=datetime.now(timezone.utc),
+                            input_snapshot=input_snapshot,
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # 計算結果仍保留，但沒有完整 witness 時不得發佈 receipt。
+                    technical_result["technical_computation_error"] = (
+                        f"{type(exc).__name__}:{exc}"
+                    )
+            elif tech_result.get("success") is True:
+                technical_result["technical_computation_error"] = str(
+                    input_snapshot.get("reason")
+                    or "technical_input_snapshot_unverified"
+                )
             tech_stocks = tech_result.get("updated_stocks", [])
             tech_rows = len(tech_stocks) if isinstance(tech_stocks, list) else 0
             state["steps"]["technical"] = _step(
@@ -457,6 +549,103 @@ def main() -> int:
                     str(tech_result.get("message") or "技術指標計算已合作式取消")
                 )
         _write_state(state_file, state)
+
+        publication_completed_at = datetime.now(timezone.utc)
+        technical_reuse_verified = (
+            technical_step_status == "passed"
+            or technical_result.get("technical_reuse_status") == "reused"
+        )
+        publication_status = {
+            "status": (
+                "passed"
+                if bool(tpex_result.get("success"))
+                and (not args.twse_update or bool(twse_result.get("success")))
+                and technical_reuse_verified
+                and technical_result.get("success") is True
+                else "failed"
+            ),
+            "run_id": "tpex-full-refresh-"
+            + publication_completed_at.strftime("%Y%m%dT%H%M%S%fZ"),
+            "started_at": state.get("started_at"),
+            "completed_at": publication_completed_at.isoformat(),
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+            "writes_market_data_db": bool(args.sync_sqlite),
+            "steps": [
+                *(
+                    [
+                        {
+                            "name": "update_twse_daily_prices",
+                            "status": (
+                                "passed"
+                                if twse_result.get("success")
+                                else "failed"
+                            ),
+                            "result": twse_result,
+                        }
+                    ]
+                    if args.twse_update
+                    else []
+                ),
+                {
+                    "name": "update_tpex_daily_prices",
+                    "status": (
+                        "passed" if tpex_result.get("success") else "failed"
+                    ),
+                    "result": tpex_result,
+                },
+                {
+                    "name": "calculate_technical_indicators",
+                    "status": technical_step_status,
+                    "result": technical_result,
+                },
+            ],
+        }
+        if (
+            technical_step_status == "skipped"
+            and technical_result.get("technical_reuse_status") != "reused"
+        ):
+            state["technical_publication_receipt"] = {
+                "status": "blocked",
+                "reason": "technical_computation_reuse_missing",
+                "reuse_reason": technical_result.get("technical_reuse_reason"),
+                "reuse_diagnostics": technical_result.get(
+                    "technical_reuse_diagnostics", []
+                )
+            }
+            all_warnings.append(
+                "technical publication receipt blocked: "
+                "technical_computation_reuse_missing"
+            )
+        else:
+            try:
+                state["technical_publication_receipt"] = (
+                    publish_technical_indicator_receipt(
+                        output_root=config.output_root,
+                        source_db=config.db_file,
+                        update_status=publication_status,
+                        authorized_output_roots=(config.output_root,),
+                    )
+                )
+                if state["technical_publication_receipt"].get("status") != "published":
+                    all_warnings.append(
+                        "technical publication receipt blocked: "
+                        + str(
+                            state["technical_publication_receipt"].get("reason")
+                            or "unknown"
+                        )
+                    )
+            except Exception as exc:  # noqa: BLE001
+                # receipt 是來源證明；寫入失敗只能保留診斷，不能改變資料更新結果。
+                state["technical_publication_receipt"] = {
+                    "status": "blocked",
+                    "reason": f"technical_publication_receipt_failed:{type(exc).__name__}",
+                    "error": str(exc),
+                }
+                all_warnings.append(
+                    "technical publication receipt blocked: "
+                    + str(state["technical_publication_receipt"]["reason"])
+                )
 
         all_warnings = list(dict.fromkeys(all_warnings))
         state["status"] = "done" if not all_warnings else "done_with_warning"

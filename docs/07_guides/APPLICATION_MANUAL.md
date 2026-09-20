@@ -5752,3 +5752,12 @@ ML natural shadow 的 weekly projection 是唯讀證據摘要，不等同 V2.2 w
 - 單筆列入 matured 仍需 h5／h10／h20／h60 全部完成及來源契約通過；整體 `ready_for_pruning_review` 另須達既有樣本數與 downside class gate。partial h5／h10／h20 只能作觀測。`promotion_day_credit_blockers` 應原樣顯示，不能由 summary 自行補值。
 
 本次真實 readback 為 primary `29` 筆、matured `0`、contract-blocked `29`、natural-credit eligible `0`；forward companion 實體 `1` 筆、matured `0`、eligible `0`。projection 見 [W38 real weekly evidence](../../output/qa/natural_shadow_weekly_audit_20260920/natural_shadow_pruning_evidence/weekly/2026-W38/asof_2026-09-18_evidence_24fd5e2aeda9500a.json)，工程 QA 與排錯脈絡見 [Natural Shadow Weekly Evidence Audit](../06_qa/NATURAL_SHADOW_WEEKLY_EVIDENCE_AUDIT_2026_09_20.md)。focused QA 為 [24 passed](../../output/qa/natural_shadow_weekly_audit_20260920/focused_pytest_final.log)，另有 [mypy](../../output/qa/natural_shadow_weekly_audit_20260920/mypy_targeted_final.log) 與 [py_compile](../../output/qa/natural_shadow_weekly_audit_20260920/py_compile_final.log) readback。若報告顯示 `contract_blocked` 或 `blocked_unknown`，先檢查 primary／forward sidecar 是否存在、`sidecar_file_hash`、`read_cutoff_date`、`promotion_day_credit_blockers` 與各 horizon reasons；不要重跑 scheduler、回填舊 raw 或把 forward diagnostic 提升為 credit。
+
+## 2026-09-20 TPEX 背景 technical publication receipt 判讀
+
+使用 `scripts/run_tpex_full_refresh_and_technical.py` 執行背景 TPEX 更新時，入口會先更新日價，再依 technical step 的實際結果建立 `technical_computation_evidence`，最後寫入既有的
+`<OUTPUT_ROOT>\scheduled\technical_indicator_publication\<source_date>\<receipt-id>\receipt.json`。操作參數仍是 `--start-date`、`--end-date`、`--state-file`、`--sync-sqlite`、`--twse-update`、`--technical-force-all`、`--tpex-workers` 與可選的 `--cancel-file`；這個入口不接受歷史 clock 來冒充新的 publication availability。
+
+讀 receipt 時必須同時確認 `technical_step_status=passed`、`technical_computation_evidence_status=verified`、source receipt／raw response hash、technical output value binding、lineage 與 exact symbol coverage。若 technical step 是 currentity skip，必須看到可重驗的 computation reuse lineage；找不到時狀態應為 blocked，不可把 checked clock 寫成新的 technical receipt。`prospective_available=true` 只表示未來 prospective source contract 可讀，仍不代表 20-session natural maturity、calibration adoption、active promotion 或 broker action；`historical_pit_eligible=false` 與 `formal_source_contract_eligible=false` 必須保留。
+
+本次背景 publication 接線與隔離 readback 的 QA 見 [TPEX Background Technical Publication QA](../06_qa/TPEX_BACKGROUND_TECHNICAL_PUBLICATION_2026_09_20.md)。該 QA 的 current positive 只在 QA snapshot 中完成；正式 latest、formal DB、natural credit 與 scheduler 設定均未由本次工程回填或改判。

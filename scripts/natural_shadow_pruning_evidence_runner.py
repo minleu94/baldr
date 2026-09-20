@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
-from typing import Mapping
+from typing import Mapping, Sequence, cast
 
 from ml_module.natural_shadow_pruning_evidence import (
     NaturalShadowPruningEvidenceError,
@@ -167,6 +167,129 @@ def _validate_pruning_boundary(evidence: Mapping[str, object]) -> Mapping[str, o
     return dict(raw_boundary)
 
 
+def _classification_counts(evidence: Mapping[str, object]) -> Mapping[str, object]:
+    value = evidence.get("observation_classification")
+    return value if isinstance(value, Mapping) else {}
+
+
+def _pending_wait_state(evidence: Mapping[str, object] | None) -> tuple[bool, str]:
+    if evidence is None:
+        return False, "source_missing"
+    pending_count = evidence.get("pending_observation_count")
+    classification = _classification_counts(evidence)
+    time_wait_count = classification.get("time_wait_only_observation_count")
+    contract_count = classification.get("contract_blocked_observation_count")
+    unknown_count = classification.get("unknown_blocked_observation_count")
+    if not all(
+        isinstance(value, int) and not isinstance(value, bool)
+        for value in (pending_count, time_wait_count, contract_count, unknown_count)
+    ):
+        return False, "blocked_unknown"
+    pending_count = cast(int, pending_count)
+    time_wait_count = cast(int, time_wait_count)
+    contract_count = cast(int, contract_count)
+    unknown_count = cast(int, unknown_count)
+    if unknown_count > 0:
+        return False, "blocked_unknown"
+    if contract_count > 0:
+        return False, "contract_blocked"
+    if pending_count > 0 and time_wait_count == pending_count:
+        return True, "time_wait_only"
+    return False, "not_time_wait_only"
+
+
+def _related_lane_summary(
+    *,
+    lane: str,
+    sidecar: Path,
+    cutoff: date,
+) -> dict[str, object]:
+    resolved = sidecar.expanduser().resolve()
+    base: dict[str, object] = {
+        "lane": lane,
+        "diagnostic_only": True,
+        "promotion_authority": False,
+        "eligibility_contribution": "none",
+        "source": {
+            "sidecar_database_path": str(resolved),
+            "exists": resolved.is_file(),
+            "read_only": True,
+            "query_only": True,
+            "read_cutoff_date": cutoff.isoformat(),
+        },
+        "pending_is_normal_wait": False,
+    }
+    if not resolved.is_file():
+        return {
+            **base,
+            "status": "source_missing",
+            "pending_reason": "source_missing",
+        }
+    try:
+        evidence = build_natural_shadow_pruning_evidence(
+            resolved,
+            as_of_date=cutoff,
+        )
+    except Exception as error:  # noqa: BLE001 - companion must fail closed
+        return {
+            **base,
+            "status": "blocked_integrity",
+            "pending_reason": "blocked_unknown",
+            "error_type": type(error).__name__,
+            "error": " ".join(str(error).split()),
+        }
+    try:
+        pending_is_normal_wait, pending_reason = _pending_wait_state(evidence)
+        raw_source = evidence.get("source")
+        source: dict[str, object] = (
+            dict(raw_source)
+            if isinstance(raw_source, Mapping)
+            else dict(cast(Mapping[str, object], base["source"]))
+        )
+        source["read_cutoff_date"] = cutoff.isoformat()
+        source_stat = resolved.stat()
+        source["sidecar_size_bytes"] = source_stat.st_size
+        source["sidecar_mtime_ns"] = source_stat.st_mtime_ns
+        raw_blockers = evidence.get("maturity_blockers")
+        maturity_blockers = (
+            list(raw_blockers)
+            if isinstance(raw_blockers, Sequence)
+            and not isinstance(raw_blockers, (str, bytes))
+            else []
+        )
+        raw_pending = evidence.get("pending_observations")
+        pending_observations = (
+            list(raw_pending)
+            if isinstance(raw_pending, Sequence)
+            and not isinstance(raw_pending, (str, bytes))
+            else []
+        )
+    except Exception as error:  # noqa: BLE001 - companion must fail closed
+        return {
+            **base,
+            "status": "blocked_integrity",
+            "pending_reason": "blocked_unknown",
+            "error_type": type(error).__name__,
+            "error": " ".join(str(error).split()),
+        }
+    return {
+        **base,
+        "status": str(evidence.get("status")),
+        "evidence_status": str(evidence.get("status")),
+        "source": source,
+        "observation_count": evidence.get("observation_count"),
+        "matured_observation_count": evidence.get("matured_observation_count"),
+        "pending_observation_count": evidence.get("pending_observation_count"),
+        "maturity_blockers": maturity_blockers,
+        "observation_classification": dict(
+            _classification_counts(evidence)
+        ),
+        "pending_observations": pending_observations,
+        "pending_is_normal_wait": pending_is_normal_wait,
+        "pending_reason": pending_reason,
+    }
+
+
 def _status_body(
     *,
     cutoff: date,
@@ -181,6 +304,7 @@ def _status_body(
     status: str,
     evidence_status: str | None,
     integrity_state: str,
+    related_lanes: Sequence[Mapping[str, object]] = (),
     error: str | None = None,
 ) -> dict[str, object]:
     evidence_hash = (
@@ -200,6 +324,7 @@ def _status_body(
             "production_action_allowed": False,
         }
     )
+    pending_is_normal_wait, pending_reason = _pending_wait_state(evidence)
     body: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "status": status,
@@ -224,7 +349,9 @@ def _status_body(
         ),
         "weekly_evidence_file_hash": weekly_evidence_file_hash,
         "integrity_state": integrity_state,
-        "pending_is_normal_wait": status == "pending",
+        "pending_is_normal_wait": pending_is_normal_wait,
+        "pending_reason": pending_reason,
+        "related_lanes": [dict(item) for item in related_lanes],
         "pruning_boundary": boundary,
         "pruning_action_performed": False,
         "promotion_action_performed": False,
@@ -281,6 +408,7 @@ def run_natural_shadow_pruning_evidence(
     expected_model_hash: str | None = None,
     expected_dataset_identity_hash: str | None = None,
     expected_policy_hash: str | None = None,
+    related_sidecar_database_paths: Mapping[str, Path] | None = None,
 ) -> dict[str, object]:
     """Project the exact sidecar at a daily orchestration boundary.
 
@@ -296,6 +424,11 @@ def run_natural_shadow_pruning_evidence(
     run_root = output_root.expanduser().resolve()
     sidecar = sidecar_database_path.expanduser().resolve()
     evidence_root = run_root / "natural_shadow_pruning_evidence"
+    related_lanes = tuple(
+        _related_lane_summary(lane=lane, sidecar=path, cutoff=cutoff)
+        for lane, path in (related_sidecar_database_paths or {}).items()
+        if path.expanduser().resolve() != sidecar
+    )
     if not sidecar.is_file():
         body = _status_body(
             cutoff=cutoff,
@@ -310,6 +443,7 @@ def run_natural_shadow_pruning_evidence(
             status="pending",
             evidence_status=None,
             integrity_state="awaiting_source",
+            related_lanes=related_lanes,
         )
         return _write_daily_and_weekly_status(
             evidence_root=evidence_root,
@@ -324,6 +458,7 @@ def run_natural_shadow_pruning_evidence(
             expected_model_hash=expected_model_hash,
             expected_dataset_identity_hash=expected_dataset_identity_hash,
             expected_policy_hash=expected_policy_hash,
+            related_lane_summaries=related_lanes,
         )
         evidence_status = evidence.get("status")
         if evidence_status not in _PENDING_EVIDENCE_STATUSES | {
@@ -376,6 +511,8 @@ def run_natural_shadow_pruning_evidence(
             raise NaturalShadowPruningScheduleError(
                 "natural shadow evidence source path differs from requested sidecar"
             )
+        _, primary_pending_reason = _pending_wait_state(evidence)
+        has_unknown_blocker = primary_pending_reason == "blocked_unknown"
         body = _status_body(
             cutoff=cutoff,
             sidecar=sidecar,
@@ -387,12 +524,17 @@ def run_natural_shadow_pruning_evidence(
             weekly_evidence_path=weekly_evidence_path,
             weekly_evidence_file_hash=_file_hash(weekly_evidence_path),
             status=(
-                "pending"
-                if evidence_status in _PENDING_EVIDENCE_STATUSES
-                else "ready_for_review"
+                "blocked_integrity"
+                if has_unknown_blocker
+                else (
+                    "pending"
+                    if evidence_status in _PENDING_EVIDENCE_STATUSES
+                    else "ready_for_review"
+                )
             ),
             evidence_status=str(evidence_status),
             integrity_state="verified",
+            related_lanes=related_lanes,
         )
         result = _write_daily_and_weekly_status(
             evidence_root=evidence_root,
@@ -423,6 +565,7 @@ def run_natural_shadow_pruning_evidence(
             status="blocked_integrity",
             evidence_status=None,
             integrity_state="failed",
+            related_lanes=related_lanes,
             error=str(error),
         )
         return _write_daily_and_weekly_status(

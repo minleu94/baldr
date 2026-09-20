@@ -5738,3 +5738,17 @@ projection 不代表 adoption，不得宣稱升級 ready，也不授予 natural�
 目前 module trees 指定範圍 mypy 為 630 source files clean（scripts excluded，僅 2
 untyped-body notes）；A／B bounded slice 與 C engineering acceptance 不代表 ABC、V4 formal 或
 V6 完成。全局 active work 仍維持 `in_progress`。
+
+## 2026-09-20 ML natural shadow weekly report 判讀
+
+ML natural shadow 的 weekly projection 是唯讀證據摘要，不等同 V2.2 weekly collection，也不會因週日自動授予 natural、Formal、promotion 或 production credit。`\baldr-v2-2-weekly-collection` 上次成功執行為 2026-09-13 18:00 Pacific、下次為 2026-09-20 18:00 Pacific（台北 2026-09-21 09:00）；排程尚未到不代表自然 evidence 已成熟。判讀時應以實際 `as_of_date`、source hash 與報告期間為準。
+
+每日 caller 的 primary sidecar 是 `<OUTPUT_ROOT>\scheduled\ml_allocation_copilot\shadow_evidence_collector\shadow_evidence.sqlite`。若要把既有 forward candidate sidecar 放入同一份週摘要作交叉診斷，caller 設定 `ML_FORWARD_OUTPUT_ROOT=<repo>\output\v4_ml_daily_derived_shadow_real_v2`；runner 只讀取其下相同的 `scheduled\ml_allocation_copilot\shadow_evidence_collector\shadow_evidence.sqlite`。forward lane 固定標示 `diagnostic_only=true`、`promotion_authority=false`、`eligibility_contribution=none`，不可併入 primary matured／eligible cohort。
+
+週摘要中的 `pending_reason` 與 `pending_is_normal_wait` 必須一起判讀：
+
+- `pending_is_normal_wait=true` 只表示整個 pending cohort 的原因都是已知 `time_wait_only`，例如已具 credit、availability、custody identity、只等待 h60 outcome；它仍不表示已成熟。
+- `contract_blocked` 表示自然日 credit、formal custody、availability 或 all-horizon contract 缺件；`blocked_unknown` 表示未知原因，兩者都不是正常等待。`source_missing`、空 cohort 與 `not_time_wait_only` 也必須保留為 false，不能用空列表的 `all()` 推成正常等待。
+- 單筆列入 matured 仍需 h5／h10／h20／h60 全部完成及來源契約通過；整體 `ready_for_pruning_review` 另須達既有樣本數與 downside class gate。partial h5／h10／h20 只能作觀測。`promotion_day_credit_blockers` 應原樣顯示，不能由 summary 自行補值。
+
+本次真實 readback 為 primary `29` 筆、matured `0`、contract-blocked `29`、natural-credit eligible `0`；forward companion 實體 `1` 筆、matured `0`、eligible `0`。projection 見 [W38 real weekly evidence](../../output/qa/natural_shadow_weekly_audit_20260920/natural_shadow_pruning_evidence/weekly/2026-W38/asof_2026-09-18_evidence_24fd5e2aeda9500a.json)，工程 QA 與排錯脈絡見 [Natural Shadow Weekly Evidence Audit](../06_qa/NATURAL_SHADOW_WEEKLY_EVIDENCE_AUDIT_2026_09_20.md)。focused QA 為 [24 passed](../../output/qa/natural_shadow_weekly_audit_20260920/focused_pytest_final.log)，另有 [mypy](../../output/qa/natural_shadow_weekly_audit_20260920/mypy_targeted_final.log) 與 [py_compile](../../output/qa/natural_shadow_weekly_audit_20260920/py_compile_final.log) readback。若報告顯示 `contract_blocked` 或 `blocked_unknown`，先檢查 primary／forward sidecar 是否存在、`sidecar_file_hash`、`read_cutoff_date`、`promotion_day_credit_blockers` 與各 horizon reasons；不要重跑 scheduler、回填舊 raw 或把 forward diagnostic 提升為 credit。

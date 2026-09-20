@@ -425,6 +425,18 @@ def test_mixed_frozen_identities_cannot_pool_maturity(tmp_path: Path) -> None:
         "source_identity_cohort_mixed" in cast(list[str], item["reasons"])
         for item in pending
     )
+    assert all(item["pending_class"] == "contract_blocked" for item in pending)
+    assert all(item["availability_state"] == "available" for item in pending)
+    classification = cast(Mapping[str, object], report["observation_classification"])
+    assert classification["matured_observation_count"] == 0
+    assert classification["pending_observation_count"] == 20
+    assert classification["pending_class_counts"] == {
+        "matured": 0,
+        "time_wait_only": 0,
+        "contract_blocked": 20,
+        "blocked_unknown": 0,
+    }
+    assert classification["natural_credit_eligible_observation_count"] == 0
 
 
 def test_matured_observation_without_lanes_stays_pruning_pending(

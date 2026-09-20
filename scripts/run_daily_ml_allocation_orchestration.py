@@ -1136,6 +1136,27 @@ def _base_status(
     }
 
 
+def _configured_related_shadow_sidecars(
+    *,
+    primary_sidecar: Path,
+) -> dict[str, Path]:
+    """Expose an existing forward sidecar as a diagnostic companion only."""
+
+    configured_root = os.environ.get("ML_FORWARD_OUTPUT_ROOT")
+    if not isinstance(configured_root, str) or not configured_root.strip():
+        return {}
+    candidate = (
+        Path(configured_root).expanduser().resolve()
+        / "scheduled"
+        / "ml_allocation_copilot"
+        / "shadow_evidence_collector"
+        / "shadow_evidence.sqlite"
+    )
+    if candidate == primary_sidecar.expanduser().resolve():
+        return {}
+    return {"natural_forward_candidate": candidate}
+
+
 def _write_status(
     run_root: Path,
     status: Mapping[str, object],
@@ -1307,12 +1328,18 @@ def _write_status(
                         # Keep the existing decision-date projection fallback;
                         # the malformed maturity field remains visible in status.
                         pass
+                primary_sidecar = (
+                    run_root / "shadow_evidence_collector" / "shadow_evidence.sqlite"
+                )
                 pruning_result = run_natural_shadow_pruning_evidence(
-                    sidecar_database_path=(
-                        run_root / "shadow_evidence_collector" / "shadow_evidence.sqlite"
-                    ),
+                    sidecar_database_path=primary_sidecar,
                     output_root=run_root,
                     as_of_date=projection_cutoff,
+                    related_sidecar_database_paths=(
+                        _configured_related_shadow_sidecars(
+                            primary_sidecar=primary_sidecar
+                        )
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001 - status must remain fail-closed
                 pruning_result = {

@@ -30,6 +30,51 @@ NATURAL_SHADOW_PRUNING_EVIDENCE_SCHEMA_VERSION = (
 MATURED_HORIZONS = (5, 10, 20, 60)
 TAIPEI_TIMEZONE = ZoneInfo("Asia/Taipei")
 _SHA256_PREFIX = "sha256:"
+_TIME_WAIT_REASON_EXACT = frozenset(
+    {
+        "outcome_not_matured_all_horizons",
+        "completed_horizons_incomplete",
+        "outcome_latest_used_date_after_as_of_date",
+    }
+)
+_TIME_WAIT_REASON_PREFIXES = (
+    "outcome_horizon_missing:h",
+    "outcome_matures_after_as_of_date:h",
+)
+_AVAILABILITY_MISSING_REASONS = frozenset(
+    {
+        "observation_available_at_missing",
+        "outcome_available_at_missing",
+    }
+)
+_AVAILABILITY_FUTURE_REASONS = frozenset(
+    {
+        "observation_not_available_at_as_of_date",
+        "outcome_not_available_at_as_of_date",
+    }
+)
+_CONTRACT_REASON_EXACT = frozenset(
+    {
+        "natural_day_credit_not_allowed",
+        "completed_horizons_missing",
+        "outcome_observation_identity_mismatch",
+        "outcome_row_invalid",
+        "outcome_horizon_invalid",
+        "matured_outcome_missing",
+        "source_model_dataset_policy_identity_missing",
+        "source_model_identity_mismatch",
+        "source_dataset_identity_mismatch",
+        "source_policy_identity_mismatch",
+        "source_identity_cohort_mixed",
+    }
+)
+_CONTRACT_REASON_PREFIXES = (
+    "outcome_symbol_horizon_duplicated:",
+    "outcome_class_invalid:h",
+    "unsafe_replayed",
+    "unsafe_backfilled",
+    "unsafe_synthetic_outcomes_used",
+)
 _PRUNING_METRIC_FIELDS = (
     "sample_count",
     "hit_rate_bp",
@@ -42,6 +87,130 @@ class NaturalShadowPruningEvidenceError(ValueError):
     """Shadow sidecar evidence cannot be safely projected."""
 
 
+def _is_time_wait_reason(reason: str) -> bool:
+    return reason in _TIME_WAIT_REASON_EXACT or any(
+        reason.startswith(prefix) for prefix in _TIME_WAIT_REASON_PREFIXES
+    )
+
+
+def _is_known_reason(reason: str) -> bool:
+    if _is_time_wait_reason(reason):
+        return True
+    if reason in _AVAILABILITY_MISSING_REASONS | _AVAILABILITY_FUTURE_REASONS:
+        return True
+    if reason in _CONTRACT_REASON_EXACT:
+        return True
+    return any(reason.startswith(prefix) for prefix in _CONTRACT_REASON_PREFIXES)
+
+
+def _availability_state(reasons: Sequence[str]) -> str:
+    if any(not _is_known_reason(reason) for reason in reasons):
+        return "unknown"
+    if any(reason in _AVAILABILITY_MISSING_REASONS for reason in reasons):
+        return "missing"
+    if any(
+        reason in _AVAILABILITY_FUTURE_REASONS
+        or reason.startswith("outcome_matures_after_as_of_date:h")
+        for reason in reasons
+    ):
+        return "future"
+    return "available"
+
+
+def _pending_class(reasons: Sequence[str]) -> str:
+    if not reasons:
+        return "matured"
+    if any(not _is_known_reason(reason) for reason in reasons):
+        return "blocked_unknown"
+    if any(
+        not _is_time_wait_reason(reason)
+        and reason not in _AVAILABILITY_FUTURE_REASONS
+        for reason in reasons
+    ):
+        return "contract_blocked"
+    return "time_wait_only"
+
+
+def _string_values(value: object) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return sorted({item for item in value if isinstance(item, str) and item})
+
+
+def _observation_classification(
+    *,
+    matured: Sequence[Mapping[str, object]],
+    pending: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    items = (*matured, *pending)
+    pending_reason_counts: dict[str, int] = {}
+    availability_counts = {"available": 0, "future": 0, "missing": 0, "unknown": 0}
+    class_counts = {
+        "matured": 0,
+        "time_wait_only": 0,
+        "contract_blocked": 0,
+        "blocked_unknown": 0,
+    }
+    promotion_blocker_counts: dict[str, int] = {}
+    research_count = 0
+    credit_allowed_count = 0
+    credit_eligible_count = 0
+    for item in items:
+        if item.get("research_only") is True:
+            research_count += 1
+        if item.get("promotion_day_credit_allowed") is True:
+            credit_allowed_count += 1
+        pending_class = str(item.get("pending_class", "blocked_unknown"))
+        class_counts[pending_class] = class_counts.get(pending_class, 0) + 1
+        availability = str(item.get("availability_state", "unknown"))
+        availability_counts[availability] = availability_counts.get(availability, 0) + 1
+        if pending_class == "matured" and item.get(
+            "promotion_day_credit_allowed"
+        ) is True:
+            credit_eligible_count += 1
+        raw_reasons = item.get("reasons")
+        for reason in _string_values(raw_reasons):
+            pending_reason_counts[reason] = pending_reason_counts.get(reason, 0) + 1
+        for blocker in _string_values(item.get("promotion_day_credit_blockers")):
+            promotion_blocker_counts[blocker] = (
+                promotion_blocker_counts.get(blocker, 0) + 1
+            )
+    return {
+        "observation_count": len(items),
+        "matured_observation_count": len(matured),
+        "pending_observation_count": len(pending),
+        "research_observation_count": research_count,
+        "natural_credit_allowed_observation_count": credit_allowed_count,
+        "natural_credit_eligible_observation_count": credit_eligible_count,
+        "time_wait_only_observation_count": class_counts.get("time_wait_only", 0),
+        "contract_blocked_observation_count": class_counts.get(
+            "contract_blocked", 0
+        ),
+        "unknown_blocked_observation_count": class_counts.get(
+            "blocked_unknown", 0
+        ),
+        "pending_class_counts": class_counts,
+        "availability_state_counts": availability_counts,
+        "pending_reason_counts": dict(sorted(pending_reason_counts.items())),
+        "promotion_day_credit_blocker_counts": dict(
+            sorted(promotion_blocker_counts.items())
+        ),
+    }
+
+
+def _diagnostic_related_lane(
+    summary: Mapping[str, object],
+) -> dict[str, object]:
+    """Keep companion lanes visibly outside primary natural eligibility."""
+
+    return {
+        **dict(summary),
+        "diagnostic_only": True,
+        "promotion_authority": False,
+        "eligibility_contribution": "none",
+    }
+
+
 def build_natural_shadow_pruning_evidence(
     sidecar_database_path: Path,
     *,
@@ -49,6 +218,7 @@ def build_natural_shadow_pruning_evidence(
     expected_model_hash: str | None = None,
     expected_dataset_identity_hash: str | None = None,
     expected_policy_hash: str | None = None,
+    related_lane_summaries: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object]:
     """Build a read-only, idempotently reproducible pruning-review projection.
 
@@ -162,6 +332,7 @@ def build_natural_shadow_pruning_evidence(
             elif outcome_availability_reason == "record_available_after_as_of_date":
                 reasons.append("outcome_not_available_at_as_of_date")
 
+        reason_values = sorted(set(reasons))
         compact = {
             "decision_date": str(observation["decision_date"]),
             "observation_hash": observation_hash,
@@ -176,7 +347,16 @@ def build_natural_shadow_pruning_evidence(
                 if outcome is not None
                 else None
             ),
-            "reasons": sorted(set(reasons)),
+            "reasons": reason_values,
+            "research_only": observation.get("research_only") is True,
+            "promotion_day_credit_allowed": (
+                observation.get("promotion_day_credit_allowed") is True
+            ),
+            "promotion_day_credit_blockers": _string_values(
+                observation.get("promotion_day_credit_blockers")
+            ),
+            "availability_state": _availability_state(reason_values),
+            "pending_class": _pending_class(reason_values),
         }
         if outcome_summary is not None:
             compact["horizon_summary"] = outcome_summary
@@ -215,7 +395,12 @@ def build_natural_shadow_pruning_evidence(
             pending_item.pop("dataset_identity_hash", None)
             pending_item.pop("policy_hash", None)
             pending_item.pop("pruning_lanes", None)
-            pending_item["reasons"] = ["source_identity_cohort_mixed"]
+            mixed_reasons = ["source_identity_cohort_mixed"]
+            pending_item["reasons"] = mixed_reasons
+            pending_item["availability_state"] = _availability_state(
+                mixed_reasons
+            )
+            pending_item["pending_class"] = _pending_class(mixed_reasons)
             pending.append(pending_item)
 
     horizon_counts = {str(horizon): 0 for horizon in MATURED_HORIZONS}
@@ -281,6 +466,10 @@ def build_natural_shadow_pruning_evidence(
         if _required_hash(item.get("observation_hash"), "outcome.observation_hash")
         in selected_hashes
     )
+    classification = _observation_classification(
+        matured=matured,
+        pending=pending,
+    )
     body: dict[str, object] = {
         "schema_version": NATURAL_SHADOW_PRUNING_EVIDENCE_SCHEMA_VERSION,
         "status": status,
@@ -304,6 +493,10 @@ def build_natural_shadow_pruning_evidence(
         "pending_observation_count": len(pending),
         "matured_observation_hashes": [item["observation_hash"] for item in matured],
         "pending_observations": pending,
+        "observation_classification": classification,
+        "related_lanes": [
+            _diagnostic_related_lane(item) for item in related_lane_summaries
+        ],
         "matured_horizon_counts": horizon_counts,
         "actual_downside_class_counts": class_counts,
         "minimum_natural_shadow_days": MINIMUM_SHADOW_DAYS,

@@ -182,6 +182,7 @@ def apply_tpex_daily_price_backfill(
     source_rows: list[Mapping[str, object]],
     fallback_date: str,
     strict: bool = True,
+    insert_only: bool = False,
 ) -> TpexDailyPriceBackfillApplyResult:
     db_file = Path(db_file)
     plan = build_tpex_daily_price_plan(
@@ -200,7 +201,11 @@ def apply_tpex_daily_price_backfill(
 
     backup_file = _backup_db(db_file, Path(backup_dir))
     try:
-        inserted_count = _insert_daily_price_rows(db_file, plan.rows)
+        inserted_count = _insert_daily_price_rows(
+            db_file,
+            plan.rows,
+            insert_only=insert_only,
+        )
     except Exception:
         restore_sqlite_backup(backup_file, db_file)
         raise
@@ -281,7 +286,12 @@ def _backup_db(db_file: Path, backup_dir: Path) -> Path:
     return backup_file
 
 
-def _insert_daily_price_rows(db_file: Path, rows: tuple[dict[str, object], ...]) -> int:
+def _insert_daily_price_rows(
+    db_file: Path,
+    rows: tuple[dict[str, object], ...],
+    *,
+    insert_only: bool = False,
+) -> int:
     if not rows:
         return 0
     with sqlite3.connect(db_file) as conn:
@@ -297,14 +307,16 @@ def _insert_daily_price_rows(db_file: Path, rows: tuple[dict[str, object], ...])
         placeholders = ", ".join("?" for _ in columns)
         update_columns = tuple(column for column in columns if column not in required_columns)
         conflict_clause = 'ON CONFLICT("證券代號", "日期") DO NOTHING'
-        if update_columns:
+        if not insert_only and update_columns:
             update_clause = ", ".join(f'"{column}" = excluded."{column}"' for column in update_columns)
             conflict_clause = f'ON CONFLICT("證券代號", "日期") DO UPDATE SET {update_clause}'
         sql = f"INSERT INTO daily_prices ({quoted_columns}) VALUES ({placeholders}) {conflict_clause}"
         values = [tuple(row.get(column) for column in columns) for row in prepared_rows]
+        before_changes = conn.total_changes
         conn.executemany(sql, values)
+        inserted_count = conn.total_changes - before_changes
         conn.commit()
-    return len(rows)
+    return inserted_count
 
 
 def _prepare_row_for_table(row: dict[str, object], available_columns: set[str]) -> dict[str, object]:

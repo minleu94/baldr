@@ -1,6 +1,9 @@
 import sqlite3
 
+import data_module.tpex_daily_price_backfill as backfill_module
+
 from data_module.tpex_daily_price_backfill import (
+    _insert_daily_price_rows,
     apply_tpex_daily_price_backfill,
     build_tpex_daily_price_plan,
     normalize_tpex_daily_price_rows,
@@ -197,3 +200,78 @@ def test_apply_tpex_daily_price_backfill_inserts_rows_and_backs_up(tmp_path):
     with sqlite3.connect(db_file) as conn:
         rows = conn.execute('SELECT "證券代號", "日期", "收盤價" FROM daily_prices').fetchall()
     assert rows == [("3207", "20260616", 42.5)]
+
+
+def test_insert_only_does_not_overwrite_existing_row(tmp_path):
+    db_file = tmp_path / "twstock.db"
+    with sqlite3.connect(db_file) as conn:
+        conn.execute(
+            'CREATE TABLE daily_prices ("日期" TEXT, "證券代號" TEXT, "收盤價" REAL, PRIMARY KEY ("證券代號", "日期"))'
+        )
+        conn.execute(
+            'INSERT INTO daily_prices ("日期", "證券代號", "收盤價") VALUES (?, ?, ?)',
+            ("20260616", "3207", 40.0),
+        )
+
+    inserted_count = _insert_daily_price_rows(
+        db_file,
+        (
+            {
+                "日期": "20260616",
+                "證券代號": "3207",
+                "收盤價": "42.50",
+            },
+        ),
+        insert_only=True,
+    )
+
+    assert inserted_count == 0
+    with sqlite3.connect(db_file) as conn:
+        assert conn.execute(
+            'SELECT "收盤價" FROM daily_prices WHERE "證券代號" = ? AND "日期" = ?',
+            ("3207", "20260616"),
+        ).fetchone() == (40.0,)
+
+
+def test_apply_insert_only_keeps_row_added_after_preflight(tmp_path, monkeypatch):
+    db_file = tmp_path / "twstock.db"
+    backup_dir = tmp_path / "backup"
+    with sqlite3.connect(db_file) as conn:
+        conn.execute(
+            'CREATE TABLE daily_prices ("日期" TEXT, "證券代號" TEXT, "證券名稱" TEXT, "收盤價" REAL, PRIMARY KEY ("證券代號", "日期"))'
+        )
+
+    original_backup = backfill_module._backup_db
+
+    def backup_then_insert(path, destination):
+        backup_file = original_backup(path, destination)
+        with sqlite3.connect(path) as conn:
+            conn.execute(
+                'INSERT INTO daily_prices ("日期", "證券代號", "證券名稱", "收盤價") VALUES (?, ?, ?, ?)',
+                ("20260616", "3207", "既有列", 40.0),
+            )
+        return backup_file
+
+    monkeypatch.setattr(backfill_module, "_backup_db", backup_then_insert)
+    result = apply_tpex_daily_price_backfill(
+        db_file=db_file,
+        backup_dir=backup_dir,
+        source_rows=[
+            {
+                "Date": "1150616",
+                "SecuritiesCompanyCode": "3207",
+                "CompanyName": "新列",
+                "Close": "42.50",
+            }
+        ],
+        fallback_date="2026-06-16",
+        insert_only=True,
+    )
+
+    assert result.applied is True
+    assert result.inserted_count == 0
+    with sqlite3.connect(db_file) as conn:
+        assert conn.execute(
+            'SELECT "證券名稱", "收盤價" FROM daily_prices WHERE "證券代號" = ? AND "日期" = ?',
+            ("3207", "20260616"),
+        ).fetchone() == ("既有列", 40.0)

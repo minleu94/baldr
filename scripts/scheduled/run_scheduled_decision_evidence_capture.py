@@ -8,13 +8,15 @@ Portfolio 狀態，也不觸發任何券商執行。
 from __future__ import annotations
 
 import argparse
+import hashlib
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import uuid
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -36,6 +38,8 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 DECISION_TIME = time(hour=8, minute=30)
 EOD_RESEARCH_START = time(hour=13, minute=30)
 SCHEMA_VERSION = "decision-evidence-capture.v1"
+RECEIPT_SCHEMA_VERSION = "decision-evidence-capture-receipt.v1"
+MAX_CHILD_OUTPUT_BYTES = 64 * 1024
 TEMPORAL_RECEIPT_FIELDS = (
     "decision_at",
     "as_of",
@@ -66,11 +70,204 @@ REQUIRED_SNAPSHOT_SECTIONS = frozenset(
 
 @dataclass(frozen=True)
 class CliRunResult:
-    returncode: int
+    returncode: int | None
     payload: Mapping[str, Any] | None
     stderr: str
     timed_out: bool = False
-    timeout_seconds: int | None = None
+    timeout_seconds: float | None = None
+    stdout: str = ""
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
+    stdout_byte_count: int | None = None
+    stderr_byte_count: int | None = None
+    stdout_sha256: str | None = None
+    stderr_sha256: str | None = None
+    stdout_artifact: bytes | None = None
+    stderr_artifact: bytes | None = None
+    execution_status: str = "returned"
+    execution_error_type: str | None = None
+    execution_error: str | None = None
+
+
+@dataclass
+class RunContext:
+    run_id: str
+    run_dir: Path
+    receipt_path: Path
+    status_path: Path
+    started_at: str
+    subprocesses: dict[str, dict[str, Any]]
+    steps: dict[str, dict[str, Any]]
+
+
+def _output_bytes(value: object) -> bytes:
+    if isinstance(value, bytes):
+        return value
+    if value is None:
+        return b""
+    return str(value).encode("utf-8", errors="replace")
+
+
+def _bounded_output(value: object) -> tuple[bytes, str, bool, int, str]:
+    """Return bounded raw bytes, display text, and original size/hash metadata."""
+
+    raw = _output_bytes(value)
+    digest = hashlib.sha256(raw).hexdigest()
+    if len(raw) <= MAX_CHILD_OUTPUT_BYTES:
+        captured = raw
+        truncated = False
+    else:
+        marker = b"\n...[output truncated]...\n"
+        available = max(0, MAX_CHILD_OUTPUT_BYTES - len(marker))
+        head_size = available // 2
+        tail_size = available - head_size
+        captured = raw[:head_size] + marker + raw[-tail_size:]
+        truncated = True
+    return (
+        captured,
+        captured.decode("utf-8", errors="replace"),
+        truncated,
+        len(raw),
+        digest,
+    )
+
+
+def _new_run_id() -> str:
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"{now}-{uuid.uuid4().hex[:12]}"
+
+
+def _create_run_context(output_root: Path) -> RunContext:
+    capture_root = output_root / "scheduled" / "decision_evidence_capture"
+    runs_root = capture_root / "runs"
+    runs_root.mkdir(parents=True, exist_ok=True)
+    for _ in range(5):
+        run_id = _new_run_id()
+        run_dir = runs_root / run_id
+        try:
+            run_dir.mkdir()
+        except FileExistsError:
+            continue
+        status_path = capture_root / "latest_status.json"
+        return RunContext(
+            run_id=run_id,
+            run_dir=run_dir,
+            receipt_path=run_dir / "receipt.json",
+            status_path=status_path,
+            started_at=datetime.now(timezone.utc).isoformat(),
+            subprocesses={},
+            steps={},
+        )
+    raise RuntimeError("unable to allocate a unique decision-evidence capture run")
+
+
+def _publish_create_only_bytes(path: Path, content: bytes) -> None:
+    """Durably publish bytes without replacing an existing destination."""
+
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if os.name == "nt":
+            # Windows os.rename is the no-replace MoveFile operation and
+            # therefore fails if another writer already published this path.
+            os.rename(temporary, path)
+        else:
+            # A hard-link publish is atomic and cannot replace an existing dst.
+            os.link(temporary, path)
+            temporary.unlink()
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _write_immutable_json(path: Path, payload: Mapping[str, Any]) -> None:
+    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    _publish_create_only_bytes(path, text.encode("utf-8"))
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _persist_cli_result(context: RunContext, name: str, result: CliRunResult) -> dict[str, Any]:
+    if result.stdout_artifact is None:
+        stdout_artifact, stdout_text, stdout_truncated, stdout_bytes, stdout_sha256 = _bounded_output(
+            result.stdout
+        )
+    else:
+        stdout_artifact = result.stdout_artifact
+        stdout_text = result.stdout
+        stdout_truncated = result.stdout_truncated
+        stdout_bytes = result.stdout_byte_count if result.stdout_byte_count is not None else len(stdout_artifact)
+        stdout_sha256 = result.stdout_sha256 or hashlib.sha256(stdout_artifact).hexdigest()
+    if result.stderr_artifact is None:
+        stderr_artifact, stderr_text, stderr_truncated, stderr_bytes, stderr_sha256 = _bounded_output(
+            result.stderr
+        )
+    else:
+        stderr_artifact = result.stderr_artifact
+        stderr_text = result.stderr
+        stderr_truncated = result.stderr_truncated
+        stderr_bytes = result.stderr_byte_count if result.stderr_byte_count is not None else len(stderr_artifact)
+        stderr_sha256 = result.stderr_sha256 or hashlib.sha256(stderr_artifact).hexdigest()
+    stdout_path = context.run_dir / f"{name}.stdout.txt"
+    stderr_path = context.run_dir / f"{name}.stderr.txt"
+    metadata: dict[str, Any] = {
+        "returncode": result.returncode,
+        "timed_out": result.timed_out,
+        "timeout_seconds": result.timeout_seconds,
+        "stdout_path": str(stdout_path.resolve()),
+        "stderr_path": str(stderr_path.resolve()),
+        "stdout_byte_count": result.stdout_byte_count if result.stdout_byte_count is not None else stdout_bytes,
+        "stderr_byte_count": result.stderr_byte_count if result.stderr_byte_count is not None else stderr_bytes,
+        "stdout_sha256": result.stdout_sha256 or stdout_sha256,
+        "stderr_sha256": result.stderr_sha256 or stderr_sha256,
+        "stdout_truncated": result.stdout_truncated or stdout_truncated,
+        "stderr_truncated": result.stderr_truncated or stderr_truncated,
+        "stdout_artifact_byte_count": len(stdout_artifact),
+        "stderr_artifact_byte_count": len(stderr_artifact),
+        "stdout_artifact_sha256": hashlib.sha256(stdout_artifact).hexdigest(),
+        "stderr_artifact_sha256": hashlib.sha256(stderr_artifact).hexdigest(),
+        "launch_status": (
+            "unknown"
+            if result.execution_status == "unknown"
+            else "returned"
+        ),
+        "execution_status": result.execution_status,
+        "execution_error_type": result.execution_error_type,
+        "execution_error": result.execution_error,
+        "artifact_status": "pending",
+    }
+    context.subprocesses[name] = metadata
+    _publish_create_only_bytes(stdout_path, stdout_artifact)
+    _publish_create_only_bytes(stderr_path, stderr_artifact)
+    metadata["artifact_status"] = "complete"
+    return metadata
+
+
+def _mark_child_started(
+    context: RunContext,
+    name: str,
+    *,
+    timeout_seconds: float,
+) -> None:
+    context.subprocesses[name] = {
+        "returncode": None,
+        "timed_out": False,
+        "timeout_seconds": timeout_seconds,
+        "launch_status": "started",
+        "execution_status": "started",
+        "artifact_status": "not_started",
+    }
 
 
 def next_unreached_taipei_decision_at(now: datetime | None = None) -> datetime:
@@ -120,7 +317,7 @@ def latest_reached_taipei_decision_at(now: datetime | None = None) -> datetime:
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     text = json.dumps(
         payload,
         ensure_ascii=False,
@@ -128,7 +325,10 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
         sort_keys=True,
     ) + "\n"
     try:
-        temporary.write_text(text, encoding="utf-8")
+        with temporary.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(temporary, path)
     finally:
         if temporary.exists():
@@ -138,7 +338,7 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 def _run_json_cli(
     command: Sequence[str],
     *,
-    timeout_seconds: int = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
+    timeout_seconds: float = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
 ) -> CliRunResult:
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds 必須大於 0")
@@ -149,37 +349,90 @@ def _run_json_cli(
             list(command),
             cwd=REPO_ROOT,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=False,
             check=False,
             env=environment,
             timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired as exc:
-        stderr = exc.stderr
-        if isinstance(stderr, bytes):
-            stderr_text = stderr.decode("utf-8", errors="replace")
-        else:
-            stderr_text = str(stderr or "")
+        stdout_artifact, stdout_text, stdout_truncated, stdout_bytes, stdout_sha256 = _bounded_output(
+            exc.stdout
+        )
+        stderr_artifact, stderr_text, stderr_truncated, stderr_bytes, stderr_sha256 = _bounded_output(
+            exc.stderr
+        )
         return CliRunResult(
-            returncode=124,
+            returncode=None,
             payload=None,
-            stderr=stderr_text.strip(),
+            stderr=stderr_text,
             timed_out=True,
             timeout_seconds=timeout_seconds,
+            stdout=stdout_text,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
+            stdout_byte_count=stdout_bytes,
+            stderr_byte_count=stderr_bytes,
+            stdout_sha256=stdout_sha256,
+            stderr_sha256=stderr_sha256,
+            stdout_artifact=stdout_artifact,
+            stderr_artifact=stderr_artifact,
+            execution_status="timed_out",
         )
+    except (FileNotFoundError, PermissionError, NotADirectoryError):
+        # 這些例外發生於 Popen 建立 child 前，交由外層保留明確 launch failure。
+        raise
+    except Exception as exc:  # noqa: BLE001 - child 已啟動時只能保守標 unknown
+        stdout_artifact, stdout_text, stdout_truncated, stdout_bytes, stdout_sha256 = _bounded_output(
+            getattr(exc, "stdout", b"")
+        )
+        stderr_artifact, stderr_text, stderr_truncated, stderr_bytes, stderr_sha256 = _bounded_output(
+            getattr(exc, "stderr", b"")
+        )
+        return CliRunResult(
+            returncode=None,
+            payload=None,
+            stderr=stderr_text,
+            timed_out=False,
+            timeout_seconds=timeout_seconds,
+            stdout=stdout_text,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
+            stdout_byte_count=stdout_bytes,
+            stderr_byte_count=stderr_bytes,
+            stdout_sha256=stdout_sha256,
+            stderr_sha256=stderr_sha256,
+            stdout_artifact=stdout_artifact,
+            stderr_artifact=stderr_artifact,
+            execution_status="unknown",
+            execution_error_type=type(exc).__name__,
+            execution_error=str(exc),
+        )
+    stdout_artifact, stdout_text, stdout_truncated, stdout_bytes, stdout_sha256 = _bounded_output(
+        completed.stdout
+    )
+    stderr_artifact, stderr_text, stderr_truncated, stderr_bytes, stderr_sha256 = _bounded_output(
+        completed.stderr
+    )
     payload: Mapping[str, Any] | None = None
     try:
-        decoded = json.loads(completed.stdout)
+        decoded = json.loads(_output_bytes(completed.stdout))
         if isinstance(decoded, dict):
             payload = decoded
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
         payload = None
     return CliRunResult(
         returncode=completed.returncode,
         payload=payload,
-        stderr=completed.stderr.strip(),
+        stderr=stderr_text,
+        stdout=stdout_text,
+        stdout_truncated=stdout_truncated,
+        stderr_truncated=stderr_truncated,
+        stdout_byte_count=stdout_bytes,
+        stderr_byte_count=stderr_bytes,
+        stdout_sha256=stdout_sha256,
+        stderr_sha256=stderr_sha256,
+        stdout_artifact=stdout_artifact,
+        stderr_artifact=stderr_artifact,
     )
 
 
@@ -240,15 +493,31 @@ def _snapshot_step(
         failures.append("snapshot_cli_timeout")
     elif result.returncode != 0:
         failures.append(f"snapshot_cli_exit:{result.returncode}")
+    if result.execution_status == "unknown":
+        failures.append(
+            "snapshot_cli_execution_unknown"
+            + (
+                f":{result.execution_error_type}"
+                if result.execution_error_type
+                else ""
+            )
+        )
     if payload is None:
         failures.append("snapshot_json_invalid")
         return (
             {
-                "status": "timeout" if result.timed_out else "failed",
-                "saved": False,
-                "duplicate": False,
+                "status": (
+                    "timeout"
+                    if result.timed_out
+                    else ("unknown" if result.execution_status == "unknown" else "failed")
+                ),
+                "saved": None,
+                "duplicate": None,
                 "stderr": result.stderr,
                 "timeout_seconds": result.timeout_seconds,
+                "execution_status": result.execution_status,
+                "execution_error_type": result.execution_error_type,
+                "execution_error": result.execution_error,
             },
             failures,
         )
@@ -305,6 +574,8 @@ def _snapshot_step(
         "sections_missing": sections_missing,
         "required_sections": sorted(REQUIRED_SNAPSHOT_SECTIONS),
         "warnings_count": payload.get("warnings_count"),
+        "execution_status": result.execution_status,
+        "execution_error_type": result.execution_error_type,
         **_temporal_receipt_payload(payload),
         "persisted_capture_context": _persisted_capture_context(payload),
     }
@@ -324,17 +595,33 @@ def _evidence_step(
         failures.append("evidence_cli_timeout")
     elif result.returncode != 0:
         failures.append(f"evidence_cli_exit:{result.returncode}")
+    if result.execution_status == "unknown":
+        failures.append(
+            "evidence_cli_execution_unknown"
+            + (
+                f":{result.execution_error_type}"
+                if result.execution_error_type
+                else ""
+            )
+        )
     if payload is None:
         failures.append("evidence_json_invalid")
         return (
             {
-                "status": "timeout" if result.timed_out else "failed",
-                "events_seen": 0,
-                "events_inserted": 0,
-                "duplicates": 0,
-                "failures": 1,
+                "status": (
+                    "timeout"
+                    if result.timed_out
+                    else ("unknown" if result.execution_status == "unknown" else "failed")
+                ),
+                "events_seen": None,
+                "events_inserted": None,
+                "duplicates": None,
+                "failures": None,
                 "stderr": result.stderr,
                 "timeout_seconds": result.timeout_seconds,
+                "execution_status": result.execution_status,
+                "execution_error_type": result.execution_error_type,
+                "execution_error": result.execution_error,
             },
             failures,
         )
@@ -400,6 +687,8 @@ def _evidence_step(
         "diagnostics_by_code": dict(payload.get("diagnostics_by_code") or {}),
         "event_type_counts": dict(payload.get("event_type_counts") or {}),
         "quality_counts": dict(payload.get("quality_counts") or {}),
+        "execution_status": result.execution_status,
+        "execution_error_type": result.execution_error_type,
         **_temporal_receipt_payload(payload),
         "persisted_capture_context": _persisted_capture_context(payload),
     }
@@ -418,6 +707,7 @@ def _base_payload(
     temporal: Mapping[str, Any],
     checked_at: datetime,
     status_path: Path,
+    run_context: RunContext,
     db_path: Path | None,
     decision_date_basis: str,
 ) -> dict[str, Any]:
@@ -427,10 +717,10 @@ def _base_payload(
         "status": "running",
         "checked_at": checked_at.isoformat(timespec="seconds"),
         "calendar_decision_at": calendar_decision_at.isoformat(timespec="seconds"),
-        "decision_at": decision_at.isoformat(timespec="seconds"),
+        "decision_at": decision_at.isoformat(),
         "decision_date": as_of_date.isoformat(),
         "as_of": as_of_date.isoformat(),
-        "captured_at": captured_at.isoformat(timespec="seconds"),
+        "captured_at": captured_at.isoformat(),
         "decision_timezone": "Asia/Taipei",
         "decision_time": decision_at.timetz().replace(tzinfo=None).isoformat(),
         "calendar_decision_time": DECISION_TIME.isoformat(),
@@ -449,6 +739,10 @@ def _base_payload(
         "trading_calendar_reason": None,
         "maturity_date_inferred": False,
         "status_path": str(status_path.resolve()),
+        "run_id": run_context.run_id,
+        "run_started_at": run_context.started_at,
+        "receipt_path": str(run_context.receipt_path.resolve()),
+        "receipt_schema_version": RECEIPT_SCHEMA_VERSION,
         "db_path": str(db_path.resolve()) if db_path is not None else None,
         "confirm_capture": True,
         "safety_boundary": {
@@ -485,7 +779,22 @@ def _default_capture_mode(captured_at: datetime, requested: str | None) -> str:
     return "eod_research" if local.time() >= EOD_RESEARCH_START else "research_only"
 
 
-def run(
+def _is_definitely_prelaunch_exception(exc: BaseException) -> bool:
+    """判斷例外是否明確發生在 child 建立前。"""
+
+    return isinstance(
+        exc,
+        (
+            FileNotFoundError,
+            PermissionError,
+            NotADirectoryError,
+            ValueError,
+            TypeError,
+        ),
+    )
+
+
+def _run_once(
     *,
     data_root: Path,
     output_root: Path,
@@ -499,6 +808,7 @@ def run(
     python_executable: str | None = None,
     subprocess_timeout_seconds: int = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
     calendar: OfficialTradingCalendar | None = None,
+    run_context: RunContext,
 ) -> dict[str, Any]:
     checked_raw = now or datetime.now(TAIPEI)
     checked_at = _taipei_datetime(checked_raw, field_name="now")
@@ -563,12 +873,7 @@ def run(
         capture_mode=resolved_capture_mode,
     )
     temporal = capture_request.temporal_summary
-    status_path = (
-        output_root
-        / "scheduled"
-        / "decision_evidence_capture"
-        / "latest_status.json"
-    )
+    status_path = run_context.status_path
     payload = _base_payload(
         calendar_decision_at=resolved_calendar_decision_at,
         decision_at=resolved_decision_at,
@@ -578,6 +883,7 @@ def run(
         temporal=temporal,
         checked_at=checked_at,
         status_path=status_path,
+        run_context=run_context,
         db_path=db_path,
         decision_date_basis=decision_date_basis,
     )
@@ -636,7 +942,6 @@ def run(
                 "safety_boundary": safety_boundary,
             }
         )
-        _atomic_write_json(status_path, payload)
         return payload
 
     interpreter = python_executable or sys.executable
@@ -646,9 +951,9 @@ def run(
         "--as-of",
         resolved_as_of_date.isoformat(),
         "--decision-at",
-        resolved_decision_at.isoformat(timespec="seconds"),
+        resolved_decision_at.isoformat(),
         "--captured-at",
-        resolved_captured_at.isoformat(timespec="seconds"),
+        resolved_captured_at.isoformat(),
         "--capture-mode",
         resolved_capture_mode,
         "--data-root",
@@ -661,7 +966,14 @@ def run(
         common_args.extend(("--db-path", str(db_path)))
 
     failures: list[str] = []
+    snapshot_execution: dict[str, Any] | None = None
+    snapshot_execution_state: dict[str, Any] | None = None
     try:
+        _mark_child_started(
+            run_context,
+            "snapshot",
+            timeout_seconds=subprocess_timeout_seconds,
+        )
         snapshot_result = _run_json_cli(
             [
                 interpreter,
@@ -675,22 +987,77 @@ def run(
             ],
             timeout_seconds=subprocess_timeout_seconds,
         )
+        snapshot_execution = _persist_cli_result(
+            run_context,
+            "snapshot",
+            snapshot_result,
+        )
         expected_temporal = _temporal_receipt_payload(payload)
         snapshot, snapshot_failures = _snapshot_step(
             snapshot_result,
             expected_temporal=expected_temporal,
         )
     except Exception as exc:  # noqa: BLE001
-        snapshot = {
-            "status": "failed",
-            "saved": False,
-            "duplicate": False,
-            "error_type": type(exc).__name__,
-            "error": str(exc),
-        }
+        snapshot_execution_state = run_context.subprocesses.get("snapshot")
+        if snapshot_execution_state is not None:
+            snapshot = {
+                "status": "unknown",
+                "saved": None,
+                "duplicate": None,
+                "reason": (
+                    "snapshot_artifact_persistence_failed"
+                    if snapshot_execution_state.get("artifact_status") == "pending"
+                    else (
+                        "snapshot_launch_failed"
+                        if (
+                            snapshot_execution_state.get("launch_status") == "started"
+                            and _is_definitely_prelaunch_exception(exc)
+                        )
+                        else "snapshot_execution_unknown"
+                    )
+                ),
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "execution": snapshot_execution_state,
+            }
+        else:
+            snapshot = {
+                "status": "failed",
+                "saved": False,
+                "duplicate": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
         snapshot_failures = [
             f"snapshot_step_exception:{type(exc).__name__}"
         ]
+        if snapshot_execution_state is not None:
+            if snapshot_execution_state.get("launch_status") == "started":
+                definitely_prelaunch = _is_definitely_prelaunch_exception(exc)
+                snapshot_execution_state["launch_status"] = (
+                    "failed" if definitely_prelaunch else "unknown"
+                )
+                snapshot_execution_state["execution_status"] = (
+                    "failed" if definitely_prelaunch else "unknown"
+                )
+                snapshot_execution_state["launch_error_type"] = type(exc).__name__
+                if not definitely_prelaunch:
+                    snapshot_execution_state["execution_error_type"] = type(exc).__name__
+                    snapshot_execution_state["execution_error"] = str(exc)
+            safety_boundary = dict(payload["safety_boundary"])
+            safety_boundary["writes_decision_desk_snapshot"] = None
+            safety_boundary["writes_evidence_events"] = False
+            payload["safety_boundary"] = safety_boundary
+        if snapshot_execution_state is not None:
+            snapshot["execution"] = snapshot_execution_state
+    snapshot_execution_state = run_context.subprocesses.get("snapshot")
+    if snapshot.get("saved") is None and snapshot_execution_state is not None:
+        safety_boundary = dict(payload["safety_boundary"])
+        safety_boundary["writes_decision_desk_snapshot"] = None
+        payload["safety_boundary"] = safety_boundary
+    if snapshot_execution is not None:
+        snapshot["execution"] = snapshot_execution
+    run_context.steps["snapshot"] = dict(snapshot)
     failures.extend(snapshot_failures)
     payload["snapshot"] = snapshot
 
@@ -702,8 +1069,16 @@ def run(
             "failures": 0,
             "reason": "snapshot_step_failed",
         }
+        run_context.steps["evidence"] = dict(payload["evidence"])
     else:
+        evidence_execution: dict[str, Any] | None = None
+        evidence_execution_state: dict[str, Any] | None = None
         try:
+            _mark_child_started(
+                run_context,
+                "evidence",
+                timeout_seconds=subprocess_timeout_seconds,
+            )
             evidence_result = _run_json_cli(
                 [
                     interpreter,
@@ -719,22 +1094,78 @@ def run(
                 ],
                 timeout_seconds=subprocess_timeout_seconds,
             )
+            evidence_execution = _persist_cli_result(
+                run_context,
+                "evidence",
+                evidence_result,
+            )
             evidence, evidence_failures = _evidence_step(
                 evidence_result,
                 expected_temporal=expected_temporal,
             )
         except Exception as exc:  # noqa: BLE001
-            evidence = {
-                "status": "failed",
-                "events_inserted": 0,
-                "duplicates": 0,
-                "failures": 1,
-                "error_type": type(exc).__name__,
-                "error": str(exc),
-            }
+            evidence_execution_state = run_context.subprocesses.get("evidence")
+            if evidence_execution_state is not None:
+                evidence = {
+                    "status": "unknown",
+                    "events_seen": None,
+                    "events_inserted": None,
+                    "duplicates": None,
+                    "failures": None,
+                    "reason": (
+                        "evidence_artifact_persistence_failed"
+                        if evidence_execution_state.get("artifact_status") == "pending"
+                        else (
+                            "evidence_launch_failed"
+                            if (
+                                evidence_execution_state.get("launch_status") == "started"
+                                and _is_definitely_prelaunch_exception(exc)
+                            )
+                            else "evidence_execution_unknown"
+                        )
+                    ),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "execution": evidence_execution_state,
+                }
+            else:
+                evidence = {
+                    "status": "failed",
+                    "events_inserted": 0,
+                    "duplicates": 0,
+                    "failures": 1,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
             evidence_failures = [
                 f"evidence_step_exception:{type(exc).__name__}"
             ]
+            if evidence_execution_state is not None:
+                if evidence_execution_state.get("launch_status") == "started":
+                    definitely_prelaunch = _is_definitely_prelaunch_exception(exc)
+                    evidence_execution_state["launch_status"] = (
+                        "failed" if definitely_prelaunch else "unknown"
+                    )
+                    evidence_execution_state["execution_status"] = (
+                        "failed" if definitely_prelaunch else "unknown"
+                    )
+                    evidence_execution_state["launch_error_type"] = type(exc).__name__
+                    if not definitely_prelaunch:
+                        evidence_execution_state["execution_error_type"] = type(exc).__name__
+                        evidence_execution_state["execution_error"] = str(exc)
+                safety_boundary = dict(payload["safety_boundary"])
+                safety_boundary["writes_evidence_events"] = None
+                payload["safety_boundary"] = safety_boundary
+            if evidence_execution_state is not None:
+                evidence["execution"] = evidence_execution_state
+        evidence_execution_state = run_context.subprocesses.get("evidence")
+        if evidence.get("events_inserted") is None and evidence_execution_state is not None:
+            safety_boundary = dict(payload["safety_boundary"])
+            safety_boundary["writes_evidence_events"] = None
+            payload["safety_boundary"] = safety_boundary
+        if evidence_execution is not None:
+            evidence["execution"] = evidence_execution
+        run_context.steps["evidence"] = dict(evidence)
         payload["evidence"] = evidence
         failures.extend(evidence_failures)
 
@@ -756,10 +1187,188 @@ def run(
             "persisted_snapshot_capture_context": _persisted_capture_context(snapshot),
             "persisted_event_capture_context": _persisted_capture_context(evidence_payload),
             "subprocess_timeout_seconds": subprocess_timeout_seconds,
+            "subprocesses": dict(run_context.subprocesses),
         }
     )
-    _atomic_write_json(status_path, payload)
     return payload
+
+
+def _exception_payload(context: RunContext, exc: Exception) -> dict[str, Any]:
+    snapshot = dict(
+        context.steps.get(
+            "snapshot",
+            {
+                "status": "not_run",
+                "saved": False,
+                "duplicate": False,
+                "reason": "orchestrator_exception",
+            },
+        )
+    )
+    evidence = dict(
+        context.steps.get(
+            "evidence",
+            {
+                "status": "not_run",
+                "events_seen": 0,
+                "events_inserted": 0,
+                "duplicates": 0,
+                "failures": 0,
+                "reason": "orchestrator_exception",
+            },
+        )
+    )
+    if "snapshot" not in context.steps and "snapshot" in context.subprocesses:
+        snapshot = {
+            "status": "unknown",
+            "saved": None,
+            "duplicate": None,
+            "reason": "orchestrator_exception_after_snapshot_child",
+            "execution": context.subprocesses["snapshot"],
+        }
+    if "evidence" not in context.steps and "evidence" in context.subprocesses:
+        evidence = {
+            "status": "unknown",
+            "events_seen": None,
+            "events_inserted": None,
+            "duplicates": None,
+            "failures": None,
+            "reason": "orchestrator_exception_after_evidence_child",
+            "execution": context.subprocesses["evidence"],
+        }
+
+    snapshot_write: bool | None
+    if "snapshot" in context.steps:
+        snapshot_write = snapshot.get("saved") if isinstance(snapshot.get("saved"), bool) else None
+    elif "snapshot" in context.subprocesses:
+        snapshot_write = None
+    else:
+        snapshot_write = False
+    if "evidence" in context.steps:
+        if evidence.get("status") == "not_run":
+            evidence_write = False
+        elif evidence.get("events_inserted") is None:
+            evidence_write = None
+        else:
+            evidence_write = True
+    elif "evidence" in context.subprocesses:
+        evidence_write = None
+    else:
+        evidence_write = False
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "receipt_schema_version": RECEIPT_SCHEMA_VERSION,
+        "task": TASK_NAME,
+        "status": "failed",
+        "run_id": context.run_id,
+        "run_started_at": context.started_at,
+        "status_path": str(context.status_path.resolve()),
+        "receipt_path": str(context.receipt_path.resolve()),
+        "failure_reasons": [f"orchestrator_exception:{type(exc).__name__}"],
+        "error_type": type(exc).__name__,
+        "error": str(exc),
+        "snapshot": snapshot,
+        "evidence": evidence,
+        "snapshot_saved": snapshot.get("saved"),
+        "snapshot_duplicate": snapshot.get("duplicate"),
+        "events_inserted": evidence.get("events_inserted"),
+        "events_duplicates": evidence.get("duplicates"),
+        "events_failures": evidence.get("failures"),
+        "subprocesses": dict(context.subprocesses),
+        "safety_boundary": {
+            "writes_decision_desk_snapshot": snapshot_write,
+            "writes_evidence_events": evidence_write,
+            "changes_rule_state": False,
+            "changes_advice_state": False,
+            "changes_portfolio_state": False,
+            "broker_execution": False,
+        },
+    }
+
+
+def _finalize_run(context: RunContext, payload: Mapping[str, Any]) -> dict[str, Any]:
+    terminal = dict(payload)
+    completed_at = datetime.now(timezone.utc).isoformat()
+    terminal.update(
+        {
+            "run_id": context.run_id,
+            "run_started_at": context.started_at,
+            "run_completed_at": completed_at,
+            "completed_at": completed_at,
+            "run_dir": str(context.run_dir.resolve()),
+            "status_path": str(context.status_path.resolve()),
+            "receipt_path": str(context.receipt_path.resolve()),
+            "receipt_schema_version": RECEIPT_SCHEMA_VERSION,
+            "finalized": True,
+            "subprocesses": dict(context.subprocesses),
+        }
+    )
+    receipt_payload = dict(terminal)
+    receipt_payload["receipt_status"] = "complete"
+    try:
+        _write_immutable_json(context.receipt_path, receipt_payload)
+        receipt_sha256 = _file_sha256(context.receipt_path)
+    except Exception as exc:  # noqa: BLE001 - receipt failure must fail closed
+        failed = dict(terminal)
+        reasons = list(failed.get("failure_reasons") or [])
+        reasons.append(f"receipt_write_failed:{type(exc).__name__}")
+        failed.update(
+            {
+                "status": "failed",
+                "failure_reasons": reasons,
+                "receipt_status": "write_failed",
+                "receipt_write_error_type": type(exc).__name__,
+            }
+        )
+        _atomic_write_json(context.status_path, failed)
+        return failed
+
+    latest = dict(terminal)
+    latest.update(
+        {
+            "receipt_status": "complete",
+            "receipt_sha256": receipt_sha256,
+        }
+    )
+    _atomic_write_json(context.status_path, latest)
+    return latest
+
+
+def run(
+    *,
+    data_root: Path,
+    output_root: Path,
+    db_path: Path | None = None,
+    now: datetime | None = None,
+    decision_at: datetime | None = None,
+    as_of: date | str | None = None,
+    captured_at: datetime | None = None,
+    capture_mode: str | None = None,
+    calendar_decision_at: datetime | None = None,
+    python_executable: str | None = None,
+    subprocess_timeout_seconds: int = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
+    calendar: OfficialTradingCalendar | None = None,
+) -> dict[str, Any]:
+    context = _create_run_context(Path(output_root))
+    try:
+        payload = _run_once(
+            data_root=data_root,
+            output_root=output_root,
+            db_path=db_path,
+            now=now,
+            decision_at=decision_at,
+            as_of=as_of,
+            captured_at=captured_at,
+            capture_mode=capture_mode,
+            calendar_decision_at=calendar_decision_at,
+            python_executable=python_executable,
+            subprocess_timeout_seconds=subprocess_timeout_seconds,
+            calendar=calendar,
+            run_context=context,
+        )
+    except Exception as exc:  # noqa: BLE001 - persist a terminal failed receipt
+        payload = _exception_payload(context, exc)
+    return _finalize_run(context, payload)
 
 
 def _parse_now(value: str | None) -> datetime | None:

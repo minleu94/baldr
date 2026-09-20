@@ -15,6 +15,161 @@
 > personal sample。下一順序仍是 **L source chain → 整合使用流程 → 以真實 user decision/outcome evidence
 > 驗證個人化效果**，不把工程接線、fixture、replay 或 `natural sample=0` 縮寫成 V4／V5／V6 完成。
 
+2026-09-18 core static follow-up 的 12 個 production files compile／mypy clean，float／
+look-ahead quant guard clean；global ML shadow boundary re-inspected 518 files，仍保留 4 項
+既有跨層 import residual，沒有以本輪 allowlist 掩蓋。這 4 項 residual 不改寫上述
+personal／natural／formal readiness 邊界。
+
+## 2026-09-18 ABC bounded follow-up
+
+本輪核心合併 validation 為 **168 passed**，包含 A daily-main、B cost 29 cases、strict
+resolver 11 cases、wrapper 與 source-contract coverage；standalone natural CLI 的真實
+provider fixture 另 **3 passed**，兩組測試檔不重複，合計 **171 passed**。先前 focused
+slice 的 `77 passed`（A wrapper／identity／durable receipt `33`、B maturity calendar
+wiring `27`、C learning-evidence denominator projection `17`）僅作 component/history
+分解，不再加回核心總數。
+
+### A capture repair
+
+`run_scheduled_decision_evidence_capture.py` 已修正 parent／child temporal receipt 的精度邊界：
+`decision_at`／`captured_at` 維持完整 aware ISO precision，child 不再以整秒重建 hash context。
+wrapper／identity／durable-receipt focused suite `33 passed`，snapshot／evidence child與 service suite
+`24 passed`，合計 `57 passed`；py_compile、targeted mypy 與 quant guard 亦通過。每次合法 run 另保存
+subsecond+UUID immutable receipt、raw child stream bounded artifact、原始 byte count／hash／truncation、
+OS returncode／timeout 與 latest pointer；receipt 或 artifact I/O 失敗 fail closed。9/17 latest failed status
+仍保留為歷史 receipt，不重跑、不回填、不授予 natural／Paper／Formal credit；合法下一次排程
+可依既有 latest pointer 規則自然產生新 status，但仍須驗證新的 parent／child hash readback
+與 evidence step，不追認舊失敗。
+詳見 [每日 Decision Evidence Capture 修復 QA](../06_qa/DAILY_CAPTURE_RECOVERY_2026_09_18.md)。
+
+2026-09-18 原排程 EOD research run 的 bounded readback 於 2026-09-18T12:26:13Z 觀測：
+run_id 為 `20260918T122502797364Z-414cfa43c1b0`，status=`passed`、receipt=`complete`，
+evidence／snapshot child 均 returncode 0 且 saved，events `1098/1098`、duplicates=0、
+failures=0、snapshot sections_missing=[]；receipt SHA-256 為
+`95bc1d0addebe391e06be5b4a0b6353beca4c385ea493d7611c8dd8605cf2533`。quality counts 為
+degraded 1080、estimated 3、observed 15，warnings 702。這是 research-only capture，
+`natural_authority=false`；audit 本身未觸發 scheduler 或修改正式 source。[readback raw JSON](../../output/qa/decision_evidence_capture_readback_20260918/readback_20260918T1226Z.json)
+保留 immutable context／identity hash 與 4 raw hash 對帳。
+
+### B natural learning trace
+
+9/17 forward receipt 的 11 個 qualifying events 中，5d 為 `ready=1`、`pending=10`，
+10／20／60d 仍為 `ready=0`。唯一 5d ready row（1454）是 close-to-close forward outcome
+研究，gross `-195bp`、TAIEX benchmark `-139bp`、excess `-56bp`；事件沒有
+candidate／probability／prediction capture／label／calibration policy binding，因此不進
+natural probability calibration，也不代表可成交 entry 或收益證據。BankTaiwan 9/18 排程
+已實際執行（台北 `20:50:03–20:50:50`），wrapper run
+`2026-09-18-attempt-001-91feea81e0f4` 以 `failed_dependency`／child exit `2` 收尾，
+原因為 `live_capture_blocked:prospective_price_up_source_not_ready:technical_prospective_source_not_ready`。
+technical publication 本身為 passed，source hash／value／lineage 與
+`prospective_feature_snapshot_verified` 均為 true，`missing_technical_symbols=[]`；但 requested 7 檔中
+`missing_source_symbols=[1569]`，當日 technical receipt 只有 TWSE、TPEX 到 9/17，
+`prospective_available=false`，所以 live capture 保守阻擋。[有效核心 readback](../../output/qa/banktaiwan_learning_readback_20260918/readback_20260918T130922Z_core.json)
+保存了本次 blocked 結果。這是 1569 同日來源 custody 缺件，
+不是 technical computation failure；不降低 gate、不剔除該樣本湊數，既有 formal technical source
+contract unverified 仍是原有 formal gate。有效 captures 仍只有 9/15–17 三份、18 rows、matured=0；
+replay 不折抵 maturity gate，9/18 Decision Evidence capture 的 1098 events 也不能視為新增
+calibration 成熟樣本。
+Forward maturity calendar wiring 的 bounded suite 為 `27 passed`；annual plan 只提供 planned
+maturity diagnostics，保留 legacy symbol-price-row-offset outcome contract，不改 READY／return basis 或 natural
+credit。共用 annual cache refresh wiring 另有 `12 passed`（含 annual-64 最新候選 regression，
+compile／mypy clean）；這是增量驗證，上一輪核心合併仍為 `168 passed`、standalone CLI `3 passed`，
+不把它宣稱為新的 `172` 合併 suite。詳見 [Natural learning trace](../06_qa/NATURAL_LEARNING_TRACE_2026_09_18.md)、
+[Forward maturity calendar wiring](../06_qa/MATURITY_CALENDAR_WIRING_2026_09_18.md) 與
+[Maturity calendar refresh wiring](../06_qa/MATURITY_CALENDAR_REFRESH_WIRING_2026_09_18.md)。
+
+同一觀測日的 source quality 仍需單獨判讀：2026-09-18 `data_update_quick` 為
+`passed_with_warnings`（TWSE passed、TPEX warning），`data_freshness` 明示
+`tpex_daily_price_file_missing:20260918`；13:00:25–27Z 的兩次官方唯讀 GET 後續都回
+HTTP `403`、Cloudflare HTML，且沒有進入 parser。這只能證明 probe 時點的 HTTP 阻擋，不能追認
+早上排程的原始根因；同輪 recommendation degraded 的主要診斷為
+`relative_strength_liquidity`。這是來源覆蓋／品質警告，不是 decision capture 失敗，也不能由跨日
+code count 推定官方應有 coverage 或 API 根因。A 的 TPEX range 修正保留每個來源失敗的
+`failure_diagnostics`（requested／fallback／range phase、message、`diagnostic_count`、
+`source_date` 與 bounded row counts），並在取消或後續 exception 時保留已收診斷；本輪 UpdateService
+完整測試為 `65 passed`（僅既有 pytest cache permission warning）；另有本輪不重疊的 resolver
+`12 passed`，兩組合計 `77 passed`，不能與歷史 `171 passed` 相加。source gap 與 bounded 修補邊界見
+[TPEX source gap diagnostics](../06_qa/TPEX_SOURCE_GAP_DIAGNOSTICS_2026_09_18.md)。
+
+### 2026-09-19 TPEX 9/18 official raw 歷史補入
+
+後續合法取得的官方 `afterTrading/otc` raw 於 `2026-09-19T07:20:33.071218Z`
+完成保存，並已完成受控 insert-only backfill：正式 DB
+`20260918` rows 由 `1090` 增至 `1958`（新增 `868`），1569 正式 row 為
+`52.00/57.00/52.00/55.50`、成交股數 `5,164,000`；CSV 亦保存 `868` rows，custody
+raw `146419` bytes，SHA-256 為
+`sha256:2eae9b5185bfde35ddb63ed6ed4d331f3a97a195229394a693db54ddc9739e62`。
+獨立唯讀驗收確認 apply 前既有 rows hash 未變、normalized keys overlap `868`、conflict `0`。
+完整來源、DB/CSV/custody hash 與 bounded 限制見
+[TPEX source gap diagnostics](../06_qa/TPEX_SOURCE_GAP_DIAGNOSTICS_2026_09_18.md) 及
+[independent readback](../../output/qa/tpex_source_acquisition_20260918/formal_db_preflight_20260919T072937Z/independent_readback.json)。
+
+這只完成 9/18 daily-price source 的歷史資料補入與 custody 保存；原先 9/18 decision
+capture／BankTaiwan failed receipt 不回填或改判，receipt 的
+`historical_pit_status=not_proven_by_after_close_capture` 與
+`formal_source_contract_eligible=false` 仍有效，也不授予 natural learning、calibration
+或 decision-time credit。Fubon／FinMind 的 `5,422,427` 只記為候選回應成交股數，與官方
+afterTrading `5,164,000` 不視為同一 volume 口徑。
+本次 `9-18-tpex` heartbeat 已 `PAUSED`；來源晚於原始 decision capture，故不追認 old
+natural／decision-time evidence。
+
+本輪 run identity 唯讀審計確認：wrapper `run_id` 是排程嘗試／immutable receipt identity，
+`evidence_events.run_id` 是事件／研究 lineage key，scheduled child 未接收 wrapper run id；事件的
+完整 `metadata.capture_context` 與 temporal／identity hash 已可供語意對帳。natural evidence 讀取
+immutable prediction capture、source contract 與 natural receipt，不依賴 `list_events_for_run()`，
+因此 9/18 event rows 的空 `run_id` 不構成 daily natural evidence blocker。隔離契約單測為 `1 passed`；
+不新增 run-id 接線。
+
+### C personalization limitation
+
+目前 active calibration pointer 為 `rule_only`、`candidate_id=null`，consumer 的
+`active_identity()` 為 `None`；沒有 verified projection receipt，因此 real scope 的
+personal capture 為 `0`。`action_not_recorded` 不代表 prediction 失敗，也不要求現在選擇
+scope；在既有 authority／promotion gate 通過前，不得建立 active candidate、回填 capture，
+不得把 shadow／fixture 冒充 personal delivery，也不得僅憑 technical ACK 授予 natural／calibration credit。
+C 的 learning-evidence denominator projection focused suite 為 `17 passed`：legacy lane
+經 conflict 排除後為 `2 captures／16 rows／2 decision dates`，latest snapshot 為 `14 rows`，
+`capture_conflict_count=5`、`capture_scan_status=complete`；這個累積分母與 latest snapshot
+分開呈現，不能與 BankTaiwan lane 混用。新的 policy binding 尚未以真實成熟 positive receipt
+驗證，`policy_binding_status=unknown`，因此不得宣稱 adoption 或升級為 ready。詳見
+[Personal Delivery Activation QA](../06_qa/PERSONAL_DELIVERY_ACTIVATION_2026_09_18.md) 與
+[Learning Evidence Denominator QA](../06_qa/LEARNING_EVIDENCE_DENOMINATORS_2026_09_18.md)。
+
+### Strict natural label binding（2026-09-18，進行中）
+
+本輪新增的 natural producer integration 以 `NaturalMaturitySessionResolver` 綁定 exact 20
+個官方交易 session；resolver proof 同時保存 calendar evidence、TAIEX capture-day baseline、
+exact endpoint、resolver identity/version 與 bounded source fingerprint。個股只讀 capture day
+與 endpoint day，缺中間個股列不會向後滑動。producer 會在讀個股前後核對 proof 的 source DB
+與同一 SQLite bytes stat；缺 official calendar、TAIEX baseline／endpoint、stock endpoint、
+source-contract anchor、未收盤／future row 或 evaluation clock 時維持 pending。
+
+strict receipt 的 `evaluation_at` 必須是 aware datetime，且 `Asia/Taipei` 日期等於
+`evaluation_date`，不得使用 future wall clock；authority 會以已驗證 capture source contract
+的 `source_database` 作 expected anchor，不能採用 receipt 自報 path。舊 generic forward
+仍是 legacy symbol-price-row-offset／return-basis 研究結果，不可與 strict natural receipt
+混算或授予 natural calibration credit。`run_scheduled_forward_outcomes.py` 的 calendar cache
+參數只控制 generic forward 的 bounded maturity diagnostics；standalone natural CLI 現已依同一
+source DB 建立 resolver、傳入 aware Taipei checked clock，並支援 annual／temporary cache
+參數；缺 calendar、日期不一致或 source proof 不足仍 fail closed。
+
+2026-09-15、16、17 的三個 real-market captures 已於 2026-09-18 重驗並標示
+`source_verified`；這只證明當次 source custody／bytes 對帳，不等於 20-session matured
+sample、personal delivery 或 adoption。
+annual calendar cache 的最新唯讀 refresh receipt 於 `2026-09-17T23:15:02.193862Z` 觀測為
+`cache_valid_for_forward_horizon`，與 ML forward／Paper 共用
+`output/paper_execution_eod_replay/calendar_cache/`；目前有效期限為
+`2026-09-21T23:15:03.532140Z`（台北時間 2026-09-22 07:15）。refresh 由既有共用 ML
+forward／Paper 路徑負責，strict natural consumer 只讀驗證後 cache，缺失或過期仍 fail closed；
+cache 不宣稱永久有效。主機 Task Scheduler 的 Enabled／LastRun／NextRun 因權限不足未由本輪證據宣稱。
+strict resolver 的 compact／ISO SQL range guard 與跨年等價 regression 已包含在核心合併驗證。
+
+C-owned component slice 保留為 25 passed／2 deselected、strict resolver／producer 11 passed；
+A daily-main 與 B cost 29 cases、resolver 11 cases 已納入核心合併 **168 passed**，standalone
+CLI 真實 provider fixture 另 **3 passed**，合計 **171 passed**（測試檔不重複）。這些是工程
+驗證數字，不授予 natural adoption 或 formal readiness；既有 4 項 global ML shadow boundary
+residual 仍以專屬 raw QA 如實保留。
+
 ## 2026-09-17 A／B／C bounded status（working tree）
 
 ### A Paper／calendar／Recommendation

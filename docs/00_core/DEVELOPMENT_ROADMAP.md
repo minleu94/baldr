@@ -87,6 +87,47 @@
 > 全局仍 `in_progress`，不因任一 bounded slice 宣稱 V4／V6／formal 完成；目前 module trees mypy 為
 > 630 source files clean（scripts excluded，僅 2 untyped-body notes）。
 
+> **2026-09-18 bounded follow-up**：核心合併 validation 為 `168 passed`，standalone natural
+> CLI 真實 provider fixture 另 `3 passed`；先前 focused component slice 的 `77 passed` 由 A
+> wrapper／identity／
+> durable receipt `33`、B maturity calendar wiring `27`、C denominator projection `17` 組成，僅作
+> 分解，不再加回核心總數。A 先前
+> child／service `24 passed` 是既有 coverage，未在本輪重跑，不併入本輪 `77`。A capture wrapper 已完成 parent／child aware timestamp precision
+> 修復與 durable receipt slice（wrapper／identity／receipt `33 passed`；child／service `24 passed`）；
+> 每次合法 run 保存 immutable per-run receipt、bounded raw streams、原始 byte count／hash／truncation、
+> OS returncode／timeout 與 latest pointer，receipt／artifact I/O 失敗 fail closed。9/17 failed receipt 不回填，
+> 下一次合法 scheduled action 仍須以 latest receipt readback 驗證。B 的 5d forward row 只屬研究 outcome、不能進 probability calibration；
+> forward maturity calendar wiring `27 passed` 只提供 annual-plan planned-date diagnostics，保留 legacy symbol-price-row-offset outcome／return basis；
+> C active pointer 維持 `rule_only`、無 verified receipt 時 personal capture 為 `0`；denominator
+> projection 為 `17 passed`，legacy lane 經 conflict 排除後為 `2 captures／16 rows／2 decision dates`，
+> latest snapshot 為 `14 rows`、conflict `5`、scan `complete`。新的 policy binding 尚未以真實成熟
+> positive receipt 驗證，`policy_binding_status=unknown`，不得宣稱 adoption 或升級 ready。詳見
+> [A capture recovery](../06_qa/DAILY_CAPTURE_RECOVERY_2026_09_18.md)、
+> [B natural learning trace](../06_qa/NATURAL_LEARNING_TRACE_2026_09_18.md)、
+> [B maturity calendar wiring](../06_qa/MATURITY_CALENDAR_WIRING_2026_09_18.md) 與
+> [C personal delivery activation](../06_qa/PERSONAL_DELIVERY_ACTIVATION_2026_09_18.md) 及
+> [C learning evidence denominators](../06_qa/LEARNING_EVIDENCE_DENOMINATORS_2026_09_18.md)。不改版本、
+> 不啟用 scheduler／promotion／broker，也不授予 formal／natural credit。
+
+> **strict natural label binding follow-up（同日，尚在收斂）**：新增 producer／authority
+> bounded integration 以 official calendar resolver 固定 exact 20 trading sessions，proof 綁定
+> TAIEX capture-day baseline、exact endpoint、resolver identity/version、calendar evidence 與
+> verified source database。個股只接受 capture day／exact endpoint，producer 讀取前後核對同一
+> source SQLite 的 path／size／mtime；缺 calendar、market baseline／endpoint、stock endpoint、
+> source-contract anchor、future／未收盤 row 或 aware evaluation clock 時維持 pending。strict
+> receipt 的 Taipei evaluation date 必須與 `evaluation_date` 相同，future clock 與舊 legacy proof
+> 不得進 adoption；standalone natural CLI 現已建立 strict resolver／clock，並支援
+> `--calendar-cache-path` 與 `--temporary-closure-cache-path`，缺來源仍 fail closed。Generic
+> forward 仍保留 legacy symbol-price-row-offset／return-basis 研究契約，不能拿來折抵 strict
+> natural maturity。2026-09-15、16、17 的三個 real-market captures 已於 9/18 重驗並有
+> `source_verified`，仍不等於 matured sample 或 personal adoption；annual cache expires at
+> `2026-09-21T23:15:03.532140Z`（Taipei `2026-09-22 07:15`），待 refresh 不宣稱永久有效。
+> strict resolver 的 compact／ISO SQL range guard、跨年等價 regression 與 B cost positive fixture
+> 已納入核心合併驗證；C component slice 為 `25 passed / 2 deselected`、strict resolver／
+> producer 為 `11 passed`，A/B/C 核心合併為 `168 passed`，standalone CLI 另為 `3 passed`。
+> 這些是工程驗證，不代表 natural adoption 或 formal readiness。詳見
+> [Natural session label binding QA](../06_qa/NATURAL_SESSION_LABEL_BINDING_2026_09_18.md)。
+
 ---
 
 ## 1. 文件權威邊界

@@ -771,6 +771,37 @@ immutable receipt，與本次 `current_capture_context` 分開判讀。若 child
 context／hash，外層 runner 會 fail closed。這條 capture path 仍是研究／證據保存流程，
 不改寫正式 DB 歷史資料、不宣告自然成熟，也不具交易執行權限。
 
+#### 2026-09-18 capture 修復與合法下次 run 驗證
+
+2026-09-17 的 `latest_status.json` 是已保存的歷史 failed receipt：failure 原因是 parent／child
+`capture_context_hash` 與 identity hash mismatch；不得以修補後的 working tree 回填偽造 9/17，
+也不得為了重建 9/17 而觸發 historical retry。下一次合法排程可自然更新 `latest_status.json`，
+但應保留本輪 QA copy 與原始 hash 作為歷史對照。修補後 parent payload 與 child
+arguments 必須傳遞同一個完整 aware `datetime.isoformat()`，保留 subsecond；同秒不同
+`decision_at` subsecond 仍是不同 identity，retry 若只改 `captured_at` 則保留 identity、但
+full context hash 必須不同。
+
+下一次合法自然排程 run 只做 receipt readback：確認 `latest_status.json` 的
+`status`／`snapshot.status`、`snapshot.saved`、七個 required sections、
+`persisted_snapshot_capture_context` 與 `current_capture_context` 各自通過時間／兩個 hash 的
+完整性驗證；合法 retry 的 `captured_at` 可以不同，但 decision／as-of／authority identity
+應相同，且首次保存的 persisted context 與本次 current context 分開判讀，
+以及 evidence step 沒有 `reason=snapshot_step_failed`；同時保留
+`capture_mode=eod_research`、`research_only=true`、`preopen_authority=false`、
+`natural_authority=false`。這個檢查不把 run 結果追認為 natural maturity 或 Paper／Formal
+credit，也不以人工或 historical retry 回填舊 failed receipt；合法下一次 run 可依既有 latest
+pointer 規則自然產生新 status。已核實的 Task Scheduler action 仍是 repo 的
+`run_decision_evidence_capture.cmd`，由 cmd 進入 repo root 後呼叫目前 wrapper；應等待下一次
+預定時窗的實際 receipt，不手動 trigger task。
+
+修補後每次合法 invocation 會在 `scheduled/decision_evidence_capture/runs/<run_id>/` 建立
+create-only immutable `receipt.json`；`run_id` 含 UTC subsecond 與 UUID，因此同秒 retry 也不覆寫
+舊 run。receipt 先以 flush／fsync 保存，再由 `latest_status.json` 以 atomic pointer 指向 receipt
+path／SHA-256。child stdout／stderr 以 raw bytes bounded 保存，並記錄原始 byte count、原始 hash、
+truncation、保存 artifact hash／size、OS returncode 與 timeout；完整 stdout 仍用於 JSON parse，
+不保存 child environment。receipt、artifact 或 latest 寫入失敗時只能留下 failed／unknown 狀態，
+不可顯示 passed；這些追溯資料不授予 natural、calibration、Paper 或 Formal credit。
+
 Aggregate `register`／`register-all` 僅在 Windows `Pacific Standard Time` 主機建立
 既有 aggregate scope 的以 Pacific local time 表示的 task；`dryrun` 可在其他時區唯讀檢查。
 新增的 `baldr-ml-allocation-forward-daily` 使用獨立 pinned XML 與 Python preflight，
@@ -1870,7 +1901,24 @@ TWSE 補檔遇到平日休市（例如颱風停市）時，只有在至少一個
 
 若「檢查數據狀態」顯示 SQLite `unavailable`，代表設定的 DB 尚未存在或不可讀；UpdateService 也不會為了顯示狀態而建立空資料庫，應先完成受控資料初始化／同步，再重新檢查。
 
-若 TWSE 每日股價 batch 回報任何真正 `failed_dates`，該每日股價步驟會視為失敗並停止後續流程，避免 UI 顯示完成但實際缺個股日價；單一來源流程也不會再呼叫 TPEX、SQLite 同步或技術指標。只有 TWSE 的 `ALL` 與 `ALLBUT0999` 都精確回覆「很抱歉，沒有符合條件的資料！」時，日期才會列在 `no_data_skipped_dates`（同時保留於 `skipped_dates`），快速更新會顯示「TWSE 上游查無資料，已跳過日期：YYYY-MM-DD」警告並繼續 TPEX / SQLite / 技術指標流程；這種安全跳過不是成功下載，也不等同於資料完整。HTTP／timeout、JSON／欄位解析失敗、「查詢日期大於今日」或其他非完整的「查無資料」文案仍是 `failed_dates`，不會被當成休市日。若 TPEX endpoint timeout、Cloudflare/HTTP 阻擋或部分日期失敗，UI 會繼續已成功的 TWSE / SQLite / 技術指標流程，但最後會標示「未完整」並列出 `TPEX 每日股價缺少日期：YYYYMMDD`；這代表需要重測或補跑缺漏日期，不代表 TWSE 資料也失敗。若只有 TWSE 成功，`daily_prices` 當日可能只含上市股票，技術指標與全市場判讀應等 TPEX 缺口補齊後再視為完整。
+若 TWSE 每日股價 batch 回報任何真正 `failed_dates`，該每日股價步驟會視為失敗並停止後續流程，避免 UI 顯示完成但實際缺個股日價；單一來源流程也不會再呼叫 TPEX、SQLite 同步或技術指標。只有 TWSE 的 `ALL` 與 `ALLBUT0999` 都精確回覆「很抱歉，沒有符合條件的資料！」時，日期才會列在 `no_data_skipped_dates`（同時保留於 `skipped_dates`），快速更新會顯示「TWSE 上游查無資料，已跳過日期：YYYY-MM-DD」警告並繼續 TPEX / SQLite / 技術指標流程；這種安全跳過不是成功下載，也不等同於資料完整。HTTP／timeout、JSON／欄位解析失敗、「查詢日期大於今日」或其他非完整的「查無資料」文案仍是 `failed_dates`，不會被當成休市日。若 TPEX endpoint timeout、Cloudflare/HTTP 阻擋或部分日期失敗，UI 會繼續已成功的 TWSE / SQLite / 技術指標流程，但最後會標示「未完整」並列出 `TPEX 每日股價缺少日期：YYYYMMDD`；這代表需要重測或補跑缺漏日期，不代表 TWSE 資料也失敗。區間結果同時保留 `failure_diagnostics`，逐項記錄 `requested_date`、`phase`（`requested`／`fallback`／`range`）、`result_requested_date`、`source_date`、來源 `diagnostic_count`、row／skipped counts、截斷至 512 字的 `message` 與 `message_truncated`；top-level `diagnostic_count` 是來源診斷數總和，項目數不等於 count。若在來源結果後取消，或後續日期拋出 exception，已收的 per-date diagnostics 仍會保留；這些是 bounded 區間結果／receipt context，不是原始 response bytes，也不能單獨追認 API 根因。今日 raw 缺漏應以 freshness 的明確 token 與原始 log 交叉判讀，不以 `failure_diagnostics` 猜測官方 coverage。若只有 TWSE 成功，`daily_prices` 當日可能只含上市股票，技術指標與全市場判讀應等 TPEX 缺口補齊後再視為完整。
+
+本輪 2026-09-18 的 raw 缺漏由 freshness 明示為 `tpex_daily_price_file_missing:20260918`；13:00:25–27Z 的獨立官方 probe 對 after-trading 與 OpenAPI 各發一次 GET，兩次都回 HTTP `403` 的 Cloudflare HTML，`parse_result.status=not_attempted_http_status`。這只證明 probe 時點的 HTTP 阻擋，不能追認早上排程的根因；今日或其他日期仍應以 freshness token 與原始 log 交叉判讀，不以 `failure_diagnostics` 猜測官方 coverage。完整 source-gap readback、probe raw 與修補限制見 [TPEX source gap diagnostics QA](../06_qa/TPEX_SOURCE_GAP_DIAGNOSTICS_2026_09_18.md)。
+
+若已由合法官方來源保存一份 afterTrading/otc raw response 與同源 capture metadata，可用既有 `scripts\backfill_tpex_daily_prices.py` 做單日受控補入。先以 dry-run 預覽：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\backfill_tpex_daily_prices.py `
+  --source-raw <OFFICIAL_TPEX_AFTER_TRADING_RAW> `
+  --capture-metadata <CAPTURE_METADATA_JSON> `
+  --date YYYY-MM-DD --required-symbol 1569 `
+  --data-root <ISOLATED_OR_DATA_ROOT> `
+  --output-root <CUSTODY_OUTPUT_ROOT> `
+  --db-file <DATA_ROOT>\sqlite\twstock.db `
+  --backup-dir <DATA_ROOT>\meta_data\backup
+```
+
+raw 模式只接受 HTTPS `www.tpex.org.tw/www/zh-tw/afterTrading/otc`、production 的西元日期參數與目標行情 table，會保留 response hash、實際 `captured_at`、原始 receipt 與 bounded parser diagnostics；預設不寫 custody、CSV 或 SQLite。只有在 CSV／DB conflict、來源 provenance、日期／1569、schema 與 hash 全部 preflight 通過後，才可加上 `--apply --confirm apply-tpex-daily-price-backfill`。DB 會先建立 retained backup，CSV 與 custody 使用 create-only 寫入，完成後再以唯讀 readback 核對 1569 的 OHLC／成交股數。第三方來源、OpenAPI payload、不同內容的既有日檔或資料列都會停止。這類晚取得的歷史補入標示 `not_proven_by_after_close_capture`、`formal_source_contract_eligible=false`，不能回填舊 failed receipt，也不能授予 natural／calibration credit；補入後仍須重新檢查來源 receipt 與 freshness。
 
 每日股價分頁另有「背景補齊 TPEX + 技術指標」與「檢查背景任務狀態」。背景任務不會先強制跑 TWSE 全量，也不會強制全量重算技術指標；同步 SQLite 後會比對每日股價與技術指標最新日期，若技術指標已追上每日股價，狀態會顯示 skipped。每日股價頁面內另有可見狀態列，會顯示 `尚未啟動`、`執行中`、`完成` 或 `失敗` 及最後更新時間；狀態檔無法建立時，系統會停止啟動背景程序並顯示原因，不讓畫面留下無法追蹤的假執行狀態。狀態檔位於 `DATA_ROOT/meta_data/tpex_full_refresh_status.json`；若狀態顯示 `running`，請用狀態查詢確認進度，不要重複啟動第二個背景任務。日期範圍同步若發生例外會寫入下方日誌，應先處理該錯誤再開始下載。
 
@@ -2894,7 +2942,25 @@ dry-run 只讀官方 TPEX daily close quotes 與 SQLite，顯示 `ready_for_appl
 
 正式 apply 會先備份 DB；缺少 `--confirm apply-tpex-daily-price-backfill` 時會拒絕執行。此 workflow 只寫入 `daily_prices`，不會修改 `companies.csv`、raw financial CSV、fundamental tables、技術指標或推薦分數。批次模式只處理指定交易日、四碼普通股且收盤價為正數的 rows；債券、權證、ETF 或停牌無價 rows 會被跳過。
 
+若官方 afterTrading response 已由受控唯讀 probe 保存為 raw bytes，可用 pre-captured 模式先核對單日 provenance。`--source-raw` 與 `--capture-metadata` 必須同源；metadata 需保留官方 HTTPS URL、production 日期參數、HTTP status、raw bytes／SHA-256 與完整 body 讀取完成時間，且必須明確指定 `--required-symbol 1569`。此模式只接受 `www.tpex.org.tw/www/zh-tw/afterTrading/otc`，會驗證 payload 日期、行情 table、1569、CSV 狀態與 SQLite conflict；預設 dry-run 不寫 custody、CSV 或 DB：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\backfill_tpex_daily_prices.py `
+  --source-raw <official-response.body> `
+  --capture-metadata <capture-metadata.json> `
+  --date 2026-09-18 --required-symbol 1569 `
+  --data-root D:\Min\Python\Project\FA_Data `
+  --output-root D:\Min\Python\Project\FA_Data\output `
+  --db-file D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
+  --backup-dir D:\Min\Python\Project\FA_Data\meta_data\backup `
+  --dry-run
+```
+
+只有在單日來源、DB conflict、CSV conflict 與 custody 條件都由 owner 審核後，才可加上 `--apply --confirm apply-tpex-daily-price-backfill`。pre-captured apply 會先以 official custody helper create-only 保存 raw／receipt，再 create-only 保存 CSV、建立 DB backup，並以 query-only readback 核對所有 normalized rows 及 1569；raw lane 使用 insert-only，若 preflight 後已有相同 key，只回報實際新增數，不覆寫既有列。capture 發生在交易日之後時，receipt 會保留 `historical_pit_status=not_proven_by_after_close_capture` 與 `formal_source_contract_eligible=false`，不得把晚到資料解讀成舊 decision-time、natural 或 calibration credit。
+
 2026-06-16 已對正式 DB 執行一次：dry-run 顯示可新增 877 筆、0 diagnostics；正式 apply 後備份為 `D:/Min/Python/Project/FA_Data/meta_data/backup/twstock_tpex_daily_price_backfill_20260616_034627.db`。驗證結果：`daily_prices` 的 `20260616` 有 877 筆四碼上櫃日價、0 duplicate `(證券代號, 日期)` keys；`3207` 耀勝已有 `20260616` 日價，`9935` 慶豐富既有日價仍保留。
+
+2026-09-19 另完成 2026-09-18 的 official afterTrading raw 單日補入：正式 DB 原有 1,090 rows，經 868 rows 的 normalized candidate 且 overlap／content conflict 為 0 後，新增 868 rows，日期總數為 1,958；1569 收盤 `55.50`、成交股數 `5,164,000`。官方 raw 與 receipt SHA-256 為 `sha256:2eae9b5185bfde35ddb63ed6ed4d331f3a97a195229394a693db54ddc9739e62`，捕捉完成時間為 `2026-09-19T07:20:33.071218+00:00`；backup 為 `D:/Min/Python/Project/FA_Data/meta_data/backup/twstock_tpex_daily_price_backfill_20260919_003431.db`。此為資料完整性補入，receipt 仍標示晚取得、非 formal source contract eligible，不產生 natural／calibration／promotion／broker credit。
 
 #### 估值 metrics backfill
 
@@ -3134,6 +3200,75 @@ Outcome 以 `(event_id, window_days, return_basis)` 為自然鍵；重跑只更�
 `TWStockConfig.db_file`，還要明確加 `--allow-production-db-confirm`。此入口的
 `passed_with_warnings` 只表示 outcome 計算完成並揭露缺口，不能授予 V4 maturity、正式 alpha、
 production scheduler 或 broker 權限。
+
+### 9.9.1b Strict natural recommendation maturity（20 個官方交易 session）
+
+strict natural lane 使用 `NaturalMaturitySessionResolver`，每筆 capture 固定解析 **20 個官方
+交易 session**，不以 20 個股票 row、曆日差或 weekday 推算成熟。resolver proof 會保存
+`resolver_id`／`resolver_version`、annual calendar evidence、TAIEX capture-day baseline、
+exact endpoint observation、session dates、bounded SQLite source fingerprint 與
+`source_database` anchor。個股 provider 只讀 capture day 與 exact endpoint day；中間個股缺列
+不會滑到下一筆，缺 endpoint、缺任一官方 calendar／market proof、未收盤或 future row 時維持
+`pending`。
+
+producer 建立 strict evidence 時，caller 必須以同一個唯讀 market SQLite 建立 resolver 與
+provider，並傳入帶時區的 `evaluation_at`。`evaluation_at` 轉成 `Asia/Taipei` 後必須等於
+`evaluation_date`，不可是 future wall clock；resolver 的 horizon 固定為 `20`。producer 在
+讀個股前後核對 proof 的 source DB path、size 與 mtime，receipt／authority 再以已驗證 capture
+source contract 的 `source_database` 重驗；不能採用 receipt 自報 path、calendar hash 或
+policy hash。舊 receipt 可作歷史診斷，但缺 strict resolver proof 不得進新 natural adoption。
+每日入口 `run_daily_recommendation_learning.py` 同樣接受
+`--calendar-cache-path`／`--temporary-closure-cache-path`，並沿用相同的
+`NATURAL_MATURITY_CALENDAR_CACHE_PATH`、`ML_FORWARD_CALENDAR_CACHE_ROOT` 與
+`NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH` resolution；每日 caller 以實際 checked clock
+驗證 Taipei 日期，不以主機日期或歷史時間補造成熟度。
+
+目前 generic forward CLI 仍保留原有研究契約：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\scheduled\run_scheduled_forward_outcomes.py `
+  --db-path <READONLY_OR_EXPLICIT_WORKING_COPY_DB> `
+  --calendar-cache-path <OFFICIAL_ANNUAL_CACHE> `
+  --temporary-closure-path <OPTIONAL_CLOSURE_CACHE> `
+  --data-as-of-date YYYY-MM-DD --windows 5,10,20,60 `
+  --require-cohort-identity
+```
+
+`--calendar-cache-path`／`--temporary-closure-path` 只提供 generic forward 的 bounded calendar
+diagnostic；該 lane 仍保留 legacy symbol-price-row-offset／`return_basis` 語意，不能把結果折抵
+strict natural maturity。
+
+standalone strict natural CLI 會沿用同一組 resolver 與 checked clock：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\scheduled\run_recommendation_natural_outcomes.py `
+  --source-db <READONLY_SOURCE_DB> `
+  --calendar-cache-path <OFFICIAL_ANNUAL_CACHE> `
+  --temporary-closure-cache-path <OPTIONAL_CLOSURE_CACHE> `
+  --capture <IMMUTABLE_CAPTURE_JSON> `
+  --output <NATURAL_EVIDENCE_JSON>
+```
+
+`--calendar-cache-path` 省略時依序沿用
+`NATURAL_MATURITY_CALENDAR_CACHE_PATH`、`ML_FORWARD_CALENDAR_CACHE_ROOT` 或 repo
+default；`--temporary-closure-cache-path` 省略時依序沿用
+`NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH` 或維持 `None`，不把缺件當成通過。
+CLI 將同一個 source DB 傳給 provider 與 resolver，並以實際 aware Taipei checked clock
+推導未指定的 `--evaluation-date`。若明示歷史日期與 checked clock 的 Taipei 日期不一致，
+service 會回傳 pending 的 clock mismatch，不補造 23:59 時間。命令成功啟動、`source_verified`
+或 raw row 數量都不等於 natural credit。
+
+2026-09-15、16、17 的三個 real-market captures 已於 2026-09-18 重驗並標示
+`source_verified`；這只表示該次 source bytes／contract 可對帳，不代表 20-session matured
+sample、personal delivery、human action 或 promotion。共用 annual cache refresh receipt 於
+`2026-09-17T23:15:02.193862Z` 觀測為 `cache_valid_for_forward_horizon`，ML forward／Paper
+與 strict natural 共用 `output\paper_execution_eod_replay\calendar_cache\`；目前有效期限為
+`2026-09-21T23:15:03.532140Z`（台北時間 `2026-09-22 07:15`）。refresh 由既有共用路徑負責，
+缺失或過期時 consumer 維持 pending／fail closed；日曆不具永久有效性。主機 Task Scheduler
+的 Enabled／LastRun／NextRun 因權限不足不能由本輪操作宣稱。B 的 compact／ISO 日期 SQL
+格式／長度限制、canonical bounded guard 與跨年等價 regression 已由核心合併 suite 驗證；不得
+改用 ISO fixture 繞過 compact source 的驗證。annual-64 refresh discovery regression 另以
+`12 passed`、compile／mypy clean 驗證，詳見 [Maturity calendar refresh wiring QA](../06_qa/MATURITY_CALENDAR_REFRESH_WIRING_2026_09_18.md)。
 
 ### 9.9.2 Historical Evidence Replay（歷史排程重放）
 
@@ -3685,6 +3820,15 @@ pipeline 的四個子步驟與判讀如下：
 每個 child 的 timeout 都是可恢復狀態，timeout 不刪除既有 durable receipt；pipeline 的總時間用盡時，
 尚未執行的 child 會以 `pipeline_timeout:<step>` blocker 收尾。snapshot 不可用時 learning 不會啟動，
 同一 decision date 的資料補齊後可重跑；同日相同 identity／hash 的 receipt 仍受 create-only 與冪等規則保護。
+
+2026-09-18 BankTaiwan learning 排程已實際執行，並非尚未啟動：台北 `20:50:03–20:50:50` 的
+wrapper run `2026-09-18-attempt-001-91feea81e0f4` 以 `failed_dependency`／child exit `2` 收尾，
+診斷為 `live_capture_blocked:prospective_price_up_source_not_ready:technical_prospective_source_not_ready`。
+technical publication 本身已 passed，`missing_technical_symbols=[]`，但 requested 7 檔中的
+`missing_source_symbols=[1569]` 缺同日來源 custody；當日 TPEX technical receipt 只到 9/17，
+`prospective_available=false`，所以 live capture 保守阻擋。這是來源 custody 缺件，不是 technical
+計算失敗；不降低 gate 或刪除 1569 湊數。有效自然 captures 仍為 9/15–17 三份、18 rows、
+matured=0，待後續合法來源更新後由既有排程重試。
 
 ```powershell
 # bounded shadow run；明確股票群組，不做 universe discovery
@@ -5447,6 +5591,11 @@ TPEX 背景更新的取消是合作式請求：UI 只建立 cancel marker，背�
 本節是目前 working tree 的狀態補充；操作時仍以 read-only／shadow／research-only 邊界
 判讀，不把 bounded engineering receipt 當成正式產品 Gate。
 
+本輪 focused validation 合計 `77 passed`：A wrapper／identity／durable receipt `33`、B maturity
+calendar wiring `27`、C learning-evidence denominator projection `17`。A 先前 child／service
+suite 的 `24 passed` 是既有 coverage，未在本輪重跑，不併入本輪 `77`；工程驗收也不會自動授予
+natural、calibration、Paper 或 Formal credit。
+
 ### A：Paper、calendar 與 Recommendation
 
 Recommendation receipt 的 source、calendar 與 14 筆 candidate file hash 已由 root 逐欄
@@ -5573,6 +5722,18 @@ source fingerprint 不一致或 binding 未驗證時 exit `2`，不建立 evalua
 parser code defect。9/17 denominator 未驗證、taxonomy publication blocked、security lifecycle
 仍為 historical research replay、formal sidecar 不存在；`5371` 與 `3718` 不得 carry-forward。
 這些是 source／formal gate evidence 缺口，不能以 candidate sidecar 充當正式資料。
+
+### C：learning-evidence denominator projection（2026-09-18）
+
+本輪 C denominator projection focused suite 為 `17 passed`。在 legacy lane 中，原始 verifier
+結果為 `7 captures／21 rows／3 decision dates`；依既有 identity／source／cost／horizon
+契約去重並保守排除 conflict 後，valid 累積分母為 `2 captures／16 rows／2 decision dates`，
+`capture_conflict_count=5`、`capture_scan_status=complete`，latest snapshot 另為 `14 rows`。
+累積 valid prediction 分母與 latest snapshot row count 不得混用，且不得與 BankTaiwan lane
+混算。新的 policy binding 尚未以真實成熟 positive receipt 驗證，`policy_binding_status=unknown`；
+projection 不代表 adoption，不得宣稱升級 ready，也不授予 natural／calibration／Formal credit。
+完整來源、去重／衝突／截斷契約與 raw QA 入口見
+[Learning Evidence Denominator QA](../06_qa/LEARNING_EVIDENCE_DENOMINATORS_2026_09_18.md)。
 
 目前 module trees 指定範圍 mypy 為 630 source files clean（scripts excluded，僅 2
 untyped-body notes）；A／B bounded slice 與 C engineering acceptance 不代表 ABC、V4 formal 或

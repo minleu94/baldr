@@ -49,6 +49,9 @@ from data_module.official_trading_calendar import (
 )
 
 
+_TPEX_FAILURE_MESSAGE_MAX_CHARS = 512
+
+
 def _monthly_revenue_status_today() -> str:
     """回傳月營收可得性狀態使用的台灣市場日期。
 
@@ -696,6 +699,7 @@ class UpdateService :
         import time
 
         logger =logging .getLogger (__name__ )
+        failure_diagnostics: list[dict[str, Any]] = []
         try :
             if _is_cancel_requested(cancel_callback):
                 return {
@@ -712,6 +716,7 @@ class UpdateService :
                 'skipped_rows':0 ,
                 'diagnostic_count':0 ,
                 'source_dates':[],
+                'failure_diagnostics':[],
                 'sync_summary':None ,
                 }
             date_keys =self ._iter_weekday_date_keys (start_date ,end_date )
@@ -727,6 +732,7 @@ class UpdateService :
                 'skipped_rows':0 ,
                 'diagnostic_count':0 ,
                 'source_dates':[],
+                'failure_diagnostics':[],
                 'sync_summary':None ,
                 'no_op':True ,
                 }
@@ -747,6 +753,47 @@ class UpdateService :
             last_source_date :Optional [str ]=None
             source_custody_receipts :list [dict [str ,Any ]]=[]
 
+            def append_failure_diagnostic(
+                requested_date: str,
+                result: Any,
+                *,
+                phase: str,
+            ) -> None:
+                """保留單日失敗上下文，避免區間摘要丟失來源診斷。"""
+                raw_message = str(getattr(result, 'message', '') or '')
+                diagnostic_count_value = getattr(result, 'diagnostic_count', 0)
+                try:
+                    diagnostic_count = max(0, int(diagnostic_count_value or 0))
+                except (TypeError, ValueError):
+                    diagnostic_count = 0
+                row_count_value = getattr(result, 'row_count', 0)
+                try:
+                    row_count = max(0, int(row_count_value or 0))
+                except (TypeError, ValueError):
+                    row_count = 0
+                skipped_count_value = getattr(result, 'skipped_count', 0)
+                try:
+                    skipped_count = max(0, int(skipped_count_value or 0))
+                except (TypeError, ValueError):
+                    skipped_count = 0
+                failure_diagnostics.append(
+                    {
+                        'requested_date': requested_date,
+                        'phase': phase,
+                        'success': bool(getattr(result, 'success', False)),
+                        'result_requested_date': getattr(result, 'requested_date', None),
+                        'source_date': getattr(result, 'source_date', None),
+                        'diagnostic_count': diagnostic_count,
+                        'row_count': row_count,
+                        'skipped_count': skipped_count,
+                        'message': raw_message[:_TPEX_FAILURE_MESSAGE_MAX_CHARS],
+                        'message_truncated': len(raw_message) > _TPEX_FAILURE_MESSAGE_MAX_CHARS,
+                        'source_custody_present': bool(
+                            getattr(result, 'source_custody', None)
+                        ),
+                    }
+                )
+
             def cancelled_result(message: str) -> Dict[str, Any]:
                 return {
                 'success':False ,
@@ -760,8 +807,11 @@ class UpdateService :
                 'warnings':[],
                 'tpex_rows':total_rows ,
                 'skipped_rows':total_skipped_rows ,
-                'diagnostic_count':0 ,
+                'diagnostic_count':sum(
+                    item['diagnostic_count'] for item in failure_diagnostics
+                ),
                 'source_dates':sorted (set (updated_dates )),
+                'failure_diagnostics':list(failure_diagnostics),
                 'sync_summary':None ,
                 }
 
@@ -798,6 +848,13 @@ class UpdateService :
                 result =source .update_for_date (requested_date )
                 effective_source_date =result .source_date or requested_date
 
+                if not result.success:
+                    append_failure_diagnostic(
+                        requested_date,
+                        result,
+                        phase='requested',
+                    )
+
                 if _is_cancel_requested(cancel_callback):
                     return cancelled_result(f"TPEX 每日股價區間更新已取消（已完成 {requested_date}）")
 
@@ -825,6 +882,12 @@ class UpdateService :
                     fallback_dates .append (result .source_date )
                     if result .source_date not in source_date_seen :
                         fallback_result =source .update_for_date (result .source_date )
+                        if not fallback_result.success:
+                            append_failure_diagnostic(
+                                requested_date,
+                                fallback_result,
+                                phase='fallback',
+                            )
                         if _is_cancel_requested(cancel_callback):
                             return cancelled_result(
                                 f"TPEX 每日股價區間更新已取消（停止於 fallback {result.source_date}）"
@@ -924,16 +987,35 @@ class UpdateService :
             'warnings':warnings ,
             'tpex_rows':total_rows ,
             'skipped_rows':total_skipped_rows ,
-            'diagnostic_count':0 ,
+            'diagnostic_count':sum(
+                item['diagnostic_count'] for item in failure_diagnostics
+            ),
             'source_dates':unique_updated_dates ,
             'source_custody':source_custody_receipts,
+            'failure_diagnostics':list(failure_diagnostics),
             'sync_summary':sync_summary ,
             }
         except Exception as exc :
             logger .exception ("[UpdateService] TPEX daily price range update failed")
+            range_failure_message = f'TPEX daily price range update failed: {exc}'
+            failure_diagnostics.append(
+                {
+                    'requested_date':self._date_key(start_date),
+                    'phase':'range',
+                    'success':False,
+                    'result_requested_date':None,
+                    'source_date':None,
+                    'diagnostic_count':1,
+                    'row_count':0,
+                    'skipped_count':0,
+                    'message':range_failure_message[:_TPEX_FAILURE_MESSAGE_MAX_CHARS],
+                    'message_truncated':len(range_failure_message) > _TPEX_FAILURE_MESSAGE_MAX_CHARS,
+                    'source_custody_present':False,
+                }
+            )
             return {
             'success':False ,
-            'message':f'TPEX daily price range update failed: {exc}',
+            'message':range_failure_message,
             'requested_dates':[],
             'updated_dates':[],
             'fallback_dates':[],
@@ -942,8 +1024,11 @@ class UpdateService :
             'warnings':[f"TPEX 每日股價缺少日期：{self ._date_key (start_date )}"],
             'tpex_rows':0 ,
             'skipped_rows':0 ,
-            'diagnostic_count':1 ,
+            'diagnostic_count':sum(
+                item['diagnostic_count'] for item in failure_diagnostics
+            ),
             'source_dates':[],
+            'failure_diagnostics':list(failure_diagnostics),
             'sync_summary':None ,
             }
 

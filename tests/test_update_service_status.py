@@ -1173,6 +1173,181 @@ def test_update_tpex_daily_price_range_fails_when_current_tpex_date_is_missing(t
     assert result["skipped_dates"] == ["20260703"]
     assert result["failed_dates"] == ["20260706"]
     assert result["warnings"] == ["TPEX 每日股價缺少日期：20260706"]
+    assert result["diagnostic_count"] == 1
+    assert result["failure_diagnostics"] == [
+        {
+            "requested_date": "20260706",
+            "phase": "requested",
+            "success": False,
+            "result_requested_date": None,
+            "source_date": None,
+            "diagnostic_count": 1,
+            "row_count": 0,
+            "skipped_count": 0,
+            "message": "remote disconnected",
+            "message_truncated": False,
+            "source_custody_present": False,
+        }
+    ]
+
+
+def test_update_tpex_daily_price_range_preserves_bounded_failure_and_fallback_diagnostics(
+    tmp_path, monkeypatch
+):
+    config = _sqlite_config(tmp_path)
+    calls = []
+
+    class FailingTpexSource:
+        def update_for_date(self, date):
+            calls.append(date)
+            if date == "20260706":
+                return SimpleNamespace(
+                    success=False,
+                    message="x" * 600,
+                    requested_date=date,
+                    source_date="20260705",
+                    row_count=0,
+                    skipped_count=3,
+                    diagnostic_count=2,
+                    output_file=None,
+                    source_custody={"receipt": "present"},
+                )
+            return SimpleNamespace(
+                success=False,
+                message="fallback unavailable",
+                requested_date=date,
+                source_date=None,
+                row_count=0,
+                skipped_count=0,
+                diagnostic_count=4,
+                output_file=None,
+                source_custody=None,
+            )
+
+    service = UpdateService(config)
+    monkeypatch.setattr(
+        service, "_iter_weekday_date_keys", lambda *_args: ["20260706"]
+    )
+    service._create_tpex_daily_price_source = lambda: FailingTpexSource()
+
+    result = service.update_tpex_daily_price_range(
+        "2026-07-06",
+        "2026-07-06",
+        force_refresh=True,
+        sync_to_sqlite=False,
+        break_on_repeated_source_date=False,
+    )
+
+    assert calls == ["20260706", "20260705"]
+    assert result["success"] is False
+    assert result["failed_dates"] == ["20260706"]
+    assert result["diagnostic_count"] == 6
+    diagnostics = result["failure_diagnostics"]
+    assert [item["phase"] for item in diagnostics] == ["requested", "fallback"]
+    assert diagnostics[0]["requested_date"] == "20260706"
+    assert diagnostics[0]["result_requested_date"] == "20260706"
+    assert diagnostics[0]["source_date"] == "20260705"
+    assert diagnostics[0]["diagnostic_count"] == 2
+    assert diagnostics[0]["skipped_count"] == 3
+    assert diagnostics[0]["source_custody_present"] is True
+    assert diagnostics[0]["message"] == "x" * 512
+    assert diagnostics[0]["message_truncated"] is True
+    assert diagnostics[1]["requested_date"] == "20260706"
+    assert diagnostics[1]["result_requested_date"] == "20260705"
+    assert diagnostics[1]["message"] == "fallback unavailable"
+    assert diagnostics[1]["message_truncated"] is False
+
+
+def test_update_tpex_daily_price_range_keeps_failure_diagnostic_when_cancelled_after_call(
+    tmp_path, monkeypatch
+):
+    config = _sqlite_config(tmp_path)
+
+    class FailingTpexSource:
+        def update_for_date(self, date):
+            assert date == "20260706"
+            return SimpleNamespace(
+                success=False,
+                message="cancelled after source result",
+                requested_date=date,
+                source_date=None,
+                row_count=0,
+                skipped_count=0,
+                diagnostic_count=1,
+                output_file=None,
+                source_custody=None,
+            )
+
+    service = UpdateService(config)
+    monkeypatch.setattr(
+        service, "_iter_weekday_date_keys", lambda *_args: ["20260706"]
+    )
+    service._create_tpex_daily_price_source = lambda: FailingTpexSource()
+    cancel_calls = {"count": 0}
+
+    def cancel_after_source_result():
+        cancel_calls["count"] += 1
+        return cancel_calls["count"] >= 3
+
+    result = service.update_tpex_daily_price_range(
+        "2026-07-06",
+        "2026-07-06",
+        force_refresh=True,
+        sync_to_sqlite=False,
+        cancel_callback=cancel_after_source_result,
+    )
+
+    assert result["cancelled"] is True
+    assert result["diagnostic_count"] == 1
+    assert result["failure_diagnostics"][0]["message"] == (
+        "cancelled after source result"
+    )
+
+
+def test_update_tpex_daily_price_range_keeps_prior_diagnostics_on_later_exception(
+    tmp_path, monkeypatch
+):
+    config = _sqlite_config(tmp_path)
+
+    class FailingThenRaisingTpexSource:
+        def update_for_date(self, date):
+            if date == "20260706":
+                return SimpleNamespace(
+                    success=False,
+                    message="first date unavailable",
+                    requested_date=date,
+                    source_date=None,
+                    row_count=0,
+                    skipped_count=0,
+                    diagnostic_count=2,
+                    output_file=None,
+                    source_custody=None,
+                )
+            raise RuntimeError("second date source raised")
+
+    service = UpdateService(config)
+    monkeypatch.setattr(
+        service,
+        "_iter_weekday_date_keys",
+        lambda *_args: ["20260706", "20260707"],
+    )
+    service._create_tpex_daily_price_source = lambda: FailingThenRaisingTpexSource()
+
+    result = service.update_tpex_daily_price_range(
+        "2026-07-06",
+        "2026-07-07",
+        force_refresh=True,
+        sync_to_sqlite=False,
+    )
+
+    assert result["success"] is False
+    assert result["diagnostic_count"] == 3
+    assert [item["phase"] for item in result["failure_diagnostics"]] == [
+        "requested",
+        "range",
+    ]
+    assert result["failure_diagnostics"][0]["message"] == "first date unavailable"
+    assert "second date source raised" in result["failure_diagnostics"][1]["message"]
 
 
 def test_update_tpex_daily_price_range_streams_date_progress(tmp_path):

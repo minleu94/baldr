@@ -9,6 +9,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+DEFAULT_CALENDAR_CACHE_PATH = (
+    ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
+)
+
 from app_module.scheduled_forward_outcome_service import (  # noqa: E402
     DEFAULT_LOOKBACK_CALENDAR_DAYS,
     DEFAULT_MAX_EVENTS,
@@ -39,6 +43,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-as-of-date", default=None)
     parser.add_argument("--event-type", default=None)
     parser.add_argument("--symbol", default=None)
+    parser.add_argument(
+        "--calendar-cache-path",
+        type=Path,
+        default=DEFAULT_CALENDAR_CACHE_PATH,
+        help="唯讀官方 TWSE 年度 calendar cache 根目錄或檔案。",
+    )
+    parser.add_argument(
+        "--temporary-closure-path",
+        type=Path,
+        default=None,
+        help="可選的唯讀官方臨時休市 cache 根目錄或檔案。",
+    )
     parser.add_argument(
         "--require-cohort-identity",
         action="store_true",
@@ -75,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         event_type=args.event_type,
         symbol=args.symbol,
         require_cohort_identity=args.require_cohort_identity,
+        calendar_cache_path=args.calendar_cache_path,
+        temporary_closure_path=args.temporary_closure_path,
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return int(result.get("exit_code", 2))

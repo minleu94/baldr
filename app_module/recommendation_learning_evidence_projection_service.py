@@ -64,6 +64,13 @@ class LearningHorizonProjection:
     matured_decision_date_count: int = 0
     status: str = "unknown"
     reason: str = ""
+    valid_prediction_row_count: int = 0
+    valid_prediction_decision_date_count: int = 0
+    pending_prediction_row_count: int = 0
+    pending_prediction_decision_date_count: int = 0
+    pending_prediction_status: str = "unknown"
+    invalid_capture_count: int = 0
+    capture_conflict_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +81,13 @@ class LearningHorizonProjection:
             "matured_decision_date_count": self.matured_decision_date_count,
             "status": self.status,
             "reason": self.reason,
+            "valid_prediction_row_count": self.valid_prediction_row_count,
+            "valid_prediction_decision_date_count": self.valid_prediction_decision_date_count,
+            "pending_prediction_row_count": self.pending_prediction_row_count,
+            "pending_prediction_decision_date_count": self.pending_prediction_decision_date_count,
+            "pending_prediction_status": self.pending_prediction_status,
+            "invalid_capture_count": self.invalid_capture_count,
+            "capture_conflict_count": self.capture_conflict_count,
         }
 
 
@@ -136,6 +150,26 @@ class LearningLaneProjection:
     recorded_row_count: int = 0
     matured_sample_count: int = 0
     matured_decision_date_count: int = 0
+    valid_prediction_row_count: int = 0
+    valid_prediction_decision_date_count: int = 0
+    pending_prediction_row_count: int = 0
+    pending_prediction_decision_date_count: int = 0
+    pending_prediction_status: str = "unknown"
+    invalid_capture_count: int = 0
+    capture_conflict_count: int = 0
+    capture_scan_status: str = "not_scanned"
+    latest_snapshot_row_count: int = 0
+    latest_snapshot_capture_count: int = 0
+    latest_snapshot_lane_id: str | None = None
+    latest_snapshot_candidate_id: str | None = None
+    latest_snapshot_cost_scenario_id: str | None = None
+    latest_snapshot_cost_scenario_hash: str | None = None
+    latest_snapshot_horizon_days: int | None = None
+    latest_snapshot_decision_date: str | None = None
+    policy_binding_status: str = "unknown"
+    policy_hash: str | None = None
+    policy_minimum_natural_matured_samples: int | None = None
+    policy_minimum_natural_matured_decision_dates: int | None = None
     period_start: str | None = None
     period_end: str | None = None
     brier_bp: int | None = None
@@ -182,6 +216,26 @@ class LearningLaneProjection:
             "recorded_row_count": self.recorded_row_count,
             "matured_sample_count": self.matured_sample_count,
             "matured_decision_date_count": self.matured_decision_date_count,
+            "valid_prediction_row_count": self.valid_prediction_row_count,
+            "valid_prediction_decision_date_count": self.valid_prediction_decision_date_count,
+            "pending_prediction_row_count": self.pending_prediction_row_count,
+            "pending_prediction_decision_date_count": self.pending_prediction_decision_date_count,
+            "pending_prediction_status": self.pending_prediction_status,
+            "invalid_capture_count": self.invalid_capture_count,
+            "capture_conflict_count": self.capture_conflict_count,
+            "capture_scan_status": self.capture_scan_status,
+            "latest_snapshot_row_count": self.latest_snapshot_row_count,
+            "latest_snapshot_capture_count": self.latest_snapshot_capture_count,
+            "latest_snapshot_lane_id": self.latest_snapshot_lane_id,
+            "latest_snapshot_candidate_id": self.latest_snapshot_candidate_id,
+            "latest_snapshot_cost_scenario_id": self.latest_snapshot_cost_scenario_id,
+            "latest_snapshot_cost_scenario_hash": self.latest_snapshot_cost_scenario_hash,
+            "latest_snapshot_horizon_days": self.latest_snapshot_horizon_days,
+            "latest_snapshot_decision_date": self.latest_snapshot_decision_date,
+            "policy_binding_status": self.policy_binding_status,
+            "policy_hash": self.policy_hash,
+            "policy_minimum_natural_matured_samples": self.policy_minimum_natural_matured_samples,
+            "policy_minimum_natural_matured_decision_dates": self.policy_minimum_natural_matured_decision_dates,
             "period_start": self.period_start,
             "period_end": self.period_end,
             "brier_bp": self.brier_bp,
@@ -312,6 +366,37 @@ class _ObservedRow:
     label_end_date: str | None
 
 
+@dataclass(frozen=True)
+class _CaptureDenominator:
+    """將已驗證 capture 累積分母與 latest snapshot 分開保存。"""
+
+    valid_capture_count: int = 0
+    valid_prediction_row_count: int = 0
+    valid_prediction_decision_date_count: int = 0
+    invalid_capture_count: int = 0
+    capture_conflict_count: int = 0
+    capture_scan_status: str = "not_scanned"
+    diagnostics: tuple[str, ...] = ()
+    valid_decision_dates: tuple[str, ...] = ()
+    latest_snapshot_row_count: int = 0
+    latest_snapshot_capture_count: int = 0
+    latest_snapshot_candidate_id: str | None = None
+    latest_snapshot_cost_scenario_id: str | None = None
+    latest_snapshot_cost_scenario_hash: str | None = None
+    latest_snapshot_decision_date: str | None = None
+
+
+@dataclass(frozen=True)
+class _PolicyBinding:
+    """只有既有 authority verifier 證明綁定後才暴露 policy 門檻。"""
+
+    status: str = "unknown"
+    policy_hash: str | None = None
+    minimum_natural_matured_samples: int | None = None
+    minimum_natural_matured_decision_dates: int | None = None
+    reason: str = "promotion_policy_binding_unknown"
+
+
 class RecommendationLearningEvidenceProjectionService:
     """Read-only adapter for daily learning status and natural evidence."""
 
@@ -329,6 +414,7 @@ class RecommendationLearningEvidenceProjectionService:
         active_verifier: Callable[..., None] = verify_active_model_evidence_payload,
         capture_verifier: Callable[..., RecommendationPredictionCaptureVerification] = verify_prediction_capture_read_only,
         requested_date_resolver: Callable[[], str | None] | None = None,
+        capture_scan_limit: int = 256,
     ) -> None:
         self.config = config
         self.cost_lane = _normalize_cost_lane(cost_lane)
@@ -374,6 +460,23 @@ class RecommendationLearningEvidenceProjectionService:
         self.active_verifier = active_verifier
         self.capture_verifier = capture_verifier
         self.requested_date_resolver = requested_date_resolver
+        if isinstance(capture_scan_limit, bool) or int(capture_scan_limit) < 0:
+            raise ValueError("capture_scan_limit must be a non-negative integer")
+        self.capture_scan_limit = int(capture_scan_limit)
+
+    def _configured_source_database_anchor(self) -> Path | None:
+        """讀取既有設定提供的市場資料庫錨點，不採用 receipt 自報路徑。"""
+
+        configured = getattr(self.config, "db_file", None)
+        if configured is None:
+            return None
+        try:
+            path = Path(configured).expanduser().resolve()
+        except (OSError, TypeError, ValueError):
+            return None
+        if path.is_symlink() or not path.is_file():
+            return None
+        return path
 
     def inspect(self, requested_date: str | None = None) -> RecommendationLearningEvidenceProjection:
         diagnostics: list[str] = []
@@ -450,6 +553,15 @@ class RecommendationLearningEvidenceProjectionService:
         if candidate_lane.status == "blocked_provenance" and data_recorded_status == "recorded":
             data_recorded_status = "blocked_provenance"
             data_recorded_reason = candidate_lane.reason
+        if candidate_lane.capture_scan_status != "not_scanned":
+            data_recorded_reason = (
+                f"{data_recorded_reason}; scanned-scope cumulative valid rows="
+                f"{candidate_lane.valid_prediction_row_count}, distinct dates="
+                f"{candidate_lane.valid_prediction_decision_date_count}, latest snapshot rows="
+                f"{candidate_lane.latest_snapshot_row_count}, invalid captures="
+                f"{candidate_lane.invalid_capture_count}, scan="
+                f"{candidate_lane.capture_scan_status}"
+            )
 
         horizon_scope = _horizon_scope_lane(candidate_lane, active_lane)
         historical = _mapping(status_payload.get("evaluation"))
@@ -608,10 +720,23 @@ class RecommendationLearningEvidenceProjectionService:
         natural = _mapping(payload.get("natural_evidence"))
         evidence_ref = _mapping(natural.get("evidence")) or natural
         capture = _mapping(_mapping(payload.get("live_capture")).get("candidate"))
-        capture_count = _int_or_zero(natural.get("capture_count")) or len(_strings(natural.get("capture_paths")))
         live_capture = _mapping(payload.get("live_capture"))
         candidate_capture = _mapping(live_capture.get("candidate"))
-        recorded_rows = _int_or_zero(candidate_capture.get("row_count"))
+        horizon_days = _int_or_default(candidate_metadata.get("horizon_trading_days"))
+        latest_capture_path = _text(candidate_capture.get("capture_path")) or _text(capture.get("capture_path"))
+        capture_paths = (
+            *_strings(natural.get("capture_paths")),
+            latest_capture_path,
+        )
+        denominator = self._capture_denominator(
+            capture_paths=capture_paths,
+            latest_capture_path=latest_capture_path,
+            candidate_id=candidate_id,
+            expected_cost_scenario=scenario,
+            requested_date=requested_date,
+            horizon_days=horizon_days,
+        )
+        recorded_rows = denominator.latest_snapshot_row_count
         capture_status, capture_reason = _capture_surface(
             capture,
             candidate_id=candidate_id,
@@ -625,16 +750,25 @@ class RecommendationLearningEvidenceProjectionService:
             ),
             capture_verifier=self.capture_verifier,
         )
-        capture_path = _text(capture.get("capture_path"))
-        if capture_path:
-            capture_count = max(capture_count, 1)
-        if recorded_rows <= 0:
-            recorded_rows = _int_or_zero(capture.get("row_count"))
         if capture_status != "recorded" and capture_reason:
             base["diagnostics"] = tuple([*tuple(base.get("diagnostics", ())), capture_reason])
         base["capture_status"] = capture_status
-        base["capture_count"] = capture_count
+        base["capture_count"] = denominator.valid_capture_count
         base["recorded_row_count"] = recorded_rows
+        base.update(
+            _denominator_lane_fields(
+                denominator,
+                lane_id="candidate_natural",
+                horizon_days=horizon_days,
+            )
+        )
+        base["diagnostics"] = tuple(
+            [
+                *tuple(base.get("diagnostics", ())),
+                *denominator.diagnostics,
+                _denominator_summary(denominator, horizon_days=horizon_days),
+            ]
+        )
 
         if date_status != "current":
             return LearningLaneProjection(
@@ -653,19 +787,38 @@ class RecommendationLearningEvidenceProjectionService:
                 status="blocked_provenance",
                 reason=capture_reason or "capture_provenance_invalid",
                 **base,
-            )
+        )
         if not evidence_ref.get("receipt_path"):
-            pending_sample = _int_or_zero(natural.get("matured_sample_count"))
+            pending_reason = _text(natural.get("reason")) or "natural_forward_evidence_receipt_missing"
+            base["pending_prediction_row_count"] = denominator.valid_prediction_row_count
+            base["pending_prediction_decision_date_count"] = denominator.valid_prediction_decision_date_count
+            pending_status = "awaiting_typed_natural_verification"
+            if denominator.capture_conflict_count:
+                pending_status = "awaiting_typed_natural_verification_with_scope_conflicts"
+            base["pending_prediction_status"] = pending_status
+            base["diagnostics"] = tuple(
+                [
+                    *tuple(base.get("diagnostics", ())),
+                    "pending counts mean valid captures await typed natural verification; maturity is not inferred",
+                ]
+            )
             horizon = _pending_horizon(
                 candidate_metadata,
-                capture_count=capture_count,
+                capture_count=denominator.valid_capture_count,
                 recorded_row_count=recorded_rows,
                 matured_sample_count=0,
-                reason=_text(natural.get("reason")) or "尚待自然成熟",
+                reason=pending_reason,
+                valid_prediction_row_count=denominator.valid_prediction_row_count,
+                valid_prediction_decision_date_count=denominator.valid_prediction_decision_date_count,
+                pending_prediction_row_count=denominator.valid_prediction_row_count,
+                pending_prediction_decision_date_count=denominator.valid_prediction_decision_date_count,
+                pending_prediction_status=pending_status,
+                invalid_capture_count=denominator.invalid_capture_count,
+                capture_conflict_count=denominator.capture_conflict_count,
             )
             return LearningLaneProjection(
-                status="pending" if pending_sample == 0 else "pending",
-                reason=_text(natural.get("reason")) or "natural_forward_evidence_receipt_missing",
+                status="pending",
+                reason=pending_reason,
                 matured_sample_count=0,
                 matured_decision_date_count=0,
                 horizons=(horizon,),
@@ -716,7 +869,241 @@ class RecommendationLearningEvidenceProjectionService:
         return self._lane_from_candidate_verification(
             verification,
             base=base,
-            horizon_days=_int_or_default(candidate_metadata.get("horizon_trading_days")),
+            horizon_days=horizon_days,
+            denominator=denominator,
+            policy_binding_trusted=self.candidate_verifier is verify_natural_evidence_read_only,
+        )
+
+    def _capture_denominator(
+        self,
+        *,
+        capture_paths: Sequence[str],
+        latest_capture_path: str,
+        candidate_id: str,
+        expected_cost_scenario: RecommendationCostScenario,
+        requested_date: str | None,
+        horizon_days: int,
+    ) -> _CaptureDenominator:
+        """以既有 verifier 掃描同 scope immutable captures。
+
+        ``latest_status`` 的 path list 只提供掃描範圍，累積 valid rows 只取
+        verifier 成功結果。目錄補掃描有明確上限；其他 candidate 不列入本 lane
+        的 invalid。duplicate id 或 symbol/date 衝突整組排除，避免順序影響分母。
+        """
+
+        explicit_paths: list[Path] = []
+        diagnostics: list[str] = []
+        seen: set[str] = set()
+        excluded_scope_count = 0
+
+        def add_path(value: str, *, explicit: bool) -> None:
+            if not value:
+                return
+            path = _safe_root(self.learning_root, value)
+            if path is None:
+                diagnostics.append(
+                    "capture_scan_path_outside_learning_root:" + Path(value).name
+                )
+                return
+            resolved = str(path)
+            if resolved in seen or not path.is_file():
+                if explicit and resolved not in seen:
+                    diagnostics.append("capture_scan_path_missing:" + path.name)
+                return
+            seen.add(resolved)
+            explicit_paths.append(path)
+
+        for value in capture_paths:
+            add_path(value, explicit=True)
+
+        capture_root = self.learning_root / "captures" if self.learning_root is not None else None
+        scan_status = "listed_only" if explicit_paths else "not_scanned"
+        if capture_root is not None and capture_root.is_dir() and self.capture_scan_limit > 0:
+            discovered_count = 0
+            truncated = False
+            try:
+                for path in capture_root.rglob("*.json"):
+                    if path.is_symlink() or not path.is_file():
+                        continue
+                    discovered_count += 1
+                    if discovered_count > self.capture_scan_limit:
+                        truncated = True
+                        break
+                    try:
+                        raw_payload, raw_error = _read_json_object(path)
+                    except (OSError, TypeError, ValueError):
+                        raw_payload, raw_error = None, "read_failure"
+                    raw_candidate_id = _text(raw_payload.get("candidate_id")) if raw_payload else ""
+                    if raw_candidate_id and raw_candidate_id != candidate_id:
+                        excluded_scope_count += 1
+                        continue
+                    if raw_error is not None and str(path) not in seen:
+                        diagnostics.append("capture_scan_unreadable:" + path.name)
+                    add_path(str(path), explicit=False)
+            except (OSError, RuntimeError) as exc:
+                truncated = True
+                diagnostics.append(f"capture_scan_truncated:{type(exc).__name__}")
+            scan_status = "truncated" if truncated else "complete"
+            if truncated:
+                diagnostics.append(f"capture_scan_truncated:limit={self.capture_scan_limit}")
+        elif capture_root is not None and capture_root.is_dir() and self.capture_scan_limit == 0:
+            scan_status = "truncated"
+            diagnostics.append("capture_scan_truncated:scan_limit=0")
+        elif explicit_paths:
+            diagnostics.append("capture_scan_listed_only:capture_directory_missing")
+
+        latest_path = _safe_root(self.learning_root, latest_capture_path)
+        invalid_capture_count = 0
+        seen_capture_ids: dict[str, tuple[Path, str, str, Any, str | None, int]] = {}
+        conflicting_capture_ids: set[str] = set()
+        conflicting_symbol_dates: set[tuple[str, str]] = set()
+        seen_symbol_dates: dict[tuple[str, str], tuple[str, str]] = {}
+        symbol_date_capture_ids: dict[tuple[str, str], set[str]] = {}
+        latest_row_count = 0
+        latest_capture_count = 0
+        latest_candidate_id: str | None = None
+        latest_scenario_id: str | None = None
+        latest_scenario_hash: str | None = None
+        latest_decision_date: str | None = None
+
+        for path in explicit_paths:
+            try:
+                verified = self.capture_verifier(path)
+                capture_date = _date_key(verified.capture_as_of_date)
+                if verified.candidate_id != candidate_id:
+                    raise ValueError("candidate capture identity mismatch")
+                if capture_date is None:
+                    raise ValueError("candidate capture decision date missing or invalid")
+                if requested_date and capture_date > requested_date:
+                    diagnostics.append("capture_future_excluded:" + path.name)
+                    continue
+                if verified.capture_origin not in {"scheduled_live", "live_forward"}:
+                    raise ValueError("candidate capture origin is not live")
+                if verified.source_contract_status != "ready":
+                    raise ValueError("candidate capture source contract is not ready")
+                if verified.cost_scenario_hash != expected_cost_scenario.scenario_hash:
+                    raise ValueError("candidate capture cost scenario mismatch")
+            except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+                invalid_capture_count += 1
+                diagnostics.append(f"capture_invalid:{path.name}:{type(exc).__name__}")
+                continue
+            raw_payload, _raw_error = _read_json_object(path)
+            if latest_path is not None and path == latest_path:
+                latest_capture_count = 1
+                latest_row_count = max(0, int(verified.row_count))
+                latest_candidate_id = verified.candidate_id
+                latest_scenario_id = verified.cost_scenario_id
+                latest_scenario_hash = verified.cost_scenario_hash
+                latest_decision_date = capture_date
+            prior_capture = seen_capture_ids.get(verified.capture_id)
+            if prior_capture is not None:
+                if prior_capture[1] != verified.capture_hash:
+                    conflicting_capture_ids.add(verified.capture_id)
+                    diagnostics.append("capture_duplicate_id_conflict:" + verified.capture_id)
+                else:
+                    diagnostics.append("capture_duplicate_id_deduped:" + verified.capture_id)
+                continue
+            raw_rows = raw_payload.get("rows", ()) if raw_payload else ()
+            local_rows: list[tuple[tuple[str, str], str]] = []
+            duplicate_row_count = 0
+            local_conflict = False
+            if isinstance(raw_rows, list):
+                for raw_row in raw_rows:
+                    if not isinstance(raw_row, Mapping):
+                        continue
+                    symbol = _text(raw_row.get("symbol"))
+                    row_date = _date_key(raw_row.get("decision_date")) or capture_date
+                    if not symbol or row_date is None:
+                        continue
+                    key = (symbol, row_date)
+                    fingerprint = _hash_payload(raw_row)
+                    local_previous = next(
+                        (item[1] for item in local_rows if item[0] == key),
+                        None,
+                    )
+                    if local_previous is not None:
+                        if local_previous != fingerprint:
+                            local_conflict = True
+                            conflicting_symbol_dates.add(key)
+                            diagnostics.append(
+                                "capture_symbol_date_conflict:" + symbol + ":" + row_date
+                            )
+                        else:
+                            duplicate_row_count += 1
+                            diagnostics.append(
+                                "capture_symbol_date_duplicate_same_capture:" + symbol + ":" + row_date
+                            )
+                        continue
+                    previous = seen_symbol_dates.get(key)
+                    if previous is not None:
+                        if (
+                            key in conflicting_symbol_dates
+                            or previous[1] != fingerprint
+                            or previous[0] in conflicting_capture_ids
+                        ):
+                            conflicting_capture_ids.update(symbol_date_capture_ids.get(key, {previous[0]}))
+                            conflicting_capture_ids.add(verified.capture_id)
+                            conflicting_symbol_dates.add(key)
+                            local_conflict = True
+                            diagnostics.append(
+                                "capture_symbol_date_conflict:" + symbol + ":" + row_date
+                            )
+                        else:
+                            duplicate_row_count += 1
+                            diagnostics.append(
+                                "capture_symbol_date_duplicate_same_content:" + symbol + ":" + row_date
+                            )
+                    local_rows.append((key, fingerprint))
+            if local_conflict:
+                conflicting_capture_ids.add(verified.capture_id)
+            else:
+                for key, fingerprint in local_rows:
+                    if key not in seen_symbol_dates:
+                        seen_symbol_dates[key] = (verified.capture_id, fingerprint)
+                    symbol_date_capture_ids.setdefault(key, set()).add(verified.capture_id)
+            seen_capture_ids[verified.capture_id] = (
+                path,
+                verified.capture_hash,
+                capture_date,
+                verified,
+                str(raw_payload.get("candidate_id")) if raw_payload else None,
+                duplicate_row_count,
+            )
+
+        valid_capture_count = 0
+        valid_row_count = 0
+        valid_dates: set[str] = set()
+        capture_conflict_count = len(conflicting_capture_ids)
+        for capture_id, (path, _capture_hash, capture_date, verified, _raw_candidate_id, duplicate_row_count) in seen_capture_ids.items():
+            if capture_id in conflicting_capture_ids:
+                continue
+            valid_capture_count += 1
+            valid_row_count += max(0, int(verified.row_count) - duplicate_row_count)
+            valid_dates.add(capture_date)
+
+        if latest_path is not None and latest_capture_count == 0:
+            diagnostics.append("latest_snapshot_not_verified; row count remains unknown")
+        if scan_status in {"complete", "truncated"} and invalid_capture_count:
+            diagnostics.append(f"capture_scan_invalid_count:{invalid_capture_count}")
+        if capture_conflict_count:
+            diagnostics.append(f"capture_scan_conflict_count:{capture_conflict_count}")
+        if excluded_scope_count:
+            diagnostics.append(f"capture_scan_excluded_other_candidate:{excluded_scope_count}")
+        return _CaptureDenominator(
+            valid_capture_count=valid_capture_count,
+            valid_prediction_row_count=valid_row_count,
+            valid_prediction_decision_date_count=len(valid_dates),
+            invalid_capture_count=invalid_capture_count,
+            capture_conflict_count=capture_conflict_count,
+            capture_scan_status=scan_status,
+            diagnostics=tuple(dict.fromkeys(diagnostics)),
+            valid_decision_dates=tuple(sorted(valid_dates)),
+            latest_snapshot_row_count=latest_row_count,
+            latest_snapshot_capture_count=latest_capture_count,
+            latest_snapshot_candidate_id=latest_candidate_id,
+            latest_snapshot_cost_scenario_id=latest_scenario_id,
+            latest_snapshot_cost_scenario_hash=latest_scenario_hash,
+            latest_snapshot_decision_date=latest_decision_date,
         )
 
     def _lane_from_candidate_verification(
@@ -725,6 +1112,8 @@ class RecommendationLearningEvidenceProjectionService:
         *,
         base: Mapping[str, Any],
         horizon_days: int,
+        denominator: _CaptureDenominator,
+        policy_binding_trusted: bool,
     ) -> LearningLaneProjection:
         rows = tuple(
             _ObservedRow(
@@ -742,12 +1131,41 @@ class RecommendationLearningEvidenceProjectionService:
             verification.after_cost_evaluation_status,
             verification.after_cost_matured_sample_count,
         )
+        policy_binding = _policy_binding_from_receipt(
+            Path(verification.receipt_path),
+            trusted_verifier=policy_binding_trusted,
+            expected_receipt_hash=verification.receipt_hash,
+        )
+        lane_base = dict(base)
+        lane_base.update(_policy_binding_lane_fields(policy_binding))
+        matured_dates = {row.decision_date for row in rows}
+        valid_dates = set(denominator.valid_decision_dates)
+        pending_dates = valid_dates - matured_dates
+        pending_rows = max(0, denominator.valid_prediction_row_count - verification.matured_sample_count)
+        pending_status = (
+            "none"
+            if pending_rows == 0 and not pending_dates
+            else "awaiting_natural_maturity"
+        )
+        if verification.matured_sample_count > denominator.valid_prediction_row_count:
+            lane_base["diagnostics"] = tuple(
+                [
+                    *tuple(lane_base.get("diagnostics", ())),
+                    "matured rows exceed scanned valid capture rows; scope counts remain conservative",
+                ]
+            )
+            pending_status = "scope_count_mismatch"
+        lane_base["pending_prediction_row_count"] = pending_rows
+        lane_base["pending_prediction_decision_date_count"] = len(pending_dates)
+        lane_base["pending_prediction_status"] = pending_status
+        if policy_binding.status != "verified":
+            lane_base["diagnostics"] = tuple(
+                [*tuple(lane_base.get("diagnostics", ())), policy_binding.reason]
+            )
         return LearningLaneProjection(
             status="verified",
             reason="typed_natural_evidence_verified",
             capture_status="recorded",
-            capture_count=len(verification.scope.source_capture_ids),
-            recorded_row_count=len(rows),
             matured_sample_count=verification.matured_sample_count,
             matured_decision_date_count=verification.matured_unique_decision_date_count,
             period_start=min((row.decision_date for row in rows), default=None),
@@ -764,12 +1182,19 @@ class RecommendationLearningEvidenceProjectionService:
             horizons=(
                 LearningHorizonProjection(
                     horizon_days=horizon_days,
-                    capture_count=len(verification.scope.source_capture_ids),
-                    recorded_row_count=len(rows),
+                    capture_count=denominator.valid_capture_count,
+                    recorded_row_count=denominator.latest_snapshot_row_count,
                     matured_sample_count=len(rows),
                     matured_decision_date_count=verification.matured_unique_decision_date_count,
                     status="matured",
                     reason="typed_verifier_passed",
+                    valid_prediction_row_count=denominator.valid_prediction_row_count,
+                    valid_prediction_decision_date_count=denominator.valid_prediction_decision_date_count,
+                    pending_prediction_row_count=pending_rows,
+                    pending_prediction_decision_date_count=len(pending_dates),
+                    pending_prediction_status=pending_status,
+                    invalid_capture_count=denominator.invalid_capture_count,
+                    capture_conflict_count=denominator.capture_conflict_count,
                 ),
             ),
             reliability_bins=_reliability_bins(
@@ -777,14 +1202,19 @@ class RecommendationLearningEvidenceProjectionService:
                 rows=rows,
                 research_only=verification.scope.cost_basis == "estimated_research_only",
             ),
-            diagnostics=tuple(base.get("diagnostics", ())),
+            diagnostics=tuple(lane_base.get("diagnostics", ())),
             source_trace=tuple(
-                [*base.get("source_trace", ()), f"receipt={verification.receipt_path}", f"evidence_id={verification.evidence_id}"]
+                [
+                    *lane_base.get("source_trace", ()),
+                    f"receipt={verification.receipt_path}",
+                    f"evidence_id={verification.evidence_id}",
+                    _denominator_summary(denominator, horizon_days=horizon_days),
+                ]
             ),
             **{
                 key: value
-                for key, value in base.items()
-                if key not in {"status", "reason", "capture_status", "capture_count", "recorded_row_count", "diagnostics", "source_trace"}
+                for key, value in lane_base.items()
+                if key not in {"status", "reason", "capture_status", "diagnostics", "source_trace"}
             },
         )
 
@@ -876,12 +1306,15 @@ class RecommendationLearningEvidenceProjectionService:
         active_candidate_id = _text(active_identity.get("candidate_id"))
         identity_hash = _hash_payload(active_identity)
         try:
-            self.active_verifier(
-                receipt_payload,
-                active_candidate_id=active_candidate_id,
-                active_identity_hash=identity_hash,
-                decision_date=requested_date or "",
-            )
+            verifier_kwargs: dict[str, Any] = {
+                "active_candidate_id": active_candidate_id,
+                "active_identity_hash": identity_hash,
+                "decision_date": requested_date or "",
+            }
+            source_database = self._configured_source_database_anchor()
+            if source_database is not None:
+                verifier_kwargs["expected_db_path"] = str(source_database)
+            self.active_verifier(receipt_payload, **verifier_kwargs)
         except (OSError, TypeError, ValueError, KeyError) as exc:
             return LearningLaneProjection(
                 status="blocked_provenance",
@@ -889,8 +1322,8 @@ class RecommendationLearningEvidenceProjectionService:
                 receipt_path=str(receipt_path),
                 receipt_hash=_sha256_file(receipt_path),
                 diagnostics=(type(exc).__name__,),
-                **base,
-            )
+            **base,
+        )
         scenario, scenario_error = _scenario(receipt_payload)
         if scenario is None:
             return LearningLaneProjection(
@@ -929,6 +1362,18 @@ class RecommendationLearningEvidenceProjectionService:
             _text(receipt_payload.get("after_cost_evaluation_status")),
             _int_or_zero(receipt_payload.get("after_cost_matured_sample_count")),
         )
+        active_policy_binding = _policy_binding_from_receipt(
+            receipt_path,
+            trusted_verifier=False,
+        )
+        active_policy_fields = _policy_binding_lane_fields(active_policy_binding)
+        active_policy_diagnostics = (
+            (active_policy_binding.reason,)
+            if active_policy_binding.status != "verified"
+            else ()
+        )
+        active_dates = {row.decision_date for row in rows}
+        active_source_capture_ids = _strings(receipt_payload.get("source_capture_ids"))
         return LearningLaneProjection(
             lane_id="active_model_natural",
             label="active model natural evidence",
@@ -945,10 +1390,26 @@ class RecommendationLearningEvidenceProjectionService:
             cost_estimate_status="research_only_estimated" if scenario.is_estimated else "fixed_legacy",
             after_cost_lane_status=active_status,
             capture_status="recorded",
-            capture_count=len(_strings(receipt_payload.get("source_capture_ids"))),
+            capture_count=len(active_source_capture_ids),
             recorded_row_count=len(rows),
             matured_sample_count=_int_or_zero(receipt_payload.get("matured_sample_count")),
             matured_decision_date_count=_int_or_zero(receipt_payload.get("matured_unique_decision_date_count")),
+            valid_prediction_row_count=len(rows),
+            valid_prediction_decision_date_count=len(active_dates),
+            pending_prediction_row_count=0,
+            pending_prediction_decision_date_count=0,
+            pending_prediction_status="none",
+            invalid_capture_count=0,
+            capture_conflict_count=0,
+            capture_scan_status="receipt_verified",
+            latest_snapshot_row_count=len(rows),
+            latest_snapshot_capture_count=1 if active_source_capture_ids else 0,
+            latest_snapshot_lane_id="active_model_natural",
+            latest_snapshot_candidate_id=active_candidate_id or None,
+            latest_snapshot_cost_scenario_id=scenario.scenario_id,
+            latest_snapshot_cost_scenario_hash=scenario.scenario_hash,
+            latest_snapshot_horizon_days=DEFAULT_HORIZON_TRADING_DAYS,
+            latest_snapshot_decision_date=max(active_dates, default=None),
             period_start=min((row.decision_date for row in rows), default=None),
             period_end=max((row.decision_date for row in rows), default=None),
             brier_bp=_optional_int(receipt_payload.get("observed_brier_bp")),
@@ -967,6 +1428,9 @@ class RecommendationLearningEvidenceProjectionService:
                     matured_decision_date_count=len({row.decision_date for row in rows}),
                     status="matured",
                     reason="typed_verifier_passed",
+                    valid_prediction_row_count=len(rows),
+                    valid_prediction_decision_date_count=len(active_dates),
+                    pending_prediction_status="none",
                 ),
             ),
             reliability_bins=_reliability_bins(
@@ -978,7 +1442,20 @@ class RecommendationLearningEvidenceProjectionService:
                 *tuple(base.get("source_trace", ())),
                 f"active_identity_hash={identity_hash}",
                 f"receipt={receipt_path}",
+                _denominator_summary(
+                    _CaptureDenominator(
+                        valid_capture_count=len(active_source_capture_ids),
+                        valid_prediction_row_count=len(rows),
+                        valid_prediction_decision_date_count=len(active_dates),
+                        capture_scan_status="receipt_verified",
+                        latest_snapshot_row_count=len(rows),
+                        latest_snapshot_capture_count=1 if active_source_capture_ids else 0,
+                    ),
+                    horizon_days=DEFAULT_HORIZON_TRADING_DAYS,
+                ),
             ),
+            diagnostics=active_policy_diagnostics,
+            **active_policy_fields,
         )
 
     def _empty_projection(
@@ -1105,6 +1582,105 @@ def _receipt_source_paths(receipt_path: Path) -> tuple[str, ...]:
     return tuple(str(item) for item in paths if item)
 
 
+def _denominator_lane_fields(
+    denominator: _CaptureDenominator,
+    *,
+    lane_id: str,
+    horizon_days: int,
+) -> dict[str, Any]:
+    return {
+        "valid_prediction_row_count": denominator.valid_prediction_row_count,
+        "valid_prediction_decision_date_count": denominator.valid_prediction_decision_date_count,
+        "pending_prediction_row_count": 0,
+        "pending_prediction_decision_date_count": 0,
+        "pending_prediction_status": "unknown",
+        "invalid_capture_count": denominator.invalid_capture_count,
+        "capture_conflict_count": denominator.capture_conflict_count,
+        "capture_scan_status": denominator.capture_scan_status,
+        "latest_snapshot_row_count": denominator.latest_snapshot_row_count,
+        "latest_snapshot_capture_count": denominator.latest_snapshot_capture_count,
+        "latest_snapshot_lane_id": lane_id if denominator.latest_snapshot_capture_count else None,
+        "latest_snapshot_candidate_id": denominator.latest_snapshot_candidate_id,
+        "latest_snapshot_cost_scenario_id": denominator.latest_snapshot_cost_scenario_id,
+        "latest_snapshot_cost_scenario_hash": denominator.latest_snapshot_cost_scenario_hash,
+        "latest_snapshot_horizon_days": horizon_days if denominator.latest_snapshot_capture_count else None,
+        "latest_snapshot_decision_date": denominator.latest_snapshot_decision_date,
+    }
+
+
+def _denominator_summary(denominator: _CaptureDenominator, *, horizon_days: int) -> str:
+    return (
+        "capture denominator: "
+        f"{denominator.valid_capture_count} valid captures / "
+        f"{denominator.valid_prediction_row_count} valid prediction rows / "
+        f"{denominator.valid_prediction_decision_date_count} distinct decision dates; "
+        f"latest snapshot={denominator.latest_snapshot_capture_count} capture / "
+        f"{denominator.latest_snapshot_row_count} rows / horizon={horizon_days}; "
+        f"invalid captures={denominator.invalid_capture_count}; "
+        f"conflict captures={denominator.capture_conflict_count}; "
+        f"scan={denominator.capture_scan_status}"
+    )
+
+
+def _policy_binding_from_receipt(
+    receipt_path: Path | None,
+    *,
+    trusted_verifier: bool,
+    expected_receipt_hash: str | None = None,
+) -> _PolicyBinding:
+    """只在既有 authority verifier 證明後使用 immutable policy binding。
+
+    receipt 的 hash 本身只是自報值；門檻永遠取固定 authority policy，candidate
+    或 capture payload 不能提供替代門檻。active monitor verifier 沒有這個證明，
+    因此保留 unknown。
+    """
+
+    if not trusted_verifier:
+        return _PolicyBinding(reason="promotion_policy_binding_unknown:authority_proof_missing")
+    if receipt_path is None or not receipt_path.is_file():
+        return _PolicyBinding(reason="promotion_policy_binding_unknown:receipt_missing")
+    if expected_receipt_hash is None:
+        return _PolicyBinding(reason="promotion_policy_binding_unknown:receipt_hash_unbound")
+    try:
+        receipt_bytes = receipt_path.read_bytes()
+        receipt_hash = "sha256:" + hashlib.sha256(receipt_bytes).hexdigest()
+        if receipt_hash != expected_receipt_hash:
+            return _PolicyBinding(reason="promotion_policy_binding_unknown:receipt_hash_mismatch")
+    except OSError:
+        return _PolicyBinding(reason="promotion_policy_binding_unknown:receipt_unreadable")
+    try:
+        payload = json.loads(receipt_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        payload = None
+    if not isinstance(payload, Mapping):
+        return _PolicyBinding(reason="promotion_policy_binding_unknown:receipt_unreadable")
+    declared_hash = _text(payload.get("policy_hash"))
+    if not declared_hash:
+        return _PolicyBinding(reason="promotion_policy_binding_unknown:receipt_policy_hash_missing")
+    policy = RecommendationPromotionPolicy()
+    if declared_hash != policy.policy_hash:
+        return _PolicyBinding(
+            status="mismatch",
+            reason="promotion_policy_binding_mismatch:receipt_hash_not_authority_policy",
+        )
+    return _PolicyBinding(
+        status="verified",
+        policy_hash=policy.policy_hash,
+        minimum_natural_matured_samples=policy.minimum_natural_matured_samples,
+        minimum_natural_matured_decision_dates=policy.minimum_natural_matured_decision_dates,
+        reason="promotion_policy_binding_verified",
+    )
+
+
+def _policy_binding_lane_fields(binding: _PolicyBinding) -> dict[str, Any]:
+    return {
+        "policy_binding_status": binding.status,
+        "policy_hash": binding.policy_hash,
+        "policy_minimum_natural_matured_samples": binding.minimum_natural_matured_samples,
+        "policy_minimum_natural_matured_decision_dates": binding.minimum_natural_matured_decision_dates,
+    }
+
+
 def _scenario(payload: Mapping[str, Any]) -> tuple[RecommendationCostScenario | None, str | None]:
     try:
         fixed = _optional_int(payload.get("fixed_round_trip_cost_bp"))
@@ -1120,6 +1696,13 @@ def _pending_horizon(
     recorded_row_count: int,
     matured_sample_count: int,
     reason: str,
+    valid_prediction_row_count: int = 0,
+    valid_prediction_decision_date_count: int = 0,
+    pending_prediction_row_count: int = 0,
+    pending_prediction_decision_date_count: int = 0,
+    pending_prediction_status: str = "unknown",
+    invalid_capture_count: int = 0,
+    capture_conflict_count: int = 0,
 ) -> LearningHorizonProjection:
     return LearningHorizonProjection(
         horizon_days=_int_or_default(candidate_metadata.get("horizon_trading_days")),
@@ -1129,6 +1712,13 @@ def _pending_horizon(
         matured_decision_date_count=0,
         status="pending" if capture_count or recorded_row_count else "not_recorded",
         reason=reason,
+        valid_prediction_row_count=valid_prediction_row_count,
+        valid_prediction_decision_date_count=valid_prediction_decision_date_count,
+        pending_prediction_row_count=pending_prediction_row_count,
+        pending_prediction_decision_date_count=pending_prediction_decision_date_count,
+        pending_prediction_status=pending_prediction_status,
+        invalid_capture_count=invalid_capture_count,
+        capture_conflict_count=capture_conflict_count,
     )
 
 
@@ -1248,18 +1838,62 @@ def _next_gap(
 ) -> str:
     lane = active_lane if active_lane.verified else candidate_lane
     if lane.verified:
-        policy = RecommendationPromotionPolicy()
-        sample_gap = max(0, policy.minimum_natural_matured_samples - lane.matured_sample_count)
-        date_gap = max(0, policy.minimum_natural_matured_decision_dates - lane.matured_decision_date_count)
+        if (
+            lane.policy_binding_status != "verified"
+            or lane.policy_minimum_natural_matured_samples is None
+            or lane.policy_minimum_natural_matured_decision_dates is None
+        ):
+            return (
+                f"{lane.policy_binding_status} promotion policy binding；"
+                "不計算 adoption samples／dates 缺口，需同 scope 的 verified natural receipt 綁定 authority policy；"
+                f"{_lane_scan_note(lane)}。"
+            )
+        sample_gap = max(
+            0,
+            lane.policy_minimum_natural_matured_samples - lane.matured_sample_count,
+        )
+        date_gap = max(
+            0,
+            lane.policy_minimum_natural_matured_decision_dates - lane.matured_decision_date_count,
+        )
         if sample_gap or date_gap:
-            return f"已驗證 natural evidence；距 promotion policy 尚差 {sample_gap} 筆、{date_gap} 個決策日。"
-        return "已具備自然成熟樣本；仍只作研究／自動 gate 輸入，formal order 旗標不由 UI 改動。"
+            return (
+                "已驗證同 scope natural evidence；"
+                f"距已綁定 promotion policy 尚差 {sample_gap} 筆、{date_gap} 個決策日；"
+                f"累積 valid rows={lane.valid_prediction_row_count}／"
+                f"dates={lane.valid_prediction_decision_date_count}，"
+                f"latest snapshot rows={lane.latest_snapshot_row_count}；"
+                f"{_lane_scan_note(lane)}"
+            )
+        return (
+            "已具備已綁定 policy 的自然成熟樣本；仍只作研究／自動 gate 輸入，"
+            "formal order 旗標不由 UI 改動。"
+        )
     if lane.status == "blocked_provenance":
         return f"先修復 provenance：{lane.reason}；修復前不顯示 reliability。"
     if data_recorded_status == "recorded":
         horizon = lane.horizons[0].horizon_days if lane.horizons else DEFAULT_HORIZON_TRADING_DAYS
-        return f"等待 {horizon} 交易日自然成熟與 typed receipt；目前不能把預測機率當成準確率。"
+        return (
+            f"等待 {horizon} 交易日自然成熟與 typed receipt；"
+            f"目前掃描 scope 的累積 valid rows={lane.valid_prediction_row_count}／"
+            f"distinct dates={lane.valid_prediction_decision_date_count}，"
+            f"pending={lane.pending_prediction_row_count} rows／"
+            f"{lane.pending_prediction_decision_date_count} dates（{lane.pending_prediction_status}），"
+            f"latest snapshot={lane.latest_snapshot_row_count} rows；{_lane_scan_note(lane)}；"
+            "目前不能把預測機率當成準確率。"
+        )
     return "先取得同一 candidate、同一決策日的 scheduled live prediction capture。"
+
+
+def _lane_scan_note(lane: LearningLaneProjection) -> str:
+    note = (
+        f"capture scan={lane.capture_scan_status}；"
+        f"invalid captures={lane.invalid_capture_count}；"
+        f"conflict captures={lane.capture_conflict_count}"
+    )
+    if lane.capture_scan_status not in {"complete", "receipt_verified"}:
+        return note + "；目前只覆蓋已掃描 scope，累積數字可能不完整"
+    return note
 
 
 def _hash_payload(payload: Any) -> str:

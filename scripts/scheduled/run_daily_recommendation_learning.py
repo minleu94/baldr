@@ -36,6 +36,11 @@ from app_module.recommendation_learning_paths import (  # noqa: E402
 )
 from data_module.config import TWStockConfig  # noqa: E402
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider  # noqa: E402
+from data_module.natural_maturity_session_resolver import (  # noqa: E402
+    NATURAL_MATURITY_SESSION_RESOLVER_ID,
+    NATURAL_MATURITY_SESSION_RESOLVER_VERSION,
+    NaturalMaturitySessionResolver,
+)
 from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
 from data_module.recommendation_calibration_source_contract import (  # noqa: E402
     inspect_source_contract,
@@ -270,11 +275,131 @@ def _taipei_now() -> datetime:
     return datetime.now(TAIPEI)
 
 
+DEFAULT_NATURAL_MATURITY_CALENDAR_CACHE_PATH = (
+    ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
+)
+NATURAL_MATURITY_CALENDAR_CACHE_ENV = "NATURAL_MATURITY_CALENDAR_CACHE_PATH"
+NATURAL_MATURITY_TEMPORARY_CLOSURE_ENV = "NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH"
+
+
+def _configured_path(value: object) -> Path | None:
+    if isinstance(value, Path):
+        return value.expanduser().resolve()
+    if isinstance(value, str) and value.strip():
+        return Path(value.strip()).expanduser().resolve()
+    return None
+
+
+def _natural_maturity_calendar_paths(
+    *,
+    calendar_cache_path: Path | None,
+    temporary_closure_path: Path | None,
+) -> tuple[Path, Path | None]:
+    """解析明確或既有操作日曆來源，不在 caller 內觸發網路 fallback。"""
+
+    calendar_path = _configured_path(calendar_cache_path)
+    if calendar_path is None:
+        for name in (
+            NATURAL_MATURITY_CALENDAR_CACHE_ENV,
+            "ML_FORWARD_CALENDAR_CACHE_ROOT",
+        ):
+            calendar_path = _configured_path(os.environ.get(name))
+            if calendar_path is not None:
+                break
+    if calendar_path is None:
+        calendar_path = DEFAULT_NATURAL_MATURITY_CALENDAR_CACHE_PATH.resolve()
+
+    temporary_path = _configured_path(temporary_closure_path)
+    if temporary_path is None:
+        temporary_path = _configured_path(
+            os.environ.get(NATURAL_MATURITY_TEMPORARY_CLOSURE_ENV)
+        )
+    return calendar_path, temporary_path
+
+
+def _natural_maturity_context(
+    *,
+    source_db: Path,
+    calendar_cache_path: Path,
+    temporary_closure_path: Path | None,
+    evaluation_at: datetime,
+    evaluation_date: date,
+) -> dict[str, Any]:
+    """把每日收據中的唯讀成熟度來源與實際檢查時鐘固定下來。"""
+
+    if evaluation_at.tzinfo is None or evaluation_at.utcoffset() is None:
+        raise ValueError("natural maturity evaluation clock must be timezone-aware")
+    return {
+        "schema_version": "natural-maturity-caller-context.v1",
+        "resolver_id": NATURAL_MATURITY_SESSION_RESOLVER_ID,
+        "resolver_version": NATURAL_MATURITY_SESSION_RESOLVER_VERSION,
+        "source_db_path": str(source_db.expanduser().resolve()),
+        "calendar_cache_path": str(calendar_cache_path.expanduser().resolve()),
+        "temporary_closure_path": (
+            str(temporary_closure_path.expanduser().resolve())
+            if temporary_closure_path is not None
+            else None
+        ),
+        "evaluation_at": evaluation_at.isoformat(),
+        "evaluation_clock_source": "scheduler_checked_aware_clock",
+        "evaluation_date": evaluation_date.isoformat(),
+        "evaluation_date_matches_checked_clock": (
+            evaluation_date == evaluation_at.astimezone(TAIPEI).date()
+        ),
+    }
+
+
+def _annotate_natural_result(
+    result: Mapping[str, Any] | None,
+    context: Mapping[str, Any],
+) -> dict[str, Any]:
+    """在 candidate／active 結果旁保留 resolver custody 與 clock 診斷。"""
+
+    payload = dict(result) if isinstance(result, Mapping) else {}
+    payload["natural_maturity_context"] = dict(context)
+    return payload
+
+
+def _build_natural_outcome_service(
+    *,
+    provider: MLHistoricalSnapshotProvider,
+    source_db: Path,
+    session_resolver: NaturalMaturitySessionResolver,
+    evaluation_at: datetime,
+) -> RecommendationNaturalOutcomeService:
+    """以相同 source DB 與 checked clock 建立兩個 natural consumer。"""
+
+    return RecommendationNaturalOutcomeService(
+        provider,
+        evidence_db_path=source_db,
+        session_resolver=session_resolver,
+        evaluation_at=evaluation_at,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, default=None)
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--source-db", type=Path, default=None)
+    parser.add_argument(
+        "--calendar-cache-path",
+        type=Path,
+        default=None,
+        help=(
+            "唯讀官方 annual calendar cache；省略時沿用既有 repository "
+            "output/paper_execution_eod_replay/calendar_cache 或環境設定。"
+        ),
+    )
+    parser.add_argument(
+        "--temporary-closure-cache-path",
+        type=Path,
+        default=None,
+        help=(
+            "唯讀官方 temporary-closure cache；省略時不假設 annual cache "
+            "涵蓋事件，僅接受 NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH。"
+        ),
+    )
     parser.add_argument(
         "--snapshot-output-root",
         type=Path,
@@ -1189,6 +1314,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    checked_clock = _taipei_now()
     config_kwargs: dict[str, Any] = {}
     if args.data_root is not None:
         config_kwargs["data_root"] = args.data_root
@@ -1241,7 +1367,7 @@ def main(argv: list[str] | None = None) -> int:
     decision_day = (
         date.fromisoformat(str(args.decision_date)[:10])
         if args.decision_date
-        else _taipei_now().date()
+        else checked_clock.date()
     )
     try:
         effective_fixed_cost, cost_scenario = _cost_scenario_from_args(args)
@@ -1408,7 +1534,7 @@ def main(argv: list[str] | None = None) -> int:
         history_start_date=replay_config.history_start_date,
         replay_start_date=replay_config.replay_start_date,
         replay_end_date=replay_config.replay_end_date,
-        availability_cutoff_at=_taipei_now().isoformat(timespec="seconds"),
+        availability_cutoff_at=checked_clock.isoformat(timespec="seconds"),
     )
     runner = _build_runner(
         learning_output_root,
@@ -1523,6 +1649,7 @@ def main(argv: list[str] | None = None) -> int:
         replay_source_fingerprint=replay_result.source_fingerprint,
         policy=RecommendationPromotionPolicy(),
         source_contract_audit=source_contract_audit,
+        checked_clock=checked_clock,
     )
     challenger_payload = _read_challenger_pointer(learning_output_root)
     challenger_path = _load_frozen_challenger(learning_output_root)
@@ -1546,6 +1673,7 @@ def main(argv: list[str] | None = None) -> int:
         cost_scenario=cost_scenario,
         training_as_of=training_as_of,
         data_root=config.data_root,
+        source_db=source_db,
     )
     training_samples = _merge_samples(replay_result.samples, natural_training_samples)
     training_lineage_sources = {
@@ -1791,27 +1919,83 @@ def main(argv: list[str] | None = None) -> int:
     )
     capture_failure, capture_recoverable = _capture_dependency_failure(capture_result)
 
-    active_natural_result = _scan_active_model_evidence(
-        output_root=learning_output_root,
-        data_root=config.data_root,
-        provider=provider,
+    calendar_cache_path, temporary_closure_path = _natural_maturity_calendar_paths(
+        calendar_cache_path=args.calendar_cache_path,
+        temporary_closure_path=args.temporary_closure_cache_path,
+    )
+    natural_maturity_resolver = NaturalMaturitySessionResolver(
+        db_path=source_db,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+    natural_maturity_context = _natural_maturity_context(
         source_db=source_db,
-        decision_date=decision_day,
-        active_capture_result=capture_result.get("active_model_monitor")
-        if isinstance(capture_result, Mapping)
-        else None,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+        evaluation_at=checked_clock,
+        evaluation_date=decision_day,
+    )
+
+    natural_maturity_date_matches = (
+        decision_day == checked_clock.astimezone(TAIPEI).date()
+    )
+    if natural_maturity_date_matches:
+        active_natural_result = _scan_active_model_evidence(
+            output_root=learning_output_root,
+            data_root=config.data_root,
+            provider=provider,
+            source_db=source_db,
+            decision_date=decision_day,
+            active_capture_result=capture_result.get("active_model_monitor")
+            if isinstance(capture_result, Mapping)
+            else None,
+            session_resolver=natural_maturity_resolver,
+            evaluation_at=checked_clock,
+        )
+    else:
+        active_natural_result = {
+            "schema_version": "recommendation-natural-outcome-result.v1",
+            "status": "pending",
+            "reason": "natural_maturity_evaluation_date_mismatch",
+            "capture_path": str(
+                Path(learning_output_root).resolve()
+                / "recommendation_learning"
+                / "active_captures"
+            ),
+            "capture_paths": [],
+            "evaluation_date": decision_day.isoformat(),
+            "matured_sample_count": 0,
+            "evidence": None,
+            "diagnostics": [
+                "historical_decision_date_natural_lane_skipped_to_avoid_future_clock"
+            ],
+            "historical_replay_is_natural_evidence": False,
+        }
+    active_natural_result = _annotate_natural_result(
+        active_natural_result,
+        natural_maturity_context,
     )
 
     # The preflight check intentionally runs before today's capture/evidence
     # scan.  Re-read the active monitor after that scan so a newly matured
     # receipt can trigger the same day's fail-closed rollback.  A stale
     # preflight status must never delay a rollback until tomorrow.
-    post_scan_active_performance = _inspect_active_model_performance(
-        output_root=learning_output_root,
-        data_root=config.data_root,
-        decision_date=decision_day,
-        policy=RecommendationPromotionPolicy(),
-    )
+    if natural_maturity_date_matches:
+        post_scan_active_performance = _inspect_active_model_performance(
+            output_root=learning_output_root,
+            data_root=config.data_root,
+            decision_date=decision_day,
+            policy=RecommendationPromotionPolicy(),
+            source_db=source_db,
+        )
+    else:
+        post_scan_active_performance = {
+            "status": "pending",
+            "reason": "natural_maturity_evaluation_date_mismatch",
+            "diagnostics": (
+                "historical_decision_date_natural_lane_skipped_to_avoid_future_clock",
+            ),
+        }
     dependencies["model_performance"] = post_scan_active_performance
     dependencies["drift_status"] = str(
         post_scan_active_performance.get("status") or dependencies.get("drift_status", "not_checked")
@@ -1829,14 +2013,22 @@ def main(argv: list[str] | None = None) -> int:
     emergency_after_scan = _dependencies_require_emergency(dependencies)
 
     natural_result: Any = {
-        "status": "not_run",
-        "reason": "candidate_not_available",
+        "status": "not_run" if natural_maturity_date_matches else "pending",
+        "reason": (
+            "candidate_not_available"
+            if natural_maturity_date_matches
+            else "natural_maturity_evaluation_date_mismatch"
+        ),
         "matured_sample_count": 0,
         "evidence": None,
         "diagnostics": [],
     }
     automatic_evidence = None
-    if run_result.candidate_id and run_result.candidate_root:
+    if (
+        natural_maturity_date_matches
+        and run_result.candidate_id
+        and run_result.candidate_root
+    ):
         evidence_path = (
             Path(learning_output_root)
             / "recommendation_learning"
@@ -1844,9 +2036,11 @@ def main(argv: list[str] | None = None) -> int:
             / run_result.candidate_id
             / f"{decision_day.isoformat()}.json"
         )
-        natural_result = RecommendationNaturalOutcomeService(
-            provider,
-            evidence_db_path=source_db,
+        natural_result = _build_natural_outcome_service(
+            provider=provider,
+            source_db=source_db,
+            session_resolver=natural_maturity_resolver,
+            evaluation_at=checked_clock,
         ).scan_and_build_evidence(
             output_root=learning_output_root,
             evaluation_date=decision_day.isoformat(),
@@ -1858,6 +2052,10 @@ def main(argv: list[str] | None = None) -> int:
         evidence_payload = natural_result.get("evidence")
         if isinstance(evidence_payload, Mapping):
             automatic_evidence = evidence_payload
+    natural_result = _annotate_natural_result(
+        natural_result,
+        natural_maturity_context,
+    )
 
     if automatic_evidence is not None or emergency_after_scan != emergency_from_preflight:
         run_result = runner.run(
@@ -1884,7 +2082,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         if recovered_bootstrap is not None:
             historical_bootstrap = recovered_bootstrap
-    if run_result.candidate_id and run_result.candidate_root:
+    if (
+        natural_maturity_date_matches
+        and run_result.candidate_id
+        and run_result.candidate_root
+    ):
         challenger_status = _challenger_status(run_result, natural_result)
         challenger_path = _ensure_challenger_pointer(
             output_root=learning_output_root,
@@ -1932,6 +2134,7 @@ def main(argv: list[str] | None = None) -> int:
         experiment_scope=experiment_scope,
         recoverable=capture_recoverable,
         cost_scenario=cost_scenario,
+        natural_maturity_context=natural_maturity_context,
     )
     payload["natural_evidence_supplied"] = automatic_evidence is not None
     payload["ignored_caller_inputs"] = ignored_inputs
@@ -2131,6 +2334,7 @@ def _inspect_dependencies(
     replay_source_fingerprint: str,
     policy: RecommendationPromotionPolicy,
     source_contract_audit: Mapping[str, Any] | None = None,
+    checked_clock: datetime | None = None,
 ) -> dict[str, Any]:
     """Perform actual read-only source checks; no caller status becomes truth."""
 
@@ -2183,12 +2387,25 @@ def _inspect_dependencies(
             diagnostics.append("source_schema_and_stat_stability_verified")
         if not trading_dates:
             diagnostics.append("non_trading_day_or_no_symbol_rows_live_capture_will_skip")
-        active_performance = _inspect_active_model_performance(
-            output_root=output_root,
-            data_root=data_root,
-            decision_date=decision_date,
-            policy=policy,
-        )
+        if (
+            checked_clock is not None
+            and decision_date != checked_clock.astimezone(TAIPEI).date()
+        ):
+            active_performance = {
+                "status": "pending",
+                "reason": "natural_maturity_evaluation_date_mismatch",
+                "diagnostics": (
+                    "historical_decision_date_natural_lane_skipped_to_avoid_future_clock",
+                ),
+            }
+        else:
+            active_performance = _inspect_active_model_performance(
+                output_root=output_root,
+                data_root=data_root,
+                decision_date=decision_date,
+                policy=policy,
+                source_db=provider.database_path,
+            )
         drift_status = str(active_performance.get("status") or drift_status)
         diagnostics.extend(
             str(item)
@@ -2881,6 +3098,8 @@ def _scan_active_model_evidence(
     source_db: Path,
     decision_date: date,
     active_capture_result: Mapping[str, Any] | None,
+    session_resolver: NaturalMaturitySessionResolver,
+    evaluation_at: datetime,
 ) -> dict[str, Any]:
     """Materialize the active model's matured monitoring window for this run."""
 
@@ -2963,9 +3182,11 @@ def _scan_active_model_evidence(
             / active_candidate_id
             / f"{decision_date.isoformat()}.json"
         )
-        result = RecommendationNaturalOutcomeService(
-            provider,
-            evidence_db_path=source_db,
+        result = _build_natural_outcome_service(
+            provider=provider,
+            source_db=source_db,
+            session_resolver=session_resolver,
+            evaluation_at=evaluation_at,
         ).scan_and_build_active_model_evidence(
             output_root=output_root,
             evaluation_date=decision_date.isoformat(),
@@ -3380,6 +3601,7 @@ def _load_natural_training_samples(
     fixed_round_trip_cost_bp: int | None,
     training_as_of: str,
     data_root: Path | None,
+    source_db: Path,
     cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
 ) -> tuple[RecommendationCalibrationSample, ...]:
     """Recover traceable natural rows from retired and adopted model paths.
@@ -3586,6 +3808,7 @@ def _load_natural_training_samples(
             cost_scenario=expected_scenario,
             training_as_of=cutoff.isoformat(),
             data_root=data_root,
+            source_db=source_db,
             seen_keys=seen_keys,
             seen_rows=seen_rows,
         )
@@ -3600,6 +3823,7 @@ def _load_active_model_training_samples(
     fixed_round_trip_cost_bp: int | None,
     training_as_of: str,
     data_root: Path | None,
+    source_db: Path,
     seen_keys: set[tuple[str, str, int, str]],
     seen_rows: set[str],
     cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
@@ -3668,6 +3892,7 @@ def _load_active_model_training_samples(
                     active_candidate_id=candidate_id,
                     active_identity_hash=identity_hash,
                     decision_date=cutoff.isoformat(),
+                    expected_db_path=source_db,
                 )
                 payload_scenario = cost_scenario_from_metadata(
                     payload,
@@ -3796,6 +4021,7 @@ def _inspect_active_model_performance(
     data_root: Path | None,
     decision_date: date,
     policy: RecommendationPromotionPolicy,
+    source_db: Path,
 ) -> dict[str, Any]:
     pointer_path = Path(output_root).resolve() / "recommendation_learning" / "recommendation-calibration-active-pointer.json"
     if not pointer_path.is_file():
@@ -3871,6 +4097,7 @@ def _inspect_active_model_performance(
                 active_candidate_id=candidate_id,
                 active_identity_hash=identity_hash,
                 decision_date=decision_date.isoformat(),
+                expected_db_path=source_db,
             )
             if date.fromisoformat(str(payload.get("window_start_date") or "")[:10]) < effective_date:
                 raise ValueError("active evidence window predates active adoption")
@@ -4046,6 +4273,7 @@ def _cli_payload(
     capture_scope: str | None = None,
     experiment_scope: str | None = None,
     cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
+    natural_maturity_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema_version": "daily-recommendation-learning-cli-result.v3",
@@ -4081,6 +4309,11 @@ def _cli_payload(
         "active_pointer": _read_active_pointer(output_root),
         "natural_evidence": dict(natural_result),
         "active_model_natural_evidence": dict(active_natural_result or {}),
+        "natural_maturity_context": (
+            dict(natural_maturity_context)
+            if isinstance(natural_maturity_context, Mapping)
+            else None
+        ),
         "live_capture": dict(live_capture),
         "error": error,
         "recoverable": bool(recoverable),
@@ -4335,6 +4568,7 @@ def _update_latest_status(path_text: str, cli_payload: Mapping[str, Any]) -> Non
         "active_pointer",
         "natural_evidence",
         "active_model_natural_evidence",
+        "natural_maturity_context",
         "live_capture",
         "training_as_of",
         "training_sample_count",

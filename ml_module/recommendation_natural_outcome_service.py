@@ -9,7 +9,7 @@ return/label，避免把歷史考試或手工數字接到 promotion authority。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
@@ -31,6 +31,7 @@ from ml_module.recommendation_calibration_evidence import (
     _verify_active_model_capture_payload,
     _verify_capture_payload,
     _verify_source_contract_binding,
+    verify_natural_maturity_session_proof,
 )
 from ml_module.recommendation_calibration_training import (
     recommendation_cost_contract_hash,
@@ -78,6 +79,8 @@ class RecommendationNaturalOutcomeService:
         provider: MLHistoricalSnapshotProvider,
         *,
         evidence_db_path: str | Path | None = None,
+        session_resolver: Any | None = None,
+        evaluation_at: datetime | None = None,
     ) -> None:
         self.provider = provider
         self.evidence_db_path = (
@@ -85,6 +88,13 @@ class RecommendationNaturalOutcomeService:
             if evidence_db_path is not None
             else provider.database_path
         )
+        self.session_resolver = session_resolver
+        if evaluation_at is not None:
+            if evaluation_at.tzinfo is None or evaluation_at.utcoffset() is None:
+                raise ValueError("evaluation_at must contain a timezone")
+            self.evaluation_at: datetime | None = evaluation_at.astimezone(timezone.utc)
+        else:
+            self.evaluation_at = None
 
     def build_evidence(
         self,
@@ -138,6 +148,7 @@ class RecommendationNaturalOutcomeService:
             capture=capture_file,
             outcomes=tuple(outcomes),
             evaluation_date=evaluation_day.isoformat(),
+            evaluation_at=self.evaluation_at,
             output_path=output_path,
             source_id="scheduled_forward_outcomes_market_source",
         )
@@ -286,6 +297,7 @@ class RecommendationNaturalOutcomeService:
             captures=tuple(selected),
             outcomes=tuple(outcomes),
             evaluation_date=evaluation_day.isoformat(),
+            evaluation_at=self.evaluation_at,
             output_path=output_path,
             source_id="scheduled_forward_outcomes_market_source",
         )
@@ -453,6 +465,7 @@ class RecommendationNaturalOutcomeService:
                 "feature_values": row.get("feature_values"),
                 "label_end_date": outcome.label_end_date,
                 "label_available_date": outcome.label_available_date,
+                "maturity_session_proof": dict(outcome.session_proof or {}),
                 "stock_return_bp": outcome.stock_return_bp,
                 "benchmark_return_bp": outcome.benchmark_return_bp,
                 "observed_liquidity_cost_bp": outcome.observed_liquidity_cost_bp,
@@ -634,6 +647,20 @@ class RecommendationNaturalOutcomeService:
         evidence_id = "active-evidence-" + hashlib.sha256(
             f"{active_identity_hash}|{comparison_fingerprint}|{evaluation_day.isoformat()}".encode("utf-8")
         ).hexdigest()[:24]
+        if self.evaluation_at is None:
+            raise ValueError("active natural evidence evaluation_at is missing")
+        resolver_ids = {
+            str(row["maturity_session_proof"].get("resolver_id") or "")
+            for row in comparisons
+            if isinstance(row.get("maturity_session_proof"), Mapping)
+        }
+        resolver_versions = {
+            str(row["maturity_session_proof"].get("resolver_version") or "")
+            for row in comparisons
+            if isinstance(row.get("maturity_session_proof"), Mapping)
+        }
+        if len(resolver_ids) != 1 or len(resolver_versions) != 1:
+            raise ValueError("active natural evidence session resolver identity is inconsistent")
         evidence_payload: dict[str, Any] = {
             "schema_version": (
                 "recommendation-active-model-forward-evidence.v2"
@@ -645,6 +672,9 @@ class RecommendationNaturalOutcomeService:
             "source_kind": "matured_active_model_prediction_capture",
             "status": "matured",
             "as_of_date": evaluation_day.isoformat(),
+            "evaluation_at": self.evaluation_at.isoformat(),
+            "maturity_session_resolver_id": next(iter(resolver_ids)),
+            "maturity_session_resolver_version": next(iter(resolver_versions)),
             "window_start_date": window_start.isoformat(),
             "window_end_date": evaluation_day.isoformat(),
             "active_identity": dict(identity),
@@ -764,19 +794,27 @@ class RecommendationNaturalOutcomeService:
         symbols = tuple(sorted({str(row["symbol"]) for row in rows if isinstance(row, Mapping)}))
         if not symbols:
             raise ValueError("prediction capture has no symbols")
+        session_resolution, session_reason = self._resolve_maturity_sessions(
+            capture_day,
+            evaluation_day,
+        )
+        if session_resolution is None:
+            return [], len(rows), (session_reason,)
+        endpoint_date, session_proof = session_resolution
+        if _date(endpoint_date) > evaluation_day:
+            return [], len(rows), ("natural_maturity_endpoint_after_evaluation",)
+        if not self._source_database_snapshot_matches(session_proof):
+            return [], len(rows), ("natural_maturity_source_database_snapshot_mismatch",)
         forward = self.provider.load_forward_price_window(
             start_date=capture_day.isoformat(),
             end_date=evaluation_day.isoformat(),
             symbols=symbols,
         )
+        if not self._source_database_snapshot_matches(session_proof):
+            return [], len(rows), ("natural_maturity_source_database_snapshot_changed",)
         prices_by_symbol: dict[str, list[Any]] = {}
         for row in forward.prices:
             prices_by_symbol.setdefault(row.symbol, []).append(row)
-        market_by_date = {
-            row.trading_date: row.close_value
-            for row in forward.market
-            if row.close_value is not None
-        }
         outcomes: list[MaturedRecommendationOutcome] = []
         pending = 0
         diagnostics: list[str] = []
@@ -784,28 +822,39 @@ class RecommendationNaturalOutcomeService:
             if not isinstance(capture_row, Mapping):
                 raise ValueError("prediction capture row is invalid")
             symbol = str(capture_row.get("symbol") or "")
-            observed = sorted(
-                (
-                    row
-                    for row in prices_by_symbol.get(symbol, ())
-                    if _date(row.trading_date) > capture_day and row.close_price is not None
-                ),
-                key=lambda row: row.trading_date,
-            )
-            if len(observed) < 20:
+            end_rows = [
+                row
+                for row in prices_by_symbol.get(symbol, ())
+                if str(row.trading_date)[:10] == endpoint_date
+            ]
+            if len(end_rows) != 1 or not self._positive_price(end_rows[0].close_price):
+                diagnostics.append(
+                    f"natural_maturity_endpoint_stock_close_invalid:{symbol}:{endpoint_date}"
+                )
                 pending += 1
                 continue
-            end_row = observed[19]
-            start_row = next(
-                (row for row in prices_by_symbol.get(symbol, ()) if row.trading_date == capture_day.isoformat()),
-                None,
-            )
-            if start_row is None or start_row.close_price is None or start_row.close_price == 0:
+            end_row = end_rows[0]
+            start_rows = [
+                row
+                for row in prices_by_symbol.get(symbol, ())
+                if str(row.trading_date)[:10] == capture_day.isoformat()
+            ]
+            if len(start_rows) != 1 or not self._positive_price(start_rows[0].close_price):
+                diagnostics.append(
+                    f"natural_maturity_capture_stock_close_invalid:{symbol}:{capture_day.isoformat()}"
+                )
                 pending += 1
                 continue
-            benchmark_start = market_by_date.get(capture_day.isoformat())
-            benchmark_end = market_by_date.get(end_row.trading_date)
-            if benchmark_start is None or benchmark_end is None or benchmark_start == 0:
+            start_row = start_rows[0]
+            benchmark_start = self._session_market_close(
+                session_proof,
+                capture_day.isoformat(),
+            )
+            benchmark_end = self._session_market_close(session_proof, endpoint_date)
+            if benchmark_start is None or benchmark_end is None:
+                diagnostics.append(
+                    f"natural_maturity_verified_market_close_missing:{symbol}:{endpoint_date}"
+                )
                 pending += 1
                 continue
             observed_liquidity_cost, liquidity_source = self._lookup_liquidity_cost(
@@ -861,9 +910,124 @@ class RecommendationNaturalOutcomeService:
                     net_profit_twd=cost_estimate.net_profit_twd,
                     cost_estimate_status=cost_estimate.status,
                     cost_estimate_diagnostics=cost_estimate.diagnostics,
+                    session_proof=dict(session_proof),
                 )
             )
         return outcomes, pending, tuple(diagnostics)
+
+    @staticmethod
+    def _positive_price(value: Any) -> bool:
+        try:
+            parsed = value if isinstance(value, Decimal) else Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return False
+        return parsed.is_finite() and parsed > 0
+
+    @staticmethod
+    def _session_market_close(
+        proof: Mapping[str, Any],
+        date_text: str,
+    ) -> Decimal | None:
+        market = proof.get("market")
+        if not isinstance(market, Mapping):
+            return None
+        observations = market.get("observations")
+        candidates: list[Any] = []
+        if isinstance(observations, list):
+            candidates.extend(
+                item
+                for item in observations
+                if isinstance(item, Mapping) and str(item.get("date") or "")[:10] == date_text
+            )
+        for key in ("capture_observation", "baseline_observation"):
+            item = market.get(key)
+            if isinstance(item, Mapping) and str(item.get("date") or "")[:10] == date_text:
+                candidates.append(item)
+        if len(candidates) != 1:
+            return None
+        value = candidates[0].get("close")
+        try:
+            parsed = value if isinstance(value, Decimal) else Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        return parsed if parsed.is_finite() and parsed > 0 else None
+
+    def _source_database_snapshot_matches(
+        self,
+        proof: Mapping[str, Any],
+    ) -> bool:
+        """確認 resolver proof 與同一個 provider SQLite snapshot 一致。"""
+
+        market = proof.get("market")
+        if not isinstance(market, Mapping):
+            return False
+        source_path = market.get("source_db_path")
+        source_stat = market.get("source_db_stat")
+        if not isinstance(source_path, str) or not isinstance(source_stat, Mapping):
+            return False
+        provider_path = getattr(self.provider, "database_path", None)
+        if provider_path is None:
+            return False
+        try:
+            expected_path = Path(source_path).expanduser().resolve()
+            actual_path = Path(provider_path).expanduser().resolve()
+            stat = actual_path.stat()
+        except (OSError, TypeError, ValueError):
+            return False
+        if expected_path != actual_path:
+            return False
+        size = source_stat.get("size")
+        mtime_ns = source_stat.get("mtime_ns")
+        if any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in (size, mtime_ns)
+        ):
+            return False
+        return (stat.st_size, stat.st_mtime_ns) == (size, mtime_ns)
+
+    def _resolve_maturity_sessions(
+        self,
+        capture_day: date,
+        evaluation_day: date | None = None,
+    ) -> tuple[tuple[str, Mapping[str, Any]] | None, str]:
+        """在定價前解析並保管官方交易日 horizon。"""
+
+        if self.session_resolver is None:
+            return None, "natural_maturity_session_resolver_missing"
+        if self.evaluation_at is None:
+            return None, "natural_maturity_evaluation_at_missing"
+        if evaluation_day is None:
+            evaluation_day = self.evaluation_at.astimezone(
+                ZoneInfo("Asia/Taipei")
+            ).date()
+        if self.evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date() != evaluation_day:
+            return None, "natural_maturity_evaluation_clock_mismatch"
+        if self.evaluation_at > datetime.now(timezone.utc):
+            return None, "natural_maturity_evaluation_at_future"
+        try:
+            resolution = self.session_resolver.resolve(
+                capture_date=capture_day.isoformat(),
+                evaluation_at=self.evaluation_at,
+                horizon_sessions=20,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return None, f"natural_maturity_session_resolution_failed:{type(exc).__name__}"
+        status = str(getattr(resolution, "status", "") or "")
+        reason = str(getattr(resolution, "reason", "") or "")
+        if status != "ready":
+            return None, (
+                f"natural_maturity_session_{status or 'unknown'}"
+                + (f":{reason}" if reason else "")
+            )
+        endpoint_value = getattr(resolution, "endpoint_date", None)
+        proof_value = getattr(resolution, "proof", None)
+        if not endpoint_value or not isinstance(proof_value, Mapping) or not proof_value:
+            return None, "natural_maturity_session_proof_missing"
+        try:
+            endpoint = _date(str(endpoint_value)).isoformat()
+        except ValueError:
+            return None, "natural_maturity_session_endpoint_invalid"
+        return (endpoint, dict(proof_value)), "natural_maturity_session_ready"
 
     def _lookup_liquidity_cost(
         self,
@@ -931,6 +1095,7 @@ def verify_active_model_evidence_payload(
     active_candidate_id: str,
     active_identity_hash: str,
     decision_date: str,
+    expected_db_path: str | Path | None = None,
 ) -> None:
     """Verify monitor-receipt integrity and recompute its reported metrics."""
 
@@ -941,6 +1106,8 @@ def verify_active_model_evidence_payload(
         "matured_sample_count", "matured_unique_decision_date_count",
         "comparison_sample_fingerprint", "active_prediction_hash", "observed_brier_bp",
         "observed_calibration_gap_bp", "comparisons", "receipt_body_hash",
+        "evaluation_at", "maturity_session_resolver_id",
+        "maturity_session_resolver_version",
     )
     if any(key not in payload for key in required):
         raise ValueError("active model evidence metadata is incomplete")
@@ -951,6 +1118,8 @@ def verify_active_model_evidence_payload(
         raise ValueError("active model evidence schema is unsupported")
     if payload.get("status") != "matured":
         raise ValueError("active model evidence is not matured")
+    if expected_db_path is None:
+        raise ValueError("active model evidence source database anchor is missing")
     body = {key: value for key, value in payload.items() if key != "receipt_body_hash"}
     if _hash_payload(body) != payload.get("receipt_body_hash"):
         raise ValueError("active model evidence receipt hash mismatch")
@@ -980,6 +1149,11 @@ def verify_active_model_evidence_payload(
     if str(payload.get("active_identity_hash")) != active_identity_hash:
         raise ValueError("active model evidence active identity hash mismatch")
     evaluation_day = _date(str(payload.get("as_of_date")))
+    evaluation_at = _strict_evaluation_at(str(payload.get("evaluation_at")))
+    if evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date() != evaluation_day:
+        raise ValueError("active model evidence evaluation clock mismatch")
+    if evaluation_at > datetime.now(timezone.utc):
+        raise ValueError("active model evidence evaluation clock is future-dated")
     cutoff = _date(decision_date)
     if evaluation_day > cutoff:
         raise ValueError("active model evidence is after decision cutoff")
@@ -1033,6 +1207,25 @@ def verify_active_model_evidence_payload(
             raise ValueError("active model evidence probability differs from source capture")
         if comparison.get("symbol") != source_row.get("symbol"):
             raise ValueError("active model evidence symbol differs from source capture")
+        session_proof = comparison.get("maturity_session_proof")
+        if not isinstance(session_proof, Mapping):
+            raise ValueError("active model evidence official session proof is missing")
+        try:
+            verified_proof = verify_natural_maturity_session_proof(
+                session_proof,
+                capture_date=str(comparison.get("capture_as_of_date") or ""),
+                label_end_date=str(comparison.get("label_end_date") or ""),
+                evaluation_at=evaluation_at,
+                expected_db_path=expected_db_path,
+            )
+        except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise ValueError("active model evidence official session proof is invalid") from exc
+        if (
+            verified_proof.get("resolver_id") != payload.get("maturity_session_resolver_id")
+            or verified_proof.get("resolver_version")
+            != payload.get("maturity_session_resolver_version")
+        ):
+            raise ValueError("active model evidence session resolver identity mismatch")
         probability = int(comparison["active_probability_bp"])
         label = int(comparison["upside_label"])
         _probability(probability, "active_probability_bp")
@@ -1145,6 +1338,13 @@ def _return_bp(start: Any, end: Any) -> int:
     start_decimal = start if isinstance(start, Decimal) else Decimal(str(start))
     end_decimal = end if isinstance(end, Decimal) else Decimal(str(end))
     return int(((end_decimal / start_decimal - Decimal(1)) * Decimal(10_000)).quantize(Decimal(1), rounding=ROUND_HALF_EVEN))
+
+
+def _strict_evaluation_at(value: str) -> datetime:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("session-bound evaluation_at must contain a timezone")
+    return parsed.astimezone(timezone.utc)
 
 
 def _date(value: str) -> date:

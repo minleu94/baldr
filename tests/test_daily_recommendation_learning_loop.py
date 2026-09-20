@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -37,6 +38,10 @@ from ml_module.recommendation_calibration_training import (
     RecommendationCalibrationTrainingService,
     RecommendationPrediction,
     sample_payload,
+)
+from tests.natural_session_source_fixture import (
+    make_verified_natural_fixture,
+    make_verified_source_binding,
 )
 
 
@@ -123,12 +128,21 @@ def _candidate(
     candidate_day: str,
     dataset_quality: Mapping[str, object] | None = None,
 ) -> tuple[object, Path, dict[str, object]]:
-    samples = _samples(shift)
+    training_as_of = (date.fromisoformat(candidate_day) - timedelta(days=1)).isoformat()
+    samples = tuple(
+        sample
+        for sample in _samples(shift)
+        if sample.decision_date <= training_as_of
+        and sample.label_available_date <= training_as_of
+    )
     digest = "a" if shift == 0 else "b"
     root = tmp_path / f"candidate-{digest}"
+    from ml_module.recommendation_training_lineage import recommendation_training_dataset_hash
+
+    dataset_hash = recommendation_training_dataset_hash(samples)
     result = RecommendationCalibrationTrainingService().fit(
         dataset_id=f"dataset-{digest}",
-        dataset_hash="sha256:" + digest * 64,
+        dataset_hash=dataset_hash,
         samples=samples,
         feature_names=FEATURE_NAMES,
         feature_schema=FEATURE_SCHEMA,
@@ -150,6 +164,47 @@ def _candidate(
     )
     result.persist(root)
     metadata = json.loads((root / "candidate.json").read_text(encoding="utf-8"))
+    from ml_module.recommendation_training_lineage import (
+        build_recommendation_training_lineage,
+        persist_recommendation_training_lineage,
+    )
+
+    lineage_quality = dict(dataset_quality or {})
+    lineage_quality.setdefault("research_only", True)
+    lineage_quality.setdefault("training_semantics", "historical_research_only")
+    lineage_quality.setdefault("decision_time_eligible", False)
+    lineage = build_recommendation_training_lineage(
+        learning_root=tmp_path,
+        run_id=f"fixture-{result.candidate_id}",
+        run_scope="daily-loop-test",
+        decision_date=candidate_day,
+        training_as_of=training_as_of,
+        dataset_id=f"dataset-{digest}",
+        dataset_hash=str(metadata["dataset_hash"]),
+        samples=samples,
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        fixed_round_trip_cost_bp=50,
+        cost_scenario=None,
+        dataset_quality=lineage_quality,
+        training_result=result,
+        training_config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+        candidate_id=result.candidate_id,
+        candidate_manifest_hash=str(metadata["manifest_hash"]),
+        candidate_artifact_hash=str(metadata["artifact_hash"]),
+    )
+    lineage_path = persist_recommendation_training_lineage(tmp_path, lineage)
+    metadata["training_lineage_manifest_hash"] = lineage.manifest_hash
+    metadata["training_lineage_manifest_path"] = str(lineage_path)
+    (root / "candidate.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return result, root, metadata
 
 
@@ -166,27 +221,44 @@ def _natural_receipt(
     captures: list[Path] = []
     outcomes: list[MaturedRecommendationOutcome] = []
     start = date.fromisoformat(candidate_day)
-    dates = capture_dates or tuple(start + timedelta(days=index) for index in range(20))
+    if capture_dates is None:
+        selected_dates: list[date] = []
+        cursor = start
+        while len(selected_dates) < 20:
+            if cursor.weekday() < 5:
+                selected_dates.append(cursor)
+            cursor += timedelta(days=1)
+        dates = tuple(selected_dates)
+    else:
+        if any(item.weekday() >= 5 for item in capture_dates):
+            raise ValueError("explicit natural capture dates must be official weekdays")
+        dates = tuple(capture_dates)
+    fixture = make_verified_natural_fixture(
+        tmp_path,
+        tuple(dict.fromkeys(dates)),
+        evaluation_day,
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry_hash,
+    )
     for index, capture_day in enumerate(dates):
-        capture_input = RecommendationPredictionCaptureInput(
-            row_id=f"forward-{index:02d}",
-            symbol="1101" if index % 2 == 0 else "2330",
-            decision_date=capture_day.isoformat(),
-            feature_as_of_date=(capture_day - timedelta(days=1)).isoformat(),
-            feature_available_date=(capture_day - timedelta(days=1)).isoformat(),
-            feature_values=tuple(
-                (
-                    ((index % 6) - 2) * 1000
-                    if feature_index == 0
-                    else 1000 + index * 10
-                    if feature_index == 1
-                    else (index + 1) * (feature_index + 1)
-                )
-                for feature_index in range(len(feature_schema))
-            ),
-            rule_probability_bp=5000,
-            rule_after_cost_probability_bp=5000,
-        )
+        capture_input = fixture.input_for(capture_day)
+        source_binding = fixture.binding_for(capture_day)
+        if capture_day in dates[:index]:
+            # 保留「20 rows、19 distinct dates」邊界；同日第二列使用另一
+            # symbol 與獨立 source contract，避免用重複 row 假造日期成熟度。
+            capture_input = replace(
+                capture_input,
+                row_id=f"forward-{index:02d}",
+                symbol="2330",
+            )
+            source_binding = make_verified_source_binding(
+                tmp_path,
+                capture_day,
+                (capture_input,),
+                fixture.db_path,
+                feature_schema=feature_schema,
+                feature_registry_hash=feature_registry_hash,
+            )
         capture = RecommendationPredictionCaptureService().capture(
             candidate_root=root,
             feature_schema=feature_schema,
@@ -197,6 +269,7 @@ def _natural_receipt(
             inputs=(capture_input,),
             fixed_round_trip_cost_bp=50,
             data_root=tmp_path / "formal-data",
+            source_contract_binding=source_binding,
         )
         capture_path = tmp_path / "captures" / capture_day.isoformat() / f"{index:02d}.json"
         capture.persist(capture_path)
@@ -205,11 +278,12 @@ def _natural_receipt(
             outcomes.append(
                 MaturedRecommendationOutcome(
                     capture_row_id=str(row["row_id"]),
-                    label_end_date=evaluation_day,
-                    label_available_date=evaluation_day,
+                    label_end_date=fixture.endpoint_dates[capture_day.isoformat()],
+                    label_available_date=fixture.endpoint_dates[capture_day.isoformat()],
                     stock_return_bp=2000 if int(row["candidate_probability_bp"]) >= 5000 else -2000,
                     observed_liquidity_cost_bp=20,
                     benchmark_return_bp=100,
+                    session_proof=fixture.proof_for(capture_day),
                 )
             )
     return NaturalForwardEvidenceBuilder().build_many(
@@ -217,6 +291,7 @@ def _natural_receipt(
         outcomes=tuple(outcomes),
         evaluation_date=evaluation_day,
         output_path=tmp_path / f"natural-{candidate_day}.json",
+        evaluation_at=fixture.evaluation_at,
         source_id="scheduled_forward_outcomes",
     )
 
@@ -275,7 +350,7 @@ def test_prospective_price_up_lane_can_promote_after_natural_maturity(tmp_path: 
         tmp_path,
         root=candidate_root,
         candidate_day="2026-06-01",
-        evaluation_day="2026-07-20",
+        evaluation_day="2026-07-27",
     )
     authority = RecommendationCalibrationPromotionAuthority(
         output_root=tmp_path / "authority",
@@ -283,7 +358,7 @@ def test_prospective_price_up_lane_can_promote_after_natural_maturity(tmp_path: 
     )
 
     decision = authority.evaluate_and_apply(
-        decision_date="2026-07-20",
+        decision_date="2026-07-27",
         candidate_id=str(metadata["candidate_id"]),
         candidate_root=candidate_root,
         candidate_metadata=metadata,
@@ -314,9 +389,13 @@ def test_prospective_price_up_lane_needs_natural_distinct_decision_dates(tmp_pat
         tmp_path,
         root=candidate_root,
         candidate_day="2026-06-01",
-        evaluation_day="2026-07-20",
-        capture_dates=tuple(start + timedelta(days=index) for index in range(19))
-        + (start + timedelta(days=18),),
+        evaluation_day="2026-07-27",
+        capture_dates=tuple(
+            day
+            for day in (start + timedelta(days=index) for index in range(30))
+            if day.weekday() < 5
+        )[:19]
+        + (date(2026, 6, 25),),
     )
     authority = RecommendationCalibrationPromotionAuthority(
         output_root=tmp_path / "authority",
@@ -324,7 +403,7 @@ def test_prospective_price_up_lane_needs_natural_distinct_decision_dates(tmp_pat
     )
 
     decision = authority.evaluate_and_apply(
-        decision_date="2026-07-20",
+        decision_date="2026-07-27",
         candidate_id=str(metadata["candidate_id"]),
         candidate_root=candidate_root,
         candidate_metadata=metadata,
@@ -554,6 +633,151 @@ def test_daily_cli_reports_invalid_learning_root_without_starting_replay(
     payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert payload["decision_reason"] == "recommendation_learning_output_root_invalid"
     assert "outside DATA_ROOT" in payload["error"]
+
+
+def test_natural_maturity_caller_binds_source_clock_and_explicit_calendar_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    monkeypatch.delenv("NATURAL_MATURITY_CALENDAR_CACHE_PATH", raising=False)
+    monkeypatch.delenv("ML_FORWARD_CALENDAR_CACHE_ROOT", raising=False)
+    monkeypatch.delenv("NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH", raising=False)
+    default_calendar, default_temporary = daily_learning._natural_maturity_calendar_paths(
+        calendar_cache_path=None,
+        temporary_closure_path=None,
+    )
+    assert default_calendar == daily_learning.DEFAULT_NATURAL_MATURITY_CALENDAR_CACHE_PATH.resolve()
+    assert default_temporary is None
+
+    configured_calendar = tmp_path / "annual-cache"
+    configured_temporary = tmp_path / "temporary-cache"
+    monkeypatch.setenv(
+        "NATURAL_MATURITY_CALENDAR_CACHE_PATH",
+        str(configured_calendar),
+    )
+    monkeypatch.setenv(
+        "NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH",
+        str(configured_temporary),
+    )
+    calendar_path, temporary_path = daily_learning._natural_maturity_calendar_paths(
+        calendar_cache_path=None,
+        temporary_closure_path=None,
+    )
+    assert calendar_path == configured_calendar.resolve()
+    assert temporary_path == configured_temporary.resolve()
+
+    database = tmp_path / "source.db"
+    checked = datetime(2026, 9, 18, 8, 25, 1, tzinfo=ZoneInfo("Asia/Taipei"))
+    context = daily_learning._natural_maturity_context(
+        source_db=database,
+        calendar_cache_path=calendar_path,
+        temporary_closure_path=temporary_path,
+        evaluation_at=checked,
+        evaluation_date=date(2026, 9, 17),
+    )
+    assert context["source_db_path"] == str(database.resolve())
+    assert context["calendar_cache_path"] == str(configured_calendar.resolve())
+    assert context["evaluation_at"] == checked.isoformat()
+    assert context["evaluation_date_matches_checked_clock"] is False
+
+    class _SpyService:
+        def __init__(self, provider, **kwargs):
+            self.provider = provider
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(daily_learning, "RecommendationNaturalOutcomeService", _SpyService)
+    resolver = object()
+    service = daily_learning._build_natural_outcome_service(
+        provider=SimpleNamespace(database_path=database),
+        source_db=database,
+        session_resolver=resolver,
+        evaluation_at=checked,
+    )
+    assert service.kwargs == {
+        "evidence_db_path": database,
+        "session_resolver": resolver,
+        "evaluation_at": checked,
+    }
+
+
+@pytest.mark.parametrize("calendar_mode", ["missing", "expired"])
+def test_natural_maturity_calendar_gap_stays_pending_without_credit(
+    tmp_path: Path,
+    calendar_mode: str,
+) -> None:
+    from data_module.natural_maturity_session_resolver import NaturalMaturitySessionResolver
+    from data_module.official_trading_calendar_cache import (
+        build_twse_calendar_cache,
+        write_twse_calendar_cache,
+    )
+
+    database = tmp_path / "market.db"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        'CREATE TABLE market_indices ("日期" TEXT NOT NULL, "指數名稱" TEXT NOT NULL, "收盤指數" TEXT)'
+    )
+    # 保留 capture 日 baseline，讓此回歸真正走到官方 calendar gap，而不是
+    # 先因市場 baseline 缺失而 pending。
+    cursor = date(2026, 1, 5)
+    inserted = 0
+    while inserted < 45:
+        if cursor.weekday() < 5:
+            connection.execute(
+                'INSERT INTO market_indices VALUES (?, ?, ?)',
+                (cursor.isoformat(), "TAIEX", "23000"),
+            )
+            inserted += 1
+        cursor += timedelta(days=1)
+    connection.commit()
+    connection.close()
+
+    calendar_root = tmp_path / "calendar"
+    if calendar_mode == "missing":
+        calendar_path = calendar_root
+    else:
+        calendar_root.mkdir(parents=True)
+        expired = build_twse_calendar_cache(
+            calendar_year=2026,
+            raw_response=(
+                b'[{"Name":"\\u4e2d\\u83ef\\u6c11\\u570b\\u958b\\u570b\\u7d00\\u5ff5\\u65e5",'
+                b'"Date":"1150101","Weekday":"\\u56db",'
+                b'"Description":"\\u4f9d\\u898f\\u5b9a\\u653e\\u5047\\u0031\\u65e5\\u3002"}]'
+            ),
+            requested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            captured_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            response_status=200,
+            max_age=timedelta(days=1),
+        )
+        write_twse_calendar_cache(
+            calendar_root / "twse_holiday_schedule_2026_expired.json",
+            expired,
+            allowed_root=tmp_path,
+        )
+        calendar_path = calendar_root
+
+    from ml_module.recommendation_natural_outcome_service import RecommendationNaturalOutcomeService
+
+    evaluation_at = datetime(2026, 1, 10, 12, tzinfo=timezone.utc)
+    resolver = NaturalMaturitySessionResolver(
+        db_path=database,
+        calendar_cache_path=calendar_path,
+    )
+    service = RecommendationNaturalOutcomeService(
+        SimpleNamespace(database_path=database),
+        evidence_db_path=database,
+        session_resolver=resolver,
+        evaluation_at=evaluation_at,
+    )
+    resolution, reason = service._resolve_maturity_sessions(
+        date(2026, 1, 5),
+        date(2026, 1, 10),
+    )
+
+    assert resolution is None
+    assert reason.startswith("natural_maturity_session_waiting_for_calendar:")
+    assert "calendar" in reason.casefold()
 
 
 def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
@@ -1054,10 +1278,10 @@ def test_same_day_new_symbol_capture_does_not_claim_old_capture_coverage(
 
 def test_qualified_adoption_changes_consumer_projection_with_cap(tmp_path: Path) -> None:
     result, root, metadata = _candidate(tmp_path, shift=0, candidate_day="2026-06-01")
-    evidence = _natural_receipt(tmp_path, root=root, candidate_day="2026-06-01", evaluation_day="2026-06-22")
+    evidence = _natural_receipt(tmp_path, root=root, candidate_day="2026-06-01", evaluation_day="2026-07-27")
     authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
     decision = authority.evaluate_and_apply(
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
         candidate_id=result.candidate_id,
         candidate_root=root,
         candidate_metadata=metadata,
@@ -1079,7 +1303,7 @@ def test_qualified_adoption_changes_consumer_projection_with_cap(tmp_path: Path)
         rule_probability_bp=5000,
         after_cost_rule_probability_bp=5000,
         ranking_percentile_bp=7000,
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
     )
     assert projection.status == "active_candidate"
     assert projection.calibrated_probability_bp in {4000, 6000}
@@ -1091,9 +1315,9 @@ def test_qualified_adoption_changes_consumer_projection_with_cap(tmp_path: Path)
 def test_effective_probability_lineage_caps_against_delivered_previous_output(tmp_path: Path) -> None:
     authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
     first_result, first_root, first_metadata = _candidate(tmp_path, shift=0, candidate_day="2026-06-01")
-    first_evidence = _natural_receipt(tmp_path, root=first_root, candidate_day="2026-06-01", evaluation_day="2026-06-22")
+    first_evidence = _natural_receipt(tmp_path, root=first_root, candidate_day="2026-06-01", evaluation_day="2026-07-27")
     assert authority.evaluate_and_apply(
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
         candidate_id=first_result.candidate_id,
         candidate_root=first_root,
         candidate_metadata=first_metadata,
@@ -1102,9 +1326,9 @@ def test_effective_probability_lineage_caps_against_delivered_previous_output(tm
         drift_status="clean",
     ).decision == "adopt"
     second_result, second_root, second_metadata = _candidate(tmp_path, shift=100, candidate_day="2026-07-01")
-    second_evidence = _natural_receipt(tmp_path, root=second_root, candidate_day="2026-07-01", evaluation_day="2026-07-22")
+    second_evidence = _natural_receipt(tmp_path, root=second_root, candidate_day="2026-07-01", evaluation_day="2026-08-27")
     assert authority.evaluate_and_apply(
-        decision_date="2026-07-22",
+        decision_date="2026-08-27",
         candidate_id=second_result.candidate_id,
         candidate_root=second_root,
         candidate_metadata=second_metadata,
@@ -1119,7 +1343,7 @@ def test_effective_probability_lineage_caps_against_delivered_previous_output(tm
         feature_registry_hash=FEATURE_REGISTRY_HASH,
         data_root=tmp_path / "formal-data",
     )
-    assert consumer.reload(decision_date="2026-07-22") == "active"
+    assert consumer.reload(decision_date="2026-08-27") == "active"
     # Deliberately make the raw outputs large and close the exact consumer
     # contract: A raw 9000 -> effective 6000 from null 5000; B raw 8000 must
     # then be capped at 7000, not compared with A's raw 9000.
@@ -1133,13 +1357,13 @@ def test_effective_probability_lineage_caps_against_delivered_previous_output(tm
         stock_code="1101",
         feature_values=(0, 0),
         rule_probability_bp=5000,
-        decision_date="2026-07-22",
+        decision_date="2026-08-27",
     )
     assert projection.calibrated_probability_bp == 7000
     assert projection.raw_calibrated_probability_bp == 8000
     baseline = consumer.champion_baseline(
         feature_values=(0, 0),
-        decision_date="2026-07-22",
+        decision_date="2026-08-27",
         baseline_probability_bp=5000,
     )
     assert baseline is not None
@@ -1158,7 +1382,7 @@ def test_effective_probability_lineage_caps_against_delivered_previous_output(tm
         stock_code="1101",
         feature_values=(0, 0),
         rule_probability_bp=5000,
-        decision_date="2026-07-22",
+        decision_date="2026-08-27",
     )
     assert failed.status == "rule_only"
     assert "lineage" in failed.warnings[0]
@@ -1167,9 +1391,9 @@ def test_effective_probability_lineage_caps_against_delivered_previous_output(tm
 def test_adopt_twice_then_emergency_rollback_restores_complete_previous_candidate(tmp_path: Path) -> None:
     authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
     first_result, first_root, first_metadata = _candidate(tmp_path, shift=0, candidate_day="2026-06-01")
-    first_evidence = _natural_receipt(tmp_path, root=first_root, candidate_day="2026-06-01", evaluation_day="2026-06-22")
+    first_evidence = _natural_receipt(tmp_path, root=first_root, candidate_day="2026-06-01", evaluation_day="2026-07-27")
     first = authority.evaluate_and_apply(
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
         candidate_id=first_result.candidate_id,
         candidate_root=first_root,
         candidate_metadata=first_metadata,
@@ -1178,9 +1402,9 @@ def test_adopt_twice_then_emergency_rollback_restores_complete_previous_candidat
         drift_status="clean",
     )
     second_result, second_root, second_metadata = _candidate(tmp_path, shift=100, candidate_day="2026-07-01")
-    second_evidence = _natural_receipt(tmp_path, root=second_root, candidate_day="2026-07-01", evaluation_day="2026-07-22")
+    second_evidence = _natural_receipt(tmp_path, root=second_root, candidate_day="2026-07-01", evaluation_day="2026-08-27")
     second = authority.evaluate_and_apply(
-        decision_date="2026-07-22",
+        decision_date="2026-08-27",
         candidate_id=second_result.candidate_id,
         candidate_root=second_root,
         candidate_metadata=second_metadata,
@@ -1214,9 +1438,9 @@ def test_adopt_twice_then_emergency_rollback_restores_complete_previous_candidat
 def test_first_adoption_fault_rolls_back_to_explicit_rule_only(tmp_path: Path) -> None:
     authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
     result, root, metadata = _candidate(tmp_path, shift=0, candidate_day="2026-06-01")
-    evidence = _natural_receipt(tmp_path, root=root, candidate_day="2026-06-01", evaluation_day="2026-06-22")
+    evidence = _natural_receipt(tmp_path, root=root, candidate_day="2026-06-01", evaluation_day="2026-07-27")
     adopted = authority.evaluate_and_apply(
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
         candidate_id=result.candidate_id,
         candidate_root=root,
         candidate_metadata=metadata,
@@ -1226,7 +1450,7 @@ def test_first_adoption_fault_rolls_back_to_explicit_rule_only(tmp_path: Path) -
     )
     assert adopted.decision == "adopt"
     fault = authority.evaluate_and_apply(
-        decision_date="2026-06-23",
+        decision_date="2026-07-28",
         candidate_id=None,
         candidate_root=None,
         candidate_metadata=None,
@@ -1250,7 +1474,7 @@ def test_first_adoption_fault_rolls_back_to_explicit_rule_only(tmp_path: Path) -
         stock_code="1101",
         feature_values=(2000, 1000),
         rule_probability_bp=5000,
-        decision_date="2026-06-23",
+        decision_date="2026-07-28",
     )
     assert projection.status == "rule_only"
     assert projection.calibrated_probability_bp is None
@@ -1259,9 +1483,9 @@ def test_first_adoption_fault_rolls_back_to_explicit_rule_only(tmp_path: Path) -
 def test_consumer_reloads_and_fails_closed_on_pointer_tamper_or_unknown_data_status(tmp_path: Path) -> None:
     authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
     result, root, metadata = _candidate(tmp_path, shift=0, candidate_day="2026-06-01")
-    evidence = _natural_receipt(tmp_path, root=root, candidate_day="2026-06-01", evaluation_day="2026-06-22")
+    evidence = _natural_receipt(tmp_path, root=root, candidate_day="2026-06-01", evaluation_day="2026-07-27")
     authority.evaluate_and_apply(
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
         candidate_id=result.candidate_id,
         candidate_root=root,
         candidate_metadata=metadata,
@@ -1280,7 +1504,7 @@ def test_consumer_reloads_and_fails_closed_on_pointer_tamper_or_unknown_data_sta
         stock_code="1101",
         feature_values=(2000, 1000),
         rule_probability_bp=5000,
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
     )
     assert first.status == "active_candidate"
     pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
@@ -1290,16 +1514,16 @@ def test_consumer_reloads_and_fails_closed_on_pointer_tamper_or_unknown_data_sta
         stock_code="1101",
         feature_values=(2000, 1000),
         rule_probability_bp=5000,
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
     )
     assert tampered.status == "rule_only"
     assert "policy_hash" in tampered.warnings[0]
 
     unknown_authority = RecommendationCalibrationPromotionAuthority(tmp_path / "unknown-authority")
     unknown_result, unknown_root, unknown_metadata = _candidate(tmp_path / "unknown", shift=0, candidate_day="2026-06-01")
-    unknown_evidence = _natural_receipt(tmp_path / "unknown", root=unknown_root, candidate_day="2026-06-01", evaluation_day="2026-06-22")
+    unknown_evidence = _natural_receipt(tmp_path / "unknown", root=unknown_root, candidate_day="2026-06-01", evaluation_day="2026-07-27")
     unknown = unknown_authority.evaluate_and_apply(
-        decision_date="2026-06-22",
+        decision_date="2026-07-27",
         candidate_id=unknown_result.candidate_id,
         candidate_root=unknown_root,
         candidate_metadata=unknown_metadata,
@@ -1319,15 +1543,15 @@ def test_active_model_monitor_recomputes_post_adoption_window_and_daily_entry_ro
 
     authority_root = tmp_path / "authority" / "recommendation_learning"
     authority = RecommendationCalibrationPromotionAuthority(authority_root)
-    result, root, metadata = _candidate(tmp_path, shift=0, candidate_day="2026-06-01")
+    result, root, metadata = _candidate(tmp_path, shift=0, candidate_day="2026-05-12")
     evidence = _natural_receipt(
         tmp_path,
         root=root,
-        candidate_day="2026-06-01",
-        evaluation_day="2026-06-22",
+        candidate_day="2026-05-12",
+        evaluation_day="2026-07-10",
     )
     adopted = authority.evaluate_and_apply(
-        decision_date="2026-06-22",
+        decision_date="2026-07-10",
         candidate_id=result.candidate_id,
         candidate_root=root,
         candidate_metadata=metadata,
@@ -1348,12 +1572,12 @@ def test_active_model_monitor_recomputes_post_adoption_window_and_daily_entry_ro
         feature_registry_hash=FEATURE_REGISTRY_HASH,
         data_root=tmp_path / "formal-data",
     )
-    identity = real_consumer.active_identity(decision_date="2026-06-22")
+    identity = real_consumer.active_identity(decision_date="2026-07-10")
     assert identity is not None
 
     class _FixedActiveConsumer:
         def __init__(self, **_: object) -> None:
-            self._loaded_pointer = {"effective_date": "2026-06-22"}
+            self._loaded_pointer = {"effective_date": "2026-07-10"}
 
         def reload(self, *, decision_date: str) -> str:
             return "active"
@@ -1415,12 +1639,20 @@ def test_active_model_monitor_recomputes_post_adoption_window_and_daily_entry_ro
 
     fake_consumer = _FixedActiveConsumer()
     captures_root = authority_root / "active_captures"
-    capture_day = date(2026, 6, 23)
+    capture_day = date(2026, 7, 13)
     captured_days: list[date] = []
     while len(captured_days) < 20:
         if capture_day.weekday() < 5:
             captured_days.append(capture_day)
         capture_day += timedelta(days=1)
+    active_fixture = make_verified_natural_fixture(
+        tmp_path,
+        captured_days,
+        "2026-09-10",
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+    )
+    _ForwardProvider.database_path = active_fixture.db_path
     for index, day in enumerate(captured_days):
         active_capture = ActiveModelPredictionCaptureService().capture(
             consumer=fake_consumer,
@@ -1447,18 +1679,23 @@ def test_active_model_monitor_recomputes_post_adoption_window_and_daily_entry_ro
     identity_hash = "sha256:" + hashlib.sha256(
         json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    natural = RecommendationNaturalOutcomeService(_ForwardProvider()).scan_and_build_active_model_evidence(
+    natural = RecommendationNaturalOutcomeService(
+        _ForwardProvider(),
+        evidence_db_path=active_fixture.db_path,
+        session_resolver=active_fixture.resolver,
+        evaluation_at=active_fixture.evaluation_at,
+    ).scan_and_build_active_model_evidence(
         output_root=tmp_path / "authority",
-        evaluation_date="2026-09-01",
+        evaluation_date="2026-09-10",
         output_path=tmp_path
         / "authority"
         / "recommendation_learning"
         / "active_evidence"
         / result.candidate_id
-        / "2026-09-01.json",
+        / "2026-09-10.json",
         active_candidate_id=result.candidate_id,
         active_identity_hash=identity_hash,
-        active_effective_date="2026-06-22",
+        active_effective_date="2026-07-10",
     )
     assert natural.status == "matured"
     assert natural.matured_sample_count == 20
@@ -1470,8 +1707,9 @@ def test_active_model_monitor_recomputes_post_adoption_window_and_daily_entry_ro
     performance = _inspect_active_model_performance(
         output_root=tmp_path / "authority",
         data_root=tmp_path / "formal-data",
-        decision_date=date(2026, 9, 1),
+        decision_date=date(2026, 9, 10),
         policy=RecommendationPromotionPolicy(),
+        source_db=_ForwardProvider.database_path,
     )
     assert performance["status"] == "drifted"
     assert performance["active_candidate_id"] == result.candidate_id
@@ -1479,7 +1717,7 @@ def test_active_model_monitor_recomputes_post_adoption_window_and_daily_entry_ro
 
     daily_runner = _runner(tmp_path / "daily-run", authority=authority)
     rollback = daily_runner.run(
-        decision_date="2026-09-01",
+        decision_date="2026-09-10",
         samples=(),
         natural_evidence=None,
         data_dependency_status="ready",
@@ -1508,6 +1746,7 @@ def test_active_pointer_invalid_json_fails_closed(tmp_path: Path) -> None:
         data_root=tmp_path / "formal-data",
         decision_date=date(2026, 9, 1),
         policy=RecommendationPromotionPolicy(),
+        source_db=tmp_path / "source.db",
     )
 
     assert performance["status"] == "failed"
@@ -1527,6 +1766,10 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     from data_module.recommendation_calibration_source_contract import (
         _hash_payload,
         write_source_contract,
+    )
+    from data_module.official_trading_calendar_cache import (
+        build_twse_calendar_cache,
+        write_twse_calendar_cache,
     )
 
     output_root = tmp_path / "daily-output"
@@ -1549,6 +1792,12 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
             available_at TEXT NOT NULL,
             effective_from TEXT NOT NULL,
             adjustment_factor TEXT NOT NULL
+        );
+        CREATE TABLE market_indices (
+            "日期" TEXT NOT NULL,
+            "指數名稱" TEXT NOT NULL,
+            "收盤指數" TEXT,
+            "收盤價" TEXT
         );
         CREATE TABLE recommendation_source_contract (
             component TEXT PRIMARY KEY,
@@ -1596,6 +1845,17 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
             "INSERT INTO corporate_action_adjustments VALUES (?, ?, ?, ?, ?)",
             (symbol, "2026-12-31", "2026-12-31", "2026-12-31", "1"),
         )
+    market_day = date(2026, 5, 25)
+    market_value = 20_000
+    while market_day <= date(2026, 9, 18):
+        if market_day.weekday() < 5:
+            compact_day = market_day.strftime("%Y%m%d")
+            source_connection.execute(
+                'INSERT INTO market_indices("日期", "指數名稱", "收盤指數", "收盤價") VALUES (?, ?, ?, ?)',
+                (compact_day, "TAIEX", str(market_value), str(market_value)),
+            )
+            market_value += 1
+        market_day += timedelta(days=1)
     source_connection.commit()
     technical_content = replay_module._read_source_content_snapshot(
         source_db,
@@ -1664,7 +1924,7 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
 
     outcome_id = 1
     for decision in _weekdays(date(2025, 1, 2), 500):
-        label_date = decision + timedelta(days=20)
+        label_date = _weekdays(decision + timedelta(days=1), 20)[-1]
         for symbol in ("1101", "2330"):
             event_id = f"fixture-event-{decision.isoformat()}-{symbol}"
             source_connection.execute(
@@ -1753,7 +2013,11 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
 
             prices: list[SimpleNamespace] = []
             market: list[SimpleNamespace] = []
-            future_dates = [start + timedelta(days=offset) for offset in range(1, 21) if start + timedelta(days=offset) <= end]
+            future_dates = [
+                start + timedelta(days=offset)
+                for offset in range(1, (end - start).days + 1)
+                if (start + timedelta(days=offset)).weekday() < 5
+            ]
             observed_dates = [start, *future_dates]
             for index, current in enumerate(observed_dates):
                 market.append(SimpleNamespace(trading_date=current.isoformat(), close_value=Decimal("100")))
@@ -1774,9 +2038,9 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
                         business_day_index = sum(
                             1
                             for offset in range(
-                                (start - date(2026, 6, 1)).days + 1
+                                (start - date(2026, 5, 25)).days + 1
                             )
-                            if (date(2026, 6, 1) + timedelta(days=offset)).weekday() < 5
+                            if (date(2026, 5, 25) + timedelta(days=offset)).weekday() < 5
                         ) - 1
                         positive = (
                             (business_day_index + (0 if symbol == "1101" else 1)) % 5
@@ -1806,7 +2070,7 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
 
         def compute(self, snapshot, *, industry_index_name_by_symbol):
             decision = date.fromisoformat(snapshot.decision_date)
-            if decision >= date(2026, 6, 1):
+            if decision >= date(2026, 5, 25):
                 values = tuple((feature, 100_000) for feature in self.registry.canonical_ids)
             else:
                 sign = 1 if decision.toordinal() % 2 == 0 else -1
@@ -1834,6 +2098,21 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     monkeypatch.setattr(replay_module, "HistoricalFeatureBuilder", _FeatureBuilder)
     monkeypatch.setattr(daily_learning, "_official_trading_day", lambda **_: (True, "test_clock_calendar"))
     monkeypatch.setattr(daily_learning, "_taipei_now", _clock_now)
+
+    calendar_root = tmp_path / "calendar-cache"
+    calendar_root.mkdir(parents=True, exist_ok=True)
+    calendar_raw = json.dumps(
+        [
+            {
+                "Name": "測試年度休市",
+                "Date": "1150101",
+                "Weekday": "四",
+                "Description": "測試用年度休市紀錄。",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
 
     def _qualified_source_contract_audit(**kwargs):
         """Inject a qualified prospective source snapshot for this authority test.
@@ -2088,11 +2367,29 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
 
     def _run(day: date) -> dict[str, object]:
         clock["day"] = day
+        checked = _clock_now()
+        calendar_path = calendar_root / f"twse_holiday_schedule_2026_{day.isoformat()}.json"
+        if not calendar_path.exists():
+            calendar_payload = build_twse_calendar_cache(
+                calendar_year=2026,
+                raw_response=calendar_raw,
+                requested_at=checked - timedelta(seconds=2),
+                captured_at=checked - timedelta(seconds=1),
+                response_status=200,
+                response_headers={"ETag": f'"daily-fixture-{day.isoformat()}"'},
+                max_age=timedelta(days=31),
+            )
+            write_twse_calendar_cache(
+                calendar_path,
+                calendar_payload,
+                allowed_root=calendar_root,
+            )
         exit_code = daily_learning.main(
             [
                 "--data-root", str(data_root),
                 "--output-root", str(output_root),
                 "--source-db", str(source_db),
+                "--calendar-cache-path", str(calendar_root),
                 "--symbols", "1101,2330",
                 "--history-start-date", "2025-01-01",
                 "--replay-start-date", "2025-01-02",
@@ -2108,7 +2405,7 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
         assert captured, f"scheduled entrypoint produced no JSON for {day}"
         return json.loads(captured[-1])
 
-    for day in _weekdays(date(2026, 6, 1), 20):
+    for day in _weekdays(date(2026, 5, 25), 20):
         _run(day)
 
     adoption_payload = _run(date(2026, 7, 20))
@@ -2156,16 +2453,16 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     for day in active_capture_days[1:]:
         _run(day)
 
-    evaluation_payload = _run(date(2026, 9, 1))
+    evaluation_payload = _run(date(2026, 9, 14))
     assert evaluation_payload["dependencies"]["model_performance"]["status"] == "pending"
     assert evaluation_payload["active_model_natural_evidence"]["status"] == "matured"
     assert evaluation_payload["active_model_natural_evidence"]["matured_sample_count"] >= 20
 
-    # The final capture is 2026-08-17.  Keep the production 20-day maturity
-    # and distinct-date gates intact: 2026-09-10 is the first test day on
-    # which all twenty active capture dates have naturally matured.  The
-    # post-scan performance refresh must discover the breach on that day.
-    rollback_payload = _run(date(2026, 9, 10))
+    # 最後一筆 capture 是 2026-08-17；保留正式的 20-session maturity 與
+    # distinct-date gate：2026-09-14 收盤資料可用後，2026-09-15 才是
+    # 二十個 active capture dates 全部自然成熟的第一個測試日。post-scan
+    # performance refresh 必須在該日自行發現 breach，不依賴人工 flags。
+    rollback_payload = _run(date(2026, 9, 15))
     assert rollback_payload["dependencies"]["model_performance"]["status"] == "drifted"
     assert rollback_payload["run"]["decision"] == "rollback"
     final_pointer = json.loads(pointer_path.read_text(encoding="utf-8"))

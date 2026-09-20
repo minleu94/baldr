@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +21,7 @@ from ml_module.recommendation_calibration_authority import (
     RecommendationNaturalEvidenceComparison,
     RecommendationNaturalEvidenceScope,
     RecommendationNaturalEvidenceVerification,
+    RecommendationPromotionPolicy,
     verify_natural_evidence_read_only,
 )
 from ml_module.recommendation_calibration_evidence import (
@@ -235,6 +237,223 @@ def test_projection_uses_verified_comparisons_and_separates_historical_replay(tm
     assert "ranking_score" not in json.dumps(projection.to_dict())
 
 
+def test_pending_projection_separates_cumulative_valid_rows_from_latest_snapshot(tmp_path: Path) -> None:
+    learning_root, status_path, candidate_id = _synthetic_projection_fixture(tmp_path)
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    payload["natural_evidence"] = {
+        "status": "pending",
+        "reason": "natural_forward_evidence_receipt_missing",
+    }
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    scenario = cost_scenario_from_metadata(
+        _candidate_metadata(candidate_id), fixed_round_trip_cost_bp=50
+    )
+    capture_verification = RecommendationPredictionCaptureVerification(
+        capture_id="capture-fixture",
+        candidate_id=candidate_id,
+        capture_as_of_date="2026-09-14",
+        captured_at="2026-09-14T01:00:00+00:00",
+        capture_origin="scheduled_live",
+        capture_hash="sha256:" + "8" * 64,
+        row_count=1,
+        cost_basis=scenario.cost_basis,
+        cost_scenario_id=scenario.scenario_id,
+        cost_scenario_version=scenario.scenario_version,
+        cost_scenario_hash=scenario.scenario_hash,
+        fixed_round_trip_cost_bp=50,
+        source_contract_status="ready",
+    )
+    projection = RecommendationLearningEvidenceProjectionService(
+        latest_status_path=status_path,
+        learning_root=learning_root,
+        capture_verifier=lambda _path: capture_verification,
+        consumer=None,
+        cost_lane="legacy_fixed_bp",
+        capture_scan_limit=0,
+    ).inspect("2026-09-14")
+
+    lane = projection.candidate_lane
+    assert lane.capture_count == 1
+    assert lane.valid_prediction_row_count == 1
+    assert lane.valid_prediction_decision_date_count == 1
+    assert lane.latest_snapshot_capture_count == 1
+    assert lane.latest_snapshot_row_count == 1
+    assert lane.latest_snapshot_lane_id == "candidate_natural"
+    assert lane.latest_snapshot_candidate_id == candidate_id
+    assert lane.pending_prediction_row_count == 1
+    assert lane.pending_prediction_status == "awaiting_typed_natural_verification"
+    assert lane.invalid_capture_count == 0
+    assert lane.capture_scan_status == "truncated"
+    assert "valid rows=1" in projection.next_gap
+    assert "可能不完整" in projection.next_gap
+    assert projection.to_dict()["candidate_lane"]["valid_prediction_row_count"] == 1
+
+
+def test_duplicate_same_row_across_captures_does_not_inflate_valid_rows(tmp_path: Path) -> None:
+    learning_root, status_path, candidate_id = _synthetic_projection_fixture(tmp_path)
+    first_path = learning_root / "captures" / "2026-09-14" / "capture.json"
+    second_path = learning_root / "captures" / "2026-09-14" / "capture-repeat.json"
+    second_path.write_bytes(first_path.read_bytes())
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    payload["natural_evidence"] = {
+        "status": "pending",
+        "reason": "natural_forward_evidence_receipt_missing",
+        "capture_paths": [str(first_path), str(second_path)],
+    }
+    payload["live_capture"]["candidate"]["capture_path"] = str(second_path)
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    scenario = cost_scenario_from_metadata(
+        _candidate_metadata(candidate_id), fixed_round_trip_cost_bp=50
+    )
+    first = RecommendationPredictionCaptureVerification(
+        capture_id="capture-first",
+        candidate_id=candidate_id,
+        capture_as_of_date="2026-09-14",
+        captured_at="2026-09-14T01:00:00+00:00",
+        capture_origin="scheduled_live",
+        capture_hash="sha256:" + "8" * 64,
+        row_count=1,
+        cost_basis=scenario.cost_basis,
+        cost_scenario_id=scenario.scenario_id,
+        cost_scenario_version=scenario.scenario_version,
+        cost_scenario_hash=scenario.scenario_hash,
+        fixed_round_trip_cost_bp=50,
+        source_contract_status="ready",
+    )
+    second = replace(first, capture_id="capture-second", capture_hash="sha256:" + "9" * 64)
+
+    def verify(path: Path) -> RecommendationPredictionCaptureVerification:
+        return second if path == second_path.resolve() else first
+
+    projection = RecommendationLearningEvidenceProjectionService(
+        latest_status_path=status_path,
+        learning_root=learning_root,
+        capture_verifier=verify,
+        consumer=None,
+        cost_lane="legacy_fixed_bp",
+    ).inspect("2026-09-14")
+
+    lane = projection.candidate_lane
+    assert lane.capture_count == 2
+    assert lane.valid_prediction_row_count == 1
+    assert lane.valid_prediction_decision_date_count == 1
+    assert lane.capture_conflict_count == 0
+    assert "capture_symbol_date_duplicate_same_content" in " ".join(lane.diagnostics)
+
+
+def test_symbol_date_conflict_excludes_both_captures_independent_of_path_order(tmp_path: Path) -> None:
+    learning_root, status_path, candidate_id = _synthetic_projection_fixture(tmp_path)
+    first_path = learning_root / "captures" / "2026-09-14" / "capture.json"
+    second_path = learning_root / "captures" / "2026-09-14" / "capture-conflict.json"
+    second_payload = json.loads(first_path.read_text(encoding="utf-8"))
+    second_payload["rows"][0]["candidate_probability_bp"] = 5_501
+    second_path.write_text(json.dumps(second_payload), encoding="utf-8")
+    scenario = cost_scenario_from_metadata(
+        _candidate_metadata(candidate_id), fixed_round_trip_cost_bp=50
+    )
+    first = RecommendationPredictionCaptureVerification(
+        capture_id="capture-first",
+        candidate_id=candidate_id,
+        capture_as_of_date="2026-09-14",
+        captured_at="2026-09-14T01:00:00+00:00",
+        capture_origin="scheduled_live",
+        capture_hash="sha256:" + "8" * 64,
+        row_count=1,
+        cost_basis=scenario.cost_basis,
+        cost_scenario_id=scenario.scenario_id,
+        cost_scenario_version=scenario.scenario_version,
+        cost_scenario_hash=scenario.scenario_hash,
+        fixed_round_trip_cost_bp=50,
+        source_contract_status="ready",
+    )
+    second = replace(first, capture_id="capture-second", capture_hash="sha256:" + "9" * 64)
+
+    def verify(path: Path) -> RecommendationPredictionCaptureVerification:
+        return second if path == second_path.resolve() else first
+
+    def inspect_in_order(paths: list[Path]) -> LearningLaneProjection:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        payload["natural_evidence"] = {
+            "status": "pending",
+            "reason": "natural_forward_evidence_receipt_missing",
+            "capture_paths": [str(path) for path in paths],
+        }
+        payload["live_capture"]["candidate"]["capture_path"] = str(second_path)
+        status_path.write_text(json.dumps(payload), encoding="utf-8")
+        projection = RecommendationLearningEvidenceProjectionService(
+            latest_status_path=status_path,
+            learning_root=learning_root,
+            capture_verifier=verify,
+            consumer=None,
+            cost_lane="legacy_fixed_bp",
+            capture_scan_limit=0,
+        ).inspect("2026-09-14")
+        return projection.candidate_lane
+
+    forward = inspect_in_order([first_path, second_path])
+    reverse = inspect_in_order([second_path, first_path])
+    for lane in (forward, reverse):
+        assert lane.valid_prediction_row_count == 0
+        assert lane.valid_prediction_decision_date_count == 0
+        assert lane.capture_conflict_count == 2
+        assert lane.latest_snapshot_row_count == 1
+        assert lane.capture_scan_status == "truncated"
+    assert forward.to_dict()["valid_prediction_row_count"] == reverse.to_dict()["valid_prediction_row_count"]
+
+
+def test_verified_projection_requires_receipt_policy_binding_for_adoption_gap(tmp_path: Path) -> None:
+    learning_root, status_path, candidate_id = _synthetic_projection_fixture(tmp_path)
+    receipt_path = learning_root / "evidence" / "candidate" / "2026-09-14.json"
+    verification = _verification(receipt_path, candidate_id)
+    scenario = cost_scenario_from_metadata(
+        _candidate_metadata(candidate_id), fixed_round_trip_cost_bp=50
+    )
+    capture_verification = RecommendationPredictionCaptureVerification(
+        capture_id="capture-fixture",
+        candidate_id=candidate_id,
+        capture_as_of_date="2026-09-14",
+        captured_at="2026-09-14T01:00:00+00:00",
+        capture_origin="scheduled_live",
+        capture_hash="sha256:" + "8" * 64,
+        row_count=1,
+        cost_basis=scenario.cost_basis,
+        cost_scenario_id=scenario.scenario_id,
+        cost_scenario_version=scenario.scenario_version,
+        cost_scenario_hash=scenario.scenario_hash,
+        fixed_round_trip_cost_bp=50,
+        source_contract_status="ready",
+    )
+
+    projection = RecommendationLearningEvidenceProjectionService(
+        latest_status_path=status_path,
+        learning_root=learning_root,
+        candidate_verifier=lambda *_args, **_kwargs: verification,
+        capture_verifier=lambda _path: capture_verification,
+        consumer=None,
+        cost_lane="legacy_fixed_bp",
+    ).inspect("2026-09-14")
+
+    assert projection.candidate_lane.status == "verified"
+    assert projection.candidate_lane.policy_binding_status == "unknown"
+    assert "binding" in projection.next_gap
+    assert "尚差" not in projection.next_gap
+
+    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt_payload["policy_hash"] = RecommendationPromotionPolicy().policy_hash
+    receipt_path.write_text(json.dumps(receipt_payload), encoding="utf-8")
+    bound = RecommendationLearningEvidenceProjectionService(
+        latest_status_path=status_path,
+        learning_root=learning_root,
+        candidate_verifier=lambda *_args, **_kwargs: verification,
+        capture_verifier=lambda _path: capture_verification,
+        consumer=None,
+        cost_lane="legacy_fixed_bp",
+    ).inspect("2026-09-14")
+    assert bound.candidate_lane.policy_binding_status == "unknown"
+    assert bound.candidate_lane.policy_minimum_natural_matured_samples is None
+    assert "尚差" not in bound.next_gap
+
+
 def test_projection_fail_closed_for_stale_or_invalid_provenance(tmp_path: Path) -> None:
     learning_root, status_path, candidate_id = _synthetic_projection_fixture(tmp_path)
     payload = json.loads(status_path.read_text(encoding="utf-8"))
@@ -296,7 +515,7 @@ def test_public_natural_verifier_preserves_artifacts_and_rejects_bad_scope(
         tmp_path,
         root=candidate_root,
         candidate_day="2026-06-01",
-        evaluation_day="2026-07-20",
+        evaluation_day="2026-07-27",
     )
     receipt_path = Path(natural.receipt_path)
     before = {
@@ -305,7 +524,7 @@ def test_public_natural_verifier_preserves_artifacts_and_rejects_bad_scope(
     }
     verified = verify_natural_evidence_read_only(
         natural,
-        decision_date="2026-07-20",
+        decision_date="2026-07-27",
         candidate_id=str(metadata["candidate_id"]),
         candidate_root=candidate_root,
         candidate_metadata=metadata,
@@ -314,10 +533,32 @@ def test_public_natural_verifier_preserves_artifacts_and_rejects_bad_scope(
     assert verified.matured_sample_count == len(verified.comparisons)
     assert all(path.read_bytes() == content for path, content in before.items())
 
+    # The positive path above must use the real source/session proof gate.  A
+    # self-consistent receipt with a changed proof source is still rejected;
+    # this keeps the fixture from becoming a verifier bypass.
+    tampered_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    tampered_payload["comparisons"][0]["maturity_session_proof"]["market"][
+        "source_db_path"
+    ] = str(tmp_path / "wrong-source.db")
+    tampered_path = tmp_path / "natural-source-proof-tampered.json"
+    tampered_path.write_text(
+        json.dumps(tampered_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    tampered_hash = "sha256:" + hashlib.sha256(tampered_path.read_bytes()).hexdigest()
+    with pytest.raises(ValueError):
+        verify_natural_evidence_read_only(
+            replace(natural, receipt_path=str(tampered_path), receipt_hash=tampered_hash),
+            decision_date="2026-07-27",
+            candidate_id=str(metadata["candidate_id"]),
+            candidate_root=candidate_root,
+            candidate_metadata=metadata,
+        )
+
     with pytest.raises(ValueError):
         verify_natural_evidence_read_only(
             replace(natural, receipt_hash="sha256:" + "0" * 64),
-            decision_date="2026-07-20",
+            decision_date="2026-07-27",
             candidate_id=str(metadata["candidate_id"]),
             candidate_root=candidate_root,
             candidate_metadata=metadata,
@@ -326,7 +567,7 @@ def test_public_natural_verifier_preserves_artifacts_and_rejects_bad_scope(
     with pytest.raises(ValueError):
         verify_natural_evidence_read_only(
             replace(natural, receipt_path=str(tmp_path / "outside-receipt.json")),
-            decision_date="2026-07-20",
+            decision_date="2026-07-27",
             candidate_id=str(metadata["candidate_id"]),
             candidate_root=candidate_root,
             candidate_metadata=metadata,
@@ -356,7 +597,7 @@ def test_public_natural_verifier_preserves_artifacts_and_rejects_bad_scope(
     with pytest.raises(ValueError, match="natural_evidence_receipt_changed_after_verification"):
         verify_natural_evidence_read_only(
             natural,
-            decision_date="2026-07-20",
+            decision_date="2026-07-27",
             candidate_id=str(metadata["candidate_id"]),
             candidate_root=candidate_root,
             candidate_metadata=metadata,

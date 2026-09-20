@@ -25,6 +25,7 @@ from app_module.event_price_resolver import (
     EventPriceResolution,
     EventPriceResolver,
 )
+from app_module.official_maturity_calendar import OfficialMaturityCalendar
 from app_module.outcome_maturity_service import OutcomeMaturity, OutcomeMaturityService
 
 
@@ -169,6 +170,7 @@ class ForwardPerformanceService:
         repository: EvidenceEventRepository | None = None,
         *,
         db_path: str | Path | None = None,
+        maturity_calendar: OfficialMaturityCalendar | None = None,
     ) -> None:
         self.config = config
         self.repository = repository or EvidenceEventRepository(config)
@@ -176,6 +178,7 @@ class ForwardPerformanceService:
         self._daily_price_cache: dict[str, tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]] = {}
         self._index_return_cache: dict[tuple[str, str | None, str, str], int | None] = {}
         self._index_table_columns_cache: dict[str, tuple[str, ...]] = {}
+        self._maturity_calendar = maturity_calendar
         self._corporate_action_policy = CorporateActionPolicy(CorporateActionProvider(self.db_path))
         self._trading_restriction_policy = TradingRestrictionPolicy(TradingRestrictionProvider(self.db_path))
 
@@ -305,7 +308,9 @@ class ForwardPerformanceService:
         event_close = event_price.close
         assert event_close is not None
         event_price_metadata: dict[str, Any] = {
-            "return_basis": "close_to_close_event_date"
+            "return_basis": "close_to_close_event_date",
+            "expected_maturity_date_basis": "symbol_price_series_row_offset_legacy",
+            "maturity_status_basis": "symbol_price_series_row_offset_legacy",
         }
         if event_price.fallback_reason is not None:
             event_price_metadata["event_price_fallback_reason"] = event_price.fallback_reason
@@ -319,6 +324,39 @@ class ForwardPerformanceService:
             event_price_metadata["expected_maturity_date"] = maturity.expected_trading_date
         event_price_metadata["maturity_status"] = maturity.status
         event_price_metadata["remaining_trading_days"] = maturity.remaining_trading_days
+        if self._maturity_calendar is not None:
+            planned = self._maturity_calendar.evaluate(
+                event_date=event_price_date,
+                window_days=window_days,
+                as_of_date=(
+                    data_as_of_date
+                    or event_price_date
+                ),
+            )
+            event_price_metadata.update(
+                {
+                    "planned_official_maturity_date": planned.planned_date,
+                    "planned_official_maturity_status": planned.status,
+                    "planned_official_maturity_remaining_sessions": (
+                        planned.remaining_sessions
+                    ),
+                    "planned_official_calendar": planned.calendar,
+                }
+            )
+            legacy_expected = maturity.expected_trading_date
+            if legacy_expected is None or planned.planned_date is None:
+                comparison = (
+                    "official_calendar_unavailable"
+                    if planned.planned_date is None
+                    else "legacy_expected_unavailable"
+                )
+            else:
+                comparison = (
+                    "match"
+                    if legacy_expected == planned.planned_date
+                    else "blocked_mismatch"
+                )
+            event_price_metadata["maturity_calendar_comparison"] = comparison
         outcome_price = self._find_outcome_price(
             str(event.symbol),
             event_price_date,

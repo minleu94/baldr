@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
 import shutil
 import sqlite3
+from typing import Mapping
 
 import pytest
 
 from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
+from data_module.natural_maturity_session_resolver import NaturalMaturitySessionResolver
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    write_twse_calendar_cache,
+)
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.historical_feature_builder import HistoricalFeatureBuilder
 from ml_module.recommendation_calibration_authority import (
@@ -31,6 +37,11 @@ from ml_module.recommendation_calibration_training import (
     recommendation_cost_contract_hash,
     sample_payload,
 )
+from ml_module.recommendation_training_lineage import (
+    build_recommendation_training_lineage,
+    persist_recommendation_training_lineage,
+    recommendation_training_dataset_hash,
+)
 from ml_module.recommendation_cost_scenario import (
     RecommendationCostScenario,
     RecommendationCostScenarioError,
@@ -45,6 +56,7 @@ from ml_module.recommendation_historical_replay import (
 )
 from ml_module.recommendation_natural_outcome_service import RecommendationNaturalOutcomeService
 from scripts.scheduled import run_daily_recommendation_learning as daily_learning
+from tests.natural_session_source_fixture import make_verified_source_binding
 
 
 FEATURE_NAMES = ("momentum_bp", "volume_ratio_bp")
@@ -67,7 +79,13 @@ def _return_bp(start: Decimal, end: Decimal) -> int:
     return int(((end / start - Decimal("1")) * Decimal("10000")).to_integral_value())
 
 
-def _make_replay_database(path: Path, *, days: int = 180) -> None:
+def _make_replay_database(
+    path: Path,
+    *,
+    days: int = 180,
+    start: date = date(2026, 1, 1),
+    official_sessions_only: bool = False,
+) -> None:
     connection = sqlite3.connect(path)
     connection.executescript(
         """
@@ -90,6 +108,7 @@ def _make_replay_database(path: Path, *, days: int = 180) -> None:
         );
         CREATE TABLE market_indices (
             日期 TEXT NOT NULL,
+            指數名稱 TEXT NOT NULL,
             收盤指數 TEXT,
             收盤價 TEXT
         );
@@ -100,14 +119,20 @@ def _make_replay_database(path: Path, *, days: int = 180) -> None:
         );
         """
     )
-    start = date(2026, 1, 1)
     for offset in range(days):
         current = (start + timedelta(days=offset)).isoformat()
         market = Decimal("10000") + Decimal(offset)
-        connection.execute(
-            "INSERT INTO market_indices VALUES (?, ?, ?)",
-            (current.replace("-", ""), str(market), str(market)),
-        )
+        current_day = start + timedelta(days=offset)
+        # 自然成熟 fixture 可選擇只寫入官方平日 TAIEX session；歷史 replay
+        # 則保留原本的密集日期形狀，避免改變既有 replay cohort 測試語意。
+        if (
+            not official_sessions_only
+            or (current_day.weekday() < 5 and current_day != date(2026, 1, 1))
+        ):
+            connection.execute(
+                "INSERT INTO market_indices VALUES (?, ?, ?, ?)",
+                (current.replace("-", ""), "TAIEX", str(market), str(market)),
+            )
         for symbol_index, symbol in enumerate(("1101", "2330")):
             if symbol_index == 0:
                 close = Decimal("100") + Decimal(offset % 40)
@@ -132,6 +157,78 @@ def _make_replay_database(path: Path, *, days: int = 180) -> None:
             )
     connection.commit()
     connection.close()
+
+
+def _natural_evaluation_at(evaluation_day: str) -> datetime:
+    """以已過去且收盤後的台北時間建立嚴格 session proof 時鐘。"""
+
+    return datetime.fromisoformat(f"{evaluation_day}T15:00:00+08:00").astimezone(
+        timezone.utc
+    )
+
+
+def _write_natural_calendar(
+    root: Path,
+    *,
+    year: int,
+    captured_at: datetime,
+) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    raw_response = json.dumps(
+        [
+            {
+                "Name": "測試年度休市",
+                "Date": f"{year - 1911:03d}0101",
+                "Weekday": "四",
+                "Description": "cost lane strict-session fixture",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache = build_twse_calendar_cache(
+        calendar_year=year,
+        raw_response=raw_response,
+        requested_at=captured_at - timedelta(seconds=1),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"ETag": f'"cost-fixture-{year}"'},
+        max_age=timedelta(days=31),
+    )
+    path = root / f"twse_holiday_schedule_{year}_cost_fixture.json"
+    write_twse_calendar_cache(path, cache, allowed_root=root)
+    return path
+
+
+def _natural_session_resolver(
+    database: Path,
+    *,
+    capture_days: tuple[date, ...],
+    evaluation_day: str,
+) -> tuple[NaturalMaturitySessionResolver, datetime]:
+    evaluation_at = _natural_evaluation_at(evaluation_day)
+    calendar_root = database.parent / "natural-calendar"
+    endpoint_bound = max(
+        day + timedelta(days=40) for day in capture_days
+    )
+    years = range(min(day.year for day in capture_days), endpoint_bound.year + 1)
+    for year in years:
+        _write_natural_calendar(
+            calendar_root,
+            year=year,
+            captured_at=evaluation_at - timedelta(days=1),
+        )
+    return NaturalMaturitySessionResolver(database, calendar_root), evaluation_at
+
+
+def _weekday_dates(start: date, count: int) -> tuple[date, ...]:
+    dates: list[date] = []
+    current = start
+    while len(dates) < count:
+        if current.weekday() < 5 and current != date(2026, 1, 1):
+            dates.append(current)
+        current += timedelta(days=1)
+    return tuple(dates)
 
 
 def _make_cli_database(path: Path, *, days: int = 360) -> None:
@@ -262,25 +359,28 @@ def _fit_estimated_candidate(
     *,
     scenario=None,
     fixed_round_trip_cost_bp: int | None = None,
+    created_at: str = "2026-01-01T00:00:00+00:00",
+    training_as_of: str = "2026-01-01",
 ):
     scenario = scenario or build_banktaiwan_cost_scenario(
         research_order_quantity_shares=1_000
     )
+    samples = _estimated_samples(
+        scenario,
+        fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+    )
     result = RecommendationCalibrationTrainingService().fit(
         dataset_id="estimated-dataset-v1",
-        dataset_hash="sha256:" + "a" * 64,
-        samples=_estimated_samples(
-            scenario,
-            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
-        ),
+        dataset_hash=recommendation_training_dataset_hash(samples),
+        samples=samples,
         feature_names=FEATURE_NAMES,
         feature_schema=FEATURE_SCHEMA,
         feature_registry_hash=FEATURE_REGISTRY_HASH,
-        training_as_of="2026-01-01",
+        training_as_of=training_as_of,
         fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
         cost_scenario=scenario,
         dataset_quality={"formal_candidate_eligible": True},
-        created_at="2026-01-01T00:00:00+00:00",
+        created_at=created_at,
         config=RecommendationCalibrationTrainingConfig(
             minimum_calibration_samples=10,
             minimum_train_dates=30,
@@ -290,7 +390,42 @@ def _fit_estimated_candidate(
     )
     candidate_root = tmp_path / "candidate"
     result.persist(candidate_root)
-    metadata = json.loads((candidate_root / "candidate.json").read_text(encoding="utf-8"))
+    metadata_path = candidate_root / "candidate.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    # 以測試實際交給 trainer 的完整 sample payload 建立不可變 lineage，
+    # 讓 strict consumer 能驗證 dataset hash、PIT cutoff 與 label contract。
+    lineage = build_recommendation_training_lineage(
+        learning_root=candidate_root,
+        run_id=str(metadata["candidate_id"]),
+        run_scope="daily-banktaiwan-cost-fixture",
+        decision_date=created_at[:10],
+        training_as_of=training_as_of,
+        dataset_id=str(metadata["dataset_id"]),
+        dataset_hash=str(metadata["dataset_hash"]),
+        samples=samples,
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        cost_scenario=scenario,
+        dataset_quality={"formal_candidate_eligible": True},
+        training_result=result,
+        training_config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+        candidate_id=str(metadata["candidate_id"]),
+        candidate_manifest_hash=str(metadata["manifest_hash"]),
+        candidate_artifact_hash=str(metadata["artifact_hash"]),
+    )
+    lineage_path = persist_recommendation_training_lineage(candidate_root, lineage)
+    metadata["training_lineage_manifest_hash"] = lineage.manifest_hash
+    metadata["training_lineage_manifest_path"] = str(lineage_path)
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return scenario, result, candidate_root, metadata
 
 
@@ -387,11 +522,43 @@ def _persist_estimated_captures(
     candidate_root: Path,
     policy_hash: str,
     capture_days: tuple[date, ...],
+    capture_inputs: Mapping[str, RecommendationPredictionCaptureInput] | None = None,
+    source_contract_bindings: Mapping[str, Mapping[str, object]] | None = None,
+    source_database: Path | None = None,
 ) -> tuple[Path, ...]:
     service = RecommendationPredictionCaptureService()
     paths: list[Path] = []
     for index, capture_day in enumerate(capture_days):
         day_text = capture_day.isoformat()
+        template = (
+            capture_inputs.get(day_text)
+            if capture_inputs is not None
+            else None
+        )
+        capture_input = template or RecommendationPredictionCaptureInput(
+            row_id=f"forward-estimated-{day_text}-1101",
+            symbol="1101",
+            decision_date=day_text,
+            feature_as_of_date=(capture_day - timedelta(days=1)).isoformat(),
+            feature_available_date=(capture_day - timedelta(days=1)).isoformat(),
+            feature_values=(100, 1_000),
+            rule_probability_bp=5_000,
+            rule_after_cost_probability_bp=5_000,
+        )
+        binding = (
+            source_contract_bindings.get(day_text)
+            if source_contract_bindings is not None
+            else None
+        )
+        if source_database is not None:
+            binding = make_verified_source_binding(
+                tmp_path,
+                capture_day,
+                (capture_input,),
+                source_database,
+                feature_schema=FEATURE_SCHEMA,
+                feature_registry_hash=FEATURE_REGISTRY_HASH,
+            )
         capture = service.capture(
             candidate_root=candidate_root,
             feature_schema=FEATURE_SCHEMA,
@@ -399,20 +566,10 @@ def _persist_estimated_captures(
             policy_hash=policy_hash,
             decision_date=day_text,
             captured_at=f"{day_text}T09:00:00+00:00",
-            inputs=(
-                RecommendationPredictionCaptureInput(
-                    row_id=f"forward-estimated-{day_text}-1101",
-                    symbol="1101",
-                    decision_date=day_text,
-                    feature_as_of_date=(capture_day - timedelta(days=1)).isoformat(),
-                    feature_available_date=(capture_day - timedelta(days=1)).isoformat(),
-                    feature_values=(100, 1_000),
-                    rule_probability_bp=5_000,
-                    rule_after_cost_probability_bp=5_000,
-                ),
-            ),
+            inputs=(capture_input,),
             fixed_round_trip_cost_bp=None,
             cost_scenario=scenario,
+            source_contract_binding=binding,
         )
         path = (
             tmp_path
@@ -630,22 +787,38 @@ def test_legitimate_unavailable_cost_stays_unknown_for_price_only_gate(tmp_path:
     scenario, _, candidate_root, metadata = _fit_estimated_candidate(
         tmp_path,
         scenario=low_amount_scenario,
+        created_at="2025-11-30T00:00:00+00:00",
+        training_as_of="2025-11-30",
     )
     database = tmp_path / "market.db"
-    _make_replay_database(database)
-    capture_days = tuple(
-        (date(2026, 1, 1) + timedelta(days=index) for index in range(13))
-    ) + tuple(date(2026, 1, 21) + timedelta(days=index) for index in range(7))
+    _make_replay_database(
+        database,
+        start=date(2025, 12, 1),
+        official_sessions_only=True,
+    )
+    capture_days = (
+        _weekday_dates(date(2025, 12, 1), 9)
+        + _weekday_dates(date(2025, 12, 12), 7)
+        + _weekday_dates(date(2026, 1, 12), 4)
+    )
+    resolver, evaluation_at = _natural_session_resolver(
+        database,
+        capture_days=capture_days,
+        evaluation_day="2026-02-20",
+    )
     _persist_estimated_captures(
         tmp_path,
         scenario=scenario,
         candidate_root=candidate_root,
         policy_hash=RecommendationPromotionPolicy().policy_hash,
         capture_days=capture_days,
+        source_database=database,
     )
     outcome = RecommendationNaturalOutcomeService(
         MLHistoricalSnapshotProvider(database),
         evidence_db_path=database,
+        session_resolver=resolver,
+        evaluation_at=evaluation_at,
     ).scan_and_build_evidence(
         output_root=tmp_path,
         evaluation_date="2026-02-20",
@@ -743,22 +916,30 @@ def test_cost_sizing_or_policy_date_changes_experiment_scope() -> None:
 def test_three_live_estimated_captures_aggregate_one_evidence_cohort(tmp_path: Path) -> None:
     scenario, _, candidate_root, metadata = _fit_estimated_candidate(tmp_path)
     database = tmp_path / "market.db"
-    _make_replay_database(database)
-    capture_days = (date(2026, 1, 1), date(2026, 1, 2), date(2026, 1, 3))
+    _make_replay_database(database, official_sessions_only=True)
+    capture_days = _weekday_dates(date(2026, 1, 2), 3)
+    resolver, evaluation_at = _natural_session_resolver(
+        database,
+        capture_days=capture_days,
+        evaluation_day="2026-02-20",
+    )
     capture_paths = _persist_estimated_captures(
         tmp_path,
         scenario=scenario,
         candidate_root=candidate_root,
         policy_hash=RecommendationPromotionPolicy().policy_hash,
         capture_days=capture_days,
+        source_database=database,
     )
 
     outcome = RecommendationNaturalOutcomeService(
         MLHistoricalSnapshotProvider(database),
         evidence_db_path=database,
+        session_resolver=resolver,
+        evaluation_at=evaluation_at,
     ).scan_and_build_evidence(
         output_root=tmp_path,
-        evaluation_date="2026-02-01",
+        evaluation_date="2026-02-20",
         output_path=tmp_path / "three-day-evidence.json",
         candidate_id=str(metadata["candidate_id"]),
         candidate_freeze_hash=str(metadata["candidate_freeze_hash"]),
@@ -786,28 +967,48 @@ def test_three_live_estimated_captures_aggregate_one_evidence_cohort(tmp_path: P
 
 
 def test_estimated_capture_outcome_authority_consumer_and_tamper_guard(tmp_path: Path) -> None:
-    scenario, result, candidate_root, metadata = _fit_estimated_candidate(tmp_path)
+    scenario, result, candidate_root, metadata = _fit_estimated_candidate(
+        tmp_path,
+        created_at="2025-11-30T00:00:00+00:00",
+        training_as_of="2025-11-30",
+    )
     database = tmp_path / "market.db"
-    _make_replay_database(database)
+    _make_replay_database(
+        database,
+        start=date(2025, 12, 1),
+        official_sessions_only=True,
+    )
     promotion_policy = RecommendationPromotionPolicy()
     # 13 positive and 7 negative naturally matured dates make the fitted
     # challenger demonstrably better than the 50% null benchmark while still
     # satisfying the immutable default promotion policy.
-    capture_days = tuple(
-        (date(2026, 1, 1) + timedelta(days=index) for index in range(13))
-    ) + tuple(date(2026, 1, 21) + timedelta(days=index) for index in range(7))
+    # 依成本測試 DB 的合成價格週期選出 13 個正報酬與 7 個負報酬日；
+    # 全部日期仍是官方平日，且每筆 exact-20 session endpoint 落在評估日以前。
+    capture_days = (
+        _weekday_dates(date(2025, 12, 1), 9)
+        + _weekday_dates(date(2025, 12, 12), 7)
+        + _weekday_dates(date(2026, 1, 12), 4)
+    )
+    resolver, evaluation_at = _natural_session_resolver(
+        database,
+        capture_days=capture_days,
+        evaluation_day="2026-02-20",
+    )
     capture_paths = _persist_estimated_captures(
         tmp_path,
         scenario=scenario,
         candidate_root=candidate_root,
         policy_hash=promotion_policy.policy_hash,
         capture_days=capture_days,
+        source_database=database,
     )
     capture_bytes_before = tuple(path.read_bytes() for path in capture_paths)
 
     outcome = RecommendationNaturalOutcomeService(
         MLHistoricalSnapshotProvider(database),
         evidence_db_path=database,
+        session_resolver=resolver,
+        evaluation_at=evaluation_at,
     ).scan_and_build_evidence(
         output_root=tmp_path,
         evaluation_date="2026-02-20",

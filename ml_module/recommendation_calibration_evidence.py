@@ -16,6 +16,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from zoneinfo import ZoneInfo
 
 import numpy as np
 
@@ -570,6 +571,7 @@ class MaturedRecommendationOutcome:
     net_profit_twd: str | None = None
     cost_estimate_status: str | None = None
     cost_estimate_diagnostics: tuple[str, ...] = ()
+    session_proof: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if _date(self.label_available_date) < _date(self.label_end_date):
@@ -970,6 +972,7 @@ class NaturalForwardEvidenceBuilder:
         outcomes: Sequence[MaturedRecommendationOutcome],
         evaluation_date: str,
         output_path: str | Path,
+        evaluation_at: datetime | None = None,
         source_id: str = "scheduled_forward_outcomes",
     ) -> NaturalEvidenceReceiptReference:
         if isinstance(capture, RecommendationPredictionCapture) and capture.capture_path is None:
@@ -983,6 +986,7 @@ class NaturalForwardEvidenceBuilder:
             capture_payload=capture_payload,
             outcomes=outcomes,
             evaluation_date=evaluation_date,
+            evaluation_at=evaluation_at,
             output_path=output_path,
             source_id=source_id,
         )
@@ -994,6 +998,7 @@ class NaturalForwardEvidenceBuilder:
         outcomes: Sequence[MaturedRecommendationOutcome],
         evaluation_date: str,
         output_path: str | Path,
+        evaluation_at: datetime | None = None,
         source_id: str = "scheduled_forward_outcomes",
     ) -> NaturalEvidenceReceiptReference:
         """Build one receipt from multiple immutable daily captures.
@@ -1023,6 +1028,7 @@ class NaturalForwardEvidenceBuilder:
             capture_payload=bundle,
             outcomes=outcomes,
             evaluation_date=evaluation_date,
+            evaluation_at=evaluation_at,
             output_path=output_path,
             source_id=source_id,
         )
@@ -1033,6 +1039,7 @@ class NaturalForwardEvidenceBuilder:
         capture_payload: Mapping[str, Any],
         outcomes: Sequence[MaturedRecommendationOutcome],
         evaluation_date: str,
+        evaluation_at: datetime | None,
         output_path: str | Path,
         source_id: str,
     ) -> NaturalEvidenceReceiptReference:
@@ -1055,6 +1062,7 @@ class NaturalForwardEvidenceBuilder:
         if len(outcome_ids) != len(set(outcome_ids)):
             raise ValueError("matured outcomes must not duplicate capture row ids")
         outcome_by_id = {row.capture_row_id: row for row in outcomes}
+        session_proofs: list[Mapping[str, Any]] = []
         comparisons: list[dict[str, Any]] = []
         for row_id, outcome in sorted(outcome_by_id.items()):
             capture_row = by_id.get(row_id)
@@ -1067,6 +1075,13 @@ class NaturalForwardEvidenceBuilder:
                 raise ValueError("evaluation_date must follow prediction capture")
             if _date(outcome.label_end_date) <= capture_day:
                 raise ValueError("matured label end must follow prediction capture")
+            if not isinstance(outcome.session_proof, Mapping) or not outcome.session_proof:
+                raise ValueError("matured outcome official session proof is missing")
+            session_proof = dict(outcome.session_proof)
+            for field_name in ("schema_version", "resolver_id", "resolver_version", "proof_hash"):
+                if not str(session_proof.get(field_name) or ""):
+                    raise ValueError("matured outcome official session proof is incomplete")
+            session_proofs.append(session_proof)
             if capture_row.get("candidate_probability_bp") is None or capture_row.get("champion_probability_bp") is None:
                 raise ValueError("capture probability missing")
             row_payload = {
@@ -1078,6 +1093,7 @@ class NaturalForwardEvidenceBuilder:
                 "feature_values": capture_row.get("feature_values"),
                 "label_end_date": _date(outcome.label_end_date).isoformat(),
                 "label_available_date": _date(outcome.label_available_date).isoformat(),
+                "maturity_session_proof": session_proof,
                 "stock_return_bp": outcome.stock_return_bp,
                 "observed_liquidity_cost_bp": outcome.observed_liquidity_cost_bp,
                 "observed_liquidity_cost_source": outcome.observed_liquidity_cost_source,
@@ -1266,6 +1282,23 @@ class NaturalForwardEvidenceBuilder:
         evidence_id = "natural-evidence-" + hashlib.sha256(
             f"{capture_payload['capture_hash']}|{comparison_fingerprint}|{evaluation_day.isoformat()}".encode("utf-8")
         ).hexdigest()[:24]
+        if evaluation_at is None:
+            raise ValueError("natural evidence evaluation_at is required for session-bound receipts")
+        if evaluation_at.tzinfo is None or evaluation_at.utcoffset() is None:
+            raise ValueError("natural evidence evaluation_at must contain a timezone")
+        normalized_evaluation_at = evaluation_at.astimezone(timezone.utc)
+        if normalized_evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date() != evaluation_day:
+            raise ValueError("natural evidence evaluation_at date does not match as_of_date")
+        if normalized_evaluation_at > datetime.now(timezone.utc):
+            raise ValueError("natural evidence evaluation_at cannot be future-dated")
+        resolver_ids = {
+            str(proof.get("resolver_id") or "") for proof in session_proofs
+        }
+        resolver_versions = {
+            str(proof.get("resolver_version") or "") for proof in session_proofs
+        }
+        if len(resolver_ids) != 1 or len(resolver_versions) != 1:
+            raise ValueError("natural evidence session resolver identity is inconsistent")
         body: dict[str, Any] = {
             "schema_version": (
                 "recommendation-natural-forward-evidence.v3"
@@ -1277,6 +1310,9 @@ class NaturalForwardEvidenceBuilder:
             "source_kind": "matured_forward_prediction_capture",
             "status": "matured",
             "as_of_date": evaluation_day.isoformat(),
+            "evaluation_at": normalized_evaluation_at.isoformat(),
+            "maturity_session_resolver_id": next(iter(resolver_ids)),
+            "maturity_session_resolver_version": next(iter(resolver_versions)),
             "capture_id": capture_payload["capture_id"],
             "capture_hash": capture_payload["capture_hash"],
             "capture_as_of_date": capture_payload["capture_as_of_date"],
@@ -1781,7 +1817,7 @@ def _verify_source_contract_binding(
     capture_day: date | None = None,
     capture_rows: Sequence[Mapping[str, Any]] | None = None,
     capture_at: str | None = None,
-) -> None:
+) -> Mapping[str, Any]:
     """Verify a capture's immutable prospective-input source binding."""
 
     if not isinstance(binding, Mapping):
@@ -1921,6 +1957,60 @@ def _verify_source_contract_binding(
             capture_at=capture_at,
         )
     _verify_source_contract_dependencies(contract_payload, binding)
+    return contract_payload
+
+
+def verified_source_database_for_capture(
+    payload: Mapping[str, Any],
+) -> Path:
+    """回傳已由 capture contract 驗證並錨定的來源資料庫。"""
+
+    if payload.get("schema_version") == "recommendation-prediction-capture-bundle.v1":
+        raw_bindings = payload.get("source_contract_bindings")
+    else:
+        raw_bindings = [payload.get("source_contract_binding")]
+    if not isinstance(raw_bindings, list) or not raw_bindings:
+        raise ValueError("capture source database anchor is missing")
+    source_paths: set[str] = set()
+    for binding in raw_bindings:
+        contract_payload = _verify_source_contract_binding(
+            binding,
+            require_ready=True,
+        )
+        source_database = str(contract_payload.get("source_database") or "").strip()
+        if not source_database:
+            raise ValueError("capture source contract database anchor is missing")
+        source_paths.add(str(Path(source_database).expanduser().resolve()))
+    if len(source_paths) != 1:
+        raise ValueError("capture source database anchors conflict")
+    return Path(next(iter(source_paths)))
+
+
+def verify_natural_maturity_session_proof(
+    proof: Mapping[str, Any],
+    *,
+    capture_date: str,
+    label_end_date: str,
+    evaluation_at: datetime,
+    expected_db_path: str | Path,
+) -> Mapping[str, Any]:
+    """委派共用 resolver 執行嚴格的交易日 proof 驗證。"""
+
+    if proof.get("horizon_sessions") != 20:
+        raise ValueError("natural maturity session horizon must be 20")
+    try:
+        from data_module.natural_maturity_session_resolver import (
+            NaturalMaturitySessionResolver,
+        )
+    except ImportError as exc:
+        raise ValueError("natural maturity session resolver is unavailable") from exc
+    return NaturalMaturitySessionResolver.verify_session_proof(
+        proof,
+        capture_date,
+        label_end_date,
+        evaluation_at,
+        expected_db_path=expected_db_path,
+    )
 
 
 def _verify_source_availability(

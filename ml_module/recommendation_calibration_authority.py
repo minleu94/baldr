@@ -22,6 +22,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
 
 from ml_module.model_artifact_manifest import ModelArtifactManifest
 from ml_module.promotion_authority_family import (
@@ -1091,6 +1092,8 @@ def _verify_natural_evidence(
         "dataset_hash", "feature_registry_hash", "feature_schema_hash", "feature_schema",
         "label_registry_hash", "cost_contract_hash", "fixed_round_trip_cost_bp",
         "maximum_probability_change_bp", "policy_hash",
+        "evaluation_at", "maturity_session_resolver_id",
+        "maturity_session_resolver_version",
         "probability_transform_id", "probability_baseline_id", "probability_baseline_kind",
         "probability_lineage",
         "champion_model_id", "champion_candidate_id", "champion_candidate_root",
@@ -1134,10 +1137,12 @@ def _verify_natural_evidence(
     if capture_path is None or not capture_path.is_file():
         result["error"] = "natural_evidence_capture_artifact_missing"
         return result
+    expected_source_db_path: Path | None = None
     try:
         from ml_module.recommendation_calibration_evidence import (
             _verify_capture_bundle_payload,
             _verify_capture_payload,
+            verified_source_database_for_capture,
         )
         capture_payload = json.loads(capture_path.read_text(encoding="utf-8"))
         if not isinstance(capture_payload, Mapping):
@@ -1174,6 +1179,7 @@ def _verify_natural_evidence(
             "scheduled_live", "live_forward", "scheduled_live_bundle"
         }:
             raise ValueError("capture origin is not live")
+        expected_source_db_path = verified_source_database_for_capture(capture_payload)
         if int(capture_payload.get("maximum_probability_change_bp", -1)) != int(
             receipt_payload.get("maximum_probability_change_bp", -2)
         ):
@@ -1194,6 +1200,11 @@ def _verify_natural_evidence(
         return result
     try:
         as_of = _date_text(str(receipt_payload["as_of_date"]))
+        evaluation_at = _strict_evaluation_at(str(receipt_payload["evaluation_at"]))
+        if evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat() != as_of:
+            raise ValueError
+        if evaluation_at > datetime.now(timezone.utc):
+            raise ValueError
         capture_day = _date_text(str(receipt_payload["capture_as_of_date"]))
         decision_day = _date_text(decision_date)
         if as_of > decision_day or capture_day > as_of:
@@ -1272,6 +1283,15 @@ def _verify_natural_evidence(
     comparisons = receipt_payload.get("comparisons")
     if not isinstance(comparisons, list) or not comparisons:
         result["error"] = "natural_evidence_comparisons_missing"
+        return result
+    if not str(receipt_payload.get("maturity_session_resolver_id") or "").strip():
+        result["error"] = "natural_evidence_session_resolver_missing"
+        return result
+    if not str(receipt_payload.get("maturity_session_resolver_version") or "").strip():
+        result["error"] = "natural_evidence_session_resolver_missing"
+        return result
+    if expected_source_db_path is None:
+        result["error"] = "natural_evidence_source_database_anchor_missing"
         return result
     if int(receipt_payload["matured_sample_count"]) != len(comparisons):
         result["error"] = "natural_evidence_count_mismatch"
@@ -1367,6 +1387,27 @@ def _verify_natural_evidence(
                 raise ValueError
             if str(row.get("symbol")) != str(capture_row.get("symbol")):
                 raise ValueError
+            session_proof = row.get("maturity_session_proof")
+            if not isinstance(session_proof, Mapping):
+                raise ValueError("natural evidence official session proof is missing")
+            from ml_module.recommendation_calibration_evidence import (
+                verify_natural_maturity_session_proof,
+            )
+
+            verified_session_proof = verify_natural_maturity_session_proof(
+                session_proof,
+                capture_date=row_capture_day,
+                label_end_date=str(row.get("label_end_date") or ""),
+                evaluation_at=evaluation_at,
+                expected_db_path=expected_source_db_path,
+            )
+            if (
+                verified_session_proof.get("resolver_id")
+                != receipt_payload.get("maturity_session_resolver_id")
+                or verified_session_proof.get("resolver_version")
+                != receipt_payload.get("maturity_session_resolver_version")
+            ):
+                raise ValueError("natural evidence session resolver identity mismatch")
             if _date_text(str(row["label_available_date"])) > as_of:
                 raise ValueError
             if _date_text(str(row["label_end_date"])) <= row_capture_day:
@@ -1919,6 +1960,15 @@ def _datetime_text(value: str) -> datetime:
     parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _strict_evaluation_at(value: str) -> datetime:
+    """嚴格解析綁定交易日 session 的 evaluation clock，不默認轉換 naive UTC。"""
+
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("session-bound evaluation_at must contain a timezone")
     return parsed.astimezone(timezone.utc)
 
 

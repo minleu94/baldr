@@ -26,6 +26,7 @@ from app_module.forward_performance_service import (
     ForwardOutcomeSummary,
     ForwardPerformanceService,
 )
+from app_module.official_maturity_calendar import OfficialMaturityCalendar
 
 
 TASK_NAME = "baldr-forward-outcomes-daily"
@@ -61,6 +62,8 @@ def run_scheduled_forward_outcomes(
     event_type: str | None = None,
     symbol: str | None = None,
     require_cohort_identity: bool = False,
+    calendar_cache_path: str | Path | None = None,
+    temporary_closure_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """執行一次有界 outcome 更新並保存 machine-readable receipt。
 
@@ -144,6 +147,20 @@ def run_scheduled_forward_outcomes(
                 "data_as_of_date": visible_date.isoformat(),
             }
         )
+        maturity_calendar = None
+        if calendar_cache_path is not None:
+            maturity_calendar = OfficialMaturityCalendar(
+                calendar_cache_path,
+                observed_at=checked_at,
+                temporary_closure_path=temporary_closure_path,
+            )
+            payload["maturity_calendar"] = maturity_calendar.describe()
+        else:
+            payload["maturity_calendar"] = {
+                "status": "not_configured",
+                "read_only": True,
+                "network_fetch": False,
+            }
         payload["calendar_observation"] = _read_calendar_observation(
             resolved_output,
             checked_at.date(),
@@ -179,6 +196,7 @@ def run_scheduled_forward_outcomes(
             config,
             repository,
             db_path=resolved_db,
+            maturity_calendar=maturity_calendar,
         )
         summary = service.calculate(
             windows=normalized_windows,
@@ -509,6 +527,11 @@ def _build_daily_health(
     }
     cohorts: dict[str, dict[str, Any]] = {}
     pending_dates: list[str] = []
+    calendar_metadata_count = 0
+    calendar_waiting_count = 0
+    planned_maturity_elapsed_count = 0
+    calendar_mismatch_count = 0
+    pending_date_bases: list[str] = []
     for event in complete_events:
         metadata = event.metadata if isinstance(event.metadata, Mapping) else {}
         policy_id = str(metadata.get("universe_policy_id") or metadata.get("universe_id") or "").strip()
@@ -550,18 +573,48 @@ def _build_daily_health(
             outcome = repository.get_outcome(event.event_id, window)
             if outcome is None:
                 state = "missing"
-            elif getattr(outcome.outcome_status, "value", str(outcome.outcome_status)) == "ready":
-                state = "ready"
-            elif getattr(outcome.outcome_status, "value", str(outcome.outcome_status)) in {
-                "pending",
-                "insufficient_future_data",
-            }:
-                state = "pending"
-                expected = outcome.metadata.get("expected_maturity_date") if isinstance(outcome.metadata, Mapping) else None
-                if expected:
-                    pending_dates.append(str(expected)[:10])
             else:
-                state = "missing"
+                metadata = outcome.metadata if isinstance(outcome.metadata, Mapping) else {}
+                comparison = metadata.get("maturity_calendar_comparison")
+                if "planned_official_calendar" in metadata:
+                    calendar_metadata_count += 1
+                if comparison == "blocked_mismatch":
+                    calendar_mismatch_count += 1
+                outcome_status = getattr(
+                    outcome.outcome_status,
+                    "value",
+                    str(outcome.outcome_status),
+                )
+                if outcome_status == "ready":
+                    state = "ready"
+                elif outcome_status in {"pending", "insufficient_future_data"}:
+                    state = "pending"
+                    planned = metadata.get("planned_official_maturity_date")
+                    planned_status = metadata.get("planned_official_maturity_status")
+                    if planned_status == "waiting_for_calendar":
+                        calendar_waiting_count += 1
+                    if planned:
+                        planned_text = str(planned)[:10]
+                        try:
+                            planned_date = date.fromisoformat(planned_text)
+                        except ValueError:
+                            planned_date = None
+                        if planned_date is not None and planned_date > checked_at.date():
+                            pending_dates.append(planned_text)
+                            calendar_payload = metadata.get(
+                                "planned_official_calendar"
+                            )
+                            if isinstance(calendar_payload, Mapping):
+                                pending_date_bases.append(
+                                    str(
+                                        calendar_payload.get("status")
+                                        or "unknown"
+                                    )
+                                )
+                        elif planned_date is not None:
+                            planned_maturity_elapsed_count += 1
+                else:
+                    state = "missing"
             horizon_counts[str(window)][state] += 1
             cohort["horizons"][str(window)][state] += 1
 
@@ -632,8 +685,21 @@ def _build_daily_health(
         classification = "normal_no_new_outcomes"
         blockers = []
 
+    if calendar_mismatch_count:
+        blockers.append("maturity_calendar_comparison_blocked")
+        classification = "actionable_engineering_blocker"
+
+    warning_values: list[str] = []
+    if summary.pending_insufficient_future_data and not pending_dates:
+        if calendar_waiting_count or calendar_metadata_count == 0:
+            warning_values.append("no_maturity_calendar_observation")
+        if planned_maturity_elapsed_count:
+            warning_values.append("planned_maturity_elapsed_without_outcome_price")
+    if calendar_mismatch_count:
+        warning_values.append("maturity_calendar_comparison_blocked")
+
     return {
-        "schema_version": "scheduled-forward-outcome-health.v1",
+        "schema_version": "scheduled-forward-outcome-health.v2",
         "classification": classification,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
@@ -652,13 +718,26 @@ def _build_daily_health(
         "latest_outcome_updated_at": latest_outcome_updated_at,
         "last_evaluation_at": checked_at.isoformat(timespec="seconds"),
         "next_maturity_date": min(pending_dates) if pending_dates else None,
+        "next_maturity_date_basis": (
+            (
+                "official_annual_plan_only"
+                if pending_date_bases
+                and all(item == "annual_plan_only" for item in pending_date_bases)
+                else "verified_official_planned_calendar"
+                if pending_dates
+                else None
+            )
+        ),
+        "planned_official_maturity": {
+            "pending_future_count": len(pending_dates),
+            "calendar_metadata_count": calendar_metadata_count,
+            "waiting_for_calendar_count": calendar_waiting_count,
+            "elapsed_without_outcome_price_count": planned_maturity_elapsed_count,
+            "comparison_blocked_count": calendar_mismatch_count,
+        },
         "blockers": blockers,
         "warnings": [
-            *(
-                ["no_maturity_calendar_observation"]
-                if summary.pending_insufficient_future_data and not pending_dates
-                else []
-            ),
+            *warning_values,
             *(
                 [
                     "legacy_incomplete_identity_skipped_without_backfill"

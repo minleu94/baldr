@@ -37,6 +37,24 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-ml-direct-chain-maintainer` | enabled after register | daily local time 05:30 | 自動解析並重驗最新全市場 immutable raw PIT pointer、official market-event custody 與目前 Direct identity，然後啟動／維持 `maintain_ml_direct_v3_refresh_chain.py --watch-formal-inputs`。使用既有 instance lock 防止重複訓練；無效輸入只寫 `blocked_invalid_bootstrap_input`，不寫來源 SQLite、不建立未受控 sidecar、不放寬 formal／alpha／broker gate。 |
 | `baldr-v2-2-weekly-collection` | `weekly-register` 後啟用 | 每週日 18:00 | 執行 `run_v2_2_weekly_collection.cmd`，以 SQLite read-only 讀取來源並將 evidence append 至 sidecar。對外狀態為 `pending_human_review`；需要人工判讀，但不代表 Gate 通過、不寫 weekly history，且 `write_intent=false`。 |
 
+Paper EOD dependency gate 的 freshness 是 lane projection，不會改寫 aggregate
+`freshness_status`。只有 aggregate `status=degraded`、`errors=[]`，且每個 warning
+都能由 `source_statuses[].source_id`／`freshness_status` 對應到明確的非 EOD source 時，
+才可能輸出 `status=ready_with_warnings`；`twse.daily_prices.raw`、
+`tpex.daily_prices.raw`、`sqlite.daily_prices` 必須同日 `current`，既有 quick／freshness
+target date、aware timestamp、raw CSV 與 SQLite readback 也必須全部通過。投影會保留
+aggregate status 與被忽略的非 EOD warnings，供稽核判讀，不把它們宣稱為 freshness
+`passed`。未知或未分類 warning、source ID／status 缺漏或 malformed、未被合法 warning
+歸屬的 non-current source、`failed`／`expected_wait`、必要市場 source `stale`／`partial`，
+以及任何日期、時間、raw／DB reconciliation blocker 都維持 fail closed；
+`passed_with_warnings` 也不會繞過這個界線。兩個明確的跨 consumer `unknown` 例外是
+`tdcc_shareholding` 與 `fundamental.statement_availability_map`：前者只屬 TDCC 週資料
+候選／shadow completeness，後者只屬 MOPS Fundamental/PIT availability mapping，兩者都
+沒有 Paper EOD downstream。`freshness_lane.not_required_for_paper_eod` 會保留完整原始
+source diagnostic、reason code 與 consumer boundary；它不把來源改成 `current`，也不
+放寬 TDCC 或 Fundamental 自己的 fail-closed gate。其他 unknown source、required source
+unknown、malformed、failed 或 aggregate errors 仍阻擋 Paper。
+
 ### V4 跨日 evidence identity 與每日 health
 
 每日推薦 snapshot 會保存 `universe_policy_id/hash`（跨日政策）與

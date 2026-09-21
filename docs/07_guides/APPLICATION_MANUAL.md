@@ -862,6 +862,25 @@ scripts\scheduled\query_baldr_scheduled_tasks.cmd
 
 Paper EOD replay 現行 trigger 為 Pacific 06:00，PDT／PST 分別對應台北 21:00／22:00，位於 Pacific 04:20 quick data update 之後。2026-09-08 00:05 的非零結果只屬變更前歷史證據；部署後仍須以 `schtasks /Query /TN baldr-paper-execution-eod-replay-daily /V /FO LIST` 讀取 Next Run、Last Result、登入模式與電池條件，再以 dependency gate receipt 判定資料是否真的可用。現行 `Logon Mode=Interactive only`、停止於電池且不喚醒，登出或休眠時不能保證自然 capture；缺跑應由 task query 與各 latest status／receipt 的 freshness 監控揭露。
 
+Paper EOD gate 對 freshness 採 lane-specific projection，保留原始 aggregate
+`freshness_status`／`warnings`。只有 aggregate `status=degraded` 且 `errors=[]`，每個
+warning 都能由 `source_statuses` 的 `source_id` 與 `freshness_status` 完整對應到已登記的
+非 EOD source，並且 `twse.daily_prices.raw`、`tpex.daily_prices.raw`、
+`sqlite.daily_prices` 同日為 `current` 時，才會在 quick／freshness target date、aware
+timestamp、raw CSV 與 SQLite readback 全部通過後回傳 `ready_with_warnings`。結果中的
+`freshness_lane` 會列出 required source、非 EOD warning 與 aggregate status；這不是把
+aggregate 改成 `passed`，technical／flows／fundamental／institutional／credit 仍由各自
+consumer 的契約判定。未知或未分類 warning、source ID／status 缺失或 malformed、未歸屬的
+non-current source、`failed`／`expected_wait`、必要 source 的 `stale`／`partial`，或任何
+日期／時間／raw／DB reconciliation blocker，均維持 `blocked`；`passed_with_warnings` 不會
+繞過此判定。只有兩個明確列入 policy 的 non-EOD `unknown` 可從 Paper EOD freshness lane
+隔離：`tdcc_shareholding` 是 TDCC 週資料候選的 completeness unknown，
+`fundamental.statement_availability_map` 是 Fundamental/PIT 的 MOPS mapping 缺件；兩者
+都不是 Paper producer 的輸入。`freshness_lane.not_required_for_paper_eod` 會逐筆保留
+原始 source row、`unknown`、reason code 與 consumer boundary，讓各自 consumer 繼續
+fail closed；這不是把來源標成 `current`，也不會放寬 TDCC／Fundamental gate。其他
+unknown source、required source unknown、malformed、failed 或 aggregate errors 仍會阻擋。
+
 2026-08-12 本機唯讀 query 顯示 13/13 tasks 均為 `Enabled`／`Ready`；raw PIT refresh 與 Direct chain maintainer 的實際觸發結果均為 `Last Result=0`，執行結果分別以 `ml_raw_pit_refresh/latest_status.json` 與 `ml_direct_chain_maintenance/latest_status.json` 判定。目前 `Logon Mode=Interactive only`，因此證明的是互動式帳號下的排程註冊與最近成功結果，不代表已完成無人登入執行。`production_scheduler_allowed=false` 仍是正式 production evidence／交易授權邊界，不能因 task 已註冊而放寬。
 
 Windows task 的註冊、正在執行與 `Last Result` 必須以以上 query 命令判定；Runtime 頁只讀已保存 status artifact，不能取代此查詢。

@@ -4,7 +4,7 @@ import requests
 import pandas as pd
 import logging
 from datetime import datetime, date, timezone
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 import io
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -14,6 +14,13 @@ logger = logging.getLogger(__name__)
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 }
+
+OFFICIAL_PAYLOAD_MAX_ATTEMPTS = 3
+OFFICIAL_PAYLOAD_RETRY_SECONDS = 30
+
+
+class OfficialPayloadNotReady(ValueError):
+    """官方端點已回應，但指定交易日的明細尚未完成發布。"""
 
 
 def observed_only_availability_fields() -> Dict[str, Any]:
@@ -73,6 +80,44 @@ def safe_request(
     raise RuntimeError(f"無法取得資料: {url}")
 
 
+def _request_ready_json(
+    url: str,
+    params: Dict[str, Any],
+    *,
+    source_label: str,
+    validate: Callable[[Dict[str, Any]], None],
+    max_attempts: int = OFFICIAL_PAYLOAD_MAX_ATTEMPTS,
+    retry_seconds: int = OFFICIAL_PAYLOAD_RETRY_SECONDS,
+) -> Dict[str, Any]:
+    """對已連線但尚未發布完成的官方 payload 做有界重試。
+
+    ``safe_request`` 負責 transport / HTTP 重試；這一層只處理 HTTP 200
+    但 ``stat`` 或明細 table 尚未就緒的發布時點競態。日期不符等契約錯誤
+    不在此重試，仍立即 fail-closed，避免錯日資料被接受。
+    """
+
+    if max_attempts <= 0 or retry_seconds < 0:
+        raise ValueError("max_attempts must be positive and retry_seconds non-negative")
+    for attempt in range(1, max_attempts + 1):
+        payload = safe_request(url, params).json()
+        try:
+            validate(payload)
+            return payload
+        except OfficialPayloadNotReady as exc:
+            if attempt >= max_attempts:
+                raise
+            logger.warning(
+                "%s 已回應但資料尚未就緒（%d/%d）: %s；%d 秒後重試",
+                source_label,
+                attempt,
+                max_attempts,
+                exc,
+                retry_seconds,
+            )
+            time.sleep(retry_seconds)
+    raise RuntimeError(f"{source_label} payload retry exhausted")
+
+
 _SECURITY_CODE_FIELD_NAMES = frozenset({"代號", "證券代號", "股票代號"})
 
 
@@ -112,6 +157,11 @@ def _security_table_rows(
             return [row for row in rows if isinstance(row, list)]
     return []
 
+
+def _table_count(payload: Dict[str, Any]) -> int:
+    tables = payload.get("tables")
+    return len(tables) if isinstance(tables, list) else 0
+
 # ==========================================
 # 三大法人 (Institutional Flows)
 # ==========================================
@@ -128,11 +178,23 @@ def fetch_institutional_flows(decision_date: date) -> pd.DataFrame:
     twse_params = {"response": "json", "date": date_ce, "selectType": "ALL"}
     logger.info(f"爬取 TWSE 法人: {twse_url}?date={date_ce}")
     try:
-        resp = safe_request(twse_url, twse_params)
-        data = resp.json()
-        _validate_response_date(data, date_ce)
-        if data.get("stat") != "OK" or not data.get("data") or not data.get("fields"):
-            raise ValueError("TWSE T86 回應缺少有效 data/fields")
+        def _validate_twse_institutional(data: Dict[str, Any]) -> None:
+            _validate_response_date(data, date_ce)
+            if data.get("stat") != "OK":
+                raise OfficialPayloadNotReady(
+                    f"TWSE T86 回應狀態非 OK: stat={data.get('stat')!r}"
+                )
+            if not data.get("data") or not data.get("fields"):
+                raise OfficialPayloadNotReady(
+                    "TWSE T86 回應缺少有效 data/fields"
+                )
+
+        data = _request_ready_json(
+            twse_url,
+            twse_params,
+            source_label="TWSE T86",
+            validate=_validate_twse_institutional,
+        )
         availability = observed_only_availability_fields()
         fields = data["fields"]
         for row in data["data"]:
@@ -179,14 +241,25 @@ def fetch_institutional_flows(decision_date: date) -> pd.DataFrame:
     tpex_params = {"l": "zh-tw", "o": "json", "d": date_roc, "se": "AL"}
     logger.info(f"爬取 TPEX 法人: {tpex_url}?d={date_roc}")
     try:
-        resp = safe_request(tpex_url, tpex_params)
-        data = resp.json()
-        _validate_response_date(data, date_ce)
-        if str(data.get("stat", "")).lower() != "ok":
-            raise ValueError("TPEX 三大法人回應狀態非 ok")
+        def _validate_tpex_institutional(data: Dict[str, Any]) -> None:
+            _validate_response_date(data, date_ce)
+            if str(data.get("stat", "")).lower() != "ok":
+                raise OfficialPayloadNotReady(
+                    f"TPEX 三大法人回應狀態非 ok: stat={data.get('stat')!r}"
+                )
+            if not _security_table_rows(data, minimum_columns=17):
+                raise OfficialPayloadNotReady(
+                    "TPEX 三大法人回應缺少有效明細 table: "
+                    f"tables={_table_count(data)}"
+                )
+
+        data = _request_ready_json(
+            tpex_url,
+            tpex_params,
+            source_label="TPEX 3insti",
+            validate=_validate_tpex_institutional,
+        )
         tpex_rows = _security_table_rows(data, minimum_columns=17)
-        if not tpex_rows:
-            raise ValueError("TPEX 三大法人回應缺少有效明細 table")
         availability = observed_only_availability_fields()
         for row in tpex_rows:
             if len(row) >= 17:
@@ -259,15 +332,25 @@ def fetch_credit_transactions(decision_date: date) -> pd.DataFrame:
     twse_params = {"response": "json", "date": date_ce, "selectType": "ALL"}
     logger.info(f"爬取 TWSE 融資券: {twse_url}?date={date_ce}")
     try:
-        resp = safe_request(twse_url, twse_params)
-        data = resp.json()
+        def _validate_twse_credit(data: Dict[str, Any]) -> None:
+            _validate_response_date(data, date_ce)
+            if data.get("stat") != "OK":
+                raise OfficialPayloadNotReady(
+                    f"TWSE MI_MARGN 回應狀態非 OK: stat={data.get('stat')!r}"
+                )
+            if not _security_table_rows(data, minimum_columns=13):
+                raise OfficialPayloadNotReady(
+                    "TWSE MI_MARGN 回應缺少有效明細 table: "
+                    f"tables={_table_count(data)}"
+                )
 
-        _validate_response_date(data, date_ce)
-        if data.get("stat") != "OK":
-            raise ValueError("TWSE MI_MARGN 回應狀態非 OK")
+        data = _request_ready_json(
+            twse_url,
+            twse_params,
+            source_label="TWSE MI_MARGN",
+            validate=_validate_twse_credit,
+        )
         twse_rows = _security_table_rows(data, minimum_columns=13)
-        if not twse_rows:
-            raise ValueError("TWSE MI_MARGN 回應缺少有效明細 table")
         availability = observed_only_availability_fields()
         for row in twse_rows:
             if len(row) < 13:
@@ -297,16 +380,26 @@ def fetch_credit_transactions(decision_date: date) -> pd.DataFrame:
     tpex_params = {"l": "zh-tw", "o": "json", "d": date_roc}
     logger.info(f"爬取 TPEX 融資券: {tpex_url}?d={date_roc}")
     try:
-        resp = safe_request(tpex_url, tpex_params)
-        data = resp.json()
+        def _validate_tpex_credit(data: Dict[str, Any]) -> None:
+            _validate_response_date(data, date_ce)
+            if str(data.get("stat", "")).lower() != "ok":
+                raise OfficialPayloadNotReady(
+                    f"TPEX 信用交易回應狀態非 ok: stat={data.get('stat')!r}"
+                )
+            # 現行明細至少要含至「券餘額」(index 14)，避免誤選摘要表。
+            if not _security_table_rows(data, minimum_columns=15):
+                raise OfficialPayloadNotReady(
+                    "TPEX 信用交易回應缺少有效明細 table: "
+                    f"tables={_table_count(data)}"
+                )
 
-        _validate_response_date(data, date_ce)
-        if str(data.get("stat", "")).lower() != "ok":
-            raise ValueError("TPEX 信用交易回應狀態非 ok")
-        # 現行明細至少要含至「券餘額」(index 14)，避免誤選摘要表。
+        data = _request_ready_json(
+            tpex_url,
+            tpex_params,
+            source_label="TPEX margin",
+            validate=_validate_tpex_credit,
+        )
         tpex_rows = _security_table_rows(data, minimum_columns=15)
-        if not tpex_rows:
-            raise ValueError("TPEX 信用交易回應缺少有效明細 table")
         availability = observed_only_availability_fields()
         for row in tpex_rows:
             if len(row) >= 15:

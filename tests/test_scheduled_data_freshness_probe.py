@@ -34,6 +34,59 @@ def _source(payload, source_id):
     return next(item for item in payload["source_statuses"] if item["source_id"] == source_id)
 
 
+def test_phase3c_freshness_reads_explicit_candidate_db_with_market_coverage(
+    tmp_path,
+) -> None:
+    candidate_db = tmp_path / "candidate" / "phase3c.sqlite"
+    candidate_db.parent.mkdir(parents=True)
+    with sqlite3.connect(candidate_db) as conn:
+        for table in ("institutional_flows", "credit_transactions"):
+            conn.execute(
+                f"""
+                CREATE TABLE {table} (
+                    stock_code TEXT NOT NULL,
+                    decision_date TEXT NOT NULL,
+                    source_version TEXT NOT NULL,
+                    available_at TEXT NOT NULL,
+                    PRIMARY KEY (stock_code, decision_date)
+                )
+                """
+            )
+        conn.executemany(
+            "INSERT INTO institutional_flows VALUES (?, ?, ?, ?)",
+            (
+                ("2330", "2026-09-21", "twse-official-T86", "2026-09-21T12:00:00+00:00"),
+                ("6488", "2026-09-21", "tpex-official-3itrade", "2026-09-21T12:01:00+00:00"),
+            ),
+        )
+        conn.executemany(
+            "INSERT INTO credit_transactions VALUES (?, ?, ?, ?)",
+            (
+                ("2330", "2026-09-21", "twse-official-MI_MARGN", "2026-09-21T12:02:00+00:00"),
+                ("6488", "2026-09-21", "tpex-official-margin_bal", "2026-09-21T12:03:00+00:00"),
+            ),
+        )
+
+    statuses = probe._phase3c_candidate_statuses(
+        candidate_db_path=candidate_db,
+        expected_session="20260921",
+    )
+
+    institutional = next(
+        item for item in statuses if item["source_id"] == "institutional_flows"
+    )
+    credit = next(
+        item for item in statuses if item["source_id"] == "credit_transactions"
+    )
+    assert institutional["freshness_status"] == "current"
+    assert credit["freshness_status"] == "current"
+    assert institutional["candidate_only"] is True
+    assert credit["candidate_only"] is True
+    assert institutional["scheduled_task"] == "baldr-data-update-quick-daily"
+    assert credit["coverage"]["source_version_coverage_complete"] is True
+    assert institutional["duplicate_key_count"] == 0
+
+
 def test_freshness_probe_reports_artifact_write_failure_as_structured_error(
     tmp_path, monkeypatch, capsys
 ):

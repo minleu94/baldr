@@ -26,6 +26,8 @@ from data_module.official_trading_calendar import (
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
 )
+from data_module.phase3c_backfill_runner import configured_candidate_db_path
+from data_module.p0_candidate_repository import validate_candidate_working_copy_path
 from scripts.scheduled.scheduled_clock import scheduled_now
 
 
@@ -914,51 +916,166 @@ def _build_operational_source_statuses(
     return source_statuses
 
 
+def _phase3c_candidate_statuses(
+    *,
+    candidate_db_path: Path | None,
+    expected_session: str | None,
+) -> list[dict[str, Any]]:
+    table_specs = (
+        (
+            "institutional_flows",
+            "TWSE + TPEx institutional official endpoints",
+            frozenset({"twse-official-T86", "tpex-official-3itrade"}),
+            "baldr-data-update-quick-daily",
+        ),
+        (
+            "credit_transactions",
+            "TWSE + TPEx margin official endpoints",
+            frozenset({"twse-official-MI_MARGN", "tpex-official-margin_bal"}),
+            "baldr-data-update-quick-daily",
+        ),
+        (
+            "tdcc_shareholding",
+            "TDCC public holdings lane",
+            frozenset({"tdcc-official-od-1-5"}),
+            "baldr-data-update-quick-daily (Monday latest snapshot only)",
+        ),
+    )
+    statuses: list[dict[str, Any]] = []
+    conn: sqlite3.Connection | None = None
+    db_error: str | None = None
+    if candidate_db_path is not None and candidate_db_path.is_file():
+        try:
+            uri = f"file:{candidate_db_path.resolve().as_posix()}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA query_only=ON")
+        except sqlite3.Error as exc:
+            db_error = f"{type(exc).__name__}:{exc}"
+
+    try:
+        for source_id, authority, expected_versions, scheduled_task in table_specs:
+            exists = conn is not None and _table_exists(conn, source_id)
+            count = (
+                int(conn.execute(f'SELECT COUNT(*) FROM "{source_id}"').fetchone()[0])
+                if exists and conn is not None
+                else 0
+            )
+            latest = _latest_date(conn, source_id) if exists and conn is not None else None
+            current_row_count = 0
+            observed_versions: list[str] = []
+            duplicate_key_count: int | None = None
+            latest_available_at: str | None = None
+            if exists and conn is not None and latest is not None:
+                current_row_count = int(
+                    conn.execute(
+                        f'SELECT COUNT(*) FROM "{source_id}" WHERE REPLACE("decision_date", "-", "")=?',
+                        (latest,),
+                    ).fetchone()[0]
+                )
+                observed_versions = sorted(
+                    str(row[0])
+                    for row in conn.execute(
+                        f'SELECT DISTINCT "source_version" FROM "{source_id}" '
+                        'WHERE REPLACE("decision_date", "-", "")=? ORDER BY "source_version"',
+                        (latest,),
+                    ).fetchall()
+                    if row[0] is not None
+                )
+                duplicate_key_count = int(
+                    conn.execute(
+                        f'SELECT COUNT(*) FROM ('
+                        f'SELECT "stock_code", "decision_date", COUNT(*) AS n FROM "{source_id}" '
+                        'GROUP BY "stock_code", "decision_date" HAVING n > 1)'
+                    ).fetchone()[0]
+                )
+                if "available_at" in _table_columns(conn, source_id):
+                    row = conn.execute(
+                        f'SELECT MAX("available_at") FROM "{source_id}" '
+                        'WHERE REPLACE("decision_date", "-", "")=?',
+                        (latest,),
+                    ).fetchone()
+                    latest_available_at = str(row[0]) if row and row[0] is not None else None
+
+            version_coverage_complete = expected_versions.issubset(observed_versions)
+            if source_id == "tdcc_shareholding":
+                freshness_status = "unknown" if count else "not_applicable"
+                expected_period = None
+                missing_periods: list[str] = []
+            else:
+                expected_period = expected_session
+                missing_periods = (
+                    [expected_session]
+                    if expected_session and latest != expected_session
+                    else []
+                )
+                if not exists or not count:
+                    freshness_status = "unknown"
+                elif expected_session and latest != expected_session:
+                    freshness_status = "stale"
+                elif not version_coverage_complete or duplicate_key_count:
+                    freshness_status = "partial"
+                else:
+                    freshness_status = "current"
+
+            if candidate_db_path is None:
+                reason = "PHASE3C_CANDIDATE_DB_PATH is not configured"
+            elif db_error is not None:
+                reason = f"candidate DB read failed: {db_error}"
+            elif not candidate_db_path.is_file():
+                reason = "configured candidate DB does not exist"
+            elif not exists:
+                reason = "candidate table does not exist"
+            elif freshness_status == "current":
+                reason = "latest official session and both market source versions are present"
+            elif source_id == "tdcc_shareholding" and count:
+                reason = "weekly candidate observations are present; daily freshness is not applicable"
+            elif missing_periods:
+                reason = "latest candidate observation is behind the expected official session"
+            else:
+                reason = "candidate rows are present but source-version coverage is incomplete"
+
+            statuses.append(
+                _source_status(
+                    source_id=source_id,
+                    authority=authority,
+                    frequency="daily candidate source" if source_id != "tdcc_shareholding" else "weekly candidate source",
+                    actual_period=latest,
+                    published_at=None,
+                    available_at=latest_available_at,
+                    expected_period=expected_period,
+                    coverage={
+                        "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+                        "candidate_db_exists": bool(candidate_db_path and candidate_db_path.is_file()),
+                        "table_exists": bool(exists),
+                        "db_row_count": count,
+                        "latest_session_row_count": current_row_count,
+                        "expected_source_versions": sorted(expected_versions),
+                        "observed_source_versions": observed_versions,
+                        "source_version_coverage_complete": version_coverage_complete,
+                    },
+                    missing_periods=missing_periods,
+                    duplicate_key_count=duplicate_key_count,
+                    freshness_status=freshness_status,
+                    reason=reason,
+                    update_entry="UpdateService.update_phase3c_candidate_range",
+                    scheduled_task=scheduled_task,
+                    owner="Data Engineering + P0 source owners",
+                    downstream=["candidate research only"],
+                    candidate_only=True,
+                )
+            )
+    finally:
+        if conn is not None:
+            conn.close()
+    return statuses
+
+
 def _candidate_and_static_statuses(
     *,
-    conn: sqlite3.Connection,
     data_root: Path,
-    expected_session: str | None = None,
 ) -> list[dict[str, Any]]:
     statuses: list[dict[str, Any]] = []
-    table_specs = (
-        ("institutional_flows", "institutional_flows", "TWSE T86", "candidate P0 table; production ingestion disabled"),
-        ("credit_transactions", "credit_transactions", "TWSE MI_MARGN", "candidate P0 table; production ingestion disabled"),
-        ("tdcc_shareholding", "tdcc_shareholding", "TDCC public holdings lanes", "candidate P0 table; production ingestion disabled"),
-    )
-    for source_id, table, authority, reason in table_specs:
-        exists = _table_exists(conn, table)
-        count = int(conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]) if exists else 0
-        latest = _latest_date(conn, table) if exists else None
-        status = "stale" if not count else "unknown"
-        if count and expected_session and source_id != "tdcc_shareholding":
-            status = "partial" if latest == expected_session else "stale"
-        if count:
-            reason = "official rows ingested; per-market coverage and availability must be checked before declaring complete"
-        else:
-            reason = "production table has no observations; data acquisition is required"
-        statuses.append(
-            _source_status(
-                source_id=source_id,
-                authority=authority,
-                frequency="daily / weekly candidate source",
-                actual_period=latest,
-                published_at=None,
-                available_at=None,
-                expected_period=expected_session if source_id != "tdcc_shareholding" else None,
-                coverage={"table_exists": exists, "db_row_count": count},
-                missing_periods=[],
-                duplicate_key_count=None,
-                freshness_status=status,
-                reason=reason,
-                update_entry="official source snapshot ingestion",
-                scheduled_task="not scheduled for production ingestion",
-                owner="Data Engineering + P0 source owners",
-                downstream=[],
-                candidate_only=False,
-            )
-        )
-
     static_specs = (
         ("company.master_data", data_root / "meta_data" / "companies.csv", "company registry / official listing metadata"),
         ("broker.branch_registry", data_root / "meta_data" / "broker_branch_registry.csv", "broker registry and MoneyDJ route mapping"),
@@ -1090,6 +1207,33 @@ def main(argv: list[str] | None = None) -> int:
             _append_warning(warnings, "data_update_quick_status_unreadable")
 
     source_statuses: list[dict[str, Any]] = []
+    candidate_db_path: Path | None = None
+    configured_candidate_path = configured_candidate_db_path()
+    if configured_candidate_path is not None:
+        try:
+            candidate_db_path = validate_candidate_working_copy_path(
+                configured_candidate_path,
+                production_data_root=data_root,
+                production_db_path=db_path,
+            )
+        except ValueError as exc:
+            checks["phase3c_candidate_db"] = {
+                "status": "invalid",
+                "path": str(configured_candidate_path),
+                "reason": f"{type(exc).__name__}:{exc}",
+            }
+        else:
+            checks["phase3c_candidate_db"] = {
+                "status": "available" if candidate_db_path.is_file() else "missing",
+                "path": str(candidate_db_path),
+                "read_only": True,
+            }
+    else:
+        checks["phase3c_candidate_db"] = {
+            "status": "not_configured",
+            "path": None,
+            "read_only": True,
+        }
     if db_path.exists():
         try:
             uri = f"file:{db_path.resolve().as_posix()}?mode=ro"
@@ -1166,7 +1310,13 @@ def main(argv: list[str] | None = None) -> int:
                         )
                     )
                 source_statuses.extend(
-                    _candidate_and_static_statuses(conn=conn, data_root=data_root, expected_session=checks.get("expected_official_session"))
+                    _phase3c_candidate_statuses(
+                        candidate_db_path=candidate_db_path,
+                        expected_session=checks.get("expected_official_session"),
+                    )
+                )
+                source_statuses.extend(
+                    _candidate_and_static_statuses(data_root=data_root)
                 )
         except Exception as exc:  # noqa: BLE001 - read failure must be visible
             errors.append("sqlite_read_failed")

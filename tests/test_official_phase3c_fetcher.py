@@ -125,6 +125,53 @@ def test_credit_fetcher_supports_current_repeated_field_tables_shape(monkeypatch
     assert int(tpex["short_balance"]) == 12
 
 
+def test_credit_fetcher_retries_http_200_payload_until_daily_tables_are_ready(
+    monkeypatch,
+) -> None:
+    twse_row = [
+        "2330", "台積電", "100", "40", "5", "900", "955", "2000",
+        "20", "30", "2", "110", "118", "500", "10", "",
+    ]
+    tpex_row = [
+        "6488", "環球晶", "500", "70", "20", "5", "545", "1000",
+        "80", "10", "15", "3", "2", "1", "12", "0", "0", "0", "0", "",
+    ]
+    responses = iter(
+        _JsonResponse(payload)
+        for payload in (
+            {"stat": "查無資料", "date": "20260813", "tables": []},
+            {
+                "stat": "OK",
+                "date": "20260813",
+                "tables": [
+                    {
+                        "fields": ["代號"] + [f"欄{i}" for i in range(1, 16)],
+                        "data": [twse_row],
+                    }
+                ],
+            },
+            {
+                "stat": "ok",
+                "date": "20260813",
+                "tables": [
+                    {
+                        "fields": ["代號"] + [f"欄{i}" for i in range(1, 20)],
+                        "data": [tpex_row],
+                    }
+                ],
+            },
+        )
+    )
+    sleeps: list[int] = []
+    monkeypatch.setattr(fetcher, "safe_request", lambda *_args, **_kwargs: next(responses))
+    monkeypatch.setattr(fetcher.time, "sleep", sleeps.append)
+
+    frame = fetcher.fetch_credit_transactions(date(2026, 8, 13))
+
+    assert len(frame) == 2
+    assert sleeps == [fetcher.OFFICIAL_PAYLOAD_RETRY_SECONDS, 3]
+
+
 def test_fetcher_fails_whole_date_when_official_response_date_drifts(monkeypatch) -> None:
     _install_responses(
         monkeypatch,

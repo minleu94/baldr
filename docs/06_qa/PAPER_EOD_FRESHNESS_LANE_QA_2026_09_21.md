@@ -50,3 +50,27 @@ pytest 不讀取正式 D 槽，也不依賴正式檔案是否存在。`tests/tes
 
 結果為 focused pytest `38 passed`、mypy `Success: no issues found in 2 source files`、
 `py_compile` exit code `0`。pytest 僅有既有 `.pytest_cache` ACL warning。
+
+## 真實時間 Paper EOD gate 驗收（2026-09-21）
+
+在真實時間 `2026-09-21T12:01:07+00:00`（台北
+`2026-09-21T20:01:07+08:00`）以 commit `a7e18c7e` 的
+`paper_execution_dependency_gate.inspect_dependency()` 做完整唯讀驗證。原始 gate
+JSON 保存在被 Git 排除的
+`output/qa/paper_execution_dependency_gate_20260921/gate_real_now.json`，檔案 SHA-256
+為 `dc24e66ae3bc03ff8ec18f88e10d14380cfcf421e5a468bd102be427539a6925`。
+
+驗證目標日為 `2026-09-21`，結果為 `status=ready_with_warnings`、`ready=true`、
+`blockers=[]`，原因為同日 quick、freshness、SQLite 與 raw source hash reconciliation
+通過。三個 Paper EOD required source 都是 `current`：
+`twse.daily_prices.raw`、`tpex.daily_prices.raw`、`sqlite.daily_prices`；TWSE
+`1093/1093`、TPEx `875/875` source rows 與 SQLite readback 全部匹配，SQLite market
+observation 為 `ro/query_only`、1968 open rows。freshness aggregate 仍原樣保留為
+`degraded`，`errors=[]`；六個非 EOD warning 只投影為 Paper lane warning。
+
+`fundamental.statement_availability_map` 與 `tdcc_shareholding` 的 `unknown` 仍保留在
+`not_required_for_paper_eod` 診斷中，沒有被改成 `current`、刪除或放寬其自身契約。
+這次 gate 的 `query_only=true`、`source_db_written=false`、`source_files_written=false`、
+`formal_credit=false`、`broker_order_allowed=false`；沒有執行 EOD writer、正式 DB
+寫入、credit 授予或任何 production producer。此結果只證明當下 Paper EOD freshness
+lane 可帶 warning 通過，不代表其他 historical／Formal gate 或自然 evidence 已成熟。

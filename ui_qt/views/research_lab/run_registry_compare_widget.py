@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, QSignalBlocker, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -40,6 +40,8 @@ from ui_qt.widgets.table_style import apply_financial_table_style
 
 RUN_TYPE_LABELS = {
     "single_backtest": "單股回測",
+    "batch_backtest_stock": "批次股票回測",
+    "fixed_basket_stock": "固定組合（逐檔）",
     "recommendation_portfolio": "推薦回放",
 }
 
@@ -78,6 +80,7 @@ class RunRegistryCompareWidget(QWidget):
         self._filtered_runs: list[ResearchRunMetadataDTO] = []
         self._run_aliases: dict[str, str] = {}
         self._run_display_names: dict[str, str] = {}
+        self._selected_run_ids: list[str] = []
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -85,11 +88,30 @@ class RunRegistryCompareWidget(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(8)
 
+        self.purpose_banner = QLabel(
+            "研究 Registry：正式研究 run 比較與 promotion evidence 入口；"
+            "比較不等於可 promote，也不會自動替歷史資料補算或遷移。"
+        )
+        self.purpose_banner.setWordWrap(True)
+        self.purpose_banner.setAccessibleName("研究 Registry 目的說明")
+        self.purpose_banner.setToolTip("正式研究 evidence 入口；比較與 promotion 是不同判斷")
+        self.purpose_banner.setStyleSheet(
+            f"padding: 8px; color: {MIDNIGHT_ANALYST.text_secondary}; background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-left: 4px solid {MIDNIGHT_ANALYST.info};"
+        )
+        layout.addWidget(self.purpose_banner)
+
         filter_row = QHBoxLayout()
         filter_row.addWidget(QLabel("類型"))
         self.run_type_filter = QComboBox()
         self.run_type_filter.addItem("全部", "")
         self.run_type_filter.addItem(RUN_TYPE_LABELS["single_backtest"], "single_backtest")
+        self.run_type_filter.addItem(
+            RUN_TYPE_LABELS["batch_backtest_stock"], "batch_backtest_stock"
+        )
+        self.run_type_filter.addItem(
+            RUN_TYPE_LABELS["fixed_basket_stock"], "fixed_basket_stock"
+        )
         self.run_type_filter.addItem(
             RUN_TYPE_LABELS["recommendation_portfolio"],
             "recommendation_portfolio",
@@ -118,9 +140,28 @@ class RunRegistryCompareWidget(QWidget):
         list_layout = QVBoxLayout(list_group)
         self.run_list = QListWidget()
         self.run_list.setSelectionMode(QListWidget.ExtendedSelection)
-        self.run_list.setMinimumHeight(180)
-        self.run_list.itemSelectionChanged.connect(self._update_compare_button_state)
+        self.run_list.setMinimumHeight(240)
+        self.run_list.setSpacing(2)
+        self.run_list.setToolTip(
+            "可用 Ctrl（macOS 為 Command）點擊多選；選取會跨頁保留，最多 5 筆。"
+        )
+        self.run_list.itemSelectionChanged.connect(self._on_visible_selection_changed)
         list_layout.addWidget(self.run_list)
+
+        selection_row = QHBoxLayout()
+        self.selection_hint_label = QLabel(
+            "已選 0 / 5；可跨頁多選，至少 2 筆才能比較。"
+        )
+        self.selection_hint_label.setWordWrap(True)
+        self.selection_hint_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        selection_row.addWidget(self.selection_hint_label, stretch=1)
+        self.clear_selection_button = QPushButton("清除選取")
+        self.clear_selection_button.setToolTip("清除所有頁面已選取的 research run。")
+        self.clear_selection_button.clicked.connect(self.clear_selection)
+        selection_row.addWidget(self.clear_selection_button)
+        list_layout.addLayout(selection_row)
 
         page_row = QHBoxLayout()
         self.prev_page_btn = QPushButton("上一頁")
@@ -242,6 +283,10 @@ class RunRegistryCompareWidget(QWidget):
         if request_id != self._request_id:
             return
         self._all_runs = list(runs)
+        available_ids = {run.run_id for run in self._all_runs}
+        self._selected_run_ids = [
+            run_id for run_id in self._selected_run_ids if run_id in available_ids
+        ]
         self.current_page = 1
         self._apply_filters_and_render()
 
@@ -257,10 +302,45 @@ class RunRegistryCompareWidget(QWidget):
             self._render_run_list()
 
     def selected_run_ids(self) -> list[str]:
-        return [
+        selected = set(self._selected_run_ids)
+        return [run.run_id for run in self._filtered_runs if run.run_id in selected][:5]
+
+    def clear_selection(self) -> None:
+        self._selected_run_ids = []
+        blocker = QSignalBlocker(self.run_list)
+        try:
+            self.run_list.clearSelection()
+        finally:
+            del blocker
+        self._update_compare_button_state()
+
+    def _on_visible_selection_changed(self) -> None:
+        """把目前頁面選取同步回全域，避免翻頁遺失選取。"""
+        page_ids = {
+            str(self.run_list.item(index).data(Qt.ItemDataRole.UserRole))
+            for index in range(self.run_list.count())
+        }
+        visible_selected = {
             str(item.data(Qt.ItemDataRole.UserRole))
             for item in self.run_list.selectedItems()
-        ][:5]
+        }
+        selected = set(self._selected_run_ids)
+        selected.difference_update(page_ids)
+        selected.update(visible_selected)
+        ordered = [run.run_id for run in self._filtered_runs if run.run_id in selected]
+        if len(ordered) > 5:
+            ordered = ordered[:5]
+            keep = set(ordered)
+            blocker = QSignalBlocker(self.run_list)
+            try:
+                for index in range(self.run_list.count()):
+                    item = self.run_list.item(index)
+                    run_id = str(item.data(Qt.ItemDataRole.UserRole))
+                    item.setSelected(run_id in keep)
+            finally:
+                del blocker
+        self._selected_run_ids = ordered
+        self._update_compare_button_state()
 
     def compare_selected_runs(self) -> None:
         run_ids = self.selected_run_ids()
@@ -355,31 +435,43 @@ class RunRegistryCompareWidget(QWidget):
             filtered.append(run)
 
         self._filtered_runs = filtered
+        filtered_ids = {run.run_id for run in self._filtered_runs}
+        self._selected_run_ids = [
+            run_id for run_id in self._selected_run_ids if run_id in filtered_ids
+        ]
         self._render_run_list()
 
     def _render_run_list(self) -> None:
-        self.run_list.clear()
-        total_pages = self._total_pages()
-        self.current_page = min(max(self.current_page, 1), total_pages)
-        start = (self.current_page - 1) * self.page_size
-        end = start + self.page_size
+        selected_ids = set(self._selected_run_ids)
+        blocker = QSignalBlocker(self.run_list)
+        try:
+            self.run_list.clear()
+            total_pages = self._total_pages()
+            self.current_page = min(max(self.current_page, 1), total_pages)
+            start = (self.current_page - 1) * self.page_size
+            end = start + self.page_size
 
-        for run in self._filtered_runs[start:end]:
-            text = (
-                f"{run.run_name}\n"
-                f"類型：{self._run_type_label(run.run_type)}　策略：{run.strategy_id}　時間：{run.created_at[:16]}"
-            )
-            item = QListWidgetItem(text)
-            item.setSizeHint(QSize(0, 46))
-            item.setData(Qt.ItemDataRole.UserRole, run.run_id)
-            item.setToolTip(
-                f"名稱：{run.run_name}\n"
-                f"run_id：{run.run_id}\n"
-                f"類型：{self._run_type_label(run.run_type)}\n"
-                f"策略：{run.strategy_id}\n"
-                f"建立時間：{run.created_at[:16]}"
-            )
-            self.run_list.addItem(item)
+            for run in self._filtered_runs[start:end]:
+                text = (
+                    f"{run.run_name}\n"
+                    f"類型：{self._run_type_label(run.run_type)}　策略：{run.strategy_id}　時間：{run.created_at[:16]}"
+                )
+                item = QListWidgetItem(text)
+                item.setSizeHint(QSize(0, 60))
+                item.setData(Qt.ItemDataRole.UserRole, run.run_id)
+                item.setToolTip(
+                    f"名稱：{run.run_name}\n"
+                    f"run_id：{run.run_id}\n"
+                    f"類型：{self._run_type_label(run.run_type)}\n"
+                    f"策略：{run.strategy_id}\n"
+                    f"建立時間：{run.created_at[:16]}"
+                )
+                self.run_list.addItem(item)
+                # QListWidgetItem 只有加入清單後設定選取，Qt 才會保留
+                # selection model 狀態；這也是跨頁恢復選取的關鍵。
+                item.setSelected(run.run_id in selected_ids)
+        finally:
+            del blocker
 
         self.page_label.setText(f"第 {self.current_page} / {total_pages} 頁")
         self.prev_page_btn.setEnabled(self.current_page > 1)
@@ -387,8 +479,12 @@ class RunRegistryCompareWidget(QWidget):
         self._update_compare_button_state()
 
     def _update_compare_button_state(self) -> None:
-        selected_count = len(self.run_list.selectedItems())
+        selected_count = len(self.selected_run_ids())
         self.compare_button.setEnabled(2 <= selected_count <= 5)
+        self.selection_hint_label.setText(
+            f"已選 {selected_count} / 5；可跨頁多選，至少 2 筆才能比較。"
+            + (" 已達上限。" if selected_count >= 5 else "")
+        )
 
     def _total_pages(self) -> int:
         if not self._filtered_runs:

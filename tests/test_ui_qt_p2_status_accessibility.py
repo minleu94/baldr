@@ -24,6 +24,7 @@ from ui_qt.views.smart_money.terminal_table_model import (
     BranchTrackerTableModel,
     TerminalTableModel,
 )
+from ui_qt.widgets.chart_payloads import build_trade_return_histogram_payload
 from ui_qt.widgets.fast_chart_widget import (
     _build_html,
     _numeric_alternative_text,
@@ -147,6 +148,17 @@ def test_fast_chart_has_keyboard_canvas_and_numeric_alternative() -> None:
     assert "tabindex=\"0\"" in html
     assert "aria-keyshortcuts=\"ArrowLeft ArrowRight Home End\"" in html
     assert "canvas.addEventListener('keydown'" in html
+
+
+def test_fast_trade_return_chart_numeric_alternative_keeps_small_sample_warning() -> None:
+    payload = build_trade_return_histogram_payload([-2.5, 1.25, 0.0])
+
+    alternative = _numeric_alternative_text(payload)
+    html = _build_html(payload)
+
+    assert "交易 1｜-2.5%" in alternative
+    assert "不宜解讀為分布或 95% VaR" in alternative
+    assert "drawTradeBars" in html
 
 
 def test_terminal_models_expose_graphic_cells_as_accessible_text() -> None:

@@ -128,14 +128,49 @@ def build_trade_return_histogram_payload(
     returns: Iterable[Any],
     stats: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
+    """建立交易報酬圖表 payload，依樣本量選擇適合的呈現方式。
+
+    少於 10 筆交易時，直方圖的 bin 形狀會被單筆觀測主導，因此改以逐筆
+    零軸發散條呈現；95% VaR 也只有在至少 20 筆觀測時才會出現在圖表上。
+    """
+
     clean_values = [_optional_float(value) for value in returns]
     clean_values = [value for value in clean_values if value is not None]
     if not clean_values:
-        payload = build_histogram_chart_payload([], "交易報酬分布", "報酬率 (%)")
-        payload["subtitle"] = "零軸左側為虧損，右側為獲利"
+        payload = build_histogram_chart_payload([], "交易報酬", "報酬率 (%)")
+        payload["subtitle"] = "目前沒有已完成交易，無法估計報酬分布"
         payload["zeroLine"] = 0.0
         payload["legend"] = _return_legend()
+        payload["sampleCount"] = 0
         return payload
+
+    sample_count = len(clean_values)
+    if sample_count < 10:
+        items = []
+        for index, value in enumerate(clean_values, start=1):
+            items.append(
+                {
+                    "label": f"交易 {index}",
+                    "index": index,
+                    "value": round(float(value), 2),
+                    "color": "#ef4444" if value < 0 else "#22c55e",
+                }
+            )
+        return {
+            "kind": "tradeBars",
+            "title": "交易報酬（逐筆）",
+            "subtitle": (
+                f"樣本 {sample_count} 筆｜小樣本逐筆呈現，不宜解讀為分布或 95% VaR"
+            ),
+            "xLabel": "報酬率 (%)",
+            "items": items,
+            "markers": _histogram_markers(stats, include_var=False),
+            "zeroLine": 0.0,
+            "legend": _return_legend(),
+            "sampleCount": sample_count,
+            "distributionMode": "individual_observations",
+            "sampleWarning": "樣本少於 10 筆，請逐筆檢視；不宜宣稱分布形狀或 95% VaR。",
+        }
 
     max_abs = max(abs(min(clean_values)), abs(max(clean_values)))
     max_abs = float(math.ceil(max_abs)) if max_abs > 0 else 1.0
@@ -168,12 +203,22 @@ def build_trade_return_histogram_payload(
     return {
         "kind": "histogram",
         "title": "交易報酬分布",
-        "subtitle": "零軸左側為虧損，右側為獲利",
+        "subtitle": (
+            f"樣本 {sample_count} 筆｜零軸左側為虧損，右側為獲利"
+            + ("；95% VaR 需至少 20 筆，暫不顯示" if sample_count < 20 else "")
+        ),
         "xLabel": "報酬率 (%)",
         "bins": bins,
-        "markers": _histogram_markers(stats),
+        "markers": _histogram_markers(stats, include_var=sample_count >= 20),
         "zeroLine": 0.0,
         "legend": _return_legend(),
+        "sampleCount": sample_count,
+        "distributionMode": "histogram",
+        "sampleWarning": (
+            "樣本少於 20 筆，95% VaR 不顯示；平均與中位數僅作描述性參考。"
+            if sample_count < 20
+            else ""
+        ),
     }
 
 
@@ -336,16 +381,18 @@ def _first_trade_date(trade_list: Optional[pd.DataFrame], candidates: List[str])
     return _to_timestamp(trade_list[col].iloc[0])
 
 
-def _histogram_markers(stats: Optional[Dict[str, float]]) -> List[Dict[str, Any]]:
+def _histogram_markers(
+    stats: Optional[Dict[str, float]],
+    *,
+    include_var: bool = True,
+) -> List[Dict[str, Any]]:
     if not stats:
         return []
 
     markers = []
-    marker_defs = [
-        ("mean", "平均", "#38bdf8"),
-        ("median", "中位數", "#f59e0b"),
-        ("var_95", "95% VaR", "#ef4444"),
-    ]
+    marker_defs = [("mean", "平均", "#38bdf8"), ("median", "中位數", "#f59e0b")]
+    if include_var:
+        marker_defs.append(("var_95", "95% VaR", "#ef4444"))
     for key, label, color in marker_defs:
         value = _optional_float(stats.get(key))
         if value is not None:

@@ -28,6 +28,55 @@ DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
 DEFAULT_OUTPUT_ROOT = DEFAULT_DATA_ROOT / "output"
 DEFAULT_DB_PATH = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
 
+# Paper EOD 只消費下列三個 freshness 市場來源；其他來源由各自 lane
+# 另行判定，不能因跨 lane 的降級狀態直接阻擋 Paper。
+PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS = frozenset(
+    {
+        "twse.daily_prices.raw",
+        "tpex.daily_prices.raw",
+        "sqlite.daily_prices",
+    }
+)
+PAPER_EOD_NON_REQUIRED_FRESHNESS_SOURCE_IDS = frozenset(
+    {
+        "sqlite.market_indices",
+        "sqlite.industry_indices",
+        "sqlite.broker_flows",
+        "sqlite.technical_indicators",
+        "fundamental.monthly_revenues",
+        "fundamental.quarterly_statements",
+        "fundamental.current_monthly_observations",
+        "fundamental.current_statement_observations",
+        "fundamental.statement_availability_map",
+        "institutional_flows",
+        "credit_transactions",
+        "tdcc_shareholding",
+    }
+)
+PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES = frozenset({"stale", "partial"})
+PAPER_EOD_FRESHNESS_SOURCE_STATUS_VALUES = frozenset(
+    {"current", "expected_wait", "stale", "failed", "partial", "not_applicable", "unknown"}
+)
+PAPER_EOD_EXACT_NON_REQUIRED_WARNINGS = {
+    "monthly_revenue_expected_period_not_available": "fundamental.monthly_revenues",
+    "quarterly_statement_expected_period_not_available": "fundamental.quarterly_statements",
+    "technical_indicators_latest_coverage_partial": "sqlite.technical_indicators",
+}
+# 這兩個來源的 unknown 只代表其各自 consumer 尚未完成證據，不是 Paper
+# EOD 的輸入。例外必須逐一列出；不把其他 unknown 轉成可接受狀態。
+PAPER_EOD_NON_REQUIRED_UNKNOWN_POLICIES: dict[str, dict[str, str]] = {
+    "tdcc_shareholding": {
+        "reason_code": "weekly_candidate_completeness_not_proven",
+        "consumer_boundary": "tdcc_p0_candidate_shadow",
+        "consumer_basis": "P0 週資料候選；無 Paper EOD downstream 或 production ingestion",
+    },
+    "fundamental.statement_availability_map": {
+        "reason_code": "fundamental_pit_mapping_missing",
+        "consumer_boundary": "fundamental_pit_availability",
+        "consumer_basis": "MOPS Fundamental/PIT availability mapping；不在 Paper EOD input",
+    },
+}
+
 
 def _parse_date(value: object) -> date | None:
     if value is None:
@@ -335,6 +384,174 @@ def _step_passed(payload: Mapping[str, object] | None, name: str) -> bool:
     return isinstance(step, Mapping) and step.get("status") == "passed"
 
 
+def _paper_eod_freshness_projection(
+    payload: Mapping[str, object],
+    *,
+    target: date,
+) -> tuple[dict[str, object], list[str], list[str]]:
+    """將 freshness aggregate 投影為 Paper EOD 可審的 lane 結果。
+
+    只有 probe 明確回報 degraded、errors 為空、每個 warning 都能對應到
+    已登記的非 EOD source，且三個 Paper 市場 source 同日 current 時，才
+    允許後續 gate 以 warning 繼續。此函式不改寫 aggregate status，也不移除
+    日期、時間、raw/DB readback 等 gate blocker。
+    """
+
+    aggregate_status = str(payload.get("status") or "").strip().lower()
+    projection: dict[str, object] = {
+        "schema_version": "paper-eod-freshness-lane.v1",
+        "lane": "paper_eod",
+        "target_date": target.isoformat(),
+        "aggregate_status": aggregate_status,
+        "required_source_ids": sorted(PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS),
+        "allowed_non_eod_source_ids": sorted(PAPER_EOD_NON_REQUIRED_FRESHNESS_SOURCE_IDS),
+    }
+    if aggregate_status != "degraded":
+        projection["status"] = "not_applicable"
+        return projection, [], []
+
+    blockers: list[str] = []
+    ignored_warnings: list[str] = []
+    raw_errors = payload.get("errors")
+    raw_warnings = payload.get("warnings")
+    raw_source_statuses = payload.get("source_statuses")
+    projection["aggregate_errors"] = raw_errors
+    projection["aggregate_warnings"] = raw_warnings
+
+    if not isinstance(raw_errors, list) or any(not isinstance(item, str) for item in raw_errors):
+        blockers.append("freshness_lane_errors_malformed")
+    elif raw_errors:
+        blockers.append("freshness_lane_errors_present")
+    if not isinstance(raw_warnings, list) or any(
+        not isinstance(item, str) or not item.strip() for item in raw_warnings
+    ):
+        blockers.append("freshness_lane_warnings_malformed")
+    elif not raw_warnings:
+        blockers.append("freshness_lane_warnings_empty")
+    if not isinstance(raw_source_statuses, list):
+        blockers.append("freshness_lane_source_statuses_malformed")
+
+    source_by_id: dict[str, Mapping[str, object]] = {}
+    if isinstance(raw_source_statuses, list):
+        source_status_by_id: dict[str, str] = {}
+        for index, item in enumerate(raw_source_statuses):
+            if not isinstance(item, Mapping):
+                blockers.append(f"freshness_lane_source_status_malformed:{index}")
+                continue
+            raw_source_id = item.get("source_id")
+            if not isinstance(raw_source_id, str) or not raw_source_id.strip():
+                blockers.append(f"freshness_lane_source_id_malformed:{index}")
+                continue
+            source_id = raw_source_id.strip()
+            if source_id in source_by_id:
+                blockers.append(f"freshness_lane_source_id_duplicate:{source_id}")
+                continue
+            source_by_id[source_id] = item
+            raw_source_status = item.get("freshness_status")
+            if not isinstance(raw_source_status, str) or not raw_source_status.strip():
+                blockers.append(f"freshness_lane_source_status_malformed:{source_id}")
+                source_status_by_id[source_id] = ""
+                continue
+            source_status = raw_source_status.strip().lower()
+            source_status_by_id[source_id] = source_status
+            if source_status not in PAPER_EOD_FRESHNESS_SOURCE_STATUS_VALUES:
+                blockers.append(f"freshness_lane_source_status_unknown:{source_id}:{source_status}")
+    else:
+        source_status_by_id = {}
+
+    required_projection: dict[str, object] = {}
+    for source_id in sorted(PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS):
+        source = source_by_id.get(source_id)
+        if source is None:
+            blockers.append(f"freshness_required_source_missing:{source_id}")
+            continue
+        source_status = source_status_by_id.get(source_id, "")
+        actual_period = _parse_date(source.get("actual_period"))
+        expected_period = _parse_date(source.get("expected_period"))
+        required_projection[source_id] = {
+            "freshness_status": source_status,
+            "actual_period": actual_period.isoformat() if actual_period else None,
+            "expected_period": expected_period.isoformat() if expected_period else None,
+        }
+        if source_status != "current":
+            blockers.append(f"freshness_required_source_not_current:{source_id}:{source_status or 'missing'}")
+        if actual_period != target:
+            blockers.append(f"freshness_required_source_date_not_target:{source_id}:actual")
+        if expected_period != target:
+            blockers.append(f"freshness_required_source_date_not_target:{source_id}:expected")
+    projection["required_sources"] = required_projection
+
+    warning_sources: dict[str, list[str]] = {}
+    if isinstance(raw_warnings, list):
+        for raw_warning in raw_warnings:
+            warning = raw_warning.strip() if isinstance(raw_warning, str) else ""
+            warning_source_id: str | None = PAPER_EOD_EXACT_NON_REQUIRED_WARNINGS.get(warning)
+            if warning_source_id is None and warning.startswith("source_freshness_degraded:"):
+                warning_source_id = warning.split(":", 1)[1].strip()
+            if (
+                warning_source_id is None
+                or warning_source_id not in PAPER_EOD_NON_REQUIRED_FRESHNESS_SOURCE_IDS
+            ):
+                blockers.append(f"freshness_lane_warning_unclassified:{warning or 'missing'}")
+                continue
+            source = source_by_id.get(warning_source_id)
+            if source is None:
+                blockers.append(f"freshness_non_eod_source_missing:{warning_source_id}")
+                continue
+            source_status = source_status_by_id.get(warning_source_id, "")
+            if source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
+                blockers.append(
+                    "freshness_non_eod_source_status_not_degraded:"
+                    f"{warning_source_id}:{source_status or 'missing'}"
+                )
+                continue
+            warning_sources.setdefault(warning_source_id, []).append(warning)
+            ignored_warnings.append(warning)
+
+    projection["ignored_non_eod_sources"] = {
+        source_id: {
+            "freshness_status": source_status_by_id.get(source_id, ""),
+            "warnings": warning_list,
+            "candidate_only": bool(source_by_id[source_id].get("candidate_only", False)),
+        }
+        for source_id, warning_list in sorted(warning_sources.items())
+    }
+    projection["ignored_non_eod_source_ids"] = sorted(warning_sources)
+    projection["ignored_non_eod_warnings"] = ignored_warnings
+    non_current_sources: list[dict[str, str]] = []
+    not_required_for_paper_eod: dict[str, dict[str, object]] = {}
+    for source_id, source_status in sorted(source_status_by_id.items()):
+        if source_status in {"", "current", "not_applicable"}:
+            continue
+        non_current_sources.append({"source_id": source_id, "freshness_status": source_status})
+        if source_id in PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS:
+            continue
+        if source_status == "unknown":
+            policy = PAPER_EOD_NON_REQUIRED_UNKNOWN_POLICIES.get(source_id)
+            source = source_by_id[source_id]
+            if policy is not None:
+                # 保存完整原始 row，讓 TDCC／Fundamental 自己的 consumer 仍能
+                # 看到 unknown、reason、availability 與 coverage 診斷。
+                not_required_for_paper_eod[source_id] = {
+                    **policy,
+                    "source_id": source_id,
+                    "freshness_status": source_status,
+                    "not_required_for_paper_eod": True,
+                    "source_diagnostic": dict(source),
+                }
+                continue
+            blockers.append(f"freshness_lane_source_status_unknown:{source_id}")
+        elif source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
+            blockers.append(f"freshness_lane_noncurrent_source_blocked:{source_id}:{source_status}")
+        elif source_id not in warning_sources:
+            blockers.append(f"freshness_lane_noncurrent_source_unattributed:{source_id}:{source_status}")
+    projection["non_current_sources"] = non_current_sources
+    projection["not_required_for_paper_eod"] = not_required_for_paper_eod
+    projection["lane_blockers"] = list(blockers)
+    projection["status"] = "degraded_non_eod_only" if not blockers else "blocked"
+    return projection, blockers, ignored_warnings
+
+
 def inspect_dependency(
     *,
     data_root: str | Path = DEFAULT_DATA_ROOT,
@@ -354,6 +571,8 @@ def inspect_dependency(
     freshness_path = output_root_path / "scheduled" / "data_freshness" / "latest_status.json"
     blockers: list[str] = []
     warnings: list[str] = []
+    freshness_lane_projection: dict[str, object] | None = None
+    freshness_lane_ignored_warnings: list[str] = []
 
     result: dict[str, object] = {
         "schema_version": "paper-execution-dependency-gate.v1",
@@ -450,6 +669,13 @@ def inspect_dependency(
         result["freshness_daily_prices_date"] = (
             freshness_target.isoformat() if freshness_target else None
         )
+        (
+            freshness_lane_projection,
+            freshness_lane_blockers,
+            freshness_lane_ignored_warnings,
+        ) = _paper_eod_freshness_projection(freshness, target=target)
+        result["freshness_lane"] = freshness_lane_projection
+        blockers.extend(freshness_lane_blockers)
         if freshness_status != "passed":
             blockers.append(f"freshness_status_not_passed:{freshness_status or 'missing'}")
         if freshness_target is None or freshness_target != target:
@@ -558,8 +784,40 @@ def inspect_dependency(
             result["blockers"] = blockers
             return result
 
+    freshness_lane_ready_with_warnings = (
+        freshness_lane_projection is not None
+        and freshness_lane_projection.get("status") == "degraded_non_eod_only"
+        and not quick_no_data
+    )
+    if freshness_lane_ready_with_warnings:
+        blockers = [
+            blocker
+            for blocker in blockers
+            if blocker != "freshness_status_not_passed:degraded"
+        ]
+        warnings.extend(
+            f"paper_eod_ignored_non_eod_freshness:{warning}"
+            for warning in freshness_lane_ignored_warnings
+        )
+
     if blockers:
+        if freshness_lane_projection is not None and freshness_lane_ready_with_warnings:
+            freshness_lane_projection["gate_eligible"] = False
+            freshness_lane_projection["status"] = "eligible_but_other_blockers"
+            freshness_lane_projection["gate_blockers"] = list(blockers)
         result.update({"status": "blocked", "ready": False})
+    elif freshness_lane_ready_with_warnings:
+        if freshness_lane_projection is not None:
+            freshness_lane_projection["gate_eligible"] = True
+            freshness_lane_projection["status"] = "ready_with_warnings"
+            freshness_lane_projection["gate_blockers"] = []
+        result.update(
+            {
+                "status": "ready_with_warnings",
+                "ready": True,
+                "reason": "same_date_update_freshness_db_and_source_hash_with_non_eod_warnings",
+            }
+        )
     else:
         result.update({"status": "ready", "ready": True, "reason": "same_date_update_freshness_db_and_source_hash"})
     result["warnings"] = warnings

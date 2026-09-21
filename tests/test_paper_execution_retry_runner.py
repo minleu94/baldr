@@ -291,6 +291,31 @@ def test_retry_runner_triggers_runtime_roll_forward_after_paper_window(
     assert runtime["formal_oos_allowed"] is False
 
 
+def test_retry_runner_calls_adapter_for_ready_with_warnings_gate(tmp_path: Path) -> None:
+    adapter_calls: list[str] = []
+
+    def adapter() -> dict[str, object]:
+        adapter_calls.append("called")
+        return {"status": "machine_verified_candidate", "blockers": []}
+
+    result = run_scheduled(
+        max_attempts=1,
+        gate_output_root=tmp_path / "gate",
+        gate_fn=lambda: {
+            "status": "ready_with_warnings",
+            "ready": True,
+            "warnings": ["paper_eod_ignored_non_eod_freshness:source"],
+            "blockers": [],
+        },
+        adapter_fn=adapter,
+        sleep_fn=lambda _: None,
+        now_fn=lambda: OBSERVED,
+    )
+
+    assert adapter_calls == ["called"]
+    assert result["status"] == "machine_verified_candidate"
+
+
 def test_retry_runner_uses_explicit_source_pins_for_runtime_roll_forward(
     tmp_path: Path,
     monkeypatch,

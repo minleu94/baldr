@@ -4,8 +4,12 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
+from typing import cast
 
-from scripts.scheduled.paper_execution_dependency_gate import inspect_dependency
+from scripts.scheduled.paper_execution_dependency_gate import (
+    _paper_eod_freshness_projection,
+    inspect_dependency,
+)
 
 
 TARGET = "20260908"
@@ -70,6 +74,79 @@ def _seed_ready_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     return data_root, output_root, db_path
 
 
+def _set_degraded_non_eod_freshness(output_root: Path) -> None:
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness.update(
+        {
+            "status": "degraded",
+            "errors": [],
+            "warnings": [
+                "monthly_revenue_expected_period_not_available",
+                "quarterly_statement_expected_period_not_available",
+                "source_freshness_degraded:fundamental.current_monthly_observations",
+                "source_freshness_degraded:fundamental.current_statement_observations",
+                "source_freshness_degraded:institutional_flows",
+                "source_freshness_degraded:credit_transactions",
+            ],
+            "source_statuses": [
+                {
+                    "source_id": source_id,
+                    "freshness_status": "current",
+                    "actual_period": TARGET,
+                    "expected_period": TARGET,
+                }
+                for source_id in (
+                    "twse.daily_prices.raw",
+                    "tpex.daily_prices.raw",
+                    "sqlite.daily_prices",
+                )
+            ]
+            + [
+                {
+                    "source_id": "fundamental.monthly_revenues",
+                    "freshness_status": "stale",
+                    "actual_period": "2026-06",
+                    "expected_period": "2026-08",
+                    "candidate_only": True,
+                },
+                {
+                    "source_id": "fundamental.quarterly_statements",
+                    "freshness_status": "stale",
+                    "actual_period": "2024-Q1",
+                    "expected_period": "2026-Q2",
+                    "candidate_only": True,
+                },
+                {
+                    "source_id": "fundamental.current_monthly_observations",
+                    "freshness_status": "partial",
+                    "actual_period": "2026-08",
+                    "expected_period": "2026-08",
+                },
+                {
+                    "source_id": "fundamental.current_statement_observations",
+                    "freshness_status": "partial",
+                    "actual_period": "2026-Q2",
+                    "expected_period": "2026-Q2",
+                },
+                {
+                    "source_id": "institutional_flows",
+                    "freshness_status": "stale",
+                    "actual_period": "20260908",
+                    "expected_period": "20260915",
+                },
+                {
+                    "source_id": "credit_transactions",
+                    "freshness_status": "stale",
+                    "actual_period": "20260908",
+                    "expected_period": "20260915",
+                },
+            ],
+        }
+    )
+    _write_json(freshness_path, freshness)
+
+
 def test_dependency_gate_requires_same_date_receipts_source_hash_and_db_rows(tmp_path: Path) -> None:
     data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
 
@@ -91,6 +168,364 @@ def test_dependency_gate_requires_same_date_receipts_source_hash_and_db_rows(tmp
     assert result["source_db_readback"]["tpex"]["matched_rows"] == 1  # type: ignore[index]
 
 
+def test_dependency_gate_allows_explicit_non_eod_degraded_freshness_with_projection(
+    tmp_path: Path,
+) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "ready_with_warnings"
+    assert result["ready"] is True
+    assert result["freshness_status"] == "degraded"
+    projection = result["freshness_lane"]
+    assert projection["aggregate_status"] == "degraded"  # type: ignore[index]
+    assert projection["status"] == "ready_with_warnings"  # type: ignore[index]
+    assert projection["gate_eligible"] is True  # type: ignore[index]
+    assert "freshness_status_not_passed:degraded" not in result["blockers"]  # type: ignore[operator]
+    assert any(
+        str(item).startswith("paper_eod_ignored_non_eod_freshness:")
+        for item in cast(list[object], result["warnings"])
+    )
+
+
+def test_dependency_gate_blocks_unknown_degraded_warning(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness["warnings"].append("source_freshness_degraded:unregistered_lane")
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["ready"] is False
+    assert "freshness_lane_warning_unclassified:source_freshness_degraded:unregistered_lane" in result[
+        "blockers"
+    ]  # type: ignore[operator]
+
+
+def test_dependency_gate_blocks_degraded_errors_and_required_source_partial(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness["errors"] = ["sqlite read error"]
+    for source in freshness["source_statuses"]:
+        if source["source_id"] == "sqlite.daily_prices":
+            source["freshness_status"] = "partial"
+            break
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    blockers = cast(list[object], result["blockers"])
+    assert result["status"] == "blocked"
+    assert "freshness_lane_errors_present" in blockers  # type: ignore[operator]
+    assert "freshness_required_source_not_current:sqlite.daily_prices:partial" in blockers  # type: ignore[operator]
+    assert "freshness_status_not_passed:degraded" in blockers  # type: ignore[operator]
+
+
+def test_dependency_gate_rejects_missing_or_malformed_freshness_lane_schema(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness["source_statuses"] = [
+        source
+        for source in freshness["source_statuses"]
+        if source["source_id"] != "tpex.daily_prices.raw"
+    ]
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+
+    missing = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+    assert "freshness_required_source_missing:tpex.daily_prices.raw" in missing["blockers"]  # type: ignore[operator]
+
+    freshness["source_statuses"] = "malformed"
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+    malformed = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+    assert "freshness_lane_source_statuses_malformed" in malformed["blockers"]  # type: ignore[operator]
+
+
+def test_dependency_gate_rejects_failed_non_eod_source_even_when_warning_is_named(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    for source in freshness["source_statuses"]:
+        if source["source_id"] == "institutional_flows":
+            source["freshness_status"] = "failed"
+            break
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert "freshness_non_eod_source_status_not_degraded:institutional_flows:failed" in result[
+        "blockers"
+    ]  # type: ignore[operator]
+
+
+def test_dependency_gate_rejects_unattributed_noncurrent_source_status(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness["source_statuses"].extend(
+        [
+            {"source_id": "sqlite.market_indices", "freshness_status": "stale"},
+            {"source_id": "unregistered_unknown_source", "freshness_status": "unknown"},
+        ]
+    )
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    blockers = cast(list[object], result["blockers"])
+    assert "freshness_lane_noncurrent_source_unattributed:sqlite.market_indices:stale" in blockers
+    assert "freshness_lane_source_status_unknown:unregistered_unknown_source" in blockers
+
+
+def test_dependency_gate_classifies_only_two_non_eod_unknown_sources(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness["source_statuses"].extend(
+        [
+            {
+                "source_id": "tdcc_shareholding",
+                "freshness_status": "unknown",
+                "reason": "official rows ingested; per-market coverage and availability must be checked before declaring complete",
+                "actual_period": "20260904",
+                "expected_period": None,
+                "candidate_only": False,
+                "available_at": None,
+                "coverage": {"table_exists": True, "db_row_count": 4047},
+            },
+            {
+                "source_id": "fundamental.statement_availability_map",
+                "freshness_status": "unknown",
+                "reason": "file_missing",
+                "actual_period": None,
+                "expected_period": None,
+                "candidate_only": False,
+                "available_at": None,
+                "coverage": {"file_exists": False, "bytes": None},
+            },
+        ]
+    )
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "ready_with_warnings"
+    assert result["ready"] is True
+    projection = cast(dict[str, object], result["freshness_lane"])
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    assert set(excluded) == {
+        "tdcc_shareholding",
+        "fundamental.statement_availability_map",
+    }
+    assert excluded["tdcc_shareholding"]["reason_code"] == (
+        "weekly_candidate_completeness_not_proven"
+    )
+    assert excluded["fundamental.statement_availability_map"]["reason_code"] == (
+        "fundamental_pit_mapping_missing"
+    )
+    tdcc_diagnostic = cast(dict[str, object], excluded["tdcc_shareholding"]["source_diagnostic"])
+    statement_diagnostic = cast(
+        dict[str, object], excluded["fundamental.statement_availability_map"]["source_diagnostic"]
+    )
+    assert tdcc_diagnostic["reason"] == (
+        "official rows ingested; per-market coverage and availability must be checked before declaring complete"
+    )
+    assert statement_diagnostic["reason"] == "file_missing"
+    assert "freshness_lane_source_status_unknown:tdcc_shareholding" not in result["blockers"]  # type: ignore[operator]
+    assert (
+        "freshness_lane_source_status_unknown:fundamental.statement_availability_map"
+        not in result["blockers"]  # type: ignore[operator]
+    )
+
+
+def test_dependency_gate_keeps_explicit_unknown_source_failed_closed(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness["source_statuses"].append(
+        {"source_id": "tdcc_shareholding", "freshness_status": "failed"}
+    )
+    freshness_path.write_text(json.dumps(freshness), encoding="utf-8")
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["ready"] is False
+    assert "freshness_lane_noncurrent_source_blocked:tdcc_shareholding:failed" in result[
+        "blockers"
+    ]  # type: ignore[operator]
+
+
+def _historical_degraded_payload(target: str) -> dict[str, object]:
+    """以正式 9/15--9/17 payload 的欄位和值建立可攜式 projection fixture。"""
+
+    return {
+        "status": "degraded",
+        "errors": [],
+        "warnings": [
+            "monthly_revenue_expected_period_not_available",
+            "quarterly_statement_expected_period_not_available",
+            "source_freshness_degraded:fundamental.current_monthly_observations",
+            "source_freshness_degraded:fundamental.current_statement_observations",
+            "source_freshness_degraded:institutional_flows",
+            "source_freshness_degraded:credit_transactions",
+        ],
+        "source_statuses": [
+            {
+                "source_id": source_id,
+                "freshness_status": "current",
+                "actual_period": target,
+                "expected_period": target,
+            }
+            for source_id in (
+                "twse.daily_prices.raw",
+                "tpex.daily_prices.raw",
+                "sqlite.daily_prices",
+            )
+        ]
+        + [
+            {
+                "source_id": "fundamental.monthly_revenues",
+                "freshness_status": "stale",
+                "actual_period": "2026-06",
+                "expected_period": "2026-08",
+                "candidate_only": True,
+            },
+            {
+                "source_id": "fundamental.quarterly_statements",
+                "freshness_status": "stale",
+                "actual_period": "2024-Q1",
+                "expected_period": "2026-Q2",
+                "candidate_only": True,
+            },
+            {
+                "source_id": "fundamental.current_monthly_observations",
+                "freshness_status": "partial",
+                "actual_period": "2026-08",
+                "expected_period": "2026-08",
+            },
+            {
+                "source_id": "fundamental.current_statement_observations",
+                "freshness_status": "partial",
+                "actual_period": "2026-Q2",
+                "expected_period": "2026-Q2",
+            },
+            {
+                "source_id": "institutional_flows",
+                "freshness_status": "stale",
+                "actual_period": "20260908",
+                "expected_period": target,
+            },
+            {
+                "source_id": "credit_transactions",
+                "freshness_status": "stale",
+                "actual_period": "20260908",
+                "expected_period": target,
+            },
+            {
+                "source_id": "tdcc_shareholding",
+                "freshness_status": "unknown",
+                "reason": "official rows ingested; per-market coverage and availability must be checked before declaring complete",
+                "actual_period": "20260904",
+                "expected_period": None,
+                "candidate_only": False,
+                "available_at": None,
+                "coverage": {"table_exists": True, "db_row_count": 4047},
+            },
+            {
+                "source_id": "fundamental.statement_availability_map",
+                "freshness_status": "unknown",
+                "reason": "file_missing",
+                "actual_period": None,
+                "expected_period": None,
+                "candidate_only": False,
+                "available_at": None,
+                "coverage": {"file_exists": False, "bytes": None},
+            },
+        ],
+    }
+
+
+def test_historical_payload_shape_fixture_classifies_two_non_eod_unknown_sources() -> None:
+    for target_key in ("20260915", "20260916", "20260917"):
+        target = datetime.strptime(target_key, "%Y%m%d").date()
+        payload = _historical_degraded_payload(target_key)
+        projection, blockers, _ = _paper_eod_freshness_projection(payload, target=target)
+
+        assert blockers == []
+        assert projection["status"] == "degraded_non_eod_only"
+        excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+        assert set(excluded) == {
+            "tdcc_shareholding",
+            "fundamental.statement_availability_map",
+        }
+        tdcc_diagnostic = cast(
+            dict[str, object], excluded["tdcc_shareholding"]["source_diagnostic"]
+        )
+        statement_diagnostic = cast(
+            dict[str, object],
+            excluded["fundamental.statement_availability_map"]["source_diagnostic"],
+        )
+        assert tdcc_diagnostic["freshness_status"] == "unknown"
+        assert statement_diagnostic["reason"] == "file_missing"
+
+
 def test_dependency_gate_blocks_stale_receipt_and_missing_target_source(tmp_path: Path) -> None:
     data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
     quick_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
@@ -108,9 +543,9 @@ def test_dependency_gate_blocks_stale_receipt_and_missing_target_source(tmp_path
 
     assert result["status"] == "blocked"
     assert result["ready"] is False
-    blockers = result["blockers"]
+    blockers = cast(list[object], result["blockers"])
     assert "quick_update_receipt_data_date_not_target" in blockers  # type: ignore[operator]
-    assert any(str(item).startswith("source_file_missing:") for item in blockers)  # type: ignore[union-attr]
+    assert any(str(item).startswith("source_file_missing:") for item in blockers)
 
 
 def test_dependency_gate_rejects_future_receipt_dates(tmp_path: Path) -> None:
@@ -177,7 +612,7 @@ def test_dependency_gate_rejects_naive_or_malformed_receipt_timestamps(tmp_path:
         observed_at=OBSERVED,
     )
 
-    blockers = result["blockers"]
+    blockers = cast(list[object], result["blockers"])
     assert "quick_update_receipt_checked_at_invalid:naive" in blockers  # type: ignore[operator]
     assert "freshness_receipt_checked_at_invalid:malformed" in blockers  # type: ignore[operator]
 
@@ -193,7 +628,10 @@ def test_dependency_gate_rejects_replaced_or_empty_csv_and_stale_db_values(tmp_p
         db_path=db_path,
         observed_at=OBSERVED,
     )
-    assert any(str(item).startswith("source_db_readback_mismatch:twse:2330") for item in replaced["blockers"])  # type: ignore[union-attr]
+    assert any(
+        str(item).startswith("source_db_readback_mismatch:twse:2330")
+        for item in cast(list[object], replaced["blockers"])
+    )
 
     twse_path.write_text("證券代號,開盤價\n", encoding="utf-8")
     empty = inspect_dependency(
@@ -202,7 +640,10 @@ def test_dependency_gate_rejects_replaced_or_empty_csv_and_stale_db_values(tmp_p
         db_path=db_path,
         observed_at=OBSERVED,
     )
-    assert any(str(item).startswith("source_rows_empty_or_open_missing:") for item in empty["blockers"])  # type: ignore[union-attr]
+    assert any(
+        str(item).startswith("source_rows_empty_or_open_missing:")
+        for item in cast(list[object], empty["blockers"])
+    )
 
     twse_path.write_text("證券代號,開盤價\n2330,100.0\n", encoding="utf-8")
     connection = sqlite3.connect(db_path)
@@ -215,7 +656,10 @@ def test_dependency_gate_rejects_replaced_or_empty_csv_and_stale_db_values(tmp_p
         db_path=db_path,
         observed_at=OBSERVED,
     )
-    assert any(str(item).startswith("source_db_readback_mismatch:twse:2330") for item in stale_db["blockers"])  # type: ignore[union-attr]
+    assert any(
+        str(item).startswith("source_db_readback_mismatch:twse:2330")
+        for item in cast(list[object], stale_db["blockers"])
+    )
 
 
 def test_dependency_gate_treats_weekend_as_calendar_delegation(tmp_path: Path) -> None:

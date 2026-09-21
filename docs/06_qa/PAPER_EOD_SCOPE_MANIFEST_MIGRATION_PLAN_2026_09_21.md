@@ -1,7 +1,9 @@
 # Paper EOD scope manifest v2→v3 受控修正計畫
 
-日期：2026-09-21  
-範圍：`baldr-paper-execution-eod-replay-daily` 的 repository-isolated Paper EOD adapter。  
+日期：2026-09-21
+
+範圍：`baldr-paper-execution-eod-replay-daily` 的 repository-isolated Paper EOD adapter。
+
 狀態：**已完成僅 scope metadata 的 create-only v2→v3 遷移；scheduler、full writer 與 EOD
 producer 仍未驗收，尚未 commit。**
 

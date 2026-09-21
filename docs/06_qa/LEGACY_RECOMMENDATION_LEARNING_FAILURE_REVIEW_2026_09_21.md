@@ -95,10 +95,10 @@ post-hoc projection 補填 capture 時間。
   availability cutoff `2026-09-21T12:50:03+00:00`，checked at
   `2026-09-21T12:50:05.230154+00:00`。
 
-`2026-09-21T11:30:44Z` 是前一輪 **2026-09-20** 的 receipt，不是 9/21：
+前一輪 **2026-09-20** receipt（`source_date_end=2026-09-18`）的
+`available_at=2026-09-20T04:30:44.151755-07:00`，只供歷史參考，不作 9/21 publication：
 `D:\Min\Python\Project\FA_Data\output\scheduled\technical_indicator_publication\2026-09-18\cfd6ce9b23dd7d5d\receipt.json`，
-`run_id=20260920-1460`、`source_date_end=2026-09-18`、原始
-`available_at=2026-09-20T04:30:44.151755-07:00`，file SHA-256
+`run_id=20260920-1460`、file SHA-256
 `sha256:1d97d6da0e22ee5a4565bf213d493246867d1eb89f4ab4c393e0e8eb14f81991`。
 
 9/21 contract 實際綁定的 formal publication 是

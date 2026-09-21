@@ -2989,7 +2989,7 @@ dry-run 只讀官方 TPEX daily close quotes 與 SQLite，顯示 `ready_for_appl
 |---|---|
 | 單股回測 | 驗證一檔股票套用策略後的交易表現。 |
 | 批次股票回測 | 比較同一策略在多檔候選股票上的差異。 |
-| 固定組合回測 | 研究固定股票清單的組合表現；目前 Registry 保存採 per-stock run，並以固定組合 metadata 區分來源。 |
+| 固定組合回測 | 研究固定股票清單的逐檔結果；目前 Registry 保存採 per-stock run，`fixed_basket_stock` 只表示固定清單來源，不是共享現金組合。 |
 | 推薦系統回放 | 回放推薦配置與名單。 |
 | 策略研究 | 比較策略模板、參數、最佳化與驗證結果。 |
 
@@ -2997,7 +2997,7 @@ dry-run 只讀官方 TPEX daily close quotes 與 SQLite，顯示 `ready_for_appl
 
 Research Lab 左側設定面板預設保留足夠寬度給長下拉選項與表單欄位，右側結果區吃剩餘空間；一般 1400px 預設主視窗不應需要手動左右拖動才看得到完整「執行價格」等設定列。
 
-在窄版研究時，左側設定與右側結果會改為上下堆疊；「收合左側設定」仍只改變 UI 空間，不改參數、已選 run 或結果。比較前先核對股票池、日期區間、成本政策、成交假設、樣本數與 benchmark；不相容 run 以中文原因揭露，不能用一個綠色總分掩蓋差異。
+在窄版研究時（寬度低於 1200px，例如 fixed 1024×768），左側設定與右側結果會改為上下堆疊，並依目前 viewport 高度重新分配兩區，保留可操作的設定與結果空間；1366px 維持左右分欄。「收合左側設定」仍只改變 UI 空間，不改參數、已選 run 或結果。比較前先核對股票池、日期區間、成本政策、成交假設、樣本數與 benchmark；不相容 run 以中文原因揭露，不能用一個綠色總分掩蓋差異。
 
 ### 9.2 基本設定
 
@@ -3006,6 +3006,10 @@ Research Lab 左側設定面板預設保留足夠寬度給長下拉選項與表�
 3. 設定開始與結束日期。
 4. 設定初始資金、手續費與滑價。
 5. 執行價格建議使用 `next_open`；`close` 是同根 K 收盤成交假設，必須清楚揭露。
+
+策略研究模式的 Optimization 與 Walk-forward 是互斥操作；兩者預設都不勾選，勾選其中一項時另一項會自動取消，執行按鈕與狀態只會反映目前唯一的研究操作。
+
+推薦系統回放會顯示並鎖定實際 replay contract：`next-session-open.v2`、百分比停損／停利，以及目前畫面中的資金、手續費與滑價假設；離開回放模式後，原先的模式與可編輯狀態會恢復。固定組合仍是逐檔研究結果，不是共享資金 portfolio engine。
 
 `next_open` 新結果使用 `next-session-open.v2`：T 收盤訊號最快於下一可交易 session 的有效開盤成交。缺開盤、零量或停牌延後，不回退收盤價；期末沒有後續 session 時委託保留未成交，已有部位按期末價格估值，不合成強制清倉。單股／批次／固定組合的 per-stock 結果遵守同一契約；固定組合仍不是完整共享現金 portfolio engine。
 
@@ -3053,7 +3057,7 @@ Research Lab 左側設定面板預設保留足夠寬度給長下拉選項與表�
 
 取消流程：按取消後系統會停止提交新組合，並清理已啟動子任務；清理期間 UI 會顯示「已送出取消」。若組合數很大，已啟動的少量子任務仍需要安全結束才會完全解鎖。
 
-最佳化結果是 In-Sample 候選，不能直接視為可靠策略。
+最佳化結果是 In-Sample 候選，不能直接視為可靠策略。表格上方的「Top-N 穩定性（探索性）」只根據目前保留的 Top-N：objective top／median／worst、dispersion，以及每個參數的 unique count、數值範圍／類別值與 Top-5 modal share（最常見取值比例；顯示有值分子／Top-5 分母）。摘要另顯示 `objective valid n / retained N`；缺少 objective 的列不補零，且不混入 objective 統計。它不是完整 parameter surface、confidence interval 或 OOS 證明；樣本不足會顯示 `insufficient`，必須另跑 Walk-forward／OOS。
 
 ### 9.7 Walk-forward
 
@@ -3074,7 +3078,7 @@ Research Lab 左側設定面板預設保留足夠寬度給長下拉選項與表�
 
 ### 9.8 執行、取消、保存與升級
 
-- 「執行實驗」：開始目前模式。
+- 下方綠色「主要執行」是唯一執行 CTA；它會依模式與進階選項顯示「執行單股回測」「執行批次回測」「執行固定清單逐檔回測」「執行推薦回放」「執行參數最佳化」或「執行 Walk-forward 驗證」。按鈕旁的執行意圖會說明輸入母體；最佳化、Walk-forward、推薦回放的舊內嵌按鈕只保留相容屬性，不再重複顯示。
 - 「取消執行」：合作式取消；已開始的單檔工作可能安全收尾。
 - 「保存結果」：將單股回測、批次回測單檔結果、固定組合 per-stock 結果或推薦回放結果保存到 Research Run Registry；系統會保存參數快照、資料 fingerprint、成本、成交假設、績效摘要、factor snapshot / contribution metadata、equity curve 與 trades。單股、批次與固定組合 per-stock 結果的 factor metadata 來自該次回測已產生的 score/factor records，不會在保存時重算分數或重新抓取資料。
 - 「升級為策略版本」：新版 Gate 必須讀取 Research Run Registry，不得只靠單次 summary；run 需 committed / valid、未封存、未升級、具備可還原參數合約版本，且通過最低 validation gate 與 Month 6 lifecycle gate。Lifecycle gate 會檢查交易次數、總報酬、Sharpe、最大回撤、勝率、benchmark excess return、factor quality 與 regime compatibility。成功升級後，若 lifecycle evidence repository 已啟用，系統會保存 applied evidence，包含 decision snapshot、gate reasons 與 version id。
@@ -3100,13 +3104,15 @@ Registry 保存 `execution_contract`、凍結成本／部位假設與 run_status
 
 Evidence 的 close-to-close outcome 是事後診斷，不是 v2 執行 PnL；成熟 outcome 仍保留原 event 的 replay／forward／paper／live 宣告來源。應用服務的人工覆盤接點接受 run_id、reviewer、notes 與下一輪研究問題，回傳原推薦 snapshot、event、outcome 與缺件；沒有新增 UI 核准按鈕。宣告 tier 與 reviewer 字串不等於正式來源接受、真實時間或身分驗證，提案不增加 Formal credit 或 promotion 權限。
 
-比較畫面先顯示可直接比較／需謹慎比較／不可直接比較及其原因，再顯示既有淨值、回撤、換手、成本或 benchmark 欄位。數值未由服務提供時顯示 `unknown` 與原因，不在 UI 補值。結果的研究回放、自然前瞻觀測、Paper 成交紀錄與正式可用 scope 必須分開，任何一層都不能替代另一層。
+比較畫面先顯示可直接比較／需謹慎比較／不可直接比較及其原因，再顯示既有淨值、回撤、換手、成本或 benchmark 欄位。數值未由服務提供時顯示 `unknown` 與原因，不在 UI 補值。Registry 清單可依類型、strategy、tag 篩選並分頁；勾選的 run ID 會跨頁保留，最多 5 筆，畫面顯示「已選 n / 5」與清除選取入口，選滿 2 至 5 筆才可比較。結果的研究回放、自然前瞻觀測、Paper 成交紀錄與正式可用 scope 必須分開，任何一層都不能替代另一層。
 
-- 實驗摘要：績效摘要與交易明細。
-- 圖表：權益、回撤、報酬分布、持有天數。
+- 實驗摘要：績效摘要與交易明細；切換研究模式時會作為單股 drill-down 的 primary 頁。
+- 分析診斷：分析師 KPI、trailing 20／60 報酬與年化波動、月度報酬矩陣、frozen benchmark attribution。曝險與現金使用率以 bp 顯示；Turnover 定義為買賣成交金額總和／權益曲線平均權益；成本 fee／slippage／total 以初始資金為分母。rolling 只用 trailing equity，月度採相鄰月末權益變化；首月無明確 initial capital／起始權益 anchor 或 legacy 缺欄位時顯示 `unknown` 與原因，不補算、不回抓資料。
+- 圖表：權益、回撤、交易報酬、持有天數。交易報酬會依樣本數自適應：少於 10 筆逐筆用零軸發散條／lollipop 顯示，每筆標出正負與數值，並明示不宜解讀為分布或 95% VaR；至少 10 筆才顯示直方圖，至少 20 筆才顯示 95% VaR。樣本不足時只代表估計不穩定，不應把單筆或小樣本視為策略分布。
 - 最佳化 / 驗證：參數掃描與 Walk-forward。
-- 歷史與比較：載入、刪除與比較 legacy 已保存結果。
-- Registry 比較：列出 Research Run Registry 中的 run，可依類型、strategy、tag 篩選並分頁瀏覽；類型在 UI 顯示為「單股回測」或「推薦回放」，但存檔 metadata 仍保留原始 run type。run 清單每列以兩行顯示名稱、類型、策略與時間，方便選取多筆長名稱 run。選取 2 至 5 個 run 後，先以深色語意狀態列顯示「可直接比較 / 需謹慎比較 / 不可直接比較」與中文原因，再把所選 run 映射為 A / B / C / D / E 代號；摘要卡只顯示代號與中文欄位重點，長 run name / run_id 保留在上方對照與 tooltip，不塞進每個差異欄位。指標區會以小型對照表呈現，左欄為中文指標名稱，右欄為 A / B / C 數值，避免長段落混在一起。標準化權益需先按「比較選中」才會觸發，且所選 run 必須都有 equity curve 與共同日期；沒有共同日期或缺欄位時會顯示原因，不會補值或推估。
+- Legacy 歷史：載入、刪除與比較舊 `BacktestRunRepository` 結果；這是相容歷史入口，不是統一 Research evidence SSOT，不自動遷移或重算。
+- 研究 Registry：列出正式 Research Run Registry 中的 run，可依類型、strategy、tag 篩選並分頁瀏覽；類型在 UI 會明確顯示「單股回測」「批次股票回測」「固定組合（逐檔）」或「推薦回放」，存檔 metadata 仍保留原始 run type。run 清單每列以兩行顯示名稱、類型、策略與時間，勾選可跨頁保留（最多 5 筆，畫面顯示選取計數與清除入口），不需要猜測 Ctrl 多選是否能跨頁。選取 2 至 5 個 run 後，先以深色語意狀態列顯示「可直接比較 / 需謹慎比較 / 不可直接比較」與中文原因，再把所選 run 映射為 A / B / C / D / E 代號；摘要卡只顯示代號與中文欄位重點，長 run name / run_id 保留在上方對照與 tooltip，不塞進每個差異欄位。指標區會以小型對照表呈現，左欄為中文指標名稱，右欄為 A / B / C 數值，避免長段落混在一起。標準化權益需先按「比較選中」才會觸發，且所選 run 必須都有 equity curve 與共同日期；沒有共同日期或缺欄位時會顯示原因，不會補值或推估。比較是 evidence 入口，不等於可 promote。
+- 批次／固定清單模式會把批次結果設為 primary，仍保留摘要、分析診斷、圖表供雙擊單檔 drill-down；固定清單的 per-stock 結果不代表共享現金 portfolio。
 - 證據覆盤：唯讀檢查已保存 evidence / observation / review，以及 Windows Task Scheduler 產出的最新 scheduled dry-run 狀態。子頁包含「前瞻證據」、「研究落差」、「訊號衰退」、「決策品質」、「覆盤歷史」與「排程狀態」。頁面上方會顯示目前實際讀取的 SQLite 資料庫路徑，並提供「複製路徑」按鈕，方便確認是否使用 working-copy DB。各子頁日期欄位使用日曆選擇器，未選日期時不套用日期篩選；未選日期的日曆會先定位到今天，不會停在 sentinel 年份。
   - 前瞻證據：檢查已保存 evidence events / outcomes 的 forward summary。可依日期、event type / family、source type、股票、regime、sector、profile、strategy version、window days、group by 與最小樣本數篩選，並查看事件總數、已完成 / 等待中 / 缺失結果、樣本不足、benchmark / industry 缺口、quality 與 warnings。close-to-close forward return 是 research basis，不代表可執行績效。
   - 研究落差：檢查 portfolio source trace、Research Run / strategy version、evidence event / outcome link、portfolio mode、gap metrics、attribution categories、match confidence、quality 與 warnings。沒有真實交易與人工 override 記錄時，只能解讀為 research / simulated gap。
@@ -3115,7 +3121,7 @@ Evidence 的 close-to-close outcome 是事後診斷，不是 v2 執行 PnL；成
   - 排程狀態：唯讀讀取 `OUTPUT_ROOT/scheduled/data_freshness/latest_status.json`、`OUTPUT_ROOT/scheduled/recommendation_snapshot/latest_status.json`、`OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/latest_status.json`、`OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 與 latest status 指向的 report preview。畫面顯示 data freshness、recommendation snapshot result id / 筆數 / screening matrix rows、evidence dry-run、forward outcome 的 status／掃描事件數／寫入結果數／待成熟數，並顯示 health 的最新合格事件日、完整身份事件數、cohort／決策日數、各 horizon ready／pending／missing、最近 capture／outcome／evaluation、下一成熟日、blocking reason、next action、recovery verification 與 blockers／warnings；同時保留 `pipeline_overall_status`、report path、warning occurrences、blocking gaps 與 `confirm / writes_recommendation_result / writes_evidence_db / forward_outcome_writes_evidence_db / auto_trading / lifecycle_action` 安全邊界。health 分類 `normal_completion`、`normal_no_new_outcomes`、`waiting_for_natural_maturity`、`actionable_engineering_blocker` 與 `external_source_missing` 會投影到 machine status；confirmed run 的工程／來源阻塞也會在 receipt 頂層以 `blocked`／非零 exit code fail closed；缺少新 receipt 會顯示 source gap，不補值。推薦結果寫入與 forward outcome 寫入會分別標示 research-only output，不會和 production evidence / trading write risk 混為同一概念。若 scheduled recommendation latest status 缺失，但同一 decision date 已有人工保存的 `OUTPUT_ROOT/recommendation/runs/rec_YYYYMMDD_*.json`，頁面會把 recommendation source 顯示為 `manual_result`、status 顯示為 `manual_observed`；這只代表人工補跑結果可供判讀，不代表 scheduled snapshot 正常，也不計入 scheduled 共同觀測天數。下方狀態明細採「判讀摘要 / 人工要看 / 關鍵欄位 / 安全邊界」優先，report preview 只保留前段 metadata，完整 JSON diagnostics 請依 `report_path` 或 `forward_outcome_status_path` 開啟原始 receipt。這只是讓每日 scheduled output、forward outcome 累積與人工補跑觀察在 UI 可見；頁面不重跑 producer／pipeline、不寫 evidence DB、不自動追加 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`。
   這個分頁只使用 dashboard service、已保存 read model 與 scheduled output status 檔，不重算推薦、不重算策略、不讀 UI state、不寫 evidence，也不建立或修改排程；樣本不足或資料降級時只能作資料品質檢查，不可作訊號有效性判斷。
   - 覆盤歷史：只讀取已保存 weekly review；若 history DB／table 不存在，畫面會顯示 `evidence_operations_history_db_missing`／`...table_missing` 診斷與 CLI 建立指引，絕不因刷新畫面建立空 schema。
-- 批次結果：排行榜與整體統計，雙擊股票可載入明細；頁首會說明排行榜只用來找出同批次內值得複核的股票，整體統計用來看樣本分布與成功率，不代表正式策略判斷、交易建議或持倉調整。
+- 批次結果：排行榜與整體統計，雙擊股票可載入明細；排行榜的 MDD 以回撤幅度絕對值排序，較小回撤優先。摘要會分開顯示總標的數、有效回測、失敗／無交易、coverage（有效回測／總標的），以及「獲利標的／有效回測」；後者是標的層級比例，不是交易筆勝率。排行榜的 `WinRate%` 只有在單檔交易明細有值時才代表交易筆勝率。CAGR／MDD 中位數會標出各自有效樣本數，不把缺值或失敗標的混入母體。這些欄位只用來理解本批次覆蓋率與結果分布，不代表正式策略判斷、交易建議或持倉調整。
 - 推薦回放：摘要分為概況、交易假設與可信度、風險與情境指標、Monte Carlo 情境；V1.2 result details 會補充 `rolling_risk_metrics`、`microstructure_preflight` 與 `relative_attribution`，用來判讀 rolling risk、可選台股微結構風險與 benchmark / industry / concept 背景；下方以分頁呈現組合價值 / 回撤圖、期間持倉、股票貢獻與交易紀錄。
 
 ### 9.9.1 Evidence Pipeline Runner（手動 dry-run）

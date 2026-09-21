@@ -12,6 +12,8 @@
 
 Registry 保存 frozen execution_contract／成本／terminal policy／status；建構與 query 不建 schema、不 reconcile，維護 owner 才可顯式恢復未完成保存。跨版本或 cancelled／partial 為 Incompatible；成本／稅／lot 差異為 Caution。損毀、缺檔、未知版本拒絕比較，不重算歷史。close-to-close forward outcome 是事後診斷，不能替代撮合 PnL；人工覆盤提案不授予 Formal credit 或 promotion。
 
+固定組合模式目前仍是固定清單的逐檔研究（`fixed_basket_stock`），不是共享現金、共同再平衡的 portfolio engine；排行榜與 Registry 類型會明確標示「固定組合（逐檔）」。
+
 操作及排錯以 [Application Manual](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/APPLICATION_MANUAL.md) 為準；精確限制與驗收見 [TASK-04](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_04_HANDOFF.md)／[TASK-05](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_05_HANDOFF.md)，跨卡結果見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)。離線研究不等於真實 fills、有效投資證據或 V4 closeout。
 
 ## 已實作功能（優先級 1-4）
@@ -160,7 +162,7 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 
 **使用方式**：
 1. 切換到「比較」Tab
-2. 在歷史列表中選擇多個結果（Ctrl+點擊多選）
+2. 在歷史列表中選擇多個結果（Ctrl/Command+點擊多選；可跨頁保留，最多 5 筆）
 3. 點擊「比較選中」
 4. 查看比較表格
 
@@ -176,7 +178,8 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 **主要能力**：
 - run type、strategy、tag 篩選。
 - 分頁 run 列表。
-- 2 至 5 個 run 多選。
+- 2 至 5 個 run 多選；選取計數會顯示在清單下方，翻頁不會遺失已選 run，也可按「清除選取」。
+- `batch_backtest_stock` 顯示為「批次股票回測」，`fixed_basket_stock` 顯示為「固定組合（逐檔）」；原始 run type 仍保留在 metadata。
 - comparability badge：Comparable / Caution / Incompatible。
 - 參數差異、metrics、Regime、保存 benchmark 與 normalized equity 表格。
 
@@ -185,6 +188,25 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 - `Caution` 代表期間、Universe 或成本模型不同，只適合並列檢視，不適合做優劣排名。
 - Benchmark attribution 只讀取 run 已保存的 `benchmark_results`，不重新抓取目前資料。
 - Registry-based Promote Gate 已在 service 層接入；比較頁完成不代表任一 run 都可升級，仍需通過 Registry Gate。
+
+### ✅ 4.2 批次結果與模式契約
+
+- 批次摘要會分開顯示總標的、有效回測、Coverage（有效回測／總標的）、失敗／無交易，以及「獲利標的／有效回測」；後者是標的層級描述，不是交易筆勝率。排行榜的 `WinRate%` 只有在單檔交易明細有值時才代表交易筆勝率。CAGR／MDD 中位數會標示實際樣本數。
+- 排行榜以 MDD 回撤幅度的絕對值排序；例如 `-10%` 優於 `-50%`，避免負數直接 ascending 造成反向排名。
+- `strategy_research` 由使用者在左側明確選擇「參數最佳化」或「Walk-forward」其中一項，兩個進階操作互斥，執行按鈕會反映唯一動作。
+- `recommendation_replay` 會顯示實際使用的資金、費用、滑價、停損／停利；成交固定為 `next-session-open.v2`，停損／停利固定為百分比模式且不可在回放中改成其他契約。離開回放模式會恢復原設定。
+
+### ✅ 4.3 模式導向結果工作區與分析師診斷
+
+- 結果面板以 semantic key 管理摘要、分析診斷、圖表、最佳化／驗證、Legacy 歷史、批次結果、推薦回放、研究 Registry 與證據覆盤；切換模式會只顯示相關頁並切到該模式的 primary 結果。批次／固定清單仍可由批次排行榜雙擊單檔，再 reveal 摘要與診斷，不會因模式篩選而丟失 drill-down。
+- Responsive viewport：1366px 維持設定／結果左右分欄；寬度低於 1200px 改為上下流，並依可用高度重新分配 splitter，避免 1024×768 fixed window 把設定區壓成不可操作的窄欄。收合／展開只改變畫面空間，不改研究輸入或結果。
+- 下方「主要執行」是唯一執行 CTA，會依模式與進階選擇明示單股、批次、固定清單逐檔、推薦回放、參數最佳化或 Walk-forward；保存、升級、匯出仍是次要動作。
+- 「分析診斷」只使用當次報告或已保存 run 的 equity、trade、baseline 與 frozen metadata：曝險／現金使用率／Turnover（成交金額總和 ÷ 平均權益）以 bp 顯示；交易成本由 Trade fee／slippage 以初始資金為分母；rolling 僅有 trailing 20／60 且顯示 observation count；月度表採相鄰月末權益變化，第一個月沒有明確 initial capital／起始權益 anchor 時為 unknown。缺欄位顯示 unknown 與原因，絕不回抓市場資料或估算。
+- `Legacy 歷史` 僅相容讀取舊 `BacktestRunRepository`，不是統一 Research evidence SSOT，不自動遷移或重算。`研究 Registry` 是正式研究 run 比較與 promotion evidence 入口；比較完成不等於可 promote。
+
+### ✅ 4.4 最佳化穩定性摘要（探索性）
+
+「最佳化／驗證」上方顯示目前保留 Top-N 的 objective top／median／worst、dispersion，以及各參數 unique count、數值範圍或 categorical values。摘要同時明示 `objective valid n / retained N`：缺少 objective 的 retained row 不會補成零，也不會混入 objective 統計。Top-5 concentration 定義為該參數在 Top-5 內最常見取值的 modal share，分母只計有值列並明示 `present/total`；它不是完整 parameter surface、confidence interval 或 OOS 證明，結果不足時顯示 insufficient，仍需另跑 Walk-forward／OOS。
 
 ---
 
@@ -300,7 +322,7 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 ### ✅ 7. 回測視覺化
 - Equity curve（權益曲線）：使用 QtWebEngine + HTML5 Canvas fast renderer，支援策略權益、normalized benchmark、買賣點 marker、hover crosshair。
 - Drawdown curve（回撤曲線）：使用 Canvas area chart，顯示 zero baseline、最大回撤點與 peak-to-trough 區間。
-- Trade return distribution（報酬分佈）：使用 zero-centered histogram，紅色代表虧損、綠色代表獲利，並顯示每個 bin 的交易數。
+- Trade return（交易報酬）：少於 10 筆交易時改以零軸發散的逐筆水平條／lollipop，直接標示每筆報酬；至少 10 筆才使用 zero-centered histogram。樣本少於 20 筆不顯示 95% VaR，並明示不宜把小樣本解讀為分布形狀；紅色代表虧損、綠色代表獲利。QtWebEngine 與 Matplotlib fallback 使用相同語義。
 - Holding period distribution（持有天數）：使用實務區間桶 `1-5d`、`6-20d`、`21-60d`、`61d+`，避免細碎天數柱狀圖難以閱讀。
 - Rendering fallback：QtWebEngine 不可用時，factory 會退回既有 Matplotlib widgets。
 - 技術說明：`docs/08_technical/UI_QT_CHART_RENDERING.md`

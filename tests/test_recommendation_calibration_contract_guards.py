@@ -3,11 +3,15 @@ from __future__ import annotations
 from io import StringIO
 from datetime import datetime, timezone
 import gc
+import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import subprocess
+import sys
 import tempfile
+import textwrap
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -731,6 +735,440 @@ def test_pipeline_main_uses_real_same_day_multiday_reuse_and_formal_technical_ch
                 shadow_root
             )
         gc.collect()
+
+
+def test_pipeline_file_path_cli_inserts_repo_root_and_reaches_technical_reuse(
+    tmp_path: Path,
+) -> None:
+    """直接以 file path 載入 pipeline 時，必須真的走到 technical reuse import。"""
+
+    data_root, source_db, receipt_path, _now = _formal_quick_fixture(
+        tmp_path / "direct-cli",
+        source_date_start="2026-09-15",
+        source_date_end="2026-09-20",
+    )
+    shadow_root = (tmp_path / "direct-cli-shadow").resolve()
+    harness = (tmp_path / "direct_file_path_harness.py").resolve()
+    harness.write_text(
+        textwrap.dedent(
+            """
+            from pathlib import Path
+            import json
+            import runpy
+            import sys
+            from zoneinfo import ZoneInfo
+
+            pipeline_path = Path(sys.argv[1]).resolve()
+            data_root = Path(sys.argv[2]).resolve()
+            source_db = Path(sys.argv[3]).resolve()
+            receipt_path = Path(sys.argv[4]).resolve()
+            shadow_root = Path(sys.argv[5]).resolve()
+            repo_root = pipeline_path.parents[2]
+            script_dir = pipeline_path.parent
+            filtered = []
+            for item in sys.path:
+                if not item:
+                    continue
+                try:
+                    if Path(item).resolve() == repo_root:
+                        continue
+                except (OSError, RuntimeError, ValueError):
+                    pass
+                filtered.append(item)
+            sys.path = [str(script_dir), *filtered]
+            root_before = str(repo_root) in sys.path
+            namespace = runpy.run_path(str(pipeline_path), run_name="pipeline_under_test")
+            pipeline_globals = namespace["main"].__globals__
+
+            import data_module.recommendation_calibration_source_contract as source_contract
+
+            reuse_calls = []
+            def fake_reuse(**kwargs):
+                reuse_calls.append(dict(kwargs))
+                return {
+                    "status": "reused",
+                    "source_publication_receipt": {"path": str(receipt_path)},
+                    "source_date_start": "2026-09-15",
+                    "source_date_end": "2026-09-20",
+                }
+
+            source_contract.reuse_verified_technical_computation_receipt = fake_reuse
+
+            base_datetime = pipeline_globals["datetime"]
+            fixed_now = base_datetime(
+                2026, 9, 20, 5, 45, tzinfo=ZoneInfo("America/Los_Angeles")
+            )
+            class FixedDateTime(base_datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return fixed_now.astimezone(tz) if tz is not None else fixed_now.replace(tzinfo=None)
+
+            pipeline_globals["datetime"] = FixedDateTime
+            calls = []
+            def fake_run_child(**kwargs):
+                name = str(kwargs["name"])
+                calls.append(name)
+                child_root = Path(kwargs["environment"]["RECOMMENDATION_LEARNING_OUTPUT_ROOT"])
+                status_path = pipeline_globals["_status_path"](child_root, name)
+                child_status = {"status": "passed", "warnings": [], "blockers": []}
+                if name == "recommendation_snapshot":
+                    child_status["snapshot_cohort"] = {
+                        "requested_symbols": ["1101"],
+                        "eligible_symbols": ["1101"],
+                        "missing_symbols": [],
+                        "degraded_symbols": [],
+                        "excluded_symbols": [],
+                    }
+                status_path.parent.mkdir(parents=True, exist_ok=True)
+                status_path.write_text(json.dumps(child_status), encoding="utf-8")
+                return {
+                    "name": name,
+                    "script": kwargs["script"],
+                    "command": [],
+                    "returncode": 0,
+                    "status": "passed",
+                    "status_path": str(status_path),
+                    "child_status": child_status,
+                    "child_warnings": [],
+                    "child_blockers": [],
+                    "stdout_stderr_tail": "",
+                    "timeout_seconds": kwargs.get("timeout_seconds"),
+                    "recoverable": False,
+                }
+
+            pipeline_globals["_run_child"] = fake_run_child
+            result = namespace["main"]([
+                "--data-root", str(data_root),
+                "--output-root", str(shadow_root),
+                "--source-db", str(source_db),
+                "--child-timeout-seconds", "10",
+                "--pipeline-timeout-seconds", "60",
+            ])
+            print("RESULT", result)
+            print("ROOT_BEFORE", root_before)
+            print("ROOT_AFTER", str(repo_root) in sys.path)
+            print("REUSE_CALLS", len(reuse_calls))
+            print("CHILDREN", ",".join(calls))
+            """
+        ),
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment.pop("BALDR_PYTHON", None)
+    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONUTF8"] = "1"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(harness),
+            str(Path(pipeline.__file__).resolve()),
+            str(data_root),
+            str(source_db),
+            str(receipt_path),
+            str(shadow_root),
+        ],
+        cwd=str(tmp_path),
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=30,
+    )
+    output = (completed.stdout or "") + (completed.stderr or "")
+    assert completed.returncode == 0, output
+    assert "RESULT 0" in output
+    assert "ROOT_BEFORE False" in output
+    assert "ROOT_AFTER True" in output
+    assert "REUSE_CALLS 1" in output
+    assert "CHILDREN data_update_quick,official_market_events,recommendation_snapshot,recommendation_learning" in output
+
+    status_path = shadow_root / "scheduled" / "recommendation_calibration_learning" / "latest_status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    terminal_receipt_path = Path(status["terminal_receipt_path"])
+    assert status["status"] == "passed"
+    assert terminal_receipt_path.is_file()
+    assert status["terminal_receipt_sha256"] == (
+        "sha256:" + hashlib.sha256(terminal_receipt_path.read_bytes()).hexdigest()
+    )
+    receipt = json.loads(terminal_receipt_path.read_text(encoding="utf-8"))
+    assert receipt["terminal"] is True
+    assert receipt["status"] == "passed"
+
+
+def test_pipeline_file_path_cli_executes_as_main_without_pytest_path(
+    tmp_path: Path,
+) -> None:
+    """以 file path／__main__ 執行，隔離 child 後仍須成功載入 reuse package。"""
+
+    now = datetime.now(pipeline.TAIPEI)
+    decision_date = now.date().isoformat()
+    data_root, source_db, _receipt_path, _fixture_now = _formal_quick_fixture(
+        tmp_path / "direct-main",
+        available_at=(now.replace(microsecond=0)).isoformat(),
+        source_date_start=decision_date,
+        source_date_end=decision_date,
+    )
+    shadow_root = (tmp_path / "direct-main-shadow").resolve()
+    harness = (tmp_path / "direct_main_harness.py").resolve()
+    harness.write_text(
+        textwrap.dedent(
+            """
+            from pathlib import Path
+            import json
+            import runpy
+            import subprocess
+            import sys
+
+            pipeline_path = Path(sys.argv[1]).resolve()
+            data_root = Path(sys.argv[2]).resolve()
+            source_db = Path(sys.argv[3]).resolve()
+            shadow_root = Path(sys.argv[4]).resolve()
+            repo_root = pipeline_path.parents[2]
+            sys.path = [
+                str(pipeline_path.parent),
+                *[item for item in sys.path if item and Path(item).resolve() != repo_root],
+            ]
+            root_before = str(repo_root) in sys.path
+
+            def fake_child(command, *args, **kwargs):
+                script_name = Path(str(command[1])).name
+                names = {
+                    "run_official_market_event_backfill.py": "official_market_events",
+                    "run_scheduled_recommendation_snapshot.py": "recommendation_snapshot",
+                    "run_daily_recommendation_learning.py": "recommendation_learning",
+                    "run_daily_data_update_quick.py": "data_update_quick",
+                }
+                name = names.get(script_name)
+                if name:
+                    child_root = Path(kwargs["env"]["RECOMMENDATION_LEARNING_OUTPUT_ROOT"])
+                    status_path = (
+                        child_root / "recommendation_learning" / "latest_status.json"
+                        if name == "recommendation_learning"
+                        else child_root / "scheduled" / name / "latest_status.json"
+                    )
+                    child_status = {"status": "passed", "warnings": [], "blockers": []}
+                    if name == "recommendation_snapshot":
+                        child_status["snapshot_cohort"] = {
+                            "requested_symbols": ["1101"],
+                            "eligible_symbols": ["1101"],
+                            "missing_symbols": [],
+                            "degraded_symbols": [],
+                            "excluded_symbols": [],
+                        }
+                    status_path.parent.mkdir(parents=True, exist_ok=True)
+                    status_path.write_text(json.dumps(child_status), encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            subprocess.run = fake_child
+            sys.argv = [
+                str(pipeline_path),
+                "--data-root", str(data_root),
+                "--output-root", str(shadow_root),
+                "--source-db", str(source_db),
+                "--skip-technical-refresh",
+                "--child-timeout-seconds", "10",
+                "--pipeline-timeout-seconds", "60",
+            ]
+            try:
+                runpy.run_path(str(pipeline_path), run_name="__main__")
+            except SystemExit as exc:
+                exit_code = exc.code
+            else:
+                exit_code = 0
+            status_path = shadow_root / "scheduled" / "recommendation_calibration_learning" / "latest_status.json"
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            print("EXIT", exit_code)
+            print("ROOT_BEFORE", root_before)
+            print("ROOT_AFTER", str(repo_root) in sys.path)
+            print("ERROR_TYPE", status.get("error_type"))
+            print("TECHNICAL_STATUS", status["steps"]["data_update_quick"]["status"])
+            """
+        ),
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment.pop("BALDR_PYTHON", None)
+    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONUTF8"] = "1"
+    completed = subprocess.run(
+        [sys.executable, str(harness), str(Path(pipeline.__file__).resolve()), str(data_root), str(source_db), str(shadow_root)],
+        cwd=str(tmp_path),
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=30,
+    )
+    output = (completed.stdout or "") + (completed.stderr or "")
+    assert completed.returncode == 0, output
+    assert "ROOT_BEFORE False" in output
+    assert "ROOT_AFTER True" in output
+    assert "ERROR_TYPE ModuleNotFoundError" not in output
+    assert "TECHNICAL_STATUS blocked" in output
+
+
+def test_pipeline_unexpected_exception_writes_fail_closed_terminal_receipt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    data_root, source_db, _receipt_path, now = _formal_quick_fixture(
+        tmp_path,
+        source_date_start="2026-09-15",
+        source_date_end="2026-09-20",
+    )
+    _patch_pipeline_now(monkeypatch, now)
+    shadow_root = (tmp_path / "shadow-output").resolve()
+    log_path = (
+        shadow_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "20260920_pipeline.log"
+    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("preexisting-child-log\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def raise_import_error(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'data_module'")
+
+    monkeypatch.setattr(pipeline, "_verify_formal_technical_reuse", raise_import_error)
+    monkeypatch.setattr(
+        pipeline,
+        "_run_child",
+        lambda **kwargs: calls.append(str(kwargs["name"])) or pytest.fail("child must not start"),
+    )
+    result = pipeline.main(
+        [
+            "--data-root", str(data_root),
+            "--output-root", str(shadow_root),
+            "--source-db", str(source_db),
+            "--child-timeout-seconds", "10",
+            "--pipeline-timeout-seconds", "60",
+        ]
+    )
+
+    assert result == 1
+    assert calls == []
+    status_path = shadow_root / "scheduled" / "recommendation_calibration_learning" / "latest_status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "failed"
+    assert status["error_type"] == "ModuleNotFoundError"
+    assert status["error"] == "No module named 'data_module'"
+    assert status["failure_stage"] == "technical_reuse"
+    assert "pipeline_exception:ModuleNotFoundError" in status["blockers"]
+    terminal_receipt_path = Path(status["terminal_receipt_path"])
+    assert terminal_receipt_path.is_file()
+    assert status["terminal_receipt_sha256"] == (
+        "sha256:" + hashlib.sha256(terminal_receipt_path.read_bytes()).hexdigest()
+    )
+    receipt = json.loads(terminal_receipt_path.read_text(encoding="utf-8"))
+    assert receipt["status"] == "failed"
+    assert receipt["failure_stage"] == "technical_reuse"
+    assert receipt["terminal"] is True
+    assert "preexisting-child-log" in log_path.read_text(encoding="utf-8")
+
+
+def test_pipeline_receipt_write_failure_preserves_primary_exception(
+    monkeypatch, tmp_path: Path
+) -> None:
+    data_root, source_db, _receipt_path, now = _formal_quick_fixture(
+        tmp_path,
+        source_date_start="2026-09-15",
+        source_date_end="2026-09-20",
+    )
+    _patch_pipeline_now(monkeypatch, now)
+
+    def raise_primary(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'data_module'")
+
+    def raise_receipt_error(*args, **kwargs):
+        raise OSError("receipt volume unavailable")
+
+    monkeypatch.setattr(pipeline, "_verify_formal_technical_reuse", raise_primary)
+    monkeypatch.setattr(pipeline, "_write_terminal_receipt", raise_receipt_error)
+    result = pipeline.main(
+        [
+            "--data-root", str(data_root),
+            "--output-root", str((tmp_path / "shadow-output").resolve()),
+            "--source-db", str(source_db),
+            "--child-timeout-seconds", "10",
+            "--pipeline-timeout-seconds", "60",
+        ]
+    )
+
+    assert result == 1
+    status_path = (
+        tmp_path
+        / "shadow-output"
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_status.json"
+    )
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "failed"
+    assert status["error_type"] == "ModuleNotFoundError"
+    assert status["error"] == "No module named 'data_module'"
+    assert status["failure_stage"] == "technical_reuse"
+    assert status["terminal_receipt_error_type"] == "OSError"
+    assert status["terminal_receipt_error"] == "receipt volume unavailable"
+    assert "terminal_receipt_write_failed" in status["blockers"]
+    assert not Path(status["terminal_receipt_path"]).exists()
+
+
+@pytest.mark.parametrize(
+    ("exception_type", "exception_argument"),
+    [(KeyboardInterrupt, "interrupt"), (SystemExit, 7)],
+    ids=["keyboard-interrupt", "system-exit"],
+)
+def test_pipeline_does_not_swallow_process_control_exceptions(
+    monkeypatch,
+    tmp_path: Path,
+    exception_type: type[BaseException],
+    exception_argument: object,
+) -> None:
+    data_root, source_db, _receipt_path, now = _formal_quick_fixture(
+        tmp_path,
+        source_date_start="2026-09-15",
+        source_date_end="2026-09-20",
+    )
+    _patch_pipeline_now(monkeypatch, now)
+    shadow_root = (tmp_path / "shadow-output").resolve()
+    log_path = (
+        shadow_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "20260920_pipeline.log"
+    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("control-exception-log\n", encoding="utf-8")
+
+    def raise_control_exception(*args, **kwargs):
+        raise exception_type(exception_argument)
+
+    monkeypatch.setattr(
+        pipeline, "_verify_formal_technical_reuse", raise_control_exception
+    )
+    with pytest.raises(exception_type):
+        pipeline.main(
+            [
+                "--data-root", str(data_root),
+                "--output-root", str(shadow_root),
+                "--source-db", str(source_db),
+                "--child-timeout-seconds", "10",
+                "--pipeline-timeout-seconds", "60",
+            ]
+        )
+
+    status_path = shadow_root / "scheduled" / "recommendation_calibration_learning" / "latest_status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "running"
+    assert not Path(status["terminal_receipt_path"]).exists()
+    assert "control-exception-log" in log_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("receipt_state", ["missing", "stale"])

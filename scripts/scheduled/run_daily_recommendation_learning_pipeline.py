@@ -10,7 +10,8 @@ step never receives caller-supplied symbols unless the operator asks for it.
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,10 +19,15 @@ import subprocess
 import sys
 import time
 from typing import Any, Mapping, Sequence
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# Task Scheduler 以 file path 執行本檔時，sys.path[0] 只有 scripts\scheduled；
+# 先綁定 repository root，讓 CLI 與 package／pytest import 使用同一個內部模組邊界。
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 TAIPEI = ZoneInfo("Asia/Taipei")
 TASK_NAME = "baldr-recommendation-calibration-learning-daily"
 
@@ -96,6 +102,62 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _write_terminal_receipt(
+    path: Path,
+    payload: Mapping[str, Any],
+) -> str:
+    """以 create-only、flush／fsync 寫入一次 immutable pipeline receipt。"""
+
+    encoded = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as stream:
+        stream.write(encoded)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """保留 bounded terminal 摘要，避免把 child stdout／完整 payload 複製進 receipt。"""
+
+    def bounded_messages(value: object) -> list[str]:
+        if not isinstance(value, (list, tuple)):
+            return []
+        return [str(item)[:500] for item in list(value)[:32]]
+
+    steps = payload.get("steps")
+    step_projection: dict[str, dict[str, Any]] = {}
+    if isinstance(steps, Mapping):
+        for name, value in steps.items():
+            if not isinstance(value, Mapping):
+                continue
+            step_projection[str(name)] = {
+                "status": value.get("status"),
+                "returncode": value.get("returncode"),
+                "recoverable": value.get("recoverable"),
+            }
+    return {
+        "schema_version": "daily-recommendation-learning-terminal-receipt.v1",
+        "task": payload.get("task"),
+        "run_id": payload.get("run_id"),
+        "decision_date": payload.get("decision_date"),
+        "decision_timezone": payload.get("decision_timezone"),
+        "status": payload.get("status"),
+        "completed_at": payload.get("completed_at"),
+        "failure_stage": payload.get("failure_stage"),
+        "error_type": payload.get("error_type"),
+        "error": payload.get("error"),
+        "blockers": bounded_messages(payload.get("blockers")),
+        "warnings": bounded_messages(payload.get("warnings")),
+        "steps": step_projection,
+        "status_path": payload.get("status_path"),
+        "log_path": payload.get("log_path"),
+        "terminal": True,
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -468,15 +530,30 @@ def _run_child(
     }
 
 
-def _base_payload(*, output_root: Path, status_path: Path, decision_date: str) -> dict[str, Any]:
+def _base_payload(
+    *,
+    output_root: Path,
+    status_path: Path,
+    log_path: Path,
+    decision_date: str,
+    run_id: str,
+    terminal_receipt_path: Path,
+) -> dict[str, Any]:
     return {
         "schema_version": "daily-recommendation-learning-pipeline.v1",
         "task": TASK_NAME,
         "status": "running",
+        "run_id": run_id,
         "decision_date": decision_date,
         "decision_timezone": "Asia/Taipei",
         "output_root": str(output_root),
         "status_path": str(status_path),
+        "log_path": str(log_path),
+        "terminal_receipt_path": str(terminal_receipt_path),
+        "terminal_receipt_sha256": None,
+        "failure_stage": None,
+        "error_type": None,
+        "error": None,
         "steps": {},
         "warnings": [],
         "blockers": [],
@@ -529,6 +606,12 @@ def main(argv: list[str] | None = None) -> int:
     run_root = output_root / "scheduled" / "recommendation_calibration_learning"
     status_path = run_root / "latest_status.json"
     log_path = run_root / f"{decision_date.replace('-', '')}_pipeline.log"
+    run_id = (
+        f"{decision_date.replace('-', '')}-"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-"
+        f"{uuid4().hex[:12]}"
+    )
+    terminal_receipt_path = run_root / "runs" / run_id / "receipt.json"
     run_root.mkdir(parents=True, exist_ok=True)
 
     environment = os.environ.copy()
@@ -544,7 +627,10 @@ def main(argv: list[str] | None = None) -> int:
     payload = _base_payload(
         output_root=output_root,
         status_path=status_path,
+        log_path=log_path,
         decision_date=decision_date,
+        run_id=run_id,
+        terminal_receipt_path=terminal_receipt_path,
     )
     _write_json(status_path, payload)
 
@@ -582,10 +668,12 @@ def main(argv: list[str] | None = None) -> int:
         timeout_seconds = min(args.child_timeout_seconds, remaining)
         return _run_child(timeout_seconds=timeout_seconds, **kwargs)
 
+    stage = "pipeline_start"
     try:
         with log_path.open("a", encoding="utf-8") as log_handle:
             technical_now = datetime.now(TAIPEI)
             if args.skip_technical_refresh:
+                stage = "technical_window_hint"
                 technical_plan = _formal_receipt_window_hint(
                     data_root=data_root,
                     source_db=source_db,
@@ -595,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
                     decision_date=decision_date,
                     now=technical_now,
                 ):
+                    stage = "technical_reuse"
                     reuse = _verify_formal_technical_reuse(
                         technical_plan,
                         now=technical_now,
@@ -640,6 +729,7 @@ def main(argv: list[str] | None = None) -> int:
                         "technical_reuse_validation": reuse,
                     }
             else:
+                stage = "technical_plan"
                 technical_plan = _technical_child_plan(
                     data_root=data_root,
                     source_db=source_db,
@@ -647,6 +737,7 @@ def main(argv: list[str] | None = None) -> int:
                     source_date_end=decision_date,
                 )
                 if technical_plan.get("status") == "ready":
+                    stage = "technical_window_hint"
                     window_hint = _formal_receipt_window_hint(
                         data_root=data_root,
                         source_db=source_db,
@@ -668,6 +759,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "available_at": window_hint.get("available_at"),
                             }
                         )
+                        stage = "technical_reuse"
                         reuse = _verify_formal_technical_reuse(
                             hinted_plan,
                             now=technical_now,
@@ -701,6 +793,7 @@ def main(argv: list[str] | None = None) -> int:
                         tpex_delay_seconds=args.tpex_delay_seconds,
                         broker_delay_seconds=args.broker_delay_seconds,
                     )
+                    stage = "technical_child"
                     technical_step = run_child_bounded(
                         name="data_update_quick",
                         script="scripts/scheduled/run_daily_data_update_quick.py",
@@ -736,6 +829,7 @@ def main(argv: list[str] | None = None) -> int:
                 if "TPEX" in str(warning).upper() or "TPEx" in str(warning)
             ]
 
+            stage = "official_market_events"
             official_step = run_child_bounded(
                 name="official_market_events",
                 script="scripts/scheduled/run_official_market_event_backfill.py",
@@ -764,6 +858,7 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     payload["blockers"].append("official_refresh_failed_without_verified_last_good")
 
+            stage = "recommendation_snapshot"
             snapshot_step = run_child_bounded(
                 name="recommendation_snapshot",
                 script="scripts/scheduled/run_scheduled_recommendation_snapshot.py",
@@ -830,6 +925,7 @@ def main(argv: list[str] | None = None) -> int:
                         )
                 if args.symbols:
                     learning_arguments.extend(["--symbols", str(args.symbols)])
+                stage = "recommendation_learning"
                 learning_step = run_child_bounded(
                     name="recommendation_learning",
                     script="scripts/scheduled/run_daily_recommendation_learning.py",
@@ -855,9 +951,11 @@ def main(argv: list[str] | None = None) -> int:
                 if learning_step.get("status") not in {"passed", "passed_with_warnings"}:
                     payload["blockers"].append("recommendation_learning_failed")
 
-    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+    except Exception as exc:
         payload["blockers"].append(f"pipeline_exception:{type(exc).__name__}")
-        payload["error"] = str(exc)
+        payload["error_type"] = type(exc).__name__
+        payload["error"] = str(exc)[:1000]
+        payload["failure_stage"] = stage
 
     payload["warnings"] = list(dict.fromkeys(str(item) for item in payload["warnings"]))
     payload["blockers"] = list(dict.fromkeys(str(item) for item in payload["blockers"]))
@@ -867,6 +965,22 @@ def main(argv: list[str] | None = None) -> int:
     else:
         payload["status"] = "failed"
     payload["completed_at"] = datetime.now(TAIPEI).isoformat(timespec="seconds")
+    try:
+        payload["terminal_receipt_sha256"] = _write_terminal_receipt(
+            terminal_receipt_path,
+            _terminal_receipt_projection(payload),
+        )
+    except Exception as exc:
+        payload["status"] = "failed"
+        payload["blockers"].append("terminal_receipt_write_failed")
+        payload["terminal_receipt_error_type"] = type(exc).__name__
+        payload["terminal_receipt_error"] = str(exc)[:1000]
+        if not payload.get("error_type"):
+            payload["error_type"] = type(exc).__name__
+            payload["error"] = str(exc)[:1000]
+            payload["failure_stage"] = "terminal_receipt"
+    payload["warnings"] = list(dict.fromkeys(str(item) for item in payload["warnings"]))
+    payload["blockers"] = list(dict.fromkeys(str(item) for item in payload["blockers"]))
     _write_json(status_path, payload)
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0 if payload["status"] in {"passed", "passed_with_warnings"} else 1

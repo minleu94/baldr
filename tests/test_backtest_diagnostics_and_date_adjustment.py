@@ -178,6 +178,62 @@ def test_backtest_diagnostics_quantile():
         assert diag['buy_hit_days'] == 3
         assert diag['sell_hit_days'] == 0
 
+
+def test_backtest_service_persists_trade_cost_and_notional_metadata():
+    """raw Trade 成交後，diagnostics metadata 必須保留可追溯的整數分來源。"""
+    config = MockConfig()
+    service = BacktestService(config)
+    dates = pd.date_range("2026-07-01", periods=4)
+    market = pd.DataFrame(
+        {
+            "開盤價": [100.0] * 4,
+            "最高價": [101.0] * 4,
+            "最低價": [99.0] * 4,
+            "收盤價": [100.0] * 4,
+            "成交股數": [1000000.0] * 4,
+        },
+        index=dates,
+    )
+    signal_frame = market.copy()
+    signal_frame["signal"] = [0, 1, 0, -1]
+    signal_frame["score"] = [50.0, 75.0, 50.0, 30.0]
+    signal_frame["reason_tags"] = "fixture"
+    strategy_spec = StrategySpec(
+        strategy_id="trade_cost_contract_fixture",
+        strategy_version="1.0",
+        config={"params": {"buy_score": 60.0, "sell_score": 40.0}},
+    )
+    executor = MagicMock()
+    executor.generate_signals.return_value = signal_frame
+
+    with patch("app_module.strategy_registry.StrategyRegistry.get_executor", return_value=executor):
+        report = service.run_backtest(
+            stock_code="2330",
+            start_date="2026-07-01",
+            end_date="2026-07-04",
+            strategy_spec=strategy_spec,
+            preloaded_data=market,
+            execution_price="close",
+            capital=1_000_000.0,
+            fee_bps=10.0,
+            slippage_bps=5.0,
+            enable_limit_up_down=False,
+            enable_volume_constraint=False,
+        )
+
+    costs = report.details["transaction_costs"]
+    execution = report.details["execution_summary"]
+    # PerformanceAnalyzer 的 total_trades 是完成的 round-trip；execution_summary
+    # 則保留 raw Trade 的買／賣成交筆數。
+    assert report.total_trades == 1
+    assert costs["fee_cents"] == 449865
+    assert costs["slippage_cents"] == 90000
+    assert costs["total_cents"] == 539865
+    assert execution["trade_count"] == 2
+    assert execution["gross_notional_cents"] == 180000000
+    assert execution["buy_notional_cents"] == 90045000
+    assert execution["sell_notional_cents"] == 89955000
+
 def test_strategy_regression_trades():
     """驗證三種策略配置（baseline、暴衝、穩健）在分數達到門檻時，是否順利生成訊號與至少 1 筆交易"""
     config = MockConfig()

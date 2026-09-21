@@ -123,6 +123,84 @@ def _completed_child_payload(
     )
 
 
+def _failed_child_payload_with_integrity(
+    tmp_path: Path,
+) -> str:
+    source = {
+        "database": {
+            "path": str(tmp_path / "twstock.db"),
+            "exists": True,
+            "size_bytes": 100,
+            "mtime_ns": 10,
+            "after": {
+                "path": str(tmp_path / "twstock.db"),
+                "exists": True,
+                "size_bytes": 100,
+                "mtime_ns": 10,
+            },
+            "unchanged": True,
+            "changed_fields": [],
+        },
+        "paper_state_db": {
+            "path": str(tmp_path / "paper.sqlite"),
+            "exists": True,
+            "size_bytes": 200,
+            "mtime_ns": 20,
+            "after": {
+                "path": str(tmp_path / "paper.sqlite"),
+                "exists": True,
+                "size_bytes": 200,
+                "mtime_ns": 30,
+            },
+            "unchanged": False,
+            "changed_fields": ["mtime_ns"],
+            "integrity_verified": False,
+            "change_class": "unaccounted_change",
+            "coordination": {
+                "status": "unaccounted_change",
+                "authorized": False,
+                "contract_checks": {
+                    "state_read_view_stable": False,
+                    "trade_ledger_read_view_stable": False,
+                    "preopen_receipt_valid": False,
+                    "paper_state_write_scope_valid": False,
+                },
+            },
+        },
+        "paper_trade_ledger_db": {
+            "unchanged": True,
+            "changed_fields": [],
+        },
+        "release_manifest": {
+            "unchanged": True,
+            "required_files_unchanged": True,
+            "required_file_integrity": {
+                "unchanged": True,
+                "hashes_before": {
+                    str(tmp_path / "release_manifest.json"): "sha256:" + "a" * 64
+                },
+                "hashes_after": {
+                    str(tmp_path / "release_manifest.json"): "sha256:" + "a" * 64
+                },
+                "which_changed": [],
+            },
+        },
+    }
+    return json.dumps(
+        {
+            "status": "failed_read_only_integrity",
+            "record_path": str(tmp_path / "child-record.json"),
+            "record_hash": "sha256:" + "b" * 64,
+            "record_file_hash": "sha256:" + "c" * 64,
+            "source": source,
+            "daily_orchestration": {
+                "natural_shadow_maturity_cutoff_date": "2026-09-07",
+                "natural_shadow_maturity_cutoff_reason": "fixture_open",
+            },
+        }
+    )
+
+
 def test_config_requires_one_exact_operational_source_branch(tmp_path: Path) -> None:
     config_path = _write_config(tmp_path, source=_operational_source(tmp_path))
     loaded = wrapper.load_schedule_config(config_path, expected_run_date=RUN_DATE)
@@ -273,6 +351,84 @@ def test_run_once_passes_frozen_archive_and_requires_child_completion_gate(
         (tmp_path / "status" / "latest_status.json").read_text(encoding="utf-8")
     )
     assert persisted["receipt_path"]
+
+
+def test_failed_child_readback_preserves_component_guards_and_sidecar_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = _write_config(tmp_path, source=_operational_source(tmp_path))
+
+    def child_runner(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout=_failed_child_payload_with_integrity(tmp_path),
+            stderr="",
+        )
+
+    def maturity(**_: object) -> dict[str, object]:
+        return {
+            "status": "completed",
+            "sidecar_database_path": str(tmp_path / "shadow_evidence.sqlite"),
+            "sidecar_file_hash_before": "sha256:" + "d" * 64,
+            "sidecar_file_hash_after": "sha256:" + "e" * 64,
+            "writes_shadow_sidecar": True,
+            "outcome_records_before": 2,
+            "outcome_records_after": 3,
+            "outcome_records_appended": 1,
+            "natural_day_credit_granted": False,
+        }
+
+    monkeypatch.setattr(
+        wrapper.daily_orchestration,
+        "run_shadow_maturity_refresh",
+        maturity,
+    )
+    payload, code = wrapper.run_once(
+        config_path=config_path,
+        observed=DECISION_AT,
+        status_root_override=tmp_path / "status",
+        child_runner=child_runner,
+        now_fn=lambda: DECISION_AT,
+        maturity_calendar=_CalendarFixture({date(2026, 9, 7), RUN_DATE}),
+    )
+
+    assert code == 2
+    assert payload["status"] == "blocked_child_exit"
+    assert payload["blockers"] == ["forward_child_returncode_nonzero"]
+    assert payload["forward_credit_granted"] is False
+    readback = payload["child_read_only_integrity"]
+    assert isinstance(readback, dict)
+    assert readback["record"]["record_hash"] == "sha256:" + "b" * 64
+    components = readback["components"]
+    assert isinstance(components, dict)
+    assert components["database"]["unchanged"] is True
+    assert components["paper_state_db"]["integrity_verified"] is False
+    assert components["paper_state_db"]["change_class"] == (
+        "unaccounted_change"
+    )
+    assert components["paper_trade_ledger_db"]["unchanged"] is True
+    release = components["release_manifest"]
+    assert release["required_files_unchanged"] is True
+    assert release["required_file_integrity"]["which_changed"] == []
+    sidecar = readback["post_deadline_sidecar"]
+    assert sidecar["classification"] == "parent_post_deadline_shadow_sidecar"
+    assert sidecar["formal_integrity_guard"] is False
+    assert sidecar["writes_shadow_sidecar"] is True
+
+    persisted = json.loads(
+        (tmp_path / "status" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert persisted["child_read_only_integrity"]["components"][
+        "paper_state_db"
+    ]["change_class"] == "unaccounted_change"
 
 
 def test_successful_child_missing_maturity_contract_is_blocked(

@@ -622,6 +622,62 @@ def test_release_receipt_preserves_first_observation_across_capture_times(
     ]
 
 
+def test_integrity_projection_reports_formal_stat_and_release_hash_changes(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "twstock.db"
+    database.write_bytes(b"formal-before")
+    database_before = shadow._stat_evidence(database)
+    database.write_bytes(b"formal-after-with-different-size")
+    database_after = shadow._stat_evidence(database)
+
+    assert "size_bytes" in shadow._stat_changed_fields(
+        database_before,
+        database_after,
+    )
+
+    release = _release_fixture(tmp_path)
+    release_evidence = _release_evidence_fixture(release)
+    required_files = cast(list[object], release_evidence["required_files"])
+    first = shadow._release_files_integrity(required_files)
+    assert first["unchanged"] is True
+    assert first["which_changed"] == []
+    before_hashes = cast(dict[str, object], first["hashes_before"])
+    after_hashes = cast(dict[str, object], first["hashes_after"])
+    assert before_hashes == after_hashes
+
+    changed_path = release.release_root / "model.joblib"
+    changed_path.write_bytes(b"MODEL")
+    second = shadow._release_files_integrity(required_files)
+    assert second["unchanged"] is False
+    changed_paths = cast(list[str], second["which_changed"])
+    assert str(changed_path.resolve()) in changed_paths
+    changed_hashes_before = cast(dict[str, object], second["hashes_before"])
+    changed_hashes_after = cast(dict[str, object], second["hashes_after"])
+    assert changed_hashes_before[str(changed_path.resolve())] != (
+        changed_hashes_after[str(changed_path.resolve())]
+    )
+    changed_entry = next(
+        item
+        for item in cast(list[dict[str, object]], second["required_files"])
+        if item.get("path") == str(changed_path.resolve())
+    )
+    assert "sha256" in cast(list[str], changed_entry["changed_fields"])
+
+    legacy_expected = dict(
+        cast(dict[str, object], required_files[0])
+    )
+    legacy_expected.pop("exists", None)
+    legacy_expected["path"] = str(
+        Path(legacy_expected["path"]).parent
+        / ".."
+        / Path(legacy_expected["path"]).parent.name
+        / Path(legacy_expected["path"]).name
+    )
+    legacy = shadow._release_files_integrity([legacy_expected])
+    assert legacy["unchanged"] is True
+
+
 def test_outer_wrapper_accepts_only_receipted_preopen_state_writer_overlap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -760,6 +816,18 @@ def test_outer_wrapper_blocks_unaccounted_paper_state_writer_overlap(
     assert cast(dict[str, Any], payload["production_boundaries"])[
         "production_action_allowed"
     ] is False
+    source = cast(dict[str, Any], payload["source"])
+    assert cast(dict[str, Any], source["database"])["unchanged"] is True
+    assert cast(dict[str, Any], source["database"])["changed_fields"] == []
+    paper_source = cast(dict[str, Any], source["paper_state_db"])
+    assert paper_source["unchanged"] is False
+    assert paper_source["integrity_verified"] is False
+    assert paper_source["change_class"] == "unaccounted_change"
+    release_source = cast(dict[str, Any], source["release_manifest"])
+    assert release_source["unchanged"] is True
+    assert cast(dict[str, Any], release_source["required_file_integrity"])[
+        "which_changed"
+    ] == []
 
 
 @pytest.mark.parametrize(

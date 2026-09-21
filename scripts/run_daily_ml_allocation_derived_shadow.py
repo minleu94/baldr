@@ -249,6 +249,23 @@ def _stat_evidence_unchanged(
     )
 
 
+def _stat_changed_fields(
+    before: Mapping[str, object],
+    after: Mapping[str, object],
+) -> list[str]:
+    """回報既有 stat guard 中不同的欄位。
+
+    唯讀 guard 仍維持 exists/size/mtime 原合約；本 helper 只輸出已擷取的
+    比較結果供 immutable 診斷，不新增 source read 或 gate。
+    """
+
+    return [
+        field
+        for field in ("path", "exists", "size_bytes", "mtime_ns")
+        if before.get(field) != after.get(field)
+    ]
+
+
 def _paper_state_coordination_evidence(
     *,
     paper_before: Mapping[str, object],
@@ -838,33 +855,108 @@ def _forward_clock_evidence(
     }
 
 
+def _release_files_integrity(required_files: object) -> dict[str, object]:
+    """只保存既有 frozen-file stat/hash guard 的比較證據。
+
+    ``unchanged`` 必須維持舊 guard 的判定式；其餘欄位只供 immutable
+    診斷使用，不新增 predicate，也不探查 SQLite。
+    """
+
+    if not isinstance(required_files, list):
+        return {
+            "status": "invalid_contract",
+            "unchanged": False,
+            "required_files": [],
+            "hashes_before": {},
+            "hashes_after": {},
+            "which_changed": [],
+        }
+
+    evidence: list[dict[str, object]] = []
+    hashes_before: dict[str, object] = {}
+    hashes_after: dict[str, object] = {}
+    changed_paths: list[str] = []
+    contract_valid = True
+    for expected_value in required_files:
+        if not isinstance(expected_value, Mapping):
+            contract_valid = False
+            evidence.append(
+                {
+                    "before": expected_value,
+                    "after": None,
+                    "unchanged": False,
+                    "changed_fields": ["contract"],
+                }
+            )
+            continue
+        expected = {str(key): value for key, value in expected_value.items()}
+        path_value = expected.get("path")
+        expected_hash = expected.get("sha256")
+        if not isinstance(path_value, str) or not isinstance(expected_hash, str):
+            contract_valid = False
+            evidence.append(
+                {
+                    "before": expected,
+                    "after": None,
+                    "unchanged": False,
+                    "changed_fields": ["contract"],
+                }
+            )
+            continue
+
+        path = Path(path_value)
+        actual = _stat_evidence(path)
+        if actual.get("exists") is True:
+            actual["sha256"] = _file_hash(path)
+        changed_fields = [
+            field
+            for field in ("exists", "size_bytes", "mtime_ns")
+            if expected.get(field) != actual.get(field)
+        ]
+        if expected.get("sha256") != actual.get("sha256"):
+            changed_fields.append("sha256")
+        # 保留舊有判定：缺少 expected.exists 或 path 表示法不同，均不因
+        # 新增診斷欄位而增加新的 pass/fail gate；path 仍由原契約要求。
+        unchanged = (
+            actual.get("exists") is True
+            and actual.get("size_bytes") == expected.get("size_bytes")
+            and actual.get("mtime_ns") == expected.get("mtime_ns")
+            and actual.get("sha256") == expected_hash
+        )
+        resolved_path = str(path.resolve())
+        hashes_before[resolved_path] = expected.get("sha256")
+        hashes_after[resolved_path] = actual.get("sha256")
+        if not unchanged:
+            changed_paths.append(resolved_path)
+        evidence.append(
+            {
+                "path": resolved_path,
+                "before": expected,
+                "after": actual,
+                "unchanged": unchanged,
+                "changed_fields": changed_fields,
+            }
+        )
+
+    unchanged = contract_valid and not changed_paths and all(
+        item.get("unchanged") is True for item in evidence
+    )
+    return {
+        "status": "passed" if unchanged else "changed_or_invalid",
+        "unchanged": unchanged,
+        "required_files": evidence,
+        "hashes_before": hashes_before,
+        "hashes_after": hashes_after,
+        "which_changed": changed_paths,
+    }
+
+
 def _release_files_unchanged(
     required_files: object,
 ) -> bool:
     """比對 release 每個 frozen 檔案的 stat 與 hash。"""
 
-    if not isinstance(required_files, list):
-        return False
-    for expected in required_files:
-        if not isinstance(expected, dict):
-            return False
-        path_value = expected.get("path")
-        expected_hash = expected.get("sha256")
-        if not isinstance(path_value, str) or not isinstance(
-            expected_hash, str
-        ):
-            return False
-        path = Path(path_value)
-        actual = _stat_evidence(path)
-        if (
-            actual.get("exists") is not True
-            or actual.get("size_bytes") != expected.get("size_bytes")
-            or actual.get("mtime_ns") != expected.get("mtime_ns")
-        ):
-            return False
-        if _file_hash(path) != expected_hash:
-            return False
-    return True
+    return _release_files_integrity(required_files).get("unchanged") is True
 
 
 def _load_observation_lanes(status: Mapping[str, object]) -> dict[str, object]:
@@ -1413,13 +1505,14 @@ def _run_unlocked(
         and paper_trade_ledger_db_path is not None
         else True
     )
+    release_files_integrity = _release_files_integrity(
+        release_evidence.get("required_files")
+        if release_evidence is not None
+        else None
+    )
     release_unchanged = (
         _stat_unchanged(release_manifest_before, release.manifest_path)
-        and _release_files_unchanged(
-            release_evidence.get("required_files")
-            if release_evidence is not None
-            else None
-        )
+        and release_files_integrity.get("unchanged") is True
     )
     paper_state_coordination = _paper_state_coordination_evidence(
         paper_before=paper_before,
@@ -1502,11 +1595,19 @@ def _run_unlocked(
                     **source_before,
                     "after": source_after,
                     "unchanged": source_unchanged,
+                    "changed_fields": _stat_changed_fields(
+                        source_before,
+                        source_after,
+                    ),
                 },
                 "paper_state_db": {
                     **paper_before,
                     "after": paper_after,
                     "unchanged": paper_unchanged,
+                    "changed_fields": _stat_changed_fields(
+                        paper_before,
+                        paper_after,
+                    ),
                     "integrity_verified": paper_state_authorized,
                     "change_class": paper_state_coordination["status"],
                     "coordination": paper_state_coordination,
@@ -1516,6 +1617,10 @@ def _run_unlocked(
                         **paper_trade_ledger_before,
                         "after": paper_trade_ledger_after,
                         "unchanged": paper_trade_ledger_unchanged,
+                        "changed_fields": _stat_changed_fields(
+                            paper_trade_ledger_before,
+                            paper_trade_ledger_after,
+                        ),
                     }
                     if paper_trade_ledger_before is not None
                     and paper_trade_ledger_after is not None
@@ -1524,8 +1629,13 @@ def _run_unlocked(
                 "release_manifest": {
                     "before": release_manifest_before,
                     **release_manifest_after,
+                    "changed_fields": _stat_changed_fields(
+                        release_manifest_before,
+                        release_manifest_after,
+                    ),
                     "unchanged": release_unchanged,
                     "required_files_unchanged": release_unchanged,
+                    "required_file_integrity": release_files_integrity,
                 },
                 "database_read_only_required": True,
                 "paper_state_writer_coordination_required": True,

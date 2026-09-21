@@ -815,6 +815,157 @@ def _post_deadline_maturity(
     }
 
 
+def _child_integrity_readback(
+    child_payload: Mapping[str, object] | None,
+    *,
+    post_deadline_maturity: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    """把 child 既有 integrity evidence 投影到 bounded scheduler receipt。
+
+    child immutable ``source`` 已保存完整比較；scheduler 只保留固定欄位與
+    record identity，避免把整份 source/required-files 複製進 parent receipt。
+    此函式不重算 guard，也不改變 fail-closed 結果。
+    """
+
+    if child_payload is None:
+        return None
+    source_value = child_payload.get("source")
+    source = source_value if isinstance(source_value, Mapping) else None
+    record_identity = {
+        key: child_payload[key]
+        for key in ("record_path", "record_hash", "record_file_hash")
+        if isinstance(child_payload.get(key), str)
+    }
+    if source is None and not record_identity:
+        return None
+
+    def _fixed_fields(
+        value: Mapping[str, object],
+        fields: tuple[str, ...],
+    ) -> dict[str, object]:
+        return {key: value[key] for key in fields if key in value}
+
+    component_readback: dict[str, object] = {}
+    if source is not None:
+        for name in ("database", "paper_state_db", "paper_trade_ledger_db"):
+            value = source.get(name)
+            if isinstance(value, Mapping):
+                component = _fixed_fields(
+                    value,
+                    (
+                        "path",
+                        "exists",
+                        "size_bytes",
+                        "mtime_ns",
+                        "after",
+                        "unchanged",
+                        "changed_fields",
+                        "integrity_verified",
+                        "change_class",
+                    ),
+                )
+                coordination = value.get("coordination")
+                if isinstance(coordination, Mapping):
+                    component["coordination"] = _fixed_fields(
+                        coordination,
+                        (
+                            "status",
+                            "authorized",
+                            "reason",
+                            "outer_stat_unchanged",
+                            "contract_checks",
+                        ),
+                    )
+                component_readback[name] = component
+        release_value = source.get("release_manifest")
+        if isinstance(release_value, Mapping):
+            release_component = _fixed_fields(
+                release_value,
+                (
+                    "before",
+                    "path",
+                    "exists",
+                    "size_bytes",
+                    "mtime_ns",
+                    "after",
+                    "unchanged",
+                    "required_files_unchanged",
+                    "changed_fields",
+                ),
+            )
+            release_integrity = release_value.get("required_file_integrity")
+            if isinstance(release_integrity, Mapping):
+                release_component["required_file_integrity"] = _fixed_fields(
+                    release_integrity,
+                    (
+                        "status",
+                        "unchanged",
+                        "hashes_before",
+                        "hashes_after",
+                        "which_changed",
+                    ),
+                )
+            component_readback["release_manifest"] = release_component
+        for name in (
+            "database_read_only_required",
+            "paper_state_writer_coordination_required",
+            "release_read_only_required",
+        ):
+            if name in source:
+                component_readback[name] = source[name]
+
+    readback: dict[str, object] = {
+        "schema_version": "ml-forward-child-integrity-readback.v1",
+        "child_status": child_payload.get("status"),
+        "record": record_identity,
+        "components": component_readback,
+    }
+
+    release_value = child_payload.get("release")
+    if isinstance(release_value, Mapping):
+        required_files = release_value.get("required_files")
+        if isinstance(required_files, list):
+            hashes_before = {
+                str(item.get("path")): item.get("sha256")
+                for item in required_files
+                if isinstance(item, Mapping)
+                and isinstance(item.get("path"), str)
+                and isinstance(item.get("sha256"), str)
+            }
+            readback["release_observation"] = {
+                "observation_receipt_path": release_value.get(
+                    "observation_receipt_path"
+                ),
+                "required_file_hashes_before": hashes_before,
+            }
+
+    if post_deadline_maturity is not None:
+        sidecar_fields = (
+            "sidecar_database_path",
+            "sidecar_file_hash_before",
+            "sidecar_file_hash_after",
+            "writes_shadow_sidecar",
+            "outcome_records_before",
+            "outcome_records_after",
+            "outcome_records_appended",
+            "status",
+            "evidence_status",
+        )
+        sidecar = {
+            key: post_deadline_maturity[key]
+            for key in sidecar_fields
+            if key in post_deadline_maturity
+        }
+        if sidecar:
+            # 這是 parent post-deadline research sidecar 操作，明確置於
+            # child formal read-only guards 之外。
+            sidecar["classification"] = "parent_post_deadline_shadow_sidecar"
+            sidecar["formal_integrity_guard"] = False
+            readback["post_deadline_sidecar"] = sidecar
+
+    return readback
+
+
 def _attach_post_deadline_maturity(
     *,
     payload: dict[str, object],
@@ -844,6 +995,12 @@ def _attach_post_deadline_maturity(
             "writes_market_database": False,
         }
     payload["post_deadline_maturity"] = result
+    child_integrity = _child_integrity_readback(
+        child_payload,
+        post_deadline_maturity=result,
+    )
+    if child_integrity is not None:
+        payload["child_read_only_integrity"] = child_integrity
     result_status = result.get("status")
     is_blocked = isinstance(result_status, str) and result_status.startswith(
         "blocked"

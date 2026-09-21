@@ -1,5 +1,15 @@
 # baldr 完整操作手冊
 
+## 2026-09-21 晨間排程、候選資料與 Evidence 判讀
+
+每日 quick 的 institutional／credit／TDCC 寫入隔離 Phase3C candidate DB；freshness status 會直接列出 candidate DB 的 latest date、兩市場 source version、duplicate count 與 row count。`passed_with_warnings` 只有在 daily price／technical 核心步驟成功且 warning 可精確歸類到 candidate lane 時，Position Health 才可繼續；未知 warning 仍會阻擋。
+
+月營收 snapshot 套用到 `fundamental_current_observations` 只表示目前觀測資料已接線，不代表 formal PIT 完整。若 `monthly_revenue_expected_period_not_available`／`quarterly_statement_expected_period_not_available` 仍存在，請由資料 owner 補官方 announcement／available-at／revision lineage；不可手動把 current row 複製到 formal table。
+
+05:15 Evidence 的 CMD／PowerShell 都走同一 orchestrator，Paper status 預設讀隔離路徑。`paper_health_refresh_status=passed`、`paper_health_source_status=degraded`、`position_health_transition_status=degraded` 且 Task Scheduler `LastTaskResult=0` 可同時成立：這代表工程接線已完成，但仍有人工 thesis／position lineage 或自然 maturity 待補，不代表投資有效或可自動交易。每次執行 log 帶 timestamp；Exit child 最多等待 300 秒，任何 log write error 必須在 status 顯示，不應只看到 traceback。
+
+同日重跑會使用 `position_health_transitions_v2.sqlite` 的 semantic identity。若市場 rows、持倉、condition、metrics 與 policy 均相同，capture 時間或 artifact 檔名不同仍應顯示 idempotent；實質輸入不同仍 blocked。舊 `position_health_transitions.sqlite` 只作歷史稽核，不應刪除、覆寫或手動複製成 v2。
+
 ## 2026-09-14 排程警告與 SQLite 鎖定判讀
 
 `database is locked` 表示連線競爭，不等於檔案毀損。DBManager 對短暫鎖定最多等待 30 秒；超時仍失敗並回滾，不能將失敗 status 手改為通過。先核對更新 log 與最新資料日，再確認需要重試的同步範圍。
@@ -721,7 +731,7 @@ latest manifest。整條自動鏈固定維持 `database_mode=ro`、`query_only=t
 2. Advice 必須含 action、Why／Why Not、Risk Prompt、target/current/gap/executable。`current` 不明時會保留 unknown，不能猜成 0，也不能產生可執行 gap。
 3. 可見 action 為 `ADD_CANDIDATE`、`HOLD`、`REDUCE_CANDIDATE`、`EXIT_CANDIDATE`、`NO_NEW_POSITION`、`AVOID`。它們是配置與硬限制後的決策建議，不是券商委託。
 4. 檢查 `OUTPUT_ROOT/scheduled/ml_allocation_copilot/latest_status.json`：`selected_alpha_bp=0` 表示 Rule-only；只有可信 promotion custody、consumer re-verification 與所有 thresholds 都通過，才可能出現 2000／3500／5000。`shadow_day_credit_allowed=false` 代表本日 observation 已正常保存，但因正式 Rule/context custody 不足而不計入 20 日 Promotion 門檻，不是 runner 失敗。request 中自行填入非零 alpha 不會生效。
-5. 檢查 `OUTPUT_ROOT/scheduled/decision_evidence_capture/latest_status.json` 與 `OUTPUT_ROOT/scheduled/paper_portfolio_daily/latest_status.json`。前者應揭露 snapshot/event counts；後者應揭露 T-1 diagnostics、cash、total value 及 market DB `ro/query_only`。
+5. 檢查 `OUTPUT_ROOT/scheduled/decision_evidence_capture/latest_status.json` 與隔離 operation root 的 `scheduled/paper_portfolio_isolated/latest_status.json`。前者應揭露 snapshot/event counts；後者應揭露 T-1 diagnostics、cash、total value 及 market DB `ro/query_only`。
 6. Gate 2 weekly history 不得由 scheduler sidecar 自動計入 Gate：Windows weekly collection 只產生 `pending_human_review`，不代表人工核准或 formal credit。若未設定具名 owner 核准的 `approved-weekly-history-projection.v1`，UI／readiness 會依 canonical DB 顯示未取得 credit；若有 projection，也只供 UI 進度揭露，不能改變 `formal_credit_authorized=false`、`production_scheduler_allowed=false`。2026-08-30 現況需分層閱讀：歷史 working-copy=`1/3`、owner-approved UI projection=`3/3`、sidecar pending=`10`、multi-day=`3/3`，但 formal/canonical credit 仍未授予。forward、Paper elapsed、Exit outcome、ML shadow days 與非零 alpha 仍由各自的 evidence maturity 決定。
 
 ### ML Promotion Reference 與 Shadow Evidence
@@ -5394,8 +5404,8 @@ source hash 逐項比對。不要刪除舊 bundle 來消除錯誤；修復來源
 status path。預設來源是 repository 的
 `output\paper_execution_eod_replay\paper_portfolio\paper_portfolio.sqlite`、
 `<OUTPUT_ROOT>\position_health\latest.json`，以及該 operation root 下的
-`scheduled\paper_portfolio_daily\latest_status.json`。health refresh 另以
-`scheduled\paper_portfolio_isolated\latest_status.json` 作為 preopen coverage receipt，
+`scheduled\paper_portfolio_isolated\latest_status.json`。同一份 canonical status 也作為
+health refresh 的 preopen coverage receipt，
 並使用 operation root 的 `paper_trade_ledger.sqlite`。需要覆寫時使用
 `--paper-evidence-operation-root`、`--paper-evidence-health-baseline`、
 `--paper-evidence-status-path`、`--paper-evidence-health-status-path` 與

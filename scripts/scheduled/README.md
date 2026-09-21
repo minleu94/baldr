@@ -741,6 +741,10 @@ The runner never deletes an earlier publication.
 
 `data_update_quick/latest_status.json` uses `passed_with_warnings` when TPEX failed dates remain, for example `TPEX 每日股價缺少日期：20260706`. `data_freshness/latest_status.json` uses `degraded` when SQLite is current but either `daily_price/YYYYMMDD.csv` or `daily_price_tpex/YYYYMMDD.csv` is missing for that latest daily date.
 
+Phase3C institutional／credit／TDCC quick steps 寫入明確設定的隔離 candidate DB。freshness probe 以 SQLite `mode=ro`／`PRAGMA query_only=ON` 直接驗證該 candidate DB 的 latest date、TWSE／TPEx source versions、natural-key duplicates 與 row count，不再以正式 `twstock.db` 的舊 candidate tables 代表 quick step。官方 endpoint 的 HTTP 200 若仍是 release-not-ready `stat` 或缺明細 table，fetcher 最多重試 3 次、每次等待 30 秒；transport error、日期 mismatch 與 schema mismatch 不會被這個 retry 隱藏。
+
+`fundamental_current_observations` 可由受控 snapshot apply 更新目前觀測值，但不是 formal PIT promotion。`fundamental_monthly_revenues`／formal statement table 缺 expected period 時，仍要求 official announcement、availability 與 revision lineage；freshness 會保留 fundamental degradation，不會用 current-only row 冒充歷史可得性。
+
 Recommendation snapshot:
 
 ```text
@@ -834,9 +838,16 @@ Evidence dry-run:
 
 ```text
 <OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/latest_status.json
-<OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/YYYYMMDD_evidence_pipeline_dry_run.log
+<OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/YYYYMMDD_HHMMSS_microseconds_evidence_pipeline_dry_run.log
+<OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/YYYYMMDD_HHMMSS_microseconds_exit_effectiveness.log
 <OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/reports/YYYYMMDD_evidence_pipeline_dry_run.md
 ```
+
+CMD 與 PowerShell wrapper 都委派同一個 scheduled orchestrator，且預設讀取隔離 Paper status `output/paper_execution_eod_replay/scheduled/paper_portfolio_isolated/latest_status.json`。Paper 外層 status 使用 `paper-portfolio-daily-status.v1`；隔離 scope version 是獨立欄位。consumer 只保留有明確 boundary flags 的 bounded legacy compatibility，不接受任意 schema alias。
+
+Position Health market source 只在核心 daily-price／technical lane 已 current、quick warnings 僅屬 Phase3C candidate step、freshness degradation 僅屬明列的 fundamental current-observation lane 時允許 `degraded` 繼續；未知 warning 仍 blocked。Frozen Rule provider 接受 producer 的 `rule_source_bundle_created`／`rule_source_bundle_reused`。Exit Effectiveness child 使用 300 秒 bounded timeout；主 pipeline 與 child log 每次使用唯一 timestamp，log write error 轉成結構化 blocker／非零 exit，不以 traceback 終止 wrapper。
+
+Position Health proposal identity v2 只 hash 決策承載內容與 semantic source hashes；capture timestamps、artifact paths 與 receipt-only file hashes 仍保留在結果 provenance，但不會讓相同市場 rows 的同日重試變成衝突。scheduler／Exit 使用 `<OUTPUT_ROOT>/position_health_transition/position_health_transitions_v2.sqlite`；舊 `position_health_transitions.sqlite` 原封不動保留，不自動搬移或升級未核准 proposal。實質 position、condition、metric、policy 或 semantic source hash 改變時，同一 position/date 仍 fail closed。
 
 ML allocation Production Co-pilot：
 
@@ -873,7 +884,7 @@ Paper Portfolio 每日估值（repository isolated）：
 
 ```text
 <repo>/output/paper_execution_eod_replay/paper_portfolio/paper_portfolio.sqlite
-<repo>/output/paper_execution_eod_replay/scheduled/paper_portfolio_daily/latest_status.json
+<repo>/output/paper_execution_eod_replay/scheduled/paper_portfolio_isolated/latest_status.json
 ```
 
 runner 先以 D 槽 baseline／snapshot 的唯讀來源建立 repository state seed，並在

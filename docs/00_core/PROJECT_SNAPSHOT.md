@@ -20,6 +20,24 @@ look-ahead quant guard clean；global ML shadow boundary re-inspected 518 files�
 既有跨層 import residual，沒有以本輪 allowlist 掩蓋。這 4 項 residual 不改寫上述
 personal／natural／formal readiness 邊界。
 
+## 2026-09-21 晨間排程與資料接線修復
+
+五項晨間／週排程 action 均仍指向 repository canonical CMD wrapper，且 2026-09-21 最終
+`LastTaskResult=0`。Evidence dry-run 已修正隔離 Paper status schema／path、Frozen Rule producer
+status、Position Health market-lane warning projection、CMD／PowerShell orchestrator parity、唯一 log 與
+bounded Exit timeout；Windows task 連續兩次同日實跑皆 exit 0。Position Health proposal 改用
+`position_health_transitions_v2.sqlite` 的 semantic identity，同一市場 rows 重跑保持 5 筆且
+`persistence=idempotent`；舊 v1 DB 保留 immutable audit，不搬移未核准 proposal。
+
+Phase3C institutional／credit candidate DB 已驗證 2026-09-21 兩市場 source coverage、無 natural-key
+duplicate；freshness 改讀明確 candidate DB，不再以正式 DB 舊 candidate tables 誤判。月營收 2026-08
+current observations 已受控 apply，但 formal monthly／statement PIT 仍缺 announcement／availability／
+revision evidence，因此 freshness 合理維持 fundamental degraded。Evidence 最終為 `degraded` 而非
+`failed`：工程 blockers 已清除，剩餘是 1418 position lineage 與既有持倉 thesis 人工欄位、以及
+自然 outcome maturity；仍不授權 formal credit、production Evidence 寫入或自動交易。
+05:30 read-only heartbeat prompt 已同步上述 candidate／formal／Position Health 判讀與 timestamp log
+pointer；排程時間、target thread 與「不重跑、不修復、不寫檔」邊界未變。
+
 ## 2026-09-18 ABC bounded follow-up
 
 本輪核心合併 validation 為 **168 passed**，包含 A daily-main、B cost 29 cases、strict

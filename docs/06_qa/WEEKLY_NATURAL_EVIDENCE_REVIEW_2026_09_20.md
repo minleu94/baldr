@@ -60,3 +60,13 @@ V2.2 weekly scheduler 已於美西週日 2026-09-20 18:00 執行成功，下一�
 目前可供 review 的結論是：technical published/current value binding 已恢復，price-up prospective 已 ready；formal technical source contract、corporate-action formal verification、BankTaiwan natural maturity、ML natural maturity 與 V2.2 human review 仍未完成。
 
 因此本週證據不能推成績效、歷史回放 eligibility、正式 calibration、production promotion 或 permanent fix。任何後續判定都必須以新的 immutable scheduled receipt、自然成熟樣本與獨立 human review 為準。
+
+## 2026-09-21 BankTaiwan natural maturity follow-up（唯讀）
+
+本節對應 `output/qa/natural_maturity_readiness_20260921/readback.json`。該 readback 是既有唯讀 tool output 的整理紀錄，沒有重新執行 production runner、capture、formal writer、calendar refresh，也沒有使用 synthetic future clock；因此不新增 9/21 capture 或成功 witness。
+
+- BankTaiwan immutable capture 已由既有 verifier 驗證：9/15 為 2 rows、9/16 為 2 rows、9/17 為 14 rows，共 18 rows；三筆 capture 各自保留完整 path、capture hash、source-contract hash 與 `price_up.prospective_status=ready`。三筆共用 candidate、policy、cost identity，且 policy/cost 設定仍是 research-only；這是已驗證的自然收件，不是 contract blocked。
+- H20 由 `RecommendationNaturalOutcomeService` 直接讀 formal SQLite DB 的 raw daily prices/market-index rows，使用既有 outcome resolver；不消費 general `forward_outcomes`。本次實際 resolver readback 顯示 9/15、9/16、9/17 仍分別缺 17、18、19 個 TAIEX session observations，endpoint 尚未形成，因此自然 matured=0，不能把舊 9/18 failed receipt 重新分類。
+- 既有 official calendar cache 支持的 planned H20 endpoint 為 10/16、10/19、10/20（分別對應 9/15、9/16、9/17）；這是 planned session date，不是 actual maturity。若後續沒有漏 capture，且 20 個 matured samples、20 個 distinct decision dates、labels/source/cost/proof/authority 全部合格，最早只能規劃 2026-11-16 進入 review；不能保證 promotion、adoption 或 formal eligibility。這個 H20/date 計數不把 BankTaiwan rows 借給 ML lane。
+- Calendar cache 精確到期時間為 `2026-09-21T23:15:03.53214Z`，consumer 不負責 refresh；後續使用依賴 `scripts/scheduled/run_official_calendar_cache_refresh_daily.py` 的 refresh。若 cache 過期，應等待/驗證 refresh 結果，不得以舊 planned list 宣稱 actual maturity。
+- ML allocation 29 observations 仍為 contract blocked，與 BankTaiwan 18 rows 分離；本節不改寫其 blocker，也不執行跨 lane 補件。

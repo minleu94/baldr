@@ -99,3 +99,33 @@ changed Python 與測試檔的 `py_compile` exit code 為 `0`：
 ```
 
 `git diff --check` 通過；Git 的 LF→CRLF 提示是既有工作樹換行警告，不是 whitespace error。
+
+## 2026-09-21 Paper ledger schema readiness bounded QA
+
+本段記錄 Paper EOD writer 的 schema 初始化／回讀路徑、fail-closed 邊界與一次受控 schema-only maintenance。修補前的正式 runtime 觀測是 `output/paper_execution_eod_replay/paper_trade_ledger.sqlite` 已有 8 筆 fill、尚無 `paper_trade_transitions` table；2026-09-21 03:58:09 PDT 重查 Task 為 `Ready`、相關 writer PID 為空、距下一次 task 約 121.8 分鐘後，才執行 maintenance。沒有執行正式 scheduler、formal DB writer、replay、capture 或 credit。
+
+maintenance receipt 位於 [paper ledger schema repair receipt](../../output/qa/paper_ledger_schema_repair_20260921/20260921T105811703640Z_38b952cb/maintenance_receipt.json)，同一目錄保存 [before](../../output/qa/paper_ledger_schema_repair_20260921/20260921T105811703640Z_38b952cb/before.json)、[SQLite backup manifest](../../output/qa/paper_ledger_schema_repair_20260921/20260921T105811703640Z_38b952cb/backup.json) 與 [after](../../output/qa/paper_ledger_schema_repair_20260921/20260921T105811703640Z_38b952cb/after.json)；正式 caller 參數的 [bounded reader probe](../../output/qa/paper_ledger_schema_repair_20260921/20260921T110618198719Z_reader_probe_bounded/reader_probe.json) 另存於新目錄。SQLite backup 使用 source `mode=ro`，只呼叫 `ensure_paper_ledger_schema()`；canonical ledger 的 8 筆 fill row hash 與 aggregate 前後一致（aggregate `543b3ef581f75a084a2539be1bceda43f5fc2139acbab3399edb42a5680e0d34`），新建的 `paper_trade_transitions` 為 0 rows，`historical_transition_evidence_inferred=false`。formal DB 與 repository Paper state DB 的 pre/post signature 相同。
+
+這次只把未來 writer 所需 schema 補齊，沒有補造舊 9/8 fills 的 transition evidence。正式 caller 參數的 bounded probe 於 `2026-09-21T11:06:18.198719Z` 以實際 `decision_date=2026-09-21` 執行；official calendar 與 preopen coverage 均通過，reader window 為 `2026-09-14..2026-09-21`（end exclusive），state 只有 9/14、9/18 兩個 snapshots，缺 9/15、9/16、9/17 的正式 session boundaries。該 current window 的 fills 與 transitions 都是 0，尚未進入 transition validation；reader 以缺 session boundary fail closed。舊 9/8 rows 的全歷史觀測不能當作 current window blocker；current window 與後續 ML readiness 必須使用正式 caller 參數另驗，沒有重跑 ML child 或追認 2026-09-21 decision。
+
+focused pytest（涵蓋 legacy 8-row fixture、schema idempotence、malformed table、preview/no-fill 不寫入、empty queue/no-fill routing、錯誤 path、缺 table reader 與 fills-without-transitions reader）為 `73 passed`：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_paper_daily_execution_producer.py tests/test_paper_execution_isolated_scope.py tests/test_ml_allocation_shadow_evidence.py -q -o addopts=
+```
+
+exit output：`73 passed, 1 warning in 2.92s`；warning 是既有 `.pytest_cache` 權限提示。
+
+changed runtime modules 的 mypy 為 `Success: no issues found in 4 source files`：
+
+```powershell
+.\.venv\Scripts\python.exe -m mypy app_module/paper_trade_ledger.py app_module/ml_allocation_shadow_evidence.py data_module/paper_daily_execution_producer.py scripts/scheduled/run_paper_execution_daily_isolated.py
+```
+
+changed Python 與測試檔的 `py_compile` exit code 為 `0`（無輸出）：
+
+```powershell
+.\.venv\Scripts\python.exe -m py_compile app_module/paper_trade_ledger.py app_module/ml_allocation_shadow_evidence.py data_module/paper_daily_execution_producer.py scripts/scheduled/run_paper_execution_daily_isolated.py tests/test_paper_daily_execution_producer.py tests/test_paper_execution_isolated_scope.py tests/test_ml_allocation_shadow_evidence.py
+```
+
+`git diff --check` 通過；Git 的 LF→CRLF 提示是工作樹換行提示，不是 whitespace error。focused pytest、mypy 與 py_compile 證據如上；maintenance receipt 另保存真實時間、backup、逐列 hash、schema readback 與外部 DB/state unchanged 結果。

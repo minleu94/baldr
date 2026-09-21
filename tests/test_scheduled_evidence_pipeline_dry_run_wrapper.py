@@ -721,14 +721,14 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
     assert "scripts/run_exit_effectiveness_daily.py" in exit_command
     assert "--as-of-date" not in exit_command
     assert exit_command[exit_command.index("--transition-db") + 1] == str(
-        output_root / "position_health_transition" / "position_health_transitions.sqlite"
+        output_root / "position_health_transition" / "position_health_transitions_v2.sqlite"
     )
     assert exit_command[exit_command.index("--paper-ledger-db") + 1] == str(paper_ledger)
     assert exit_command[exit_command.index("--market-db") + 1] == str(market_db)
     assert exit_command[exit_command.index("--output") + 1] == str(
         output_root / "exit_effectiveness" / "20260908.json"
     )
-    assert exit_kwargs["timeout"] == 120
+    assert exit_kwargs["timeout"] == 300
     assert exit_kwargs["cwd"] == str(run_scheduled_evidence_pipeline_dry_run.REPO_ROOT)
     assert Path(payload["exit_effectiveness_log"]).is_file()
 

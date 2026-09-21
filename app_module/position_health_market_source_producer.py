@@ -55,6 +55,22 @@ _DECIMAL_COLUMNS: tuple[tuple[str, str], ...] = (
     ("atr", "atr"),
     ("adx", "adx"),
 )
+_QUICK_MARKET_REQUIRED_STEPS = frozenset(
+    {
+        "update_twse_daily_prices",
+        "update_tpex_daily_prices",
+        "sync_daily_prices_to_sqlite",
+        "calculate_technical_indicators",
+    }
+)
+_FRESHNESS_MARKET_REQUIRED_SOURCES = frozenset(
+    {
+        "twse.daily_prices.raw",
+        "tpex.daily_prices.raw",
+        "sqlite.daily_prices",
+        "sqlite.technical_indicators",
+    }
+)
 
 
 class PositionHealthMarketSourceError(ValueError):
@@ -134,6 +150,86 @@ def _read_json(path: Path, field_name: str) -> tuple[dict[str, Any], str]:
     if not isinstance(payload, Mapping):
         raise PositionHealthMarketSourceError(f"{field_name}_must_be_object")
     return dict(payload), _sha256_bytes(before)
+
+
+def _quick_market_lane_ready(payload: Mapping[str, Any]) -> bool:
+    status = str(payload.get("status") or "")
+    if status == "passed":
+        return True
+    if status != "passed_with_warnings":
+        return False
+    raw_steps = payload.get("steps")
+    if not isinstance(raw_steps, list):
+        return False
+    steps = {
+        str(item.get("name") or ""): item
+        for item in raw_steps
+        if isinstance(item, Mapping) and str(item.get("name") or "")
+    }
+    for name in _QUICK_MARKET_REQUIRED_STEPS:
+        step = steps.get(name)
+        if step is None or str(step.get("status") or "") not in {"passed", "skipped"}:
+            return False
+        result = step.get("result")
+        if not isinstance(result, Mapping) or result.get("success") is not True:
+            return False
+    warning_steps = [
+        item
+        for item in raw_steps
+        if isinstance(item, Mapping) and item.get("status") == "warning"
+    ]
+    if not warning_steps:
+        return False
+    allowed_messages: set[str] = set()
+    for step in warning_steps:
+        result = step.get("result")
+        if (
+            step.get("name") != "update_phase3c_candidate_sources"
+            or not isinstance(result, Mapping)
+            or result.get("candidate_only") is not True
+        ):
+            return False
+        message = str(step.get("message") or "").strip()
+        if message:
+            allowed_messages.add(message)
+    warnings = {
+        str(item).strip()
+        for item in (payload.get("warnings") or [])
+        if str(item).strip()
+    }
+    return bool(warnings) and warnings.issubset(allowed_messages)
+
+
+def _freshness_market_lane_ready(payload: Mapping[str, Any]) -> bool:
+    status = str(payload.get("status") or "")
+    if status == "passed":
+        return True
+    if status != "degraded" or payload.get("errors") not in (None, [], ()):
+        return False
+    raw_statuses = payload.get("source_statuses")
+    if not isinstance(raw_statuses, list):
+        return False
+    statuses = {
+        str(item.get("source_id") or ""): item
+        for item in raw_statuses
+        if isinstance(item, Mapping) and str(item.get("source_id") or "")
+    }
+    for source_id in _FRESHNESS_MARKET_REQUIRED_SOURCES:
+        item = statuses.get(source_id)
+        if item is None or item.get("freshness_status") != "current":
+            return False
+    for raw_warning in payload.get("warnings") or []:
+        warning = str(raw_warning).strip()
+        if warning in {
+            "monthly_revenue_expected_period_not_available",
+            "quarterly_statement_expected_period_not_available",
+        }:
+            continue
+        prefix = "source_freshness_degraded:"
+        if warning.startswith(prefix) and warning[len(prefix):] not in _FRESHNESS_MARKET_REQUIRED_SOURCES:
+            continue
+        return False
+    return True
 
 
 def _stat_token(path: Path) -> dict[str, int]:
@@ -363,19 +459,15 @@ class PositionHealthMarketSourceProducer:
             {item["stock_code"] for item in positions} - selected_codes
         )
         source_id = f"{SOURCE_ID_PREFIX}:{decision.strftime('%Y%m%d')}"
+        # ``source_snapshot_hash`` identifies the selected market observations,
+        # not this invocation's receipt clock.  Capture timestamps, baseline
+        # receipt bytes and whole-database stat tokens remain in the immutable
+        # artifacts below, but must not turn a same-day scheduler retry over the
+        # same rows into a different market snapshot.
         source_binding = {
             "schema_version": SOURCE_VERSION,
             "source_id": source_id,
             "decision_date": decision.isoformat(),
-            "upstream_receipt_available_at": available_at.isoformat(),
-            "available_at": capture_completed.isoformat(),
-            "decision_cutoff_at": cutoff.isoformat(),
-            "market_capture_started_at": capture_started.isoformat(),
-            "market_capture_completed_at": capture_completed.isoformat(),
-            "baseline_sha256": baseline_hash,
-            "quick_status_sha256": quick_hash,
-            "freshness_status_sha256": freshness_hash,
-            "market_db": db_binding,
             "selected_rows": rows,
         }
         source_hash = _sha256_json(source_binding)
@@ -466,6 +558,12 @@ class PositionHealthMarketSourceProducer:
             "market_capture_completed_at": capture_completed.isoformat(),
             "source_id": source_id,
             "source_snapshot_hash": source_hash,
+            "source_custody": {
+                "baseline_sha256": baseline_hash,
+                "quick_status_sha256": quick_hash,
+                "freshness_status_sha256": freshness_hash,
+                "market_db": db_binding,
+            },
             "upstream_receipt_available_at": available_at.isoformat(),
             "condition_source_path": str(condition_path),
             "condition_source_file_sha256": condition_file_hash,
@@ -506,7 +604,7 @@ class PositionHealthMarketSourceProducer:
         cutoff: datetime,
         observed: datetime,
     ) -> tuple[datetime, list[str]]:
-        if quick.get("status") != "passed":
+        if not _quick_market_lane_ready(quick):
             raise PositionHealthMarketSourceError("quick_status_not_passed")
         if quick.get("writes_market_data_db") is not True:
             raise PositionHealthMarketSourceError("quick_status_market_write_receipt_missing")
@@ -518,7 +616,7 @@ class PositionHealthMarketSourceProducer:
         completed = _parse_aware(quick.get("completed_at"), "quick_status_completed_at")
         if completed > cutoff or completed > observed:
             raise PositionHealthMarketSourceError("quick_status_completed_at_future")
-        if freshness.get("status") != "passed":
+        if not _freshness_market_lane_ready(freshness):
             raise PositionHealthMarketSourceError("freshness_status_not_passed")
         checks = freshness.get("checks")
         if not isinstance(checks, Mapping):

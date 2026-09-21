@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -152,6 +152,140 @@ def test_producer_writes_hash_bound_sources_from_verified_daily_rows(tmp_path: P
     assert metrics.blockers == ()
     assert metrics.values["paper:2330:entry-a"]
     assert all(type(item.value).__name__ == "Decimal" for item in metrics.values["paper:2330:entry-a"])
+
+
+def test_source_snapshot_hash_is_stable_across_receipt_recapture(tmp_path: Path) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    first = PositionHealthMarketSourceProducer(
+        market_db_path=market,
+        quick_status_path=quick,
+        freshness_status_path=freshness,
+        now_provider=lambda: OBSERVED,
+    ).produce(
+        baseline_path=baseline,
+        output_dir=output,
+        decision_date=DECISION,
+        decision_at=CUTOFF,
+        observed_at=OBSERVED,
+    )
+    recaptured_at = OBSERVED + timedelta(minutes=1)
+    second = PositionHealthMarketSourceProducer(
+        market_db_path=market,
+        quick_status_path=quick,
+        freshness_status_path=freshness,
+        now_provider=lambda: recaptured_at,
+    ).produce(
+        baseline_path=baseline,
+        output_dir=output,
+        decision_date=DECISION,
+        decision_at=recaptured_at,
+        observed_at=recaptured_at,
+    )
+
+    assert second["source_snapshot_hash"] == first["source_snapshot_hash"]
+    assert second["available_at"] != first["available_at"]
+    assert second["condition_source_path"] != first["condition_source_path"]
+
+
+def test_producer_accepts_only_candidate_warning_projection_for_market_lane(
+    tmp_path: Path,
+) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    candidate_message = "Phase 3C candidate source has retryable rows"
+    quick_payload = json.loads(quick.read_text(encoding="utf-8"))
+    quick_payload.update(
+        {
+            "status": "passed_with_warnings",
+            "warnings": [candidate_message],
+            "steps": [
+                {
+                    "name": name,
+                    "status": "skipped" if name == "calculate_technical_indicators" else "passed",
+                    "result": {"success": True},
+                }
+                for name in (
+                    "update_twse_daily_prices",
+                    "update_tpex_daily_prices",
+                    "sync_daily_prices_to_sqlite",
+                    "calculate_technical_indicators",
+                )
+            ]
+            + [
+                {
+                    "name": "update_phase3c_candidate_sources",
+                    "status": "warning",
+                    "message": candidate_message,
+                    "result": {"success": False, "candidate_only": True},
+                }
+            ],
+        }
+    )
+    _write_json(quick, quick_payload)
+    freshness_payload = json.loads(freshness.read_text(encoding="utf-8"))
+    freshness_payload.update(
+        {
+            "status": "degraded",
+            "errors": [],
+            "warnings": [
+                "monthly_revenue_expected_period_not_available",
+                "source_freshness_degraded:fundamental.current_monthly_observations",
+            ],
+            "source_statuses": [
+                {"source_id": source_id, "freshness_status": "current"}
+                for source_id in (
+                    "twse.daily_prices.raw",
+                    "tpex.daily_prices.raw",
+                    "sqlite.daily_prices",
+                    "sqlite.technical_indicators",
+                )
+            ],
+        }
+    )
+    _write_json(freshness, freshness_payload)
+
+    result = PositionHealthMarketSourceProducer(
+        market_db_path=market,
+        quick_status_path=quick,
+        freshness_status_path=freshness,
+        now_provider=lambda: OBSERVED,
+    ).produce(
+        baseline_path=baseline,
+        output_dir=output,
+        decision_date=DECISION,
+        decision_at=CUTOFF,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "degraded"
+    assert result["condition_row_count"] == 1
+    assert candidate_message in result["warnings"]
+
+
+def test_producer_rejects_unclassified_quick_warning(tmp_path: Path) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    quick_payload = json.loads(quick.read_text(encoding="utf-8"))
+    quick_payload.update(
+        {
+            "status": "passed_with_warnings",
+            "warnings": ["daily price reconciliation unknown"],
+            "steps": [],
+        }
+    )
+    _write_json(quick, quick_payload)
+
+    with pytest.raises(PositionHealthMarketSourceError, match="quick_status_not_passed"):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: OBSERVED,
+        ).produce(
+            baseline_path=baseline,
+            output_dir=output,
+            decision_date=DECISION,
+            decision_at=CUTOFF,
+            observed_at=OBSERVED,
+        )
 
 
 def test_producer_rejects_baseline_from_different_decision_date(tmp_path: Path) -> None:

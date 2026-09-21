@@ -10,6 +10,9 @@ import sqlite3
 from app_module.position_health_service import PositionHealthState
 
 
+POSITION_HEALTH_TRANSITION_DB_FILENAME = "position_health_transitions_v2.sqlite"
+
+
 @dataclass(frozen=True)
 class PositionHealthTransitionRecord:
     event_id: str

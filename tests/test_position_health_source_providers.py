@@ -766,6 +766,17 @@ def test_frozen_rule_policy_provider_verifies_machine_policy_without_thesis(
     assert "frozen_rule_policy_machine_only" in result.warnings
     assert "position_thesis_policy_not_supplied_by_formal_rule" in result.warnings
 
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status["status"] = "rule_source_bundle_created"
+    status_path.write_text(json.dumps(status, sort_keys=True), encoding="utf-8")
+    created = FrozenRulePolicySourceProvider(status_path).read(
+        decision_date="2026-09-08",
+        decision_at=DECISION_AT,
+        observed_at=DECISION_AT,
+    )
+    assert created.blockers == ()
+    assert created.provenance["status"] == "verified"
+
 
 def test_frozen_rule_policy_provider_rejects_future_status_receipt(
     tmp_path: Path,

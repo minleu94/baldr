@@ -15,6 +15,7 @@ from app_module.position_health_market_source_producer import (  # noqa: E402
     PositionHealthMarketSourceError,
     PositionHealthMarketSourceProducer,
 )
+from runtime.console_encoding import configure_utf8_console  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_utf8_console()
     args = build_parser().parse_args(argv)
     # With no explicit historical clock, the producer captures a real start
     # and completion time around the SQLite read and adopts completion as the

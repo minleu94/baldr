@@ -23,12 +23,15 @@ from app_module.position_health_market_source_producer import (
     PositionHealthMarketSourceProducer,
 )
 from app_module.position_health_transition_evaluator import evaluate_baseline_file
+from app_module.position_health_transition_repository import (
+    POSITION_HEALTH_TRANSITION_DB_FILENAME,
+)
 from app_module.exit_effectiveness_read_model import (
     DEFAULT_EXIT_HORIZON_TRADING_DAYS,
 )
 
 
-EXIT_EFFECTIVENESS_TIMEOUT_SECONDS = 120
+EXIT_EFFECTIVENESS_TIMEOUT_SECONDS = 300
 
 
 def _read_status(path: Path) -> str:
@@ -178,6 +181,16 @@ def _process_output_text(value: Any) -> str:
     return str(value)
 
 
+def _persist_log(log_path: Path, text: str, *, failure_token: str) -> str | None:
+    """Persist output without letting an audit-log collision crash the wrapper."""
+
+    try:
+        log_path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        return f"{failure_token}:{type(exc).__name__}"
+    return None
+
+
 def _exit_effectiveness_blocked_receipt(
     *,
     command: list[str],
@@ -185,8 +198,9 @@ def _exit_effectiveness_blocked_receipt(
     log_path: Path,
     reason: str,
     return_code: int | None,
+    log_write_error: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    receipt = {
         "status": "blocked",
         "blocked": True,
         "blockers": [reason],
@@ -201,6 +215,9 @@ def _exit_effectiveness_blocked_receipt(
         "child_return_code": return_code,
         "timeout_seconds": EXIT_EFFECTIVENESS_TIMEOUT_SECONDS,
     }
+    if log_write_error is not None:
+        receipt["log_write_error"] = log_write_error
+    return receipt
 
 
 def _run_exit_effectiveness_child(
@@ -252,27 +269,50 @@ def _run_exit_effectiveness_child(
         )
     except subprocess.TimeoutExpired as exc:
         completed_stdout = _process_output_text(getattr(exc, "stdout", None))
-        log_path.write_text(completed_stdout, encoding="utf-8")
+        log_write_error = _persist_log(
+            log_path,
+            completed_stdout,
+            failure_token="exit_effectiveness_log_write_failed",
+        )
         return _exit_effectiveness_blocked_receipt(
             command=command,
             output_path=output_path,
             log_path=log_path,
             reason="exit_effectiveness_child_timeout",
             return_code=None,
+            log_write_error=log_write_error,
         )
     except OSError as exc:
         completed_stdout = _process_output_text(getattr(exc, "stdout", None))
-        log_path.write_text(completed_stdout, encoding="utf-8")
+        log_write_error = _persist_log(
+            log_path,
+            completed_stdout,
+            failure_token="exit_effectiveness_log_write_failed",
+        )
         return _exit_effectiveness_blocked_receipt(
             command=command,
             output_path=output_path,
             log_path=log_path,
             reason=f"exit_effectiveness_child_oserror:{type(exc).__name__}",
             return_code=None,
+            log_write_error=log_write_error,
         )
 
     completed_stdout = _process_output_text(getattr(completed, "stdout", None))
-    log_path.write_text(completed_stdout, encoding="utf-8")
+    log_write_error = _persist_log(
+        log_path,
+        completed_stdout,
+        failure_token="exit_effectiveness_log_write_failed",
+    )
+    if log_write_error is not None:
+        return _exit_effectiveness_blocked_receipt(
+            command=command,
+            output_path=output_path,
+            log_path=log_path,
+            reason=log_write_error,
+            return_code=int(completed.returncode),
+            log_write_error=log_write_error,
+        )
     receipt = _extract_json_object(completed_stdout)
     if receipt is None:
         return _exit_effectiveness_blocked_receipt(
@@ -473,8 +513,9 @@ def main(argv: list[str] | None = None) -> int:
     run_now = scheduled_now()
     decision_date = run_now.date().isoformat()
     today_key = decision_date.replace("-", "")
+    run_stamp = run_now.strftime("%Y%m%d_%H%M%S_%f")
     status_path = run_root / "latest_status.json"
-    log_path = run_root / f"{today_key}_evidence_pipeline_dry_run.log"
+    log_path = run_root / f"{run_stamp}_evidence_pipeline_dry_run.log"
     report_path = report_root / f"{today_key}_evidence_pipeline_dry_run.md"
     freshness_status_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
     paper_operation_root = Path(
@@ -492,7 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     paper_status_path = (
         Path(args.paper_evidence_status_path)
         if args.paper_evidence_status_path
-        else paper_operation_root / "scheduled" / "paper_portfolio_daily" / "latest_status.json"
+        else paper_operation_root / "scheduled" / "paper_portfolio_isolated" / "latest_status.json"
     )
     paper_ledger_path = Path(
         args.paper_evidence_ledger_db
@@ -670,7 +711,7 @@ def main(argv: list[str] | None = None) -> int:
                 decision_date=decision_date,
                 transition_repository_path=(
                     position_health_transition_output
-                    / "position_health_transitions.sqlite"
+                    / POSITION_HEALTH_TRANSITION_DB_FILENAME
                 ),
                 thesis_registry_path=args.paper_health_thesis_registry,
                 forward_binding_path=effective_forward_binding_path,
@@ -705,7 +746,7 @@ def main(argv: list[str] | None = None) -> int:
         exit_effectiveness_output = (
             output_root / "exit_effectiveness" / f"{today_key}.json"
         )
-        exit_effectiveness_log = run_root / f"{today_key}_exit_effectiveness.log"
+        exit_effectiveness_log = run_root / f"{run_stamp}_exit_effectiveness.log"
         exit_calendar_cache = Path(
             args.paper_health_calendar_cache
             or paper_operation_root / "calendar_cache"
@@ -717,7 +758,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         exit_effectiveness = _run_exit_effectiveness_child(
             transition_db=(
-                effective_transition_output / "position_health_transitions.sqlite"
+                effective_transition_output / POSITION_HEALTH_TRANSITION_DB_FILENAME
             ),
             paper_ledger_db=paper_ledger_path,
             market_db=Path(args.db_path),
@@ -758,8 +799,13 @@ def main(argv: list[str] | None = None) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    log_path.write_text(completed.stdout, encoding="utf-8")
-    pipeline_summary = _extract_json_object(completed.stdout)
+    pipeline_output = _process_output_text(completed.stdout)
+    pipeline_log_write_error = _persist_log(
+        log_path,
+        pipeline_output,
+        failure_token="evidence_pipeline_log_write_failed",
+    )
+    pipeline_summary = _extract_json_object(pipeline_output)
 
     freshness_status = _read_status(freshness_status_path)
     paper_health_refresh_blocked = bool(
@@ -778,6 +824,8 @@ def main(argv: list[str] | None = None) -> int:
     # diagnosis, but propagate a non-zero scheduler result so a stale
     # baseline cannot look like a successful morning run.
     wrapper_exit_code = completed.returncode
+    if pipeline_log_write_error is not None and wrapper_exit_code == 0:
+        wrapper_exit_code = 2
     if paper_health_refresh_blocked and wrapper_exit_code == 0:
         wrapper_exit_code = 2
     if paper_health_source_blocked and wrapper_exit_code == 0:
@@ -850,6 +898,7 @@ def main(argv: list[str] | None = None) -> int:
         "freshness_status_path": str(freshness_status_path),
         "report_path": str(report_path),
         "log_path": str(log_path),
+        "pipeline_log_write_error": pipeline_log_write_error,
         "exit_code": wrapper_exit_code,
         "checked_at": run_now.isoformat(timespec="seconds"),
         "manual_action_required": manual_action_required,

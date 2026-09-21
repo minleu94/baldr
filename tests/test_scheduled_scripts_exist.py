@@ -79,3 +79,21 @@ def test_freshness_powershell_wrapper_delegates_to_canonical_probe() -> None:
     assert "--log-path" in text
     assert "FreshnessProbe = @'" not in text
     assert "status=failed" not in text.lower()
+
+
+def test_evidence_powershell_wrapper_delegates_to_canonical_scheduled_orchestrator() -> None:
+    text = (SCHEDULED_DIR / "run_evidence_pipeline_dry_run.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "run_scheduled_evidence_pipeline_dry_run.py" in text
+    assert "scripts\\run_evidence_pipeline.py" not in text
+    for flag in (
+        "--refresh-paper-health",
+        "--bind-forward-thesis",
+        "--produce-position-health-sources",
+        "--evaluate-position-health-transition",
+        "--run-exit-effectiveness",
+    ):
+        assert flag in text
+    assert "paper_portfolio_isolated\\latest_status.json" in text

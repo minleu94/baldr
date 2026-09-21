@@ -158,6 +158,58 @@ def test_complete_inputs_write_proposal_and_are_idempotent(tmp_path: Path) -> No
     assert len(repository.list_for_position("position-2330")) == 1
 
 
+def test_same_semantic_inputs_are_idempotent_across_receipt_recapture(tmp_path: Path) -> None:
+    repository = PositionHealthTransitionRepository(tmp_path / "transitions.sqlite")
+    first_observed = datetime(2026, 9, 8, 13, 5, tzinfo=timezone.utc)
+    evaluator, first_request = _complete_request(
+        observed=first_observed,
+        repository=repository,
+    )
+    first_request = replace(
+        first_request,
+        provenance={
+            **dict(first_request.provenance),
+            "condition": {
+                "source_id": "condition-20260908",
+                "source_snapshot_hash": "sha256:condition",
+                "available_at": first_observed.isoformat(),
+                "path": "first-condition.json",
+                "file_sha256": "sha256:first-file",
+            },
+        },
+    )
+    first = evaluator.evaluate(first_request)
+
+    second_observed = first_observed + timedelta(minutes=1)
+    second_request = replace(
+        first_request,
+        observed_at=second_observed,
+        conditions_by_position={
+            "position-2330": _condition(second_observed, status="valid")
+        },
+        provenance={
+            **dict(first_request.provenance),
+            "baseline_sha256": "sha256:recaptured-baseline",
+            "condition": {
+                "source_id": "condition-20260908",
+                "source_snapshot_hash": "sha256:condition",
+                "available_at": second_observed.isoformat(),
+                "path": "recaptured-condition.json",
+                "file_sha256": "sha256:recaptured-file",
+            },
+        },
+    )
+    second = evaluator.evaluate(second_request)
+
+    assert first["status"] == "passed"
+    assert second["status"] == "passed"
+    assert second["positions"][0]["transition_event"]["persistence"] == "idempotent"
+    assert (
+        second["positions"][0]["transition_event"]["event_id"]
+        == first["positions"][0]["transition_event"]["event_id"]
+    )
+
+
 def test_machine_policy_thesis_is_traceable_but_remains_proposal_only() -> None:
     evaluator, request = _complete_request()
     machine = replace(

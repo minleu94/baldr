@@ -164,7 +164,10 @@ class FrozenRulePolicySourceProvider:
         if status_schema != FROZEN_RULE_POLICY_STATUS_SCHEMA_VERSION:
             raise ValueError("frozen_rule_policy_source_schema_invalid")
         status = str(payload.get("status") or "")
-        if status not in {"rule_source_bundle_reused", "rule_source_created"}:
+        if status not in {
+            "rule_source_bundle_created",
+            "rule_source_bundle_reused",
+        }:
             raise ValueError("frozen_rule_policy_source_status_invalid")
         for field in (
             "candidate_only",

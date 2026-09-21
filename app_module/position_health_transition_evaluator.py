@@ -504,7 +504,7 @@ class DailyPositionHealthTransitionEvaluator:
             "decision_date": decision.isoformat(),
             "policy_hash": policy_hash,
         }
-        input_hash = _sha256_json(input_payload)
+        input_hash = _sha256_json(_proposal_input_identity(input_payload))
         transition_event: dict[str, Any] | None = None
         if position_id:
             event_id = _proposal_event_id(
@@ -1300,6 +1300,58 @@ def _jsonable(value: object) -> Any:
     if hasattr(value, "__dict__") and not isinstance(value, type):
         return _jsonable(vars(value))
     return value
+
+
+_VOLATILE_PROPOSAL_INPUT_KEYS = frozenset(
+    {
+        "available_at",
+        "observed_at",
+        "captured_at",
+        "generated_at",
+        "checked_at",
+        "started_at",
+        "completed_at",
+        "decision_cutoff_at",
+        "market_capture_started_at",
+        "market_capture_completed_at",
+        "upstream_receipt_available_at",
+        "baseline_sha256",
+        "previous_health_baseline_sha256",
+        "paper_status_sha256",
+        "coverage_status_file_sha256",
+    }
+)
+
+
+def _proposal_input_identity(value: object) -> Any:
+    """Remove receipt-only fields while retaining decision-bearing values.
+
+    A daily retry can recapture identical rows at a later wall-clock time and
+    write different immutable receipt files.  Those custody differences remain
+    in the evaluator result, but proposal identity is based on the actual
+    position, condition, metric, policy and semantic source hashes.  Paths and
+    whole-file hashes are deliberately excluded because the same canonical
+    payload may be stored under a new immutable filename.
+    """
+
+    material = _jsonable(value)
+    if isinstance(material, Mapping):
+        stable: dict[str, Any] = {}
+        for raw_key, raw_item in material.items():
+            key = str(raw_key)
+            if (
+                key in _VOLATILE_PROPOSAL_INPUT_KEYS
+                or key == "path"
+                or key == "file_sha256"
+                or key.endswith("_path")
+                or key.endswith("_file_sha256")
+            ):
+                continue
+            stable[key] = _proposal_input_identity(raw_item)
+        return stable
+    if isinstance(material, list):
+        return [_proposal_input_identity(item) for item in material]
+    return material
 
 
 def _atomic_write(path: Path, payload: object) -> None:

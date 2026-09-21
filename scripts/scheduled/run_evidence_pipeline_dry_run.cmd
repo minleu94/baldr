@@ -15,7 +15,7 @@ if "%PAPER_EVIDENCE_OPERATION_ROOT%"=="" set "PAPER_EVIDENCE_OPERATION_ROOT=%REP
 if "%PAPER_EVIDENCE_LEDGER_DB%"=="" set "PAPER_EVIDENCE_LEDGER_DB=%PAPER_EVIDENCE_OPERATION_ROOT%\paper_trade_ledger.sqlite"
 if "%PAPER_EVIDENCE_HEALTH_STATUS_PATH%"=="" set "PAPER_EVIDENCE_HEALTH_STATUS_PATH=%PAPER_EVIDENCE_OPERATION_ROOT%\scheduled\paper_portfolio_isolated\latest_status.json"
 if "%PAPER_EVIDENCE_HEALTH_BASELINE%"=="" set "PAPER_EVIDENCE_HEALTH_BASELINE=%OUTPUT_ROOT%\position_health\latest.json"
-if "%PAPER_EVIDENCE_STATUS_PATH%"=="" set "PAPER_EVIDENCE_STATUS_PATH=%PAPER_EVIDENCE_OPERATION_ROOT%\scheduled\paper_portfolio_daily\latest_status.json"
+if "%PAPER_EVIDENCE_STATUS_PATH%"=="" set "PAPER_EVIDENCE_STATUS_PATH=%PAPER_EVIDENCE_OPERATION_ROOT%\scheduled\paper_portfolio_isolated\latest_status.json"
 if "%PAPER_HEALTH_SOURCE_OUTPUT%"=="" set "PAPER_HEALTH_SOURCE_OUTPUT=%OUTPUT_ROOT%\position_health_sources"
 if "%PAPER_HEALTH_FORWARD_BINDING%"=="" set "PAPER_HEALTH_FORWARD_BINDING=%REPO_ROOT%\output\forward_position_thesis\bindings"
 if "%PAPER_HEALTH_POLICY_SOURCE%"=="" set "PAPER_HEALTH_POLICY_SOURCE=%REPO_ROOT%\output\formal_daily_publications\rule_source\scheduler\rule_source_latest_status.json"

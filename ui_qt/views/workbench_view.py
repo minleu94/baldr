@@ -34,7 +34,13 @@ from app_module.workbench_dtos import (
 )
 from app_module.machine_status_classification import (
     MACHINE_STATUS_HUMAN_REVIEW,
+    MACHINE_STATUS_INVALID_EVIDENCE,
+    MACHINE_STATUS_MACHINE_CANDIDATE,
+    MACHINE_STATUS_MACHINE_DEGRADED,
+    MACHINE_STATUS_SOURCE_MISSING,
     MACHINE_STATUS_STALE,
+    MACHINE_STATUS_UNKNOWN,
+    MACHINE_STATUS_WAITING_FOR_TIME,
 )
 from app_module.engineering_closure_dashboard_service import EvidenceRehearsalDashboard
 from app_module.workbench_source_service import WorkbenchSourceService
@@ -482,8 +488,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         review_panel, self.review_section_title = self._panel_with_title("今日待判讀 / Today Review Queue")
         self.review_state_label = self._make_state_label()
         self.review_empty_state = EmptyStatePanel(
-            "今日所有風險已確認",
-            "今日待判讀佇列目前為空；可切到市場探索做研究，或等待下一次正式資料更新。",
+            "目前沒有明確人工判讀項目",
+            "今日待判讀佇列目前為空；請查看背景證據流與每日檢查清單。空佇列不代表風險已確認。",
         )
         self.review_table = self._make_table(self.review_model)
         self.review_table.clicked.connect(lambda index: self._show_model_row_detail(self.review_model, index.row()))
@@ -1431,7 +1437,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._set_today_action_card(
                 "market",
                 status="目前無待判讀",
-                body="清單為空只代表目前 DTO 沒有列項，不代表所有 Gate 已通過。",
+                body="目前沒有明確人工項目；仍請查看背景機器提示、來源狀態與每日檢查清單。",
                 tone="info",
                 button_text="開啟市場總覽",
                 target="daily_decision",
@@ -2071,17 +2077,20 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         if dashboard is not None:
             machine_action_count = _machine_action_count(dashboard)
-            if machine_action_count:
+            machine_background_count = _machine_background_count(dashboard)
+            machine_attention_count = machine_action_count + machine_background_count
+            if machine_attention_count:
                 self.review_empty_state.title_label.setText("目前無人工判讀；機器狀態待處理")
                 self.review_empty_state.body_label.setText(
-                    f"目前有 {machine_action_count} 項機器來源缺件、自然等待或降級狀態。"
+                    f"目前有 {machine_attention_count} 項機器來源缺件、自然等待、降級或市場批次提示。"
                     "這些狀態不需要具名人工簽核，也不能解讀為風險已確認；"
-                    "請依來源與時間條件重新整理。"
+                    "請依背景證據、來源與時間條件重新整理。"
                 )
                 return
-            self.review_empty_state.title_label.setText("今日所有風險已確認")
+            self.review_empty_state.title_label.setText("目前沒有明確人工判讀項目")
             self.review_empty_state.body_label.setText(
-                "今日待判讀佇列目前為空；可切到市場探索做研究，或等待下一次正式資料更新。"
+                "今日待判讀佇列目前為空；請查看背景證據流與每日檢查清單。"
+                "空佇列不代表風險已確認、Phase gate 已完成或可以交易。"
             )
             return
 
@@ -2351,6 +2360,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         review_count = len(dashboard.review_items)
         action_count = _human_action_count(dashboard)
         machine_action_count = _machine_action_count(dashboard)
+        machine_background_count = _machine_background_count(dashboard)
         waiting_count = sum(
             1 for item in dashboard.daily_checklist if str(item.status) == "waiting_for_time"
         )
@@ -2359,7 +2369,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.summary_detail_labels["review"].setText("今日需人工判讀；已查看只存在本次 UI session")
         self.summary_value_labels["action"].setText(f"{action_count} 筆")
         self.summary_detail_labels["action"].setText(
-            f"只讀人工佇列；機器證據 {machine_action_count} 筆不需人工簽核；不寫 DB、不標記完成"
+            f"只讀人工佇列；Action 機器證據 {machine_action_count} 筆、背景提示 {machine_background_count} 批；"
+            "不需人工簽核、不寫 DB、不標記完成"
         )
         self.summary_value_labels["waiting"].setText(f"{waiting_count} 項")
         self.summary_detail_labels["waiting"].setText(_format_phase0_ratio_text(dashboard))
@@ -2391,16 +2402,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
         review_count = len(dashboard.review_items)
         action_count = _human_action_count(dashboard)
         machine_action_count = _machine_action_count(dashboard)
+        machine_background_count = _machine_background_count(dashboard)
         warning_count = len(dashboard.warnings)
         waiting_count = sum(
             1 for item in dashboard.daily_checklist if str(item.status) == "waiting_for_time"
         )
-        tone_key = "warning" if warning_count or action_count or waiting_count else "ready"
+        tone_key = "warning" if warning_count or action_count or waiting_count or machine_background_count else "ready"
         tone = _workbench_tone(tone_key)
         self.priority_banner.setText(
             "今日重點："
             f"待判讀 {review_count} | 人工處理 {action_count} | "
             f"機器證據 {machine_action_count} | "
+            f"背景提示 {machine_background_count} 批 | "
             f"等待真實時間 {waiting_count} | 警告 {warning_count}。"
             "右側 Inspector 只顯示既有 DTO 證據，不寫入、不補 gate。"
         )
@@ -2467,6 +2480,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         return (
             f"今日待判讀 {len(dashboard.review_items)} 筆｜人工待處理 {_human_action_count(dashboard)} 筆｜"
             f"機器證據待驗證 {_machine_action_count(dashboard)} 筆｜"
+            f"背景機器提示 {_machine_background_count(dashboard)} 批｜"
             f"等待真實時間 {sum(1 for item in dashboard.daily_checklist if str(item.status) == 'waiting_for_time')} 項｜"
             f"警告 {len(dashboard.warnings)} 則\n"
             f"{_format_phase0_gate_text(dashboard)}\n"
@@ -2658,6 +2672,23 @@ def _human_action_count(dashboard: WorkbenchDashboardDTO) -> int:
 
 def _machine_action_count(dashboard: WorkbenchDashboardDTO) -> int:
     return len(dashboard.action_items) - _human_action_count(dashboard)
+
+
+def _machine_background_count(dashboard: WorkbenchDashboardDTO) -> int:
+    attention = {
+        MACHINE_STATUS_INVALID_EVIDENCE,
+        MACHINE_STATUS_MACHINE_CANDIDATE,
+        MACHINE_STATUS_MACHINE_DEGRADED,
+        MACHINE_STATUS_SOURCE_MISSING,
+        MACHINE_STATUS_STALE,
+        MACHINE_STATUS_UNKNOWN,
+        MACHINE_STATUS_WAITING_FOR_TIME,
+    }
+    return sum(
+        1
+        for item in dashboard.background_evidence_feed
+        if str(getattr(item, "status_classification", "")).strip() in attention
+    )
 
 
 def _format_card_lines(lines: list[str]) -> str:

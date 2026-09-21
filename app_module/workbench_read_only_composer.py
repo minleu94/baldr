@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Any
 
 from app_module.advice_dtos import AdviceDashboardDTO
-from app_module.decision_desk_dtos import DecisionDeskSnapshot
+from app_module.decision_desk_dtos import DecisionDeskRiskPrompt, DecisionDeskSnapshot
 from app_module.machine_status_classification import (
     MACHINE_STATUS_HUMAN_REVIEW,
     MACHINE_STATUS_INVALID_EVIDENCE,
@@ -184,7 +184,40 @@ class WorkbenchReadOnlyComposer:
             items.append(source_gap_item)
         if decision_snapshot is not None:
             watchlist = decision_snapshot.watchlist_triggers
-            if (watchlist.trigger_count or 0) > 0 or watchlist.triggered_codes:
+            risk_groups = _partition_risk_prompts(decision_snapshot)
+            watchlist_prompts = risk_groups["watchlist"]
+            if watchlist_prompts:
+                items.extend(
+                    _human_review_items_from_prompts(
+                        watchlist_prompts,
+                        source="watchlist_trigger",
+                        drilldown_target="daily_decision",
+                        item_prefix="watchlist_trigger",
+                    )
+                )
+                remaining_count, remaining_codes = _remaining_section_alerts(
+                    watchlist.trigger_count,
+                    watchlist.triggered_codes,
+                    watchlist_prompts,
+                )
+                if remaining_count > 0 or remaining_codes:
+                    items.append(
+                        WorkbenchReviewItem(
+                            item_id="watchlist_trigger_remaining",
+                            title="其餘觀察清單觸發覆盤",
+                            severity="info",
+                            source="watchlist_trigger",
+                            summary=(
+                                f"尚有 {remaining_count or len(remaining_codes)} 筆觀察清單觸發未由風險提示覆蓋，"
+                                "需要人工判讀。"
+                            ),
+                            drilldown_target="evidence_mode",
+                            code=", ".join(remaining_codes) or None,
+                            source_trace="DecisionDeskSnapshot.watchlist_triggers",
+                            diagnostics=("risk_prompt_coverage_partial",),
+                        )
+                    )
+            elif (watchlist.trigger_count or 0) > 0 or watchlist.triggered_codes:
                 items.append(
                     WorkbenchReviewItem(
                         item_id="watchlist_trigger",
@@ -196,7 +229,39 @@ class WorkbenchReadOnlyComposer:
                     )
                 )
             portfolio = decision_snapshot.portfolio_alerts
-            if (portfolio.alert_count or 0) > 0 or portfolio.alert_codes:
+            portfolio_prompts = risk_groups["portfolio"]
+            if portfolio_prompts:
+                items.extend(
+                    _human_review_items_from_prompts(
+                        portfolio_prompts,
+                        source="portfolio_alert",
+                        drilldown_target="portfolio_review",
+                        item_prefix="portfolio_alert",
+                    )
+                )
+                remaining_count, remaining_codes = _remaining_section_alerts(
+                    portfolio.alert_count,
+                    portfolio.alert_codes,
+                    portfolio_prompts,
+                )
+                if remaining_count > 0 or remaining_codes:
+                    items.append(
+                        WorkbenchReviewItem(
+                            item_id="portfolio_alert_remaining",
+                            title="其餘持倉警示覆盤",
+                            severity="warning",
+                            source="portfolio_alert",
+                            summary=(
+                                f"尚有 {remaining_count or len(remaining_codes)} 筆持倉警示未由風險提示覆蓋，"
+                                "需要檢查 thesis 與風險來源。"
+                            ),
+                            drilldown_target="portfolio_review",
+                            code=", ".join(remaining_codes) or None,
+                            source_trace="DecisionDeskSnapshot.portfolio_alerts",
+                            diagnostics=("risk_prompt_coverage_partial",),
+                        )
+                    )
+            elif (portfolio.alert_count or 0) > 0 or portfolio.alert_codes:
                 items.append(
                     WorkbenchReviewItem(
                         item_id="portfolio_alert",
@@ -205,20 +270,17 @@ class WorkbenchReadOnlyComposer:
                         source="portfolio_alert",
                         summary=f"持倉警示 {portfolio.alert_count or len(portfolio.alert_codes)} 筆，需檢查 thesis 與風險來源。",
                         drilldown_target="portfolio_review",
+                        code=", ".join(portfolio.alert_codes) or None,
                     )
                 )
-            for index, prompt in enumerate(decision_snapshot.risk_prompts.prompts, start=1):
-                items.append(
-                    WorkbenchReviewItem(
-                        item_id=f"risk_prompt_{index}",
-                        title=prompt.title,
-                        severity=_severity(prompt.severity),
-                        source="risk_prompt",
-                        summary=prompt.reason,
-                        drilldown_target="evidence_mode",
-                        code=prompt.code,
-                    )
+            items.extend(
+                _human_review_items_from_prompts(
+                    risk_groups["known"],
+                    source="risk_prompt",
+                    drilldown_target="evidence_mode",
+                    item_prefix="risk_prompt",
                 )
+            )
         for item in readiness_report.items:
             classification = _readiness_status_classification(item)
             if (
@@ -373,6 +435,13 @@ class WorkbenchReadOnlyComposer:
                     diagnostics=tuple(str(item) for item in portfolio_diagnostics),
                 )
             )
+            risk_groups = _partition_risk_prompts(decision_snapshot)
+            if risk_groups["liquidity"]:
+                items.append(_market_risk_prompt_feed_item("liquidity", risk_groups["liquidity"]))
+            if risk_groups["weakness"]:
+                items.append(_market_risk_prompt_feed_item("weakness", risk_groups["weakness"]))
+            if risk_groups["unknown"]:
+                items.append(_unknown_risk_prompt_feed_item(risk_groups["unknown"]))
 
         items.append(
             WorkbenchEvidenceFeedItem(
@@ -457,7 +526,60 @@ class WorkbenchReadOnlyComposer:
         if decision_snapshot is not None:
             watchlist = decision_snapshot.watchlist_triggers
             watchlist_count = portfolio_safe_count(watchlist.trigger_count, watchlist.triggered_codes)
-            if watchlist_count > 0:
+            risk_groups = _partition_risk_prompts(decision_snapshot)
+            watchlist_prompts = risk_groups["watchlist"]
+            if watchlist_prompts:
+                for index, prompt in watchlist_prompts:
+                    severity = _severity(prompt.severity)
+                    queue_group = "daily_review"
+                    source_type = "watchlist_trigger"
+                    items.append(
+                        WorkbenchActionItem(
+                            item_id=f"watchlist_trigger_manual_review_{index}",
+                            title=prompt.title,
+                            source_type=source_type,
+                            severity=severity,
+                            summary=prompt.action_hint,
+                            source_trace=f"DecisionDeskSnapshot.risk_prompts[{index}].{prompt.source}",
+                            degraded_reason=prompt.reason,
+                            drilldown_target="daily_decision",
+                            queue_group=queue_group,
+                            source_label="觀察清單觸發",
+                            sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
+                            code=prompt.code,
+                            status_classification=MACHINE_STATUS_HUMAN_REVIEW,
+                        )
+                    )
+                remaining_count, remaining_codes = _remaining_section_alerts(
+                    watchlist.trigger_count,
+                    watchlist.triggered_codes,
+                    watchlist_prompts,
+                )
+                if remaining_count > 0 or remaining_codes:
+                    severity = "info"
+                    queue_group = "daily_review"
+                    source_type = "watchlist_trigger"
+                    items.append(
+                        WorkbenchActionItem(
+                            item_id="watchlist_trigger_remaining_manual_review",
+                            title="其餘觀察清單觸發人工覆盤",
+                            source_type=source_type,
+                            severity=severity,
+                            summary=(
+                                f"尚有 {remaining_count or len(remaining_codes)} 筆觀察清單觸發未由風險提示覆蓋，"
+                                "需人工判讀。"
+                            ),
+                            source_trace="DecisionDeskSnapshot.watchlist_triggers",
+                            degraded_reason="watchlist_trigger_risk_prompt_coverage_partial",
+                            drilldown_target="daily_decision",
+                            queue_group=queue_group,
+                            source_label="觀察清單觸發",
+                            sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
+                            code=", ".join(remaining_codes) or None,
+                            status_classification=MACHINE_STATUS_HUMAN_REVIEW,
+                        )
+                    )
+            elif watchlist_count > 0:
                 severity = "info"
                 queue_group = "daily_review"
                 source_type = "watchlist_trigger"
@@ -475,11 +597,64 @@ class WorkbenchReadOnlyComposer:
                         source_label="觀察清單觸發",
                         sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
                         code=", ".join(watchlist.triggered_codes) or None,
+                        status_classification=MACHINE_STATUS_HUMAN_REVIEW,
                     )
                 )
             portfolio = decision_snapshot.portfolio_alerts
             portfolio_count = portfolio_safe_count(portfolio.alert_count, portfolio.alert_codes)
-            if portfolio_count > 0:
+            portfolio_prompts = risk_groups["portfolio"]
+            if portfolio_prompts:
+                for index, prompt in portfolio_prompts:
+                    severity = _severity(prompt.severity)
+                    queue_group = "portfolio_review"
+                    source_type = "portfolio_alert"
+                    items.append(
+                        WorkbenchActionItem(
+                            item_id=f"portfolio_alert_manual_review_{index}",
+                            title=prompt.title,
+                            source_type=source_type,
+                            severity=severity,
+                            summary=prompt.action_hint,
+                            source_trace=f"DecisionDeskSnapshot.risk_prompts[{index}].{prompt.source}",
+                            degraded_reason=prompt.reason,
+                            drilldown_target="portfolio_review",
+                            queue_group=queue_group,
+                            source_label="持倉警示",
+                            sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
+                            code=prompt.code,
+                            status_classification=MACHINE_STATUS_HUMAN_REVIEW,
+                        )
+                    )
+                remaining_count, remaining_codes = _remaining_section_alerts(
+                    portfolio.alert_count,
+                    portfolio.alert_codes,
+                    portfolio_prompts,
+                )
+                if remaining_count > 0 or remaining_codes:
+                    severity = "warning"
+                    queue_group = "portfolio_review"
+                    source_type = "portfolio_alert"
+                    items.append(
+                        WorkbenchActionItem(
+                            item_id="portfolio_alert_remaining_manual_review",
+                            title="其餘持倉警示人工覆盤",
+                            source_type=source_type,
+                            severity=severity,
+                            summary=(
+                                f"尚有 {remaining_count or len(remaining_codes)} 筆持倉警示未由風險提示覆蓋，"
+                                "需檢查 thesis 與風險來源。"
+                            ),
+                            source_trace="DecisionDeskSnapshot.portfolio_alerts",
+                            degraded_reason="portfolio_alert_risk_prompt_coverage_partial",
+                            drilldown_target="portfolio_review",
+                            queue_group=queue_group,
+                            source_label="持倉警示",
+                            sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
+                            code=", ".join(remaining_codes) or None,
+                            status_classification=MACHINE_STATUS_HUMAN_REVIEW,
+                        )
+                    )
+            elif portfolio_count > 0:
                 severity = "warning"
                 queue_group = "portfolio_review"
                 source_type = "portfolio_alert"
@@ -497,9 +672,32 @@ class WorkbenchReadOnlyComposer:
                         source_label="持倉警示",
                         sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
                         code=", ".join(portfolio.alert_codes) or None,
+                        status_classification=MACHINE_STATUS_HUMAN_REVIEW,
                     )
                 )
-            for index, prompt in enumerate(decision_snapshot.risk_prompts.prompts, start=1):
+            if risk_groups["unknown"]:
+                unknown = risk_groups["unknown"]
+                severity = _risk_prompt_group_severity(unknown)
+                queue_group = "daily_review"
+                source_type = "risk_prompt"
+                items.append(
+                    WorkbenchActionItem(
+                        item_id="risk_prompt_unclassified",
+                        title="未分類風險提示（需確認契約）",
+                        source_type=source_type,
+                        severity=severity,
+                        summary=_unknown_risk_prompt_summary(unknown),
+                        source_trace="DecisionDeskSnapshot.risk_prompts",
+                        degraded_reason="risk_prompt_unclassified",
+                        drilldown_target="daily_decision",
+                        queue_group=queue_group,
+                        source_label="未分類風險提示",
+                        sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
+                        code=_prompt_code_preview(unknown),
+                        status_classification=MACHINE_STATUS_UNKNOWN,
+                    )
+                )
+            for index, prompt in risk_groups["known"]:
                 severity = _severity(prompt.severity)
                 queue_group = "daily_review"
                 source_type = "risk_prompt"
@@ -517,6 +715,7 @@ class WorkbenchReadOnlyComposer:
                         source_label="風險提示",
                         sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
                         code=prompt.code,
+                        status_classification=MACHINE_STATUS_HUMAN_REVIEW,
                     )
                 )
 
@@ -863,6 +1062,185 @@ class WorkbenchReadOnlyComposer:
         if recommendation_learning_status is not None:
             warnings.extend(_recommendation_learning_payload(recommendation_learning_status)["diagnostics"])
         return _dedupe(warnings)
+
+
+def _partition_risk_prompts(
+    decision_snapshot: DecisionDeskSnapshot,
+) -> dict[str, tuple[tuple[int, DecisionDeskRiskPrompt], ...]]:
+    """依既有 prompt contract 分流，保留無法辨識的提示供診斷。"""
+
+    groups: dict[str, list[tuple[int, DecisionDeskRiskPrompt]]] = {
+        "liquidity": [],
+        "weakness": [],
+        "watchlist": [],
+        "portfolio": [],
+        "known": [],
+        "unknown": [],
+    }
+    for index, prompt in enumerate(decision_snapshot.risk_prompts.prompts, start=1):
+        category = str(getattr(prompt, "category", "") or "").strip().lower()
+        source = str(getattr(prompt, "source", "") or "").strip().lower()
+        if category == "liquidity" and source == "relative_strength_liquidity":
+            lane = "liquidity"
+        elif category == "weakness" and source == "relative_strength_liquidity":
+            lane = "weakness"
+        elif category in {"portfolio", "portfolio_alert"} and source in {
+            "portfolio_alert",
+            "portfolio_alerts",
+        }:
+            lane = "portfolio"
+        elif category in {"watchlist", "watchlist_risk"} and source in {
+            "watchlist_trigger",
+            "watchlist_triggers",
+        }:
+            lane = "watchlist"
+        elif category == "market_context" and source == "market_regime":
+            lane = "known"
+        elif category == "fundamental_diagnostic" and source == "fundamental":
+            lane = "known"
+        else:
+            lane = "unknown"
+        groups[lane].append((index, prompt))
+    return {key: tuple(value) for key, value in groups.items()}
+
+
+def _remaining_section_alerts(
+    total_count: int | None,
+    section_codes: tuple[str, ...],
+    prompts: tuple[tuple[int, DecisionDeskRiskPrompt], ...],
+) -> tuple[int, tuple[str, ...]]:
+    """計算 section 中尚未被 prompt 逐項覆蓋的觸發，避免遺失代號。"""
+
+    prompt_codes = {
+        str(prompt.code).strip()
+        for _index, prompt in prompts
+        if str(prompt.code or "").strip()
+    }
+    remaining_codes = tuple(code for code in section_codes if code not in prompt_codes)
+    total = portfolio_safe_count(total_count, section_codes)
+    covered_count = (
+        len(section_codes) - len(remaining_codes)
+        if section_codes
+        else min(total, len(prompts))
+    )
+    return max(0, total - covered_count), remaining_codes
+
+
+def _human_review_items_from_prompts(
+    prompts: tuple[tuple[int, DecisionDeskRiskPrompt], ...],
+    *,
+    source: str,
+    drilldown_target: str,
+    item_prefix: str,
+) -> tuple[WorkbenchReviewItem, ...]:
+    """把有明確人工邊界的 prompt 保留為逐項唯讀 review item。"""
+
+    return tuple(
+        WorkbenchReviewItem(
+            item_id=f"{item_prefix}_{index}",
+            title=str(prompt.title),
+            severity=_severity(prompt.severity),
+            source=source,
+            summary=str(prompt.reason),
+            drilldown_target=drilldown_target,
+            code=prompt.code,
+            source_trace=f"DecisionDeskSnapshot.risk_prompts[{index}].{prompt.source}",
+            diagnostics=(f"risk_prompt_category:{prompt.category}",),
+        )
+        for index, prompt in prompts
+    )
+
+
+def _prompt_code_preview(
+    prompts: tuple[tuple[int, DecisionDeskRiskPrompt], ...],
+    *,
+    limit: int = 8,
+) -> str:
+    codes = [str(prompt.code).strip() for _index, prompt in prompts if str(prompt.code or "").strip()]
+    if not codes:
+        return "未提供"
+    shown = ", ".join(codes[:limit])
+    remaining = len(codes) - limit
+    return f"{shown}（另 {remaining} 筆）" if remaining > 0 else shown
+
+
+def _risk_prompt_group_severity(
+    prompts: tuple[tuple[int, DecisionDeskRiskPrompt], ...],
+) -> str:
+    severities = {str(prompt.severity).strip().lower() for _index, prompt in prompts}
+    if "critical" in severities:
+        return "critical"
+    if "warning" in severities:
+        return "warning"
+    return "info"
+
+
+def _market_risk_prompt_feed_item(
+    lane: str,
+    prompts: tuple[tuple[int, DecisionDeskRiskPrompt], ...],
+) -> WorkbenchEvidenceFeedItem:
+    labels = {
+        "liquidity": "低流動性市場提示",
+        "weakness": "相對弱勢市場提示",
+    }
+    classifications = {
+        "liquidity": MACHINE_STATUS_MACHINE_DEGRADED,
+        "weakness": MACHINE_STATUS_MACHINE_CANDIDATE,
+    }
+    status = "warning" if lane == "liquidity" else "info"
+    return WorkbenchEvidenceFeedItem(
+        item_id=f"risk_prompt_{lane}_batch",
+        label=labels[lane],
+        status=status,
+        summary=(
+            f"Decision Desk 已標記 {len(prompts)} 筆{labels[lane]}；"
+            f"這是機器篩選提示，不逐筆計入人工待判讀。代號預覽：{_prompt_code_preview(prompts)}。"
+        ),
+        source_trace=f"DecisionDeskSnapshot.risk_prompts.category={lane}",
+        degraded_reason=f"market_screening_batch:{lane}",
+        drilldown_target="daily_decision",
+        diagnostics=(
+            f"prompt_count:{len(prompts)}",
+            f"code_preview:{_prompt_code_preview(prompts)}",
+            f"category:{lane}",
+        ),
+        status_classification=classifications[lane],
+    )
+
+
+def _unknown_risk_prompt_summary(
+    prompts: tuple[tuple[int, DecisionDeskRiskPrompt], ...],
+) -> str:
+    categories = sorted({str(prompt.category or "unknown") for _index, prompt in prompts})
+    category_text = ", ".join(categories) or "unknown"
+    return (
+        f"有 {len(prompts)} 筆風險提示無法對應既有 Workbench lane（category={category_text}）；"
+        "保留 category/source/code/reason 診斷，請下鑽 Daily Decision 確認契約。"
+        f"代號預覽：{_prompt_code_preview(prompts)}。"
+    )
+
+
+def _unknown_risk_prompt_feed_item(
+    prompts: tuple[tuple[int, DecisionDeskRiskPrompt], ...],
+) -> WorkbenchEvidenceFeedItem:
+    diagnostics = tuple(
+        (
+            f"risk_prompt_unclassified:category={prompt.category};"
+            f"source={prompt.source};code={prompt.code or '未提供'};reason={prompt.reason}"
+        )
+        for _index, prompt in prompts
+    )
+    return WorkbenchEvidenceFeedItem(
+        item_id="risk_prompt_unclassified",
+        label="未分類風險提示",
+        status="unknown",
+        summary=_unknown_risk_prompt_summary(prompts),
+        source_trace="DecisionDeskSnapshot.risk_prompts",
+        degraded_reason="risk_prompt_unclassified",
+        drilldown_target="daily_decision",
+        diagnostics=diagnostics,
+        status_classification=MACHINE_STATUS_UNKNOWN,
+    )
 
 
 def portfolio_safe_count(count: int | None, codes: tuple[str, ...]) -> int:

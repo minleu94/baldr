@@ -852,8 +852,8 @@ def test_unified_workbench_view_displays_empty_and_degraded_queue_state_copy() -
     assert "沒有人工待處理事項" in empty_view.action_item_state_label.text()
     assert "不是買賣建議" in empty_view.action_item_state_label.text()
     assert "不寫 DB" in empty_view.action_item_state_label.text()
-    assert "今日所有風險已確認" in empty_view.review_empty_state.title_label.text()
-    assert "市場探索" in empty_view.review_empty_state.body_label.text()
+    assert "目前沒有明確人工判讀項目" in empty_view.review_empty_state.title_label.text()
+    assert "空佇列不代表風險已確認" in empty_view.review_empty_state.body_label.text()
     assert empty_view.review_empty_state.isHidden() is False
     assert empty_view.review_table.isHidden() is True
 
@@ -867,6 +867,35 @@ def test_unified_workbench_view_displays_empty_and_degraded_queue_state_copy() -
     assert "降級" in degraded_view.action_item_state_label.text()
     assert "只供人工覆盤排序" in degraded_view.action_item_state_label.text()
     assert "不是買賣建議" in degraded_view.action_item_state_label.text()
+
+
+def test_unified_workbench_view_keeps_market_batch_outside_human_queue() -> None:
+    app()
+    machine_only = replace(
+        _empty_dashboard(),
+        background_evidence_feed=(
+            WorkbenchEvidenceFeedItem(
+                item_id="risk_prompt_liquidity_batch",
+                label="低流動性市場提示",
+                status="warning",
+                summary="Decision Desk 已標記 1121 筆低流動性市場提示。",
+                source_trace="DecisionDeskSnapshot.risk_prompts.category=liquidity",
+                degraded_reason="market_screening_batch:liquidity",
+                drilldown_target="daily_decision",
+                diagnostics=("prompt_count:1121",),
+                status_classification="machine_degraded",
+            ),
+        ),
+    )
+
+    view = UnifiedDecisionWorkbenchView(dashboard=machine_only, auto_refresh=False)
+
+    assert view.review_model.rowCount() == 0
+    assert "機器狀態待處理" in view.review_empty_state.title_label.text()
+    assert "市場批次提示" in view.review_empty_state.body_label.text()
+    assert "背景提示 1 批" in view.priority_banner.text()
+    assert "#f59e0b" in view.priority_banner.styleSheet()
+    assert "空佇列不代表風險已確認" not in view.review_empty_state.body_label.text()
 
 
 def test_unified_workbench_view_does_not_call_machine_only_gaps_confirmed() -> None:

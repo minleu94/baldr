@@ -110,7 +110,10 @@ from app_module.smart_money_semantic_service import (
     SQLiteSmartMoneyPriceProvider,
 )
 from app_module.decision_market_frame import DecisionMarketFrameLoader
-from app_module.decision_desk_service import DecisionDeskSnapshotBuilder, SavedRecommendationDeskProvider
+from app_module.decision_desk_service import (
+    DecisionDeskSnapshotBuilder,
+    SavedRecommendationDeskProvider,
+)
 from app_module.market_data_visibility_service import MarketDataVisibilityService
 from ui_qt.views.decision_desk_view import DecisionDeskView
 from app_module.workbench_source_service import WorkbenchSourceService
@@ -229,7 +232,9 @@ class MainWindow(QMainWindow):
         )
         self.decision_market_frame_loader = composition.market_frame_loader
         if getattr(self.config, "output_root", None) is not None:
-            composition.builder.recommendation_provider = SavedRecommendationDeskProvider(self.config)
+            composition.builder.recommendation_provider = (
+                SavedRecommendationDeskProvider(self.config)
+            )
         return composition.builder
 
     def __init__(self):
@@ -394,10 +399,7 @@ class MainWindow(QMainWindow):
         if output_root is None:
             return None
         return (
-            Path(output_root)
-            / "scheduled"
-            / "data_update_quick"
-            / "latest_status.json"
+            Path(output_root) / "scheduled" / "data_update_quick" / "latest_status.json"
         ).resolve()
 
     def _data_freshness_status_path(self) -> Path | None:
@@ -409,10 +411,7 @@ class MainWindow(QMainWindow):
         if output_root is None:
             return None
         return (
-            Path(output_root)
-            / "scheduled"
-            / "data_freshness"
-            / "latest_status.json"
+            Path(output_root) / "scheduled" / "data_freshness" / "latest_status.json"
         ).resolve()
 
     def _data_update_history_path(self) -> Path | None:
@@ -424,10 +423,7 @@ class MainWindow(QMainWindow):
         if output_root is None:
             return None
         return (
-            Path(output_root)
-            / "scheduled"
-            / "data_update_quick"
-            / "history.jsonl"
+            Path(output_root) / "scheduled" / "data_update_quick" / "history.jsonl"
         ).resolve()
 
     def _tpex_status_path(self) -> Path | None:
@@ -618,7 +614,9 @@ class MainWindow(QMainWindow):
                     "SmartMoneySemanticService": SmartMoneySemanticService,
                 },
             )
-            self.decision_market_frame_loader = smart_money_composition.market_frame_loader
+            self.decision_market_frame_loader = (
+                smart_money_composition.market_frame_loader
+            )
             self.smart_money_semantic_service = smart_money_composition.service
             smart_money_flow = SmartMoneyFlowView(
                 broker_flow_service=self.broker_flow_service,
@@ -675,13 +673,17 @@ class MainWindow(QMainWindow):
             # Phase 2 Unified Decision Workbench shell（唯讀 DTO/service 邊界）
             print("[MainWindow] 開始建立決策工作台...")
             try:
-                self.learning_projection_service = RecommendationLearningEvidenceProjectionService(
-                    self.config,
-                    cost_lane="banktaiwan_estimated_research",
+                self.learning_projection_service = (
+                    RecommendationLearningEvidenceProjectionService(
+                        self.config,
+                        cost_lane="banktaiwan_estimated_research",
+                    )
                 )
-                self.legacy_learning_projection_service = RecommendationLearningEvidenceProjectionService(
-                    self.config,
-                    cost_lane="legacy_fixed_bp",
+                self.legacy_learning_projection_service = (
+                    RecommendationLearningEvidenceProjectionService(
+                        self.config,
+                        cost_lane="legacy_fixed_bp",
+                    )
                 )
                 self.workbench_source_service = WorkbenchSourceService(
                     self.config,
@@ -704,10 +706,16 @@ class MainWindow(QMainWindow):
                     navigate_to_market_explore_callback=self._open_workbench_market_explore,
                     navigate_to_evidence_review_callback=self._open_workbench_evidence_review,
                     navigate_to_portfolio_callback=self._open_workbench_portfolio,
-                    navigate_to_watchlist_callback=lambda: self._select_main_workspace("watchlist"),
+                    navigate_to_watchlist_callback=lambda: self._select_main_workspace(
+                        "watchlist"
+                    ),
                     navigate_to_stock_research_callback=self._open_stock_research_context,
-                    navigate_to_update_callback=lambda: self._select_main_workspace("update"),
-                    navigate_to_recommendation_callback=lambda: self._select_main_workspace("recommendation"),
+                    navigate_to_update_callback=lambda: self._select_main_workspace(
+                        "update"
+                    ),
+                    navigate_to_recommendation_callback=lambda: self._select_main_workspace(
+                        "recommendation"
+                    ),
                     auto_refresh=True,
                     parent=self,
                 )
@@ -765,7 +773,9 @@ class MainWindow(QMainWindow):
                     )
                     if hasattr(watchlist, "sendToBacktestRequested"):
                         watchlist.sendToBacktestRequested.connect(
-                            lambda config: self._handle_send_to_backtest(backtest, config)
+                            lambda config: self._handle_send_to_backtest(
+                                backtest, config
+                            )
                         )
                     self.watchlist_view = watchlist
                     if hasattr(watchlist, "stockResearchRequested"):
@@ -773,7 +783,9 @@ class MainWindow(QMainWindow):
                             self._open_stock_research_context
                         )
                     elif hasattr(watchlist, "stockAnalysisRequested"):
-                        watchlist.stockAnalysisRequested.connect(self.show_smart_money_flow_for_stock)
+                        watchlist.stockAnalysisRequested.connect(
+                            self.show_smart_money_flow_for_stock
+                        )
                     watchlist_widget = watchlist
                     print("[MainWindow] 觀察清單視圖創建成功")
                 except Exception as e:
@@ -834,7 +846,7 @@ class MainWindow(QMainWindow):
                     dependencies={
                         "RuntimeController": RuntimeController,
                         "QtRuntimeBridge": QtRuntimeBridge,
-                    "RuntimeView": RuntimeView,
+                        "RuntimeView": RuntimeView,
                         "EnvironmentReadinessService": EnvironmentReadinessService,
                         "QTimer": QTimer,
                     },
@@ -1100,7 +1112,9 @@ class MainWindow(QMainWindow):
                 self._return_from_stock_research_report
             )
             dialog.finished.connect(
-                lambda _result, current=dialog: self._clear_stock_research_dialog(current)
+                lambda _result, current=dialog: self._clear_stock_research_dialog(
+                    current
+                )
             )
         dialog.show()
         dialog.raise_()
@@ -1204,7 +1218,9 @@ class MainWindow(QMainWindow):
         if send_cancel:
             update_shutdown = getattr(update_view, "begin_shutdown", None)
             if not callable(update_shutdown):
-                update_shutdown = getattr(update_view, "request_cooperative_shutdown", None)
+                update_shutdown = getattr(
+                    update_view, "request_cooperative_shutdown", None
+                )
             if callable(update_shutdown):
                 try:
                     # UpdateView 會建立本次 TPEX cancel marker，並阻止 queued
@@ -1258,9 +1274,7 @@ class MainWindow(QMainWindow):
             try:
                 begin_shutdown()
             except Exception as exc:  # pragma: no cover - defensive UI path
-                self._record_shutdown_message(
-                    f"{attribute} 關閉 gate 設定失敗：{exc}"
-                )
+                self._record_shutdown_message(f"{attribute} 關閉 gate 設定失敗：{exc}")
 
     def _set_shutdown_ui(self) -> None:
         """鎖住內容操作但保留事件迴圈與狀態列可更新。"""
@@ -1290,8 +1304,7 @@ class MainWindow(QMainWindow):
                 self._shutdown_close_last_blockers = blocker_tuple
                 self._shutdown_close_last_diagnostic_monotonic = now
                 MainWindow._record_shutdown_message(
-                    self,
-                    "主視窗關閉仍在等待：" + "、".join(blocker_tuple)
+                    self, "主視窗關閉仍在等待：" + "、".join(blocker_tuple)
                 )
             elif (
                 self._shutdown_close_last_diagnostic_monotonic is None
@@ -1315,7 +1328,7 @@ class MainWindow(QMainWindow):
         elapsed = time.monotonic() - started if started is not None else 0.0
         MainWindow._record_shutdown_message(
             self,
-            f"主視窗背景工作已安全收尾，關閉耗時 {elapsed:.3f} 秒；自動完成 close。"
+            f"主視窗背景工作已安全收尾，關閉耗時 {elapsed:.3f} 秒；自動完成 close。",
         )
         self.statusBar().showMessage("背景工作已安全收尾，正在關閉…", 3_000)
         QTimer.singleShot(0, self.close)
@@ -1364,9 +1377,7 @@ class MainWindow(QMainWindow):
                 10_000,
             )
             MainWindow._record_shutdown_message(
-                self,
-                "主視窗收到 close request，已進入合作式收尾："
-                + "、".join(parts)
+                self, "主視窗收到 close request，已進入合作式收尾：" + "、".join(parts)
             )
             timer = getattr(self, "_shutdown_close_timer", None)
             if timer is not None:
@@ -1381,8 +1392,7 @@ class MainWindow(QMainWindow):
         started = self._shutdown_close_started_monotonic
         elapsed = time.monotonic() - started if started is not None else 0.0
         MainWindow._record_shutdown_message(
-            self,
-            f"主視窗閒置關閉耗時 {elapsed:.3f} 秒；沒有背景依賴。"
+            self, f"主視窗閒置關閉耗時 {elapsed:.3f} 秒；沒有背景依賴。"
         )
         event.accept()
 

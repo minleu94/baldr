@@ -10,7 +10,7 @@ step never receives caller-supplied symbols unless the operator asks for it.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import date, datetime
 import json
 import os
 from pathlib import Path
@@ -110,6 +110,241 @@ def _status_path(output_root: Path, name: str) -> Path:
     if name == "recommendation_learning":
         return output_root / "recommendation_learning" / "latest_status.json"
     return output_root / "scheduled" / name / "latest_status.json"
+
+
+def _same_path(value: object, expected: Path) -> bool:
+    if not isinstance(value, (str, os.PathLike)):
+        return False
+    try:
+        return Path(value).expanduser().resolve() == expected
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def _iso_date(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value.strip()).isoformat()
+    except ValueError:
+        return None
+
+
+def _aware_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _technical_window_matches_decision(
+    hint: Mapping[str, Any],
+    *,
+    decision_date: str,
+    now: datetime,
+) -> bool:
+    if hint.get("status") != "ready":
+        return False
+    start = _iso_date(hint.get("source_date_start"))
+    end = _iso_date(hint.get("source_date_end"))
+    if not start or not end or start > end or end != decision_date:
+        return False
+    available_at = _aware_datetime(hint.get("available_at"))
+    if available_at is None or available_at > now:
+        return False
+    return available_at.astimezone(TAIPEI).date().isoformat() == decision_date
+
+
+def _technical_child_plan(
+    *,
+    data_root: Path,
+    source_db: Path,
+    source_date_start: str,
+    source_date_end: str,
+) -> dict[str, Any]:
+    """解析 technical canonical routing，不把正常 refresh 綁成 receipt 前置條件。"""
+
+    formal_output_root = (data_root / "output").resolve()
+    expected_source_db = (data_root / "sqlite" / "twstock.db").resolve()
+    status_path = _status_path(formal_output_root, "data_update_quick")
+    plan: dict[str, Any] = {
+        "status": "blocked",
+        "name": "data_update_quick",
+        "formal_output_root": str(formal_output_root),
+        "status_path": str(status_path),
+        "source_db": str(source_db),
+        "expected_source_db": str(expected_source_db),
+        "source_date_start": source_date_start,
+        "source_date_end": source_date_end,
+    }
+    if source_db != expected_source_db:
+        plan.update(
+            {
+                "reason": "technical_source_db_mismatch",
+                "message": (
+                    "technical child is blocked because source_db does not match "
+                    "the quick runner's data-root SQLite database"
+                ),
+            }
+        )
+        return plan
+    plan["status"] = "ready"
+    plan["reason"] = "canonical_formal_technical_root_ready"
+    return plan
+
+
+def _formal_receipt_window_hint(*, data_root: Path, source_db: Path) -> dict[str, Any]:
+    """讀取 bounded formal window hint；最終驗證仍由 quick 既有 verifier 負責。"""
+
+    formal_output_root = (data_root / "output").resolve()
+    status_path = _status_path(formal_output_root, "data_update_quick")
+    base = {
+        "status": "unavailable",
+        "formal_output_root": str(formal_output_root),
+        "status_path": str(status_path),
+        "source_db": str(source_db),
+    }
+    status = _read_json(status_path)
+    if not isinstance(status, Mapping):
+        base["reason"] = "formal_quick_status_unreadable"
+        return base
+    for field in ("data_root", "output_root", "formal_output_root"):
+        value = status.get(field)
+        if value is not None and not _same_path(
+            value,
+            data_root if field == "data_root" else formal_output_root,
+        ):
+            base["reason"] = f"formal_quick_{field}_mismatch"
+            return base
+    publication = status.get("technical_publication_receipt")
+    if not isinstance(publication, Mapping) or publication.get("status") != "published":
+        base["reason"] = "formal_technical_publication_missing"
+        return base
+    source_date_start = publication.get("source_date_start")
+    source_date_end = publication.get("source_date_end")
+    receipt_path = publication.get("receipt_path")
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (source_date_start, source_date_end, receipt_path)
+    ):
+        base["reason"] = "formal_technical_receipt_pointer_incomplete"
+        return base
+    resolved_receipt = Path(str(receipt_path)).expanduser()
+    if not resolved_receipt.is_absolute():
+        resolved_receipt = formal_output_root / resolved_receipt
+    try:
+        resolved_receipt = resolved_receipt.resolve()
+    except (OSError, RuntimeError):
+        base["reason"] = "formal_technical_receipt_path_unresolvable"
+        return base
+    if not resolved_receipt.is_relative_to(formal_output_root):
+        base["reason"] = "formal_technical_receipt_path_unauthorized"
+        return base
+    return {
+        **base,
+        "status": "ready",
+        "reason": "formal_technical_receipt_window_hint_available",
+        "source_date_start": source_date_start,
+        "source_date_end": source_date_end,
+        "receipt_path": str(resolved_receipt),
+        "available_at": publication.get("available_at"),
+    }
+
+
+def _verify_formal_technical_reuse(
+    plan: Mapping[str, Any],
+    *,
+    now: datetime,
+) -> dict[str, Any]:
+    """使用既有 custody verifier 重新驗證明確要求的 skip。"""
+
+    if plan.get("status") != "ready":
+        return {
+            "status": "not_reused",
+            "reason": str(plan.get("reason") or "formal_technical_plan_not_ready"),
+        }
+    from data_module.recommendation_calibration_source_contract import (
+        reuse_verified_technical_computation_receipt,
+    )
+
+    reuse = reuse_verified_technical_computation_receipt(
+        authorized_output_roots=[str(plan["formal_output_root"])],
+        source_db=str(plan["source_db"]),
+        source_date_start=str(plan["source_date_start"]),
+        source_date_end=str(plan["source_date_end"]),
+        availability_cutoff_at=now,
+    )
+    if reuse.get("status") != "reused":
+        return {
+            "status": "not_reused",
+            "reason": str(
+                reuse.get("reason") or "formal_technical_receipt_not_reusable"
+            ),
+            "reuse": dict(reuse),
+        }
+    source_publication_receipt = reuse.get("source_publication_receipt")
+    if not isinstance(source_publication_receipt, Mapping) or not _same_path(
+        source_publication_receipt.get("path"), Path(str(plan["receipt_path"]))
+    ):
+        return {
+            "status": "not_reused",
+            "reason": "formal_technical_receipt_pointer_not_reused",
+            "reuse": dict(reuse),
+        }
+    return {"status": "reused", "reuse": dict(reuse)}
+
+
+def _technical_child_invocation(
+    *,
+    data_root: Path,
+    plan: Mapping[str, Any],
+    base_environment: Mapping[str, str],
+    window_weekdays: int,
+    daily_delay_seconds: float,
+    tpex_delay_seconds: float,
+    broker_delay_seconds: float,
+) -> tuple[list[str], dict[str, str]]:
+    """組出 technical child command，同時保留其他 child 的 shadow routing。"""
+
+    technical_output_root = Path(str(plan["formal_output_root"])).resolve()
+    technical_environment = dict(base_environment)
+    technical_environment.update(
+        {
+            "OUTPUT_ROOT": str(technical_output_root),
+            "RECOMMENDATION_LEARNING_OUTPUT_ROOT": str(technical_output_root),
+            "DB_PATH": str(plan["source_db"]),
+        }
+    )
+    arguments = [
+        "--data-root",
+        str(data_root),
+        "--output-root",
+        str(technical_output_root),
+        "--formal-output-root",
+        str(technical_output_root),
+        "--start-date",
+        str(plan["source_date_start"]),
+        "--end-date",
+        str(plan["source_date_end"]),
+        "--window-weekdays",
+        str(window_weekdays),
+        "--daily-delay-seconds",
+        str(daily_delay_seconds),
+        "--tpex-delay-seconds",
+        str(tpex_delay_seconds),
+        "--broker-delay-seconds",
+        str(broker_delay_seconds),
+        "--status-path",
+        str(plan["status_path"]),
+        "--skip-broker-branch",
+    ]
+    return arguments, technical_environment
 
 
 def _tail(text: str, limit: int = 6000) -> str:
@@ -320,7 +555,11 @@ def main(argv: list[str] | None = None) -> int:
         if remaining <= 0:
             name = str(kwargs["name"])
             script = str(kwargs["script"])
-            status_file = _status_path(output_root, name)
+            child_environment = kwargs.get("environment") or environment
+            child_output_root = Path(
+                child_environment["RECOMMENDATION_LEARNING_OUTPUT_ROOT"]
+            )
+            status_file = _status_path(child_output_root, name)
             log_handle = kwargs["log_handle"]
             log_handle.write(
                 f"\n===== {name} TIMED OUT =====\n"
@@ -345,34 +584,148 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with log_path.open("a", encoding="utf-8") as log_handle:
+            technical_now = datetime.now(TAIPEI)
             if args.skip_technical_refresh:
-                technical_step = {
-                    "name": "data_update_quick",
-                    "status": "skipped",
-                    "reason": "caller_declared_existing_same_day_technical_receipt",
-                    "status_path": str(_status_path(output_root, "data_update_quick")),
-                }
-            else:
-                technical_step = run_child_bounded(
-                    name="data_update_quick",
-                    script="scripts/scheduled/run_daily_data_update_quick.py",
-                    arguments=[
-                        "--data-root", str(data_root),
-                        "--output-root", str(output_root),
-                        "--start-date", decision_date,
-                        "--end-date", decision_date,
-                        "--window-weekdays", str(args.window_weekdays),
-                        "--daily-delay-seconds", str(args.daily_delay_seconds),
-                        "--tpex-delay-seconds", str(args.tpex_delay_seconds),
-                        "--broker-delay-seconds", str(args.broker_delay_seconds),
-                        "--skip-broker-branch",
-                    ],
-                    environment=environment,
-                    log_handle=log_handle,
+                technical_plan = _formal_receipt_window_hint(
+                    data_root=data_root,
+                    source_db=source_db,
                 )
+                if _technical_window_matches_decision(
+                    technical_plan,
+                    decision_date=decision_date,
+                    now=technical_now,
+                ):
+                    reuse = _verify_formal_technical_reuse(
+                        technical_plan,
+                        now=technical_now,
+                    )
+                else:
+                    reuse = {
+                        "status": "not_reused",
+                        "reason": str(
+                            technical_plan.get("reason")
+                            if technical_plan.get("status") != "ready"
+                            else "formal_technical_receipt_not_same_day"
+                        ),
+                    }
+                if reuse.get("status") == "reused":
+                    reuse_payload = reuse.get("reuse")
+                    technical_step = {
+                        "name": "data_update_quick",
+                        "status": "skipped",
+                        "reason": "caller_declared_existing_same_day_technical_receipt",
+                        "source": "formal_data_root",
+                        "formal_output_root": technical_plan.get("formal_output_root"),
+                        "receipt_path": technical_plan.get("receipt_path"),
+                        "source_date_start": technical_plan.get("source_date_start"),
+                        "source_date_end": technical_plan.get("source_date_end"),
+                        "status_path": technical_plan.get("status_path"),
+                        "technical_reuse_validation": reuse_payload,
+                    }
+                else:
+                    technical_step = {
+                        "name": "data_update_quick",
+                        "status": "blocked",
+                        "reason": str(
+                            reuse.get("reason")
+                            or technical_plan.get("reason")
+                            or "formal_technical_receipt_not_reusable"
+                        ),
+                        "source": "formal_data_root",
+                        "formal_output_root": technical_plan.get("formal_output_root"),
+                        "receipt_path": technical_plan.get("receipt_path"),
+                        "source_date_start": technical_plan.get("source_date_start"),
+                        "source_date_end": technical_plan.get("source_date_end"),
+                        "status_path": technical_plan.get("status_path"),
+                        "technical_reuse_validation": reuse,
+                    }
+            else:
+                technical_plan = _technical_child_plan(
+                    data_root=data_root,
+                    source_db=source_db,
+                    source_date_start=decision_date,
+                    source_date_end=decision_date,
+                )
+                if technical_plan.get("status") == "ready":
+                    window_hint = _formal_receipt_window_hint(
+                        data_root=data_root,
+                        source_db=source_db,
+                    )
+                    if _technical_window_matches_decision(
+                        window_hint,
+                        decision_date=decision_date,
+                        now=technical_now,
+                    ):
+                        hinted_plan = _technical_child_plan(
+                            data_root=data_root,
+                            source_db=source_db,
+                            source_date_start=str(window_hint["source_date_start"]),
+                            source_date_end=str(window_hint["source_date_end"]),
+                        )
+                        hinted_plan.update(
+                            {
+                                "receipt_path": window_hint.get("receipt_path"),
+                                "available_at": window_hint.get("available_at"),
+                            }
+                        )
+                        reuse = _verify_formal_technical_reuse(
+                            hinted_plan,
+                            now=technical_now,
+                        )
+                        if reuse.get("status") == "reused":
+                            technical_plan = hinted_plan
+                            technical_plan["window_hint"] = (
+                                "formal_latest_technical_publication_verified_reuse"
+                            )
+                if technical_plan.get("status") != "ready":
+                    technical_step = {
+                        "name": "data_update_quick",
+                        "status": "blocked",
+                        "reason": str(
+                            technical_plan.get("reason")
+                            or "canonical_formal_technical_child_unavailable"
+                        ),
+                        "source": "formal_data_root",
+                        "formal_output_root": technical_plan.get("formal_output_root"),
+                        "source_date_start": technical_plan.get("source_date_start"),
+                        "source_date_end": technical_plan.get("source_date_end"),
+                        "status_path": technical_plan.get("status_path"),
+                    }
+                else:
+                    technical_arguments, technical_environment = _technical_child_invocation(
+                        data_root=data_root,
+                        plan=technical_plan,
+                        base_environment=environment,
+                        window_weekdays=args.window_weekdays,
+                        daily_delay_seconds=args.daily_delay_seconds,
+                        tpex_delay_seconds=args.tpex_delay_seconds,
+                        broker_delay_seconds=args.broker_delay_seconds,
+                    )
+                    technical_step = run_child_bounded(
+                        name="data_update_quick",
+                        script="scripts/scheduled/run_daily_data_update_quick.py",
+                        arguments=technical_arguments,
+                        environment=technical_environment,
+                        log_handle=log_handle,
+                    )
+                    technical_step.update(
+                        {
+                            "source": "formal_data_root",
+                            "formal_output_root": technical_plan.get("formal_output_root"),
+                            "receipt_path": technical_plan.get("receipt_path"),
+                            "source_date_start": technical_plan.get("source_date_start"),
+                            "source_date_end": technical_plan.get("source_date_end"),
+                            "window_hint": technical_plan.get("window_hint")
+                            or "caller_decision_date_fallback",
+                        }
+                    )
             payload["steps"]["data_update_quick"] = technical_step
-            if technical_step.get("status") in {"failed", "timed_out"}:
+            if technical_step.get("status") in {"failed", "blocked", "timed_out"}:
                 payload["warnings"].append("technical_source_refresh_failed_or_partial")
+            if technical_step.get("status") == "failed":
+                payload["blockers"].append("technical_source_refresh_failed")
+            if technical_step.get("status") == "blocked":
+                payload["blockers"].append("technical_source_refresh_blocked")
             if technical_step.get("status") == "timed_out":
                 payload["blockers"].append("technical_source_refresh_timed_out")
             technical_warnings = list(technical_step.get("child_warnings") or [])

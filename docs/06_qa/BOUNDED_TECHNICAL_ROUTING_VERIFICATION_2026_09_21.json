@@ -1,0 +1,43 @@
+{
+  "schema_version": "bounded-technical-routing-verification.v1",
+  "recorded_date": "2026-09-21",
+  "recording_note": "本檔根據本次 session 已完成的工具輸出整理；保存時沒有重新執行 checks，session 輸出未保留精確完成時間。",
+  "scope": [
+    "scripts/scheduled/run_daily_recommendation_learning_pipeline.py",
+    "tests/test_recommendation_calibration_contract_guards.py",
+    "tests/test_recommendation_calibration_source_contract.py",
+    "docs/06_qa/FORMAL_SCHEDULER_READINESS_AUDIT_2026_09_20.md",
+    "docs/07_guides/APPLICATION_MANUAL.md"
+  ],
+  "checks": [
+    {
+      "name": "focused_pytest",
+      "command": ".\\.venv\\Scripts\\python.exe -m pytest tests\\test_recommendation_calibration_contract_guards.py tests\\test_recommendation_calibration_source_contract.py -q -o addopts=",
+      "exit_code": 0,
+      "observed_output": "27 passed, 1 warning in 1.24s",
+      "warning": "既存 .pytest_cache 無寫入權限；不影響測試結果。"
+    },
+    {
+      "name": "py_compile",
+      "command": ".\\.venv\\Scripts\\python.exe -m py_compile scripts\\scheduled\\run_daily_recommendation_learning_pipeline.py tests\\test_recommendation_calibration_contract_guards.py",
+      "exit_code": 0,
+      "observed_output": ""
+    },
+    {
+      "name": "mypy",
+      "command": ".\\.venv\\Scripts\\python.exe -m mypy --explicit-package-bases scripts\\scheduled\\run_daily_recommendation_learning_pipeline.py tests\\test_recommendation_calibration_contract_guards.py",
+      "exit_code": 0,
+      "observed_output": "tests\\test_recommendation_calibration_contract_guards.py:267: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs [annotation-unchecked]\nSuccess: no issues found in 2 source files"
+    }
+  ],
+  "boundaries": {
+    "formal_scheduler_executed": false,
+    "formal_sqlite_written": false,
+    "formal_receipt_republished": false,
+    "formal_runtime_logs": [
+      "D:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\data_update_quick\\20260919_data_update_quick.log",
+      "D:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\data_update_quick\\20260920_data_update_quick.log",
+      "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\data_update_quick\\20260920_data_update_quick.log"
+    ]
+  }
+}

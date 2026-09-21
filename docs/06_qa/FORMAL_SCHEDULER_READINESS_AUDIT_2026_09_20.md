@@ -46,3 +46,13 @@ source receipts 的日期、時間 cutoff、symbol coverage、receipt lineage �
 本次 proof 證明 source receipt 與 7-symbol coverage 已可被正式 read-only contract reader 找到，也證明目前不能把該 receipt 當成可供自然 capture 的 current technical binding。必須先釐清 receipt 後的 technical output hash drift，再由實際 scheduler 以當下 checked clock 重新建立 source contract；本 QA 不預測下一交易日結果、不回填 2026-09-18、不產生 natural credit。
 
 `f48908a1` 的背景 publication 修正仍是 `ui_qt/views/update_view.py:4049` 的 UI background route；它不能被描述成已改動正式 scheduler。正式 scheduler 是否能在下一個實際交易日完成 current binding，仍以新的 quick receipt、source contract 與 live capture artifact 為準。
+
+## 2026-09-21 bounded technical child routing follow-up
+
+本段記錄 hash drift 根因調查後的最小 scheduler routing 修補；它不回填 2026-09-18，也沒有在正式資料上重算、重發布或改寫 DB。直接證據仍是 9/19 shadow caller 的 technical child 與正式 `DB_PATH` 共用，但 `OUTPUT_ROOT` 指向 shadow；同一 caller 的 quick child 因而可能在正式 quick receipt 後再次取得 technical writer。`f48908a1` 只涵蓋 UI background route，未涵蓋這條 scheduler child routing。
+
+`run_daily_recommendation_learning_pipeline.py:164-342,588-728` 現在只把 technical child 的 custody root 固定到與 `data_root` 對應的 `<data-root>/output`，並同步 child 的 `OUTPUT_ROOT`、`RECOMMENDATION_LEARNING_OUTPUT_ROOT`、`--output-root`、`--formal-output-root` 與 `--status-path`；official、snapshot、learning 仍使用 caller 的 shadow output。`source_db` 若不是 `<data-root>/sqlite/twstock.db`，technical child 在呼叫 quick writer 前 fail closed。quick 的既有 canonical capacity lock 仍由 quick runner 依 formal output root 選取，pipeline 沒有另造 lock 名稱。
+
+正常 refresh 不以既有 receipt 作為啟動前置條件：formal latest status 只提供 bounded window hint。只有在 `start <= end`、`end == caller decision_date`、available time 不在未來且 Asia/Taipei 日期相符，並由既有 `reuse_verified_technical_computation_receipt()` 重新驗證成功時，才沿用該多日 window；missing、stale、future 或驗證失敗均回到 caller 的 decision-date refresh，保留原本的 recovery 語意。明確 `--skip-technical-refresh` 同樣必須通過 current-day window 與既有 reuse verifier，不能以任意舊 receipt 宣稱 skip 成功。
+
+隔離 QA 使用既有 source-contract fixture 建立真實三日 computation witness，確認 `pipeline.main` 的 quick child arguments/window、formal env/status path 與其他 children 的 shadow env；另驗證 missing/stale receipt 回落至 2026-09-21、custom DB 不呼叫 quick writer 且 DB bytes/mtime 不變。`tests/test_recommendation_calibration_contract_guards.py` focused suite 為 20 passed，`tests/test_recommendation_calibration_source_contract.py` 為 7 passed，兩個修改檔案均通過 `py_compile` 與 `git diff --check`。pytest 僅有既存 `.pytest_cache` 權限 warning；沒有執行正式 scheduler。

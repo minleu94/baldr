@@ -6,6 +6,7 @@ from typing import Any
 
 from app_module.advice_dtos import AdviceDashboardDTO
 from app_module.decision_desk_dtos import DecisionDeskRiskPrompt, DecisionDeskSnapshot
+from app_module.watchlist_trigger_presentation import format_watchlist_trigger_review
 from app_module.machine_status_classification import (
     MACHINE_STATUS_HUMAN_REVIEW,
     MACHINE_STATUS_INVALID_EVIDENCE,
@@ -207,11 +208,10 @@ class WorkbenchReadOnlyComposer:
                             title="其餘觀察清單觸發覆盤",
                             severity="info",
                             source="watchlist_trigger",
-                            summary=(
-                                f"尚有 {remaining_count or len(remaining_codes)} 筆觀察清單觸發未由風險提示覆蓋，"
-                                "需要人工判讀。"
+                            summary=format_watchlist_trigger_review(
+                                watchlist, codes=remaining_codes, count=remaining_count,
                             ),
-                            drilldown_target="evidence_mode",
+                            drilldown_target="watchlist",
                             code=", ".join(remaining_codes) or None,
                             source_trace="DecisionDeskSnapshot.watchlist_triggers",
                             diagnostics=("risk_prompt_coverage_partial",),
@@ -221,11 +221,13 @@ class WorkbenchReadOnlyComposer:
                 items.append(
                     WorkbenchReviewItem(
                         item_id="watchlist_trigger",
-                        title="觀察清單觸發覆盤",
+                        title="候選股指標變化：查看原因與研究報告",
                         severity="info",
                         source="watchlist_trigger",
-                        summary=f"候選池觸發 {watchlist.trigger_count or len(watchlist.triggered_codes)} 筆，需要人工判讀。",
-                        drilldown_target="evidence_mode",
+                        summary=format_watchlist_trigger_review(watchlist),
+                        drilldown_target="watchlist",
+                        code=", ".join(watchlist.triggered_codes) or None,
+                        source_trace="DecisionDeskSnapshot.watchlist_triggers",
                     )
                 )
             portfolio = decision_snapshot.portfolio_alerts
@@ -565,13 +567,12 @@ class WorkbenchReadOnlyComposer:
                             title="其餘觀察清單觸發人工覆盤",
                             source_type=source_type,
                             severity=severity,
-                            summary=(
-                                f"尚有 {remaining_count or len(remaining_codes)} 筆觀察清單觸發未由風險提示覆蓋，"
-                                "需人工判讀。"
+                            summary=format_watchlist_trigger_review(
+                                watchlist, codes=remaining_codes, count=remaining_count,
                             ),
                             source_trace="DecisionDeskSnapshot.watchlist_triggers",
                             degraded_reason="watchlist_trigger_risk_prompt_coverage_partial",
-                            drilldown_target="daily_decision",
+                            drilldown_target="watchlist",
                             queue_group=queue_group,
                             source_label="觀察清單觸發",
                             sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),
@@ -586,13 +587,13 @@ class WorkbenchReadOnlyComposer:
                 items.append(
                     WorkbenchActionItem(
                         item_id="watchlist_trigger_manual_review",
-                        title="觀察清單觸發人工覆盤",
+                        title="候選股指標變化：查看原因與研究報告",
                         source_type=source_type,
                         severity=severity,
-                        summary=f"既有 snapshot 顯示 {watchlist_count} 筆觀察清單觸發，需人工判讀。",
+                        summary=format_watchlist_trigger_review(watchlist),
                         source_trace="DecisionDeskSnapshot.watchlist_triggers",
                         degraded_reason=_reason_or_none(watchlist.warnings, "watchlist_trigger_requires_manual_review"),
-                        drilldown_target="daily_decision",
+                        drilldown_target="watchlist",
                         queue_group=queue_group,
                         source_label="觀察清單觸發",
                         sort_rank=_action_sort_rank(severity, queue_group, source_type, len(items)),

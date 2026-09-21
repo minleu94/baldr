@@ -62,10 +62,12 @@ from ui_qt.models.workbench_table_models import (
     AdvicePortfolioTableModel,
     AdviceCandidateTableModel,
     AdviceRecommendationTableModel,
+    GuidedWorkbenchRow,
     WorkbenchActionItemTableModel,
     WorkbenchChecklistTableModel,
     WorkbenchEvidenceFeedTableModel,
     WorkbenchEvidenceTableModel,
+    WorkbenchGuidedSummaryTableModel,
     WorkbenchOperatingLoopTableModel,
     WorkbenchReviewQueueTableModel,
     WorkbenchStatusStripTableModel,
@@ -78,6 +80,7 @@ from ui_qt.widgets.theme_widgets import (
     CollapsibleSectionPanel,
     EmptyStatePanel,
     SectionPanel,
+    StatusBadge,
     WarningList,
     TimelineCard,
     StatusCard,
@@ -189,6 +192,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_candidate_model = AdviceCandidateTableModel()
         self.advice_portfolio_model = AdvicePortfolioTableModel()
         self.position_health_model = PositionHealthTableModel()
+        self.guided_summary_model = WorkbenchGuidedSummaryTableModel()
 
         self._setup_ui()
         self._render_evidence_rehearsal_dashboard(self.evidence_rehearsal_dashboard)
@@ -217,19 +221,34 @@ class UnifiedDecisionWorkbenchView(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setFrameShape(QScrollArea.NoFrame)
+        self.overview_scroll_area = scroll_area
         scroll_content = QWidget()
         scroll_content.setMinimumWidth(0)
         content_layout = QVBoxLayout(scroll_content)
         content_layout.setSpacing(10)
         content_layout.setContentsMargins(0, 0, 0, 0)
+        root_content_layout = content_layout
 
-        title = QLabel("決策工作台 / Unified Decision Workbench")
+        title = QLabel("決策工作台")
         title_font = QFont()
         title_font.setPointSize(17)
         title_font.setBold(True)
         title.setFont(title_font)
         title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
         content_layout.addWidget(title)
+
+        self._build_guided_home(root_content_layout)
+        self.advanced_workbench_panel = CollapsibleSectionPanel(
+            "完整工作台／所有來源與進階詳情",
+            collapsed=True,
+        )
+        self.advanced_workbench_panel.setObjectName("v5AdvancedWorkbench")
+        self.advanced_workbench_panel.toggle_button.setAccessibleName("展開完整工作台")
+        self.advanced_workbench_panel.toggle_button.setToolTip(
+            "查看完整 workflow、原始表格、來源追蹤與技術詳情；不會重新取得或重算資料。"
+        )
+        self.advanced_overview_layout = self.advanced_workbench_panel.content_layout
+        content_layout = self.advanced_overview_layout
 
         workflow_panel = CollapsibleSectionPanel(
             "單一路徑 / Research Workflow",
@@ -408,6 +427,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         position_health_panel, self.position_health_section_title = self._panel_with_title(
             "持倉健康／退出候選 / Paper Position Health"
         )
+        self.position_health_panel = position_health_panel
         self.position_health_summary_label = self._make_state_label()
         self.position_health_table = self._make_table(self.position_health_model)
         self.position_health_table.clicked.connect(self._show_position_health_row)
@@ -486,6 +506,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         list_layout.setSpacing(10)
 
         review_panel, self.review_section_title = self._panel_with_title("今日待判讀 / Today Review Queue")
+        self.review_panel = review_panel
         self.review_state_label = self._make_state_label()
         self.review_empty_state = EmptyStatePanel(
             "目前沒有明確人工判讀項目",
@@ -519,6 +540,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         action_item_panel, self.action_item_section_title = self._panel_with_title(
             "只讀 Action Items / Machine + Manual Queue"
         )
+        self.action_item_panel = action_item_panel
         self.action_item_state_label = self._make_state_label()
         self.action_item_table = self._make_table(self.action_item_model)
         self.action_item_table.clicked.connect(
@@ -676,6 +698,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         content_layout.addWidget(warnings_panel)
         content_layout.addStretch()
 
+        root_content_layout.addWidget(self.advanced_workbench_panel)
+        root_content_layout.addStretch()
+
         scroll_area.setWidget(scroll_content)
         overview_layout.addWidget(scroll_area)
         self.subtabs.addTab(overview_page, "總覽")
@@ -688,7 +713,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
             auto_refresh=True,
             parent=self.subtabs,
         )
-        self.subtabs.addTab(self.research_console_view, "Evidence")
+        self.subtabs.addTab(self.research_console_view, "研究證據")
+        self.subtabs.setTabToolTip(2, "研究證據：查看完整的唯讀證據與成熟度資訊。")
         self.subtabs.addTab(
             self._build_navigation_page(
                 "持倉追蹤",
@@ -746,8 +772,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         return page
 
     def select_subtab(self, label: str) -> bool:
+        lookup_label = "研究證據" if label == "Evidence" else label
         for index in range(self.subtabs.count()):
-            if self.subtabs.tabText(index) == label:
+            if self.subtabs.tabText(index) == lookup_label:
                 self.subtabs.setCurrentIndex(index)
                 return True
         return False
@@ -817,6 +844,503 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 8px;"
         )
         return label
+
+    def _build_guided_home(self, parent_layout: QVBoxLayout) -> None:
+        """建立首屏的四列摘要；完整模型與技術欄位留在進階區。"""
+
+        panel, self.guided_home_section_title = self._panel_with_title("今日優先查看")
+        self.guided_home_panel = panel
+        intro = QLabel(
+            "先看持倉、候選、市場與資料影響；需要完整理由時展開完整工作台。"
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+        panel.layout.addWidget(intro)
+        self.guided_date_label = QLabel("判讀日期：尚未確認｜資料日期：尚未確認")
+        self.guided_date_label.setWordWrap(True)
+        self.guided_date_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 10px;"
+        )
+        panel.layout.addWidget(self.guided_date_label)
+        self.guided_conclusion_label = QLabel("判讀結論：尚未確認。")
+        conclusion_font = QFont()
+        conclusion_font.setPointSize(14)
+        conclusion_font.setBold(True)
+        self.guided_conclusion_label.setFont(conclusion_font)
+        self.guided_conclusion_label.setWordWrap(True)
+        self.guided_conclusion_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary};"
+        )
+        panel.layout.addWidget(self.guided_conclusion_label)
+        self.guided_next_action_label = QLabel("主要下一步：重新整理目前狀態。")
+        self.guided_next_action_label.setWordWrap(True)
+        self.guided_next_action_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-weight: 700;"
+        )
+        panel.layout.addWidget(self.guided_next_action_label)
+
+        self.guided_priority_rows: dict[str, QFrame] = {}
+        self.guided_priority_status_badges: dict[str, StatusBadge] = {}
+        self.guided_priority_conclusion_labels: dict[str, QLabel] = {}
+        self.guided_priority_reason_labels: dict[str, QLabel] = {}
+        self.guided_priority_action_buttons: dict[str, QPushButton] = {}
+        self._guided_priority_row_indices: dict[str, int] = {}
+
+        row_specs = (
+            ("portfolio", "持倉"),
+            ("candidates", "候選"),
+            ("market", "市場"),
+            ("data", "資料影響"),
+            ("other", "其他待處理"),
+        )
+        for key, title in row_specs:
+            row = QFrame()
+            row.setObjectName("guidedPriorityRow")
+            row.setStyleSheet(
+                f"QFrame#guidedPriorityRow {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; }}"
+            )
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(9, 7, 9, 7)
+            row_layout.setSpacing(10)
+
+            title_label = QLabel(title)
+            title_label.setMinimumWidth(68)
+            title_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 800;"
+            )
+            row_layout.addWidget(title_label, 0)
+
+            badge = StatusBadge("未知", "unknown")
+            badge.setMinimumWidth(78)
+            self.guided_priority_status_badges[key] = badge
+            row_layout.addWidget(badge, 0)
+
+            copy_layout = QVBoxLayout()
+            copy_layout.setContentsMargins(0, 0, 0, 0)
+            copy_layout.setSpacing(2)
+            conclusion = QLabel("尚未確認。")
+            conclusion.setWordWrap(True)
+            conclusion.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
+            )
+            reason = QLabel("資料尚未載入，不推定沒有風險。")
+            reason.setWordWrap(True)
+            reason.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+            )
+            copy_layout.addWidget(conclusion)
+            copy_layout.addWidget(reason)
+            row_layout.addLayout(copy_layout, 1)
+
+            action_button = QPushButton("查看")
+            action_button.setProperty("variant", "secondary")
+            action_button.setMinimumWidth(116)
+            action_button.setAccessibleName(f"查看{title}重點")
+            action_button.clicked.connect(
+                lambda checked=False, row_key=key: self._open_guided_priority(row_key)
+            )
+            self.guided_priority_action_buttons[key] = action_button
+            row_layout.addWidget(action_button, 0)
+
+            self.guided_priority_rows[key] = row
+            self.guided_priority_conclusion_labels[key] = conclusion
+            self.guided_priority_reason_labels[key] = reason
+            panel.layout.addWidget(row)
+            if key == "other":
+                row.setVisible(False)
+
+        self.guided_warning_summary_label = QLabel("")
+        self.guided_warning_summary_label.setWordWrap(True)
+        self.guided_warning_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.guided_warning_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.warning}; font-weight: 700;"
+        )
+        panel.layout.addWidget(self.guided_warning_summary_label)
+        parent_layout.addWidget(panel)
+
+    def _render_guided_home(self, dashboard: WorkbenchDashboardDTO | None) -> None:
+        """只整理已注入 DTO；不建立第二份來源或重新計算策略。"""
+
+        if dashboard is None:
+            rows = (
+                GuidedWorkbenchRow(
+                    "portfolio", "持倉", "unknown", "尚未確認持倉狀態。",
+                    "資料尚未載入，不推定沒有風險。", "檢查持倉事項", "portfolio_review",
+                ),
+                GuidedWorkbenchRow(
+                    "candidates", "候選", "unknown", "尚未確認研究候選。",
+                    "資料尚未載入，不推定沒有候選。", "查看候選研究", "stock_research",
+                ),
+                GuidedWorkbenchRow(
+                    "market", "市場", "unknown", "尚未確認市場狀態。",
+                    "沒有可信工作台資料。", "查看市場重點", "daily_decision",
+                ),
+                GuidedWorkbenchRow(
+                    "data", "資料影響", "missing", "資料狀態尚未確認。",
+                    "先檢查資料狀態；缺件與等待會分開標示。", "查看資料狀態", "update",
+                ),
+            )
+            warning_text = "警示尚未載入；請先查看資料狀態。"
+            self.guided_date_label.setText("判讀日期：尚未確認｜資料日期：尚未確認")
+            self.guided_conclusion_label.setText("判讀結論：尚未確認。")
+            self.guided_next_action_label.setText("主要下一步：重新整理目前狀態。")
+        else:
+            rows, warning_text = self._guided_rows_for_dashboard(dashboard)
+            daily = dashboard.daily_evidence
+            market_context = dashboard.market_context if isinstance(dashboard.market_context, dict) else {}
+            advice_date = getattr(dashboard.advice_dashboard, "data_as_of_date", None)
+            data_date = (
+                getattr(daily, "data_as_of_date", None)
+                or market_context.get("data_as_of_date")
+                or advice_date
+                or "尚未確認"
+            )
+            freshness_note = "（請確認最新狀態）" if self._dashboard_stale else ""
+            self.guided_date_label.setText(
+                f"判讀日期：{dashboard.as_of_date.isoformat()}｜資料日期：{data_date}{freshness_note}"
+            )
+            daily = dashboard.daily_evidence
+            headline = _guided_compact(
+                getattr(daily, "headline", "") if daily else "",
+                "市場與資料重點請依下方四列確認。",
+                132,
+            )
+            next_action = _guided_compact(
+                getattr(daily, "next_action", "") if daily else "",
+                "先確認資料狀態，再查看主要重點。",
+                132,
+            )
+            self.guided_conclusion_label.setText(f"判讀結論：{headline}")
+            self.guided_next_action_label.setText(f"主要下一步：{next_action}")
+
+        self.guided_summary_model.set_rows(rows)
+        self._guided_priority_row_indices = {
+            row.key: index for index, row in enumerate(rows)
+        }
+        for row in rows:
+            self._set_guided_row_widgets(row)
+        for key, row_widget in self.guided_priority_rows.items():
+            row_widget.setVisible(key in self._guided_priority_row_indices)
+        self.guided_warning_summary_label.setText(warning_text)
+
+    def _guided_rows_for_dashboard(
+        self, dashboard: WorkbenchDashboardDTO
+    ) -> tuple[tuple[GuidedWorkbenchRow, ...], str]:
+        daily = dashboard.daily_evidence
+        market_context = dashboard.market_context if isinstance(dashboard.market_context, dict) else {}
+        source_status = str(market_context.get("source_status") or "unknown").strip().lower()
+        warning_lines = tuple(_guided_warning_text(item) for item in dashboard.warnings)
+        if daily is not None:
+            warning_lines += tuple(_guided_warning_text(item) for item in daily.warnings)
+
+        human_actions = tuple(
+            item
+            for item in dashboard.action_items
+            if str(getattr(item, "status_classification", "")) == MACHINE_STATUS_HUMAN_REVIEW
+        )
+        portfolio_actions = tuple(item for item in human_actions if _guided_is_portfolio_item(item))
+        candidate_actions = tuple(item for item in human_actions if _guided_is_candidate_item(item))
+        generic_actions = tuple(
+            item for item in human_actions
+            if item not in portfolio_actions and item not in candidate_actions
+        )
+        market_review_items = tuple(
+            item for item in dashboard.review_items if _guided_is_market_item(item)
+        )
+        candidate_review_items = tuple(
+            item for item in dashboard.review_items if _guided_is_candidate_item(item)
+        )
+        generic_review_items = tuple(
+            item for item in dashboard.review_items
+            if item not in market_review_items and item not in candidate_review_items
+        )
+        health = dashboard.position_health
+        health_positions = tuple(getattr(health, "positions", ()) or ()) if health else ()
+        risky_positions = tuple(
+            item for item in health_positions
+            if bool(getattr(item, "review_required", False))
+            or str(getattr(item, "action_suitability", ""))
+            in {"REDUCE_CANDIDATE", "EXIT_CANDIDATE"}
+        )
+        if portfolio_actions:
+            portfolio_status = "warning"
+            portfolio_conclusion = f"有 {len(portfolio_actions)} 項持倉或風險事項待檢查。"
+            portfolio_reasons = _guided_join_reasons(
+                *(getattr(item, "title", "") for item in portfolio_actions),
+                *(getattr(item, "summary", "") for item in portfolio_actions),
+                fallback="請依既有持倉與風險來源逐項確認。",
+            )
+        elif health is None or str(getattr(health, "status", "unknown")).lower() in {
+            "unknown", "missing", "error"
+        }:
+            portfolio_status = "missing"
+            portfolio_conclusion = "持倉資料尚未確認。"
+            portfolio_reasons = "資料缺件與股票風險分開；目前不能推定沒有風險。"
+        elif risky_positions:
+            portfolio_status = "warning"
+            portfolio_conclusion = f"有 {len(risky_positions)} 筆持倉狀態需要留意。"
+            portfolio_reasons = _guided_join_reasons(
+                *(getattr(item, "why", "") for item in risky_positions),
+                *(getattr(item, "why_not", ()) for item in risky_positions),
+                fallback="持倉來源已提供需要複核的狀態。",
+            )
+        elif health_positions:
+            portfolio_status = "info"
+            portfolio_conclusion = f"已載入 {len(health_positions)} 筆持倉狀態。"
+            portfolio_reasons = "目前沒有明確人工待處理項目；仍可查看每筆來源理由。"
+        else:
+            portfolio_status = "info"
+            portfolio_conclusion = "目前沒有可呈現的持倉列。"
+            portfolio_reasons = "空結果不等於風險已排除；可查看持倉管理確認。"
+
+        if candidate_actions or candidate_review_items:
+            candidate_status = "warning"
+            candidate_total = len(candidate_actions) + len(candidate_review_items)
+            candidate_conclusion = f"有 {candidate_total} 項候選或研究事項待處理。"
+            if daily is not None and daily.candidate_count:
+                candidate_conclusion += f"另有 {daily.candidate_count} 檔候選可查看。"
+            candidate_reasons = _guided_join_reasons(
+                *(getattr(item, "title", "") for item in candidate_actions),
+                *(getattr(item, "summary", "") for item in candidate_actions),
+                *(getattr(item, "summary", "") for item in candidate_review_items),
+                fallback="請查看完整清單中的候選股票、理由與日期。",
+            )
+            candidate_target = "advanced"
+        elif daily is None:
+            candidate_status = "missing"
+            candidate_conclusion = "研究候選尚未確認。"
+            candidate_reasons = "資料尚未載入；空白不等於沒有候選。"
+            candidate_target = "advanced"
+        else:
+            candidate_state = str(daily.candidate_status or "unknown").strip().lower()
+            if candidate_state in {"missing", "read_failure", "future_blocked", "stale"}:
+                candidate_status = "critical" if candidate_state == "read_failure" else "missing"
+                candidate_conclusion = "無法確認今天的研究候選。"
+                candidate_reasons = _guided_join_reasons(
+                    *daily.candidate_reasons,
+                    "候選資料缺件時不推定沒有候選。",
+                    fallback="請先查看資料狀態。",
+                )
+                candidate_target = "update"
+            elif daily.candidate_count > 0:
+                candidate_status = (
+                    "warning" if candidate_state in {"candidate_degraded", "degraded"} else "info"
+                )
+                candidate_conclusion = f"有 {daily.candidate_count} 檔研究候選可查看。"
+                candidate_reasons = _guided_join_reasons(
+                    *daily.candidate_reasons,
+                    daily.stock_summary,
+                    "候選僅供研究，不代表可交易。",
+                    fallback="請逐檔查看股票、理由與日期。",
+                )
+                candidate_target = (
+                    "advanced"
+                    if len(daily.candidate_symbols) > 1
+                    else (
+                        "stock_research"
+                        if daily.candidate_symbols and self.navigate_to_stock_research_callback is not None
+                        else "watchlist"
+                    )
+                )
+            else:
+                candidate_status = "info"
+                candidate_conclusion = "目前沒有可安全呈現的候選列。"
+                candidate_reasons = "空結果不代表條件已通過；請查看來源與限制。"
+                candidate_target = "recommendation"
+
+        if market_review_items:
+            market_status = "warning"
+            market_conclusion = f"有 {len(market_review_items)} 項市場判讀待處理。"
+            market_reasons = _guided_join_reasons(
+                *(getattr(item, "summary", "") for item in market_review_items),
+                *(getattr(item, "title", "") for item in market_review_items),
+                fallback="先查看市場重點與既有風險訊號。",
+            )
+        elif source_status in {"", "unknown", "missing", "blocked", "outage", "error"}:
+            market_status = "missing"
+            market_conclusion = "市場狀態尚未完全確認。"
+            market_reasons = _guided_join_reasons(
+                getattr(daily, "market_summary", "") if daily else "",
+                getattr(daily, "industry_summary", "") if daily else "",
+                fallback="市場資料缺件；不能把空白當成安全訊號。",
+            )
+        elif self._dashboard_stale:
+            market_status = "stale"
+            market_conclusion = "市場資料保留最後可信內容，尚未確認為最新。"
+            market_reasons = "來源讀取失敗；請重新整理後再判讀。"
+        else:
+            market_status = "info"
+            market_conclusion = _guided_compact(
+                getattr(daily, "market_summary", "市場資料可檢視。") if daily else "市場資料可檢視。",
+                "市場資料可檢視。",
+            )
+            market_reasons = _guided_join_reasons(
+                getattr(daily, "industry_summary", "") if daily else "",
+                getattr(daily, "stock_summary", "") if daily else "",
+                fallback="請查看市場重點中的主要理由。",
+            )
+
+        waiting_items = tuple(
+            item for item in dashboard.daily_checklist
+            if str(getattr(item, "status", "")).strip().lower() == "waiting_for_time"
+        )
+        data_status = "info"
+        data_conclusion = "資料狀態可檢視，但仍請留意日期與警示。"
+        data_reasons = "沒有可信來源時不補值；自然等待會單獨標示。"
+        data_action_label = "查看資料狀態"
+        data_target = "update"
+        if self._dashboard_stale:
+            data_status = "stale"
+            data_conclusion = "資料保留最後可信內容，尚未確認為最新。"
+            data_reasons = "來源本次讀取失敗；請重新整理。"
+        elif source_status in {"", "unknown", "missing", "blocked", "outage", "error"}:
+            data_status = "missing"
+            data_conclusion = "資料有缺件，市場與候選結論需要保留。"
+            data_reasons = "資料缺件與股票風險分開；先查看資料狀態。"
+        elif warning_lines:
+            data_status = "warning"
+            data_conclusion = f"有 {len(warning_lines)} 則資料或來源警示。"
+            data_reasons = _guided_join_reasons(
+                *warning_lines,
+                fallback="請查看完整警示與來源狀態。",
+            )
+            data_action_label = "查看完整警示"
+            data_target = "warnings"
+            if waiting_items:
+                data_reasons += f"；另有 {len(waiting_items)} 項自然等待。"
+        elif waiting_items:
+            data_status = "waiting_for_time"
+            data_conclusion = f"有 {len(waiting_items)} 項需要等待真實時間累積。"
+            data_reasons = _guided_join_reasons(
+                *(getattr(item, "summary", "") for item in waiting_items),
+                fallback="自然等待不等於資料讀取失敗。",
+            )
+
+        rows_list = [
+            GuidedWorkbenchRow(
+                "portfolio", "持倉", portfolio_status, portfolio_conclusion,
+                portfolio_reasons, "查看持倉事項", "portfolio_review",
+            ),
+            GuidedWorkbenchRow(
+                "candidates", "候選", candidate_status, candidate_conclusion,
+                candidate_reasons, "查看候選研究", candidate_target,
+            ),
+            GuidedWorkbenchRow(
+                "market", "市場", market_status, market_conclusion,
+                market_reasons, "查看市場重點", "daily_decision",
+            ),
+            GuidedWorkbenchRow(
+                "data", "資料影響", data_status, data_conclusion,
+                data_reasons, data_action_label, data_target,
+            ),
+        ]
+        generic_count = len(generic_actions) + len(generic_review_items)
+        if generic_count:
+            generic_reasons = _guided_join_reasons(
+                *(getattr(item, "title", "") for item in generic_actions),
+                *(getattr(item, "summary", "") for item in generic_actions),
+                *(getattr(item, "summary", "") for item in generic_review_items),
+                fallback="請展開完整工作台查看來源類別與下一步。",
+            )
+            rows_list.append(
+                GuidedWorkbenchRow(
+                    "other",
+                    "其他待處理",
+                    "warning",
+                    f"有 {generic_count} 項待處理事項，來源尚未分組。",
+                    generic_reasons,
+                    "查看完整待處理",
+                    "advanced",
+                )
+            )
+        rows = tuple(rows_list)
+        if warning_lines:
+            warning_text = (
+                f"警示：共 {len(warning_lines)} 則；按「查看完整警示」可查看全部內容。"
+            )
+        else:
+            warning_text = "目前沒有可顯示的警示；資料不足仍會維持未知或缺件狀態。"
+        return rows, warning_text
+
+    def _set_guided_row_widgets(self, row: GuidedWorkbenchRow) -> None:
+        badge = self.guided_priority_status_badges[row.key]
+        badge.setText(_guided_status_text(row.status))
+        badge.set_quality(_guided_status_tone(row.status))
+        self.guided_priority_conclusion_labels[row.key].setText(row.conclusion)
+        self.guided_priority_reason_labels[row.key].setText(row.reasons)
+        button = self.guided_priority_action_buttons[row.key]
+        button.setText(row.action_label)
+        button.setEnabled(self._guided_target_available(row.target))
+        button.setToolTip("只導覽到既有工作區或顯示既有完整來源；不會重新取得資料。")
+
+    def _guided_target_available(self, target: str) -> bool:
+        if target in {"advanced", "warnings"}:
+            return True
+        return self._today_action_available(target)
+
+    def _open_guided_priority(self, key: str) -> bool:
+        index = self._guided_priority_row_indices.get(key)
+        row = self.guided_summary_model.row_at(index) if index is not None else None
+        if row is None:
+            return False
+        if key == "data":
+            self.advanced_workbench_panel.set_collapsed(False)
+            self.warnings_collapsible.set_collapsed(False)
+            self.overview_scroll_area.ensureWidgetVisible(self.warnings_collapsible)
+        elif key in {"portfolio", "market"} or row.target == "advanced":
+            self.advanced_workbench_panel.set_collapsed(False)
+            if key == "portfolio":
+                if not self._select_guided_model_item(
+                    self.action_item_model,
+                    self.action_item_table,
+                    _guided_is_portfolio_item,
+                ):
+                    self.overview_scroll_area.ensureWidgetVisible(self.position_health_panel)
+            elif key == "market":
+                self._select_guided_model_item(
+                    self.review_model,
+                    self.review_table,
+                    _guided_is_market_item,
+                )
+            elif key == "candidates":
+                if not self._select_guided_model_item(
+                    self.review_model,
+                    self.review_table,
+                    _guided_is_candidate_item,
+                ):
+                    self._select_guided_model_item(
+                        self.action_item_model,
+                        self.action_item_table,
+                        _guided_is_candidate_item,
+                    )
+            else:
+                if not self._select_guided_model_item(
+                    self.review_model,
+                    self.review_table,
+                    _guided_is_generic_item,
+                ):
+                    self._select_guided_model_item(
+                        self.action_item_model,
+                        self.action_item_table,
+                        _guided_is_generic_item,
+                    )
+        if row.target in {"advanced", "warnings"}:
+            return True
+        return self.navigate_to_drilldown_target(row.target)
+
+    def _select_guided_model_item(self, model, table: QTableView, predicate) -> bool:
+        for index in range(model.rowCount()):
+            item = model.row_at(index)
+            if item is None or not predicate(item):
+                continue
+            self._show_model_row_detail(model, index)
+            table.selectRow(index)
+            panel = self.review_panel if table is self.review_table else self.action_item_panel
+            self.overview_scroll_area.ensureWidgetVisible(panel)
+            return True
+        return False
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -1043,16 +1567,24 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if fallback_line:
             journey_lines.append(fallback_line)
         self.daily_journey_label.setText("\n".join(journey_lines))
-        reasons = daily.candidate_reasons[:5]
-        if reasons:
-            candidate_text = "\n".join(reasons)
+        reasons = tuple(daily.candidate_reasons)
+        if reasons or daily.candidate_symbols:
+            candidate_lines = []
+            for index, symbol in enumerate(daily.candidate_symbols):
+                reason = reasons[index] if index < len(reasons) else "來源未提供個別理由"
+                candidate_lines.append(f"{symbol}：{reason}")
+            if len(reasons) > len(daily.candidate_symbols):
+                candidate_lines.extend(reasons[len(daily.candidate_symbols):])
+            candidate_text = "\n".join(candidate_lines or reasons)
             suffix = (
+                f"\n決策日：{daily.decision_date}｜"
                 f"\n資料品質：{_daily_quality_text(daily.candidate_quality)}｜"
                 f"資料日：{daily.candidate_data_date or '未知'}"
             )
             self.daily_candidate_detail_label.setText(
                 "個股研究候選：\n"
                 f"{candidate_text}{suffix}\n候選僅供研究；不代表已驗證、可成交或應下單。"
+                f"\n下一步：{daily.next_action}"
             )
         else:
             self.daily_candidate_detail_label.setText(
@@ -1763,6 +2295,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "不寫 DB、不啟用正式排程器、不是交易建議；Advice 僅呈現已注入 DTO，"
             "不重算 scoring / portfolio / backtest / lifecycle。"
         )
+        self._render_guided_home(dashboard)
         self._set_summary_blocks(dashboard)
         self._set_priority_banner(dashboard)
         self._render_daily_investment_journey(dashboard.daily_evidence)
@@ -2036,6 +2569,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _display_pending_dashboard(self) -> None:
         self.refresh_button.setEnabled(self.source_service is not None)
+        self._render_guided_home(None)
         self._render_daily_investment_journey(None)
         self._render_position_health(None)
         self._render_today_action_center(None)
@@ -2109,6 +2643,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 else "未知"
             )
             dashboard = self._last_good_dashboard
+            self._render_guided_home(dashboard)
             self._set_summary_blocks(dashboard)
             for key in self.summary_blocks:
                 self._apply_summary_block_style(key, MACHINE_STATUS_STALE)
@@ -2166,6 +2701,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         self._dashboard = None
         self._dashboard_stale = False
+        self._render_guided_home(None)
         self._render_daily_investment_journey(None)
         self._render_position_health(None)
         self._render_today_action_center(None)
@@ -2509,6 +3045,125 @@ def _detail_display_title(title: str) -> str:
 
 def _workbench_tone(status: str) -> dict[str, str]:
     return WORKBENCH_TONES.get(str(status), WORKBENCH_TONES["neutral"])
+
+
+def _guided_status_tone(status: str) -> str:
+    token = str(status or "unknown").strip().lower()
+    if token in {"critical", "missing", "source_missing", "read_failure", "invalid_evidence"}:
+        return "critical" if token in {"critical", "read_failure", "invalid_evidence"} else "missing"
+    if token in {"warning", "degraded", "stale", "waiting_for_time", "action_required"}:
+        return "waiting_for_time" if token == "waiting_for_time" else "warning"
+    if token in {"observed", "ready", "done", "passed"}:
+        return "info"
+    return "info" if token == "info" else "unknown"
+
+
+def _guided_status_text(status: str) -> str:
+    return {
+        "critical": "需要立即確認",
+        "missing": "資料缺件",
+        "source_missing": "來源缺件",
+        "read_failure": "讀取失敗",
+        "invalid_evidence": "證據無效",
+        "warning": "需要注意",
+        "degraded": "資料降級",
+        "stale": "資料過期",
+        "waiting_for_time": "等待真實時間",
+        "observed": "已觀測",
+        "ready": "可檢視",
+        "info": "請查看",
+        "unknown": "尚未確認",
+    }.get(str(status or "unknown").strip().lower(), "尚未確認")
+
+
+def _guided_item_text(item: object) -> str:
+    return " ".join(
+        str(getattr(item, name, "") or "")
+        for name in ("source_type", "source", "source_label", "drilldown_target", "code", "title")
+    ).lower()
+
+
+def _guided_is_portfolio_item(item: object) -> bool:
+    text = _guided_item_text(item)
+    return any(token in text for token in ("portfolio", "position", "持倉", "持有", "退出"))
+
+
+def _guided_is_candidate_item(item: object) -> bool:
+    text = _guided_item_text(item)
+    return any(
+        token in text
+        for token in ("candidate", "watchlist", "continuity", "stock_research", "觀察清單", "候選")
+    )
+
+
+def _guided_is_market_item(item: object) -> bool:
+    text = _guided_item_text(item)
+    return any(
+        token in text
+        for token in ("market", "daily_decision", "breadth", "sector", "市場", "產業")
+    )
+
+
+def _guided_is_generic_item(item: object) -> bool:
+    return not (
+        _guided_is_portfolio_item(item)
+        or _guided_is_candidate_item(item)
+        or _guided_is_market_item(item)
+    )
+
+
+def _guided_warning_text(value: object) -> str:
+    """首頁只顯示白話警示；完整代碼仍留在進階 WarningList。"""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return "來源警示：請查看詳情。"
+    lowered = raw.lower()
+    if lowered.startswith("source_missing:"):
+        source = raw.split(":", 1)[1].strip().lower()
+        source_labels = {
+            "market_breadth": "市場漲跌廣度",
+            "sector_rotation": "產業輪動",
+            "watchlist": "觀察清單",
+            "portfolio": "持倉資料",
+        }
+        return f"{source_labels.get(source, '來源資料')}缺件；請查看詳情。"
+    if lowered.startswith("waiting_for_time:") or lowered.startswith("pending_future_data:"):
+        return "自然等待：資料需要更多真實時間；請查看詳情。"
+    if lowered.startswith("warning:"):
+        return "來源有警示；請查看詳情。"
+    if any(token in lowered for token in ("missing", "failed", "failure", "blocked", "invalid")):
+        return "來源資料需要確認；請查看詳情。"
+    if any(char in raw for char in ("_", ":")):
+        return "來源有警示；請查看詳情。"
+    return _guided_compact(_localize_workbench_text(raw), "來源有警示；請查看詳情。")
+
+
+def _guided_compact(value: object, fallback: str, limit: int = 104) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return fallback
+    return text if len(text) <= limit else text[: max(1, limit - 1)] + "…"
+
+
+def _guided_join_reasons(*values: object, fallback: str) -> str:
+    reasons: list[str] = []
+    for value in values:
+        if isinstance(value, (tuple, list)):
+            reasons.extend(str(item) for item in value)
+        else:
+            reasons.append(str(value or ""))
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in reasons:
+        text = _guided_compact(_localize_workbench_text(value), "").strip()
+        if not text or text in seen:
+            continue
+        cleaned.append(text)
+        seen.add(text)
+        if len(cleaned) >= 2:
+            break
+    return "；".join(cleaned) if cleaned else fallback
 
 
 def _compact_daily_text(value: str, limit: int = 70) -> str:

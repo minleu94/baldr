@@ -390,7 +390,7 @@ def test_portfolio_async_refresh_cancels_older_generation_and_uses_one_dto(tmp_p
     assert view._last_portfolio_dto is not None
     assert view.positions_model is not None
     assert view.positions_model.rowCount() == len(view._last_portfolio_dto.positions)
-    assert "同一份 DTO" in view.portfolio_refresh_status_label.text()
+    assert "同一份資料" in view.portfolio_refresh_status_label.text()
     assert view.btn_refresh.isEnabled()
 
 

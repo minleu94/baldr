@@ -76,7 +76,9 @@ class BacktestResultPanel(QWidget):
         self.result_purpose_label = QLabel("結果目的：先看模式主結果，再用分析診斷與證據頁複核。")
         self.result_purpose_label.setAccessibleName("結果工作區目的")
         self.result_purpose_label.setToolTip("提示目前結果工作區的閱讀順序")
-        self.result_purpose_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_muted};")
+        self.result_purpose_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 12px;"
+        )
         context_row.addWidget(self.mode_context_label)
         context_row.addWidget(self.result_purpose_label, stretch=1)
         layout.addLayout(context_row)
@@ -89,6 +91,17 @@ class BacktestResultPanel(QWidget):
         result_layout = QVBoxLayout(result_tab)
         result_layout.setSpacing(10)
         result_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.result_interpretation_label = QLabel(
+            "閱讀順序：淨報酬 → 最大回撤 → 交易筆數 → 成本與資料限制；"
+            "歷史結果只供比較，請搭配診斷與證據複核。"
+        )
+        self.result_interpretation_label.setWordWrap(True)
+        self.result_interpretation_label.setAccessibleName("回測結果判讀限制")
+        self.result_interpretation_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 3px 0; font-size: 12px;"
+        )
+        result_layout.addWidget(self.result_interpretation_label)
         
         # 績效摘要
         summary_group = QGroupBox("實驗摘要")
@@ -350,6 +363,17 @@ class BacktestResultPanel(QWidget):
         recommendation_portfolio_layout = QVBoxLayout(recommendation_portfolio_tab)
         recommendation_portfolio_layout.setSpacing(8)
         recommendation_portfolio_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.portfolio_interpretation_label = QLabel(
+            "閱讀順序：組合淨值／回撤 → 交易筆數與持有期 → 成本與重播限制；"
+            "回放結果只供歷史檢查。"
+        )
+        self.portfolio_interpretation_label.setWordWrap(True)
+        self.portfolio_interpretation_label.setAccessibleName("推薦回放判讀限制")
+        self.portfolio_interpretation_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 3px 0; font-size: 12px;"
+        )
+        recommendation_portfolio_layout.addWidget(self.portfolio_interpretation_label)
         
         self.portfolio_summary_text = QTextEdit()
         self.portfolio_summary_text.setReadOnly(True)

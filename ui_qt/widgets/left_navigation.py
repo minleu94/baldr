@@ -5,7 +5,13 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QSize, Signal
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QPushButton,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ui_qt.theme import MIDNIGHT_ANALYST
 
@@ -73,6 +79,24 @@ _NAV_ICON_SVGS: dict[str, str] = {
 }
 
 
+_NAV_GROUPS: tuple[tuple[str, str], ...] = (
+    ("daily", "日常使用"),
+    ("research", "進階研究"),
+    ("maintenance", "系統維護"),
+)
+
+_NAV_GROUP_BY_KEY: dict[str, str] = {
+    "workbench": "daily",
+    "market_explore": "daily",
+    "recommendation": "daily",
+    "watchlist": "daily",
+    "portfolio": "daily",
+    "backtest": "research",
+    "update": "maintenance",
+    "runtime": "maintenance",
+}
+
+
 @dataclass(frozen=True)
 class NavigationItem:
     key: str
@@ -91,6 +115,9 @@ class LeftNavigationWidget(QWidget):
         super().__init__(parent)
         self._items = tuple(items)
         self._buttons: dict[str, QPushButton] = {}
+        self._group_buttons: dict[str, QToolButton] = {}
+        self._group_items: dict[str, tuple[str, ...]] = {}
+        self._group_expanded: dict[str, bool] = {}
         self._current_key: str | None = None
         self._collapsed = False
 
@@ -113,20 +140,48 @@ class LeftNavigationWidget(QWidget):
         self.collapse_button.clicked.connect(lambda _checked=False: self.set_collapsed(not self._collapsed))
         layout.addWidget(self.collapse_button)
 
+        grouped_items: dict[str, list[NavigationItem]] = {
+            group_id: [] for group_id, _label in _NAV_GROUPS
+        }
         for item in self._items:
-            button = QPushButton(self._button_text(item))
-            button.setObjectName(f"leftNavButton_{item.key}")
-            button.setCheckable(True)
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            button.setMinimumHeight(34)
-            button.setIcon(self._icon_for_item(item))
-            button.setIconSize(QSize(20, 20))
-            button.setToolTip(item.tooltip or item.label)
-            button.clicked.connect(lambda _checked=False, key=item.key: self._select_from_click(key))
-            self._buttons[item.key] = button
-            layout.addWidget(button)
+            group_id = _NAV_GROUP_BY_KEY.get(item.key, "research")
+            grouped_items.setdefault(group_id, []).append(item)
+
+        for group_id, group_label in _NAV_GROUPS:
+            group_items = grouped_items.get(group_id, [])
+            if not group_items:
+                continue
+            self._group_expanded[group_id] = True
+            group_button = QToolButton()
+            group_button.setObjectName(f"leftNavGroup_{group_id}")
+            group_button.setCheckable(True)
+            group_button.setChecked(True)
+            group_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            group_button.setMinimumHeight(26)
+            group_button.setAccessibleName(f"導覽分組：{group_label}")
+            group_button.setToolTip(f"展開或收合{group_label}")
+            group_button.clicked.connect(
+                lambda checked, key=group_id: self._toggle_group(key, checked)
+            )
+            self._group_buttons[group_id] = group_button
+            self._group_items[group_id] = tuple(item.key for item in group_items)
+            layout.addWidget(group_button)
+
+            for item in group_items:
+                button = QPushButton(self._button_text(item))
+                button.setObjectName(f"leftNavButton_{item.key}")
+                button.setCheckable(True)
+                button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                button.setMinimumHeight(34)
+                button.setIcon(self._icon_for_item(item))
+                button.setIconSize(QSize(20, 20))
+                button.setToolTip(item.tooltip or item.label)
+                button.clicked.connect(lambda _checked=False, key=item.key: self._select_from_click(key))
+                self._buttons[item.key] = button
+                layout.addWidget(button)
 
         layout.addStretch()
+        self._refresh_group_button_text()
         self._apply_styles()
 
     def item_keys(self) -> list[str]:
@@ -135,12 +190,20 @@ class LeftNavigationWidget(QWidget):
     def button_for_key(self, key: str) -> QPushButton | None:
         return self._buttons.get(key)
 
+    def group_button_for_id(self, group_id: str) -> QToolButton | None:
+        """提供測試與無障礙導覽使用的分組控制項。"""
+
+        return self._group_buttons.get(group_id)
+
     def current_key(self) -> str | None:
         return self._current_key
 
     def label_for_key(self, key: str) -> str | None:
         for item in self._items:
             if item.key == key:
+                # 舊呼叫端仍以 Runtime 作為穩定識別文字；畫面按鈕使用新的白話標籤。
+                if item.key == "runtime" and item.label == "系統狀態":
+                    return "Runtime"
                 return item.label
         return None
 
@@ -154,6 +217,7 @@ class LeftNavigationWidget(QWidget):
         self.setMaximumWidth(width)
         self.collapse_button.setText("›" if self._collapsed else "‹")
         self.collapse_button.setToolTip("展開左側導覽" if self._collapsed else "收合左側導覽")
+        self._refresh_group_button_text()
         for item in self._items:
             button = self._buttons[item.key]
             button.setText(self._button_text(item))
@@ -164,6 +228,9 @@ class LeftNavigationWidget(QWidget):
         if key not in self._buttons:
             return
         self._current_key = key
+        group_id = self._group_for_key(key)
+        if group_id and not self._group_expanded.get(group_id, True):
+            self._set_group_expanded(group_id, True)
         for item_key, button in self._buttons.items():
             is_active = item_key == key
             button.setChecked(is_active)
@@ -181,11 +248,54 @@ class LeftNavigationWidget(QWidget):
     def _button_text(self, item: NavigationItem) -> str:
         if self._collapsed:
             return "" if item.icon in _NAV_ICON_SVGS else item.label[:1]
+        display_label = (
+            "系統狀態"
+            if item.key == "runtime" and item.label == "系統狀態"
+            else item.label
+        )
         pieces = []
-        pieces.append(item.label)
+        pieces.append(display_label)
         if item.badge:
             pieces.append(item.badge)
         return "  ".join(pieces)
+
+    def _group_for_key(self, key: str) -> str | None:
+        for group_id, keys in self._group_items.items():
+            if key in keys:
+                return group_id
+        return None
+
+    def _toggle_group(self, group_id: str, expanded: bool) -> None:
+        self._set_group_expanded(group_id, bool(expanded))
+
+    def _set_group_expanded(self, group_id: str, expanded: bool) -> None:
+        if group_id not in self._group_buttons:
+            return
+        self._group_expanded[group_id] = bool(expanded)
+        group_button = self._group_buttons[group_id]
+        group_button.blockSignals(True)
+        group_button.setChecked(bool(expanded))
+        group_button.blockSignals(False)
+        self._refresh_group_button_text(group_id)
+        for key in self._group_items.get(group_id, ()):
+            button = self._buttons.get(key)
+            if button is not None:
+                # 讓目前 active workspace 在手動收合時仍可被看見。
+                button.setVisible(bool(expanded) or key == self._current_key)
+
+    def _refresh_group_button_text(self, group_id: str | None = None) -> None:
+        group_ids = (group_id,) if group_id else tuple(self._group_buttons)
+        labels = dict(_NAV_GROUPS)
+        for current_id in group_ids:
+            button = self._group_buttons.get(current_id)
+            if button is None:
+                continue
+            label = labels.get(current_id, current_id)
+            if self._collapsed:
+                button.setText("")
+            else:
+                marker = "▾" if self._group_expanded.get(current_id, True) else "▸"
+                button.setText(f"{marker} {label}")
 
     def _icon_for_item(self, item: NavigationItem) -> QIcon:
         svg = _NAV_ICON_SVGS.get(item.icon, "")
@@ -209,12 +319,30 @@ class LeftNavigationWidget(QWidget):
                 text-align: left;
                 font-weight: 600;
             }}
+            QToolButton#leftNavGroup_daily,
+            QToolButton#leftNavGroup_research,
+            QToolButton#leftNavGroup_maintenance {{
+                background: transparent;
+                color: {MIDNIGHT_ANALYST.text_muted};
+                border: 1px solid transparent;
+                border-radius: {MIDNIGHT_ANALYST.radius_panel}px;
+                padding: 4px 6px;
+                text-align: left;
+                font-size: 11px;
+                font-weight: 700;
+            }}
             #leftNavCollapseButton {{
                 color: {MIDNIGHT_ANALYST.text_muted};
                 text-align: center;
                 font-weight: 700;
             }}
             QPushButton:hover {{
+                background: {MIDNIGHT_ANALYST.surface_2};
+                color: {MIDNIGHT_ANALYST.text_primary};
+            }}
+            QToolButton#leftNavGroup_daily:hover,
+            QToolButton#leftNavGroup_research:hover,
+            QToolButton#leftNavGroup_maintenance:hover {{
                 background: {MIDNIGHT_ANALYST.surface_2};
                 color: {MIDNIGHT_ANALYST.text_primary};
             }}

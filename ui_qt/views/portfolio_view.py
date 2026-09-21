@@ -37,6 +37,7 @@ from portfolio_module import PortfolioValidationError
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.strategy_version_service import StrategyVersionService
 from app_module.portfolio_chip_service import PortfolioChipService
@@ -519,6 +520,7 @@ class PortfolioView(QWidget):
         self._refresh_pending = False
         self._closing = False
         self._portfolio_narrow = False
+        self._advanced_details_visible = False
 
         self._setup_ui()
         self.refresh_all()
@@ -540,6 +542,13 @@ class PortfolioView(QWidget):
         info_btn = InfoButton("portfolio", self)
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
+
+        self.portfolio_focus_summary = V5ResearchSummary("目前持倉重點")
+        self.portfolio_focus_summary.setAccessibleName("持倉日常摘要")
+        self.portfolio_focus_summary.setToolTip(
+            "先看持倉狀態、已知原因或缺件與下一步；交易歷史、日誌、Paper、Stress 等由進階入口開啟。"
+        )
+        main_layout.addWidget(self.portfolio_focus_summary)
 
         # ========== 1. 頂部狀態看板 (Summary Dashboard) ==========
         dashboard_layout = QHBoxLayout()
@@ -591,6 +600,20 @@ class PortfolioView(QWidget):
         self.portfolio_refresh_status_label.setAccessibleDescription(evidence_scope_text)
         main_layout.addWidget(self.portfolio_refresh_status_label)
 
+        self.toggle_advanced_portfolio_btn = QPushButton(
+            "顯示進階：交易歷史／日誌／模擬持倉／壓力測試"
+        )
+        self.toggle_advanced_portfolio_btn.setProperty("variant", "secondary")
+        self.toggle_advanced_portfolio_btn.setCheckable(True)
+        self.toggle_advanced_portfolio_btn.setAccessibleName("顯示持倉進階工作區")
+        self.toggle_advanced_portfolio_btn.setToolTip(
+            "展開完整交易歷史、覆盤日誌、模擬持倉、壓力測試與研究內容。"
+        )
+        self.toggle_advanced_portfolio_btn.toggled.connect(
+            self._toggle_advanced_portfolio
+        )
+        main_layout.addWidget(self.toggle_advanced_portfolio_btn)
+
         paper_health_group = QGroupBox(
             "Paper 持倉健康／退出候選（獨立 Paper identity，唯讀）"
         )
@@ -641,6 +664,7 @@ class PortfolioView(QWidget):
         self.position_health_detail_label.setAccessibleName("Paper 持倉健康詳情")
         paper_health_layout.addWidget(self.position_health_detail_label)
         paper_health_group.setMaximumHeight(245)
+        self.paper_health_group = paper_health_group
         main_layout.addWidget(paper_health_group)
 
         # ========== 2. 中部核心分割區 (Splitter) ==========
@@ -690,6 +714,7 @@ class PortfolioView(QWidget):
 
         position_detail_group = QGroupBox("選中持倉｜共用證據詳情")
         position_detail_group.setObjectName("portfolioDecisionPresentation")
+        self.position_detail_group = position_detail_group
         position_detail_layout = QVBoxLayout(position_detail_group)
         position_detail_layout.setContentsMargins(8, 8, 8, 8)
         position_detail_layout.setSpacing(4)
@@ -734,7 +759,7 @@ class PortfolioView(QWidget):
         self.btn_refresh = QPushButton("整理刷新")
         self.btn_refresh.setAccessibleName("重新整理持倉資料")
         self.btn_refresh.setAccessibleDescription(
-            "背景讀取單一 PortfolioDTO；完成後同步更新摘要與持倉表。"
+            "背景讀取一份持倉資料；完成後同步更新摘要與持倉表。"
         )
         self.btn_refresh.setToolTip("背景讀取既有持倉資料；不會寫入交易或資料庫。")
         self.btn_refresh.clicked.connect(self.refresh_all)
@@ -1130,6 +1155,38 @@ class PortfolioView(QWidget):
         # 設定左右分割比例（60% : 40%）
         main_splitter.setSizes([720, 480])
         main_layout.addWidget(main_splitter)
+        self._portfolio_advanced_widgets = (
+            self.portfolio_detail_tabs,
+            self.position_health_table,
+            self.position_health_detail_label,
+            self.position_detail_group,
+            self.btn_import_trades,
+            self.btn_add_journal,
+            self.btn_clear_all,
+        )
+        self._apply_portfolio_advanced_visibility()
+
+    def _toggle_advanced_portfolio(self, expanded: bool) -> None:
+        """切換持倉進階工作區；不改變任何既有資料或 identity。"""
+
+        self._advanced_details_visible = bool(expanded)
+        self._apply_portfolio_advanced_visibility()
+
+    def _apply_portfolio_advanced_visibility(self) -> None:
+        """維持日常首屏精簡，讓完整研究資料由明確入口展開。"""
+
+        expanded = bool(getattr(self, "_advanced_details_visible", False))
+        for widget in getattr(self, "_portfolio_advanced_widgets", ()):
+            widget.setVisible(expanded)
+        if hasattr(self, "paper_health_group"):
+            self.paper_health_group.setVisible(expanded)
+            self.paper_health_group.setMaximumHeight(245 if expanded else 92)
+        if hasattr(self, "toggle_advanced_portfolio_btn"):
+            self.toggle_advanced_portfolio_btn.setText(
+                "隱藏進階：交易歷史／日誌／模擬持倉／壓力測試"
+                if expanded
+                else "顯示進階：交易歷史／日誌／模擬持倉／壓力測試"
+            )
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -1171,6 +1228,7 @@ class PortfolioView(QWidget):
         """保留同步相容入口，與背景完成回呼共用同一個套用路徑。"""
 
         logger.info("[PortfolioView] Refreshing all data synchronously...")
+        self._set_portfolio_focus_state("loading")
         try:
             portfolio = self._fetch_portfolio_dto()
         except Exception as error:  # noqa: BLE001
@@ -1203,10 +1261,147 @@ class PortfolioView(QWidget):
         self._load_stress_history()
         self._update_monitoring_tab(portfolio)
         self.user_declared_research_widget.refresh_research()
+        self._render_portfolio_focus_summary(portfolio)
         self.portfolio_refresh_status_label.setText(
-            f"持倉資料已更新｜DTO updated_at={portfolio.updated_at or '未提供'}｜"
-            "摘要與持倉表使用同一份 DTO；只讀。"
+            f"持倉資料已更新｜最後更新={portfolio.updated_at or '未提供'}｜"
+            "摘要與持倉表使用同一份資料；只讀。"
         )
+
+    def _render_portfolio_focus_summary(self, portfolio: PortfolioDTO) -> None:
+        """將同一份 PortfolioDTO 整理成首屏可懂的結論與下一步。"""
+
+        positions = tuple(getattr(portfolio, "positions", ()) or ())
+        active_count = getattr(portfolio, "active_positions", None)
+        count_text = str(active_count) if active_count is not None else str(len(positions))
+        invested = getattr(portfolio, "total_invested_amount", None)
+        invested_text = f"TWD {invested:,.2f}" if invested is not None else "未知"
+        if positions:
+            names = [
+                f"{getattr(position, 'stock_code', '')} {getattr(position, 'stock_name', '')}".strip()
+                for position in positions[:2]
+            ]
+            names = [name for name in names if name]
+            known_positions = "、".join(names) if names else "持倉名稱未提供"
+            if len(positions) > 2:
+                known_positions += f" 等 {len(positions)} 檔"
+            reasons = [
+                "目前持有：" + known_positions + "。",
+                (
+                    "持倉健康與退出條件：已有資料，完整原因請開啟進階工作區。"
+                    if self._position_health_read_model is not None
+                    else "待核對：目前沒有持倉健康與退出條件資料。"
+                ),
+            ]
+            conclusion = f"目前持有 {count_text} 檔；已知投入金額 {invested_text}。"
+            next_step = "先選取一檔持倉核對目前價格與退出條件；歷史、日誌與模擬持倉請開啟進階。"
+            sufficiency = "持倉資料可讀；健康與退出條件依獨立資料來源顯示。"
+        else:
+            reasons = [
+                "目前沒有可用的持倉。",
+                "待核對：沒有持倉資料時，不呈現健康與退出判讀。",
+            ]
+            conclusion = "目前沒有可用的持倉；尚不能形成持倉判讀。"
+            next_step = "先確認是否有已記錄持倉；歷史、日誌與模擬持倉可由進階工作區查看。"
+            sufficiency = "持倉資料不足；摘要只呈現已知狀態。"
+
+        updated_at = getattr(portfolio, "updated_at", "") or "未提供"
+        self.portfolio_focus_summary.set_summary(
+            conclusion=conclusion,
+            reasons=reasons,
+            next_step=next_step,
+            evidence=f"持倉資料最後更新：{updated_at}；持倉數：{count_text}。",
+            risk="目前價格或健康資料缺漏時，這頁不替你推測結果；人工持倉與模擬持倉分開核對。",
+            sufficiency=sufficiency,
+            reasons_title="重點",
+        )
+
+    def _set_portfolio_focus_state(self, state: str, message: object = "") -> None:
+        """讓摘要和刷新狀態同步；保留上次資料時明確標示不是最新。"""
+
+        previous = self._last_portfolio_dto
+        previous_date = (
+            str(getattr(previous, "updated_at", "") or "未提供")
+            if previous is not None
+            else "未提供"
+        )
+        error_text = _first_error_line(message) if message else ""
+        if state == "loading":
+            if previous is None:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="正在讀取持倉資料；目前尚不能判讀。",
+                    reasons=("尚未取得可用的持倉。", "健康與退出條件也尚未完成讀取。"),
+                    next_step="等待讀取完成；若失敗，查看狀態訊息後再重試。",
+                    evidence="目前沒有上一份可用持倉資料。",
+                    risk="資料尚未完成讀取，不推測持倉結果。",
+                    sufficiency="最新資料尚未確認。",
+                    reasons_title="目前狀態",
+                )
+            else:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="正在更新持倉資料；以下內容是上次可用資料。",
+                    reasons=(
+                        "已知：畫面仍保留上次的持倉。",
+                        "待確認：最新持倉與健康／退出條件尚未更新。",
+                    ),
+                    next_step="等待更新完成；若失敗，查看狀態訊息後再重試。",
+                    evidence=f"上次持倉資料最後更新：{previous_date}。",
+                    risk="更新完成前，畫面內容可能不是今天的資料。",
+                    sufficiency="目前只能使用上次資料，尚未確認最新狀態。",
+                    reasons_title="目前狀態",
+                )
+            return
+
+        if state in {"cancelled", "cancelling"}:
+            if previous is None:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料讀取已取消；目前尚不能判讀。",
+                    reasons=("尚未取得可用的持倉。", "健康與退出條件也沒有最新資料。"),
+                    next_step="需要判讀時重新整理持倉資料。",
+                    evidence="目前沒有上一份可用持倉資料。",
+                    risk="沒有資料時不推測持倉結果。",
+                    sufficiency="最新資料尚未確認。",
+                    reasons_title="目前狀態",
+                )
+            else:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料更新已取消；以下內容是上次可用資料。",
+                    reasons=(
+                        "已知：畫面仍保留上次的持倉。",
+                        "待確認：最新健康與退出條件尚未更新。",
+                    ),
+                    next_step="需要最新判讀時重新整理；歷史與日誌可由進階工作區查看。",
+                    evidence=f"上次持倉資料最後更新：{previous_date}。",
+                    risk="目前內容可能不是最新資料，不能據此補推缺漏。",
+                    sufficiency="最新資料尚未確認。",
+                    reasons_title="目前狀態",
+                )
+            return
+
+        if state == "error":
+            reason = f"讀取持倉資料遇到問題：{error_text}" if error_text else "讀取持倉資料遇到問題。"
+            if previous is None:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料讀取失敗；目前沒有可判讀資料。",
+                    reasons=(reason, "健康與退出條件也沒有最新資料。"),
+                    next_step="查看下方狀態訊息後重新整理；需要時開啟進階工作區查看既有紀錄。",
+                    evidence="目前沒有上一份可用持倉資料。",
+                    risk="沒有資料時不推測持倉結果。",
+                    sufficiency="最新資料不可用。",
+                    reasons_title="目前狀態",
+                )
+            else:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料更新失敗；以下內容是上次可用資料。",
+                    reasons=(
+                        reason,
+                        "待確認：最新持倉與健康／退出條件尚未更新。",
+                    ),
+                    next_step="查看下方狀態訊息後重新整理；完整歷史與日誌可由進階工作區查看。",
+                    evidence=f"上次持倉資料最後更新：{previous_date}。",
+                    risk="目前內容可能不是最新資料，不能據此補推缺漏。",
+                    sufficiency="最新資料不可用；畫面暫保留上次資料。",
+                    reasons_title="目前狀態",
+                )
 
     def _refresh_position_health(self, portfolio: PortfolioDTO) -> None:
         """刷新同一份 persisted Paper health projection；此處只讀，不執行 evaluator。"""
@@ -1242,7 +1437,10 @@ class PortfolioView(QWidget):
             return
 
         self.position_health_model.set_rows(model.positions)
-        self.position_health_table.setVisible(bool(model.positions))
+        self.position_health_table.setVisible(
+            bool(model.positions) and self._advanced_details_visible
+        )
+        self.position_health_detail_label.setVisible(self._advanced_details_visible)
         self.position_health_summary_label.setText(
             format_position_health_read_model(model)
         )
@@ -1279,6 +1477,7 @@ class PortfolioView(QWidget):
             return
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
             self._refresh_pending = True
+            self._set_portfolio_focus_state("loading")
             self.portfolio_refresh_status_label.setText(
                 "持倉背景刷新已排隊；正在取消較早一輪，保留最新 generation。"
             )
@@ -1289,6 +1488,7 @@ class PortfolioView(QWidget):
         generation = self._refresh_generation
         self._worker_generation = generation
         self.btn_refresh.setEnabled(False)
+        self._set_portfolio_focus_state("loading")
         self.portfolio_refresh_status_label.setText(
             f"持倉資料背景讀取中（generation={generation}）；目前畫面保留既有資料。"
         )
@@ -1348,6 +1548,7 @@ class PortfolioView(QWidget):
             self.portfolio_refresh_status_label.setText(
                 "持倉背景刷新已取消；畫面保留最近一次資料。"
             )
+            self._set_portfolio_focus_state("cancelled")
         self._release_refresh_worker(worker)
 
     def _release_refresh_worker(self, worker: TaskWorker) -> None:
@@ -1365,14 +1566,15 @@ class PortfolioView(QWidget):
     def _handle_portfolio_refresh_error(self, message: str) -> None:
         error_line = _first_error_line(message)
         logger.error("Failed to load portfolio DTO: %s", error_line)
+        self._set_portfolio_focus_state("error", error_line)
         if self._last_portfolio_dto is not None:
             self.portfolio_refresh_status_label.setText(
-                "持倉背景刷新失敗；保留最近一次 PortfolioDTO。"
+                "持倉背景刷新失敗；保留最近一次持倉資料。"
                 f"原因：{error_line}"
             )
             return
         self.portfolio_refresh_status_label.setText(
-            f"持倉資料狀態未知；尚無可信 PortfolioDTO。原因：{error_line}"
+            f"持倉資料狀態未知；尚無可信資料。原因：{error_line}"
         )
 
     def cancel_refresh(self) -> None:
@@ -1382,6 +1584,7 @@ class PortfolioView(QWidget):
         self._refresh_pending = False
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
             self._refresh_worker.cancel(cooperative=True, wait=False)
+            self._set_portfolio_focus_state("cancelling")
             self.portfolio_refresh_status_label.setText(
                 "正在取消持倉背景刷新；目前資料仍保留。"
             )

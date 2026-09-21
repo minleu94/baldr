@@ -56,6 +56,7 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.theme_widgets import StatusBadge
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 from ui_qt.workers.task_worker import TaskWorker
 
 
@@ -107,29 +108,65 @@ class StockReportTableModel(QAbstractTableModel):
 
 
 class StockPriceChartWidget(QWidget):
-    """無第三方互動依賴的 bounded price chart，提供文字替代。"""
+    """無第三方互動依賴的 bounded 價格圖，資料不足時明示收盤圖。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._points: tuple[StockPricePointDTO, ...] = ()
+        self._mode = "close"
         self.setMinimumHeight(188)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setAccessibleName("個股收盤價走勢圖")
         self.setAccessibleDescription(
-            "最近有限交易日的收盤價走勢；下方價格表提供可選取的日期與數值。"
+            "最近有限交易日的價格圖；下方價格表提供可選取的日期與數值。"
         )
 
     def set_points(self, points: Sequence[StockPricePointDTO]) -> None:
         self._points = tuple(points)
+        self._mode = self._resolve_mode(self._points)
         if self._points:
             last = self._points[-1]
+            mode_text = {
+                "ohlc_volume": "K 線與成交量",
+                "ohlc": "K 線（成交量資料不足）",
+                "close": "收盤價走勢",
+            }[self._mode]
             self.setToolTip(
-                f"最新資料日：{last.data_date}；收盤價：{_decimal_text(last.close_price)}。"
+                f"{mode_text}；最新資料日：{last.data_date}；"
+                f"收盤價：{_decimal_text(last.close_price)}。"
                 "圖表只作視覺化，不代表預測。"
+            )
+            self.setAccessibleDescription(
+                f"{mode_text}；最近有限交易日的價格圖；"
+                "下方價格表提供可選取的日期與數值。"
             )
         else:
             self.setToolTip("目前沒有可繪製的價格資料。")
+            self.setAccessibleDescription("目前沒有可繪製的價格資料。")
         self.update()
+
+    @staticmethod
+    def _resolve_mode(points: Sequence[StockPricePointDTO]) -> str:
+        """只有每一列都有 OHLC 才進入 K 線模式，不補造缺失欄位。"""
+
+        complete_ohlc = bool(points) and all(
+            point.open_price is not None
+            and point.high_price is not None
+            and point.low_price is not None
+            and point.close_price is not None
+            for point in points
+        )
+        if not complete_ohlc:
+            return "close"
+        if all(point.volume is not None for point in points):
+            return "ohlc_volume"
+        return "ohlc"
+
+    @property
+    def display_mode(self) -> str:
+        """供 Qt focused test 與無障礙檢查讀取目前圖表型態。"""
+
+        return self._mode
 
     def paintEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         del event
@@ -150,12 +187,22 @@ class StockPriceChartWidget(QWidget):
             left = 58
             right = max(left + 40, self.width() - 18)
             top = 25
-            bottom = max(top + 50, self.height() - 32)
-            values = tuple(
-                point.close_price
-                for point in points
-                if point.close_price is not None
-            )
+            volume_enabled = self._mode == "ohlc_volume"
+            volume_top = max(top + 70, self.height() - 48)
+            bottom = max(top + 50, volume_top - 12 if volume_enabled else self.height() - 32)
+            if self._mode in {"ohlc", "ohlc_volume"}:
+                values = tuple(
+                    value
+                    for point in points
+                    for value in (point.high_price, point.low_price)
+                    if value is not None
+                )
+            else:
+                values = tuple(
+                    point.close_price
+                    for point in points
+                    if point.close_price is not None
+                )
             low = min(values)
             high = max(values)
             span = high - low
@@ -166,33 +213,123 @@ class StockPriceChartWidget(QWidget):
             painter.drawLine(left, bottom, right, bottom)
             painter.drawLine(left, top, left, bottom)
             painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_secondary)))
-            painter.drawText(6, top + 4, "收盤價")
-            painter.drawText(6, bottom, "TWD")
+            painter.drawText(
+                6,
+                top + 4,
+                (
+                    "K 線（TWD）"
+                    if self._mode in {"ohlc", "ohlc_volume"}
+                    else "收盤價（TWD）"
+                ),
+            )
             painter.drawText(left, self.height() - 8, points[0].data_date)
             last_date = points[-1].data_date
             painter.drawText(max(left, right - 88), self.height() - 8, last_date)
             painter.drawText(6, top + 22, _decimal_text(high))
             painter.drawText(6, bottom - 5, _decimal_text(low))
 
-            path_points: list[QPoint] = []
             denominator = max(1, len(points) - 1)
-            for index, point in enumerate(points):
-                assert point.close_price is not None
-                x = left + int(
-                    Decimal(right - left) * Decimal(index) / Decimal(denominator)
-                )
-                y = bottom - int(
-                    Decimal(bottom - top) * (point.close_price - low) / span
-                )
-                path_points.append(QPoint(x, y))
-            line_pen = QPen(QColor(MIDNIGHT_ANALYST.accent))
-            line_pen.setWidth(2)
-            painter.setPen(line_pen)
-            for first, second in zip(path_points, path_points[1:]):
-                painter.drawLine(first, second)
-            painter.setBrush(QBrush(QColor(MIDNIGHT_ANALYST.accent)))
-            painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.accent)))
-            painter.drawEllipse(path_points[-1], 3, 3)
+            if self._mode in {"ohlc", "ohlc_volume"}:
+                body_width = max(2, min(10, (right - left) // max(1, len(points) * 2)))
+                for index, point in enumerate(points):
+                    assert (
+                        point.open_price is not None
+                        and point.high_price is not None
+                        and point.low_price is not None
+                        and point.close_price is not None
+                    )
+                    x = left + int(
+                        Decimal(right - left) * Decimal(index) / Decimal(denominator)
+                    )
+                    y_high = bottom - int(
+                        Decimal(bottom - top) * (point.high_price - low) / span
+                    )
+                    y_low = bottom - int(
+                        Decimal(bottom - top) * (point.low_price - low) / span
+                    )
+                    y_open = bottom - int(
+                        Decimal(bottom - top) * (point.open_price - low) / span
+                    )
+                    y_close = bottom - int(
+                        Decimal(bottom - top) * (point.close_price - low) / span
+                    )
+                    rising = point.close_price >= point.open_price
+                    color = (
+                        MIDNIGHT_ANALYST.data_positive
+                        if rising
+                        else MIDNIGHT_ANALYST.data_negative
+                    )
+                    pen = QPen(QColor(color))
+                    pen.setWidth(1)
+                    painter.setPen(pen)
+                    painter.drawLine(x, y_high, x, y_low)
+                    body_top = min(y_open, y_close)
+                    body_height = max(1, abs(y_close - y_open))
+                    painter.fillRect(
+                        x - body_width // 2,
+                        body_top,
+                        body_width,
+                        body_height,
+                        QBrush(QColor(color)),
+                    )
+                if volume_enabled:
+                    volumes = tuple(
+                        int(point.volume or 0) for point in points
+                    )
+                    max_volume = max(volumes, default=0)
+                    volume_base = max(volume_top + 1, self.height() - 27)
+                    volume_area_top = volume_top + 4
+                    volume_area_height = max(1, volume_base - volume_area_top)
+                    painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border)))
+                    painter.drawLine(left, volume_top, right, volume_top)
+                    painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_secondary)))
+                    painter.drawText(6, volume_top + 14, "成交量")
+                    for index, volume in enumerate(volumes):
+                        x = left + int(
+                            Decimal(right - left) * Decimal(index) / Decimal(denominator)
+                        )
+                        bar_height = (
+                            int(
+                                Decimal(volume_area_height)
+                                * Decimal(volume)
+                                / Decimal(max_volume)
+                            )
+                            if max_volume
+                            else 0
+                        )
+                        color = (
+                            MIDNIGHT_ANALYST.data_positive
+                            if points[index].close_price is not None
+                            and points[index].open_price is not None
+                            and points[index].close_price >= points[index].open_price
+                            else MIDNIGHT_ANALYST.data_negative
+                        )
+                        painter.fillRect(
+                            x - body_width // 2,
+                            volume_base - bar_height,
+                            body_width,
+                            max(1, bar_height),
+                            QBrush(QColor(color)),
+                        )
+            else:
+                path_points: list[QPoint] = []
+                for index, point in enumerate(points):
+                    assert point.close_price is not None
+                    x = left + int(
+                        Decimal(right - left) * Decimal(index) / Decimal(denominator)
+                    )
+                    y = bottom - int(
+                        Decimal(bottom - top) * (point.close_price - low) / span
+                    )
+                    path_points.append(QPoint(x, y))
+                line_pen = QPen(QColor(MIDNIGHT_ANALYST.accent))
+                line_pen.setWidth(2)
+                painter.setPen(line_pen)
+                for first, second in zip(path_points, path_points[1:]):
+                    painter.drawLine(first, second)
+                painter.setBrush(QBrush(QColor(MIDNIGHT_ANALYST.accent)))
+                painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.accent)))
+                painter.drawEllipse(path_points[-1], 3, 3)
         finally:
             if painter.isActive():
                 painter.end()
@@ -225,6 +362,8 @@ class StockResearchReportView(QWidget):
         self._active_worker: TaskWorker | None = None
         self._workers: set[TaskWorker] = set()
         self._closing = False
+        self._loaded_report: StockResearchReportDTO | None = None
+        self._rendered_report_tabs: set[str] = set()
         self._setup_ui()
         if context is not None and context.stock_code:
             self.set_context(context)
@@ -308,6 +447,7 @@ class StockResearchReportView(QWidget):
         self.tabs = QTabWidget()
         self.tabs.setObjectName("stockResearchTabs")
         self.tabs.setDocumentMode(True)
+        self.tabs.currentChanged.connect(self._on_report_tab_changed)
         root.addWidget(self.tabs, 1)
         self._page_layouts: dict[str, QVBoxLayout] = {}
         self._create_page("summary", "摘要")
@@ -345,26 +485,72 @@ class StockResearchReportView(QWidget):
     def _build_summary_shell(self) -> None:
         layout = self._page_layouts["summary"]
         self._remove_all_content(layout)
-        overview = QGroupBox("個股摘要")
-        form = QVBoxLayout(overview)
+        self.summary_focus = V5ResearchSummary("第一眼先看五個問題")
+        self.summary_focus.setAccessibleName("個股研究日常摘要")
+        self.summary_focus.setToolTip(
+            "摘要只整理報告 DTO 已提供的證據；完整來源、代碼與歷史請開啟進階內容。"
+        )
+        layout.addWidget(self.summary_focus)
+
+        self.summary_limitations_panel = self._label_panel(
+            "資料缺口（先看）",
+            "目前尚未載入。",
+            "stockResearchLimitations",
+        )
+        layout.addWidget(self.summary_limitations_panel)
+
+        self.summary_detail_toggle = QPushButton("顯示進階：逐項證據與欄位")
+        self.summary_detail_toggle.setCheckable(True)
+        self.summary_detail_toggle.setProperty("variant", "secondary")
+        self.summary_detail_toggle.setAccessibleName("顯示個股研究逐項證據")
+        self.summary_detail_toggle.setToolTip(
+            "展開完整欄位用途與讀取值；不會重新評分或重新讀取資料。"
+        )
+        self.summary_detail_toggle.toggled.connect(self._toggle_summary_details)
+        layout.addWidget(self.summary_detail_toggle)
+
+        self.summary_detail_group = QGroupBox("進階：逐項證據與欄位")
+        form = QVBoxLayout(self.summary_detail_group)
         form.setSpacing(6)
         for key, label in (
             ("latest_price", "最新可用價格"),
-            ("attention", "關注理由"),
-            ("risk", "主要風險"),
+            ("attention", "值得看原因"),
+            ("change", "較前變化"),
+            ("risk", "主要風險／反證"),
+            ("sufficiency", "資料是否足夠"),
             ("freshness", "資料更新狀態"),
             ("advice", "現有建議"),
+            ("next_step", "下一步"),
         ):
             value = QLabel("—")
             value.setObjectName(f"stockResearch_{key}")
             value.setWordWrap(True)
-            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value.setTextInteractionFlags(
+                Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+            )
             form.addWidget(QLabel(label))
             form.addWidget(value)
             self._summary_values[key] = value
-        layout.addWidget(overview)
-        layout.addWidget(self._label_panel("限制與資料缺口", "目前尚未載入。", "stockResearchLimitations"))
-        self.summary_source_group = QGroupBox("來源與各區塊日期")
+        detail_limitations = QGroupBox("完整限制與資料缺口")
+        detail_limitations_layout = QVBoxLayout(detail_limitations)
+        self.summary_limitations_detail_label = self._wrapped_label("目前尚未載入。")
+        self.summary_limitations_detail_label.setObjectName(
+            "stockResearchLimitationsDetail"
+        )
+        detail_limitations_layout.addWidget(self.summary_limitations_detail_label)
+        form.addWidget(detail_limitations)
+        self.summary_detail_group.setVisible(False)
+        layout.addWidget(self.summary_detail_group)
+        self.summary_source_toggle = QPushButton("顯示進階：來源與各區塊日期")
+        self.summary_source_toggle.setCheckable(True)
+        self.summary_source_toggle.setProperty("variant", "secondary")
+        self.summary_source_toggle.setAccessibleName("顯示個股研究來源與日期明細")
+        self.summary_source_toggle.setToolTip(
+            "展開來源、品質、資料日、可得時間與版本；不會重新讀取報告。"
+        )
+        self.summary_source_toggle.toggled.connect(self._toggle_summary_sources)
+        layout.addWidget(self.summary_source_toggle)
+        self.summary_source_group = QGroupBox("進階：來源與各區塊日期")
         source_layout = QVBoxLayout(self.summary_source_group)
         self.sources_table = QTableView()
         apply_financial_table_style(self.sources_table)
@@ -378,8 +564,29 @@ class StockResearchReportView(QWidget):
         self.sources_table.verticalHeader().setMinimumSectionSize(28)
         self.sources_table.setMaximumHeight(240)
         source_layout.addWidget(self.sources_table)
+        self.summary_source_group.setVisible(False)
         layout.addWidget(self.summary_source_group)
         layout.addStretch()
+
+    def _toggle_summary_details(self, expanded: bool) -> None:
+        """展開逐項證據，日常摘要仍維持固定高度。"""
+
+        self.summary_detail_group.setVisible(expanded)
+        self.summary_detail_toggle.setText(
+            "隱藏進階：逐項證據與欄位"
+            if expanded
+            else "顯示進階：逐項證據與欄位"
+        )
+
+    def _toggle_summary_sources(self, expanded: bool) -> None:
+        """切換來源明細；來源 model 已載入時只改變可見性。"""
+
+        self.summary_source_group.setVisible(expanded)
+        self.summary_source_toggle.setText(
+            "隱藏進階：來源與各區塊日期"
+            if expanded
+            else "顯示進階：來源與各區塊日期"
+        )
 
     def set_stock_codes(self, stock_codes: Sequence[str]) -> None:
         self.stock_codes = tuple(str(code).strip() for code in stock_codes if str(code).strip())
@@ -556,11 +763,13 @@ class StockResearchReportView(QWidget):
     def _set_loading_state(self, code: str) -> None:
         self.identity_label.setText(f"{code}｜報告載入中")
         self._set_status("正在背景讀取有限研究資料…", "info")
-        self._summary_values["latest_price"].setText("讀取中…")
-        self._summary_values["attention"].setText("讀取中…")
-        self._summary_values["risk"].setText("讀取中…")
-        self._summary_values["freshness"].setText("讀取中…")
-        self._summary_values["advice"].setText("讀取中…")
+        for value in self._summary_values.values():
+            value.setText("讀取中…")
+        self.summary_focus.set_summary(
+            conclusion="報告載入中，尚不能形成判讀。",
+            reasons=("資料仍在背景讀取。",),
+            next_step="等待載入完成；若取消，保留原來源與選取狀態。",
+        )
         self._set_navigation_state()
 
     def _set_status(self, text: str, quality: str) -> None:
@@ -580,25 +789,91 @@ class StockResearchReportView(QWidget):
         self.return_button.setVisible(bool(self.context and self.context.has_source))
 
     def _render_report(self, report: StockResearchReportDTO) -> None:
+        self._loaded_report = report
+        self._rendered_report_tabs = {"summary"}
         self.identity_label.setText(
             f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
             + (f"｜{report.industry}" if report.industry else "")
         )
         self._summary_values["latest_price"].setText(_latest_price_text(report.price_points))
-        self._summary_values["attention"].setText(_join_or_missing(report.attention_reasons, "目前沒有額外關注理由。"))
-        self._summary_values["risk"].setText(_join_or_missing(report.key_risks, "目前沒有可呈現的風險 row；不代表沒有風險。"))
+        self._summary_values["attention"].setText(
+            _join_or_missing(
+                report.attention_reasons,
+                "目前沒有足夠資料支持額外關注理由。",
+            )
+        )
+        self._summary_values["change"].setText(_price_change_text(report.price_points))
+        self._summary_values["risk"].setText(
+            _join_or_missing(
+                report.key_risks,
+                "目前沒有可呈現的風險／反證 row；不代表風險不存在。",
+            )
+        )
+        self._summary_values["sufficiency"].setText(_report_sufficiency_text(report))
         self._summary_values["freshness"].setText(_freshness_text(report))
         self._summary_values["advice"].setText(_advice_summary(report.advice))
-        limitations = _join_or_missing(report.limitations, "目前沒有額外限制。")
-        self._find_widget("stockResearchLimitations").setText(limitations)
+        next_step = _report_next_step(report)
+        self._summary_values["next_step"].setText(next_step)
+        summary_reasons = []
+        if report.attention_reasons:
+            summary_reasons.append(report.attention_reasons[0])
+        if report.key_risks:
+            summary_reasons.append(report.key_risks[0])
+        if not summary_reasons and report.limitations:
+            summary_reasons.append(report.limitations[0])
+        self.summary_focus.set_summary(
+            conclusion=_report_conclusion(report),
+            reasons=summary_reasons,
+            next_step=next_step,
+            evidence=_report_evidence_text(report),
+            change=_price_change_text(report.price_points),
+            risk=_join_or_missing(
+                report.key_risks,
+                "目前沒有可呈現的風險／反證 row；不代表風險不存在。",
+            ),
+            sufficiency=_report_sufficiency_text(report),
+            reasons_title="重點",
+        )
+        limitations = _join_or_missing(
+            report.limitations,
+            "來源未提供其他限制說明。",
+        )
+        visible_limitations = "；".join(
+            item.strip() for item in limitations.split("；")[:2] if item.strip()
+        )
+        if len(limitations.split("；")) > 2:
+            visible_limitations += "；其餘限制請開啟進階內容。"
+        self._find_widget("stockResearchLimitations").setText(visible_limitations)
+        self.summary_limitations_detail_label.setText(limitations)
 
         self._render_sources(report)
-        self._render_price(report)
-        self._render_fundamental(report)
-        self._render_flows(report)
-        self._render_position(report.position)
-        self._render_decision(report)
+        self._render_report_tab(self.tabs.currentIndex())
         self._set_navigation_state()
+
+    def _on_report_tab_changed(self, index: int) -> None:
+        """只在使用者進入分頁時繪製有限內容，不重讀 service。"""
+
+        self._render_report_tab(index)
+
+    def _render_report_tab(self, index: int) -> None:
+        report = self._loaded_report
+        page_ids = ("summary", "price", "fundamental", "flows", "position", "decision")
+        if report is None or index < 0 or index >= len(page_ids):
+            return
+        page_id = page_ids[index]
+        if page_id in self._rendered_report_tabs:
+            return
+        if page_id == "price":
+            self._render_price(report)
+        elif page_id == "fundamental":
+            self._render_fundamental(report)
+        elif page_id == "flows":
+            self._render_flows(report)
+        elif page_id == "position":
+            self._render_position(report.position)
+        elif page_id == "decision":
+            self._render_decision(report)
+        self._rendered_report_tabs.add(page_id)
 
     def _render_sources(self, report: StockResearchReportDTO) -> None:
         rows = []
@@ -647,6 +922,17 @@ class StockResearchReportView(QWidget):
         chart = StockPriceChartWidget()
         chart.set_points(report.price_points)
         layout.addWidget(chart)
+        chart_mode_label = QLabel(
+            {
+                "ohlc_volume": "圖表型態：完整 OHLC K 線＋成交量；僅使用既有價格資料。",
+                "ohlc": "圖表型態：完整 OHLC K 線；成交量資料不足，未繪製量柱。",
+                "close": "圖表型態：收盤價走勢；OHLC 欄位不完整，未補造 K 線。",
+            }[chart.display_mode]
+        )
+        chart_mode_label.setObjectName("stockResearchPriceChartMode")
+        chart_mode_label.setProperty("role", "muted")
+        chart_mode_label.setWordWrap(True)
+        layout.addWidget(chart_mode_label)
         if report.price_points:
             rows = tuple(
                 (
@@ -1183,6 +1469,98 @@ def _latest_price_text(points: Sequence[StockPricePointDTO]) -> str:
         f"{_decimal_text(point.close_price)} TWD｜資料日 {point.data_date}｜"
         f"成交股數 {_integer_text(point.volume)}｜成交金額 {_decimal_text(point.turnover)}"
     )
+
+
+def _price_change_text(points: Sequence[StockPricePointDTO]) -> str:
+    """只使用 DTO 已提供的漲跌欄位，沒有欄位就明示無法比較。"""
+
+    if not points:
+        return "沒有價格資料，無法比較。"
+    point = points[-1]
+    if point.change is None:
+        return "目前沒有前一期漲跌欄位，無法比較。"
+    return f"最新一日漲跌：{point.change:+,} TWD（資料日 {point.data_date}）。"
+
+
+def _report_evidence_text(report: StockResearchReportDTO) -> str:
+    """整理首屏可引用的主要證據與日期，不建立新金融指標。"""
+
+    parts: list[str] = []
+    if report.price_points:
+        point = report.price_points[-1]
+        parts.append(
+            f"價格 {point.data_date} 收盤 {_decimal_text(point.close_price)} TWD"
+        )
+    if report.technical is not None and report.technical.data_date:
+        parts.append(f"技術指標 {report.technical.data_date}")
+    for item in report.fundamentals:
+        date_text = item.as_of_date or item.period
+        if date_text:
+            parts.append(f"基本面 {date_text}")
+            break
+    if report.flows and report.flows[0].data_date:
+        parts.append(f"籌碼 {report.flows[0].data_date}")
+    return "；".join(parts) if parts else "目前沒有可引用的主要資料日期。"
+
+
+def _report_sufficiency_text(report: StockResearchReportDTO) -> str:
+    """依既有 section status 說明覆蓋，不把缺資料補成正常。"""
+
+    if not report.sections:
+        return "未知：報告沒有可用的區塊狀態。"
+    missing = tuple(
+        section.label
+        for section in report.sections
+        if section.status in {
+            ReportSectionStatus.MISSING.value,
+            ReportSectionStatus.ERROR.value,
+        }
+    )
+    partial = tuple(
+        section.label
+        for section in report.sections
+        if section.status in {
+            ReportSectionStatus.PARTIAL.value,
+            ReportSectionStatus.STALE.value,
+        }
+    )
+    if missing:
+        return "不足：" + "、".join(missing[:3]) + " 缺資料或讀取失敗。"
+    if partial:
+        return "部分可用：" + "、".join(partial[:3]) + " 需要核對日期與品質。"
+    return "目前主要區塊都有可讀狀態；仍需逐區核對資料日。"
+
+
+def _report_conclusion(report: StockResearchReportDTO) -> str:
+    """挑出既有 evidence 的一句話作結，不生成新投資結論。"""
+
+    if report.attention_reasons:
+        return f"值得看：{report.attention_reasons[0]}"
+    if report.rule_reasons:
+        return f"值得深入核對：{report.rule_reasons[0]}"
+    return "目前沒有足夠資料支持「值得看」結論。"
+
+
+def _report_next_step(report: StockResearchReportDTO) -> str:
+    """依缺件與既有入口給出可執行的研究下一步。"""
+
+    price_section = next(
+        (section for section in report.sections if section.section_id == "price"),
+        None,
+    )
+    if not report.price_points or (
+        price_section is not None
+        and price_section.status in {
+            ReportSectionStatus.MISSING.value,
+            ReportSectionStatus.ERROR.value,
+        }
+    ):
+        return "先從「數據更新」補齊價格資料，再回來查看價格／技術分頁。"
+    if report.advice.recommendation is None and report.advice.limitations:
+        return "若要核對推薦理由，回到推薦分析明確選定原始來源；不要用同股或最新結果代替。"
+    if report.position is not None:
+        return "若是持倉，先到持倉／Health／Exit 分頁核對成本、資料日與失效條件。"
+    return "先核對價格、基本面與籌碼的資料日，再按需開啟進階來源與歷史內容。"
 
 
 def _join_or_missing(values: Sequence[str], fallback: str) -> str:

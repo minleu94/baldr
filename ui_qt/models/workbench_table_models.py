@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -86,6 +87,34 @@ class _WorkbenchTableModel(QAbstractTableModel):
         if 0 <= row < len(self._rows):
             return self._rows[row]
         return None
+
+
+@dataclass(frozen=True)
+class GuidedWorkbenchRow:
+    """首頁摘要專用的 UI read model；不承載策略或來源計算。"""
+
+    key: str
+    title: str
+    status: str
+    conclusion: str
+    reasons: str
+    action_label: str
+    target: str
+
+
+class WorkbenchGuidedSummaryTableModel(_WorkbenchTableModel):
+    """將首頁四個重點保留成可測試的輕量投影，完整欄位仍留在進階模型。"""
+
+    COLUMNS = (
+        ("title", "重點"),
+        ("status", "狀態"),
+        ("conclusion", "結論"),
+        ("reasons", "主要理由"),
+        ("action_label", "下一步"),
+    )
+
+    def __init__(self, rows: Sequence[GuidedWorkbenchRow] = (), parent=None) -> None:
+        super().__init__(rows, parent)
 
 
 class WorkbenchStatusStripTableModel(_WorkbenchTableModel):

@@ -253,7 +253,13 @@ def test_composer_builds_today_review_items_from_watchlist_portfolio_and_risk() 
 
     assert {"watchlist_trigger", "portfolio_alert"}.issubset(review_sources)
     assert "risk_prompt" not in review_sources
-    assert any(item["drilldown_target"] == "evidence_mode" for item in payload["review_items"])
+    watchlist_review = next(item for item in dashboard.review_items if item.source == "watchlist_trigger")
+    assert watchlist_review.drilldown_target == "watchlist"
+    assert "2603" in watchlist_review.summary
+    assert "查看選中個股研究報告" in watchlist_review.summary
+    watchlist_action = next(item for item in dashboard.action_items if item.item_id == "watchlist_trigger_manual_review")
+    assert watchlist_action.summary == watchlist_review.summary
+    assert watchlist_action.drilldown_target == "watchlist"
 
 
 def test_composer_builds_background_evidence_feed_from_existing_payloads_only() -> None:
@@ -437,6 +443,10 @@ def test_composer_keeps_uncovered_watchlist_codes_when_prompt_is_partial() -> No
     assert remaining_review.code == "2303"
     assert "1 筆" in remaining_review.summary
     assert remaining_action.code == "2303"
+    assert remaining_action.summary == remaining_review.summary
+    assert "2303：" in remaining_review.summary
+    assert "2603：" not in remaining_review.summary
+    assert remaining_action.drilldown_target == remaining_review.drilldown_target == "watchlist"
     assert "risk_prompt_coverage_partial" in remaining_review.diagnostics
 
 

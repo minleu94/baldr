@@ -7,7 +7,29 @@
 
 ---
 
+## 2026-09-21 V5 日常操作與可讀性工程
+
+本輪把既有 read-only DTO 重新安排成「先結論、再原因、最後進階細節」的日常路徑，版本名稱為「V5日常操作與可讀性工程」。首頁 guided summary、候選／報告／持倉摘要、分層導覽、回測／推薦進階切換與個股報告 lazy tabs 均屬呈現與導引工程；正式 V4／V5 gate、自然 learning maturity 與 V6 user-level personalization 仍依 scoped roadmap 保持 pending。
+
+### 預設入口與分層
+
+- 左側導覽分成「日常使用」（決策工作台、市場探索、推薦分析、觀察清單、持倉管理）、「進階研究」（策略回測）與「系統維護」（數據更新、系統狀態）。保留既有 workspace key／Runtime alias；deep link 會展開所屬群組。
+- 決策工作台預設先顯示「今日優先查看」與日期／資料日期／結論／下一步；「顯示進階工作台」才展開完整 workflow、來源、技術與研究證據。市場探索的 Daily Decision Desk 仍只有既有唯一實例。
+- 候選池與持倉先顯示狀態、原因、來源可追溯性與下一步；完整研究、歷史、Journal、模擬／Paper／Stress 仍由進階入口進入。「選擇原推薦來源」保留在候選池的日常下一步，用來核對對應當次推薦來源後開啟原理由。
+
+### 個股報告與結果閱讀
+
+個股研究報告的「摘要」先列結論、證據、變化、風險、資料是否足夠與下一步；逐項證據與來源／各區塊日期由兩個進階切換控制。深層分頁進入時才建立內容；完整 OHLC 使用價格／成交量圖，缺少任一 OHLC 時使用 close chart fallback。圖表只使用 service 已提供的 DTO，不重新評分或補造資料。
+
+推薦與回測的 guided summary 只翻譯現有參數與輸入母體。推薦保存仍保留 `result_id`、repository create-only、delivery ACK、Journal／readback 與 context binding；回測的研究模式、日期、策略、資金、費用、滑價、執行價格及停損停利值不因折疊進階而改變。結果頁的摘要、診斷、圖表、最佳化與 Walk-forward evidence 仍是原功能。
+
+### 可讀性與安全契約
+
+所有摘要均標出決策日／資料日／來源品質；缺件、來源不一致、身份衝突、讀取失敗與 last good data 以白話原因及恢復入口呈現。UI 僅讀取既有來源，沒有新增 collector、scheduler、正式 DB、Journal 或 learning writer；缺 cutoff 或 identity 時維持拒絕寫入與 fail-closed。完整 R1–R10 與 frozen QA evidence 見 [V5 readability acceptance](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md)。
+
 ## 一、UI 定位
+
+2026-09-21 候選池判讀呈現更新：首頁與每日決策的候選觸發提醒改列股票代號、指標變化原因、資料日期／品質及查看步驟；缺前次分數明示無法確認新轉強。首頁一般觸發提醒可直接前往候選池；獨立風險提示仍保留其原判讀入口。候選表以「推薦來源」的已連結／未連結／來源不一致狀態取代原始 `decision_identity` 字典，完整資料保留供原推薦與結果追溯，不改觸發規則或來源綁定。操作與排錯見完整手冊第 7.1 節。
 
 Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察、策略研究、推薦、持倉檢查、Agent runtime 觀測」串成可回溯的投資決策工作台。
 

@@ -7,13 +7,14 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QGroupBox, QProgressBar,
     QLineEdit, QDoubleSpinBox, QComboBox,
-    QFormLayout, QSpinBox, QCheckBox, QSizePolicy
+    QFormLayout, QSpinBox, QCheckBox, QSizePolicy, QToolButton
 )
 from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QFont
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.date_filter_edit import TodayAnchoredDateEdit
 from ui_qt.views.backtest.helpers import RESEARCH_LAB_MODES
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 RESEARCH_LAB_MODE_HINTS = {
@@ -62,6 +63,8 @@ class BacktestConfigPanel(QWidget):
         self._replay_stop_profit_mode_index: int | None = None
         self._replay_execution_price_tooltip: str | None = None
         self._replay_stop_profit_mode_tooltip: str | None = None
+        # 這是純呈現狀態；切換時只改 widget visibility，不呼叫模式切換或套用方法。
+        self._guided_details_visible = False
 
         self._setup_ui()
 
@@ -88,9 +91,33 @@ class BacktestConfigPanel(QWidget):
         self._stabilize_combo_width(self.research_lab_mode_combo)
         self.research_lab_mode_hint = QLabel(self._research_lab_mode_hint_text(0))
         self.research_lab_mode_hint.setWordWrap(True)
-        self.research_lab_mode_hint.setStyleSheet("color: #666;")
+        self.research_lab_mode_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
+        self.config_guided_summary_label = QLabel(
+            "先填必填項：標的／清單、日期、策略。資金與成本假設會保留在畫面上；"
+            "進階風控、參數、最佳化與驗證可按下方展開。"
+        )
+        self.config_guided_summary_label.setWordWrap(True)
+        self.config_guided_summary_label.setAccessibleName("回測設定白話摘要")
+        self.config_guided_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 6px; font-size: 12px;"
+        )
+        self.guided_readability_toggle = QToolButton()
+        self.guided_readability_toggle.setText("顯示進階研究設定")
+        self.guided_readability_toggle.setCheckable(True)
+        self.guided_readability_toggle.setAccessibleName("顯示進階研究設定")
+        self.guided_readability_toggle.setToolTip(
+            "只展開或收合進階欄位，不會切換研究模式、套用策略或重設任何參數。"
+        )
+        self.guided_readability_toggle.toggled.connect(self._toggle_guided_details)
         mode_layout.addWidget(self.research_lab_mode_combo)
         mode_layout.addWidget(self.research_lab_mode_hint)
+        mode_layout.addWidget(self.config_guided_summary_label)
+        mode_layout.addWidget(self.guided_readability_toggle)
         mode_group.setLayout(mode_layout)
         config_layout.addWidget(mode_group)
         self.research_lab_mode_combo.currentIndexChanged.connect(self._on_research_lab_mode_changed)
@@ -322,7 +349,48 @@ class BacktestConfigPanel(QWidget):
             self.take_profit_atr_input.setToolTip(tooltip_text)
         risk_form.addRow("停利 (ATR):", self.take_profit_atr_input)
 
-        self.risk_cost_group.setLayout(risk_form)
+        self.risk_assumption_summary = QLabel()
+        self.risk_assumption_summary.setWordWrap(True)
+        self.risk_assumption_summary.setAccessibleName("資金與成本假設摘要")
+        self.risk_assumption_summary.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 6px; font-size: 12px;"
+        )
+        self._risk_details_visible = False
+        self.risk_details_toggle = QToolButton()
+        self.risk_details_toggle.setText("修改資金與風控設定")
+        self.risk_details_toggle.setCheckable(True)
+        self.risk_details_toggle.setAccessibleName("修改資金與風控設定")
+        self.risk_details_toggle.setToolTip(
+            "只展開資金、成本、成交與停損停利欄位；不會重設目前值。"
+        )
+        self.risk_details_toggle.toggled.connect(self._toggle_risk_details)
+        self.risk_advanced_widget = QWidget()
+        self.risk_advanced_widget.setLayout(risk_form)
+        self.risk_advanced_widget.setVisible(False)
+        risk_layout = QVBoxLayout()
+        risk_layout.addWidget(self.risk_assumption_summary)
+        risk_layout.addWidget(self.risk_details_toggle)
+        risk_layout.addWidget(self.risk_advanced_widget)
+        self.risk_cost_group.setLayout(risk_layout)
+        for control in (
+            self.capital_input,
+            self.fee_bps_input,
+            self.slippage_bps_input,
+            self.execution_price_combo,
+            self.stop_profit_mode_combo,
+            self.stop_loss_input,
+            self.take_profit_input,
+            self.stop_loss_atr_input,
+            self.take_profit_atr_input,
+        ):
+            if hasattr(control, "valueChanged"):
+                control.valueChanged.connect(self._update_risk_assumption_summary)
+            elif hasattr(control, "currentTextChanged"):
+                control.currentTextChanged.connect(self._update_risk_assumption_summary)
+        self._update_risk_assumption_summary()
         config_layout.addWidget(self.risk_cost_group)
 
         # ========== 部位 Sizing 配置 ==========
@@ -452,16 +520,34 @@ class BacktestConfigPanel(QWidget):
         self._stabilize_combo_width(self.strategy_combo)
         strategy_layout.addWidget(self.strategy_combo)
 
+        self.strategy_guided_summary_label = QLabel(
+            "選擇要檢查的策略；詳細參數與技術說明可按「顯示進階研究設定」。"
+        )
+        self.strategy_guided_summary_label.setWordWrap(True)
+        self.strategy_guided_summary_label.setAccessibleName("策略選擇白話摘要")
+        self.strategy_guided_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
+        strategy_layout.addWidget(self.strategy_guided_summary_label)
+
         self.params_widget = QWidget()
         self.params_layout = QFormLayout(self.params_widget)
         strategy_layout.addWidget(self.params_widget)
 
         self.strategy_desc = QLabel()
-        self.strategy_desc.setStyleSheet("color: #888; font-size: 10px;")
+        self.strategy_desc.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
         self.strategy_desc.setWordWrap(True)
         strategy_layout.addWidget(self.strategy_desc)
 
         self.strategy_combo.currentTextChanged.connect(lambda: self.parent_view._on_strategy_changed())
+        self.strategy_combo.currentTextChanged.connect(
+            lambda _text: self._update_strategy_guided_summary()
+        )
+        self.strategy_combo.currentTextChanged.connect(
+            lambda _text: self._apply_readability_visibility()
+        )
 
         self.strategy_config_group.setLayout(strategy_layout)
         config_layout.addWidget(self.strategy_config_group)
@@ -469,6 +555,7 @@ class BacktestConfigPanel(QWidget):
         # 填滿策略 (由 parent_view 的方法執行)
         self.parent_view._populate_strategy_combo()
         self.parent_view._on_strategy_changed()
+        self._update_strategy_guided_summary()
 
         # ========== 參數最佳化區塊 ==========
         if self.parent_view.optimizer_service:
@@ -507,7 +594,9 @@ class BacktestConfigPanel(QWidget):
                 "目前使用 ThreadPool，不是 ProcessPool；大型範圍執行前會先顯示組合數與取消提示。"
             )
             self.optimizer_runtime_hint.setWordWrap(True)
-            self.optimizer_runtime_hint.setStyleSheet("color: #666; font-size: 10px;")
+            self.optimizer_runtime_hint.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+            )
             optimization_layout.addWidget(self.optimizer_runtime_hint)
 
             self.optimization_params_widget = QWidget()
@@ -782,8 +871,10 @@ class BacktestConfigPanel(QWidget):
         self.execution_intent_label.setAccessibleName("本次執行意圖")
         self.execution_intent_label.setToolTip("說明主要執行按鈕目前會執行的工作與輸入母體")
         self.execution_intent_label.setStyleSheet(
-            "color: #334155; background: #f8fafc; border: 1px solid #cbd5e1; "
-            "border-radius: 5px; padding: 6px;"
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 6px; font-size: 12px;"
         )
         execution_layout.addWidget(self.execution_intent_label)
         execution_layout.addLayout(execute_row)
@@ -792,8 +883,145 @@ class BacktestConfigPanel(QWidget):
         config_layout.addWidget(execution_group)
 
         config_layout.addStretch()
+        self._apply_readability_visibility()
 
     # ========== UI 內部事件處理 ==========
+
+    def _toggle_guided_details(self, checked: bool) -> None:
+        """展開／收合進階設定；絕不重跑模式切換或重設控制項。"""
+
+        self._guided_details_visible = bool(checked)
+        self._apply_readability_visibility()
+        self.guided_readability_toggle.setText(
+            "隱藏進階研究設定" if checked else "顯示進階研究設定"
+        )
+
+    def _toggle_risk_details(self, checked: bool) -> None:
+        """只展開資金／風控控制項，不修改任何控制項值。"""
+
+        self._risk_details_visible = bool(checked)
+        details_widget = getattr(self, "risk_advanced_widget", None)
+        if details_widget is not None:
+            details_widget.setVisible(bool(checked))
+        toggle = getattr(self, "risk_details_toggle", None)
+        if toggle is not None:
+            toggle.setText(
+                "隱藏資金與風控設定" if checked else "修改資金與風控設定"
+            )
+
+    @staticmethod
+    def _set_visibility_if_widget(widget: object, visible: bool) -> None:
+        """只對真正 Qt widget 套用純呈現 visibility，保留舊 mock contract。"""
+
+        if isinstance(widget, QWidget):
+            widget.setVisible(bool(visible))
+
+    def _apply_readability_visibility(self, mode_id: str | None = None) -> None:
+        """依目前模式和純呈現開關調整可見性。"""
+
+        advanced = bool(self._guided_details_visible)
+        mode_id = str(
+            mode_id or self.research_lab_mode_combo.currentData() or "single_stock"
+        )
+        is_replay = mode_id == "recommendation_replay"
+        supports_advanced_research = mode_id in {
+            "single_stock",
+            "batch_stock",
+            "fixed_basket",
+            "strategy_research",
+        }
+
+        strategy_preset_group = getattr(self, "strategy_preset_group", None)
+        if strategy_preset_group is not None:
+            # 預設載入／保存是既有日常入口，保留其可見性；更深的驗證仍由開關控制。
+            strategy_preset_group.setVisible(supports_advanced_research)
+        if self.input_source_group is not None:
+            self.input_source_group.setVisible(True)
+        if self.risk_cost_group is not None:
+            # 資金、手續費、滑價和回放固定契約是每日判讀需要的假設。
+            self.risk_cost_group.setVisible(True)
+        risk_advanced_widget = getattr(self, "risk_advanced_widget", None)
+        if risk_advanced_widget is not None:
+            self._set_visibility_if_widget(
+                risk_advanced_widget, bool(getattr(self, "_risk_details_visible", False))
+            )
+        if self.sizing_group is not None:
+            self._set_visibility_if_widget(self.sizing_group, advanced and not is_replay)
+        if self.position_mgmt_group is not None:
+            self._set_visibility_if_widget(
+                self.position_mgmt_group, advanced and not is_replay
+            )
+        if self.market_constraints_group is not None:
+            self._set_visibility_if_widget(
+                self.market_constraints_group, advanced and not is_replay
+            )
+        if self.strategy_config_group is not None:
+            self._set_visibility_if_widget(self.strategy_config_group, not is_replay)
+        if hasattr(self, "params_widget") and self.params_widget is not None:
+            optimization_group = getattr(self, "optimization_group", None)
+            optimization_checked = bool(
+                optimization_group is not None
+                and optimization_group.isChecked()
+            )
+            self._set_visibility_if_widget(
+                self.params_widget,
+                advanced and not optimization_checked and not is_replay,
+            )
+        if hasattr(self, "strategy_desc") and self.strategy_desc is not None:
+            self._set_visibility_if_widget(
+                self.strategy_desc, advanced and not is_replay
+            )
+        optimization_group = getattr(self, "optimization_group", None)
+        if optimization_group is not None:
+            self._set_visibility_if_widget(
+                optimization_group,
+                advanced and mode_id in {"single_stock", "strategy_research"}
+            )
+        wf_group = getattr(self, "wf_group", None)
+        if wf_group is not None:
+            self._set_visibility_if_widget(
+                wf_group,
+                advanced and mode_id in {"single_stock", "strategy_research"}
+            )
+        recommendation_group = getattr(self, "recommendation_portfolio_group", None)
+        if recommendation_group is not None:
+            self._set_visibility_if_widget(recommendation_group, is_replay)
+
+    def _update_risk_assumption_summary(self, *_args) -> None:
+        """以目前控制項值更新白話成本／資金摘要；只做呈現格式化。"""
+
+        label = getattr(self, "risk_assumption_summary", None)
+        if label is None:
+            return
+        capital = self.capital_input.value()
+        fee_bps = self.fee_bps_input.value()
+        slippage_bps = self.slippage_bps_input.value()
+        execution = self.execution_price_combo.currentText()
+        stop_mode = self.stop_profit_mode_combo.currentText()
+        if stop_mode == "百分比模式":
+            stop_loss = self.stop_loss_input.text()
+            take_profit = self.take_profit_input.text()
+        else:
+            stop_loss = self.stop_loss_atr_input.text()
+            take_profit = self.take_profit_atr_input.text()
+        label.setText(
+            f"假設：資金 ${capital:,.0f}｜手續費 {fee_bps:g} bps｜"
+            f"滑價 {slippage_bps:g} bps｜成交「{execution}」｜"
+            f"停損停利「{stop_mode}」：停損 {stop_loss}、停利 {take_profit}。"
+        )
+
+    def _update_strategy_guided_summary(self) -> None:
+        """更新策略選擇的白話提示，不改策略配置。"""
+
+        label = getattr(self, "strategy_guided_summary_label", None)
+        combo = getattr(self, "strategy_combo", None)
+        if label is None or combo is None:
+            return
+        strategy_name = combo.currentText().strip() or "尚未選擇"
+        label.setText(
+            f"目前策略：{strategy_name}。先用目前設定執行回測；"
+            "詳細參數與技術說明可按「顯示進階研究設定」。"
+        )
 
     def _research_lab_mode_hint_text(self, index: int) -> str:
         """建立 Research Lab 模式提示文字。"""
@@ -880,6 +1108,7 @@ class BacktestConfigPanel(QWidget):
             self.parallel_checkbox.setVisible(is_batch)
 
         self._update_execute_button_text()
+        self._apply_readability_visibility(mode_id)
 
     def update_execution_intent(self, mode_id: str | None = None) -> None:
         """在唯一主要 CTA 附近說明本次執行意圖與輸入母體。"""

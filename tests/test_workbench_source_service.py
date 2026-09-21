@@ -325,7 +325,45 @@ def test_workbench_source_service_reads_real_read_only_sources(tmp_path: Path) -
     assert status_items["scheduler"]["value"] == "off"
     assert payload["access_boundary"]["writes_allowed"] is False
     assert payload["access_boundary"]["production_scheduler_allowed"] is False
-    assert any(item["source"] == "risk_prompt" for item in payload["review_items"])
+    portfolio_review_items = [
+        item
+        for item in payload["review_items"]
+        if item["code"] == "2330"
+    ]
+    assert len(portfolio_review_items) == 1
+    portfolio_review = portfolio_review_items[0]
+    assert portfolio_review["source"] == "portfolio_alert"
+    assert portfolio_review["severity"] == "warning"
+    assert portfolio_review["summary"] == "持倉警示需要人工覆盤。"
+    assert portfolio_review["source_trace"] == (
+        "DecisionDeskSnapshot.risk_prompts[1].portfolio_alert"
+    )
+    assert portfolio_review["drilldown_target"] == "portfolio_review"
+
+    portfolio_feed = next(
+        item
+        for item in payload["background_evidence_feed"]
+        if item["item_id"] == "portfolio_alerts"
+    )
+    assert portfolio_feed["status"] == "observed"
+    assert portfolio_feed["source_trace"] == "DecisionDeskSnapshot.portfolio_alerts"
+    assert "1 alert rows" in portfolio_feed["summary"]
+
+    portfolio_actions = [
+        item
+        for item in payload["action_items"]
+        if item["code"] == "2330"
+    ]
+    assert len(portfolio_actions) == 1
+    portfolio_action = portfolio_actions[0]
+    assert portfolio_action["source_type"] == "portfolio_alert"
+    assert portfolio_action["summary"] == "檢查 journal 與風險來源。"
+    assert portfolio_action["source_trace"] == (
+        "DecisionDeskSnapshot.risk_prompts[1].portfolio_alert"
+    )
+    assert portfolio_action["drilldown_target"] == "portfolio_review"
+    assert portfolio_action["degraded_reason"] == "持倉警示需要人工覆盤。"
+    assert portfolio_action["write_intent"] is False
     assert {item["item_id"] for item in payload["background_evidence_feed"]} == {
         "daily_decision_snapshot",
         "evidence_review_readiness",

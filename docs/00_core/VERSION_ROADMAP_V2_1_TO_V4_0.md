@@ -267,6 +267,8 @@ V4.0 仍不代表：
   accumulation 並行；V6 的 user-level evidence-driven personalization 則需在 V5 的
   decision／outcome continuity 上另建治理，兩者都不授權 broker 或自動交易。
 
+2026-09-21 的「V5日常操作與可讀性工程」是上述 handoff 的 bounded engineering evidence：首頁、工作區分層、候選／報告／持倉摘要、推薦／回測進階入口、按需圖表與白話錯誤已完成 frozen review；after perf 僅是小型隔離 fixture 的比較，整合 route 已以 `299 passed` 完成，pytest cache permission warning 另列。它不新增版本 maturity、不關閉 V4.0、不授予 formal／natural evidence，也不把 V6 personal sample 或 learning 效果視為完成。
+
 本次下一工程順序為：1. **L official taxonomy source chain**（C bounded canonical runner／training
 lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已由 `0219d709` 驗收；
 P1 receipt 的 training／inference source／PIT hash 分離、shared schema／transform compatibility、

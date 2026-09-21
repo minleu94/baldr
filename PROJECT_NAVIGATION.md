@@ -4,6 +4,7 @@
 **最後更新**：2026-09-12
 
 本輪請先看 [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)、[V4.1 歷史方法包 QA](docs/06_qa/V4_1_HISTORICAL_METHOD_PACK_2026_09_12.md)、[Luna整合驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)及[工作區檔案說明](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)。個股研究入口由持倉／觀察清單共用，操作與限制以 [Manual](docs/07_guides/APPLICATION_MANUAL.md) 為準。
+2026-09-21 V5 日常操作與可讀性工程入口：先從「決策工作台」的每日優先摘要開始；日常使用、進階研究、系統維護的分層與個股研究報告按需 tab 由 [UI Features](docs/02_features/UI_FEATURES_DOCUMENTATION.md) 和 [V5 acceptance evidence](docs/06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md) 對照。這是 bounded 工程進度，不取代 Snapshot／Product／6M／Version scoped authority。
 **目標讀者**：專案開發者、新加入工程師
 
 ---

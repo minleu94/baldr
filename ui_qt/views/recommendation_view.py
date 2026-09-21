@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QGroupBox, QProgressBar,
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
     QComboBox, QMessageBox, QSplitter, QScrollArea,
-    QMenu, QDialog, QInputDialog
+    QMenu, QDialog, QInputDialog, QToolButton
 )
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
@@ -353,7 +353,8 @@ class RecommendationView(QWidget):
         splitter.addWidget(result_panel)
 
         # 設置分割器比例（左側40%，右側60%）
-        splitter.setSizes([200, 800])
+        # 日常模式需要同時看見策略選擇與主要執行動作；窄版仍由 responsive flow 改為上下排列。
+        splitter.setSizes([420, 900])
 
         main_layout.addWidget(splitter)
 
@@ -448,12 +449,53 @@ class RecommendationView(QWidget):
         title_layout.addWidget(self.mode_btn)
         layout.addLayout(title_layout)
 
+        self.guided_steps_label = QLabel(
+            "使用順序：1 選策略風格 → 2 確認資料日期與假設 → "
+            "3 執行 → 4 判讀結果與風險 → 5 保存或加入觀察清單"
+        )
+        self.guided_steps_label.setWordWrap(True)
+        self.guided_steps_label.setAccessibleName("推薦分析使用順序")
+        self.guided_steps_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 7px; font-size: 12px;"
+        )
+        layout.addWidget(self.guided_steps_label)
+
         # 市場狀態顯示
         regime_group = QGroupBox("市場狀態")
         regime_layout = QVBoxLayout()
         self.regime_label = QLabel("檢測中...")
         self.regime_label.setWordWrap(True)
+        self.regime_label.setVisible(False)
+        self.regime_label.setStyleSheet("font-size: 12px;")
+        self.regime_summary_label = QLabel("市場狀態：檢測中；判讀日期：待確認。")
+        self.regime_summary_label.setWordWrap(True)
+        self.regime_summary_label.setAccessibleName("市場狀態白話摘要")
+        self.regime_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 12px;"
+        )
+        regime_layout.addWidget(self.regime_summary_label)
+        self.regime_details_toggle = QToolButton()
+        self.regime_details_toggle.setText("查看市場狀態詳情")
+        self.regime_details_toggle.setCheckable(True)
+        self.regime_details_toggle.setAccessibleName("展開市場狀態詳情")
+        self.regime_details_toggle.setToolTip(
+            "展開信心、分數、來源與限制；不會重新判讀市場或改變策略設定。"
+        )
+        self.regime_details_toggle.toggled.connect(self._toggle_regime_details)
+        regime_layout.addWidget(self.regime_details_toggle)
         regime_layout.addWidget(self.regime_label)
+        self.data_assumption_label = QLabel(
+            "資料摘要：價格／指標更新日期以推薦執行結果為準；若不足，結果會明示原因與可做動作。"
+        )
+        self.data_assumption_label.setWordWrap(True)
+        self.data_assumption_label.setAccessibleName("推薦分析資料與假設摘要")
+        self.data_assumption_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
+        regime_layout.addWidget(self.data_assumption_label)
         regime_group.setLayout(regime_layout)
         layout.addWidget(regime_group)
 
@@ -467,7 +509,7 @@ class RecommendationView(QWidget):
             f"color: {MIDNIGHT_ANALYST.text_secondary}; "
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
             f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; "
-            "padding: 8px; font-size: 11px; line-height: 140%;"
+            "padding: 8px; font-size: 12px; line-height: 140%;"
         )
         suggestion_layout.addWidget(self.regime_suggestion_label)
 
@@ -479,18 +521,48 @@ class RecommendationView(QWidget):
 
         self.regime_suggestion_group.setLayout(suggestion_layout)
         self.regime_suggestion_group.setVisible(False)  # 初始隱藏，等待 Regime 檢測
-        layout.addWidget(self.regime_suggestion_group)
 
         # 保存建議的 Profile ID（用於一鍵套用）
         self.suggested_profile_id: Optional[str] = None
 
         # 新手模式：Profile 選擇（只在新手模式顯示）
-        self.profile_group = QGroupBox("選擇策略風格（Profile）")
+        self.profile_group = QGroupBox("1. 選擇策略風格（Profile）")
         profile_layout = QVBoxLayout()
+        self.profile_purpose_label = QLabel(
+            "先選一種研究目的即可開始：不同風格會帶入既有的指標、篩選與風險假設。"
+            "不確定時可先選與目前市場狀態相符的建議。"
+        )
+        self.profile_purpose_label.setWordWrap(True)
+        self.profile_purpose_label.setAccessibleName("策略風格用途說明")
+        self.profile_purpose_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
+        profile_layout.addWidget(self.profile_purpose_label)
         self.profile_combo = QComboBox()
         self._populate_profile_combo()
         self.profile_combo.currentIndexChanged.connect(self._on_profile_selected)
         profile_layout.addWidget(self.profile_combo)
+
+        self.profile_details_toggle = QToolButton()
+        self.profile_details_toggle.setText("查看策略依據與詳細設定說明")
+        self.profile_details_toggle.setCheckable(True)
+        self.profile_details_toggle.setAccessibleName("展開策略依據與詳細設定說明")
+        self.profile_details_toggle.setToolTip(
+            "只展開說明，不會切換研究模式，也不會套用或重設任何設定。"
+        )
+        self.profile_details_toggle.toggled.connect(self._toggle_profile_details)
+        profile_layout.addWidget(self.profile_details_toggle)
+
+        self.profile_summary_label = QLabel(
+            "尚未選擇策略風格；請先選擇 Profile，再執行推薦分析。"
+        )
+        self.profile_summary_label.setWordWrap(True)
+        self.profile_summary_label.setAccessibleName("策略風格白話摘要")
+        self.profile_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; padding: 7px; font-size: 12px;"
+        )
+        profile_layout.addWidget(self.profile_summary_label)
 
         self.save_custom_profile_btn = QPushButton("保存目前設定為自訂 Profile")
         self.save_custom_profile_btn.clicked.connect(self._on_save_custom_profile_clicked)
@@ -509,11 +581,49 @@ class RecommendationView(QWidget):
                 line-height: 1.4;
             }
         """)
+        # 保留原始完整說明文字供相容測試與進階檢視；日常畫面由白話摘要取代。
+        self.profile_desc_label.setVisible(False)
         profile_layout.addWidget(self.profile_desc_label)
         self.profile_group.setLayout(profile_layout)
         layout.addWidget(self.profile_group)
 
+        # 建議內容屬於可追溯研究資訊；預設只留入口，避免把主要執行動作推到首屏之外。
+        self.execute_btn = QPushButton("執行推薦分析")
+        self.execute_btn.setMinimumHeight(40)
+        self.execute_btn.setProperty("variant", "primary")
+        self.execute_btn.clicked.connect(self._execute_recommendation)
+        self.execute_btn.setAccessibleName("主要執行推薦分析")
+        layout.addWidget(self.execute_btn)
+
+        self.regime_suggestion_toggle = QToolButton()
+        self.regime_suggestion_toggle.setText("查看策略建議")
+        self.regime_suggestion_toggle.setCheckable(True)
+        self.regime_suggestion_toggle.setAccessibleName("展開策略建議")
+        self.regime_suggestion_toggle.setToolTip(
+            "展開目前市場狀態對應的研究建議；不會自動套用 Profile。"
+        )
+        self.regime_suggestion_toggle.toggled.connect(self._toggle_regime_suggestion)
+        self.regime_suggestion_toggle.setVisible(False)
+        layout.addWidget(self.regime_suggestion_toggle)
+        layout.addWidget(self.regime_suggestion_group)
+
+        self.profile_advanced_group = QGroupBox("進階：Profile 與策略技術細節")
+        profile_advanced_layout = QVBoxLayout()
+        self.profile_advanced_label = QLabel(
+            "選擇 Profile 後，這裡會顯示完整來源狀態、適用 Regime、權重與篩選條件。"
+        )
+        self.profile_advanced_label.setWordWrap(True)
+        self.profile_advanced_label.setTextFormat(Qt.RichText)
+        self.profile_advanced_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.profile_advanced_label.setAccessibleName("Profile 進階技術細節")
+        self.profile_advanced_label.setStyleSheet("font-size: 12px;")
+        profile_advanced_layout.addWidget(self.profile_advanced_label)
+        self.profile_advanced_group.setLayout(profile_advanced_layout)
+        self.profile_advanced_group.setVisible(False)
+        layout.addWidget(self.profile_advanced_group)
+
         # 策略傾向提示區（新增）
+        # 保留既有標題，讓舊導覽與測試仍能以原名稱找到這個區塊。
         self.strategy_tendency_group = QGroupBox("目前策略傾向摘要")
         strategy_tendency_layout = QVBoxLayout()
         self.strategy_tendency_label = QLabel("請選擇技術指標和圖形模式")
@@ -914,13 +1024,6 @@ class RecommendationView(QWidget):
         self.threshold_mode_combo.currentIndexChanged.connect(self._on_threshold_mode_changed)
         self._on_threshold_mode_changed(0)
 
-        # 執行按鈕
-        self.execute_btn = QPushButton("執行推薦分析")
-        self.execute_btn.setMinimumHeight(40)
-        self.execute_btn.setProperty("variant", "primary")
-        self.execute_btn.clicked.connect(self._execute_recommendation)
-        layout.addWidget(self.execute_btn)
-
         # 合作式取消：只送出取消請求，讓背景工作自行收尾並釋放資源。
         self.cancel_execution_btn = QPushButton("取消分析")
         self.cancel_execution_btn.setVisible(False)
@@ -964,6 +1067,29 @@ class RecommendationView(QWidget):
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
 
+        context_header = QHBoxLayout()
+        self.research_context_summary_label = QLabel(
+            "判讀前確認：尚未執行推薦分析；執行後會先顯示資料日期、結果數量與限制。"
+        )
+        self.research_context_summary_label.setWordWrap(True)
+        self.research_context_summary_label.setAccessibleName("推薦分析資料摘要")
+        self.research_context_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; padding: 7px; font-size: 12px;"
+        )
+        context_header.addWidget(self.research_context_summary_label, stretch=1)
+        self.research_context_toggle = QToolButton()
+        self.research_context_toggle.setText("查看資料與來源細節")
+        self.research_context_toggle.setCheckable(True)
+        self.research_context_toggle.setAccessibleName("顯示推薦分析研究上下文細節")
+        self.research_context_toggle.setToolTip(
+            "需要追溯時查看 Profile、來源、結果識別碼與資料日期；不會重新執行分析。"
+        )
+        self.research_context_toggle.toggled.connect(self._toggle_research_context)
+        context_header.addWidget(self.research_context_toggle)
+        layout.addLayout(context_header)
+
         self.research_context_label = QLabel(
             "研究上下文：尚未執行；選取結果後顯示標的、區間、決策日、資料日、來源與 Profile。"
         )
@@ -976,12 +1102,13 @@ class RecommendationView(QWidget):
             f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; "
             f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 8px;"
         )
+        self.research_context_label.setVisible(False)
         layout.addWidget(self.research_context_label)
 
         # 標題和控制欄
         title_layout = QHBoxLayout()
         self.result_title_layout = title_layout
-        title = QLabel("推薦結果")
+        title = QLabel("4. 推薦結果與風險判讀")
         title_font = QFont()
         title_font.setPointSize(12)
         title_font.setBold(True)
@@ -1011,12 +1138,30 @@ class RecommendationView(QWidget):
         self.stock_research_btn.clicked.connect(self._open_selected_stock_research)
         title_layout.addWidget(self.stock_research_btn)
 
+        # 研究與匯出不是日常第一步，但保留所有既有動作並集中到可展開區。
+        self.research_actions_toggle = QToolButton()
+        self.research_actions_toggle.setText("研究與匯出")
+        self.research_actions_toggle.setCheckable(True)
+        self.research_actions_toggle.setAccessibleName("展開推薦研究與匯出動作")
+        self.research_actions_toggle.setToolTip(
+            "展開批次回測、推薦回放與 Excel 匯出；這些動作不會改寫目前推薦結果。"
+        )
+        self.research_actions_toggle.toggled.connect(self._toggle_research_actions)
+        self.research_actions_toggle.setVisible(False)
+        title_layout.addWidget(self.research_actions_toggle)
+        self.research_actions_widget = QWidget()
+        self.research_actions_layout = QHBoxLayout(self.research_actions_widget)
+        self.research_actions_layout.setContentsMargins(0, 0, 0, 0)
+        self.research_actions_layout.setSpacing(6)
+        self.research_actions_widget.setVisible(False)
+        title_layout.addWidget(self.research_actions_widget)
+
         # 送 Research Lab 批次回測按鈕（Phase 3.3）
         self.send_to_backtest_btn = QPushButton("送 Research Lab 批次回測")
         self.send_to_backtest_btn.setToolTip("使用目前推薦名單建立批次研究輸入；這是回測今日名單，不是重播推薦邏輯。")
         self.send_to_backtest_btn.setVisible(False)  # 初始隱藏
         self.send_to_backtest_btn.clicked.connect(self._send_to_backtest)
-        title_layout.addWidget(self.send_to_backtest_btn)
+        self.research_actions_layout.addWidget(self.send_to_backtest_btn)
 
         self.send_profile_to_portfolio_backtest_btn = QPushButton("送 Research Lab 推薦回放")
         self.send_profile_to_portfolio_backtest_btn.setToolTip(
@@ -1027,15 +1172,26 @@ class RecommendationView(QWidget):
         self.send_profile_to_portfolio_backtest_btn.clicked.connect(
             self._send_profile_to_portfolio_backtest
         )
-        title_layout.addWidget(self.send_profile_to_portfolio_backtest_btn)
+        self.research_actions_layout.addWidget(self.send_profile_to_portfolio_backtest_btn)
 
         # 📊 匯出 Excel 按鈕
         self.export_report_btn = QPushButton("匯出 Excel")
         self.export_report_btn.setVisible(False)
         self.export_report_btn.clicked.connect(self._export_current_recommendation)
-        title_layout.addWidget(self.export_report_btn)
+        self.research_actions_layout.addWidget(self.export_report_btn)
 
         layout.addLayout(title_layout)
+
+        self.result_status_label = QLabel(
+            "結果尚未就緒：執行推薦分析後，先看結果數量、資料品質與風險限制，再決定是否保存或加入觀察。"
+        )
+        self.result_status_label.setWordWrap(True)
+        self.result_status_label.setAccessibleName("推薦分析結果判讀摘要")
+        self.result_status_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; padding: 7px; font-size: 12px;"
+        )
+        layout.addWidget(self.result_status_label)
 
         # 使用分割器來控制表格和詳情的比例
         result_splitter = QSplitter(Qt.Vertical)
@@ -1096,6 +1252,14 @@ class RecommendationView(QWidget):
                 f"資料日期 / 來源：{as_of_date} / {source}"
             )
             self.regime_label.setText(regime_text)
+            self.regime_summary_label.setText(
+                f"市場狀態：{regime_name}；判讀日期：{as_of_date}。"
+                "這是背景參考，執行結果會再列出實際價格／指標日期。"
+            )
+            self.data_assumption_label.setText(
+                "資料摘要：價格／指標更新日期以推薦執行結果為準；"
+                "若不足，結果會明示原因與可做動作。"
+            )
 
             # 更新策略配置中的 regime
             self.strategy_config['regime'] = regime_code
@@ -1118,9 +1282,21 @@ class RecommendationView(QWidget):
                 profile_option = self._get_profile_option(self.current_profile)
                 profile = self.profiles.get(self.current_profile)
                 if profile:
-                    self.profile_desc_label.setText(self._build_profile_description(profile_option, profile))
+                    description = self._build_profile_description(profile_option, profile)
+                    self.profile_desc_label.setText(description)
+                    self.profile_advanced_label.setText(description)
+                    self.profile_summary_label.setText(
+                        self._build_profile_plain_summary(profile_option, profile)
+                    )
         except Exception as e:
             self.regime_label.setText(f"檢測失敗：{str(e)}")
+            self.regime_summary_label.setText(
+                "市場狀態未就緒：目前無法取得判讀；請先檢查資料，再執行推薦分析。"
+            )
+            self.data_assumption_label.setText(
+                "資料摘要未就緒：價格／指標日期將在執行結果中明示；"
+                "若仍不足，請依結果提示處理。"
+            )
 
     def _suggest_profile_for_regime(self, regime: str, confidence: float):
         """顯示 application policy 產生的 Regime Profile 建議。
@@ -1144,15 +1320,15 @@ class RecommendationView(QWidget):
                     suggestion.reason,
                     suggestion.status,
                 )
-                self.regime_suggestion_group.setVisible(True)
+                self._sync_regime_suggestion_visibility()
                 return
-            self.regime_suggestion_group.setVisible(False)
+            self._sync_regime_suggestion_visibility()
             return
 
         suggested_profile = self.profiles.get(suggestion.profile_id)
         if suggested_profile is None:
             self.suggested_profile_id = None
-            self.regime_suggestion_group.setVisible(False)
+            self._sync_regime_suggestion_visibility()
             return
 
         self._update_regime_suggestion(
@@ -1162,7 +1338,7 @@ class RecommendationView(QWidget):
             suggestion.reason,
             suggestion.status,
         )
-        self.regime_suggestion_group.setVisible(True)
+        self._sync_regime_suggestion_visibility()
 
     def _update_regime_suggestion(
         self,
@@ -1352,9 +1528,14 @@ class RecommendationView(QWidget):
             self.filter_group.setVisible(False)
             self.ranking_group.setVisible(False)
             self.strategy_tendency_group.setVisible(False)
+            self.profile_advanced_group.setVisible(
+                self.profile_details_toggle.isChecked()
+            )
+            self.profile_desc_label.setVisible(False)
+            self.profile_summary_label.setVisible(True)
             # Regime 建議在新手模式下顯示
             if hasattr(self, 'regime_suggestion_group'):
-                self.regime_suggestion_group.setVisible(self.suggested_profile_id is not None)
+                self._sync_regime_suggestion_visibility()
         else:
             # 進階模式：隱藏 Profile 選擇，顯示詳細配置
             self.mode_btn.setText("切換至新手模式")
@@ -1364,15 +1545,94 @@ class RecommendationView(QWidget):
             self.filter_group.setVisible(True)
             self.ranking_group.setVisible(True)
             self.strategy_tendency_group.setVisible(True)
+            self.profile_advanced_group.setVisible(
+                self.profile_details_toggle.isChecked()
+            )
+            self.profile_desc_label.setVisible(False)
+            self.profile_summary_label.setVisible(False)
             # Regime 建議在進階模式下也顯示（但一鍵套用按鈕可能不太有用）
             if hasattr(self, 'regime_suggestion_group'):
-                self.regime_suggestion_group.setVisible(self.suggested_profile_id is not None)
+                self._sync_regime_suggestion_visibility()
+
+    def _toggle_profile_details(self, checked: bool) -> None:
+        """只展開 Profile 說明，不切換策略模式或重新套用設定。"""
+
+        details_group = getattr(self, "profile_advanced_group", None)
+        if details_group is not None:
+            details_group.setVisible(bool(checked))
+        toggle = getattr(self, "profile_details_toggle", None)
+        if toggle is not None:
+            toggle.setText(
+                "隱藏策略依據與詳細設定說明"
+                if checked
+                else "查看策略依據與詳細設定說明"
+            )
+
+    def _toggle_regime_details(self, checked: bool) -> None:
+        """只展開市場狀態 technical details，不重新判讀或套用策略。"""
+
+        label = getattr(self, "regime_label", None)
+        if label is not None:
+            label.setVisible(bool(checked))
+        toggle = getattr(self, "regime_details_toggle", None)
+        if toggle is not None:
+            toggle.setText("隱藏市場狀態詳情" if checked else "查看市場狀態詳情")
+
+    def _toggle_regime_suggestion(self, checked: bool) -> None:
+        """展開既有策略建議文字；不自動套用 Profile。"""
+
+        group = getattr(self, "regime_suggestion_group", None)
+        if group is not None:
+            group.setVisible(bool(checked) and self.suggested_profile_id is not None)
+        toggle = getattr(self, "regime_suggestion_toggle", None)
+        if toggle is not None:
+            toggle.setText("隱藏策略建議" if checked else "查看策略建議")
+
+    def _sync_regime_suggestion_visibility(self) -> None:
+        """同步建議入口與內容的 visibility，不改建議資料。"""
+
+        has_suggestion = self.suggested_profile_id is not None
+        toggle = getattr(self, "regime_suggestion_toggle", None)
+        group = getattr(self, "regime_suggestion_group", None)
+        if toggle is not None:
+            toggle.setVisible(has_suggestion)
+        if group is not None:
+            group.setVisible(
+                has_suggestion
+                and bool(toggle is not None and toggle.isChecked())
+            )
+
+    def _toggle_research_context(self, checked: bool) -> None:
+        """展開既有研究 context 細節；不重新抓資料、不重算推薦。"""
+
+        label = getattr(self, "research_context_label", None)
+        if label is not None:
+            label.setVisible(bool(checked))
+        toggle = getattr(self, "research_context_toggle", None)
+        if toggle is not None:
+            toggle.setText("隱藏資料與來源細節" if checked else "查看資料與來源細節")
+
+    def _toggle_research_actions(self, checked: bool) -> None:
+        """展開既有研究與匯出按鈕；動作本身與 handlers 保持不變。"""
+
+        actions_widget = getattr(self, "research_actions_widget", None)
+        if actions_widget is not None:
+            actions_widget.setVisible(bool(checked))
+        toggle = getattr(self, "research_actions_toggle", None)
+        if toggle is not None:
+            toggle.setText("隱藏研究與匯出" if checked else "研究與匯出")
 
     def _on_profile_selected(self, index: int):
         """Profile 選擇改變"""
         profile_id = self.profile_combo.itemData(index)
         if profile_id is None:
             self.profile_desc_label.setText("")
+            self.profile_advanced_label.setText(
+                "尚未選擇 Profile；請回到日常設定選擇研究風格。"
+            )
+            self.profile_summary_label.setText(
+                "尚未選擇策略風格；請先選擇 Profile，再執行推薦分析。"
+            )
             self.current_profile = None
             return
 
@@ -1384,6 +1644,10 @@ class RecommendationView(QWidget):
         self.current_profile = str(profile_id)
         desc_text = self._build_profile_description(profile_option, profile)
         self.profile_desc_label.setText(desc_text)
+        self.profile_advanced_label.setText(desc_text)
+        self.profile_summary_label.setText(
+            self._build_profile_plain_summary(profile_option, profile)
+        )
 
         # 套用 Profile 配置
         self._apply_profile_config(profile)
@@ -1433,6 +1697,25 @@ class RecommendationView(QWidget):
             desc_text += f"  • 適合：{risk_warning.get('suitable_for', '未知')}<br/>"
 
         return desc_text
+
+    def _build_profile_plain_summary(
+        self,
+        profile_option: Optional[RecommendationProfile],
+        profile: Dict[str, Any],
+    ) -> str:
+        """建立日常畫面使用的白話 Profile 摘要，避免把技術欄位當成結論。"""
+
+        name = profile_option.name if profile_option else profile.get("name", "Profile")
+        description = profile_option.description if profile_option else profile.get("description", "")
+        risk_warning = profile.get("risk_warning", {}) or {}
+        holding_period = risk_warning.get("holding_period", "未提供")
+        suitable_for = risk_warning.get("suitable_for", "未提供")
+        return (
+            f"目前選擇：{name}\n"
+            f"用途：{description or '依既有策略設定建立研究候選。'}\n"
+            f"適合：{suitable_for}；預期持有：{holding_period}\n"
+            "下一步：確認資料日期與市場狀態後，再按「執行推薦分析」。"
+        )
 
     def _format_regime_names(self, regimes: List[Optional[str]]) -> str:
         return format_regime_names(regimes)
@@ -1798,6 +2081,13 @@ class RecommendationView(QWidget):
         self.execute_btn.setEnabled(False)
         self.execute_btn.setText("分析中...")
 
+        self.result_status_label.setText(
+            "正在分析：完成後會先顯示結果數量、資料品質與風險限制。"
+        )
+        self.research_actions_toggle.setVisible(False)
+        self.research_actions_toggle.setChecked(False)
+        self.research_actions_widget.setVisible(False)
+
         self._begin_execution_status()
 
         # 顯示進度條
@@ -1973,6 +2263,12 @@ class RecommendationView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(True)
         self.progress_label.setText("分析已安全取消；未套用部分結果。")
+        self.result_status_label.setText(
+            "已取消：沒有套用部分結果。可確認日期或篩選條件後重新執行。"
+        )
+        self.research_actions_toggle.setVisible(False)
+        self.research_actions_toggle.setChecked(False)
+        self.research_actions_widget.setVisible(False)
 
     def _on_recommendation_finished(self, recommendations: List[RecommendationDTO]):
         """推薦分析完成"""
@@ -2005,7 +2301,18 @@ class RecommendationView(QWidget):
             if hasattr(self, "stock_research_btn"):
                 self.stock_research_btn.setVisible(False)
                 self.stock_research_btn.setEnabled(False)
-            QMessageBox.information(self, "分析完成", "沒有找到符合條件的推薦股票")
+            self.result_status_label.setText(
+                "結果未就緒：目前沒有符合條件的股票。可放寬篩選條件或確認資料日期後再試；"
+                "沒有結果不等於策略有效或失效。"
+            )
+            self.research_actions_toggle.setVisible(False)
+            self.research_actions_toggle.setChecked(False)
+            self.research_actions_widget.setVisible(False)
+            QMessageBox.information(
+                self,
+                "分析完成",
+                "目前沒有符合條件的股票。請確認資料日期或調整篩選條件後再試。",
+            )
             return
 
         # 轉換為 DataFrame
@@ -2033,6 +2340,10 @@ class RecommendationView(QWidget):
         # 顯示統計信息
         self.progress_label.setText(f"找到 {len(recommendations)} 支推薦股票")
         self.progress_label.setVisible(True)
+        self.result_status_label.setText(
+            f"找到 {len(recommendations)} 檔候選。先看表格與選取列的理由／風險；"
+            "資料不足時請依提示處理。完成判讀後可保存結果或加入觀察清單。"
+        )
 
         # 顯示按鈕
         if self.watchlist_service:
@@ -2045,6 +2356,9 @@ class RecommendationView(QWidget):
         self.export_report_btn.setVisible(True)
         self.stock_research_btn.setVisible(True)
         self.stock_research_btn.setEnabled(False)
+        self.research_actions_toggle.setVisible(True)
+        self.research_actions_toggle.setChecked(False)
+        self.research_actions_widget.setVisible(False)
 
     def _on_recommendation_error(self, error_msg: str):
         """推薦分析出錯"""
@@ -2061,6 +2375,14 @@ class RecommendationView(QWidget):
         # 隱藏進度條
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
+
+        self.result_status_label.setText(
+            "分析未完成：沒有套用部分結果。請檢查資料日期、標的與篩選條件後再試；"
+            "完整錯誤可在詳細資訊中查看。"
+        )
+        self.research_actions_toggle.setVisible(False)
+        self.research_actions_toggle.setChecked(False)
+        self.research_actions_widget.setVisible(False)
 
         # 判斷是否為 UniverseTooSmall 錯誤
         if "eligible universe too small" in error_msg:
@@ -2083,17 +2405,20 @@ class RecommendationView(QWidget):
             except Exception as e:
                 print(f"[RecommendationView] 解析 UniverseTooSmall 錯誤訊息失敗: {e}")
 
-        # 顯示錯誤（如果錯誤信息太長，截取前500字符）
+        # 將白話原因放在主訊息，保留原始例外於 QMessageBox detailedText。
         display_msg = error_msg[:500] + "..." if len(error_msg) > 500 else error_msg
-        QMessageBox.critical(
-            self,
-            "分析失敗",
-            f"推薦分析失敗：\n\n{display_msg}\n\n"
-            f"請檢查：\n"
-            f"1. 數據文件是否存在且格式正確\n"
-            f"2. 技術指標計算所需的欄位是否完整\n"
-            f"3. 查看日誌文件獲取詳細錯誤信息"
+        error_box = QMessageBox(self)
+        error_box.setIcon(QMessageBox.Critical)
+        error_box.setWindowTitle("推薦分析未完成")
+        error_box.setText(
+            "推薦分析沒有完成，因此沒有套用部分結果。\n"
+            f"目前可見原因：{display_msg}"
         )
+        error_box.setInformativeText(
+            "請檢查資料日期、標的與必要欄位後再試；完整技術細節請展開「詳細資訊」。"
+        )
+        error_box.setDetailedText(str(error_msg))
+        error_box.exec()
 
     def _send_to_backtest(self):
         """送 Research Lab 批次回測（Profile → Backtest）（Phase 3.3）"""
@@ -2595,6 +2920,22 @@ class RecommendationView(QWidget):
         profile_label = profile.display_label if profile is not None else profile_id
         source = _context_value("source_label", "source_id", "source_kind")
         result_id = str(getattr(self, "current_result_id", "") or "") or "目前未保存"
+        summary_label = getattr(self, "research_context_summary_label", None)
+        if summary_label is not None:
+            if data_date == "未提供":
+                data_summary = "價格／指標更新日期：未提供"
+            else:
+                data_summary = f"價格／指標更新至：{data_date}"
+            recommendations = getattr(self, "current_recommendations", None)
+            result_count = len(recommendations) if recommendations else 0
+            if result_count:
+                result_summary = f"候選結果：{result_count} 檔；請先看理由與風險限制"
+            else:
+                result_summary = "候選結果：尚未產生"
+            summary_label.setText(
+                f"判讀前確認：{data_summary}；{result_summary}。"
+                "日期不足時會明示原因與可做動作。"
+            )
         label.setText(
             "研究上下文\n"
             f"標的：{selected}｜區間：{interval}\n"

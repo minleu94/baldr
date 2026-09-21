@@ -19,6 +19,7 @@ WORKBENCH_LEGACY_DRILLDOWN_TARGETS: dict[str, str] = {
     "evidence_review": "evidence_review",
     "evidence_mode": "evidence_review",
     "portfolio_review": "portfolio",
+    "watchlist": "watchlist",
 }
 
 

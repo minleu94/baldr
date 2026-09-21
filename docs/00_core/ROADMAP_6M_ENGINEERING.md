@@ -549,6 +549,10 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
 | 成本／排程 | **bounded guard／受控 retry 已驗收**（`086ba60c`／`0aaf0dff`） | 臺銀 `estimated_research_only` 可供研究；首次 05:50 natural run 以 `failed_dependency` 結束，root guard 已修復，受控 retry 為 `completed_waiting_natural_maturity`、natural sample `0`，不等於自然成熟或 observed cost。 |
 | Decision → Outcome／Increment A/B/C | **工程驗收**（`53b456a0`／`ffb66c6f`／`5339230f`／`7e029933`／`9a9e778b` + R1 QA） | 唯讀 journey、exact identity、append-only storage、`7e029933` 的跨程序 writer／reader readback、`9a9e778b` 的 `MainWindow DeferredDelete`／busy 單次 close／實際 OS exit `0`、Continuity Review Workbench R1 與 Position Health read model 可核對；完整跨頁一致性及推薦／決策／outcome 追溯整合仍待驗收。 |
 
+#### 2026-09-21 V5 日常操作與可讀性工程 bounded update
+
+工作台、候選／研究／持倉、推薦／回測與主導覽的 content-first／進階分層／錯誤導引已完成 frozen visual review；個股報告的價格 tab 改為按需建立，缺 OHLC 時保留 close fallback。QA 以 30-row isolated fixture、2 repeats、8 個建構 workspace 與 7 次指定切頁保存 before／after；這是工程量測，不外推 production dataset。mandatory UI QA、全域 mypy、py_compile、manifest 與 `299 passed` 精選整合結果已保存，pytest cache permission warning 另列；本 update 仍不關閉 formal Gate、natural evidence、cross-page full integration 或 V6 personalization。
+
 已驗收的內容優先、每日 evidence、typed verifier 與 A storage slice 不必等待 V4 formal
 closeout；這些是接下來施工的已驗收基礎：
 

@@ -207,8 +207,27 @@ def test_decision_desk_view_refresh_calls_builder_and_renders_snapshot():
     view = rendered_view(builder, as_of_date=target_date)
 
     assert builder.calls == [target_date]
-    assert "整體品質" in view.overall_status_label.text()
-    assert "觀察到" in view.overall_status_label.text()
+    assert view.overall_status_label.text() == "摘要已載入"
+    assert "2026-06-15" in view.generated_at_label.text()
+
+
+def test_decision_desk_explains_watchlist_changes_and_missing_previous_score():
+    app()
+    snapshot = _snapshot()
+    snapshot = replace(snapshot, watchlist_triggers=replace(
+        snapshot.watchlist_triggers,
+        trigger_count=2,
+        triggered_codes=("2330", "2603"),
+        top_signal="new=2330;down=2603",
+        warnings=("watchlist_trigger_previous_unknown:2330",),
+    ))
+    view = rendered_view(FakeBuilder(snapshot))
+    text = view.watchlist_triggers_value.text()
+    assert "2330：目前分數達觀察門檻，但缺前次分數" in text
+    assert "2603：分數較前次下降" in text
+    assert "資料日：2026-06-15" in text
+    assert "查看選中個股研究報告" in text
+    view.close()
 
 
 def test_decision_desk_view_renders_answer_first_dashboard():
@@ -342,7 +361,7 @@ def test_decision_desk_view_shows_degraded_status():
     )
     view = rendered_view(FakeBuilder(s))
 
-    assert "降級" in view.overall_status_label.text()
+    assert view.overall_status_label.text() == "摘要已載入"
     assert "降級" in view.market_breadth_status.text()
     assert "降級" in view._status_badges[view.market_breadth_status].text()
 
@@ -356,9 +375,10 @@ def test_decision_desk_view_shows_missing_status():
     )
     view = rendered_view(FakeBuilder(s))
 
-    assert "缺漏" in view.overall_status_label.text()
+    assert view.overall_status_label.text() == "摘要已載入"
     assert "缺漏" in view.market_regime_status.text()
     assert "缺漏" in view._status_badges[view.market_regime_status].text()
+    assert "資料可見性：缺漏" in view.overall_warn_label.toPlainText()
 
 
 def test_decision_desk_view_aggregates_warning_lines_and_refresh_button():
@@ -412,7 +432,7 @@ def test_decision_desk_view_fallback_to_degraded_if_builder_exception():
     app()
     view = rendered_view(FailingBuilder())
 
-    assert "降級" in view.overall_status_label.text()
+    assert "載入失敗" in view.overall_status_label.text()
     assert "snapshot_error" in view.overall_warn_label.toPlainText()
 
 

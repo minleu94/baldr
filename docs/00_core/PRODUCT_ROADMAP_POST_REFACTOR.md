@@ -365,6 +365,10 @@ V5 是把已驗收的 content-first daily conclusion、候選／持倉、market�
 既有每日 shadow policy 內的 candidate adoption／rollback 仍可自動執行，不能跨到正式
 Recommendation／Portfolio 或 broker。
 
+#### 2026-09-21 V5 日常操作與可讀性工程 handoff
+
+本輪完成一個 bounded UI engineering slice：首頁先呈現每日重點與下一步，候選／研究報告／持倉提供原因、資料日、來源與進階入口，左側導覽分成日常／進階研究／系統維護，研究報告深頁按需繪製並保留缺值 fallback。這些是既有唯讀資料的可用性整理與 frozen QA evidence，不改 Advice Policy、推薦保存／delivery ACK／Journal context、Portfolio allocation、scheduler 或正式資料寫入。精選 integration 已以 `299 passed` 完成，pytest cache permission warning 另列；跨頁一致性、推薦／決策／outcome 完整追溯、formal evidence 與 V6 user-level personalization 仍是本節原定後續 Gate。
+
 #### V6 evidence-driven personalization
 
 V6 的 contract、population baseline、歷史回放、離線 learning／calibration、negative evidence、

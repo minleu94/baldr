@@ -20,7 +20,7 @@ WORKSPACE_DEFINITIONS = (
     WorkspaceDefinition("watchlist", "觀察清單", "bookmark"),
     WorkspaceDefinition("portfolio", "持倉管理", "briefcase"),
     WorkspaceDefinition("update", "數據更新", "database-sync"),
-    WorkspaceDefinition("runtime", "Runtime", "pulse"),
+    WorkspaceDefinition("runtime", "系統狀態", "pulse"),
 )
 
 
@@ -36,6 +36,7 @@ WORKSPACE_ALIASES = {
     "數據更新": "update",
     "Runtime": "runtime",
     "Runtime Observatory": "runtime",
+    "系統狀態": "runtime",
 }
 
 

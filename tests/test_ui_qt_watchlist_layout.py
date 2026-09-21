@@ -93,3 +93,31 @@ def test_watchlist_narrow_layout_switches_to_vertical_without_losing_controls(mo
     assert view.findChild(QGroupBox, "watchlistUniversePanel") is not None
     assert view.findChild(QGroupBox, "watchlistOpsGroup") is not None
     view.close()
+
+
+def test_candidate_table_hides_raw_identity_but_keeps_exact_source_after_sort(monkeypatch, tmp_path):
+    _app()
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.UniverseService",
+        lambda _config: SimpleNamespace(list_watchlists=lambda: []),
+    )
+    identity = {"result_id": "original-result", "stock_code": "2330"}
+    service = MagicMock()
+    service.get_stocks.return_value = [
+        {"stock_code": "2330", "stock_name": "台積電", "decision_identity": identity},
+        {"stock_code": "2603", "stock_name": "長榮"},
+        {"stock_code": "2317", "stock_name": "鴻海", "decision_identity": identity},
+    ]
+    view = WatchlistView(service, config=SimpleNamespace(output_root=tmp_path))
+    view._load_watchlist()
+    model = view.stocks_model
+    headers = [model.headerData(i, Qt.Horizontal) for i in range(model.columnCount())]
+    assert "decision_identity" not in headers
+    assert "推薦來源" in headers
+    model.sort(headers.index("證券代號"), Qt.AscendingOrder)
+    frame = model.getDataFrame()
+    assert list(frame["推薦來源"]) == ["來源不一致，需核對", "已連結原推薦", "未連結原推薦"]
+    assert frame.iloc[1]["decision_identity"] == identity
+    assert view._row_decision_identity(frame.iloc[1], "2330").result_id == "original-result"
+    assert "不是評分或買賣訊號" in view.source_link_hint.text()
+    view.close()

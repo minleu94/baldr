@@ -42,6 +42,7 @@ from app_module.research_session import (
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 
 
 class WatchlistView(QWidget):
@@ -197,6 +198,21 @@ class WatchlistView(QWidget):
         self.candidate_hint = candidate_hint
         candidate_layout.addWidget(candidate_hint)
 
+        self.source_link_hint = QLabel(
+            "「推薦來源」用來找回當時的推薦理由與後續結果，不是評分或買賣訊號。"
+            "未連結時可選取股票後按「選擇原推薦來源」；來源不一致時請先核對原推薦。"
+        )
+        self.source_link_hint.setWordWrap(True)
+        self.source_link_hint.setProperty("role", "muted")
+        candidate_layout.addWidget(self.source_link_hint)
+
+        self.watchlist_focus_summary = V5ResearchSummary("目前候選池重點")
+        self.watchlist_focus_summary.setAccessibleName("候選池日常摘要")
+        self.watchlist_focus_summary.setToolTip(
+            "先看候選池狀態、來源可追溯性與下一步；完整研究內容由進階入口開啟。"
+        )
+        candidate_layout.addWidget(self.watchlist_focus_summary)
+
         # 操作區留在候選池內，讓使用者不必在三個區塊間來回尋找。
         watchlist_ops_group = QGroupBox("候選池操作")
         watchlist_ops_group.setObjectName("watchlistOpsGroup")
@@ -239,7 +255,7 @@ class WatchlistView(QWidget):
         self.stocks_table.setSelectionBehavior(QTableView.SelectRows)
         self.stocks_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.stocks_table.setSortingEnabled(True)
-        self.stocks_table.setMinimumHeight(180)
+        self.stocks_table.setMinimumHeight(90)
         self.stocks_table.horizontalHeader().setStretchLastSection(True)
         self.stocks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.stocks_table.setFocusPolicy(Qt.StrongFocus)
@@ -265,6 +281,7 @@ class WatchlistView(QWidget):
         analysis_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         analysis_group.setFixedHeight(142)
         self.analysis_group = analysis_group
+        self.analysis_group.setVisible(False)
         analysis_layout = QVBoxLayout(analysis_group)
         analysis_layout.setSpacing(6)
         analysis_layout.setContentsMargins(8, 10, 8, 8)
@@ -276,7 +293,7 @@ class WatchlistView(QWidget):
         analysis_header_layout.addStretch()
 
         self.stock_analysis_btn = QPushButton("查看選中個股研究報告")
-        self.stock_analysis_btn.setProperty("variant", "secondary")
+        self.stock_analysis_btn.setProperty("variant", "primary")
         self.stock_analysis_btn.setAccessibleName("查看選中個股研究報告")
         self.stock_analysis_btn.setToolTip(
             "選取一檔股票後開啟同一份個股研究報告；也可雙擊或從右鍵選單開啟。"
@@ -284,8 +301,8 @@ class WatchlistView(QWidget):
         # 舊的 stockAnalysisRequested signal 保留給獨立嵌入頁與既有測試；
         # MainWindow 以 stockResearchRequested 作為唯一正式報告入口。
         self.stock_research_btn = self.stock_analysis_btn
+        self.stock_analysis_btn.setEnabled(False)
         self.stock_analysis_btn.clicked.connect(self._open_stock_analysis)
-        analysis_header_layout.addWidget(self.stock_analysis_btn)
         self.choose_source_btn = QPushButton("選擇原推薦來源")
         self.choose_source_btn.setProperty("variant", "secondary")
         self.choose_source_btn.setAccessibleName("選擇原推薦來源")
@@ -294,7 +311,6 @@ class WatchlistView(QWidget):
         )
         self.choose_source_btn.setVisible(False)
         self.choose_source_btn.clicked.connect(self._choose_recommendation_source)
-        analysis_header_layout.addWidget(self.choose_source_btn)
         analysis_layout.addLayout(analysis_header_layout)
 
         self.analysis_context_label = QLabel(
@@ -318,28 +334,50 @@ class WatchlistView(QWidget):
         next_actions_group = QGroupBox("下一步")
         next_actions_group.setObjectName("watchlistNextActions")
         next_actions_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        next_actions_group.setFixedHeight(64)
+        # 兩排按鈕各自需要 44px 高度，另保留 layout spacing、上下 margin
+        # 與 QGroupBox 標題空間；不足時第二排會覆蓋第一排。
+        next_actions_group.setFixedHeight(124)
         self.next_actions_group = next_actions_group
-        next_actions_layout = QHBoxLayout(next_actions_group)
-        next_actions_layout.setSpacing(8)
+        next_actions_layout = QVBoxLayout(next_actions_group)
+        next_actions_layout.setSpacing(4)
         next_actions_layout.setContentsMargins(8, 8, 8, 8)
         self.next_actions_hint = QLabel("研究候選池，或保存成可重用的選股清單。")
         self.next_actions_hint.setProperty("role", "muted")
-        next_actions_layout.addWidget(self.next_actions_hint)
-        next_actions_layout.addStretch()
+        self.next_actions_hint.setVisible(False)
+        research_actions_layout = QHBoxLayout()
+        research_actions_layout.setSpacing(8)
+        research_actions_layout.addWidget(self.stock_analysis_btn)
+        research_actions_layout.addWidget(self.choose_source_btn)
+        research_actions_layout.addStretch()
+        batch_actions_layout = QHBoxLayout()
+        batch_actions_layout.setSpacing(8)
 
         self.send_to_research_lab_btn = QPushButton("送 Research Lab 批次回測")
-        self.send_to_research_lab_btn.setProperty("variant", "primary")
+        self.send_to_research_lab_btn.setProperty("variant", "secondary")
         self.send_to_research_lab_btn.setEnabled(False)
         self.send_to_research_lab_btn.setToolTip("候選池目前沒有股票，加入股票後即可送 Research Lab 批次回測。")
         self.send_to_research_lab_btn.clicked.connect(self._send_to_research_lab)
-        next_actions_layout.addWidget(self.send_to_research_lab_btn)
+        batch_actions_layout.addWidget(self.send_to_research_lab_btn)
 
         self.save_to_universe_btn = QPushButton("保存為選股清單")
         self.save_to_universe_btn.setProperty("variant", "secondary")
         self.save_to_universe_btn.setToolTip("將目前候選池作為批次股票回測的輸入。")
         self.save_to_universe_btn.clicked.connect(self._save_watchlist_to_universe)
-        next_actions_layout.addWidget(self.save_to_universe_btn)
+        batch_actions_layout.addWidget(self.save_to_universe_btn)
+        self.toggle_advanced_research_btn = QPushButton("顯示進階研究")
+        self.toggle_advanced_research_btn.setProperty("variant", "ghost")
+        self.toggle_advanced_research_btn.setAccessibleName("顯示候選池進階研究")
+        self.toggle_advanced_research_btn.setToolTip(
+            "展開已保存分析、完整共用證據與原推薦來源選擇；不會重新評分。"
+        )
+        self.toggle_advanced_research_btn.setCheckable(True)
+        self.toggle_advanced_research_btn.toggled.connect(
+            self._toggle_advanced_research
+        )
+        batch_actions_layout.addWidget(self.toggle_advanced_research_btn)
+        batch_actions_layout.addStretch()
+        next_actions_layout.addLayout(research_actions_layout)
+        next_actions_layout.addLayout(batch_actions_layout)
         candidate_layout.addWidget(next_actions_group)
 
         # 數量與狀態分開，讓「有幾檔」不會被「已更新」覆蓋。
@@ -509,9 +547,13 @@ class WatchlistView(QWidget):
             )
             self.watchlist_ops_group.setFixedHeight(64)
             self.stocks_table.setMinimumHeight(76)
-            self.analysis_group.setFixedHeight(118)
-            self.analysis_text.setFixedHeight(56)
-            self.next_actions_group.setFixedHeight(56)
+            advanced_visible = bool(
+                getattr(self, "toggle_advanced_research_btn", None)
+                and self.toggle_advanced_research_btn.isChecked()
+            )
+            self.analysis_group.setFixedHeight(118 if advanced_visible else 0)
+            self.analysis_text.setFixedHeight(56 if advanced_visible else 0)
+            self.next_actions_group.setFixedHeight(116)
             self.universe_list.setMinimumHeight(50)
             self.universe_stock_list.setMinimumHeight(50)
             self.work_title.setVisible(False)
@@ -526,10 +568,14 @@ class WatchlistView(QWidget):
                 [max(720, int(width * 0.68)), max(360, int(width * 0.32))]
             )
             self.watchlist_ops_group.setFixedHeight(64)
-            self.stocks_table.setMinimumHeight(180)
-            self.analysis_group.setFixedHeight(170)
-            self.analysis_text.setFixedHeight(112)
-            self.next_actions_group.setFixedHeight(64)
+            self.stocks_table.setMinimumHeight(90)
+            advanced_visible = bool(
+                getattr(self, "toggle_advanced_research_btn", None)
+                and self.toggle_advanced_research_btn.isChecked()
+            )
+            self.analysis_group.setFixedHeight(170 if advanced_visible else 0)
+            self.analysis_text.setFixedHeight(112 if advanced_visible else 0)
+            self.next_actions_group.setFixedHeight(124)
             self.universe_list.setMinimumHeight(100)
             self.universe_stock_list.setMinimumHeight(100)
             # 外層 QGroupBox 已提供唯一主標題，避免桌面版重複顯示「觀察候選池」。
@@ -567,6 +613,20 @@ class WatchlistView(QWidget):
         if hint is not None:
             hint.setVisible(visible)
 
+    def _toggle_advanced_research(self, expanded: bool) -> None:
+        """顯示／隱藏已保存研究明細，不改變目前選取與來源 binding。"""
+
+        self.analysis_group.setVisible(expanded)
+        if self._watchlist_layout_mode:
+            self.analysis_group.setFixedHeight(118 if expanded else 0)
+            self.analysis_text.setFixedHeight(56 if expanded else 0)
+        else:
+            self.analysis_group.setFixedHeight(170 if expanded else 0)
+            self.analysis_text.setFixedHeight(112 if expanded else 0)
+        self.toggle_advanced_research_btn.setText(
+            "隱藏進階研究" if expanded else "顯示進階研究"
+        )
+
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
         self._apply_responsive_layout()
@@ -574,7 +634,7 @@ class WatchlistView(QWidget):
     @staticmethod
     def _empty_frame() -> pd.DataFrame:
         return pd.DataFrame(
-            columns=["證券代號", "證券名稱", "加入時間", "來源", "備註"]
+            columns=["證券代號", "證券名稱", "加入時間", "來源", "推薦來源", "備註"]
         )
 
     def _set_status_label(self, text: str, *, level: str) -> None:
@@ -585,6 +645,61 @@ class WatchlistView(QWidget):
             style.unpolish(self.status_label)
             style.polish(self.status_label)
         self.status_label.setText(text)
+
+    def _set_watchlist_focus_summary(
+        self,
+        *,
+        count: int | None = None,
+        row: object | None = None,
+        status: str = "",
+        message: str = "",
+    ) -> None:
+        """更新候選池日常摘要；完整分析仍留在進階研究區。"""
+
+        if row is None or not hasattr(row, "get"):
+            total_text = "未知" if count is None else str(count)
+            reasons = [
+                "候選池只保存股票與來源脈絡，不代表已完成推薦判定。",
+                "沒有選取列時，沒有單股證據可引用。",
+            ]
+            if message:
+                reasons[0] = message
+            self.watchlist_focus_summary.set_summary(
+                conclusion=(
+                    f"候選池目前 {total_text} 檔；尚未選取個股。"
+                    if count is not None
+                    else "候選池狀態尚未完成讀取。"
+                ),
+                reasons=reasons,
+                next_step="選取一檔股票查看重點；需要完整理由時開啟進階研究。",
+            )
+            return
+
+        code = str(row.get("證券代號", "") or "").strip()
+        name = str(row.get("證券名稱", "") or "").strip()
+        identity = self._row_decision_identity(row, code)
+        source_status = self._source_link_label(row)
+        result_status = status or "尚未讀取保存分析"
+        message_text = str(message or "").strip()
+        clean_message = message_text.splitlines()[0].strip() if message_text else ""
+        result_reason = f"保存分析：{result_status}"
+        if clean_message:
+            result_reason += f"；{clean_message}"
+        reasons = [f"推薦來源：{source_status}", result_reason]
+        failed = result_status in {"讀取失敗", "不可用", "資料缺漏"} or "失敗" in result_status
+        self.watchlist_focus_summary.set_summary(
+            conclusion=f"已選取 {code} {name}；目前只做研究整理。",
+            reasons=reasons,
+            next_step=(
+                "先核對原推薦來源，再開啟完整個股研究報告。"
+                if not identity.is_linked and not failed
+                else (
+                    "先再試一次；仍失敗時開啟進階研究查看詳細原因。"
+                    if failed
+                    else "開啟完整個股研究報告，確認資料日與主要風險。"
+                )
+            ),
+        )
 
     def _refresh_storage_status(self) -> None:
         """呈現目前 writer；不在 UI 啟動時建立或遷移資料庫。"""
@@ -651,7 +766,9 @@ class WatchlistView(QWidget):
     def _load_watchlist(self):
         """載入觀察清單"""
         self._analysis_request_id += 1
+        self.stock_analysis_btn.setEnabled(False)
         self._set_source_choice_state(None)
+        self._set_watchlist_focus_summary(message="載入中")
         self.analysis_text.clear()
         self.analysis_context_label.setText(
             "狀態：載入中｜決策日：未知｜資料日：未知｜來源：讀取候選池"
@@ -681,6 +798,10 @@ class WatchlistView(QWidget):
                 # 格式化時間
                 if '加入時間' in df.columns:
                     df['加入時間'] = pd.to_datetime(df['加入時間'], errors='coerce').dt.strftime('%Y-%m-%d %H:%M')
+                df['推薦來源'] = [
+                    self._source_link_label(row)
+                    for _, row in df.iterrows()
+                ]
                 logger.info("[WatchlistView._load_watchlist] DataFrame 轉換完成")
             
             # 更新模型
@@ -690,10 +811,8 @@ class WatchlistView(QWidget):
             
             try:
                 self.stocks_model = PandasTableModel(df)
-                # 隱藏 tags 欄位（如果存在）
-                if 'tags' in df.columns:
-                    visible_cols = [col for col in df.columns if col != 'tags']
-                    self.stocks_model.setVisibleColumns(visible_cols)
+                # 保留完整來源資料供下鑽；候選表只顯示可讀欄位，避免洩出原始識別字典。
+                self.stocks_model.setVisibleColumns(list(self._empty_frame().columns))
                 logger.info("[WatchlistView._load_watchlist] PandasTableModel 創建成功")
             except Exception as e:
                 logger.error(f"[WatchlistView._load_watchlist] 創建 PandasTableModel 失敗: {e}")
@@ -730,6 +849,7 @@ class WatchlistView(QWidget):
             else:
                 self.stats_label.setText("共 0 檔股票（目前沒有候選）")
                 self._set_status_label("已更新：0 筆；目前沒有候選", level="warning")
+            self._set_watchlist_focus_summary(count=len(stocks) if stocks else 0)
             self._update_research_lab_button_state(len(stocks))
             self._refresh_storage_status()
             logger.info("[WatchlistView._load_watchlist] 載入完成")
@@ -755,6 +875,10 @@ class WatchlistView(QWidget):
                 self._set_status_label(
                     f"載入失敗：{str(e).splitlines()[0] or type(e).__name__}",
                     level="error",
+                )
+                self._set_watchlist_focus_summary(
+                    count=None,
+                    message=f"載入失敗：{str(e).splitlines()[0] or type(e).__name__}",
                 )
                 self._update_research_lab_button_state(0)
                 self._refresh_storage_status()
@@ -950,7 +1074,11 @@ class WatchlistView(QWidget):
         selection = self.stocks_table.selectionModel()
         rows = selection.selectedRows() if selection else []
         if self.stocks_model is None or len(rows) != 1:
+            self.stock_analysis_btn.setEnabled(False)
             self._set_source_choice_state(None)
+            self._set_watchlist_focus_summary(
+                count=self.stocks_model.rowCount() if self.stocks_model is not None else 0,
+            )
             self.analysis_context_label.setText(
                 "狀態：尚未選取｜決策日：未知｜資料日：未知｜來源：未知"
             )
@@ -964,7 +1092,9 @@ class WatchlistView(QWidget):
         # typed candidate 的 exact result_id 才是保存結果讀取鍵；source_id
         # 可能只是 provider lineage，不能讓同股不同 result 共用同一個摘要。
         source_id = identity.result_id if identity.is_linked else legacy_source_id
+        self.stock_analysis_btn.setEnabled(True)
         self._set_source_choice_state(row)
+        self._set_watchlist_focus_summary(row=row)
         self._request_stock_summary(code, source_id, request_id)
 
     @staticmethod
@@ -989,6 +1119,16 @@ class WatchlistView(QWidget):
                     identity_status=IDENTITY_STATUS_CONFLICT,
                 )
         return DecisionIdentity(stock_code=stock_code, identity_status=IDENTITY_STATUS_UNKNOWN)
+
+    def _source_link_label(self, row: object) -> str:
+        """來源連結只代表可追溯，不表示推薦或結果已通過驗證。"""
+        code = str(row.get("證券代號", "") or "") if hasattr(row, "get") else ""
+        identity = self._row_decision_identity(row, code)
+        if identity.identity_status == IDENTITY_STATUS_CONFLICT:
+            return "來源不一致，需核對"
+        if identity.is_linked:
+            return "已連結原推薦"
+        return "未連結原推薦"
 
     def _set_source_choice_state(self, row: object | None) -> None:
         """顯示 legacy row 的 explicit source selection path。"""
@@ -1153,6 +1293,13 @@ class WatchlistView(QWidget):
             f"｜資料日：{getattr(result, 'data_date', '') or '未知'}"
             f"｜來源：{getattr(result, 'result_id', '') or getattr(result, 'source_id', '') or '未標示'}"
         )
+        selected = self._selected_watchlist_row()
+        if selected is not None and str(getattr(result, "stock_code", "")).strip() == selected[1]:
+            self._set_watchlist_focus_summary(
+                row=selected[0],
+                status=status_label,
+                message=str(getattr(result, "message", "") or "").strip(),
+            )
         lines = [result.stock_code, result.message]
         if result.analysis_date:
             lines.append(f"分析日期：{result.analysis_date}｜來源：{result.result_id}")
@@ -1175,6 +1322,13 @@ class WatchlistView(QWidget):
                 "狀態：讀取失敗｜決策日：未知｜資料日：未知｜來源：未知"
             )
             self.analysis_text.setPlainText(f"分析讀取失敗：{str(error).splitlines()[0]}")
+            selected = self._selected_watchlist_row()
+            if selected is not None:
+                self._set_watchlist_focus_summary(
+                    row=selected[0],
+                    status="讀取失敗",
+                    message=str(error).splitlines()[0],
+                )
 
     def closeEvent(self, event):
         self._analysis_request_id += 1

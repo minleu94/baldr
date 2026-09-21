@@ -451,7 +451,7 @@ def test_unified_workbench_view_renders_read_only_mvp_shell_and_replay_limits() 
     assert [view.subtabs.tabText(i) for i in range(view.subtabs.count())] == [
         "總覽",
         "決策來源",
-        "Evidence",
+        "研究證據",
         "持倉追蹤",
         "操作節奏",
     ]
@@ -1048,3 +1048,32 @@ def test_workbench_view_does_not_import_db_scheduler_or_domain_calculation_modul
     assert "app_module.workbench_source_service" in view_source
     for pattern in blocked_patterns:
         assert pattern not in combined
+
+
+def test_candidate_trigger_detail_opens_watchlist_and_keeps_reason_visible() -> None:
+    from app_module.decision_desk_dtos import DecisionDeskQuality, WatchlistTriggerSummary
+    from app_module.watchlist_trigger_presentation import format_watchlist_trigger_review
+
+    app()
+    summary = format_watchlist_trigger_review(WatchlistTriggerSummary(
+        date(2026, 9, 21), DecisionDeskQuality.OBSERVED, (),
+        trigger_count=2, triggered_codes=("2330", "2603"),
+        top_signal="up=2330;down=2603",
+    ))
+    item = WorkbenchReviewItem(
+        item_id="watchlist_trigger", title="候選股指標變化", severity="info",
+        source="watchlist_trigger", summary=summary, drilldown_target="watchlist",
+    )
+    clicked: list[str] = []
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), review_items=(item,)),
+        auto_refresh=False,
+        navigate_to_watchlist_callback=lambda: clicked.append("watchlist"),
+    )
+    view.review_table.clicked.emit(view.review_model.index(0, 0))
+    assert "2330：分數較前次上升" in view.detail_summary_box.text()
+    assert "2603：分數較前次下降" in view.detail_summary_box.text()
+    assert "查看選中個股研究報告" in view.detail_summary_box.text()
+    view.detail_drilldown_button.click()
+    assert clicked == ["watchlist"]
+    view.close()

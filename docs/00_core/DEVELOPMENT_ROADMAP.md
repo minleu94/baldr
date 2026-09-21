@@ -9,6 +9,8 @@
 > **Evidence rehearsal**：唯讀 replay / shadow 工程底座另以 `engineering_rehearsal_complete` 收口；它只提供可重跑 diagnostics 與 forward handoff，不會改寫 external Gate 狀態。見 [Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)。
 > **定位**：本文件是 Roadmap Hub，不再保存完整歷史長文。它負責指向目前狀態、6 個月工程路線、系統架構與歷史歸檔。
 
+> **2026-09-21 V5 日常操作與可讀性工程**：A／B／D 的工作台、候選／研究／持倉、推薦／回測與導覽 bounded slice 已完成 frozen visual review；首頁優先摘要、日常／進階研究／維運分層、按需報告 tab、白話錯誤與 context 導引均有 QA evidence。mandatory UI QA、validator、mypy、py_compile、manifest 與隔離 before／after perf 已保存；精選整合 route 以同一組 frozen 命令完成 `299 passed`，僅有 pytest cache permission warning。此進度不改 formal V4、自然 evidence、V6 personalization 或 production writer 的 pending 邊界。詳見 [V5 readability acceptance](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md)。
+
 > **2026-08-30 current rebaseline**：整體仍 `action_required`。P0 已有 13/13 machine
 > evidence、Evidence 已有 owner-approved projection 3/3 與 10 期 pending sidecar、Paper 已有
 > 21/21 snapshot／Equal Weight、Runtime environment 與 clone proof 已量測；但 P0 acceptance、

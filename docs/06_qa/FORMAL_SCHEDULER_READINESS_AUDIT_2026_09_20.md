@@ -129,3 +129,17 @@ changed Python 與測試檔的 `py_compile` exit code 為 `0`（無輸出）：
 ```
 
 `git diff --check` 通過；Git 的 LF→CRLF 提示是工作樹換行提示，不是 whitespace error。focused pytest、mypy 與 py_compile 證據如上；maintenance receipt 另保存真實時間、backup、逐列 hash、schema readback 與外部 DB/state unchanged 結果。
+
+## 2026-09-21 19:44 bounded current readiness readback
+
+本次沿用 `data_module.recommendation_calibration_source_contract.inspect_source_contract()` 做一次實際 Asia/Taipei clock 的唯讀驗證，觀測時間為 `2026-09-21T19:44:37+08:00`。沒有 refresh、capture、scheduler、writer、recalc、formal DB 寫入或 credit 變更。compact 證據保存在 [current readiness JSON](../../output/qa/formal_scheduler_readiness_current_20260921_1944/current_readiness.json) 與 [bounded summary](../../output/qa/formal_scheduler_readiness_current_20260921_1944/bounded_summary.json)。
+
+本輪驗證的 7 個 BankTaiwan／price-up symbols（`1103, 1436, 1437, 1438, 1529, 1560, 1569`）全部有 9/21 daily raw 與 technical output；其中 `1569` 的 daily raw 來源為 TPEX。9/21 quick source steps 均為 `passed`：TWSE custody `1093` rows、TPEX custody `875` rows；正式 SQLite `daily_prices` 當日為 `1968` rows，`technical_indicators` 當日為 `1965` rows。這些當日計數與多日 publication receipt 的 `9795` rows 分開解讀，不能把多日總數當作當日完整 universe。
+
+新的 technical publication receipt 為：
+
+`D:\Min\Python\Project\FA_Data\output\scheduled\technical_indicator_publication\2026-09-21\673cd5cb03e630a1\receipt.json`
+
+其 `run_id=20260921-27840`、`available_at=2026-09-21T04:33:17.238788-07:00`、source window 為 `2026-09-15..2026-09-21`、technical step `passed`、computation evidence `verified`；receipt file SHA256 為 `sha256:c6a49f41145a013ee1873385f91efa869664f3c051ab39689365a3e0d2d2bf12`。7 個目標 symbol 均存在，technical output 的 content hash、value binding、source receipt lineage 與 prospective feature snapshot 全部為 `true`；`missing_source_symbols=[]`、`missing_technical_symbols=[]`、latest receipt source date 為 `2026-09-21`、late daily source receipt count 為 `0`。
+
+因此本輪的 price-up 判讀為 `prospective_status=ready` 且 `prospective_blockers=[]`。formal technical contract 仍為 `verified=false`、`reason=recommendation_source_contract_missing`、`source_table=technical_indicators`；corporate source 的 prospective proof 為 `true`，formal verified 仍為 `false`。這些 formal 欄位描述正式歷史／PIT contract scope，不是 9/21 quick daily source 或 technical value binding 的新 blocker；本輪也沒有把 `prospective_ready` 推成正式 historical capture、natural credit 或 promotion 通過。

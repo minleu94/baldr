@@ -250,6 +250,8 @@ def test_backtest_view_zero_trade_diagnostics_modes(qt_app):
     assert "暖機狀態：回測共 70 個交易日，其中 10 個交易日已完成暖機" in summary_quantile
     assert "動態買進門檻命中 2 天" in summary_quantile
     assert "降低「buy_quantile_bp」買入分位數基點" in summary_quantile
+    assert "僅作研究假設，不代表績效改善" in summary_quantile
+    assert "未參與調整的 OOS / Walk-forward 再驗證" in summary_quantile
     assert "降低「buy_score」買入門檻" not in summary_quantile
 
     # 2. 測試 fixed 模式的診斷建議
@@ -282,6 +284,7 @@ def test_backtest_view_zero_trade_diagnostics_modes(qt_app):
     summary_fixed = view.summary_text.toPlainText()
     assert "本標的最高分未達買進門檻" in summary_fixed
     assert "降低「buy_score」買入門檻" in summary_fixed
+    assert "僅作研究假設，不代表績效改善" in summary_fixed
     assert "目前採用分位數門檻模式" not in summary_fixed
 
 

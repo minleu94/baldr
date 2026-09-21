@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QDateEdit, QComboBox, QMessageBox, QSplitter, QFormLayout, QSpinBox,
     QTabWidget, QCheckBox, QListWidget, QListWidgetItem, QDialog,
     QDialogButtonBox, QTextEdit as QTextEditDialog, QScrollArea,
-    QMenu
+    QMenu, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
 from PySide6.QtGui import QFont
@@ -34,6 +34,8 @@ from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.backtest_service import BacktestService
+from app_module.backtest_analyst_diagnostics import build_backtest_analyst_diagnostics
+from app_module.backtest_optimization_stability import build_optimization_stability_summary
 from app_module.strategy_spec import StrategySpec
 from app_module.strategy_registry import StrategyRegistry
 from app_module.dtos import BacktestReportDTO
@@ -91,6 +93,9 @@ from ui_qt.views.backtest.walkforward_coordinator import WalkForwardExecutionReq
 
 class BacktestView(QWidget):
     """回測視圖"""
+
+    # 1366px 桌面仍可左右並列；1024px 需要上下流，避免設定欄被壓成不可操作的窄欄。
+    RESPONSIVE_BREAKPOINT = 1200
 
     preset_service: Optional[PresetService]
     universe_service: Optional[UniverseService]
@@ -659,6 +664,10 @@ class BacktestView(QWidget):
         # 右側：結果面板
         self.result_panel = BacktestResultPanel(self)
         self.result_panel.setMinimumWidth(0)
+        # 結果工作區的內容 tab（尤其圖表／表格）sizeHint 很高；窄版改成上下
+        # 流時若仍採 Preferred，QSplitter 會把可捲動的設定區壓到幾十像素。
+        # 垂直方向交由 splitter 分配，避免 child sizeHint 霸佔 viewport。
+        self._result_panel_vertical_policy = self.result_panel.sizePolicy().verticalPolicy()
         splitter.addWidget(self.result_panel)
 
         # 設置 Splitter 比例：左側預設吃下完整設定表單，額外空間優先給結果區。
@@ -672,8 +681,19 @@ class BacktestView(QWidget):
 
         main_layout.addWidget(splitter)
 
-        # 初始根據選中的實驗模式更新 UI 狀態
-        self._update_ui_state_by_mode(self.research_lab_mode_combo.currentData() or "single_stock")
+        # 初始根據選中的實驗模式更新 UI 狀態與結果工作區
+        initial_mode = self.research_lab_mode_combo.currentData() or "single_stock"
+        self._update_ui_state_by_mode(initial_mode)
+        self._on_research_lab_mode_changed(initial_mode)
+
+    def _on_research_lab_mode_changed(self, mode_id: str) -> None:
+        """同步左側研究模式與右側 semantic result workspace。"""
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "set_research_mode"):
+            result_panel.set_research_mode(str(mode_id or "single_stock"))
+        config_panel = self.__dict__.get("config_panel")
+        if config_panel is not None and hasattr(config_panel, "update_execution_intent"):
+            config_panel.update_execution_intent(str(mode_id or "single_stock"))
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -683,8 +703,13 @@ class BacktestView(QWidget):
         """窄版將設定與結果改為上下流，維持 Research Lab context 可見。"""
         if not hasattr(self, "backtest_splitter"):
             return
-        narrow = self.width() < 900
+        narrow = self.width() < self.RESPONSIVE_BREAKPOINT
         if not force and narrow == self._backtest_narrow:
+            # 同一寬度下父視窗仍可能改變高度（例如 QMainWindow fixed-size
+            # 或 docking resize）；窄版要重新按當前可用高度分配，不能只靠
+            # 第一次 resize 的 splitter sizes。
+            if narrow and not self._config_panel_collapsed:
+                self._set_narrow_splitter_sizes()
             return
         self._backtest_narrow = narrow
         self.backtest_splitter.setOrientation(
@@ -692,12 +717,38 @@ class BacktestView(QWidget):
         )
         self.config_scroll.setMinimumWidth(0)
         self.result_panel.setMinimumWidth(0)
+        result_policy = self.result_panel.sizePolicy()
+        result_policy.setVerticalPolicy(
+            QSizePolicy.Policy.Ignored if narrow else self._result_panel_vertical_policy
+        )
+        self.result_panel.setSizePolicy(result_policy)
         if self._config_panel_collapsed:
             self.backtest_splitter.setSizes([0, max(self.backtest_splitter.width(), 1)])
         elif narrow:
-            self.backtest_splitter.setSizes([500, 700])
+            self._set_narrow_splitter_sizes()
         else:
             self.backtest_splitter.setSizes([560, 780])
+
+    def _set_narrow_splitter_sizes(self) -> None:
+        """依目前 viewport 高度分配窄版上下區，保留兩邊可操作的最低空間。"""
+        if not hasattr(self, "backtest_splitter") or self._config_panel_collapsed:
+            return
+        available = max(self.backtest_splitter.height(), 1)
+        handle = max(self.backtest_splitter.handleWidth(), 1)
+        usable = max(available - handle, 1)
+        config_floor = 220
+        result_floor = 350
+        if usable >= config_floor + result_floor:
+            # 設定區可滾動，結果區略多留空間；兩個 floor 讓 fixed
+            # 1024x768 仍同時能操作設定與閱讀結果。
+            config_size = max(config_floor, int(usable * 0.42))
+            config_size = min(config_size, usable - result_floor)
+            result_size = usable - config_size
+        else:
+            # 更矮的視窗無法同時滿足兩個 floor，仍保持設定區不被壓成零。
+            config_size = max(1, min(int(usable * 0.42), usable - 1))
+            result_size = max(1, usable - config_size)
+        self.backtest_splitter.setSizes([config_size, result_size])
 
     def _toggle_config_panel_collapsed(self) -> None:
         self._set_config_panel_collapsed(not self._config_panel_collapsed)
@@ -708,6 +759,11 @@ class BacktestView(QWidget):
         self.config_panel_expand_btn.setVisible(self._config_panel_collapsed)
         if self._config_panel_collapsed:
             self.backtest_splitter.setSizes([0, max(self.backtest_splitter.width(), 1)])
+        elif self.width() < self.RESPONSIVE_BREAKPOINT:
+            result_policy = self.result_panel.sizePolicy()
+            result_policy.setVerticalPolicy(QSizePolicy.Policy.Ignored)
+            self.result_panel.setSizePolicy(result_policy)
+            self._set_narrow_splitter_sizes()
         else:
             self.backtest_splitter.setSizes([560, max(self.backtest_splitter.width() - 560, 780)])
 
@@ -720,9 +776,18 @@ class BacktestView(QWidget):
         self.current_portfolio_run_id = None
         self._single_backtest_result_generation = None
         self._recommendation_portfolio_result_generation = None
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "clear_analyst_diagnostics"):
+            result_panel.clear_analyst_diagnostics()
 
     def _execute_backtest(self):
         """執行回測（支援單檔和批次模式）"""
+        research_mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
+        if research_mode == "recommendation_replay":
+            # 推薦回放不需要股票代號；由其已載入的 profile／history 決定輸入母體。
+            self._execute_recommendation_portfolio_backtest()
+            return
+
         # 委派參數最佳化與 Walk-forward 驗證
         if hasattr(self, 'optimization_group') and self.optimization_group.isChecked():
             self._execute_optimization()
@@ -933,6 +998,9 @@ class BacktestView(QWidget):
         # 保存當前結果（用於後續保存）
         self.current_report = report
         self._single_backtest_result_generation = self._execution_generation
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
+            result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(report))
 
         # 更新圖表 run 列表（如果有）
         if hasattr(self, 'chart_run_combo'):
@@ -976,7 +1044,7 @@ class BacktestView(QWidget):
                     f"命中次數：在已暖機交易日中，動態買進門檻命中 {buy_hit_days} 天，動態賣出門檻命中 {sell_hit_days} 天。\n"
                 )
                 no_trade_msg += (
-                    "建議操作：\n"
+                    "建議操作（僅作研究假設，不代表績效改善；任何門檻調整都必須用未參與調整的 OOS / Walk-forward 再驗證）：\n"
                     "  1. 降低「buy_quantile_bp」買入分位數基點，讓更多高分日能觸發進場（例如從 8000 降至 7000）。\n"
                     "  2. 確保回測時間夠長（如超過 60 個交易日暖機期），否則暖機不足將不會產生任何交易。\n"
                     "  3. 縮短「buy_confirm_days」連續確認天數。\n"
@@ -988,7 +1056,7 @@ class BacktestView(QWidget):
                 else:
                     no_trade_msg += f"具體原因：雖然最高分 ({max_score:.1f}) 有達到門檻 ({buy_score:.1f})，但因連續確認天數不足或處於交易冷卻期 (Cooldown)，或在回測結束前尚未形成完整進出場交易對。\n"
                 no_trade_msg += (
-                    "建議操作：\n"
+                    "建議操作（僅作研究假設，不代表績效改善；任何門檻調整都必須用未參與調整的 OOS / Walk-forward 再驗證）：\n"
                     "  1. 降低「buy_score」買入門檻，讓指標能順利觸發進場。\n"
                     "  2. 縮短「buy_confirm_days」連續確認天數。\n"
                     "  3. 擴大回測日期範圍，以涵蓋更多市場週期與價格波動。"
@@ -1003,7 +1071,7 @@ class BacktestView(QWidget):
                 f"提示：\n"
                 f"  - 您仍可透過右鍵點擊下方交易明細，將個別交易「記錄到持倉管理」中。\n"
                 f"  - 但因為交易樣本不足，此版本無法進行正式版晉升 (Promote 按鈕已禁用)。\n"
-                f"建議操作：\n"
+                f"建議操作（僅作研究假設，不代表績效改善；任何門檻調整都必須用未參與調整的 OOS / Walk-forward 再驗證）：\n"
                 f"  1. 擴大回測時間範圍 (例如拉長至 2~3 年以上) 以增加交易次數。\n"
                 f"  2. 適度放寬進場門檻以獲得更多交易樣本。"
             )
@@ -1015,7 +1083,7 @@ class BacktestView(QWidget):
                 "\n💡 === 診斷建議：Walk-forward 驗證未執行 ===\n"
                 "提示：此策略版本目前尚未通過 Walk-forward 滾動驗證，可能存在過擬合風險。\n"
                 "建議操作：\n"
-                "  - 勾選右側「進階驗證：Walk-forward 驗證」並執行，以確認策略在測試集(Out-of-Sample)的真實表現與魯棒性。"
+                "  - 勾選左側「進階驗證：Walk-forward 驗證」並執行，以確認策略在測試集(Out-of-Sample)的真實表現與魯棒性。"
             )
             guides.append(wf_not_run_msg)
 
@@ -1162,7 +1230,7 @@ class BacktestView(QWidget):
             QMessageBox.warning(self, "錯誤", "資料設定尚未初始化，無法載入歷史資料")
             return
 
-        self.execute_recommendation_portfolio_btn.setEnabled(False)
+        self.execute_btn.setEnabled(False)
         if hasattr(self, 'export_portfolio_report_btn'):
             self.export_portfolio_report_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -1228,6 +1296,7 @@ class BacktestView(QWidget):
         self.worker = TaskWorker(backtest_task)
         self.worker.finished.connect(self._on_recommendation_portfolio_finished)
         self.worker.error.connect(self._on_recommendation_portfolio_error)
+        self.worker.cancelled.connect(lambda: self._on_recommendation_portfolio_error("推薦回放已取消"))
         self.worker.start()
 
     def _load_recommendation_portfolio_history(self, start_date=None, end_date=None):
@@ -1240,7 +1309,7 @@ class BacktestView(QWidget):
         return "score_weight" if self.recommendation_portfolio_allocation.currentText() == "分數加權" else "equal_weight"
 
     def _on_recommendation_portfolio_finished(self, result):
-        self.execute_recommendation_portfolio_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
@@ -1262,7 +1331,7 @@ class BacktestView(QWidget):
         QMessageBox.information(self, "完成", "推薦組合回測完成，請查看右側「推薦組合」結果頁。")
 
     def _on_recommendation_portfolio_error(self, error_msg: str):
-        self.execute_recommendation_portfolio_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
@@ -2353,18 +2422,19 @@ class BacktestView(QWidget):
         if index < 0 or not hasattr(self, "result_tabs"):
             return
 
-        tab_text = self.result_tabs.tabText(index)
-        if "歷史" in tab_text:
+        result_panel = self.__dict__.get("result_panel")
+        tab_key = result_panel.result_tab_key(index) if result_panel is not None else None
+        if tab_key == "legacy":
             if "history" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("history")
                 if getattr(self, "run_repository", None):
                     self._refresh_history()
-        elif "圖表" in tab_text:
+        elif tab_key == "charts":
             if "charts" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("charts")
                 if hasattr(self, "chart_run_combo") and getattr(self, "chart_data_service", None):
                     self._update_chart_run_combo()
-        elif "Registry" in tab_text:
+        elif tab_key == "registry":
             if "registry_compare" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("registry_compare")
                 compare_widget = getattr(self, "run_registry_compare_widget", None)
@@ -2630,6 +2700,10 @@ class BacktestView(QWidget):
             "run_name": run_data.get("run_name", ""),
         }
         self.current_report = None
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
+            # Legacy payload 只讀；缺欄位由 builder 顯示 unknown，不回抓或重算。
+            result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(run_data=run_data))
 
         # 顯示摘要
         summary_lines = [
@@ -2660,6 +2734,11 @@ class BacktestView(QWidget):
                 self.trades_table.setModel(None)
         else:
             self.trades_table.setModel(None)
+
+        if result_panel is not None and hasattr(result_panel, "set_research_mode"):
+            mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
+            result_panel.set_research_mode(mode, reveal_single_detail=True)
+            result_panel.focus_result_tab("summary")
 
     def _delete_history_runs(self):
         """刪除選中的回測結果"""
@@ -3299,7 +3378,8 @@ class BacktestView(QWidget):
         take_profit_pct = self.take_profit_input.value() / 100.0 if self.take_profit_input.value() > 0 else None
 
         # 禁用按鈕
-        self.optimize_btn.setEnabled(False)
+        self._mark_research_execution_started()
+        self.execute_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self.progress_label.setVisible(True)
@@ -3314,6 +3394,11 @@ class BacktestView(QWidget):
         # 清空結果
         if hasattr(self, 'optimization_table'):
             self.optimization_table.setModel(None)
+        if hasattr(self, 'optimization_stability_label'):
+            self.optimization_stability_label.setText(
+                "Top-N 穩定性（探索性）：insufficient（尚未完成本輪最佳化）。"
+                " 僅在結果保留後摘要，請另跑 Walk-forward／OOS 驗證。"
+            )
 
         request = OptimizationExecutionRequest(
             stock_code=stock_code,
@@ -3354,7 +3439,7 @@ class BacktestView(QWidget):
 
     def _on_optimization_finished(self, results):
         """參數掃描完成"""
-        self.optimize_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         if hasattr(self.config_panel, 'cancel_btn') and self.config_panel.cancel_btn:
@@ -3366,6 +3451,17 @@ class BacktestView(QWidget):
 
         # 保存結果供後續使用
         self.current_optimization_results = results
+
+        objective_label = self.objective_combo.currentText()
+        self.optimization_stability_summary = build_optimization_stability_summary(
+            results,
+            # OptimizerResult 對外保留的排序值統一在 metrics[score]；
+            # 不猜測或重算 report 欄位，UI 另顯示使用者選的 objective 名稱。
+            objective_key="score",
+            objective_label=objective_label,
+        )
+        if hasattr(self, "optimization_stability_label"):
+            self.optimization_stability_label.setText(self.optimization_stability_summary.to_text())
 
         # 創建摘要表格
         summary_df = self.optimizer_service.create_optimization_summary(results)
@@ -3383,7 +3479,7 @@ class BacktestView(QWidget):
 
     def _on_optimization_error(self, error_msg: str):
         """參數掃描錯誤"""
-        self.optimize_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         if hasattr(self.config_panel, 'cancel_btn') and self.config_panel.cancel_btn:
@@ -3393,7 +3489,7 @@ class BacktestView(QWidget):
 
     def _on_optimization_cancelled(self):
         """參數最佳化被取消"""
-        self.optimize_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         if hasattr(self.config_panel, 'cancel_btn') and self.config_panel.cancel_btn:
@@ -3505,7 +3601,8 @@ class BacktestView(QWidget):
         take_profit_pct = self.take_profit_input.value() / 100.0 if self.take_profit_input.value() > 0 else None
 
         # 禁用按鈕
-        self.wf_execute_btn.setEnabled(False)
+        self._mark_research_execution_started()
+        self.execute_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self.progress_label.setVisible(True)
@@ -3538,7 +3635,7 @@ class BacktestView(QWidget):
 
     def _on_walkforward_finished(self, result_data):
         """Walk-forward 驗證完成"""
-        self.wf_execute_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
 
@@ -3638,7 +3735,7 @@ class BacktestView(QWidget):
 
     def _on_walkforward_error(self, error_msg: str):
         """Walk-forward 驗證錯誤"""
-        self.wf_execute_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
 
@@ -3769,12 +3866,16 @@ class BacktestView(QWidget):
                     returns = returns[np.isfinite(returns)]
 
                     if len(returns) > 0:
-                        # 計算統計（包含 95% VaR）
+                        # 圖表邊界統計；少於 20 筆不提供不穩定的 95% VaR。
                         stats = {
                             'mean': float(np.mean(returns)),
                             'median': float(np.median(returns)),
                             'std': float(np.std(returns)) if len(returns) > 1 else 0.0,
-                            'var_95': float(np.percentile(returns, 5))  # 95% VaR（5% 分位數）
+                            'var_95': (
+                                float(np.percentile(returns, 5))
+                                if len(returns) >= 20
+                                else None
+                            ),
                         }
                         self.return_hist.plot(returns, stats)
             except Exception as e:
@@ -3988,18 +4089,9 @@ class BacktestView(QWidget):
             self._update_chart_run_combo()
 
         # 切換到批次結果 Tab
-        if hasattr(self, 'batch_leaderboard_table'):
-            # 找到結果 TabWidget（右側的 result_tabs）
-            result_tabs = None
-            for widget in self.findChildren(QTabWidget):
-                # 檢查是否包含「批次結果」Tab
-                for i in range(widget.count()):
-                    if widget.tabText(i) == "批次結果":
-                        result_tabs = widget
-                        widget.setCurrentIndex(i)
-                        break
-                if result_tabs:
-                    break
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "focus_result_tab"):
+            result_panel.focus_result_tab("batch")
 
         if hasattr(self, 'export_batch_report_btn'):
             self.export_batch_report_btn.setEnabled(True)
@@ -4062,7 +4154,8 @@ class BacktestView(QWidget):
             "CAGR-MDD": "cagr_mdd",
             "CAGR": "cagr",
             "Sharpe": "sharpe",
-            "MDD": "mdd"
+            "MDD": "mdd",
+            "MDD（回撤幅度）": "mdd",
         }
         sort_by = sort_by_map.get(self.batch_sort_combo.currentText(), "cagr_mdd")
 
@@ -4098,13 +4191,42 @@ class BacktestView(QWidget):
 
         stats = batch_result.overall_stats
 
+        total_stocks = int(stats.get('total_stocks', 0) or 0)
+        successful_stocks = int(stats.get('successful_stocks', 0) or 0)
+        failed_stocks = int(
+            stats.get('failed_stocks', max(total_stocks - successful_stocks, 0)) or 0
+        )
+        no_trade_stocks = int(stats.get('no_trade_stocks', 0) or 0)
+        profitable_stocks = int(stats.get('profitable_stocks', 0) or 0)
+        coverage = float(stats.get('coverage_bp', 0) or 0) / 10000.0
+        if not coverage and total_stocks:
+            coverage = successful_stocks / total_stocks
+        profitable_rate = float(stats.get('profitable_rate_bp', 0) or 0) / 10000.0
+        if not profitable_rate and successful_stocks:
+            profitable_rate = profitable_stocks / successful_stocks
+        stock_results = getattr(batch_result, "stock_results", None) or []
+        cagr_sample_count = int(
+            stats.get(
+                'cagr_sample_count',
+                sum(1 for result in stock_results if result.success and result.cagr is not None),
+            )
+            or 0
+        )
+        mdd_sample_count = int(
+            stats.get(
+                'mdd_sample_count',
+                sum(1 for result in stock_results if result.success and result.mdd is not None),
+            )
+            or 0
+        )
         stats_lines = [
-            f"總股票數: {stats.get('total_stocks', 0)} 檔",
-            f"成功回測: {stats.get('successful_stocks', 0)} 檔",
-            f"賺錢股票: {stats.get('profitable_stocks', 0)} 檔",
-            f"股票層級勝率: {stats.get('win_rate', 0) * 100:.1f}%",
-            f"CAGR 中位數: {stats.get('cagr_median', 0) * 100:.2f}%",
-            f"MDD 中位數: {stats.get('mdd_median', 0) * 100:.2f}%"
+            f"總標的數: {total_stocks} 檔",
+            f"有效回測: {successful_stocks} 檔",
+            f"Coverage（有效回測 / 總標的）: {coverage * 100:.1f}%",
+            f"失敗／無交易: {failed_stocks} 檔（其中無交易 {no_trade_stocks} 檔）",
+            f"獲利標的 / 有效回測: {profitable_stocks} / {successful_stocks}（{profitable_rate * 100:.1f}%；不是交易筆勝率）",
+            f"CAGR 中位數（有效且有 CAGR，n={cagr_sample_count}）: {stats.get('cagr_median', 0) * 100:.2f}%",
+            f"MDD 中位數（有效且有 MDD，n={mdd_sample_count}）: {stats.get('mdd_median', 0) * 100:.2f}%",
         ]
 
         self.batch_stats_text.setPlainText("\n".join(stats_lines))
@@ -4177,6 +4299,10 @@ class BacktestView(QWidget):
             "run_name": run_data.get("run_name", ""),
         }
         self.current_report = None
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
+            # Legacy payload 只讀；缺欄位由 builder 顯示 unknown，不回抓或重算。
+            result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(run_data=run_data))
 
         # 顯示摘要
         summary_lines = [
@@ -4215,11 +4341,10 @@ class BacktestView(QWidget):
             if index >= 0:
                 self.chart_run_combo.setCurrentIndex(index)
 
-        for widget in self.findChildren(QTabWidget):
-            for i in range(widget.count()):
-                if widget.tabText(i) == "實驗摘要":
-                    widget.setCurrentIndex(i)
-                    break
+        if result_panel is not None and hasattr(result_panel, "set_research_mode"):
+            mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
+            result_panel.set_research_mode(mode, reveal_single_detail=True)
+            result_panel.focus_result_tab("summary")
 
     def _show_trades_table_context_menu(self, pos):
         """顯示交易明細表格的右鍵選單"""

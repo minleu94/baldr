@@ -49,6 +49,17 @@ W38 最新 evidence 仍為 observation_count=29、pending=29、matured=0，與�
 
 Horizon maturity 是另一組時間／資料條件：h5、h10、h20、h60 的 actual downside coverage 尚未形成，成熟計數均為 0/20，natural shadow days 為 0/20。這些數字只能描述 maturity 尚未達標，不能掩蓋前述 contract blockers，也不能把 pending 改寫為 matured。ML lane 不得用 BankTaiwan 的 18 rows 或 technical prospective ready 狀態補足。
 
+## Paper preopen 與 EOD 歷史因果查核（唯讀）
+
+本輪有限查核針對 2026-09-15 至 2026-09-17 的 Paper preopen snapshot 缺口，沒有執行 scheduler、writer、capture、歷史回填或 credit 變更。2026-09-08 的 registration audit 顯示 `baldr-paper-portfolio-daily` task 為 `available`，schedule 為 `DAILY 16:15`，action 與 `scripts/scheduled/run_paper_portfolio_daily.cmd` 一致；這證明 task 曾正確登錄，但不是 9/15–9/17 的日期級執行證據。
+
+- 現有 preopen terminal receipt 只留下 9/18 `passed`（`paper-main-20260918`）、9/20 週末 skipped，以及 9/21 `passed`（`paper-main-20260921`）。9/15、9/16、9/17 沒有日期綁定的 preopen terminal receipt 或 result；因此不能把「沒有查到 receipt」寫成「task 當時必然未執行」。
+- Repository Paper state 與正式 D state 兩份 SQLite 都缺少 `paper-main-20260915`、`paper-main-20260916`、`paper-main-20260917`。目前 9/18、9/21 的正常 preopen 結果只證明後續日期可產生 snapshot，不能重建或補授 9/15–9/17 的歷史 natural credit。
+- Preopen wrapper 直接呼叫 isolated portfolio adapter，再進入 `scripts.run_paper_portfolio_daily.run`；EOD wrapper 則進入獨立 `paper_execution_retry_runner.py` 與 `inspect_dependency` freshness gate。兩條 lane 共用 repository ledger 的資料邊界，但目前沒有證據顯示共用 EOD gate。Preopen writer 唯讀投影既有 Paper ledger；其程式契約明列 EOD writer 不寫當日 preopen snapshot。
+- 9/15–9/17 的 EOD receipts 確為 `blocked`、`ready=false`、`freshness_status_not_passed:degraded`，且沒有 source DB 或 source file write。這是 EOD lane 的獨立 degraded 證據，不能直接推論成 preopen 三日 snapshot 缺失的根因；歷史根因仍未證明，可能的 task/run、receipt 保存或寫入路徑問題不能由現有證據區分。
+
+本查核的 compact read-only evidence 位於 `output/qa/paper_preopen_causality_audit_20260921/20260921T112202873987Z_read_only/summary.json` 與 `manifest.json`。本節不把目前 preopen 成功、EOD degraded 或研究觀測轉成歷史 natural evidence、績效或 promotion credit。
+
 ## V2.2 weekly collection 與 human review
 
 V2.2 weekly scheduler 已於美西週日 2026-09-20 18:00 執行成功，下一次為 2026-09-27 18:00。最新 collection_id 為 ewc_2b70f0c7e4519141，涵蓋 9/14–9/20，last trading date 為 9/18，狀態為 pending_human_review。

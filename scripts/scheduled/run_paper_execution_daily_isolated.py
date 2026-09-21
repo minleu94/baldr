@@ -73,10 +73,13 @@ STATE_SEED_MANIFEST = PAPER_STATE_ROOT / "state_seed_manifest.json"
 MARKET_DB = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
 RECOMMENDATION_ROOT = DEFAULT_DATA_ROOT / "output" / "recommendation" / "runs"
 EVENT_CAPTURE_ROOT = OPERATIONAL_ROOT / "event_captures"
-# v2 使用新檔名，保留先前 D state scope manifest 作為歷史證據，避免以
-# 可變覆寫將舊 scope 靜默改成 repository state scope。
-SCOPE_MANIFEST = OPERATIONAL_ROOT / "scope_manifest_v2.json"
-SCOPE_SCHEMA_VERSION = "paper-execution-isolated-scope.v2"
+# v2 是既有 immutable scope 的歷史來源；v3 另建 append-only manifest，
+# 不覆寫 v2 bytes。v3 的 scope_manifest 欄位必須自洽指向 v3 檔案。
+SCOPE_MANIFEST = OPERATIONAL_ROOT / "scope_manifest_v3.json"
+SCOPE_SCHEMA_VERSION = "paper-execution-isolated-scope.v3"
+LEGACY_SCOPE_SCHEMA_VERSION = "paper-execution-isolated-scope.v2"
+SCOPE_MIGRATION_RECEIPT_SCHEMA_VERSION = "paper-execution-scope-migration-receipt.v1"
+SCOPE_FAILURE_RECEIPT_SCHEMA_VERSION = "paper-execution-scope-validation-failure.v1"
 
 
 def _canonical_json(value: object) -> str:
@@ -102,6 +105,10 @@ def _file_hash(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def _bytes_hash(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
 def _file_signature(path: Path) -> dict[str, int]:
     stat = path.stat()
     return {
@@ -112,6 +119,25 @@ def _file_signature(path: Path) -> dict[str, int]:
 
 def _resolved(value: Path) -> Path:
     return value.expanduser().resolve()
+
+
+def _legacy_scope_manifest_path() -> Path:
+    """回傳固定 v2 歷史 manifest 路徑；它只可被讀取與驗證。"""
+
+    return OPERATIONAL_ROOT / "scope_manifest_v2.json"
+
+
+def _scope_migration_receipt_path() -> Path:
+    """回傳 v2→v3 migration receipt 的 repository output 路徑。"""
+
+    return OPERATIONAL_ROOT / "scope_manifest_v3_migration_receipt.json"
+
+
+def _scope_failure_receipt_root() -> Path:
+    """回傳不依賴可疑 writer scope 的固定錯誤報告根目錄。"""
+
+    repository_root = _resolved(ROOT)
+    return repository_root / "output" / "paper_execution_eod_replay" / "scope_validation_failures"
 
 
 def _calendar_cache_root() -> Path:
@@ -233,9 +259,25 @@ def _new_candidate_root() -> Path:
     raise RuntimeError("isolated Paper candidate run id collision")
 
 
-def _expected_scope() -> dict[str, object]:
+def _scope_body(
+    *,
+    schema_version: str,
+    scope_manifest_path: Path,
+    include_event_capture_root: bool,
+) -> dict[str, object]:
+    writable: dict[str, object] = {
+        "repository_output_root": str(_resolved(ROOT / "output")),
+        "operation_root": str(_resolved(OPERATIONAL_ROOT)),
+        "candidate_root": str(_resolved(CANDIDATE_ROOT)),
+        "receipt_root": str(_resolved(RECEIPT_ROOT)),
+        "ledger_db": str(_resolved(LEDGER_DB)),
+        "scope_manifest": str(_resolved(scope_manifest_path)),
+        "ledger_mode": "append_only_research_paper_only",
+    }
+    if include_event_capture_root:
+        writable["event_capture_root"] = str(_resolved(EVENT_CAPTURE_ROOT))
     return {
-        "schema_version": SCOPE_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "scope_id": "research-paper-eod-replay-repository-isolated-v1",
         "source": {
             "data_root": str(_resolved(DEFAULT_DATA_ROOT)),
@@ -247,16 +289,7 @@ def _expected_scope() -> dict[str, object]:
             "source_state_read_mode": "盤前 seed 專用；EOD 不回讀 D",
             "environment_path_overrides": "ignored",
         },
-        "writable": {
-            "repository_output_root": str(_resolved(ROOT / "output")),
-            "operation_root": str(_resolved(OPERATIONAL_ROOT)),
-            "candidate_root": str(_resolved(CANDIDATE_ROOT)),
-            "receipt_root": str(_resolved(RECEIPT_ROOT)),
-            "ledger_db": str(_resolved(LEDGER_DB)),
-            "scope_manifest": str(_resolved(SCOPE_MANIFEST)),
-            "event_capture_root": str(_resolved(EVENT_CAPTURE_ROOT)),
-            "ledger_mode": "append_only_research_paper_only",
-        },
+        "writable": writable,
         "read_only": {
             "repository_state_db": str(_resolved(STATE_DB)),
             "state_seed_manifest": str(_resolved(STATE_SEED_MANIFEST)),
@@ -276,6 +309,22 @@ def _expected_scope() -> dict[str, object]:
     }
 
 
+def _expected_scope() -> dict[str, object]:
+    return _scope_body(
+        schema_version=SCOPE_SCHEMA_VERSION,
+        scope_manifest_path=SCOPE_MANIFEST,
+        include_event_capture_root=True,
+    )
+
+
+def _expected_legacy_scope(*, include_event_capture_root: bool) -> dict[str, object]:
+    return _scope_body(
+        schema_version=LEGACY_SCOPE_SCHEMA_VERSION,
+        scope_manifest_path=_legacy_scope_manifest_path(),
+        include_event_capture_root=include_event_capture_root,
+    )
+
+
 def _validate_write_scope() -> dict[str, Path]:
     """確認所有 writer 目標仍在 repository output 且不在來源根目錄。"""
 
@@ -287,6 +336,8 @@ def _validate_write_scope() -> dict[str, Path]:
     receipt = _resolved(RECEIPT_ROOT)
     ledger = _resolved(LEDGER_DB)
     scope_manifest = _resolved(SCOPE_MANIFEST)
+    legacy_scope_manifest = _resolved(_legacy_scope_manifest_path())
+    migration_receipt = _resolved(_scope_migration_receipt_path())
     event_capture = _resolved(EVENT_CAPTURE_ROOT)
     state = _resolved(STATE_DB)
     state_root = _resolved(PAPER_STATE_ROOT)
@@ -301,6 +352,26 @@ def _validate_write_scope() -> dict[str, Path]:
         raise RuntimeError(
             "isolated Paper operation root must be a repository output child"
         )
+
+    for name, candidate in {
+        "scope_manifest": SCOPE_MANIFEST,
+        "legacy_scope_manifest": _legacy_scope_manifest_path(),
+        "scope_migration_receipt": _scope_migration_receipt_path(),
+    }.items():
+        if candidate.expanduser().is_symlink():
+            raise RuntimeError(f"isolated Paper scope path is a reparse point:{name}")
+
+    for name, target in {
+        "legacy_scope_manifest": legacy_scope_manifest,
+    }.items():
+        if not _is_under(target, operation):
+            raise RuntimeError(
+                f"isolated Paper scope source escaped operation root:{name}"
+            )
+        if not _is_under(target, repository_output) or _is_under(target, data_root):
+            raise RuntimeError(
+                f"isolated Paper scope source escaped repository scope:{name}"
+            )
 
     for name, target in {
         "paper_state_root": state_root,
@@ -322,6 +393,7 @@ def _validate_write_scope() -> dict[str, Path]:
         "receipt_root": receipt,
         "ledger_db": ledger,
         "scope_manifest": scope_manifest,
+        "scope_migration_receipt": migration_receipt,
         "event_capture_root": event_capture,
     }
     for name, target in write_targets.items():
@@ -343,43 +415,321 @@ def _validate_write_scope() -> dict[str, Path]:
         "paper_state_root": state_root,
         "state_db": state,
         "state_seed_manifest": _resolved(STATE_SEED_MANIFEST),
+        "legacy_scope_manifest": legacy_scope_manifest,
         **write_targets,
     }
 
 
+def _write_create_only_bytes(path: Path, raw: bytes, role: str) -> str:
+    """以 create-only + fsync 寫入，既有 bytes 不一致時拒絕覆寫。"""
+
+    if path.expanduser().is_symlink():
+        raise RuntimeError(f"{role} is a reparse point")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        existing = path.read_bytes()
+        if existing == raw:
+            return _bytes_hash(existing)
+        raise RuntimeError(f"{role} existing bytes differ")
+    try:
+        with path.open("xb") as stream:
+            stream.write(raw)
+            stream.flush()
+            import os
+
+            os.fsync(stream.fileno())
+    except FileExistsError:
+        existing = path.read_bytes()
+        if existing != raw:
+            raise RuntimeError(f"{role} concurrent bytes differ")
+    return _bytes_hash(raw)
+
+
+def _read_scope_manifest(path: Path, *, role: str) -> tuple[dict[str, object], str, str]:
+    """讀取並驗證 scope manifest 的 body hash、file hash 與固定檔案型態。"""
+
+    candidate = path.expanduser()
+    if candidate.is_symlink() or not candidate.is_file():
+        raise RuntimeError(f"{role} missing or is a reparse point")
+    raw = candidate.read_bytes()
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"{role} JSON invalid") from error
+    if not isinstance(payload, Mapping):
+        raise RuntimeError(f"{role} is not an object")
+    body = dict(payload)
+    declared = body.pop("content_sha256", None)
+    if not isinstance(declared, str) or declared != _payload_hash(body):
+        raise RuntimeError(f"{role} content hash mismatch")
+    return body, declared, _bytes_hash(raw)
+
+
+def _scope_diff_paths(before: object, after: object, prefix: str = "") -> list[str]:
+    if isinstance(before, Mapping) and isinstance(after, Mapping):
+        paths: list[str] = []
+        keys = sorted(set(before) | set(after), key=str)
+        for key in keys:
+            name = f"{prefix}.{key}" if prefix else str(key)
+            if key not in before or key not in after:
+                paths.append(name)
+            else:
+                paths.extend(_scope_diff_paths(before[key], after[key], name))
+        return paths
+    return [] if before == after else [prefix]
+
+
+def _scope_manifest_migration_plan(
+    *,
+    legacy_body: Mapping[str, object],
+    legacy_content_hash: str,
+    legacy_file_hash: str,
+    target_body: Mapping[str, object],
+    target_raw: bytes,
+) -> dict[str, object]:
+    """產生不寫檔的 v2→v3 planned diff 與保留/receipt 計畫。"""
+
+    return {
+        "schema_version": "paper-execution-scope-migration-plan.v1",
+        "status": "planned",
+        "migration": "paper_execution_scope_v2_to_v3",
+        "append_only": True,
+        "changed_fields": _scope_diff_paths(legacy_body, target_body),
+        "source": {
+            "path": str(_resolved(_legacy_scope_manifest_path())),
+            "schema_version": legacy_body.get("schema_version"),
+            "content_sha256": legacy_content_hash,
+            "file_sha256": legacy_file_hash,
+            "bytes_preserved": True,
+        },
+        "target": {
+            "path": str(_resolved(SCOPE_MANIFEST)),
+            "schema_version": target_body.get("schema_version"),
+            "content_sha256": _payload_hash(target_body),
+            "file_sha256": _bytes_hash(target_raw),
+            "create_only": True,
+        },
+        "backup": {
+            "mode": "source_bytes_preserved_no_overwrite",
+            "required": False,
+            "source_path": str(_resolved(_legacy_scope_manifest_path())),
+            "source_file_sha256": legacy_file_hash,
+        },
+        "receipt": {
+            "path": str(_resolved(_scope_migration_receipt_path())),
+            "create_only": True,
+            "schema_version": SCOPE_MIGRATION_RECEIPT_SCHEMA_VERSION,
+        },
+    }
+
+
+def _read_exact_legacy_scope(
+    path: Path,
+) -> tuple[dict[str, object], str, str]:
+    """讀取 v2 並只接受兩種已知、canonical 的歷史 body。"""
+
+    body, content_hash, file_hash = _read_scope_manifest(
+        path,
+        role="isolated Paper v2 scope manifest",
+    )
+    accepted = (
+        _expected_legacy_scope(include_event_capture_root=False),
+        _expected_legacy_scope(include_event_capture_root=True),
+    )
+    if not any(body == expected for expected in accepted):
+        raise RuntimeError("isolated Paper v2 scope manifest changed")
+    return body, content_hash, file_hash
+
+
+def _write_or_verify_migration_receipt(
+    *,
+    plan: Mapping[str, object],
+    legacy_file_hash: str,
+    target_file_hash: str,
+) -> Path:
+    receipt_candidate = _scope_migration_receipt_path()
+    receipt_path = _resolved(receipt_candidate)
+    body: dict[str, object] = {
+        "schema_version": SCOPE_MIGRATION_RECEIPT_SCHEMA_VERSION,
+        "status": "completed",
+        "migration": "paper_execution_scope_v2_to_v3",
+        "append_only": True,
+        "formal_credit": False,
+        "broker_execution": False,
+        "writes_market_database": False,
+        "source_file_sha256": legacy_file_hash,
+        "target_file_sha256": target_file_hash,
+        "source_bytes_preserved": True,
+        "planned_diff": dict(plan),
+    }
+    if receipt_candidate.exists():
+        existing_body, _, _ = _read_scope_manifest(
+            receipt_candidate,
+            role="scope migration receipt",
+        )
+        recorded_at = existing_body.get("recorded_at")
+        if not isinstance(recorded_at, str) or not recorded_at.strip():
+            raise RuntimeError("scope migration receipt recorded_at missing")
+        try:
+            parsed_recorded_at = datetime.fromisoformat(recorded_at)
+        except ValueError as error:
+            raise RuntimeError("scope migration receipt recorded_at invalid") from error
+        if parsed_recorded_at.tzinfo is None:
+            raise RuntimeError("scope migration receipt recorded_at must be timezone aware")
+    else:
+        # 遷移完成時間必須取實際執行時間，不得用歷史排程觀測時間追認。
+        recorded_at = datetime.now(timezone.utc).isoformat()
+    body["recorded_at"] = recorded_at
+    body["content_sha256"] = _payload_hash(body)
+    raw = (_canonical_json(body) + "\n").encode("utf-8")
+    _write_create_only_bytes(receipt_candidate, raw, "scope migration receipt")
+    existing_body, _, _ = _read_scope_manifest(
+        receipt_candidate,
+        role="scope migration receipt",
+    )
+    expected_body = dict(body)
+    expected_body.pop("content_sha256", None)
+    if existing_body != expected_body:
+        raise RuntimeError("scope migration receipt changed")
+    return receipt_path
+
+
 def _write_or_verify_scope_manifest() -> tuple[Path, str]:
-    """建立或驗證固定 scope manifest；不建立空 ledger。"""
+    """建立/驗證 v3 scope；只接受精確合法 v2 作為 append-only migration source。"""
 
     _validate_write_scope()
     body = _expected_scope()
     payload = {**body, "content_sha256": _payload_hash(body)}
     encoded = (_canonical_json(payload) + "\n").encode("utf-8")
-    SCOPE_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
-    if SCOPE_MANIFEST.exists():
-        existing = json.loads(SCOPE_MANIFEST.read_text(encoding="utf-8"))
-        if not isinstance(existing, Mapping):
-            raise RuntimeError("isolated Paper scope manifest is not an object")
-        existing_body = dict(existing)
-        declared = existing_body.pop("content_sha256", None)
-        if declared != _payload_hash(existing_body) or existing_body != body:
-            raise RuntimeError("isolated Paper scope manifest changed")
-    else:
-        try:
-            with SCOPE_MANIFEST.open("xb") as stream:
-                stream.write(encoded)
-                stream.flush()
-                import os
+    manifest_path = _resolved(SCOPE_MANIFEST)
+    legacy_candidate = _legacy_scope_manifest_path()
+    legacy_path = _resolved(legacy_candidate)
+    legacy_exists = legacy_path != manifest_path and legacy_candidate.exists()
+    legacy_info: tuple[dict[str, object], str, str] | None = None
+    if legacy_exists:
+        legacy_info = _read_exact_legacy_scope(legacy_candidate)
 
-                os.fsync(stream.fileno())
-        except FileExistsError:
-            existing = json.loads(SCOPE_MANIFEST.read_text(encoding="utf-8"))
-            if not isinstance(existing, Mapping):
-                raise RuntimeError("isolated Paper scope manifest is not an object")
-            existing_body = dict(existing)
-            declared = existing_body.pop("content_sha256", None)
-            if declared != _payload_hash(existing_body) or existing_body != body:
-                raise RuntimeError("isolated Paper scope manifest changed")
-    return SCOPE_MANIFEST, _file_hash(SCOPE_MANIFEST)
+    if manifest_path.exists():
+        existing_body, _, existing_file_hash = _read_scope_manifest(
+            SCOPE_MANIFEST,
+            role="isolated Paper v3 scope manifest",
+        )
+        if existing_body != body:
+            raise RuntimeError("isolated Paper v3 scope manifest changed")
+        target_file_hash = existing_file_hash
+    else:
+        target_file_hash = _write_create_only_bytes(
+            SCOPE_MANIFEST,
+            encoded,
+            "isolated Paper v3 scope manifest",
+        )
+    if legacy_info is not None:
+        legacy_body, legacy_content_hash, legacy_file_hash = legacy_info
+        plan = _scope_manifest_migration_plan(
+            legacy_body=legacy_body,
+            legacy_content_hash=legacy_content_hash,
+            legacy_file_hash=legacy_file_hash,
+            target_body=body,
+            target_raw=encoded,
+        )
+        if _file_hash(legacy_path) != legacy_file_hash:
+            raise RuntimeError("isolated Paper v2 scope manifest changed during migration")
+        _write_or_verify_migration_receipt(
+            plan=plan,
+            legacy_file_hash=legacy_file_hash,
+            target_file_hash=target_file_hash,
+        )
+        if _file_hash(legacy_path) != legacy_file_hash:
+            raise RuntimeError("isolated Paper v2 scope manifest changed during migration")
+    return manifest_path, _file_hash(manifest_path)
+
+
+def _write_scope_validation_failure_receipt(
+    *,
+    error: BaseException,
+    observed: datetime,
+) -> Path:
+    """在固定 repository 報告根目錄保存 scope 驗證失敗。"""
+
+    repository_root = _resolved(ROOT)
+    report_root = _resolved(_scope_failure_receipt_root())
+    data_root = _resolved(DEFAULT_DATA_ROOT)
+    if report_root == repository_root or not _is_under(report_root, repository_root):
+        raise RuntimeError("scope validation failure report escaped repository root")
+    if _is_under(report_root, data_root) or _is_under(data_root, report_root):
+        raise RuntimeError("scope validation failure report overlaps source data root")
+    report_root.mkdir(parents=True, exist_ok=True)
+    body: dict[str, object] = {
+        "schema_version": SCOPE_FAILURE_RECEIPT_SCHEMA_VERSION,
+        "status": "failed",
+        "terminal": True,
+        "scope_validation_failed": True,
+        "recorded_at": observed.astimezone(timezone.utc).isoformat(),
+        "error_type": type(error).__name__,
+        "error": str(error),
+        "scope_writer_targets_verified": False,
+        "safe_report_root": str(report_root),
+        "manifest_paths_observed": {
+            "legacy_v2": str(_legacy_scope_manifest_path()),
+            "target_v3": str(SCOPE_MANIFEST),
+        },
+        "formal_credit": False,
+        "broker_execution": False,
+        "writes_market_database": False,
+    }
+    body["content_sha256"] = _payload_hash(body)
+    raw = (_canonical_json(body) + "\n").encode("utf-8")
+    stamp = observed.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    for suffix in range(100):
+        suffix_text = "" if suffix == 0 else f"_{suffix}"
+        path = report_root / f"scope_validation_failed_{stamp}{suffix_text}.json"
+        try:
+            _write_create_only_bytes(path, raw, "scope validation failure receipt")
+        except RuntimeError as write_error:
+            if "existing bytes differ" in str(write_error) or "concurrent bytes differ" in str(write_error):
+                continue
+            raise
+        return path
+    raise RuntimeError("scope validation failure receipt filename collision")
+
+
+def _scope_validation_failure_result(
+    *,
+    error: BaseException,
+    observed: datetime,
+) -> dict[str, object]:
+    """將 scope 失敗轉成 terminal result，避免 scheduler 收到未處理例外。"""
+
+    result: dict[str, object] = {
+        "schema_version": PAPER_EXECUTION_SCHEMA_VERSION,
+        "producer": "scripts.scheduled.run_paper_execution_daily_isolated",
+        "observed_at": observed.isoformat(),
+        "status": "failed",
+        "terminal": True,
+        "scope_validation_failed": True,
+        "blockers": [
+            "isolated_scope_manifest_validation_failed:"
+            f"{type(error).__name__}:{error}"
+        ],
+        "candidate_only": True,
+        "formal_ready": False,
+        "formal_credit": False,
+        "broker_execution": False,
+        "writes_market_database": False,
+        "scope_writer_targets_verified": False,
+    }
+    try:
+        receipt_path = _write_scope_validation_failure_receipt(
+            error=error,
+            observed=observed,
+        )
+    except Exception as receipt_error:  # noqa: BLE001 - 失敗邊界不得向外冒泡
+        result["receipt_write_error"] = (
+            f"{type(receipt_error).__name__}:{receipt_error}"
+        )
+    else:
+        result["terminal_failure_receipt_path"] = str(receipt_path)
+    return result
 
 
 def _sqlite_source_observation(
@@ -995,7 +1345,13 @@ def run_isolated(*, now: datetime | None = None) -> dict[str, object]:
             "broker_execution": False,
             "writes_market_database": False,
         }
-    scope_manifest_path, scope_manifest_file_hash = _write_or_verify_scope_manifest()
+    try:
+        scope_manifest_path, scope_manifest_file_hash = _write_or_verify_scope_manifest()
+    except Exception as error:  # noqa: BLE001 - scope 失敗必須轉成 terminal receipt
+        return _scope_validation_failure_result(
+            error=error,
+            observed=observed,
+        )
     sector_resolution = _resolve_pit_sector_manifest(observed)
     paths = _paths(observed, sector_resolution=sector_resolution)
     try:

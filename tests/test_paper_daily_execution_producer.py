@@ -28,6 +28,7 @@ from data_module.paper_daily_execution_producer import (
     _append_and_read_back,
     _apply_prior_paper_fills,
     _build_fills,
+    ensure_paper_ledger_schema,
     resolve_pending_recommendation,
     run_paper_execution_daily_from_queue,
     run_paper_execution_daily,
@@ -37,7 +38,7 @@ from data_module.official_trading_calendar_cache import (
     build_twse_calendar_cache,
     write_twse_calendar_cache,
 )
-from app_module.paper_trade_ledger import PaperTradeLedgerRepository
+from app_module.paper_trade_ledger import PaperTradeFill, PaperTradeLedgerRepository
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -287,6 +288,50 @@ def _paths(
     )
 
 
+def _legacy_eight_row_ledger(path: Path) -> None:
+    """建立僅有舊 fill table 的 bounded fixture，不創造 transition 歷史。"""
+
+    repository = PaperTradeLedgerRepository(path)
+    for index in range(8):
+        repository.append(
+            PaperTradeFill(
+                fill_id=f"legacy-rejected-{index}",
+                order_id=f"legacy-order-{index}",
+                portfolio_id="paper-main",
+                event_date=DECISION_DATE,
+                stock_code="2330",
+                side="buy",
+                requested_quantity=1000,
+                filled_quantity=0,
+                reference_price=Decimal("10.00"),
+                fill_price=None,
+                commission=Decimal("0.00"),
+                tax=Decimal("0.00"),
+                slippage_cost=Decimal("0.00"),
+                turnover_bp=0,
+                execution_gap_bp=None,
+                status="rejected",
+                source_event_id=f"legacy-source-{index}",
+                source_type="paper_daily_execution_delayed_eod_replay_v1",
+            )
+        )
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TABLE paper_trade_transitions")
+
+
+def _set_fixture_state_to_existing_target(path: Path) -> None:
+    """將 fixture 持倉調到 recommendation 的 board-lot target。"""
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE paper_portfolio_positions "
+            "SET quantity = 1000, market_value = '10000.00', weight_bp = 1000"
+        )
+        connection.execute(
+            "UPDATE paper_portfolio_snapshots SET cash = '90000.00'"
+        )
+
+
 def _open_calendar() -> _Calendar:
     return _Calendar({DECISION_DATE, EXECUTION_DATE})
 
@@ -512,6 +557,80 @@ def test_explicit_append_is_exactly_idempotent_after_preopen_snapshot_exists(
     assert second["ledger"]["idempotent_replay"] is True
     with sqlite3.connect(f"file:{ledger.resolve().as_posix()}?mode=ro", uri=True) as connection:
         assert connection.execute("SELECT COUNT(*) FROM paper_trade_ledger").fetchone()[0] == 1
+
+
+def test_eod_schema_readback_preserves_legacy_fills_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    ledger = tmp_path / "legacy-paper-ledger.sqlite"
+    _legacy_eight_row_ledger(ledger)
+
+    first_hash = _sha256(ledger)
+    first = ensure_paper_ledger_schema(ledger)
+    after_first_hash = _sha256(ledger)
+    second = ensure_paper_ledger_schema(ledger)
+
+    assert first["readback_verified"] is True
+    assert first["row_counts"] == {
+        "paper_trade_ledger": 8,
+        "paper_trade_transitions": 0,
+    }
+    assert first["historical_transition_evidence_inferred"] is False
+    assert second["row_counts"] == first["row_counts"]
+    assert after_first_hash != first_hash
+    assert _sha256(ledger) == after_first_hash
+    with sqlite3.connect(ledger.as_uri() + "?mode=ro", uri=True) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM paper_trade_ledger"
+        ).fetchone()[0] == 8
+        assert connection.execute(
+            "SELECT COUNT(*) FROM paper_trade_transitions"
+        ).fetchone()[0] == 0
+
+
+def test_eod_schema_readback_rejects_malformed_existing_transition_table(
+    tmp_path: Path,
+) -> None:
+    ledger = tmp_path / "malformed-paper-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger)
+    with sqlite3.connect(ledger) as connection:
+        connection.execute("DROP TABLE paper_trade_transitions")
+        connection.execute(
+            "CREATE TABLE paper_trade_transitions ("
+            "transition_id TEXT PRIMARY KEY, portfolio_id TEXT, event_date TEXT)"
+        )
+
+    with pytest.raises(ValueError, match="schema columns are missing"):
+        ensure_paper_ledger_schema(ledger)
+
+
+def test_candidate_without_append_confirmation_does_not_initialize_missing_transition_table(
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+    assert paths.ledger_db is not None
+    _set_fixture_state_to_existing_target(paths.state_db)
+    _legacy_eight_row_ledger(paths.ledger_db)
+    before_hash = _sha256(paths.ledger_db)
+
+    result = run_paper_execution_daily(
+        paths,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=False,
+    )
+
+    assert result["status"] == "no_trade_required_candidate"
+    assert result["fill_count"] == 0
+    assert result["append_requested"] is False
+    assert _sha256(paths.ledger_db) == before_hash
+    with sqlite3.connect(paths.ledger_db.as_uri() + "?mode=ro", uri=True) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'paper_trade_transitions'"
+        ).fetchone()[0] == 0
 
 
 def test_missing_append_confirmation_does_not_create_ledger(tmp_path: Path) -> None:

@@ -32,7 +32,9 @@ from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioSnapshot,
 )
 from app_module.paper_trade_ledger import (
+    PAPER_TRADE_LEDGER_COLUMNS,
     PAPER_TRADE_LEDGER_SCHEMA_VERSION,
+    PAPER_TRADE_TRANSITION_COLUMNS,
     PAPER_TRADE_TRANSITION_SCHEMA_VERSION,
     PaperTradeFill,
     PaperTradeTransition,
@@ -91,55 +93,8 @@ _PAPER_TURNOVER_CONTRACT = {
     "producer": "data_module.paper_daily_execution_producer._trade_financials",
     "policy_contract": _PAPER_TRANSITION_CONTRACT_VERSION,
 }
-_PAPER_TRADE_LEDGER_COLUMNS = frozenset(
-    {
-        "schema_version",
-        "fill_id",
-        "order_id",
-        "portfolio_id",
-        "event_date",
-        "stock_code",
-        "side",
-        "requested_quantity",
-        "filled_quantity",
-        "reference_price",
-        "fill_price",
-        "commission",
-        "tax",
-        "slippage_cost",
-        "turnover_bp",
-        "execution_gap_bp",
-        "status",
-        "source_event_id",
-        "override_reason",
-        "source_type",
-        "research_only",
-        "broker_order_allowed",
-        "auto_rebalance_allowed",
-    }
-)
-_PAPER_TRADE_TRANSITION_COLUMNS = frozenset(
-    {
-        "schema_version",
-        "transition_id",
-        "batch_id",
-        "portfolio_id",
-        "event_date",
-        "fill_ids_json",
-        "pre_cash",
-        "pre_total_value",
-        "post_cash",
-        "post_total_value",
-        "common_nav",
-        "common_prices_json",
-        "pre_positions_json",
-        "post_positions_json",
-        "source_type",
-        "research_only",
-        "broker_order_allowed",
-        "auto_rebalance_allowed",
-    }
-)
+_PAPER_TRADE_LEDGER_COLUMNS = PAPER_TRADE_LEDGER_COLUMNS
+_PAPER_TRADE_TRANSITION_COLUMNS = PAPER_TRADE_TRANSITION_COLUMNS
 
 
 def _canonical_json(payload: object) -> str:

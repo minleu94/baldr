@@ -34,6 +34,7 @@ from data_module.paper_daily_execution_producer import (  # noqa: E402
     PAPER_EXECUTION_SCHEMA_VERSION,
     TAIPEI,
     PaperExecutionPaths,
+    ensure_paper_ledger_schema,
     persist_operational_receipt,
     run_paper_execution_daily_from_queue,
 )
@@ -1007,7 +1008,23 @@ def run_isolated(*, now: datetime | None = None) -> dict[str, object]:
             scope_manifest_path=scope_manifest_path,
             scope_manifest_file_hash=scope_manifest_file_hash,
         )
+    try:
+        if paths.ledger_db is None:  # pragma: no cover - 隔離路徑固定存在
+            raise RuntimeError("isolated Paper ledger path is missing")
+        ledger_schema = ensure_paper_ledger_schema(paths.ledger_db)
+    except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
+        return _write_scope_blocked_result(
+            paths=paths,
+            observed=observed,
+            blockers=[
+                "isolated_paper_ledger_schema_initialization_failed:"
+                f"{type(error).__name__}:{error}"
+            ],
+            scope_manifest_path=scope_manifest_path,
+            scope_manifest_file_hash=scope_manifest_file_hash,
+        )
     source_observation["sector_membership_source"] = sector_resolution[2]
+    source_observation["paper_ledger_schema"] = ledger_schema
     calendar_refresh = _refresh_calendar_cache(observed)
     temporary_closure_refresh = _refresh_temporary_closure_events(observed)
     refresh_receipt_path = _write_calendar_refresh_receipt(

@@ -115,6 +115,14 @@ class PaperExecutionPaths:
     sector_membership_file_hash: str | None = None
 
 
+def ensure_paper_ledger_schema(path: Path) -> dict[str, object]:
+    """由 EOD append writer 建立並唯讀回讀 Paper ledger schema。"""
+
+    resolved = path.expanduser().resolve()
+    repository = PaperTradeLedgerRepository(resolved)
+    return repository.schema_readback()
+
+
 @dataclass(frozen=True)
 class _Recommendation:
     path: Path
@@ -4071,6 +4079,7 @@ __all__ = [
     "PAPER_MAX_PARTICIPATION_BP",
     "PaperExecutionPaths",
     "PaperExecutionProducerError",
+    "ensure_paper_ledger_schema",
     "latest_proven_market_session_on_or_before",
     "next_proven_trading_day",
     "persist_operational_receipt",

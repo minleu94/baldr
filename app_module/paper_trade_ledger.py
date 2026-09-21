@@ -30,6 +30,55 @@ PAPER_TRADE_SIDES = frozenset({"buy", "sell"})
 PAPER_TRADE_SOURCE_IDENTITY_SCOPE = "portfolio_id:source_event_id"
 MONEY_QUANTUM = Decimal("0.01")
 PAPER_TRADE_TRANSITION_SCHEMA_VERSION = "paper-trade-transition.v1"
+PAPER_TRADE_LEDGER_COLUMNS = frozenset(
+    {
+        "schema_version",
+        "fill_id",
+        "order_id",
+        "portfolio_id",
+        "event_date",
+        "stock_code",
+        "side",
+        "requested_quantity",
+        "filled_quantity",
+        "reference_price",
+        "fill_price",
+        "commission",
+        "tax",
+        "slippage_cost",
+        "turnover_bp",
+        "execution_gap_bp",
+        "status",
+        "source_event_id",
+        "override_reason",
+        "source_type",
+        "research_only",
+        "broker_order_allowed",
+        "auto_rebalance_allowed",
+    }
+)
+PAPER_TRADE_TRANSITION_COLUMNS = frozenset(
+    {
+        "schema_version",
+        "transition_id",
+        "batch_id",
+        "portfolio_id",
+        "event_date",
+        "fill_ids_json",
+        "pre_cash",
+        "pre_total_value",
+        "post_cash",
+        "post_total_value",
+        "common_nav",
+        "common_prices_json",
+        "pre_positions_json",
+        "post_positions_json",
+        "source_type",
+        "research_only",
+        "broker_order_allowed",
+        "auto_rebalance_allowed",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -597,6 +646,66 @@ class PaperTradeLedgerRepository:
         finally:
             connection.close()
         return tuple(_row_to_fill(row) for row in rows)
+
+    def schema_readback(self) -> dict[str, object]:
+        """以唯讀連線確認 writer 建立的兩張 ledger 表仍可讀。"""
+
+        resolved = self.db_path.expanduser().resolve()
+        if not resolved.is_file():
+            raise ValueError("paper ledger schema readback path is not a file")
+        uri = resolved.as_uri() + "?mode=ro"
+        connection: sqlite3.Connection | None = None
+        required_tables = ("paper_trade_ledger", "paper_trade_transitions")
+        required_columns = {
+            "paper_trade_ledger": PAPER_TRADE_LEDGER_COLUMNS,
+            "paper_trade_transitions": PAPER_TRADE_TRANSITION_COLUMNS,
+        }
+        try:
+            connection = sqlite3.connect(uri, uri=True)
+            connection.execute("PRAGMA query_only=ON")
+            if connection.execute("PRAGMA query_only").fetchone() != (1,):
+                raise ValueError("paper ledger schema readback is not query-only")
+            table_columns: dict[str, list[str]] = {}
+            row_counts: dict[str, int] = {}
+            for table in required_tables:
+                columns = [
+                    str(row[1])
+                    for row in connection.execute(
+                        f'PRAGMA table_info("{table}")'
+                    ).fetchall()
+                ]
+                if not columns:
+                    raise ValueError(f"paper ledger schema table is missing:{table}")
+                missing = sorted(required_columns[table] - set(columns))
+                if missing:
+                    raise ValueError(
+                        f"paper ledger schema columns are missing:{table}:"
+                        + ",".join(missing)
+                    )
+                table_columns[table] = sorted(columns)
+                row_counts[table] = int(
+                    connection.execute(
+                        f'SELECT COUNT(*) FROM "{table}"'
+                    ).fetchone()[0]
+                )
+        except sqlite3.Error as exc:
+            raise ValueError("paper ledger schema readback failed") from exc
+        finally:
+            if connection is not None:
+                connection.close()
+        return {
+            "path": str(resolved),
+            "mode": "ro/query_only",
+            "required_tables": list(required_tables),
+            "table_columns": table_columns,
+            "row_counts": row_counts,
+            "ledger_schema_version": PAPER_TRADE_LEDGER_SCHEMA_VERSION,
+            "transition_schema_version": PAPER_TRADE_TRANSITION_SCHEMA_VERSION,
+            "readback_verified": True,
+            # 表存在只證明 schema readiness；不把既有 fill rows 推成歷史
+            # transition evidence。consumer 仍須依 transition rows 驗證窗口。
+            "historical_transition_evidence_inferred": False,
+        }
 
     def _ensure_schema(self) -> None:
         connection = sqlite3.connect(self.db_path)

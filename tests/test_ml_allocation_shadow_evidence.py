@@ -884,6 +884,46 @@ def test_t_minus_one_reader_rejects_missing_transaction_turnover(
         )
 
 
+def test_t_minus_one_reader_keeps_missing_transition_table_fail_closed(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=1000,
+    )
+    with sqlite3.connect(ledger_db) as connection:
+        connection.execute("DROP TABLE paper_trade_transitions")
+
+    with pytest.raises(ValueError, match="paper trade transition table is missing"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+            official_calendar=_calendar_for(date(2026, 2, 2), date(2026, 2, 3)),
+        )
+
+
+def test_t_minus_one_reader_rejects_fills_without_transition_evidence(
+    tmp_path: Path,
+) -> None:
+    state_db, ledger_db = _make_transaction_backed_paper_state(
+        tmp_path,
+        turnover_bp=1000,
+    )
+    with sqlite3.connect(ledger_db) as connection:
+        connection.execute("DELETE FROM paper_trade_transitions")
+
+    with pytest.raises(ValueError, match="paper trade transition evidence missing"):
+        load_t_minus_one_paper_ledger(
+            state_db_path=state_db,
+            paper_trade_ledger_db_path=ledger_db,
+            portfolio_id="paper-main",
+            decision_date=date(2026, 2, 9),
+            official_calendar=_calendar_for(date(2026, 2, 2), date(2026, 2, 3)),
+        )
+
+
 def test_t_minus_one_reader_requires_trade_ledger_path_even_for_stable_snapshot(
     tmp_path: Path,
 ) -> None:

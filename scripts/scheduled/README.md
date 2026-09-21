@@ -202,10 +202,13 @@ Paper EOD scheduled task 不使用通用 wrapper 的可覆寫環境變數。隔�
 adapter 建立、EOD 唯讀消費的唯一 Paper state。每輪 candidate 寫入
 `<repo>\output\paper_execution_eod_replay\candidates\run_<uuid>`，receipt 寫入
 同一 operation root 的 `receipts`，append-only research Paper ledger 固定為
-`<repo>\output\paper_execution_eod_replay\paper_trade_ledger.sqlite`。啟動時會建立／
-驗證 `scope_manifest_v2.json`，若來源、target 或 manifest 不符合 scope，會保存 blocked
-candidate／receipt 並回傳非零；缺少 ledger 不會被當成 Formal 或已完成 evidence，只有
-具體 machine-verified Paper fill 才會建立 append transition。
+`<repo>\output\paper_execution_eod_replay\paper_trade_ledger.sqlite`。啟動時會 exact
+驗證 immutable `scope_manifest_v2.json`；合法歷史 v2（可含既有
+`writable.event_capture_root`）只會以 append-only、create-only 方式建立自洽的
+`scope_manifest_v3.json`，並保存 create-only migration receipt，絕不覆寫 v2 bytes。
+來源、target 或 manifest 任一 root 漂移時會在建立 v3 前 terminal fail closed，固定的
+scope-validation failure receipt 不使用未驗證 writer root；缺少 ledger 不會被當成 Formal
+或已完成 evidence，只有具體 machine-verified Paper fill 才會建立 append transition。
 
 PIT 的日常來源分成兩個排程：`run_pit_sector_membership_preopen_capture.cmd`
 固定在 Pacific 16:00 執行，PDT/PST 分別對應台北 07:00/08:00，並在每個官方

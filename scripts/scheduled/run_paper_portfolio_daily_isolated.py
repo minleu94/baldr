@@ -30,6 +30,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
+from app_module.paper_daily_status_contract import (  # noqa: E402
+    PAPER_DAILY_STATUS_SCHEMA_VERSION,
+)
 from runtime.console_encoding import configure_utf8_console  # noqa: E402
 from scripts.run_paper_portfolio_daily import (  # noqa: E402
     TAIPEI,
@@ -664,7 +667,8 @@ def _blocked_result(
 ) -> dict[str, object]:
     operation = None if paths is None else paths.get("operation_root")
     result: dict[str, object] = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": PAPER_DAILY_STATUS_SCHEMA_VERSION,
+        "isolated_scope_schema_version": SCHEMA_VERSION,
         "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
         "observed_at": observed.astimezone(timezone.utc).isoformat(),
         "status": "blocked",
@@ -699,7 +703,8 @@ def _waiting_for_taipei_cutoff(
     taipei = observed.astimezone(TAIPEI)
     cutoff = _taipei_cutoff_for(observed)
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": PAPER_DAILY_STATUS_SCHEMA_VERSION,
+        "isolated_scope_schema_version": SCHEMA_VERSION,
         "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
         "observed_at": observed.astimezone(timezone.utc).isoformat(),
         "taipei_now": taipei.isoformat(),
@@ -834,7 +839,12 @@ def run_isolated(
                 )
         combined: dict[str, object] = {
             **result,
-            "schema_version": SCHEMA_VERSION,
+            # The outer receipt is the canonical Paper daily-status contract
+            # consumed by position-health and evidence.  The isolated custody
+            # envelope retains its own version in a separate field so the
+            # consumer contract is not silently replaced by wrapper metadata.
+            "schema_version": PAPER_DAILY_STATUS_SCHEMA_VERSION,
+            "isolated_scope_schema_version": SCHEMA_VERSION,
             "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
             "candidate_only": True,
             "formal_credit": False,

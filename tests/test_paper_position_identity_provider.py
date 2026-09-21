@@ -135,8 +135,13 @@ def _write_status(
         json.dumps(
             {
                 "schema_version": "paper-portfolio-daily-status.v1",
+                "isolated_scope_schema_version": "paper-portfolio-daily-isolated-scope.v1",
                 "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
                 "status": "passed",
+                "candidate_only": True,
+                "formal_credit": False,
+                "writes_D_source": False,
+                "writes_market_database": False,
                 "decision_at": f"{decision_date}T08:30:00+08:00",
                 "decision_date": decision_date,
                 "snapshot_id": snapshot_id,
@@ -150,6 +155,13 @@ def _write_status(
                 "auto_rebalance_allowed": False,
                 "changes_advice": False,
                 "broker_execution": False,
+                "isolated_scope": {
+                    "repository_state_scope": "repository_output_only",
+                    "formal_credit": False,
+                    "writes_D_source": False,
+                    "writes_market_database": False,
+                    "broker_execution": False,
+                },
             },
             sort_keys=True,
         ),
@@ -224,6 +236,18 @@ def test_provider_derives_new_natural_entry_and_keeps_old_identity_unknown(
         observed_at=datetime(2026, 9, 8, 1, 0, tzinfo=timezone.utc),
     )
     assert repeated.identities["2330"]["position_id"] == identity["position_id"]
+
+    legacy_status = json.loads(status_path.read_text(encoding="utf-8"))
+    legacy_status["schema_version"] = "paper-portfolio-daily-isolated-scope.v1"
+    legacy_status.pop("isolated_scope_schema_version")
+    status_path.write_text(json.dumps(legacy_status), encoding="utf-8")
+    legacy = _provider(state_db, ledger_db, status_path).resolve(
+        snapshot_id="paper-main-20260908",
+        snapshot_date="2026-09-08",
+        observed_at=datetime(2026, 9, 8, 1, 0, tzinfo=timezone.utc),
+    )
+    assert legacy.blockers == ()
+    assert legacy.identities["2330"]["position_id"] == identity["position_id"]
     assert state_db.read_bytes() == state_before
     assert ledger_db.read_bytes() == ledger_before
 

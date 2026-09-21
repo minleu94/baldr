@@ -29,6 +29,7 @@ from app_module.decision_desk_dtos import (
     PortfolioAlertAttribution,
     PortfolioAlertSummary,
 )
+from app_module.paper_daily_status_contract import paper_daily_status_schema_supported
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
 
@@ -479,7 +480,7 @@ class PaperDecisionDeskEvidenceSource:
         blockers: list[str],
         warnings: list[str],
     ) -> None:
-        if payload.get("schema_version") != "paper-portfolio-daily-status.v1":
+        if not paper_daily_status_schema_supported(payload):
             blockers.append("paper_daily_status_schema_mismatch")
         status = str(payload.get("status") or "unknown")
         if status not in {"passed", "skipped_non_trading_day"}:

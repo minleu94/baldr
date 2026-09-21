@@ -21,12 +21,15 @@ from app_module.paper_trade_ledger import (
     PAPER_TRADE_LEDGER_SCHEMA_VERSION,
     PaperTradeFill,
 )
+from app_module.paper_daily_status_contract import (
+    PAPER_DAILY_STATUS_SCHEMA_VERSION,
+    paper_daily_status_schema_supported,
+)
 from app_module.paper_portfolio_time import paper_portfolio_today
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
 
 PAPER_PORTFOLIO_READINESS_SCHEMA_VERSION = "paper-portfolio-readiness.v1"
-PAPER_DAILY_STATUS_SCHEMA_VERSION = "paper-portfolio-daily-status.v1"
 DEFAULT_PORTFOLIO_ID = "paper-main"
 DEFAULT_BENCHMARK_ID = "paper-main-equal"
 DEFAULT_BENCHMARK_LEDGER_FILENAME = "paper_equal_weight_benchmark.sqlite"
@@ -438,8 +441,7 @@ class PaperPortfolioReadinessService:
             blockers.append("paper_daily_status_invalid")
             diagnostics.append("paper_daily_status_payload_not_object")
             return None, "invalid"
-        schema_version = str(payload.get("schema_version", ""))
-        if schema_version != PAPER_DAILY_STATUS_SCHEMA_VERSION:
+        if not paper_daily_status_schema_supported(payload):
             blockers.append("paper_daily_status_schema_mismatch")
         status = str(payload.get("status", "unknown"))
         if status not in {"passed", "skipped_non_trading_day"}:

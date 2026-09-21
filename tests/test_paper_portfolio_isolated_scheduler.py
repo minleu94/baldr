@@ -19,6 +19,12 @@ from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioSnapshot,
     PaperPortfolioSnapshotRepository,
 )
+from app_module.paper_decision_desk_evidence_source import (
+    PaperDecisionDeskEvidenceSource,
+)
+from app_module.position_health_daily_refresh_service import (
+    PositionHealthDailyRefreshService,
+)
 from scripts.scheduled import run_paper_execution_daily_isolated as eod_adapter
 from scripts.scheduled import run_paper_portfolio_daily_isolated as preopen_adapter
 from scripts.scheduled import run_formal_input_producer_daily as formal_adapter
@@ -202,7 +208,8 @@ def test_isolated_preopen_seeds_readonly_source_then_calls_public_runner(
         calendar=_OpenCalendar(),  # type: ignore[arg-type]
     )
     assert first["status"] == "passed"
-    assert first["schema_version"] == preopen_adapter.SCHEMA_VERSION
+    assert first["schema_version"] == "paper-portfolio-daily-status.v1"
+    assert first["isolated_scope_schema_version"] == preopen_adapter.SCHEMA_VERSION
     assert first["state_db"] == str(state)
     coverage = first["preopen_coverage"]
     assert isinstance(coverage, dict)
@@ -241,6 +248,67 @@ def test_isolated_preopen_seeds_readonly_source_then_calls_public_runner(
     snapshot = PaperPortfolioSnapshotRepository(state).get("paper-main-20260714")
     assert snapshot is not None
     assert snapshot.total_value == Decimal("101000.00")
+
+    status_path = (
+        operation_root / "scheduled" / "paper_portfolio_isolated" / "latest_status.json"
+    )
+    health_output = tmp_path / "position-health"
+    health_receipt = PositionHealthDailyRefreshService(
+        state_db_path=state,
+        status_path=status_path,
+        ledger_db_path=operation_root / "paper_trade_ledger.sqlite",
+        coverage_status_path=status_path,
+    ).refresh(
+        as_of_date=decision_at.date(),
+        output_dir=health_output,
+        observed_at=observed,
+    )
+    assert health_receipt["status"] == "passed"
+    assert "paper_daily_status_schema_mismatch" not in health_receipt["blockers"]
+
+    evidence = PaperDecisionDeskEvidenceSource(
+        state_db_path=state,
+        health_baseline_path=health_receipt["latest_path"],
+        status_path=status_path,
+    ).build(decision_at.date())
+    assert "paper_daily_status_schema_mismatch" not in evidence.blockers
+    assert not any(
+        item.startswith("paper_health_baseline_unavailable:")
+        for item in evidence.blockers
+    )
+
+    # Rolling compatibility for the previous wrapper receipt: it is accepted
+    # only while the complete isolated custody envelope remains intact.
+    legacy_status = json.loads(status_path.read_text(encoding="utf-8"))
+    legacy_status["schema_version"] = preopen_adapter.SCHEMA_VERSION
+    legacy_status.pop("isolated_scope_schema_version", None)
+    status_path.write_text(json.dumps(legacy_status), encoding="utf-8")
+    legacy_health = PositionHealthDailyRefreshService(
+        state_db_path=state,
+        status_path=status_path,
+        ledger_db_path=operation_root / "paper_trade_ledger.sqlite",
+        coverage_status_path=status_path,
+    ).refresh(
+        as_of_date=decision_at.date(),
+        output_dir=tmp_path / "legacy-position-health",
+        observed_at=observed,
+    )
+    assert legacy_health["status"] == "passed"
+
+    legacy_status["writes_D_source"] = True
+    status_path.write_text(json.dumps(legacy_status), encoding="utf-8")
+    unsafe_health = PositionHealthDailyRefreshService(
+        state_db_path=state,
+        status_path=status_path,
+        ledger_db_path=operation_root / "paper_trade_ledger.sqlite",
+        coverage_status_path=status_path,
+    ).refresh(
+        as_of_date=decision_at.date(),
+        output_dir=tmp_path / "unsafe-position-health",
+        observed_at=observed,
+    )
+    assert unsafe_health["status"] == "blocked"
+    assert "paper_daily_status_schema_mismatch" in unsafe_health["blockers"]
 
     second = preopen_adapter.run_isolated(
         now=observed,

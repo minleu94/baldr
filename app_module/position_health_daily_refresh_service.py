@@ -20,6 +20,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from app_module.paper_daily_status_contract import paper_daily_status_schema_supported
 from app_module.position_health_baseline_service import PositionHealthBaselineService
 from app_module.paper_position_identity_provider import (
     PaperPositionIdentityProvider,
@@ -404,7 +405,7 @@ class PositionHealthDailyRefreshService:
         # not a quality warning; treating every hash as a warning would keep
         # a freshly refreshed health source degraded forever.
         warnings: list[str] = []
-        if payload.get("schema_version") != "paper-portfolio-daily-status.v1":
+        if not paper_daily_status_schema_supported(payload):
             blockers.append("paper_daily_status_schema_mismatch")
         status = str(payload.get("status") or "unknown")
         if status not in {"passed", "skipped_non_trading_day"}:
@@ -512,7 +513,7 @@ class PositionHealthDailyRefreshService:
             return metadata, [f"paper_entry_lineage_coverage_unavailable:{type(exc).__name__}"]
 
         failures: list[str] = []
-        if payload.get("schema_version") != "paper-portfolio-daily-status.v1":
+        if not paper_daily_status_schema_supported(payload):
             failures.append("schema_mismatch")
         if payload.get("producer") != "scripts.scheduled.run_paper_portfolio_daily_isolated":
             failures.append("producer_mismatch")

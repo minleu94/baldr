@@ -31,6 +31,7 @@ import sqlite3
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app_module.paper_daily_status_contract import paper_daily_status_schema_supported
 from app_module.paper_trade_ledger import PaperTradeFill
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
@@ -333,7 +334,7 @@ class PaperPositionIdentityProvider:
         payload = json.loads(raw.decode("utf-8-sig"))
         if not isinstance(payload, Mapping):
             raise ValueError("paper_position_identity_coverage_must_be_object")
-        if payload.get("schema_version") != "paper-portfolio-daily-status.v1":
+        if not paper_daily_status_schema_supported(payload):
             raise ValueError("paper_position_identity_coverage_schema_invalid")
         if payload.get("status") != "passed":
             raise ValueError("paper_position_identity_coverage_not_passed")

@@ -56,3 +56,46 @@ source receipts 的日期、時間 cutoff、symbol coverage、receipt lineage �
 正常 refresh 不以既有 receipt 作為啟動前置條件：formal latest status 只提供 bounded window hint。只有在 `start <= end`、`end == caller decision_date`、available time 不在未來且 Asia/Taipei 日期相符，並由既有 `reuse_verified_technical_computation_receipt()` 重新驗證成功時，才沿用該多日 window；missing、stale、future 或驗證失敗均回到 caller 的 decision-date refresh，保留原本的 recovery 語意。明確 `--skip-technical-refresh` 同樣必須通過 current-day window 與既有 reuse verifier，不能以任意舊 receipt 宣稱 skip 成功。
 
 隔離 QA 使用既有 source-contract fixture 建立真實三日 computation witness，確認 `pipeline.main` 的 quick child arguments/window、formal env/status path 與其他 children 的 shadow env；另驗證 missing/stale receipt 回落至 2026-09-21、custom DB 不呼叫 quick writer 且 DB bytes/mtime 不變。`tests/test_recommendation_calibration_contract_guards.py` focused suite 為 20 passed，`tests/test_recommendation_calibration_source_contract.py` 為 7 passed，兩個修改檔案均通過 `py_compile` 與 `git diff --check`。pytest 僅有既存 `.pytest_cache` 權限 warning；沒有執行正式 scheduler。
+
+## 2026-09-21 ML forward integrity readback 可見性 QA
+
+本輪是 ML forward failure 的診斷可見性修復，不是 Paper coordination 根因修復，也不宣稱 natural capture、eligibility、promotion 或 credit 已恢復。既有 2026-09-21 child immutable record 位於：
+
+`output/v4_ml_daily_derived_shadow_real_v2/natural_date_shadow/records/50d056970168ac75b60274e54ecd6dadd7c412b72f5896fee70ef9798b8b53d7.json`
+
+該 record 的實際結果已足以定位 blocker：
+
+| component | immutable child 結果 |
+| --- | --- |
+| formal market SQLite | `source.database.unchanged=true`；唯讀 source date evidence 仍為 `mode=ro`／`query_only=true` |
+| repo Paper state | `unchanged=false`、`integrity_verified=false`、`change_class=unaccounted_change`；`state_read_view_stable`、`trade_ledger_read_view_stable`、`preopen_receipt_valid`、`paper_state_write_scope_valid` 均為 `false` |
+| Paper transaction ledger | `unchanged=true` |
+| frozen release | `release_manifest.unchanged=true`、`required_files_unchanged=true` |
+
+因此本次 `failed_read_only_integrity` 的根因範圍是沒有可驗證 preopen coordination contract 的 Paper state 變更；不能把它歸因於 formal DB、release、ledger 或 sidecar。parent 的 immutable receipt `output/v4_ml_daily_derived_shadow_real_v2/scheduled/ml_allocation_forward/receipts/20260921T003038098583Z-4260.json` 當時只保存 child status 與 stdout digest，沒有把 child 已存在的 component source 帶到 scheduler readback。
+
+本輪 runtime slice 只重用 child 的既有 immutable source／record identity：child 將已計算的 stat `changed_fields` 與 frozen release hash 的 before／after／`which_changed` 留在既有 source record；parent receipt 增加 bounded `child_read_only_integrity` projection，保存 record path／hash、四個 component 的固定 guard 欄位、release hash 摘要與 post-deadline sidecar 摘要。完整 component details 仍以 child immutable record 為準，舊 receipt 不覆寫。sidecar 以 `classification=parent_post_deadline_shadow_sidecar` 且 `formal_integrity_guard=false` 分開保存；合法的 research sidecar hash 變化不會被當成 formal integrity violation。
+
+本輪保留 child `returncode=1`、parent `blocked_child_exit`、原有 read-only／Paper coordination guard、scheduler dependency／timeout／credit 邊界；沒有執行 production child、scheduler、writer、DB 或 credit。Paper coordination 的 runtime 根因仍待另一個受控修補與驗收。
+
+### 本輪驗證證據
+
+既有 focused test 結果為 `41 passed`（pytest 僅有既存 `.pytest_cache` 權限 warning）：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_daily_ml_allocation_derived_shadow.py tests/test_ml_forward_scheduled_wrapper.py -q -o addopts=
+```
+
+changed Python 與測試檔的 `py_compile` exit code 為 `0`：
+
+```powershell
+.\.venv\Scripts\python.exe -m py_compile scripts\run_daily_ml_allocation_derived_shadow.py scripts\scheduled\run_ml_allocation_forward_daily.py tests\test_daily_ml_allocation_derived_shadow.py tests\test_ml_forward_scheduled_wrapper.py
+```
+
+兩個 changed runtime scripts 的 targeted mypy 結果為 `Success: no issues found in 2 source files`：
+
+```powershell
+.\.venv\Scripts\python.exe -m mypy scripts\run_daily_ml_allocation_derived_shadow.py scripts\scheduled\run_ml_allocation_forward_daily.py
+```
+
+`git diff --check` 通過；Git 的 LF→CRLF 提示是既有工作樹換行警告，不是 whitespace error。

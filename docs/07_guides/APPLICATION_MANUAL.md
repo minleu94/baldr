@@ -582,6 +582,28 @@ reader 以 official calendar 列出 rolling window 的每個交易 session，要
 為 `failed_read_only_integrity`。這不會放寬 `formal_oos_allowed=false`、alpha=0 或
 broker disabled。
 
+若 child 回傳 `failed_read_only_integrity`，scheduler parent 會維持
+`blocked_child_exit` 與非零結果，並在新的 receipt 內保存 bounded
+`child_read_only_integrity`。該 projection 只包含 child immutable record 的 path／record
+hash、formal market DB、Paper state、Paper transaction ledger、release manifest 的固定
+guard 欄位，以及 release required-file hash 的 before／after／`which_changed`；完整
+before／after source 與 coordination contract 仍須沿
+`child_read_only_integrity.record.record_path` 讀取既有
+`output\v4_ml_daily_derived_shadow_real_v2\natural_date_shadow\records\<record-hash>.json`。
+若 `paper_state_db.unchanged=false` 且 `integrity_verified=false`、
+`change_class=unaccounted_change`，根因範圍是缺少可驗證 preopen coordination contract，
+不能把它解讀成 formal market SQLite、release 或 transaction ledger 改寫。這是診斷可見性
+修復，不是 Paper coordination 根因修復。
+
+parent readback 另將 post-deadline research sidecar 放在
+`post_deadline_sidecar`，標示 `classification=parent_post_deadline_shadow_sidecar` 與
+`formal_integrity_guard=false`。sidecar 的合法 append/hash 變化不屬於 child formal
+read-only guard，也不能用來推論 child 自己寫入 formal source。既有
+`forward_credit_granted=false`、`natural_day_credit_granted=false`、
+`formal_oos_allowed=false`、`production_blend_alpha_bp=0` 與
+`broker_order_allowed=false` 保持不變；不要為了取得診斷而重跑 failed child、放寬 guard、
+延長 timeout 或手動授予 credit。
+
 child 只負責 frozen release／PIT input、inference 與 observation emission。wrapper 收到 child 完整 outer payload 後，才在 08:35 deadline 之外呼叫既有 public `run_shadow_maturity_refresh`；成熟掃描不能延長 child deadline，也不會建立 observation 或授予 credit。child 成功、非零、completion gate 失敗或 timeout 都保存完整 outer status；timeout 仍可做 post-deadline 唯讀 maturity，但外層維持 `blocked_child_timeout`。postprocess 的 `source_binding` 必須指向 config 的 output／market DB／lane sidecar，且以 official calendar 解析 decision 日 strict T-1；缺 cutoff、未知／缺 calendar、任意日期或 future cutoff 均為 blocked。`forward_credit_granted=false`、`natural_day_credit_granted=false`、`formal_oos_allowed=false`、`production_blend_alpha_bp=0` 與 `broker_order_allowed=false` 在所有路徑保持不變。
 
 每日檢查 `output\v4_ml_daily_derived_shadow_real_v2\scheduled\ml_allocation_forward\latest_status.json`：`child_completion_clock` 只表示 inference／emission 時鐘，`post_deadline_maturity` 另表示 maturity-only 結果；`post_deadline_maturity_degraded=true` 或 `status=blocked_post_deadline_maturity` 必須保留為需處理狀態。若 sidecar 不存在，成熟結果可為 `pending_source_missing`；這是等待既有觀測，不是自然有效性或 promotion 證據。可用下列受控入口只做既有 sidecar 的成熟回填（需要 exact lane root、official cutoff，且不產生新 observation）：

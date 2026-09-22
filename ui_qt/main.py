@@ -101,7 +101,7 @@ from ui_qt.views.recommendation_view import RecommendationView
 from ui_qt.views.update_view import UpdateView
 from ui_qt.views.backtest_view import BacktestView
 from ui_qt.views.watchlist_view import WatchlistView
-from ui_qt.views.stock_research_report_view import StockResearchReportDialog
+from ui_qt.views.stock_research_workspace import StockResearchWorkspace
 from ui_qt.widgets.session_context_strip import SessionContextStrip
 from ui_qt.views.smart_money.smart_money_flow_view import SmartMoneyFlowView
 from app_module.broker_flow_service import BrokerFlowService
@@ -334,7 +334,7 @@ class MainWindow(QMainWindow):
                     / "trades.jsonl",
                 )
             )
-            self._stock_research_report_dialog: StockResearchReportDialog | None = None
+            self.stock_research_workspace: StockResearchWorkspace | None = None
 
             # 設置 UI
             self._setup_ui()
@@ -867,12 +867,27 @@ class MainWindow(QMainWindow):
                 runtime_widget.setWordWrap(True)
             # --------------------------------------------
 
+            self.stock_research_workspace = StockResearchWorkspace(
+                self.stock_research_report_service,
+                journey_service=self.decision_outcome_journey_service,
+                continuity_controller=self.decision_continuity_controller,
+                parent=self,
+            )
+            self.stock_research_workspace.returnRequested.connect(
+                self._return_from_stock_research_report
+            )
+            self.stock_research_workspace.report_view.activeContextChanged.connect(
+                lambda context: self.research_session_store.set_stock_context(
+                    context, source="stock_research"
+                )
+            )
             workspace_instances = {
                 "workbench": workbench_view,
                 "market_explore": market_tabs,
                 "recommendation": recommendation,
                 "backtest": backtest,
                 "watchlist": watchlist_widget,
+                "stock_research": self.stock_research_workspace,
                 "portfolio": portfolio_widget,
                 "update": update_view,
                 "runtime": runtime_widget,
@@ -1078,53 +1093,20 @@ class MainWindow(QMainWindow):
                 legacy_route(context.stock_code)
             return
 
-        dialog = getattr(self, "_stock_research_report_dialog", None)
-        if isinstance(dialog, StockResearchReportDialog):
-            try:
-                dialog.set_context(
-                    context,
-                    stock_codes=self._stock_codes_for_research_context(context),
-                )
-            except RuntimeError:
-                # Qt 已開始銷毀舊視窗時，交由下面的建立路徑重建。
-                dialog = None
-                self._stock_research_report_dialog = None
-
-        if dialog is None:
-            dialog = StockResearchReportDialog(
-                report_service,
-                context,
-                stock_codes=self._stock_codes_for_research_context(context),
-                journey_service=getattr(
-                    self,
-                    "decision_outcome_journey_service",
-                    None,
-                ),
-                continuity_controller=getattr(
-                    self,
-                    "decision_continuity_controller",
-                    None,
-                ),
-                parent=self,
-            )
-            self._stock_research_report_dialog = dialog
-            dialog.report_view.returnRequested.connect(
-                self._return_from_stock_research_report
-            )
-            dialog.finished.connect(
-                lambda _result, current=dialog: self._clear_stock_research_dialog(
-                    current
-                )
-            )
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is None:
+            return
+        workspace.set_context(
+            context,
+            stock_codes=self._stock_codes_for_research_context(context),
+        )
+        self._select_main_workspace("stock_research")
 
     def _stock_codes_for_research_context(
         self,
         context: ResearchStockContextDTO,
     ) -> tuple[str, ...]:
-        """只從來源頁現有 model 取代碼，供報告視窗上一檔／下一檔。"""
+        """只從來源頁現有 model 取代碼，供研究頁上一檔／下一檔。"""
 
         if context.source_workspace == "watchlist":
             view = getattr(self, "watchlist_view", None)
@@ -1150,11 +1132,12 @@ class MainWindow(QMainWindow):
         except Exception:
             return ()
 
-    def _clear_stock_research_dialog(self, dialog: StockResearchReportDialog) -> None:
-        if getattr(self, "_stock_research_report_dialog", None) is dialog:
-            self._stock_research_report_dialog = None
-
     def _return_from_stock_research_report(self) -> None:
+        workspace = getattr(self, "stock_research_workspace", None)
+        context = getattr(getattr(workspace, "report_view", None), "context", None)
+        if context is not None:
+            self._return_to_research_source(context)
+            return
         store = getattr(self, "research_session_store", None)
         snapshot = getattr(store, "get_snapshot", lambda: None)()
         if snapshot is not None:
@@ -1351,9 +1334,8 @@ class MainWindow(QMainWindow):
             self._shutdown_close_last_diagnostic_monotonic = None
             MainWindow._freeze_child_refresh_sources(self)
 
-            report_dialog = getattr(self, "_stock_research_report_dialog", None)
-            report_view = getattr(report_dialog, "report_view", None)
-            request_report_close = getattr(report_view, "request_close", None)
+            research_workspace = getattr(self, "stock_research_workspace", None)
+            request_report_close = getattr(research_workspace, "request_close", None)
             if callable(request_report_close):
                 request_report_close()
             # MainWindow 的 closeEvent 不會可靠地逐一傳遞到子 QWidget；

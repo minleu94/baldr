@@ -64,7 +64,7 @@ def main() -> int:
         "pid": os.getpid(),
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "actual_main_window": False,
-        "dialog_finished": False,
+        "research_workers_finished": False,
         "report_worker_reached_busy_barrier": False,
         "close_requested_while_busy": False,
         "user_close_requests": 0,
@@ -100,6 +100,7 @@ def main() -> int:
                 return report_service.read_report(stock_code, context=context)
 
         window.stock_research_report_service = BarrierReportReadService()
+        window.stock_research_workspace.report_view.service = window.stock_research_report_service
         context = ResearchStockContextDTO(
             stock_code="2330",
             stock_name="台積電",
@@ -115,18 +116,18 @@ def main() -> int:
         )
         window._open_stock_research_context(context)
 
-        def mark_dialog_finished(_result: int) -> None:
-            receipt["dialog_finished"] = True
+        def mark_research_workers_finished() -> None:
+            receipt["research_workers_finished"] = not dialog.is_busy()
 
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         if dialog is None:
-            raise RuntimeError("MainWindow did not create StockResearchReportDialog")
-        dialog.finished.connect(mark_dialog_finished)
+            raise RuntimeError("MainWindow did not create StockResearchWorkspace")
+        app.aboutToQuit.connect(mark_research_workers_finished)
 
         close_deadline = time.monotonic() + 10
 
         def request_one_user_close() -> None:
-            active_dialog = window._stock_research_report_dialog
+            active_dialog = window.stock_research_workspace
             if not worker_started.is_set() or active_dialog is None or not active_dialog.is_busy():
                 if time.monotonic() >= close_deadline:
                     receipt["error"] = "report worker did not reach a busy dialog"
@@ -157,7 +158,7 @@ def main() -> int:
         receipt["process_exit_code"] = int(
             0
             if receipt["actual_main_window"] is True
-            and receipt["dialog_finished"] is True
+            and receipt["research_workers_finished"] is True
             and receipt["report_worker_reached_busy_barrier"] is True
             and receipt["close_requested_while_busy"] is True
             and receipt["user_close_requests"] == 1

@@ -124,7 +124,7 @@ def main() -> int:
         "persisted_identity_consistent": False,
         "report_loaded": False,
         "journey_loaded": False,
-        "dialog_finished": False,
+        "research_workers_finished": False,
         "exact_identity_visible": False,
         "idle_close_requests": 0,
         "main_window_close_event_count": 0,
@@ -297,9 +297,9 @@ def main() -> int:
         receipt["main_window_recreated"] = isinstance(window, MainWindow)
         window.show()
         window._open_stock_research_context(context)
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         if dialog is None:
-            raise RuntimeError("MainWindow did not create StockResearchReportDialog")
+            raise RuntimeError("MainWindow did not create StockResearchWorkspace")
 
         report_loaded = False
         journey_loaded = False
@@ -311,10 +311,10 @@ def main() -> int:
             else:
                 QTimer.singleShot(20, finish_after_close)
 
-        def mark_dialog_finished(_result: int) -> None:
-            receipt["dialog_finished"] = True
+        def mark_research_workers_finished() -> None:
+            receipt["research_workers_finished"] = not dialog.is_busy()
 
-        dialog.finished.connect(mark_dialog_finished)
+        app.aboutToQuit.connect(mark_research_workers_finished)
 
         def finish_when_both_views_loaded() -> None:
             nonlocal close_started
@@ -324,7 +324,6 @@ def main() -> int:
             receipt["idle_close_requests"] = int(
                 receipt["idle_close_requests"]
             ) + 1
-            dialog.close()
             window.close()
             QTimer.singleShot(0, finish_after_close)
 
@@ -574,7 +573,7 @@ def main() -> int:
             and receipt["persisted_readback"] is True
             and receipt["persisted_identity_consistent"] is True
             and receipt["report_loaded"] is True
-            and receipt["dialog_finished"] is True
+            and receipt["research_workers_finished"] is True
             and receipt["idle_close_requests"] == 1
             and receipt["main_window_close_event_count"] == 1
             and receipt["journey_loaded"] is True

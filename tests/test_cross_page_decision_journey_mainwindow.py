@@ -346,7 +346,7 @@ def _wait_portfolio_ready(window: MainWindow) -> None:
 
 
 def _wait_report_ready(window: MainWindow) -> None:
-    dialog = window._stock_research_report_dialog
+    dialog = window.stock_research_workspace
     assert dialog is not None
     _wait_for(lambda: not dialog.is_busy())
 
@@ -444,7 +444,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         _wait_for(lambda: industry_view.industries_model is not None and industry_view.industries_model.rowCount() == 1)
         _click_table_row(industry_view.industries_table, 0)
         industry_view.open_representative_button.click()
-        _wait_for(lambda: window._stock_research_report_dialog is not None)
+        _wait_for(lambda: window.stock_research_workspace is not None)
         _wait_report_ready(window)
         industry_context = _context(window)
         assert industry_context.stock_code == "2330"
@@ -455,8 +455,8 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert industry_context.source_snapshot_id == ""
 
         # The report return button is a real signal path back to the source.
-        window._stock_research_report_dialog.report_view.return_button.click()
-        _wait_for(lambda: window._stock_research_report_dialog is None)
+        window.stock_research_workspace.report_view.return_button.click()
+        _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
         assert window.left_navigation.current_key() == "market_explore"
 
         # Recommendation result is produced at the UI boundary and persisted
@@ -554,8 +554,8 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert watch_context.source_snapshot_id == "snap-r2"
         assert watch_context.source_snapshot_hash == "hash-r2"
         assert watch_context.source_workspace == "watchlist"
-        window._stock_research_report_dialog.report_view.return_button.click()
-        _wait_for(lambda: window._stock_research_report_dialog is None)
+        window.stock_research_workspace.report_view.return_button.click()
+        _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
         assert watchlist_view.stocks_table.currentIndex().row() == r2_row
 
         # Add one synthetic recommendation-backed position through the fixture
@@ -594,8 +594,8 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert portfolio_context.source_snapshot_id == "snap-r3"
         assert portfolio_context.source_snapshot_hash == "hash-r3"
         assert portfolio_context.source_workspace == "portfolio"
-        window._stock_research_report_dialog.report_view.return_button.click()
-        _wait_for(lambda: window._stock_research_report_dialog is None)
+        window.stock_research_workspace.report_view.return_button.click()
+        _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
         assert portfolio_view.selected_stock_code == "2330"
 
         # After the result has been saved, append its Evidence and initial
@@ -642,7 +642,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             Qt.LeftButton,
             pos=rect.center(),
         )
-        _wait_for(lambda: window._stock_research_report_dialog is not None)
+        _wait_for(lambda: window.stock_research_workspace is not None)
         _wait_report_ready(window)
         workbench_context = _context(window)
         assert workbench_context.result_id == saved_id
@@ -650,7 +650,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert workbench_context.source_snapshot_id == "snap-r3"
         assert workbench_context.source_snapshot_hash == "hash-r3"
         assert workbench_context.source_workspace == "workbench"
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         assert dialog.journey_view is not None
         _wait_for(lambda: dialog.journey_view.journey is not None)
         controls = dialog.journey_view.continuity_controls
@@ -733,7 +733,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert readback_payload["main_window_recreated"] is True
         assert readback_payload["report_loaded"] is True
         assert readback_payload["journey_loaded"] is True
-        assert readback_payload["dialog_finished"] is True
+        assert readback_payload["research_workers_finished"] is True
         assert readback_payload["exact_identity_visible"] is True
         assert readback_payload["idle_close_requests"] == 1
         assert readback_payload["main_window_close_event_count"] == 1
@@ -845,10 +845,10 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         )
         assert manifest_path.is_file()
     finally:
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         if dialog is not None:
             try:
-                dialog.close()
+                window._select_main_workspace("workbench")
             except RuntimeError:
                 dialog = None
             if dialog is not None:
@@ -896,15 +896,15 @@ def test_actual_mainwindow_journey_fail_closed_for_missing_future_and_conflict(
     window.show()
 
     def close_dialog() -> None:
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         if dialog is None:
             return
         try:
-            dialog.close()
+            window._select_main_workspace("workbench")
         except RuntimeError:
             return
         _wait_for(lambda: _qt_widget_not_visible(dialog))
-        _wait_for(lambda: window._stock_research_report_dialog is None)
+        _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
 
     try:
         # A saved result for 2330 must not be substituted for a requested
@@ -922,7 +922,7 @@ def test_actual_mainwindow_journey_fail_closed_for_missing_future_and_conflict(
             )
         )
         _wait_report_ready(window)
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         assert dialog is not None and dialog.journey_view is not None
         journey_view = dialog.journey_view
         _wait_for(
@@ -958,7 +958,7 @@ def test_actual_mainwindow_journey_fail_closed_for_missing_future_and_conflict(
             )
         )
         _wait_report_ready(window)
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         assert dialog is not None and dialog.journey_view is not None
         journey_view = dialog.journey_view
         _wait_for(lambda: journey_view.journey is not None)
@@ -994,7 +994,7 @@ def test_actual_mainwindow_journey_fail_closed_for_missing_future_and_conflict(
             )
         )
         _wait_report_ready(window)
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         assert dialog is not None and dialog.journey_view is not None
         journey_view = dialog.journey_view
         _wait_for(lambda: "identity 衝突" in journey_view.status_label.text())
@@ -1007,10 +1007,10 @@ def test_actual_mainwindow_journey_fail_closed_for_missing_future_and_conflict(
         assert not controls.note_button.isEnabled()
         assert not controls.review_button.isEnabled()
     finally:
-        dialog = window._stock_research_report_dialog
+        dialog = window.stock_research_workspace
         if dialog is not None:
             try:
-                dialog.close()
+                window._select_main_workspace("workbench")
             except RuntimeError:
                 dialog = None
             if dialog is not None:

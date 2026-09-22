@@ -592,7 +592,7 @@ def _run_journey(
             "Journey reload 產生或讀回錯誤 history 數量",
         )
         mark_step("journey_reload_readback_verified")
-        first_dialog.dialog_tabs.setCurrentWidget(first_dialog.journey_view)
+        first_dialog.report_tabs.setCurrentWidget(first_dialog.journey_view)
         app.processEvents()
         screenshots.append(_save_widget(first_dialog, output_dir / "decision_journey_after_write.png"))
 
@@ -603,7 +603,7 @@ def _run_journey(
         current_window = window
         _wait_until(
             app,
-            lambda: current_window._stock_research_report_dialog is None,
+            lambda: current_window.workspace_stack.currentWidget() is not current_window.stock_research_workspace,
             description="推薦研究視窗返回來源",
         )
         _assert(
@@ -732,7 +732,7 @@ def _run_journey(
         _assert(restarted_controls.state.active_note_count == 1, "重啟後未讀回 note")
         _assert(restarted_controls.state.next_review_at == "2026-09-20T10:30:00+08:00", "重啟後未讀回 reminder")
         mark_step("restart_watchlist_and_continuity_readback_verified")
-        restarted_dialog.dialog_tabs.setCurrentWidget(restarted_dialog.journey_view)
+        restarted_dialog.report_tabs.setCurrentWidget(restarted_dialog.journey_view)
         app.processEvents()
         screenshots.append(_save_widget(restarted_dialog, output_dir / "decision_journey_after_restart.png"))
         _close_dialog(restarted_dialog, app)
@@ -1591,10 +1591,10 @@ def _current_context(window: Any) -> Any:
 def _wait_for_dialog(window: Any, app: Any) -> Any:
     _wait_until(
         app,
-        lambda: getattr(window, "_stock_research_report_dialog", None) is not None,
+        lambda: getattr(window, "stock_research_workspace", None) is not None,
         description="MainWindow 建立個股研究視窗",
     )
-    dialog = window._stock_research_report_dialog
+    dialog = window.stock_research_workspace
     _assert(dialog is not None, "個股研究視窗不存在")
     _wait_until(app, lambda: bool(dialog.isVisible()), description="個股研究視窗顯示")
     return dialog
@@ -1652,7 +1652,11 @@ def _close_dialog(dialog: Any, app: Any) -> None:
         return
     try:
         if dialog.isVisible():
-            dialog.close()
+            from ui_qt.views.stock_research_workspace import StockResearchWorkspace
+            if isinstance(dialog, StockResearchWorkspace):
+                dialog.window()._select_main_workspace("workbench")
+            else:
+                dialog.close()
         _wait_until(app, lambda: not dialog.isVisible(), description="個股研究視窗安全關閉", timeout_seconds=8.0)
     except (RuntimeError, AssertionError):
         # Teardown is best effort after an assertion; the main failure remains

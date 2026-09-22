@@ -90,6 +90,7 @@ _NAV_GROUP_BY_KEY: dict[str, str] = {
     "market_explore": "daily",
     "recommendation": "daily",
     "watchlist": "daily",
+    "stock_research": "daily",
     "portfolio": "daily",
     "backtest": "research",
     "update": "maintenance",

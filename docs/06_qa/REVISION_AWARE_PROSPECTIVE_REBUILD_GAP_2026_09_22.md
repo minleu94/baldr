@@ -63,7 +63,7 @@ file SHA `sha256:9af39ed407f49ddf6394b7f156176c6123433e7349e215618e32e1caa752590
 安全順序應為：
 
 1. 對原失敗的 9/22 cutoff 建立 shadow-only research diagnostic；保留原 decision/cutoff，明示 source 是 late-obtained，不能重建成今晚的 natural capture，也不能授予 natural/formal/PIT credit。
-2. 未來真正的新 decision 只能在當下自然時間，以新 source acquisition/publication receipt 建立新的 prospective capture。歷史 `available_at` 缺失不能補造，但不構成對未來 prospective 的永久禁止。
+2. 未來真正的新 decision 只能在當下自然時間，以實際的新 source acquisition、revision-aware shadow rebuild 或新 publication receipt 建立新的 prospective capture。歷史 `available_at` 缺失不能補造，但不構成對未來 prospective 的永久禁止。
 3. acceptance manifest 必須綁定新的 `decision_at`/timezone、source publication path/file hash/content hash、repair lineage、DB read-only snapshot hash、feature rows hash、registry hashes、no-lookahead readback 與 affected-row coverage。任何不具 authoritative available evidence 的歷史列只能維持 research/pending。
 4. 新決策的 future label window 必須保存為 `pending`；不得為了完成 manifest 預填成熟 label，也不得使用 current clock 回填舊 capture。只有自然 future window 真實到期並通過既有 maturity 規則，才可另行形成 outcome evidence。
 

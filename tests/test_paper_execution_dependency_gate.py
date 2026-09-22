@@ -463,7 +463,8 @@ def test_dependency_gate_projects_named_candidate_credit_stale_as_not_required(
     projection = cast(dict[str, object], result["freshness_lane"])
     excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
     credit = excluded["credit_transactions"]
-    assert credit["reason_code"] == "candidate_source_not_required_for_paper_eod"
+    assert credit["policy_version"] == "paper-eod-candidate-non-required.v1"
+    assert credit["reason_code"] == "p0_candidate_source_not_paper_eod_input"
     assert credit["consumer_boundary"] == "p0_candidate_shadow"
     diagnostic = cast(dict[str, object], credit["source_diagnostic"])
     assert diagnostic["candidate_only"] is True

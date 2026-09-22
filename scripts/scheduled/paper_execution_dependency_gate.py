@@ -93,22 +93,6 @@ PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES: dict[str, dict[str, object]] = {
         "expected_update_entry": "UpdateService.update_phase3c_candidate_range",
     },
 }
-# Phase3C candidate sources are not Paper EOD inputs.  This exception is
-# deliberately source-specific and contract-shaped: a generic
-# ``candidate_only`` flag must never turn an arbitrary stale source into an
-# accepted Paper dependency.
-PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES: dict[str, dict[str, str]] = {
-    "credit_transactions": {
-        "reason_code": "candidate_source_not_required_for_paper_eod",
-        "consumer_boundary": "p0_candidate_shadow",
-        "consumer_basis": "Phase3C candidate research only; no Paper EOD downstream",
-        "frequency": "daily candidate source",
-        "downstream": "candidate research only",
-        "update_entry": "UpdateService.update_phase3c_candidate_range",
-    },
-}
-
-
 def _parse_date(value: object) -> date | None:
     if value is None:
         return None
@@ -612,22 +596,14 @@ def _paper_eod_freshness_projection(
             blockers.append(f"freshness_lane_noncurrent_source_blocked:{source_id}:{source_status}")
         elif source_id not in warning_sources:
             source = source_by_id[source_id]
-            candidate_policy = PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES.get(source_id)
-            candidate_downstream = source.get("downstream")
-            candidate_matches = (
-                candidate_policy is not None
-                and source.get("candidate_only") is True
-                and source.get("frequency") == candidate_policy["frequency"]
-                and source.get("update_entry") == candidate_policy["update_entry"]
-                and isinstance(candidate_downstream, list)
-                and candidate_downstream == [candidate_policy["downstream"]]
+            candidate_policy = _candidate_non_eod_policy(
+                source_id=source_id,
+                source_status=source_status,
+                source=source,
             )
-            if candidate_matches:
-                assert candidate_policy is not None
+            if candidate_policy is not None:
                 not_required_for_paper_eod[source_id] = {
-                    "reason_code": candidate_policy["reason_code"],
-                    "consumer_boundary": candidate_policy["consumer_boundary"],
-                    "consumer_basis": candidate_policy["consumer_basis"],
+                    **candidate_policy,
                     "source_id": source_id,
                     "freshness_status": source_status,
                     "not_required_for_paper_eod": True,

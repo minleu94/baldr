@@ -4,7 +4,9 @@
 
 使用者核准後，2026-05-20 的 868 筆 `daily_prices` 已完成正式修復；1256 close=183、1477 close=213，1538／2321／5906 的 OHLC 保留 NULL。Root 獨立唯讀逐列 readback 為 868／868 相符、同日非目標 fingerprint 不變；54 筆缺 canonical 的資料未修改。Online backup 與逐列 before／after receipt 保存在 DATA_ROOT 的 `output/scheduled/daily_price_repair_receipts/20260520/historical_price_spike_20260921/`。
 
-模型／PIT 修訂保護已通過 55 focused tests；全域 mypy 639 source files 通過。已知 derived h5 與 bounded operational 兩個 artifact hash 在反序列化前保守隔離，原模型與凍結產物保留，沒有重訓或 promotion；calibration pointer 仍為 rule_only。PIT exporter、歷史 snapshot 與 forward label window 自動檢查修訂 marker，pending 缺逐股明細時保守阻擋全部股票，避免晚到修訂冒充歷史已知資料。相依技術指標與 CSV cache 尚在本輪後續修復階段，不把價格完成寫成全鏈完成。詳見[修復紀錄](../06_qa/HISTORICAL_PRICE_SPIKE_2026_09_21.md)及[模型影響與隔離](../06_qa/PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md)。
+模型／PIT 修訂保護已通過 55 focused tests；該階段全域 mypy 639 source files 通過。已知 derived h5 與 bounded operational 兩個 artifact hash 在反序列化前保守隔離，原模型與凍結產物保留，沒有重訓或 promotion；calibration pointer 仍為 rule_only。PIT exporter、歷史 snapshot 與 forward label window 自動檢查修訂 marker，pending 缺逐股明細時保守阻擋全部股票，避免晚到修訂冒充歷史已知資料。
+
+相依技術指標已完成受控 apply：範圍為 868 檔、75,442 筆既有技術列，更新 1,277,135 個 DB 欄位；869 份個股／彙總 CSV 快取已同步，原本缺少的日期／欄位不新增。完整來源 prefix hash 與 before values 均已驗證；online backup、逐檔 journal 與 final receipt 保存於 DATA_ROOT 的 `output/scheduled/technical_indicator_repair_receipts/20260520/historical_price_spike_20260921/`。指標／快取修復 fixtures 13 passed，含程序中止恢復；原始 daily CSV 與模型 artifacts 保留。詳見[修復紀錄](../06_qa/HISTORICAL_PRICE_SPIKE_2026_09_21.md)及[模型影響與隔離](../06_qa/PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md)。
 
 ## 2026-09-21 歷史價格尖峰稽核
 

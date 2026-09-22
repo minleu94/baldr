@@ -11,6 +11,14 @@
 
 本輪把既有 read-only DTO 重新安排成「先結論、再原因、最後進階細節」的日常路徑，版本名稱為「V5日常操作與可讀性工程」。首頁 guided summary、候選／報告／持倉摘要、分層導覽、回測／推薦進階切換與個股報告 lazy tabs 均屬呈現與導引工程；正式 V4／V5 gate、自然 learning maturity 與 V6 user-level personalization 仍依 scoped roadmap 保持 pending。
 
+### 2026-09-21 個股研究來源日期與 candidate 邊界
+
+個股研究報告的來源表逐列呈現 `來源`、`來源狀態`、`品質`、`資料日`、`資料可得時間`、`更新狀態`、`版本`、`筆數`、`更新週期` 與 `預期資料期`；區塊標題也保留該區塊的資料日／可得時間。價格、技術、broker、institutional、credit、TDCC 與 fundamental 不能共用單一「今天」日期。這讓 9/21 price／technical 與較早的籌碼或個別 broker coverage 可以同時被正確揭露。
+
+freshness receipt 的 `candidate_only=true` 會維持 candidate／research-only 語意，不會被 UI 或 read service 視為 formal SQLite 的 current／fresh evidence。來源缺件、PIT stale、unknown、partial 或 broker coverage gap 會顯示為品質／狀態診斷；UI 不以 0 補值、不自行跨來源補日期、不將缺件改成正常或交易訊號。1418 Paper 的 blocked 狀態若缺 source lineage，仍保留 lineage／candidate 診斷；formal 9/21 price row 可獨立呈現。
+
+本輪 bounded formal row counts、target stock evidence、source coverage 與 focused regression 見 [2026-09-21 個股研究資料鏈 Incident QA](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。本節描述 UI 顯示契約，不宣稱所有正式資料在同一交易日 fresh，也不代表 V5／V6 formal closeout。
+
 ### 預設入口與分層
 
 - 左側導覽分成「日常使用」（決策工作台、市場探索、推薦分析、觀察清單、持倉管理）、「進階研究」（策略回測）與「系統維護」（數據更新、系統狀態）。保留既有 workspace key／Runtime alias；deep link 會展開所屬群組。
@@ -26,6 +34,13 @@
 ### 可讀性與安全契約
 
 所有摘要均標出決策日／資料日／來源品質；缺件、來源不一致、身份衝突、讀取失敗與 last good data 以白話原因及恢復入口呈現。UI 僅讀取既有來源，沒有新增 collector、scheduler、正式 DB、Journal 或 learning writer；缺 cutoff 或 identity 時維持拒絕寫入與 fail-closed。完整 R1–R10 與 frozen QA evidence 見 [V5 readability acceptance](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md)。
+
+### 本輪 UI 整合修正
+
+- 左側導覽的群組標題與 workspace 項目共用左側內容起點；展開／收合 marker、keyboard focus 與 tooltip 保留，窄版不以置中標題壓縮內容。
+- 個股報告換股時會先清除上一檔報告，避免在新股票載入失敗或進階分頁開啟時殘留 A 股內容；同一檔重新載入失敗或取消時保留明示的 last-good data，並把本次失敗原因與重新載入步驟放入 Journey。來源脈絡在日常摘要維持精簡，完整 identity／mapping／snapshot trace 仍在來源進階與 tooltip。
+- 持倉頁把日常摘要、進階正文、Paper health、持倉明細與模擬／歷史資料分開呈現；更新狀態顯示可讀日期並保留原始 timestamp tooltip，進階正文可垂直捲動，寬／窄版 splitter 不會把操作欄位壓成不可讀細條。
+- 決策工作台首頁把 machine token 轉為白話下一步與市場缺件說明；頁面說明按鈕提供可存取名稱與操作限制提示。這些是呈現／導引修正，不改資料、評分、交易或 writer 邊界。
 
 ## 一、UI 定位
 

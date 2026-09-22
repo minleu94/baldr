@@ -1008,7 +1008,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 132,
             )
             next_action = _guided_compact(
-                getattr(daily, "next_action", "") if daily else "",
+                _home_next_action(getattr(daily, "next_action", "") if daily else ""),
                 "先確認資料狀態，再查看主要重點。",
                 132,
             )
@@ -1181,6 +1181,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 getattr(daily, "stock_summary", "") if daily else "",
                 fallback="請查看市場重點中的主要理由。",
             )
+        market_reasons = _home_market_reason(market_reasons)
 
         waiting_items = tuple(
             item for item in dashboard.daily_checklist
@@ -1553,7 +1554,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"研究候選 {daily.candidate_count} 檔；候選僅供人工研究，非交易指令。"
         )
         self._style_daily_state(tone_status)
-        self.daily_market_card.value_label.setText(_compact_daily_text(daily.market_summary))
+        self.daily_market_card.value_label.setText(
+            _compact_daily_text(_home_market_reason(daily.market_summary))
+        )
         self.daily_industry_card.value_label.setText(_compact_daily_text(daily.industry_summary))
         self.daily_candidate_card.value_label.setText(
             f"{daily.candidate_count} 檔\n{_daily_candidate_surface_status(daily)}"
@@ -1562,7 +1565,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_evidence_card.value_label.setText(_daily_evidence_card_text(daily))
         evidence_line = _daily_evidence_surface_line(daily)
         learning_line = _daily_learning_line(daily.learning, daily.learning_projection)
-        journey_lines = [f"下一步：{daily.next_action}", evidence_line, learning_line]
+        next_action = _home_next_action(daily.next_action)
+        journey_lines = [f"下一步：{next_action}", evidence_line, learning_line]
         fallback_line = _daily_research_fallback_line(daily.research_fallback)
         if fallback_line:
             journey_lines.append(fallback_line)
@@ -1584,7 +1588,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.daily_candidate_detail_label.setText(
                 "個股研究候選：\n"
                 f"{candidate_text}{suffix}\n候選僅供研究；不代表已驗證、可成交或應下單。"
-                f"\n下一步：{daily.next_action}"
+                f"\n下一步：{next_action}"
             )
         else:
             self.daily_candidate_detail_label.setText(
@@ -3144,6 +3148,48 @@ def _guided_compact(value: object, fallback: str, limit: int = 104) -> str:
     if not text:
         return fallback
     return text if len(text) <= limit else text[: max(1, limit - 1)] + "…"
+
+
+def _home_next_action(value: object) -> str:
+    """首頁把工程欄位轉成可直接執行的下一步；詳細 trace 仍保留原 DTO。"""
+
+    text = " ".join(str(value or "").split())
+    for source, target in (
+        (
+            "確認資料日期、scope receipt 與正式 EvidenceEvent table",
+            "確認資料日期與推薦來源紀錄",
+        ),
+        (
+            "確認資料日期、scope receipt 與正式 Evidence table",
+            "確認資料日期與推薦來源紀錄",
+        ),
+    ):
+        text = text.replace(source, target)
+    return text
+
+
+def _home_market_reason(value: object) -> str:
+    """首頁以白話說明市場資料缺口，不把 machine token 當成結論。"""
+
+    text = " ".join(str(value or "").split())
+    for source, target in (
+        (
+            "市場：缺少 DecisionDeskSnapshot；不能判定今日市場狀態。",
+            "市場：尚未取得市場分析資料，暫無法判斷市場狀態。",
+        ),
+        (
+            "產業：缺少 DecisionDeskSnapshot；不能判定領先／落後。",
+            "產業：尚未取得市場分析資料，暫無法判斷產業輪動。",
+        ),
+        (
+            "缺少 DecisionDeskSnapshot；不能判讀市場或產業。",
+            "尚未取得市場分析資料，暫無法判斷市場與產業。",
+        ),
+    ):
+        text = text.replace(source, target)
+    # 若來源帶有額外句子，仍只翻譯 machine token，保留其餘理由。
+    text = text.replace("缺少 DecisionDeskSnapshot", "尚未取得市場分析資料")
+    return text
 
 
 def _guided_join_reasons(*values: object, fallback: str) -> str:

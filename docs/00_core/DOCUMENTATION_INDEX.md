@@ -10,7 +10,7 @@
 
 > Evidence rehearsal closeout：[Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)（`engineering_rehearsal_complete`；不是 external completion）。
 
-> **最後整理**：2026-09-12
+> **最後整理**：2026-09-21
 > **判讀規則**：本索引用於導航，不作為狀態或架構事實來源。Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，North Star / Evidence 看 `system_vision_specification.md`，目前／目標架構分別看 `system_architecture.md` / `target_system_architecture.md`。
 >
 > **2026-08-29 audit entry（歷史）**：[Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md)
@@ -39,6 +39,7 @@
 - [產業強弱與產業→個股決策旅程 QA](../06_qa/INDUSTRY_DECISION_JOURNEY_2026_09_14.md)：current-research 產業映射、TAIEX 可比 5／20 日排名、coverage／PIT 限制與代表股明確下鑽證據。
 - [V4.2 C 線每日決策工作台 QA handoff](../06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md)：單一路徑、跨頁研究 context、共用呈現契約、fail-closed 欄位與窄版／鍵盤驗證。
 - [V5 日常操作與可讀性工程驗收報告](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md)：R1–R10 可讀性、可導引性、隔離效能基準、learning／資料安全邊界與 final QA route；不代表正式 V4／V5／V6 closeout。
+- [2026-09-21 個股研究資料鏈 Incident QA](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)：formal `mode=ro` row audit、2382／3207／9935／1418 source coverage、PIT／candidate-only boundary、reader regression、整合 UI 判讀契約與 freeze 後 mandatory QA；不宣稱全資料 fresh 或 V5／V6 formal completion。
 - [本輪交付複核](../06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)、[檔案清理結果](../06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)。
 - [資料更新](../06_qa/V4_DATA_FRESHNESS_HANDOFF.md)、[Direct資料鏈](../06_qa/V4_DIRECT_RELEASE_HANDOFF.md)、[個股研究報告](../06_qa/V4_STOCK_RESEARCH_REPORT_HANDOFF.md)。
 - [工作區檔案說明](../06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)、[三線接手Prompt（歷史歸檔）](../09_archive/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)。

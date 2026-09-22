@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox, QSpinBox, QFormLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
     QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, QSize, QDate
+from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
 from PySide6.QtGui import QFont, QColor, QPalette, QBrush
 
 from ui_qt.models.pandas_table_model import PandasTableModel
@@ -520,15 +520,19 @@ class PortfolioView(QWidget):
         self._refresh_pending = False
         self._closing = False
         self._portfolio_narrow = False
+        self._portfolio_action_narrow: bool | None = None
         self._advanced_details_visible = False
 
         self._setup_ui()
         self.refresh_all()
 
     def _setup_ui(self):
+        # 頁首摘要固定保留，持倉健康與所有進階明細放在同一個可捲動正文。
+        # 這讓窄版／DPI 放大時由正文承接高度，而不是把主視窗撐出可用 viewport。
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(12, 12, 12, 12)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
 
         # 標題列（標題 + InfoButton）
         title_layout = QHBoxLayout()
@@ -549,6 +553,24 @@ class PortfolioView(QWidget):
             "先看持倉狀態、已知原因或缺件與下一步；交易歷史、日誌、Paper、Stress 等由進階入口開啟。"
         )
         main_layout.addWidget(self.portfolio_focus_summary)
+
+        self.portfolio_compact_context_label = QLabel()
+        self.portfolio_compact_context_label.setObjectName("portfolioCompactContext")
+        self.portfolio_compact_context_label.setWordWrap(True)
+        self.portfolio_compact_context_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
+        self.portfolio_compact_context_label.setAccessibleName("持倉進階工作區脈絡摘要")
+        self.portfolio_compact_context_label.setAccessibleDescription(
+            "展開進階正文時保留手動登錄持倉、模擬持倉評估資料與選取脈絡；完整來源原因在下方詳情。"
+        )
+        self.portfolio_compact_context_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; background-color: {MIDNIGHT_ANALYST.surface_1}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 7px 10px;"
+        )
+        self.portfolio_compact_context_label.setVisible(False)
+        main_layout.addWidget(self.portfolio_compact_context_label)
 
         # ========== 1. 頂部狀態看板 (Summary Dashboard) ==========
         dashboard_layout = QHBoxLayout()
@@ -663,16 +685,26 @@ class PortfolioView(QWidget):
         )
         self.position_health_detail_label.setAccessibleName("Paper 持倉健康詳情")
         paper_health_layout.addWidget(self.position_health_detail_label)
-        paper_health_group.setMaximumHeight(245)
+        paper_health_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.paper_health_group = paper_health_group
-        main_layout.addWidget(paper_health_group)
 
         # ========== 2. 中部核心分割區 (Splitter) ==========
         main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter = main_splitter
+        main_splitter.setObjectName("portfolioMainSplitter")
+        main_splitter.setChildrenCollapsible(False)
+        main_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._portfolio_splitter_user_resized = False
+        self._portfolio_splitter_initialized = False
+        self._portfolio_programmatic_splitter_update = False
+        main_splitter.splitterMoved.connect(self._on_portfolio_splitter_moved)
 
         # Left Panel: 持倉列表與操作
         left_widget = QWidget()
+        # 寬版 splitter 的左 pane 仍需保留可讀操作文字與持倉欄位；不足寬度時
+        # 由表格水平捲動承接欄位，而不是把操作按鈕壓成半個字。窄版 390px
+        # 仍可容納此 responsive lower bound，不以固定高度撐大視窗。
+        left_widget.setMinimumWidth(360)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setSpacing(8)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -778,7 +810,8 @@ class PortfolioView(QWidget):
 
         # Right Panel: 歷史明細與日記
         right_widget = QTabWidget()
-        right_widget.setMinimumWidth(0)
+        right_widget.setMinimumWidth(240)
+        right_widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.portfolio_detail_tabs = right_widget
 
         # Right Tab 1: 交易歷史 (Trade History)
@@ -1152,9 +1185,33 @@ class PortfolioView(QWidget):
 
         main_splitter.addWidget(right_widget)
 
-        # 設定左右分割比例（60% : 40%）
+        # 初始比例由 _apply_responsive_layout 依實際 pane 寬度設定；保留
+        # QSplitter 自身的 handle 供使用者後續調整，不用 stretch factor 抵銷。
         main_splitter.setSizes([720, 480])
-        main_layout.addWidget(main_splitter)
+        self.portfolio_advanced_scroll = QScrollArea(self)
+        self.portfolio_advanced_scroll.setObjectName("portfolioAdvancedScroll")
+        self.portfolio_advanced_scroll.setWidgetResizable(True)
+        self.portfolio_advanced_scroll.setFrameShape(QFrame.NoFrame)
+        self.portfolio_advanced_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.portfolio_advanced_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.portfolio_advanced_scroll.setSizePolicy(
+            QSizePolicy.Ignored, QSizePolicy.Expanding
+        )
+        self.portfolio_advanced_scroll.setAccessibleName("持倉進階正文可捲動區域")
+        self.portfolio_advanced_scroll.setAccessibleDescription(
+            "在此垂直捲動 Paper 健康、持倉表、選取詳情與右側各研究分頁；不改變資料身份或安全邊界。"
+        )
+        advanced_content = QWidget()
+        advanced_content.setObjectName("portfolioAdvancedContent")
+        advanced_content.setMinimumWidth(0)
+        advanced_content.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        advanced_layout = QVBoxLayout(advanced_content)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(10)
+        advanced_layout.addWidget(paper_health_group)
+        advanced_layout.addWidget(main_splitter, 1)
+        self.portfolio_advanced_scroll.setWidget(advanced_content)
+        main_layout.addWidget(self.portfolio_advanced_scroll, 1)
         self._portfolio_advanced_widgets = (
             self.portfolio_detail_tabs,
             self.position_health_table,
@@ -1180,29 +1237,108 @@ class PortfolioView(QWidget):
             widget.setVisible(expanded)
         if hasattr(self, "paper_health_group"):
             self.paper_health_group.setVisible(expanded)
-            self.paper_health_group.setMaximumHeight(245 if expanded else 92)
+            self.paper_health_group.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Preferred
+            )
+        if hasattr(self, "portfolio_focus_summary"):
+            # 進階正文保留一行脈絡摘要；完整日常摘要仍可用同一切換鈕返回，
+            # Paper blocker／評估原因則固定留在正文健康區，不因精簡首屏而消失。
+            self.portfolio_focus_summary.setVisible(not expanded)
+        if hasattr(self, "portfolio_compact_context_label"):
+            self.portfolio_compact_context_label.setVisible(expanded)
         if hasattr(self, "toggle_advanced_portfolio_btn"):
             self.toggle_advanced_portfolio_btn.setText(
                 "隱藏進階：交易歷史／日誌／模擬持倉／壓力測試"
                 if expanded
                 else "顯示進階：交易歷史／日誌／模擬持倉／壓力測試"
             )
+        if hasattr(self, "portfolio_advanced_scroll"):
+            self.portfolio_advanced_scroll.updateGeometry()
+            self.portfolio_advanced_scroll.widget().adjustSize()
+            if self.width() > 0 and not self._portfolio_splitter_user_resized:
+                QTimer.singleShot(0, self._restore_portfolio_splitter_default_sizes)
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
         self._apply_responsive_layout()
 
+    def _on_portfolio_splitter_moved(self, _position: int, _index: int) -> None:
+        """記住使用者調整過的比例，後續 resize 不覆寫該選擇。"""
+
+        if not self._portfolio_programmatic_splitter_update:
+            self._portfolio_splitter_user_resized = True
+            # 拖曳跨過 action pane 寬度門檻時只更新按鈕方向；不重設拖曳比例。
+            self._apply_responsive_layout(force=True)
+
+    def _restore_portfolio_splitter_default_sizes(self) -> None:
+        """進階正文完成 layout 後補套一次初始比例，避免 sizeHint 抢走左 pane。"""
+
+        if (
+            self._portfolio_splitter_user_resized
+            or self.main_splitter.orientation() != Qt.Horizontal
+            or self.main_splitter.width() <= 0
+        ):
+            return
+        self._set_portfolio_splitter_default_sizes()
+
+    def _set_portfolio_splitter_default_sizes(self) -> None:
+        """首次顯示／方向切換時套用比例；不在一般 resize 重設使用者拖曳。"""
+
+        if self.main_splitter.orientation() == Qt.Horizontal:
+            total = self.main_splitter.width()
+            if total > 1:
+                first = max(360, round(total * 0.60))
+                first = min(first, max(1, total - 240))
+                sizes = [first, max(1, total - first)]
+            else:
+                sizes = [720, 480]
+        else:
+            total = self.main_splitter.height()
+            if total > 1:
+                first = round(total * 0.43)
+                sizes = [max(1, first), max(1, total - first)]
+            else:
+                sizes = [460, 620]
+        self._portfolio_programmatic_splitter_update = True
+        try:
+            self.main_splitter.setSizes(sizes)
+        finally:
+            self._portfolio_programmatic_splitter_update = False
+
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
-        """窄版先顯示持倉清單，再顯示既有明細 tabs，避免右側被裁切。"""
+        """依整頁與左側 pane 寬度調整方向，避免操作文字被切掉。"""
         if not hasattr(self, "main_splitter"):
             return
         narrow = self.width() < 900
-        if not force and narrow == self._portfolio_narrow:
+        desired_orientation = Qt.Vertical if narrow else Qt.Horizontal
+        orientation_changed = self.main_splitter.orientation() != desired_orientation
+        if orientation_changed:
+            self.main_splitter.setOrientation(desired_orientation)
+        initialize_splitter = (
+            not self._portfolio_splitter_initialized
+            or orientation_changed
+        )
+        if initialize_splitter and not self._portfolio_splitter_user_resized:
+            self._set_portfolio_splitter_default_sizes()
+        self._portfolio_splitter_initialized = True
+        splitter_sizes = self.main_splitter.sizes()
+        left_pane_width = splitter_sizes[0] if splitter_sizes else 0
+        action_narrow = narrow or (
+            self.main_splitter.orientation() == Qt.Horizontal
+            and left_pane_width < 680
+        )
+        if (
+            not force
+            and not orientation_changed
+            and narrow == self._portfolio_narrow
+            and action_narrow == self._portfolio_action_narrow
+        ):
+            self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             return
         self._portfolio_narrow = narrow
-        self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
+        self._portfolio_action_narrow = action_narrow
         self.position_action_layout.setDirection(
-            QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+            QBoxLayout.TopToBottom if action_narrow else QBoxLayout.LeftToRight
         )
         for layout in (
             self.history_filter_layout,
@@ -1210,10 +1346,13 @@ class PortfolioView(QWidget):
             self.paper_controls_layout,
         ):
             layout.setDirection(QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight)
-        self.main_splitter.setSizes([460, 620] if narrow else [720, 480])
-        self.positions_table.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarAsNeeded if narrow else Qt.ScrollBarAlwaysOff
-        )
+        if initialize_splitter and not self._portfolio_splitter_user_resized:
+            # action row 的方向改變會影響左 pane sizeHint；再套一次初始比例，
+            # 讓 1280 shell 仍維持合理 60/40，而不是被 sizeHint 壓成窄條。
+            self._set_portfolio_splitter_default_sizes()
+        # 持倉表欄位包含來源、快照與 identity 欄；寬版 splitter 仍可能不足以
+        # 顯示最後欄位。保留水平捲動讓末欄可達，避免 AlwaysOff 造成資料被裁切。
+        self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
     def refresh_all(self) -> None:
         """重新整理持倉資料；正式 UI 入口使用背景 worker。"""
@@ -1262,10 +1401,19 @@ class PortfolioView(QWidget):
         self._update_monitoring_tab(portfolio)
         self.user_declared_research_widget.refresh_research()
         self._render_portfolio_focus_summary(portfolio)
+        raw_updated_at = str(portfolio.updated_at or "").strip()
+        display_updated_at = self._format_portfolio_timestamp(raw_updated_at)
         self.portfolio_refresh_status_label.setText(
-            f"持倉資料已更新｜最後更新={portfolio.updated_at or '未提供'}｜"
+            f"持倉資料已更新｜最後更新={display_updated_at}｜"
             "摘要與持倉表使用同一份資料；只讀。"
         )
+        status_tooltip = (
+            "研究建議／待成交佇列／已記錄成交分開判讀；各層只採用既有 DTO／帳本狀態，"
+            "沒有數值就顯示未知，不自動下單、不擅自套用配置。"
+        )
+        if raw_updated_at:
+            status_tooltip += f"\n來源原始 timestamp：{raw_updated_at}"
+        self.portfolio_refresh_status_label.setToolTip(status_tooltip)
 
     def _render_portfolio_focus_summary(self, portfolio: PortfolioDTO) -> None:
         """將同一份 PortfolioDTO 整理成首屏可懂的結論與下一步。"""
@@ -1286,11 +1434,7 @@ class PortfolioView(QWidget):
                 known_positions += f" 等 {len(positions)} 檔"
             reasons = [
                 "目前持有：" + known_positions + "。",
-                (
-                    "持倉健康與退出條件：已有資料，完整原因請開啟進階工作區。"
-                    if self._position_health_read_model is not None
-                    else "待核對：目前沒有持倉健康與退出條件資料。"
-                ),
+                self._portfolio_health_focus_reason(),
             ]
             conclusion = f"目前持有 {count_text} 檔；已知投入金額 {invested_text}。"
             next_step = "先選取一檔持倉核對目前價格與退出條件；歷史、日誌與模擬持倉請開啟進階。"
@@ -1314,11 +1458,158 @@ class PortfolioView(QWidget):
             sufficiency=sufficiency,
             reasons_title="重點",
         )
+        self._render_portfolio_compact_context(portfolio)
+
+    def _portfolio_health_focus_reason(self) -> str:
+        """摘要只描述 Paper read model 狀態，不把它套成人工持倉結論。"""
+
+        model = self._position_health_read_model
+        if model is None:
+            return "模擬持倉健康：尚未取得 read model；人工持倉不套用 Paper 結果。"
+        if not model.positions:
+            return "模擬持倉健康：目前沒有可安全呈現列；人工持倉不以缺件推測。"
+        blocked_count = self._position_health_blocked_row_count(model)
+        status_text = {
+            "passed": "已驗證",
+            "degraded": "降級",
+            "blocked": "封鎖",
+            "stale": "過期",
+        }.get(str(model.status), "未知")
+        if blocked_count:
+            return (
+                f"模擬持倉健康：狀態{status_text}，有 {len(model.positions)} 筆評估紀錄，"
+                f"其中 {blocked_count} 筆因來源問題暫不可判讀；不套用為人工持倉結論。"
+            )
+        return (
+            f"模擬持倉健康：狀態{status_text}，有 {len(model.positions)} 筆 Paper 評估紀錄；"
+            "只按 Paper identity 顯示，不代表人工持倉。"
+        )
+
+    @staticmethod
+    def _format_portfolio_timestamp(value: object) -> str:
+        """將來源 timestamp 轉成分鐘級顯示；原始值留在詳情內容。"""
+
+        raw = str(value or "").strip()
+        if not raw:
+            return "未提供"
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+        formatted = parsed.strftime("%Y-%m-%d %H:%M")
+        offset = parsed.strftime("%z")
+        if offset:
+            formatted += f" UTC{offset[:3]}:{offset[3:]}"
+        return formatted
+
+    def _render_portfolio_compact_context(self, portfolio: PortfolioDTO | None) -> None:
+        """在進階正文頂端保留選取、來源日期與 Paper blocker 脈絡。"""
+
+        if not hasattr(self, "portfolio_compact_context_label"):
+            return
+        if portfolio is None:
+            self.portfolio_compact_context_label.setText(
+                "持倉資料尚未完成讀取；完整狀態與缺口會在進階正文中保留。"
+            )
+            return
+
+        positions = tuple(getattr(portfolio, "positions", ()) or ())
+        active_count = getattr(portfolio, "active_positions", None)
+        count_text = str(active_count) if active_count is not None else str(len(positions))
+        raw_updated_at = str(getattr(portfolio, "updated_at", "") or "").strip()
+        updated_at = self._format_portfolio_timestamp(raw_updated_at)
+        selected_text = self.selected_stock_code or "尚未選取"
+        health = self._position_health_read_model
+        if health is None:
+            health_text = "模擬持倉評估資料：尚未取得"
+        elif health.positions:
+            blocked_count = self._position_health_blocked_row_count(health)
+            health_text = f"模擬持倉評估資料：{len(health.positions)} 筆"
+            if blocked_count:
+                health_text += f"，其中 {blocked_count} 筆因來源問題暫不可判讀"
+            else:
+                health_text += "；完整原因與來源追溯見下方評估表"
+        else:
+            health_text = "模擬持倉評估資料：目前沒有可安全呈現紀錄；缺口／阻擋見下方"
+        self.portfolio_compact_context_label.setText(
+            f"目前持倉（手動登錄）：{count_text} 檔｜資料更新：{updated_at}｜"
+            f"目前選取：{selected_text}\n{health_text}。手動登錄持倉與模擬持倉分開顯示。"
+        )
+        tooltip_lines = [
+            "這裡的目前持倉來自手動 Portfolio 資料；模擬持倉評估另列。",
+        ]
+        if raw_updated_at:
+            tooltip_lines.append(f"來源原始 timestamp：{raw_updated_at}")
+        self.portfolio_compact_context_label.setToolTip("\n".join(tooltip_lines))
+
+    @staticmethod
+    def _position_health_blocked_row_count(model: PositionHealthReadModel) -> int:
+        """以 typed row 狀態計算暫不可判讀列數，不把 Paper row 當人工持倉。"""
+
+        if model.status in {"blocked", "stale"}:
+            return len(model.positions)
+        return sum(
+            1
+            for item in model.positions
+            if str(getattr(item, "source_status", "")).strip().lower()
+            in {"blocked", "stale", "missing", "unverified"}
+        )
+
+    def _format_portfolio_position_health_summary(
+        self, model: PositionHealthReadModel
+    ) -> str:
+        """Portfolio 專屬健康摘要，保留 blocked receipt 的實際 rows 計數。"""
+
+        if not model.positions:
+            return format_position_health_read_model(model)
+
+        status_text = {
+            "passed": "已驗證",
+            "degraded": "降級",
+            "blocked": "封鎖",
+            "stale": "過期",
+        }.get(str(model.status), "未知")
+        source_text = {
+            "verified": "已驗證",
+            "observed": "已觀測",
+            "degraded": "降級",
+            "unverified": "未驗證",
+            "missing": "缺資料",
+            "blocked": "封鎖",
+            "stale": "過期",
+        }.get(str(model.source_status), str(model.source_status or "未知"))
+        quality_text = {
+            "verified": "已驗證",
+            "observed": "已觀測",
+            "degraded": "降級",
+            "unverified": "未驗證",
+            "unknown": "未知",
+            "blocked": "封鎖",
+        }.get(str(model.quality), str(model.quality or "未知"))
+        blocked_count = self._position_health_blocked_row_count(model)
+        records_text = f"有 {len(model.positions)} 筆評估紀錄"
+        if blocked_count:
+            records_text += f"，其中 {blocked_count} 筆因來源問題暫不可判讀"
+        else:
+            records_text += "，目前沒有列級來源阻擋"
+        blockers = "；".join(str(item) for item in model.blockers[:3]) or "無"
+        raw_available_at = str(model.available_at or "").strip()
+        available_at = self._format_portfolio_timestamp(raw_available_at)
+        timestamp_text = f"可取得時間：{available_at}"
+        return (
+            f"Paper Position Health：{status_text}（來源：{source_text}／品質：{quality_text}）\n"
+            f"決策日：{model.decision_date or '未知'}｜{timestamp_text}｜{records_text}\n"
+            f"需要確認：{sum(1 for item in model.positions if item.review_required)}／"
+            f"{len(model.positions)} 筆；僅供研究，不自動下單／平倉。\n"
+            f"缺口／阻擋：{blockers}"
+        )
 
     def _set_portfolio_focus_state(self, state: str, message: object = "") -> None:
         """讓摘要和刷新狀態同步；保留上次資料時明確標示不是最新。"""
 
         previous = self._last_portfolio_dto
+        if hasattr(self, "portfolio_compact_context_label"):
+            self._render_portfolio_compact_context(previous)
         previous_date = (
             str(getattr(previous, "updated_at", "") or "未提供")
             if previous is not None
@@ -1434,6 +1725,8 @@ class PortfolioView(QWidget):
             self.position_health_detail_label.setText(
                 "沒有可安全呈現的 Paper health；未以股票代號推測人工持倉 identity。"
             )
+            self.position_health_summary_label.setToolTip("")
+            self._refresh_portfolio_health_geometry()
             return
 
         self.position_health_model.set_rows(model.positions)
@@ -1442,13 +1735,43 @@ class PortfolioView(QWidget):
         )
         self.position_health_detail_label.setVisible(self._advanced_details_visible)
         self.position_health_summary_label.setText(
-            format_position_health_read_model(model)
+            self._format_portfolio_position_health_summary(model)
         )
-        self.position_health_detail_label.setText(
+        raw_timestamp = str(model.available_at or model.observed_at or "").strip()
+        self.position_health_summary_label.setToolTip(
+            f"來源原始 timestamp：{raw_timestamp}" if raw_timestamp else ""
+        )
+        detail_lines = [
             "Paper health 投影為唯讀研究建議；選取列查看評估原因／為何不直接執行。"
             if model.positions
             else "目前沒有可安全呈現的 Paper health 列；缺資料維持觀察／未知。"
+        ]
+        if raw_timestamp:
+            detail_lines.append(
+                "評估時間："
+                + self._format_portfolio_timestamp(raw_timestamp)
+                + f"（原始 timestamp：{raw_timestamp}）"
+            )
+        if model.blockers:
+            detail_lines.append("目前阻擋：" + "；".join(str(item) for item in model.blockers))
+        self.position_health_detail_label.setText(
+            "\n".join(detail_lines)
         )
+        self._refresh_portfolio_health_geometry()
+
+    def _refresh_portfolio_health_geometry(self) -> None:
+        """資料列變動後重算健康區，避免 empty state 保留上次高度。"""
+
+        if not hasattr(self, "paper_health_group"):
+            return
+        self.paper_health_group.updateGeometry()
+        self.paper_health_group.adjustSize()
+        if hasattr(self, "portfolio_advanced_scroll"):
+            content = self.portfolio_advanced_scroll.widget()
+            if content is not None:
+                content.updateGeometry()
+                content.adjustSize()
+            self.portfolio_advanced_scroll.updateGeometry()
 
     def _show_position_health_row(self, index) -> None:
         """顯示獨立 Paper row 詳情，不改變人工 Portfolio 選取狀態。"""
@@ -2581,6 +2904,7 @@ class PortfolioView(QWidget):
 
             logger.info("Selected position stock: %s", self.selected_stock_code)
             self.btn_stock_research.setEnabled(bool(self.selected_stock_code))
+            self._render_portfolio_compact_context(self._last_portfolio_dto)
             self._render_selected_position_presentation()
             self._load_trades_history()
             self._load_journal_entries()

@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections.abc import Sequence
 
-from PySide6.QtCore import QSize, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPen
 from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
@@ -106,6 +106,56 @@ class NavigationItem:
     tooltip: str = ""
 
 
+class _NavigationGroupButton(QToolButton):
+    """以固定左側內容起點繪製分組按鈕。
+
+    QToolButton 的 Fusion style 會把純文字工具按鈕置中，且 stylesheet 的
+    ``text-align`` 不會改變該 style 的文字繪製位置。分組標題若被置中，會
+    看起來比下方 workspace 更深一層；這裡保留 QToolButton 的 checkable／
+    keyboard 行為，但直接繪製背景、focus ring 與左靠文字，讓父層與子項
+    的縮排由 layout 與明確內容起點決定。
+    """
+
+    _CONTENT_LEFT = 6
+    _CONTENT_RIGHT = 4
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMouseTracking(True)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        draw_rect = self.rect().adjusted(0, 0, -1, -1)
+
+        if self.underMouse():
+            painter.setBrush(QColor(MIDNIGHT_ANALYST.surface_2))
+        else:
+            painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border), 1))
+        if self.underMouse():
+            painter.drawRoundedRect(draw_rect, MIDNIGHT_ANALYST.radius_panel, MIDNIGHT_ANALYST.radius_panel)
+
+        if self.hasFocus():
+            painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.accent), 1))
+            painter.drawRoundedRect(draw_rect, MIDNIGHT_ANALYST.radius_panel, MIDNIGHT_ANALYST.radius_panel)
+
+        if self.text():
+            painter.setPen(QColor(MIDNIGHT_ANALYST.text_muted))
+            painter.setFont(self.font())
+            text_rect = self.rect().adjusted(
+                self._CONTENT_LEFT,
+                0,
+                -self._CONTENT_RIGHT,
+                0,
+            )
+            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.text())
+
+
 class LeftNavigationWidget(QWidget):
     """Left-side main workspace navigation."""
 
@@ -152,7 +202,7 @@ class LeftNavigationWidget(QWidget):
             if not group_items:
                 continue
             self._group_expanded[group_id] = True
-            group_button = QToolButton()
+            group_button = _NavigationGroupButton()
             group_button.setObjectName(f"leftNavGroup_{group_id}")
             group_button.setCheckable(True)
             group_button.setChecked(True)
@@ -294,7 +344,9 @@ class LeftNavigationWidget(QWidget):
             if self._collapsed:
                 button.setText("")
             else:
-                marker = "▾" if self._group_expanded.get(current_id, True) else "▸"
+                # 使用 ASCII marker，避免部分 msjh 字型在自繪 QPainter 中
+                # 缺少幾何符號時顯示成方框；鍵盤與 tooltip 仍保留完整語意。
+                marker = "v" if self._group_expanded.get(current_id, True) else ">"
                 button.setText(f"{marker} {label}")
 
     def _icon_for_item(self, item: NavigationItem) -> QIcon:

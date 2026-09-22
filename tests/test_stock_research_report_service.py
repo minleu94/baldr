@@ -314,6 +314,35 @@ def test_official_session_receipt_keeps_weekend_daily_data_current(tmp_path: Pat
     assert section.status == ReportSectionStatus.AVAILABLE.value
 
 
+def test_candidate_only_receipt_does_not_certify_formal_sqlite(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    with sqlite3.connect(config.db_file) as conn:
+        conn.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("2026-09-08", "2330", "台積電", "90", "91", "89", "90", 100, "9000", "0"),
+        )
+    _write_freshness_receipt(
+        config,
+        checked_at="2026-09-08T12:00:00+08:00",
+        source_statuses=[
+            {
+                "source_id": "sqlite.daily_prices",
+                "actual_period": "20260908",
+                "expected_period": "20260908",
+                "freshness_status": "current",
+                "candidate_only": True,
+            }
+        ],
+    )
+
+    report = StockResearchReportReadService(config).read_report(
+        "2330", as_of_date="2026-09-08"
+    )
+    source = next(item for item in report.sources if item.source_id == "sqlite.daily_prices")
+    assert source.freshness == "unknown"
+    assert source.status == ReportSectionStatus.PARTIAL.value
+
+
 def test_monthly_and_quarterly_receipt_uses_cadence_instead_of_cutoff_date(
     tmp_path: Path,
 ) -> None:

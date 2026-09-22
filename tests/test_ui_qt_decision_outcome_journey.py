@@ -478,6 +478,49 @@ def test_stock_report_dialog_exposes_journey_tab_and_updates_context() -> None:
     dialog.close()
 
 
+def test_internal_report_stock_switch_rebinds_journey_and_rejects_late_a_callback() -> None:
+    # 報告頁可能在內部切換股票，外層對話框不一定會收到新的 set_context 呼叫。
+    # Journey 分頁必須跟隨該 exact context；同一結果沒有 B 候選時也必須安全收斂。
+    service = JourneyServiceStub(
+        {"result-1": _journey(result_id="result-1", stock_code="2330")},
+        delays={"result-1": 0.15},
+    )
+    dialog = StockResearchReportDialog(
+        ReportServiceStub(),
+        _context("2330", "result-1"),
+        journey_service=service,
+    )
+    dialog.show()
+    QTest.qWait(15)
+
+    dialog.report_view._load_stock("1101")
+    assert dialog.windowTitle() == "個股研究報告｜1101"
+    assert dialog.journey_view is not None
+    _wait_for(
+        lambda: dialog.journey_view is not None
+        and dialog.journey_view.context is not None
+        and dialog.journey_view.context.stock_code == "1101"
+        and dialog.journey_view._active_code == "1101"
+    )
+    journey = dialog.journey_view
+    assert journey is not None
+    assert journey._active_result_id == "result-1"
+    assert journey.identity_label.text().startswith("1101")
+
+    _wait_for(lambda: "沒有 1101 的候選資料" in journey.status_label.text())
+    assert journey.maturity_table.model().rowCount() == 0
+    assert "candidate Evidence" in journey._empty_labels["evidence"].text()
+    request_id = journey._request_id
+    journey._on_error(request_id - 1, "2330", "result-1", "late A callback")
+    assert "late A callback" not in journey.status_label.text()
+    assert journey.identity_label.text().startswith("1101")
+    assert journey.context is not None
+    assert journey.context.stock_code == "1101"
+
+    _wait_for(lambda: not dialog.is_busy())
+    dialog.close()
+
+
 def test_official_scheduled_result_renders_cjk_journey_screenshot_when_available() -> None:
     opt_in = os.environ.get(
         "RUN_DECISION_OUTCOME_JOURNEY_REAL_SMOKE", ""

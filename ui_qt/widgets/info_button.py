@@ -12,6 +12,7 @@ from PySide6.QtGui import QFont, QIcon
 from typing import Dict, List, Optional
 
 from ui_qt.tab_info_config import get_tab_info
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 class InfoDialog(QDialog):
@@ -175,6 +176,8 @@ class InfoButton(QPushButton):
         
         # 設置按鈕樣式
         self.setText("i")
+        self.setAccessibleName("頁面說明")
+        self.setAccessibleDescription("開啟目前頁面的操作與限制說明")
         self.setToolTip("點擊查看頁面說明")
         self.setFixedSize(24, 24)
         
@@ -185,22 +188,30 @@ class InfoButton(QPushButton):
         self.setFont(font)
         
         # 設置樣式（低干擾、hover 才高亮）
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #e0e0e0;
-                color: #666;
-                border: 1px solid #ccc;
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {MIDNIGHT_ANALYST.surface_2};
+                color: {MIDNIGHT_ANALYST.accent};
+                border: 1px solid {MIDNIGHT_ANALYST.accent};
                 border-radius: 12px;
+                padding: 0;
+                min-width: 22px;
+                max-width: 22px;
+                min-height: 22px;
+                max-height: 22px;
+                font-family: Arial, sans-serif;
+                font-size: 11pt;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #4CAF50;
-                color: white;
-                border: 1px solid #4CAF50;
-            }
-            QPushButton:pressed {
-                background-color: #45a049;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {MIDNIGHT_ANALYST.surface_3};
+                color: {MIDNIGHT_ANALYST.text_primary};
+                border: 1px solid {MIDNIGHT_ANALYST.accent_hover};
+            }}
+            QPushButton:pressed {{
+                background-color: {MIDNIGHT_ANALYST.app_bg};
+                border-color: {MIDNIGHT_ANALYST.accent_hover};
+            }}
         """)
         
         # 連接點擊事件

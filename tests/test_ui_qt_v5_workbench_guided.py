@@ -217,3 +217,36 @@ def test_guided_home_unknown_state_does_not_use_success_tone() -> None:
     assert "尚未確認" in view.guided_priority_status_badges["market"].text()
     assert "#22c55e" not in view.guided_priority_status_badges["market"].styleSheet()
     assert view.guided_summary_model.raw_value(2, "status") == "unknown"
+
+
+def test_guided_home_localizes_machine_next_step_and_market_gap() -> None:
+    app()
+    dashboard = _mixed_dashboard()
+    raw_next_action = "先確認資料日期、scope receipt 與正式 EvidenceEvent table。"
+    raw_market_reason = "市場：缺少 DecisionDeskSnapshot；不能判定今日市場狀態。"
+    daily = replace(
+        dashboard.daily_evidence,
+        next_action=raw_next_action,
+        market_summary=raw_market_reason,
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(
+            dashboard,
+            daily_evidence=daily,
+            market_context={"source_status": "missing", "overall_quality": "missing"},
+        ),
+        auto_refresh=False,
+    )
+
+    assert "scope receipt" not in view.guided_next_action_label.text()
+    assert "先確認資料日期與推薦來源紀錄" in view.guided_next_action_label.text()
+    market_row = next(
+        view.guided_summary_model.row_at(index)
+        for index in range(view.guided_summary_model.rowCount())
+        if view.guided_summary_model.raw_value(index, "key") == "market"
+    )
+    assert market_row.reasons.startswith("市場：尚未取得市場分析資料，暫無法判斷市場狀態。")
+    assert "半導體是主要研究方向。" in market_row.reasons
+    assert "DecisionDeskSnapshot" not in view.daily_market_card.value_label.text()
+    assert "scope receipt" not in view.daily_journey_label.text()
+    assert view._daily_investment_evidence.next_action == raw_next_action

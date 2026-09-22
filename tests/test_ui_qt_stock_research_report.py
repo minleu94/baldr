@@ -24,7 +24,11 @@ from app_module.stock_research_report_dtos import (
     StockResearchReportDTO,
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
-from ui_qt.views.stock_research_report_view import StockPriceChartWidget, StockResearchReportView
+from ui_qt.views.stock_research_report_view import (
+    StockPriceChartWidget,
+    StockResearchReportDialog,
+    StockResearchReportView,
+)
 
 
 def _app() -> QApplication:
@@ -174,4 +178,110 @@ def test_late_started_signal_cannot_replace_new_stock_status(tmp_path: Path) -> 
     view._on_report_started(1, "A")
 
     assert view.status_label.text() == "B 已完成"
+    view.close()
+
+
+def test_cross_stock_loading_clears_old_report_before_advanced_tab_is_opened() -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    view.show()
+    view._active_code = "A"
+    view._request_id = 1
+    view._render_report(_report_for("A", "1"))
+    view.tabs.setCurrentIndex(1)
+    _app().processEvents()
+
+    view._active_code = "B"
+    view._request_id = 2
+    view._set_loading_state("B")
+    assert view._loaded_report is None
+    assert "A" not in view.identity_label.text()
+    assert view._page_layouts["price"].count() == 2
+
+    view.tabs.setCurrentIndex(1)
+    _app().processEvents()
+    view._on_report_error(2, "B", "B report unavailable")
+    assert view._loaded_report is None
+    assert "B" in view.identity_label.text()
+    assert "B report unavailable" in view.summary_focus.reasons_label.text()
+    assert "1" not in view._summary_values["latest_price"].text()
+    view.close()
+
+
+def test_same_stock_reload_marks_last_good_data_and_keeps_it_on_failure() -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    view.show()
+    report = _report_for("A", "1")
+    view._active_code = "A"
+    view._request_id = 1
+    view._render_report(report)
+
+    view._request_id = 2
+    view._set_loading_state("A")
+    assert view._loaded_report is report
+    assert "上次可用資料 2026-09-08" in view.identity_label.text()
+    assert "1" in view._summary_values["latest_price"].text()
+
+    view._on_report_error(2, "A", "temporary source failure")
+    assert view._loaded_report is report
+    assert "上次可用資料" in view.summary_focus.reasons_label.text()
+    assert "temporary source failure" in view.summary_focus.reasons_label.text()
+    assert "1" in view._summary_values["latest_price"].text()
+    view.close()
+
+
+def test_report_dialog_title_tracks_internal_stock_switch() -> None:
+    class Service:
+        def read_report(self, stock_code, *, context=None, cancel_callback=None):
+            del context, cancel_callback
+            return _report_for(str(stock_code), "1")
+
+    dialog = StockResearchReportDialog(
+        Service(),
+        ResearchStockContextDTO(stock_code="A", stock_name="A"),
+    )
+    dialog.report_view.activeStockChanged.emit("B")
+    assert dialog.windowTitle() == "個股研究報告｜B"
+    dialog.report_view.request_close()
+    dialog.close()
+
+
+def test_context_path_keeps_daily_summary_compact_and_full_trace_in_advanced_source() -> None:
+    context = ResearchStockContextDTO(
+        stock_code="2330",
+        stock_name="台積電",
+        decision_date="2026-09-14",
+        data_date="2026-09-13",
+        result_id="result-2330",
+        source_snapshot_id="snapshot-2330",
+        source_snapshot_hash="hash-2330",
+        source_id="recommendation-run",
+        source_version="recommendation-v5",
+        mapping_source_id="twse-symbol-map",
+        mapping_version="mapping-2026-09",
+        mapping_observed_date="2026-09-15",
+        profile_id="balanced",
+        profile_version="balanced-v2",
+        source_kind="recommendation",
+        source_label="每日推薦",
+        source_workspace="recommendation",
+    )
+    view = StockResearchReportView(SimpleNamespace(), context)
+    view.show()
+    _app().processEvents()
+
+    daily_text = view.context_path_label.text()
+    assert "來源：每日推薦" in daily_text
+    assert "決策日：2026-09-14" in daily_text
+    assert "資料日：2026-09-13" in daily_text
+    assert "source_snapshot_id" not in daily_text
+    assert "mapping_version" not in daily_text
+
+    full_trace = view.context_path_label.toolTip()
+    assert "市場總覽 →" in full_trace
+    assert "source_snapshot_id：snapshot-2330" in full_trace
+    assert "source_snapshot_hash：hash-2330" in full_trace
+    assert "source_version：recommendation-v5" in full_trace
+    assert "mapping_version：mapping-2026-09" in full_trace
+    assert "stockResearchSourceTrace" in view.summary_source_trace_label.objectName()
+    assert "mapping_version：mapping-2026-09" in view.summary_source_trace_label.text()
     view.close()

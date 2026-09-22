@@ -13,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QBoxLayout,
     QFileDialog,
@@ -25,6 +26,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtTest import QTest
 
 from app_module.dtos.portfolio_dtos import PortfolioDTO, PositionDTO, TradeDTO
+from app_module.decision_presentation import (
+    PositionHealthPresentationDTO,
+    PositionHealthReadModel,
+)
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
     PaperPortfolioSnapshot,
@@ -227,6 +232,15 @@ class FakeConditionMonitor:
         return FakeConditionResult()
 
 
+class FakePositionHealthReadService:
+    def __init__(self, model: PositionHealthReadModel):
+        self.model = model
+
+    def read_latest(self, *, max_age_days: int):
+        assert max_age_days == 1
+        return self.model
+
+
 class FakeChipService:
     def get_stock_chip_summary(self, _stock_code: str, period_days: int = 5):
         return {
@@ -240,17 +254,82 @@ class FakeChipService:
         }
 
 
-def make_portfolio_view(tmp_path, parent=None):
+def make_portfolio_view(tmp_path, parent=None, position_health_read_service=None):
     app()
     view = PortfolioView(
         portfolio_service=FakePortfolioService(FakeConfig(tmp_path)),
         journal_service=FakeJournalService(),
         condition_monitor=FakeConditionMonitor(),
+        position_health_read_service=position_health_read_service,
         parent=parent,
     )
     view._update_lifecycle_review = lambda *_args, **_kwargs: None
     view.chip_service = FakeChipService()
     return view
+
+
+def _make_health_row(stock_code: str = "1418") -> PositionHealthPresentationDTO:
+    return PositionHealthPresentationDTO(
+        position_id=f"paper:{stock_code}",
+        stock_code=stock_code,
+        decision_date="2026-09-21",
+        available_at="2026-09-21T20:55:48.508928",
+        availability_by_source=(("market", "2026-09-21T20:55:48.508928"),),
+        source_status="blocked",
+        quality="blocked",
+        source_snapshot_id="snapshot-1418",
+        cohort_key="paper-main",
+        previous_state="UNKNOWN",
+        proposed_state="WATCH",
+        raw_proposed_state="WATCH",
+        action_suitability="WATCH",
+        condition_status="unknown",
+        thesis_status="missing",
+        metrics_status="blocked",
+        entry_lineage_status="unverified",
+        required_human_fields=("entry_lineage",),
+        reasons=("source receipt 已封鎖",),
+        why="來源 receipt 已封鎖；暫不可判讀。",
+        why_not=("source receipt 已封鎖",),
+        proposal_event_id=None,
+        input_hash=None,
+        policy_hash="policy-1418",
+        source_trace=("receipt:paper-health-1418", "reason:source-blocked"),
+        source_hashes=(("receipt", "sha256:1418"),),
+        review_required=True,
+        research_only=True,
+        auto_action_allowed=False,
+        warnings=("人工確認來源",),
+        blockers=("position_health_evaluator_blocked",),
+    )
+
+
+def _make_blocked_health_model() -> PositionHealthReadModel:
+    return PositionHealthReadModel(
+        schema_version="position-health-presentation.v1",
+        status="blocked",
+        decision_date="2026-09-21",
+        observed_at="2026-09-21T20:55:48.508928",
+        available_at="2026-09-21T20:55:48.508928",
+        source_status="blocked",
+        quality="blocked",
+        portfolio_id="paper-main",
+        source_snapshot_id="snapshot-1418",
+        source_snapshot_rows_sha256="sha256:rows",
+        cohort_key="paper-main",
+        receipt_path="receipt.json",
+        result_path="result.json",
+        result_sha256="sha256:result",
+        receipt_sha256="sha256:receipt",
+        warnings=("source receipt 已封鎖",),
+        blockers=("position_health_evaluator_blocked",),
+        research_only=True,
+        apply_transition=False,
+        auto_action_allowed=False,
+        broker_execution=False,
+        formal_credit=False,
+        positions=(_make_health_row(),),
+    )
 
 
 def _wait_until(predicate, timeout_seconds: float = 5.0) -> bool:
@@ -358,16 +437,129 @@ def test_portfolio_view_reflows_positions_and_existing_evidence_tabs_on_narrow_w
     app().processEvents()
     assert view.main_splitter.orientation() == Qt.Horizontal
     assert view.position_action_layout.direction() == QBoxLayout.LeftToRight
+    assert view.positions_table.horizontalScrollBarPolicy() == Qt.ScrollBarAsNeeded
 
     host.resize(390, 844)
     app().processEvents()
     assert view.main_splitter.orientation() == Qt.Vertical
     assert view.position_action_layout.direction() == QBoxLayout.TopToBottom
     assert view.history_filter_layout.direction() == QBoxLayout.TopToBottom
-    assert view.portfolio_detail_tabs.minimumWidth() == 0
+    assert view.portfolio_detail_tabs.minimumWidth() == 240
     assert "研究建議／待成交佇列／已記錄成交分開判讀" in (
         view.portfolio_refresh_status_label.toolTip()
     )
+
+
+def test_portfolio_blocked_health_summary_keeps_rows_and_raw_timestamp(tmp_path):
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(
+            _make_blocked_health_model()
+        ),
+    )
+
+    view.refresh_all()
+
+    summary = view.position_health_summary_label.text()
+    assert "有 1 筆評估紀錄，其中 1 筆因來源問題暫不可判讀" in summary
+    assert "2026-09-21 20:55" in summary
+    assert "2026-09-21T20:55:48.508928" not in summary
+    assert "尚無持倉健康評估資料" not in summary
+    compact = view.portfolio_compact_context_label.text()
+    assert "目前持倉（手動登錄）" in compact
+    assert "模擬持倉評估資料" in compact
+    assert "2026-09-21T20:55:48.508928" not in compact
+    assert "2026-09-21T20:55:48.508928" in view.position_health_summary_label.toolTip()
+    assert "position_health_evaluator_blocked" in (
+        view.position_health_detail_label.text()
+    )
+    assert "原始 timestamp：2026-09-21T20:55:48.508928" in (
+        view.position_health_detail_label.text()
+    )
+
+
+def test_portfolio_expanded_workspace_scrolls_and_keeps_each_tab_reachable(tmp_path):
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(
+            _make_blocked_health_model()
+        ),
+    )
+    shell = QWidget()
+    shell_layout = QBoxLayout(QBoxLayout.LeftToRight, shell)
+    navigation = QWidget()
+    navigation.setFixedWidth(184)
+    shell_layout.addWidget(navigation)
+    shell_layout.addWidget(view, 1)
+    window = QMainWindow()
+    window.setCentralWidget(shell)
+    window.statusBar().showMessage("就緒")
+    window.resize(1280, 800)
+    window.show()
+    app().processEvents()
+
+    requested = window.size()
+    view.toggle_advanced_portfolio_btn.click()
+    app().processEvents()
+
+    actual = window.size()
+    assert actual.width() <= requested.width()
+    assert actual.height() <= requested.height()
+    assert view.paper_health_group.isVisible()
+    assert view.position_health_table.isVisible()
+    assert view.portfolio_detail_tabs.isVisible()
+    assert view.position_action_layout.direction() == QBoxLayout.TopToBottom
+    for button in (
+        view.btn_record_trade,
+        view.btn_stock_research,
+        view.btn_import_trades,
+        view.btn_add_journal,
+        view.btn_refresh,
+        view.btn_clear_all,
+    ):
+        assert button.width() >= button.sizeHint().width()
+    assert view.portfolio_advanced_scroll.verticalScrollBar().maximum() > 0
+    assert view.positions_table.height() >= (
+        view.positions_table.horizontalHeader().height()
+        + view.positions_table.verticalHeader().defaultSectionSize() * 2
+    )
+    assert view.position_health_table.height() >= (
+        view.position_health_table.horizontalHeader().height()
+        + view.position_health_table.verticalHeader().defaultSectionSize()
+    )
+
+    for index in range(view.portfolio_detail_tabs.count()):
+        view.portfolio_detail_tabs.setCurrentIndex(index)
+        app().processEvents()
+        current = view.portfolio_detail_tabs.currentWidget()
+        assert current is not None
+        assert current.isVisible()
+        assert current.height() >= 120
+
+    view.portfolio_detail_tabs.setCurrentIndex(0)
+    view.position_health_table.selectRow(0)
+    view._show_position_health_row(view.position_health_model.index(0, 0))
+    app().processEvents()
+    assert view.position_health_detail_label.isVisible()
+    assert view.position_health_detail_label.height() >= 3 * view.fontMetrics().height()
+
+    positions_model = view.positions_table.model()
+    assert positions_model is not None
+    last_column = positions_model.columnCount() - 1
+    assert last_column >= 0
+    view.positions_table.resizeColumnsToContents()
+    view.positions_table.scrollTo(
+        positions_model.index(0, last_column),
+        QAbstractItemView.PositionAtCenter,
+    )
+    app().processEvents()
+    last_cell = view.positions_table.visualRect(positions_model.index(0, last_column))
+    assert last_cell.isValid()
+    assert view.positions_table.viewport().rect().contains(last_cell.center())
+
+    window.close()
+    view.deleteLater()
+    shell.deleteLater()
 
 
 def test_portfolio_async_refresh_cancels_older_generation_and_uses_one_dto(tmp_path):

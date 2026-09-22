@@ -1656,6 +1656,11 @@ class StockResearchReportReadService:
         for item in items:
             if not isinstance(item, Mapping):
                 continue
+            # probe 的 candidate_only 只描述候選 DB，不能替正式 SQLite
+            # read model 證明 current／fresh；候選資料要經正式發布後才可
+            # 進入本 service 的 source evidence。
+            if item.get("candidate_only") is True:
+                continue
             source_id = str(item.get("source_id", "") or "").strip()
             status = str(item.get("freshness_status", "") or "").strip().lower()
             if not source_id or status not in _FRESHNESS_STATUS_VALUES:

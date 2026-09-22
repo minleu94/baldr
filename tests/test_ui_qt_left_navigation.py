@@ -105,3 +105,31 @@ def test_left_navigation_clicking_active_workspace_toggles_collapse():
     assert selected == []
     assert nav.is_collapsed() is False
     assert nav.button_for_key("workbench").text() == "決策工作台"
+
+
+def test_left_navigation_group_labels_are_left_anchored_and_keep_state_marker():
+    app()
+    nav = LeftNavigationWidget(
+        (
+            NavigationItem("workbench", "決策工作台", icon="command"),
+            NavigationItem("backtest", "策略回測", icon="replay"),
+        )
+    )
+    nav.show()
+    app().processEvents()
+
+    daily = nav.group_button_for_id("daily")
+    research = nav.group_button_for_id("research")
+    assert daily is not None
+    assert research is not None
+    assert daily.text().startswith("v ")
+    assert research.text().startswith("v ")
+    assert daily.geometry().left() == research.geometry().left()
+    assert nav.button_for_key("workbench").geometry().left() == daily.geometry().left()
+
+    research.click()
+    assert research.text().startswith("> ")
+    assert nav.button_for_key("backtest").isVisible() is False
+    research.click()
+    assert research.text().startswith("v ")
+    assert nav.button_for_key("backtest").isVisible() is True

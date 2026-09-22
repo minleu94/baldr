@@ -340,6 +340,8 @@ class StockResearchReportView(QWidget):
 
     reportLoaded = Signal(object)
     reportFailed = Signal(str)
+    activeStockChanged = Signal(str)
+    activeContextChanged = Signal(object)
     returnRequested = Signal()
     readyToClose = Signal()
 
@@ -459,6 +461,7 @@ class StockResearchReportView(QWidget):
 
         self._summary_values: dict[str, QLabel] = {}
         self._build_summary_shell()
+        self._render_context_path()
         QWidget.setTabOrder(self.stock_search, self.load_button)
         QWidget.setTabOrder(self.load_button, self.reload_button)
         QWidget.setTabOrder(self.reload_button, self.previous_button)
@@ -552,6 +555,17 @@ class StockResearchReportView(QWidget):
         layout.addWidget(self.summary_source_toggle)
         self.summary_source_group = QGroupBox("進階：來源與各區塊日期")
         source_layout = QVBoxLayout(self.summary_source_group)
+        self.summary_source_trace_label = self._wrapped_label(
+            "完整來源 trace：尚未選取股票。"
+        )
+        self.summary_source_trace_label.setObjectName("stockResearchSourceTrace")
+        self.summary_source_trace_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_1}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; padding: 6px;"
+        )
+        self.summary_source_trace_label.setAccessibleName("個股研究完整來源 trace")
+        source_layout.addWidget(self.summary_source_trace_label)
         self.sources_table = QTableView()
         apply_financial_table_style(self.sources_table)
         self.sources_table.setAccessibleName("個股研究報告來源表")
@@ -599,24 +613,30 @@ class StockResearchReportView(QWidget):
         self._load_stock(context.stock_code)
 
     def _render_context_path(self) -> None:
-        """呈現來源、日期與返回能力；不把缺 metadata 補成 current。"""
+        """日常只留必要脈絡，完整 identity 保留在來源進階與 tooltip。"""
 
         context = self.context
         if context is None:
-            self.context_path_label.setText(
-                "研究路徑：" + format_research_workflow_path() +
-                "｜來源：未標示｜決策日：未知｜資料日：未知"
+            visible = "來源：未標示｜決策日：未知｜資料日：未知｜沒有可返回來源"
+            full_trace = (
+                "研究路徑：" + format_research_workflow_path() + "\n" + visible
             )
+            self.context_path_label.setText(visible)
+            self.context_path_label.setToolTip(full_trace)
+            self.context_path_label.setAccessibleDescription(full_trace)
+            self.summary_source_trace_label.setText("完整來源 trace：\n" + full_trace)
             return
         source = context.source_label or context.source_id or "未標示"
         return_text = "可返回來源" if context.has_source else "沒有可返回來源"
-        self.context_path_label.setText(
-            f"研究路徑：{format_research_workflow_path()}\n"
-            f"來源：{source}｜狀態：{return_text}｜"
-            f"決策日：{context.decision_date or '未知'}｜資料日：{context.data_date or '未知'}｜"
-            f"來源 snapshot：{context.source_snapshot_id or context.source_snapshot_hash or '未知'}｜"
-            f"來源版本：{context.source_version or '未知'}｜映射版本：{context.mapping_version or '未知'}"
+        visible = (
+            f"來源：{source}｜決策日：{context.decision_date or '未知'}｜"
+            f"資料日：{context.data_date or '未知'}｜{return_text}"
         )
+        full_trace = _context_trace_text(context, source=source, return_text=return_text)
+        self.context_path_label.setText(visible)
+        self.context_path_label.setToolTip(full_trace)
+        self.context_path_label.setAccessibleDescription(full_trace)
+        self.summary_source_trace_label.setText("完整來源 trace：\n" + full_trace)
 
     def _load_from_search(self) -> None:
         self._load_stock(self.stock_search.text())
@@ -647,6 +667,7 @@ class StockResearchReportView(QWidget):
         request_id = self._request_id
         self._active_code = code
         self.stock_search.setText(code)
+        self.activeStockChanged.emit(code)
         self._cancel_active_worker()
         self._set_loading_state(code)
 
@@ -655,6 +676,9 @@ class StockResearchReportView(QWidget):
             # 來源清單切到另一檔時保留 result/source lineage，但不能把原股票
             # 名稱／身份快取帶到新代碼；service 會再以新代碼的實際資料辨識名稱。
             context = replace(context, stock_code=code, stock_name="")
+            self.context = context
+            self._render_context_path()
+        self.activeContextChanged.emit(context)
 
         def task(cancel_callback=None) -> StockResearchReportDTO:
             return self.service.read_report(
@@ -723,6 +747,9 @@ class StockResearchReportView(QWidget):
         self._workers.discard(worker)
         if self._active_worker is worker:
             self._active_worker = None
+        # 報告結果訊號可能早於 native thread 完成送達；依實際 worker 集合
+        # 同步導覽狀態，讓剛完成清理的載入仍可安全返回來源。
+        self._set_navigation_state()
         worker.deleteLater()
         if self._closing and not self.is_busy():
             self.readyToClose.emit()
@@ -753,24 +780,126 @@ class StockResearchReportView(QWidget):
         if request_id != self._request_id or code != self._active_code:
             return
         message = str(error).splitlines()[0].strip() or "未知讀取錯誤"
+        previous_report = self._loaded_report
+        if previous_report is not None and str(previous_report.stock_code).strip() == code:
+            self._show_last_good_state(
+                previous_report,
+                conclusion="重新讀取失敗；畫面仍保留同一檔股票的上次可用資料。",
+                reason=f"本次讀取失敗：{message}",
+                next_step="確認資料來源狀態後按「重新載入」再試一次。",
+            )
+        else:
+            self._show_unavailable_state(
+                code,
+                conclusion="目前沒有可閱讀的個股報告。",
+                reason=f"本次讀取失敗：{message}",
+                next_step="確認資料來源狀態後重新載入，或返回來源清單。",
+            )
         self._set_status(f"報告讀取失敗：{message}", "error")
         self.reportFailed.emit(message)
 
     def _on_report_cancelled(self, request_id: int, code: str) -> None:
         if request_id == self._request_id and code == self._active_code and not self._closing:
+            previous_report = self._loaded_report
+            if previous_report is not None and str(previous_report.stock_code).strip() == code:
+                self._show_last_good_state(
+                    previous_report,
+                    conclusion="讀取已取消；畫面仍保留同一檔股票的上次可用資料。",
+                    reason="本次讀取未完成，未以不完整內容覆蓋上次資料。",
+                    next_step="需要最新內容時按「重新載入」再試一次。",
+                )
+            else:
+                self._show_unavailable_state(
+                    code,
+                    conclusion="讀取已取消，尚無可閱讀的個股報告。",
+                    reason="本次讀取未完成。",
+                    next_step="按「重新載入」再試一次，或返回來源清單。",
+                )
             self._set_status("報告讀取已取消。", "warning")
 
     def _set_loading_state(self, code: str) -> None:
-        self.identity_label.setText(f"{code}｜報告載入中")
+        previous_report = self._loaded_report
+        if previous_report is not None and str(previous_report.stock_code).strip() == code:
+            self._show_last_good_state(
+                previous_report,
+                conclusion="重新載入中；以下內容是同一檔股票的上次可用資料。",
+                reason="背景讀取尚未完成，畫面不會把新股票或半成品資料混入目前報告。",
+                next_step="等待載入完成；若取消，仍保留這筆上次可用資料。",
+            )
+        else:
+            self._clear_loaded_report()
+            self._show_unavailable_state(
+                code,
+                conclusion="報告載入中，尚不能形成判讀。",
+                reason="資料仍在背景讀取。",
+                next_step="等待載入完成；若取消，保持目前股票與來源脈絡。",
+            )
         self._set_status("正在背景讀取有限研究資料…", "info")
-        for value in self._summary_values.values():
-            value.setText("讀取中…")
-        self.summary_focus.set_summary(
-            conclusion="報告載入中，尚不能形成判讀。",
-            reasons=("資料仍在背景讀取。",),
-            next_step="等待載入完成；若取消，保留原來源與選取狀態。",
-        )
         self._set_navigation_state()
+
+    def _clear_loaded_report(self) -> None:
+        """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
+
+        self._loaded_report = None
+        self._rendered_report_tabs = set()
+        for value in self._summary_values.values():
+            value.setText("尚未載入。")
+        self.summary_detail_toggle.setChecked(False)
+        self.summary_source_toggle.setChecked(False)
+        self.sources_table.setModel(None)
+        self.summary_limitations_detail_label.setText("目前尚未載入。")
+        self._find_widget("stockResearchLimitations").setText("目前尚未載入。")
+        for page_id in ("price", "fundamental", "flows", "position", "decision"):
+            layout = self._reset_page(page_id)
+            layout.addWidget(self._wrapped_label("尚未載入此股票的報告內容。"))
+            layout.addStretch()
+
+    def _show_unavailable_state(
+        self,
+        code: str,
+        *,
+        conclusion: str,
+        reason: str,
+        next_step: str,
+    ) -> None:
+        self.identity_label.setText(f"{code}｜尚無可用報告")
+        self.summary_focus.set_summary(
+            conclusion=conclusion,
+            reasons=(reason,),
+            next_step=next_step,
+        )
+        self.summary_limitations_detail_label.setText(reason)
+        self._find_widget("stockResearchLimitations").setText(reason)
+
+    def _show_last_good_state(
+        self,
+        report: StockResearchReportDTO,
+        *,
+        conclusion: str,
+        reason: str,
+        next_step: str,
+    ) -> None:
+        data_date = _report_data_date(report)
+        identity = (
+            f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
+            f"｜上次可用資料 {data_date}"
+        )
+        if report.industry:
+            identity += f"｜{report.industry}"
+        self.identity_label.setText(identity)
+        self.summary_focus.set_summary(
+            conclusion=conclusion,
+            reasons=(f"上次可用資料：{data_date}", reason),
+            next_step=next_step,
+            evidence=_report_evidence_text(report),
+            change=_price_change_text(report.price_points),
+            risk=_join_or_missing(
+                report.key_risks,
+                "目前沒有可呈現的風險／反證 row；不代表風險不存在。",
+            ),
+            sufficiency=_report_sufficiency_text(report),
+            reasons_title="目前狀態",
+        )
 
     def _set_status(self, text: str, quality: str) -> None:
         self.status_label.setText(text)
@@ -782,10 +911,12 @@ class StockResearchReportView(QWidget):
         has_codes = bool(self.stock_codes)
         self.previous_button.setEnabled(has_codes)
         self.next_button.setEnabled(has_codes)
-        busy = self.is_busy()
         self.load_button.setEnabled(not self._closing)
         self.reload_button.setEnabled(bool(self._active_code) and not self._closing)
-        self.return_button.setEnabled(not busy)
+        # 返回來源本身就是取消載入的安全路徑；關閉 dialog 時由
+        # request_close() 合作式取消 worker，不應因 native thread／queued
+        # signal 的短暫競態讓使用者失去返回按鈕。
+        self.return_button.setEnabled(not self._closing)
         self.return_button.setVisible(bool(self.context and self.context.has_source))
 
     def _render_report(self, report: StockResearchReportDTO) -> None:
@@ -1350,6 +1481,8 @@ class StockResearchReportDialog(QDialog):
             stock_codes=stock_codes,
             parent=self,
         )
+        self.report_view.activeStockChanged.connect(self._on_report_stock_changed)
+        self.report_view.activeContextChanged.connect(self._on_report_context_changed)
         self.dialog_tabs.addTab(self.report_view, "個股研究報告")
         self.journey_view: DecisionOutcomeJourneyWidget | None = None
         if journey_service is not None:
@@ -1377,6 +1510,20 @@ class StockResearchReportDialog(QDialog):
         if stock_codes is not None:
             self.report_view.set_stock_codes(stock_codes)
         self.report_view.set_context(context)
+
+    def _on_report_stock_changed(self, stock_code: str) -> None:
+        """同步報告頁內搜尋／上一檔切換後的外層視窗標題。"""
+
+        code = str(stock_code).strip()
+        if code:
+            self.setWindowTitle(f"個股研究報告｜{code}")
+
+    def _on_report_context_changed(
+        self,
+        context: ResearchStockContextDTO | None,
+    ) -> None:
+        """讓 Journey 重新以 exact result_id + stock_code 驗證候選。"""
+
         if self.journey_view is not None:
             self.journey_view.set_context(context)
 
@@ -1468,6 +1615,47 @@ def _latest_price_text(points: Sequence[StockPricePointDTO]) -> str:
     return (
         f"{_decimal_text(point.close_price)} TWD｜資料日 {point.data_date}｜"
         f"成交股數 {_integer_text(point.volume)}｜成交金額 {_decimal_text(point.turnover)}"
+    )
+
+
+def _report_data_date(report: StockResearchReportDTO) -> str:
+    """取得可對使用者說明的最後資料日，不建立新的資料判斷。"""
+
+    if report.price_points:
+        return str(report.price_points[-1].data_date or report.as_of or "未知")
+    if report.technical is not None and report.technical.data_date:
+        return str(report.technical.data_date)
+    for section in report.sections:
+        if section.data_as_of:
+            return str(section.data_as_of)
+    return str(report.as_of or "未知")
+
+
+def _context_trace_text(
+    context: ResearchStockContextDTO,
+    *,
+    source: str,
+    return_text: str,
+) -> str:
+    """保留跨頁 context 的完整可查 identity，避免日常標籤塞滿 metadata。"""
+
+    return "\n".join(
+        (
+            f"研究路徑：{format_research_workflow_path()}",
+            f"股票：{context.stock_code} {context.stock_name or '未提供名稱'}",
+            f"來源：{source}｜來源 ID：{context.source_id or '未知'}｜"
+            f"工作區：{context.source_workspace or '未知'}｜"
+            f"來源型態：{context.source_kind or '未知'}｜狀態：{return_text}",
+            f"決策日：{context.decision_date or '未知'}｜資料日：{context.data_date or '未知'}",
+            f"source_snapshot_id：{context.source_snapshot_id or '未知'}｜"
+            f"source_snapshot_hash：{context.source_snapshot_hash or '未知'}",
+            f"source_version：{context.source_version or '未知'}｜"
+            f"mapping_source_id：{context.mapping_source_id or '未知'}｜"
+            f"mapping_version：{context.mapping_version or '未知'}｜"
+            f"mapping_observed_date：{context.mapping_observed_date or '未知'}",
+            f"profile_id：{context.profile_id or '未知'}｜"
+            f"profile_version：{context.profile_version or '未知'}",
+        )
     )
 
 

@@ -11,7 +11,10 @@ from types import SimpleNamespace
 
 from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_dtos import ReportSectionStatus
-from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.stock_research_report_service import (
+    StockResearchReportReadService,
+    _resolve_signed_change,
+)
 
 
 def _schema(database: Path) -> None:
@@ -209,6 +212,65 @@ def test_normal_readback_is_pit_bounded_and_uses_existing_advice(tmp_path: Path)
 
     # 每一個 read connection 都已關閉；Windows 也能在 read-back 後移除測試庫。
     config.db_file.unlink()
+
+
+def test_price_change_uses_twse_direction_for_downside_rows(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    with sqlite3.connect(config.db_file) as conn:
+        conn.execute('ALTER TABLE daily_prices ADD COLUMN "漲跌(+/-)" TEXT')
+        conn.executemany(
+            """
+            INSERT INTO daily_prices
+                (日期, 證券代號, 證券名稱, 收盤價, 漲跌價差, "漲跌(+/-)")
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("20260918", "1256", "鮮活果汁-KY", "172", "1.5", "+"),
+                ("20260921", "1256", "鮮活果汁-KY", "170", "2", "-"),
+                ("20260918", "1477", "聚陽", "194", "0", "+"),
+                ("20260921", "1477", "聚陽", "191.5", "2.5", "-"),
+            ],
+        )
+
+    service = StockResearchReportReadService(config)
+    report_1256 = service.read_report("1256", as_of_date="2026-09-21")
+    report_1477 = service.read_report("1477", as_of_date="2026-09-21")
+
+    assert report_1256.price_points[-1].close_price == Decimal("170")
+    assert report_1256.price_points[-1].change == Decimal("-2")
+    assert report_1477.price_points[-1].close_price == Decimal("191.5")
+    assert report_1477.price_points[-1].change == Decimal("-2.5")
+    assert report_1256.price_points[-2].change == Decimal("1.5")
+    assert report_1477.price_points[-2].change == Decimal("0")
+
+
+def test_price_change_uses_tpex_direction_when_twse_sign_is_blank(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    with sqlite3.connect(config.db_file) as conn:
+        conn.execute('ALTER TABLE daily_prices ADD COLUMN "漲跌(+/-)" TEXT')
+        conn.execute('ALTER TABLE daily_prices ADD COLUMN "漲跌" TEXT')
+        conn.execute(
+            """
+            INSERT INTO daily_prices
+                (日期, 證券代號, 證券名稱, 收盤價, 漲跌價差, "漲跌(+/-)", "漲跌")
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("20260921", "6488", "環球晶", "420", "8", "", "-"),
+        )
+
+    report = StockResearchReportReadService(config).read_report(
+        "6488", as_of_date="2026-09-21"
+    )
+
+    assert report.price_points[-1].change == Decimal("-8")
+
+
+def test_price_change_direction_fails_closed_for_missing_unknown_or_conflicting_sign() -> None:
+    assert _resolve_signed_change("2", ()) == (None, "missing_change_direction")
+    assert _resolve_signed_change("2", ("除權",)) == (None, "unknown_change_direction")
+    assert _resolve_signed_change("2", ("+", "-")) == (None, "conflicting_change_direction")
+    assert _resolve_signed_change("-2", ("+",)) == (None, "conflicting_change_direction")
+    assert _resolve_signed_change("-2", ()) == (Decimal("-2"), "")
 
 
 def test_empty_sources_are_explicit_and_do_not_block_report(tmp_path: Path) -> None:

@@ -28,6 +28,7 @@ from ui_qt.views.stock_research_report_view import (
     StockPriceChartWidget,
     StockResearchReportDialog,
     StockResearchReportView,
+    _price_change_text,
 )
 
 
@@ -143,6 +144,16 @@ def _report_for(code: str, price: str) -> StockResearchReportDTO:
             ),
         ),
     )
+
+
+def test_missing_change_direction_is_not_presented_as_a_rise() -> None:
+    point = StockPricePointDTO(
+        data_date="2026-09-21",
+        close_price=Decimal("170"),
+        change=None,
+    )
+
+    assert _price_change_text((point,)) == "漲跌資料或方向不足，無法確認。"
 
 
 def test_old_worker_result_cannot_replace_new_stock() -> None:

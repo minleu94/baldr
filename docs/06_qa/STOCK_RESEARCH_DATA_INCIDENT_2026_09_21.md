@@ -4,6 +4,10 @@
 
 2026-09-21 的個股研究報告資料不是全鏈均勻新鮮。Formal daily price 與 technical 在目標交易日查到 bounded rows，且完成日期、重複鍵與 raw 對照檢查；這不等於全域交易所真值。institutional、credit、TDCC、monthly／quarterly fundamentals 與個別 broker coverage 則各有明確的期別或來源缺口。這些缺口必須保留為 stale、partial、unknown 或 source coverage，不能補成 0，也不能把候選庫內容當成 formal evidence。
 
+前一版本的 daily price 段落只證明 bounded rows 存在、日期／重複鍵可讀及 raw 對照一致，不能解讀成價格合理、跨日無異常或交易所真值已核證。9/21 收盤跳變、O/H/L/C 界限、成交金額／量隱含價與 1256／1477 的逐日序列，改由[全市場跨日價格稽核](PRICE_JUMP_AUDIT_2026_09_21.md)單獨記錄；兩份文件的 source freshness／candidate-only 結論仍分開判讀。
+
+價格稽核另確認報告 consumer 原先漏讀來源方向欄，將正的絕對價差當成上漲；9/21 下跌列都有可解析負號，service 已改為 signed value 或 unknown fail-closed。此方向 bug 與 source freshness／candidate-only incident 分開追蹤，不能用 row 存在性取代價格合理性核驗。
+
 本輪確認的程式根因是 freshness receipt 的 `candidate_only=true` 項目原本可能透過 source alias 認證 formal SQLite。修正後 `StockResearchReportReadService` 會跳過這類 receipt；候選資料只有在正式發布並進入 formal source 後才能被 formal reader 使用。沒有把正式 reader 改成 `immutable=1` fallback，也沒有放寬時區、future cutoff 或整份報告的 decision-date 契約。
 
 ## 查核範圍與來源
@@ -37,6 +41,8 @@ Formal SQLite 以 `file:...twstock.db?mode=ro` 開啟，另設 `PRAGMA query_onl
 | `broker_flows` | 6,955 | 904 | branch grain；不能用 `(date, code)` 當唯一鍵 |
 
 Formal daily／technical required code/date 欄位的 invalid count 為 0，且目標 raw rows 與查詢結果可對照；查核範圍內沒有晚於 2026-09-21 的 future rows。這是 bounded/full aggregate evidence，不代表所有資料源都在同一日期，也不替代官方交易所全域核驗。
+
+本節的「查到 rows」與「raw rows 可對照」是存在性與來源一致性證據，不是價格正確性結論。9/21 的跨日 price jump 與 OHL／成交量合理性另見 [PRICE_JUMP_AUDIT_2026_09_21](PRICE_JUMP_AUDIT_2026_09_21.md)；該稽核仍把跳幅與隱含價疑點保留為待核，沒有一概判錯或判正常。
 
 ### 使用者指出的個股
 
@@ -103,5 +109,6 @@ portfolio final freeze 後的 affected integration route 以最後版本執行�
 
 - [完整操作手冊](../07_guides/APPLICATION_MANUAL.md)
 - [Qt UI 功能文件](../02_features/UI_FEATURES_DOCUMENTATION.md)
+- [2026-09-21 全市場跨日價格稽核](PRICE_JUMP_AUDIT_2026_09_21.md)
 - [專案快照](../00_core/PROJECT_SNAPSHOT.md)
 - [Data freshness handoff](V4_DATA_FRESHNESS_HANDOFF.md)

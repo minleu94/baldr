@@ -1666,7 +1666,7 @@ def _price_change_text(points: Sequence[StockPricePointDTO]) -> str:
         return "沒有價格資料，無法比較。"
     point = points[-1]
     if point.change is None:
-        return "目前沒有前一期漲跌欄位，無法比較。"
+        return "漲跌資料或方向不足，無法確認。"
     return f"最新一日漲跌：{point.change:+,} TWD（資料日 {point.data_date}）。"
 
 

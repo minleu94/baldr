@@ -4,6 +4,8 @@
 
 正式資料只讀查核已完成：`D:\Min\Python\Project\FA_Data\sqlite\twstock.db` 的 2026-09-21 `daily_prices` 查到 1,968 rows／1,968 codes，`technical_indicators` 查到 1,965 rows／1,965 codes；2382=344.5、3207=38.25、9935=18.2、1418=17.55 的查詢 rows 日期均為 2026-09-21，並完成日期／重複鍵／raw 對照檢查。這只證明本輪查詢範圍內的存在性與一致性，不代表官方交易所全域真值或全來源同日 fresh。
 
+2026-09-21 全市場跨日價格稽核進一步比較 2026-09-18→09-21 與 2026-08-25 起的相鄰交易日：9/21 1,968／1,968 rows／codes 的 O/H/L/C invalid 為 0，9/18→9/21 有 7 筆絕對跳幅 ≥10%、≥20% 為 0；這些跳幅與 11 筆成交金額／量隱含價超出 O/H/L 仍待官方公司行動或成交明細核證，不能宣稱所有價格合理。稽核也確認資料契約的具體 consumer bug：`漲跌價差` 是正絕對值而方向在來源欄，9/21 831 筆下跌都有可解析負號；報告 service 已修正方向合併，1256 為 172→170（-2）、1477 為 194→191.5（-2.5）。官方保存 response／日期／hash custody 的代表資料已對照；merged aggregate 最新僅到 2026-07-14，屬 stale，不能替 9/21 作 cross-source 驗證。完整範圍與限制見 [全市場跨日價格稽核](../06_qa/PRICE_JUMP_AUDIT_2026_09_21.md)。
+
 目前高風險資料邊界：formal institutional／credit 最新到 2026-09-08、TDCC 最新到 2026-09-04；月營收／季報 PIT 仍有 expected period 與 announcement／available-time 缺口；broker coverage 依股票不同（2382 到 9/21、3207 到 8/20、9935 到 9/14、1418 無 formal broker row）。1418 Paper blocked 分類為 candidate／lineage 缺件，不是 price corruption。候選 DB 的 rows 不得替 formal SQLite freshness 認證；`candidate_only=true` receipt 現由 read service 排除。
 
 本輪未寫入 formal data、未重建／回填／重跑 scheduler、未更新 learning 或交易狀態。資料日、可得時間、PIT／current、source coverage 與 candidate-only 限制須在研究報告中分開判讀；缺件不可補 0。完整 evidence、SQL、focused QA 與 freeze 後整合 QA 見 [2026-09-21 個股研究資料鏈 Incident QA](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。

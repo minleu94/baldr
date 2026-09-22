@@ -474,16 +474,24 @@ class StockResearchReportReadService:
         code_col = _pick(columns, "證券代號", "stock_code", "Code")
         if date_col is None or code_col is None:
             raise ValueError("daily_prices 缺少股票代號／日期欄位")
+        change_sign_columns = _change_sign_columns(columns)
+        select_columns = [
+            _select_column(columns, ("日期", "Date"), "data_date"),
+            _select_column(columns, ("證券名稱", "stock_name"), "stock_name"),
+            _select_column(columns, ("開盤價", "Open"), "open_price"),
+            _select_column(columns, ("最高價", "High"), "high_price"),
+            _select_column(columns, ("最低價", "Low"), "low_price"),
+            _select_column(columns, ("收盤價", "Close"), "close_price"),
+            _select_column(columns, ("成交股數", "Volume"), "volume"),
+            _select_column(columns, ("成交金額",), "turnover"),
+            _select_column(columns, ("漲跌價差",), "change_value"),
+        ]
+        select_columns.extend(
+            f"{_quote(column)} AS {_quote(f'change_sign_{index}')}"
+            for index, column in enumerate(change_sign_columns)
+        )
         sql = f"""
-            SELECT {_select_column(columns, ("日期", "Date"), "data_date")},
-                   {_select_column(columns, ("證券名稱", "stock_name"), "stock_name")},
-                   {_select_column(columns, ("開盤價", "Open"), "open_price")},
-                   {_select_column(columns, ("最高價", "High"), "high_price")},
-                   {_select_column(columns, ("最低價", "Low"), "low_price")},
-                   {_select_column(columns, ("收盤價", "Close"), "close_price")},
-                   {_select_column(columns, ("成交股數", "Volume"), "volume")},
-                   {_select_column(columns, ("成交金額",), "turnover")},
-                   {_select_column(columns, ("漲跌價差",), "change")}
+            SELECT {", ".join(select_columns)}
             FROM {self._table(table)}
             WHERE {_quote(code_col)} = ?
               AND {_non_empty_expr(date_col)}
@@ -493,10 +501,17 @@ class StockResearchReportReadService:
         """
         rows = self._query(sql, (code, _date_key(cutoff), _PRICE_LIMIT))
         points: list[StockPricePointDTO] = []
+        change_limitations: set[str] = set()
         for row in reversed(rows):
             data_date = _iso_date(row["data_date"])
             if not data_date:
                 continue
+            change, change_limitation = _resolve_signed_change(
+                row["change_value"],
+                tuple(row[f"change_sign_{index}"] for index in range(len(change_sign_columns))),
+            )
+            if change_limitation:
+                change_limitations.add(change_limitation)
             points.append(
                 StockPricePointDTO(
                     data_date=data_date,
@@ -506,13 +521,16 @@ class StockResearchReportReadService:
                     close_price=_decimal(row["close_price"]),
                     volume=_integer(row["volume"]),
                     turnover=_decimal(row["turnover"]),
-                    change=_decimal(row["change"]),
+                    change=change,
                     source_id="sqlite.daily_prices",
                     quality=ReportQuality.OBSERVED.value,
                 )
             )
         latest = points[-1] if points else None
         name = str(rows[0]["stock_name"] or "").strip() if rows else ""
+        source_limitations = ["來源未提供 available_at；資料可得時間沿用來源契約外資訊。"]
+        if change_limitations:
+            source_limitations.append("部分價格列沒有可驗證的漲跌方向；未將無號價差當作上漲。")
         source = self._source(
             "sqlite.daily_prices",
             "SQLite 日價格",
@@ -520,7 +538,7 @@ class StockResearchReportReadService:
             data_as_of=latest.data_date if latest else "",
             quality=ReportQuality.OBSERVED.value if points else ReportQuality.MISSING.value,
             cutoff=cutoff,
-            limitations=("來源未提供 available_at；資料可得時間沿用來源契約外資訊。",),
+            limitations=tuple(source_limitations),
         )
         return tuple(points), source, name
 
@@ -1777,6 +1795,72 @@ def _select_raw(columns: Sequence[str], candidates: Sequence[str]) -> str:
 def _select_column(columns: Sequence[str], candidates: Sequence[str], alias: str) -> str:
     column = _pick(columns, *candidates)
     return f"{_quote(column)} AS {_quote(alias)}" if column else f"NULL AS {_quote(alias)}"
+
+
+def _change_sign_columns(columns: Sequence[str]) -> tuple[str, ...]:
+    """找出 daily_prices 可用的方向欄，保留原始欄位優先序。"""
+
+    selected: list[str] = []
+    for candidate in ("漲跌(+/-)", "漲跌", "涨跌"):
+        if candidate in columns and candidate not in selected:
+            selected.append(candidate)
+    return tuple(selected)
+
+
+def _normalize_change_sign(value: object) -> str | None:
+    text = str(value or "").strip()
+    if text in {"-", "−", "－", "跌", "▼"}:
+        return "-"
+    if text in {"+", "＋", "漲", "▲"}:
+        return "+"
+    return None
+
+
+def _resolve_signed_change(
+    value: object,
+    sign_values: Sequence[object],
+) -> tuple[Decimal | None, str]:
+    """將來源方向與價差組成可安全展示的 signed change。
+
+    ``漲跌價差`` 在正式 daily_prices 常是絕對值；沒有明確方向時，
+    正數不能被冒充為上漲。未知／特殊 corporate-action 標記與互相衝突的
+    方向一律降級為缺值，避免研究報告給出錯誤的漲跌結論。
+    """
+
+    amount = _decimal(value)
+    if amount is None:
+        return None, ""
+
+    signs: list[str] = []
+    has_unknown = False
+    for raw_sign in sign_values:
+        text = str(raw_sign or "").strip()
+        if not text:
+            continue
+        sign = _normalize_change_sign(text)
+        if sign is None:
+            has_unknown = True
+        else:
+            signs.append(sign)
+
+    if has_unknown:
+        return None, "unknown_change_direction"
+    distinct_signs = set(signs)
+    if len(distinct_signs) > 1:
+        return None, "conflicting_change_direction"
+    if amount < 0 and distinct_signs == {"+"}:
+        return None, "conflicting_change_direction"
+    if distinct_signs == {"-"}:
+        return -abs(amount), ""
+    if distinct_signs == {"+"}:
+        return abs(amount), ""
+    if amount < 0:
+        # 某些舊 schema 已將數值存成 signed change；負值本身不會被
+        # 誤判為上漲，因此可保留。正值則沒有足夠證據判斷方向。
+        return amount, ""
+    if amount == 0:
+        return amount, ""
+    return None, "missing_change_direction"
 
 
 def _date_key_expr(column: str) -> str:

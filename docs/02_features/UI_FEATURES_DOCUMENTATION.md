@@ -19,6 +19,8 @@ freshness receipt 的 `candidate_only=true` 會維持 candidate／research-only 
 
 本輪 bounded formal row counts、target stock evidence、source coverage 與 focused regression 見 [2026-09-21 個股研究資料鏈 Incident QA](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。本節描述 UI 顯示契約，不宣稱所有正式資料在同一交易日 fresh，也不代表 V5／V6 formal closeout。
 
+全市場價格跨日稽核另見 [2026-09-21 全市場跨日價格稽核](../06_qa/PRICE_JUMP_AUDIT_2026_09_21.md)：`漲跌價差` 的方向必須合併來源 sign 欄，報告 service 現在以 signed value 或 unknown fail-closed 呈現；UI 不從 close 跳幅自行判定價格合理，也不把 merged stale aggregate 當成 target-date evidence。
+
 ### 預設入口與分層
 
 - 左側導覽分成「日常使用」（決策工作台、市場探索、推薦分析、觀察清單、持倉管理）、「進階研究」（策略回測）與「系統維護」（數據更新、系統狀態）。保留既有 workspace key／Runtime alias；deep link 會展開所屬群組。

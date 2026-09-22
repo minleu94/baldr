@@ -12,6 +12,18 @@
 - 本次 formal institutional／credit 最新到 2026-09-08，TDCC 最新到 2026-09-04；3207 broker 最新到 2026-08-20、9935 到 2026-09-14，1418 沒有 formal broker row。畫面若顯示 stale、partial、unknown 或 missing，代表來源時效／coverage 缺件，不能手動補 0 或把空白當成中性數值。
 - freshness receipt 的 `candidate_only=true` 只代表隔離 candidate DB 的研究資料。它不會認證 formal SQLite；只有正式發布到 formal source 後，才能作為 formal report evidence。1418 Paper blocked 若同時缺 source lineage，應分類為 lineage／candidate 缺件，不推論成 9/21 價格錯誤。
 - 若同一報告同時看到價格 9/21、籌碼 9/8 或 TDCC 9/4，這是各來源的實際可得日不同。請開啟「來源與各區塊日期」查看 source trace／可得時間；不要用較新的 candidate date 覆蓋 formal date。
+- 更新方向修正後，請重啟程式再開啟個股研究報告，讓新的 read service 載入生效。
+- 報告的最新一日漲跌會依來源方向顯示正負；若看到「漲跌資料或方向不足，無法確認。」，代表證據不足，不等於持平，也不要自行修改原始價格。
+- 要做全市場價格合理性初篩，可在唯讀環境執行：
+
+  ```powershell
+  $env:PYTHONIOENCODING = "utf-8"
+  .\.venv\Scripts\python.exe scripts\audit_price_jump_20260921.py `
+    --include-merged `
+    --output output\qa\price_jump_20260921
+  ```
+
+  稽核以 `mode=ro` 加 `PRAGMA query_only=ON` 讀取 Formal SQLite，並比較 9/18→9/21 及 8/25 起相鄰交易日；不初始化、寫入、回填或把缺資料補成 0。已保存的本輪結果為 9/21 1,968／1,968 rows／codes、O/H/L/C invalid 0、9/18→9/21 絕對跳幅 ≥10% 7 筆；這些是排序與待核證據，不是全市場價格正確證明。1256 的 172→170（-2）、1477 的 194→191.5（-2.5）及 831 筆可解析負號也支持報告方向修正；merged aggregate 只到 2026-07-14，應判為 stale，不能當成 9/21 對照來源。
 
 正式查核與 bounded 全市場 row count 見 [2026-09-21 個股研究資料鏈 Incident QA](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。本補充不授予資料全新鮮、V5/V6 formal completion 或任何交易權限。
 

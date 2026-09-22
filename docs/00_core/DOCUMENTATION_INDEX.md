@@ -40,6 +40,7 @@
 - [V4.2 C 線每日決策工作台 QA handoff](../06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md)：單一路徑、跨頁研究 context、共用呈現契約、fail-closed 欄位與窄版／鍵盤驗證。
 - [V5 日常操作與可讀性工程驗收報告](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md)：R1–R10 可讀性、可導引性、隔離效能基準、learning／資料安全邊界與 final QA route；不代表正式 V4／V5／V6 closeout。
 - [2026-09-21 個股研究資料鏈 Incident QA](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)：formal `mode=ro` row audit、2382／3207／9935／1418 source coverage、PIT／candidate-only boundary、reader regression、整合 UI 判讀契約與 freeze 後 mandatory QA；不宣稱全資料 fresh 或 V5／V6 formal completion。
+- [2026-09-21 全市場跨日價格稽核](../06_qa/PRICE_JUMP_AUDIT_2026_09_21.md)：9/18→9/21 與 8/25 起全市場 Decimal 價格跳變、O/H/L/C、方向欄、raw／官方 custody 對照與 merged stale 邊界；確認報告 consumer 漏讀負號 bug 已修正，待核跳幅不作錯價宣稱。
 - [本輪交付複核](../06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)、[檔案清理結果](../06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)。
 - [資料更新](../06_qa/V4_DATA_FRESHNESS_HANDOFF.md)、[Direct資料鏈](../06_qa/V4_DIRECT_RELEASE_HANDOFF.md)、[個股研究報告](../06_qa/V4_STOCK_RESEARCH_REPORT_HANDOFF.md)。
 - [工作區檔案說明](../06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)、[三線接手Prompt（歷史歸檔）](../09_archive/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)。

@@ -93,6 +93,8 @@ PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES: dict[str, dict[str, object]] = {
         "expected_update_entry": "UpdateService.update_phase3c_candidate_range",
     },
 }
+
+
 def _parse_date(value: object) -> date | None:
     if value is None:
         return None
@@ -594,7 +596,7 @@ def _paper_eod_freshness_projection(
             blockers.append(f"freshness_lane_source_status_unknown:{source_id}")
         elif source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
             blockers.append(f"freshness_lane_noncurrent_source_blocked:{source_id}:{source_status}")
-        elif source_id not in warning_sources:
+        else:
             source = source_by_id[source_id]
             candidate_policy = _candidate_non_eod_policy(
                 source_id=source_id,
@@ -606,9 +608,20 @@ def _paper_eod_freshness_projection(
                     **candidate_policy,
                     "source_id": source_id,
                     "freshness_status": source_status,
+                    "candidate_only": True,
+                    "reason": source.get("reason"),
                     "not_required_for_paper_eod": True,
                     "source_diagnostic": dict(source),
                 }
+                continue
+            # 已登記的 candidate source 必須先通過具名 policy；即使 aggregate
+            # 帶有同名 warning，也不能退回一般 warning allowlist。
+            if source_id in PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES:
+                blockers.append(
+                    f"freshness_lane_noncurrent_source_unattributed:{source_id}:{source_status}"
+                )
+                continue
+            if source_id in warning_sources:
                 continue
             blockers.append(f"freshness_lane_noncurrent_source_unattributed:{source_id}:{source_status}")
     projection["non_current_sources"] = non_current_sources

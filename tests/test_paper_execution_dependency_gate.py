@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -727,6 +727,111 @@ def _historical_degraded_payload(target: str) -> dict[str, object]:
             },
         ],
     }
+
+
+def _today_candidate_projection_payload() -> dict[str, object]:
+    """以 2026-09-22 的 candidate row contract 建立隔離 projection fixture。"""
+
+    payload = _historical_degraded_payload("20260922")
+    payload["warnings"] = [
+        "monthly_revenue_expected_period_not_available",
+        "quarterly_statement_expected_period_not_available",
+    ]
+    source_statuses = payload["source_statuses"]
+    assert isinstance(source_statuses, list)
+    source_statuses[:] = [
+        source
+        for source in source_statuses
+        if source["source_id"]
+        not in {
+            "institutional_flows",
+            "credit_transactions",
+            "fundamental.current_monthly_observations",
+            "fundamental.current_statement_observations",
+        }
+    ]
+    source_statuses.append(
+        {
+            "source_id": "credit_transactions",
+            "authority": "TWSE + TPEx margin official endpoints",
+            "frequency": "daily candidate source",
+            "actual_period": "20260921",
+            "published_at": None,
+            "available_at": "2026-09-21T19:19:14.671044+00:00",
+            "expected_period": "20260922",
+            "coverage": {
+                "candidate_db_exists": True,
+                "table_exists": True,
+                "db_row_count": 126,
+                "latest_session_row_count": 81,
+                "expected_source_versions": [
+                    "twse-official-MI_MARGN",
+                    "tpex-official-margin_bal",
+                ],
+                "observed_source_versions": [
+                    "twse-official-MI_MARGN",
+                    "tpex-official-margin_bal",
+                ],
+                "source_version_coverage_complete": True,
+            },
+            "missing_periods": ["20260922"],
+            "duplicate_key_count": 0,
+            "freshness_status": "stale",
+            "reason": "latest candidate observation is behind the expected official session",
+            "update_entry": "UpdateService.update_phase3c_candidate_range",
+            "scheduled_task": "baldr-data-update-quick-daily",
+            "owner": "Data Engineering + P0 source owners",
+            "downstream": ["candidate research only"],
+            "candidate_only": True,
+        }
+    )
+    return payload
+
+
+def _today_credit_projection_row(payload: dict[str, object]) -> dict[str, object]:
+    source_statuses = payload["source_statuses"]
+    assert isinstance(source_statuses, list)
+    row = next(item for item in source_statuses if item["source_id"] == "credit_transactions")
+    assert isinstance(row, dict)
+    return row
+
+
+def test_projection_accepts_today_credit_contract_and_preserves_diagnostic() -> None:
+    payload = _today_candidate_projection_payload()
+    credit_row = _today_credit_projection_row(payload)
+
+    projection, blockers, _ignored = _paper_eod_freshness_projection(
+        payload,
+        target=date(2026, 9, 22),
+    )
+
+    assert blockers == []
+    assert projection["status"] == "degraded_non_eod_only"
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    credit = excluded["credit_transactions"]
+    assert credit["freshness_status"] == "stale"
+    assert credit["candidate_only"] is True
+    assert credit["reason"] == credit_row["reason"]
+    assert credit["source_diagnostic"] == credit_row
+
+
+def test_projection_blocks_credit_frequency_mismatch_and_required_source_partial() -> None:
+    payload = _today_candidate_projection_payload()
+    _today_credit_projection_row(payload)["frequency"] = "daily official session"
+    source_statuses = payload["source_statuses"]
+    assert isinstance(source_statuses, list)
+    required = next(item for item in source_statuses if item["source_id"] == "sqlite.daily_prices")
+    assert isinstance(required, dict)
+    required["freshness_status"] = "partial"
+
+    projection, blockers, _ignored = _paper_eod_freshness_projection(
+        payload,
+        target=date(2026, 9, 22),
+    )
+
+    assert projection["status"] == "blocked"
+    assert "freshness_lane_noncurrent_source_unattributed:credit_transactions:stale" in blockers
+    assert "freshness_required_source_not_current:sqlite.daily_prices:partial" in blockers
 
 
 def test_historical_payload_shape_fixture_classifies_two_non_eod_unknown_sources() -> None:

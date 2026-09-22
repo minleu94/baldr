@@ -61,7 +61,10 @@ Phase3C 的 `credit_transactions` candidate stale／partial 只有在 source row
 `update_entry="UpdateService.update_phase3c_candidate_range"` 時，才由具名
 `p0_candidate_shadow` policy 投影到 `freshness_lane.not_required_for_paper_eod`。這不代表
 資料 current，也不代表 Paper 使用該來源；缺任一欄位、欄位值改變、`failed`／
-`expected_wait`／`unknown` 或其他 candidate source，仍維持 unattributed／blocked。
+`expected_wait`／`unknown` 或其他 candidate source，仍維持 unattributed／blocked。source row
+的 `reason` 也必須是非空字串；投影會保留原始 row、`freshness_status`、`candidate_only`
+與 `reason`。即使 aggregate 帶有 `credit_transactions` warning，具名 policy 不符仍會
+阻擋，不會由一般 warning allowlist 放行。
 
 ### V4 跨日 evidence identity 與每日 health
 

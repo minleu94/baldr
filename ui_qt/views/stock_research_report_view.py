@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QTabWidget,
     QTableView,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -114,8 +115,11 @@ class StockPriceChartWidget(QWidget):
         super().__init__(parent)
         self._points: tuple[StockPricePointDTO, ...] = ()
         self._mode = "close"
+        self._hover_index: int | None = None
+        self._base_tooltip = "目前沒有可繪製的價格資料。"
         self.setMinimumHeight(188)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMouseTracking(True)
         self.setAccessibleName("個股收盤價走勢圖")
         self.setAccessibleDescription(
             "最近有限交易日的價格圖；下方價格表提供可選取的日期與數值。"
@@ -124,6 +128,8 @@ class StockPriceChartWidget(QWidget):
     def set_points(self, points: Sequence[StockPricePointDTO]) -> None:
         self._points = tuple(points)
         self._mode = self._resolve_mode(self._points)
+        self._hover_index = None
+        QToolTip.hideText()
         if self._points:
             last = self._points[-1]
             mode_text = {
@@ -131,19 +137,86 @@ class StockPriceChartWidget(QWidget):
                 "ohlc": "K 線（成交量資料不足）",
                 "close": "收盤價走勢",
             }[self._mode]
-            self.setToolTip(
-                f"{mode_text}；最新資料日：{last.data_date}；"
-                f"收盤價：{_decimal_text(last.close_price)}。"
+            self._base_tooltip = (
+                f"{mode_text}；{_price_chart_range_text(self._points)}；"
+                f"最新收盤價：{_decimal_text(last.close_price)}。"
+                "將游標移到各資料點查看該日日期、開高低收與成交量；"
                 "圖表只作視覺化，不代表預測。"
             )
+            self.setToolTip(self._base_tooltip)
             self.setAccessibleDescription(
-                f"{mode_text}；最近有限交易日的價格圖；"
+                f"{mode_text}；{_price_chart_range_text(self._points)}；"
+                "將游標移到各資料點查看該日日期、開高低收與成交量；"
                 "下方價格表提供可選取的日期與數值。"
             )
         else:
-            self.setToolTip("目前沒有可繪製的價格資料。")
+            self._base_tooltip = "目前沒有可繪製的價格資料。"
+            self.setToolTip(self._base_tooltip)
             self.setAccessibleDescription("目前沒有可繪製的價格資料。")
         self.update()
+
+    def _drawable_points(self) -> tuple[StockPricePointDTO, ...]:
+        return tuple(point for point in self._points if point.close_price is not None)
+
+    def _plot_x_bounds(self) -> tuple[int, int]:
+        left = 58
+        return left, max(left + 40, self.width() - 18)
+
+    def _nearest_point_index(self, x: int) -> int | None:
+        points = self._drawable_points()
+        if not points:
+            return None
+        left, right = self._plot_x_bounds()
+        if x < left or x > right:
+            return None
+        span = max(1, right - left)
+        relative_x = max(0, min(span, x - left))
+        index = (
+            relative_x * (len(points) - 1) + span // 2
+        ) // span
+        return min(len(points) - 1, index)
+
+    @staticmethod
+    def _point_tooltip(point: StockPricePointDTO) -> str:
+        return "\n".join(
+            (
+                f"日期：{point.data_date or '未提供'}",
+                "｜".join(
+                    (
+                        f"開盤：{_chart_decimal_text(point.open_price)}",
+                        f"最高：{_chart_decimal_text(point.high_price)}",
+                        f"最低：{_chart_decimal_text(point.low_price)}",
+                        f"收盤：{_chart_decimal_text(point.close_price)}",
+                    )
+                ),
+                f"成交量：{_chart_integer_text(point.volume)}",
+            )
+        )
+
+    def _clear_hover(self) -> None:
+        self._hover_index = None
+        self.setToolTip(self._base_tooltip)
+        QToolTip.hideText()
+
+    def mouseMoveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        index = self._nearest_point_index(int(event.position().x()))
+        if index is None:
+            self._clear_hover()
+        elif index != self._hover_index:
+            points = self._drawable_points()
+            self._hover_index = index
+            text = self._point_tooltip(points[index])
+            self.setToolTip(text)
+            QToolTip.showText(
+                self.mapToGlobal(event.position().toPoint()),
+                text,
+                self,
+            )
+        event.accept()
+
+    def leaveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        self._clear_hover()
+        super().leaveEvent(event)
 
     @staticmethod
     def _resolve_mode(points: Sequence[StockPricePointDTO]) -> str:
@@ -176,16 +249,13 @@ class StockPriceChartWidget(QWidget):
             painter.fillRect(
                 self.rect(), QBrush(QColor(MIDNIGHT_ANALYST.surface_1))
             )
-            points = tuple(
-                point for point in self._points if point.close_price is not None
-            )
+            points = self._drawable_points()
             if not points:
                 painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_muted)))
                 painter.drawText(self.rect(), Qt.AlignCenter, "無價格資料")
                 return
 
-            left = 58
-            right = max(left + 40, self.width() - 18)
+            left, right = self._plot_x_bounds()
             top = 25
             volume_enabled = self._mode == "ohlc_volume"
             volume_top = max(top + 70, self.height() - 48)
@@ -1055,15 +1125,25 @@ class StockResearchReportView(QWidget):
         layout.addWidget(chart)
         chart_mode_label = QLabel(
             {
-                "ohlc_volume": "圖表型態：完整 OHLC K 線＋成交量；僅使用既有價格資料。",
-                "ohlc": "圖表型態：完整 OHLC K 線；成交量資料不足，未繪製量柱。",
-                "close": "圖表型態：收盤價走勢；OHLC 欄位不完整，未補造 K 線。",
+                "ohlc_volume": "圖表型態：完整開高低收 K 線＋成交量；僅使用既有價格資料。",
+                "ohlc": "圖表型態：完整開高低收 K 線；成交量資料不足，未繪製量柱。",
+                "close": "圖表型態：收盤價走勢；開高低收欄位不完整，未補造 K 線。",
             }[chart.display_mode]
         )
         chart_mode_label.setObjectName("stockResearchPriceChartMode")
         chart_mode_label.setProperty("role", "muted")
         chart_mode_label.setWordWrap(True)
         layout.addWidget(chart_mode_label)
+        chart_range_label = QLabel(
+            f"{_price_chart_range_text(report.price_points)}；"
+            "將游標移到每根 K 線／折線點查看該日日期、開高低收與成交量。"
+            if report.price_points
+            else "圖表範圍：目前沒有可繪製的價格資料。"
+        )
+        chart_range_label.setObjectName("stockResearchPriceChartRange")
+        chart_range_label.setProperty("role", "muted")
+        chart_range_label.setWordWrap(True)
+        layout.addWidget(chart_range_label)
         if report.price_points:
             rows = tuple(
                 (
@@ -1592,6 +1672,35 @@ def _decimal_text(value: Decimal | None) -> str:
 
 def _integer_text(value: int | None) -> str:
     return "—" if value is None else f"{value:,}"
+
+
+def _chart_decimal_text(value: Decimal | None) -> str:
+    return _decimal_text(value) if value is not None else "未提供"
+
+
+def _chart_integer_text(value: int | None) -> str:
+    return _integer_text(value) if value is not None else "未提供"
+
+
+def _price_chart_range_text(points: Sequence[StockPricePointDTO]) -> str:
+    if not points:
+        return "圖表範圍：目前沒有可繪製的價格資料"
+    first_date = str(points[0].data_date or "未提供")
+    latest_date = str(points[-1].data_date or "未提供")
+    drawable_count = sum(point.close_price is not None for point in points)
+    range_label = "圖表範圍" if drawable_count == len(points) else "資料範圍"
+    if drawable_count == 0:
+        count_text = f"共 {len(points)} 筆原始價格資料，沒有可繪製價格點"
+    elif drawable_count == len(points):
+        count_text = f"共 {len(points)} 個資料點"
+    else:
+        count_text = (
+            f"共 {len(points)} 筆原始價格資料，圖上可繪製 {drawable_count} 點"
+        )
+    return (
+        f"{range_label}：{first_date} 至 {latest_date}（{count_text}）；"
+        f"最新涵蓋日：{latest_date}"
+    )
 
 
 def _percent_text(value: Decimal | None) -> str:

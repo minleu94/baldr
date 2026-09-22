@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 from PySide6.QtTest import QTest
 
 from app_module.research_session import ResearchStockContextDTO
@@ -104,6 +104,10 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     assert chart is not None
     assert chart.accessibleName() == "個股收盤價走勢圖"
     assert "2026-09-08" in chart.toolTip()
+    chart_range = view.findChild(QLabel, "stockResearchPriceChartRange")
+    assert chart_range is not None
+    assert "圖表範圍：2026-09-08 至 2026-09-08" in chart_range.text()
+    assert "最新涵蓋日：2026-09-08" in chart_range.text()
     assert chart.grab().isNull() is False
     view.tabs.setCurrentIndex(0)
     screenshot_path = os.environ.get("STOCK_RESEARCH_SCREENSHOT_PATH", "").strip()

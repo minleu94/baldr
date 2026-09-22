@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -52,6 +53,11 @@ from app_module.decision_presentation import (
 )
 from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
+from app_module.research_result_presentation import (
+    ResearchTablePresentation,
+    build_shareholding_tier_table,
+    build_stock_research_event_table,
+)
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
@@ -69,10 +75,19 @@ class StockReportTableModel(QAbstractTableModel):
         columns: Sequence[str],
         rows: Sequence[Sequence[str]],
         parent: QWidget | None = None,
+        *,
+        tooltips: Sequence[Sequence[str]] | None = None,
+        numeric_columns: Sequence[int] = (),
     ) -> None:
         super().__init__(parent)
         self._columns = tuple(columns)
         self._rows = tuple(tuple(str(cell) for cell in row) for row in rows)
+        self._tooltips = (
+            tuple(tuple(str(cell) for cell in row) for row in tooltips)
+            if tooltips is not None
+            else ()
+        )
+        self._numeric_columns = frozenset(int(column) for column in numeric_columns)
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         return 0 if parent.isValid() else len(self._rows)
@@ -87,9 +102,17 @@ class StockReportTableModel(QAbstractTableModel):
         if index.column() >= len(row):
             return None
         value = row[index.column()]
-        if role in (Qt.DisplayRole, Qt.ToolTipRole):
+        if role == Qt.DisplayRole:
+            return value
+        if role == Qt.ToolTipRole:
+            if index.row() < len(self._tooltips):
+                tooltip_row = self._tooltips[index.row()]
+                if index.column() < len(tooltip_row) and tooltip_row[index.column()]:
+                    return tooltip_row[index.column()]
             return value
         if role == Qt.TextAlignmentRole:
+            if index.column() in self._numeric_columns:
+                return Qt.AlignRight | Qt.AlignVCenter
             return Qt.AlignLeft | Qt.AlignVCenter
         return None
 
@@ -1210,7 +1233,13 @@ class StockResearchReportView(QWidget):
 
     def _render_flows(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("flows")
-        layout.addWidget(self._section_heading("分點與法人／信用／集保", report, "flows"))
+        layout.addWidget(self._section_heading("籌碼資料與產業事件", report, "flows"))
+        layout.addWidget(
+            self._wrapped_label(
+                "本頁分開顯示分點、法人、信用、集保與產業／事件。"
+                "各區資料日與品質以來源實際提供內容為準；缺資料不補零。"
+            )
+        )
         if report.flows:
             rows = tuple(
                 (
@@ -1233,22 +1262,132 @@ class StockResearchReportView(QWidget):
             )
         else:
             layout.addWidget(self._missing_panel("沒有可用分點 row；請檢查 broker_flows 更新狀態。"))
-        ownership = QGroupBox("法人／信用／集保（有資料才顯示）")
-        ownership_layout = QVBoxLayout(ownership)
-        ownership_rows = tuple(
-            (metric.label, _metric_text(metric), metric.data_as_of or "—", metric.available_at or "—", metric.quality)
-            for metric in (*report.institutional, *report.credit, *report.shareholding)
+
+        layout.addWidget(
+            self._render_metric_group(
+                "法人資料",
+                report.institutional,
+                missing_text="目前沒有法人資料；不補零。",
+            )
         )
-        if ownership_rows:
-            self._add_table(ownership_layout, ("項目", "值", "資料日", "資料可得時間", "品質"), ownership_rows, 240)
-        else:
-            ownership_layout.addWidget(self._missing_panel("目前沒有法人、信用或集保資料；不補零。"))
-        layout.addWidget(ownership)
-        events = QGroupBox("產業／事件／歷史 Evidence")
+        layout.addWidget(
+            self._render_metric_group(
+                "信用資料",
+                report.credit,
+                missing_text="目前沒有信用資料；不補零。",
+            )
+        )
+        layout.addWidget(self._render_shareholding_group(report.shareholding))
+
+        events = QGroupBox("產業／事件證據")
         event_layout = QVBoxLayout(events)
         self._add_event_table(event_layout, report.events)
         layout.addWidget(events)
         layout.addStretch()
+
+    def _render_metric_group(
+        self,
+        title: str,
+        metrics: Sequence[StockMetricDTO],
+        *,
+        missing_text: str,
+    ) -> QGroupBox:
+        group = QGroupBox(title)
+        group_layout = QVBoxLayout(group)
+        if not metrics:
+            group_layout.addWidget(self._missing_panel(missing_text))
+            return group
+        rows = tuple(
+            (
+                metric.label,
+                _ownership_metric_text(metric),
+                metric.data_as_of or "—",
+                _quality_label(metric.quality),
+            )
+            for metric in metrics
+        )
+        tooltips = tuple(_metric_tooltip_row(metric) for metric in metrics)
+        self._add_table(
+            group_layout,
+            ("項目", "值", "資料日", "品質"),
+            rows,
+            300,
+            tooltips=tooltips,
+            compact_columns=True,
+            numeric_columns=(1,),
+        )
+        group_layout.addWidget(
+            self._wrapped_label("資料可得時間與來源識別請滑過列中內容查看；完整來源仍保留在摘要的來源明細。")
+        )
+        return group
+
+    def _render_shareholding_group(
+        self,
+        metrics: Sequence[StockMetricDTO],
+    ) -> QGroupBox:
+        group = QGroupBox("集保股權分散")
+        group_layout = QVBoxLayout(group)
+        summary_metrics = tuple(
+            metric for metric in metrics if metric.key != "shareholding_tiers"
+        )
+        if summary_metrics:
+            rows = tuple(
+                (
+                    metric.label,
+                    _ownership_metric_text(metric),
+                    metric.data_as_of or "—",
+                    _quality_label(metric.quality),
+                )
+                for metric in summary_metrics
+            )
+            tooltips = tuple(_metric_tooltip_row(metric) for metric in summary_metrics)
+            self._add_table(
+                group_layout,
+                ("摘要項目", "值", "資料日", "品質"),
+                rows,
+                220,
+                tooltips=tooltips,
+                compact_columns=True,
+                numeric_columns=(1,),
+            )
+        tier_metric = next(
+            (metric for metric in metrics if metric.key == "shareholding_tiers"),
+            None,
+        )
+        if tier_metric is None:
+            group_layout.addWidget(self._missing_panel("目前沒有持股級距明細；不補零。"))
+            return group
+
+        tier_group = QGroupBox("持股級距明細")
+        tier_layout = QVBoxLayout(tier_group)
+        tier_layout.addWidget(
+            self._wrapped_label(
+                "每列顯示級距、人數、持有股數與占集保庫存比例。"
+                "滑過資料列可查看來源明細；「—」表示未提供。"
+            )
+        )
+        tier_presentation = build_shareholding_tier_table(tier_metric.value_text)
+        if tier_presentation.rows:
+            self._add_presentation_table(
+                tier_layout,
+                ("級距", "人數", "股數", "比例"),
+                tier_presentation,
+                560,
+                object_name="stockResearchShareholdingTiers",
+                compact_columns=False,
+                numeric_columns=(1, 2, 3),
+                max_visible_rows=None,
+                balanced_columns=True,
+            )
+            if tier_presentation.note:
+                tier_layout.addWidget(self._wrapped_label(tier_presentation.note))
+        else:
+            missing = tier_presentation.note or "目前沒有可辨識的持股級距明細。"
+            missing_panel = self._missing_panel(missing)
+            missing_panel.setToolTip(tier_metric.value_text or "來源未提供原始級距內容。")
+            tier_layout.addWidget(missing_panel)
+        group_layout.addWidget(tier_group)
+        return group
 
     def _render_position(self, position: StockPositionSnapshotDTO | None) -> None:
         layout = self._reset_page("position")
@@ -1414,10 +1553,14 @@ class StockResearchReportView(QWidget):
         )
         layout.addStretch()
         layout.addWidget(badge)
-        date_label = QLabel(
-            f"資料日 {section.data_as_of if section and section.data_as_of else '—'}｜"
-            f"資料可得時間 {section.available_at if section and section.available_at else '—'}"
+        data_as_of = section.data_as_of if section and section.data_as_of else "—"
+        available_at = section.available_at if section and section.available_at else "—"
+        date_label = QLabel(f"資料日：{data_as_of}\n可得時間：{available_at}")
+        date_label.setWordWrap(True)
+        date_label.setToolTip(
+            f"資料日：{data_as_of}\n資料可得時間：{available_at}"
         )
+        date_label.setAccessibleName(f"{title}資料日期與可得時間")
         date_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
         layout.addWidget(date_label)
         return frame
@@ -1444,11 +1587,47 @@ class StockResearchReportView(QWidget):
         columns: Sequence[str],
         rows: Sequence[Sequence[str]],
         maximum_height: int,
+        *,
+        tooltips: Sequence[Sequence[str]] | None = None,
+        object_name: str = "",
+        compact_columns: bool = False,
+        numeric_columns: Sequence[int] = (),
+        max_visible_rows: int | None = 15,
+        balanced_columns: bool = False,
     ) -> QTableView:
         table = QTableView()
         apply_financial_table_style(table)
-        table.setModel(StockReportTableModel(columns, rows, table))
-        table.setMaximumHeight(maximum_height)
+        table.setModel(
+            StockReportTableModel(
+                columns,
+                rows,
+                table,
+                tooltips=tooltips,
+                numeric_columns=numeric_columns,
+            )
+        )
+        if object_name:
+            table.setObjectName(object_name)
+        table.setWordWrap(False)
+        visible_rows = len(rows) if max_visible_rows is None else min(len(rows), max_visible_rows)
+        header_height = max(30, table.horizontalHeader().sizeHint().height())
+        row_height = max(28, table.verticalHeader().defaultSectionSize())
+        horizontal_scroll_height = (
+            table.horizontalScrollBar().sizeHint().height() if not compact_columns else 0
+        )
+        table_height = min(
+            maximum_height,
+            max(
+                72,
+                header_height
+                + visible_rows * row_height
+                + 2 * table.frameWidth()
+                + horizontal_scroll_height
+                + 4,
+            ),
+        )
+        table.setFixedHeight(table_height)
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
         table.setSelectionMode(QAbstractItemView.SingleSelection)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -1458,8 +1637,49 @@ class StockResearchReportView(QWidget):
         table.verticalHeader().setMinimumSectionSize(28)
         table.setAccessibleDescription("可使用鍵盤方向鍵選取；完整欄位文字可由 tooltip 讀取。")
         table.resizeColumnsToContents()
+        if compact_columns:
+            header = table.horizontalHeader()
+            for column in range(len(columns)):
+                header.setSectionResizeMode(column, QHeaderView.Stretch)
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        elif balanced_columns:
+            header = table.horizontalHeader()
+            header.setStretchLastSection(False)
+            header.setMinimumSectionSize(105)
+            for column in range(len(columns)):
+                header.setSectionResizeMode(column, QHeaderView.Stretch)
+            if columns:
+                header.setSectionResizeMode(0, QHeaderView.Interactive)
+                header.resizeSection(0, 165)
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         layout.addWidget(table)
         return table
+
+    def _add_presentation_table(
+        self,
+        layout: QVBoxLayout,
+        columns: Sequence[str],
+        presentation: ResearchTablePresentation,
+        maximum_height: int,
+        *,
+        object_name: str = "",
+        compact_columns: bool = True,
+        numeric_columns: Sequence[int] = (),
+        max_visible_rows: int | None = 15,
+        balanced_columns: bool = False,
+    ) -> QTableView:
+        return self._add_table(
+            layout,
+            columns,
+            presentation.rows,
+            maximum_height,
+            tooltips=presentation.tooltips,
+            object_name=object_name,
+            compact_columns=compact_columns,
+            numeric_columns=numeric_columns,
+            max_visible_rows=max_visible_rows,
+            balanced_columns=balanced_columns,
+        )
 
     def _add_event_table(
         self,
@@ -1469,30 +1689,32 @@ class StockResearchReportView(QWidget):
         if not events:
             layout.addWidget(self._missing_panel("目前沒有可追溯的 Evidence event 或後續 outcome。"))
             return
-        rows = []
-        for event in events:
-            outcomes = tuple(
-                f"{outcome.window_days}日：{outcome.outcome_status or '—'}"
-                + (f"，報酬bp {outcome.forward_return_bp}" if outcome.forward_return_bp is not None else "")
-                for outcome in event.outcomes
+        presentation = build_stock_research_event_table(events)
+        layout.addWidget(
+            self._wrapped_label(
+                "表格先列日期、事件、品質與摘要；選取一列查看來源、原因、風險與後續結果。"
             )
-            rows.append(
-                (
-                    event.decision_date or event.event_date or "—",
-                    event.event_type or "—",
-                    event.source_type or "—",
-                    event.data_quality or "—",
-                    "；".join(event.reasons) or "—",
-                    "；".join(event.why_not_reasons) or "—",
-                    "；".join(outcomes) or "尚無後續結果",
-                )
-            )
-        self._add_table(
-            layout,
-            ("日期", "事件", "來源", "品質", "Rule理由", "反對／風險", "後續結果"),
-            rows,
-            360,
         )
+        table = self._add_presentation_table(
+            layout,
+            ("日期", "事件", "品質", "摘要"),
+            presentation,
+            420,
+            object_name="stockResearchEvidenceEvents",
+        )
+        details_label = self._wrapped_label("選取事件查看詳細說明。")
+        details_label.setObjectName("stockResearchEvidenceEventDetails")
+        details_label.setProperty("role", "muted")
+        layout.addWidget(details_label)
+        if presentation.details:
+            details_label.setText(presentation.details[0])
+            selection_model = table.selectionModel()
+            if selection_model is not None:
+                selection_model.currentChanged.connect(
+                    lambda current, _previous, label=details_label, data=presentation.details:
+                    label.setText(data[current.row()] if 0 <= current.row() < len(data) else "選取事件查看詳細說明。")
+                )
+            table.selectRow(0)
 
     def _label_panel(self, title: str, text: str, object_name: str) -> QWidget:
         group = QGroupBox(title)
@@ -1643,7 +1865,7 @@ def _quality_label(value: str) -> str:
         "fresh": "新鮮",
         "missing": "缺資料",
         "error": "讀取失敗",
-        "degraded": "降級",
+        "degraded": "品質降級",
         "estimated": "估計",
         "unavailable": "不可用",
         "unknown": "未知",
@@ -1715,6 +1937,25 @@ def _metric_text(metric: StockMetricDTO | StockFundamentalObservationDTO) -> str
     if metric.value is not None:
         return _decimal_text(metric.value) + (f" {metric.unit}" if metric.unit else "")
     return metric.value_text or "—"
+
+
+def _ownership_metric_text(metric: StockMetricDTO) -> str:
+    """將法人／信用／集保摘要轉成帶語意的值，不改變 DTO 數值。"""
+
+    if metric.value is not None and metric.key.endswith("_bp"):
+        return f"{(metric.value / Decimal('100')).quantize(Decimal('0.01'))}%"
+    return _metric_text(metric)
+
+
+def _metric_tooltip_row(metric: StockMetricDTO) -> tuple[str, ...]:
+    detail = (
+        f"原始項目：{metric.label}\n"
+        f"原始 key：{metric.key}\n"
+        f"資料可得時間：{metric.available_at or '未提供'}\n"
+        f"來源：{metric.source_id or '未提供'}\n"
+        f"原始品質：{metric.quality or '未提供'}"
+    )
+    return (detail, detail, detail, detail)
 
 
 def _latest_price_text(points: Sequence[StockPricePointDTO]) -> str:

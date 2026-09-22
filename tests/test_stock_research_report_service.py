@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import date
 from decimal import Decimal
 import json
@@ -18,7 +19,7 @@ from app_module.stock_research_report_service import (
 
 
 def _schema(database: Path) -> None:
-    with sqlite3.connect(database) as conn:
+    with closing(sqlite3.connect(database)) as conn, conn:
         conn.executescript(
             """
             CREATE TABLE daily_prices (
@@ -83,7 +84,7 @@ def _config(tmp_path: Path) -> SimpleNamespace:
 
 
 def _seed_normal(config: SimpleNamespace) -> None:
-    with sqlite3.connect(config.db_file) as conn:
+    with closing(sqlite3.connect(config.db_file)) as conn, conn:
         conn.executemany(
             "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
@@ -149,7 +150,7 @@ def _seed_normal(config: SimpleNamespace) -> None:
         ),
         encoding="utf-8",
     )
-    with sqlite3.connect(runs_dir / "recommendation_runs.db") as conn:
+    with closing(sqlite3.connect(runs_dir / "recommendation_runs.db")) as conn, conn:
         conn.execute("CREATE TABLE runs (result_id TEXT, data_path TEXT, created_at TEXT)")
         conn.execute("INSERT INTO runs VALUES (?, ?, ?)", ("run-1", str(artifact), "2026-09-08"))
 

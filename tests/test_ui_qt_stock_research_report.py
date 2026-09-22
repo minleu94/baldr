@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+import json
 import os
 import sqlite3
 import sys
@@ -15,15 +16,22 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QTableView
 from PySide6.QtTest import QTest
 
 from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_dtos import (
+    StockEvidenceEventDTO,
+    StockMetricDTO,
+    StockOutcomeDTO,
     StockPricePointDTO,
     StockResearchReportDTO,
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.research_result_presentation import (
+    build_shareholding_tier_table,
+    build_stock_research_event_table,
+)
 from ui_qt.views.stock_research_report_view import (
     StockPriceChartWidget,
     StockResearchReportDialog,
@@ -300,3 +308,180 @@ def test_context_path_keeps_daily_summary_compact_and_full_trace_in_advanced_sou
     assert "stockResearchSourceTrace" in view.summary_source_trace_label.objectName()
     assert "mapping_version：mapping-2026-09" in view.summary_source_trace_label.text()
     view.close()
+
+
+def test_shareholding_tier_table_translates_json_to_semantic_rows() -> None:
+    raw = json.dumps(
+        [
+            {"tier": 1, "holder_count": 12, "shares": 999, "holding_ratio_bp": 10},
+            {"tier": 15, "holder_count": 1, "shares": 2000001, "holding_ratio_bp": 6200},
+            {"tier": 16, "holder_count": 0, "shares": -1, "holding_ratio_bp": -1},
+            {"tier": 17, "holder_count": 20, "shares": 10000, "holding_ratio_bp": 10000},
+        ],
+        ensure_ascii=False,
+    )
+
+    presentation = build_shareholding_tier_table(raw)
+
+    assert presentation.rows == (
+        ("1–999 股", "12", "999", "0.10%"),
+        ("1,000,001 股以上", "1", "2,000,001", "62.00%"),
+        ("差異數調整", "0", "-1", "-0.01%"),
+        ("合計", "20", "10,000", "100.00%"),
+    )
+    assert "原始級距欄位" in presentation.tooltips[0][0]
+    assert '"tier": 1' in presentation.tooltips[0][0]
+
+
+def test_shareholding_tier_table_keeps_real_zero_and_missing_distinct() -> None:
+    presentation = build_shareholding_tier_table(
+        json.dumps(
+            [
+                {"tier": 2, "holder_count": 0, "shares": 0},
+                {"tier": 3, "holder_count": None, "shares": None, "holding_ratio_bp": None},
+            ]
+        )
+    )
+
+    assert presentation.rows[0] == ("1,000–5,000 股", "0", "0", "—")
+    assert presentation.rows[1] == ("5,001–10,000 股", "—", "—", "—")
+
+
+def test_event_table_humanizes_portfolio_tokens_and_keeps_raw_tooltip() -> None:
+    event = StockEvidenceEventDTO(
+        event_id="event-1",
+        event_date="2026-09-21",
+        decision_date="2026-09-21",
+        event_type="portfolio_alert_condition_warning",
+        event_family="portfolio",
+        source_type="daily_decision_desk.portfolio_alert",
+        source_id="portfolio-alert:2026-09-21",
+        source_version="portfolio_alert_importer_v1",
+        data_quality="degraded",
+        reasons=("condition:warning", "chip:risk_level:bearish"),
+        risk_reasons=("portfolio_alert_condition_warning",),
+        outcomes=(StockOutcomeDTO(window_days=5, outcome_status="pending"),),
+    )
+
+    presentation = build_stock_research_event_table((event,))
+    row = presentation.rows[0]
+
+    assert row[1:3] == ("持倉條件提醒", "品質降級")
+    assert "持倉條件出現提醒" in row[3]
+    assert "籌碼風險偏弱" in row[3]
+    assert "portfolio_alert_condition_warning" not in row
+    assert "分類：持倉警示" in presentation.details[0]
+    assert "來源：每日決策台" in presentation.details[0]
+    assert "反對理由：未提供" in presentation.details[0]
+    assert "風險：持倉條件出現提醒" in presentation.details[0]
+    assert "警告：未提供" in presentation.details[0]
+    assert "尚待觀測" in presentation.details[0]
+    assert "原始 event_type：portfolio_alert_condition_warning" in presentation.tooltips[0][1]
+    assert "condition:warning" in presentation.tooltips[0][3]
+
+
+def test_flows_tab_separates_ownership_groups_and_event_table() -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    report = StockResearchReportDTO(
+        stock_code="2330",
+        shareholding=(
+            StockMetricDTO(
+                key="large_holder_ratio_bp",
+                label="大戶持股比例",
+                value=Decimal("6200"),
+                unit="bp",
+                data_as_of="2026-09-04",
+                quality="degraded",
+            ),
+            StockMetricDTO(
+                key="shareholding_tiers",
+                label="持股級距",
+                value_text=json.dumps(
+                    [{"tier": 1, "holder_count": 2, "shares": 999, "holding_ratio_bp": 10}]
+                ),
+                data_as_of="2026-09-04",
+                quality="degraded",
+            ),
+        ),
+        events=(
+            StockEvidenceEventDTO(
+                event_id="event-1",
+                event_date="2026-09-21",
+                decision_date="2026-09-21",
+                event_type="portfolio_alert_condition_warning",
+                event_family="portfolio",
+                source_type="daily_decision_desk_portfolio_alert",
+                data_quality="degraded",
+                reasons=("condition:warning",),
+            ),
+        ),
+    )
+
+    view._render_flows(report)
+    tables = {table.objectName(): table for table in view.findChildren(QTableView)}
+
+    tier_table = tables["stockResearchShareholdingTiers"]
+    assert tier_table.model().data(tier_table.model().index(0, 0), Qt.DisplayRole) == "1–999 股"
+    assert tables["stockResearchEvidenceEvents"].model().data(
+        tables["stockResearchEvidenceEvents"].model().index(0, 1), Qt.DisplayRole
+    ) == "持倉條件提醒"
+    view.close()
+
+
+def test_shareholding_tier_table_shows_all_tdcc_rows_without_inner_scroll() -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    tier_rows = [
+        {
+            "tier": tier,
+            "holder_count": tier,
+            "shares": tier * 1000,
+            "holding_ratio_bp": tier * 10,
+        }
+        for tier in range(1, 18)
+    ]
+    report = StockResearchReportDTO(
+        stock_code="2330",
+        shareholding=(
+            StockMetricDTO(
+                key="shareholding_tiers",
+                label="持股級距",
+                value_text=json.dumps(tier_rows),
+            ),
+        ),
+    )
+
+    view._render_flows(report)
+    view.resize(760, 640)
+    view.show()
+    view.tabs.setCurrentIndex(3)
+    _app().processEvents()
+
+    table = view.findChild(QTableView, "stockResearchShareholdingTiers")
+    assert table is not None
+    assert table.model() is not None
+    assert table.model().rowCount() == 17
+    assert table.verticalScrollBar().maximum() == 0
+    assert table.height() >= 500
+    view.close()
+
+
+def test_event_table_humanizes_risk_prompt_and_portfolio_alert_variants() -> None:
+    event = StockEvidenceEventDTO(
+        event_id="event-variant",
+        event_date="2026-09-21",
+        decision_date="2026-09-21",
+        event_type="portfolio_alert:condition_invalid",
+        event_family="risk_prompt",
+        source_type="daily_decision_desk.risk_prompt",
+        data_quality="degraded",
+        reasons=("chip:estimated", "condition:invalid"),
+    )
+
+    presentation = build_stock_research_event_table((event,))
+
+    assert presentation.rows[0][1] == "持倉條件已失效"
+    assert presentation.rows[0][2] == "品質降級"
+    assert "籌碼資料為估算" in presentation.rows[0][3]
+    assert "持倉條件已失效" in presentation.rows[0][3]
+    assert "portfolio_alert:condition_invalid" not in presentation.rows[0]
+    assert "每日決策台風險提示" in presentation.details[0]

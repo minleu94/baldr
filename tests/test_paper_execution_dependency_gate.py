@@ -412,6 +412,165 @@ def test_dependency_gate_keeps_explicit_unknown_source_failed_closed(tmp_path: P
     ]  # type: ignore[operator]
 
 
+def _set_candidate_credit_stale_without_warning(
+    output_root: Path,
+    *,
+    status: str = "stale",
+) -> None:
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    freshness["warnings"] = [
+        warning
+        for warning in freshness["warnings"]
+        if warning != "source_freshness_degraded:credit_transactions"
+    ]
+    for source in freshness["source_statuses"]:
+        if source["source_id"] == "credit_transactions":
+            source.update(
+                {
+                    "freshness_status": status,
+                    "actual_period": "2026-09-21",
+                    "expected_period": "2026-09-22",
+                    "missing_periods": ["2026-09-22"],
+                    "candidate_only": True,
+                    "frequency": "daily candidate source",
+                    "downstream": ["candidate research only"],
+                    "update_entry": "UpdateService.update_phase3c_candidate_range",
+                    "reason": "latest candidate observation behind expected official session",
+                    "reason_code": "candidate_latest_period_behind_expected",
+                }
+            )
+            break
+    _write_json(freshness_path, freshness)
+
+
+def test_dependency_gate_projects_named_candidate_credit_stale_as_not_required(
+    tmp_path: Path,
+) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    _set_candidate_credit_stale_without_warning(output_root)
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "ready_with_warnings"
+    assert result["ready"] is True
+    projection = cast(dict[str, object], result["freshness_lane"])
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    credit = excluded["credit_transactions"]
+    assert credit["reason_code"] == "candidate_source_not_required_for_paper_eod"
+    assert credit["consumer_boundary"] == "p0_candidate_shadow"
+    diagnostic = cast(dict[str, object], credit["source_diagnostic"])
+    assert diagnostic["candidate_only"] is True
+    assert diagnostic["missing_periods"] == ["2026-09-22"]
+    assert diagnostic["downstream"] == ["candidate research only"]
+    assert "freshness_lane_noncurrent_source_unattributed:credit_transactions:stale" not in result[
+        "blockers"
+    ]  # type: ignore[operator]
+
+
+def test_dependency_gate_projects_named_candidate_credit_partial_as_not_required(
+    tmp_path: Path,
+) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    _set_candidate_credit_stale_without_warning(output_root, status="partial")
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "ready_with_warnings"
+    assert result["ready"] is True
+    projection = cast(dict[str, object], result["freshness_lane"])
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    assert excluded["credit_transactions"]["freshness_status"] == "partial"
+
+
+def test_dependency_gate_candidate_credit_policy_mismatch_stays_blocked(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    _set_candidate_credit_stale_without_warning(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    for source in freshness["source_statuses"]:
+        if source["source_id"] == "credit_transactions":
+            source["downstream"] = ["paper eod"]
+            break
+    _write_json(freshness_path, freshness)
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["ready"] is False
+    assert "freshness_lane_noncurrent_source_unattributed:credit_transactions:stale" in result[
+        "blockers"
+    ]  # type: ignore[operator]
+
+
+def test_dependency_gate_candidate_credit_non_candidate_stays_blocked(tmp_path: Path) -> None:
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    _set_degraded_non_eod_freshness(output_root)
+    _set_candidate_credit_stale_without_warning(output_root)
+    freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+    for source in freshness["source_statuses"]:
+        if source["source_id"] == "credit_transactions":
+            source["candidate_only"] = False
+            break
+    _write_json(freshness_path, freshness)
+
+    result = inspect_dependency(
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["ready"] is False
+    assert "freshness_lane_noncurrent_source_unattributed:credit_transactions:stale" in result[
+        "blockers"
+    ]  # type: ignore[operator]
+
+
+def test_dependency_gate_candidate_credit_failed_or_unknown_stays_blocked(tmp_path: Path) -> None:
+    for status in ("failed", "expected_wait", "unknown"):
+        data_root, output_root, db_path = _seed_ready_inputs(tmp_path / status)
+        _set_degraded_non_eod_freshness(output_root)
+        _set_candidate_credit_stale_without_warning(output_root)
+        freshness_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+        freshness = json.loads(freshness_path.read_text(encoding="utf-8"))
+        for source in freshness["source_statuses"]:
+            if source["source_id"] == "credit_transactions":
+                source["freshness_status"] = status
+                break
+        _write_json(freshness_path, freshness)
+
+        result = inspect_dependency(
+            data_root=data_root,
+            output_root=output_root,
+            db_path=db_path,
+            observed_at=OBSERVED,
+        )
+
+        assert result["status"] == "blocked"
+        assert result["ready"] is False
+
+
 def _historical_degraded_payload(target: str) -> dict[str, object]:
     """以正式 9/15--9/17 payload 的欄位和值建立可攜式 projection fixture。"""
 

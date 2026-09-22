@@ -55,6 +55,14 @@ source diagnostic、reason code 與 consumer boundary；它不把來源改成 `c
 放寬 TDCC 或 Fundamental 自己的 fail-closed gate。其他 unknown source、required source
 unknown、malformed、failed 或 aggregate errors 仍阻擋 Paper。
 
+Phase3C 的 `credit_transactions` candidate stale／partial 只有在 source row 同時明確標示
+`candidate_only=true`、`frequency="daily candidate source"`、
+`downstream=["candidate research only"]` 與
+`update_entry="UpdateService.update_phase3c_candidate_range"` 時，才由具名
+`p0_candidate_shadow` policy 投影到 `freshness_lane.not_required_for_paper_eod`。這不代表
+資料 current，也不代表 Paper 使用該來源；缺任一欄位、欄位值改變、`failed`／
+`expected_wait`／`unknown` 或其他 candidate source，仍維持 unattributed／blocked。
+
 ### V4 跨日 evidence identity 與每日 health
 
 每日推薦 snapshot 會保存 `universe_policy_id/hash`（跨日政策）與

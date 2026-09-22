@@ -76,6 +76,37 @@ PAPER_EOD_NON_REQUIRED_UNKNOWN_POLICIES: dict[str, dict[str, str]] = {
         "consumer_basis": "MOPS Fundamental/PIT availability mapping；不在 Paper EOD input",
     },
 }
+# candidate-only source 若要從 Paper EOD freshness lane 隔離，必須逐一列入
+# policy，並精確符合 data_freshness_probe 的 source row contract；不能因
+# candidate_only=True 就概括放行所有來源。
+PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES: dict[str, dict[str, object]] = {
+    "credit_transactions": {
+        "policy_version": "paper-eod-candidate-non-required.v1",
+        "reason_code": "p0_candidate_source_not_paper_eod_input",
+        "consumer_boundary": "p0_candidate_shadow",
+        "consumer_basis": (
+            "P0 candidate source; candidate research only; "
+            "no Paper EOD downstream or production ingestion"
+        ),
+        "expected_frequency": "daily candidate source",
+        "expected_downstream": ("candidate research only",),
+        "expected_update_entry": "UpdateService.update_phase3c_candidate_range",
+    },
+}
+# Phase3C candidate sources are not Paper EOD inputs.  This exception is
+# deliberately source-specific and contract-shaped: a generic
+# ``candidate_only`` flag must never turn an arbitrary stale source into an
+# accepted Paper dependency.
+PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES: dict[str, dict[str, str]] = {
+    "credit_transactions": {
+        "reason_code": "candidate_source_not_required_for_paper_eod",
+        "consumer_boundary": "p0_candidate_shadow",
+        "consumer_basis": "Phase3C candidate research only; no Paper EOD downstream",
+        "frequency": "daily candidate source",
+        "downstream": "candidate research only",
+        "update_entry": "UpdateService.update_phase3c_candidate_range",
+    },
+}
 
 
 def _parse_date(value: object) -> date | None:
@@ -384,6 +415,42 @@ def _step_passed(payload: Mapping[str, object] | None, name: str) -> bool:
     return isinstance(step, Mapping) and step.get("status") == "passed"
 
 
+def _candidate_non_eod_policy(
+    *,
+    source_id: str,
+    source_status: str,
+    source: Mapping[str, object],
+) -> dict[str, object] | None:
+    """只接受具名、candidate-only 且完整符合來源契約的非 EOD source。"""
+
+    if source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
+        return None
+    policy = PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES.get(source_id)
+    if policy is None or source.get("candidate_only") is not True:
+        return None
+    if source.get("frequency") != policy.get("expected_frequency"):
+        return None
+    downstream = source.get("downstream")
+    expected_downstream = policy.get("expected_downstream")
+    if (
+        not isinstance(downstream, list)
+        or not isinstance(expected_downstream, tuple)
+        or downstream != list(expected_downstream)
+    ):
+        return None
+    if source.get("update_entry") != policy.get("expected_update_entry"):
+        return None
+    reason = source.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return None
+    return {
+        "policy_version": policy["policy_version"],
+        "reason_code": policy["reason_code"],
+        "consumer_boundary": policy["consumer_boundary"],
+        "consumer_basis": policy["consumer_basis"],
+    }
+
+
 def _paper_eod_freshness_projection(
     payload: Mapping[str, object],
     *,
@@ -544,6 +611,29 @@ def _paper_eod_freshness_projection(
         elif source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
             blockers.append(f"freshness_lane_noncurrent_source_blocked:{source_id}:{source_status}")
         elif source_id not in warning_sources:
+            source = source_by_id[source_id]
+            candidate_policy = PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES.get(source_id)
+            candidate_downstream = source.get("downstream")
+            candidate_matches = (
+                candidate_policy is not None
+                and source.get("candidate_only") is True
+                and source.get("frequency") == candidate_policy["frequency"]
+                and source.get("update_entry") == candidate_policy["update_entry"]
+                and isinstance(candidate_downstream, list)
+                and candidate_downstream == [candidate_policy["downstream"]]
+            )
+            if candidate_matches:
+                assert candidate_policy is not None
+                not_required_for_paper_eod[source_id] = {
+                    "reason_code": candidate_policy["reason_code"],
+                    "consumer_boundary": candidate_policy["consumer_boundary"],
+                    "consumer_basis": candidate_policy["consumer_basis"],
+                    "source_id": source_id,
+                    "freshness_status": source_status,
+                    "not_required_for_paper_eod": True,
+                    "source_diagnostic": dict(source),
+                }
+                continue
             blockers.append(f"freshness_lane_noncurrent_source_unattributed:{source_id}:{source_status}")
     projection["non_current_sources"] = non_current_sources
     projection["not_required_for_paper_eod"] = not_required_for_paper_eod

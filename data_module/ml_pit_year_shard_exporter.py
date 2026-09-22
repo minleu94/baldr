@@ -38,6 +38,10 @@ from data_module.ml_daily_price_source_quality import (
     assert_daily_price_source_quality,
     write_quarantine_report,
 )
+from data_module.ml_daily_price_revision_gate import (
+    DailyPriceSourceRevisionError,
+    check_daily_price_source_revision,
+)
 from data_module.ml_price_availability_contract import (
     PRICE_AVAILABILITY_CONTRACT_VERSION,
     build_price_unavailable_research_contract,
@@ -160,6 +164,10 @@ class PITYearShardBuildRequest:
     source_quality_candidate_evidence_path: Path | None = None
     # 來源 receipt 的實際可得時間；不提供時不得以 mtime 或當前時間代替。
     source_quality_known_at: str | None = None
+    # Daily price 的 source revision receipt 必須獨立於 CSV source guard。
+    # 受影響的 date/symbol 落在本次 PIT prefix 時，舊版 exporter 不能把
+    # 修訂後的值靜默當成 event_at 可得；必須先 fail closed。
+    source_revision_receipt_path: Path | None = None
     # Report 只保留有限 evidence sample；有 sidecar path 時，candidate rows
     # 另以串流 JSONL 保存全量，candidate_count 與 classification/date counts
     # 仍計算全量候選。
@@ -191,6 +199,12 @@ class PITYearShardBuildRequest:
             raise ValueError(
                 "source_quality_candidate_evidence_path requires "
                 "source_quality_report_path"
+            )
+        if self.source_revision_receipt_path is not None:
+            object.__setattr__(
+                self,
+                "source_revision_receipt_path",
+                Path(self.source_revision_receipt_path),
             )
         if self.symbols is not None:
             normalized = _normalized_texts(self.symbols)
@@ -599,6 +613,12 @@ class PITYearShardExporter:
         if request.years and max(request.years) > decision.year:
             raise ValueError("requested shard year must not exceed decision year")
 
+        source_revision_summary = check_daily_price_source_revision(
+            database_path=database_path,
+            decision_date=decision,
+            symbols=request.symbols,
+            explicit_path=request.source_revision_receipt_path,
+        )
         source_quality_summary: dict[str, Any] | None = None
 
         source_dirs: tuple[Path, ...] = tuple(
@@ -962,6 +982,8 @@ class PITYearShardExporter:
             }
             if source_quality_summary is not None:
                 publication_manifest["source_quality"] = source_quality_summary
+            if source_revision_summary is not None:
+                publication_manifest["source_revision_gate"] = source_revision_summary
             publication_manifest["manifest_hash"] = _sha256_json(
                 publication_manifest
             )

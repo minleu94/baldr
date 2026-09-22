@@ -311,6 +311,177 @@ def _assert_no_float(value: object) -> None:
             _assert_no_float(nested)
 
 
+def _write_source_revision_receipt(
+    path: Path,
+    *,
+    date_value: str = "2024-01-02",
+    symbols: tuple[str, ...] = ("2330",),
+    pending: bool = False,
+) -> None:
+    payload: dict[str, Any] = {
+        "schema_version": "historical-price-spike-repair-20260921.v1",
+        "receipt_kind": (
+            "historical_price_spike_repair_pending"
+            if pending
+            else "historical_price_spike_repair"
+        ),
+        "status": "pending" if pending else "applied",
+        "source_date": date_value,
+        "created_at": "2024-02-01T09:00:00+00:00",
+        "allowlist_count": len(symbols),
+    }
+    if not pending:
+        payload["corrected_at"] = "2024-02-02T09:00:00+00:00"
+        payload["rows"] = [
+            {"date": date_value, "symbol": symbol}
+            for symbol in symbols
+        ]
+    path.write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+
+def test_source_revision_receipt_blocks_export_without_csv_source_dirs(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "source.db"
+    _build_database(database)
+    receipt = tmp_path / "daily_price_revision.json"
+    _write_source_revision_receipt(receipt)
+    output = tmp_path / "shards"
+
+    with pytest.raises(
+        exporter_module.DailyPriceSourceRevisionError,
+        match="revision-aware research or formal process",
+    ):
+        PITYearShardExporter().build(
+            PITYearShardBuildRequest(
+                database_path=database,
+                output_root=output,
+                decision_at="2024-02-15T08:30:00+08:00",
+                history_start_date="2024-01-01",
+                symbols=("2330",),
+                years=(2024,),
+                source_revision_receipt_path=receipt,
+            )
+        )
+
+    assert not output.exists()
+
+
+def test_source_revision_receipt_outside_requested_symbols_is_bound_and_allows_build(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "source.db"
+    _build_database(database)
+    receipt = tmp_path / "daily_price_revision.json"
+    _write_source_revision_receipt(receipt, symbols=("2454",))
+    publication = PITYearShardExporter().build(
+        PITYearShardBuildRequest(
+            database_path=database,
+            output_root=tmp_path / "shards",
+            decision_at="2024-02-15T08:30:00+08:00",
+            history_start_date="2024-01-01",
+            symbols=("2330",),
+            years=(2024,),
+            source_revision_receipt_path=receipt,
+        )
+    )
+
+    manifest = _json(publication.manifest_path)
+    gate = manifest["source_revision_gate"]
+    assert gate["relevant_row_count"] == 0
+    assert gate["checked_receipts"][0]["affected_row_count"] == 1
+    assert gate["policy"] == "fail_closed_until_repaired_source_rebuild"
+    assert gate["checked_receipts"][0]["receipt_hash"].startswith("sha256:")
+
+
+def test_auto_pending_source_revision_receipt_blocks_all_symbols(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "sqlite" / "source.db"
+    database.parent.mkdir()
+    _build_database(database)
+    receipt_dir = (
+        tmp_path
+        / "output"
+        / "scheduled"
+        / "daily_price_repair_receipts"
+        / "20260520"
+        / "historical_price_spike_20260921"
+    )
+    receipt_dir.mkdir(parents=True)
+    _write_source_revision_receipt(
+        receipt_dir / "pending.json",
+        pending=True,
+    )
+    explicit = tmp_path / "unrelated-explicit-receipt.json"
+    _write_source_revision_receipt(explicit, symbols=("2454",))
+
+    with pytest.raises(
+        exporter_module.DailyPriceSourceRevisionError,
+        match="revision-aware research or formal process",
+    ):
+        PITYearShardExporter().build(
+            PITYearShardBuildRequest(
+                database_path=database,
+                output_root=tmp_path / "shards",
+                decision_at="2024-02-15T08:30:00+08:00",
+                history_start_date="2024-01-01",
+                symbols=("2330",),
+                years=(2024,),
+                source_revision_receipt_path=explicit,
+            )
+        )
+
+
+def test_source_revision_receipt_before_cutoff_allows_build(tmp_path: Path) -> None:
+    database = tmp_path / "source.db"
+    _build_database(database)
+    receipt = tmp_path / "daily_price_revision.json"
+    _write_source_revision_receipt(receipt, date_value="2024-02-20")
+    publication = PITYearShardExporter().build(
+        PITYearShardBuildRequest(
+            database_path=database,
+            output_root=tmp_path / "shards",
+            decision_at="2024-01-30T08:30:00+08:00",
+            history_start_date="2024-01-01",
+            symbols=("2330",),
+            years=(2024,),
+            source_revision_receipt_path=receipt,
+        )
+    )
+    manifest = _json(publication.manifest_path)
+    assert manifest["source_revision_gate"]["relevant_row_count"] == 0
+
+
+def test_source_revision_receipt_requires_source_date(tmp_path: Path) -> None:
+    database = tmp_path / "source.db"
+    _build_database(database)
+    receipt = tmp_path / "daily_price_revision.json"
+    _write_source_revision_receipt(receipt)
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    payload.pop("source_date")
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        exporter_module.DailyPriceSourceRevisionError,
+        match="requires source_date",
+    ):
+        PITYearShardExporter().build(
+            PITYearShardBuildRequest(
+                database_path=database,
+                output_root=tmp_path / "shards",
+                decision_at="2024-02-15T08:30:00+08:00",
+                history_start_date="2024-01-01",
+                symbols=("2330",),
+                years=(2024,),
+                source_revision_receipt_path=receipt,
+            )
+        )
+
+
 def test_source_quality_exception_allows_only_full_missing_price_count() -> None:
     allowed = {
         "candidate_count": 100,

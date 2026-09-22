@@ -12,6 +12,10 @@ import sqlite3
 from typing import Iterable
 from contextlib import closing
 
+from data_module.ml_daily_price_revision_gate import (
+    check_daily_price_source_revision,
+)
+
 
 _SOURCE_TABLES = (
     "daily_prices",
@@ -123,6 +127,11 @@ class MLHistoricalSnapshotProvider:
         decision = _compact_date(decision_date)
         history_start = _compact_date(history_start_date)
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
+        check_daily_price_source_revision(
+            database_path=self.database_path,
+            decision_date=decision,
+            symbols=normalized_symbols,
+        )
         normalized_industries = tuple(sorted({str(value).strip() for value in industry_index_names if str(value).strip()}))
         query_count = 0
         with closing(self._connect()) as connection:
@@ -257,6 +266,11 @@ class MLHistoricalSnapshotProvider:
         start = _compact_date(start_date)
         end = _compact_date(end_date)
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
+        check_daily_price_source_revision(
+            database_path=self.database_path,
+            decision_date=end,
+            symbols=normalized_symbols,
+        )
         query_count = 0
         with closing(self._connect()) as connection:
             schema = self._validate_schema(connection)

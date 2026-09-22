@@ -1,5 +1,15 @@
 # baldr 完整操作手冊
 
+## 2026-09-22 歷史價格更正與舊模型
+
+5/20 的錯價已受控修正：1256 收盤為 183 元、1477 為 213 元。請重新開啟程式，再從觀察清單進入個股研究報告，重新載入價格圖；把游標移到該根 K 線，核對日期及開高低收。區塊標頭的「資料日」是最新來源日期，不能當作圖上每根 K 線的日期。官方沒有 OHLC 的列保持缺值，不以 0 或前一天價格補成正常交易。
+
+價格更正不會自動修好已訓練的模型。已知的兩個舊模型版本目前停止載入，校準仍採 rule_only；舊模型、訓練資料與歷史結果保留供追溯。若進階研究／ML 流程回報 `stale_source_revision`、`model artifact is quarantined` 或 `historical price repair receipt blocks this PIT prefix`，意思是「來源已更正，這份模型或歷史資料須重建驗證」，不是股票出現新的買賣訊號。不要刪除修訂檔、解除攔截或改 hash 來繼續沿用舊結果。
+
+進階維護入口 `scripts/repair_historical_price_spike_20260921.py` 預設只產生 dry-run plan；`--plan` 指定逐列計畫，`--apply --confirm repair-historical-price-spike-20260921` 才能寫入。正式執行先鎖定來源 hash、取得維護鎖與 online backup，再核對 transaction 前後值；`--rollback <receipt.json>` 僅還原 receipt 指定欄位，遇同欄位後續漂移會拒絕。此為本次核准事件的維護工具，日常使用者不用重跑；原始 daily CSV 不修改。`--source-revision-receipt` 是 PIT 建置的額外修訂來源，自動找到的正式 marker 仍會一併檢查，不能被此參數取代。
+
+目前相依指標與可變 CSV cache 仍在後續修復驗收階段，不能只憑價格圖正確就宣稱整個資料鏈完成。修復結果、備份與模型重建限制見[歷史價格修復紀錄](../06_qa/HISTORICAL_PRICE_SPIKE_2026_09_21.md)及[模型影響紀錄](../06_qa/PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md)。
+
 ## 2026-09-21 V5 日常操作與可讀性工程
 
 本輪版本名稱是「V5日常操作與可讀性工程」。目前已把既有唯讀資料整理成首頁優先摘要、分層導覽、候選／研究報告／持倉的下一步提示、回測與推薦的進階入口，以及按需價格圖；這是 bounded engineering 與 QA evidence，不是正式 V4／V5 gate，也不是 V6 user-level personalization maturity。

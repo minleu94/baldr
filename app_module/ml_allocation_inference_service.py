@@ -23,6 +23,10 @@ from typing import Any, Callable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 import joblib
+
+from data_module.ml_daily_price_revision_gate import (
+    assert_model_artifact_source_revision_safe,
+)
 import numpy as np
 from numpy.typing import NDArray
 
@@ -217,6 +221,8 @@ class MLAllocationInferenceService:
         actual_hash = _sha256(artifact_bytes)
         if actual_hash != expected_artifact_hash:
             raise ValueError("artifact hash mismatch")
+        # hash 驗證後、joblib 反序列化前再檢查已知來源修訂隔離。
+        assert_model_artifact_source_revision_safe(actual_hash)
 
         try:
             raw_payload = joblib.load(BytesIO(artifact_bytes))

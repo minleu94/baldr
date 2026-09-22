@@ -36,6 +36,9 @@ from ml_module.allocation_release_contract import (
 )
 from ml_module.allocation_contracts import PortfolioMLDatasetRow
 from ml_module.allocation_release_loader import register_release_loader
+from data_module.ml_daily_price_revision_gate import (
+    assert_model_artifact_source_revision_safe,
+)
 
 
 @dataclass(frozen=True)
@@ -301,6 +304,10 @@ class AllocationReleaseAdapter:
             )
             if manifest.release_identity_hash != expected_release_identity_hash:
                 raise ValueError("release identity hash mismatch")
+
+        # 在 joblib 反序列化前檢查事故隔離；舊 release 保留供稽核，
+        # shadow wrapper 不得繼續使用來源已修訂的模型。
+        assert_model_artifact_source_revision_safe(manifest.artifact_hash)
 
         artifact_path = _controlled_path(
             root,

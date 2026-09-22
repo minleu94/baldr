@@ -337,6 +337,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--source-revision-receipt",
+        type=Path,
+        help=(
+            "daily price source revision receipt; any affected date/symbol "
+            "inside the PIT prefix fails closed until a revision-aware "
+            "rebuild is used"
+        ),
+    )
+    parser.add_argument(
         "--source-quality-candidate-sample-limit",
         type=int,
         default=64,
@@ -415,6 +424,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.source_quality_candidate_evidence
                 ),
                 source_quality_known_at=args.source_quality_known_at,
+                source_revision_receipt_path=args.source_revision_receipt,
                 source_quality_candidate_sample_limit=(
                     args.source_quality_candidate_sample_limit
                 ),

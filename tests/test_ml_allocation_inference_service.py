@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import joblib
 import pytest
 
+import app_module.ml_allocation_inference_service as inference_module
 from app_module.ml_allocation_inference_service import (
     MLAllocationInferenceService,
     _ExpertOutput,
@@ -142,6 +143,28 @@ def test_artifact_hash_is_verified_before_joblib_deserialization(
             expected_artifact_hash=training_result.artifact_hash,
             expected_dataset_id=training_result.dataset_id,
         )
+
+
+def test_source_revision_quarantine_is_checked_before_joblib_deserialization(
+    training_result,
+    monkeypatch,
+) -> None:
+    def reject_source_revision(_: str) -> None:
+        raise ValueError("source revision quarantine")
+
+    monkeypatch.setattr(
+        inference_module,
+        "assert_model_artifact_source_revision_safe",
+        reject_source_revision,
+    )
+    monkeypatch.setattr(
+        inference_module.joblib,
+        "load",
+        lambda *_args, **_kwargs: pytest.fail("quarantined artifact was loaded"),
+    )
+
+    with pytest.raises(ValueError, match="source revision quarantine"):
+        _service(training_result)
 
 
 def test_legacy_artifact_keeps_calibrated_meta_probability_input(

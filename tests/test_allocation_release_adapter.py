@@ -10,6 +10,9 @@ import pytest
 from typing import Any, cast
 
 from app_module.allocation_release_adapter import AllocationReleaseAdapter
+from data_module.ml_daily_price_revision_gate import (
+    KNOWN_MODEL_SOURCE_REVISION_QUARANTINES,
+)
 from ml_module.allocation_release_contract import (
     AllocationReleaseManifest,
     CalibrationBinding,
@@ -43,6 +46,7 @@ def _write_release(
     training_result,
     *,
     external_calibration: bool = False,
+    artifact_hash_override: str | None = None,
 ) -> AllocationReleaseManifest:
     root = tmp_path / "release"
     root.mkdir()
@@ -125,7 +129,11 @@ def _write_release(
         dataset_id=training_result.dataset_id,
         training_manifest_hash=training_result.dataset_manifest_file_hash,
         artifact_file=artifact_path.name,
-        artifact_hash=training_result.artifact_hash,
+        artifact_hash=(
+            training_result.artifact_hash
+            if artifact_hash_override is None
+            else artifact_hash_override
+        ),
         dataset_identity_hash=training_result.dataset_identity_hash,
         feature_registry_hash=training_result.feature_registry_hash,
         source_manifest_hashes=training_result.source_manifest_hashes,
@@ -136,6 +144,21 @@ def _write_release(
     )
     _write_json(root / "release_manifest.json", manifest.to_dict())
     return manifest
+
+
+def test_release_adapter_blocks_known_pre_repair_artifact_before_deserialization(
+    tmp_path: Path,
+    training_result,
+) -> None:
+    quarantined_hash = next(iter(KNOWN_MODEL_SOURCE_REVISION_QUARANTINES))
+    _write_release(
+        tmp_path,
+        training_result,
+        artifact_hash_override=quarantined_hash,
+    )
+
+    with pytest.raises(ValueError, match="quarantined by a daily-price source revision"):
+        AllocationReleaseAdapter().load(tmp_path / "release")
 
 
 def test_release_adapter_binds_artifact_components_and_replays_rows(

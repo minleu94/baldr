@@ -19,6 +19,9 @@ import sqlite3
 from typing import Iterable, Literal
 from zoneinfo import ZoneInfo
 
+from data_module.ml_daily_price_revision_gate import (
+    check_daily_price_source_revision,
+)
 from ml_module.feature_eligibility import (
     ALL_FIELD_SOURCE_TABLES,
     FeatureEligibilityManifest,
@@ -286,6 +289,11 @@ class MLAllFieldSnapshotProvider:
         if history_start > decision.date():
             raise ValueError("history_start_date must not exceed decision_at")
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
+        check_daily_price_source_revision(
+            database_path=self.database_path,
+            decision_date=decision,
+            symbols=normalized_symbols,
+        )
         normalized_industries = tuple(
             sorted(
                 {

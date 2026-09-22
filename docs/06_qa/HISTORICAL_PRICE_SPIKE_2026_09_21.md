@@ -54,7 +54,7 @@ Root 另開 `mode=ro` 連線，驗證 receipt body hash、868 筆全欄 after va
 
 價格工具 focused fixtures `6 passed`，涵蓋來源／row drift、額外 trigger 全交易回滾、逐列回滾保留後續寫入，以及 final receipt 寫入失敗仍保留 pending；py_compile 通過。模型 gate 整合 `55 passed`，全域 mypy `639 source files` 通過。程式 hash 與 pre-apply evidence 在 [修復前記錄](../../output/qa/historical_price_spike_20260921/repair_preapply_evidence_20260922.json)，模型測試詳見[模型 QA](PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md)。
 
-相依技術指標與 CSV cache 尚待本輪後續 apply；本節不宣稱全資料鏈完成或模型已重訓。
+價格階段完成後，相依技術指標與 CSV cache 另依下節方案完成受控 apply；模型仍須使用新版本重建驗證，沒有重訓或解除隔離。
 
 ### 衍生資料修復的驗收條件
 
@@ -65,3 +65,21 @@ CSV 必須獨立保存原值，不能借用 SQLite 的 before values：五檔抽
 套用前須驗證計算使用的完整 daily OHLC prefix hash、逐欄 before values、剩餘磁碟容量及 online backup。CSV 分檔備份與修改 journal 必須保留各自原值及 hash；若部分檔案已替換而後續失敗，應依 journal 回復該批指定欄位，不以整庫或整檔舊備份覆蓋其他後續資料。最後逐欄讀回與 receipt 驗證通過，才可宣稱衍生資料修復完成。
 
 抽查 evidence：[技術表與 CSV 結構／數值對照](../../output/qa/historical_price_spike_20260921/technical_cache_schema_comparison_20260922.json)、[研究報告實際讀取服務驗收](../../output/qa/historical_price_spike_20260921/stock_research_consumer_readback_summary_20260922.json)。後者涵蓋 1256／1477 及三檔官方缺價股票的 5/19、5/20、5/21，共 15 組讀取，並非僅驗證原始 SQL。
+
+### 技術指標與快取正式 apply
+
+`7aebf678` 保存已審查的修復工具與 13 項 focused fixtures；涵蓋分段暖機、來源漂移、CSV 個別原值、部分發布失敗、程序中止恢復與 final receipt 失敗後補寫。獨立 delta review 通過，py_compile、diff-check 與 quant guard（financial-float／look-ahead）通過；見[凍結程式 QA](../../output/qa/price_repair_20260921/technical_frozen_qa_summary_20260922.json)。未修改本次工作區中另一個 UI 任務的程式。
+
+正式 apply 於 `2026-09-22T08:26:37.224486+00:00` 完成。計算來源為 868 檔、2,622,006 筆完整日期／OHLC prefix；修復範圍含 75,442 筆既有 technical rows，自 5/20 起更新 1,257,696 個指標欄位與 19,439 個來源欄位，合計 1,277,135 個 DB 欄位。138 筆受缺值影響的列保留 NULL；全 prefix 有缺 OHLC 的 279 檔與先前較窄探針的 102 檔範圍不同，不能直接相減或視為新增異常。
+
+869 份既有個股／彙總快取已發布，共處理 1,912,408 個欄位；這個計數包含已等於目標值的欄位，不等同於實際數值差異數。快取未涵蓋的日期及沒有的欄位維持不新增，receipt 分別記錄 missing cells 與 skipped columns，不能解讀成快取已補齊所有歷史日期。原始 daily CSV、`stock_data_whole.csv`、模型與歷史訓練產物保持原樣。
+
+`DATA_ROOT/output/scheduled/technical_indicator_repair_receipts/20260520/historical_price_spike_20260921/` 保存 online backup、逐檔 cache backup、cell journals、pending 與 final receipt。Final body hash 為 `sha256:773795469f91ea7c526ef0237b3ce2feb886deb713e6ba970b0c45672292ce32`；technical backup hash 為 `sha256:c9e237273ae039e10817cd5d548c0b53abbbc64771d2c993bce7e370bdf74387`；使用的 dry-run manifest hash 為 `sha256:7cabe725d520bc68a5d8267bb5cb70daf471341f7b6a7d9aace19432580678cd`。Pending 狀態為 `receipt_written`，不表示仍有未提交 transaction。
+
+精確執行命令、程式／輸入 hash、容量預檢與測試結果見 [technical pre-apply evidence](../../output/qa/price_repair_20260921/technical_indicator_preapply_evidence.json)。修復保留至少 200 GiB 磁碟餘裕；執行紀錄見 [apply log](../../output/qa/price_repair_20260921/technical_indicator_apply_20260520.log)。
+
+獨立唯讀驗收另以 manifest 建立預期值，核對 868 檔：1,277,135 個 after cells 全部相符；同批受影響列中 2,117,755 個非修改欄位與修復前備份一致；869／869 快取 after hashes 相符，receipt、manifest 與 technical backup hash 均通過。SQL 使用既有索引，沒有逐股 CAST 全表掃描。完整結果見[獨立驗收](../../output/qa/price_repair_20260921/technical_indicator_repair_verification.json)。驗收程式最初的備份讀取權限與前導零代碼正規化問題已修正；未以 immutable fallback 或改動正式資料讓驗收通過。
+
+驗收範圍不包含整個歷史資料庫或全部來源完整性認證。抽查發現 1538／2321／5906 的部分非 5/20 CSV 價格／符號與 daily NULL 不同；這些來源欄位不在本次 5/20 修復 allowlist，不能把此次通過解讀成所有日期的舊 CSV 補值問題均已排除。三檔的 5/20 官方缺價與本次指標 NULL 政策仍依修復清單驗證。
+
+五檔補充抽查確認上述 19 個來源差異為修復前既有值：225 個選定 cache 欄位與各自備份逐欄比較均未改動。彙總快取尾端可見日期為 2026-06-29，不能把要求的 9/21 缺列當作此次修復新增的差異；其 920,610 個缺列欄位維持跳過，ADX 原本缺欄的 75,442 個位置也未新增。這些限制與 scope 外差異保存在[consumer baseline 補件](../../output/qa/price_repair_20260921/technical_indicator_repair_consumer_baseline_20260922.json)，後續需另做來源核對，不能直接以舊 CSV 補值作正式價格或訓練真值。

@@ -1,6 +1,6 @@
 # 2026-05-20 價格修訂的模型影響與最小隔離
 
-本紀錄只盤點 metadata 與修訂保護，不載入正式 joblib/pickle、不重訓、不 promote，也不修改正式資料庫；focused tests 僅使用隔離 synthetic fixture。價格修復 receipt 的 canonical schema 是 `historical-price-spike-repair-20260921.v1`；本輪 guard 不另建第二套 receipt 格式。
+本紀錄涵蓋模型 metadata 盤點與修訂保護；這部分未載入正式 joblib/pickle、未重訓或 promote，focused tests 僅使用隔離 synthetic fixture。另一路已完成的正式價格修復見[修復紀錄](HISTORICAL_PRICE_SPIKE_2026_09_21.md)。價格修復 receipt 的 canonical schema 是 `historical-price-spike-repair-20260921.v1`；模型 guard 不另建第二套 receipt 格式。
 
 ## 已確認的產物
 
@@ -39,4 +39,4 @@
 - `python scripts/quant_guard_linter.py`：financial float boundaries 與 look-ahead checks 均通過；原始輸出保存在 [quant_guard_linter.log](../../output/qa/price_repair_20260921/model_impact/quant_guard_linter.log)。
 - focused mypy：7 source files 無錯，輸出保存在 [mypy_7_sources.log](../../output/qa/price_repair_20260921/model_impact/mypy_7_sources.log)；changed Python files 已通過 `py_compile`，輸出保存在 [pycompile.log](../../output/qa/price_repair_20260921/model_impact/pycompile.log)。小型索引見 [qa_summary.json](../../output/qa/price_repair_20260921/model_impact/qa_summary.json)。
 
-本輪沒有修改 `daily_prices`、`technical_indicators`、Snapshot、scheduler、collector 或模型 bytes，也沒有把修訂後的 availability 假設回填成 2026-05-20 當時已知。
+模型隔離子任務沒有修改 `daily_prices`、`technical_indicators`、scheduler、collector 或模型 bytes；正式資料修復狀態以獨立修復紀錄為準。修訂後的 availability 沒有回填成 2026-05-20 當時已知。

@@ -55,3 +55,13 @@ Root 另開 `mode=ro` 連線，驗證 receipt body hash、868 筆全欄 after va
 價格工具 focused fixtures `6 passed`，涵蓋來源／row drift、額外 trigger 全交易回滾、逐列回滾保留後續寫入，以及 final receipt 寫入失敗仍保留 pending；py_compile 通過。模型 gate 整合 `55 passed`，全域 mypy `639 source files` 通過。程式 hash 與 pre-apply evidence 在 [修復前記錄](../../output/qa/historical_price_spike_20260921/repair_preapply_evidence_20260922.json)，模型測試詳見[模型 QA](PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md)。
 
 相依技術指標與 CSV cache 尚待本輪後續 apply；本節不宣稱全資料鏈完成或模型已重訓。
+
+### 衍生資料修復的驗收條件
+
+技術指標修復使用每檔股票完整 OHLC prefix 計算，但只更新 5/20 起既有的技術指標列。任一 OHLC 缺值即切段，下一段重新暖機；不使用 ffill、bfill 或補零。ATR 不在本次重算白名單，其他未知欄位與 5/20 前的指標保持原樣。這是供目前研究使用的事後重算，不把 9 月才取得的更正視為 5 月已知。
+
+CSV 必須獨立保存原值，不能借用 SQLite 的 before values：五檔抽查發現 CSV 的 OHLC 為舊錯價，而技術指標表的中英文 OHLC aliases 是 NULL；MA5／ADX 則一致。彙總 `all_stocks_data.csv` 沒有 ADX 欄位，修復不得因此新增欄位。個股與彙總快取只處理既有日期／欄位交集，同一價格的中英文 aliases 須一致；原始 `daily_price/*.csv` 與 `stock_data_whole.csv` 不在快取修復範圍。
+
+套用前須驗證計算使用的完整 daily OHLC prefix hash、逐欄 before values、剩餘磁碟容量及 online backup。CSV 分檔備份與修改 journal 必須保留各自原值及 hash；若部分檔案已替換而後續失敗，應依 journal 回復該批指定欄位，不以整庫或整檔舊備份覆蓋其他後續資料。最後逐欄讀回與 receipt 驗證通過，才可宣稱衍生資料修復完成。
+
+抽查 evidence：[技術表與 CSV 結構／數值對照](../../output/qa/historical_price_spike_20260921/technical_cache_schema_comparison_20260922.json)、[研究報告實際讀取服務驗收](../../output/qa/historical_price_spike_20260921/stock_research_consumer_readback_summary_20260922.json)。後者涵蓋 1256／1477 及三檔官方缺價股票的 5/19、5/20、5/21，共 15 組讀取，並非僅驗證原始 SQL。

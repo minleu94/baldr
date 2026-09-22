@@ -167,16 +167,19 @@ Application Services / DTO / Repository
 - 不在 UI 內複製 application/domain 計算。
 - Runtime UI 不得直接讀寫 Runtime store。
 
-### 目前 8 個頂層工作區
+### 目前 9 個頂層工作區
 
 1. 決策工作台（包含「決策來源」Daily Decision drill-down）
 2. 市場探索
 3. 推薦分析
 4. 策略回測 / Research Lab
 5. 觀察清單
-6. 持倉管理
-7. 數據更新
-8. Runtime Observatory
+6. 個股研究
+7. 持倉管理
+8. 數據更新
+9. Runtime Observatory
+
+`StockResearchWorkspace` 是主視窗 stack 內的單一 QWidget，組合既有 `StockResearchReportView` 與 `DecisionOutcomeJourneyWidget`；來源頁共用 `ResearchStockContextDTO` 下鑽與返回。切離工作區保留內容，換來源更新同一實例，主程式關閉同時取消兩個讀取元件。舊 `StockResearchReportDialog` 僅保留相容入口，主程式不再建立它。
 
 完整操作見 [APPLICATION_MANUAL.md](../07_guides/APPLICATION_MANUAL.md)。
 

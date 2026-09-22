@@ -199,7 +199,7 @@ Gate 1 的 application contract 依序為 `app_module/advice_dtos.py`、`app_mod
 python ui_qt/main.py
 ```
 
-**這是什麼**：PySide6 Qt 圖形界面，包含 8 個頂層工作區：決策工作台、市場探索、推薦分析、策略回測、觀察清單、持倉管理、數據更新、Runtime。Daily Decision Desk 不再是第九個頂層工作區；唯一實例位於「市場探索 > 市場總覽」，Workbench 只提供導覽。
+**這是什麼**：PySide6 Qt 圖形界面，包含 9 個頂層工作區：決策工作台、市場探索、推薦分析、策略回測、觀察清單、個股研究、持倉管理、數據更新、系統狀態。個股研究內嵌於主程式；Daily Decision Desk 不另佔頂層工作區；唯一實例位於「市場探索 > 市場總覽」，Workbench 只提供導覽。
 
 ---
 
@@ -501,7 +501,7 @@ python ui_qt/main.py
 **狀態**：
 - 業務邏輯已遷移到 `decision_module/`
 - 僅保留 Tkinter UI 相關代碼
-- 不保證 Legacy UI 與目前 8 個工作區、資料契約或使用手冊同步
+- 不保證 Legacy UI 與目前 9 個工作區、資料契約或使用手冊同步
 
 **使用建議**：新功能不應再引用 `ui_app/` 中的業務邏輯檔案（如 `strategy_configurator.py`、`stock_screener.py` 等），這些檔案已不存在或已遷移。
 

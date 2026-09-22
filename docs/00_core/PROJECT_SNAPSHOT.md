@@ -1,5 +1,10 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-22 個股研究內嵌工作區
+
+主程式新增固定「個股研究」頁，市場／推薦／觀察清單／持倉的下鑽共用同一頁；切換工作區保留內容，返回來源定位目前研究股票，關閉主程式同時合作式取消報告與決策結果讀取。籌碼頁把法人、信用、集保與事件分區；持股級距改為語意表格，原始資料與可得時間保留在詳情。本次只調整呈現與導覽，不寫正式資料或改策略／交易行為。操作見 Manual 7.3。 本輪隔離整合 pytest 為 152 passed／1 skipped（含 UpdateView 84）；更新頁 validator 為 25 passed／4 skipped，全域 mypy 640 檔、changed Python py_compile 與 diff check 通過。另有跨程序讀回、busy close exit 0、研究旅程 runner 及正式 theme 的 1440／1000px offscreen 視覺檢查；未測 native 前景操作與螢幕閱讀器。
+
+
 ## 2026-09-22 歷史價格受控修復
 
 使用者核准後，2026-05-20 的 868 筆 `daily_prices` 已完成正式修復；1256 close=183、1477 close=213，1538／2321／5906 的 OHLC 保留 NULL。Root 獨立唯讀逐列 readback 為 868／868 相符、同日非目標 fingerprint 不變；54 筆缺 canonical 的資料未修改。Online backup 與逐列 before／after receipt 保存在 DATA_ROOT 的 `output/scheduled/daily_price_repair_receipts/20260520/historical_price_spike_20260921/`。

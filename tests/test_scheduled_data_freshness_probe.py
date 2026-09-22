@@ -82,9 +82,29 @@ def test_phase3c_freshness_reads_explicit_candidate_db_with_market_coverage(
     assert credit["freshness_status"] == "current"
     assert institutional["candidate_only"] is True
     assert credit["candidate_only"] is True
+    assert credit["frequency"] == "daily candidate source"
+    assert credit["downstream"] == ["candidate research only"]
+    assert credit["update_entry"] == "UpdateService.update_phase3c_candidate_range"
     assert institutional["scheduled_task"] == "baldr-data-update-quick-daily"
     assert credit["coverage"]["source_version_coverage_complete"] is True
     assert institutional["duplicate_key_count"] == 0
+
+    stale_credit = _source(
+        {
+            "source_statuses": probe._phase3c_candidate_statuses(
+                candidate_db_path=candidate_db,
+                expected_session="20260922",
+            )
+        },
+        "credit_transactions",
+    )
+    assert stale_credit["freshness_status"] == "stale"
+    assert stale_credit["actual_period"] == "20260921"
+    assert stale_credit["expected_period"] == "20260922"
+    assert stale_credit["missing_periods"] == ["20260922"]
+    assert stale_credit["reason"] == (
+        "latest candidate observation is behind the expected official session"
+    )
 
 
 def test_freshness_probe_reports_artifact_write_failure_as_structured_error(

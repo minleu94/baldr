@@ -1,5 +1,9 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-21 歷史價格尖峰稽核
+
+2026-05-20 的 1256／1477 已以完整官方 retrospective response 核對：canonical 分別為 1256 close 183、1477 close 213，formal SQLite／corrupt backup 為另一組錯誤值；5/20 TWSE 差異 868 筆（865 完整差異、1538／2321／5906 缺 OHLC，另 54 筆無 canonical 暫不動）。本輪未修 formal DB；來源核准、可回滾修復與下游重算影響仍分開待定。詳見 [歷史價格尖峰稽核](../06_qa/HISTORICAL_PRICE_SPIKE_2026_09_21.md)。
+
 # 2026-09-21 個股研究資料鏈查核
 
 正式資料只讀查核已完成：`D:\Min\Python\Project\FA_Data\sqlite\twstock.db` 的 2026-09-21 `daily_prices` 查到 1,968 rows／1,968 codes，`technical_indicators` 查到 1,965 rows／1,965 codes；2382=344.5、3207=38.25、9935=18.2、1418=17.55 的查詢 rows 日期均為 2026-09-21，並完成日期／重複鍵／raw 對照檢查。這只證明本輪查詢範圍內的存在性與一致性，不代表官方交易所全域真值或全來源同日 fresh。

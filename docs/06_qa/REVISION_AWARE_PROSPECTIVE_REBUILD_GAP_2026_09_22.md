@@ -1,6 +1,6 @@
 # Revision-aware prospective rebuild gap QA（2026-09-22）
 
-> 狀態：draft for root review。這份 QA 只記錄本輪診斷與最小工程缺口；沒有修改正式 SQLite、repair sidecar、source gate、scheduler、capture 或 credit。觀測時間為 UTC `2026-09-22T13:49:57.2356533Z`、台北 `2026-09-22T21:49:57.2356533+08:00`。
+> 狀態：root 已審核的診斷紀錄；acceptance 工程未實作。這份 QA 只記錄本輪診斷與最小工程缺口；沒有修改正式 SQLite、repair sidecar、source gate、scheduler、capture 或 credit。觀測時間為 UTC `2026-09-22T13:49:57.2356533Z`、台北 `2026-09-22T21:49:57.2356533+08:00`。
 
 ## 已證實的 9/22 blocker
 
@@ -22,7 +22,7 @@ bounded reproduction 的呼叫鏈為：
 
 ## 5 symbols 的 feature dependency readback
 
-以正式 DB `D:\Min\Python\Project\FA_Data\sqlite\twstock.db` 以 `mode=ro`、`PRAGMA query_only=ON` 查核，決策日 `2026-09-22` 的前一交易日 cutoff 為 `2026-09-21`。目前 feature registry 最大 rolling period 是 60 日，故每檔 computed feature 的最後依賴 tail 為 61 個觀測列。結果如下：
+以正式 DB `D:\Min\Python\Project\FA_Data\sqlite\twstock.db` 以 `mode=ro`、`PRAGMA query_only=ON` 查核，決策日 `2026-09-22` 的前一交易日 cutoff 為 `2026-09-21`。目前 feature registry 最大 rolling period 是 60 日，故每檔本輪實際檢查的 computed rolling feature 最後依賴 tail 為 61 個觀測列；這個 60 日／61 列結論不代表其他 cached technical indicator 的完整 lineage 已證明與 5/20 不相交。結果如下：
 
 | symbol | daily rows ≤ 9/21 | feature tail | tail range | 5/20 raw row | 5/20 in tail | 5/20 technical rows |
 |---|---:|---:|---|---|---|---:|

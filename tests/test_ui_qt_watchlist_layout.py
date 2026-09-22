@@ -7,8 +7,9 @@ from unittest.mock import MagicMock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QGroupBox
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel
 
+from ui_qt.widgets.info_button import InfoButton, InfoDialog
 from ui_qt.views.watchlist_view import WatchlistView
 
 
@@ -92,6 +93,57 @@ def test_watchlist_narrow_layout_switches_to_vertical_without_losing_controls(mo
     assert view.findChild(QGroupBox, "watchlistCandidatePanel") is not None
     assert view.findChild(QGroupBox, "watchlistUniversePanel") is not None
     assert view.findChild(QGroupBox, "watchlistOpsGroup") is not None
+    view.close()
+
+
+def test_watchlist_navigation_has_no_candidate_hint_popup_and_info_route_still_opens(
+    monkeypatch, tmp_path: Path
+):
+    app = _app()
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.UniverseService",
+        lambda _config: SimpleNamespace(list_watchlists=lambda: []),
+    )
+    service = MagicMock()
+    service.get_stocks.return_value = []
+    view = WatchlistView(service, config=SimpleNamespace(output_root=tmp_path))
+
+    view.show()
+    for width in (1400, 600, 1400):
+        view.resize(width, 800)
+        app.processEvents()
+        orphan_hints = [
+            widget
+            for widget in app.topLevelWidgets()
+            if isinstance(widget, QLabel)
+            and widget.isVisible()
+            and widget.text() == "研究候選池，或保存成可重用的選股清單。"
+        ]
+        assert orphan_hints == []
+
+    view.hide()
+    app.processEvents()
+    view.show()
+    app.processEvents()
+    assert not [
+        widget
+        for widget in app.topLevelWidgets()
+        if isinstance(widget, QLabel)
+        and widget.isVisible()
+        and widget.text() == "研究候選池，或保存成可重用的選股清單。"
+    ]
+
+    opened = []
+
+    def fake_exec(dialog):
+        opened.append(dialog)
+        return 0
+
+    monkeypatch.setattr(InfoDialog, "exec", fake_exec)
+    info_button = view.findChild(InfoButton)
+    assert info_button is not None
+    info_button.click()
+    assert [dialog.tab_key for dialog in opened] == ["watchlist"]
     view.close()
 
 

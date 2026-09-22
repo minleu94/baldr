@@ -12,6 +12,8 @@
 
 2026-09-21 候選池提醒呈現修正：首頁與每日決策已共用逐股原因、資料日／品質與查看步驟，缺前次分數不再只顯示籠統人工判讀；首頁一般觸發提醒導向候選池。候選表以可讀的「推薦來源」狀態替代原始識別字典，保留內部 exact identity。此為呈現修正，不改指標觸發、推薦評分、資料或交易權限；操作見 Manual 第 7.1 節。
 
+2026-09-21 觀察清單導覽修正：移除寬版 responsive 殘留的未掛載候選池提示元件；一般進入、切換尺寸或返回只呈現頁內候選池，明確研究報告／頁面說明入口仍保留。此為 UI 呈現修正，不寫入正式資料。
+
 ## 2026-09-21 V5 日常操作與可讀性工程狀態
 
 工作台、候選／研究／持倉、推薦／回測與導覽的 bounded presentation slice 已完成 frozen QA evidence：首頁優先顯示每日重點與下一步，日常／進階研究／系統維護分層，研究報告深頁按需繪製，缺 OHLC 可退回 close chart，錯誤保留白話恢復入口。A／B／D 的 final screenshots 已由 root 以正式 theme 審查；before／after 只在 30-row isolated fixture、2 samples、in-process boundary 下成立，不能外推 production dataset。

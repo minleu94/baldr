@@ -341,9 +341,6 @@ class WatchlistView(QWidget):
         next_actions_layout = QVBoxLayout(next_actions_group)
         next_actions_layout.setSpacing(4)
         next_actions_layout.setContentsMargins(8, 8, 8, 8)
-        self.next_actions_hint = QLabel("研究候選池，或保存成可重用的選股清單。")
-        self.next_actions_hint.setProperty("role", "muted")
-        self.next_actions_hint.setVisible(False)
         research_actions_layout = QHBoxLayout()
         research_actions_layout.setSpacing(8)
         research_actions_layout.addWidget(self.stock_analysis_btn)
@@ -560,7 +557,6 @@ class WatchlistView(QWidget):
             self.candidate_hint.setVisible(False)
             self.universe_hint.setVisible(False)
             self.analysis_hint.setVisible(False)
-            self._set_next_actions_hint_visible(False)
         else:
             self.main_splitter.setOrientation(Qt.Horizontal)
             width = max(self.width(), 1200)
@@ -583,7 +579,6 @@ class WatchlistView(QWidget):
             self.candidate_hint.setVisible(True)
             self.universe_hint.setVisible(True)
             self.analysis_hint.setVisible(True)
-            self._set_next_actions_hint_visible(True)
 
         # 子元件的窄版尺寸先完成，再重設主分割比例，避免 Qt 依舊的 sizeHint
         # 把兩個面板強制平均分配而造成內部內容重疊。
@@ -605,13 +600,6 @@ class WatchlistView(QWidget):
             self.management_splitter.setSizes(
                 [max(160, int(height * 0.38)), max(180, int(height * 0.62))]
             )
-
-    def _set_next_actions_hint_visible(self, visible: bool) -> None:
-        """窄版收起輔助文案，保留兩個主要動作的完整按鈕。"""
-
-        hint = getattr(self, "next_actions_hint", None)
-        if hint is not None:
-            hint.setVisible(visible)
 
     def _toggle_advanced_research(self, expanded: bool) -> None:
         """顯示／隱藏已保存研究明細，不改變目前選取與來源 binding。"""

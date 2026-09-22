@@ -48,17 +48,26 @@ candidate row shape。回歸覆蓋：
 `Success: no issues found in 2 source files`。pytest 只有既有 `.pytest_cache` ACL warning，
 不影響測試結果。
 
-## 今日唯讀 gate after inspect
+## 時鐘邊界與今日唯讀 gate
 
-以固定 `observed_at=2026-09-22T13:00:03Z` 重讀正式來源後，結果為
-`status=ready_with_warnings`、`ready=true`、`target_date=2026-09-22`；
-`freshness_lane.status=ready_with_warnings`、`lane_blockers=[]`，且
-`credit_transactions` 已進入具名 `not_required_for_paper_eod` projection。輸出同時確認
-`query_only=true`、`source_db_written=false`、`source_files_written=false`，required market
-blocker 為空。這次 after inspect 沒有保存新的正式 output artifact，也沒有執行 producer 或
-writer；它只驗證 consumer projection。此前舊 code 的 13:00:03 gate artifact 曾以
-`freshness_lane_noncurrent_source_unattributed:credit_transactions:stale` blocked，該差異
-就是本輪具名 policy 修正的範圍。
+固定 `observed_at=2026-09-22T13:00:03Z` 的結果只能稱為舊 code 的歷史時鐘參數
+projection replay，不能當作實際今日 gate ready 驗證。它保留在 before artifact
+`output/paper_execution_eod_replay/dependency_gate/dependency_gate_20260922T130003311323Z_attempt1.json`，
+當時為 `status=blocked`、`ready=false`，含
+`freshness_lane_noncurrent_source_unattributed:credit_transactions:stale` 與
+`freshness_status_not_passed:degraded`。
+
+之後以真實目前時鐘執行一次完整 `inspect_dependency()` 唯讀檢查，沒有重跑 producer、
+adapter、scheduler 或 writer，也沒有改用固定 observed time。實際觀測時間為
+`2026-09-22T13:46:41+00:00`（台北 `2026-09-22T21:46:41+08:00`），最小原始摘要保存於被
+Git 排除的
+`output/qa/paper_eod_candidate_policy_20260922/real_now_gate_summary.json`。結果為
+`status=ready_with_warnings`、`ready=true`、`target_date=2026-09-22`、
+`freshness_lane.status=ready_with_warnings`、`freshness_lane_blockers=[]`，且
+`credit_transactions` 已進入具名 `not_required_for_paper_eod` projection；整體
+`blockers=[]`。摘要同時保存 `query_only=true`、`source_db_written=false`、
+`source_files_written=false` 及 before/after boundary。這只證明該真實觀測時刻的 gate
+consumer 結果，不宣稱 EOD writer 已執行。
 
 因此，下一個正常 scheduler run 仍需重新驗收 immutable execution receipt、event capture、
 ledger readback 與 writer terminal result；本 QA 不宣稱今晚 EOD 已執行或已產生 Paper fill。

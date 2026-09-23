@@ -54,3 +54,15 @@ current capture／provider／dataset focused tests **15 passed**，涵蓋來源 
 新增來源前綴遭改動與兩種受保護輸出路徑的反例，current capture／provider 共 **12 passed**；四個 current source 檔 mypy 無錯。新 four-horizon ridge/logistic 樣本 release `restated-repair-a119146c1eb75553` 另用新的 **13 檔** current capture 完成實際推論：capture `2026-09-23T12:53:15.238323+08:00`、特徵日 9/22，結果 body SHA-256 `89426715c6c979bd2c7282790172911cfb6f54dd1f7120d6882b949fdc2edde6`，位於 `output/qa/model_repair_review/current_capture_four_horizon_run01/current_shadow/`。這是候選模型接線驗證，仍不代表完整 bounded family 或全市場模型已修復。
 
 Root 另以不匯入 trainer 或模型的本機 QA 腳本，使用 Python 整數與 Decimal 驗算該 release 的 **12 份 heldout Parquet、456 個統計數值**（模型／train-only naive 的 MAE、RMSE、Brier、正例率、門檻正確率，以及 calibrated Brier），全部與封存報告一致。亦核對 receipt SHA、列數、日期、唯一 row key、naive 常數、機率範圍及校準 mapping 單調性；未在此步重播模型、驗算 ECE 分箱或重建 labels。結果 `output/qa/model_repair_review/four_horizon_sample_independent_metrics.json` 綁定 verifier 檔案 SHA；確認數值報告正確並不改變樣本表現弱於基準的結論。
+
+## 完整 v2 與原 bounded 家族的當日入口
+
+v2 reader 使用 merger 匯出的固定身分欄位和 22 檔範圍，核對 lineage、source aliases、原 row count、零新增列、父資料／補算資料／manifest 建立時間。逐列 revision 必須精確對應父資料或 corrected subset；不只檢查早於 capture。新 capture 以 v2 作範本時，清除歷史 merge metadata、封存新前綴並產生 v1 current-only 身分。v2／既有 current provider／capture focused tests **19 passed**，含重新 hash 後的錯誤時鐘、alias、縮減身分欄位與尚未建立來源等反例。
+
+原 bounded 家族使用新 `app_module/bounded_restated_shadow_service.py` 及 CLI。先驗 fit receipt、training manifest、audit、artifact bytes SHA 與原兩演算法／四期間／62 欄，再使用既有純 expert predictor；不改模型 bytes、profile、normal infer gate 或 production pointer。當日資料保留獨立身分，只產生研究 heads；不呼叫 meta 配置，也不將全部現金 targets 宣稱為配置學習。反序列化前仍經既有事故隔離檢查。
+
+登錄表來源轉換有獨立驗證：從完整 original registry 重算 20 個技術欄的 source／table／record hash，其餘定義須完全一致。只重新計算整份 JSON hash、同時偷偷改 dtype／尺度／家族／其他 metadata，不能通過此相容性檢查。訓練及當日兩個 registry hashes 均寫入結果，沒有把不同來源硬改成同一個身分。
+
+bounded focused tests **14 passed**：合成 62 欄資料實際 fit HGB 與 ridge/logistic、四期間三特徵組，再以新的當日輸入執行 24 組 heads；另驗來源更改、過早 capture、資料 hash、受保護路徑及 registry 轉換反例。一則既有 joblib 實體核心數查詢警告；兩個新 service／CLI 檔 mypy 無錯。這是接線與契約驗證，尚待真正 22,093 列新模型的 readback，不能解讀為 bounded 全量重訓已完成。
+
+回滾此增量時，僅回退上述新 bounded 入口以及 current reader/capture 的 v2 支援，保留模型、輸入與結果 receipt。沒有排程、正式資料寫入或 frozen ML contract 改動。

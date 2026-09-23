@@ -45,6 +45,18 @@
 
 當前驗證範圍與限制見[當日研究輸入 QA](../06_qa/MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md)。完整資料重訓尚未驗收時，此入口只用於候選模型驗證。
 
+當日入口也接受已封存的 full v2 資料。v2 的 22 檔修正列保留各自實際補算時間，其餘列保留原重建時間；程式逐列依來源檢查，不把全部列改寫成同一個鐘。用 v2 當範本擷取新資料時，輸出仍是獨立的 `current_inference_only` 前綴與身分，不沿用歷史合併的宣告或 row IDs。
+
+原 bounded 家族另有 `scripts/run_bounded_restated_current_heads.py`。它讀取受控重訓目錄中的 `fit_receipt.json`、audit 與模型，不需要把研究模型改名或放進舊 release 目錄：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_bounded_restated_current_heads.py --fit-directory <FIT_DIRECTORY> --fit-receipt-hash <FIT_RECEIPT_FILE_SHA256> --training-manifest <TRAINING_MANIFEST> --training-manifest-hash <TRAINING_MANIFEST_FILE_SHA256> --current-manifest <CURRENT_MANIFEST> --current-manifest-hash <CURRENT_MANIFEST_FILE_SHA256> --symbols 1256 1477 --output-root <RESEARCH_OUTPUT_ROOT>
+```
+
+`training` 參數指定模型確實使用的資料；`current` 參數指定當日輸入。需要從 SQLite 重新擷取時，同樣加上 `--source-db` 與兩個修訂 receipt 參數，這時 current manifest 僅作特徵契約範本。輸出位於 `bounded_current_heads/<receipt-hash>.json`，逐股列出三組特徵、四個期間、兩種原演算法的 24 組研究預測；成功狀態為 `completed_research_predictions`。它沒有持股配置建議，不能用這些數字代替買賣指令。
+
+若 bounded 的特徵登錄表因重算改了來源識別，程式會驗證明列的轉換證據：62 個名稱／順序／尺度及所有其餘欄位不變，只有 20 個技術指標的來源資訊可更新。兩端登錄身分都留在結果中；任意改尺度、特徵家族或標準化規則會拒絕。輸出須在模型、訓練資料和當日資料目錄以外；來源 hash／日期錯誤時先修來源並產新版本，不覆寫已封存檔案。
+
 ### 唯讀修訂資料 acceptance preview
 
 在要評估 late-obtained 歷史是否可用於未來 research/shadow 候選時，可從封存資料產生只讀 preview：

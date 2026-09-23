@@ -95,3 +95,7 @@ CSV 必須獨立保存原值，不能借用 SQLite 的 before values：五檔抽
 暖機成本以同一 kernel、每股票三次取中位數、只計已載入 DataFrame 的計算時間量測：1256 完整 3,000-row prefix 為 16.237 ms，末 120 rows 為 2.192 ms；1477 完整 3,005-row prefix 為 14.597 ms，末 120 rows 為 1.915 ms。其餘缺價樣本的完整 prefix 為 18.100–21.286 ms，120-row slice 為 2.604–2.799 ms。120-row 計算在 1256 的 EMA30、DEMA30、ADX 與 ATR 相對完整 prefix 分別差 `+0.004604`、`-0.050204`、`+0.058788`、`+0.000147`；1477 分別差 `-0.012296`、`+0.039324`、`-0.008439`、`-0.000674`。這是五股票樣本的 kernel-only 成本量測，不等同於全市場 I/O benchmark 或 formal DB 驗收。
 
 source focused tests 覆蓋 future suffix 不影響過去值、整段計算後再切增量／currentity 發布、warmup 與 OHLC gap、ATR／ADX、custom period 復暖機、date／股票鍵驗證、輸入不突變，以及 SQLite／彙總 CSV 局部更新保留、交易 rollback 與 SQL failure 回報。這是源碼修復與 research-only 證據，並未再次執行正式技術資料套用或重訓模型。
+
+Root 於整合提交 `09f0eb56` 再驗證實際服務：從同一唯讀快照取上述五檔共 15,378 筆價格，建立隔離 SQLite／CSV，刻意將最近七個交易日的指標設成錯值後，分別呼叫 sequential 與兩個 process worker 的 currentity 更新。兩條路徑均成功修正 35 筆發布列，20 個指標在 SQLite 與個股 CSV 中皆與完整歷史計算相同（允許 NaN，數值容差 `1e-12`）；15,344 個非發布 keys（包含另一股票的 sentinel）保持不變。服務耗時分別為 1.207 秒與 3.099 秒；小樣本的多程序啟動成本較高，不能據此推論全市場效能。整合工作區本機 receipt：`output/qa/model_repair_review/service_canary_run02/receipt.json`，SHA-256 `7dc4620f5046d4c9dc94d96f2e3952627e483880ada5b8e5cb9cf91e2fe7cae6`。正式 D 資料未寫入。
+
+Root 整合回歸執行 causal kernel、publication scope、source quality、release adapter 與 inference 五個測試檔，結果 `84 passed`；僅有 joblib 無法取得實體核心數、改採邏輯核心的警告一則。模型仍須另外完成修訂資料集、真實 fitting、保留資料評估及日常接線，以上結果不表示模型重訓完成。

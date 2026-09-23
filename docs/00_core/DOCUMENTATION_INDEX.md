@@ -10,7 +10,7 @@
 
 > Evidence rehearsal closeout：[Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)（`engineering_rehearsal_complete`；不是 external completion）。
 
-> **最後整理**：2026-09-21
+> **最後整理**：2026-09-23
 > **判讀規則**：本索引用於導航，不作為狀態或架構事實來源。Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，North Star / Evidence 看 `system_vision_specification.md`，目前／目標架構分別看 `system_architecture.md` / `target_system_architecture.md`。
 >
 > **2026-08-29 audit entry（歷史）**：[Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md)
@@ -32,6 +32,7 @@
 
 ## 2026-09-08 整併與下一輪工作
 
+- [錯價修復後 Allocation 重訓 Runner QA（2026-09-23）](../06_qa/RESTATED_ALLOCATION_REPAIR_TRAINING_2026_09_23.md)：封存 restated research 資料的實際 H5／四 horizon fit、purged heldout、naive baseline、來源／套件指紋與不升格限制；只完成 2,697 rows sample，full data fit 仍待資料建置完成。
 - [5/20 歷史價格稽核與 9/22 受控修復](../06_qa/HISTORICAL_PRICE_SPIKE_2026_09_21.md)：868 筆來源核對、正式修復、備份／逐列回滾與相依指標收口。
 - [價格修訂的模型影響與隔離](../06_qa/PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md)：實際 shadow／calibration 用途、兩個已知模型 hash 保守隔離、PIT／forward label 修訂保護與 55 tests。
 - [測試資產整理與候選處置結案報告 (2026-09-17)](../06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：限定補正結案、AST無損重算、全候選逐列處置表、bounded 母體邊界與獨立審閱證據。

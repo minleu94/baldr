@@ -16,7 +16,22 @@
 
 9/22 的後續 technical publication 曾重寫包含 5/20 修訂日的 120 交易日區間。正式資料庫目前不可視為已持續保有本次 technical repair；修復後的 E run02 是獨立 research snapshot，不可覆蓋正式 SQLite。已知修復前模型仍隔離，這次修訂目前只有 868 列來源 custody，沒有已物化且通過可得性驗證的成熟標籤／可訓練 rows，因此尚未開始重訓。
 
-正式 PIT／Raw-to-OOC 入口仍受 pending source-revision gate 阻擋；不可刪除 pending、回填舊 available_at 或用舊模型輸出替代修訂後驗證。後續需以新 dataset/model identity 重建完整受影響特徵依賴、保留 late-obtained 狀態，並等 label horizon 成熟後才可建立 research/shadow 候選。細節見[隔離研究重建與重訓 Gate](../06_qa/REVISION_RETRAIN_ISOLATED_RESEARCH_2026_09_22.md)。
+正式 PIT／Raw-to-OOC 入口仍受 pending source-revision gate 阻擋；不可刪除 pending、回填舊 available_at 或用舊模型輸出替代修訂後驗證。另一路未來 research/shadow 候選可以評估 late-obtained 修訂歷史；不必只因修訂發生在過去就一律等待新的 forward horizon，但每筆 label 仍須按交易日序列證明 `horizon_end_date`，並以獨立來源證明 `label.available_at <= training_as_of`。已經過了日曆時間不會自動產生 label availability 證據。完整特徵相依重建、feature schema 與成熟標籤證據未通過前，不可 fit。修訂值絕不可宣稱為 2026-05-20 當時可得，也不可用於該日 historical PIT/OOS。細節見[隔離研究重建與重訓 Gate](../06_qa/REVISION_RETRAIN_ISOLATED_RESEARCH_2026_09_22.md)。
+
+### 唯讀修訂資料 acceptance preview
+
+在要評估 late-obtained 歷史是否可用於未來 research/shadow 候選時，可從封存資料產生只讀 preview：
+
+```powershell
+$TrainingAsOf = [DateTimeOffset]::UtcNow.ToString('o')
+.\.venv\Scripts\python.exe scripts\preview_ml_daily_price_revision_acceptance.py `
+  --archive-root 'D:\Min\Python\Project\FA_Data\output\research_only\non_release\price_revision_rebuild_20260922_luna' `
+  --training-as-of $TrainingAsOf
+```
+
+命令驗證已封存 transfer receipt、868 列 v2 manifest/JSONL、run02 SQLite bytes、price/technical receipts、recovery 與 tracked verifier，並列出每列 custody observation、feature dependency 缺口及 horizon/availability 證據。它會檢查封存 inventory 的檔案大小，並重算明列的來源檔 hash；不會重算全部 26 個封存檔案的 hash。preview 以 create-only 方式寫到 ignored `output\qa\revision_aware_acceptance_preview\`，不寫 D archive、正式 DB 或模型，不呼叫正式 PIT gate，也不 fit。`preview_complete_candidate_not_accepted` 表示證據摘要已建立，不表示資料已獲接受或可訓練；需先補齊 feature 重建與逐列 label availability 證據。此工具也不替 2026-05-20 歷史 PIT 開 gate。
+
+此版本重新計算 12 個選定來源檔的 content hash、檢查 26 項 inventory 的檔案大小；不重新計算全部封存檔案的 hash。成功產出 preview 仍只代表 custody 與已知缺口的摘要已寫入 QA output，不代表接受資料或開始模型 fit。操作證據見[修訂資料 acceptance preview QA](../06_qa/REVISION_RETRAIN_ISOLATED_RESEARCH_2026_09_22.md)。
 
 ## 2026-09-21 V5 日常操作與可讀性工程
 

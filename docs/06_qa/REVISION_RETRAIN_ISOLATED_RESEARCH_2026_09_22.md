@@ -38,4 +38,29 @@ E run01 保留 publication 後的原貌，SHA-256 為 `899e8d0eac9390c4863d21dd2
 
 安全重訓至少需要一條明確接受 revision lineage 的新候選建置路徑：以新 identity 重建受影響的 price/technical rolling 依賴窗口；保留實際 observed/available time 與 late-obtained 標記；逐列核對 feature schema、順序、dtype、缺值政策；再依既有 label registry 建立完整 horizon labels，只有在 horizon 自然到期且 availability 可驗後才納入 fit。2026-09-22 之後的新 prospective rows 仍須等待 label horizon 成熟。完成後只能先寫至新的 research/shadow candidate output，並以獨立 OOS/功能評估作候選；正式 PIT、promotion 與 production 旗標仍保持 false，直到既有 owner gate 明確通過。
 
-E 的 run01/run02 artifacts 已移轉至 D 上述 `research_only/non_release` 目錄；transfer receipt 保留每檔原路徑、目的相對路徑、size 與 SHA-256，並標示內嵌 E 絕對路徑仍是 provenance。移轉沒有改寫原 receipts 或 manifests。E cleanup 尚未執行；需待審查完成後，只能清理本任務自建且已核對的 E 根目錄。
+E 的 run01/run02 artifacts 已移轉至 D 上述 `research_only/non_release` 目錄；transfer receipt 保留每檔原路徑、目的相對路徑、size 與 SHA-256，並標示內嵌 E 絕對路徑仍是 provenance。移轉沒有改寫原 receipts 或 manifests。原 E 任務根目錄 `E:\codex_ml_price_rebuild_20260922_luna` 已依使用者明確授權清除；D archive 與 `codex/luna-price-revision-research-20260922` task branch 保留。
+
+## 2026-09-23 prospective research acceptance preview
+
+late-obtained 修訂歷史可另行評估是否作為「未來 research/shadow 預測」的訓練例；本 preview 沒有政策性地宣稱此路徑永遠禁止。它與 5/20 當時 PIT 是不同主張：修訂資料的歷史 `available_at` 仍為 null，故 `historical_pit_eligible=false`，不得把更正後的值當作當時已知。未來候選仍須完整重建所選模型的 feature dependency，並對每列／每個 horizon 分別證明交易日序列的 `horizon_end_date` 及來源提供的 `label.available_at <= training_as_of`。日期經過只能協助推得 horizon end，不能替代 label availability 證據。
+
+以權威 v2 source run `7e2f19cc5a00f20ba5b3890a` 執行 preview；其 manifest SHA-256 為 `f9a19b704fab86d0701091073d74353dec51dd1a8d3902fc46a6fb24ec1ba772`、rows SHA-256 為 `506f464d92ead313c4fc0d15eaa4eb490b553e86e084701f7d4e93c34e796fb4`。Preview command 為：
+
+```powershell
+$TrainingAsOf = [DateTimeOffset]::UtcNow.ToString('o')
+.\.venv\Scripts\python.exe scripts\preview_ml_daily_price_revision_acceptance.py `
+  --archive-root 'D:\Min\Python\Project\FA_Data\output\research_only\non_release\price_revision_rebuild_20260922_luna' `
+  --training-as-of $TrainingAsOf
+```
+
+本次 `training_as_of=2026-09-23T01:08:04.2782728+00:00`，exit `0`；狀態是 `preview_complete_candidate_not_accepted`，不是重訓，也沒有建立訓練 rows。868 列中 865 列 OHLC 完整，1538、2321、5906 三列缺 OHLC，仍保留明確排除狀態。每列標示 `late_obtained=true`、歷史與 exact source `available_at=null`，另列 custody observation；這個 observation 只證明封存 artifact 在該時間已存在，不充當權威 source availability。
+
+本次 preview 對 D archive 的 transfer receipt SHA-256 `c0e0cb823d172c052db201351d7db0dc3d170f6b436003d37d4815ce28015fe4` 驗證通過。它檢查全部 26 項 inventory 的存在與 size，並重新計算 12 個選定來源檔的 content hash，包含 run02 SQLite snapshot、v2 manifest/rows、price/technical receipts、recovery receipt/diff/row hashes、tracked verifier 與既有 negative gate probe；**沒有重新計算全部 26 個封存檔案的 content hash**。正式 gate probe 沿用封存證據，0050／1256／1477 仍是 `DailyPriceSourceRevisionError`；research union validator 仍以 `ValueError: unsupported research union manifest schema` 拒絕該 custody schema。Preview 本身不呼叫該正式 gate。
+
+本次沒有 feature registry/model family 綁定、全訓練期間 corrected rolling-feature 依賴重建證據、特徵名稱／順序／dtype／缺值契約比對，也沒有 materialized horizon labels 或來源 `available_at` 證據。輸出將 horizon end 與 label availability 分開留為 pending，因此 `future_research_candidate_accepted=false`、`model_training_input_compatible=false`。所有 formal/OOS/PIT/promotion flags 保持 false、`production_alpha_bp=0`；未載入模型、未 fit、未寫 DB。
+
+重現輸出原始位置為隔離 worktree ignored QA 路徑 `output/qa/revision_aware_acceptance_preview/runs/ed46d5a9c542218ed1f62c85/acceptance_preview.json`，SHA-256 `ab84f636914f650bb7b9f5e69bfa4eabb990311041b002d54b3369cee78f0875`。為在移除暫存 worktree 後保留唯一真實 preview，create-only 副本位於 `C:\Projects\PythonProjects\technical_analysis\output\qa\revision_aware_acceptance_preview_archive\acceptance_preview.json`；逐檔 readback SHA 相同。副本 transfer receipt SHA-256 為 `80f344a0f10c3461076a7a7889838038fa9dd5626ca1053dbc3905f2c419be0b`。這些輸出仍是 ignored QA artifact，不提交 Git。R027 仍只負責隔離驗證；R028 負責 technical writer/orchestration 遷移，不承接此 revision-aware acceptance 或訓練資料／fit。
+
+原始 worktree output 路徑只在該 linked worktree 存在時有效；永久 preview 副本與 transfer receipt 位於主 repo ignored archive。保留的 D archive/run01/run02 receipts 與此 preview 都是 research-only/non-release，不是模型重訓結果。
+
+focused synthetic tests：`python -B -m pytest -q -o addopts= -p no:cacheprovider tests/test_ml_daily_price_revision_acceptance_preview.py`，`4 passed`。測試涵蓋 late-obtained／label pending positive summary、錯誤 transfer hash 拒絕、捏造 historical `available_at` 拒絕及輸出不得覆寫。

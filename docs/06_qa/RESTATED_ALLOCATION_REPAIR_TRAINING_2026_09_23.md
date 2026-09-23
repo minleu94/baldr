@@ -94,6 +94,12 @@ python -B scripts/train_ml_allocation_restated_research.py `
 
 ## 程式與測試
 
+### 真實 v2 metadata 接線補正
+
+Root 在完整 v2 封存後，以真實清冊查出兩處測試 fixture 未涵蓋的 consumer 錯位：corrected-subset lineage 原本漏接受其實際 `revision_observed_at`，且錯把 merge code SHA 預期放在不存在的 `patch.merge_recipe_sha256`。現在逐一驗證兩份 lineage 的實際觀測時間；merge code SHA 依既有 producer 契約綁定 `builder_code_sha256` 與 `computation_source_hashes.v2_row_merge`，patch 欄位、版本、22 檔範圍與 baseline／append counts 嚴格核對。沒有修改封存清冊來配合讀取器。
+
+完整 v2 為 **3,496,189 列、13 年分片、62 特徵**，manifest file SHA-256 `9b0603b6df3921af1711d971b9e09e881849fdca4743e265d3798299b9a955ce`，custody sidecar SHA-256 `e0062d9af685b383d09c96400d58fb34dd555ffb5a36c4afa88b60fae2b4e9e0`。Root 全欄比對確認 37,115 列精確取自 corrected subset、3,459,074 列完整保留 parent、合併不新增列；完整 metadata／lineage／custody preflight 均通過。此處只表示全量訓練輸入已驗收，實際 fit 結果另列。
+
 - Runner：`ml_module/restated_h5_training_runner.py`
 - CLI：`scripts/train_ml_allocation_restated_research.py`
 - 聚焦測試：`tests/test_restated_h5_training_runner.py`、`tests/test_restated_h5_training_input_integrity.py`、`tests/test_restated_neutral_meta_lineage.py`

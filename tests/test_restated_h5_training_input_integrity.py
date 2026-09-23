@@ -23,6 +23,7 @@ from data_module.ml_restatement_research_dataset import (
 from ml_module.restated_h5_training_runner import (
     _close_research_arrays,
     _require_source_custody_for_row_count,
+    _verify_v2_lineage_manifest_files,
     load_sealed_research_rows,
 )
 
@@ -440,6 +441,7 @@ def _write_v2_dataset(
             "manifest_file_sha256": "sha256:" + hashlib.sha256(corrected_path.read_bytes()).hexdigest(),
             "dataset_identity_hash": corrected_manifest["dataset_identity_hash"],
             "row_count": 2,
+            "revision_observed_at": corrected_manifest["revision_observed_at"],
             "symbols": corrected_symbols,
         },
     }
@@ -448,7 +450,9 @@ def _write_v2_dataset(
         "replaced_row_count": 2,
         "added_row_count": 0,
         "corrected_subset_appended_row_count": 1,
-        "merge_recipe_sha256": builder_hash,
+        "patch_version": "symbol-row-replace-by-row-id.v1",
+        "symbols": corrected_symbols,
+        "corrected_subset_baseline_row_count": 1,
         "verification_summary": {
             "parent_row_ids_preserved": True,
             "parent_targets_exact_for_all_parent_rows": True,
@@ -757,6 +761,43 @@ def test_v2_loader_replays_lineage_cash_targets_and_external_source_custody(
         assert data.dataset_identity_hash == manifest["dataset_identity_hash"]
     finally:
         _close_research_arrays(data)
+
+
+def test_v2_lineage_binds_corrected_subset_observation_clock(tmp_path: Path, monkeypatch) -> None:
+    manifest_path, manifest = _write_v2_dataset(tmp_path / "dataset", monkeypatch)
+    assert manifest_path.is_file()
+    corrected_binding = manifest["dataset_lineage"]["corrected_subset"]
+    assert corrected_binding["revision_observed_at"] == _AS_OF
+    corrected_binding["revision_observed_at"] = "2026-09-22T04:00:00+00:00"
+    with pytest.raises(
+        ValueError,
+        match="corrected_subset revision observation clock differs from its source manifest",
+    ):
+        _verify_v2_lineage_manifest_files(manifest)
+
+
+@pytest.mark.parametrize("mutation", ["builder_hash", "patch_scope", "invented_recipe_field"])
+def test_v2_loader_rejects_rehashed_merger_contract_drift(
+    tmp_path: Path, monkeypatch, mutation: str,
+) -> None:
+    import ml_module.restated_h5_training_runner as runner
+
+    monkeypatch.setattr(runner, "ORIGINAL_DIRECT_TARGET_ROW_COUNT", 2)
+    monkeypatch.setattr(runner, "CORRECTED_SUBSET_APPENDED_ROW_COUNT", 1)
+    manifest_path, manifest = _write_v2_dataset(tmp_path / "dataset", monkeypatch)
+    if mutation == "builder_hash":
+        manifest["builder_code_sha256"] = _sha("f")
+        message = "merge recipe hash differs"
+    else:
+        if mutation == "patch_scope":
+            manifest["patch"]["symbols"] = manifest["patch"]["symbols"][:1]
+        else:
+            manifest["patch"]["merge_recipe_sha256"] = manifest["builder_code_sha256"]
+        message = "patch differs from the sealed merger contract"
+    _seal_v2_identity(manifest, _V2_IDENTITY_FIELDS)
+    _write_manifest(manifest_path, manifest)
+    with pytest.raises(ValueError, match=message):
+        _load(manifest_path, tmp_path)
 
 
 @pytest.mark.parametrize(

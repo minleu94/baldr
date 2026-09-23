@@ -2401,7 +2401,14 @@ def _validate_v2_dataset_lineage(manifest: Mapping[str, Any]) -> None:
         expected_keys = (
             {"manifest_path", "manifest_file_sha256", "dataset_identity_hash", "row_count", "revision_observed_at"}
             if name == "parent_v1"
-            else {"manifest_path", "manifest_file_sha256", "dataset_identity_hash", "row_count", "symbols"}
+            else {
+                "manifest_path",
+                "manifest_file_sha256",
+                "dataset_identity_hash",
+                "row_count",
+                "revision_observed_at",
+                "symbols",
+            }
         )
         if set(item) != expected_keys:
             raise ValueError(f"v2 dataset_lineage.{name} fields differ from the frozen contract")
@@ -2413,11 +2420,12 @@ def _validate_v2_dataset_lineage(manifest: Mapping[str, Any]) -> None:
         count = item.get("row_count")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError(f"v2 dataset_lineage.{name}.row_count must be a positive integer")
+        bound_revision_clock = _aware_datetime(
+            item.get("revision_observed_at"),
+            field_name=f"dataset_lineage.{name}.revision_observed_at",
+        )
         if name == "parent_v1":
-            parent_revision_clock = _aware_datetime(
-                item.get("revision_observed_at"),
-                field_name="dataset_lineage.parent_v1.revision_observed_at",
-            )
+            parent_revision_clock = bound_revision_clock
     corrected = lineage["corrected_subset"]
     symbols = corrected.get("symbols")
     try:
@@ -2496,17 +2504,19 @@ def _verify_v2_lineage_manifest_files(
             or child.get("row_count") != binding["row_count"]
         ):
             raise ValueError(f"v2 lineage {name} manifest identity or row count mismatch")
+        bound_revision_clock = _aware_datetime(
+            binding.get("revision_observed_at"),
+            field_name=f"dataset_lineage.{name}.revision_observed_at",
+        )
+        source_revision_clock = _aware_datetime(
+            child.get("revision_observed_at"),
+            field_name=f"{name}.revision_observed_at",
+        )
+        if source_revision_clock != bound_revision_clock:
+            raise ValueError(
+                f"v2 {name} revision observation clock differs from its source manifest"
+            )
         if name == "parent_v1":
-            bound_revision_clock = _aware_datetime(
-                binding.get("revision_observed_at"),
-                field_name="dataset_lineage.parent_v1.revision_observed_at",
-            )
-            source_revision_clock = _aware_datetime(
-                child.get("revision_observed_at"),
-                field_name="parent_v1.revision_observed_at",
-            )
-            if source_revision_clock != bound_revision_clock:
-                raise ValueError("v2 parent revision observation clock differs from its source manifest")
             parent_clock = source_revision_clock
         _validate_complete_restatement_manifest(child)
         if name == "corrected_subset":
@@ -2515,10 +2525,7 @@ def _verify_v2_lineage_manifest_files(
                 sorted(binding.get("symbols", []))
             ):
                 raise ValueError("v2 corrected subset symbols differ from its source manifest")
-            corrected_clock = _aware_datetime(
-                child.get("revision_observed_at"),
-                field_name="corrected_subset.revision_observed_at",
-            )
+            corrected_clock = source_revision_clock
             if _aware_datetime(
                 manifest.get("training_as_of"), field_name="training_as_of"
             ) != corrected_clock:
@@ -2539,8 +2546,21 @@ def _validate_v2_patch_summary(manifest: Mapping[str, Any]) -> None:
         raise ValueError("v2 patch must declare row_id as its join key")
     parent = manifest["dataset_lineage"]["parent_v1"]
     corrected = manifest["dataset_lineage"]["corrected_subset"]
+    if (
+        set(patch) != {
+            "join_key", "symbols", "patch_version", "replaced_row_count", "added_row_count",
+            "corrected_subset_baseline_row_count", "corrected_subset_appended_row_count",
+            "verification_summary",
+        }
+        or patch.get("patch_version") != "symbol-row-replace-by-row-id.v1"
+        or patch.get("symbols") != corrected["symbols"]
+    ):
+        raise ValueError("v2 patch differs from the sealed merger contract or corrected scope")
     counts: dict[str, int] = {}
-    for field in ("replaced_row_count", "added_row_count", "corrected_subset_appended_row_count"):
+    for field in (
+        "replaced_row_count", "added_row_count", "corrected_subset_appended_row_count",
+        "corrected_subset_baseline_row_count",
+    ):
         value = patch.get(field)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(f"v2 patch.{field} must be a non-negative integer")
@@ -2555,7 +2575,8 @@ def _validate_v2_patch_summary(manifest: Mapping[str, Any]) -> None:
         raise ValueError("v2 corrected-subset appended count exceeds corrected-subset row count")
     if counts["corrected_subset_appended_row_count"] != CORRECTED_SUBSET_APPENDED_ROW_COUNT:
         raise ValueError("v2 corrected-subset append count differs from the verified source scope")
-    _normalize_sha(patch.get("merge_recipe_sha256"), "patch.merge_recipe_sha256")
+    if counts["corrected_subset_baseline_row_count"] + counts["corrected_subset_appended_row_count"] != corrected["row_count"]:
+        raise ValueError("v2 corrected-subset baseline and append counts differ from its row count")
     summary = patch.get("verification_summary")
     if not isinstance(summary, dict):
         raise ValueError("v2 patch verification_summary is required")
@@ -2612,7 +2633,7 @@ def _validate_v2_computation_hashes(manifest: Mapping[str, Any]) -> None:
         computation["corrected_subset_builder"], "computation_source_hashes.corrected_subset_builder"
     ):
         raise ValueError("v2 corrected subset builder hash differs from its computation binding")
-    if _normalize_sha(manifest.get("patch", {}).get("merge_recipe_sha256"), "patch.merge_recipe_sha256") != _normalize_sha(
+    if _normalize_sha(manifest.get("builder_code_sha256"), "builder_code_sha256") != _normalize_sha(
         computation["v2_row_merge"], "computation_source_hashes.v2_row_merge"
     ):
         raise ValueError("v2 merge recipe hash differs from its computation binding")

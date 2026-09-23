@@ -2,6 +2,8 @@
 
 ## 結果與邊界
 
+最新官方市場 v3 已完成 3,496,189 列資料驗收、全部 3,433,790 個成熟候選列的 H5 fit、三份 heldout 的 114 個指標獨立驗算，以及新擷取 13 檔資料推論。Release=`restated-repair-a24d7db1658e6579`，詳細 hashes、來源修復與品質判定見[官方 v3 完整驗收](FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)。市場組極端誤差已收斂，但下跌機率與校準仍不如基準，沒有正式切換。下列 v2／早期樣本段落保留為歷史接線和比較紀錄；v3 的來源 reader／custody v2 另按新文件驗證。
+
 完整 H5 已於臺北 2026-09-23 15:38 以 full v2 資料完成 uncapped ridge/logistic fit、時間切分評估、不可變 release 寫入與 loader 讀回；15:41 另以新擷取資料對 13 檔（含 1256／1477）完成推論。以下樣本段落保留為先前接線歷史，不代表目前仍只訓練了六檔。
 
 完整評估尚未通過品質驗收：多項指標不優於 train-only naive，市場組另有上游成交量來源混用與開高低價代填問題，見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。原 bounded 雙算法家族由[另一份完整重訓 QA](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)記錄。兩組新產物均保持研究用途；formal OOS、production alpha/action、broker order 與 active pointer 沒有啟用／切換。

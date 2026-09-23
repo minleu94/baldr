@@ -2,7 +2,16 @@
 
 ## 目前判定
 
-股票修訂 v2 的兩家族 fit／最新資料推論均完成；其評估另發現大盤來源缺陷。官方來源追加修復已核驗 153 個月、306 份回應，bounded 官方 v3 亦完成 17,285 列 fit、13 檔最新資料的 312 組預測，以及 327,816 筆 base OOF 獨立誤差重算。四期間 pooled MAE 與 downside Brier 均未勝 train-only 基準，不能由執行成功推論品質達標。全市場 H5 官方 v3 尚在建置，因此整體修復未結案；既有舊模型隔離、rule_only 與正式權限保持。詳見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)及[bounded 新舊版本評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)。
+兩個受影響家族的股票／官方市場來源研究重建、完整 fit、獨立誤差核對與 13 檔最新資料推論均已完成。本輪工程修復結案，**預測品質仍不支持正式啟用**：bounded 四期間 pooled MAE／downside Brier 未勝 train-only 基準；H5 市場組異常風險誤差雖已大幅收斂，三組 downside Brier 仍不如基準、校準後亦未改善。舊模型隔離、rule_only、alpha=0 與 production pointers 保持；正式大盤 SQLite／CSV 未寫回，歷史產業 labels／配置 targets 等限制不冒稱已解決。最新完整證據見[全市場 v3 驗收](FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)、[bounded 評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)及[來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。以下 v1/v2 段落保留為修復過程紀錄。
+
+## 最終研究產物
+
+| 家族 | 修訂資料／最終 fit | 驗證 | 最新資料推論 |
+| --- | --- | --- | --- |
+| 全市場 H5 官方 v3 | 3,496,189 列／全部 3,433,790 個成熟候選列 | 三份相同 144,088 列 heldout、114 個指標獨立重算 | 13 檔 × 3 experts，17:33 臺北時間 |
+| Bounded 官方 v3 | 17,285 列，兩算法／四期間／24 experts | 327,816 筆 OOF、864 個全 heads 分組核對 | 13 檔 × 24 experts，16:48 臺北時間 |
+
+兩組皆使用真實修訂鐘與新資料／模型 identity，保留來源缺值和 62 欄契約。全市場 release=`restated-repair-a24d7db1658e6579`；bounded fit 在 `bounded_official_market_restatement_v3_run01/training_run02`。所有產物保存在 `E:/codex_model_repair_20260923/`，正式權限未提升。這次已核准的清理沒有阻擋重建；原始來源、備份、隔離模型及新產物保留。
 
 ## 已確認的修復範圍
 

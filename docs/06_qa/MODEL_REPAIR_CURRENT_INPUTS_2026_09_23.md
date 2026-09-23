@@ -1,6 +1,12 @@
 # 修訂模型的當日研究輸入
 
-本輪以隔離分支實作當日研究入口；股票修訂 v2 兩家族均完成讀回，追加官方市場 v3 目前完成 bounded 的新模型推論，全量 H5 v3 尚待新資料與 fit。品質驗收未通過，日常正式模型沒有切換。下方 v2 與六股票樣本保留為較早的接線紀錄。
+本輪以隔離分支實作當日研究入口；追加官方市場 v3 的兩家族均已完成新模型和最新資料讀回。品質驗收仍未支持正式使用，日常正式模型沒有切換。下方 v2 與六股票樣本保留為較早的接線紀錄。
+
+## 官方市場 v3 的全市場 H5 最新輸入
+
+完整 release=`restated-repair-a24d7db1658e6579` 完成後，從正式 SQLite 新的唯讀 transaction 擷取 13 檔股票前綴，市場讀核驗官方月報。實際 capture=`2026-09-23T17:33:24.366687+08:00`、feature as-of=9/22；39 個 base experts 均產生輸出、neutral fallback=0、產業 excess head 全部保持 missing。meta 仍是固定 cash-only，沒有學會持股配置。
+
+Receipt 位於 `E:/codex_model_repair_20260923/current_inference/full_official_v3_run01/current_shadow/d55fd60a206334cc3b9b63a280c734bbf51d126e9dfb29a8f0e301910663b64c.json`，file SHA `ffe1652acb7209b6da35fef2fe58f30780d77e85022cf0c3fe079c01ae76177a`。Root 已重算 body hash、核對模型／新舊來源身分、由 strict provider 重驗輸入前綴與 prepared rows，確認數值型態、機率範圍與非正式權限。完整 metadata、heldout 及 readback 證據見[官方 v3 驗收](FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)。
 
 ## 官方市場 v3 的 bounded 最新輸入
 

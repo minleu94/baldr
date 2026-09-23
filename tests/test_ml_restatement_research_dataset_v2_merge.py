@@ -87,6 +87,7 @@ def test_merge_partition_replaces_matching_row_and_keeps_parent_order(tmp_path: 
     assert stats.replaced_rows == 1
     assert stats.appended_rows == 0
     assert stats.target_rows_checked == 1
+    assert stats.target_observed_counts == (2, 2, 2, 2, 2, 2)
 
 
 def test_merge_partition_rejects_changed_original_targets(tmp_path: Path) -> None:

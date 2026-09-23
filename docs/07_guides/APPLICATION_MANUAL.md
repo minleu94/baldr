@@ -83,6 +83,8 @@ bounded 缺價排除可能讓原日期窗中的有效決策日減少。consumer 
 
 以下入口供維護者重現本次修復，一般看盤不必執行。先驗收完整來源與標籤，再指定新的輸出目錄；執行成功不會切換正式模型。
 
+正式來源補回／排除交易日後，使用 `scripts/build_ml_restatement_candidate.py` 建立新的完整研究資料。必填 `--snapshot-db`／`--expected-snapshot-sha256`、`--source-manifest`／`--expected-source-manifest-sha256`，以及 `--official-market-manifest`／`--official-market-hash`；這些參數必須同時對應本輪已核驗的 run02 快照、來源清冊與官方市場封存，不能任意換成其他資料庫。`--output-dir` 是全新資料集目錄，`--custody-dir` 是資料集外的全新查核目錄；程式另外保存來源 profile，逐一核對價格、大盤、補回交易日與排除紀錄。完整重建不加 `--symbols`、日期篩選、`--limit-rows` 或 `--no-appends`。來源或證據不符即停止，保留失敗輸出並查明原因；不要修改 hash 或沿用舊資料身分。此入口不寫正式 SQLite、原始日檔或模型 pointer，完整 fit 與獨立驗收仍須接續完成，紀錄見[修復來源候選 QA](../06_qa/REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)。
+
 - 全市場 H5 使用 `scripts/train_ml_allocation_restated_research.py`：`--manifest` 指定已完成的修訂資料清冊，`--source-custody`／`--source-custody-hash` 綁定清冊外的建置與來源查核證據，`--output-root` 指定新模型根目錄，`--horizons 5` 保留原 H5 家族。`--batch-size` 控制分批讀取量；`--logistic-iterations` 預設 6，改變它會形成不同訓練設定。`--max-fit-rows` 僅供小樣本接線驗證，完整重訓不得設定。超過 100,000 列卻沒有 custody 證據、缺分片、來源遭變更或時鐘不符，均停止並保留失敗證據。
 - 原 bounded 家族使用 `scripts/train_bounded_restated_research.py --publication-dir <RESTATED_DATASET> --output-directory <NEW_FIT_DIRECTORY>`。`--random-state` 預設 42、`--hgb-max-iter` 預設 60、`--ridge-alpha` 預設 1；這些是明確的新訓練設定，不宣稱等同未記錄的舊模型設定。資料須包含完整特徵重算與標籤修訂，只有標籤補算的中間版本不能當最終來源。
 

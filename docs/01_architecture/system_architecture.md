@@ -15,6 +15,8 @@
 
 研究資料引用的官方月報按每個月份自己的截止日核對真正取得時鐘。已完成月份可沿用較早封存回應；較新的九月來源不會改寫歷史回應的日期。修復後候選的快照、官方回應與正式來源修訂證據共同建立新版本，驗收見[修復來源候選](../06_qa/REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)。
 
+`ml_restatement_research_candidate_source.py` 核驗本輪固定來源 profile，`build_ml_restatement_candidate.py` 再交既有 v3 builder 重建研究資料。原 v3 預設來源不變；新路徑必須提供完整 profile，將其檔案 hash 納入 dataset identity，消費者重驗來源和修訂證據。H5 的股票特徵從不可變更日價前綴計算，不讀快照中尚未發布的新技指；取得時間維持實際修訂鐘。來源檢查與全量重算只在離線候選工作執行，不加入日常 UI 開頁流程。
+
 ## 個股研究、資料新鮮度與持倉證據邊界
 
 - 持倉與觀察清單透過共同 `stockResearchRequested` 導向 `StockResearchReportDialog`。`StockResearchReportReadService` 組合既有SQLite、保存推薦與持倉服務，再交 `StockResearchReportDTO`／Qt view呈現；不在UI新增第二套股票評分或交易引擎。

@@ -381,6 +381,7 @@ class RestatedDatasetBuilder:
         self, *, snapshot_db: Path = _SOURCE_DB, direct_manifest: Path = _DIRECT_MANIFEST,
         corporate_action_manifest: Path = _CA_MANIFEST, output_dir: Path = _DEFAULT_OUTPUT,
         kernel_root: Path | None = None, revision_observed_at: str | None = None,
+        expected_snapshot_sha256: str = _EXPECTED_SNAPSHOT_SHA,
         batch_size: int = 8_192, decision_date_start: date | None = None,
         decision_date_end: date | None = None, limit_rows: int | None = None,
         include_appends: bool = True, symbols: Sequence[str] = (),
@@ -405,8 +406,8 @@ class RestatedDatasetBuilder:
         self.contract = load_contract(direct_manifest)
         self._verified_years: set[int] = set()
         self.snapshot_sha = sha256_file(snapshot_db)
-        if self.snapshot_sha != _EXPECTED_SNAPSHOT_SHA:
-            raise ValueError("input snapshot hash differs from the authorized immutable source")
+        if self.snapshot_sha != expected_snapshot_sha256:
+            raise ValueError("input snapshot hash differs from its authorized immutable source profile")
         if self.contract.direct_manifest_file_hash != _EXPECTED_DIRECT_MANIFEST_SHA:
             raise ValueError("Direct source manifest hash differs from the audited baseline")
         self.transfer_receipt_sha = sha256_file(_TRANSFER_RECEIPT)

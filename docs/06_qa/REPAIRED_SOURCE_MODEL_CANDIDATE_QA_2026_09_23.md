@@ -15,3 +15,9 @@
 官方來源 reader 對每個月檢查 `min(月底, 全局截止日)` 嚴格早於該回應真正取得的臺北日期；全局截止日仍須早於清冊完成日，任何回應不得晚於清冊完成時鐘。較早已完成月份可以沿用封存回應，不能修改取得時間來通過新月份的驗證。28 個 focused tests 通過，包含舊月份沿用、同日尚不可得、未完成月份與未來回應拒絕。
 
 本候選只標記 restated research；晚期修訂取得時間不回填至歷史決策日，不授予 historical PIT、formal OOS、production action 或 promotion。缺失的歷史產業標籤與現金配置 targets 仍是原契約的限制。
+
+## 候選建置入口與來源檢查
+
+`scripts/build_ml_restatement_candidate.py` 先建立外部來源 profile，再交既有 v3 builder；原入口的預設股票快照與驗證規則不變。本輪固定新快照若移除 profile reference，消費者會拒絕。Profile 綁定四組已套用修訂、官方回應、run02 source.json／SQLite hashes，以及 validator 程式內容。建立時程式路徑保留作追溯，相同內容的程式換到另一 checkout 不會僅因路徑不同而失敗；程式內容或來源證據變更仍須重新核驗。
+
+真實唯讀來源 smoke 已確認九日 14,869 列的全部 17 欄、5/20 全日 1,954 列中受保護的 868 列與保留的 1,086 列、2,942 個排除 key 和官方 3,106 日。Profile、receipt 與 log 留在 repo 本機 QA 目錄；72 項 candidate／v3／current-input／training-integrity tests、4 檔 targeted mypy、py_compile 及 CLI 入口通過。這是建置前檢查，不能取代後續全量資料與模型驗收。

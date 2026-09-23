@@ -13,6 +13,13 @@ from data_module.ml_restatement_official_market import (
 from data_module.ml_restatement_research_dataset import (
     RestatedDatasetBuilder, canonical_hash, sha256_file,
 )
+from data_module import ml_restatement_research_candidate_source as candidate_source
+from data_module.ml_restatement_research_candidate_source import (
+    CANDIDATE_SNAPSHOT_SHA256,
+    CandidateSourceProfile,
+    candidate_profile_reference,
+    verify_candidate_source_profile,
+)
 
 
 V3_SCHEMA_VERSION = "portfolio-ml-restated-research-dataset.v3"
@@ -101,6 +108,38 @@ def validate_v3_manifest_sources(manifest: Mapping[str, Any]) -> OfficialMarketC
         or manifest["revision"] != manifest["source_hashes"]["snapshot_db"]["sha256"]
     ):
         raise ValueError("v3 來源 alias、builder 或 stock revision 不一致")
+    source_hashes = manifest["source_hashes"]
+    candidate_capture: OfficialMarketCapture | None = None
+    profile_reference = source_hashes.get("candidate_source_profile")
+    snapshot_source = source_hashes.get("snapshot_db")
+    if not isinstance(snapshot_source, dict):
+        raise ValueError("v3 snapshot source identity 格式不符")
+    if profile_reference is None:
+        if snapshot_source.get("sha256") == CANDIDATE_SNAPSHOT_SHA256:
+            raise ValueError("非基準 snapshot 缺少已驗證 candidate source profile")
+    else:
+        if not isinstance(profile_reference, dict) or set(profile_reference) != {"path", "file_sha256"}:
+            raise ValueError("v3 candidate source profile reference 欄位不符")
+        if not isinstance(profile_reference.get("path"), str) or not isinstance(profile_reference.get("file_sha256"), str):
+            raise ValueError("v3 candidate source profile reference 型別不符")
+        observed_for_profile = datetime.fromisoformat(manifest["revision_observed_at"])
+        candidate_profile = verify_candidate_source_profile(
+            Path(profile_reference["path"]),
+            profile_reference["file_sha256"],
+            as_of=observed_for_profile,
+        )
+        if (
+            snapshot_source != {
+                "path": str(candidate_profile.snapshot_db),
+                "sha256": candidate_profile.snapshot_sha256,
+            }
+            or source_hashes.get("official_market_capture") != {
+                "path": str(candidate_profile.market_manifest),
+                "file_sha256": candidate_profile.market_sha256,
+            }
+        ):
+            raise ValueError("v3 candidate profile 與 snapshot/official market aliases 不一致")
+        candidate_capture = candidate_profile.market_capture
     source = manifest.get("market_source")
     expected_keys = {
         "contract", "manifest_path", "manifest_file_sha256", "available_at", "cutoff_date",
@@ -125,7 +164,7 @@ def validate_v3_manifest_sources(manifest: Mapping[str, Any]) -> OfficialMarketC
     created = datetime.fromisoformat(manifest["dataset_created_at"])
     if created.tzinfo is None or created.utcoffset() is None or created < observed:
         raise ValueError("v3 dataset_created_at 早於來源修訂")
-    capture = load_official_market_capture(
+    capture = candidate_capture or load_official_market_capture(
         Path(source["manifest_path"]), expected_file_sha256=source["manifest_file_sha256"], as_of=observed,
     )
     if (
@@ -145,28 +184,55 @@ class OfficialMarketDatasetBuilder(RestatedDatasetBuilder):
         output_dir: Path, custody_dir: Path, symbols: Sequence[str] = (),
         decision_date_start: date | None = None, decision_date_end: date | None = None,
         limit_rows: int | None = None, include_appends: bool = True,
+        candidate_source_profile_path: Path | None = None,
+        candidate_source_profile_sha256: str | None = None,
     ) -> None:
         self.started_at = datetime.now(timezone.utc)
         self.start_code_hashes = computation_hashes()
-        self.official_market = load_official_market_capture(
-            official_market_manifest, expected_file_sha256=official_market_hash, as_of=self.started_at,
-        )
+        if (candidate_source_profile_path is None) != (candidate_source_profile_sha256 is None):
+            raise ValueError("candidate source profile path/hash must be supplied together")
+        self.candidate_source_profile: CandidateSourceProfile | None = None
+        parent_source: dict[str, Any] = {}
+        if candidate_source_profile_path is not None:
+            self.candidate_source_profile = verify_candidate_source_profile(
+                candidate_source_profile_path,
+                str(candidate_source_profile_sha256),
+                as_of=self.started_at,
+            )
+            if (
+                official_market_manifest.resolve() != self.candidate_source_profile.market_manifest.resolve()
+                or official_market_hash != self.candidate_source_profile.market_sha256
+            ):
+                raise ValueError("candidate profile 與指定 official market capture 不一致")
+            self.official_market = self.candidate_source_profile.market_capture
+            parent_source = {
+                "snapshot_db": self.candidate_source_profile.snapshot_db,
+                "expected_snapshot_sha256": self.candidate_source_profile.snapshot_sha256,
+            }
+        else:
+            self.official_market = load_official_market_capture(
+                official_market_manifest, expected_file_sha256=official_market_hash, as_of=self.started_at,
+            )
         self.custody_dir = custody_dir.resolve()
         if self.custody_dir == output_dir.resolve() or self.custody_dir.is_relative_to(output_dir.resolve()):
             raise ValueError("custody 目錄必須在封存資料集外")
         super().__init__(
             output_dir=output_dir, revision_observed_at=self.started_at.isoformat(),
             symbols=symbols, decision_date_start=decision_date_start, decision_date_end=decision_date_end,
-            limit_rows=limit_rows, include_appends=include_appends,
+            limit_rows=limit_rows, include_appends=include_appends, **parent_source,
         )
         self.start_source_verified_at = datetime.now(timezone.utc)
         self.revision_observed_at = self.start_source_verified_at.isoformat()
         self.observed_clock = self.start_source_verified_at
 
     def _load_market(self) -> dict[date, dict[str, Any]]:
-        # base __init__ 仍驗證 run02 的唯一授權 SHA；它只提供股票來源。
+        # base __init__ 已核對基準 SHA，candidate route 則要求完整修訂快照 SHA。
         original = super()._load_market()
         official = self.official_market
+        if self.candidate_source_profile is not None:
+            if set(original) != set(official.rows):
+                raise ValueError("candidate official market calendar differs from the repaired source snapshot")
+            return {day: dict(row) for day, row in official.rows.items()}
         if (
             set(original) - set(official.rows) != set(official.original_calendar_missing)
             or set(official.rows) - set(original) != set(official.additional_official_dates)
@@ -205,6 +271,10 @@ class OfficialMarketDatasetBuilder(RestatedDatasetBuilder):
         manifest["source_hashes"]["official_market_capture"] = {
             "path": str(official.manifest_path), "file_sha256": official.manifest_file_sha256,
         }
+        if self.candidate_source_profile is not None:
+            manifest["source_hashes"]["candidate_source_profile"] = candidate_profile_reference(
+                self.candidate_source_profile,
+            )
         manifest["source_manifest_hashes"] = expected_v3_source_pairs(manifest)
         manifest["dataset_identity_fields"] = list(V3_IDENTITY_FIELDS)
         identity = compute_v3_identity_hash(manifest)
@@ -225,6 +295,10 @@ class OfficialMarketDatasetBuilder(RestatedDatasetBuilder):
             "computation_source_hashes": self.start_code_hashes,
             "snapshot_db_sha256": self.snapshot_sha,
             "official_market_manifest_sha256": self.official_market.manifest_file_sha256,
+            "candidate_source_profile": (
+                candidate_profile_reference(self.candidate_source_profile)
+                if self.candidate_source_profile is not None else None
+            ),
             "direct_manifest_file_sha256": self.contract.direct_manifest_file_hash,
             "historical_pit": False,
         }
@@ -235,6 +309,11 @@ class OfficialMarketDatasetBuilder(RestatedDatasetBuilder):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if computation_hashes() != self.start_code_hashes:
             raise RuntimeError("資料建置完成時程式來源變更")
+        if self.candidate_source_profile is not None:
+            candidate_validator = Path(candidate_source.__file__).resolve()
+            expected_validator_sha = self.candidate_source_profile.payload["validator_source"]["file_sha256"]
+            if candidate_source.file_sha256(candidate_validator) != expected_validator_sha:
+                raise RuntimeError("candidate source validator changed during dataset build")
         custody = {
             "schema_version": "model-repair-source-custody.v2",
             "dataset": {

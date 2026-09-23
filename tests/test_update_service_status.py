@@ -1540,6 +1540,13 @@ def test_sync_market_and_industry_csv_to_sqlite_replaces_only_source_dates(tmp_p
         "指數名稱": ["加權指數"],
         "收盤指數": [21000.0],
     }), if_exists="append")
+    # 模擬在名稱正規化上線前已存在的 legacy SQLite row；測試只驗證本次
+    # source-date replacement，不應改寫未受影響的舊日期。
+    with db.connect() as conn:
+        conn.execute(
+            'UPDATE market_indices SET "指數名稱" = ? WHERE "日期" = ?',
+            ("加權指數", "20260528"),
+        )
     pd.DataFrame({
         "日期": ["2026-05-29"],
         "指數名稱": ["加權指數"],
@@ -1565,7 +1572,7 @@ def test_sync_market_and_industry_csv_to_sqlite_replaces_only_source_dates(tmp_p
     industry = db.execute_query("SELECT 日期, 指數名稱, 收盤指數 FROM industry_indices;")
     assert market.to_dict(orient="records") == [
         {"日期": "20260528", "指數名稱": "加權指數", "收盤指數": 21000.0},
-        {"日期": "20260529", "指數名稱": "加權指數", "收盤指數": 21100.0},
+        {"日期": "20260529", "指數名稱": "TAIEX", "收盤指數": 21100.0},
     ]
     assert industry.to_dict(orient="records") == [
         {"日期": "20260529", "指數名稱": "半導體", "收盤指數": 500.0}

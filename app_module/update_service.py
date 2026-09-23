@@ -43,6 +43,10 @@ from data_module.daily_price_source_guard import (
     validate_aggregate_receipt_payload,
     validate_daily_price_frame_date,
 )
+from data_module.daily_price_revision_write_guard import (
+    prepare_daily_price_revision_frame,
+)
+from data_module.formal_market_revision import validate_market_replacement
 from data_module.official_trading_calendar import (
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
@@ -1984,6 +1988,20 @@ class UpdateService :
             raise ValueError (f"無法從 DataFrame 提取有效日期進行替換: table={table_name}")
 
         try :
+            database_path = Path(db.db_path)
+            if table_name == 'daily_prices':
+                df = prepare_daily_price_revision_frame(
+                    database_path,
+                    df,
+                    replace_dates=dates,
+                )
+            elif table_name == 'market_indices':
+                validate_market_replacement(
+                    database_path,
+                    df.to_dict(orient='records'),
+                    replace_dates=True,
+                )
+
             db .ensure_columns (table_name ,list (df .columns ))
             placeholders =','.join ('?'for _ in dates )
             with db .connect ()as conn :
@@ -2006,6 +2024,12 @@ class UpdateService :
             df =df .drop_duplicates (subset =[code_col ,date_col ],keep ='last')
 
         try :
+            if table_name == 'daily_prices':
+                df = prepare_daily_price_revision_frame(
+                    Path(db.db_path),
+                    df,
+                )
+
             db .ensure_columns (table_name ,list (df .columns ))
             with db .connect ()as conn :
                 table_columns =tuple (row ["name"]for row in conn .execute (f"PRAGMA table_info({table_name});").fetchall ())
@@ -2037,6 +2061,20 @@ class UpdateService :
             return True
 
         try :
+            database_path = Path(db.db_path)
+            if table_name == 'daily_prices':
+                df = prepare_daily_price_revision_frame(
+                    database_path,
+                    df,
+                    replace_all=True,
+                )
+            elif table_name == 'market_indices':
+                validate_market_replacement(
+                    database_path,
+                    df.to_dict(orient='records'),
+                    replace_all=True,
+                )
+
             db .ensure_columns (table_name ,list (df .columns ))
             with db .connect ()as conn :
                 conn .execute (f'DELETE FROM {table_name};')

@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import time
 import logging
+import json
+import tempfile
 from tqdm import tqdm
 
 # 將專案根目錄加入 sys.path 以載入 data_module
@@ -12,6 +14,12 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from data_module.config import TWStockConfig
 from data_module.db_manager import DBManager
+from data_module.market_data_integrity import normalize_market_index_frame
+from data_module.daily_price_revision_write_guard import DailyPriceRevisionWriteGuard
+from data_module.historical_session_revision import RECEIPT_DIR as SESSION_RECEIPT_DIR
+from data_module.historical_session_revision import validate_session_replacement
+
+DAILY_MIGRATION_CHUNK_SIZE = 50000
 
 def setup_logging(config: TWStockConfig) -> logging.Logger:
     """設定日誌格式"""
@@ -85,6 +93,33 @@ def standardize_date(date_series: pd.Series) -> pd.Series:
 
     return date_series.apply(convert_single)
 
+
+def _historical_session_revision_dates(database_path: Path) -> set[str]:
+    """只讀取受影響日期，讓遷移前檢查維持有界記憶體用量。"""
+
+    database_root = database_path.resolve().parent
+    if database_root.name.casefold() == 'sqlite':
+        database_root = database_root.parent
+    receipt_root = database_root / SESSION_RECEIPT_DIR
+    dates: set[str] = set()
+    for marker_path in sorted(receipt_root.glob('*/revision.json')):
+        if marker_path.is_symlink() or not marker_path.is_file():
+            raise ValueError(f'歷史交易日修訂標記無效: {marker_path}')
+        json.loads(marker_path.read_text(encoding='utf-8'))
+        plan_path = marker_path.parent / 'plan.json'
+        if plan_path.is_symlink() or not plan_path.is_file():
+            raise ValueError(f'歷史交易日修訂計畫缺失: {plan_path}')
+        plan = json.loads(plan_path.read_text(encoding='utf-8'))
+        raw_dates = plan.get('dates')
+        if not isinstance(raw_dates, list) or not raw_dates:
+            raise ValueError(f'歷史交易日修訂日期範圍無效: {plan_path}')
+        for raw_date in raw_dates:
+            key = str(raw_date).replace('-', '').replace('/', '')[:8]
+            if len(key) != 8 or not key.isdigit():
+                raise ValueError(f'歷史交易日修訂日期無效: {raw_date!r}')
+            dates.add(key)
+    return dates
+
 def migrate_market_and_industry_indices(config: TWStockConfig, db: DBManager, logger: logging.Logger):
     """遷移大盤指數與產業指數 CSV 資料"""
     # 1. 大盤指數
@@ -95,24 +130,9 @@ def migrate_market_and_industry_indices(config: TWStockConfig, db: DBManager, lo
             df = pd.read_csv(market_file, encoding='utf-8-sig')
             if not df.empty:
                 df['日期'] = standardize_date(df['日期'])
-                
-                # 欄位映射與重構以解決大盤指數欄位 KeyError Bug
-                if '收盤指數' not in df.columns and '收盤價' in df.columns:
-                    df['收盤指數'] = df['收盤價']
-                if '指數名稱' not in df.columns:
-                    df['指數名稱'] = '加權指數'
-                
-                # 確保其他 table columns 不會容缺報錯
-                if '漲跌' not in df.columns:
-                    df['漲跌'] = '+'
-                if '漲跌點數' not in df.columns:
-                    df['漲跌點數'] = 0.0
-                if '漲跌百分比' not in df.columns:
-                    df['漲跌百分比'] = 0.0
-                
-                # 篩選所需的欄位寫入資料庫
-                cols_to_keep = ['日期', '指數名稱', '收盤指數', '漲跌', '漲跌點數', '漲跌百分比']
-                df_to_write = df[[c for c in cols_to_keep if c in df.columns]]
+                df = normalize_market_index_frame(df)
+                # 保留來源 OHLCV 與額外欄位；來源缺值維持缺值，不造零填補。
+                df_to_write = df
                 
                 # 保證寫入時覆蓋/新增，使用 replace
                 success = db.write_dataframe('market_indices', df_to_write, if_exists='replace')
@@ -173,37 +193,94 @@ def migrate_daily_prices(config: TWStockConfig, db: DBManager, logger: logging.L
     
     try:
         # 由於此檔案可能很大，我們採用分批 (chunksize) 方式讀取與寫入，以防止記憶體崩潰
-        chunk_size = 50000
+        chunk_size = DAILY_MIGRATION_CHUNK_SIZE
         total_rows = 0
-        
-        # 先清空原本的 Table，以便進行全新且乾淨的寫入
-        with db.connect() as conn:
-            conn.execute("DELETE FROM daily_prices;")
-            
-        chunks = pd.read_csv(all_stocks_file, encoding='utf-8-sig', chunksize=chunk_size, low_memory=False)
-        
-        # 為了進度條，先取得總行數（可選，若檔案太大可跳過，這裡採用快速概估或 tqdm 計數）
-        for chunk in chunks:
-            # 轉換日期
-            chunk['日期'] = standardize_date(chunk['日期'])
-            # 確保證券代號是4位數字字串
-            chunk['證券代號'] = chunk['證券代號'].astype(str).str.zfill(4)
-            
-            # 清理與轉換數值
-            numeric_cols = ['成交股數', '成交筆數', '成交金額', '開盤價', '最高價', '最低價', '收盤價', '漲跌價差',
-                            '最後揭示買價', '最後揭示買量', '最後揭示賣價', '最後揭示賣量', '本益比']
-            for col in numeric_cols:
-                if col in chunk.columns:
-                    chunk[col] = pd.to_numeric(chunk[col], errors='coerce')
-            
-            # 寫入 SQLite
-            success = db.write_dataframe('daily_prices', chunk, if_exists='append')
-            if not success:
-                logger.error("個股每日價格 chunk 寫入 SQLite 失敗！")
-                
-            total_rows += len(chunk)
-            logger.info(f"已遷移 {total_rows} 筆個股每日價格資料...")
-            
+        database_path = Path(db.db_path)
+        revision_guard = DailyPriceRevisionWriteGuard(database_path)
+        numeric_cols = ['成交股數', '成交筆數', '成交金額', '開盤價', '最高價', '最低價', '收盤價', '漲跌價差',
+                        '最後揭示買價', '最後揭示買量', '最後揭示賣價', '最後揭示賣量', '本益比']
+
+        def normalized_chunks(path: Path):
+            for source_chunk in pd.read_csv(
+                path,
+                encoding='utf-8-sig',
+                chunksize=chunk_size,
+                low_memory=False,
+                dtype={'日期': 'string', '證券代號': 'string'},
+            ):
+                source_chunk['日期'] = standardize_date(source_chunk['日期'])
+                source_chunk['證券代號'] = source_chunk['證券代號'].astype(str).str.zfill(4)
+                for column in numeric_cols:
+                    if column in source_chunk.columns:
+                        source_chunk[column] = pd.to_numeric(source_chunk[column], errors='coerce')
+                yield source_chunk
+
+        # 先將已完整掃描、符合 receipt 的來源 spool 到暫存檔；來源錯價或缺少
+        # 任一受保護 key 時，尚未執行 DELETE 或 ALTER TABLE。
+        with tempfile.TemporaryDirectory(prefix='daily-price-migration-preflight-') as temp_dir:
+            staged_file = Path(temp_dir) / 'validated_daily_prices.csv'
+            first_chunk = True
+            for chunk in normalized_chunks(all_stocks_file):
+                prepared = revision_guard.prepare_frame(chunk)
+                prepared.to_csv(
+                    staged_file,
+                    index=False,
+                    mode='w' if first_chunk else 'a',
+                    header=first_chunk,
+                    encoding='utf-8-sig' if first_chunk else 'utf-8',
+                )
+                first_chunk = False
+                total_rows += len(prepared)
+            if total_rows == 0:
+                logger.warning('整合個股價量 CSV 為空，未清除 daily_prices。')
+                return
+            revision_guard.assert_full_replacement_complete()
+
+            session_dates = _historical_session_revision_dates(database_path)
+            session_rows = []
+            for chunk in pd.read_csv(
+                staged_file,
+                encoding='utf-8-sig',
+                chunksize=chunk_size,
+                low_memory=False,
+                dtype={'日期': 'string', '證券代號': 'string'},
+            ):
+                if '日期' not in chunk.columns or '證券代號' not in chunk.columns:
+                    continue
+                day_keys = chunk['日期'].astype(str).str.replace('-', '', regex=False).str.replace('/', '', regex=False).str[:8]
+                session_rows.extend(
+                    chunk.loc[day_keys.isin(session_dates)].to_dict(orient='records')
+                )
+            validate_session_replacement(
+                database_path,
+                session_rows,
+                replace_all=True,
+            )
+
+            # 來源完整驗證後，才允許升級 schema 或刪除資料表內容。
+            source_columns = list(
+                pd.read_csv(staged_file, encoding='utf-8-sig', nrows=0).columns
+            )
+            db.ensure_columns('daily_prices', source_columns)
+
+            # 刪除與所有分批寫入共用同一交易；任一後續批次失敗都會回復原表內容。
+            total_rows = 0
+            quoted_table = '"daily_prices"'
+            with db.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE;")
+                conn.execute(f"DELETE FROM {quoted_table};")
+                staged_chunks = pd.read_csv(
+                    staged_file,
+                    encoding='utf-8-sig',
+                    chunksize=chunk_size,
+                    low_memory=False,
+                    dtype={'日期': 'string', '證券代號': 'string'},
+                )
+                for chunk in staged_chunks:
+                    db._insert_dataframe_rows(conn, 'daily_prices', chunk)
+                    total_rows += len(chunk)
+                    logger.info(f"已遷移 {total_rows} 筆個股每日價格資料...")
+
         elapsed = time.time() - start_time
         logger.info(f"個股每日價格歷史遷移完成！共 {total_rows} 筆，耗時 {elapsed:.1f} 秒！")
         

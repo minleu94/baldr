@@ -364,23 +364,102 @@ class DBManager:
             return False
 
         try:
+            # 在任何動態欄位升級前先驗證歷史修訂範圍，防止舊 CSV 以
+            # DataLoader 的 if_exists='replace' 或一般 append 入口回灌錯價。
+            if table_name == 'daily_prices':
+                from data_module.daily_price_revision_write_guard import (
+                    prepare_daily_price_revision_frame,
+                )
+
+                df = prepare_daily_price_revision_frame(
+                    self.db_path,
+                    df,
+                    replace_all=(if_exists == 'replace'),
+                )
+            elif table_name == 'market_indices':
+                from data_module.market_data_integrity import normalize_market_index_frame
+
+                df = normalize_market_index_frame(df)
+                from data_module.formal_market_revision import validate_market_replacement
+
+                validate_market_replacement(
+                    Path(self.db_path),
+                    df.to_dict(orient='records'),
+                    replace_all=(if_exists == 'replace'),
+                )
+
+            preserve_protected_schema = (
+                if_exists == 'replace'
+                and table_name in {'daily_prices', 'market_indices'}
+                and self.has_table(table_name)
+            )
             # 確保並升級欄位
             self.ensure_columns(table_name, list(df.columns))
 
-            # 使用 pd.DataFrame.to_sql 寫入
-            # 注意：為確保 Transaction 完整性與 WAL 模式順暢，我們透過 connect 上下文獲取 conn
-            with self.connect() as conn:
-                df.to_sql(
-                    name=table_name,
-                    con=conn,
-                    if_exists=if_exists,
-                    index=False
-                )
+            if preserve_protected_schema:
+                # pandas if_exists='replace' 會 DROP/CREATE，刪除既有主鍵、索引
+                # 和其他欄位。受保護表在同一交易內 DELETE+INSERT，確保寫入錯誤
+                # 可回滾，也保留既有 SQLite schema。
+                quoted_table = '"' + table_name.replace('"', '""') + '"'
+                with self.connect() as conn:
+                    conn.execute('BEGIN IMMEDIATE;')
+                    conn.execute(f'DELETE FROM {quoted_table};')
+                    self._insert_dataframe_rows(conn, table_name, df)
+            else:
+                # 使用 pd.DataFrame.to_sql 寫入。一般表維持既有 replace/append 行為。
+                with self.connect() as conn:
+                    df.to_sql(
+                        name=table_name,
+                        con=conn,
+                        if_exists=if_exists,
+                        index=False
+                    )
             self.logger.info(f"成功寫入 {len(df)} 筆資料至 Table {table_name}")
             return True
         except Exception as e:
             self.logger.error(f"寫入 DataFrame 至 Table {table_name} 失敗: {str(e)}")
             return False
+
+    @staticmethod
+    def _insert_dataframe_rows(
+        conn: sqlite3.Connection,
+        table_name: str,
+        df: pd.DataFrame,
+    ) -> None:
+        """使用呼叫端的交易連線，以 executemany 批次寫入 DataFrame。"""
+
+        if df.columns.has_duplicates:
+            raise ValueError(f"{table_name} 寫入欄位不可重複")
+        columns = [str(column) for column in df.columns]
+        quoted_table = '"' + table_name.replace('"', '""') + '"'
+        quoted_columns = ', '.join(
+            '"' + column.replace('"', '""') + '"' for column in columns
+        )
+        placeholders = ', '.join('?' for _ in columns)
+        statement = (
+            f'INSERT INTO {quoted_table} ({quoted_columns}) '
+            f'VALUES ({placeholders})'
+        )
+        values: list[tuple[Any, ...]] = []
+        for row in df.itertuples(index=False, name=None):
+            normalized: list[Any] = []
+            for value in row:
+                try:
+                    missing = bool(pd.isna(value))
+                except (TypeError, ValueError):
+                    missing = False
+                if missing:
+                    normalized.append(None)
+                elif hasattr(value, 'item'):
+                    normalized.append(value.item())
+                else:
+                    normalized.append(value)
+            values.append(tuple(normalized))
+            if len(values) >= 10000:
+                conn.executemany(statement, values)
+                values.clear()
+        if values:
+            conn.executemany(statement, values)
 
     def execute_query(self, sql: str, params: tuple = ()) -> pd.DataFrame:
         """執行 SELECT 查詢並直接返回 Pandas DataFrame"""

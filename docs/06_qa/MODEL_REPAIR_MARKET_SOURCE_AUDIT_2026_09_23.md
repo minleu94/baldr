@@ -59,3 +59,15 @@ H5 loader 現在依固定 v3 identity 欄位核對原始官方回應，保留 62
 相關回歸先跑 88 tests 全通過，再加入官方來源優先於 SQLite／缺 contract 拒絕的實例，current capture 六項 tests 全通過（新增一項、其餘五項重跑）。九個變更模組 targeted mypy（follow-imports=silent）通過；包含依賴的檢查另回報兩個未改動檔的四項既有型態錯誤：technical_indicators.py 三項 TA-Lib enum、update_service.py 一項 normalized annotation。這批沒有修改那些檔案。
 
 全量 v3 從固定 producer commit `56fc40be` 的獨立工作區執行，開始 `2026-09-23T08:15:12.906022+00:00`、來源核驗完成 `08:15:16.387440+00:00`；此處 consumer 修改不動正在執行的 producer。輸出為 `E:/codex_model_repair_20260923/dataset/full_restated_official_market_v3`，未加 row/date/symbol cap。此更新時仍在執行，尚無完整 v3 manifest，兩家族新模型尚未完成；正式資料、15 個重構凍結檔與 production pointers 不變。
+
+## bounded 官方市場修訂入口
+
+新增獨立 `bounded-allocation-official-market-restatement.v1`，父清冊固定為已修復股票前綴的 bounded v2。13 個市場／相依品質欄改取官方來源，其餘 49 欄（包含原先 25 個股票修訂欄）、targets／state 保留；股票修訂欄維持原先真正 availability，不能重新蓋成本次市場 clock。四個 horizon 重新使用原 Decimal／整數 bp 算式，不能只換 benchmark excess。
+
+新日曆可能改變公司事件是否落入 horizon，故重新核對原 bounded 綁定的官方事件清冊，SHA `d9011aadde6902b04481252ffad445604366c576d0b9840a59e528492de2c69b`（`official-market-events-d51d54fa09f8f7e03f9d7fbd`）；依本次真實取得時間計算 label-only exclusion。它與 H5 使用的 corporate-action-adjustments 是不同來源契約，不交叉冒用。缺完整四個價格路徑、非官方決策日及事件交叉列會列入具名排除紀錄，保留原檔。
+
+既有 v1 bounded consumer 的「只有 210 個 H60 修訂且不進原 folds」規則維持；新 profile `restated_official_market_event_maturity.v1` 明示所有 horizon 的實際修訂鐘，保留原四組日期窗、按新標籤成熟日重新選樣，另外回報每個 fold 中的修訂標籤數量，始終 historical_pit／formal_oos／production 為 false。registry 僅允許原 20 個技術來源與新 8 個市場來源定義修訂，62 欄名稱／順序／scale 不變。
+
+七項新增 tests 驗證 Saturday horizon、真實 open、缺價拒絕、公司事件排除、四 horizon 的修訂鐘、新舊 profile 分離、股票原修訂鐘及 registry 範圍；30 項相關回歸通過。三檔 targeted mypy 通過。此階段尚未完成實際 bounded 市場重建／新 fit，不能以程式或測試通過代替產物驗收。
+
+上一批 `2722d411` 已合入 dev `8674cf14`。合入前 207 個其他 owner dirty 檔中，206 檔 bytes 一致；`tests/test_r012_recommendation_artifact_persistence.py` 在六秒檢查區間內由並行工作變動，不在本批修改路徑，未暫存或回復；index 空。

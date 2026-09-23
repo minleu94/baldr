@@ -76,6 +76,10 @@ def _json_hash(value: object) -> str:
 
 def _validate_registry_bridge(manifest: Mapping[str, Any], current_registry_hash: str) -> dict[str, object]:
     """核對技術欄來源的合法修訂，兩個 registry 身分仍各自保留。"""
+    from data_module.bounded_official_market_restatement import OFFICIAL_RESTATEMENT_SCHEMA, validate_official_registry_bridge
+
+    if manifest.get("restatement", {}).get("schema_version") == OFFICIAL_RESTATEMENT_SCHEMA:
+        return validate_official_registry_bridge(manifest, current_registry_hash)
     training_hash = manifest["feature_registry_hash"]
     if training_hash == current_registry_hash:
         return {"status": "identical_registry", "training": training_hash, "current": current_registry_hash}

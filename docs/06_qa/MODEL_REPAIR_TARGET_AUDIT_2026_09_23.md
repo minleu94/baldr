@@ -40,3 +40,11 @@ Root 查核輸出位於獨立整合工作區的 `output/qa/model_repair_review/o
 `4abe164961842e047cbbb96d2d980eb4241376f28c845253940ed5e79ecc937c`
 
 同一整合基線 `2268a98a` 的模型來源隔離、release adapter 與 inference focused tests 共 `58 passed`，另有 joblib 無法查物理核心數而改用邏輯核心的警告一則。兩個既有量化靜態 guard 通過。這些只證明原隔離／載入檢查在該基線可用，不證明新的資料集、重訓或推論已完成。
+
+## 原模型 recipe 與本輪修復範圍
+
+Root 另以唯讀 JSON 核對 H5 derived release 的 `derived_training_manifest.json` 與 parent `portfolio_ml_direct_ooc_training_production_v4_v5/runs/allocation-ooc-868b7e805f5c03c65dc303e4/manifest.json`。H5 選用三個 feature packs 的 `ridge_logistic`，每個 final base expert 原 fit rows 均為 3,353,096。Parent 的 `ridge_alpha_bp=100` 在 frozen trainer 中轉為 `Decimal(100)/Decimal(10000)`，實際 alpha 為 **0.01**，IRLS iterations 為 **6**；不能將 100 bp 直接當成 alpha 100。H5 derived rank contract 為 `allocation-rank-v2:dense_value_tiebreak`，不能因重訓而退回預設 V1。小樣本 fitting 僅供接線驗證，不等同原規模模型修復。
+
+另一個仍由 daily orchestration 預設入口引用的 `ml_allocation_bounded_v4_operational`，其 `training_manifest_v2.json` 記錄 22,093 rows 與 5／10／20／60 四個 horizons；`training_audit_v3.json` 的 expert fold audits 同時包含 `ridge_logistic` 與 `hist_gradient_boosting`。因此，H5 完成或新四 horizon 線性候選模型完成，都不能直接宣稱原 bounded 雙算法模型已修復。這兩條現行消費路徑必須各自驗收。
+
+`DATA_ROOT/models/` 的兩個 legacy 檔案也只讀取實體 metadata 與 hash，未反序列化或刪除：`_EnsembleModel_model.pkl`（3,030,277 bytes，SHA-256 `2bb8ffd4aee0048409e8e6ec7ddb6da8f836fcba9edcbee0b07ad1b2c285f9e5`）與 `2330_EnsembleModel_model.pkl`（2,715,314 bytes，SHA-256 `064271e3948718300267a51bcb5d9d163d629aea4a3c5c671f30d66e4d971904`）。本輪在目前 runtime Python 中未找到其載入入口；檔案修改時間雖為 2024 年，仍不足以證明訓練資料血緣。保留為未確認的 legacy 產物，不把它們算成已驗證安全或已重訓模型。

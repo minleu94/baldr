@@ -28,6 +28,7 @@ from .official_daily_price_custody import (
     persist_official_daily_price_response,
 )
 from .official_market_daily import fetch_official_market_daily, update_market_index_csv
+from .daily_price_source_revision_overlay import load_daily_price_source_revisions
 
 
 def _is_explicit_twse_no_data_status(status: object) -> bool:
@@ -761,37 +762,55 @@ class DataLoader:
     
     def merge_daily_data(self) -> Optional[pd.DataFrame]:
         """合併每日交易數據"""
+        backup_file: Optional[Path] = None
         try:
             daily_price_dir = self.config.daily_price_dir
-            if not daily_price_dir.exists():
+            configured_database_path = getattr(self.config, 'db_file', None)
+            database_path = (
+                Path(configured_database_path)
+                if configured_database_path is not None
+                else Path(daily_price_dir).parent / 'sqlite' / 'twstock.db'
+            )
+            # 在建立備份或輸出前驗證 receipt／plan，避免錯誤證據發布 derived CSV。
+            source_revisions = load_daily_price_source_revisions(database_path)
+            revision_changes = 0
+            excluded_rows_removed = 0
+            if not daily_price_dir.exists() and not self.config.all_stocks_data_file.exists():
                 self.logger.error(f"找不到目錄：{daily_price_dir}")
                 return None
             
             # 檢查現有的合併文件
             last_date = None
             if self.config.all_stocks_data_file.exists():
-                # 創建備份
-                backup_file = self.config.backup_dir / f'stock_data_whole_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
-                self.config.create_backup(self.config.all_stocks_data_file, backup_file)
-                self.logger.info(f"已創建備份文件: {backup_file}")
-                
                 # 讀取現有數據
                 existing_df = pd.read_csv(self.config.all_stocks_data_file, encoding='utf-8-sig', low_memory=False)
                 last_date = str(existing_df['日期'].max())
                 self.logger.info(f"已讀取現有數據，最後更新日期為: {last_date}")
             
             # 獲取所有CSV文件
-            all_csv_files = list(daily_price_dir.glob("*.csv"))
+            all_csv_files = list(daily_price_dir.glob("*.csv")) if daily_price_dir.exists() else []
             if not all_csv_files:
-                self.logger.error(f"在 {daily_price_dir} 中找不到CSV文件")
-                return None
+                if not last_date:
+                    self.logger.error(f"在 {daily_price_dir} 中找不到CSV文件")
+                    return None
             
             # 如果有最後更新日期，只處理新的文件
             if last_date:
                 csv_files = [f for f in all_csv_files if str(f.stem) > last_date]
                 if not csv_files:
-                    self.logger.info("沒有新的數據需要更新")
-                    return existing_df
+                    if source_revisions.has_revision_evidence:
+                        existing_df, changed_cells, removed_rows = source_revisions.apply(existing_df)
+                        revision_changes += changed_cells
+                        excluded_rows_removed += removed_rows
+                        if changed_cells or removed_rows:
+                            self.logger.info(
+                                "沒有新 raw 檔，已套用核驗來源修訂至既有整合檔（欄位值 %s、排除列 %s）",
+                                changed_cells,
+                                removed_rows,
+                            )
+                    if revision_changes == 0 and excluded_rows_removed == 0:
+                        self.logger.info("沒有新的數據需要更新")
+                        return existing_df
                 self.logger.info(f"找到 {len(csv_files)} 個需要處理的新CSV文件")
             else:
                 csv_files = all_csv_files
@@ -828,6 +847,7 @@ class DataLoader:
             
             # 合併所有數據
             merged_data = pd.concat(all_data, ignore_index=True)
+            merged_data['日期'] = merged_data['日期'].astype(str)
             
             # 重新排序列，把日期放在前面
             columns = ['日期', '證券代號', '證券名稱', '成交股數', '成交筆數', '成交金額', 
@@ -840,8 +860,22 @@ class DataLoader:
             
             # 移除重複數據
             merged_data = merged_data.drop_duplicates(subset=['日期', '證券代號'], keep='last')
+            merged_data, changed_cells, removed_rows = source_revisions.apply(merged_data)
+            revision_changes += changed_cells
+            excluded_rows_removed += removed_rows
+            if changed_cells or removed_rows:
+                self.logger.info(
+                    "已套用核驗來源修訂至每日整合檔（欄位值 %s、排除列 %s）",
+                    changed_cells,
+                    removed_rows,
+                )
+            merged_data = merged_data.sort_values(['日期', '證券代號'])
             
             # 保存合併後的數據
+            if self.config.all_stocks_data_file.exists():
+                backup_file = self.config.backup_dir / f'stock_data_whole_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+                self.config.create_backup(self.config.all_stocks_data_file, backup_file)
+                self.logger.info(f"已創建備份文件: {backup_file}")
             merged_data.to_csv(self.config.all_stocks_data_file, index=False, encoding='utf-8-sig')
             self.logger.info(f"成功保存合併後的數據到 {self.config.all_stocks_data_file}")
             
@@ -853,9 +887,9 @@ class DataLoader:
             return merged_data
             
         except Exception as e:
-            self.logger.error(f"合併每日交易數據時發生錯誤: {str(e)}")
+            self.logger.error(f"合併每日交易數據時發生錯誤: {str(e)}", exc_info=True)
             # 如果有備份，嘗試恢復
-            if 'backup_file' in locals() and backup_file.exists():
+            if backup_file is not None and backup_file.exists():
                 self.config.restore_backup(backup_file, self.config.all_stocks_data_file)
                 self.logger.info("已恢復備份文件")
             return None

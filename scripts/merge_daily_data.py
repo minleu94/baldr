@@ -7,6 +7,7 @@ import os
 import tempfile
 import argparse
 import sys
+from collections.abc import Iterable, Mapping
 from typing import Callable, Iterator
 import hashlib
 import json
@@ -23,6 +24,9 @@ from data_module.daily_price_source_guard import (
     discover_daily_price_csvs,
     source_date_from_path,
     validate_daily_price_frame_date,
+)
+from data_module.daily_price_source_revision_overlay import (
+    load_daily_price_source_revisions,
 )
 
 # 設置日誌
@@ -60,6 +64,8 @@ def _write_aggregate_receipt(
     output_file: Path,
     *,
     merged_data: pd.DataFrame,
+    source_revision_evidence: Iterable[Mapping[str, object]] = (),
+    excluded_source_rows_removed: int = 0,
 ) -> Path:
     """在整合檔原子提交後保存內容綁定 receipt。"""
 
@@ -81,6 +87,8 @@ def _write_aggregate_receipt(
         "row_count": int(len(merged_data)),
         "producer": "scripts.merge_daily_data.merge_daily_data",
         "producer_contract": "daily-price-writer-source-guard.v1",
+        "source_revision_evidence": [dict(item) for item in source_revision_evidence],
+        "excluded_source_rows_removed": int(excluded_source_rows_removed),
     }
     encoded = (
         json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -189,12 +197,24 @@ def merge_daily_data(
         logger.warning(f"未提供 config，使用硬編碼路徑: base_dir={base_dir}")
     
     try:
+        configured_database_path = getattr(config, "db_file", None)
+        database_path = (
+            Path(configured_database_path)
+            if configured_database_path is not None
+            else base_dir / "sqlite" / "twstock.db"
+        )
+        # Receipt／plan 在任何備份或 derived CSV 發布前一次驗證。
+        source_revisions = load_daily_price_source_revisions(database_path)
+        revision_changes = 0
+        excluded_rows_removed = 0
         emit_progress("檢查每日資料來源", 5)
         # 確保至少一個日價來源目錄存在
         source_dirs = [daily_price_dir]
         if tpex_daily_price_dir.exists():
             source_dirs.append(tpex_daily_price_dir)
-        if not any(source_dir.exists() for source_dir in source_dirs):
+        if not any(source_dir.exists() for source_dir in source_dirs) and (
+            not output_file.exists() or force_all
+        ):
             raise FileNotFoundError(f"找不到目錄：{daily_price_dir} 或 {tpex_daily_price_dir}")
         
         # 先讀取既有輸入並判斷是否真的需要提交；備份延後到確認
@@ -290,7 +310,7 @@ def merge_daily_data(
             )
         all_csv_files = list(valid_csv_files)
         emit_progress(f"掃描到 {len(all_csv_files)} 個每日 CSV", 10)
-        if not all_csv_files:
+        if not all_csv_files and (not last_date or force_all):
             raise FileNotFoundError(f"在 {daily_price_dir} 或 {tpex_daily_price_dir} 中找不到CSV文件")
         
         # 如果有最後更新日期且非強制模式，只處理新的文件
@@ -312,17 +332,28 @@ def merge_daily_data(
                     f"沒有新資料需要合併；目前整合檔已是最新"
                     f"（最新日期：{no_op_date or '未知'}）"
                 )
-                emit_progress(no_op_message, 100)
-                return {
-                    'success': True,
-                    'cancelled': False,
-                    'no_op': True,
-                    'message': no_op_message,
-                    'merged_files': 0,
-                    'total_records': existing_record_count,
-                    'latest_date': str(no_op_date) if no_op_date else '',
-                    'output_file': str(output_file),
-                }
+                if source_revisions.has_revision_evidence:
+                    existing_df, changed_cells, removed_rows = source_revisions.apply(existing_df)
+                    revision_changes += changed_cells
+                    excluded_rows_removed += removed_rows
+                    if changed_cells or removed_rows:
+                        logger.info(
+                            "無新 raw 檔，已套用核驗來源修訂至既有整合檔（欄位值 %s、排除列 %s）",
+                            changed_cells,
+                            removed_rows,
+                        )
+                if revision_changes == 0 and excluded_rows_removed == 0:
+                    emit_progress(no_op_message, 100)
+                    return {
+                        'success': True,
+                        'cancelled': False,
+                        'no_op': True,
+                        'message': no_op_message,
+                        'merged_files': 0,
+                        'total_records': existing_record_count,
+                        'latest_date': str(no_op_date) if no_op_date else '',
+                        'output_file': str(output_file),
+                    }
             logger.info(f"找到 {len(csv_files)} 個需要處理的新CSV文件 (最後日期: {last_date})")
         else:
             csv_files = all_csv_files
@@ -444,6 +475,16 @@ def merge_daily_data(
         
         # 移除重複數據
         merged_data = merged_data.drop_duplicates(subset=['日期', '證券代號'], keep='last')
+        merged_data, changed_cells, removed_rows = source_revisions.apply(merged_data)
+        revision_changes += changed_cells
+        excluded_rows_removed += removed_rows
+        if changed_cells or removed_rows:
+            logger.info(
+                "已套用核驗來源修訂至每日整合檔（欄位值 %s、排除列 %s）",
+                changed_cells,
+                removed_rows,
+            )
+        merged_data = merged_data.sort_values(['日期', '證券代號'])
         emit_progress("完成排序與去重，準備寫入整合檔", 70)
         
         # 保存合併後的數據。先以同目錄暫存檔逐批寫入，再原子替換目標；
@@ -532,6 +573,8 @@ def merge_daily_data(
         source_receipt = _write_aggregate_receipt(
             output_file,
             merged_data=merged_data,
+            source_revision_evidence=source_revisions.evidence_identities,
+            excluded_source_rows_removed=excluded_rows_removed,
         )
         logger.info(f"成功保存合併後的數據到 {output_file}")
         

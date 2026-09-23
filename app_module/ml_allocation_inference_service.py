@@ -38,6 +38,11 @@ from app_module.portfolio_allocation_dtos import (
 )
 from financial_module.portfolio_turnover import canonical_turnover_bp
 from ml_module.allocation_contracts import PITFeatureValue, PortfolioMLDatasetRow
+from ml_module.restated_research_input_contract import (
+    RESTATED_RESEARCH_PROFILE,
+    RestatedResearchInputBinding,
+    research_rows_hash,
+)
 from ml_module.allocation_rank_contract import (
     DEFAULT_RANK_CONTRACT,
     rank_values_bp,
@@ -273,6 +278,7 @@ class MLAllocationInferenceService:
         policy_hash: str,
         expected_universe_hash: str | None = None,
         allow_research_shadow: bool = False,
+        research_input_binding: RestatedResearchInputBinding | None = None,
     ) -> MLAllocationInferenceResult:
         """產生不具 alpha、apply 或 broker 權限的配置提案。"""
 
@@ -293,6 +299,7 @@ class MLAllocationInferenceService:
         canonical_rows, decision_at = self._validate_rows(
             rows,
             allow_research_shadow=allow_research_shadow,
+            research_input_binding=research_input_binding,
         )
         feature_snapshot_hashes = {
             row.row_id: _feature_snapshot_hash(row) for row in canonical_rows
@@ -504,6 +511,13 @@ class MLAllocationInferenceService:
                 "broker_order_routing",
             ],
         }
+        if research_input_binding is not None:
+            # 原 proposal 的 dataset 欄位仍指模型訓練身分；此次輸入另列，
+            # 不把較新的來源改名為舊 training snapshot。
+            audit_without_replay_hash["research_input_binding"] = {
+                **research_input_binding.to_dict(),
+                "binding_hash": research_input_binding.binding_hash,
+            }
         replay_hash = _sha256_json(audit_without_replay_hash)
         audit_payload = {
             **audit_without_replay_hash,
@@ -522,6 +536,7 @@ class MLAllocationInferenceService:
         rows: Sequence[PortfolioMLDatasetRow],
         *,
         allow_research_shadow: bool = False,
+        research_input_binding: RestatedResearchInputBinding | None = None,
     ) -> tuple[tuple[PortfolioMLDatasetRow, ...], datetime]:
         if not rows:
             raise ValueError("inference rows are required")
@@ -559,6 +574,31 @@ class MLAllocationInferenceService:
         if training_as_of > decision_at:
             raise ValueError("model training_as_of exceeds inference decision_at")
 
+        expected_dataset_identity = self._artifact.dataset_identity_hash
+        expected_sources = self._artifact.source_manifest_hashes
+        if research_input_binding is not None:
+            if (
+                not allow_research_shadow
+                or self._artifact.training_profile != RESTATED_RESEARCH_PROFILE
+                or not isinstance(research_input_binding, RestatedResearchInputBinding)
+            ):
+                raise ValueError("distinct input binding requires a restated research release")
+            if research_input_binding.feature_registry_hash != self._artifact.feature_registry_hash:
+                raise ValueError("research input feature registry differs from training")
+            if tuple(name for name, _ in research_input_binding.ordered_features) != tuple(
+                feature_id for pack in self._artifact.feature_packs for feature_id in pack.feature_ids
+            ):
+                raise ValueError("research input feature order differs from training")
+            if _parse_available_at(research_input_binding.captured_at, field_name="captured_at") != decision_at:
+                raise ValueError("research input capture clock differs from inference")
+            if research_rows_hash(canonical) != research_input_binding.prepared_rows_hash:
+                raise ValueError("prepared research rows changed after binding")
+            for row in canonical:
+                if tuple((feature.feature_id, feature.scale) for feature in row.features) != research_input_binding.ordered_features:
+                    raise ValueError("research input row order or scale differs from binding")
+            expected_dataset_identity = research_input_binding.dataset_identity_hash
+            expected_sources = research_input_binding.source_manifest_hashes
+
         expected_features = {
             feature_id: pack.pack_id
             for pack in self._artifact.feature_packs
@@ -574,11 +614,11 @@ class MLAllocationInferenceService:
                 raise ValueError(
                     "inference rows must not contain supervised AllocationTargets"
                 )
-            if row.dataset_identity_hash != self._artifact.dataset_identity_hash:
+            if row.dataset_identity_hash != expected_dataset_identity:
                 raise ValueError("dataset identity hash mismatch")
             if row.feature_registry_hash != self._artifact.feature_registry_hash:
                 raise ValueError("feature registry hash mismatch")
-            if row.source_manifest_hashes != self._artifact.source_manifest_hashes:
+            if row.source_manifest_hashes != expected_sources:
                 raise ValueError("source manifest hashes mismatch")
             if row.portfolio_state != expected_state:
                 raise ValueError("inference rows must share one causal portfolio state")

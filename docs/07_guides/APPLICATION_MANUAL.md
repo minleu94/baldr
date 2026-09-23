@@ -14,9 +14,34 @@
 
 ## 重訓現況補充（2026-09-22）
 
-9/22 的後續 technical publication 曾重寫包含 5/20 修訂日的 120 交易日區間。正式資料庫目前不可視為已持續保有本次 technical repair；修復後的 E run02 是獨立 research snapshot，不可覆蓋正式 SQLite。已知修復前模型仍隔離，這次修訂目前只有 868 列來源 custody，沒有已物化且通過可得性驗證的成熟標籤／可訓練 rows，因此尚未開始重訓。
+截至 9/22，後續 technical publication 曾重寫包含 5/20 修訂日的 120 交易日區間。正式資料庫當時不可視為已持續保有本次 technical repair；修復後的 run02 是獨立 research snapshot，不可覆蓋正式 SQLite。當日只有 868 列來源 custody，尚未物化通過可得性驗證的成熟標籤／可訓練 rows，因此當日尚未開始重訓。run02 已移交至 D 槽封存；以下 9/23 進度取代本段的重訓狀態。
 
 正式 PIT／Raw-to-OOC 入口仍受 pending source-revision gate 阻擋；不可刪除 pending、回填舊 available_at 或用舊模型輸出替代修訂後驗證。另一路未來 research/shadow 候選可以評估 late-obtained 修訂歷史；不必只因修訂發生在過去就一律等待新的 forward horizon，但每筆 label 仍須按交易日序列證明 `horizon_end_date`，並以獨立來源證明 `label.available_at <= training_as_of`。已經過了日曆時間不會自動產生 label availability 證據。完整特徵相依重建、feature schema 與成熟標籤證據未通過前，不可 fit。修訂值絕不可宣稱為 2026-05-20 當時可得，也不可用於該日 historical PIT/OOS。細節見[隔離研究重建與重訓 Gate](../06_qa/REVISION_RETRAIN_ISOLATED_RESEARCH_2026_09_22.md)。
+
+### 修訂模型的當日研究判讀
+
+9/23 已有六檔股票樣本完成實際訓練、獨立時間區間評估與當日推論；完整市場資料仍在重建。樣本部分指標弱於簡單基準，不能據此切換正式模型。舊 bounded 模型另行修復，不能用新的 ridge/logistic 樣本代替。
+
+`scripts/run_ml_allocation_restated_shadow.py` 是進階維護入口。它可讀取已封存的當日列，或從指定 SQLite 唯讀來源建立新的當日輸入，保留實際執行時間；目前不改 UI 預設模型，也不授予持股配置或下單權限。
+
+先從本次受控訓練結果取得確切的 release 路徑與 `release_identity_hash`，再取得要判讀的 dataset manifest 及其檔案 SHA-256。使用下列參數執行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_ml_allocation_restated_shadow.py --release-root <RELEASE_ROOT> --release-identity-hash <RELEASE_IDENTITY_SHA256> --dataset-manifest <DATASET_MANIFEST> --dataset-manifest-hash <MANIFEST_FILE_SHA256> --symbols 1256 1477 --output-root <RESEARCH_OUTPUT_ROOT>
+```
+
+- `--release-identity-hash` 綁定模型版本，`--dataset-manifest-hash` 綁定這次使用的輸入；兩者都使用 `sha256:<64 位小寫十六進位>`。
+- `--symbols` 明確指定 1–250 檔股票；缺少當日列或出現重複資料時停止，不以舊日期替代。
+- `--output-root` 須在來源資料集與模型目錄外。結果寫入 `current_shadow/<receipt-hash>.json`，同名結果不覆寫。
+- 成功狀態 `completed_research_inference` 表示載入、資料驗證和推論完成；不表示預測準確或模型優於基準。報酬與風險以 bp 保存，10,000 bp = 100%；固定全部現金的配置只是原限制，不能當成模型學會持股比例。
+- 結果中的 `training_release` 是訓練來源，`prepared_input` 是這次判讀來源；特徵日期與實際 capture 時間分開顯示。晚到修訂資料仍不是歷史 PIT。
+- 遇到 hash 不符、當日列缺少、來源尚未可得或 feature order／scale 不符，使用來源 producer 產生新的封存版本後再跑；不要手改 manifest、回填舊時間、解除原模型隔離或覆寫舊模型。
+
+之後每日需要新輸入時，在同一命令另加 `--source-db <SQLITE_PATH> --price-repair-receipt <APPLIED_RECEIPT_JSON> --price-repair-receipt-hash <RECEIPT_FILE_SHA256>`。此時 `--dataset-manifest` 作為固定特徵契約範本；程式從同一個 SQLite 唯讀 transaction 取實際臺北當日以前的價格，核對指定股票的 5/20 修正值，完整重算其指標，再將本次原始前綴、62 欄特徵與新的資料身分封存到 `input_captures/`。來源資料庫、範本資料集與模型都不覆寫；此入口沒有自動排程，也不接受把執行鐘改成歷史日期。
+
+若來源遺失修正值、缺少指定股票、市場來源超過七個日曆日或擷取期間跨過臺北午夜，程式會停止。七日上限只是陳舊檢查，不能證明資料涵蓋了每個應有的交易日；請仍核對結果中的特徵日期。未完成的 `input_captures/` 子目錄不含可供推論的完整 manifest，不應手動補檔。
+
+當前驗證範圍與限制見[當日研究輸入 QA](../06_qa/MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md)。完整資料重訓尚未驗收時，此入口只用於候選模型驗證。
 
 ### 唯讀修訂資料 acceptance preview
 
@@ -2315,9 +2340,11 @@ process-pool throughput 與 crash recovery 已有獨立 staging probe，broker H
 
 ### 4.4 技術指標
 
-- 「增量更新」：只處理新資料，日常首選；若單股指標已到最新股價日期會直接跳過，只有落後時才回看 120 個交易日重算重疊區間。
+- 「增量更新」：只發布新資料與重疊區間，日常首選；若單股指標已到最新股價日期會直接跳過，只有落後時才回看 120 個交易日決定發布範圍。計算前會保留完整、按日期排序的單股 OHLC prefix，算完才切發布列，避免截斷遞迴指標的歷史暖機。
 - 「強制全量更新」：重算所有股票歷史資料，只在指標算法改動或資料損毀時使用。
 - 股票代號留空代表處理全部；輸入例如 `2330` 代表只處理單一股票。
+- 缺少或非有限 OHLC 會保留缺值並將指標計算切段，後續有效區段重新暖機；不以前值、未來值或 0 填補。初始暖機期間的 NaN 是預期結果，不應當成漏算補值。
+- SQLite 與 `all_stocks_data.csv` 的局部更新只合併本輪已成功發布的股票／日期，保留其他股票、未發布日期及未提供欄位；只有明確全市場強制重算且所有股票完成時，才可全量替換彙總資料。
 - 增量寫入單股指標 CSV 時，若舊檔或新結果缺少可辨識日期欄位，會避免直接疊加資料；必要時以新計算結果覆蓋該單股檔，防止同一股票歷史列倍增。
 - 一鍵更新與排程判斷技術指標是否可跳過時，除了比較 `daily_prices` / `technical_indicators` 最新日期，也會檢查最新日 eligible 股票覆蓋數；若 TWSE 先完成、TPEX 後補進來，系統會再跑增量計算，不會因全表最新日期相同而漏掉 TPEX 股票。
 - 技術指標計算預設仍是單流程；若受控 caller 傳入 `--enable-technical-process-pool`，才會以 bounded compute-only worker 平行計算，並由父程序單一 writer 統一寫入 CSV／SQLite。可設定的 worker、in-flight 與 retry 上限會寫入 run status；正式 scheduler 預設不傳旗標，待 backup／rollback、真實 canary 與效能觀測完成後才評估啟用。

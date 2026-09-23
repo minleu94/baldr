@@ -108,6 +108,133 @@ def _is_cancel_requested(callback: Optional[Callable[[], bool]]) -> bool:
         return False
 
 
+def _write_technical_indicator_publications(
+    conn,
+    frame,
+    *,
+    replace_market: bool = False,
+) -> int:
+    """在呼叫端交易中只寫已驗證發布列，選擇性原子替換全市場資料。"""
+    import pandas as pd
+
+    if frame is None or frame.empty:
+        return 0
+    required = {"日期", "證券代號"}
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(f"SQLite 技術指標發布缺少鍵欄位：{sorted(missing)}")
+    if frame.duplicated(subset=["證券代號", "日期"]).any():
+        raise ValueError("SQLite 技術指標發布含重複股票／日期鍵")
+
+    columns = list(frame.columns)
+    quoted_columns = ", ".join(f'"{str(column).replace(chr(34), chr(34) * 2)}"' for column in columns)
+    placeholders = ", ".join("?" for _ in columns)
+    mutable_columns = [
+        column for column in columns if column not in {"日期", "證券代號"}
+    ]
+    if mutable_columns:
+        update_clause = ", ".join(
+            f'"{str(column).replace(chr(34), chr(34) * 2)}" = '
+            f'excluded."{str(column).replace(chr(34), chr(34) * 2)}"'
+            for column in mutable_columns
+        )
+        conflict_clause = (
+            'ON CONFLICT("證券代號", "日期") DO UPDATE SET ' + update_clause
+        )
+    else:
+        conflict_clause = 'ON CONFLICT("證券代號", "日期") DO NOTHING'
+    statement = (
+        f'INSERT INTO "technical_indicators" '
+        f'({quoted_columns}) VALUES ({placeholders}) {conflict_clause}'
+    )
+    values = []
+    for row in frame.itertuples(index=False, name=None):
+        normalized = []
+        for value in row:
+            if pd.isna(value):
+                normalized.append(None)
+            elif hasattr(value, "item"):
+                normalized.append(value.item())
+            else:
+                normalized.append(value)
+        values.append(tuple(normalized))
+
+    if replace_market:
+        conn.execute('DELETE FROM "technical_indicators"')
+    conn.executemany(statement, values)
+    return len(values)
+
+
+def _can_replace_full_technical_market(
+    *,
+    force_all: bool,
+    target_stock: Optional[str],
+    requested_start_date: Optional[str],
+    recompute_currentity: bool,
+    cancelled: bool,
+    success_count: int,
+    fail_count: int,
+    insufficient_count: int,
+    total_stocks: int,
+    updated_stocks: List[str],
+) -> bool:
+    """只允許完整且未取消的全市場明確重算執行表級替換。"""
+    return bool(
+        force_all
+        and target_stock is None
+        and requested_start_date is None
+        and not recompute_currentity
+        and not cancelled
+        and success_count == total_stocks
+        and fail_count == 0
+        and insufficient_count == 0
+        and len(set(updated_stocks)) == total_stocks
+    )
+
+
+def _merge_partial_technical_publications(existing, publication):
+    """以股票／日期精確合併局部彙總 CSV，保留未提供欄位與其他 keys。"""
+    import pandas as pd
+
+    from analysis_module.technical_analysis.technical_date_support import (
+        safe_convert_technical_dates,
+    )
+
+    required = ["日期", "證券代號"]
+    for label, frame in (("既有彙總", existing), ("本輪發布", publication)):
+        missing = [column for column in required if column not in frame.columns]
+        if missing:
+            raise ValueError(f"{label}缺少技術指標鍵欄位：{missing}")
+
+    old = existing.copy()
+    new = publication.copy()
+    for frame in (old, new):
+        normalized_dates = pd.to_datetime(
+            safe_convert_technical_dates(frame["日期"]), errors="coerce"
+        )
+        if normalized_dates.isna().any():
+            raise ValueError("彙總技術指標 CSV 含無效日期")
+        frame["日期"] = normalized_dates.dt.strftime("%Y-%m-%d")
+        frame["證券代號"] = frame["證券代號"].astype(str).str.strip().str.zfill(4)
+
+    if new.duplicated(subset=required).any():
+        raise ValueError("本輪技術指標彙總發布含重複股票／日期鍵")
+    old = old.drop_duplicates(subset=required, keep="last")
+    old_indexed = old.set_index(required)
+    new_indexed = new.set_index(required)
+    index = old_indexed.index.union(new_indexed.index)
+    combined = old_indexed.reindex(index)
+    for column in new_indexed.columns:
+        if column not in combined.columns:
+            combined[column] = pd.NA
+        combined.loc[new_indexed.index, column] = new_indexed[column]
+    return (
+        combined.reset_index()
+        .sort_values(required, kind="stable")
+        .reset_index(drop=True)
+    )
+
+
 class UpdateService :
     """數據更新服務類"""
 
@@ -4168,6 +4295,7 @@ class UpdateService :
         *,
         calculator,
         tasks: List[tuple[str, Any]],
+        publication_rows: Dict[str, List[int]],
         ignore_existing: bool,
         max_workers: int,
         max_in_flight: Optional[int],
@@ -4178,9 +4306,8 @@ class UpdateService :
     ) -> Dict[str, Any]:
         """執行受控技術指標 worker，並由父程序逐股保存結果。
 
-        ``tasks`` 已由 ``calculate_technical_indicators`` 完成日期與 warm-up
-        判斷，因此這裡不重新篩資料。worker 回傳的 DataFrame 只在記憶體中
-        傳回，所有 CSV／SQLite 寫入仍走既有 calculator 與後續整合 writer。
+        ``tasks`` 保留完整 OHLC prefix；worker 用相同 causal kernel 計算後，
+        父程序才依 publication rows 裁切，CSV／SQLite 寫入仍只在父程序完成。
         """
         from app_module.technical_indicator_process_pool import (
             run_bounded_indicator_pool,
@@ -4199,6 +4326,7 @@ class UpdateService :
         successful: List[str] = []
         failed: List[str] = list(pool.get("failed_ids", []))
         stored: List[Any] = []
+        publications: List[Any] = []
 
         total = len(tasks)
         for index, (stock_id, group_df) in enumerate(tasks, start=1):
@@ -4209,6 +4337,11 @@ class UpdateService :
                 if stock_id not in failed:
                     failed.append(stock_id)
                 continue
+            row_positions = publication_rows.get(str(stock_id), [])
+            if not row_positions:
+                continue
+            publish_frame = group_df.iloc[row_positions].copy()
+            publish_result = precomputed.iloc[row_positions].copy()
             if progress_callback:
                 progress_callback(
                     f"process-pool 父程序寫入 {stock_id} ({index}/{total})...",
@@ -4216,17 +4349,18 @@ class UpdateService :
                 )
             try:
                 result = calculator.calculate_and_store_indicators(
-                    group_df,
+                    publish_frame,
                     stock_id,
                     output_dir=self.config.technical_dir,
                     ignore_existing=ignore_existing,
-                    precomputed_result=precomputed,
+                    precomputed_result=publish_result,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error("process-pool 父程序保存股票 %s 失敗: %s", stock_id, exc)
                 result = None
             if isinstance(result, pd.DataFrame):
                 stored.append(result)
+                publications.append(publish_result)
                 successful.append(stock_id)
             elif stock_id not in failed:
                 failed.append(stock_id)
@@ -4246,6 +4380,7 @@ class UpdateService :
         return {
             "report": summary,
             "all_data": stored,
+            "publications": publications,
             "success_count": len(successful),
             "updated_stocks": successful,
             "fail_count": len(unique_failed),
@@ -4299,6 +4434,7 @@ class UpdateService :
                 'end_date': str
             }
         """
+        requested_start_date = start_date
         import os
         import sys
         import importlib .util
@@ -4501,11 +4637,14 @@ class UpdateService :
                 'production_worker_enabled': process_pool_enabled,
                 'parent_single_writer': True,
             },
+            'sqlite_write_failed': False,
             'recompute_currentity': bool(recompute_currentity),
             }
 
             all_data =[]
+            sqlite_publications: List[pd.DataFrame] = []
             pending_process_pool_tasks :List [tuple[str ,pd .DataFrame ]]=[]
+            pending_publication_rows: Dict[str, List[int]] = {}
             min_date ="9999-12-31"
             max_date ="1900-01-01"
 
@@ -4547,21 +4686,52 @@ class UpdateService :
                 '日期'if '日期'in group_df .columns else None
                 )
 
+                if group_date_column:
+                    from analysis_module.technical_analysis.technical_date_support import (
+                        safe_convert_technical_dates,
+                    )
+
+                    parsed_dates = pd.to_datetime(
+                        safe_convert_technical_dates(group_df[group_date_column]),
+                        errors="coerce",
+                    )
+                    group_df = (
+                        group_df.assign(_causal_sort_date=parsed_dates)
+                        .sort_values(
+                            "_causal_sort_date", kind="stable", na_position="last"
+                        )
+                        .drop(columns=["_causal_sort_date"])
+                        .reset_index(drop=True)
+                    )
+                    parsed_dates = pd.to_datetime(
+                        safe_convert_technical_dates(group_df[group_date_column]),
+                        errors="coerce",
+                    ).reset_index(drop=True)
+                else:
+                    group_df = group_df.reset_index(drop=True)
+                    parsed_dates = pd.Series(pd.NaT, index=group_df.index)
+
                 # 記錄日期範圍
                 if group_date_column :
-                    group_min_date =str (group_df [group_date_column ].min ())
-                    group_max_date =str (group_df [group_date_column ].max ())
+                    valid_dates = parsed_dates.dropna()
+                    group_min_date = (
+                        valid_dates.min().strftime('%Y-%m-%d')
+                        if not valid_dates.empty
+                        else "未知"
+                    )
+                    group_max_date = (
+                        valid_dates.max().strftime('%Y-%m-%d')
+                        if not valid_dates.empty
+                        else "未知"
+                    )
                     min_date =min (min_date ,group_min_date )
                     max_date =max (max_date ,group_max_date )
 
-                    # 檢查是否需要更新（基於日期）
+                # 先判定發布列；計算仍保留整段排序後的 OHLC prefix。
+                publish_mask = pd.Series(True, index=group_df.index)
                 if recompute_currentity and group_date_column:
-                    date_col = group_df[group_date_column]
-                    if not pd.api.types.is_string_dtype(date_col):
-                        date_col = date_col.astype(str)
-                    normalized_dates = pd.to_datetime(date_col, errors="coerce")
                     sorted_dates = (
-                        pd.Series(normalized_dates.dropna().unique())
+                        pd.Series(parsed_dates.dropna().unique())
                         .sort_values()
                         .reset_index(drop=True)
                     )
@@ -4575,7 +4745,7 @@ class UpdateService :
                         0,
                     )
                     warmup_start = sorted_dates.iloc[warmup_index]
-                    group_df = group_df[normalized_dates >= warmup_start]
+                    publish_mask = parsed_dates >= warmup_start
                     logger.debug(
                         f"股票 {stock_id} currentity bounded 重算從 "
                         f"{warmup_start.strftime('%Y-%m-%d')} 開始"
@@ -4584,43 +4754,45 @@ class UpdateService :
                     indicator_file =self .config .technical_dir /f'{stock_id}_indicators.csv'
                     existing_latest_date =self ._get_indicator_latest_date (indicator_file )
                     if existing_latest_date and not ignore_existing_files :
-                        date_col =group_df [group_date_column ]
-                        if not pd .api .types .is_string_dtype (date_col ):
-                            date_col =date_col .astype (str )
-                        normalized_dates =pd .to_datetime (date_col ,errors ='coerce')
                         latest_ts =pd .to_datetime (existing_latest_date ,errors ='coerce')
                         if pd .notna (latest_ts ):
-                            has_new_data =(normalized_dates >latest_ts ).any ()
+                            has_new_data =(parsed_dates >latest_ts ).any ()
                             if not has_new_data :
                                 logger .debug (f"股票 {stock_id} 沒有新數據需要更新")
                                 continue
 
                             sorted_dates =(
-                            pd .Series (normalized_dates .dropna ().unique ())
+                            pd .Series (parsed_dates .dropna ().unique ())
                             .sort_values ()
                             .reset_index (drop =True )
                             )
                             previous_dates =sorted_dates [sorted_dates <=latest_ts ]
                             if len (previous_dates )>0 :
-                                warmup_index =max (len (previous_dates )-incremental_lookback_days ,0 )
+                                warmup_index =max (len (previous_dates )-max(int(incremental_lookback_days), 1) ,0 )
                                 warmup_start =previous_dates .iloc [warmup_index ]
                             else :
                                 warmup_start =sorted_dates .iloc [0 ]
-                            group_df =group_df [normalized_dates >=warmup_start ]
+                            publish_mask = parsed_dates >= warmup_start
                             logger .debug (
                             f"股票 {stock_id} 智慧增量從 {warmup_start.strftime('%Y-%m-%d')} 重新計算"
                             )
                     else :
                         logger .debug (f"股票 {stock_id} 無既有指標檔，使用完整股價序列計算")
                 elif start_date and group_date_column and not force_all :
-                    date_col =group_df [group_date_column ]
-                    if not pd .api .types .is_string_dtype (date_col ):
-                        date_col =date_col .astype (str )
-                    filtered_df =group_df [date_col >start_date ]
-                    if len (filtered_df )==0 :
+                    cutoff = pd.to_datetime(
+                        safe_convert_technical_dates(pd.Series([start_date])),
+                        errors="coerce",
+                    ).iloc[0]
+                    publish_mask = parsed_dates > cutoff
+                    if not publish_mask.any() :
                         logger .debug (f"股票 {stock_id} 沒有新數據需要更新")
                         continue
-                    group_df =filtered_df
+
+                if not publish_mask.any():
+                    logger.debug(f"股票 {stock_id} 沒有可發布的技術指標列")
+                    continue
+                publication_rows = publish_mask.to_numpy().nonzero()[0].tolist()
+                pending_publication_rows[str(stock_id)] = publication_rows
 
                     # 計算並保存指標
                 if _is_cancel_requested(cancel_callback):
@@ -4633,20 +4805,26 @@ class UpdateService :
                     **results
                     }
                 if process_pool_enabled:
-                    # 日期／增量 warm-up 已在父程序決定；worker 只接收這個
-                    # 精確 frame 做純計算，之後仍由父程序逐股寫入。
+                    # worker 接收完整 prefix；父程序在計算後才裁切發布列。
                     pending_process_pool_tasks.append((str(stock_id), group_df.copy()))
                     continue
                 try :
+                    computed = calculator.calculate_all_indicators(group_df, stock_id)
+                    if not isinstance(computed, pd.DataFrame):
+                        raise ValueError(f"股票 {stock_id} 技術指標計算失敗")
+                    publish_frame = group_df.iloc[publication_rows].copy()
+                    publish_result = computed.iloc[publication_rows].copy()
                     result =calculator .calculate_and_store_indicators (
-                    group_df ,
+                    publish_frame ,
                     stock_id ,
                     output_dir =self .config .technical_dir ,
-                    ignore_existing =ignore_existing_files or force_all
+                    ignore_existing =ignore_existing_files or force_all,
+                    precomputed_result=publish_result,
                     )
 
                     if isinstance (result ,pd .DataFrame ):
                         all_data .append (result )
+                        sqlite_publications.append(publish_result.copy())
                         results ['success_count']+=1
                         results ['updated_stocks'].append (stock_id )
                         logger .debug (f"成功處理股票 {stock_id}")
@@ -4684,6 +4862,7 @@ class UpdateService :
                 process_pool_result = self._run_technical_indicator_process_pool(
                     calculator=calculator,
                     tasks=pending_process_pool_tasks,
+                    publication_rows=pending_publication_rows,
                     ignore_existing=ignore_existing_files or force_all,
                     max_workers=process_pool_workers,
                     max_in_flight=process_pool_max_in_flight,
@@ -4695,6 +4874,7 @@ class UpdateService :
                 process_pool_report = process_pool_result["report"]
                 results["technical_process_pool"] = process_pool_report
                 all_data.extend(process_pool_result["all_data"])
+                sqlite_publications.extend(process_pool_result["publications"])
                 results["success_count"] += process_pool_result["success_count"]
                 results["updated_stocks"].extend(process_pool_result["updated_stocks"])
                 results["fail_count"] += process_pool_result["fail_count"]
@@ -4718,6 +4898,19 @@ class UpdateService :
                 'message':'技術指標計算已取消（尚未合併輸出）',
                 **results
                 }
+
+            full_market_replace = _can_replace_full_technical_market(
+                force_all=force_all,
+                target_stock=target_stock,
+                requested_start_date=requested_start_date,
+                recompute_currentity=recompute_currentity,
+                cancelled=_is_cancel_requested(cancel_callback),
+                success_count=results['success_count'],
+                fail_count=results['fail_count'],
+                insufficient_count=results['insufficient_data_count'],
+                total_stocks=total_stocks,
+                updated_stocks=results['updated_stocks'],
+            )
 
             # 合併並儲存所有結果
             if all_data :
@@ -4800,15 +4993,36 @@ class UpdateService :
                     }
 
                 if not skip_csv_save :
-                # 創建備份
-                    if save_path .exists ():
-                        logger .info (f"備份現有的整合指標文件: {save_path}")
-                        self .config .create_backup (save_path )
-
-                        # 保存
-                    final_df .to_csv (save_path ,index =False ,encoding ='utf-8-sig')
-                    file_size_mb =save_path .stat ().st_size /1024 /1024
-                    logger .info (f"已保存整合指標到: {save_path}（檔案大小: {file_size_mb:.2f} MB）")
+                    csv_publication = final_df
+                    if not full_market_replace:
+                        if save_path.exists():
+                            existing_csv = pd.read_csv(
+                                save_path,
+                                encoding='utf-8-sig',
+                                dtype={'證券代號': str},
+                            )
+                            csv_publication = _merge_partial_technical_publications(
+                                existing_csv,
+                                final_df,
+                            )
+                        else:
+                            # 不建立內容只有本輪 subset 的 all-stocks 快取。
+                            csv_publication = None
+                            results['all_stocks_csv_skipped'] = True
+                            logger.warning(
+                                "本輪不是完整全市場替換且尚無 all_stocks_data.csv；略過建立 subset 彙總檔。"
+                            )
+                    if csv_publication is not None:
+                        if save_path.exists():
+                            logger .info (f"備份現有的整合指標文件: {save_path}")
+                            self .config .create_backup (save_path )
+                        csv_publication.to_csv(
+                            save_path,
+                            index=False,
+                            encoding='utf-8-sig',
+                        )
+                        file_size_mb =save_path .stat ().st_size /1024 /1024
+                        logger .info (f"已保存整合指標到: {save_path}（檔案大小: {file_size_mb:.2f} MB）")
                 else :
                     logger .info ("智慧增量模式且啟用 SQLite，跳過大型 all_stocks_data.csv 合併重寫，直接使用增量寫入 SQLite。")
 
@@ -4828,15 +5042,29 @@ class UpdateService :
                         from data_module .db_manager import DBManager
                         db =DBManager (self .config )
 
-                        df_db =final_df .copy ()
+                        if not sqlite_publications:
+                            logger.warning("沒有已成功保存的技術指標發布列，SQLite 不做任何變更。")
+                            df_db = pd.DataFrame()
+                        else:
+                            df_db = pd.concat(sqlite_publications, ignore_index=True)
                         df_db =df_db .rename (columns ={
                         '日期':'日期',
                         '證券代號':'證券代號',
                         })
                         df_db =df_db .loc [:,~df_db .columns .duplicated (keep ='last')]
-                        # 統一日期與代號格式
-                        df_db ['日期']=df_db ['日期'].apply (lambda x :str (x ).replace ('-','').replace ('/',''))
-                        df_db ['證券代號']=df_db ['證券代號'].astype (str ).str .zfill (4 )
+                        if not df_db.empty:
+                            from analysis_module.technical_analysis.technical_date_support import (
+                                safe_convert_technical_dates,
+                            )
+
+                            normalized_dates = pd.to_datetime(
+                                safe_convert_technical_dates(df_db['日期']),
+                                errors='coerce',
+                            )
+                            if normalized_dates.isna().any():
+                                raise ValueError("SQLite 技術指標發布列含無效日期")
+                            df_db['日期'] = normalized_dates.dt.strftime('%Y%m%d')
+                            df_db ['證券代號']=df_db ['證券代號'].astype (str ).str .zfill (4 )
 
                         # 剔除價格與重複欄位以防止重複儲存
                         cols_to_drop =[c for c in ['證券名稱','開盤價','最高價','最低價','收盤價','成交股數','成交量']if c in df_db .columns ]
@@ -4848,27 +5076,26 @@ class UpdateService :
                             if col not in ['日期','證券代號']:
                                 df_db [col ]=pd .to_numeric (df_db [col ],errors ='coerce')
 
-                                # 判斷是否為增量更新
-                        if auto_incremental :
-                            logger .info ("智慧增量模式下，僅刪除並更新變更的技術指標記錄...")
-                            with db .connect ()as conn :
-                                conn .executemany (
-                                "DELETE FROM technical_indicators WHERE 證券代號 = ? AND 日期 = ?;",
-                                df_db [['證券代號','日期']].values .tolist ()
+                        if not df_db.empty:
+                            db.ensure_columns('technical_indicators', list(df_db.columns))
+                            # DELETE（若符合完整全市場替換條件）與 UPSERT 必須同一連線、同一交易；
+                            # 所有其他模式只 UPSERT 本輪成功計算且成功發布的 key。
+                            with db.connect() as conn:
+                                written_rows = _write_technical_indicator_publications(
+                                    conn,
+                                    df_db,
+                                    replace_market=full_market_replace,
                                 )
-                            success =db .write_dataframe ('technical_indicators',df_db ,if_exists ='append')
-                        else :
-                        # 全量模式下，清空現有 table 進行全新全量寫入
-                            logger .info ("全量模式下，清空 technical_indicators 表後全新寫入...")
-                            with db .connect ()as conn :
-                                conn .execute ("DELETE FROM technical_indicators;")
-                            success =db .write_dataframe ('technical_indicators',df_db ,if_exists ='append')
-                        if success :
-                            logger .info ("技術指標成功批次寫入 SQLite 資料庫！")
-                        else :
-                            logger .error ("技術指標寫入 SQLite 失敗！")
+                            if full_market_replace:
+                                logger.info("完整全市場重算已在單一交易中替換 technical_indicators。")
+                            else:
+                                logger.info(
+                                    "已在單一交易中更新 %s 筆已核實技術指標發布列。",
+                                    written_rows,
+                                )
                     except Exception as sql_err :
                         logger .error (f"技術指標同步寫入 SQLite 時發生錯誤: {sql_err}")
+                        results['sqlite_write_failed'] = True
 
                 if progress_callback :
                     progress_callback ("技術指標計算完成",100 )
@@ -4888,7 +5115,7 @@ class UpdateService :
                 and process_pool_report.get("status") in {"failed", "partial"}
             )
             return {
-            'success':not process_pool_failed ,
+            'success':not process_pool_failed and results['fail_count'] == 0 and not results['sqlite_write_failed'],
             'message':message ,
             **results
             }

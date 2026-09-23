@@ -124,7 +124,7 @@ def _seed_actual_technical_db(
     assert calculation.get("success") is True, calculation
     assert set(calculation.get("updated_stocks", [])) == set(SYMBOLS)
     technical_rows = db.execute_query(
-        'SELECT "ADX" FROM technical_indicators '
+        'SELECT "證券代號", "日期", "ADX" FROM technical_indicators '
         'WHERE "日期" BETWEEN ? AND ?;',
         params=(
             history[0].strftime("%Y%m%d"),
@@ -132,8 +132,13 @@ def _seed_actual_technical_db(
         ),
     )
     assert not technical_rows.empty
-    assert technical_rows["ADX"].notna().all()
-    assert any(float(value) != 0 for value in technical_rows["ADX"])
+    # Causal TA-Lib warm-up remains NULL; after its 27-observation ADX
+    # lookback, values must recover and remain available for both stocks.
+    for _stock_id, stock_rows in technical_rows.groupby("證券代號", sort=False):
+        stock_rows = stock_rows.sort_values("日期", kind="stable").reset_index(drop=True)
+        assert stock_rows.loc[:26, "ADX"].isna().all()
+        assert stock_rows.loc[27:, "ADX"].notna().all()
+        assert (stock_rows.loc[27:, "ADX"] != 0).any()
     return config, dict(calculation)
 
 

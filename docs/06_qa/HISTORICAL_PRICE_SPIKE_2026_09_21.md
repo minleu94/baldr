@@ -83,3 +83,19 @@ CSV 必須獨立保存原值，不能借用 SQLite 的 before values：五檔抽
 驗收範圍不包含整個歷史資料庫或全部來源完整性認證。抽查發現 1538／2321／5906 的部分非 5/20 CSV 價格／符號與 daily NULL 不同；這些來源欄位不在本次 5/20 修復 allowlist，不能把此次通過解讀成所有日期的舊 CSV 補值問題均已排除。三檔的 5/20 官方缺價與本次指標 NULL 政策仍依修復清單驗證。
 
 五檔補充抽查確認上述 19 個來源差異為修復前既有值：225 個選定 cache 欄位與各自備份逐欄比較均未改動。彙總快取尾端可見日期為 2026-06-29，不能把要求的 9/21 缺列當作此次修復新增的差異；其 920,610 個缺列欄位維持跳過，ADX 原本缺欄的 75,442 個位置也未新增。這些限制與 scope 外差異保存在[consumer baseline 補件](../../output/qa/price_repair_20260921/technical_indicator_repair_consumer_baseline_20260922.json)，後續需另做來源核對，不能直接以舊 CSV 補值作正式價格或訓練真值。
+
+### 日常技術指標因果計算與發布邊界修復
+
+2026-09-23 source 修復將日常 serial 與 process-pool 計算接到同一個純函式 `calculate_causal_indicators(frame)`。輸入必須是單一股票、日期遞增且無重複的完整 OHLC prefix；計算後才依 120 交易日或明確 `start_date` 切出發布列。現有欄名與計算參數保留，新增補齊 ATR；指標不再用 `ffill`、`bfill`、補零或全樣本 SAR 均值填暖機／缺價，OHLC gap 之後重新暖機。輸入 OHLC NULL 與 caller array 不會被改寫。
+
+發布資料也與 CSV 的合併歷史分離：SQLite 只 upsert 本輪已成功保存的股票／日期 keys，僅更新本輪提供的欄位；部分股票、日期範圍、currentity、失敗或取消都不會清空全表。SQLite delete／upsert 位於同一交易。`all_stocks_data.csv` 的局部更新按相同 keys 合併並保留其他 rows／欄位；只有明確全市場 force-all、所有股票均成功且無缺資料或取消才可全量替換。SQL 發布例外回報失敗，供重試判讀。
+
+唯讀數據證據取自 research-only run02 snapshot `twstock_snapshot_run02.db`（3,602,477,056 bytes，SHA-256 `38ab1d1dfd201285ed817c8e94f689f91a50b39dc30cdbb8a90a49b7ce898771`），只以 `mode=ro` 連線及 `PRAGMA query_only=ON` 查詢，沒有寫 formal D 或改 snapshot。2026-05-20 `daily_prices` 中 1256 OHLC 為 `185 / 189 / 183 / 183`，1477 為 `212.5 / 217 / 210.5 / 213`；1538、2321、5906 的四個 OHLC 欄均為 SQL NULL。對截至 5/20 的 3,000／3,005 個有效歷史列重算，因果核心得出 1256／1477 ATR `6.815193`／`7.905839`，而 snapshot 現存 technical rows 的同日 ATR 為 NULL；三檔缺 OHLC 樣本的同日指標維持 NULL。
+
+暖機成本以同一 kernel、每股票三次取中位數、只計已載入 DataFrame 的計算時間量測：1256 完整 3,000-row prefix 為 16.237 ms，末 120 rows 為 2.192 ms；1477 完整 3,005-row prefix 為 14.597 ms，末 120 rows 為 1.915 ms。其餘缺價樣本的完整 prefix 為 18.100–21.286 ms，120-row slice 為 2.604–2.799 ms。120-row 計算在 1256 的 EMA30、DEMA30、ADX 與 ATR 相對完整 prefix 分別差 `+0.004604`、`-0.050204`、`+0.058788`、`+0.000147`；1477 分別差 `-0.012296`、`+0.039324`、`-0.008439`、`-0.000674`。這是五股票樣本的 kernel-only 成本量測，不等同於全市場 I/O benchmark 或 formal DB 驗收。
+
+source focused tests 覆蓋 future suffix 不影響過去值、整段計算後再切增量／currentity 發布、warmup 與 OHLC gap、ATR／ADX、custom period 復暖機、date／股票鍵驗證、輸入不突變，以及 SQLite／彙總 CSV 局部更新保留、交易 rollback 與 SQL failure 回報。這是源碼修復與 research-only 證據，並未再次執行正式技術資料套用或重訓模型。
+
+Root 於整合提交 `09f0eb56` 再驗證實際服務：從同一唯讀快照取上述五檔共 15,378 筆價格，建立隔離 SQLite／CSV，刻意將最近七個交易日的指標設成錯值後，分別呼叫 sequential 與兩個 process worker 的 currentity 更新。兩條路徑均成功修正 35 筆發布列，20 個指標在 SQLite 與個股 CSV 中皆與完整歷史計算相同（允許 NaN，數值容差 `1e-12`）；15,344 個非發布 keys（包含另一股票的 sentinel）保持不變。服務耗時分別為 1.207 秒與 3.099 秒；小樣本的多程序啟動成本較高，不能據此推論全市場效能。整合工作區本機 receipt：`output/qa/model_repair_review/service_canary_run02/receipt.json`，SHA-256 `7dc4620f5046d4c9dc94d96f2e3952627e483880ada5b8e5cb9cf91e2fe7cae6`。正式 D 資料未寫入。
+
+Root 整合回歸執行 causal kernel、publication scope、source quality、release adapter 與 inference 五個測試檔，結果 `84 passed`；僅有 joblib 無法取得實體核心數、改採邏輯核心的警告一則。模型仍須另外完成修訂資料集、真實 fitting、保留資料評估及日常接線，以上結果不表示模型重訓完成。

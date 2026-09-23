@@ -35,6 +35,7 @@ from ml_module.allocation_release_contract import (
     payload_hash,
 )
 from ml_module.allocation_contracts import PortfolioMLDatasetRow
+from ml_module.restated_research_input_contract import RestatedResearchInputBinding
 from ml_module.allocation_release_loader import register_release_loader
 from data_module.ml_daily_price_revision_gate import (
     assert_model_artifact_source_revision_safe,
@@ -171,6 +172,7 @@ class LoadedAllocationRelease:
         policy_id: str | None = None,
         policy_hash: str,
         expected_universe_hash: str | None = None,
+        research_input_binding: RestatedResearchInputBinding | None = None,
     ) -> MLAllocationInferenceResult:
         """以明確的 post-freeze research clock 驗證 target-free rows。
 
@@ -199,6 +201,7 @@ class LoadedAllocationRelease:
             policy_hash=policy_hash,
             expected_universe_hash=expected_universe_hash,
             allow_research_shadow=True,
+            research_input_binding=research_input_binding,
         )
 
     def compare_frozen_rows(

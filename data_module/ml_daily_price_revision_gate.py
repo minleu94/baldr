@@ -113,6 +113,14 @@ def check_daily_price_source_revision(
     """
 
     cutoff = _as_date(decision_date)
+    from data_module.formal_market_revision import assert_market_revision_safe
+    from data_module.historical_session_revision import assert_session_revision_safe
+
+    try:
+        assert_market_revision_safe(database_path, cutoff)
+        assert_session_revision_safe(database_path, cutoff)
+    except ValueError as exc:
+        raise DailyPriceSourceRevisionError(str(exc)) from exc
     normalized_symbols = (
         None
         if symbols is None

@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 import data_module.tpex_daily_price_backfill as backfill_module
 
 from data_module.tpex_daily_price_backfill import (
@@ -57,6 +59,35 @@ def test_normalize_tpex_daily_price_rows_maps_quote_fields():
             "本益比": "12.34",
         },
     )
+
+
+@pytest.mark.parametrize(
+    ("missing_source_field", "output_column"),
+    [("Open", "開盤價"), ("High", "最高價"), ("Low", "最低價")],
+)
+def test_normalize_tpex_daily_price_rows_preserves_missing_ohlc(
+    missing_source_field, output_column
+):
+    source_row = {
+        "Date": "1150616",
+        "SecuritiesCompanyCode": "3207",
+        "CompanyName": "耀勝",
+        "Close": "42.50",
+        "Open": "42.00",
+        "High": "43.00",
+        "Low": "41.50",
+    }
+    source_row.pop(missing_source_field)
+
+    result = normalize_tpex_daily_price_rows(
+        [source_row],
+        fallback_date="2026-06-16",
+    )
+
+    assert result.diagnostics == ()
+    assert len(result.rows) == 1
+    assert result.rows[0][output_column] is None
+    assert result.rows[0]["收盤價"] == "42.50"
 
 
 def test_normalize_tpex_daily_price_rows_reports_invalid_price():

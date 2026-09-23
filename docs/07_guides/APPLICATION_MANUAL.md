@@ -18,6 +18,25 @@
 
 正式 PIT／Raw-to-OOC 入口仍受 pending source-revision gate 阻擋；不可刪除 pending、回填舊 available_at 或用舊模型輸出替代修訂後驗證。另一路未來 research/shadow 候選可以評估 late-obtained 修訂歷史；不必只因修訂發生在過去就一律等待新的 forward horizon，但每筆 label 仍須按交易日序列證明 `horizon_end_date`，並以獨立來源證明 `label.available_at <= training_as_of`。已經過了日曆時間不會自動產生 label availability 證據。完整特徵相依重建、feature schema 與成熟標籤證據未通過前，不可 fit。修訂值絕不可宣稱為 2026-05-20 當時可得，也不可用於該日 historical PIT/OOS。細節見[隔離研究重建與重訓 Gate](../06_qa/REVISION_RETRAIN_ISOLATED_RESEARCH_2026_09_22.md)。
 
+### 修訂模型的當日研究判讀
+
+`scripts/run_ml_allocation_restated_shadow.py` 是進階維護入口。它只讀取已完成並封存的修訂資料當日列，保留實際執行時間；目前不改 UI 預設模型，也不授予持股配置或下單權限。
+
+先從本次受控訓練結果取得確切的 release 路徑與 `release_identity_hash`，再取得要判讀的 dataset manifest 及其檔案 SHA-256。使用下列參數執行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_ml_allocation_restated_shadow.py --release-root <RELEASE_ROOT> --release-identity-hash <RELEASE_IDENTITY_SHA256> --dataset-manifest <DATASET_MANIFEST> --dataset-manifest-hash <MANIFEST_FILE_SHA256> --symbols 1256 1477 --output-root <RESEARCH_OUTPUT_ROOT>
+```
+
+- `--release-identity-hash` 綁定模型版本，`--dataset-manifest-hash` 綁定這次使用的輸入；兩者都使用 `sha256:<64 位小寫十六進位>`。
+- `--symbols` 明確指定 1–250 檔股票；缺少當日列或出現重複資料時停止，不以舊日期替代。
+- `--output-root` 須在來源資料集與模型目錄外。結果寫入 `current_shadow/<receipt-hash>.json`，同名結果不覆寫。
+- 成功狀態 `completed_research_inference` 表示載入、資料驗證和推論完成；不表示預測準確或模型優於基準。報酬與風險以 bp 保存，10,000 bp = 100%；固定全部現金的配置只是原限制，不能當成模型學會持股比例。
+- 結果中的 `training_release` 是訓練來源，`prepared_input` 是這次判讀來源；特徵日期與實際 capture 時間分開顯示。晚到修訂資料仍不是歷史 PIT。
+- 遇到 hash 不符、當日列缺少、來源尚未可得或 feature order／scale 不符，使用來源 producer 產生新的封存版本後再跑；不要手改 manifest、回填舊時間、解除原模型隔離或覆寫舊模型。
+
+當前驗證範圍與限制見[當日研究輸入 QA](../06_qa/MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md)。完整資料重訓尚未驗收時，此入口只用於候選模型驗證。
+
 ### 唯讀修訂資料 acceptance preview
 
 在要評估 late-obtained 歷史是否可用於未來 research/shadow 候選時，可從封存資料產生只讀 preview：

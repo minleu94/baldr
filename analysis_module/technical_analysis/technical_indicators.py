@@ -129,15 +129,7 @@ def calculate_causal_indicators(frame: pd.DataFrame) -> pd.DataFrame:
     for canonical, source in source_columns.items():
         if source is None:
             continue
-        values = frame[source]
-        if values.dtype == object:
-            values = values.mask(
-                values.isin(["--", "", "nan", "NaN", "None"]),
-                np.nan,
-            )
-        numeric[canonical] = pd.to_numeric(
-            values, errors="coerce"
-        ).to_numpy(dtype=np.float64, copy=True)
+        numeric[canonical] = clean_price_values(frame[source])
     for values in numeric.values():
         values[~np.isfinite(values)] = np.nan
 

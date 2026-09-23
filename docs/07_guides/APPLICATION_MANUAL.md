@@ -28,7 +28,9 @@
 
 大盤來源的追加修復使用獨立 v3 研究建置入口：`python -m data_module.ml_restatement_research_dataset_v3 --official-market-manifest <CAPTURE_JSON> --official-market-hash <FILE_SHA256> --output-dir <NEW_DATASET_DIR> --custody-dir <NEW_EXTERNAL_CUSTODY_DIR>`。兩個輸出目錄都要是新目錄，custody 必須在 dataset 外；正式 SQLite、原股票快照及舊資料集皆不寫入。`--symbols`、`--decision-date-start/end`、`--limit-rows` 和 `--no-appends` 只供有界驗證，完整重建不加這些限制。執行前將 OMP／MKL／OpenBLAS／NUMEXPR threads 設為 2，避免佔滿同時重構所需資源。
 
-此入口以官方兩份月報核對成交股數與真實開高低收，按官方交易日重算 labels，保留真正取得時間；成功產生 manifest 只表示研究資料建置完成，還需要 v3 訓練 loader、完整模型評估與最新輸入驗證。資料集不相容時不要手改版本、source SHA 或刪除 gate。逐項驗收見[大盤來源核對](../06_qa/MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。
+此入口以官方兩份月報核對成交股數與真實開高低收，按官方交易日重算 labels，保留真正取得時間；成功產生 manifest 只表示研究資料建置完成。H5 訓練入口已支援 v3 及外部 custody v2，會核對實際開始證據、producer 原始碼、官方回應、原始 targets 與新增列的缺值目標；完整模型評估仍須另外完成。資料集不相容時不要手改版本、source SHA 或刪除 gate。逐項驗收見[大盤來源核對](../06_qa/MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。
+
+當日研究入口 `run_ml_allocation_restated_shadow.py`／`run_bounded_restated_current_heads.py` 使用 `--source-db` 並指定 v3 範本時，市場前綴自動讀取範本綁定的官方月報，股票仍來自唯讀 SQLite。更新官方月份後，可成對指定 `--official-market-manifest <CAPTURE_JSON>` 與 `--official-market-hash <FILE_SHA256>`；這兩個參數必須搭配 `--source-db`，資料取得鐘不得晚於此次擷取，僅使用 T-1 以前資料。模型使用官方市場訓練而當日輸入仍是舊市場定義時，兩條入口會拒絕，不自動降級。新輸入保留自己的 identity，原模型與資料集不覆寫；輸出仍是研究結果，不授予正式配置或交易權限。
 
 `scripts/run_ml_allocation_restated_shadow.py` 是進階維護入口。它可讀取已封存的當日列，或從指定 SQLite 唯讀來源建立新的當日輸入，保留實際執行時間；目前不改 UI 預設模型，也不授予持股配置或下單權限。
 

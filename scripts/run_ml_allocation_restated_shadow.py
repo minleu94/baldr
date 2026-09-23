@@ -27,9 +27,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-db", type=Path, help="選用：先從唯讀 SQLite 封存新的當日輸入；dataset manifest 此時作固定特徵契約範本。")
     parser.add_argument("--price-repair-receipt", type=Path)
     parser.add_argument("--price-repair-receipt-hash")
+    parser.add_argument("--official-market-manifest", type=Path)
+    parser.add_argument("--official-market-hash")
     parser.add_argument("--symbols", nargs="+", required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args(argv)
+    if (args.official_market_manifest is None) != (args.official_market_hash is None) or (args.source_db is None and args.official_market_manifest is not None):
+        parser.error("官方市場 manifest/hash 須成對提供，且與 --source-db 一起使用")
     validate_restated_output_root(
         release_root=args.release_root, dataset_manifest=args.dataset_manifest,
         output_root=args.output_root,
@@ -49,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
             expected_price_receipt_hash=args.price_repair_receipt_hash,
             symbols=args.symbols,
             output_root=args.output_root / "input_captures",
+            official_market_manifest_path=args.official_market_manifest,
+            expected_official_market_hash=args.official_market_hash,
         )
     elif args.price_repair_receipt is not None or args.price_repair_receipt_hash is not None:
         parser.error("修訂 receipt 參數須與 --source-db 一起使用")

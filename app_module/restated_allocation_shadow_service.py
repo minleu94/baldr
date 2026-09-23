@@ -11,6 +11,7 @@ from typing import Sequence
 
 from app_module.allocation_release_adapter import AllocationReleaseAdapter
 from data_module.ml_restatement_current_inputs import prepare_restated_current_inputs
+from ml_module.restated_research_input_contract import require_compatible_market_sources
 
 
 def validate_restated_output_root(
@@ -52,6 +53,7 @@ def run_restated_current_shadow(
     )
     if tuple(name for name, _ in prepared.binding.ordered_features) != loaded.manifest.feature_order:
         raise ValueError("prepared feature order differs from the release")
+    require_compatible_market_sources(loaded.manifest.source_manifest_hashes, prepared.binding.source_manifest_hashes)
     result = loaded.infer_research_shadow(
         rows=prepared.rows,
         universe_id="restated-current-" + prepared.binding.binding_hash[7:31],

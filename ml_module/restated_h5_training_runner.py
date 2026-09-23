@@ -400,7 +400,7 @@ def load_sealed_research_rows(
                 raise ValueError("observed features must be finite")
             features[offset : offset + count, :] = scaled_features.astype(FLOAT_DTYPE)
 
-            if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+            if manifest.get("schema_version") in {"portfolio-ml-restated-research-dataset.v2", "portfolio-ml-restated-research-dataset.v3"}:
                 target_values = _fixed_list_values(column["target_values_i32"], count, 6)
                 target_masks = _fixed_list_values(column["target_missing_mask"], count, 6)
                 if np.any((target_masks != 0) & (target_masks != 1)):
@@ -418,6 +418,10 @@ def load_sealed_research_rows(
                     & np.any(target_values != expected_cash_only[None, :], axis=1)
                 ):
                     raise ValueError("v2 observed original target rows must preserve exact cash-only values")
+                if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v3":
+                    baseline_rows = np.asarray(column["local_row_index"].is_valid().to_numpy(zero_copy_only=False), dtype=bool)
+                    if np.any(baseline_rows != all_observed):
+                        raise ValueError("v3 original targets must be observed; appended targets must remain missing")
                 v2_target_observed_rows += int(np.sum(all_observed))
 
             canonical_ids: list[str] = []
@@ -447,7 +451,7 @@ def load_sealed_research_rows(
                 revision_id = _required_row_text(revision_ids_values[index], "source_revision_id")
                 if (
                     manifest.get("schema_version")
-                    == "portfolio-ml-restated-research-dataset.v2"
+                    in {"portfolio-ml-restated-research-dataset.v2", "portfolio-ml-restated-research-dataset.v3"}
                     and revision_id != manifest.get("revision")
                 ):
                     raise ValueError(
@@ -462,6 +466,9 @@ def load_sealed_research_rows(
                         raise ValueError(
                             f"v2 row clocks differ from the truthful parent/subset source clock: {row_id}"
                         )
+                elif manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v3":
+                    if revision_time != cutoff or feature_available != cutoff:
+                        raise ValueError(f"v3 row clocks differ from the actual source verification: {row_id}")
                 stock_event_date = (
                     None
                     if stock_event_values[index] is None
@@ -584,9 +591,11 @@ def load_sealed_research_rows(
 
     if offset != row_count:
         raise ValueError("parquet row count changed while loading sealed dataset")
-    if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
-        expected_target_rows = int(
-            manifest["original_row_target_audit"]["target_observed_row_count"]
+    if manifest.get("schema_version") in {"portfolio-ml-restated-research-dataset.v2", "portfolio-ml-restated-research-dataset.v3"}:
+        expected_target_rows = (
+            sum(item["baseline_row_count"] for item in manifest["partition_files"])
+            if manifest["schema_version"] == "portfolio-ml-restated-research-dataset.v3"
+            else int(manifest["original_row_target_audit"]["target_observed_row_count"])
         )
         if v2_target_observed_rows != expected_target_rows:
             raise ValueError(
@@ -1739,6 +1748,12 @@ def _collect_training_runtime_binding(
     source_files = list(_TRAINING_SOURCE_FILES)
     if dataset_schema_version == "portfolio-ml-restated-research-dataset.v2":
         source_files.extend(_V2_TRAINING_SOURCE_FILES)
+    if dataset_schema_version == "portfolio-ml-restated-research-dataset.v3":
+        source_files.extend((
+            "data_module/ml_restatement_research_dataset_v3.py",
+            "data_module/ml_restatement_official_market.py",
+            "ml_module/restated_v3_source_custody.py",
+        ))
     for relative_path in source_files:
         source_path = repository_root / relative_path
         if not source_path.is_file():
@@ -2185,8 +2200,9 @@ def _validate_complete_restatement_manifest(
     schema_version = manifest.get("schema_version")
     is_v1 = schema_version == "portfolio-ml-restated-research-dataset.v1"
     is_v2 = schema_version == "portfolio-ml-restated-research-dataset.v2"
+    is_v3 = schema_version == "portfolio-ml-restated-research-dataset.v3"
     if (
-        not (is_v1 or is_v2)
+        not (is_v1 or is_v2 or is_v3)
         or manifest.get("status") != "complete_research_build"
         or manifest.get("research_only") is not True
         or manifest.get("restated_research") is not True
@@ -2194,7 +2210,7 @@ def _validate_complete_restatement_manifest(
         or manifest.get("formal_oos") is not False
         or manifest.get("promotion_eligible") is not False
     ):
-        raise ValueError("completed restated research v1/v2 manifest with non-PIT flags is required")
+        raise ValueError("completed restated research v1/v2/v3 manifest with non-PIT flags is required")
 
     try:
         from data_module.ml_restatement_current_inputs import _IDENTITY_FIELDS, _payload_hash
@@ -2207,6 +2223,18 @@ def _validate_complete_restatement_manifest(
             identity_payload = {name: manifest[name] for name in _IDENTITY_FIELDS}
         except KeyError as exc:
             raise ValueError(f"restated manifest identity field is missing: {exc.args[0]}") from exc
+    elif is_v3:
+        from data_module.ml_restatement_research_dataset_v3 import V3_IDENTITY_FIELDS
+
+        if manifest.get("dataset_identity_fields") != list(V3_IDENTITY_FIELDS):
+            raise ValueError("v3 dataset_identity_fields differs from its trusted identity contract")
+        try:
+            identity_payload = {
+                "identity_fields": list(V3_IDENTITY_FIELDS),
+                **{name: manifest[name] for name in V3_IDENTITY_FIELDS},
+            }
+        except KeyError as exc:
+            raise ValueError(f"restated v3 identity field is missing: {exc.args[0]}") from exc
     else:
         try:
             from data_module.ml_restatement_research_dataset_v2_merge import (
@@ -2233,7 +2261,9 @@ def _validate_complete_restatement_manifest(
     ):
         raise ValueError("restated manifest dataset identity/hash mismatch")
     expected_dataset_id = (
-        "ml-restated-research-v2-" + identity_hash[7:31]
+        "ml-restated-research-v3-" + identity_hash[7:31]
+        if is_v3
+        else "ml-restated-research-v2-" + identity_hash[7:31]
         if is_v2
         else "ml-restated-research-" + identity_hash[7:31]
     )
@@ -2256,10 +2286,10 @@ def _validate_complete_restatement_manifest(
     label_scales = _read_integer_sequence(manifest, "label_scales")
     if label_fields != LABEL_FIELDS or label_scales != (1,) * len(LABEL_FIELDS):
         raise ValueError("restated label order/scales differ from the nine-label integer-bp ABI")
-    if is_v2:
+    if is_v2 or is_v3:
         target_fields = _read_sequence(manifest, "target_fields")
         if target_fields != _META_FIELDS + ("rebalance_worthwhile",):
-            raise ValueError("restated v2 target order differs from the original six-column target ABI")
+            raise ValueError("restated target order differs from the original six-column target ABI")
     feature_packs = _read_feature_packs(manifest, feature_ids)
     if isinstance(manifest.get("row_count"), bool) or not isinstance(manifest.get("row_count"), int):
         raise TypeError("restated manifest row_count must be an integer")
@@ -2281,12 +2311,12 @@ def _validate_complete_restatement_manifest(
     revision_observed_at = _aware_datetime(
         manifest.get("revision_observed_at"), field_name="revision_observed_at"
     )
-    if is_v1 and training_as_of != revision_observed_at:
-        raise ValueError("v1 training_as_of must equal the sealed revision observation clock")
+    if (is_v1 or is_v3) and training_as_of != revision_observed_at:
+        raise ValueError("training_as_of must equal the sealed revision observation clock")
     if is_v2:
         _validate_v2_dataset_lineage(manifest)
         _validate_v2_patch_summary(manifest)
-    # 上方版本 gate 僅會接受兩個固定字串，cast 不改執行期值。
+    # 上方版本 gate 僅接受固定版本字串，cast 不改執行期值。
     _validate_manifest_source_links(manifest, schema_version=cast(str, schema_version))
 
     return feature_ids, feature_scales, feature_packs, label_scales
@@ -2297,6 +2327,11 @@ def _validate_manifest_source_links(
     *,
     schema_version: str,
 ) -> None:
+    if schema_version == "portfolio-ml-restated-research-dataset.v3":
+        from data_module.ml_restatement_research_dataset_v3 import validate_v3_manifest_sources
+
+        validate_v3_manifest_sources(manifest)
+        return
     source_hashes = manifest.get("source_hashes")
     if not isinstance(source_hashes, dict):
         raise ValueError("restated manifest source_hashes must be an object")
@@ -2844,7 +2879,16 @@ def _validate_source_custody(
     manifest: Mapping[str, Any],
     row_count: int,
 ) -> None:
-    """驗證 A 的外部 source-custody v1 sidecar 與封存資料一致。"""
+    """依資料版本驗證外部 custody，保留舊版本的實際觀測限制。"""
+
+    if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v3":
+        from ml_module.restated_v3_source_custody import validate_v3_source_custody
+
+        validate_v3_source_custody(
+            payload, manifest_path=manifest_path, manifest_hash=manifest_hash,
+            manifest=manifest, row_count=row_count,
+        )
+        return
 
     if payload.get("schema_version") != "model-repair-source-custody.v1":
         raise ValueError("source custody schema_version must be model-repair-source-custody.v1")
@@ -3044,6 +3088,10 @@ def _source_custody_identity(data: ResearchArrays) -> dict[str, Any]:
             "dataset_row_count": data.row_count,
             "maximum_rows_without_sidecar": 100_000,
         }
+    if data.manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v3":
+        from ml_module.restated_v3_source_custody import v3_custody_identity
+
+        return v3_custody_identity(data.source_custody, sidecar_hash=data.source_custody_hash)
     clocks = data.source_custody["job_clocks"]
     identity = {
         "status": "validated_external_sidecar",

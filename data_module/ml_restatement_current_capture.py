@@ -83,6 +83,8 @@ def capture_restated_current_dataset(
     expected_price_receipt_hash: str,
     symbols: Sequence[str],
     output_root: Path,
+    official_market_manifest_path: Path | None = None,
+    expected_official_market_hash: str | None = None,
 ) -> tuple[Path, str]:
     """以一個 SQLite read transaction 封存當日 T-1 前綴與 62 欄特徵。
 
@@ -101,6 +103,18 @@ def capture_restated_current_dataset(
         raise ValueError("current capture requires 1..250 unique explicit symbols")
     template = _bound_json(template_manifest_path, expected_template_manifest_hash)
     validate_restated_manifest_identity(template)
+    from data_module.ml_restatement_official_market import load_official_market_capture
+    from data_module.ml_restatement_research_dataset_v3 import MARKET_SOURCE_CONTRACT, V3_SCHEMA_VERSION
+    from ml_module.restated_research_input_contract import OFFICIAL_MARKET_CONTRACT_HASH
+
+    official_market = None
+    if (official_market_manifest_path is None) != (expected_official_market_hash is None):
+        raise ValueError("official current source requires both manifest path and expected hash")
+    if template.get("schema_version") == V3_SCHEMA_VERSION or official_market_manifest_path is not None:
+        market_binding = template.get("market_source", {})
+        market_path = official_market_manifest_path or Path(market_binding["manifest_path"])
+        market_hash = expected_official_market_hash or market_binding["manifest_file_sha256"]
+        official_market = load_official_market_capture(market_path, expected_file_sha256=market_hash, as_of=started)
     if _aware(template["revision_observed_at"], "template revision") > started:
         raise ValueError("current capture template revision is not yet available")
     if template.get("dataset_created_at") is not None and _aware(template["dataset_created_at"], "template creation") > started:
@@ -143,6 +157,8 @@ def capture_restated_current_dataset(
         "kernel": Path(indicator_kernels.__file__),
         "numeric_parser": Path(normalize_grouped_numeric_text.__code__.co_filename),
     }
+    if official_market is not None:
+        code_paths["official_market_reader"] = Path(load_official_market_capture.__code__.co_filename)
     code_hashes = {name: sha256_file(path) for name, path in code_paths.items()}
     connection = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=15)
     connection.row_factory = sqlite3.Row
@@ -151,11 +167,17 @@ def capture_restated_current_dataset(
     rows: list[dict[str, Any]] = []
     verified_repair_symbols: list[str] = []
     try:
-        market_rows = [dict(row) for row in connection.execute(
-            "SELECT " + ",".join('"' + name + '"' for name in _MARKET_COLUMNS)
-            + " FROM market_indices WHERE 指數名稱='TAIEX' AND 日期<? ORDER BY 日期",
-            (decision.strftime("%Y%m%d"),),
-        )]
+        if official_market is None:
+            market_rows = [dict(row) for row in connection.execute(
+                "SELECT " + ",".join('"' + name + '"' for name in _MARKET_COLUMNS)
+                + " FROM market_indices WHERE 指數名稱='TAIEX' AND 日期<? ORDER BY 日期",
+                (decision.strftime("%Y%m%d"),),
+            )]
+        else:
+            market_rows = [
+                {key: str(value) if isinstance(value, Decimal) else value for key, value in row.items()}
+                for day, row in sorted(official_market.rows.items()) if day < decision
+            ]
         market = {_source_date(row["日期"]): row for row in market_rows}
         if len(market) != len(market_rows):
             raise ValueError("current market dates are missing or repeated")
@@ -219,6 +241,11 @@ def capture_restated_current_dataset(
         raise ValueError("current capture crossed Taipei midnight; retry in a new run")
     if {name: sha256_file(path) for name, path in code_paths.items()} != code_hashes:
         raise ValueError("current capture source code changed during execution")
+    if official_market is not None:
+        load_official_market_capture(
+            official_market.manifest_path, expected_file_sha256=official_market.manifest_file_sha256,
+            as_of=observed,
+        )
     prefix_hash = sha256_file(source_prefix)
     for row in rows:
         row.update(
@@ -232,10 +259,10 @@ def capture_restated_current_dataset(
     partition = run / "current.parquet"
     pq.write_table(pa.Table.from_pylist(rows, schema=arrow_schema()), partition, compression="zstd")
     manifest = dict(template)
-    # 當日來源是新的單一 read transaction，不繼承歷史 v2 的合併宣告。
+    # 當日來源重新綁定；不繼承歷史合併或歷史市場 metadata。
     for name in (
         "dataset_identity_fields", "dataset_lineage", "patch", "computation_source_hashes",
-        "corrected_subset_builder_sha256", "revision", "dataset_created_at",
+        "corrected_subset_builder_sha256", "revision", "dataset_created_at", "market_source",
     ):
         manifest.pop(name, None)
     manifest.update(
@@ -270,6 +297,17 @@ def capture_restated_current_dataset(
         capture_source_database=str(source), capture_started_at=started.isoformat(),
         verified_repair_symbols=verified_repair_symbols,
     )
+    if official_market is not None:
+        manifest["source_hashes"]["official_market_capture"] = {
+            "path": str(official_market.manifest_path), "file_sha256": official_market.manifest_file_sha256,
+            "contract": MARKET_SOURCE_CONTRACT, "available_at": official_market.available_at.isoformat(),
+            "cutoff_date": official_market.cutoff_date.isoformat(),
+        }
+        manifest["source_manifest_hashes"].extend([
+            ["official.twse_market", official_market.manifest_file_sha256],
+            ["contract.official_twse_market", OFFICIAL_MARKET_CONTRACT_HASH],
+        ])
+        manifest["source_manifest_hashes"].sort()
     identity = canonical_hash({name: manifest[name] for name in _IDENTITY_FIELDS})
     manifest.update(dataset_id="ml-restated-research-" + identity[7:31], dataset_identity_hash=identity, manifest_hash=identity)
     path = run / "manifest.json"

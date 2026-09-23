@@ -22,6 +22,23 @@ def _hash(payload: object) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+OFFICIAL_MARKET_CONTRACT_HASH = _hash({"market_source_contract": "twse-fmtqik-shares-mi5mins-ohlc.v1"})
+
+
+def require_compatible_market_sources(
+    training_sources: Sequence[tuple[str, str]], current_sources: Sequence[tuple[str, str]],
+) -> None:
+    """官方市場模型不能消費舊混合單位市場輸入；來源批次仍可更新。"""
+    if "official.twse_market" not in dict(training_sources):
+        return
+    current = dict(current_sources)
+    if (
+        "official.twse_market" not in current
+        or current.get("contract.official_twse_market") != OFFICIAL_MARKET_CONTRACT_HASH
+    ):
+        raise ValueError("official-market model requires verified official-market current inputs")
+
+
 def _require_hash(value: str) -> None:
     if (
         not isinstance(value, str) or len(value) != 71

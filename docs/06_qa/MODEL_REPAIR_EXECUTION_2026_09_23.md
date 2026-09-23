@@ -2,7 +2,7 @@
 
 ## 目前判定
 
-原 bounded 家族與全市場 H5 都已完成完整實際重訓、獨立評估統計核對，以及 13 檔最新資料讀回。整體修復及切換尚未完成：完整模型沒有穩健勝過 train-only naive，H5 市場組亦暴露大盤成交量來源混用及開高低價代填。下一輪先修復來源語意；既有兩個舊模型繼續隔離，rule_only 與正式權限不變，這次新產物也不升格。詳見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。
+股票修訂 v2 的兩家族 fit／最新資料推論均完成；其評估另發現大盤來源缺陷。官方來源追加修復已核驗 153 個月、306 份回應，bounded 官方 v3 亦完成 17,285 列 fit、13 檔最新資料的 312 組預測，以及 327,816 筆 base OOF 獨立誤差重算。四期間 pooled MAE 與 downside Brier 均未勝 train-only 基準，不能由執行成功推論品質達標。全市場 H5 官方 v3 尚在建置，因此整體修復未結案；既有舊模型隔離、rule_only 與正式權限保持。詳見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)及[bounded 新舊版本評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)。
 
 ## 已確認的修復範圍
 

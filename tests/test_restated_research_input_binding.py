@@ -75,3 +75,31 @@ def test_binding_rejects_mutable_nested_contract() -> None:
     _rows, binding = _prepared()
     with pytest.raises(ValueError, match="immutable"):
         replace(binding, source_manifest_hashes=[list(pair) for pair in binding.source_manifest_hashes])
+
+
+def test_direct_research_inference_enforces_official_market_compatibility(training_result):
+    from ml_module.restated_research_input_contract import OFFICIAL_MARKET_CONTRACT_HASH
+
+    service = _service(training_result)
+    service._artifact = replace(
+        service._artifact,
+        training_profile=RESTATED_RESEARCH_PROFILE,
+        source_manifest_hashes=tuple(sorted((
+            *service._artifact.source_manifest_hashes,
+            ("official.twse_market", "sha256:" + "1" * 64),
+        ))),
+    )
+    rows, binding = _prepared()
+    with pytest.raises(ValueError, match="official-market"):
+        _infer(service, rows, binding)
+    sources = tuple(sorted((
+        *binding.source_manifest_hashes,
+        ("official.twse_market", "sha256:" + "2" * 64),
+        ("contract.official_twse_market", OFFICIAL_MARKET_CONTRACT_HASH),
+    )))
+    with post_freeze_shadow_decision_scope():
+        rows = tuple(replace(row, source_manifest_hashes=sources) for row in rows)
+    binding = replace(
+        binding, source_manifest_hashes=sources, prepared_rows_hash=research_rows_hash(rows),
+    )
+    assert _infer(service, rows, binding).production_action_allowed is False

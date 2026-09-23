@@ -1,0 +1,42 @@
+# 模型修復：原配置目標的實體資料查核
+
+查核日期：2026-09-23（臺北日期）。本文件記錄原訓練目標的查核結果，不代表模型重訓、評估或日常接線已完成。
+
+## 查核範圍與結果
+
+Root 唯讀檢查既有 Direct numeric run `direct-ooc-505c6adaf3f71a0c8f0a274e` 的全部 13 個年度（2014–2026）、共 **3,353,096 列** `targets.i32`。先逐檔核對年度 manifest 宣告的 SHA-256，再按原 `<i4`、`target_shape` 與 `target_fields` 解讀所有列；沒有載入或反序列化舊模型。
+
+| 原目標欄位 | 全部資料的最小值 | 最大值 | 非零筆數 |
+|---|---:|---:|---:|
+| `target_weight_bp` | 0 | 0 | 0 |
+| `delta_weight_bp` | 0 | 0 | 0 |
+| `risk_contribution_bp` | 0 | 0 | 0 |
+| `risky_budget_bp` | 0 | 0 | 0 |
+| `cash_bp` | 10000 | 10000 | 3353096 |
+| `rebalance_worthwhile` | 0 | 0 | 0 |
+
+這批目標只表達保留全部現金的配置限制，不能據此宣稱模型已學會股票配置比例。這個結論只涵蓋上述原目標欄位；報酬、波動、下跌與成交可行性等九個 label 欄位屬另一組資料，不能由目標全常數推斷那些預測模型沒有訓練或不受價格修訂影響。
+
+## 修復決策
+
+- 保留原配置目標語意。重訓報酬與風險模型時，不把事後 H5 報酬改造成新的配置目標，避免將價格修復變成未經要求的策略改版。
+- 原列若重用 targets，仍須核對精確 row identity、年度位置、欄位順序、檔案 hash 與原 teacher 的限制；不能僅憑欄位恆定就任意拼接。
+- 新增列使用原 teacher 規則重新產生，或明確記錄目標不可用；不能將原列的常數目標無證據延伸到新列。
+- 新 release 如沿用現金限制，必須明示其為中性配置政策；不能將固定輸出記為已學會配置，也不能虛報 fit 筆數。
+- 2026 年保留資料的評估模型與使用全部成熟資料的最終模型需分開記錄。最終模型對已參與訓練資料的預測，不得計入保留資料表現。
+
+## 可追溯證據
+
+原檔位置：
+
+`D:/Min/Python/Project/FA_Data/output/release_v4/portfolio_ml_direct_numeric_production_v4_v2/runs/direct-ooc-505c6adaf3f71a0c8f0a274e/manifest.json`
+
+原 manifest 實體 SHA-256：
+
+`61d806ef005d0881911201104079c1acc92826a26bd8a331b9bd79156983ffe8`
+
+Root 查核輸出位於獨立整合工作區的 `output/qa/model_repair_review/original_target_values_audit.json`，逐年保存筆數、targets 檔案 hash，以及每欄最小值、最大值與非零筆數；該本機輸出不提交 Git。查核輸出 SHA-256：
+
+`4abe164961842e047cbbb96d2d980eb4241376f28c845253940ed5e79ecc937c`
+
+同一整合基線 `2268a98a` 的模型來源隔離、release adapter 與 inference focused tests 共 `58 passed`，另有 joblib 無法查物理核心數而改用邏輯核心的警告一則。兩個既有量化靜態 guard 通過。這些只證明原隔離／載入檢查在該基線可用，不證明新的資料集、重訓或推論已完成。

@@ -8,6 +8,8 @@
 
 模型 SHA `2a1223e06563098f08c8d57e85ec71c2c61399621987b3f09c9ac1d3b1081ae9`，current receipt file SHA `9355d7683d6fd7bd081eca0b607f94d30a1c0fd0ddbccf8e45abcd913e4429c8`，路徑為 `E:/codex_model_repair_20260923/current_inference/bounded_official_v3_run01/bounded_current_heads/cb6fea7fad1dab2df9261ea640e32d41fadb6b841eafb986810765d332b5019f.json`。輸入 identity 與訓練 identity 分開，正式權限均 false、alpha=0、無配置 proposal。app wrappers 及底層研究 inference 皆驗證官方市場契約，拒絕舊混合來源；新月份可用新封存清冊，原資料與模型不覆寫。完整來源與 hashes 見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。
 
+Root 另獨立重算 receipt body hash，讀回 model／fit／audit／training/current manifests 的檔案 hashes，並由 strict provider 重新驗證封存 current 原始前綴、13 列 prepared hash、T-1 特徵日與全部權限旗標；312 個輸出均為預期整數／機率範圍。結果為 integration `output/qa/model_repair_review/bounded_official_v3_current_readback.json`，verifier SHA `815076de23ab164e09d1cbf890dbc4a6006cdc560c995d811fdd3e5546903dfa`。這是來源與輸出一致性 readback，沒有宣稱獨立重跑每筆模型預測。
+
 ## 全量 H5 模型的最新資料讀回
 
 使用完整 release `restated-repair-5a4ece1426e70aa3`，從 run02 唯讀擷取 **13 檔**（1101、1216、1256、1301、1477、2002、2303、2317、2330、2412、2454、2881、6505）。實際 capture 為 **2026-09-23T15:41:55.101579+08:00**，特徵日期 **2026-09-22**；本次 CLI 含 Python 啟動共 **3.52 秒**，不外推全市場效能。

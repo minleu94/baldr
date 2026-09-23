@@ -19,6 +19,10 @@
 
 證據為 integration `output/qa/model_repair_review/bounded_official_v3_oof_independent_metrics.json`，file SHA `cdb2267ce4e79dd1ed10d062c77ef7ca399f5f367114e6bd53c277f2eadfb664`；verifier SHA `a9de38f7a803cd0e356647c10e4768097be567cdb1ce28625ba93a18fe42fd66`。實際 model fit、獨立評估與新資料推論均完成，但**品質不支持正式使用**。
 
+後續補查全部九種 base heads，逐筆覆蓋 864 個 algorithm/horizon/pack/fold/head 群組，報酬／downside 與前述獨立結果完全相同。五個風險幅度 heads 中，HGB 部分波動、尾損及回撤的 MAE 比基準低，例如 H5 波動 56.98 對 58.81 bp、H60 波動 54.33 對 55.79 bp；這些描述性分數沒有多重比較或顯著性驗證，不授予品質 gate。產業超額報酬全部缺標籤。成交可行性每個 algorithm/horizon 有 5,859 個缺 prediction（第一 fold 三 packs）；其餘 35,118 個有輸出的列上，Ridge Brier=0.01035、HGB=0.00026、同列 train-prevalence 基準=0.00026。不能把缺輸出列剔除後的成績當作全覆蓋，也不能用極不平衡標籤的近滿分 accuracy 宣稱模型有用。
+
+全 heads 結果保存 `output/qa/model_repair_review/bounded_official_v3_all_heads_metrics.json`，file SHA `0a766d2f4fe784424994110779c22961ce4ef19c13a34a9eb45c358b856693c2`，verifier SHA `10e5420527ae3fc033a2188f8ca650fc10e9f3ee4e43985b9af538416b720253`；同時包含 pooled／per-pack 指標及缺 truth／prediction 數。只驗算 base OOF，沒有重調參數或改動模型。
+
 ## 封存資料與 fit
 
 輸入是隔離封存的 run02 snapshot，檔案 SHA-256 為 `38ab1d1dfd201285ed817c8e94f689f91a50b39dc30cdbb8a90a49b7ce898771`。新資料集目錄為 `E:\codex_model_repair_20260923\bounded_fullfeature_label_restatement_20260923_v2`，manifest 檔案 SHA-256 為 `5b554b231ed0c3f57322aab8c0c9c09742743662747fdc95ea1ce0a7b984bd19`，canonical manifest identity 為 `sha256:cbac586973eab97b328fff000afa0d5cbbb7588ed98b86014901885578ab17e6`。嚴格 readback 載入 13 個年度 shards、22,093 samples、62 slots 與 4 folds。

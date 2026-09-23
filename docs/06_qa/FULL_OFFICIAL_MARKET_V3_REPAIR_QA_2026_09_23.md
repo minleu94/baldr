@@ -4,7 +4,7 @@
 
 完整 v3 資料、H5 全量重訓、heldout 指標獨立驗算與 13 檔最新資料推論均已完成。市場組原本極端的風險誤差已收斂，但下跌機率仍未勝過 train-only 基準，校準後反而較差；**本輪工程修復完成，模型品質仍不支持正式啟用**。原模型隔離、rule_only、production alpha=0 與正式權限保持。
 
-本次修復沿用 62 欄名稱、順序、scales、既有模型家族及原始 targets。官方來源替換只在新研究資料集發生，沒有寫回正式大盤 SQLite／CSV；舊模型與 v2 資料保留。來源事故、153 個月／306 份官方回應及 bounded 新模型驗收見[大盤來源稽核](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)及[bounded 評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)。
+本次修復沿用 62 欄名稱、順序、scales、既有模型家族及原始 targets。本研究建置當時只替換新研究資料集，未寫回正式大盤 SQLite／CSV；舊模型與 v2 資料保留。同日較晚的正式大盤與歷史交易日修復另見[正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md)，不回寫本版資料、模型或驗收結果。來源事故、153 個月／306 份官方回應及 bounded 新模型驗收見[大盤來源稽核](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)及[bounded 評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)。
 
 ## 封存資料與來源證據
 

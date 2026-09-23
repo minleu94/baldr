@@ -39,7 +39,7 @@
 |---|---|---|
 | `formal_market_repair_receipts/20260923_run01/` | `2c490f8aa336f646e9570f05d2a0c46e68346b3b2ba55d8e2fa2049b3b756d86` | applied |
 | `historical_session_repair_receipts/20260923_run01/` | `c97c3f85c42ec2ab14a0fa39473526e033578ea76a7559b9b186a5a06cb1e96c` | applied |
-| `excluded_daily_price_repair_receipts/20260923_run01/` | `27a56f4dcec575d7b93c80353b6c0d6430f503013f2aae97e9a8eb0bea47d287` | dry-run 計畫已保存，正式套用待驗收 |
+| `excluded_daily_price_repair_receipts/20260923_run01/` | `27a56f4dcec575d7b93c80353b6c0d6430f503013f2aae97e9a8eb0bea47d287` | applied，UTC 22:36:30；兩表各排除 2,942 列 |
 | `formal_technical_repair_receipts/20260923_run01/` | immutable source `bb12ff98369415ee25c56e1cb05eaec020c9b2b32f5fffd43144f96473150f76` | 因發現錯日紀錄而停止，未發布 |
 
 上表路徑皆相對於 `DATA_ROOT/output/scheduled/`。來源 captures 分別永久保存於同層 `formal_market_repair_sources/20260923_run01/` 與 `historical_session_repair_sources/20260923_run01/`，回復依賴來源及備份，不能把它們當作臨時 QA output 刪除。任一程序被中斷時只使用相同 receipt 的 `--resume`；不得改 hash 或建立假完成標記。
@@ -54,6 +54,8 @@
 
 八組官方 raw／receipt 已另行封存至 `DATA_ROOT/output/scheduled/excluded_daily_price_repair_sources/20260923_run01/`，16 檔共 4,444,826 bytes，另有逐檔移交 hash；保留真正擷取時間。最初技指 `run01` staging 因上述新發現停止，沒有發布至正式技指或 CSV。後續必須以排除完成後的新 source snapshot 重算，不能沿用停止的 staging 宣稱完成。
 
+排除完成後以 SQLite 唯讀 snapshot 與完整 before DB 獨立逐列比對：`daily_prices` 保留的 5,331,231 列、`technical_indicators` 保留的 5,260,667 列，所有欄位皆無差異、無額外新增列；兩表各只減少計畫中的 2,942 列。所有 SQLite schema objects 和大盤資料不變，`quick_check=ok`，日價日期對官方交易日曆 anti-join 為零。此前未有 canonical 的 54 筆已在這輪取得完整官方缺席證據，不再列為待查。
+
 ## 防止再次污染與執行成本
 
 一般與舊版每日合併入口共用已驗證的來源修訂：868 筆價格修訂、14,869 筆補回交易日，以及已套用的錯日排除。沒有新原始檔時仍會同步既有整合快取；原始檔不覆寫。一輪合併只載入一次修訂證據，利用受影響日期的 mask 處理資料，避免為約 533 萬列全數建立 Python records。SQLite writer 在發布前另行驗證，不能用舊來源或不完整重建清空已修復列。
@@ -63,3 +65,7 @@
 來源、備份或回復證據 hash 不符時，工具停止且不以手動改 hash 解鎖。永久來源封存是 apply／resume／rollback 的必要依賴，來源損壞時先恢復封存，再進行受控回復。回復順序是每日整合快取 → 全量技指發布 → 錯日排除 → 原價格／歷史交易日／大盤修訂，避免相依層仍使用已回復的來源。
 
 更新頁 validator 為 25 passed／0 failed／4 skipped；相關來源、合併、發布及更新服務回歸 147 passed。程序池／中止恢復／延遲與 canary 測試 23 passed；舊 fixture 中的 7/32–7/35 已改成合法日期，計算器仍拒絕無效日期。本節測試結果不代替後續正式資料全量讀回。
+
+真實來源 overlay 驗收從正式 DB 唯讀取出目標日期 16,823 列：15,737 筆修訂 canonical keys 及 1,086 筆 5/20 未修訂列。在 C 槽隔離資料故意改錯 1256／1477、九個補回日期的價量，放回全部 2,942 個排除 key 與休市日各一個未知代碼。Overlay 修復 20 個欄位、移除 2,945 列，剩下 16,823 列所有欄位逐列等於正式 canonical source，通過既有 import guard；未經 overlay 的排除列、錯誤 5/20 與錯誤補回交易日三種反例皆被拒絕。此驗收沒有寫入正式資料。
+
+錯日工具／writer／staging／publication 的最後 focused route 為 45 passed；併回含另一項重構 dirty changes 的主工作區後，import contract／更新頁／價格保護及 overlay route 為 121 passed（僅 pytest cache 權限 warning）。本輪隔離分支全域 mypy 661 source files 通過，15 個凍結的 ML 契約檔相對 `dcc27a42` 沒有差異。

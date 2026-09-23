@@ -1,7 +1,17 @@
 ﻿# 系統架構
 
-> **最後更新：2026-09-14｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-09-23｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
+
+## 行情來源修訂與衍生資料發布（2026-09-23）
+
+日常大盤更新由 `official_market_daily.py` 統一解析證交所 FMTQIK 成交股數與 MI_5MINS_HIST 真實 OHLC，按日期與收盤價交叉核對後發布；缺少來源即停止，不由收盤價合成開高低。TPEx 個股缺 OHLC 同樣保留缺值，即使有非零成交統計也不補價。
+
+受控來源修復涵蓋價格、大盤、補回完整歷史交易日與錯日排除。`daily_price_revision_write_guard.py`、`formal_market_revision.py`、`historical_session_revision.py`、`excluded_daily_price_revision.py` 在正式 writer 刪除／替換前檢查已核驗欄位及必要 key，並拒絕重匯官方已證明無行情的日期／代號。整表替換保留原 schema／索引，與全部批次寫入共用交易，失敗回滾。晚到來源的觀測時間與歷史交易日分開保存，ML／PIT gate 不將修訂後歷史冒充當時已知。
+
+`daily_price_source_revision_overlay.py` 每輪載入一次已核驗的價格／交易日／排除證據，供正常與舊版每日合併入口同步 derived CSV；即使沒有新 raw，也可套用來源修訂。處理使用日期 mask，只將少量修訂列轉成 records，不全量載入 Python row dictionaries。原始日檔仍保留；合併產物的 sidecar 保存修訂版本及移除筆數。`repair_formal_daily_cache.py` 則從已核驗的 immutable 日價 snapshot 串流重建完整 17 欄整合快取，將 CSV 與 source receipt 作為同一可恢復發布單位。
+
+全歷史技指修復使用 `repair_formal_technical_data.py` 協調唯讀 SQLite snapshot、`technical_cache_rebuild_stage.py` 的逐股完整因果計算與 CSV 串流 staging。更新 20 個既有因果指標及指定 CSV 的中文 OHLCV；已核驗的錯日 key／整日休市列從衍生快取移除，其餘非目標欄位和無來源的舊 key 保留並列入驗收。staging 綁定排除範圍與 plan／receipt identity，不能以同範圍不同證據替換來源。備份、來源／before／after hash、維護鎖與 journal 綁定正式發布及中斷恢復；後續來源或目標漂移時拒絕覆蓋。這是離線資料維護，不在 UI 開頁時執行，也不修改模型輸入 schema、模型權重或啟用設定。正式執行範圍與回復入口見[正式資料修復](../06_qa/FORMAL_DATA_REPAIR_2026_09_23.md)，日常判讀見[操作手冊](../07_guides/APPLICATION_MANUAL.md)。
 
 ## 個股研究、資料新鮮度與持倉證據邊界
 

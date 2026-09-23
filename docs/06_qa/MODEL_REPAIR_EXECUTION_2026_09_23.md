@@ -2,7 +2,7 @@
 
 ## 目前判定
 
-兩個受影響家族的股票／官方市場來源研究重建、完整 fit、獨立誤差核對與 13 檔最新資料推論均已完成。本輪工程修復結案，**預測品質仍不支持正式啟用**：bounded 四期間 pooled MAE／downside Brier 未勝 train-only 基準；H5 市場組異常風險誤差雖已大幅收斂，三組 downside Brier 仍不如基準、校準後亦未改善。舊模型隔離、rule_only、alpha=0 與 production pointers 保持；正式大盤 SQLite／CSV 未寫回，歷史產業 labels／配置 targets 等限制不冒稱已解決。最新完整證據見[全市場 v3 驗收](FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)、[bounded 評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)及[來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。以下 v1/v2 段落保留為修復過程紀錄。
+兩個受影響家族的股票／官方市場來源研究重建、完整 fit、獨立誤差核對與 13 檔最新資料推論均已完成。本輪研究版本的工程修復結案，**預測品質仍不支持正式啟用**：bounded 四期間 pooled MAE／downside Brier 未勝 train-only 基準；H5 市場組異常風險誤差雖已大幅收斂，三組 downside Brier 仍不如基準、校準後亦未改善。舊模型隔離、rule_only、alpha=0 與 production pointers 保持；歷史產業 labels／配置 targets 等限制不冒稱已解決。本研究階段尚未寫回正式大盤，同日後續正式來源／歷史交易日修復另見[正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md)；原模型仍綁定原版本，不自動沿用為新正式來源的驗收。完整研究證據見[全市場 v3 驗收](FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)、[bounded 評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)及[來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。以下 v1/v2 段落保留為修復過程紀錄。
 
 ## 最終研究產物
 

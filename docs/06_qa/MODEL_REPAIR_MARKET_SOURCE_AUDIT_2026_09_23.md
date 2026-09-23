@@ -71,3 +71,11 @@ H5 loader 現在依固定 v3 identity 欄位核對原始官方回應，保留 62
 七項新增 tests 驗證 Saturday horizon、真實 open、缺價拒絕、公司事件排除、四 horizon 的修訂鐘、新舊 profile 分離、股票原修訂鐘及 registry 範圍；30 項相關回歸通過。三檔 targeted mypy 通過。此階段尚未完成實際 bounded 市場重建／新 fit，不能以程式或測試通過代替產物驗收。
 
 上一批 `2722d411` 已合入 dev `8674cf14`。合入前 207 個其他 owner dirty 檔中，206 檔 bytes 一致；`tests/test_r012_recommendation_artifact_persistence.py` 在六秒檢查區間內由並行工作變動，不在本批修改路徑，未暫存或回復；index 空。
+
+實際 bounded 官方市場資料已從 producer `1b226702` 建置：`E:/codex_model_repair_20260923/bounded_official_market_restatement_v3_run01/manifest.json`，file SHA `129401a72b2f81dd0ef92617eb81706bda8a99600eab19e249a927a0ee8bf985`，dataset identity `5fc2b34d85d4e7ff2db8563ca41a1b00225a47f214e3fc2cceb0897b787bff5c`，實際修訂鐘 `2026-09-23T08:38:35.903787+00:00`。原 22,093 列中保留 **17,285**，排除 **4,808**，實際排除原因均是新官方交易日下的股票價格路徑不完整；不是刪除原檔或補價。13 年分片及研究 loader 通過。市場值改變 150,201 slots；H5／H10／H20／H60 label payload 分別改變 16,067／16,098／16,173／16,336 組。
+
+第一次實際 fit 在 trainer 原有 fold gate 被拒絕，尚未產生模型：排除缺價列後，fold-002 的有效決策日 purge 不足 60 日。新 consumer 僅收緊研究訓練截止日，從原 `2017-08-17` 前移至 `2016-11-01`，測試日期窗不變；沒有修改 frozen trainer 或降低 purge／embargo。實際重新呼叫原 `_validate_samples` 及 `_validate_folds` 全部通過。四 folds train/test 現為 **1,318/1,953、3,394/3,472、6,887/3,950、11,145/4,284**；較晚修訂鐘逐筆保留，這是研究評估，不是正式歷史 OOS。證據為 `bounded_official_v3_strict_preflight.json`，另新增缺價後 purge 的邊界測試，相關 18 tests、targeted mypy 通過。
+
+Root 另用唯讀 verifier 逐列比較父資料與新分片：**846,965 個**非市場 feature payload、全部 row keys／targets／state 精確保留；**224,705 個**市場／品質特徵及 **69,140 組、553,120 個欄位**的四 horizon outcome 以原始股票／官方市場價格和獨立 Decimal 算式驗算一致，未呼叫 producer 特徵或 label 計算函式。所有 4,808 個排除 row 均能直接找到不完整股票路徑，17 個缺價日期及受影響列數保留在 `bounded_official_v3_independent_values.json`。來源與分片 hashes 前後一致，公司事件只沿用已核對的 label-exclusion reader，不把這項來源解析宣稱為第二套獨立解析器。
+
+`1b226702` 合入 dev `c02148a5` 時，210 個並行工作 dirty 檔前後 bytes 完整一致、index 空。全量 H5 v3 producer 仍持續執行；本次 bounded gate 修正只改 consumer，不修改已封存 bounded 資料或正在運行的 H5 producer。

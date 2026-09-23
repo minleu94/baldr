@@ -50,6 +50,10 @@ from ml_module.allocation_training_service import (
     FeaturePackDefinition,
 )
 from ml_module.purged_walk_forward import MLTimeWindowRow, PurgedWalkForwardFold
+from data_module.bounded_official_market_restatement import (
+    OFFICIAL_RESTATEMENT_SCHEMA, OFFICIAL_FOLD_PROFILE, MARKET_FEATURE_IDS,
+    MARKET_RAW_IDS, MARKET_SOURCE_ID, MARKET_QUALITY_SOURCE_ID,
+)
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -277,7 +281,7 @@ def load_bounded_restated_research_dataset(
         raise BoundedRestatedResearchError(
             "generic PIT row contract unexpectedly accepted a late restated feature"
         )
-    preflight["changed_label_rows_outside_original_folds"] = True
+    preflight["changed_label_rows_outside_original_folds"] = manifest.get("fold_profile") != OFFICIAL_FOLD_PROFILE
     preflight["generic_pit_row_gate_rejects_late_feature"] = True
     preflight["feature_availability_scope"] = (
         "restated_research; actual revision clocks retained and not PIT"
@@ -499,6 +503,11 @@ def _parse_sample(
             revision_clock=revision_clock,
             definitions=definitions,
             source_hash_by_id=source_hash_by_id,
+            official_market=manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA,
+            stock_revision_clock=(
+                _aware_datetime(manifest["restatement"]["identity_payload"]["parent_training_as_of"], "parent_training_as_of")
+                if manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA else None
+            ),
         )
         for item in features_raw
     )
@@ -583,6 +592,7 @@ def _parse_sample(
         provenance.get("label_revision_clocks"),
         revision_observed_at=revision_observed_at,
         revision_clock=revision_clock,
+        official_market=manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA,
     )
     if {label.horizon_trading_days for label in labels} != set(_REQUIRED_HORIZONS):
         raise BoundedRestatedResearchError("all four horizon labels are required")
@@ -607,6 +617,8 @@ def _parse_feature(
     revision_clock: datetime,
     definitions: Mapping[str, Mapping[str, Any]],
     source_hash_by_id: Mapping[str, str],
+    official_market: bool = False,
+    stock_revision_clock: datetime | None = None,
 ) -> RestatedResearchFeature:
     _reject_unknown(payload, _FEATURE_FIELDS, "feature")
     feature_id = _required_text(payload.get("feature_id"), "feature.feature_id")
@@ -638,7 +650,8 @@ def _parse_feature(
         raise BoundedRestatedResearchError(
             f"feature revision is after training_as_of: {feature_id}"
         )
-    is_restatement_feature = feature_id in _RESEARCH_FEATURE_IDS
+    is_market_feature = official_market and feature_id in MARKET_FEATURE_IDS
+    is_restatement_feature = feature_id in _RESEARCH_FEATURE_IDS or is_market_feature
     if is_restatement_feature:
         _required_sha(revision_id, "feature.revision_id")
     if available_clock > decision_clock:
@@ -646,7 +659,8 @@ def _parse_feature(
             raise BoundedRestatedResearchError(
                 f"unapproved future feature availability: {feature_id}"
             )
-        if available_clock != revision_clock:
+        expected_revision = stock_revision_clock if official_market and not is_market_feature else revision_clock
+        if available_clock != expected_revision:
             raise BoundedRestatedResearchError(
                 f"restated feature availability is not the actual revision: {feature_id}"
             )
@@ -655,6 +669,8 @@ def _parse_feature(
             if feature_id in _REQUIRED_TECHNICAL_IDS
             else QUALITY_SOURCE_ID
         )
+        if is_market_feature:
+            expected_source = MARKET_SOURCE_ID if feature_id in MARKET_RAW_IDS else MARKET_QUALITY_SOURCE_ID
         if source_id != expected_source:
             raise BoundedRestatedResearchError(
                 f"restated feature source mismatch: {feature_id}"
@@ -679,6 +695,8 @@ def _parse_feature(
             raise BoundedRestatedResearchError(
                 f"technical registry source mismatch: {feature_id}"
             )
+        if is_market_feature and feature_id in MARKET_RAW_IDS and definition.get("source_id") != MARKET_SOURCE_ID:
+            raise BoundedRestatedResearchError(f"official market registry source mismatch: {feature_id}")
     if feature_id in _REQUIRED_TECHNICAL_IDS and scale != 10_000:
         raise BoundedRestatedResearchError(
             f"technical ABI scale must remain 10000: {feature_id}"
@@ -739,6 +757,7 @@ def _parse_labels(
     *,
     revision_observed_at: str,
     revision_clock: datetime,
+    official_market: bool = False,
 ) -> tuple[RestatedResearchLabel, ...]:
     if not isinstance(values, list) or not isinstance(revision_rows, list):
         raise BoundedRestatedResearchError("labels/revision clocks are missing")
@@ -799,10 +818,12 @@ def _parse_labels(
                 f"label revision predates event maturity for H{horizon}"
             )
         if restated:
-            if horizon != 60 or revision_available != revision_clock:
+            if (not official_market and horizon != 60) or revision_available != revision_clock:
                 raise BoundedRestatedResearchError(
                     "only corrected H60 labels may carry the actual revision clock"
                 )
+        elif official_market:
+            raise BoundedRestatedResearchError("official market labels must retain their actual revision clock")
         elif revision_available != maturity:
             raise BoundedRestatedResearchError(
                 f"unchanged label revision must retain maturity for H{horizon}"
@@ -1003,17 +1024,18 @@ def _build_event_maturity_folds(
                 ),
             }
         )
-    if changed_fold_assignments != 0:
+    official_market = manifest.get("fold_profile") == OFFICIAL_FOLD_PROFILE and manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA
+    if changed_fold_assignments != 0 and not official_market:
         raise BoundedRestatedResearchError(
             "a revised label enters an original outer fold; use a separate "
             "event-maturity research fold design"
         )
-    if train_label_revision_after_fold != 0:
+    if train_label_revision_after_fold != 0 and not official_market:
         raise BoundedRestatedResearchError(
             "a restated label revision is unavailable at original train fold start"
         )
     return tuple(folds), {
-        "scope": "original_event_maturity_date_windows",
+        "scope": OFFICIAL_FOLD_PROFILE if official_market else "original_event_maturity_date_windows",
         "folds": counts,
         "changed_label_rows_in_any_fold": changed_fold_assignments,
         "restated_label_revisions_after_original_train_boundaries": (
@@ -1114,7 +1136,7 @@ def _verify_manifest(root: Path, manifest: Mapping[str, Any]) -> None:
             "generic/frozen publication schema is not accepted by this entrypoint"
         )
     restatement = _mapping(manifest.get("restatement"), "restatement")
-    if restatement.get("schema_version") != FULL_RESTATEMENT_SCHEMA:
+    if restatement.get("schema_version") not in {FULL_RESTATEMENT_SCHEMA, OFFICIAL_RESTATEMENT_SCHEMA}:
         raise BoundedRestatedResearchError("full feature restatement identity mismatch")
     for key in (
         "historical_pit",
@@ -1139,6 +1161,10 @@ def _verify_manifest(root: Path, manifest: Mapping[str, Any]) -> None:
         raise BoundedRestatedResearchError("research publication manifest hash mismatch")
     if not root.is_dir():
         raise BoundedRestatedResearchError("research publication directory is missing")
+    if restatement["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA:
+        from data_module.bounded_official_market_restatement import validate_official_bounded_manifest
+
+        validate_official_bounded_manifest(manifest)
 
 
 def _publication_shards(
@@ -1348,6 +1374,8 @@ def _fit_source_hashes() -> dict[str, str]:
         root / "ml_module" / "allocation_contracts.py",
         root / "ml_module" / "purged_walk_forward.py",
         root / "ml_module" / "allocation_rank_contract.py",
+        root / "data_module" / "bounded_official_market_restatement.py",
+        root / "data_module" / "ml_restatement_official_market.py",
     )
     return {
         path.relative_to(root).as_posix(): _file_sha256(path)

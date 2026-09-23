@@ -32,6 +32,8 @@
 
 當日研究入口 `run_ml_allocation_restated_shadow.py`／`run_bounded_restated_current_heads.py` 使用 `--source-db` 並指定 v3 範本時，市場前綴自動讀取範本綁定的官方月報，股票仍來自唯讀 SQLite。更新官方月份後，可成對指定 `--official-market-manifest <CAPTURE_JSON>` 與 `--official-market-hash <FILE_SHA256>`；這兩個參數必須搭配 `--source-db`，資料取得鐘不得晚於此次擷取，僅使用 T-1 以前資料。模型使用官方市場訓練而當日輸入仍是舊市場定義時，兩條入口會拒絕，不自動降級。新輸入保留自己的 identity，原模型與資料集不覆寫；輸出仍是研究結果，不授予正式配置或交易權限。
 
+原 bounded 家族另使用 `python -m data_module.bounded_official_market_restatement`，指定 `--parent-manifest-path`／`--expected-parent-hash`（已修復股票技術前綴的 bounded v2）、`--source-snapshot-path`／`--expected-snapshot-hash`（同一 run02）、`--official-market-manifest`／`--expected-official-market-hash`（官方大盤封存）、`--corporate-action-manifest`（原 bounded 綁定的官方公司事件）和新的 `--output-directory`。入口替換 8 個市場值、5 個相依品質欄並重算四個 horizon；其餘 49 欄、原現金 targets／投組狀態保留。若原決策日非官方交易日、股票價格路徑不完整或新區間碰到公司事件，該列不進訓練，會出現在新清冊 `restatement.excluded_rows`，原資料不刪除。原四組日期窗保持，標籤成熟期按官方交易日重算；此獨立研究 profile 明示修訂鐘晚於歷史 fold，不能當作歷史 PIT／正式 OOS。新清冊經 `train_bounded_restated_research.py` 訓練後，還須檢查獨立評估及最新輸入結果。
+
 `scripts/run_ml_allocation_restated_shadow.py` 是進階維護入口。它可讀取已封存的當日列，或從指定 SQLite 唯讀來源建立新的當日輸入，保留實際執行時間；目前不改 UI 預設模型，也不授予持股配置或下單權限。
 
 先從本次受控訓練結果取得確切的 release 路徑與 `release_identity_hash`，再取得要判讀的 dataset manifest 及其檔案 SHA-256。使用下列參數執行：

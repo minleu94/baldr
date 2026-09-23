@@ -9,9 +9,10 @@ from app_module.technical_indicator_process_pool import run_bounded_indicator_po
 
 
 def _frame(stock_id: str, rows: int = 35) -> pd.DataFrame:
+    dates = pd.bdate_range("2026-01-01", periods=rows).strftime("%Y-%m-%d")
     return pd.DataFrame(
         {
-            "日期": [f"2026-01-{index:02d}" for index in range(1, rows + 1)],
+            "日期": dates,
             "證券代號": [stock_id] * rows,
             "開盤價": [10 + index for index in range(rows)],
             "最高價": [11 + index for index in range(rows)],

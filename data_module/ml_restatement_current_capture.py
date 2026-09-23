@@ -28,6 +28,7 @@ from data_module.ml_restatement_research_dataset import (
     sha256_file,
 )
 from data_module.ml_restatement_current_inputs import _IDENTITY_FIELDS, _aware
+from utils.numeric_text import normalize_grouped_numeric_text
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -47,7 +48,7 @@ def _same_number(left: object, right: object) -> bool:
     if left is None or right is None:
         return left is None and right is None
     try:
-        return Decimal(str(left)) == Decimal(str(right))
+        return Decimal(str(normalize_grouped_numeric_text(left))) == Decimal(str(normalize_grouped_numeric_text(right)))
     except (InvalidOperation, ValueError):
         return False
 
@@ -136,6 +137,7 @@ def capture_restated_current_dataset(
         "features": Path(build_restated_feature_values.__code__.co_filename),
         "kernel_facade": Path(calculate_causal_indicators.__code__.co_filename),
         "kernel": Path(indicator_kernels.__file__),
+        "numeric_parser": Path(normalize_grouped_numeric_text.__code__.co_filename),
     }
     code_hashes = {name: sha256_file(path) for name, path in code_paths.items()}
     connection = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=15)

@@ -41,6 +41,42 @@ def test_price_cleaner_detaches_float_array_and_preserves_missing_values() -> No
     assert not np.shares_memory(cleaned, source.to_numpy())
 
 
+def test_grouped_prices_match_numeric_prices_without_breaking_indicator_warmup() -> None:
+    numeric = _ohlc(130)
+    columns = ["開盤價", "最高價", "最低價", "收盤價"]
+    numeric[columns] += 1000
+    grouped = numeric.copy()
+    for column in columns:
+        grouped[column] = grouped[column].map(lambda value: f"{value:,.2f}")
+    before = grouped.copy(deep=True)
+
+    expected = calculate_causal_indicators(numeric)
+    actual = calculate_causal_indicators(grouped)
+
+    pd.testing.assert_frame_equal(grouped, before)
+    for column in CAUSAL_INDICATOR_COLUMNS:
+        np.testing.assert_array_equal(actual[column].isna(), expected[column].isna())
+        np.testing.assert_allclose(actual[column], expected[column], equal_nan=True)
+    assert pd.notna(actual.loc[129, "MA60"])
+
+
+def test_price_cleaner_rejects_bad_grouping_and_preserves_nullable_string_missing() -> None:
+    values = pd.Series(["1,005.00", "1,00.00", "--", None, "-1,000.25"], dtype="string")
+    actual = clean_price_values(values)
+    np.testing.assert_array_equal(np.isnan(actual), [False, True, True, True, False])
+    assert actual[0] == 1005 and actual[4] == -1000.25
+
+
+def test_bad_grouped_price_stays_a_real_gap_with_fresh_warmup() -> None:
+    source = _ohlc(130)
+    source["收盤價"] = source["收盤價"].map(str)
+    source.loc[40, "收盤價"] = "1,00.00"
+    result = calculate_causal_indicators(source)
+    assert all(pd.isna(result.loc[40, field]) for field in CAUSAL_INDICATOR_COLUMNS)
+    assert result.loc[41:54, "ATR"].isna().all()
+    assert pd.notna(result.loc[55, "ATR"])
+
+
 def test_causal_kernel_does_not_mutate_ohlc_or_depend_on_future_suffix() -> None:
     prefix = _ohlc(90)
     prefix.loc[30, "收盤價"] = np.nan

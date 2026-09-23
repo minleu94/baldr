@@ -24,6 +24,8 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
+from utils.numeric_text import normalize_grouped_numeric_text
+
 SUPPORTED_HORIZONS = (5, 10, 20, 60)
 LABEL_FIELDS = (
     "benchmark_excess_return_bp", "sector_excess_return_bp",
@@ -125,7 +127,7 @@ def _decimal(value: Any) -> Decimal | None:
     if value is None or isinstance(value, bool):
         return None
     try:
-        result = Decimal(str(value).strip())
+        result = Decimal(str(normalize_grouped_numeric_text(value)).strip())
     except Exception:
         return None
     return result if result.is_finite() else None

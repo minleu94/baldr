@@ -25,6 +25,8 @@ from data_module.ml_restatement_research_dataset import (
     _fixed_array,
     _series_metrics,
     RestatedDatasetBuilder,
+    _decimal,
+    _decimal_ohlc,
 )
 
 
@@ -51,6 +53,19 @@ def test_canonical_identity_is_stable_and_sensitive_to_recipe() -> None:
     first = canonical_hash({"recipe": "v1", "rows": 10})
     assert first == canonical_hash({"rows": 10, "recipe": "v1"})
     assert first != canonical_hash({"recipe": "v2", "rows": 10})
+
+
+def test_grouped_decimals_are_valid_observations_without_relaxing_bad_format_masks() -> None:
+    assert _decimal("1,005.00") == Decimal("1005.00")
+    assert _decimal("  -1,234.567890  ") == Decimal("-1234.567890")
+    assert _decimal("1,00.00") is None
+    assert _decimal("1,234e2") is None
+    assert _decimal("--") is None and _decimal(None) is None
+    _names, scales = expected_feature_contract()
+    assert _feature_eligibility("1,005.00", 24, scales[24], 1) == (10_050_000, False, False)
+    grouped_bar = {"開盤價": "1,000.00", "最高價": "1,010.00", "最低價": "1,000.00", "收盤價": "1,005.00"}
+    parsed = _decimal_ohlc(grouped_bar)
+    assert parsed is not None and parsed["close"] == Decimal("1005.00")
 
 
 def test_wire_contract_and_feature_slot_eligibility_keep_macd_sign_and_zero() -> None:

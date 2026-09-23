@@ -229,6 +229,8 @@ class PartitionMergeStats:
     appended_rows: int
     target_rows_checked: int
     target_observed_counts: tuple[int, ...]
+    corrected_scope_rows: int
+    corrected_scope_replacements: int
 
 
 def merge_partition_file(
@@ -237,6 +239,9 @@ def merge_partition_file(
     subset_table: pa.Table,
     output_path: Path,
     *,
+    corrected_symbols: set[str],
+    seen_parent_row_ids: set[str],
+    consumed_subset_indices: set[int],
     batch_size: int = 65_536,
 ) -> PartitionMergeStats:
     """替換一個父版分區中的 row_id，未命中列直接保留原始 Arrow batch。"""
@@ -246,6 +251,7 @@ def merge_partition_file(
         raise ValueError(f"subset and parent parquet schemas differ: {parent_path}")
     row_key_i = _column_index(schema, _ROW_KEY_COLUMN)
     symbol_i = _column_index(schema, _SYMBOL_COLUMN)
+    date_i = _column_index(schema, "decision_date")
     target_values_i = _column_index(schema, _TARGET_VALUE_COLUMN)
     target_mask_i = _column_index(schema, _TARGET_MASK_COLUMN)
     subset_keys = subset_table.column(_ROW_KEY_COLUMN).to_pylist()
@@ -263,14 +269,32 @@ def merge_partition_file(
     )
     parent_rows = replaced_rows = target_rows_checked = 0
     target_observed_counts = [0] * 6
+    corrected_scope_rows = corrected_scope_replacements = 0
     try:
         for batch in parent.iter_batches(batch_size=batch_size):
             target_masks = batch.column(target_mask_i)
+            flattened_masks = pc.list_flatten(target_masks)
+            mask_min = pc.min(flattened_masks).as_py()
+            mask_max = pc.max(flattened_masks).as_py()
+            if mask_min not in (0, 1) or mask_max not in (0, 1):
+                raise ValueError("target_missing_mask contains a value outside {0, 1}")
+            first_mask = pc.list_element(target_masks, 0)
+            for target_index in range(1, 6):
+                differs = pc.any(pc.not_equal(first_mask, pc.list_element(target_masks, target_index))).as_py()
+                if differs:
+                    raise ValueError("target_missing_mask fields disagree within a row")
             for target_index in range(6):
                 observed = pc.equal(pc.list_element(target_masks, target_index), 0)
                 observed_count = pc.sum(pc.cast(observed, pa.int64())).as_py()
                 target_observed_counts[target_index] += int(observed_count or 0)
             batch_keys = batch.column(row_key_i).to_pylist()
+            batch_symbols = batch.column(symbol_i).to_pylist()
+            batch_dates = batch.column(date_i).to_pylist()
+            for key in batch_keys:
+                if key in seen_parent_row_ids:
+                    raise ValueError(f"duplicate parent row_id: {key}")
+                seen_parent_row_ids.add(key)
+            corrected_scope_rows += sum(symbol in corrected_symbols for symbol in batch_symbols)
             matched = [subset_key_to_index.get(key) for key in batch_keys]
             is_replacement = [index is not None for index in matched]
             if any(is_replacement):
@@ -282,6 +306,13 @@ def merge_partition_file(
                     if subset_i in seen_subset_indices:
                         raise ValueError(f"subset row matched more than once: {subset_keys[subset_i]}")
                     seen_subset_indices.add(subset_i)
+                    consumed_subset_indices.add(subset_i)
+                    if batch_symbols[row_i] != subset_table.column(symbol_i)[subset_i].as_py():
+                        raise ValueError(f"symbol changed for row {batch_keys[row_i]}")
+                    if batch_dates[row_i] != subset_table.column(date_i)[subset_i].as_py():
+                        raise ValueError(f"decision_date changed for row {batch_keys[row_i]}")
+                    if batch_symbols[row_i] in corrected_symbols:
+                        corrected_scope_replacements += 1
                     target_rows_checked += 1
                     if parent_values[row_i] != subset_table.column(target_values_i)[subset_i].as_py():
                         raise ValueError(f"Direct targets changed for row {batch_keys[row_i]}")
@@ -314,6 +345,7 @@ def merge_partition_file(
         if extra_indices:
             extra = pc.take(subset_table, pa.array(extra_indices, type=pa.int64()))
             writer.write_table(extra, row_group_size=batch_size)
+            consumed_subset_indices.update(extra_indices)
         writer.close()
         os.replace(temporary_path, output_path)
     except Exception:
@@ -327,6 +359,8 @@ def merge_partition_file(
         appended_rows=len(extra_indices),
         target_rows_checked=target_rows_checked,
         target_observed_counts=tuple(target_observed_counts),
+        corrected_scope_rows=corrected_scope_rows,
+        corrected_scope_replacements=corrected_scope_replacements,
     )
 
 
@@ -460,7 +494,9 @@ def merge_v2_dataset(
     parent_year_entries = {int(item["year"]): item for item in parent["partition_files"]}
     years = sorted(set(parent_partitions) | set(subset_partitions))
     used_subset: set[int] = set()
+    seen_parent_row_ids: set[str] = set()
     total_replaced = total_added = parent_rows_seen = 0
+    corrected_scope_rows = corrected_scope_replacements = 0
     target_observed_counts = [0] * len(target_names)
     output_entries: list[dict[str, Any]] = []
     try:
@@ -469,22 +505,18 @@ def merge_v2_dataset(
             if year in parent_partitions:
                 stats = merge_partition_file(
                     parent_partitions[year], subset_indices, subset_table, out,
+                    corrected_symbols=common_symbols,
+                    seen_parent_row_ids=seen_parent_row_ids,
+                    consumed_subset_indices=used_subset,
                     batch_size=batch_size,
                 )
                 parent_rows_seen += stats.parent_rows
                 total_replaced += stats.replaced_rows
                 total_added += stats.appended_rows
+                corrected_scope_rows += stats.corrected_scope_rows
+                corrected_scope_replacements += stats.corrected_scope_replacements
                 for target_index, observed_count in enumerate(stats.target_observed_counts):
                     target_observed_counts[target_index] += observed_count
-                # 重新串流父版 row_id，確認子集每列只在一個年度分區中命中。
-                pf = pq.ParquetFile(parent_partitions[year])
-                for batch in pf.iter_batches(columns=[_ROW_KEY_COLUMN], batch_size=batch_size):
-                    for key in batch.column(0).to_pylist():
-                        idx = subset_indices.get(key)
-                        if idx is not None:
-                            if idx in used_subset:
-                                raise ValueError(f"subset row appears in multiple parent partitions: {key}")
-                            used_subset.add(idx)
             else:
                 # 若未來新增一個父版沒有的年度，依子集原順序與 schema 寫出。
                 indices = [
@@ -522,6 +554,13 @@ def merge_v2_dataset(
             raise ValueError(f"expected exact full-rowset replacement; found {total_added} new row IDs")
         if parent_rows_seen != int(parent["row_count"]):
             raise ValueError("parent row count changed during merge")
+        if len(seen_parent_row_ids) != int(parent["row_count"]):
+            raise ValueError("parent row IDs are not globally unique")
+        if corrected_scope_rows != corrected_scope_replacements:
+            raise ValueError(
+                "corrected subset does not cover every parent row in the fixed 22-symbol scope: "
+                f"scope_rows={corrected_scope_rows}, replacements={corrected_scope_replacements}"
+            )
         if any(count != expected_target_baseline_rows for count in target_observed_counts):
             raise ValueError(
                 "parent target_missing_mask counts differ from the audited Direct baseline: "

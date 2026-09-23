@@ -77,7 +77,15 @@ def test_merge_partition_replaces_matching_row_and_keeps_parent_order(tmp_path: 
     indices = {"row:a": 0}
 
     output_path = tmp_path / "out" / "year=2026" / "research_dataset.parquet"
-    stats = merge_partition_file(parent_path, indices, subset, output_path, batch_size=1)
+    seen_parent_ids: set[str] = set()
+    consumed_subset: set[int] = set()
+    stats = merge_partition_file(
+        parent_path, indices, subset, output_path,
+        corrected_symbols={"2330"},
+        seen_parent_row_ids=seen_parent_ids,
+        consumed_subset_indices=consumed_subset,
+        batch_size=1,
+    )
     result = pq.read_table(output_path)
 
     assert result.column("row_id").to_pylist() == ["row:a", "row:b"]
@@ -88,6 +96,9 @@ def test_merge_partition_replaces_matching_row_and_keeps_parent_order(tmp_path: 
     assert stats.appended_rows == 0
     assert stats.target_rows_checked == 1
     assert stats.target_observed_counts == (2, 2, 2, 2, 2, 2)
+    assert stats.corrected_scope_rows == stats.corrected_scope_replacements == 1
+    assert seen_parent_ids == {"row:a", "row:b"}
+    assert consumed_subset == {0}
 
 
 def test_merge_partition_rejects_changed_original_targets(tmp_path: Path) -> None:
@@ -99,6 +110,9 @@ def test_merge_partition_rejects_changed_original_targets(tmp_path: Path) -> Non
         merge_partition_file(
             parent_path, {"row:a": 0}, subset,
             tmp_path / "out" / "year=2026" / "research_dataset.parquet",
+            corrected_symbols={"2330"},
+            seen_parent_row_ids=set(),
+            consumed_subset_indices=set(),
         )
 
 
@@ -130,3 +144,60 @@ def test_manifest_reader_does_not_infer_hive_year_column(tmp_path: Path) -> None
 
     assert result.schema.names == SCHEMA.names
     assert result.column("row_id").to_pylist() == ["row:a"]
+
+
+def test_merge_rejects_row_id_collision_with_a_different_symbol(tmp_path: Path) -> None:
+    parent_path = tmp_path / "year=2026" / "research_dataset.parquet"
+    parent_path.parent.mkdir()
+    pq.write_table(_table([_row("row:a", "2330", 11)]), parent_path)
+    subset = _table([_row("row:a", "2454", 99)])
+
+    with pytest.raises(ValueError, match="symbol changed"):
+        merge_partition_file(
+            parent_path,
+            {"row:a": 0},
+            subset,
+            tmp_path / "out" / "year=2026" / "research_dataset.parquet",
+            corrected_symbols={"2454"},
+            seen_parent_row_ids=set(),
+            consumed_subset_indices=set(),
+        )
+
+
+def test_merge_rejects_duplicate_parent_row_ids(tmp_path: Path) -> None:
+    parent_path = tmp_path / "year=2026" / "research_dataset.parquet"
+    parent_path.parent.mkdir()
+    pq.write_table(
+        _table([_row("row:a", "2330", 11), _row("row:a", "2330", 12)]),
+        parent_path,
+    )
+
+    with pytest.raises(ValueError, match="duplicate parent row_id"):
+        merge_partition_file(
+            parent_path,
+            {},
+            _table([_row("row:other", "2330", 99)]),
+            tmp_path / "out" / "year=2026" / "research_dataset.parquet",
+            corrected_symbols={"2330"},
+            seen_parent_row_ids=set(),
+            consumed_subset_indices=set(),
+        )
+
+
+def test_merge_rejects_nonbinary_or_inconsistent_target_masks(tmp_path: Path) -> None:
+    parent_path = tmp_path / "year=2026" / "research_dataset.parquet"
+    parent_path.parent.mkdir()
+    bad_row = _row("row:a", "2330", 11)
+    bad_row["target_missing_mask"] = [0, 1, 0, 1, 0, 1]
+    pq.write_table(_table([bad_row]), parent_path)
+
+    with pytest.raises(ValueError, match="fields disagree"):
+        merge_partition_file(
+            parent_path,
+            {},
+            _table([_row("row:other", "2330", 99)]),
+            tmp_path / "out" / "year=2026" / "research_dataset.parquet",
+            corrected_symbols={"2330"},
+            seen_parent_row_ids=set(),
+            consumed_subset_indices=set(),
+        )

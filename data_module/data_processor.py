@@ -3,12 +3,12 @@ import numpy as np
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Union, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 import requests
 import time
-import yfinance as yf
 from .config import TWStockConfig
 from .data_loader import MarketDateRange
+from .official_market_daily import fetch_official_market_daily, update_market_index_csv
 import re
 
 class TWMarketDataProcessor:
@@ -95,60 +95,23 @@ class TWMarketDataProcessor:
         }
     
     def update_market_index(self) -> bool:
-        """更新大盤指數數據"""
+        """以 TWSE FMTQIK 與 MI_5MINS_HIST 更新指定區間的大盤資料。"""
         try:
-            # 下載台灣加權指數數據
-            df = yf.download('^TWII', start=self.date_range.start_date, end=self.date_range.end_date)
-            
-            if df.empty:
-                self.logger.error("未找到有效的大盤指數數據")
+            rows = fetch_official_market_daily(
+                self.date_range.start_date,
+                self.date_range.end_date,
+                requester=lambda url, params: self._make_request(url, dict(params)),
+                source_dir=self.config.meta_data_dir,
+            )
+            if not update_market_index_csv(self.config, rows):
+                self.logger.error("大盤 CSV 更新未完成（鎖定、備份或原子寫入失敗）")
                 return False
-            
-            # 重置索引，將日期列轉為普通列
-            df = df.reset_index()
-            
-            # 重命名列
-            df = df.rename(columns={
-                'Date': '日期',
-                'Open': '開盤價',
-                'High': '最高價',
-                'Low': '最低價',
-                'Close': '收盤價',
-                'Volume': '成交量'
-            })
-            
-            # 只保留需要的列
-            df = df[['日期', '開盤價', '最高價', '最低價', '收盤價', '成交量']]
-            
-            # 處理數據格式
-            df['日期'] = df['日期'].dt.strftime('%Y/%m/%d')
-            df['開盤價'] = df['開盤價'].round(2)
-            df['最高價'] = df['最高價'].round(2)
-            df['最低價'] = df['最低價'].round(2)
-            df['收盤價'] = df['收盤價'].round(2)
-            df['成交量'] = df['成交量'].astype(int)
-            
-            # 讀取現有數據（如果存在）
-            if self.market_index_file.exists():
-                existing_df = pd.read_csv(self.market_index_file)
-                # 合併新舊數據
-                df = pd.concat([existing_df, df], ignore_index=True)
-                # 刪除重複的日期，保留最新的數據
-                df = df.drop_duplicates(subset=['日期'], keep='last')
-                # 按日期排序
-                df = df.sort_values('日期')
-            
-            # 保存數據
-            self.config.create_backup(self.market_index_file)
-            df.to_csv(self.market_index_file, index=False, encoding='utf-8-sig')
-            
-            self.logger.info(f"成功更新大盤指數數據，共 {len(df)} 筆記錄")
+            self.logger.info("已使用 TWSE 官方來源更新大盤資料，共 %s 筆", len(rows))
             return True
-            
-        except Exception as e:
-            self.logger.error(f"更新大盤指數數據時發生錯誤: {str(e)}")
+        except Exception as exc:
+            self.logger.error("官方大盤資料更新失敗：%s", exc)
             return False
-    
+
     def update_industry_index(self) -> bool:
         """更新產業指數數據"""
         try:

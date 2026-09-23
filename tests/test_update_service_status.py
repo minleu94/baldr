@@ -1,6 +1,7 @@
 ﻿from types import SimpleNamespace
 import warnings
 import sqlite3
+from datetime import timedelta
 
 import pandas as pd
 import pytest
@@ -8,6 +9,40 @@ from pandas.errors import DtypeWarning
 
 from app_module.update_service import UpdateService
 from scripts.batch_update_daily_data import get_trading_days
+
+
+class _BoundedOfficialCalendarFixture:
+    """Explicit test schedule; unknown dates fail instead of probing live sources."""
+
+    def __init__(self, known_dates):
+        self._known_dates = dict(known_dates)
+
+    def require_trading_days_in_range(
+        self, start_date, end_date, *, allow_online_probe=True
+    ):
+        assert allow_online_probe is True
+        records = []
+        current = start_date
+        while current <= end_date:
+            key = current.isoformat()
+            if key not in self._known_dates:
+                raise AssertionError(f"test calendar fixture has no decision for {key}")
+            records.append(
+                {"date_str": key, "is_trading_day": self._known_dates[key]}
+            )
+            current += timedelta(days=1)
+        return records
+
+
+def _inject_bounded_trading_dates(monkeypatch, service, start, end, dates):
+    """Inject an exact, bounded date sequence into a workflow test."""
+
+    def resolve(requested_start, requested_end):
+        assert (requested_start, requested_end) == (start, end)
+        return list(dates)
+
+    monkeypatch.setattr(service, "_iter_weekday_date_keys", resolve)
+    return service
 
 
 def _config(tmp_path):
@@ -52,7 +87,16 @@ def _sqlite_config(tmp_path):
 
 
 def test_batch_daily_trading_days_include_start_date():
-    assert get_trading_days("2026-06-18", "2026-06-22") == [
+    calendar = _BoundedOfficialCalendarFixture(
+        {
+            "2026-06-18": True,
+            "2026-06-19": False,
+            "2026-06-20": False,
+            "2026-06-21": False,
+            "2026-06-22": True,
+        }
+    )
+    assert get_trading_days("2026-06-18", "2026-06-22", calendar=calendar) == [
         "2026-06-18",
         "2026-06-22",
     ]
@@ -92,7 +136,15 @@ def test_update_daily_checks_selected_start_date_when_file_missing(tmp_path, mon
 
     monkeypatch.setattr("subprocess.run", fake_run)
 
-    result = UpdateService(config).update_daily("2026-06-18", "2026-06-22", delay_seconds=0)
+    service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch,
+        service,
+        "2026-06-18",
+        "2026-06-22",
+        ["20260618", "20260622"],
+    )
+    result = service.update_daily("2026-06-18", "2026-06-22", delay_seconds=0)
 
     assert result["success"] is True
     start_index = captured["args"].index("--start-date") + 1
@@ -111,7 +163,11 @@ def test_update_daily_returns_failure_when_batch_reports_failed_dates(tmp_path, 
 
     monkeypatch.setattr("subprocess.run", fake_run)
 
-    result = UpdateService(config).update_daily("2026-07-02", "2026-07-02", delay_seconds=0)
+    service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch, service, "2026-07-02", "2026-07-02", ["20260702"]
+    )
+    result = service.update_daily("2026-07-02", "2026-07-02", delay_seconds=0)
 
     assert result["success"] is False
     assert result["failed_dates"]
@@ -126,7 +182,11 @@ def test_update_daily_preserves_missing_date_when_batch_output_is_empty(tmp_path
 
     monkeypatch.setattr("subprocess.run", fake_run)
 
-    result = UpdateService(config).update_daily("2026-07-10", "2026-07-10", delay_seconds=0)
+    service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch, service, "2026-07-10", "2026-07-10", ["20260710"]
+    )
+    result = service.update_daily("2026-07-10", "2026-07-10", delay_seconds=0)
 
     assert result["success"] is False
     assert result["failed_dates"] == ["2026-07-10"]
@@ -162,8 +222,16 @@ def test_update_daily_streams_date_progress_when_callback_is_supplied(tmp_path, 
 
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: _Process())
     progress = []
+    service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch,
+        service,
+        "2026-07-02",
+        "2026-07-03",
+        ["20260702", "20260703"],
+    )
 
-    result = UpdateService(config).update_daily(
+    result = service.update_daily(
         "2026-07-02",
         "2026-07-03",
         delay_seconds=0,
@@ -228,11 +296,20 @@ def test_update_daily_marks_cancel_after_current_streaming_request_is_drained(tm
 
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: _Process())
 
+    service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch,
+        service,
+        "2026-07-02",
+        "2026-07-03",
+        ["20260702", "20260703"],
+    )
+
     def progress(message, _percentage):
         if "2026-07-02" in message:
             cancellation["requested"] = True
 
-    result = UpdateService(config).update_daily(
+    result = service.update_daily(
         "2026-07-02",
         "2026-07-03",
         delay_seconds=0,
@@ -1138,7 +1215,9 @@ def test_update_tpex_daily_price_reports_source_failure(tmp_path):
     assert "TPEX endpoint failed" in result["message"]
 
 
-def test_update_tpex_daily_price_range_fails_when_current_tpex_date_is_missing(tmp_path):
+def test_update_tpex_daily_price_range_fails_when_current_tpex_date_is_missing(
+    tmp_path, monkeypatch
+):
     config = _sqlite_config(tmp_path)
     (config.tpex_daily_price_dir / "20260703.csv").write_text(
         "日期,證券代號,證券名稱,收盤價\n20260703,3207,耀勝,42.5\n",
@@ -1159,6 +1238,13 @@ def test_update_tpex_daily_price_range_fails_when_current_tpex_date_is_missing(t
             )
 
     service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch,
+        service,
+        "2026-07-03",
+        "2026-07-06",
+        ["20260703", "20260706"],
+    )
     service._create_tpex_daily_price_source = lambda: FailingTpexSource()
 
     result = service.update_tpex_daily_price_range(
@@ -1350,7 +1436,7 @@ def test_update_tpex_daily_price_range_keeps_prior_diagnostics_on_later_exceptio
     assert "second date source raised" in result["failure_diagnostics"][1]["message"]
 
 
-def test_update_tpex_daily_price_range_streams_date_progress(tmp_path):
+def test_update_tpex_daily_price_range_streams_date_progress(tmp_path, monkeypatch):
     config = _sqlite_config(tmp_path)
 
     class TpexSource:
@@ -1366,6 +1452,13 @@ def test_update_tpex_daily_price_range_streams_date_progress(tmp_path):
             )
 
     service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch,
+        service,
+        "2026-07-02",
+        "2026-07-03",
+        ["20260702", "20260703"],
+    )
     service._create_tpex_daily_price_source = lambda: TpexSource()
     progress = []
 
@@ -1387,7 +1480,9 @@ def test_update_tpex_daily_price_range_streams_date_progress(tmp_path):
     assert progress[-1] == ("TPEX API 下載完成，正在整理日期結果", 100)
 
 
-def test_update_tpex_daily_price_range_stops_at_date_boundary_when_cancelled(tmp_path):
+def test_update_tpex_daily_price_range_stops_at_date_boundary_when_cancelled(
+    tmp_path, monkeypatch
+):
     config = _sqlite_config(tmp_path)
     calls = []
 
@@ -1405,6 +1500,13 @@ def test_update_tpex_daily_price_range_stops_at_date_boundary_when_cancelled(tmp
             )
 
     service = UpdateService(config)
+    _inject_bounded_trading_dates(
+        monkeypatch,
+        service,
+        "2026-07-02",
+        "2026-07-03",
+        ["20260702", "20260703"],
+    )
     service._create_tpex_daily_price_source = lambda: TpexSource()
     cancellation = {"requested": False}
 
@@ -1758,7 +1860,9 @@ def test_check_source_detail_runs_deep_check_without_writing_manifest(tmp_path):
     assert not service.status_manifest_file.exists()
 
 
-def test_smart_incremental_technical_calculation_replays_warmup_window(tmp_path, monkeypatch):
+def test_smart_incremental_recomputes_full_prefix_and_publishes_warmup_window(
+    tmp_path, monkeypatch
+):
     config = _config(tmp_path)
     pd.DataFrame({
         "日期": [
@@ -1781,11 +1885,19 @@ def test_smart_incremental_technical_calculation_replays_warmup_window(tmp_path,
         "RSI": [50, 51, 52],
     }).to_csv(config.technical_dir / "2330_indicators.csv", index=False, encoding="utf-8-sig")
 
-    seen_dates = []
+    calculated_dates = []
+    published_dates = []
 
     class FakeCalculator:
         def __init__(self, logger):
             self.logger = logger
+
+        def calculate_all_indicators(self, df, stock_id):
+            assert stock_id == "2330"
+            calculated_dates.extend(df["日期"].astype(str).tolist())
+            result = df[["日期", "證券代號"]].copy()
+            result["RSI"] = range(len(result))
+            return result
 
         def calculate_and_store_indicators(
             self,
@@ -1793,13 +1905,13 @@ def test_smart_incremental_technical_calculation_replays_warmup_window(tmp_path,
             stock_id,
             output_dir,
             ignore_existing=False,
+            precomputed_result=None,
         ):
-            seen_dates.extend(df["日期"].astype(str).tolist())
-            return pd.DataFrame({
-                "日期": df["日期"].astype(str),
-                "證券代號": df["證券代號"].astype(str),
-                "RSI": range(len(df)),
-            })
+            assert stock_id == "2330"
+            assert precomputed_result is not None
+            published_dates.extend(df["日期"].astype(str).tolist())
+            assert precomputed_result["日期"].astype(str).tolist() == published_dates
+            return precomputed_result
 
     import analysis_module.technical_analysis.technical_indicators as indicators
 
@@ -1812,8 +1924,19 @@ def test_smart_incremental_technical_calculation_replays_warmup_window(tmp_path,
     )
 
     assert result["success"] is True
-    assert "2026-01-02" in seen_dates
-    assert "2026-01-05" in seen_dates
+    assert calculated_dates == [
+        "2026-01-01",
+        "2026-01-02",
+        "2026-01-03",
+        "2026-01-04",
+        "2026-01-05",
+    ]
+    assert published_dates == [
+        "2026-01-02",
+        "2026-01-03",
+        "2026-01-04",
+        "2026-01-05",
+    ]
 
 
 def test_smart_incremental_technical_calculation_skips_when_indicator_is_current(tmp_path, monkeypatch):
@@ -2008,10 +2131,9 @@ def test_process_stock_data_batch_writes_only_to_explicit_paths(tmp_path):
     assert list(backup_dir.glob("all_stocks_data_*.csv"))
 
 
-def test_market_index_yfinance_fallback_never_uses_future_date(tmp_path, monkeypatch):
+def test_market_index_rejects_missing_official_monthly_report(tmp_path, monkeypatch):
     from data_module.config import TWStockConfig
     from data_module.data_loader import DataLoader
-    import yfinance
 
     config = TWStockConfig(
         data_root=tmp_path / "data",
@@ -2020,20 +2142,6 @@ def test_market_index_yfinance_fallback_never_uses_future_date(tmp_path, monkeyp
     )
     loader = DataLoader(config)
     monkeypatch.setattr(loader, "_make_request", lambda url, params: None)
-
-    def fake_download(*args, **kwargs):
-        return pd.DataFrame(
-            {
-                "Open": [100.0],
-                "High": [101.0],
-                "Low": [99.0],
-                "Close": [100.5],
-                "Volume": [1000],
-            },
-            index=pd.to_datetime(["2026-05-29"]),
-        ).rename_axis("Date")
-
-    monkeypatch.setattr(yfinance, "download", fake_download)
 
     result = loader.update_market_index("2026-05-28")
 

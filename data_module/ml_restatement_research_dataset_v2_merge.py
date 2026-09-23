@@ -228,6 +228,7 @@ class PartitionMergeStats:
     replaced_rows: int
     appended_rows: int
     target_rows_checked: int
+    target_observed_counts: tuple[int, ...]
 
 
 def merge_partition_file(
@@ -261,8 +262,14 @@ def merge_partition_file(
         write_statistics=True,
     )
     parent_rows = replaced_rows = target_rows_checked = 0
+    target_observed_counts = [0] * 6
     try:
         for batch in parent.iter_batches(batch_size=batch_size):
+            target_masks = batch.column(target_mask_i)
+            for target_index in range(6):
+                observed = pc.equal(pc.list_element(target_masks, target_index), 0)
+                observed_count = pc.sum(pc.cast(observed, pa.int64())).as_py()
+                target_observed_counts[target_index] += int(observed_count or 0)
             batch_keys = batch.column(row_key_i).to_pylist()
             matched = [subset_key_to_index.get(key) for key in batch_keys]
             is_replacement = [index is not None for index in matched]
@@ -319,6 +326,7 @@ def merge_partition_file(
         replaced_rows=replaced_rows,
         appended_rows=len(extra_indices),
         target_rows_checked=target_rows_checked,
+        target_observed_counts=tuple(target_observed_counts),
     )
 
 
@@ -453,6 +461,7 @@ def merge_v2_dataset(
     years = sorted(set(parent_partitions) | set(subset_partitions))
     used_subset: set[int] = set()
     total_replaced = total_added = parent_rows_seen = 0
+    target_observed_counts = [0] * len(target_names)
     output_entries: list[dict[str, Any]] = []
     try:
         for year in years:
@@ -465,6 +474,8 @@ def merge_v2_dataset(
                 parent_rows_seen += stats.parent_rows
                 total_replaced += stats.replaced_rows
                 total_added += stats.appended_rows
+                for target_index, observed_count in enumerate(stats.target_observed_counts):
+                    target_observed_counts[target_index] += observed_count
                 # 重新串流父版 row_id，確認子集每列只在一個年度分區中命中。
                 pf = pq.ParquetFile(parent_partitions[year])
                 for batch in pf.iter_batches(columns=[_ROW_KEY_COLUMN], batch_size=batch_size):
@@ -511,6 +522,11 @@ def merge_v2_dataset(
             raise ValueError(f"expected exact full-rowset replacement; found {total_added} new row IDs")
         if parent_rows_seen != int(parent["row_count"]):
             raise ValueError("parent row count changed during merge")
+        if any(count != expected_target_baseline_rows for count in target_observed_counts):
+            raise ValueError(
+                "parent target_missing_mask counts differ from the audited Direct baseline: "
+                f"expected={expected_target_baseline_rows}, actual={target_observed_counts}"
+            )
         if sum(item["row_count"] for item in output_entries) != int(parent["row_count"]):
             raise ValueError("v2 row count must equal the complete parent rowset")
 
@@ -520,7 +536,10 @@ def merge_v2_dataset(
         facade_sha = computation_source_hashes["causal_kernel_facade"]
         corrected_builder_sha = computation_source_hashes["corrected_subset_builder"]
         kernel_impl_sha = computation_source_hashes["causal_kernel_impl"]
-        audit_target_counts = {name: expected_target_baseline_rows for name in target_names}
+        audit_target_counts = {
+            name: target_observed_counts[index]
+            for index, name in enumerate(target_names)
+        }
         original_audit = dict(parent.get("original_row_target_audit", {}))
         original_audit.update({
             "artifact_sha256": audit_sha,

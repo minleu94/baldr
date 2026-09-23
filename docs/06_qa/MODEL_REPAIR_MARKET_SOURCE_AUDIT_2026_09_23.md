@@ -4,7 +4,7 @@
 
 H5 v2 完整 fit 已完成，但市場特徵組的 heldout 風險預測大量偏高。獨立核對發現 `market_indices.成交量` 混用兩種來源，且 TWSE FMTQIK 分支以收盤指數代填開／高／低。這是資料語意問題；目前證據不能把 Yahoo 的 Volume 一律乘上 1,000，也不能把指數後期的正常漲幅判為錯價。
 
-本次來源查核只讀取 run02 快照與官方月報，沒有修改正式 SQLite、封存模型或 v2 資料。這項額外問題尚未修好，因此模型保持研究狀態；不能宣稱「完整修復已驗收」。
+本次來源查核只讀取 run02 快照與官方月報，沒有修改正式 SQLite、封存模型或 v2 資料。官方歷史來源已核驗，bounded 新資料、fit、獨立評估及當日推論已完成，但品質未勝簡單基準；全量 H5 v3 仍在建置，因此不能宣稱「完整修復已驗收」。各階段紀錄如下，以最後完成證據為準。
 
 ## 已核對的證據
 
@@ -79,3 +79,15 @@ H5 loader 現在依固定 v3 identity 欄位核對原始官方回應，保留 62
 Root 另用唯讀 verifier 逐列比較父資料與新分片：**846,965 個**非市場 feature payload、全部 row keys／targets／state 精確保留；**224,705 個**市場／品質特徵及 **69,140 組、553,120 個欄位**的四 horizon outcome 以原始股票／官方市場價格和獨立 Decimal 算式驗算一致，未呼叫 producer 特徵或 label 計算函式。所有 4,808 個排除 row 均能直接找到不完整股票路徑，17 個缺價日期及受影響列數保留在 `bounded_official_v3_independent_values.json`。來源與分片 hashes 前後一致，公司事件只沿用已核對的 label-exclusion reader，不把這項來源解析宣稱為第二套獨立解析器。
 
 `1b226702` 合入 dev `c02148a5` 時，210 個並行工作 dirty 檔前後 bytes 完整一致、index 空。全量 H5 v3 producer 仍持續執行；本次 bounded gate 修正只改 consumer，不修改已封存 bounded 資料或正在運行的 H5 producer。
+
+## bounded v3 完整 fit 與最新資料推論
+
+原 trainer 的所有樣本／fold gate 通過後，`training_run02` 完成 **17,285 列、兩個算法、三個特徵組、四個 horizon、24 個 experts** 的完整訓練；沒有減少 fit rows。實際 seed=42、HGB max_iter=60、Ridge alpha=1，threadpool=2；不宣稱這些參數等同於歷史正式模型。資料分片及訓練程式 hashes 在前後核對一致。fit receipt SHA `f95e525bc9387a7a9929eac1b92089f872438262e77c251dc6b4264c108115c1`，模型 SHA `2a1223e06563098f08c8d57e85ec71c2c61399621987b3f09c9ac1d3b1081ae9`，audit SHA `b8e2d628325406cca3cc8120fcd212e5013f7be7ec85bedc04b446370f31ecb3`；根目錄為 `E:/codex_model_repair_20260923/bounded_official_market_restatement_v3_run01/training_run02`。
+
+隨後從正式 SQLite 的新唯讀 transaction 擷取股票前綴，市場仍讀已核驗的官方來源。實際 captured_at=`2026-09-23T16:48:42.586694+08:00`、feature as-of=`2026-09-22`，包含 1256／1477 的 13 檔 × 24 experts 共 **312 組**當日研究預測成功。新輸入 dataset identity `321f672a4c7f5fefe5b21c9b719ff031e21bbb9229f45872c011329df67faf07`，manifest file SHA `696b289d9d0ed8b4f0b0a0fee4551276a47b9d4f7b3dd62335f9215270403f2a`；不是把訓練資料集身分假冒為當日輸入。
+
+推論 receipt 位於 `E:/codex_model_repair_20260923/current_inference/bounded_official_v3_run01/bounded_current_heads/cb6fea7fad1dab2df9261ea640e32d41fadb6b841eafb986810765d332b5019f.json`，file SHA `9355d7683d6fd7bd081eca0b607f94d30a1c0fd0ddbccf8e45abcd913e4429c8`。production blend=0、allocation proposal=null、formal OOS／歷史 PIT／production action／promotion／broker order 均 false。312 組均無 neutral fallback，產業 excess head 全部維持 missing；不是用 0 代填。
+
+獨立 verifier 已逐筆驗算 **327,816 筆 base OOF、13,659 個 unique test rows、96 個分組**，重新依各 fold 有效訓練列計算 train-only 基準，分片／audit hashes 前後不變。四期間 pooled MAE、downside Brier 均未勝基準；新舊 v2/v3 母體不同，不能以表面數值變化判定來源修復變好或變差。完整表、方法、證據 hashes 與限制見[bounded v3 評估](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)。
+
+底層 `MLAllocationInferenceService` 的明確研究輸入分支也檢查官方市場契約，防止直接呼叫底層時略過 app wrapper 的來源限制。回歸驗證舊混合來源遭拒、另一批具有相同官方契約的新輸入可用；一般入口與 62 欄 ABI 不變。相關八項 tests 及 targeted mypy 通過。此 consumer guard 不改任何 dataset producer 或訓練數值。

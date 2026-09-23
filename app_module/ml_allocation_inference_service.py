@@ -585,6 +585,11 @@ class MLAllocationInferenceService:
                 raise ValueError("distinct input binding requires a restated research release")
             if research_input_binding.feature_registry_hash != self._artifact.feature_registry_hash:
                 raise ValueError("research input feature registry differs from training")
+            from ml_module.restated_research_input_contract import require_compatible_market_sources
+
+            require_compatible_market_sources(
+                self._artifact.source_manifest_hashes, research_input_binding.source_manifest_hashes,
+            )
             if tuple(name for name, _ in research_input_binding.ordered_features) != tuple(
                 feature_id for pack in self._artifact.feature_packs for feature_id in pack.feature_ids
             ):

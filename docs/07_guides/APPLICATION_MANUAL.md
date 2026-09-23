@@ -30,7 +30,7 @@
 
 此入口以官方兩份月報核對成交股數與真實開高低收，按官方交易日重算 labels，保留真正取得時間；成功產生 manifest 只表示研究資料建置完成。H5 訓練入口已支援 v3 及外部 custody v2，會核對實際開始證據、producer 原始碼、官方回應、原始 targets 與新增列的缺值目標；完整模型評估仍須另外完成。資料集不相容時不要手改版本、source SHA 或刪除 gate。逐項驗收見[大盤來源核對](../06_qa/MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。
 
-當日研究入口 `run_ml_allocation_restated_shadow.py`／`run_bounded_restated_current_heads.py` 使用 `--source-db` 並指定 v3 範本時，市場前綴自動讀取範本綁定的官方月報，股票仍來自唯讀 SQLite。更新官方月份後，可成對指定 `--official-market-manifest <CAPTURE_JSON>` 與 `--official-market-hash <FILE_SHA256>`；這兩個參數必須搭配 `--source-db`，資料取得鐘不得晚於此次擷取，僅使用 T-1 以前資料。模型使用官方市場訓練而當日輸入仍是舊市場定義時，兩條入口會拒絕，不自動降級。新輸入保留自己的 identity，原模型與資料集不覆寫；輸出仍是研究結果，不授予正式配置或交易權限。
+當日研究入口 `run_ml_allocation_restated_shadow.py`／`run_bounded_restated_current_heads.py` 使用 `--source-db` 並指定 v3 範本時，市場前綴自動讀取範本綁定的官方月報，股票仍來自唯讀 SQLite。更新官方月份後，可成對指定 `--official-market-manifest <CAPTURE_JSON>` 與 `--official-market-hash <FILE_SHA256>`；這兩個參數必須搭配 `--source-db`，資料取得鐘不得晚於此次擷取，僅使用 T-1 以前資料。模型使用官方市場訓練而當日輸入仍是舊市場定義時，兩條入口及底層研究推論都會拒絕，不自動降級；應核對官方來源清冊與契約，不要刪掉來源標記重試。新輸入保留自己的 identity，原模型與資料集不覆寫；輸出仍是研究結果，不授予正式配置或交易權限。
 
 原 bounded 家族另使用 `python -m data_module.bounded_official_market_restatement`，指定 `--parent-manifest-path`／`--expected-parent-hash`（已修復股票技術前綴的 bounded v2）、`--source-snapshot-path`／`--expected-snapshot-hash`（同一 run02）、`--official-market-manifest`／`--expected-official-market-hash`（官方大盤封存）、`--corporate-action-manifest`（原 bounded 綁定的官方公司事件）和新的 `--output-directory`。入口替換 8 個市場值、5 個相依品質欄並重算四個 horizon；其餘 49 欄、原現金 targets／投組狀態保留。若原決策日非官方交易日、股票價格路徑不完整或新區間碰到公司事件，該列不進訓練，會出現在新清冊 `restatement.excluded_rows`，原資料不刪除。原四組日期窗保持，標籤成熟期按官方交易日重算；此獨立研究 profile 明示修訂鐘晚於歷史 fold，不能當作歷史 PIT／正式 OOS。新清冊經 `train_bounded_restated_research.py` 訓練後，還須檢查獨立評估及最新輸入結果。
 

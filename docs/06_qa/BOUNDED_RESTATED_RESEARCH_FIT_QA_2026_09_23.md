@@ -2,6 +2,23 @@
 
 本紀錄驗收 2026-05-20 價格修訂後，原 bounded 22,093 列資料的四個 horizon labels 與 62-slot features 重算、新版研究模型 fit、base OOF 成效，以及當日 heads-only readback。所有輸出均為 `restated_research`：晚期修訂實際可用時間保留為 2026-09-23；資料不是歷史 PIT，不是正式 OOS，不可用於 production action、promotion 或 release。
 
+## 官方市場 v3：本次最新結果
+
+官方交易日及真實 OHLC／成交股數修訂後，17,285 列保留、4,808 列因股票價格路徑不完整排除，原資料仍保留。新四個測試日期窗不變，fold-002 訓練截止日收緊，確保原 trainer 的 60 日 purge；四 folds train/test 為 1,318/1,953、3,394/3,472、6,887/3,950、11,145/4,284。新資料、實際 fit、來源與模型 hashes 見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。以下較舊 v2 結果不能直接與 v3 比較優劣，因樣本母體與 fold 訓練數已改變。
+
+獨立 verifier 不匯入 trainer，從保存的分片 labels 與 base OOF array 逐筆驗算：**327,816 筆、13,659 個 unique test rows、96 個 algorithm/horizon/pack/fold 群組**。每組的 row IDs 恰等於該 fold 完整測試集合；train-only 基準依實際有效訓練截止日及成熟 labels 計算。全程整數累加、Decimal 彙總；來源分片與 audit 前後 hashes 一致。每個 pooled algorithm/horizon 的 n=40,977 包含同列三組特徵預測，不是獨立樣本數。
+
+| Horizon | Ridge MAE bp | HGB MAE bp | Train-mean MAE bp | Ridge downside Brier | HGB downside Brier | Train-prevalence Brier |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5 | 218.55 | 222.85 | 215.06 | 0.22469 | 0.22420 | 0.22315 |
+| 10 | 320.85 | 338.68 | 313.39 | 0.23648 | 0.23680 | 0.23424 |
+| 20 | 479.99 | 493.50 | 465.92 | 0.24430 | 0.24291 | 0.24132 |
+| 60 | 898.67 | 921.27 | 853.46 | 0.25486 | 0.25218 | 0.24501 |
+
+兩算法、四期間的 pooled 報酬 MAE 與 downside Brier 均不優於同母體 train-only 基準。24 個 per-pack 表也保留；少數分類分數較佳不代表整體達標，未以 heldout 選新 winner 或調參。本驗算不涵蓋校準後 ensemble、實際策略成本績效或歷史 PIT 有效性。
+
+證據為 integration `output/qa/model_repair_review/bounded_official_v3_oof_independent_metrics.json`，file SHA `cdb2267ce4e79dd1ed10d062c77ef7ca399f5f367114e6bd53c277f2eadfb664`；verifier SHA `a9de38f7a803cd0e356647c10e4768097be567cdb1ce28625ba93a18fe42fd66`。實際 model fit、獨立評估與新資料推論均完成，但**品質不支持正式使用**。
+
 ## 封存資料與 fit
 
 輸入是隔離封存的 run02 snapshot，檔案 SHA-256 為 `38ab1d1dfd201285ed817c8e94f689f91a50b39dc30cdbb8a90a49b7ce898771`。新資料集目錄為 `E:\codex_model_repair_20260923\bounded_fullfeature_label_restatement_20260923_v2`，manifest 檔案 SHA-256 為 `5b554b231ed0c3f57322aab8c0c9c09742743662747fdc95ea1ce0a7b984bd19`，canonical manifest identity 為 `sha256:cbac586973eab97b328fff000afa0d5cbbb7588ed98b86014901885578ab17e6`。嚴格 readback 載入 13 個年度 shards、22,093 samples、62 slots 與 4 folds。

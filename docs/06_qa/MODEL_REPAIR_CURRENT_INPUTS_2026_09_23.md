@@ -1,6 +1,12 @@
 # 修訂模型的當日研究輸入
 
-本輪以隔離分支實作當日研究入口；兩個完整重訓家族都已完成實際讀回，品質驗收尚未通過，日常正式模型沒有切換。下方六股票樣本是較早的接線紀錄。
+本輪以隔離分支實作當日研究入口；股票修訂 v2 兩家族均完成讀回，追加官方市場 v3 目前完成 bounded 的新模型推論，全量 H5 v3 尚待新資料與 fit。品質驗收未通過，日常正式模型沒有切換。下方 v2 與六股票樣本保留為較早的接線紀錄。
+
+## 官方市場 v3 的 bounded 最新輸入
+
+正式 SQLite 僅以新 read transaction 讀取股票前綴，大盤改讀核驗後的官方月報。實際 capture 為 `2026-09-23T16:48:42.586694+08:00`、特徵日 9/22，13 檔 × 24 experts 共 312 組預測成功，neutral fallback=0；所有 experts 的產業超額報酬 head 均保持 missing，沒有補成 0。這項缺值與預測品質限制均保留，不能把有輸出當作可正式投資。
+
+模型 SHA `2a1223e06563098f08c8d57e85ec71c2c61399621987b3f09c9ac1d3b1081ae9`，current receipt file SHA `9355d7683d6fd7bd081eca0b607f94d30a1c0fd0ddbccf8e45abcd913e4429c8`，路徑為 `E:/codex_model_repair_20260923/current_inference/bounded_official_v3_run01/bounded_current_heads/cb6fea7fad1dab2df9261ea640e32d41fadb6b841eafb986810765d332b5019f.json`。輸入 identity 與訓練 identity 分開，正式權限均 false、alpha=0、無配置 proposal。app wrappers 及底層研究 inference 皆驗證官方市場契約，拒絕舊混合來源；新月份可用新封存清冊，原資料與模型不覆寫。完整來源與 hashes 見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。
 
 ## 全量 H5 模型的最新資料讀回
 

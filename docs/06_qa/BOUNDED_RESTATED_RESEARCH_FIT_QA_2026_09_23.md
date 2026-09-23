@@ -20,7 +20,7 @@ receipt 確認 model、audit、dataset manifest hashes 一致，fit 前後輸入
 
 ## OOF 評估
 
-`allocation_training_audit.json` 沒有 aggregate accuracy 表。本輪以 mmap 串流讀取 audit 的 base OOF array，將 426,624 筆 predictions 與封存 dataset labels 對齊重算；沒有把 237,126,161-byte audit 全文載入或列印。unique outer-test universe 是 17,776 rows；下表每個 algorithm/horizon 的 `n=53,328` 是這 17,776 個 row 各由 3 個 feature packs 預測後合併的數量，不是 53,328 個獨立樣本。per-pack 結果未另行計算；逐 fold（同樣 pool 三 packs）的結果保留在 metrics JSON。
+`allocation_training_audit.json` 沒有 aggregate accuracy 表。本輪以 mmap 串流讀取 audit 的 base OOF array，將 426,624 筆 predictions 與封存 dataset labels 對齊重算，逐筆處理 237,126,161-byte audit。unique outer-test universe 是 17,776 rows；下表每個 algorithm/horizon 的 `n=53,328` 是這 17,776 個 row 各由 3 個 feature packs 預測後合併的數量，不是 53,328 個獨立樣本。初版摘要的逐 fold 結果同樣 pool 三 packs；Root 的後續獨立驗算另保存 per-pack 分表。
 
 fold train/test row counts 與 fit receipt 完全相符：
 
@@ -45,6 +45,8 @@ Downside accuracy 也沒有高於 fold-train majority baseline。按 H5／H10／
 Metrics JSON：`C:\Projects\PythonProjects\technical_analysis\output\qa\model_repair_source_20260923\oof_metric_summary.json`，SHA-256 `1215cefddc24e95add662bbbcdbf348b418cf7696fe44fe22a4b09929fde19d2`。計算程式：`C:\Projects\PythonProjects\technical_analysis\output\qa\model_repair_source_20260923\bounded_oof_metrics.py`，SHA-256 `67ef6f9e515e9b33ba53948bbfc0568e03f11a119af6d8028e7937483e8899a7`。JSON 包含每個 algorithm/horizon 的 regression/classification aggregates 及 per-fold metrics；未產生 per-pack 分表。
 
 這些 outer-window predictions 是用晚期重述 features fit 的 research event-maturity fold 結果，不可稱為 historical OOS：技術與 quality revisions 的實際 availability 在歷史 decision 之後。不可把這些分數推廣成外部、正式或策略績效證據，亦未選出 holdout winner。
+
+Root 另以不匯入 trainer 的 QA 程式，採整數累加、Decimal 計算基準及彙總，獨立驗算上述 **48 個 pooled 數值**，全部一致。96 個 algorithm／horizon／pack／fold 群組均逐筆檢查 row ID 唯一、恰好等於各 fold 完整 test set、日期一致與機率範圍；總計 426,624 筆，來源清冊、13 份資料分片與 audit 前後 hashes 不變。結果位於 integration worktree 的 `output/qa/model_repair_review/bounded_oof_independent_metrics.json`，內含 24 個 per-pack 分表、來源與 verifier SHA；腳本為同目錄 `verify_bounded_oof_metrics.py`。此步未重播模型，也未驗算校準後 ensemble、fill-feasibility 或策略績效；不以 pooled 比較取代這些尚未評估的能力。
 
 ## 當日 bounded heads-only readback
 

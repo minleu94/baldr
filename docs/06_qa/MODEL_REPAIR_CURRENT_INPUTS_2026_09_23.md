@@ -1,6 +1,17 @@
 # 修訂模型的當日研究輸入
 
-本輪以隔離分支實作當日研究入口；完整模型重訓與驗收完成前，不代表日常模型已切換。
+本輪以隔離分支實作當日研究入口；兩個完整重訓家族都已完成實際讀回，品質驗收尚未通過，日常正式模型沒有切換。下方六股票樣本是較早的接線紀錄。
+
+## 全量 H5 模型的最新資料讀回
+
+使用完整 release `restated-repair-5a4ece1426e70aa3`，從 run02 唯讀擷取 **13 檔**（1101、1216、1256、1301、1477、2002、2303、2317、2330、2412、2454、2881、6505）。實際 capture 為 **2026-09-23T15:41:55.101579+08:00**，特徵日期 **2026-09-22**；本次 CLI 含 Python 啟動共 **3.52 秒**，不外推全市場效能。
+
+Root 逐項讀回 **39 個 base expert outputs**，無 neutral fallback；sector-excess head 因原標籤缺失保留 missing，其餘八頭有整數輸出，機率與 rank 均在 0–10,000 bp。來源有部分特徵缺失，結果明確保留缺失 family、coverage **8,310 bp** 與原因；沒有把 partial coverage 說成完整來源。Cash-only meta 未學習配置。這只驗證實際推論接線，不代表品質達標，尤其[新發現的大盤來源問題](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)尚待處理。
+
+- 輸出：`E:/codex_model_repair_20260923/current_inference/full_h5_run01/current_shadow/ee61df09009ab235c5538ccf3b5b46feec3a7628759cc7f66f6f936148ccb2ca.json`。
+- Body SHA-256：`ee61df09009ab235c5538ccf3b5b46feec3a7628759cc7f66f6f936148ccb2ca`；file SHA-256：`c182370aca354d8c48faddfa5314b65bd7f0e619bff84ee65f8be968368512ed`。
+- 新 capture dataset identity：`sha256:bdea335057337adb8d7cb19521f63ac0e77cec56fdf5bdfc5439f8520039253e`；訓練身分仍為 `sha256:5b7c0979da1a3b1a967297deca8e88564217a260306c97f0a964a8e1922de3ea`，兩者獨立綁定。
+- Root QA：integration `output/qa/model_repair_review/full_h5_current_heads_readback.json`；正式 OOS／production action／broker order 為 false、alpha=0，原 pointer 未變。
 
 ## 實作與回滾範圍
 

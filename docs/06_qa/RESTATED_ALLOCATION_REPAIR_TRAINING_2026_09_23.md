@@ -2,7 +2,9 @@
 
 ## 結果與邊界
 
-新增的 sealed-restated research runner 已用真實封存資料完成 H5、H10、H20、H60 的 ridge/logistic fit、時間切分 heldout 評估、train-only naive baseline、不可變 release 寫入、loader readback 與 actual-now research inference smoke。這是可執行的新研究模型家族，**不是**既有 bounded 雙算法模型的修復，也不是完整正式重訓：目前僅有 2,697 列、6 檔 sample，full dataset 尚未完成建置，正式 OOS、production alpha/action、broker order 與 active pointer 都保持關閉／未變。
+完整 H5 已於臺北 2026-09-23 15:38 以 full v2 資料完成 uncapped ridge/logistic fit、時間切分評估、不可變 release 寫入與 loader 讀回；15:41 另以新擷取資料對 13 檔（含 1256／1477）完成推論。以下樣本段落保留為先前接線歷史，不代表目前仍只訓練了六檔。
+
+完整評估尚未通過品質驗收：多項指標不優於 train-only naive，市場組另有上游成交量來源混用與開高低價代填問題，見[大盤來源核對](MODEL_REPAIR_MARKET_SOURCE_AUDIT_2026_09_23.md)。原 bounded 雙算法家族由[另一份完整重訓 QA](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)記錄。兩組新產物均保持研究用途；formal OOS、production alpha/action、broker order 與 active pointer 沒有啟用／切換。
 
 歷史欄位是 restated snapshot，`historical_pit=false`；時間切分只證明列的 event、成熟標籤、purge 與 embargo 順序，不把重述歷史變成歷史 point-in-time 證據。新增列沒有舊 teacher targets，meta 僅套用經原始 targets audit 驗證的固定 cash-only neutral policy，並明確不宣稱模型學會資產配置。
 
@@ -51,7 +53,7 @@ python -B scripts/train_ml_allocation_restated_research.py `
 | H20 | 1,322 | 2,417 | 275 | 2026-05-20 |
 | H60 | 1,027 | 2,085 | 60 | 2026-05-20 |
 
-這四 horizon sample 小於 runner 的 100,000 row candidate cap，因此各 horizon 最終 fit 使用此 sample 的所有成熟列。H5 單 horizon 預設不設 row cap；完整資料到位後的 H5 full fit 仍待執行。H60 holdout 只有 60 列，不能單獨支撐穩健結論。
+這四 horizon sample 小於 runner 的 100,000 row candidate cap，因此各 horizon 最終 fit 使用此 sample 的所有成熟列。H5 單 horizon 預設不設 row cap；後續全量 fit 結果見下節。H60 sample heldout 只有 60 列，不能單獨支撐穩健結論。
 
 Calibration 共使用 3,531 個已成熟 downside forecast（H5 846、H10 876、H20 924、H60 885；各自跨 feature packs），映射在 heldout 前 fit。資源收據記錄 peak RSS `270,503,936` bytes、peak working set `283,828,224` bytes、最低可用系統記憶體 `18,953,093,120` bytes；實際 BLAS/OpenMP pools 均為 2 threads。stage loader 與 final release loader 均通過，current smoke 在 `2026-09-23 12:40:15 +08:00` 對封存 sealed snapshot 的 6 個當前 symbols 產生四 horizon predictions；smoke 與 release 均標記 `formal_oos_allowed=false`、`production_action_allowed=false`、`broker_order_allowed=false`、alpha `0`，active pointer 未變。
 
@@ -70,27 +72,47 @@ Calibration 共使用 3,531 個已成熟 downside forecast（H5 846、H10 876、
 
 原 Direct OOC targets 的唯讀全量 audit 已由整合工作確認 3,353,096 rows 的 `target_weight/delta_weight/risk_contribution/risky_budget/rebalance` 全為 0、`cash_bp` 全為 10,000；runner 保留這個已證實的 cash-only 原語意，不替 appended rows 製造 teacher target。sector-excess labels 缺失時，對應 head 保持 missing，不複製其他 label 代替。
 
-## 未完成項目
+## 全量執行與仍未授予的權限
 
-- 本次來源只有 2,697 rows 的 6-symbol sealed sample。daily H5 原模型的 3,353,096-row full fit 尚未執行；A 必須先完成千分位價格解析修正與 v2 sealed dataset/sidecar。之後使用不設 `--max-fit-rows` 的 H5-only 命令並附 `--source-custody` 和對應 `--source-custody-hash`，再獨立驗算 evaluation receipts、manifest binding 與 release loader。
+- 完整 v2 來源、sidecar、合併驗算及 uncapped H5 fit 均已完成，數量／身分與品質限制如下。此處的完整 fit 不等於 source quality、投資效果或正式切換已通過。
 - 已知 bounded operational model 是四 horizons 的 HGB + ridge/logistic 雙算法 family。本 runner 的多 horizon artifacts 只有 ridge/logistic，為候選研究 family；不能標記成舊 bounded model 已修復或取代原 CLI default。
 - 此 runner 不接線舊 cmd 18–19、daily formal 08:30 consumer、active calibration pointer、production release root 或 formal historical PIT gate。current research entrypoint 需另外驗證其 sealed revision-aware provider/readback；本 runner smoke 不作為正式 daily readiness 證據。
 - D 資料根目錄與舊 quarantine artifacts 未寫入、覆蓋或刪除。
 
-V2 full H5 fit 的命令已固定如下；只有 root 獨立確認 A 的完整 v2 rowset/sidecar 後才執行。此命令不帶 `--max-fit-rows`，保留所有符合成熟度與時間切分規則的 H5 training rows；程序內 threadpool 上限固定為 2，訓練 manifest 記錄命令列、native thread pools、每個主要階段 RSS/peak working set 與可用記憶體。輸出使用獨立新路徑，不接觸正式 pointer 或既有 release：
+Root 獨立驗收 v2 全部列與 custody 後，在凍結的 integration `4c94b359` 實際執行以下命令（Python 3.11.9，`-X utf8 -u`）。不帶 `--max-fit-rows`，保留所有符合成熟度與時間切分規則的 H5 training rows；程序內 threadpool 上限固定為 2。訓練 manifest 記錄實際命令、套件版本、17 個來源檔 SHA、資源及完成時重新核對結果。此輸出已存在，重跑應另選新目錄，不覆寫：
 
 ```powershell
 $dataset = 'E:\codex_model_repair_20260923\dataset\full_restated_v2\manifest.json'
 $custody = 'E:\codex_model_repair_20260923\training\full_restated_v2_source_custody.json'
 $custodyHash = 'sha256:' + (Get-FileHash -LiteralPath $custody -Algorithm SHA256).Hash.ToLowerInvariant()
-python -B scripts/train_ml_allocation_restated_research.py `
+python -X utf8 -u scripts/train_ml_allocation_restated_research.py `
   --manifest $dataset `
-  --output-root 'E:\codex_model_repair_20260923\training\full_h5_repair_v2_20260923' `
+  --output-root 'E:\codex_model_repair_20260923\training\full_h5_repair_v2_root_release_20260923' `
   --horizons 5 `
   --batch-size 8192 `
   --source-custody $custody `
   --source-custody-hash $custodyHash
 ```
+
+### 完整 H5 產物、列數與評估
+
+- Release：上述目錄的 `runs/restated-repair-5a4ece1426e70aa3`；model artifact SHA `bf6eb0536bef92e24d82b91322ae10e9290415e9756c044aa53204125314a955`，training manifest canonical hash `177dc18078f805d167034970c7b1c11b0ba84a9c08482bed30a5212e1a6e231c`，release identity `7f26be9a5f4394ca8b6a1c8c5416591c2b9622eec12eb1be77f2fa96ae633ba2`（均為 SHA-256）。
+- 資料 **3,496,189 列**；評估 fit **3,100,743 列**；兩段 calibration 分別 **51,273／43,531 列**，日期 2026-01-21–03-13／03-23–05-06；heldout 自 5/20 起，每個 pack **144,088 列**。同一 heldout 在三組特徵中重複評估，不是三倍獨立樣本。
+- Final fit **3,468,254 列**，等於全部合格成熟候選列，`max_selected_fit_rows=null`。沿用原 H5 ridge alpha=0.01、logistic IRLS 六次、train-only median 最多 100,000 列；median 計算上限不等於模型 fit 抽樣，mean／scale 使用全部該 fit 的列。
+- Purge 60 sessions，calibration 與 heldout 邊界 embargo 5 sessions。評估模型與 final fit 分開；不能用 final fit 成績冒充 heldout。Stock event 缺值全資料 469 列、evaluation fit 423 列、heldout 6 列、final fit 468 列，原 mask／NULL 語意保留。
+- OS 記錄 peak working set **6,285,541,376 bytes**；階段取樣 peak RSS **5,672,579,072 bytes**；取樣最低系統可用記憶體 **20,797,050,880 bytes**。來源在 fit 結束時重新驗證一致，BLAS／OpenMP 兩執行緒；數字只代表此程序與觀察點。
+
+| H5 特徵組 | 超額報酬 MAE（模型／基準，bp） | Downside Brier（原始／校準後／基準，bp²） |
+|---|---:|---:|
+| data_quality | 492／492 | 22,666,544／23,323,017／22,651,676 |
+| market_sector_cross_section | 511／492 | 59,807,451／23,067,590／22,651,676 |
+| price_liquidity_technical | 491／492 | 22,897,474／23,501,063／22,651,676 |
+
+MAE／Brier 越小越好。price 組報酬 MAE 僅改善 1 bp，RMSE 為 706／705 bp，不能推論為有穩健優勢；三組校準後 downside Brier 均弱於基準。市場組的風險頭異常與來源差異需先排除，不以 heldout 調參使此輪成績過關。
+
+Root 獨立程式 `output/qa/model_repair_review/verify_heldout_receipts.py` 以 Python 整數／Decimal 串流核對三份 sealed Parquet、列唯一性、預測／標籤 mask、hash、校準映射及 **114 個** MAE／RMSE／Brier／accuracy 數值，全部一致；結果 `full_h5_independent_metrics.json`。此驗算不重新訓練模型、不重新推導標籤、不重算 ECE，也不是模型品質通過證明。
+
+Loader stage／final readback 與 25 檔封存資料 smoke 通過。另以真正新 capture 的 9/22 前綴完成 13 檔當日推論，詳細身分與限制見[當日輸入 QA](MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md)。原 targets 全部現金，meta 固定現金只是相容轉接；`model_learned_allocation=false`。
 
 ## 程式與測試
 

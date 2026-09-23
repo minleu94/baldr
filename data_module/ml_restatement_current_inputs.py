@@ -166,6 +166,18 @@ def prepare_restated_current_inputs(
         raise ValueError("research source ids must be unique")
     source_pairs = tuple(sorted((*source_pairs, (_SOURCE_ID, manifest_hash))))
     root = manifest_path.parent
+    prefix_path: Path | None = None
+    prefix_hash: str | None = None
+    if manifest.get("dataset_purpose") == "current_inference_only":
+        from data_module.ml_restatement_research_dataset import sha256_file
+
+        prefix = manifest["source_hashes"]["prepared_source_prefix"]
+        prefix_path = (root / prefix["path"]).resolve(strict=True)
+        prefix_hash = prefix["sha256"]
+        if not prefix_path.is_relative_to(root) or sha256_file(prefix_path) != prefix_hash:
+            raise ValueError("current source prefix hash or containment mismatch")
+        if dict(source_pairs).get("sqlite.current_read_transaction_prefix") != prefix_hash:
+            raise ValueError("current source prefix differs from the bound provenance")
     records: list[dict[str, Any]] = []
     consumed: list[tuple[str, str, int]] = []
     paths_seen: set[Path] = set()
@@ -237,6 +249,14 @@ def prepare_restated_current_inputs(
                 raise ValueError("research feature event/availability/revision clocks are inconsistent")
             values = record["features_scaled_i64"]
             masks = record["feature_missing_mask"]
+            if prefix_hash is not None and (
+                record["source_revision_id"] != "current-prefix-" + prefix_hash[7:]
+                or record["feature_lineage_hash"] != _payload_hash({
+                    "row_id": record["row_id"], "prefix_hash": prefix_hash,
+                    "values": values, "mask": masks,
+                })
+            ):
+                raise ValueError("current row lineage differs from the frozen source prefix")
             if len(values) != 62 or len(masks) != 62:
                 raise ValueError("research feature width mismatch")
             feature_values: list[PITFeatureValue] = []
@@ -270,6 +290,8 @@ def prepare_restated_current_inputs(
                 source_manifest_hashes=source_pairs, targets=None,
             ))
     rows = tuple(prepared_rows)
+    if prefix_path is not None and sha256_file(prefix_path) != prefix_hash:
+        raise ValueError("current source prefix changed during preparation")
     binding = RestatedResearchInputBinding(
         dataset_id=manifest["dataset_id"], dataset_identity_hash=identity,
         dataset_manifest_file_hash=manifest_hash,

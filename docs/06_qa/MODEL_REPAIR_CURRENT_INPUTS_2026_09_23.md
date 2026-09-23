@@ -46,3 +46,11 @@ SQLite 以 `mode=ro`、`query_only` 與單一 read transaction 讀取，不使�
 - 結果 body SHA-256：`febb72d88cf0e4b58a06954781005f3f70448f3edbfa15e30c7d72accc4d37f8`；位於 integration worktree 的 `output/qa/model_repair_review/current_capture_run01/current_shadow/`，同一 run 另有 `parity_summary.json`。
 
 current capture／provider／dataset focused tests **15 passed**，涵蓋來源 DB bytes 不變、未來價格不進入前綴與修正遺失時拒絕；加上研究 binding 回歸共 **22 passed**（一則既有 joblib 實體核心數查詢警告）。新增 capture 與 CLI 的 mypy、py_compile、兩項量化靜態 guard 均通過。此 run 仍使用帶 fit cap 的六檔樣本模型，僅證明資料與推論接線；三項正式權限維持 false、alpha 維持 0。
+
+### 交叉複核後補正
+
+獨立檢視發現 CLI 原先在擷取後才由 service 檢查 release 輸出目錄；現已提前共用檢查，連 `input_captures/` 或 `current_shadow/` 指向來源內的情況也拒絕。新 current-input provider 另外核對 gzip 原始前綴的 bytes SHA、manifest provenance 和逐列 lineage，讀取完成後再核 SHA；不能只靠 Parquet 仍一致就忽略其原始前綴已變更。
+
+新增來源前綴遭改動與兩種受保護輸出路徑的反例，current capture／provider 共 **12 passed**；四個 current source 檔 mypy 無錯。新 four-horizon ridge/logistic 樣本 release `restated-repair-a119146c1eb75553` 另用新的 **13 檔** current capture 完成實際推論：capture `2026-09-23T12:53:15.238323+08:00`、特徵日 9/22，結果 body SHA-256 `89426715c6c979bd2c7282790172911cfb6f54dd1f7120d6882b949fdc2edde6`，位於 `output/qa/model_repair_review/current_capture_four_horizon_run01/current_shadow/`。這是候選模型接線驗證，仍不代表完整 bounded family 或全市場模型已修復。
+
+Root 另以不匯入 trainer 或模型的本機 QA 腳本，使用 Python 整數與 Decimal 驗算該 release 的 **12 份 heldout Parquet、456 個統計數值**（模型／train-only naive 的 MAE、RMSE、Brier、正例率、門檻正確率，以及 calibrated Brier），全部與封存報告一致。亦核對 receipt SHA、列數、日期、唯一 row key、naive 常數、機率範圍及校準 mapping 單調性；未在此步重播模型、驗算 ECE 分箱或重建 labels。結果 `output/qa/model_repair_review/four_horizon_sample_independent_metrics.json` 綁定 verifier 檔案 SHA；確認數值報告正確並不改變樣本表現弱於基準的結論。

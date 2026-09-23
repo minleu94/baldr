@@ -100,3 +100,45 @@ def test_current_capture_rejects_source_that_lost_the_price_repair(tmp_path, mon
             price_repair_receipt=receipt, expected_price_receipt_hash=sha256_file(receipt),
             symbols=("1256",), output_root=tmp_path / "captured",
         )
+
+
+def test_current_prepare_rejects_changed_captured_raw_prefix(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(capture_module, "datetime", _Clock)
+    template, template_hash = _fixture_dataset(tmp_path / "template")
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    db, receipt = _sources(source_dir)
+    manifest, digest = capture_restated_current_dataset(
+        database_path=db, template_manifest_path=template,
+        expected_template_manifest_hash=template_hash,
+        price_repair_receipt=receipt, expected_price_receipt_hash=sha256_file(receipt),
+        symbols=("1256",), output_root=tmp_path / "captured",
+    )
+    with (manifest.parent / "source_prefix.jsonl.gz").open("ab") as stream:
+        stream.write(b"unexpected revision")
+    with pytest.raises(ValueError, match="source prefix hash"):
+        prepare_restated_current_inputs(
+            manifest_path=manifest, expected_manifest_file_hash=digest,
+            symbols=("1256",), captured_at=datetime.fromisoformat("2026-09-23T14:00:00+08:00"),
+        )
+
+
+@pytest.mark.parametrize("protected", ["release", "dataset"])
+def test_current_cli_checks_output_before_any_capture_write(tmp_path, protected) -> None:
+    from scripts.run_ml_allocation_restated_shadow import main
+
+    release = tmp_path / "release"
+    dataset = tmp_path / "dataset"
+    release.mkdir()
+    dataset.mkdir()
+    destination = (release if protected == "release" else dataset) / "new-output"
+    with pytest.raises(ValueError, match="outside immutable"):
+        main([
+            "--release-root", str(release), "--release-identity-hash", "unused",
+            "--dataset-manifest", str(dataset / "manifest.json"),
+            "--dataset-manifest-hash", "unused", "--source-db", str(tmp_path / "source.db"),
+            "--price-repair-receipt", str(tmp_path / "receipt.json"),
+            "--price-repair-receipt-hash", "unused", "--symbols", "1256",
+            "--output-root", str(destination),
+        ])
+    assert not destination.exists()

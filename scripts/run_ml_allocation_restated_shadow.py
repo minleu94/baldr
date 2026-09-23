@@ -12,7 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app_module.restated_allocation_shadow_service import run_restated_current_shadow
+from app_module.restated_allocation_shadow_service import (
+    run_restated_current_shadow,
+    validate_restated_output_root,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--symbols", nargs="+", required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args(argv)
+    validate_restated_output_root(
+        release_root=args.release_root, dataset_manifest=args.dataset_manifest,
+        output_root=args.output_root,
+    )
     manifest = args.dataset_manifest
     manifest_hash = args.dataset_manifest_hash
     if args.source_db is not None:

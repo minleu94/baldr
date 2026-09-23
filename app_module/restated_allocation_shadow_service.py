@@ -13,6 +13,18 @@ from app_module.allocation_release_adapter import AllocationReleaseAdapter
 from data_module.ml_restatement_current_inputs import prepare_restated_current_inputs
 
 
+def validate_restated_output_root(
+    *, release_root: Path, dataset_manifest: Path, output_root: Path,
+) -> Path:
+    """在任何擷取或結果寫入前，保護已封存的來源與模型目錄。"""
+    root = output_root.resolve()
+    destinations = (root, (root / "input_captures").resolve(), (root / "current_shadow").resolve())
+    for source_root in (release_root.resolve(), dataset_manifest.resolve().parent):
+        if any(destination == source_root or destination.is_relative_to(source_root) for destination in destinations):
+            raise ValueError("research outputs must be outside immutable source/release roots")
+    return root
+
+
 def run_restated_current_shadow(
     *,
     release_root: Path,
@@ -24,6 +36,9 @@ def run_restated_current_shadow(
     captured_at: datetime | None = None,
 ) -> dict[str, object]:
     """產出當次不可覆寫的判讀 receipt，不變更正式模型或排程設定。"""
+    root = validate_restated_output_root(
+        release_root=release_root, dataset_manifest=dataset_manifest, output_root=output_root,
+    )
     capture = captured_at or datetime.now(timezone.utc)
     loaded = AllocationReleaseAdapter().load(
         release_root,
@@ -85,10 +100,9 @@ def run_restated_current_shadow(
     receipt_hash = "sha256:" + hashlib.sha256(encoded_body).hexdigest()
     receipt["receipt_hash"] = receipt_hash
     encoded = (json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    root = output_root.resolve()
-    for source_root in (release_root.resolve(), dataset_manifest.resolve().parent):
-        if root == source_root or root.is_relative_to(source_root):
-            raise ValueError("research receipts must be outside immutable source/release roots")
+    validate_restated_output_root(
+        release_root=release_root, dataset_manifest=dataset_manifest, output_root=root,
+    )
     destination = root / "current_shadow" / (receipt_hash[7:] + ".json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:

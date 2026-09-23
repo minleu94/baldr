@@ -1473,7 +1473,11 @@ def _parse_artifact(value: object) -> _ArtifactContract:
         method_name="predict_proba",
         field_name="meta.rebalance",
     )
-    _string_tuple(meta_models["fit_row_ids"], field_name="meta.fit_row_ids")
+    _validate_meta_fit_lineage(
+        meta_models=meta_models,
+        target_summary=target_summary,
+        training_profile=training_profile,
+    )
 
     family_weights = _weight_pairs(
         value["feature_family_weights_bp"],
@@ -1548,6 +1552,77 @@ def _feature_packs(value: object) -> tuple[_FeaturePack, ...]:
     if pack_ids != tuple(sorted(pack_ids)):
         raise ValueError("artifact feature packs must use canonical order")
     return tuple(packs)
+
+
+def _validate_meta_fit_lineage(
+    *,
+    meta_models: Mapping[str, Any],
+    target_summary: Mapping[str, Any] | None,
+    training_profile: str | None,
+) -> None:
+    """Permit empty lineage only for the audited, exact cash-only adapter."""
+
+    fit_row_ids = _possibly_empty_string_tuple(
+        meta_models["fit_row_ids"], field_name="meta.fit_row_ids"
+    )
+    if fit_row_ids:
+        return
+    if (
+        target_summary is None
+        or training_profile != "sealed_restated_linear_shadow_v1"
+        or target_summary.get("training_skipped") is not True
+        or target_summary.get("model_learned_allocation") is not False
+        or target_summary.get("status")
+        != "verified_original_targets_constant_cash_only; neutral_meta_policy"
+        or target_summary.get("neutral_meta_policy")
+        != "fixed cash-only schema adapter; allocation heads remain research signals only"
+        or target_summary.get("target_values")
+        != {
+            "target_weight_bp": 0,
+            "delta_weight_bp": 0,
+            "risk_contribution_bp": 0,
+            "risky_budget_bp": 0,
+            "cash_bp": 10_000,
+            "rebalance": 0,
+        }
+    ):
+        raise ValueError(
+            "empty meta fit lineage is allowed only for the audited cash-only policy"
+        )
+
+    # Import lazily to keep the common inference parser's dependency surface
+    # unchanged.  Exact types prevent an arbitrary predictor from opting into
+    # this no-training exception by copying a few target-summary flags.
+    from ml_module.allocation_v3_linear_release import (
+        _ConstantProbabilityModel,
+        _ConstantRegressionModel,
+    )
+
+    numeric = _mapping(meta_models["numeric"], field_name="meta.numeric")
+    expected_values = {
+        "target_weight_bp": 0,
+        "delta_weight_bp": 0,
+        "risk_contribution_bp": 0,
+        "risky_budget_bp": 0,
+        "cash_bp": 10_000,
+    }
+    for field_name, expected in expected_values.items():
+        model = numeric[field_name]
+        if (
+            type(model) is not _ConstantRegressionModel
+            or model.value != expected
+        ):
+            raise ValueError(
+                "empty meta fit lineage requires the exact audited cash-only constants"
+            )
+    rebalance = meta_models["rebalance"]
+    if (
+        type(rebalance) is not _ConstantProbabilityModel
+        or rebalance.probability_class != 0
+    ):
+        raise ValueError(
+            "empty meta fit lineage requires the exact no-rebalance constant"
+        )
 
 
 def _pack_matrix(

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
 import hashlib
 import importlib.metadata
@@ -21,7 +21,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 # 這些限制只寫入目前訓練程序，並在數值套件匯入前設定。
@@ -97,6 +97,11 @@ PREPROCESSOR_STRATEGY = "train_only_bounded_median_standardize_missing_indicator
 TARGET_AUDIT_MANIFEST_HASH = (
     "sha256:61d806ef005d0881911201104079c1acc92826a26bd8a331b9bd79156983ffe8"
 )
+TARGET_VALUES_AUDIT_HASH = (
+    "sha256:4abe164961842e047cbbb96d2d980eb4241376f28c845253940ed5e79ecc937c"
+)
+ORIGINAL_DIRECT_TARGET_ROW_COUNT = 3_353_096
+CORRECTED_SUBSET_APPENDED_ROW_COUNT = 1_533
 _META_FIELDS = (
     "target_weight_bp",
     "delta_weight_bp",
@@ -120,6 +125,11 @@ _CLASSIFICATION_COLUMN = {
 _TRAINING_SOURCE_FILES = (
     "ml_module/restated_h5_training_runner.py",
     "scripts/train_ml_allocation_restated_research.py",
+    "data_module/ml_restatement_research_dataset.py",
+    "data_module/ml_restatement_current_inputs.py",
+    "ml_module/restated_research_input_contract.py",
+    "app_module/restated_allocation_shadow_service.py",
+    "scripts/run_ml_allocation_restated_shadow.py",
     "ml_module/allocation_out_of_core_training_service.py",
     "ml_module/allocation_v3_linear_release.py",
     "ml_module/ooc_cross_fitted_calibration.py",
@@ -129,6 +139,9 @@ _TRAINING_SOURCE_FILES = (
     "ml_module/allocation_training_service.py",
     "app_module/allocation_release_adapter.py",
     "app_module/ml_allocation_inference_service.py",
+)
+_V2_TRAINING_SOURCE_FILES = (
+    "data_module/ml_restatement_research_dataset_v2_merge.py",
 )
 _TRAINING_DISTRIBUTIONS = (
     "numpy",
@@ -148,6 +161,10 @@ class ResearchArrays:
     manifest_path: Path
     manifest: dict[str, Any]
     manifest_file_hash: str
+    partition_files: tuple[Path, ...]
+    source_custody_path: Path | None
+    source_custody_hash: str | None
+    source_custody: dict[str, Any] | None
     feature_ids: tuple[str, ...]
     feature_scales: tuple[int, ...]
     feature_packs: tuple[tuple[str, tuple[str, ...]], ...]
@@ -171,6 +188,36 @@ class ResearchArrays:
     labels: dict[int, np.memmap]
     label_masks: dict[int, np.memmap]
     label_maturities: dict[int, np.memmap]
+
+    def verify_source_integrity(self, *, phase: str) -> None:
+        """在載入、fit 前及 fit 後重驗封存來源與外部 custody sidecar。"""
+
+        current_manifest = self.manifest_path.read_bytes()
+        if _sha256(current_manifest) != self.manifest_file_hash:
+            raise RuntimeError(f"sealed manifest changed during {phase}")
+        current_payload = _json_object(current_manifest, field_name="research manifest")
+        if current_payload != self.manifest:
+            raise RuntimeError(f"sealed manifest content changed during {phase}")
+        current_files = _dataset_files(self.root, self.manifest)
+        if current_files != self.partition_files:
+            raise RuntimeError(f"sealed partition inventory changed during {phase}")
+        _verify_file_inventory(self.root, self.manifest, current_files)
+        row_count = _verify_partition_metadata(self.root, self.manifest, current_files)
+        if row_count != self.row_count:
+            raise RuntimeError(f"sealed partition row count changed during {phase}")
+        if self.source_custody_path is not None:
+            if self.source_custody_hash is None:
+                raise RuntimeError("source custody hash is missing")
+            _load_and_validate_source_custody(
+                self.source_custody_path,
+                expected_hash=self.source_custody_hash,
+                manifest_path=self.manifest_path,
+                manifest_hash=self.manifest_file_hash,
+                manifest=self.manifest,
+                row_count=self.row_count,
+            )
+        if self.manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+            _verify_v2_lineage_manifest_files(self.manifest)
 
 
 class _ResearchLabelStore:
@@ -206,6 +253,8 @@ def load_sealed_research_rows(
     *,
     scratch_root: Path,
     observed_as_of: datetime | None = None,
+    source_custody_path: Path | None = None,
+    source_custody_hash: str | None = None,
 ) -> ResearchArrays:
     """Validate the sealed Arrow interchange and materialize bounded memmaps."""
 
@@ -220,45 +269,12 @@ def load_sealed_research_rows(
     raw_manifest = manifest_path.read_bytes()
     manifest_file_hash = _sha256(raw_manifest)
     manifest = _json_object(raw_manifest, field_name="research manifest")
-    if manifest.get("restated_research") is not True:
-        raise ValueError("dataset must explicitly declare restated_research=true")
-    if manifest.get("historical_pit") is not False and manifest.get(
-        "formal_historical_PIT"
-    ) is not False:
-        raise ValueError("dataset must explicitly declare historical PIT=false")
-
-    feature_ids = _read_sequence(
-        manifest,
-        "feature_ids",
-        alternate=("features", "feature_ids"),
+    feature_ids, feature_scales, feature_packs, label_scales = (
+        _validate_complete_restatement_manifest(manifest)
     )
-    feature_scales = _read_integer_sequence(
-        manifest,
-        "feature_scales",
-        alternate=("features", "feature_scales"),
-    )
-    if len(feature_ids) != FEATURE_COUNT or len(feature_scales) != FEATURE_COUNT:
-        raise ValueError("sealed research feature schema must contain exactly 62 features")
-    if len(set(feature_ids)) != FEATURE_COUNT or any(scale <= 0 for scale in feature_scales):
-        raise ValueError("feature ids/scales must be unique and positive")
-
-    label_fields = tuple(
-        _read_sequence(manifest, "label_fields", alternate=("labels", "fields"))
-    )
-    if label_fields != LABEL_FIELDS:
-        raise ValueError("sealed label order differs from the frozen nine-label ABI")
-    label_scales = tuple(
-        _read_integer_sequence(
-            manifest,
-            "label_scales",
-            alternate=("labels", "scales"),
-            default=[1] * len(LABEL_FIELDS),
-        )
-    )
-    if len(label_scales) != len(LABEL_FIELDS) or any(value <= 0 for value in label_scales):
-        raise ValueError("label scales must contain nine positive integers")
-
-    feature_packs = _read_feature_packs(manifest, feature_ids)
+    lineage_revision_clocks: tuple[datetime, datetime] | None = None
+    if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+        lineage_revision_clocks = _verify_v2_lineage_manifest_files(manifest)
     source_hashes_list = list(_read_source_hashes(manifest))
     dataset_source_id = "sealed_restated_research_dataset"
     if dataset_source_id in {source_id for source_id, _digest in source_hashes_list}:
@@ -279,9 +295,21 @@ def load_sealed_research_rows(
 
     files = _dataset_files(root, manifest)
     _verify_file_inventory(root, manifest, files)
-    row_count = sum(pq.ParquetFile(path).metadata.num_rows for path in files)
+    row_count = _verify_partition_metadata(root, manifest, files)
+    expected_manifest_row_count = manifest["row_count"]
+    if row_count != expected_manifest_row_count:
+        raise ValueError("manifest row_count differs from complete partition inventory")
     if row_count < 2:
         raise ValueError("sealed research dataset has too few rows")
+    custody_path, custody_hash, source_custody = _load_source_custody_args(
+        source_custody_path=source_custody_path,
+        source_custody_hash=source_custody_hash,
+        manifest_path=manifest_path,
+        manifest_hash=manifest_file_hash,
+        manifest=manifest,
+        row_count=row_count,
+    )
+    _require_source_custody_for_row_count(row_count, custody_path)
     scratch_root = scratch_root.resolve()
     scratch_root.mkdir(parents=True, exist_ok=True)
 
@@ -321,7 +349,13 @@ def load_sealed_research_rows(
 
     feature_scales_array = np.asarray(feature_scales, dtype=np.float64)
     label_scales_array = np.asarray(label_scales, dtype=np.int64)
+    corrected_symbols = frozenset(
+        manifest["dataset_lineage"]["corrected_subset"]["symbols"]
+        if lineage_revision_clocks is not None
+        else ()
+    )
     offset = 0
+    v2_target_observed_rows = 0
     seen_ids: set[str] = set()
     for path in files:
         parquet = pq.ParquetFile(path)
@@ -343,6 +377,8 @@ def load_sealed_research_rows(
             decision_values = column["decision_date"].to_pylist()
             decision_at_values = column["decision_at"].to_pylist()
             event_values = column["feature_event_asof_at"].to_pylist()
+            stock_event_values = column["stock_event_date"].to_pylist()
+            market_event_values = column["market_event_date"].to_pylist()
             feature_available_values = column["feature_available_at"].to_pylist()
             revision_values = column["revision_observed_at"].to_pylist()
             revision_ids_values = column["source_revision_id"].to_pylist()
@@ -364,6 +400,26 @@ def load_sealed_research_rows(
                 raise ValueError("observed features must be finite")
             features[offset : offset + count, :] = scaled_features.astype(FLOAT_DTYPE)
 
+            if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+                target_values = _fixed_list_values(column["target_values_i32"], count, 6)
+                target_masks = _fixed_list_values(column["target_missing_mask"], count, 6)
+                if np.any((target_masks != 0) & (target_masks != 1)):
+                    raise ValueError("target_missing_mask must use 0=observed and 1=missing")
+                target_nulls = _fixed_list_null_mask(column["target_values_i32"], count, 6)
+                if np.any(target_nulls != target_masks.astype(bool)):
+                    raise ValueError("v2 target null values and missing mask disagree")
+                all_missing = np.all(target_masks == 1, axis=1)
+                all_observed = np.all(target_masks == 0, axis=1)
+                if np.any(~(all_missing | all_observed)):
+                    raise ValueError("v2 target rows must be wholly observed or wholly missing")
+                expected_cash_only = np.asarray([0, 0, 0, 0, 10_000, 0], dtype=np.int64)
+                if np.any(
+                    all_observed
+                    & np.any(target_values != expected_cash_only[None, :], axis=1)
+                ):
+                    raise ValueError("v2 observed original target rows must preserve exact cash-only values")
+                v2_target_observed_rows += int(np.sum(all_observed))
+
             canonical_ids: list[str] = []
             decision_ordinals = np.empty(count, dtype=np.int32)
             event_ordinals = np.empty(count, dtype=np.int32)
@@ -377,7 +433,11 @@ def load_sealed_research_rows(
                 symbol = _required_row_text(symbol_values[index], "symbol")
                 decision_date = _as_date(decision_values[index], "decision_date")
                 decision_at = _aware_datetime(str(decision_at_values[index]), field_name="decision_at")
-                event_time = _aware_datetime(str(event_values[index]), field_name="feature_event_asof_at")
+                expected_decision_at = datetime.combine(
+                    decision_date, time(8, 30), TAIPEI
+                )
+                if decision_at != expected_decision_at:
+                    raise ValueError(f"decision_at is not 08:30 Taipei on decision_date: {row_id}")
                 feature_available = _aware_datetime(
                     str(feature_available_values[index]), field_name="feature_available_at"
                 )
@@ -385,21 +445,84 @@ def load_sealed_research_rows(
                     str(revision_values[index]), field_name="revision_observed_at"
                 )
                 revision_id = _required_row_text(revision_ids_values[index], "source_revision_id")
-                if event_time >= decision_at:
-                    raise ValueError(f"feature event is not strictly before decision: {row_id}")
+                if (
+                    manifest.get("schema_version")
+                    == "portfolio-ml-restated-research-dataset.v2"
+                    and revision_id != manifest.get("revision")
+                ):
+                    raise ValueError(
+                        f"v2 row revision id differs from the sealed source snapshot: {row_id}"
+                    )
+                if lineage_revision_clocks is not None:
+                    parent_clock, corrected_clock = lineage_revision_clocks
+                    expected_row_clock = (
+                        corrected_clock if symbol in corrected_symbols else parent_clock
+                    )
+                    if revision_time != expected_row_clock or feature_available != revision_time:
+                        raise ValueError(
+                            f"v2 row clocks differ from the truthful parent/subset source clock: {row_id}"
+                        )
+                stock_event_date = (
+                    None
+                    if stock_event_values[index] is None
+                    else _as_date(stock_event_values[index], "stock_event_date")
+                )
+                market_event_date = (
+                    None
+                    if market_event_values[index] is None
+                    else _as_date(market_event_values[index], "market_event_date")
+                )
+                raw_event_at = event_values[index]
+                if (stock_event_date is None) != (raw_event_at is None):
+                    raise ValueError(
+                        f"stock event date and feature_event_asof_at disagree: {row_id}"
+                    )
+                if stock_event_date is None:
+                    if np.any(feature_mask[index, 21:] == 0):
+                        raise ValueError(
+                            f"row without a stock event has observed stock-only features: {row_id}"
+                        )
+                    event_time = None
+                else:
+                    event_time = _aware_datetime(
+                        raw_event_at, field_name="feature_event_asof_at"
+                    )
+                    expected_stock_close = datetime.combine(
+                        stock_event_date, time(14, 30), TAIPEI
+                    )
+                    if event_time != expected_stock_close:
+                        raise ValueError(
+                            f"feature event clock does not match stock_event_date close: {row_id}"
+                        )
+                    if event_time >= decision_at:
+                        raise ValueError(f"feature event is not strictly before decision: {row_id}")
+                if stock_event_date is not None and stock_event_date >= decision_date:
+                    raise ValueError(f"stock event date is not before decision: {row_id}")
+                if market_event_date is not None and market_event_date >= decision_date:
+                    raise ValueError(f"market event date is not before decision: {row_id}")
+                if market_event_date is None and np.any(feature_mask[index, 10:21] == 0):
+                    raise ValueError(
+                        f"row without a market event has observed market/sector features: {row_id}"
+                    )
                 if feature_available > cutoff or revision_time > cutoff:
                     raise ValueError(f"row revision is newer than training_as_of: {row_id}")
+                if feature_available > revision_time:
+                    raise ValueError(f"feature availability follows its revision observation: {row_id}")
                 if revision_time > now.astimezone(revision_time.tzinfo):
                     raise ValueError(f"row revision was observed in the future: {row_id}")
                 decision_ordinals[index] = decision_date.toordinal()
-                event_ordinals[index] = event_time.astimezone(TAIPEI).date().toordinal()
+                event_ordinals[index] = (
+                    -1 if event_time is None else event_time.astimezone(TAIPEI).date().toordinal()
+                )
                 heldout_batch[index] = int(
                     str(fold_values[index]) == "heldout_revision"
                     or decision_date >= REPAIR_HELDOUT_START
                 )
                 row_ids[offset + index] = row_id.encode("utf-8")
                 symbols[offset + index] = symbol.encode("utf-8")
-                event_at[offset + index] = str(event_values[index]).encode("utf-8")
+                event_at[offset + index] = (
+                    b"" if raw_event_at is None else str(raw_event_at).encode("utf-8")
+                )
                 revision_at[offset + index] = str(revision_values[index]).encode("utf-8")
                 revision_ids[offset + index] = revision_id.encode("utf-8")
             if len(canonical_ids) != count:
@@ -461,6 +584,14 @@ def load_sealed_research_rows(
 
     if offset != row_count:
         raise ValueError("parquet row count changed while loading sealed dataset")
+    if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+        expected_target_rows = int(
+            manifest["original_row_target_audit"]["target_observed_row_count"]
+        )
+        if v2_target_observed_rows != expected_target_rows:
+            raise ValueError(
+                "v2 observed original targets do not account for all preserved parent rows"
+            )
     for item in (
         features, row_ids, symbols, decision_days, event_days, event_at,
         revision_at, revision_ids, heldout_flags, feature_values_i64,
@@ -468,18 +599,20 @@ def load_sealed_research_rows(
     ):
         item.flush()
 
-    dataset_id = _optional_text(manifest, "dataset_id") or "sealed-restated-allocation-research-v1"
-    dataset_identity_hash = _optional_sha(manifest, "dataset_identity_hash") or payload_hash(
-        {"manifest_file_hash": manifest_file_hash, "source_manifest_hashes": source_hashes}
+    dataset_id = str(manifest["dataset_id"])
+    dataset_identity_hash = str(manifest["dataset_identity_hash"])
+    feature_registry_hash = _normalize_sha(
+        manifest["feature_registry_hash"], "manifest.feature_registry_hash"
     )
-    feature_registry_hash = _optional_sha(
-        manifest, "feature_registry_hash", alternate="feature_schema_hash"
-    ) or payload_hash({"feature_ids": feature_ids, "feature_scales": feature_scales})
-    return ResearchArrays(
+    result = ResearchArrays(
         root=root,
         manifest_path=manifest_path,
         manifest=manifest,
         manifest_file_hash=manifest_file_hash,
+        partition_files=files,
+        source_custody_path=custody_path,
+        source_custody_hash=custody_hash,
+        source_custody=source_custody,
         feature_ids=feature_ids,
         feature_scales=feature_scales,
         feature_packs=feature_packs,
@@ -504,6 +637,8 @@ def load_sealed_research_rows(
         label_masks=label_masks,
         label_maturities=label_maturities,
     )
+    result.verify_source_integrity(phase="materialization")
+    return result
 
 
 def chronological_split(
@@ -612,6 +747,13 @@ def chronological_split(
         "heldout_embargo_sessions": 5,
         "calibration_maturity_horizon_sessions": horizon,
         "heldout_label_maturity_before_start": True,
+        "feature_event_missing_stock_event_rows": {
+            "dataset": int(np.sum(np.asarray(data.event_days, dtype=np.int32) < 0)),
+            "training_candidates": int(np.sum(np.asarray(data.event_days[train_refs]) < 0)),
+            "calibration_a": int(np.sum(np.asarray(data.event_days[cal1_refs]) < 0)),
+            "calibration_b": int(np.sum(np.asarray(data.event_days[cal2_refs]) < 0)),
+            "heldout": int(np.sum(np.asarray(data.event_days[heldout_refs]) < 0)),
+        },
         "train_refs": train_refs,
         "calibration_a_refs": cal1_refs,
         "calibration_b_refs": cal2_refs,
@@ -631,6 +773,8 @@ def train_and_publish(
     run_current_smoke: bool = True,
     observed_as_of: datetime | None = None,
     invocation_argv: Sequence[str] | None = None,
+    source_custody_path: Path | None = None,
+    source_custody_hash: str | None = None,
 ) -> dict[str, Any]:
     """Run fixed chronological evaluation, mature-row final fit, and release readback."""
 
@@ -650,12 +794,15 @@ def train_and_publish(
     output_root.mkdir(parents=True, exist_ok=True)
     from threadpoolctl import threadpool_info, threadpool_limits
 
+    dataset_schema_version = _read_declared_dataset_schema_version(manifest_path)
+
     thread_limit_context = threadpool_limits(limits=2)
     thread_limit_context.__enter__()
     staging: Path | None = None
     try:
         runtime_binding = _collect_training_runtime_binding(
-            invocation_argv=invocation_argv
+            invocation_argv=invocation_argv,
+            dataset_schema_version=dataset_schema_version,
         )
         runtime_binding["threadpool_info_after_limit"] = threadpool_info()
         runtime_binding["threadpool_limit"] = 2
@@ -692,6 +839,8 @@ def train_and_publish(
             manifest_path,
             scratch_root=staging / "scratch",
             observed_as_of=observed_as_of,
+            source_custody_path=source_custody_path,
+            source_custody_hash=source_custody_hash,
         )
         _record_runtime_memory(runtime_resources, "sealed_snapshot_loaded")
         split_by_horizon: dict[int, dict[str, Any]] = {}
@@ -709,8 +858,16 @@ def train_and_publish(
             "calibration-pre-heldout-a": 0,
             "calibration-pre-heldout-b": 0,
         }
+        calibration_event_missing_counts: dict[int, dict[str, int]] = {
+            horizon: {
+                "calibration-pre-heldout-a": 0,
+                "calibration-pre-heldout-b": 0,
+            }
+            for horizon in normalized_horizons
+        }
         store = _ResearchLabelStore(data)
 
+        data.verify_source_integrity(phase="pre-fit")
         for horizon in normalized_horizons:
             split = chronological_split(data, horizon=horizon)
             split_by_horizon[horizon] = split
@@ -728,8 +885,14 @@ def train_and_publish(
             }
             evaluation_evidence[horizon]["full_training_candidate_count"] = len(all_train_refs)
             evaluation_evidence[horizon]["evaluation_fit_row_count"] = len(train_refs)
+            evaluation_evidence[horizon]["evaluation_fit_missing_stock_event_rows"] = int(
+                np.sum(np.asarray(data.event_days[train_refs], dtype=np.int32) < 0)
+            )
             evaluation_evidence[horizon]["evaluation_fit_row_ids_hash"] = _row_id_hash(
                 data, train_refs
+            )
+            evaluation_evidence[horizon]["heldout_missing_stock_event_rows"] = int(
+                np.sum(np.asarray(data.event_days[heldout_refs], dtype=np.int32) < 0)
             )
 
             horizon_models: dict[str, dict[str, Any]] = {}
@@ -770,7 +933,8 @@ def train_and_publish(
                         test_refs=heldout_refs,
                         train_matrix=train_matrix,
                         test_matrix=heldout_matrix,
-                        oof=oof,
+                        # 凍結 fit helper 只以索引寫入 OOF buffer；ndarray 符合其執行期需求。
+                        oof=cast(np.memmap | None, oof),
                         output_directory=eval_dir,
                         ridge_alpha=Decimal(100) / Decimal(10_000),
                         logistic_iterations=logistic_iterations,
@@ -843,6 +1007,9 @@ def train_and_publish(
                     valid_count = int(np.sum(masks == 0))
                     calibration_fold_counts[fold_id] += valid_count
                     calibration_horizon_counts[horizon] += valid_count
+                    calibration_event_missing_counts[horizon][fold_id] += int(
+                        np.sum(np.asarray(data.event_days[refs], dtype=np.int32) < 0)
+                    )
             evaluation_models_by_horizon[horizon] = horizon_models
 
             mature_refs = _mature_training_refs(data, horizon)
@@ -851,7 +1018,13 @@ def train_and_publish(
                 raise ValueError(f"h{horizon} final fit has fewer than two mature rows")
             final_fit_evidence[horizon] = {
                 "mature_row_candidate_count": int(len(mature_refs)),
+                "mature_row_candidate_missing_stock_event_count": int(
+                    np.sum(np.asarray(data.event_days[mature_refs], dtype=np.int32) < 0)
+                ),
                 "final_fit_row_count": int(len(final_refs)),
+                "final_fit_missing_stock_event_count": int(
+                    np.sum(np.asarray(data.event_days[final_refs], dtype=np.int32) < 0)
+                ),
                 "final_fit_row_ids_hash": _row_id_hash(data, final_refs),
             }
             final_pack_records: dict[str, Any] = {}
@@ -949,10 +1122,13 @@ def train_and_publish(
                 evaluation_evidence[horizon]["packs"][pack_id][
                     "heldout_calibrated_downside"
                 ] = calibrated_metrics
+        data.verify_source_integrity(phase="fit-complete")
         runtime_binding_at_fit_complete = _collect_training_runtime_binding(
-            invocation_argv=invocation_argv
+            invocation_argv=invocation_argv,
+            dataset_schema_version=dataset_schema_version,
         )
         binding_keys = (
+            "dataset_schema_version",
             "source_file_sha256",
             "software_versions",
             "python",
@@ -972,6 +1148,7 @@ def train_and_publish(
             final_fit=final_fit_evidence,
             calibration_counts=calibration_fold_counts,
             calibration_horizon_counts=calibration_horizon_counts,
+            calibration_event_missing_counts=calibration_event_missing_counts,
             runtime_binding=runtime_binding_at_start,
             max_fit_rows=effective_fit_limit,
             batch_size=batch_size,
@@ -1551,13 +1728,18 @@ def _mature_training_refs(data: ResearchArrays, horizon: int) -> NDArray[np.int6
 
 
 def _collect_training_runtime_binding(
-    *, invocation_argv: Sequence[str] | None
+    *,
+    invocation_argv: Sequence[str] | None,
+    dataset_schema_version: str | None = None,
 ) -> dict[str, Any]:
     """封存模型 trainer、序列化路徑與執行環境的可重播來源指紋。"""
 
     repository_root = Path(__file__).resolve().parents[1]
     source_hashes: dict[str, str] = {}
-    for relative_path in _TRAINING_SOURCE_FILES:
+    source_files = list(_TRAINING_SOURCE_FILES)
+    if dataset_schema_version == "portfolio-ml-restated-research-dataset.v2":
+        source_files.extend(_V2_TRAINING_SOURCE_FILES)
+    for relative_path in source_files:
         source_path = repository_root / relative_path
         if not source_path.is_file():
             raise FileNotFoundError(f"training dependency source is missing: {relative_path}")
@@ -1569,6 +1751,7 @@ def _collect_training_runtime_binding(
         for distribution in _TRAINING_DISTRIBUTIONS
     }
     return {
+        "dataset_schema_version": dataset_schema_version,
         "source_file_sha256": source_hashes,
         "software_versions": versions,
         "python": {
@@ -1582,6 +1765,19 @@ def _collect_training_runtime_binding(
     }
 
 
+def _read_declared_dataset_schema_version(manifest_path: Path) -> str | None:
+    """讀取 manifest 宣告版本，讓 source binding 收錄對應的 identity builder。"""
+
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("cannot read dataset schema version before training") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError("dataset manifest must be a JSON object")
+    value = payload.get("schema_version")
+    return value if isinstance(value, str) else None
+
+
 def _build_training_identity(
     *,
     data: ResearchArrays,
@@ -1590,6 +1786,7 @@ def _build_training_identity(
     final_fit: Mapping[int, Mapping[str, Any]],
     calibration_counts: Mapping[str, int],
     calibration_horizon_counts: Mapping[int, int],
+    calibration_event_missing_counts: Mapping[int, Mapping[str, int]],
     runtime_binding: Mapping[str, Any],
     max_fit_rows: int | None,
     batch_size: int,
@@ -1603,6 +1800,7 @@ def _build_training_identity(
         "dataset_id": data.dataset_id,
         "dataset_identity_hash": data.dataset_identity_hash,
         "dataset_manifest_file_hash": data.manifest_file_hash,
+        "dataset_source_custody": _source_custody_identity(data),
         "source_manifest_hashes": [list(item) for item in data.source_manifest_hashes],
         "feature_registry_hash": data.feature_registry_hash,
         "feature_order": list(data.feature_ids),
@@ -1611,6 +1809,20 @@ def _build_training_identity(
         "label_fields": list(LABEL_FIELDS),
         "horizons": list(horizons),
         "training_as_of": data.training_as_of,
+        "feature_event_clock_policy": {
+            "source_field": "feature_event_asof_at",
+            "semantics": "stock_event_date at 14:30 Asia/Taipei; null remains null",
+            "null_sentinel_internal_only": {"event_days": -1, "event_at": "empty string"},
+            "training_selection": "retained with original feature missing masks; split uses decision and label maturity clocks",
+            "current_inference": "rows without a stock event are rejected",
+            "dataset_missing_stock_event_rows": int(
+                np.sum(np.asarray(data.event_days, dtype=np.int32) < 0)
+            ),
+            "dataset_missing_stock_event_row_ids_hash": _row_id_hash(
+                data,
+                np.flatnonzero(np.asarray(data.event_days, dtype=np.int32) < 0),
+            ),
+        },
         "restated_research": True,
         "historical_pit": False,
         "formal_oos_allowed": False,
@@ -1631,6 +1843,10 @@ def _build_training_identity(
         "calibration_fit_observation_counts_by_horizon": {
             str(horizon): count
             for horizon, count in calibration_horizon_counts.items()
+        },
+        "calibration_missing_stock_event_row_counts_by_horizon_and_fold": {
+            str(horizon): dict(counts)
+            for horizon, counts in calibration_event_missing_counts.items()
         },
         "calibration_population": (
             "shared downside mapping fit from matured predictions across all listed feature packs and horizons"
@@ -1691,7 +1907,9 @@ def _build_artifact_payload(
                     records=records,
                 )
             fit_lineage = fit_lineage_by_horizon[horizon_value]
-            fit_by_head = {head_id: [] for head_id in EXPERT_HEAD_IDS}
+            fit_by_head: dict[str, list[str]] = {
+                head_id: [] for head_id in EXPERT_HEAD_IDS
+            }
             missing_reasons = {
                 head_id: str(record.get("missing_reason", "unavailable"))
                 for head_id, record in records.items()
@@ -1803,9 +2021,14 @@ def _run_current_inference_smoke(
     if now.timetz().replace(tzinfo=None).hour == 8 and now.minute == 30:
         raise ValueError("current smoke must use actual current time, not historical 08:30")
     max_decision_day = int(np.max(np.asarray(data.decision_days, dtype=np.int32)))
-    current_refs = np.flatnonzero(np.asarray(data.decision_days) == max_decision_day)
-    if len(current_refs) == 0:
+    latest_refs = np.flatnonzero(np.asarray(data.decision_days) == max_decision_day)
+    if len(latest_refs) == 0:
         raise ValueError("sealed snapshot has no latest current rows")
+    event_days = np.asarray(data.event_days, dtype=np.int32)
+    no_stock_event_count = int(np.sum(event_days[latest_refs] < 0))
+    current_refs = latest_refs[event_days[latest_refs] >= 0]
+    if len(current_refs) == 0:
+        raise ValueError("latest research rows have no observed prior stock event")
     current_refs = current_refs[: min(25, len(current_refs))]
     source_id = "sealed_restated_research_dataset"
     source_hashes = dict(data.source_manifest_hashes)
@@ -1909,6 +2132,7 @@ def _run_current_inference_smoke(
         "observed_at": now.isoformat(),
         "decision_at": current_decision_at,
         "source_manifest_file_hash": data.manifest_file_hash,
+        "latest_rows_without_stock_event_rejected": no_stock_event_count,
         "source_revision_ids": sorted(
             {
                 bytes(data.revision_ids[int(ref)]).decode("utf-8").rstrip("\x00")
@@ -1953,6 +2177,468 @@ def _read_feature_packs(
     return tuple(packs)
 
 
+def _validate_complete_restatement_manifest(
+    manifest: Mapping[str, Any],
+) -> tuple[tuple[str, ...], tuple[int, ...], tuple[tuple[str, tuple[str, ...]], ...], tuple[int, ...]]:
+    """驗證封存 restated dataset identity、完整欄位 ABI 與標籤契約。"""
+
+    schema_version = manifest.get("schema_version")
+    is_v1 = schema_version == "portfolio-ml-restated-research-dataset.v1"
+    is_v2 = schema_version == "portfolio-ml-restated-research-dataset.v2"
+    if (
+        not (is_v1 or is_v2)
+        or manifest.get("status") != "complete_research_build"
+        or manifest.get("research_only") is not True
+        or manifest.get("restated_research") is not True
+        or manifest.get("formal_historical_PIT") is not False
+        or manifest.get("formal_oos") is not False
+        or manifest.get("promotion_eligible") is not False
+    ):
+        raise ValueError("completed restated research v1/v2 manifest with non-PIT flags is required")
+
+    try:
+        from data_module.ml_restatement_current_inputs import _IDENTITY_FIELDS, _payload_hash
+        from data_module.ml_restatement_research_dataset import expected_feature_contract
+    except ImportError as exc:  # pragma: no cover - repository module preflight
+        raise RuntimeError("restated dataset contract modules are required") from exc
+
+    if is_v1:
+        try:
+            identity_payload = {name: manifest[name] for name in _IDENTITY_FIELDS}
+        except KeyError as exc:
+            raise ValueError(f"restated manifest identity field is missing: {exc.args[0]}") from exc
+    else:
+        try:
+            from data_module.ml_restatement_research_dataset_v2_merge import (
+                V2_IDENTITY_FIELDS,
+            )
+        except ImportError as exc:  # pragma: no cover - v2 builder lands with the dataset repair
+            raise RuntimeError("restated v2 identity contract module is required") from exc
+        try:
+            declared_fields = manifest["dataset_identity_fields"]
+            if not isinstance(declared_fields, list) or tuple(declared_fields) != tuple(
+                V2_IDENTITY_FIELDS
+            ):
+                raise ValueError("v2 dataset_identity_fields differs from its trusted identity contract")
+            identity_payload = {
+                "identity_fields": declared_fields,
+                **{name: manifest[name] for name in declared_fields},
+            }
+        except KeyError as exc:
+            raise ValueError(f"restated v2 identity field is missing: {exc.args[0]}") from exc
+    identity_hash = _payload_hash(identity_payload)
+    if (
+        manifest.get("dataset_identity_hash") != identity_hash
+        or manifest.get("manifest_hash") != identity_hash
+    ):
+        raise ValueError("restated manifest dataset identity/hash mismatch")
+    expected_dataset_id = (
+        "ml-restated-research-v2-" + identity_hash[7:31]
+        if is_v2
+        else "ml-restated-research-" + identity_hash[7:31]
+    )
+    if manifest.get("dataset_id") != expected_dataset_id:
+        raise ValueError("restated manifest dataset id does not match its identity")
+
+    expected_ids, expected_scales = expected_feature_contract()
+    feature_ids = _read_sequence(manifest, "feature_ids")
+    feature_scales = _read_integer_sequence(manifest, "feature_scales")
+    if feature_ids != expected_ids or feature_scales != expected_scales:
+        raise ValueError("restated feature order/scales differ from the fixed 62-slot ABI")
+    if manifest.get("feature_count") != FEATURE_COUNT:
+        raise ValueError("restated feature_count must equal 62")
+    expected_order_hash = _payload_hash(list(zip(expected_ids, expected_scales)))
+    if manifest.get("feature_order_hash") != expected_order_hash:
+        raise ValueError("restated feature_order_hash differs from the fixed 62-slot ABI")
+    _normalize_sha(manifest.get("feature_registry_hash"), "manifest.feature_registry_hash")
+
+    label_fields = _read_sequence(manifest, "label_fields")
+    label_scales = _read_integer_sequence(manifest, "label_scales")
+    if label_fields != LABEL_FIELDS or label_scales != (1,) * len(LABEL_FIELDS):
+        raise ValueError("restated label order/scales differ from the nine-label integer-bp ABI")
+    if is_v2:
+        target_fields = _read_sequence(manifest, "target_fields")
+        if target_fields != _META_FIELDS + ("rebalance_worthwhile",):
+            raise ValueError("restated v2 target order differs from the original six-column target ABI")
+    feature_packs = _read_feature_packs(manifest, feature_ids)
+    if isinstance(manifest.get("row_count"), bool) or not isinstance(manifest.get("row_count"), int):
+        raise TypeError("restated manifest row_count must be an integer")
+    if manifest["row_count"] < 2:
+        raise ValueError("restated manifest row_count must be at least two")
+    if not isinstance(manifest.get("fold_boundaries"), list) or not manifest["fold_boundaries"]:
+        raise ValueError("restated manifest requires its frozen fold boundaries")
+    fold_policy = manifest.get("fold_policy")
+    if (
+        not isinstance(fold_policy, dict)
+        or fold_policy.get("purge_trading_days") != 60
+        or fold_policy.get("embargo_trading_days") != 5
+        or fold_policy.get("revision_heldout_start") != REPAIR_HELDOUT_START.isoformat()
+        or fold_policy.get("formal_oos") is not False
+    ):
+        raise ValueError("restated manifest fold policy differs from the fixed repair split")
+
+    training_as_of = _aware_datetime(manifest.get("training_as_of"), field_name="training_as_of")
+    revision_observed_at = _aware_datetime(
+        manifest.get("revision_observed_at"), field_name="revision_observed_at"
+    )
+    if is_v1 and training_as_of != revision_observed_at:
+        raise ValueError("v1 training_as_of must equal the sealed revision observation clock")
+    if is_v2:
+        _validate_v2_dataset_lineage(manifest)
+        _validate_v2_patch_summary(manifest)
+    # 上方版本 gate 僅會接受兩個固定字串，cast 不改執行期值。
+    _validate_manifest_source_links(manifest, schema_version=cast(str, schema_version))
+
+    return feature_ids, feature_scales, feature_packs, label_scales
+
+
+def _validate_manifest_source_links(
+    manifest: Mapping[str, Any],
+    *,
+    schema_version: str,
+) -> None:
+    source_hashes = manifest.get("source_hashes")
+    if not isinstance(source_hashes, dict):
+        raise ValueError("restated manifest source_hashes must be an object")
+
+    def source_digest(key: str, field: str) -> str:
+        item = source_hashes.get(key)
+        if not isinstance(item, dict):
+            raise ValueError(f"restated manifest source_hashes.{key} is required")
+        return _normalize_sha(item.get(field), f"source_hashes.{key}.{field}")
+
+    kernel = manifest.get("kernel")
+    if not isinstance(kernel, dict):
+        raise ValueError("restated manifest kernel binding is required")
+    kernel_hash = _normalize_sha(kernel.get("sha256"), "manifest.kernel.sha256")
+    builder_hash = _normalize_sha(manifest.get("builder_code_sha256"), "builder_code_sha256")
+    expected = {
+        "sqlite.daily_prices": source_digest("snapshot_db", "sha256"),
+        "direct.manifest": source_digest("direct_manifest", "file_sha256"),
+        "direct.discovery_cache": source_digest("discovery_cache", "sha256"),
+        "custody.transfer_receipt": source_digest("transfer_receipt", "sha256"),
+        "derived.causal_kernel": kernel_hash,
+        "derived.label_quality_builder": (
+            _normalize_sha(
+                manifest.get("corrected_subset_builder_sha256"),
+                "corrected_subset_builder_sha256",
+            )
+            if schema_version == "portfolio-ml-restated-research-dataset.v2"
+            else builder_hash
+        ),
+        "sidecar.corporate_action_adjustments": source_digest(
+            "corporate_action_manifest", "sha256"
+        ),
+    }
+    raw = manifest.get("source_manifest_hashes")
+    if not isinstance(raw, list):
+        raise ValueError("restated manifest source_manifest_hashes must be a list")
+    pairs: list[tuple[str, str]] = []
+    for item in raw:
+        if not isinstance(item, list) or len(item) != 2:
+            raise TypeError("source_manifest_hashes entries must be [source_id, sha256]")
+        pairs.append(
+            (
+                _required_row_text(item[0], "source_manifest_hashes.source_id"),
+                _normalize_sha(item[1], f"source_manifest_hashes[{item[0]}]"),
+            )
+        )
+    if len({name for name, _digest in pairs}) != len(pairs):
+        raise ValueError("source_manifest_hashes contains duplicate source ids")
+    actual_pairs = dict(pairs)
+    if schema_version == "portfolio-ml-restated-research-dataset.v2":
+        lineage = manifest.get("dataset_lineage")
+        computation = manifest.get("computation_source_hashes")
+        if not isinstance(lineage, dict) or not isinstance(computation, dict):
+            raise ValueError("v2 source lineage and computation_source_hashes are required")
+        parent = lineage.get("parent_v1")
+        corrected = lineage.get("corrected_subset")
+        if not isinstance(parent, dict) or not isinstance(corrected, dict):
+            raise ValueError("v2 parent and corrected-subset lineage bindings are required")
+        extra = {
+            "parent.v1.dataset.manifest": _normalize_sha(
+                parent.get("manifest_file_sha256"), "dataset_lineage.parent_v1.manifest_file_sha256"
+            ),
+            "corrected.symbol.subset.dataset.manifest": _normalize_sha(
+                corrected.get("manifest_file_sha256"),
+                "dataset_lineage.corrected_subset.manifest_file_sha256",
+            ),
+            "derived.grouped_numeric_parser": _normalize_sha(
+                computation.get("grouped_numeric_parser"),
+                "computation_source_hashes.grouped_numeric_parser",
+            ),
+            "derived.v2.row_merge": _normalize_sha(
+                computation.get("v2_row_merge"),
+                "computation_source_hashes.v2_row_merge",
+            ),
+            "derived.causal_kernel.impl": _normalize_sha(
+                computation.get("causal_kernel_impl"),
+                "computation_source_hashes.causal_kernel_impl",
+            ),
+        }
+        if (
+            actual_pairs != {**expected, **extra}
+            or tuple(name for name, _digest in pairs) != tuple(expected) + tuple(extra)
+        ):
+            raise ValueError("v2 source_manifest_hashes do not match source, lineage, and computation bindings")
+        _validate_v2_computation_hashes(manifest)
+    elif actual_pairs != expected:
+        raise ValueError("source_manifest_hashes do not match the source and recipe bindings")
+
+
+def _validate_v2_dataset_lineage(manifest: Mapping[str, Any]) -> None:
+    """驗證 v2 parent/subset 清冊與來源快照的身份欄位。"""
+
+    lineage = manifest.get("dataset_lineage")
+    if not isinstance(lineage, dict):
+        raise ValueError("v2 dataset_lineage is required")
+    if set(lineage) != {"parent_v1", "corrected_subset"}:
+        raise ValueError("v2 dataset_lineage must contain only parent_v1 and corrected_subset")
+    for name in ("parent_v1", "corrected_subset"):
+        item = lineage.get(name)
+        if not isinstance(item, dict):
+            raise ValueError(f"v2 dataset_lineage.{name} is required")
+        expected_keys = (
+            {"manifest_path", "manifest_file_sha256", "dataset_identity_hash", "row_count", "revision_observed_at"}
+            if name == "parent_v1"
+            else {
+                "manifest_path",
+                "manifest_file_sha256",
+                "dataset_identity_hash",
+                "row_count",
+                "revision_observed_at",
+                "symbols",
+            }
+        )
+        if set(item) != expected_keys:
+            raise ValueError(f"v2 dataset_lineage.{name} fields differ from the frozen contract")
+        path = item.get("manifest_path")
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError(f"v2 dataset_lineage.{name}.manifest_path is required")
+        _normalize_sha(item.get("manifest_file_sha256"), f"dataset_lineage.{name}.manifest_file_sha256")
+        _normalize_sha(item.get("dataset_identity_hash"), f"dataset_lineage.{name}.dataset_identity_hash")
+        count = item.get("row_count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError(f"v2 dataset_lineage.{name}.row_count must be a positive integer")
+        bound_revision_clock = _aware_datetime(
+            item.get("revision_observed_at"),
+            field_name=f"dataset_lineage.{name}.revision_observed_at",
+        )
+        if name == "parent_v1":
+            parent_revision_clock = bound_revision_clock
+    corrected = lineage["corrected_subset"]
+    symbols = corrected.get("symbols")
+    try:
+        from data_module.ml_restatement_research_dataset_v2_merge import CORRECTED_SYMBOLS
+    except ImportError as exc:  # pragma: no cover - v2 builder lands with the dataset repair
+        raise RuntimeError("restated v2 corrected-symbol contract module is required") from exc
+    if not isinstance(symbols, list) or tuple(sorted(symbols)) != tuple(sorted(CORRECTED_SYMBOLS)):
+        raise ValueError("v2 corrected subset symbols differ from the fixed 22-symbol repair scope")
+    revision = _normalize_sha(manifest.get("revision"), "manifest.revision")
+    if revision != _normalize_sha(
+        manifest.get("source_hashes", {}).get("snapshot_db", {}).get("sha256"),
+        "source_hashes.snapshot_db.sha256",
+    ):
+        raise ValueError("v2 revision must identify the sealed source snapshot")
+    _aware_datetime(manifest.get("training_as_of"), field_name="training_as_of")
+    _aware_datetime(manifest.get("revision_observed_at"), field_name="revision_observed_at")
+    _aware_datetime(manifest.get("dataset_created_at"), field_name="dataset_created_at")
+    target_audit = manifest.get("original_row_target_audit")
+    if not isinstance(target_audit, dict):
+        raise ValueError("v2 original_row_target_audit is required")
+    if _normalize_sha(
+        target_audit.get("artifact_sha256"), "original_row_target_audit.artifact_sha256"
+    ) != TARGET_VALUES_AUDIT_HASH:
+        raise ValueError("v2 original target audit artifact SHA differs from the verified audit")
+    if _normalize_sha(
+        target_audit.get("source_manifest_sha256"),
+        "original_row_target_audit.source_manifest_sha256",
+    ) != TARGET_AUDIT_MANIFEST_HASH:
+        raise ValueError("v2 original target audit source manifest differs from Direct OOC")
+    direct_baseline_rows = target_audit.get("direct_baseline_row_count")
+    observed_target_rows = target_audit.get("target_observed_row_count")
+    if (
+        isinstance(direct_baseline_rows, bool)
+        or direct_baseline_rows != ORIGINAL_DIRECT_TARGET_ROW_COUNT
+        or isinstance(observed_target_rows, bool)
+        or observed_target_rows != direct_baseline_rows
+    ):
+        raise ValueError("v2 original target audit row count differs from the verified Direct baseline")
+    per_field_counts = target_audit.get("target_field_observed_counts")
+    expected_target_names = _META_FIELDS + ("rebalance_worthwhile",)
+    if not isinstance(per_field_counts, dict) or per_field_counts != {
+        field: direct_baseline_rows for field in expected_target_names
+    }:
+        raise ValueError("v2 original target audit must verify every target field on every baseline row")
+
+
+def _verify_v2_lineage_manifest_files(
+    manifest: Mapping[str, Any],
+) -> tuple[datetime, datetime]:
+    """重查 v2 所引用 parent 與 corrected-subset manifest 的檔案 bytes。"""
+
+    lineage = manifest.get("dataset_lineage")
+    if not isinstance(lineage, dict):
+        raise ValueError("v2 dataset_lineage is required")
+    parent_clock: datetime | None = None
+    corrected_clock: datetime | None = None
+    for name in ("parent_v1", "corrected_subset"):
+        binding = lineage[name]
+        manifest_path_raw = binding["manifest_path"]
+        lineage_path = Path(manifest_path_raw)
+        if not lineage_path.is_absolute():
+            raise ValueError(f"v2 lineage {name} manifest path must be absolute")
+        lineage_path = lineage_path.resolve(strict=True)
+        raw = lineage_path.read_bytes()
+        if _sha256(raw) != _normalize_sha(
+            binding["manifest_file_sha256"], f"dataset_lineage.{name}.manifest_file_sha256"
+        ):
+            raise ValueError(f"v2 lineage {name} manifest file SHA-256 mismatch")
+        child = _json_object(raw, field_name=f"v2 lineage {name} manifest")
+        child_identity = _normalize_sha(
+            binding["dataset_identity_hash"], f"dataset_lineage.{name}.dataset_identity_hash"
+        )
+        if (
+            child.get("dataset_identity_hash") != child_identity
+            or child.get("manifest_hash") != child_identity
+            or child.get("row_count") != binding["row_count"]
+        ):
+            raise ValueError(f"v2 lineage {name} manifest identity or row count mismatch")
+        bound_revision_clock = _aware_datetime(
+            binding.get("revision_observed_at"),
+            field_name=f"dataset_lineage.{name}.revision_observed_at",
+        )
+        source_revision_clock = _aware_datetime(
+            child.get("revision_observed_at"),
+            field_name=f"{name}.revision_observed_at",
+        )
+        if source_revision_clock != bound_revision_clock:
+            raise ValueError(
+                f"v2 {name} revision observation clock differs from its source manifest"
+            )
+        if name == "parent_v1":
+            parent_clock = source_revision_clock
+        _validate_complete_restatement_manifest(child)
+        if name == "corrected_subset":
+            source_symbols = child.get("symbol_filter")
+            if not isinstance(source_symbols, list) or tuple(sorted(source_symbols)) != tuple(
+                sorted(binding.get("symbols", []))
+            ):
+                raise ValueError("v2 corrected subset symbols differ from its source manifest")
+            corrected_clock = source_revision_clock
+            if _aware_datetime(
+                manifest.get("training_as_of"), field_name="training_as_of"
+            ) != corrected_clock:
+                raise ValueError("v2 training_as_of differs from corrected-subset observation clock")
+    if parent_clock is None or corrected_clock is None:
+        raise ValueError("v2 lineage source observation clocks are incomplete")
+    expected_top_revision_clock = max(parent_clock, corrected_clock)
+    if _aware_datetime(
+        manifest.get("revision_observed_at"), field_name="revision_observed_at"
+    ) != expected_top_revision_clock:
+        raise ValueError("v2 revision_observed_at must be the latest truthful row observation clock")
+    return parent_clock, corrected_clock
+
+
+def _validate_v2_patch_summary(manifest: Mapping[str, Any]) -> None:
+    patch = manifest.get("patch")
+    if not isinstance(patch, dict) or patch.get("join_key") != "row_id":
+        raise ValueError("v2 patch must declare row_id as its join key")
+    parent = manifest["dataset_lineage"]["parent_v1"]
+    corrected = manifest["dataset_lineage"]["corrected_subset"]
+    if (
+        set(patch) != {
+            "join_key", "symbols", "patch_version", "replaced_row_count", "added_row_count",
+            "corrected_subset_baseline_row_count", "corrected_subset_appended_row_count",
+            "verification_summary",
+        }
+        or patch.get("patch_version") != "symbol-row-replace-by-row-id.v1"
+        or patch.get("symbols") != corrected["symbols"]
+    ):
+        raise ValueError("v2 patch differs from the sealed merger contract or corrected scope")
+    counts: dict[str, int] = {}
+    for field in (
+        "replaced_row_count", "added_row_count", "corrected_subset_appended_row_count",
+        "corrected_subset_baseline_row_count",
+    ):
+        value = patch.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"v2 patch.{field} must be a non-negative integer")
+        counts[field] = value
+    if counts["replaced_row_count"] + counts["added_row_count"] != corrected["row_count"]:
+        raise ValueError("v2 patched and added row counts must account for every corrected-subset row")
+    if counts["added_row_count"] != 0 or counts["replaced_row_count"] != corrected["row_count"]:
+        raise ValueError("v2 corrected subset must replace only existing full-parent row IDs")
+    if parent["row_count"] + counts["added_row_count"] != manifest["row_count"]:
+        raise ValueError("v2 parent and subset-only rows do not account for final row_count")
+    if counts["corrected_subset_appended_row_count"] > corrected["row_count"]:
+        raise ValueError("v2 corrected-subset appended count exceeds corrected-subset row count")
+    if counts["corrected_subset_appended_row_count"] != CORRECTED_SUBSET_APPENDED_ROW_COUNT:
+        raise ValueError("v2 corrected-subset append count differs from the verified source scope")
+    if counts["corrected_subset_baseline_row_count"] + counts["corrected_subset_appended_row_count"] != corrected["row_count"]:
+        raise ValueError("v2 corrected-subset baseline and append counts differ from its row count")
+    summary = patch.get("verification_summary")
+    if not isinstance(summary, dict):
+        raise ValueError("v2 patch verification_summary is required")
+    required_true = (
+        "parent_row_ids_preserved",
+        "parent_targets_exact_for_all_parent_rows",
+        "appended_targets_missing",
+        "corrected_subset_row_ids_unique",
+        "all_subset_rows_joined_or_added",
+        "unaffected_feature_and_label_columns_exact",
+        "corrected_scope_22_symbols_all_history_and_appends",
+        "snapshot_hashes_match",
+    )
+    if any(summary.get(name) is not True for name in required_true):
+        raise ValueError("v2 patch verification_summary contains a failed required invariant")
+    expected_counts = {
+        "parent_rows": parent["row_count"],
+        "final_rows": manifest["row_count"],
+        "patched_rows": counts["replaced_row_count"],
+        "new_appended_rows": counts["added_row_count"],
+        "duplicate_row_ids": 0,
+    }
+    for field, expected in expected_counts.items():
+        value = summary.get(field)
+        if isinstance(value, bool) or value != expected:
+            raise ValueError(f"v2 patch verification_summary.{field} mismatch")
+    unaffected = summary.get("unaffected_rows")
+    if isinstance(unaffected, bool) or not isinstance(unaffected, int) or unaffected < 0:
+        raise ValueError("v2 patch verification_summary.unaffected_rows must be non-negative")
+    if unaffected + counts["replaced_row_count"] != parent["row_count"]:
+        raise ValueError("v2 unaffected and patched rows do not account for the parent row count")
+
+
+def _validate_v2_computation_hashes(manifest: Mapping[str, Any]) -> None:
+    computation = manifest.get("computation_source_hashes")
+    if not isinstance(computation, dict):
+        raise ValueError("v2 computation_source_hashes is required")
+    required = (
+        "causal_kernel_facade",
+        "causal_kernel_impl",
+        "grouped_numeric_parser",
+        "corrected_subset_builder",
+        "v2_row_merge",
+    )
+    if set(computation) != set(required):
+        raise ValueError("v2 computation_source_hashes fields differ from the frozen contract")
+    for key in required:
+        _normalize_sha(computation.get(key), f"computation_source_hashes.{key}")
+    if _normalize_sha(manifest.get("kernel", {}).get("sha256"), "kernel.sha256") != _normalize_sha(
+        computation["causal_kernel_facade"], "computation_source_hashes.causal_kernel_facade"
+    ):
+        raise ValueError("v2 causal kernel facade hash differs from its computation binding")
+    if _normalize_sha(manifest.get("corrected_subset_builder_sha256"), "corrected_subset_builder_sha256") != _normalize_sha(
+        computation["corrected_subset_builder"], "computation_source_hashes.corrected_subset_builder"
+    ):
+        raise ValueError("v2 corrected subset builder hash differs from its computation binding")
+    if _normalize_sha(manifest.get("builder_code_sha256"), "builder_code_sha256") != _normalize_sha(
+        computation["v2_row_merge"], "computation_source_hashes.v2_row_merge"
+    ):
+        raise ValueError("v2 merge recipe hash differs from its computation binding")
+
+
 def _read_source_hashes(manifest: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
     raw = manifest.get("source_manifest_hashes")
     pairs: list[tuple[str, str]] = []
@@ -1982,23 +2668,47 @@ def _read_source_hashes(manifest: Mapping[str, Any]) -> tuple[tuple[str, str], .
 
 def _dataset_files(root: Path, manifest: Mapping[str, Any]) -> tuple[Path, ...]:
     raw = manifest.get("partition_files")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("sealed manifest must declare a complete partition_files inventory")
     paths: list[Path] = []
-    if isinstance(raw, list) and raw:
-        for item in raw:
-            relative = item.get("path") if isinstance(item, dict) else item
-            if not isinstance(relative, str) or not relative.strip():
-                raise ValueError("partition_files entries require a relative path")
-            candidate = (root / relative).resolve()
-            if not candidate.is_relative_to(root.resolve()):
-                raise ValueError("dataset partition path escapes the sealed root")
-            if not candidate.is_file():
-                raise FileNotFoundError(f"sealed dataset partition is missing: {candidate}")
-            paths.append(candidate)
-    else:
-        paths = [path.resolve() for path in root.rglob("research_dataset.parquet")]
-    unique = tuple(sorted(set(paths)))
-    if not unique:
-        raise FileNotFoundError("sealed research parquet partitions were not found")
+    seen_relative: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            raise TypeError("partition_files entries must be complete descriptor objects")
+        relative = item.get("path")
+        if not isinstance(relative, str) or not relative.strip():
+            raise ValueError("partition_files entries require a relative path")
+        normalized = relative.replace("\\", "/")
+        if normalized.startswith("/") or ".." in Path(normalized).parts:
+            raise ValueError("partition_files paths must be normalized relative paths")
+        if relative in seen_relative:
+            raise ValueError("partition_files contains a duplicate path")
+        seen_relative.add(relative)
+        candidate = (root / relative).resolve()
+        if not candidate.is_relative_to(root.resolve()):
+            raise ValueError("dataset partition path escapes the sealed root")
+        if not candidate.is_file():
+            raise FileNotFoundError(f"sealed dataset partition is missing: {candidate}")
+        year = item.get("year")
+        if isinstance(year, bool) or not isinstance(year, int):
+            raise TypeError("partition_files.year must be an integer")
+        if normalized != f"year={year}/research_dataset.parquet":
+            raise ValueError("partition path must match its declared year")
+        for field in ("row_count", "byte_count"):
+            value = item.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"partition_files.{field} must be a positive integer")
+        paths.append(candidate)
+    if len({item["year"] for item in raw}) != len(raw):
+        raise ValueError("partition_files must contain one partition per year")
+    discovered = {
+        path.resolve()
+        for path in root.rglob("research_dataset.parquet")
+        if path.is_file()
+    }
+    unique = tuple(sorted(paths))
+    if set(unique) != discovered:
+        raise ValueError("manifest partition inventory is incomplete or has unlisted Parquet files")
     return unique
 
 
@@ -2011,6 +2721,7 @@ def _verify_file_inventory(
     if not isinstance(raw, list) or not raw:
         raise ValueError("sealed manifest must bind every Parquet partition by SHA-256")
     expected: dict[Path, str] = {}
+    expected_bytes: dict[Path, int] = {}
     for item in raw:
         if not isinstance(item, dict):
             raise TypeError("partition_files entries must be objects with path and sha256")
@@ -2020,12 +2731,346 @@ def _verify_file_inventory(
             raise TypeError("partition_files.path must be text")
         path = (root / relative).resolve()
         expected[path] = _normalize_sha(digest, f"partition_files[{relative}].sha256")
+        expected_bytes[path] = int(item["byte_count"])
     if set(expected) != set(files):
         raise ValueError("manifest partition inventory differs from discovered Parquet files")
     for path in files:
+        if path.stat().st_size != expected_bytes[path]:
+            raise ValueError(f"sealed partition byte count mismatch: {path.name}")
         actual = _file_sha256(path)
         if actual != expected[path]:
             raise ValueError(f"sealed partition SHA-256 mismatch: {path.name}")
+
+
+def _verify_partition_metadata(
+    root: Path,
+    manifest: Mapping[str, Any],
+    files: Sequence[Path],
+) -> int:
+    import pyarrow.parquet as pq
+    from data_module.ml_restatement_research_dataset import arrow_schema
+
+    raw = manifest["partition_files"]
+    descriptors = {
+        (root / item["path"]).resolve(): item
+        for item in raw
+    }
+    expected_schema = arrow_schema()
+    total_rows = 0
+    for path in files:
+        parquet = pq.ParquetFile(path)
+        metadata = parquet.metadata
+        descriptor = descriptors[path]
+        if metadata.num_rows != descriptor["row_count"]:
+            raise ValueError(f"sealed partition row count mismatch: {path.name}")
+        if not parquet.schema_arrow.equals(expected_schema, check_metadata=False):
+            raise ValueError(f"sealed partition Arrow schema mismatch: {path.name}")
+        total_rows += metadata.num_rows
+    if total_rows != manifest["row_count"]:
+        raise ValueError("manifest row_count differs from partition metadata")
+    return total_rows
+
+
+def _load_source_custody_args(
+    *,
+    source_custody_path: Path | None,
+    source_custody_hash: str | None,
+    manifest_path: Path,
+    manifest_hash: str,
+    manifest: Mapping[str, Any],
+    row_count: int,
+) -> tuple[Path | None, str | None, dict[str, Any] | None]:
+    if source_custody_path is None and source_custody_hash is None:
+        return None, None, None
+    if source_custody_path is None or source_custody_hash is None:
+        raise ValueError("--source-custody and --source-custody-hash must be provided together")
+    path = source_custody_path.resolve(strict=True)
+    if path.suffix.lower() != ".json":
+        raise ValueError("source custody sidecar must be a JSON file")
+    root = manifest_path.parent.resolve()
+    if path.is_relative_to(root):
+        raise ValueError("source custody JSON must be external to the sealed dataset directory")
+    expected_hash = _normalize_sha(source_custody_hash, "source_custody_hash")
+    if _file_sha256(path) != expected_hash:
+        raise ValueError("source custody sidecar file SHA-256 mismatch")
+    payload = _json_object(path.read_bytes(), field_name="source custody sidecar")
+    _validate_source_custody(
+        payload,
+        manifest_path=manifest_path,
+        manifest_hash=manifest_hash,
+        manifest=manifest,
+        row_count=row_count,
+    )
+    return path, expected_hash, payload
+
+
+def _require_source_custody_for_row_count(
+    row_count: int,
+    source_custody_path: Path | None,
+) -> None:
+    if row_count > 100_000 and source_custody_path is None:
+        raise ValueError(
+            "datasets above 100000 rows require an external --source-custody sidecar and SHA-256"
+        )
+
+
+def _load_and_validate_source_custody(
+    path: Path,
+    *,
+    expected_hash: str,
+    manifest_path: Path,
+    manifest_hash: str,
+    manifest: Mapping[str, Any],
+    row_count: int,
+) -> dict[str, Any]:
+    if _file_sha256(path) != expected_hash:
+        raise RuntimeError("source custody sidecar changed during training")
+    payload = _json_object(path.read_bytes(), field_name="source custody sidecar")
+    _validate_source_custody(
+        payload,
+        manifest_path=manifest_path,
+        manifest_hash=manifest_hash,
+        manifest=manifest,
+        row_count=row_count,
+    )
+    return payload
+
+
+def _validate_source_custody(
+    payload: Mapping[str, Any],
+    *,
+    manifest_path: Path,
+    manifest_hash: str,
+    manifest: Mapping[str, Any],
+    row_count: int,
+) -> None:
+    """驗證 A 的外部 source-custody v1 sidecar 與封存資料一致。"""
+
+    if payload.get("schema_version") != "model-repair-source-custody.v1":
+        raise ValueError("source custody schema_version must be model-repair-source-custody.v1")
+    dataset = payload.get("dataset")
+    if not isinstance(dataset, dict):
+        raise ValueError("source custody dataset binding is required")
+    recorded_manifest_path = dataset.get("manifest_path")
+    if not isinstance(recorded_manifest_path, str) or not recorded_manifest_path.strip():
+        raise ValueError("source custody dataset.manifest_path is required")
+    if os.path.normcase(str(Path(recorded_manifest_path).resolve())) != os.path.normcase(
+        str(manifest_path.resolve())
+    ):
+        raise ValueError("source custody sidecar references a different dataset manifest")
+    if _normalize_sha(dataset.get("manifest_file_sha256"), "dataset.manifest_file_sha256") != manifest_hash:
+        raise ValueError("source custody manifest file hash differs from the sealed manifest")
+    if dataset.get("dataset_identity_hash") != manifest.get("dataset_identity_hash"):
+        raise ValueError("source custody dataset identity differs from the sealed manifest")
+    if dataset.get("build_status") != "complete_research_build":
+        raise ValueError("source custody does not confirm a completed dataset build")
+    if isinstance(dataset.get("row_count"), bool) or dataset.get("row_count") != row_count:
+        raise ValueError("source custody row_count differs from the sealed partitions")
+    if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+        for field in ("dataset_lineage", "patch", "computation_source_hashes"):
+            if payload.get(field) != manifest.get(field):
+                raise ValueError(f"source custody {field} differs from the sealed v2 manifest")
+
+    clocks = payload.get("job_clocks")
+    if not isinstance(clocks, dict):
+        raise ValueError("source custody job_clocks is required")
+    if (
+        clocks.get("started_at_observed") is not None
+        or clocks.get("start_source_verification") != "not_observed_at_job_start"
+        or clocks.get("finished_time_basis") != "completion_observed_after_process_exit"
+    ):
+        raise ValueError("source custody must state that no job-start capture was observed")
+    finished_at = _aware_datetime(clocks.get("finished_at"), field_name="job_clocks.finished_at")
+    source_check_at = _aware_datetime(
+        clocks.get("end_source_verification_at"),
+        field_name="job_clocks.end_source_verification_at",
+    )
+    revision_at = _aware_datetime(
+        clocks.get("revision_observed_at"),
+        field_name="job_clocks.revision_observed_at",
+    )
+    manifest_revision_at = _aware_datetime(
+        manifest.get("revision_observed_at"), field_name="revision_observed_at"
+    )
+    if revision_at != manifest_revision_at:
+        raise ValueError("source custody revision clock differs from the sealed manifest")
+    if source_check_at < finished_at or revision_at > finished_at:
+        raise ValueError("source custody completion and observation clocks are inconsistent")
+
+    builder = payload.get("builder")
+    if not isinstance(builder, dict):
+        raise ValueError("source custody builder binding is required")
+    if builder.get("tracked_worktree_clean") is not True:
+        raise ValueError("source custody builder tracked worktree must be clean")
+    _required_row_text(builder.get("commit"), "builder.commit")
+    if _normalize_sha(builder.get("source_sha256"), "builder.source_sha256") != _normalize_sha(
+        manifest.get("builder_code_sha256"), "builder_code_sha256"
+    ):
+        raise ValueError("source custody builder code SHA differs from the dataset identity")
+    if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+        corrected_builder = payload.get("corrected_subset_builder")
+        if not isinstance(corrected_builder, dict):
+            raise ValueError("v2 source custody corrected_subset_builder binding is required")
+        if _normalize_sha(
+            corrected_builder.get("source_sha256"), "corrected_subset_builder.source_sha256"
+        ) != _normalize_sha(
+            manifest.get("corrected_subset_builder_sha256"), "corrected_subset_builder_sha256"
+        ):
+            raise ValueError("source custody corrected subset builder SHA differs from the manifest")
+        _required_row_text(
+            corrected_builder.get("commit"), "corrected_subset_builder.commit"
+        )
+        if corrected_builder.get("tracked_worktree_clean") is not True:
+            raise ValueError("source custody corrected subset builder tracked worktree must be clean")
+
+    kernel = payload.get("kernel")
+    manifest_kernel = manifest.get("kernel")
+    if not isinstance(kernel, dict) or not isinstance(manifest_kernel, dict):
+        raise ValueError("source custody kernel binding is required")
+    if kernel.get("tracked_kernel_sources_match_commit") is not True:
+        raise ValueError("source custody kernel files do not match their recorded commit")
+    _required_row_text(kernel.get("commit"), "kernel.commit")
+    manifest_kernel_hash = _normalize_sha(
+        manifest_kernel.get("sha256"), "manifest.kernel.sha256"
+    )
+    if _normalize_sha(
+        kernel.get("manifest_kernel_sha256"), "kernel.manifest_kernel_sha256"
+    ) != manifest_kernel_hash:
+        raise ValueError("source custody kernel SHA differs from the sealed manifest")
+    events = kernel.get("audit_events")
+    if not isinstance(events, list) or len(events) < 2:
+        raise ValueError("source custody needs both midrun and completion kernel audits")
+    audit_paths_by_event: list[tuple[str, ...]] = []
+    audit_times: list[datetime] = []
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            raise TypeError("source custody kernel audit event must be an object")
+        audit_times.append(_aware_datetime(event.get("at"), field_name=f"kernel.audit_events[{index}].at"))
+        timing = _required_row_text(
+            event.get("timing"), f"kernel.audit_events[{index}].timing"
+        ).casefold()
+        if index == 0 and (
+            "after job start" not in timing or "not a start capture" not in timing
+        ):
+            raise ValueError("first kernel audit must be marked post-start, not as a start capture")
+        files = event.get("files")
+        if not isinstance(files, list) or not files:
+            raise ValueError("kernel audit events must bind source files")
+        paths: list[str] = []
+        for file_index, item in enumerate(files):
+            if not isinstance(item, dict):
+                raise TypeError("kernel audit source entries must be objects")
+            source_path = _required_row_text(
+                item.get("path"), f"kernel.audit_events[{index}].files[{file_index}].path"
+            )
+            paths.append(source_path)
+            _normalize_sha(
+                item.get("sha256_working_bytes"),
+                f"kernel.audit_events[{index}].files[{file_index}].sha256_working_bytes",
+            )
+            _normalize_sha(
+                item.get("sha256_git_blob"),
+                f"kernel.audit_events[{index}].files[{file_index}].sha256_git_blob",
+            )
+            if item.get("crlf_normalized_matches_git") is not True:
+                raise ValueError("kernel source bytes do not match their recorded Git blobs")
+        if len(set(paths)) != len(paths):
+            raise ValueError("kernel audit event repeats a source path")
+        audit_paths_by_event.append(tuple(sorted(paths)))
+    if len(set(audit_paths_by_event)) != 1 or tuple(audit_times) != tuple(sorted(audit_times)):
+        raise ValueError("kernel audit events must cover the same files in chronological order")
+    kernel_path = str(manifest_kernel.get("path", "")).replace("\\", "/")
+    kernel_basename = kernel_path.rsplit("/", 1)[-1]
+    kernel_sha_evidence = [
+        item
+        for event in events
+        for item in event["files"]
+        if str(item.get("path", "")).replace("\\", "/").rsplit("/", 1)[-1]
+        == kernel_basename
+    ]
+    if len(kernel_sha_evidence) != len(events) or any(
+        _normalize_sha(item.get("sha256_working_bytes"), "kernel source SHA")
+        != manifest_kernel_hash
+        for item in kernel_sha_evidence
+    ):
+        raise ValueError("source custody audit bytes differ from the manifest kernel SHA")
+    if manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+        computation = manifest["computation_source_hashes"]
+        expected_audit_by_basename = {
+            "technical_indicators.py": _normalize_sha(
+                computation["causal_kernel_facade"],
+                "computation_source_hashes.causal_kernel_facade",
+            ),
+            "indicator_kernels.py": _normalize_sha(
+                computation["causal_kernel_impl"],
+                "computation_source_hashes.causal_kernel_impl",
+            ),
+            "numeric_text.py": _normalize_sha(
+                computation["grouped_numeric_parser"],
+                "computation_source_hashes.grouped_numeric_parser",
+            ),
+        }
+        for event_index, event in enumerate(events):
+            evidence_by_basename = {
+                str(item.get("path", "")).replace("\\", "/").rsplit("/", 1)[-1]: item
+                for item in event["files"]
+            }
+            if set(evidence_by_basename) != set(expected_audit_by_basename):
+                raise ValueError("v2 source custody must audit the facade, implementation, and numeric parser")
+            for basename, digest in expected_audit_by_basename.items():
+                if _normalize_sha(
+                    evidence_by_basename[basename].get("sha256_working_bytes"),
+                    f"kernel.audit_events[{event_index}].{basename}",
+                ) != digest:
+                    raise ValueError(f"v2 source custody bytes differ for {basename}")
+    if audit_times[0] > finished_at or audit_times[-1] > source_check_at:
+        raise ValueError("kernel audit clocks fall outside the recorded job completion window")
+    if finished_at > source_check_at:
+        raise ValueError("final source verification must follow observed build completion")
+
+    runtime = payload.get("runtime")
+    if not isinstance(runtime, dict):
+        raise ValueError("source custody runtime binding is required")
+    for name in ("python", "numpy", "pandas", "talib"):
+        _required_row_text(runtime.get(name), f"runtime.{name}")
+    if payload.get("source_hashes") != manifest.get("source_hashes"):
+        raise ValueError("source custody source_hashes differ from the sealed manifest")
+
+
+def _source_custody_identity(data: ResearchArrays) -> dict[str, Any]:
+    if data.source_custody is None or data.source_custody_hash is None:
+        return {
+            "status": "not_provided_small_sample",
+            "dataset_row_count": data.row_count,
+            "maximum_rows_without_sidecar": 100_000,
+        }
+    clocks = data.source_custody["job_clocks"]
+    identity = {
+        "status": "validated_external_sidecar",
+        "schema_version": data.source_custody["schema_version"],
+        "sidecar_sha256": data.source_custody_hash,
+        "dataset_manifest_file_sha256": data.manifest_file_hash,
+        "dataset_identity_hash": data.dataset_identity_hash,
+        "dataset_row_count": data.row_count,
+        "started_at_observed": clocks["started_at_observed"],
+        "start_source_verification": clocks["start_source_verification"],
+        "finished_at": clocks["finished_at"],
+        "end_source_verification_at": clocks["end_source_verification_at"],
+        "revision_observed_at": clocks["revision_observed_at"],
+        "builder_commit": data.source_custody["builder"]["commit"],
+        "kernel_commit": data.source_custody["kernel"]["commit"],
+    }
+    if data.manifest.get("schema_version") == "portfolio-ml-restated-research-dataset.v2":
+        identity.update(
+            {
+                "dataset_lineage": data.manifest["dataset_lineage"],
+                "patch": data.manifest["patch"],
+                "computation_source_hashes": data.manifest[
+                    "computation_source_hashes"
+                ],
+            }
+        )
+    return identity
 
 
 def _fixed_list_values(array: Any, row_count: int, width: int) -> NDArray[np.int64]:
@@ -2431,6 +3476,8 @@ def _cli_parser() -> Any:
     parser.add_argument("--batch-size", type=int, default=8_192)
     parser.add_argument("--logistic-iterations", type=int, default=6)
     parser.add_argument("--skip-current-smoke", action="store_true")
+    parser.add_argument("--source-custody", type=Path)
+    parser.add_argument("--source-custody-hash")
     return parser
 
 
@@ -2446,6 +3493,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         logistic_iterations=args.logistic_iterations,
         run_current_smoke=not args.skip_current_smoke,
         invocation_argv=effective_argv,
+        source_custody_path=args.source_custody,
+        source_custody_hash=args.source_custody_hash,
     )
     print(json.dumps(result, ensure_ascii=True, indent=2))
     return 0

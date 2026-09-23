@@ -10,6 +10,7 @@ from ml_module.restated_h5_training_runner import (
     _collect_training_runtime_binding,
     _model_id,
     _row_id_hash,
+    _read_declared_dataset_schema_version,
     _cli_parser,
 )
 
@@ -79,3 +80,14 @@ def test_training_runtime_binding_hashes_sources_versions_and_arguments() -> Non
         "--horizons",
         "5",
     ]
+
+
+def test_dataset_schema_probe_selects_versioned_identity_builder(tmp_path) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        '{"schema_version":"portfolio-ml-restated-research-dataset.v2"}',
+        encoding="utf-8",
+    )
+    assert _read_declared_dataset_schema_version(manifest_path) == (
+        "portfolio-ml-restated-research-dataset.v2"
+    )

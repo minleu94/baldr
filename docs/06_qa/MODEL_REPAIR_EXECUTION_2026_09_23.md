@@ -2,7 +2,7 @@
 
 ## 目前判定
 
-尚未完成完整模型修復或切換。全量資料建置、原 bounded 家族的特徵／標籤重算及研究訓練入口分線處理；既有兩個舊模型繼續隔離，rule_only 與正式權限不變。六檔樣本已實際 fit、評估與推論，但部分指標弱於 train-only naive；不能以樣本跑通作為全量驗收。
+原 bounded 家族已完成 22,093 列完整重訓及 13 檔當日讀回；全市場 H5 尚在資料重建／重訓流程，整體修復及切換尚未完成。既有兩個舊模型繼續隔離，rule_only 與正式權限不變。此前六檔樣本的部分指標弱於 train-only naive，不能以樣本跑通取代完整資料評估，也不能將成功讀取新模型解讀為投資品質已達標。
 
 ## 已確認的修復範圍
 
@@ -27,6 +27,10 @@ Root 對 run02 的 2330 完整 **3,092 列**做獨立參照：逐欄用 Decimal 
 當下執行中的 full v1 builder／其 source worktree 不熱改、不刪除；v1 含格式缺漏，**不得作最終 full fit 的已修正來源**。後續須建立新版本與 identity，修正受影響來源及其相依特徵／標籤，並記錄 parser／kernel SHA。這不放寬原 historical PIT gate。
 
 ## 驗證與並行重構
+
+Root 對 bounded 新舊 13 份分片逐列比對 **22,093 列**：37 個未修訂 feature 的完整 payload 共 **817,441 項**相同，25 個重述 feature payload 共 **552,325 項**，其中 **84,758** 個數值改變。列次序、62 欄契約、targets/state 與標籤成熟日期保留；**210** 個 H60 labels 改變，其餘 **88,162** 個 horizon labels 完整一致。另確認最初 `2014-01-03:1101` 的 20 個技術指標皆按暖機規則缺值。此比對驗證保存範圍，不宣稱獨立重算全部指標與標籤；證據保存在 `output/qa/model_repair_review/bounded_full_original_preservation.json`。
+
+bounded 新模型已完成四個原事件成熟 folds 與最終完整 fit；actual invocation 明確使用 random_state=42、HGB 60 次迭代、ridge alpha=1、兩執行緒，沒有宣稱可還原未記錄的歷史超參數。修訂後 210 列不在原 folds 中，因此原 folds 不能證明模型在事故期間的效果。Root 實際使用新封存的當日輸入完成 **13 檔 × 24 experts**，詳見[當日研究輸入 QA](MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md)。全市場 H5 仍待完整 v2 合併驗算及 uncapped fit，原本的 fixed cash-only targets 也不構成可學習的配置建議。
 
 - 千分位修正的 causal kernel／dataset／current inputs tests **31 passed**，涵蓋數值等價、真缺值、nullable string、壞分組及缺值後暖機；technical publication／process-pool／既有 technical-analysis 回歸另 **25 passed**。parser／cleaner／capture 三檔 mypy 無錯，py_compile 與兩項量化靜態 guard 通過。
 - 模型樣本的 12 份 heldout receipts、456 個整數統計值由 root 獨立驗算一致；限制及當日 13 檔推論證據見[當日研究輸入 QA](MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md)。

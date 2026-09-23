@@ -300,6 +300,78 @@ def _rss_bytes() -> int | None:
         return None
 
 
+def build_restated_feature_values(
+    *, decision: date, stock: pd.DataFrame, dates: Sequence[date],
+    raw_rows: Sequence[Mapping[str, Any]], market_dates: Sequence[date],
+    market_rows: Mapping[date, Mapping[str, Any]], feature_scales: Sequence[int],
+) -> tuple[list[int], list[int], date | None, date | None]:
+    """只消費已固定的歷史前綴，以原 62 欄尺度計算當次特徵；無 I/O。"""
+    if tuple(feature_scales) != expected_feature_contract()[1]:
+        raise ValueError("restated feature scales differ from the fixed contract")
+    stock_idx = bisect_left(dates, decision) - 1
+    stock_day = dates[stock_idx] if stock_idx >= 0 else None
+    market_idx = bisect_left(market_dates, decision) - 1
+    market_day = market_dates[market_idx] if market_idx >= 0 else None
+    values: list[Any] = [None] * 62
+    # 缺少歷史產業歸屬證據，三個產業特徵保持缺值。
+    if market_day is not None:
+        market = market_rows[market_day]
+        values[13:21] = [
+            market.get("成交量"), market.get("收盤價"), market.get("收盤指數"),
+            market.get("最低價"), market.get("最高價"), market.get("漲跌百分比"),
+            market.get("漲跌點數"), market.get("開盤價"),
+        ]
+    if stock_idx >= 0:
+        raw = raw_rows[stock_idx]
+        technical = stock.iloc[stock_idx]
+        values[21:34] = [
+            raw.get("成交筆數"), raw.get("成交股數"), raw.get("成交金額"),
+            raw.get("收盤價"), raw.get("最低價"), raw.get("最後揭示買價"),
+            raw.get("最後揭示買量"), raw.get("最後揭示賣價"), raw.get("最後揭示賣量"),
+            raw.get("最高價"), raw.get("本益比"), raw.get("漲跌價差"), raw.get("開盤價"),
+        ]
+        values[34:54] = [technical.get(name) for name in tuple(name.split(".", 1)[1] for name in expected_feature_contract()[0][34:54])]
+        values[54:59] = [
+            raw.get("最後揭示買價"), raw.get("最後揭示買量"), raw.get("最後揭示賣價"),
+            raw.get("最後揭示賣量"), raw.get("本益比"),
+        ]
+        values[59] = None  # 來源為自由文字，不改造為 numeric label
+        values[60] = None  # 正負方向欄位不是可驗證數值
+        values[61] = raw.get("漲跌價差")
+    scales = feature_scales
+    scaled: list[int | None] = [None] * 62
+    invalid = [0] * 52
+    stale = [0] * 52
+    observed = [0] * 52
+    event_dates: list[date | None] = [market_day] * 11 + [stock_day] * 41
+    for index in range(10, 62):
+        source_value = values[index]
+        event_day = event_dates[index - 10]
+        if source_value is None or event_day is None:
+            continue
+        number, is_stale, is_blocked = _feature_eligibility(
+            source_value, index, scales[index], (decision - event_day).days
+        )
+        stale[index - 10] = int(is_stale)
+        invalid[index - 10] = int(is_blocked)
+        if number is not None:
+            scaled[index] = number
+            observed[index - 10] = 1
+    market_observed = sum(observed[:11])
+    stock_observed = sum(observed[11:])
+    market_lags = [(decision - day).days for day in event_dates[:11] if day is not None]
+    stock_lags = [(decision - day).days for day in event_dates[11:] if day is not None]
+    scaled[:10] = [
+        (market_observed * 10_000) // 11, max(market_lags, default=0),
+        11 - market_observed, sum(invalid[:11]), sum(stale[:11]),
+        (stock_observed * 10_000) // 41, max(stock_lags, default=0),
+        41 - stock_observed, sum(invalid[11:]), sum(stale[11:]),
+    ]
+    masks = [1 if value is None else 0 for value in scaled]
+    return [int(value) if value is not None else 0 for value in scaled], masks, stock_day, market_day
+
+
+
 class RestatedDatasetBuilder:
     """以按年、按 symbol bounded 記憶體重算研究特徵與標籤。"""
 
@@ -512,68 +584,11 @@ class RestatedDatasetBuilder:
         )
 
     def _source_values(self, row: dict[str, Any], stock: pd.DataFrame, dates: list[date], raw_rows: list[dict[str, Any]]) -> tuple[list[int], list[int], date | None, date | None]:
-        decision = row["_decision"]
-        stock_idx = bisect_left(dates, decision) - 1
-        stock_day = dates[stock_idx] if stock_idx >= 0 else None
-        market_idx = bisect_left(self.calendar, decision) - 1
-        market_day = self.calendar[market_idx] if market_idx >= 0 else None
-        values: list[Any] = [None] * 62
-        # No historical PIT membership sidecar exists: keep the three industry slots missing.
-        if market_day is not None:
-            market = self.market[market_day]
-            values[13:21] = [
-                market.get("成交量"), market.get("收盤價"), market.get("收盤指數"),
-                market.get("最低價"), market.get("最高價"), market.get("漲跌百分比"),
-                market.get("漲跌點數"), market.get("開盤價"),
-            ]
-        if stock_idx >= 0:
-            raw = raw_rows[stock_idx]
-            technical = stock.iloc[stock_idx]
-            values[21:34] = [
-                raw.get("成交筆數"), raw.get("成交股數"), raw.get("成交金額"),
-                raw.get("收盤價"), raw.get("最低價"), raw.get("最後揭示買價"),
-                raw.get("最後揭示買量"), raw.get("最後揭示賣價"), raw.get("最後揭示賣量"),
-                raw.get("最高價"), raw.get("本益比"), raw.get("漲跌價差"), raw.get("開盤價"),
-            ]
-            values[34:54] = [technical.get(name) for name in self._technical_order()]
-            values[54:59] = [
-                raw.get("最後揭示買價"), raw.get("最後揭示買量"), raw.get("最後揭示賣價"),
-                raw.get("最後揭示賣量"), raw.get("本益比"),
-            ]
-            values[59] = None  # 來源為自由文字，不改造為 numeric label
-            values[60] = None  # 正負方向欄位不是可驗證數值
-            values[61] = raw.get("漲跌價差")
-        scales = self.contract.feature_scales
-        scaled: list[int | None] = [None] * 62
-        invalid = [0] * 52
-        stale = [0] * 52
-        observed = [0] * 52
-        event_dates: list[date | None] = [market_day] * 11 + [stock_day] * 41
-        for index in range(10, 62):
-            source_value = values[index]
-            event_day = event_dates[index - 10]
-            if source_value is None or event_day is None:
-                continue
-            number, is_stale, is_blocked = _feature_eligibility(
-                source_value, index, scales[index], (decision - event_day).days
-            )
-            stale[index - 10] = int(is_stale)
-            invalid[index - 10] = int(is_blocked)
-            if number is not None:
-                scaled[index] = number
-                observed[index - 10] = 1
-        market_observed = sum(observed[:11])
-        stock_observed = sum(observed[11:])
-        market_lags = [(decision - day).days for day in event_dates[:11] if day is not None]
-        stock_lags = [(decision - day).days for day in event_dates[11:] if day is not None]
-        scaled[:10] = [
-            (market_observed * 10_000) // 11, max(market_lags, default=0),
-            11 - market_observed, sum(invalid[:11]), sum(stale[:11]),
-            (stock_observed * 10_000) // 41, max(stock_lags, default=0),
-            41 - stock_observed, sum(invalid[11:]), sum(stale[11:]),
-        ]
-        masks = [1 if value is None else 0 for value in scaled]
-        return [int(value) if value is not None else 0 for value in scaled], masks, stock_day, market_day
+        return build_restated_feature_values(
+            decision=row["_decision"], stock=stock, dates=dates, raw_rows=raw_rows,
+            market_dates=self.calendar, market_rows=self.market,
+            feature_scales=self.contract.feature_scales,
+        )
 
     def _label_horizon(self, row: dict[str, Any], stock_dates: list[date], stock_by_date: dict[date, dict[str, Decimal] | None], horizon: int) -> tuple[dict[int, int], dict[int, int], date | None, str | None, str | None]:
         decision = row["_decision"]

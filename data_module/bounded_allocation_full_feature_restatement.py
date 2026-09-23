@@ -15,7 +15,7 @@ import platform
 import sqlite3
 import sys
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -1273,7 +1273,7 @@ def _require_text(value: Any, field: str) -> str:
 
 
 def _research_publication_id(
-    identity_hash: str, shards: list[Mapping[str, Any]] | None = None
+    identity_hash: str, shards: Sequence[Mapping[str, Any]] | None = None
 ) -> str:
     del shards
     return f"portfolio-ml-bounded-research-{identity_hash[7:31]}"

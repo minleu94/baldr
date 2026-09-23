@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import sqlite3
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence, cast
 
 from data_module.portfolio_ml_dataset_assembler import (
     _BUY_COST_BP,
@@ -614,28 +614,34 @@ def _recompute_label(
         raise BoundedRestatementError(f"incomplete TAIEX path: {decision_date}..{end_date}")
     concrete_stock = [row for row in stock_rows if row is not None]
     concrete_benchmark = [row for row in benchmark_rows if row is not None]
-    entry = concrete_stock[0]
+    stock_calculation_rows = [
+        _as_calculation_row(row) for row in concrete_stock
+    ]
+    benchmark_calculation_rows = [
+        _as_calculation_row(row) for row in concrete_benchmark
+    ]
+    entry = stock_calculation_rows[0]
     stock_return = _return_bp(
         entry_int=int(entry["open_int"]),
         entry_scale=int(entry["open_scale"]),
-        exit_int=int(concrete_stock[-1]["close_int"]),
-        exit_scale=int(concrete_stock[-1]["close_scale"]),
+        exit_int=int(stock_calculation_rows[-1]["close_int"]),
+        exit_scale=int(stock_calculation_rows[-1]["close_scale"]),
     )
     benchmark_return = _return_bp(
-        entry_int=int(concrete_benchmark[0]["open_int"]),
-        entry_scale=int(concrete_benchmark[0]["open_scale"]),
-        exit_int=int(concrete_benchmark[-1]["close_int"]),
-        exit_scale=int(concrete_benchmark[-1]["close_scale"]),
+        entry_int=int(benchmark_calculation_rows[0]["open_int"]),
+        entry_scale=int(benchmark_calculation_rows[0]["open_scale"]),
+        exit_int=int(benchmark_calculation_rows[-1]["close_int"]),
+        exit_scale=int(benchmark_calculation_rows[-1]["close_scale"]),
     )
     excess = stock_return - benchmark_return - _BUY_COST_BP - _SELL_COST_BP
     return {
         "benchmark_excess_return_bp": excess,
         "downside_observed": excess < 0,
-        "mae_bp": _mae_loss_bp(entry, concrete_stock),
-        "mfe_bp": _mfe_gain_bp(entry, concrete_stock),
-        "realized_volatility_bp": _realized_volatility_bp(concrete_stock),
-        "max_drawdown_bp": _max_drawdown_bp(concrete_stock),
-        "tail_loss_bp": _tail_loss_bp(concrete_stock),
+        "mae_bp": _mae_loss_bp(entry, stock_calculation_rows),
+        "mfe_bp": _mfe_gain_bp(entry, stock_calculation_rows),
+        "realized_volatility_bp": _realized_volatility_bp(stock_calculation_rows),
+        "max_drawdown_bp": _max_drawdown_bp(stock_calculation_rows),
+        "tail_loss_bp": _tail_loss_bp(stock_calculation_rows),
         "fill_feasible_observed": _t1_fill_feasible(entry),
     }
 
@@ -706,7 +712,12 @@ def _scaled_bar(row: Mapping[str, Any]) -> dict[str, int | None]:
                     )
                 text = text.replace(",", "")
             decimal_value = _decimal(text, column)
-            source_precision = max(0, -decimal_value.as_tuple().exponent)
+            exponent = decimal_value.as_tuple().exponent
+            if isinstance(exponent, bool) or not isinstance(exponent, int):
+                raise BoundedRestatementError(
+                    f"source price exponent is not finite: {column}={value!r}"
+                )
+            source_precision = max(0, -exponent)
             if source_precision > 12:
                 raise BoundedRestatementError(
                     f"source price precision exceeds 12 decimal places: {column}={value!r}"
@@ -724,10 +735,36 @@ def _scaled_bar(row: Mapping[str, Any]) -> dict[str, int | None]:
 
 
 def _bar_complete(bar: Mapping[str, int | None]) -> bool:
-    return all(
-        isinstance(bar.get(field), int) and int(bar[field]) > 0
-        for field in ("open_int", "high_int", "low_int", "close_int")
+    for field in ("open_int", "high_int", "low_int", "close_int"):
+        value = bar.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            return False
+    return True
+
+
+def _as_calculation_row(bar: Mapping[str, int | None]) -> sqlite3.Row:
+    """將已驗證的純 mapping 適配至既有欄位索引計算 helper。"""
+
+    fields = (
+        "open_int",
+        "open_scale",
+        "high_int",
+        "high_scale",
+        "low_int",
+        "low_scale",
+        "close_int",
+        "close_scale",
     )
+    values: dict[str, int] = {}
+    for field in fields:
+        value = bar.get(field)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise BoundedRestatementError(
+                f"price calculation row has invalid {field}"
+            )
+        values[field] = value
+    # 既有純計算 helper 只按欄名取值；此 cast 是型別邊界，不改其 frozen API。
+    return cast(sqlite3.Row, values)
 
 
 def _validate_snapshot_prices(
@@ -876,7 +913,11 @@ def _restate_source_hashes(
     return tuple(sorted(pairs.items()))
 
 
-def _publication_id(parent: str, identity_hash: str, shards: list[Mapping[str, Any]]) -> str:
+def _publication_id(
+    parent: str,
+    identity_hash: str,
+    shards: Sequence[Mapping[str, Any]],
+) -> str:
     identity = {
         "parent_publication_id": parent,
         "dataset_identity_hash": identity_hash,
@@ -913,7 +954,7 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BoundedRestatementError(f"cannot read {label}: {path}") from exc
-    return _mapping(payload, label)
+    return dict(_mapping(payload, label))
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:

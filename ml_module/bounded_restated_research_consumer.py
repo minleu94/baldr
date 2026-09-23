@@ -12,7 +12,7 @@ from pathlib import Path
 import tempfile
 import platform
 import sys
-from typing import Any, Mapping, Sequence
+from typing import Any, Collection, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -352,7 +352,7 @@ def fit_bounded_restated_research(
             stream.write(result.artifact_bytes)
             stream.flush()
             os.fsync(stream.fileno())
-        audit = result.audit_payload()
+        audit = dict(result.audit_payload())
         audit.update(
             {
                 "dataset_temporality": "restated_research",
@@ -1250,9 +1250,9 @@ def _text_tuple(value: Any, field: str) -> tuple[str, ...]:
 
 
 def _reject_unknown(
-    payload: Mapping[str, Any], allowed: set[str], field: str
+    payload: Mapping[str, Any], allowed: Collection[str], field: str
 ) -> None:
-    unknown = set(payload) - allowed
+    unknown = set(payload) - set(allowed)
     if unknown:
         raise BoundedRestatedResearchError(
             f"{field} has unsupported fields: {sorted(unknown)}"

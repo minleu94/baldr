@@ -65,6 +65,7 @@ class DailyPriceRevisionWriteGuard:
             raise DailyPriceRevisionWriteError("daily_prices 匯入資料不可為 None")
         result = frame.copy()
         replace_dates = tuple(replace_dates)
+        validate_excluded_price_frame(self.database_path, result)
         _validate_session_replacement(
             self.database_path,
             result,
@@ -579,11 +580,52 @@ def _validate_session_replacement(
 ) -> None:
     """套用獨立維護的歷史交易日 insert-only 保護範圍。"""
 
-    from data_module.historical_session_revision import validate_session_replacement
+    from data_module.historical_session_revision import RECEIPT_DIR, _plan, _root, validate_session_replacement
+
+    days: set[str] = set()
+    for path in sorted((_root(database_path) / RECEIPT_DIR).glob('*/revision.json')):
+        _, plan = _plan(path, database_path)
+        days.update(plan['dates'])
+    if not days:
+        return
+    subset = _frame_for_dates(frame, days)
 
     validate_session_replacement(
         database_path,
-        frame.to_dict(orient="records"),
+        subset.to_dict(orient="records"),
         replace_all=replace_all,
         replace_dates=replace_dates,
     )
+
+
+def _frame_for_dates(frame: pd.DataFrame, days: set[str]) -> pd.DataFrame:
+    """僅物化受修訂日期，避免整份歷史資料轉成大量 Python 字典。"""
+    name = next((column for column in _DAILY_PRICE_COLUMNS if column in frame.columns), None)
+    if name is None:
+        return frame.iloc[:0]
+    compact = frame[name].astype('string').str.replace('-', '', regex=False).str.replace('/', '', regex=False).str[:8]
+    roc = compact.str.len().eq(7) & compact.str.isdigit()
+    if roc.any():
+        compact.loc[roc] = frame.loc[roc, name].map(_date_key)
+    return frame.loc[compact.isin(days)]
+
+
+def validate_excluded_price_frame(database_path: Path, frame: pd.DataFrame) -> None:
+    """價格與相依技指 writer 共用的錯日阻擋；不改動輸入 frame。"""
+    from data_module.excluded_daily_price_revision import load_exclusion_evidence
+
+    evidence = load_exclusion_evidence(database_path)
+    excluded = {(str(day),str(symbol)) for item in evidence for day,symbol in item['keys']}
+    closed_dates = {str(day) for item in evidence for day in item['closed_dates']}
+    if not excluded and not closed_dates:
+        return
+    subset = _frame_for_dates(frame, closed_dates | {day for day, _ in excluded})
+    if subset.empty:
+        return
+    date_column = next(column for column in _DAILY_PRICE_COLUMNS if column in subset.columns)
+    code_column = next((column for column in _STOCK_CODE_COLUMNS if column in subset.columns), None)
+    if code_column is None:
+        raise DailyPriceRevisionWriteError('錯日修訂範圍缺少證券代號，已停止匯入')
+    for raw_day, raw_symbol in subset[[date_column, code_column]].itertuples(index=False, name=None):
+        if _date_key(raw_day) in closed_dates or (_date_key(raw_day), _symbol_key(raw_symbol)) in excluded:
+            raise DailyPriceRevisionWriteError('匯入資料含已核驗排除的休市日／錯日紀錄，已停止重新匯入')

@@ -45,6 +45,7 @@ from data_module.daily_price_source_guard import (
 )
 from data_module.daily_price_revision_write_guard import (
     prepare_daily_price_revision_frame,
+    validate_excluded_price_frame,
 )
 from data_module.formal_market_revision import validate_market_replacement
 from data_module.official_trading_calendar import (
@@ -1989,6 +1990,8 @@ class UpdateService :
 
         try :
             database_path = Path(db.db_path)
+            if table_name == 'technical_indicators':
+                validate_excluded_price_frame(database_path, df)
             if table_name == 'daily_prices':
                 df = prepare_daily_price_revision_frame(
                     database_path,
@@ -2024,6 +2027,8 @@ class UpdateService :
             df =df .drop_duplicates (subset =[code_col ,date_col ],keep ='last')
 
         try :
+            if table_name == 'technical_indicators':
+                validate_excluded_price_frame(Path(db.db_path), df)
             if table_name == 'daily_prices':
                 df = prepare_daily_price_revision_frame(
                     Path(db.db_path),
@@ -2062,6 +2067,8 @@ class UpdateService :
 
         try :
             database_path = Path(db.db_path)
+            if table_name == 'technical_indicators':
+                validate_excluded_price_frame(database_path, df)
             if table_name == 'daily_prices':
                 df = prepare_daily_price_revision_frame(
                     database_path,
@@ -4580,6 +4587,9 @@ class UpdateService :
             else :
                 stock_data =pd .read_csv (self .config .stock_data_file ,dtype ={'證券代號':str },low_memory =False )
 
+            revision_database = Path(getattr(self.config, 'db_file', Path(self.config.stock_data_file).parent.parent / 'sqlite/twstock.db'))
+            validate_excluded_price_frame(revision_database, stock_data)
+
             stock_code_column =next (
             (col for col in ('證券代號','股票代號','證券代號','stock_id','stock_code')if col in stock_data .columns ),
             None ,
@@ -5115,6 +5125,7 @@ class UpdateService :
                                 df_db [col ]=pd .to_numeric (df_db [col ],errors ='coerce')
 
                         if not df_db.empty:
+                            validate_excluded_price_frame(Path(db.db_path), df_db)
                             db.ensure_columns('technical_indicators', list(df_db.columns))
                             # DELETE（若符合完整全市場替換條件）與 UPSERT 必須同一連線、同一交易；
                             # 所有其他模式只 UPSERT 本輪成功計算且成功發布的 key。

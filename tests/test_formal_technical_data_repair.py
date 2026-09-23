@@ -117,6 +117,23 @@ def test_recovery_refuses_newer_price_source(scenario):
     assert target.read_text()=='new'
 
 
+def test_publication_refuses_replaced_exclusion_receipt_with_same_scope(scenario, monkeypatch):
+    from data_module import excluded_daily_price_revision
+    _, _, directory, target, _ = scenario
+    path = directory/'stage/manifest.json'
+    manifest = json.loads(path.read_text())
+    identity = {'plan_sha256': 'a'*64, 'receipt_sha256': 'b'*64, 'receipt_path': str(directory/'excluded-receipt.json')}
+    manifest['exclusion_evidence_identities'] = [identity]
+    path.write_bytes(repair.encoded(manifest))
+    monkeypatch.setattr(excluded_daily_price_revision, 'load_exclusion_evidence', lambda _: [
+        {**identity, 'receipt_sha256': 'c'*64, 'keys': [], 'closed_dates': []},
+    ])
+    with pytest.raises(ValueError, match='排除證據身分'):
+        perform(scenario)
+    assert target.read_text() == 'old'
+    assert not (directory/'journal.json').exists()
+
+
 def test_real_stager_adapter_publication_and_rollback(scenario):
     root,db,_,target,_=scenario
     with sqlite3.connect(db) as c:

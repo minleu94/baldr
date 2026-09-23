@@ -267,7 +267,7 @@ def test_stage_rebuild_streams_outputs_and_preserves_formal_inputs(stage_inputs,
     assert manifest["rows"] == 65 + 8 + 2 + 1
     assert {"2330", "1234", "0050", "00720B", "9999"} <= set(manifest["symbols"])
     assert manifest["target_symbol_scope"] == (
-        "all existing daily_prices symbols union existing technical_indicators symbols"
+        "existing daily_prices union technical_indicators union verified exclusions and existing CSVs for closed-date removal"
     )
     assert manifest["symbols_without_source"] == ["9999"]
     assert all(_sha256(path) == digest for path, digest in formal_before.items())
@@ -426,3 +426,61 @@ def test_stage_rebuild_allows_only_receipt_stage_subtree(stage_inputs):
 
     assert manifest["computed_db"] == str(receipt_stage / "computed.sqlite")
     assert Path(manifest["computed_db"]).is_file()
+
+
+def test_verified_exclusions_remove_only_named_keys_and_preserve_other_orphans(stage_inputs, tmp_path, monkeypatch):
+    from data_module import excluded_daily_price_revision
+    source_db, formal_root, technical_dir, aggregate_path = stage_inputs
+    excluded = {('20240101', '2330'), ('20200101', '8888')}
+    with sqlite3.connect(source_db) as connection:
+        connection.execute('DELETE FROM daily_prices WHERE 日期=? AND 證券代號=?', ('20240101', '2330'))
+    _write_csv(technical_dir/'8888_indicators.csv', ['日期','證券代號','RSI'], [
+        {'日期':'20200101','證券代號':'8888','RSI':'99'},
+        {'日期':'20200102','證券代號':'8888','RSI':'23'},
+    ])
+    identity = {'plan_sha256': 'a'*64, 'receipt_sha256': 'b'*64, 'receipt_path': str(formal_root/'receipt.json')}
+    monkeypatch.setattr(excluded_daily_price_revision, 'load_exclusion_evidence', lambda _: [{**identity, 'keys': sorted(excluded), 'closed_dates': []}])
+    before_aggregate = aggregate_path.read_bytes()
+    stage = tmp_path/'excluded-stage'
+    manifest = stage_rebuild(source_db, formal_root, stage)
+    assert manifest['excluded_source_keys'] == sorted(excluded)
+    assert manifest['exclusion_evidence_identities'] == [identity]
+    assert '8888' in manifest['symbols_without_source']
+    stock = _read_csv(stage/'staged/technical_analysis/2330_indicators.csv')
+    assert not any(row['日期']=='20240101' for row in stock)
+    assert any(row['日期']=='20200101' and row['Legacy']=='no-source' for row in stock)
+    assert _read_csv(stage/'staged/technical_analysis/8888_indicators.csv')[0]['日期']=='20200102'
+    aggregate = _read_csv(stage/'staged/meta_data/all_stocks_data.csv')
+    assert not any((r['日期'],r['證券代號']) in excluded for r in aggregate)
+    assert any(r['證券代號']=='9999' for r in aggregate)
+    aggregate_entry = next(item for item in manifest['files'] if Path(item['target_path']).name=='all_stocks_data.csv')
+    assert aggregate_entry['removed_source_revision_rows']==1
+    assert aggregate_entry['row_count_after']==len(aggregate)
+    assert aggregate_path.read_bytes()==before_aggregate
+
+
+def test_excluded_price_source_is_rejected_before_publication(stage_inputs, tmp_path, monkeypatch):
+    from data_module import excluded_daily_price_revision
+    source_db, formal_root, _, _ = stage_inputs
+    monkeypatch.setattr(excluded_daily_price_revision, 'load_exclusion_evidence', lambda _: [{'keys': [('20240101','2330')], 'closed_dates': []}])
+    stage = tmp_path/'invalid-excluded-stage'
+    with pytest.raises(ValueError, match='仍含已核驗的錯日資料'):
+        stage_rebuild(source_db, formal_root, stage)
+    assert not stage.exists()
+
+
+def test_closed_date_removes_existing_csv_keys_outside_database_symbols(stage_inputs, tmp_path, monkeypatch):
+    from data_module import excluded_daily_price_revision
+    source_db, formal_root, technical_dir, _ = stage_inputs
+    identity = {'plan_sha256': 'a'*64, 'receipt_sha256': 'b'*64, 'receipt_path': str(formal_root/'receipt.json')}
+    monkeypatch.setattr(excluded_daily_price_revision, 'load_exclusion_evidence', lambda _: [{**identity, 'keys': [], 'closed_dates': ['20200101']}])
+    _write_csv(technical_dir/'8888_indicators.csv', ['日期','證券代號','RSI'], [
+        {'日期':'20200101','證券代號':'8888','RSI':'99'},
+        {'日期':'20200102','證券代號':'8888','RSI':'23'},
+    ])
+    stage = tmp_path/'closed-date-stage'
+    manifest = stage_rebuild(source_db, formal_root, stage)
+    assert manifest['excluded_closed_dates']==['20200101']
+    assert '8888' in manifest['symbols_without_source']
+    rows = _read_csv(stage/'staged/technical_analysis/8888_indicators.csv')
+    assert len(rows)==1 and rows[0]['日期']=='20200102'

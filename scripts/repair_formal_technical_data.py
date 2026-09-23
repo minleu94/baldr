@@ -94,6 +94,15 @@ def _load(directory: Path, expected_hash: str | None = None) -> tuple[dict[str, 
     if expected_hash and file_hash(manifest_path) != expected_hash:
         raise ValueError('staging manifest hash 不符')
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    from data_module.excluded_daily_price_revision import load_exclusion_evidence
+    exclusions = load_exclusion_evidence(root/'sqlite/twstock.db')
+    from scripts.technical_cache_rebuild_stage import exclusion_identities
+    if manifest.get('exclusion_evidence_identities', []) != exclusion_identities(exclusions):
+        raise ValueError('技指 staging 綁定的排除證據身分已變更')
+    excluded_keys = {(str(day),str(symbol)) for item in exclusions for day,symbol in item['keys']}
+    closed_dates = {str(day) for item in exclusions for day in item['closed_dates']}
+    if set(map(tuple, manifest.get('excluded_source_keys', []))) != excluded_keys or set(manifest.get('excluded_closed_dates', [])) != closed_dates:
+        raise ValueError('技指 staging 與目前核驗的錯日排除範圍不同')
     if Path(manifest['source_db']).resolve() != Path(evidence['source_db']).resolve() or manifest['source_sha256'] != evidence['source_sha256']:
         raise ValueError('重算結果來源不符')
     for name, checksum in (('source_db','source_sha256'),('computed_db','computed_sha256')):

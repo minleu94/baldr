@@ -387,6 +387,9 @@ class DBManager:
                     df.to_dict(orient='records'),
                     replace_all=(if_exists == 'replace'),
                 )
+            elif table_name == 'technical_indicators':
+                from data_module.daily_price_revision_write_guard import validate_excluded_price_frame
+                validate_excluded_price_frame(Path(self.db_path), df)
 
             preserve_protected_schema = (
                 if_exists == 'replace'

@@ -413,6 +413,8 @@ def _merge_symbol_csv(
     computed: Mapping[str, Mapping[str, Any]],
     source_columns: Sequence[str],
     before_hash: str | None,
+    excluded_keys: set[tuple[str, str]] | None = None,
+    closed_dates: set[str] | None = None,
 ) -> dict[str, Any]:
     source_name = target.name
     fields = _fields_with_targets(
@@ -423,6 +425,7 @@ def _merge_symbol_csv(
     seen: set[str] = set()
     updated = 0
     preserved_without_source = 0
+    removed_source_revision_rows = 0
     date_style: str | None = None
     if target.exists():
         with target.open("r", encoding=CSV_ENCODING, newline="") as stream:
@@ -440,6 +443,9 @@ def _merge_symbol_csv(
                 if day in seen:
                     raise ValueError(f"duplicate technical CSV key: {symbol}/{day}")
                 seen.add(day)
+                if (closed_dates and day in closed_dates) or (excluded_keys and (day, symbol) in excluded_keys):
+                    removed_source_revision_rows += 1
+                    continue
                 row = {name: str(raw.get(name) or "") for name in fields}
                 if not raw.get("證券代號"):
                     row["證券代號"] = symbol
@@ -479,6 +485,7 @@ def _merge_symbol_csv(
         "updated_existing_rows": updated,
         "added_source_rows": added,
         "preserved_rows_without_source": preserved_without_source,
+        "removed_source_revision_rows": removed_source_revision_rows,
         "updated_columns": list(REBUILD_COLUMNS),
         "unchanged_columns": [name for name in fields if name not in REBUILD_COLUMNS],
     }
@@ -490,6 +497,8 @@ def _merge_aggregate_csv(
     computed: sqlite3.Connection,
     source_columns: Sequence[str],
     before_hash: str | None,
+    excluded_keys: set[tuple[str, str]] | None = None,
+    closed_dates: set[str] | None = None,
 ) -> dict[str, Any]:
     fields = _fields_with_targets(target, _default_csv_fields(source_columns))
     computed.row_factory = sqlite3.Row
@@ -499,6 +508,7 @@ def _merge_aggregate_csv(
     added = 0
     rows_emitted = 0
     date_style: str | None = None
+    excluded_seen: set[tuple[str, str]] = set()
 
     def output_rows() -> Iterable[Mapping[str, object]]:
         nonlocal updated, preserved_without_source, row_count_before, added, rows_emitted, date_style
@@ -515,6 +525,12 @@ def _merge_aggregate_csv(
                     symbol = _normalize_symbol(raw.get("證券代號", ""))
                     if not symbol:
                         raise ValueError(f"CSV has empty stock key: {target}/{day}")
+                    if (closed_dates and day in closed_dates) or (excluded_keys and (day, symbol) in excluded_keys):
+                        if (day, symbol) in excluded_seen:
+                            raise ValueError(f"duplicate excluded all-stocks CSV key: {symbol}/{day}")
+                        excluded_seen.add((day, symbol))
+                        row_count_before += 1
+                        continue
                     current = computed.execute(
                         f"SELECT * FROM {_quote(COMPUTED_TABLE)} "
                         f"WHERE {_quote('日期')}=? AND {_quote('證券代號')}=?",
@@ -544,11 +560,18 @@ def _merge_aggregate_csv(
                             f"[technical-cache-stage] aggregate rows scanned: {row_count_before:,}",
                             flush=True,
                         )
+        # 先物化缺 key；讀取游標不與後續寫入的 seen table 互相影響。
+        computed.execute('CREATE TEMP TABLE missing_aggregate_keys ("日期" TEXT NOT NULL, "證券代號" TEXT NOT NULL, PRIMARY KEY ("日期", "證券代號")) WITHOUT ROWID')
+        computed.execute(
+            'INSERT INTO missing_aggregate_keys SELECT c."日期", c."證券代號" '
+            f'FROM {_quote(COMPUTED_TABLE)} c WHERE NOT EXISTS '
+            '(SELECT 1 FROM seen_aggregate_keys s WHERE c."日期"=s."日期" AND c."證券代號"=s."證券代號")'
+        )
+        missing_count = computed.execute('SELECT COUNT(*) FROM missing_aggregate_keys').fetchone()[0]
+        print(f"[technical-cache-stage] aggregate source rows to add: {missing_count:,}", flush=True)
         rows = computed.execute(
-            f"SELECT c.* FROM {_quote(COMPUTED_TABLE)} c "
-            "LEFT JOIN seen_aggregate_keys s ON "
-            'c."日期"=s."日期" AND c."證券代號"=s."證券代號" '
-            'WHERE s."日期" IS NULL ORDER BY c."日期", c."證券代號"'
+            f'SELECT c.* FROM missing_aggregate_keys m JOIN {_quote(COMPUTED_TABLE)} c '
+            'ON c."日期"=m."日期" AND c."證券代號"=m."證券代號" ORDER BY m."日期", m."證券代號"'
         )
         for current in rows:
             day, symbol = str(current["日期"]), str(current["證券代號"])
@@ -569,6 +592,8 @@ def _merge_aggregate_csv(
                 ),
             )
             added += 1
+            if added % 50_000 == 0:
+                print(f"[technical-cache-stage] aggregate source rows added: {added:,}", flush=True)
         rows = computed.execute(
             "SELECT row_json FROM seen_aggregate_keys ORDER BY \"日期\", \"證券代號\""
         )
@@ -591,10 +616,11 @@ def _merge_aggregate_csv(
         "before_sha256": before_hash,
         "after_sha256": _sha256_file(staged),
         "row_count_before": row_count_before,
-        "row_count_after": row_count_before + added,
+        "row_count_after": row_count_before + added - len(excluded_seen),
         "updated_existing_rows": updated,
         "added_source_rows": added,
         "preserved_rows_without_source": preserved_without_source,
+        "removed_source_revision_rows": len(excluded_seen),
         "updated_columns": list(REBUILD_COLUMNS),
         "unchanged_columns": [name for name in fields if name not in REBUILD_COLUMNS],
     }
@@ -602,6 +628,15 @@ def _merge_aggregate_csv(
 
 def _formal_hash_before(path: Path) -> str | None:
     return _sha256_file(path) if path.is_file() else None
+
+
+def exclusion_identities(evidence: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
+    """鎖定驗證後的排除證據版本，不能只比較排除範圍。"""
+    fields = ('plan_sha256', 'receipt_sha256', 'receipt_path')
+    return sorted(
+        [{field: str(item[field]) for field in fields} for item in evidence],
+        key=lambda item: (item['receipt_path'], item['plan_sha256'], item['receipt_sha256']),
+    )
 
 
 def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[str, Any]:
@@ -613,6 +648,10 @@ def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[
     """
     source = Path(source_db).resolve(strict=True)
     root = Path(formal_root).resolve(strict=True)
+    from data_module.excluded_daily_price_revision import load_exclusion_evidence
+    exclusion_evidence = load_exclusion_evidence(root / 'sqlite/twstock.db')
+    excluded_keys = {(str(day), str(symbol)) for item in exclusion_evidence for day, symbol in item['keys']}
+    closed_dates = {str(day) for item in exclusion_evidence for day in item['closed_dates']}
     output = Path(output_dir).resolve(strict=False)
     if not source.is_file():
         raise FileNotFoundError(source)
@@ -657,6 +696,11 @@ def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[
             if "證券代號" not in technical_columns:
                 raise ValueError("technical_indicators is missing 證券代號")
             targets, _technical_symbols = _target_symbols(src)
+            targets = sorted(set(targets) | {symbol for _, symbol in excluded_keys})
+            if closed_dates:
+                targets = sorted(set(targets) | {path.name[:-len('_indicators.csv')] for path in technical_dir.glob('*_indicators.csv')})
+                for symbol in targets:
+                    _safe_symbol(symbol)
             source_columns = [
                 "日期",
                 "證券代號",
@@ -668,12 +712,16 @@ def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[
             db.row_factory = sqlite3.Row
             db.execute("PRAGMA journal_mode=DELETE")
             db.execute("PRAGMA synchronous=FULL")
+            db.execute("PRAGMA cache_size=-65536")
+            db.execute("PRAGMA temp_store=FILE")
             _computed_schema(db, source_columns)
             insert_sql, insert_columns = _computed_insert_sql(source_columns)
             target_set = set(targets)
             symbols_seen: set[str] = set()
             with db:
                 for symbol, rows in _daily_groups(src, daily_columns, target_set):
+                    if any(str(row['_date_key']) in closed_dates or (str(row['_date_key']), symbol) in excluded_keys for row in rows):
+                        raise ValueError('重算來源仍含已核驗的錯日資料，拒絕發布')
                     calculated, records = _calculate_symbol(symbol, rows, source_columns)
                     del calculated
                     _insert_computed(db, insert_sql, insert_columns, records)
@@ -692,6 +740,8 @@ def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[
                         computed_for_symbol,
                         source_columns,
                         before_hash,
+                        excluded_keys,
+                        closed_dates,
                     )
                     source_files.append(file_record)
                     counts["per_stock_preserved_rows_without_source"] += int(
@@ -705,6 +755,17 @@ def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[
                         )
             db.commit()
 
+            # 被排除的錯日可能是某股票僅存的來源；既有 CSV 仍須移除該 key。
+            for symbol in sorted(target_set - symbols_seen):
+                target_path = _formal_target(root, technical_dir / f"{symbol}_indicators.csv")
+                if not target_path.exists():
+                    continue
+                before_hash = _formal_hash_before(target_path)
+                staged_path = temporary / "staged" / "technical_analysis" / target_path.name
+                file_record = _merge_symbol_csv(target_path, staged_path, symbol, {}, source_columns, before_hash, excluded_keys, closed_dates)
+                source_files.append(file_record)
+                counts["per_stock_preserved_rows_without_source"] += int(file_record["preserved_rows_without_source"])
+
             counts["symbols"] = len(symbols_seen)
             counts["symbols_without_source"] = sorted(target_set - symbols_seen)
             if counts["rows"] or aggregate_path.exists():
@@ -716,6 +777,8 @@ def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[
                     db,
                     source_columns,
                     before_hash,
+                    excluded_keys,
+                    closed_dates,
                 )
                 source_files.append(aggregate_record)
                 counts["aggregate_preserved_rows_without_source"] = int(
@@ -745,12 +808,15 @@ def stage_rebuild(source_db: Path, formal_root: Path, output_dir: Path) -> dict[
             "rows": counts["rows"],
             "symbols": targets,
             "target_symbol_scope": (
-                "all existing daily_prices symbols union existing technical_indicators symbols"
+                "existing daily_prices union technical_indicators union verified exclusions and existing CSVs for closed-date removal"
             ),
             "computed_symbols": counts["symbols"],
             "symbols_without_source": counts["symbols_without_source"],
             "files": source_files,
             "indicator_columns": list(CAUSAL_INDICATOR_COLUMNS),
+            "excluded_source_keys": sorted(excluded_keys),
+            "excluded_closed_dates": sorted(closed_dates),
+            "exclusion_evidence_identities": exclusion_identities(exclusion_evidence),
             "canonical_ohlcv_columns": list(OHLCV_COLUMNS),
             "preserved_existing_no_source_keys": {
                 "per_stock_csv_rows": counts["per_stock_preserved_rows_without_source"],

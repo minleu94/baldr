@@ -45,6 +45,20 @@ UPDATE_COLUMNS = [
 ]
 
 
+def test_verified_wrong_date_keys_cannot_be_reintroduced(tmp_path, monkeypatch):
+    from data_module import excluded_daily_price_revision
+    monkeypatch.setattr(excluded_daily_price_revision, 'load_exclusion_evidence', lambda _: [{'keys': [('20260520','0054')], 'closed_dates': ['20241002']}])
+    database = tmp_path/'sqlite/twstock.db'
+    bad = pd.DataFrame({'日期':['2026-05-20'],'證券代號':[54], '收盤價':[23]})
+    with pytest.raises(DailyPriceRevisionWriteError, match='已核驗排除'):
+        prepare_daily_price_revision_frame(database,bad)
+    good = pd.DataFrame({'日期':['20260519','20260520'],'證券代號':['0054','1256'], '收盤價':[23,183]})
+    assert prepare_daily_price_revision_frame(database,good).equals(good)
+    closed = pd.DataFrame({'日期':['20241002'],'證券代號':['9999'], '收盤價':[23]})
+    with pytest.raises(DailyPriceRevisionWriteError, match='已核驗排除'):
+        prepare_daily_price_revision_frame(database,closed)
+
+
 def _hash_payload(payload: dict[str, object]) -> str:
     encoded = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -143,6 +157,27 @@ def _db_manager(tmp_path: Path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     return DBManager(SimpleNamespace(db_file=database_path, log_dir=log_dir))
+
+
+@pytest.mark.parametrize('writer', ['manager', 'upsert', 'date_replace', 'table_replace'])
+def test_technical_writers_reject_verified_exclusions_before_mutating(tmp_path, monkeypatch, writer):
+    from data_module import excluded_daily_price_revision
+    monkeypatch.setattr(excluded_daily_price_revision, 'load_exclusion_evidence', lambda _: [{'keys': [], 'closed_dates': ['20241002']}])
+    manager = _db_manager(tmp_path)
+    frame = pd.DataFrame({'日期':['20241002'],'證券代號':['9999'],'new_column':[99]})
+    before_columns = manager.get_table_columns('technical_indicators')
+    service = UpdateService.__new__(UpdateService)
+    if writer == 'manager':
+        assert not manager.write_dataframe('technical_indicators',frame)
+    elif writer == 'upsert':
+        assert not service._upsert_sqlite_rows(manager,'technical_indicators',frame)
+    else:
+        with pytest.raises(DailyPriceRevisionWriteError, match='已核驗排除'):
+            method = service._replace_sqlite_dates if writer=='date_replace' else service._replace_sqlite_table
+            method(manager,'technical_indicators',frame)
+    assert manager.get_table_columns('technical_indicators')==before_columns
+    with manager.connect() as connection:
+        assert connection.execute('SELECT COUNT(*) FROM technical_indicators').fetchone()[0]==0
 
 
 def _write_session_revision(database_path: Path) -> list[dict[str, object]]:

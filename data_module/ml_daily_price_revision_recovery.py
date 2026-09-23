@@ -556,6 +556,8 @@ def apply_isolated_recovery(
         raise RecoveryError("run02 復原前 WAL 非空，拒絕猜測 SQLite 狀態")
     target_connection = sqlite3.connect(target_path, timeout=30, isolation_level=None)
     before_connection = _open_read_only(before_path)
+    cleanup_target_connection: sqlite3.Connection | None = target_connection
+    cleanup_before_connection: sqlite3.Connection | None = before_connection
     target_connection.execute("PRAGMA busy_timeout=30000")
     target_connection.execute("PRAGMA foreign_keys=ON")
     transaction_started = False
@@ -712,7 +714,7 @@ def apply_isolated_recovery(
         transaction_started = False
         commit_completed = True
         before_connection.close()
-        before_connection = None
+        cleanup_before_connection = None
         checkpoint_row = target_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
         checkpoint = tuple(checkpoint_row) if checkpoint_row is not None else None
         if checkpoint is not None and int(checkpoint[0]) != 0:
@@ -721,14 +723,14 @@ def apply_isolated_recovery(
         if check_after != "ok":
             raise RecoveryError("run02 commit 後 quick_check 失敗")
         target_connection.close()
-        target_connection = None
+        cleanup_target_connection = None
     except BaseException as exc:
         if transaction_started:
             try:
                 target_connection.execute("ROLLBACK")
             except sqlite3.Error:
                 pass
-        for connection in (target_connection, before_connection):
+        for connection in (cleanup_target_connection, cleanup_before_connection):
             if connection is not None:
                 try:
                     connection.close()
@@ -812,12 +814,12 @@ def apply_isolated_recovery(
         },
     }
     try:
-        for path, final_path, key in (
+        for path, final_path, evidence_key in (
             (temp_diff, final_diff, "cell_diff"),
             (temp_rows, final_rows, "affected_row_hashes"),
         ):
             _publish_file(path, final_path)
-            report["evidence_files"][key] = _evidence_file(final_path)
+            report["evidence_files"][evidence_key] = _evidence_file(final_path)
         receipt_body = dict(report)
         report["receipt_sha256"] = _canonical_hash(receipt_body)
         with temp_receipt.open("x", encoding="utf-8", newline="\n") as stream:

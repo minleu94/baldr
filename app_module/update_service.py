@@ -153,7 +153,7 @@ def _write_technical_indicator_publications(
     )
     values = []
     for row in frame.itertuples(index=False, name=None):
-        normalized = []
+        normalized: list[Any] = []
         for value in row:
             if pd.isna(value):
                 normalized.append(None)

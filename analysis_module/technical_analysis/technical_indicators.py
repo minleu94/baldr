@@ -195,14 +195,14 @@ def calculate_causal_indicators(frame: pd.DataFrame) -> pd.DataFrame:
             close,
             fastk_period=5,
             slowk_period=3,
-            slowk_matype=0,
+            slowk_matype=talib.MA_Type.SMA,
             slowd_period=3,
-            slowd_matype=0,
+            slowd_matype=talib.MA_Type.SMA,
         )
         segment_values["slowk"] = slowk
         segment_values["slowd"] = slowd
         upper, middle, lower = talib.BBANDS(
-            close, timeperiod=30, nbdevup=2.0, nbdevdn=2.0, matype=0
+            close, timeperiod=30, nbdevup=2.0, nbdevdn=2.0, matype=talib.MA_Type.SMA
         )
         segment_values["middleband"] = middle
         segment_values["upperband"] = upper

@@ -331,7 +331,14 @@ def _validate_lineage(
     technical = manifest.get("technical_repair_evidence")
     coverage = manifest.get("coverage")
     eligibility = manifest.get("eligibility")
-    if not all(isinstance(block, Mapping) for block in (artifact, snapshot, revision, technical, coverage, eligibility)):
+    if (
+        not isinstance(artifact, Mapping)
+        or not isinstance(snapshot, Mapping)
+        or not isinstance(revision, Mapping)
+        or not isinstance(technical, Mapping)
+        or not isinstance(coverage, Mapping)
+        or not isinstance(eligibility, Mapping)
+    ):
         raise AcceptancePreviewError("manifest is missing a required evidence block")
     if (
         artifact.get("sha256") != EXPECTED_ROWS_SHA256

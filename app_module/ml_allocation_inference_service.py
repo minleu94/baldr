@@ -1408,19 +1408,36 @@ def _parse_artifact(value: object) -> _ArtifactContract:
             base_models[expert_key],
             field_name=f"base_models[{expert_key}]",
         )
-        if set(model_payload) != {
+        base_fields = {
             "regression_models",
             "classification_models",
             "preprocessing_strategy",
             "head_fit_row_ids",
             "head_missing_reasons",
             "fit_row_ids",
-        }:
+        }
+        fit_lineage: Mapping[str, Any] | None
+        if set(model_payload) == base_fields:
+            fit_lineage = None
+            fit_row_ids = _string_tuple(
+                model_payload["fit_row_ids"],
+                field_name=f"{expert_key}.fit_row_ids",
+            )
+        elif set(model_payload) == base_fields | {"fit_row_lineage"}:
+            fit_lineage = _parse_fit_row_lineage(
+                model_payload["fit_row_lineage"], field_name=f"{expert_key}.fit_row_lineage"
+            )
+            _validate_fit_lineage_profile(training_profile=training_profile)
+            fit_row_ids = _possibly_empty_string_tuple(
+                model_payload["fit_row_ids"],
+                field_name=f"{expert_key}.fit_row_ids",
+            )
+            if fit_row_ids:
+                raise ValueError(
+                    f"{expert_key} commitment lineage cannot also embed row ids"
+                )
+        else:
             raise ValueError(f"base model contract mismatch: {expert_key}")
-        fit_row_ids = _string_tuple(
-            model_payload["fit_row_ids"],
-            field_name=f"{expert_key}.fit_row_ids",
-        )
         head_fit_row_ids = _mapping(
             model_payload["head_fit_row_ids"],
             field_name=f"{expert_key}.head_fit_row_ids",
@@ -1462,7 +1479,11 @@ def _parse_artifact(value: object) -> _ArtifactContract:
                 head_fit_row_ids[head_id],
                 field_name=f"{expert_key}.{head_id}.fit_row_ids",
             )
-            if not set(rows).issubset(fit_row_ids):
+            if fit_lineage is not None and rows:
+                raise ValueError(
+                    f"{expert_key}.{head_id} commitment lineage cannot embed row ids"
+                )
+            if fit_lineage is None and not set(rows).issubset(fit_row_ids):
                 raise ValueError(
                     f"head fit rows exceed expert fit rows: {expert_key}"
                 )
@@ -1477,10 +1498,24 @@ def _parse_artifact(value: object) -> _ArtifactContract:
                     raise ValueError(
                         f"missing head contract mismatch: {expert_key}.{head_id}"
                     )
+                if (
+                    fit_lineage is not None
+                    and fit_lineage["heads"][head_id]["row_count"] != 0
+                ):
+                    raise ValueError(
+                        f"missing head has non-empty fit commitment: {expert_key}.{head_id}"
+                    )
                 continue
-            if head_missing or not rows:
+            if head_missing or (fit_lineage is None and not rows):
                 raise ValueError(
                     f"available head contract mismatch: {expert_key}.{head_id}"
+                )
+            if (
+                fit_lineage is not None
+                and fit_lineage["heads"][head_id]["row_count"] < 2
+            ):
+                raise ValueError(
+                    f"available head needs at least two committed fit rows: {expert_key}.{head_id}"
                 )
             _require_predictor(
                 model,
@@ -1662,6 +1697,54 @@ def _validate_meta_fit_lineage(
     ):
         raise ValueError(
             "empty meta fit lineage requires the exact no-rebalance constant"
+        )
+
+
+def _parse_fit_row_lineage(
+    value: object,
+    *,
+    field_name: str,
+) -> Mapping[str, Any]:
+    lineage = _mapping(value, field_name=field_name)
+    if set(lineage) != {
+        "schema_version",
+        "mode",
+        "row_count",
+        "row_id_sha256",
+        "heads",
+    }:
+        raise ValueError(f"{field_name} contract mismatch")
+    if lineage["schema_version"] != "allocation-fit-row-commitments.v1":
+        raise ValueError(f"{field_name} schema version mismatch")
+    if lineage["mode"] != "sha256_row_id_commitments":
+        raise ValueError(f"{field_name} mode mismatch")
+    row_count = _integer(lineage["row_count"], field_name=f"{field_name}.row_count")
+    if row_count <= 0:
+        raise ValueError(f"{field_name}.row_count must be positive")
+    _sha_text(lineage["row_id_sha256"], field_name=f"{field_name}.row_id_sha256")
+    heads = _mapping(lineage["heads"], field_name=f"{field_name}.heads")
+    if set(heads) != set(EXPERT_HEAD_IDS):
+        raise ValueError(f"{field_name}.heads does not match the frozen head set")
+    for head_id in EXPERT_HEAD_IDS:
+        head = _mapping(heads[head_id], field_name=f"{field_name}.heads.{head_id}")
+        if set(head) != {"row_count", "row_id_sha256"}:
+            raise ValueError(f"{field_name}.heads.{head_id} contract mismatch")
+        head_count = _integer(
+            head["row_count"], field_name=f"{field_name}.heads.{head_id}.row_count"
+        )
+        if head_count < 0 or head_count > row_count:
+            raise ValueError(f"{field_name}.heads.{head_id}.row_count is invalid")
+        _sha_text(
+            head["row_id_sha256"],
+            field_name=f"{field_name}.heads.{head_id}.row_id_sha256",
+        )
+    return lineage
+
+
+def _validate_fit_lineage_profile(*, training_profile: str | None) -> None:
+    if training_profile != "sealed_restated_linear_shadow_v1":
+        raise ValueError(
+            "fit-row commitment extension requires the sealed restated research profile"
         )
 
 

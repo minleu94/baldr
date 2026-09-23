@@ -21,7 +21,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 # 這些限制只寫入目前訓練程序，並在數值套件匯入前設定。
@@ -933,7 +933,8 @@ def train_and_publish(
                         test_refs=heldout_refs,
                         train_matrix=train_matrix,
                         test_matrix=heldout_matrix,
-                        oof=oof,
+                        # 凍結 fit helper 只以索引寫入 OOF buffer；ndarray 符合其執行期需求。
+                        oof=cast(np.memmap | None, oof),
                         output_directory=eval_dir,
                         ridge_alpha=Decimal(100) / Decimal(10_000),
                         logistic_iterations=logistic_iterations,
@@ -1906,7 +1907,9 @@ def _build_artifact_payload(
                     records=records,
                 )
             fit_lineage = fit_lineage_by_horizon[horizon_value]
-            fit_by_head = {head_id: [] for head_id in EXPERT_HEAD_IDS}
+            fit_by_head: dict[str, list[str]] = {
+                head_id: [] for head_id in EXPERT_HEAD_IDS
+            }
             missing_reasons = {
                 head_id: str(record.get("missing_reason", "unavailable"))
                 for head_id, record in records.items()
@@ -2283,7 +2286,8 @@ def _validate_complete_restatement_manifest(
     if is_v2:
         _validate_v2_dataset_lineage(manifest)
         _validate_v2_patch_summary(manifest)
-    _validate_manifest_source_links(manifest, schema_version=schema_version)
+    # 上方版本 gate 僅會接受兩個固定字串，cast 不改執行期值。
+    _validate_manifest_source_links(manifest, schema_version=cast(str, schema_version))
 
     return feature_ids, feature_scales, feature_packs, label_scales
 

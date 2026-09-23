@@ -63,6 +63,17 @@ v2 reader 使用 merger 匯出的固定身分欄位和 22 檔範圍，核對 lin
 
 登錄表來源轉換有獨立驗證：從完整 original registry 重算 20 個技術欄的 source／table／record hash，其餘定義須完全一致。只重新計算整份 JSON hash、同時偷偷改 dtype／尺度／家族／其他 metadata，不能通過此相容性檢查。訓練及當日兩個 registry hashes 均寫入結果，沒有把不同來源硬改成同一個身分。
 
-bounded focused tests **14 passed**：合成 62 欄資料實際 fit HGB 與 ridge/logistic、四期間三特徵組，再以新的當日輸入執行 24 組 heads；另驗來源更改、過早 capture、資料 hash、受保護路徑及 registry 轉換反例。一則既有 joblib 實體核心數查詢警告；兩個新 service／CLI 檔 mypy 無錯。這是接線與契約驗證，尚待真正 22,093 列新模型的 readback，不能解讀為 bounded 全量重訓已完成。
+bounded focused tests **14 passed**：合成 62 欄資料實際 fit HGB 與 ridge/logistic、四期間三特徵組，再以新的當日輸入執行 24 組 heads；另驗來源更改、過早 capture、資料 hash、受保護路徑及 registry 轉換反例。一則既有 joblib 實體核心數查詢警告；兩個新 service／CLI 檔 mypy 無錯。以下另列真正 22,093 列模型完成後的實際 readback，與合成接線測試分開記錄。
+
+### 真實 bounded 全量模型 readback
+
+原兩演算法、三特徵組及四期間的新模型已完成 22,093 列完整訓練。Root 以修正千分位字串解析後的 current capture，重新唯讀擷取上述 13 檔；真實 capture 為 **2026-09-23T13:44:52.076330+08:00**、特徵日為 **2026-09-22**。每檔 **24 個 expert outputs** 均正常產生，包含 1256、1477；命令含 Python 啟動共 **6.85 秒**，不外推全市場效能。
+
+- 模型位於 `E:/codex_model_repair_20260923/bounded_fullfeature_label_restatement_20260923_v2/training_run01/`；artifact SHA-256 為 `0a9f7a9c399c379d4bed5b98ec124db5661f9358c21d523477dedafe4f04b7e6`，fit receipt 檔案 SHA-256 為 `543f6293da39ad7f1fbaea016dd3b905483c7ea3811714c17cddff6dc43c490f`。
+- 輸出位於 `E:/codex_model_repair_20260923/current_inference/bounded_full_run01/bounded_current_heads/dc496e0f87a583ac9b5538c33650c27e5603cf0ecadff66b2093eaecdef1fa55.json`；Root 重新驗算 body SHA 及 13 × 24 組唯一 expert keys。
+- Current dataset identity 為 `sha256:c67287c77361da1c4afa0d90de42a15a67bcac534ee7308bcb35392040ae5ef3`，訓練資料 identity 為 `sha256:b46ec56082e52b1d83810c3553cfa89153f4f4406ab752809aac7c26fc40c133`。兩個登錄表各自保留身分，20 欄來源轉換通過完整驗證，62 個數值欄位契約一致。
+- 這證明原 bounded 家族的新模型可以使用修正後的當日輸入。它不等於已完成全市場 H5 模型、取得歷史 PIT／正式 OOS 資格，或證明優於基準；沒有產生配置建議，正式混合比例仍為 0。
+
+整合 v2 merger、strict training loader、bounded producer／consumer 及 current reader 後，七個 focused test files 為 **75 passed**。新模型的品質與完整原始資料保留驗證另記於 bounded 修復 QA。
 
 回滾此增量時，僅回退上述新 bounded 入口以及 current reader/capture 的 v2 支援，保留模型、輸入與結果 receipt。沒有排程、正式資料寫入或 frozen ML contract 改動。

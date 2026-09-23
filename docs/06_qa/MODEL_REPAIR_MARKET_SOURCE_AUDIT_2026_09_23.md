@@ -23,3 +23,15 @@ H5 v2 完整 fit 已完成，但市場特徵組的 heldout 風險預測大量偏
 ## 後續修復界線
 
 先封存涵蓋訓練區間的兩種官方月報，逐日核對 close 與日期、明確綁定成交股數單位和真實 OHLC；取得日保持實際日期。接著評估新研究資料版本需重算哪些市場特徵與 benchmark labels，再重訓受影響模型。保持 62 欄順序／scale、normalization、模型輸入契約及 15 個重構凍結檔不變；來源值修訂必須有新的身分與差異證據。原始資料、v2 模型及其評估保留，不修改 heldout 或混寫正式來源。
+
+## 官方來源驗證入口
+
+新增純唯讀 `data_module/ml_restatement_official_market.py`。`load_official_market_capture` 要求明確清冊路徑、檔案 SHA-256 與實際 `as_of`，逐份重新讀取月報而非信任清冊快取列；檢查連續月份、兩報表逐日 close 一致、真實 OHLC 範圍、成交量值為整數、檔名／官方 URL／bytes／SHA、取得時間與臺北日期截止。實際來源不足會失敗，不補 0、不推算固定倍率，也不以收盤代填 OHLC。未知的漲跌百分比仍保留缺值。
+
+初版擷取工具在「所有官方報表已成功、但原 SQLite 包含非官方交易日」時也回報 incomplete；reader 只允許這個明確原因，仍需所有月份的兩份原始回應、來源 hashes 和 cached rows 全部一致且 failures 為空。它不把這個相容處理套到既有 dataset／模型 gate。
+
+Focused tests **24 passed**，涵蓋格式錯誤／非整數成交量、跨月／重複日期、偽造快取、兩報表 close 差異、重新 hash 後仍不一致、URL、時鐘、缺報表及截止日後資料不被消費。單檔 targeted mypy、兩檔 py_compile 通過。這只是來源 reader 的驗證；全區間封存、修訂資料建置及新一輪模型 fit 尚未完成。
+
+2014-01 官方回應亦顯示 source 值差異：1/2 正確 open=8,618.60、close=8,612.54；run02 的 open=8,612.5、close=8,618.559542，數值接近互換但不精確相同，尚未定位最初寫入事故，不能概括所有年份都只是兩欄互換。初步交易日對照另見原來源有 2014-07-23、官方月報無該日，官方有 2014-12-27、原來源缺該日；須按官方完整交易日重新推導 label horizons，不能只替換成交量或保留錯誤 benchmark labels。
+
+本輪前一批文件 commit `aeaaef9a` 已合入 dev `fbc4047b`。整合前後 195 個其他工作 dirty 檔中，194 檔 bytes 一致，R011_IMPLEMENTATION_REPORT.md 在 owner 同時工作期間變動且不在本批任何修改路徑；index 空。未將該 owner 變動暫存或回復。

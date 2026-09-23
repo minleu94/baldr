@@ -26,4 +26,8 @@
 
 隔離 integration 分支執行 current provider／research binding／既有 inference／release adapter 測試，共 **33 passed**（一則既有 joblib 實體核心數查詢警告）。案例涵蓋真零與缺值、指定股票、來源篡改、缺當日列、未到可得時間、輸入準備後變更、來源身分分離與正式／舊 profile 拒絕新綁定。
 
-真實 v3 六股票樣本的 current provider 已獨立讀取 1256／1477，確認特徵日為 2026-09-22，capture 使用實際 2026-09-23 時鐘，沒有載入完整訓練陣列。尚待合入新版 fit lineage parser 後執行完整模型載入／推論；全量資料與最終模型仍在建立，不能由此樣本判定修復完成。
+合入僅供新研究 profile 使用的 fit-row commitment parser 後，lineage／binding／原 inference／adapter focused tests 共 **34 passed**；兩項既有量化靜態 guard 通過。新增四個入口／contract 檔案以 `mypy --follow-imports=silent` 檢查無錯，`py_compile` 通過。上述靜態 guard 不取代實際資料與時點驗證。
+
+真實 v3 六股票樣本的 current provider 已獨立讀取 **1256／1477**，完成 release loader 和模型推論。模型為 `restated-repair-185dd789084a9adb`（2,697 列樣本、帶 fit cap，僅用於接線驗證）；特徵日為 **2026-09-22**，實際 capture 為 **2026-09-23T12:31:54.306367+08:00**。入口只解碼當年分片中的當日指定列，沒有載入完整訓練陣列；該樣本命令含 Python 啟動共 2.45 秒，不能外推全市場效能。
+
+不可變結果位於 integration worktree 的 `output/qa/model_repair_review/current_shadow_v3/current_shadow/73be42807d618ba29a3ff762596c427576d1eebfb1cce4e9407f81b7955f3279.json`，body SHA-256 為 `73be42807d618ba29a3ff762596c427576d1eebfb1cce4e9407f81b7955f3279`。結果仍為 `formal_oos_allowed=false`、`production_blend_alpha_bp=0`；全量資料與最終模型仍在建立，不能由此樣本判定修復完成。

@@ -55,6 +55,75 @@ def _aware(value: str, field: str) -> datetime:
     return parsed.astimezone(_TAIPEI)
 
 
+def validate_restated_manifest_identity(manifest: dict[str, Any]) -> str:
+    """當日入口共用 v1／v2 身分檢查，不將合併 metadata 當成舊版身分。"""
+    schema = manifest.get("schema_version")
+    if (
+        schema not in {"portfolio-ml-restated-research-dataset.v1", "portfolio-ml-restated-research-dataset.v2"}
+        or manifest.get("status") != "complete_research_build"
+        or manifest.get("research_only") is not True
+        or manifest.get("restated_research") is not True
+        or manifest.get("formal_historical_PIT") is not False
+        or manifest.get("promotion_eligible") is not False
+    ):
+        raise ValueError("completed restated research manifest is required")
+    if schema == "portfolio-ml-restated-research-dataset.v1":
+        identity = _payload_hash({name: manifest[name] for name in _IDENTITY_FIELDS})
+        prefix = "ml-restated-research-"
+    else:
+        from data_module.ml_restatement_research_dataset_v2_merge import (
+            CORRECTED_SYMBOLS,
+            compute_v2_identity_hash,
+        )
+
+        identity = compute_v2_identity_hash(manifest)
+        prefix = "ml-restated-research-v2-"
+        lineage, patch = manifest["dataset_lineage"], manifest["patch"]
+        parent, subset = lineage["parent_v1"], lineage["corrected_subset"]
+        sources = manifest["computation_source_hashes"]
+        aliases = dict(manifest["source_manifest_hashes"])
+        expected_aliases = {
+            "parent.v1.dataset.manifest": parent["manifest_file_sha256"],
+            "corrected.symbol.subset.dataset.manifest": subset["manifest_file_sha256"],
+            "derived.grouped_numeric_parser": sources["grouped_numeric_parser"],
+            "derived.v2.row_merge": sources["v2_row_merge"],
+            "derived.causal_kernel.impl": sources["causal_kernel_impl"],
+            "derived.causal_kernel": sources["causal_kernel_facade"],
+            "derived.label_quality_builder": sources["corrected_subset_builder"],
+            "sqlite.daily_prices": manifest["revision"],
+        }
+        if (
+            manifest.get("formal_oos") is not False
+            or manifest.get("dataset_purpose") is not None
+            or tuple(sorted(patch["symbols"])) != tuple(sorted(CORRECTED_SYMBOLS))
+            or subset["symbols"] != patch["symbols"]
+            or patch["join_key"] != "row_id"
+            or patch["patch_version"] != "symbol-row-replace-by-row-id.v1"
+            or patch["added_row_count"] != 0
+            or manifest["row_count"] != parent["row_count"]
+            or patch["replaced_row_count"] != subset["row_count"]
+            or len(aliases) != 12 or len(manifest["source_manifest_hashes"]) != 12
+            or any(aliases.get(name) != digest for name, digest in expected_aliases.items())
+            or manifest["revision"] != manifest["source_hashes"]["snapshot_db"]["sha256"]
+            or manifest["builder_code_sha256"] != sources["v2_row_merge"]
+            or manifest["corrected_subset_builder_sha256"] != sources["corrected_subset_builder"]
+        ):
+            raise ValueError("v2 current input lineage or replacement contract is inconsistent")
+        observed = _aware(manifest["revision_observed_at"], "revision_observed_at")
+        if (
+            _aware(subset["revision_observed_at"], "subset revision") != observed
+            or _aware(parent["revision_observed_at"], "parent revision") > observed
+            or _aware(manifest["training_as_of"], "training_as_of") != observed
+            or _aware(manifest["dataset_created_at"], "dataset_created_at") < observed
+        ):
+            raise ValueError("v2 lineage revision clocks are inconsistent")
+    if manifest.get("dataset_identity_hash") != identity or manifest.get("manifest_hash") != identity:
+        raise ValueError("research manifest content identity mismatch")
+    if manifest.get("dataset_id") != prefix + identity[7:31]:
+        raise ValueError("research dataset id mismatch")
+    return identity
+
+
 @dataclass(frozen=True)
 class PreparedRestatedCurrentInputs:
     """所有內容皆為不可變值；infer 不再讀取檔案或 latest pointer。"""
@@ -118,21 +187,9 @@ def prepare_restated_current_inputs(
     if manifest_hash != expected_manifest_file_hash:
         raise ValueError("research manifest file hash mismatch")
     manifest = json.loads(raw)
-    if (
-        not isinstance(manifest, dict)
-        or manifest.get("schema_version") != "portfolio-ml-restated-research-dataset.v1"
-        or manifest.get("status") != "complete_research_build"
-        or manifest.get("research_only") is not True
-        or manifest.get("restated_research") is not True
-        or manifest.get("formal_historical_PIT") is not False
-        or manifest.get("promotion_eligible") is not False
-    ):
-        raise ValueError("completed restated research manifest is required")
-    identity = _payload_hash({name: manifest[name] for name in _IDENTITY_FIELDS})
-    if manifest.get("dataset_identity_hash") != identity or manifest.get("manifest_hash") != identity:
-        raise ValueError("research manifest content identity mismatch")
-    if manifest.get("dataset_id") != "ml-restated-research-" + identity[7:31]:
-        raise ValueError("research dataset id mismatch")
+    if not isinstance(manifest, dict):
+        raise ValueError("research manifest must be an object")
+    identity = validate_restated_manifest_identity(manifest)
     features, scales = expected_feature_contract()
     if tuple(manifest["feature_ids"]) != features or tuple(manifest["feature_scales"]) != scales:
         raise ValueError("research current feature order/scales differ from the 62-slot ABI")
@@ -141,6 +198,9 @@ def prepare_restated_current_inputs(
     revision_clock = _aware(manifest["revision_observed_at"], "revision_observed_at")
     if revision_clock > capture:
         raise ValueError("research source was not available at capture")
+    is_v2 = manifest["schema_version"] == "portfolio-ml-restated-research-dataset.v2"
+    if is_v2 and _aware(manifest["dataset_created_at"], "dataset_created_at") > capture:
+        raise ValueError("v2 dataset had not been created at current capture")
     sessions = tuple(date.fromisoformat(value) for value in manifest["observed_session_dates"])
     if not sessions or tuple(sorted(set(sessions))) != sessions:
         raise ValueError("research observed sessions must be sorted and unique")
@@ -245,7 +305,13 @@ def prepare_restated_current_inputs(
             event = _aware(record["feature_event_asof_at"], "feature_event_asof_at")
             available = _aware(record["feature_available_at"], "feature_available_at")
             observed = _aware(record["revision_observed_at"], "revision_observed_at")
-            if event.date() >= decision_date or event > available or available > capture or observed != revision_clock or available < observed:
+            expected_revision = revision_clock
+            if is_v2:
+                lineage_key = "corrected_subset" if symbol in manifest["patch"]["symbols"] else "parent_v1"
+                expected_revision = _aware(manifest["dataset_lineage"][lineage_key]["revision_observed_at"], "row revision")
+                if record["source_revision_id"] != manifest["revision"]:
+                    raise ValueError("v2 row revision differs from the bound source snapshot")
+            if event.date() >= decision_date or event > available or available > capture or observed != expected_revision or available < observed:
                 raise ValueError("research feature event/availability/revision clocks are inconsistent")
             values = record["features_scaled_i64"]
             masks = record["feature_missing_mask"]

@@ -27,7 +27,11 @@ from data_module.ml_restatement_research_dataset import (
     expected_feature_contract,
     sha256_file,
 )
-from data_module.ml_restatement_current_inputs import _IDENTITY_FIELDS, _aware
+from data_module.ml_restatement_current_inputs import (
+    _IDENTITY_FIELDS,
+    _aware,
+    validate_restated_manifest_identity,
+)
 from utils.numeric_text import normalize_grouped_numeric_text
 
 
@@ -96,15 +100,15 @@ def capture_restated_current_dataset(
     ):
         raise ValueError("current capture requires 1..250 unique explicit symbols")
     template = _bound_json(template_manifest_path, expected_template_manifest_hash)
+    validate_restated_manifest_identity(template)
+    if _aware(template["revision_observed_at"], "template revision") > started:
+        raise ValueError("current capture template revision is not yet available")
+    if template.get("dataset_created_at") is not None and _aware(template["dataset_created_at"], "template creation") > started:
+        raise ValueError("current capture template has not been created yet")
     names, scales = expected_feature_contract()
     if (
-        template.get("schema_version") != "portfolio-ml-restated-research-dataset.v1"
-        or template.get("status") != "complete_research_build"
-        or template.get("restated_research") is not True
-        or template.get("formal_historical_PIT") is not False
-        or tuple(template.get("feature_ids", ())) != names
+        tuple(template.get("feature_ids", ())) != names
         or tuple(template.get("feature_scales", ())) != scales
-        or canonical_hash({name: template[name] for name in _IDENTITY_FIELDS}) != template.get("dataset_identity_hash")
     ):
         raise ValueError("current capture template does not match the sealed research contract")
     receipt = _bound_json(price_repair_receipt, expected_price_receipt_hash)
@@ -228,7 +232,14 @@ def capture_restated_current_dataset(
     partition = run / "current.parquet"
     pq.write_table(pa.Table.from_pylist(rows, schema=arrow_schema()), partition, compression="zstd")
     manifest = dict(template)
+    # 當日來源是新的單一 read transaction，不繼承歷史 v2 的合併宣告。
+    for name in (
+        "dataset_identity_fields", "dataset_lineage", "patch", "computation_source_hashes",
+        "corrected_subset_builder_sha256", "revision", "dataset_created_at",
+    ):
+        manifest.pop(name, None)
     manifest.update(
+        schema_version="portfolio-ml-restated-research-dataset.v1",
         source_hashes={
             "prepared_source_prefix": {"path": source_prefix.name, "sha256": prefix_hash},
             "price_repair_receipt": {"path": str(price_repair_receipt.resolve()), "sha256": expected_price_receipt_hash},

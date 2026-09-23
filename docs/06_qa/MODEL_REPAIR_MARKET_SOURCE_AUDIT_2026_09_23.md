@@ -35,3 +35,17 @@ Focused tests **24 passed**，涵蓋格式錯誤／非整數成交量、跨月�
 2014-01 官方回應亦顯示 source 值差異：1/2 正確 open=8,618.60、close=8,612.54；run02 的 open=8,612.5、close=8,618.559542，數值接近互換但不精確相同，尚未定位最初寫入事故，不能概括所有年份都只是兩欄互換。初步交易日對照另見原來源有 2014-07-23、官方月報無該日，官方有 2014-12-27、原來源缺該日；須按官方完整交易日重新推導 label horizons，不能只替換成交量或保留錯誤 benchmark labels。
 
 本輪前一批文件 commit `aeaaef9a` 已合入 dev `fbc4047b`。整合前後 195 個其他工作 dirty 檔中，194 檔 bytes 一致，R011_IMPLEMENTATION_REPORT.md 在 owner 同時工作期間變動且不在本批任何修改路徑；index 空。未將該 owner 變動暫存或回復。
+
+## 全區間來源與 v3 重建驗證
+
+2014-01–2026-09 共 **153 個月、306 份**官方回應已全部成功封存、逐份重驗，消費截止日為 **2026-09-22**。官方兩份報表共 **3,105 個交易日**；對照 run02 的 3,088 日，原來源多出非官方日期 **2014-07-23、2016-07-08**，漏掉 **19 個**官方交易日。清冊位於 `E:/codex_model_repair_20260923/market_sources/official_monthly_v1/capture-20260923T080139Z.json`，SHA-256 `4bc1917cbbc46334b10b40012d569d63db4084bae8e17972d46795bf01c8839f`，封存完成鐘 `2026-09-23T08:01:39.776960+00:00`；初版工具的 incomplete 僅指上述兩個原日曆日期，報表擷取／解析 failures=0。
+
+在共同的 3,086 個日期上，依官方兩位小數精度比較後，O/H/L/C 分別有 **2,898／992／994／2,701** 日不同；最大絕對差分別 **2,562.81／2,562.81／1,665.94／1,152.04** 指數點。這些是來源差異計數，不是股票跌幅或投資損失。正式 `meta_data/market_index.csv` 的 3,088 日、五個 OHLCV 欄位與 run02 全部一致，CSV hash 前後均為 `fe407fc4bd23c5ca61e6bfff094b84c8db5314f7eb83e22f149e1d417c023c00`。因此不能藉由重匯相同 CSV 修好來源。完整差異保留在 integration `output/qa/model_repair_review/official_market_full_source_comparison.json` 與 `official_market_precision_and_csv_comparison.json`。
+
+新增 `data_module/ml_restatement_research_dataset_v3.py`，沿用既有完整股票前綴、62 欄、原 targets、成本與 Decimal label 公式，市場資料和交易日改用核驗官方來源。既有 baseline rows 保留；不是官方交易日的決策列無成熟 label，不把它變造為有交易。每個 horizon 重新算結束日及股票／市場報酬，不能只改最終 excess 數值。`source_revision_id` 保留為股票 SQLite 修訂身分，官方市場來源以額外 manifest／SHA 獨立綁定；新資料、程式依賴、時鐘、日曆皆進入 v3 identity。
+
+Builder 開始即保存外部 `source_start.json`，結束重新核對程式、快照和全部官方月報，成功才發布 dataset manifest 與 `model-repair-source-custody.v2`。這次確實有 start evidence，不沿用 v1 sidecar 的「未觀察到開始」敘述。原 builder 僅抽出清冊產生方法並補齊型態；數值公式不變。45 項相關 tests、兩檔 targeted mypy、三檔 py_compile、兩項量化 guard 通過。
+
+真實四檔 2014 年樣本 **668 列**已完成，輸出 `E:/codex_model_repair_20260923/dataset/official_market_v3_sample_2014_run01/manifest.json`，file SHA-256 `61607aab068cbd8f5833b7c5280e2fc7eff38aababfc6e4c7a6b0dd659855d05`。Root 對照 v2：**32,732 個**非市場特徵 slot 及 masks 完整一致、targets／stock events 保留；668 列市場特徵有改變，H5／H10／H20／H60 的 labels／mask／結束日分別有 **660／664／664／665** 列改變。另直接讀股票快照與官方價格、以獨立 Decimal 算式驗算 **2,308 個**非缺值 excess／downside labels，全部一致；所有 label horizon 符合官方交易日。證據為 `official_market_v3_sample_independent_comparison.json`。
+
+上述是來源及 v3 builder 的有界驗收，不代表新的完整資料、兩家族重訓或 current consumer 已完成。v3 必須先經支援此來源契約的 loader／外部 custody 驗證，不能手改 schema 為 v1/v2 來繞過拒絕。

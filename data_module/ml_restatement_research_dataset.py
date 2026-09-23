@@ -197,8 +197,8 @@ def _series_metrics(entry: Decimal, path: Sequence[Mapping[str, Any]]) -> tuple[
             max_drawdown = max(max_drawdown, int(value.quantize(Decimal("1"), rounding=ROUND_HALF_EVEN)))
     if close_returns:
         ordered = sorted(close_returns)
-        count = max(1, (len(ordered) + 4) // 5)
-        tail_mean = sum((Decimal(value) for value in ordered[:count]), Decimal(0)) / Decimal(count)
+        tail_count = max(1, (len(ordered) + 4) // 5)
+        tail_mean = sum((Decimal(value) for value in ordered[:tail_count]), Decimal(0)) / Decimal(tail_count)
         tail_loss = min(10_000, max(0, int((-tail_mean).quantize(Decimal("1"), rounding=ROUND_HALF_EVEN))))
     else:
         tail_loss = 10_000
@@ -473,14 +473,15 @@ class RestatedDatasetBuilder:
         )
         rows = [dict(row) for row in cursor]
         dates = [_iso_date(row["日期"]) for row in rows]
-        if any(day is None for day in dates) or dates != sorted(dates) or len(set(dates)) != len(dates):
+        valid_dates = [day for day in dates if day is not None]
+        if len(valid_dates) != len(dates) or valid_dates != sorted(valid_dates) or len(set(valid_dates)) != len(valid_dates):
             raise ValueError(f"{symbol}: source OHLC dates must be valid, unique, ordered")
         frame = pd.DataFrame(rows)
         # kernel receives the full symbol history; the publication date is sliced only after calculation.
         calculated = self.calculate_causal_indicators(frame)
         if len(calculated) != len(rows) or any(name not in calculated.columns for name in TECHNICAL_FIELDS):
             raise ValueError("causal kernel violated the 20-indicator output contract")
-        return calculated, [day for day in dates if day is not None], rows
+        return calculated, valid_dates, rows
 
     def _baseline_rows(self, year: Mapping[str, Any]) -> list[dict[str, Any]]:
         year_dir = self.direct_manifest_path.parent / f"year={int(year['year'])}"
@@ -596,7 +597,7 @@ class RestatedDatasetBuilder:
         decision = row["_decision"]
         calendar_idx = self.calendar_index.get(decision)
         if calendar_idx is None:
-            evidence = {"status": "missing", "reason": "decision_not_in_observed_TAIEX_calendar"}
+            evidence: dict[str, Any] = {"status": "missing", "reason": "decision_not_in_observed_TAIEX_calendar"}
             return {}, {}, None, None, json.dumps(evidence, separators=(",", ":"))
         end_idx = calendar_idx + horizon - 1
         if end_idx >= len(self.calendar):
@@ -671,9 +672,9 @@ class RestatedDatasetBuilder:
         feature_mask = np.ones((count, 62), dtype=np.uint8)
         labels = {h: np.zeros((count, 9), dtype=np.int64) for h in SUPPORTED_HORIZONS}
         label_mask = {h: np.ones((count, 9), dtype=np.uint8) for h in SUPPORTED_HORIZONS}
-        label_end = {h: [None] * count for h in SUPPORTED_HORIZONS}
-        maturity = {h: [None] * count for h in SUPPORTED_HORIZONS}
-        basis = {h: [None] * count for h in SUPPORTED_HORIZONS}
+        label_end: dict[int, list[date | None]] = {h: [None] * count for h in SUPPORTED_HORIZONS}
+        maturity: dict[int, list[str | None]] = {h: [None] * count for h in SUPPORTED_HORIZONS}
+        basis: dict[int, list[str | None]] = {h: [None] * count for h in SUPPORTED_HORIZONS}
         stock_event_dates: list[date | None] = [None] * count
         market_event_dates: list[date | None] = [None] * count
         roles: list[str] = ["" for _ in rows]
@@ -731,10 +732,11 @@ class RestatedDatasetBuilder:
             del raw_targets
         enriched_rows: list[dict[str, Any]] = []
         for index, row in enumerate(rows):
+            stock_event_day, market_event_day = stock_event_dates[index], market_event_dates[index]
             lineage = canonical_hash({
                 "row_id": row["row_id"], "source_revision_id": self.snapshot_sha,
-                "stock_event_date": stock_event_dates[index].isoformat() if stock_event_dates[index] else None,
-                "market_event_date": market_event_dates[index].isoformat() if market_event_dates[index] else None,
+                "stock_event_date": stock_event_day.isoformat() if stock_event_day else None,
+                "market_event_date": market_event_day.isoformat() if market_event_day else None,
                 "features_i64": features[index].tolist(), "feature_missing_mask": feature_mask[index].tolist(),
             })
             enriched_rows.append({
@@ -854,6 +856,12 @@ class RestatedDatasetBuilder:
                 break
         if not files:
             raise ValueError("date filter selected no Direct rows")
+        return self._write_manifest(files)
+
+    def _manifest_payload(self, files: list[dict[str, Any]]) -> dict[str, Any]:
+        """形成清冊內容，供來源明確隔離的新研究版本延伸。"""
+        heldout_index = bisect_left(self.calendar, date(2026, 5, 20))
+        purge_start = self.calendar[max(0, heldout_index - 65)]
         total_rows = sum(int(item["row_count"]) for item in files)
         kernel = {
             "path": str(self.kernel_path), "sha256": self.kernel_sha,
@@ -937,6 +945,10 @@ class RestatedDatasetBuilder:
             "status": "complete_research_build", "research_only": True,
             "promotion_eligible": False, "formal_historical_PIT": False, "formal_oos": False,
         }
+        return manifest
+
+    def _write_manifest(self, files: list[dict[str, Any]]) -> Path:
+        manifest = self._manifest_payload(files)
         manifest_path = self.output_dir / "manifest.json"
         temporary = self.output_dir / "manifest.json.tmp"
         temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -959,9 +971,10 @@ def _decimal_ohlc(row: Mapping[str, Any] | None) -> dict[str, Decimal] | None:
     }
     if any(value is None or value <= 0 for value in values.values()):
         return None
-    if values["low"] > min(values["open"], values["close"]) or values["high"] < max(values["open"], values["close"]):
+    complete = {name: value for name, value in values.items() if value is not None}
+    if complete["low"] > min(complete["open"], complete["close"]) or complete["high"] < max(complete["open"], complete["close"]):
         return None
-    return {name: value for name, value in values.items() if value is not None}
+    return complete
 
 
 def build_parser():

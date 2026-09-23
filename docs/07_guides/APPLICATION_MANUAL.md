@@ -12,6 +12,12 @@
 
 指標維護工具 `scripts/technical_indicator_repair_dryrun.py` 只讀取資料並產生重算清單；`scripts/technical_indicator_repair_apply_guard.py` 預設核對清單，只有同時提供 `--apply`、已核准的 `--dryrun-manifest`／`--price-plan`／`--price-receipt` 與 `--confirm repair-technical-indicators-20260520` 才寫入。`--resume <pending.json>` 先驗備份、來源與 journal：資料庫未提交時只回復本批快取欄位，已提交且快取一致時補寫 receipt；狀態不明則停止。`--rollback <receipt.json>` 以原值清單回復指定欄位，不能替代整庫還原；以上三種模式互斥，日常使用者不需重跑。重建模型前仍須另走新 dataset／run identity 與驗證流程。
 
+## 重訓現況補充（2026-09-22）
+
+9/22 的後續 technical publication 曾重寫包含 5/20 修訂日的 120 交易日區間。正式資料庫目前不可視為已持續保有本次 technical repair；修復後的 E run02 是獨立 research snapshot，不可覆蓋正式 SQLite。已知修復前模型仍隔離，這次修訂目前只有 868 列來源 custody，沒有已物化且通過可得性驗證的成熟標籤／可訓練 rows，因此尚未開始重訓。
+
+正式 PIT／Raw-to-OOC 入口仍受 pending source-revision gate 阻擋；不可刪除 pending、回填舊 available_at 或用舊模型輸出替代修訂後驗證。後續需以新 dataset/model identity 重建完整受影響特徵依賴、保留 late-obtained 狀態，並等 label horizon 成熟後才可建立 research/shadow 候選。細節見[隔離研究重建與重訓 Gate](../06_qa/REVISION_RETRAIN_ISOLATED_RESEARCH_2026_09_22.md)。
+
 ## 2026-09-21 V5 日常操作與可讀性工程
 
 本輪版本名稱是「V5日常操作與可讀性工程」。目前已把既有唯讀資料整理成首頁優先摘要、分層導覽、候選／研究報告／持倉的下一步提示、回測與推薦的進階入口，以及按需價格圖；這是 bounded engineering 與 QA evidence，不是正式 V4／V5 gate，也不是 V6 user-level personalization maturity。

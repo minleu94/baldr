@@ -6,6 +6,7 @@ FMTQIK 的成交股數，開高低收固定來自 MI_5MINS_HIST，不用收盤�
 
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -192,7 +193,10 @@ def load_official_market_capture(
             raise ValueError("官方來源 URL 不符")
         captured_at = _clock(item.get("captured_at"), "captured_at")
         # 允許 resume 使用更早已封存的回應，但不能晚於本次完成時鐘。
-        if captured_at > available_at or captured_at.astimezone(_TAIPEI).date() <= cutoff:
+        # 舊月份只須支援該月月底；拼接新月份不改寫舊回應的真正取得時鐘。
+        year, number = int(month[:4]), int(month[4:])
+        required_through = min(cutoff, date(year, number, monthrange(year, number)[1]))
+        if captured_at > available_at or captured_at.astimezone(_TAIPEI).date() <= required_through:
             raise ValueError("官方回應時鐘不足以支持截止日")
         source = (path.parent / name).resolve(strict=True)
         if source.parent != path.parent or file_sha256(source) != item.get("file_sha256"):

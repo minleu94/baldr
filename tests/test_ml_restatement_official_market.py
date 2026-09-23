@@ -172,3 +172,56 @@ def test_capture_may_contain_later_rows_but_never_consumes_them(tmp_path):
     manifest["cutoff_date"] = "2024-01-02"
     _write(path, manifest)
     assert list(_load(path).rows) == [date(2024, 1, 2)]
+
+
+def _two_month_capture(root: Path) -> tuple[Path, dict[str, Any]]:
+    path, manifest = _capture(root)
+    manifest.update({
+        "months": ["202401", "202402"], "cutoff_date": "2024-02-29",
+        "started_at": "2024-03-01T00:00:00+08:00",
+        "finished_at": "2024-03-01T02:00:00+08:00", "row_count": 2,
+    })
+    for report in REPORT_FIELDS:
+        payload = _payload(report)
+        payload["date"] = "20240201"
+        payload["data"][0][0] = "113/02/02"
+        source = root / f"202402-{report}.json"
+        _write(source, payload)
+        manifest["receipts"].append({
+            "file": source.name, "report": report, "month": "202402",
+            "url": f"https://www.twse.com.tw{REPORT_PATHS[report]}?date=20240201&response=json",
+            "captured_at": "2024-03-01T01:00:00+08:00", "historical_pit": False,
+            "file_sha256": file_sha256(source), "byte_count": source.stat().st_size,
+        })
+        for day, values in parse_monthly_report(payload, report=report, month="202402").items():
+            manifest["rows"].setdefault(day.isoformat(), {}).update({key: str(value) for key, value in values.items()})
+    _write(path, manifest)
+    return path, manifest
+
+
+def test_completed_earlier_month_preserves_its_original_capture_clock(tmp_path):
+    path, manifest = _two_month_capture(tmp_path)
+    original_clocks = [item["captured_at"] for item in manifest["receipts"]]
+    source = load_official_market_capture(
+        path, expected_file_sha256=file_sha256(path),
+        as_of=datetime.fromisoformat("2024-03-01T03:00:00+08:00"),
+    )
+    assert list(source.rows) == [date(2024, 1, 2), date(2024, 2, 2)]
+    assert original_clocks[:2] == ["2024-02-01T01:00:00+08:00"] * 2
+    assert [item["captured_at"] for item in json.loads(path.read_text(encoding="utf-8"))["receipts"]] == original_clocks
+
+
+@pytest.mark.parametrize("index,clock", [
+    (0, "2024-01-31T23:59:00+08:00"),
+    (2, "2024-02-29T23:59:00+08:00"),
+    (0, "2024-03-01T02:01:00+08:00"),
+])
+def test_each_month_must_be_available_before_consumption(tmp_path, index, clock):
+    path, manifest = _two_month_capture(tmp_path)
+    manifest["receipts"][index]["captured_at"] = clock
+    _write(path, manifest)
+    with pytest.raises(ValueError, match="回應時鐘"):
+        load_official_market_capture(
+            path, expected_file_sha256=file_sha256(path),
+            as_of=datetime.fromisoformat("2024-03-01T03:00:00+08:00"),
+        )

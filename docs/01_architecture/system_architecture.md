@@ -13,6 +13,8 @@
 
 全歷史技指修復使用 `repair_formal_technical_data.py` 協調唯讀 SQLite snapshot、`technical_cache_rebuild_stage.py` 的逐股完整因果計算與 CSV 串流 staging。更新 20 個既有因果指標及指定 CSV 的中文 OHLCV；已核驗的錯日 key／整日休市列從衍生快取移除，其餘非目標欄位和無來源的舊 key 保留並列入驗收。staging 綁定排除範圍與 plan／receipt identity，不能以同範圍不同證據替換來源。備份、來源／before／after hash、維護鎖與 journal 綁定正式發布及中斷恢復；後續來源或目標漂移時拒絕覆蓋。這是離線資料維護，不在 UI 開頁時執行，也不修改模型輸入 schema、模型權重或啟用設定。正式執行範圍與回復入口見[正式資料修復](../06_qa/FORMAL_DATA_REPAIR_2026_09_23.md)，日常判讀見[操作手冊](../07_guides/APPLICATION_MANUAL.md)。
 
+研究資料引用的官方月報按每個月份自己的截止日核對真正取得時鐘。已完成月份可沿用較早封存回應；較新的九月來源不會改寫歷史回應的日期。修復後候選的快照、官方回應與正式來源修訂證據共同建立新版本，驗收見[修復來源候選](../06_qa/REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)。
+
 ## 個股研究、資料新鮮度與持倉證據邊界
 
 - 持倉與觀察清單透過共同 `stockResearchRequested` 導向 `StockResearchReportDialog`。`StockResearchReportReadService` 組合既有SQLite、保存推薦與持倉服務，再交 `StockResearchReportDTO`／Qt view呈現；不在UI新增第二套股票評分或交易引擎。

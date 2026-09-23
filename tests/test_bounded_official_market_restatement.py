@@ -1,6 +1,6 @@
 """官方來源修訂有獨立研究範圍，舊來源 gate 保持嚴格。"""
 from copy import deepcopy
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -8,7 +8,7 @@ from data_module.bounded_allocation_label_restatement import BoundedRestatementE
 from data_module.bounded_official_market_restatement import (
     MARKET_RAW_IDS, MARKET_SOURCE_ID, _rebuild_labels, official_feature_registry,
 )
-from ml_module.bounded_restated_research_consumer import _parse_feature, _parse_labels
+from ml_module.bounded_restated_research_consumer import _parse_feature, _parse_labels, _official_purged_train_end
 
 
 def _label(horizon=5):
@@ -89,3 +89,15 @@ def test_registry_changes_only_market_source_definitions_and_keeps_scales():
     assert other in registry["features"]
     changed = [item for item in registry["features"] if item["feature_id"] in MARKET_RAW_IDS]
     assert len(changed) == 8 and all(item["scale"] == 10000 and item["source_id"] == MARKET_SOURCE_ID for item in changed)
+
+
+def test_excluding_missing_price_rows_makes_purge_stricter_without_changing_test_window():
+    dates = [(date(2024, 1, 1) + timedelta(days=i)).isoformat() for i in range(200)]
+    retained = dates[:80] + dates[100:]
+    test_start = dates[150]
+    cutoff = _official_purged_train_end(retained, test_start=test_start, declared_train_end=dates[89], purge_days=60)
+    assert cutoff == dates[69]
+    assert retained.index(test_start) - retained.index(cutoff) - 1 == 60
+    assert _official_purged_train_end(retained, test_start=test_start, declared_train_end=dates[30], purge_days=60) == dates[30]
+    with pytest.raises(ValueError, match="too short"):
+        _official_purged_train_end(retained, test_start=dates[20], declared_train_end=dates[0], purge_days=60)

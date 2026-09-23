@@ -34,6 +34,8 @@
 
 原 bounded 家族另使用 `python -m data_module.bounded_official_market_restatement`，指定 `--parent-manifest-path`／`--expected-parent-hash`（已修復股票技術前綴的 bounded v2）、`--source-snapshot-path`／`--expected-snapshot-hash`（同一 run02）、`--official-market-manifest`／`--expected-official-market-hash`（官方大盤封存）、`--corporate-action-manifest`（原 bounded 綁定的官方公司事件）和新的 `--output-directory`。入口替換 8 個市場值、5 個相依品質欄並重算四個 horizon；其餘 49 欄、原現金 targets／投組狀態保留。若原決策日非官方交易日、股票價格路徑不完整或新區間碰到公司事件，該列不進訓練，會出現在新清冊 `restatement.excluded_rows`，原資料不刪除。原四組日期窗保持，標籤成熟期按官方交易日重算；此獨立研究 profile 明示修訂鐘晚於歷史 fold，不能當作歷史 PIT／正式 OOS。新清冊經 `train_bounded_restated_research.py` 訓練後，還須檢查獨立評估及最新輸入結果。
 
+bounded 缺價排除可能讓原日期窗中的有效決策日減少。consumer 會依仍有樣本的日期再次檢查原 60 日 purge，必要時只把訓練截止日往前收，保留原測試區間；`preflight.folds` 同時顯示 declared／effective train end。原 trainer 的 60 日 purge、5 日 embargo、label maturity 與 expanding-window 檢查照常執行，不能藉由降低天數略過失敗。
+
 `scripts/run_ml_allocation_restated_shadow.py` 是進階維護入口。它可讀取已封存的當日列，或從指定 SQLite 唯讀來源建立新的當日輸入，保留實際執行時間；目前不改 UI 預設模型，也不授予持股配置或下單權限。
 
 先從本次受控訓練結果取得確切的 release 路徑與 `release_identity_hash`，再取得要判讀的 dataset manifest 及其檔案 SHA-256。使用下列參數執行：

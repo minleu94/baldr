@@ -930,6 +930,8 @@ def _build_event_maturity_folds(
         )
     )
     decision_dates = {sample.row.decision_at[:10] for sample in ordered_samples}
+    ordered_decision_dates = sorted(decision_dates)
+    official_market = manifest.get("fold_profile") == OFFICIAL_FOLD_PROFILE and manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA
     folds: list[PurgedWalkForwardFold] = []
     counts = []
     changed_fold_assignments = 0
@@ -954,6 +956,14 @@ def _build_event_maturity_folds(
         if test_start not in decision_dates or test_end not in decision_dates:
             raise BoundedRestatedResearchError(
                 "fold boundaries must be observed row decision dates"
+            )
+        declared_train_end = train_end
+        if official_market:
+            # 原 trainer 以仍可訓練的決策日數核對 purge。排除缺價列後，
+            # 必須更早截止訓練，不能用完整官方日曆冒充仍有樣本的日數。
+            train_end = _official_purged_train_end(
+                ordered_decision_dates, test_start=test_start, declared_train_end=train_end,
+                purge_days=_positive_int(fold_payload.get("purge_trading_days"), "purge_trading_days"),
             )
         train_samples: list[RestatedResearchSample] = []
         test_samples: list[RestatedResearchSample] = []
@@ -1008,6 +1018,8 @@ def _build_event_maturity_folds(
         counts.append(
             {
                 "fold_id": fold_payload["fold_id"],
+                "declared_train_end_date": declared_train_end,
+                "effective_train_end_date": train_end,
                 "train_rows": len(train_rows),
                 "test_rows": len(test_rows),
                 "changed_labels_in_train": changed_train,
@@ -1024,7 +1036,6 @@ def _build_event_maturity_folds(
                 ),
             }
         )
-    official_market = manifest.get("fold_profile") == OFFICIAL_FOLD_PROFILE and manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA
     if changed_fold_assignments != 0 and not official_market:
         raise BoundedRestatedResearchError(
             "a revised label enters an original outer fold; use a separate "
@@ -1046,6 +1057,15 @@ def _build_event_maturity_folds(
         "actual_revision_clock": revision_clock.isoformat(),
         "formal_oos": False,
     }
+
+
+def _official_purged_train_end(
+    observed_dates: Sequence[str], *, test_start: str, declared_train_end: str, purge_days: int,
+) -> str:
+    cutoff = observed_dates.index(test_start) - purge_days - 1
+    if cutoff < 0:
+        raise BoundedRestatedResearchError("official bounded sample calendar is too short for the original purge")
+    return min(declared_train_end, observed_dates[cutoff])
 
 
 def _window_row(sample: RestatedResearchSample) -> MLTimeWindowRow:

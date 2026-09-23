@@ -229,6 +229,7 @@ class PartitionMergeStats:
     appended_rows: int
     target_rows_checked: int
     target_observed_counts: tuple[int, ...]
+    direct_baseline_rows: int
     corrected_scope_rows: int
     corrected_scope_replacements: int
 
@@ -252,6 +253,7 @@ def merge_partition_file(
     row_key_i = _column_index(schema, _ROW_KEY_COLUMN)
     symbol_i = _column_index(schema, _SYMBOL_COLUMN)
     date_i = _column_index(schema, "decision_date")
+    local_index_i = _column_index(schema, "local_row_index")
     target_values_i = _column_index(schema, _TARGET_VALUE_COLUMN)
     target_mask_i = _column_index(schema, _TARGET_MASK_COLUMN)
     subset_keys = subset_table.column(_ROW_KEY_COLUMN).to_pylist()
@@ -269,6 +271,7 @@ def merge_partition_file(
     )
     parent_rows = replaced_rows = target_rows_checked = 0
     target_observed_counts = [0] * 6
+    direct_baseline_rows = 0
     corrected_scope_rows = corrected_scope_replacements = 0
     try:
         for batch in parent.iter_batches(batch_size=batch_size):
@@ -279,6 +282,13 @@ def merge_partition_file(
             if mask_min not in (0, 1) or mask_max not in (0, 1):
                 raise ValueError("target_missing_mask contains a value outside {0, 1}")
             first_mask = pc.list_element(target_masks, 0)
+            baseline_rows = batch.column(local_index_i)
+            is_direct_baseline = pc.is_valid(baseline_rows)
+            is_target_observed = pc.equal(first_mask, 0)
+            mismatch = pc.any(pc.not_equal(is_direct_baseline, is_target_observed)).as_py()
+            if mismatch:
+                raise ValueError("Direct baseline and target_missing_mask classification disagree")
+            direct_baseline_rows += int(pc.sum(pc.cast(is_direct_baseline, pa.int64())).as_py() or 0)
             for target_index in range(1, 6):
                 differs = pc.any(pc.not_equal(first_mask, pc.list_element(target_masks, target_index))).as_py()
                 if differs:
@@ -359,6 +369,7 @@ def merge_partition_file(
         appended_rows=len(extra_indices),
         target_rows_checked=target_rows_checked,
         target_observed_counts=tuple(target_observed_counts),
+        direct_baseline_rows=direct_baseline_rows,
         corrected_scope_rows=corrected_scope_rows,
         corrected_scope_replacements=corrected_scope_replacements,
     )
@@ -496,6 +507,7 @@ def merge_v2_dataset(
     used_subset: set[int] = set()
     seen_parent_row_ids: set[str] = set()
     total_replaced = total_added = parent_rows_seen = 0
+    direct_baseline_rows = 0
     corrected_scope_rows = corrected_scope_replacements = 0
     target_observed_counts = [0] * len(target_names)
     output_entries: list[dict[str, Any]] = []
@@ -513,6 +525,7 @@ def merge_v2_dataset(
                 parent_rows_seen += stats.parent_rows
                 total_replaced += stats.replaced_rows
                 total_added += stats.appended_rows
+                direct_baseline_rows += stats.direct_baseline_rows
                 corrected_scope_rows += stats.corrected_scope_rows
                 corrected_scope_replacements += stats.corrected_scope_replacements
                 for target_index, observed_count in enumerate(stats.target_observed_counts):
@@ -565,6 +578,11 @@ def merge_v2_dataset(
             raise ValueError(
                 "parent target_missing_mask counts differ from the audited Direct baseline: "
                 f"expected={expected_target_baseline_rows}, actual={target_observed_counts}"
+            )
+        if direct_baseline_rows != expected_target_baseline_rows:
+            raise ValueError(
+                "parent local_row_index baseline count differs from the original Direct audit: "
+                f"expected={expected_target_baseline_rows}, actual={direct_baseline_rows}"
             )
         if sum(item["row_count"] for item in output_entries) != int(parent["row_count"]):
             raise ValueError("v2 row count must equal the complete parent rowset")

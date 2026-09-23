@@ -22,6 +22,7 @@ SCHEMA = pa.schema([
     pa.field("row_id", pa.string(), nullable=False),
     pa.field("symbol", pa.string(), nullable=False),
     pa.field("decision_date", pa.date32(), nullable=False),
+    pa.field("local_row_index", pa.int32()),
     pa.field("source_revision_id", pa.string(), nullable=False),
     pa.field("target_values_i32", pa.list_(pa.int32(), 6), nullable=False),
     pa.field("target_missing_mask", pa.list_(pa.uint8(), 6), nullable=False),
@@ -40,6 +41,7 @@ def _row(
     *,
     target: int = 0,
     target_mask: int = 0,
+    local_row_index: int | None = 1,
 ) -> dict[str, object]:
     from datetime import date
 
@@ -47,6 +49,7 @@ def _row(
         "row_id": row_id,
         "symbol": symbol,
         "decision_date": date(2026, 5, 20),
+        "local_row_index": local_row_index,
         "source_revision_id": SNAPSHOT,
         "target_values_i32": [target] * 6,
         "target_missing_mask": [target_mask] * 6,
@@ -96,6 +99,7 @@ def test_merge_partition_replaces_matching_row_and_keeps_parent_order(tmp_path: 
     assert stats.appended_rows == 0
     assert stats.target_rows_checked == 1
     assert stats.target_observed_counts == (2, 2, 2, 2, 2, 2)
+    assert stats.direct_baseline_rows == 2
     assert stats.corrected_scope_rows == stats.corrected_scope_replacements == 1
     assert seen_parent_ids == {"row:a", "row:b"}
     assert consumed_subset == {0}
@@ -201,3 +205,26 @@ def test_merge_rejects_nonbinary_or_inconsistent_target_masks(tmp_path: Path) ->
             seen_parent_row_ids=set(),
             consumed_subset_indices=set(),
         )
+
+
+def test_merge_confirms_append_rows_have_missing_targets(tmp_path: Path) -> None:
+    parent_path = tmp_path / "year=2026" / "research_dataset.parquet"
+    parent_path.parent.mkdir()
+    parent = _table([
+        _row("row:baseline", "2330", 11, target_mask=0),
+        _row("row:append", "2330", 12, target_mask=1, local_row_index=None),
+    ])
+    pq.write_table(parent, parent_path)
+
+    stats = merge_partition_file(
+        parent_path,
+        {},
+        _table([_row("row:other", "2330", 99)]),
+        tmp_path / "out" / "year=2026" / "research_dataset.parquet",
+        corrected_symbols={"2330"},
+        seen_parent_row_ids=set(),
+        consumed_subset_indices=set(),
+    )
+
+    assert stats.direct_baseline_rows == 1
+    assert stats.target_observed_counts == (1, 1, 1, 1, 1, 1)

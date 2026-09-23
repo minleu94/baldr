@@ -19,6 +19,59 @@ from data_module.ml_restatement_research_dataset import sha256_file
 from tests.test_ml_restatement_current_inputs import _fixture_dataset
 
 
+def _official_current_fixture(root: Path) -> Path:
+    from data_module.ml_restatement_official_market import parse_monthly_report
+    from tests.test_ml_restatement_official_market import _capture, _write
+
+    root.mkdir()
+    path, manifest = _capture(root)
+    manifest.update(started_at="2026-09-23T11:00:00+08:00", finished_at="2026-09-23T12:00:00+08:00", cutoff_date="2026-09-22", months=["202609"], rows={})
+    for receipt in manifest["receipts"]:
+        payload = json.loads((root / receipt["file"]).read_text(encoding="utf-8"))
+        payload["date"] = "20260901"
+        payload["data"][0][0] = "115/09/22"
+        filename = receipt["file"].replace("202401", "202609")
+        _write(root / filename, payload)
+        receipt.update(file=filename, month="202609", url=receipt["url"].replace("20240101", "20260901"), captured_at="2026-09-23T11:30:00+08:00", file_sha256=sha256_file(root / filename), byte_count=(root / filename).stat().st_size)
+        for day, values in parse_monthly_report(payload, report=receipt["report"], month="202609").items():
+            manifest["rows"].setdefault(day.isoformat(), {}).update({key: str(value) for key, value in values.items()})
+    _write(path, manifest)
+    return path
+
+
+def test_official_current_capture_uses_verified_shares_instead_of_sqlite_market(tmp_path, monkeypatch):
+    from ml_module.restated_research_input_contract import OFFICIAL_MARKET_CONTRACT_HASH
+
+    monkeypatch.setattr(capture_module, "datetime", _Clock)
+    template, template_hash = _fixture_dataset(tmp_path / "template")
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    db, receipt = _sources(source_dir)
+    official = _official_current_fixture(tmp_path / "official")
+    manifest, digest = capture_restated_current_dataset(
+        database_path=db, template_manifest_path=template, expected_template_manifest_hash=template_hash,
+        price_repair_receipt=receipt, expected_price_receipt_hash=sha256_file(receipt),
+        symbols=("1256",), output_root=tmp_path / "captured",
+        official_market_manifest_path=official, expected_official_market_hash=sha256_file(official),
+    )
+    with gzip.open(manifest.parent / "source_prefix.jsonl.gz", "rt", encoding="utf-8") as stream:
+        market = json.loads(next(stream))["rows"]
+    assert len(market) == 1 and market[0]["成交量"] == "8299689369"
+    prepared = prepare_restated_current_inputs(
+        manifest_path=manifest, expected_manifest_file_hash=digest, symbols=("1256",),
+        captured_at=datetime.fromisoformat("2026-09-23T14:00:00+08:00"),
+    )
+    assert dict(prepared.binding.source_manifest_hashes)["contract.official_twse_market"] == OFFICIAL_MARKET_CONTRACT_HASH
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["source_manifest_hashes"] = [pair for pair in payload["source_manifest_hashes"] if pair[0] != "contract.official_twse_market"]
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="unit contract"):
+        prepare_restated_current_inputs(
+            manifest_path=manifest, expected_manifest_file_hash=sha256_file(manifest), symbols=("1256",),
+            captured_at=datetime.fromisoformat("2026-09-23T14:00:00+08:00"),
+        )
+
+
 class _Clock(datetime):
     @classmethod
     def now(cls, tz=None):

@@ -49,3 +49,13 @@ Builder 開始即保存外部 `source_start.json`，結束重新核對程式、�
 真實四檔 2014 年樣本 **668 列**已完成，輸出 `E:/codex_model_repair_20260923/dataset/official_market_v3_sample_2014_run01/manifest.json`，file SHA-256 `61607aab068cbd8f5833b7c5280e2fc7eff38aababfc6e4c7a6b0dd659855d05`。Root 對照 v2：**32,732 個**非市場特徵 slot 及 masks 完整一致、targets／stock events 保留；668 列市場特徵有改變，H5／H10／H20／H60 的 labels／mask／結束日分別有 **660／664／664／665** 列改變。另直接讀股票快照與官方價格、以獨立 Decimal 算式驗算 **2,308 個**非缺值 excess／downside labels，全部一致；所有 label horizon 符合官方交易日。證據為 `official_market_v3_sample_independent_comparison.json`。
 
 上述是來源及 v3 builder 的有界驗收，不代表新的完整資料、兩家族重訓或 current consumer 已完成。v3 必須先經支援此來源契約的 loader／外部 custody 驗證，不能手改 schema 為 v1/v2 來繞過拒絕。
+
+## v3 訓練與當日 consumer 接線
+
+H5 loader 現在依固定 v3 identity 欄位核對原始官方回應，保留 62 欄／scales、原 targets 與新增列缺值。custody v2 會讀回建置前保存的 source_start，核對實際開始／完成鐘、來源與六份 producer 原始碼；不杜撰 git commit，也不放寬舊 custody v1 的「未觀察到開始」契約。實際 668 列樣本已完整載入，外部 custody 驗證通過。
+
+兩條當日研究入口增加官方來源相容檢查。新的 current capture 綁定官方市場 contract、原始報表與新股票 read transaction 前綴；新的月份可以另給 manifest/hash，不能使用舊混合單位市場輸入。13 檔真實股票（含 1256／1477）已以固定 run02 股票快照和官方月報完成新擷取／prepare，feature as-of 為 2026-09-22；這是輸入預檢，尚非新 v3 模型推論。當日 manifest file SHA `2b95f7c52f8587f7565bddb1f50ed95298596666442de46ec809d48e42e3158f`，identity `184d8ce5446258318a4757851180745280c445bd228028ac1081d61390c77391`，prepare 實際鐘 `2026-09-23T16:28:05.361200+08:00`；路徑與證據保留 integration `output/qa/model_repair_review/official_current_preflight.json`。
+
+相關回歸先跑 88 tests 全通過，再加入官方來源優先於 SQLite／缺 contract 拒絕的實例，current capture 六項 tests 全通過（新增一項、其餘五項重跑）。九個變更模組 targeted mypy（follow-imports=silent）通過；包含依賴的檢查另回報兩個未改動檔的四項既有型態錯誤：technical_indicators.py 三項 TA-Lib enum、update_service.py 一項 normalized annotation。這批沒有修改那些檔案。
+
+全量 v3 從固定 producer commit `56fc40be` 的獨立工作區執行，開始 `2026-09-23T08:15:12.906022+00:00`、來源核驗完成 `08:15:16.387440+00:00`；此處 consumer 修改不動正在執行的 producer。輸出為 `E:/codex_model_repair_20260923/dataset/full_restated_official_market_v3`，未加 row/date/symbol cap。此更新時仍在執行，尚無完整 v3 manifest，兩家族新模型尚未完成；正式資料、15 個重構凍結檔與 production pointers 不變。

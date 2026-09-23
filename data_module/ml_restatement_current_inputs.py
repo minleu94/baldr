@@ -56,10 +56,10 @@ def _aware(value: str, field: str) -> datetime:
 
 
 def validate_restated_manifest_identity(manifest: dict[str, Any]) -> str:
-    """當日入口共用 v1／v2 身分檢查，不將合併 metadata 當成舊版身分。"""
+    """當日入口依版本核對來源與身分，不混用歷史合併及官方市場來源。"""
     schema = manifest.get("schema_version")
     if (
-        schema not in {"portfolio-ml-restated-research-dataset.v1", "portfolio-ml-restated-research-dataset.v2"}
+        schema not in {"portfolio-ml-restated-research-dataset.v1", "portfolio-ml-restated-research-dataset.v2", "portfolio-ml-restated-research-dataset.v3"}
         or manifest.get("status") != "complete_research_build"
         or manifest.get("research_only") is not True
         or manifest.get("restated_research") is not True
@@ -70,6 +70,13 @@ def validate_restated_manifest_identity(manifest: dict[str, Any]) -> str:
     if schema == "portfolio-ml-restated-research-dataset.v1":
         identity = _payload_hash({name: manifest[name] for name in _IDENTITY_FIELDS})
         prefix = "ml-restated-research-"
+        _validate_current_official_market(manifest)
+    elif schema == "portfolio-ml-restated-research-dataset.v3":
+        from data_module.ml_restatement_research_dataset_v3 import validate_v3_manifest_sources
+
+        validate_v3_manifest_sources(manifest)
+        identity = manifest["dataset_identity_hash"]
+        prefix = "ml-restated-research-v3-"
     else:
         from data_module.ml_restatement_research_dataset_v2_merge import (
             CORRECTED_SYMBOLS,
@@ -122,6 +129,36 @@ def validate_restated_manifest_identity(manifest: dict[str, Any]) -> str:
     if manifest.get("dataset_id") != prefix + identity[7:31]:
         raise ValueError("research dataset id mismatch")
     return identity
+
+
+def _validate_current_official_market(manifest: dict[str, Any]) -> None:
+    """新當日輸入以 v1 容器封存，官方市場宣告仍須核對原始回應。"""
+    from data_module.ml_restatement_official_market import load_official_market_capture
+    from data_module.ml_restatement_research_dataset_v3 import MARKET_SOURCE_CONTRACT
+    from ml_module.restated_research_input_contract import OFFICIAL_MARKET_CONTRACT_HASH
+
+    source = manifest.get("source_hashes", {}).get("official_market_capture")
+    aliases = dict(manifest.get("source_manifest_hashes", ()))
+    if source is None and not {"official.twse_market", "contract.official_twse_market"}.intersection(aliases):
+        return
+    if (
+        not isinstance(source, dict) or source.get("contract") != MARKET_SOURCE_CONTRACT
+        or manifest.get("dataset_purpose") != "current_inference_only"
+        or aliases.get("official.twse_market") != source.get("file_sha256")
+        or aliases.get("contract.official_twse_market") != OFFICIAL_MARKET_CONTRACT_HASH
+    ):
+        raise ValueError("current official market provenance or unit contract is inconsistent")
+    capture = load_official_market_capture(
+        Path(source["path"]), expected_file_sha256=source["file_sha256"],
+        as_of=_aware(manifest["revision_observed_at"], "revision_observed_at"),
+    )
+    decision = date.fromisoformat(manifest["date_filter"]["start"])
+    if (
+        source.get("available_at") != capture.available_at.isoformat()
+        or source.get("cutoff_date") != capture.cutoff_date.isoformat()
+        or manifest.get("observed_session_dates") != [day.isoformat() for day in sorted(capture.rows) if day < decision]
+    ):
+        raise ValueError("current official market dates or source clocks differ")
 
 
 @dataclass(frozen=True)
@@ -199,8 +236,9 @@ def prepare_restated_current_inputs(
     if revision_clock > capture:
         raise ValueError("research source was not available at capture")
     is_v2 = manifest["schema_version"] == "portfolio-ml-restated-research-dataset.v2"
-    if is_v2 and _aware(manifest["dataset_created_at"], "dataset_created_at") > capture:
-        raise ValueError("v2 dataset had not been created at current capture")
+    is_v3 = manifest["schema_version"] == "portfolio-ml-restated-research-dataset.v3"
+    if (is_v2 or is_v3) and _aware(manifest["dataset_created_at"], "dataset_created_at") > capture:
+        raise ValueError("dataset had not been created at current capture")
     sessions = tuple(date.fromisoformat(value) for value in manifest["observed_session_dates"])
     if not sessions or tuple(sorted(set(sessions))) != sessions:
         raise ValueError("research observed sessions must be sorted and unique")
@@ -224,6 +262,10 @@ def prepare_restated_current_inputs(
     source_pairs = tuple((str(name), str(digest)) for name, digest in manifest["source_manifest_hashes"])
     if len(dict(source_pairs)) != len(source_pairs) or _SOURCE_ID in dict(source_pairs):
         raise ValueError("research source ids must be unique")
+    if is_v3:
+        from ml_module.restated_research_input_contract import OFFICIAL_MARKET_CONTRACT_HASH
+
+        source_pairs += (("contract.official_twse_market", OFFICIAL_MARKET_CONTRACT_HASH),)
     source_pairs = tuple(sorted((*source_pairs, (_SOURCE_ID, manifest_hash))))
     root = manifest_path.parent
     prefix_path: Path | None = None
@@ -311,6 +353,8 @@ def prepare_restated_current_inputs(
                 expected_revision = _aware(manifest["dataset_lineage"][lineage_key]["revision_observed_at"], "row revision")
                 if record["source_revision_id"] != manifest["revision"]:
                     raise ValueError("v2 row revision differs from the bound source snapshot")
+            if is_v3 and (record["source_revision_id"] != manifest["revision"] or available != observed):
+                raise ValueError("v3 current row differs from the bound stock revision or source clock")
             if event.date() >= decision_date or event > available or available > capture or observed != expected_revision or available < observed:
                 raise ValueError("research feature event/availability/revision clocks are inconsistent")
             values = record["features_scaled_i64"]

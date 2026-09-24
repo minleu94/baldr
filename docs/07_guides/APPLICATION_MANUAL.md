@@ -3498,3 +3498,7 @@ row count／content hash 沒有變化。未同時提供 owner approval、無並�
 ## 14. 更新記錄
 
 舊版逐次更新記錄已移至[手冊更新歷史](../09_archive/APPLICATION_MANUAL_CHANGELOG_2026_09_27.md)。功能操作與安全限制仍由正文及附冊共同維護。
+
+## Phase3C 2026-09-11 candidate 法人修復
+
+受控 candidate-only 修復的完整步驟、capture custody、37 operations、history as-of 查回與 row-level rollback 規範，請見 [PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md](PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md)。正式資料、交易與帳務資料不在此流程範圍內。

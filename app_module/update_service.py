@@ -120,26 +120,32 @@ def _write_technical_indicator_publications(
     replace_market: bool = False,
     database_path: Optional[Path] = None,
     raw_alias_prevalidated: bool = False,
+    raw_alias_context: Any = None,
 ) -> int:
     """在呼叫端交易中只寫已驗證發布列，選擇性原子替換全市場資料。"""
     import pandas as pd
 
     if frame is None or frame.empty:
         return 0
-    if database_path is None and not raw_alias_prevalidated:
+    if database_path is None and raw_alias_context is not None:
+        database_path = raw_alias_context.database_path
+    if database_path is None:
         database_path = next(
             (Path(row[2]) for row in conn.execute("PRAGMA database_list") if row[1] == "main" and row[2]),
             None,
         )
-    raw_alias_active = False
+    context_was_supplied = raw_alias_context is not None
     if database_path is not None:
         from data_module.formal_technical_raw_alias_repair import (
+            create_raw_alias_writer_context,
             normalize_raw_alias_values_for_storage,
-            raw_alias_guard_enabled,
         )
 
-        raw_alias_active = raw_alias_guard_enabled(database_path)
-    if database_path is not None and not raw_alias_prevalidated:
+        if raw_alias_context is None:
+            raw_alias_context = create_raw_alias_writer_context(database_path)
+    raw_alias_active = raw_alias_context is not None
+    must_prevalidate = not raw_alias_prevalidated or not context_was_supplied
+    if database_path is not None and must_prevalidate:
         from data_module.formal_technical_raw_alias_repair import (
             prepare_raw_alias_upsert_frame,
             validate_raw_alias_replacement,
@@ -150,10 +156,15 @@ def _write_technical_indicator_publications(
                 database_path,
                 _technical_frame_records(frame),
                 replace_all=True,
+                writer_context=raw_alias_context,
             )
         elif raw_alias_active:
-            frame = prepare_raw_alias_upsert_frame(database_path, frame)
-    if raw_alias_active:
+            frame = prepare_raw_alias_upsert_frame(
+                database_path,
+                frame,
+                writer_context=raw_alias_context,
+            )
+    if raw_alias_context is not None:
         frame = normalize_raw_alias_values_for_storage(frame)
     required = {"日期", "證券代號"}
     missing = required.difference(frame.columns)
@@ -195,6 +206,10 @@ def _write_technical_indicator_publications(
                 normalized.append(value)
         values.append(tuple(normalized))
 
+    # 逐列轉成 SQLite bind values 可能耗時；metadata bytes 必須在 mutation 前重驗。
+    if raw_alias_context is not None:
+        raw_alias_context.ensure_current(database_path)
+
     if replace_market:
         conn.execute('DELETE FROM "technical_indicators"')
     conn.executemany(statement, values)
@@ -213,6 +228,7 @@ def _validate_technical_raw_alias_frame(
     *,
     replace_all: bool = False,
     replace_dates: bool = False,
+    raw_alias_context: Any = None,
 ) -> None:
     if frame is None or frame.empty:
         return
@@ -251,7 +267,45 @@ def _validate_technical_raw_alias_frame(
         _technical_frame_records(validation_frame),
         replace_all=replace_all,
         replace_dates=replace_dates,
+        writer_context=raw_alias_context,
     )
+
+
+def _preflight_and_ensure_technical_indicator_schema(
+    db: Any,
+    frame: Any,
+    *,
+    replace_all: bool,
+    raw_alias_context: Any = None,
+) -> tuple[Any, Any]:
+    """先核對最新 raw-alias marker，再允許 technical schema mutation。"""
+
+    from data_module.formal_technical_raw_alias_repair import (
+        create_raw_alias_writer_context,
+        prepare_raw_alias_upsert_frame,
+        validate_raw_alias_replacement,
+    )
+
+    database_path = Path(db.db_path)
+    if raw_alias_context is None:
+        raw_alias_context = create_raw_alias_writer_context(database_path)
+    if raw_alias_context is not None:
+        if replace_all:
+            validate_raw_alias_replacement(
+                database_path,
+                _technical_frame_records(frame),
+                replace_all=True,
+                writer_context=raw_alias_context,
+            )
+        else:
+            frame = prepare_raw_alias_upsert_frame(
+                database_path,
+                frame,
+                writer_context=raw_alias_context,
+            )
+
+    db.ensure_columns("technical_indicators", list(frame.columns))
+    return frame, raw_alias_context
 
 
 def _assert_technical_raw_aliases_unchanged(original, computed) -> None:
@@ -4766,9 +4820,12 @@ class UpdateService :
 
             revision_database = Path(getattr(self.config, 'db_file', Path(self.config.stock_data_file).parent.parent / 'sqlite/twstock.db'))
             validate_excluded_price_frame(revision_database, stock_data)
-            from data_module.formal_technical_raw_alias_repair import raw_alias_guard_enabled
+            from data_module.formal_technical_raw_alias_repair import (
+                create_raw_alias_writer_context,
+            )
 
-            raw_alias_active = raw_alias_guard_enabled(revision_database)
+            raw_alias_context = create_raw_alias_writer_context(revision_database)
+            raw_alias_active = raw_alias_context is not None
 
             stock_code_column =next (
             (col for col in ('證券代號','股票代號','證券代號','stock_id','stock_code')if col in stock_data .columns ),
@@ -4833,12 +4890,17 @@ class UpdateService :
                     revision_database,
                     stock_data,
                     replace_all=True,
+                    raw_alias_context=raw_alias_context,
                 )
                 raw_alias_full_market_prevalidated = True
 
             def validate_publication_raw_aliases(frame):
                 if raw_alias_active and not raw_alias_full_market_prevalidated:
-                    _validate_technical_raw_alias_frame(revision_database, frame)
+                    _validate_technical_raw_alias_frame(
+                        revision_database,
+                        frame,
+                        raw_alias_context=raw_alias_context,
+                    )
 
             auto_incremental =not force_all and start_date is None
             if auto_incremental :
@@ -5341,23 +5403,16 @@ class UpdateService :
 
                         if not df_db.empty:
                             validate_excluded_price_frame(Path(db.db_path), df_db)
-                            from data_module.formal_technical_raw_alias_repair import (
-                                prepare_raw_alias_upsert_frame,
-                                validate_raw_alias_replacement,
-                            )
-
-                            if full_market_replace:
-                                validate_raw_alias_replacement(
-                                    Path(db.db_path),
-                                    _technical_frame_records(df_db),
-                                    replace_all=True,
-                                )
-                            else:
-                                df_db = prepare_raw_alias_upsert_frame(
-                                    Path(db.db_path),
+                            # 最終 SQL schema/delete/upsert mutation 前重新探測 marker。
+                            # 計算期間若剛完成 formal apply，必須先套 guard 再升級 schema。
+                            df_db, raw_alias_context = (
+                                _preflight_and_ensure_technical_indicator_schema(
+                                    db,
                                     df_db,
+                                    replace_all=full_market_replace,
+                                    raw_alias_context=raw_alias_context,
                                 )
-                            db.ensure_columns('technical_indicators', list(df_db.columns))
+                            )
                             # DELETE（若符合完整全市場替換條件）與 UPSERT 必須同一連線、同一交易；
                             # 所有其他模式只 UPSERT 本輪成功計算且成功發布的 key。
                             with db.connect() as conn:
@@ -5367,6 +5422,7 @@ class UpdateService :
                                     replace_market=full_market_replace,
                                     database_path=Path(db.db_path),
                                     raw_alias_prevalidated=True,
+                                    raw_alias_context=raw_alias_context,
                                 )
                             if full_market_replace:
                                 logger.info("完整全市場重算已在單一交易中替換 technical_indicators。")

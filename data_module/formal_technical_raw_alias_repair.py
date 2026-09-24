@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -106,23 +107,34 @@ def _write_sealed(path: Path, payload: Mapping[str, Any]) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RawAliasRepairError(f"修復證據無法讀取：{path}") from exc
-    if not isinstance(payload, dict):
-        raise RawAliasRepairError(f"修復證據格式不符：{path}")
+    payload, _ = _read_json_bytes(path)
     return payload
 
 
+def _read_json_bytes(path: Path) -> tuple[dict[str, Any], str]:
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RawAliasRepairError(f"修復證據無法讀取：{path}") from exc
+    if not isinstance(payload, dict):
+        raise RawAliasRepairError(f"修復證據格式不符：{path}")
+    return payload, hashlib.sha256(raw).hexdigest()
+
+
 def _read_sealed(path: Path) -> dict[str, Any]:
-    payload = _read_json(path)
+    payload, _ = _read_sealed_bytes(path)
+    return payload
+
+
+def _read_sealed_bytes(path: Path) -> tuple[dict[str, Any], str]:
+    payload, raw_sha256 = _read_json_bytes(path)
     actual = payload.pop("payload_sha256", None)
     expected = hashlib.sha256(_json_bytes(payload)).hexdigest()
     if actual != expected:
         raise RawAliasRepairError(f"修復紀錄自我雜湊不符：{path}")
     payload["payload_sha256"] = actual
-    return payload
+    return payload, raw_sha256
 
 
 @contextmanager
@@ -1860,39 +1872,111 @@ def recover(
         release_heavy_chain_reservation(lock)
 
 
-def load_applied_raw_alias_receipt(database_path: Path | str) -> dict[str, Any] | None:
-    """載入唯一已套用的六欄 marker；後續 writer guard 可共用此驗證入口。"""
+@dataclass
+class RawAliasWriterContext:
+    """單次 writer/update 呼叫內重用已驗證 metadata parse 結果。"""
+
+    database_path: Path
+    root: Path
+    marker: dict[str, Any]
+    source_db: Path
+    source_file_identity: Mapping[str, int]
+    receipt_root: Path
+    receipt_entries: tuple[str, ...]
+    metadata_hashes: tuple[tuple[Path, str], ...]
+    cache_hits: int = 0
+
+    def ensure_current(self, database_path: Path | str | None = None) -> Path:
+        requested_database = (
+            self.database_path
+            if database_path is None
+            else Path(database_path).resolve(strict=True)
+        )
+        if requested_database != self.database_path:
+            raise RawAliasRepairError("raw alias writer context 與要求寫入的 SQLite 路徑不同")
+        if self.root.resolve(strict=True) != self.root:
+            raise RawAliasRepairError("raw alias writer context 的資料根目錄路徑已變更")
+        if _database_path(self.root).resolve(strict=True) != self.database_path:
+            raise RawAliasRepairError("raw alias writer context 的正式 SQLite 路徑已變更")
+        try:
+            if (
+                self.receipt_root.is_symlink()
+                or not self.receipt_root.is_dir()
+                or self.receipt_root.resolve(strict=True) != self.receipt_root
+            ):
+                raise RawAliasRepairError("raw alias receipt 根目錄已變更或不可讀")
+            entry_paths = tuple(self.receipt_root.iterdir())
+            if any(path.is_symlink() or not path.is_dir() for path in entry_paths):
+                raise RawAliasRepairError("raw alias receipt inventory 含變更或未知項目")
+            current_entries = tuple(sorted(path.name for path in entry_paths))
+            if current_entries != self.receipt_entries:
+                raise RawAliasRepairError("raw alias receipt inventory 在本次更新期間已變更")
+            for path, expected_sha256 in self.metadata_hashes:
+                if path.is_symlink() or not path.is_file():
+                    raise RawAliasRepairError(f"raw alias evidence 在本次更新期間消失：{path}")
+                if _file_hash(path) != expected_sha256:
+                    raise RawAliasRepairError(f"raw alias evidence bytes 在本次更新期間已變更：{path}")
+            if (
+                self.source_db.is_symlink()
+                or not self.source_db.is_file()
+                or self.source_db.resolve(strict=True) != self.source_db
+                or _file_identity(self.source_db) != dict(self.source_file_identity)
+            ):
+                raise RawAliasRepairError("raw alias immutable source 檔案身分在本次更新期間已變更")
+        except OSError as exc:
+            raise RawAliasRepairError("raw alias writer evidence 在本次更新期間不可讀") from exc
+        self.cache_hits += 1
+        return self.source_db
+
+
+def _load_applied_raw_alias_receipt_evidence(
+    database_path: Path | str,
+) -> tuple[dict[str, Any] | None, dict[Path, str], Path, tuple[str, ...]]:
+    """一次讀取並驗 seal，回傳 marker 與本次 scope 的 raw evidence SHA。"""
+
     database_path = Path(database_path).resolve(strict=True)
     root = database_path.parent.parent if database_path.parent.name.casefold() == "sqlite" else database_path.parent
     receipt_root = root / RECEIPT_ROOT
     if not receipt_root.exists():
-        return None
+        return None, {}, receipt_root, ()
     if receipt_root.is_symlink() or not receipt_root.is_dir():
         raise RawAliasRepairError("raw alias receipt 根目錄不是可信目錄")
+    run_dirs = sorted(receipt_root.iterdir())
+    receipt_entries = tuple(path.name for path in run_dirs)
     applied: list[dict[str, Any]] = []
-    for run_dir in sorted(receipt_root.iterdir()):
+    evidence_hashes: dict[Path, str] = {}
+    for run_dir in run_dirs:
         if run_dir.is_symlink() or not run_dir.is_dir():
             raise RawAliasRepairError("raw alias receipt 根目錄含未知項目")
         journal_path = run_dir / "journal.json"
         receipt_path = run_dir / "receipt.json"
         if not journal_path.exists() and not receipt_path.exists():
             raise RawAliasRepairError("raw alias receipt run 缺少 journal/receipt")
-        journal = _read_sealed(journal_path)
+        journal, journal_sha256 = _read_sealed_bytes(journal_path)
+        evidence_hashes[journal_path] = journal_sha256
         if journal.get("state") == "pending":
             raise RawAliasRepairError("raw alias 修復仍 pending；writer 必須 fail closed")
         if journal.get("state") == "rolled_back":
             continue
-        receipt = _read_sealed(receipt_path)
+        receipt, receipt_sha256 = _read_sealed_bytes(receipt_path)
+        evidence_hashes[receipt_path] = receipt_sha256
         if receipt.get("state") != "applied" or journal.get("state") != "applied":
             raise RawAliasRepairError("raw alias 修復 receipt 狀態不明")
-        if journal.get("receipt_sha256") != _file_hash(receipt_path):
+        if journal.get("receipt_sha256") != receipt_sha256:
             raise RawAliasRepairError("raw alias applied receipt hash 與 journal 不符")
         applied.append(receipt)
     if len(applied) > 1:
         raise RawAliasRepairError("raw alias 有多個已套用版本，writer 必須 fail closed")
     if not applied:
-        return None
-    return applied[0]
+        return None, evidence_hashes, receipt_root, receipt_entries
+    return applied[0], evidence_hashes, receipt_root, receipt_entries
+
+
+def load_applied_raw_alias_receipt(database_path: Path | str) -> dict[str, Any] | None:
+    """載入唯一已套用的六欄 marker；後續 writer guard 可共用此驗證入口。"""
+
+    marker, _, _, _ = _load_applied_raw_alias_receipt_evidence(database_path)
+    return marker
 
 
 def assert_legacy_technical_writer_allowed(
@@ -1919,8 +2003,11 @@ def assert_legacy_technical_writer_allowed(
         )
 
 
-def _raw_alias_authority_source(database_path: Path, marker: Mapping[str, Any]) -> Path:
-    """核對 marker 指向的 immutable source 與原 technical publication 身分。"""
+def _raw_alias_authority_source_evidence(
+    database_path: Path,
+    marker: Mapping[str, Any],
+) -> tuple[Path, dict[Path, str], dict[str, int]]:
+    """驗證 technical metadata；同一次讀取完成 SHA 計算與 JSON parse。"""
 
     database_path = database_path.resolve(strict=True)
     root = database_path.parent.parent if database_path.parent.name.casefold() == "sqlite" else database_path.parent
@@ -1946,15 +2033,15 @@ def _raw_alias_authority_source(database_path: Path, marker: Mapping[str, Any]) 
         source_json_path, manifest_path, receipt_path, journal_path,
     )):
         raise RawAliasRepairError("raw alias immutable source 缺少正式技術 receipt")
+    source, source_json_sha256 = _read_json_bytes(source_json_path)
+    manifest, manifest_sha256 = _read_json_bytes(manifest_path)
+    receipt, receipt_sha256 = _read_json_bytes(receipt_path)
+    journal, journal_sha256 = _read_json_bytes(journal_path)
     if (
-        _file_hash(manifest_path) != marker.get("source_technical_manifest_sha256")
-        or _file_hash(receipt_path) != marker.get("source_technical_receipt_sha256")
+        manifest_sha256 != marker.get("source_technical_manifest_sha256")
+        or receipt_sha256 != marker.get("source_technical_receipt_sha256")
     ):
         raise RawAliasRepairError("raw alias immutable source 的技術 manifest/receipt 身分已變更")
-    source = _read_json(source_json_path)
-    manifest = _read_json(manifest_path)
-    receipt = _read_json(receipt_path)
-    journal = _read_json(journal_path)
     if (
         receipt != journal
         or receipt.get("state") != "applied"
@@ -1968,7 +2055,67 @@ def _raw_alias_authority_source(database_path: Path, marker: Mapping[str, Any]) 
         or receipt.get("manifest_sha256") != marker.get("source_technical_manifest_sha256")
     ):
         raise RawAliasRepairError("raw alias immutable source 與 applied 技術 receipt 內容不一致")
+    return source_db, {
+        source_json_path: source_json_sha256,
+        manifest_path: manifest_sha256,
+        receipt_path: receipt_sha256,
+        journal_path: journal_sha256,
+    }, _file_identity(source_db)
+
+
+def _raw_alias_authority_source(database_path: Path, marker: Mapping[str, Any]) -> Path:
+    """核對 marker 指向的 immutable source 與原 technical publication 身分。"""
+
+    source_db, _, _ = _raw_alias_authority_source_evidence(database_path, marker)
     return source_db
+
+
+def create_raw_alias_writer_context(
+    database_path: Path | str,
+) -> RawAliasWriterContext | None:
+    """建立單次 writer/update 範圍的已驗證 metadata context。"""
+
+    database_path = Path(database_path)
+    if not database_path.is_file():
+        root = (
+            database_path.parent.parent
+            if database_path.parent.name.casefold() == "sqlite"
+            else database_path.parent
+        )
+        if (root / RECEIPT_ROOT).exists():
+            raise RawAliasRepairError(
+                "raw alias 修訂 marker 存在但 writer SQLite 不可讀；停止技術指標寫入"
+            )
+        return None
+    marker, raw_hashes, receipt_root, receipt_entries = (
+        _load_applied_raw_alias_receipt_evidence(database_path)
+    )
+    if marker is None:
+        return None
+    database_path = database_path.resolve(strict=True)
+    root = (
+        database_path.parent.parent
+        if database_path.parent.name.casefold() == "sqlite"
+        else database_path.parent
+    ).resolve(strict=True)
+    source_db, technical_hashes, source_identity = (
+        _raw_alias_authority_source_evidence(database_path, marker)
+    )
+    metadata_hashes = {**raw_hashes, **technical_hashes}
+    context = RawAliasWriterContext(
+        database_path=database_path,
+        root=root,
+        marker=marker,
+        source_db=source_db,
+        source_file_identity=source_identity,
+        receipt_root=receipt_root.resolve(strict=True),
+        receipt_entries=receipt_entries,
+        metadata_hashes=tuple(sorted(metadata_hashes.items(), key=lambda item: str(item[0]))),
+    )
+    # Detect a change between parsing the separate metadata documents and context capture.
+    context.ensure_current()
+    context.cache_hits = 0
+    return context
 
 
 def validate_raw_alias_replacement(
@@ -1978,6 +2125,7 @@ def validate_raw_alias_replacement(
     replace_all: bool = False,
     replace_dates: bool = False,
     allow_missing_aliases: bool = False,
+    writer_context: RawAliasWriterContext | None = None,
 ) -> None:
     """以有界 SQLite spool 驗證 incoming 技術列，不允許舊 cache 覆寫六欄。"""
 
@@ -1985,11 +2133,17 @@ def validate_raw_alias_replacement(
         raise RawAliasRepairError("raw alias 替換模式不可同時指定整表與日期範圍")
 
     database_path = Path(database_path)
-    marker = _load_writer_marker(database_path)
-    if marker is None:
+    context_created = writer_context is None
+    context = writer_context or create_raw_alias_writer_context(database_path)
+    if context is None:
         return
-    database_path = database_path.resolve(strict=True)
-    source_db = _raw_alias_authority_source(database_path, marker)
+    if context_created:
+        database_path = context.database_path
+        source_db = context.source_db
+    else:
+        source_db = context.ensure_current(database_path)
+        database_path = context.database_path
+    marker = context.marker
 
     with tempfile.TemporaryDirectory(prefix="raw-alias-writer-guard-") as temp_dir:
         spool_path = Path(temp_dir) / "incoming.sqlite"
@@ -2108,6 +2262,8 @@ def validate_raw_alias_replacement(
 def prepare_raw_alias_upsert_frame(
     database_path: Path | str,
     frame,
+    *,
+    writer_context: RawAliasWriterContext | None = None,
 ):
     """驗證受保護技術 upsert，並為省略欄位補 immutable 日價或既有值。"""
 
@@ -2119,22 +2275,29 @@ def prepare_raw_alias_upsert_frame(
         raise RawAliasRepairError("technical alias incoming 欄名不可重複")
 
     database_path = Path(database_path)
-    marker = _load_writer_marker(database_path)
-    if marker is None:
+    context_created = writer_context is None
+    context = writer_context or create_raw_alias_writer_context(database_path)
+    if context is None:
         return frame
-    database_path = database_path.resolve(strict=True)
+    if context_created:
+        database_path = context.database_path
+    else:
+        context.ensure_current(database_path)
+        database_path = context.database_path
+    marker = context.marker
     missing_aliases = [name for name in ALIASES if name not in frame.columns]
     present_aliases = set(ALIASES).intersection(frame.columns)
     if not missing_aliases:
         validate_raw_alias_replacement(
             database_path,
             _frame_records(frame),
+            writer_context=context,
         )
-        return frame
+        return normalize_raw_alias_values_for_storage(frame)
     if not set(KEYS) <= set(frame.columns):
         raise RawAliasRepairError("technical alias incoming 缺少日期或證券代號")
 
-    source_db = _raw_alias_authority_source(database_path, marker)
+    source_db = context.source_db
     result = frame.copy()
     for name in missing_aliases:
         result[name] = None

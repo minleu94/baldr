@@ -391,7 +391,7 @@ class DBManager:
                 from data_module.daily_price_revision_write_guard import validate_excluded_price_frame
                 validate_excluded_price_frame(Path(self.db_path), df)
                 from data_module.formal_technical_raw_alias_repair import (
-                    load_applied_raw_alias_receipt,
+                    create_raw_alias_writer_context,
                     normalize_raw_alias_values_for_storage,
                     validate_raw_alias_replacement,
                 )
@@ -401,8 +401,8 @@ class DBManager:
                 # 必須提供完整列，否則由 raw-alias guard 在 DELETE 前拒絕。
                 # 未啟用正式 raw-alias marker 的根目錄保持舊 writer 路徑，不額外查詢
                 # daily_prices／technical_indicators，也不因新 helper 改變一般測試／開發 DB。
-                raw_alias_marker = load_applied_raw_alias_receipt(Path(self.db_path))
-                if if_exists == 'append' and raw_alias_marker is not None:
+                raw_alias_context = create_raw_alias_writer_context(Path(self.db_path))
+                if if_exists == 'append' and raw_alias_context is not None:
                     df = self._prepare_technical_append_frame(df)
 
                 columns = [str(column) for column in df.columns]
@@ -414,8 +414,9 @@ class DBManager:
                     Path(self.db_path),
                     records,
                     replace_all=(if_exists == 'replace'),
+                    writer_context=raw_alias_context,
                 )
-                if raw_alias_marker is not None:
+                if raw_alias_context is not None:
                     df = normalize_raw_alias_values_for_storage(df)
 
             preserve_protected_schema = (

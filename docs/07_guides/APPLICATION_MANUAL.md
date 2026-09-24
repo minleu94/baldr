@@ -2,13 +2,26 @@
 
 ## 正式行情修復補充（2026-09-23）
 
-大盤已改用證交所實際開高低收及成交股數，補齊九個原先缺漏的歷史週六共 14,869 筆上市／上櫃價量。另依完整官方回應排除三個休市日及 5/20 的 54 筆錯日紀錄，共 2,942 筆；這些日期／代號不應再顯示為交易 K 線。正常缺少 OHLC 的列仍保持空白，即使有零股成交，也不以收盤價填滿開高低。
+本輪已確認的歷史錯價、缺漏交易日、錯日紀錄、相依技術指標與圖表快取已完成修復及全量讀回。5,331,231 列日價與技指、2,210 份技術 CSV 及每日整合快取已同步；原始檔與修復前備份保留。買賣價／量、本益比及漲跌價差六個衍生複本也已依權威日價還原，沒有報價時保留空白，不填零或前日數字。
 
-本輪技術指標與圖表快取仍在隔離重算驗收中。完成後請重新開啟程式，從觀察清單進入「個股研究」，重新載入價格圖；將游標移到 2026-05-20 的 K 線，1256 收盤應為 183 元、1477 為 213 元。區塊標頭的「資料日」表示最新來源日，圖上的歷史價格則以該根 K 線的日期為準。
+請重新開啟程式，從觀察清單進入「個股研究」，重新載入價格圖；將游標移到 2026-05-20 的 K 線，1256 收盤應為 183 元、1477 為 213 元。區塊標頭的「資料日」表示最新來源日，歷史價格以該根 K 線的日期為準。九個缺漏的歷史週六已補回 14,869 列；三個休市日及 5/20 的 54 筆錯置紀錄已從查詢資料排除，合計 2,942 列。官方缺開高低收或買賣報價仍是缺值，不代表股票出現新的利空。
 
-日常仍使用原有的「資料更新」入口，程式會自動套用已核驗修訂；沒有新 raw 檔時也會同步既有整合快取，不需自行編輯 CSV。若顯示舊來源將覆蓋已修訂價格、缺少已補回交易日、包含已核驗排除列，或修訂證據無法驗證，表示本次更新已停止保護資料；不是股票的新買賣訊號。保留訊息，依[正式資料修復紀錄](../06_qa/FORMAL_DATA_REPAIR_2026_09_23.md)查驗，不刪除修訂檔或清空資料庫重試。
+日常沿用「資料更新」入口，已核驗修訂會自動套用，完整重算保留資料庫既有的五、六碼證券。若顯示來源錯值、缺少必要股票／日期、修復尚未完成或證據無法驗證，表示這次寫入已停止保護資料，不是買賣訊號。保留訊息並查閱[正式資料修復紀錄](../06_qa/FORMAL_DATA_REPAIR_2026_09_23.md)，不要刪除修訂檔或清空資料庫重試。舊版逐股計算腳本會停止，改由正常資料更新流程處理。
 
-正式模型維持停用／rule_only，因為研究驗證表現尚未優於基準，並非等程式上線就能解除。新資料版本須有自己的模型與驗收身分；原模型、研究結果與來源封存繼續保留。下方 9/22 段落是前一輪修復紀錄，最新範圍以本節及正式修復紀錄為準。
+之後若再發現錯價，資料仍可修復；請記下股票代號、歷史日期、看到異常的頁面。每日新增行情照常更新，已修訂歷史值則走維護修訂流程：先暫停日常更新與其他寫入、核驗新來源及影響範圍、建立新備份與修改前後差異、套用修訂，再重算相依指標／快取及評估模型影響。最後核對正式資料並完成保護版本銜接，才恢復日常更新。目前沒有一般使用者的一鍵歷史修復／保護版本切換；不要刪除保護紀錄、手改 hash 或反覆重跑來繞過拒絕。
+
+兩組新模型已重新建立資料、完整訓練、獨立評估及各 13 檔研究推論，正式判斷仍使用既有規則（rule_only）。尚未啟用也包含模型效果未證明優於基準，並非等系統上線便自動解除。來源與模型版本分開保留，詳見[新候選模型驗收](../06_qa/REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)。本次完成的是已確認的行情與相依資料問題，不代表基本面歷史公告時間、產業標籤或所有資料來源的新鮮度都已齊備。
+
+<details>
+<summary>進階維護與回復（一般操作不需使用）</summary>
+
+進階維護使用 `scripts/repair_formal_technical_raw_aliases.py`。依序執行 `--prepare --root <DATA_ROOT> --technical-receipt-dir <APPLIED_TECHNICAL_RECEIPT> --receipt-dir <NEW_RECEIPT>`、同一 receipt 的 `--stage`、`--audit --expected-manifest-hash <STAGE_FILE_SHA256>`，核對結果後才使用 `--apply --expected-manifest-hash <STAGE_FILE_SHA256> --confirm repair-formal-technical-raw-aliases`。各模式互斥；`--receipt-dir` 指定本輪所有來源、備份與 journal，hash 綁定確切 staging 版本，輸出 `applied` 才代表完成發布。中斷時用相同 receipt/hash 的 `--resume`；回復用 `--rollback`，同樣需要確認字串。後續資料漂移時停止，不得手改 hash。回復順序為六欄複本、每日快取、技指、錯日排除，再到原日價／大盤修訂。這是維護工具，日常使用者不需重跑。
+
+六欄 writer 目前只接受唯一已套用的修訂版本；多個 applied 版本、pending 或證據漂移會停止寫入。下一次同範圍修訂不能只再加一個 applied receipt，必須另行驗證舊／新版本的銜接；現有工具尚未提供自動 supersession。已發生日常更新後，也不能假定舊 rollback 仍可直接執行，必須先通過 before／after 漂移檢查，否則以當時正式資料建立新的受控更正方案。修復的 heavy-chain reservation 並非所有日常 writer 的共同鎖，apply／resume／rollback 期間必須停止一般 updater、CSV 匯入與其他寫入；metadata 重驗不能替代這項維護前提。
+
+</details>
+
+下方 9/22 與舊 v3 段落保留作歷史追溯；目前結果以本節及新候選驗收為準。
 
 ## 2026-09-22 歷史價格更正與舊模型
 
@@ -30,9 +43,9 @@
 
 ### 修訂模型的當日研究判讀
 
-9/23 已完成兩組模型的股票與官方大盤來源修訂後重訓：bounded 使用 17,285 筆有完整價格路徑的資料，全市場 H5 使用 v3 的全部 3,433,790 個成熟訓練列，沒有縮成抽樣訓練。兩者都已用最新來源對 13 檔股票（含 1256、1477）完成推論，測試集指標也經獨立重算。
+最新修復來源候選已完成兩組完整重訓：全市場 H5 資料 3,498,147 列，fit 使用全部 3,469,960 個成熟候選列；bounded 使用 21,898 列、兩演算法與四期間。兩者都已對 13 檔股票（含 1256、1477）完成最新來源推論，評估收據經獨立核對。舊 v3 的 3,433,790／17,285 訓練列結果只適用於舊來源，保留供比較。
 
-目前仍不可恢復正式模型：研究資料的大盤來源已修正，先前異常偏高的風險誤差已收斂，但整體評估仍未證明穩定優於簡單基準，部分機率校準反而變差。這是模型品質限制，不是個股突然變危險；日常維持目前的 rule_only，不手動解除舊模型隔離。研究入口成功只代表可執行且來源核對通過，不能據此採用預測或持股比例；原配置答案全是現金，模型尚未學會配置。該研究版本完成後，正式大盤 SQLite／CSV 已另行受控修復，見上方 9/23 補充；已封存的 v3 訓練結果只對其原來源版本成立。模型評估見[完整 v3 驗收](../06_qa/FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)。
+目前仍不可恢復正式模型：資料已更正，但部分風險與機率指標仍未優於簡單基準，不能把來源修復或訓練完成當成模型有效的證明。日常維持 rule_only；缺失的歷史產業標籤保持缺值，原配置 targets 全是現金的限制也沒有改變。新結果見[修復來源候選驗收](../06_qa/REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)，舊結果見[完整 v3 驗收](../06_qa/FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)。
 
 本輪也修正合法千分位價格（例如 `1,005.00`）被誤當成缺值的解析問題；真正缺價或逗號格式錯誤仍顯示缺值。這項程式修正不會自動重寫已封存資料或模型，最終重訓必須改用帶新來源身分的修正資料版本。狀態見[模型修復執行紀錄](../06_qa/MODEL_REPAIR_EXECUTION_2026_09_23.md)。
 
@@ -42,7 +55,7 @@
 
 當日研究入口 `run_ml_allocation_restated_shadow.py`／`run_bounded_restated_current_heads.py` 使用 `--source-db` 並指定 v3 範本時，市場前綴自動讀取範本綁定的官方月報，股票仍來自唯讀 SQLite。更新官方月份後，可成對指定 `--official-market-manifest <CAPTURE_JSON>` 與 `--official-market-hash <FILE_SHA256>`；這兩個參數必須搭配 `--source-db`，資料取得鐘不得晚於此次擷取，僅使用 T-1 以前資料。模型使用官方市場訓練而當日輸入仍是舊市場定義時，兩條入口及底層研究推論都會拒絕，不自動降級；應核對官方來源清冊與契約，不要刪掉來源標記重試。新輸入保留自己的 identity，原模型與資料集不覆寫；輸出仍是研究結果，不授予正式配置或交易權限。
 
-原 bounded 家族另使用 `python -m data_module.bounded_official_market_restatement`，指定 `--parent-manifest-path`／`--expected-parent-hash`（已修復股票技術前綴的 bounded v2）、`--source-snapshot-path`／`--expected-snapshot-hash`（同一 run02）、`--official-market-manifest`／`--expected-official-market-hash`（官方大盤封存）、`--corporate-action-manifest`（原 bounded 綁定的官方公司事件）和新的 `--output-directory`。入口替換 8 個市場值、5 個相依品質欄並重算四個 horizon；其餘 49 欄、原現金 targets／投組狀態保留。若原決策日非官方交易日、股票價格路徑不完整或新區間碰到公司事件，該列不進訓練，會出現在新清冊 `restatement.excluded_rows`，原資料不刪除。原四組日期窗保持，標籤成熟期按官方交易日重算；此獨立研究 profile 明示修訂鐘晚於歷史 fold，不能當作歷史 PIT／正式 OOS。新清冊經 `train_bounded_restated_research.py` 訓練後，還須檢查獨立評估及最新輸入結果。
+原 bounded 家族的舊 v3 路徑使用 `python -m data_module.bounded_official_market_restatement`，指定 `--parent-manifest-path`／`--expected-parent-hash`（已修復股票技術前綴的 bounded v2）、`--source-snapshot-path`／`--expected-snapshot-hash`（同一 run02）、`--official-market-manifest`／`--expected-official-market-hash`（官方大盤封存）、`--corporate-action-manifest`（原 bounded 綁定的官方公司事件）和新的 `--output-directory`。入口替換 8 個市場值、5 個相依品質欄並重算四個 horizon；其餘 49 欄、原現金 targets／投組狀態保留。若原決策日非官方交易日、股票價格路徑不完整或新區間碰到公司事件，該列不進訓練，會出現在新清冊 `restatement.excluded_rows`，原資料不刪除。原四組日期窗保持，標籤成熟期按官方交易日重算；此獨立研究 profile 明示修訂鐘晚於歷史 fold，不能當作歷史 PIT／正式 OOS。新清冊經 `train_bounded_restated_research.py` 訓練後，還須檢查獨立評估及最新輸入結果。
 
 bounded 缺價排除可能讓原日期窗中的有效決策日減少。consumer 會依仍有樣本的日期再次檢查原 60 日 purge，必要時只把訓練截止日往前收，保留原測試區間；`preflight.folds` 同時顯示 declared／effective train end。原 trainer 的 60 日 purge、5 日 embargo、label maturity 與 expanding-window 檢查照常執行，不能藉由降低天數略過失敗。
 
@@ -77,7 +90,9 @@ bounded 缺價排除可能讓原日期窗中的有效決策日減少。consumer 
 
 `training` 參數指定模型確實使用的資料；`current` 參數指定當日輸入。需要從 SQLite 重新擷取時，同樣加上 `--source-db` 與兩個修訂 receipt 參數，這時 current manifest 僅作特徵契約範本。輸出位於 `bounded_current_heads/<receipt-hash>.json`，逐股列出三組特徵、四個期間、兩種原演算法的 24 組研究預測；成功狀態為 `completed_research_predictions`。它沒有持股配置建議，不能用這些數字代替買賣指令。
 
-若 bounded 的特徵登錄表因重算改了來源識別，程式會驗證明列的轉換證據：62 個名稱／順序／尺度及所有其餘欄位不變，只有 20 個技術指標的來源資訊可更新。兩端登錄身分都留在結果中；任意改尺度、特徵家族或標準化規則會拒絕。輸出須在模型、訓練資料和當日資料目錄以外；來源 hash／日期錯誤時先修來源並產新版本，不覆寫已封存檔案。
+若 bounded 的特徵登錄表因重算改了來源識別，程式會驗證明列的轉換證據。舊路徑只更新技指與官方市場來源；本輪候選另外明列八個技指原始欄位改讀權威日價，重算 46 個股票／品質 slots 與 13 個市場 slots，保留三個產業 slots。52 個來源定義及 62 個模型欄位的名稱、順序、尺度、dtype 與缺值規則不變，任意改尺度、特徵家族或標準化仍會拒絕。兩端登錄身分都保留於結果；來源 hash／日期錯誤時產生新版本，不覆寫已封存檔案。
+
+本輪新來源使用 `scripts/build_ml_restatement_candidate.py`，指定 `--snapshot-db`／`--expected-snapshot-sha256`、`--source-manifest`／`--expected-source-manifest-sha256`、官方市場 manifest/hash，以及新的 `--output-dir`／`--custody-dir`。入口建立含正式來源修訂證據的 profile，消費者會重新核驗；完整建置不加列數或股票限制。bounded 的官方來源入口另需成對指定 `--candidate-source-profile-path`／`--expected-candidate-source-profile-hash`，缺少本輪 profile 不能退回舊路徑。此工作僅建立新的研究版本，與重構凍結的 ML 輸入契約分開，不啟用正式模型。
 
 ### 修訂研究模型的維護重訓
 

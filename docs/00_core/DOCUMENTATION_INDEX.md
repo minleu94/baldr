@@ -32,7 +32,10 @@
 
 ## 2026-09-08 整併與下一輪工作
 
-- [錯價修復後 Allocation 重訓 Runner QA（2026-09-23）](../06_qa/RESTATED_ALLOCATION_REPAIR_TRAINING_2026_09_23.md)：封存 restated research 資料的實際 H5／四 horizon fit、purged heldout、naive baseline、來源／套件指紋與不升格限制；只完成 2,697 rows sample，full data fit 仍待資料建置完成。
+- [正式資料修復與全量驗收（2026-09-23）](../06_qa/FORMAL_DATA_REPAIR_2026_09_23.md)：來源價量、交易日、20 指標、六欄複本、快取與日常重匯防護。
+- [修復來源候選模型驗收（2026-09-23）](../06_qa/REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)：最新來源的兩組資料、完整訓練、獨立評估及 13 檔推論；沒有晉升模型。
+- [舊官方市場 v3 完整驗收](../06_qa/FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)：舊來源版本的完整訓練與效果，保留歷史比較。
+- [錯價修復後 Allocation 重訓 Runner QA（2026-09-23）](../06_qa/RESTATED_ALLOCATION_REPAIR_TRAINING_2026_09_23.md)：早期 2,697 列 runner 驗證；後續完整訓練與最新來源結果見上列驗收。
 - [5/20 歷史價格稽核與 9/22 受控修復](../06_qa/HISTORICAL_PRICE_SPIKE_2026_09_21.md)：868 筆來源核對、正式修復、備份／逐列回滾與相依指標收口。
 - [價格修訂的模型影響與隔離](../06_qa/PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md)：實際 shadow／calibration 用途、兩個已知模型 hash 保守隔離、PIT／forward label 修訂保護與 55 tests。
 - [測試資產整理與候選處置結案報告 (2026-09-17)](../06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：限定補正結案、AST無損重算、全候選逐列處置表、bounded 母體邊界與獨立審閱證據。

@@ -7,6 +7,7 @@ import time
 import logging
 import json
 import tempfile
+import sqlite3
 from tqdm import tqdm
 
 # 將專案根目錄加入 sys.path 以載入 data_module
@@ -20,6 +21,7 @@ from data_module.historical_session_revision import RECEIPT_DIR as SESSION_RECEI
 from data_module.historical_session_revision import validate_session_replacement
 
 DAILY_MIGRATION_CHUNK_SIZE = 50000
+TECHNICAL_MIGRATION_CHUNK_SIZE = 10000
 
 def setup_logging(config: TWStockConfig) -> logging.Logger:
     """設定日誌格式"""
@@ -287,8 +289,24 @@ def migrate_daily_prices(config: TWStockConfig, db: DBManager, logger: logging.L
     except Exception as e:
         logger.error(f"個股每日價格歷史遷移發生異常: {str(e)}")
 
+def _quote_sqlite_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _technical_stage_records(
+    connection: sqlite3.Connection,
+    columns: list[str],
+):
+    cursor = connection.execute(
+        "SELECT " + ",".join(_quote_sqlite_identifier(name) for name in columns)
+        + ' FROM "staged_technical_indicators" ORDER BY "證券代號","日期"'
+    )
+    for row in cursor:
+        yield dict(zip(columns, row, strict=True))
+
+
 def migrate_technical_indicators(config: TWStockConfig, db: DBManager, logger: logging.Logger):
-    """遷移 technical_analysis/ 目錄下的所有個股技術指標 CSV """
+    """先完整 staging／來源驗證，再以單一交易重匯技術指標 CSV。"""
     tech_dir = config.technical_dir
     if not tech_dir.exists():
         logger.warning(f"未找到技術指標目錄: {tech_dir}")
@@ -302,52 +320,119 @@ def migrate_technical_indicators(config: TWStockConfig, db: DBManager, logger: l
         
     logger.info(f"開始遷移技術指標，共偵測到 {len(csv_files)} 檔個股指標 CSV...")
     start_time = time.time()
-    
-    # 清空現有 table 進行全新載入
-    with db.connect() as conn:
-        conn.execute("DELETE FROM technical_indicators;")
-        
-    success_count = 0
-    
-    # 使用 tqdm 顯示精美進度條
-    for file_path in tqdm(csv_files, desc="遷移個股技術指標"):
-        # 檔名格式為 {stock_id}_indicators.csv
-        stock_id = file_path.name.split('_')[0]
-        if len(stock_id) != 4 or not stock_id.isdigit():
-            continue
-            
+    database_path = Path(db.db_path)
+    excluded_price_columns = {
+        '證券名稱', '開盤價', '最高價', '最低價', '收盤價', '成交股數', '成交量',
+    }
+    # 代號 universe 以既有 daily_prices 為準。保留已存在來源中的 5/6 碼
+    # 上市櫃代號（例如 1101B、2887Z1），但不因目錄裡多出 CSV 擴張 universe。
+    source_symbols_connection = sqlite3.connect(database_path)
+    try:
+        source_symbols = {
+            str(row[0]).strip()
+            for row in source_symbols_connection.execute(
+                'SELECT DISTINCT "證券代號" FROM daily_prices '
+                'WHERE "證券代號" IS NOT NULL'
+            )
+        }
+    finally:
+        source_symbols_connection.close()
+    eligible_files = [
+        file_path for file_path in sorted(csv_files)
+        if file_path.name.rsplit('_', 1)[0] in source_symbols
+        and file_path.name.endswith('_indicators.csv')
+    ]
+    if not eligible_files:
+        logger.warning("沒有可匯入的個股技術指標 CSV；未清除 technical_indicators。")
+        return
+
+    columns = ['日期', '證券代號']
+    seen_columns = set(columns)
+    for file_path in eligible_files:
+        header = pd.read_csv(file_path, encoding='utf-8-sig', nrows=0)
+        if '日期' not in header.columns:
+            raise ValueError(f'技術指標 CSV 缺少日期欄：{file_path}')
+        for column in header.columns:
+            if column not in excluded_price_columns and column not in seen_columns:
+                columns.append(str(column))
+                seen_columns.add(str(column))
+
+    with tempfile.TemporaryDirectory(prefix='technical-indicator-migration-') as temp_dir:
+        stage_db_path = Path(temp_dir) / 'validated_technical_indicators.sqlite'
+        stage_connection = sqlite3.connect(stage_db_path)
         try:
-            df = pd.read_csv(file_path, encoding='utf-8-sig')
-            if df.empty:
-                continue
-                
-            # 標準化欄位與日期
-            df['日期'] = standardize_date(df['日期'])
-            df['證券代號'] = stock_id
-            
-            # 技術指標通常會包含開高低收等欄位，為了保持 tables 解耦，
-            # 我們在 technical_indicators 表中僅儲存 '日期', '證券代號' 和「所有技術指標欄位」（排除價格重複欄位）
-            cols_to_drop = [c for c in ['證券名稱', '開盤價', '最高價', '最低價', '收盤價', '成交股數', '成交量'] if c in df.columns]
-            if cols_to_drop:
-                df = df.drop(columns=cols_to_drop)
-                
-            # 確保除了日期與證券代號外，其餘所有指標欄位皆為數值型 Real
-            for col in df.columns:
-                if col not in ['日期', '證券代號']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-                    
-            # 寫入 SQLite (write_dataframe 會自動進行 schema 欄位對齊升級)
-            success = db.write_dataframe('technical_indicators', df, if_exists='append')
-            if success:
-                success_count += 1
-            else:
-                logger.error(f"股票 {stock_id} 技術指標寫入 SQLite 失敗")
-                
-        except Exception as e:
-            logger.error(f"遷移股票 {stock_id} 技術指標發生異常: {str(e)}")
-            
+            stage_connection.execute('PRAGMA journal_mode=DELETE;')
+            definitions = ','.join(_quote_sqlite_identifier(name) for name in columns)
+            stage_connection.execute(
+                f'CREATE TABLE staged_technical_indicators ({definitions}, '
+                'PRIMARY KEY ("證券代號","日期"));'
+            )
+            staged_rows = 0
+            for file_path in tqdm(eligible_files, desc="驗證與 staging 個股技術指標"):
+                stock_id = file_path.name.split('_')[0]
+                df = pd.read_csv(file_path, encoding='utf-8-sig')
+                if df.empty:
+                    continue
+                df['日期'] = standardize_date(df['日期'])
+                df['證券代號'] = stock_id
+                cols_to_drop = [column for column in excluded_price_columns if column in df.columns]
+                if cols_to_drop:
+                    df = df.drop(columns=cols_to_drop)
+                for column in df.columns:
+                    if column not in {'日期', '證券代號'}:
+                        df[column] = pd.to_numeric(df[column], errors='coerce')
+                df = df.reindex(columns=columns)
+
+                from data_module.daily_price_revision_write_guard import validate_excluded_price_frame
+                validate_excluded_price_frame(database_path, df)
+                DBManager._insert_dataframe_rows(stage_connection, 'staged_technical_indicators', df)
+                stage_connection.commit()
+                staged_rows += len(df)
+            if staged_rows == 0:
+                logger.warning('技術指標 CSV 全部為空，未清除 technical_indicators。')
+                return
+        finally:
+            stage_connection.close()
+
+        # 在任何正式 table schema/data mutation 前，完整驗證 canonical raw aliases
+        # 與歷史交易日修訂範圍；來源 key 或 receipt 有缺件即停止。
+        from data_module.formal_technical_raw_alias_repair import validate_raw_alias_replacement
+
+        source_connection = sqlite3.connect(stage_db_path)
+        try:
+            validate_raw_alias_replacement(
+                database_path,
+                _technical_stage_records(source_connection, columns),
+                replace_all=True,
+            )
+            # 所有來源證據均通過後才做 schema 升級；資料刪除和所有批次共用單一交易。
+            db.ensure_columns('technical_indicators', columns)
+            with db.connect() as conn:
+                conn.execute('BEGIN IMMEDIATE;')
+                conn.execute('DELETE FROM "technical_indicators";')
+                insert_columns = ','.join(_quote_sqlite_identifier(name) for name in columns)
+                insert = (
+                    f'INSERT INTO "technical_indicators" ({insert_columns}) '
+                    f'VALUES ({",".join("?" for _ in columns)})'
+                )
+                cursor = source_connection.execute(
+                    'SELECT ' + insert_columns + ' FROM staged_technical_indicators '
+                    'ORDER BY "證券代號","日期"'
+                )
+                written_rows = 0
+                while batch := cursor.fetchmany(TECHNICAL_MIGRATION_CHUNK_SIZE):
+                    conn.executemany(insert, batch)
+                    written_rows += len(batch)
+                    logger.info(f"已遷移 {written_rows} 筆技術指標資料...")
+                if written_rows != staged_rows:
+                    raise RuntimeError(
+                        f'technical_indicators batch row count 不符：{written_rows}/{staged_rows}'
+                    )
+        finally:
+            source_connection.close()
+
     elapsed = time.time() - start_time
-    logger.info(f"技術指標遷移完成！成功遷移 {success_count} 檔個股，共耗時 {elapsed:.1f} 秒！")
+    logger.info(f"技術指標遷移完成！共 {staged_rows} 筆資料，耗時 {elapsed:.1f} 秒！")
 
 def migrate_broker_flows(config: TWStockConfig, db: DBManager, logger: logging.Logger):
     """遷移券商分點資料 (broker_flow)"""

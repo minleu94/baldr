@@ -51,7 +51,21 @@
 
 第一階段 baseline audit：868 檔、77,173 個 2026-05-20 起的既有 key；來源日價 4,340 欄核對正確，個股 CSV 中文 OHLCV 385,865 欄正確。與目前完整因果 kernel 相較，DB 尚有 7,515 個指標欄位、個股 CSV 7,279 個欄位不一致，包含先前修復白名單未含的 ATR，以及後續更新殘留；這些數字是修復前狀態。英文價格副本與 DB 幾乎全空的 alias 不當成新的來源價差。新重算會涵蓋完整前綴與 20 個既有指標，包含 MA／ATR／ADX，暖機 NaN 保留。
 
-技指 run02 已於 `2026-09-24T01:28:12Z` 完成 5,331,231 列、2,210 份 CSV 正式套用，發布後技指 table hash 為 `374d44ba1b3ab82f67deddc74b6d8836166776489c84f1aac0895d5af2dadfc0`；獨立正式讀回仍另行驗證。每日快取 prepare 檢查已修正全日與修訂名單的範圍混淆：5/20 的 1,954 列保留完整來源，868 個修訂 keys 仍逐值與完整性核驗，其餘 1,086 列不因不在修訂名單而丟棄。11 項快取 tests 通過，包含合法同日未修訂列與修訂 key 缺漏的正反例。
+技指 run02 已於 `2026-09-24T01:28:12Z` 完成 5,331,231 列、2,210 份 CSV 正式套用，發布後技指 table hash 為 `374d44ba1b3ab82f67deddc74b6d8836166776489c84f1aac0895d5af2dadfc0`。獨立正式讀回通過：全量 20 個指標與已驗收重算相符，沒有缺 key、非目標欄位變更或 CSV hash 差異；SQLite quick_check 正常、排除 key 殘留及日曆 anti-join 皆為零。報告 SHA-256 為 `6841d7cbb4e0d366b653ef44b0d236e536671a4d18c9528321684d5725e19fc5`，封存於該 receipt 的 `validation/publication_readback/`。此為六欄複本追加修復前的完整技指發布版本。
+
+每日快取於 `2026-09-24T01:58:08Z` 完成套用；獨立全量回讀核對 5,331,231 列、17 欄、3,106 日期（2014-01-02 至 2026-09-23），正式 CSV／sidecar bytes 與 staging 完全相同。CSV SHA-256 為 `6e9a4b342d0c0dd34443d11b9cab8f8738838bc248bc690d4e8497f6c494c437`，正式讀回報告為 `0cb50b8d6b474d825107af630415de1e6e10db40e1e88afbce2b8cd31184ad64`，證據保存在 `formal_daily_cache_receipts/20260923_run02/validation/publication_readback/`。
+
+每日快取 prepare 檢查已修正全日與修訂名單的範圍混淆：5/20 的 1,954 列保留完整來源，868 個修訂 keys 仍逐值與完整性核驗，其餘 1,086 列不因不在修訂名單而丟棄。11 項快取 tests 通過，包含合法同日未修訂列與修訂 key 缺漏的正反例。獨立核驗器另以四組 fixture 檢查 staged／published 身分、精確 Decimal、NULL、官方缺報價 `--` 與千分位格式；無效文字不能轉成零或空值後通過。
+
+## 六個原始欄位複本的追加修復
+
+全量來源格式盤點為 5,331,231 列、47,240 個文字儲存格，僅出現在買價與賣價：官方 `--` 各 9,088／24,716 個，合法千分位數字各 5,337／8,099 個；其他四欄沒有文字，非法文字為零。`--` 表示沒有報價，衍生 numeric 欄位應為 NULL；來源日價及每日快取仍保留原始表示。`raw_alias_source_representation_scope_run02.json` 綁定 run02 source SHA，來源掃描前後 bytes 不變。
+
+修復工具只修改六欄，完整核對日期／股票 key、原 20 指標與其他內容；發布前先建立全量可回復 preimage、2,210 份 CSV staging 與 audit。SQLite 六欄在單一交易中更新，CSV 保留逐檔備份／journal，恢復前重驗全部備份與正式檔案；來源、目標或證據漂移時停止。套用與最終讀回結果另於完成後登錄。
+
+日常更新同步補強 DBManager、UpdateService 四個直接 SQL／技指發布入口與舊 CSV 遷移。省略六欄的增量資料只可從同 key 權威日價補齊；提供錯值則在寫入前拒絕。完整重建保留日價已收錄的五、六碼證券，舊版逐股計算器在修改 CSV 前即停止。完整替換及 CSV 遷移的全部 INSERT 共用一個交易，避免中途失敗留下空表或部分列。正常頁面讀取不執行全量驗證，來源查詢使用既有 key 索引與批次處理。
+
+原始六欄／更新服務／發布與 DBManager focused route 為 171 passed；後續針對 CSV 尾欄截斷的 stage／audit 拒絕行為加兩個反例，raw repair／numeric 子集合 52 passed。五、六碼證券 E2E 確認 `1101B`、`2887Z1` 同時保留於個股 CSV、彙總 CSV 與 SQLite，未知代碼不擴張範圍。更新工作台 84 passed，更新頁 validator 25 passed／0 failed／4 skipped，全域 mypy 664 source files 通過；這些程式驗證不代替正式六欄發布後的全量讀回。
 
 ## 全市場交易日檢查追加發現
 

@@ -212,6 +212,18 @@ def determine_start_date(config: TWStockConfig, logger: logging.Logger) -> Optio
         return None
 
 
+def _assert_legacy_technical_writer_allowed(config: TWStockConfig, *, check_only: bool) -> None:
+    """六欄正式修復後，阻擋會先覆寫 CSV 的舊版逐股計算器。"""
+
+    from data_module.formal_technical_raw_alias_repair import assert_legacy_technical_writer_allowed
+
+    assert_legacy_technical_writer_allowed(
+        config.db_file,
+        config.data_dir,
+        check_only=check_only,
+    )
+
+
 def process_stock_data_batch(config: TWStockConfig, calculator: TechnicalIndicatorCalculator, 
                              logger: logging.Logger, target_stock: str = None, 
                              check_only: bool = False, start_date: str = None,
@@ -250,6 +262,10 @@ def process_stock_data_batch(config: TWStockConfig, calculator: TechnicalIndicat
     }
     
     try:
+        # 舊版腳本逐股寫 CSV，且 aggregate 只含本次成功處理股票；正式六欄修復後
+        # 不能等 SQLite guard 才拒絕，必須在讀取／改寫任何輸出前停止。
+        _assert_legacy_technical_writer_allowed(config, check_only=check_only)
+
         # 1. 讀取股票數據
         logger.info("讀取股票數據...")
         print("讀取股票數據...")
@@ -460,11 +476,9 @@ def process_stock_data_batch(config: TWStockConfig, calculator: TechnicalIndicat
                         if col not in ['日期', '證券代號']:
                             df_db[col] = pd.to_numeric(df_db[col], errors='coerce')
                             
-                    # 清空現有 table 進行全新全量寫入
-                    with db.connect() as conn:
-                        conn.execute("DELETE FROM technical_indicators;")
-                    
-                    success = db.write_dataframe('technical_indicators', df_db, if_exists='append')
+                    # 以受保護原子 replace 預先驗證完整 key 與六個 raw alias，
+                    # 再由 DBManager 在單一交易中 DELETE+INSERT，失敗保留舊表。
+                    success = db.write_dataframe('technical_indicators', df_db, if_exists='replace')
                     if success:
                         logger.info("技術指標成功批次寫入 SQLite 資料庫！")
                         print("技術指標成功批次寫入 SQLite 資料庫！")
@@ -632,4 +646,4 @@ def main():
 
 if __name__ == "__main__":
     success = main()
-    sys.exit(0 if success else 1) 
+    sys.exit(0 if success else 1)

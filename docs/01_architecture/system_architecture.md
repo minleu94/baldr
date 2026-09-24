@@ -15,6 +15,10 @@
 
 研究資料引用的官方月報按每個月份自己的截止日核對真正取得時鐘。已完成月份可沿用較早封存回應；較新的九月來源不會改寫歷史回應的日期。修復後候選的快照、官方回應與正式來源修訂證據共同建立新版本，驗收見[修復來源候選](../06_qa/REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)。
 
+`formal_technical_raw_alias_repair.py` 另負責技指表與 CSV 中買賣價／量、本益比、漲跌價差六個日價複本。依同日權威來源還原數值與缺值，僅將官方買賣報價 `--` 轉為衍生欄位 NULL，合法千分位以 Decimal 驗證；原始日價文字保留。prepare／stage／audit／apply 分開保存來源、全量前後值、非目標指紋與可恢復 journal，SQLite 六欄共用單一交易，CSV 逐檔保留備份。
+
+套用六欄修復後，DBManager 與 UpdateService 的整表／日期替換、增量寫入及技指發布在寫入前核對來源；增量呼叫省略六欄時從同 key 日價補齊，有值但不符時拒絕。完整重算採既有日價證券範圍，保留五、六碼證券，來源查詢使用 key 索引與批次 staging。舊逐股腳本在任何 CSV 修改前停止並指向正常更新入口；CSV 遷移先完整驗證、再以單一交易替換。這些檢查只在資料寫入邊界啟用，不在研究頁讀取時掃描全市場。
+
 `ml_restatement_research_candidate_source.py` 核驗本輪固定來源 profile，`build_ml_restatement_candidate.py` 再交既有 v3 builder 重建研究資料。原 v3 預設來源不變；新路徑必須提供完整 profile，將其檔案 hash 納入 dataset identity，消費者重驗來源和修訂證據。H5 的股票特徵從不可變更日價前綴計算，不讀快照中尚未發布的新技指；取得時間維持實際修訂鐘。來源檢查與全量重算只在離線候選工作執行，不加入日常 UI 開頁流程。
 
 ## 個股研究、資料新鮮度與持倉證據邊界

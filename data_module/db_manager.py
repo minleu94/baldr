@@ -390,10 +390,37 @@ class DBManager:
             elif table_name == 'technical_indicators':
                 from data_module.daily_price_revision_write_guard import validate_excluded_price_frame
                 validate_excluded_price_frame(Path(self.db_path), df)
+                from data_module.formal_technical_raw_alias_repair import (
+                    load_applied_raw_alias_receipt,
+                    normalize_raw_alias_values_for_storage,
+                    validate_raw_alias_replacement,
+                )
+
+                # 增量 feature-only caller 省略原始報價欄時，以同 key 的 daily_prices
+                # 補齊；避免新技術列把六欄留成 NULL。整表 replace 不走此路徑，
+                # 必須提供完整列，否則由 raw-alias guard 在 DELETE 前拒絕。
+                # 未啟用正式 raw-alias marker 的根目錄保持舊 writer 路徑，不額外查詢
+                # daily_prices／technical_indicators，也不因新 helper 改變一般測試／開發 DB。
+                raw_alias_marker = load_applied_raw_alias_receipt(Path(self.db_path))
+                if if_exists == 'append' and raw_alias_marker is not None:
+                    df = self._prepare_technical_append_frame(df)
+
+                columns = [str(column) for column in df.columns]
+                records = (
+                    dict(zip(columns, values, strict=True))
+                    for values in df.itertuples(index=False, name=None)
+                )
+                validate_raw_alias_replacement(
+                    Path(self.db_path),
+                    records,
+                    replace_all=(if_exists == 'replace'),
+                )
+                if raw_alias_marker is not None:
+                    df = normalize_raw_alias_values_for_storage(df)
 
             preserve_protected_schema = (
                 if_exists == 'replace'
-                and table_name in {'daily_prices', 'market_indices'}
+                and table_name in {'daily_prices', 'market_indices', 'technical_indicators'}
                 and self.has_table(table_name)
             )
             # 確保並升級欄位
@@ -422,6 +449,86 @@ class DBManager:
         except Exception as e:
             self.logger.error(f"寫入 DataFrame 至 Table {table_name} 失敗: {str(e)}")
             return False
+
+    def _prepare_technical_append_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        """append 先檢查既有 key，再以 daily_prices 補缺少的六個原始數值欄。"""
+
+        aliases = (
+            '最後揭示買價', '最後揭示買量', '最後揭示賣價',
+            '最後揭示賣量', '本益比', '漲跌價差',
+        )
+        missing = [name for name in aliases if name not in df.columns]
+        from data_module.formal_technical_raw_alias_repair import _date_symbol_key
+
+        if df.empty:
+            return df
+        if df.columns.has_duplicates:
+            raise ValueError('technical_indicators 欄位名稱不可重複')
+        if not {'日期', '證券代號'} <= set(df.columns):
+            return df
+
+        # Protected-root keys are persisted in the same YYYYMMDD/symbol shape used by
+        # the canonical receipt and SQLite daily_prices (including 4-digit padding).
+        result = df.copy()
+        result['日期'] = result['日期'].astype(object)
+        result['證券代號'] = result['證券代號'].astype(object)
+        for name in missing:
+            result[name] = None
+        alias_select = ','.join(f'd."{name}"' for name in missing)
+        daily_query = (
+            'SELECT r.row_number,' + alias_select + ' '
+            'FROM requested_technical_keys r '
+            'LEFT JOIN daily_prices d '
+            'ON d."日期"=r.date_key AND d."證券代號"=r.symbol_key '
+            'ORDER BY r.row_number'
+        ) if missing else None
+        connection = sqlite3.connect(self.db_path)
+        try:
+            connection.execute(
+                'CREATE TEMP TABLE requested_technical_keys '
+                '(row_number INTEGER PRIMARY KEY,date_key TEXT,symbol_key TEXT,'
+                'UNIQUE(date_key,symbol_key))'
+            )
+            connection.execute(
+                'CREATE TEMP TABLE seen_technical_keys '
+                '(date_key TEXT,symbol_key TEXT,PRIMARY KEY(date_key,symbol_key)) WITHOUT ROWID'
+            )
+            for start in range(0, len(result), 5000):
+                stop = min(start + 5000, len(result))
+                key_rows = []
+                for row_number in range(start, stop):
+                    raw_date = result.iloc[row_number]['日期']
+                    raw_symbol = result.iloc[row_number]['證券代號']
+                    date_key, symbol_key = _date_symbol_key(raw_date, raw_symbol)
+                    key_rows.append((row_number, date_key, symbol_key))
+                    result.iat[row_number, result.columns.get_loc('日期')] = date_key
+                    result.iat[row_number, result.columns.get_loc('證券代號')] = symbol_key
+                connection.executemany(
+                    'INSERT INTO requested_technical_keys VALUES (?,?,?)', key_rows
+                )
+                try:
+                    connection.executemany(
+                        'INSERT INTO seen_technical_keys VALUES (?,?)',
+                        [(row[1], row[2]) for row in key_rows],
+                    )
+                except sqlite3.IntegrityError as exc:
+                    raise ValueError('technical_indicators append 含重複 key') from exc
+                existing = connection.execute(
+                    'SELECT 1 FROM requested_technical_keys r '
+                    'JOIN technical_indicators t '
+                    'ON t."日期"=r.date_key AND t."證券代號"=r.symbol_key LIMIT 1'
+                ).fetchone()
+                if existing is not None:
+                    raise ValueError('technical_indicators append 含已存在 key；請使用完整受保護替換')
+                if daily_query is not None:
+                    for row in connection.execute(daily_query):
+                        row_number = int(row[0])
+                        for offset, name in enumerate(missing, start=1):
+                            result.iat[row_number, result.columns.get_loc(name)] = row[offset]
+                connection.execute('DELETE FROM requested_technical_keys')
+        finally:
+            connection.close()
+        return result
 
     @staticmethod
     def _insert_dataframe_rows(

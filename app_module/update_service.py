@@ -118,12 +118,43 @@ def _write_technical_indicator_publications(
     frame,
     *,
     replace_market: bool = False,
+    database_path: Optional[Path] = None,
+    raw_alias_prevalidated: bool = False,
 ) -> int:
     """在呼叫端交易中只寫已驗證發布列，選擇性原子替換全市場資料。"""
     import pandas as pd
 
     if frame is None or frame.empty:
         return 0
+    if database_path is None and not raw_alias_prevalidated:
+        database_path = next(
+            (Path(row[2]) for row in conn.execute("PRAGMA database_list") if row[1] == "main" and row[2]),
+            None,
+        )
+    raw_alias_active = False
+    if database_path is not None:
+        from data_module.formal_technical_raw_alias_repair import (
+            normalize_raw_alias_values_for_storage,
+            raw_alias_guard_enabled,
+        )
+
+        raw_alias_active = raw_alias_guard_enabled(database_path)
+    if database_path is not None and not raw_alias_prevalidated:
+        from data_module.formal_technical_raw_alias_repair import (
+            prepare_raw_alias_upsert_frame,
+            validate_raw_alias_replacement,
+        )
+
+        if raw_alias_active and replace_market:
+            validate_raw_alias_replacement(
+                database_path,
+                _technical_frame_records(frame),
+                replace_all=True,
+            )
+        elif raw_alias_active:
+            frame = prepare_raw_alias_upsert_frame(database_path, frame)
+    if raw_alias_active:
+        frame = normalize_raw_alias_values_for_storage(frame)
     required = {"日期", "證券代號"}
     missing = required.difference(frame.columns)
     if missing:
@@ -168,6 +199,126 @@ def _write_technical_indicator_publications(
         conn.execute('DELETE FROM "technical_indicators"')
     conn.executemany(statement, values)
     return len(values)
+
+
+def _technical_frame_records(frame):
+    columns = [str(column) for column in frame.columns]
+    for values in frame.itertuples(index=False, name=None):
+        yield dict(zip(columns, values, strict=True))
+
+
+def _validate_technical_raw_alias_frame(
+    database_path: Path,
+    frame,
+    *,
+    replace_all: bool = False,
+    replace_dates: bool = False,
+) -> None:
+    if frame is None or frame.empty:
+        return
+    validation_frame = frame
+    rename_columns = {}
+    if "證券代號" not in validation_frame.columns:
+        symbol_column = next(
+            (
+                column
+                for column in ("股票代號", "stock_id", "stock_code")
+                if column in validation_frame.columns
+            ),
+            None,
+        )
+        if symbol_column is not None:
+            rename_columns[symbol_column] = "證券代號"
+    if "日期" not in validation_frame.columns:
+        date_column = next(
+            (
+                column
+                for column in ("date", "trade_date", "trading_date", "Date")
+                if column in validation_frame.columns
+            ),
+            None,
+        )
+        if date_column is not None:
+            rename_columns[date_column] = "日期"
+    if rename_columns:
+        validation_frame = validation_frame.rename(columns=rename_columns)
+    from data_module.formal_technical_raw_alias_repair import (
+        validate_raw_alias_replacement,
+    )
+
+    validate_raw_alias_replacement(
+        database_path,
+        _technical_frame_records(validation_frame),
+        replace_all=replace_all,
+        replace_dates=replace_dates,
+    )
+
+
+def _assert_technical_raw_aliases_unchanged(original, computed) -> None:
+    from data_module.formal_technical_raw_alias_repair import (
+        ALIASES,
+        RawAliasRepairError,
+        _same_numeric,
+    )
+
+    missing = [name for name in ALIASES if name not in original.columns or name not in computed.columns]
+    if missing:
+        raise RawAliasRepairError(f"技術指標計算結果省略受保護六欄：{missing}")
+    if len(original) != len(computed):
+        raise RawAliasRepairError("技術指標計算結果與已核驗輸入列數不同")
+    for name in ALIASES:
+        left = original[name].reset_index(drop=True)
+        right = computed[name].reset_index(drop=True)
+        if any(
+            not _same_numeric(a, b, name)
+            for a, b in zip(left, right, strict=True)
+        ):
+            raise RawAliasRepairError(f"技術指標計算結果改動已核准日價欄位：{name}")
+
+
+def _daily_price_symbol_universe(database_path: Path) -> set[str]:
+    """只接受 daily_prices 已有代號，不讓指標 CSV 擴張商品 universe。"""
+
+    import sqlite3
+
+    path = database_path.resolve(strict=True)
+    connection = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=30)
+    try:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "daily_prices" not in tables:
+            raise ValueError("raw alias 修訂啟用，但 daily_prices 不存在；停止技術指標重建")
+        columns = {
+            str(row[1])
+            for row in connection.execute('PRAGMA table_info("daily_prices")')
+        }
+        symbol_column = next(
+            (
+                name
+                for name in ("證券代號", "股票代號", "stock_code", "stock_id")
+                if name in columns
+            ),
+            None,
+        )
+        if symbol_column is None:
+            raise ValueError("daily_prices 缺少證券代號欄；停止技術指標重建")
+        symbols = {
+            update_data_normalization.stock_code_key(row[0])
+            for row in connection.execute(
+                f'SELECT DISTINCT "{symbol_column}" FROM daily_prices '
+                f'WHERE "{symbol_column}" IS NOT NULL'
+            )
+        }
+    finally:
+        connection.close()
+    symbols.discard("")
+    if not symbols:
+        raise ValueError("daily_prices 證券代號 universe 為空；停止技術指標重建")
+    return symbols
 
 
 def _can_replace_full_technical_market(
@@ -1992,6 +2143,15 @@ class UpdateService :
             database_path = Path(db.db_path)
             if table_name == 'technical_indicators':
                 validate_excluded_price_frame(database_path, df)
+                from data_module.formal_technical_raw_alias_repair import (
+                    validate_raw_alias_replacement,
+                )
+
+                validate_raw_alias_replacement(
+                    database_path,
+                    _technical_frame_records(df),
+                    replace_dates=True,
+                )
             if table_name == 'daily_prices':
                 df = prepare_daily_price_revision_frame(
                     database_path,
@@ -2029,6 +2189,11 @@ class UpdateService :
         try :
             if table_name == 'technical_indicators':
                 validate_excluded_price_frame(Path(db.db_path), df)
+                from data_module.formal_technical_raw_alias_repair import (
+                    prepare_raw_alias_upsert_frame,
+                )
+
+                df = prepare_raw_alias_upsert_frame(Path(db.db_path), df)
             if table_name == 'daily_prices':
                 df = prepare_daily_price_revision_frame(
                     Path(db.db_path),
@@ -2069,6 +2234,15 @@ class UpdateService :
             database_path = Path(db.db_path)
             if table_name == 'technical_indicators':
                 validate_excluded_price_frame(database_path, df)
+                from data_module.formal_technical_raw_alias_repair import (
+                    validate_raw_alias_replacement,
+                )
+
+                validate_raw_alias_replacement(
+                    database_path,
+                    _technical_frame_records(df),
+                    replace_all=True,
+                )
             if table_name == 'daily_prices':
                 df = prepare_daily_price_revision_frame(
                     database_path,
@@ -4348,6 +4522,7 @@ class UpdateService :
         cancel_callback: Optional[Callable[[], bool]],
         progress_callback,
         logger,
+        raw_alias_active: bool = False,
     ) -> Dict[str, Any]:
         """執行受控技術指標 worker，並由父程序逐股保存結果。
 
@@ -4387,6 +4562,8 @@ class UpdateService :
                 continue
             publish_frame = group_df.iloc[row_positions].copy()
             publish_result = precomputed.iloc[row_positions].copy()
+            if raw_alias_active:
+                _assert_technical_raw_aliases_unchanged(publish_frame, publish_result)
             if progress_callback:
                 progress_callback(
                     f"process-pool 父程序寫入 {stock_id} ({index}/{total})...",
@@ -4589,6 +4766,9 @@ class UpdateService :
 
             revision_database = Path(getattr(self.config, 'db_file', Path(self.config.stock_data_file).parent.parent / 'sqlite/twstock.db'))
             validate_excluded_price_frame(revision_database, stock_data)
+            from data_module.formal_technical_raw_alias_repair import raw_alias_guard_enabled
+
+            raw_alias_active = raw_alias_guard_enabled(revision_database)
 
             stock_code_column =next (
             (col for col in ('證券代號','股票代號','證券代號','stock_id','stock_code')if col in stock_data .columns ),
@@ -4613,7 +4793,16 @@ class UpdateService :
 
             stock_data =stock_data .copy ()
             stock_data [stock_code_column ]=stock_data [stock_code_column ].astype (str ).str .strip ()
-            stock_data =stock_data [stock_data [stock_code_column ].str .match (r'^\d{4}$')]
+            if raw_alias_active:
+                existing_symbols = _daily_price_symbol_universe(revision_database)
+                stock_data[stock_code_column] = stock_data[stock_code_column].map(
+                    update_data_normalization.stock_code_key
+                )
+                stock_data = stock_data[
+                    stock_data[stock_code_column].isin(existing_symbols)
+                ]
+            else:
+                stock_data =stock_data [stock_data [stock_code_column ].str .match (r'^\d{4}$')]
 
             # 如果指定了特定股票，只處理該股票
             if target_stock :
@@ -4631,6 +4820,25 @@ class UpdateService :
                     'end_date':''
                     }
                 stock_data =stock_data [stock_data [stock_code_column ]==target_stock ]
+
+            raw_alias_full_market_prevalidated = False
+            if (
+                raw_alias_active
+                and force_all
+                and target_stock is None
+                and requested_start_date is None
+                and not recompute_currentity
+            ):
+                _validate_technical_raw_alias_frame(
+                    revision_database,
+                    stock_data,
+                    replace_all=True,
+                )
+                raw_alias_full_market_prevalidated = True
+
+            def validate_publication_raw_aliases(frame):
+                if raw_alias_active and not raw_alias_full_market_prevalidated:
+                    _validate_technical_raw_alias_frame(revision_database, frame)
 
             auto_incremental =not force_all and start_date is None
             if auto_incremental :
@@ -4854,14 +5062,20 @@ class UpdateService :
                     }
                 if process_pool_enabled:
                     # worker 接收完整 prefix；父程序在計算後才裁切發布列。
+                    validate_publication_raw_aliases(
+                        group_df.iloc[publication_rows].copy()
+                    )
                     pending_process_pool_tasks.append((str(stock_id), group_df.copy()))
                     continue
                 try :
+                    publish_frame = group_df.iloc[publication_rows].copy()
+                    validate_publication_raw_aliases(publish_frame)
                     computed = calculator.calculate_all_indicators(group_df, stock_id)
                     if not isinstance(computed, pd.DataFrame):
                         raise ValueError(f"股票 {stock_id} 技術指標計算失敗")
-                    publish_frame = group_df.iloc[publication_rows].copy()
                     publish_result = computed.iloc[publication_rows].copy()
+                    if raw_alias_active:
+                        _assert_technical_raw_aliases_unchanged(publish_frame, publish_result)
                     result =calculator .calculate_and_store_indicators (
                     publish_frame ,
                     stock_id ,
@@ -4918,6 +5132,7 @@ class UpdateService :
                     cancel_callback=cancel_callback,
                     progress_callback=progress_callback,
                     logger=logger,
+                    raw_alias_active=raw_alias_active,
                 )
                 process_pool_report = process_pool_result["report"]
                 results["technical_process_pool"] = process_pool_report
@@ -5126,6 +5341,22 @@ class UpdateService :
 
                         if not df_db.empty:
                             validate_excluded_price_frame(Path(db.db_path), df_db)
+                            from data_module.formal_technical_raw_alias_repair import (
+                                prepare_raw_alias_upsert_frame,
+                                validate_raw_alias_replacement,
+                            )
+
+                            if full_market_replace:
+                                validate_raw_alias_replacement(
+                                    Path(db.db_path),
+                                    _technical_frame_records(df_db),
+                                    replace_all=True,
+                                )
+                            else:
+                                df_db = prepare_raw_alias_upsert_frame(
+                                    Path(db.db_path),
+                                    df_db,
+                                )
                             db.ensure_columns('technical_indicators', list(df_db.columns))
                             # DELETE（若符合完整全市場替換條件）與 UPSERT 必須同一連線、同一交易；
                             # 所有其他模式只 UPSERT 本輪成功計算且成功發布的 key。
@@ -5134,6 +5365,8 @@ class UpdateService :
                                     conn,
                                     df_db,
                                     replace_market=full_market_replace,
+                                    database_path=Path(db.db_path),
+                                    raw_alias_prevalidated=True,
                                 )
                             if full_market_replace:
                                 logger.info("完整全市場重算已在單一交易中替換 technical_indicators。")

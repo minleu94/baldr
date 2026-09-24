@@ -4,7 +4,7 @@
 
 先前官方市場 v3 資料建置完成後，正式來源才補回九個交易日 14,869 列，並排除三個休市日和 5/20 的 54 列，共 2,942 列。舊 v3 的股票快照沒有上述九日資料，仍含休市日 2,888 列及額外 54 列；1256／1477 的原錯價則已更正。因此舊 v3 的訓練與驗收只適用於原版本，不能宣稱涵蓋後續正式來源修復。
 
-本輪建立隔離候選、重算特徵與標籤後重新 fit／評估；完成資料修復不等於取得模型啟用資格。62 欄名稱、順序、尺度、dtype、缺值與公式不變，15 個與大型重構協調的 ML 契約檔不改動。正式 pointer、rule_only 與既有版本保留。候選目錄為 `E:/codex_model_repair_20260923/candidate_formal_repair_run01/`；本節為來源準備紀錄，資料集及模型尚待完成後的個別驗收。
+本輪已建立兩組隔離候選、重算特徵與標籤，完成完整 fit 與各 13 檔當日研究推論；完成資料修復不等於取得模型啟用資格。62 欄名稱、順序、尺度、dtype、缺值與公式不變，15 個與大型重構協調的 ML 契約檔不改動。正式 pointer、rule_only 與既有版本保留。候選目錄為 `E:/codex_model_repair_20260923/candidate_formal_repair_run01/`；來源、全量核對與模型效果分節記錄，不以工程完成取代效果判定。
 
 ## 不可變更的股票與市場來源
 
@@ -28,7 +28,7 @@
 
 另外八列 technical quote 與舊 publication 不同。逐筆追到同日原始 CSV 和 `daily_prices` 都是缺值，舊技指複本卻有數字；歷史 producer 曾對整張 DataFrame 使用 `ffill().bfill()`，該行為已於 `09f0eb56` 移除。新候選的八個技指原始欄位明列對應權威日價來源，保留 NULL／文字非數值的 missing 狀態，不把舊衍生填值當觀測。
 
-候選股票 adapter 已完成：21 個原始欄位、20 個技指與五個品質欄位依臺北決策日取因果 T-1；沿用七日陳舊界線、正價格／無效值 gate、缺值和尺度。八個 alias 的登錄表來源變更有固定 bridge 與 hash，兩個文字方向欄位維持原有 missing。候選 profile、修訂實際取得時間、官方市場來源與完整 kernel 程式都納入驗證。Producer 和 consumer 都會拒絕這次 run02 快照缺少 profile 的 publication，不能移除來源資訊後改走舊版路徑。50 項 bounded 來源、標籤、完整特徵與 shadow tests 及三檔 targeted mypy 通過；這是程式驗證，完整候選資料、全量 fit 與獨立評估仍待本輪執行完成。
+候選股票 adapter 已完成：21 個原始欄位、20 個技指與五個品質欄位依臺北決策日取因果 T-1；沿用七日陳舊界線、正價格／無效值 gate、缺值和尺度。八個 alias 的登錄表來源變更有固定 bridge 與 hash，兩個文字方向欄位維持原有 missing。候選 profile、修訂實際取得時間、官方市場來源與完整 kernel 程式都納入驗證。Producer 和 consumer 都會拒絕這次 run02 快照缺少 profile 的 publication，不能移除來源資訊後改走舊版路徑。50 項 bounded 來源、標籤、完整特徵與 shadow tests 及三檔 targeted mypy 通過；完整執行結果見下方 bounded 驗收。
 
 當日推論的來源轉換摘要依實際登錄表差異計數，包含上述八個 alias，避免沿用舊版僅計算技指與市場欄位的數量。此摘要修正的官方來源／當日研究路由為 25 passed，沒有改動數值輸入。
 
@@ -38,7 +38,7 @@
 
 完整建置於 `2026-09-24T01:12:45.198864+00:00` 結束，exit code 0；固定程式 commit 為 `38018490`，執行前後所有受追蹤 Python 檔的實際 bytes 不變。資料集為 3,498,147 列、13 個年度 partitions，沒有使用抽樣或筆數上限。Dataset manifest 檔案 SHA-256 為 `68e1d55cef8712ea521fedcb16e4ad5d6aec95773304e3a6797567bc45d1661c`；外部候選來源 profile 為 `f195f1a409f01de7343bb740014af818c55fefbf58b442e5121f43bcbe6f088c`。
 
-本次建置限制原生計算執行緒為 2，實測程序樹最高 RSS 為 3,522,486,272 bytes。命令、來源程式雜湊、真正開始／結束時間及資源觀測保留於執行 receipt；資料 lineage 另有 `source_start.json` 與 `source_custody.json`。建置完成不取代獨立資料核對與後續模型重訓；本節目前只記錄建置結果。
+本次建置限制原生計算執行緒為 2，實測程序樹最高 RSS 為 3,522,486,272 bytes。命令、來源程式雜湊、真正開始／結束時間及資源觀測保留於執行 receipt；資料 lineage 另有 `source_start.json` 與 `source_custody.json`。後續獨立資料核對與完整模型重訓結果如下。
 
 ## H5 新模型重訓、評估與當日推論
 
@@ -57,3 +57,32 @@ H5 完整 fit 使用全部 3,469,960 個成熟候選列，無 `max-fit-rows` 上
 報酬誤差僅有小幅改善，下跌機率三組仍未勝過訓練期常數基準，校準後 Brier 亦未改善；沒有晉升模型。產業超額標籤仍因缺少歷史 PIT 證據而明確 missing，配置 targets 的原有限制不變。
 
 當日研究推論於臺北 `2026-09-24T09:41:34+08:00` 使用 9/23 特徵，13 檔（含 1256、1477）完成。收據 `aa0684a06502d2ec56df79de94886ce19496c5b89b4cc38acf2426622f6237c7` 保存在候選根目錄 `h5_current_inference/current_shadow/`；`production_blend_alpha_bp=0`、`formal_oos_allowed=false`，沒有切換正式 pointer。
+
+## Bounded 完整候選資料、重訓與推論
+
+新 bounded publication 為 `bounded_official_candidate_v2/`，21,898 列；原 22,093 列依原有官方交易日、價格路徑與公司事件條件排除 195 列，原產物保留。Manifest SHA-256 為 `be1e17fadd9d11d96de6ea4d48b1ece16129207d4e9531789ba49b7ff863f850`。最後官方來源建置固定 `02d84f0f` 程式；來源定義與衍生品質 slots 的舊檢查假設造成前兩次未完成，失敗紀錄及部分輸出保留，成功版本另用新目錄，沒有覆寫重試。
+
+獨立全量資料核對通過：897,818 個股票來源 cells、109,490 個股票品質 slots、284,674 個市場 slots；四期間共 87,592 組標籤，700,736 個數值／缺值 slots。原保留列的 row IDs、證券、決策時間、targets、投組狀態、產業內容及列內序列皆一致；52 個來源定義與 62 欄列契約保持。驗收報告 SHA-256 為 `87c5f993bf3632b7b2cbe69b523c8197b9787bcdce762056b7a96e0d4078ffb9`，其中合法七日陳舊來源仍按既有 missing 規則處理，不視為錯值。
+
+實際訓練 consumer 完整載入 21,898 列，通過 profile／來源 hash／修訂取得鐘／四組 fold 檢查。完整 fit 於 `2026-09-24T02:06:44Z` 結束，exit 0，固定程式 `02d84f0f` 前後 bytes 不變；兩執行緒、最高程序樹 RSS 2,975,342,592 bytes。模型位於 `bounded_fit/`，fit receipt SHA-256 為 `63c46b840a73f7b021db7923b55d97979366bb6e2db52e483e6b79a3b9ce2c08`；資料三階段及實際訓練 clocks／code／manifest 統一綁定至 `bounded_candidate_custody.json`，SHA-256 `daee0324bd15febc22049178bb64b6d3bf027f942ca11a440e7640ed554d7e43`。
+
+臺北 `2026-09-24T10:10:33+08:00` 已對同一組 13 檔完成當日研究推論，收據為 `69477a334f3094ee4cfaa56b681942744030c34dd77eaaf24e365855dc679fef`，保存在 `bounded_current_inference/bounded_current_heads/`。仍為研究輸出、正式混合權重為零，不切換 pointer。
+
+獨立 OOF 核對通過 422,952 筆逐組預測、96 個 fold／演算法／期間／特徵組合及 864 個 head groups，共 17,623 個不同測試 row IDs。不同組合會重複使用同一測試列，不能把預測數當作獨立樣本數。報告 SHA-256 為 `d6acfc2f4234a0791f5ed26c6b32afc6a33fbc8d8ba9d05479da9596fa2e5df6`；驗證器同時重算基準、MAE、Brier、機率分箱與缺失 head。它核對已保存的基礎 OOF 預測，不重新執行模型、不評估具時間因果性的 meta-ensemble、交易成本或正式 OOS。
+
+產業超額標籤的所有來源真值皆缺失，manifest 明列歷史 PIT 產業 benchmark 不可用；OOF 的產業 head 必須保持 null。某些早期 fold 的成交可行性類別不足，原 trainer 會標記 missing 並輸出中性 5,000 bp fallback；核驗器按各 fold 訓練標籤推導應缺失集合，逐筆檢查標記及 fallback，這些列不當作有效模型預測評分。七個 verifier fixtures 包含來源全缺、類別不足與異常缺失拒絕；先前失敗的 checker 紀錄保留。
+
+三組特徵 pooled 結果如下，每組演算法／期間包含 52,869 筆預測，即 17,623 個測試列各評估三組特徵；下列皆為誤差，越小越好。此表不是合成 ensemble 的績效。
+
+| 演算法 | 期間 | 超額報酬 MAE（模型／基準，bp） | 下跌機率 Brier（模型／基準，0–1） |
+|---|---:|---:|---:|
+| Ridge／Logistic | 5 日 | 207.88／205.22 | 0.22226／0.22154 |
+| Ridge／Logistic | 10 日 | 301.98／297.00 | 0.23456／0.23316 |
+| Ridge／Logistic | 20 日 | 445.50／437.75 | 0.24308／0.24115 |
+| Ridge／Logistic | 60 日 | 833.27／802.31 | 0.25532／0.24528 |
+| HistGradientBoosting | 5 日 | 208.59／205.22 | 0.22212／0.22154 |
+| HistGradientBoosting | 10 日 | 301.40／297.00 | 0.23466／0.23316 |
+| HistGradientBoosting | 20 日 | 446.73／437.75 | 0.24560／0.24115 |
+| HistGradientBoosting | 60 日 | 837.54／802.31 | 0.25053／0.24528 |
+
+兩演算法四期間的 pooled 超額報酬與 downside 均未勝基準；部分其他 head 有小幅改善，不足以推論整體投資效用。因此兩組候選的資料重建、完整 fit、收據驗證及當日推論已完成，仍不授予 promotion、正式配置或交易資格。完整來源、執行、核驗器和失敗證據分別保存在候選根目錄 `validation/` 下，不覆寫舊 v3 或正式模型。

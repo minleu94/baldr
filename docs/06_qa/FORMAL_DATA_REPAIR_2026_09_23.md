@@ -120,6 +120,8 @@
 
 最終 writer 相關回歸 155 passed，包含同大小／mtime 下的 metadata 改字、來源漂移、錯 DB、同 DB 新一輪、新 pending run、apply／rollback 狀態改變，以及錯誤來源在 ensure_columns 前被拒絕。更新工作台另為 84 passed；更新頁 validator 25 passed／0 failed／4 skipped，全域 mypy 664 source files 通過，四個 changed Python 檔 py_compile 與 diff check 通過。程式與量測／驗證紀錄封存在六欄 receipt 的 `validation/writer_performance/`；並行維護限制見前方「後續再次發現資料問題時」。
 
+整合回含大型重構的主工作區後，raw repair／numeric／publication boundary／writer context／DBManager／UpdateService import 與月營收狀態／更新工作台路由合計 164 passed；僅有 pytest 本機 cache 權限 warning。另一項重構在 UpdateService 的月營收 diagnostics adapter 變更，以及 Manual／Index 的既有未提交差異，均於整合前後逐項比對保留，本輪提交不包含它們。首次正式讀回因沙箱無法開啟 live WAL SQLite 而尚未開始核驗，失敗 log 保留；第二次以明確唯讀連線與所需本機權限完成全量通過，沒有修改檢查條件或資料值來通過驗收。
+
 一般與舊版每日合併入口共用已驗證的來源修訂：868 筆價格修訂、14,869 筆補回交易日，以及已套用的錯日排除。沒有新原始檔時仍會同步既有整合快取；原始檔不覆寫。一輪合併只載入一次修訂證據，利用受影響日期的 mask 處理資料，避免為約 533 萬列全數建立 Python records。SQLite writer 在發布前另行驗證，不能用舊來源或不完整重建清空已修復列。
 
 完整技指重建逐股計算因果前綴，彙總快取透過 SQLite 暫存及串流輸出控制記憶體；這是本輪離線維護，不在 UI 每次開頁執行。staging 同時綁定排除範圍與 plan／receipt identity，相同 keys 但不同證據版本也拒絕發布。排除只涵蓋核驗的休市日期和 54 個精確 keys；其他無日價來源的舊快取列及非本輪欄位保留。

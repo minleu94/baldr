@@ -660,7 +660,11 @@ def candidate_stock_feature_registry(
         raise ValueError("candidate stock registry features are missing")
     copied = json.loads(json.dumps(registry))
     by_id = {str(item["feature_id"]): item for item in copied["features"] if isinstance(item, dict)}
-    if not CANDIDATE_STOCK_FEATURE_IDS <= set(by_id):
+    # 登錄表只登錄來源欄位；十個品質統計由 assembler 衍生，存在於
+    # 62 欄模型列中，不是 source registry definitions。此處只驗來源欄位，
+    # 完整股票 slots（含五個品質統計）仍由 row rebuild 驗證。
+    required_source_ids = CANDIDATE_RAW_FEATURE_IDS | frozenset(TECHNICAL_FEATURE_IDS)
+    if not required_source_ids <= set(by_id):
         raise ValueError("candidate stock registry lacks approved feature IDs")
     for feature_id, source_column in CANDIDATE_RAW_FIELD_MAP.items():
         item = by_id[feature_id]

@@ -221,7 +221,9 @@ def test_candidate_registry_explicitly_transitions_eight_aliases_to_daily_prices
     registry = {"features": [
         {key: value for key, value in feature.items() if key in {"feature_id", "source_id", "table_name", "record_hash", "scale"}}
         for feature in features
+        if not feature["feature_id"].startswith("data_quality.")
     ]}
+    assert len(registry["features"]) == 52
     converted = candidate_stock_feature_registry(
         registry,
         profile_sha256="sha256:" + "d" * 64,
@@ -242,6 +244,18 @@ def test_candidate_registry_explicitly_transitions_eight_aliases_to_daily_prices
         assert by_id[feature_id]["table_name"] == "daily_prices"
         assert by_id[feature_id]["scale"] == next(item["scale"] for item in registry["features"] if item["feature_id"] == feature_id)
     assert registry["features"] != converted["features"]
+    assert {item["feature_id"] for item in converted["features"]} == {
+        item["feature_id"] for item in registry["features"]
+    }
+    incomplete = {"features": [
+        item for item in registry["features"]
+        if item["feature_id"] != "technical_indicators.最後揭示買價"
+    ]}
+    with pytest.raises(ValueError, match="lacks approved feature IDs"):
+        candidate_stock_feature_registry(
+            incomplete, profile_sha256="sha256:" + "d" * 64,
+            bridge_hash="sha256:" + "f" * 64,
+        )
 
 
 def _future_candidate_feature(*, source_id="sqlite.daily_prices", available_at="2026-09-23T20:00:00+00:00"):

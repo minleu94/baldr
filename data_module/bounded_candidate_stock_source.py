@@ -624,7 +624,7 @@ def rebuild_candidate_stock_features(
         if feature_id not in QUALITY_FEATURE_IDS:
             continue
         definition = definitions.get(feature_id)
-        if definition is None or definition.get("scale") != 1 or feature.get("scale") != 1:
+        if feature.get("scale") != 1 or (definition is not None and definition.get("scale") != 1):
             raise ValueError(f"candidate quality feature scale/registry mismatch: {feature_id}")
         metric = feature_id.rsplit(".", 1)[-1]
         value_int = quality_stats[metric]

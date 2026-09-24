@@ -58,7 +58,9 @@ def _feature_contract():
             "scale": scale,
             "stale_after_days": 7,
         }
-        definitions[feature_id] = definition
+        # 真實 manifest 僅有 52 個來源定義；10 個品質 slots 由 assembler 衍生。
+        if not feature_id.startswith("data_quality."):
+            definitions[feature_id] = definition
         features.append({
             "feature_id": feature_id,
             "family_id": family_id,
@@ -255,6 +257,18 @@ def test_candidate_registry_explicitly_transitions_eight_aliases_to_daily_prices
         candidate_stock_feature_registry(
             incomplete, profile_sha256="sha256:" + "d" * 64,
             bridge_hash="sha256:" + "f" * 64,
+        )
+
+
+def test_candidate_derived_quality_slots_still_enforce_scale_without_registry_definition():
+    features, definitions = _feature_contract()
+    assert len(definitions) == 52
+    next(feature for feature in features if feature["feature_id"] == QUALITY_FEATURE_IDS[0])["scale"] = 10000
+    with pytest.raises(ValueError, match="quality feature scale/registry mismatch"):
+        rebuild_candidate_stock_features(
+            source=_source_index(), features=features, row_id="2330:wrong-quality-scale",
+            symbol="2330", decision_at="2024-11-05T17:00:00+00:00",
+            definitions=definitions, identity_hash="sha256:" + "1" * 64,
         )
 
 

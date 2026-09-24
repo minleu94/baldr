@@ -31,3 +31,9 @@
 候選股票 adapter 已完成：21 個原始欄位、20 個技指與五個品質欄位依臺北決策日取因果 T-1；沿用七日陳舊界線、正價格／無效值 gate、缺值和尺度。八個 alias 的登錄表來源變更有固定 bridge 與 hash，兩個文字方向欄位維持原有 missing。候選 profile、修訂實際取得時間、官方市場來源與完整 kernel 程式都納入驗證。Producer 和 consumer 都會拒絕這次 run02 快照缺少 profile 的 publication，不能移除來源資訊後改走舊版路徑。50 項 bounded 來源、標籤、完整特徵與 shadow tests 及三檔 targeted mypy 通過；這是程式驗證，完整候選資料、全量 fit 與獨立評估仍待本輪執行完成。
 
 當日推論的來源轉換摘要依實際登錄表差異計數，包含上述八個 alias，避免沿用舊版僅計算技指與市場欄位的數量。此摘要修正的官方來源／當日研究路由為 25 passed，沒有改動數值輸入。
+
+## H5 完整候選資料建置
+
+完整建置於 `2026-09-24T01:12:45.198864+00:00` 結束，exit code 0；固定程式 commit 為 `38018490`，執行前後所有受追蹤 Python 檔的實際 bytes 不變。資料集為 3,498,147 列、13 個年度 partitions，沒有使用抽樣或筆數上限。Dataset manifest 檔案 SHA-256 為 `68e1d55cef8712ea521fedcb16e4ad5d6aec95773304e3a6797567bc45d1661c`；外部候選來源 profile 為 `f195f1a409f01de7343bb740014af818c55fefbf58b442e5121f43bcbe6f088c`。
+
+本次建置限制原生計算執行緒為 2，實測程序樹最高 RSS 為 3,522,486,272 bytes。命令、來源程式雜湊、真正開始／結束時間及資源觀測保留於執行 receipt；資料 lineage 另有 `source_start.json` 與 `source_custody.json`。建置完成不取代獨立資料核對與後續模型重訓；本節目前只記錄建置結果。

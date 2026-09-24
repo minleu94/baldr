@@ -6,7 +6,10 @@ import pytest
 
 from data_module.bounded_allocation_label_restatement import BoundedRestatementError, _scaled_bar
 from data_module.bounded_official_market_restatement import (
-    MARKET_RAW_IDS, MARKET_SOURCE_ID, _rebuild_labels, official_feature_registry,
+    MARKET_RAW_IDS, MARKET_SOURCE_ID, _RUN02_CANDIDATE_SNAPSHOT_SHA256,
+    _decision_day, _rebuild_labels, _require_candidate_profile_for_snapshot,
+    OFFICIAL_RESTATEMENT_SCHEMA, RESEARCH_PUBLICATION_SCHEMA, _sha256_json,
+    official_feature_registry, validate_official_bounded_manifest,
 )
 from ml_module.bounded_restated_research_consumer import _parse_feature, _parse_labels, _official_purged_train_end
 
@@ -33,6 +36,63 @@ def test_bounded_label_uses_real_open_and_corrected_saturday_calendar():
     del prices["20141227"]
     with pytest.raises(BoundedRestatementError, match="incomplete stock path"):
         _rebuild_labels(sample, days, {day: i for i, day in enumerate(days)}, market, prices)
+
+
+def test_candidate_label_and_market_decisions_use_equivalent_taipei_local_day():
+    days = ["20241106", "20241107", "20241108", "20241111", "20241112"]
+    market = {day: _scaled_bar({"開盤價": "100", "最高價": "112", "最低價": "99", "收盤價": "110"}) for day in days}
+    prices = {day: _scaled_bar({"開盤價": "100", "最高價": "106", "最低價": "99", "收盤價": "105"}) for day in days}
+    index = {day: i for i, day in enumerate(days)}
+    labels = []
+    for decision_at in ("2024-11-05T17:00:00+00:00", "2024-11-06T01:00:00+08:00"):
+        sample = {"row": {"decision_at": decision_at, "symbol": "2330"}, "horizon_labels": [_label()]}
+        labels.append(_rebuild_labels(sample, days, index, market, prices, taipei_local_decision=True)[0])
+        assert _decision_day(decision_at, taipei_local=True).isoformat() == "2024-11-06"
+    assert labels[0] == labels[1]
+    assert labels[0]["horizon_end_date"] == "2024-11-12"
+
+
+def test_run02_snapshot_requires_candidate_daily_source_profile_but_legacy_hash_does_not():
+    with pytest.raises(ValueError, match="requires the verified daily-source profile"):
+        _require_candidate_profile_for_snapshot(
+            _RUN02_CANDIDATE_SNAPSHOT_SHA256,
+            candidate_stock=False,
+        )
+    _require_candidate_profile_for_snapshot(
+        _RUN02_CANDIDATE_SNAPSHOT_SHA256,
+        candidate_stock=True,
+    )
+    _require_candidate_profile_for_snapshot(
+        "sha256:" + "1" * 64,
+        candidate_stock=False,
+    )
+
+
+def test_consumer_rejects_run02_publication_with_removed_candidate_profile_before_parent_read():
+    identity_keys = (
+        "schema_version market_source_contract fold_profile started_at revision_observed_at "
+        "parent_manifest_path parent_manifest_file_sha256 parent_training_as_of "
+        "source_snapshot_sha256 source_snapshot_path official_market_manifest_path "
+        "official_market_manifest_file_sha256 producer_code_root computation_source_hashes "
+        "selection_policy corporate_action_manifest_path corporate_action_manifest_file_sha256"
+    ).split()
+    identity = {key: "unused-before-source-guard" for key in identity_keys}
+    identity["source_snapshot_sha256"] = _RUN02_CANDIDATE_SNAPSHOT_SHA256
+    manifest = {
+        "schema_version": RESEARCH_PUBLICATION_SCHEMA,
+        "research_only": True,
+        "production_alpha_bp": 0,
+        "dataset_temporality": "restated_research",
+        "dataset_identity_hash": _sha256_json(identity),
+        "restatement": {"schema_version": OFFICIAL_RESTATEMENT_SCHEMA, "identity_payload": identity},
+        **{key: False for key in (
+            "historical_pit", "formal_oos_allowed", "production_action_allowed",
+            "promotion_eligible", "direct_training_input", "formal_consumer_compatible",
+        )},
+    }
+    manifest["manifest_hash"] = _sha256_json(manifest)
+    with pytest.raises(ValueError, match="requires the verified daily-source profile"):
+        validate_official_bounded_manifest(manifest)
 
 
 @pytest.mark.parametrize("horizon", [5, 10, 20, 60])

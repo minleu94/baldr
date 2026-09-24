@@ -34,6 +34,9 @@ OFFICIAL_RESTATEMENT_SCHEMA = "bounded-allocation-official-market-restatement.v1
 OFFICIAL_FOLD_PROFILE = "restated_official_market_event_maturity.v1"
 MARKET_SOURCE_ID = "official.twse_market"
 MARKET_QUALITY_SOURCE_ID = "derived:official_market_quality"
+_RUN02_CANDIDATE_SNAPSHOT_SHA256 = (
+    "sha256:05658755b956680a614aa67fa481971abe83c649e2ea7b39202e3486e232cd65"
+)
 FEATURE_NAMES, FEATURE_SCALES = expected_feature_contract()
 MARKET_FEATURE_IDS = frozenset(FEATURE_NAMES[:5] + FEATURE_NAMES[13:21])
 MARKET_RAW_IDS = frozenset(FEATURE_NAMES[13:21])
@@ -47,11 +50,31 @@ _DEPENDENCIES = (
     "data_module/ml_restatement_official_market.py",
     "utils/numeric_text.py",
 )
+_CANDIDATE_DEPENDENCIES = (
+    "data_module/bounded_candidate_stock_source.py",
+    "data_module/ml_restatement_research_candidate_source.py",
+    "data_module/excluded_daily_price_revision.py",
+    "analysis_module/technical_analysis/technical_indicators.py",
+    "analysis_module/technical_analysis/indicator_kernels.py",
+)
 
 
-def _source_hashes() -> dict[str, str]:
+def _source_hashes(*, candidate_stock: bool = False) -> dict[str, str]:
     root = Path(__file__).resolve().parents[1]
-    return {relative: _file_sha256(root / relative) for relative in _DEPENDENCIES}
+    dependencies = _DEPENDENCIES + (_CANDIDATE_DEPENDENCIES if candidate_stock else ())
+    return {relative: _file_sha256(root / relative) for relative in dependencies}
+
+
+def _require_candidate_profile_for_snapshot(
+    expected_snapshot_hash: str,
+    *,
+    candidate_stock: bool,
+) -> None:
+    """Prevent run02 from silently taking the older market-only route."""
+    if expected_snapshot_hash == _RUN02_CANDIDATE_SNAPSHOT_SHA256 and not candidate_stock:
+        raise ValueError(
+            "run02 bounded candidate snapshot requires the verified daily-source profile"
+        )
 
 
 def official_feature_registry(parent: Mapping[str, Any], market_hash: str) -> dict[str, Any]:
@@ -100,11 +123,18 @@ def validate_official_bounded_manifest(manifest: Mapping[str, Any]) -> dict[str,
     identity = restatement.get("identity_payload")
     if not isinstance(identity, dict) or manifest.get("dataset_identity_hash") != _sha256_json(identity):
         raise ValueError("official bounded dataset identity mismatch")
-    if set(identity) != {"schema_version", "market_source_contract", "fold_profile", "started_at", "revision_observed_at", "parent_manifest_path",
+    base_identity_keys = {"schema_version", "market_source_contract", "fold_profile", "started_at", "revision_observed_at", "parent_manifest_path",
         "parent_manifest_file_sha256", "parent_training_as_of", "source_snapshot_sha256", "source_snapshot_path", "official_market_manifest_path",
         "official_market_manifest_file_sha256", "producer_code_root", "computation_source_hashes", "selection_policy",
-        "corporate_action_manifest_path", "corporate_action_manifest_file_sha256"}:
+        "corporate_action_manifest_path", "corporate_action_manifest_file_sha256"}
+    identity_candidate_stock = identity.get("candidate_stock_source")
+    candidate_stock = restatement.get("candidate_stock_source")
+    if set(identity) != base_identity_keys | ({"candidate_stock_source"} if identity_candidate_stock is not None else set()):
         raise ValueError("official bounded identity fields differ from the fixed contract")
+    _require_candidate_profile_for_snapshot(
+        str(identity["source_snapshot_sha256"]),
+        candidate_stock=isinstance(candidate_stock, dict) and isinstance(identity_candidate_stock, dict),
+    )
     parent = _bound_parent(Path(identity["parent_manifest_path"]), identity["parent_manifest_file_sha256"])
     source = load_official_market_capture(
         Path(identity["official_market_manifest_path"]),
@@ -136,20 +166,65 @@ def validate_official_bounded_manifest(manifest: Mapping[str, Any]) -> dict[str,
         raise ValueError("official bounded clock sequence mismatch")
     if source.available_at > datetime.fromisoformat(identity["started_at"]):
         raise ValueError("official source was not available at bounded build start")
-    if set(identity["computation_source_hashes"]) != set(_DEPENDENCIES):
+    expected_dependencies = set(_DEPENDENCIES) | (set(_CANDIDATE_DEPENDENCIES) if candidate_stock is not None else set())
+    if set(identity["computation_source_hashes"]) != expected_dependencies:
         raise ValueError("official bounded producer dependencies incomplete")
     for relative, digest in identity["computation_source_hashes"].items():
         if _file_sha256(Path(identity["producer_code_root"]) / relative) != digest:
             raise ValueError("official bounded producer source changed")
     registry = official_feature_registry(parent, source.manifest_file_sha256)
-    if registry != manifest["feature_registry"] or _sha256_json(registry) != manifest["feature_registry_hash"]:
-        raise ValueError("official bounded registry differs from the fixed source-only revision")
     expected_sources = dict(parent["source_manifest_hashes"])
     expected_sources.update({MARKET_SOURCE_ID: source.manifest_file_sha256,
         MARKET_QUALITY_SOURCE_ID: OFFICIAL_MARKET_CONTRACT_HASH,
         "contract.official_twse_market": OFFICIAL_MARKET_CONTRACT_HASH,
-        "parent.bounded_stock_restatement": identity["parent_manifest_file_sha256"],
-    })
+        "parent.bounded_stock_restatement": identity["parent_manifest_file_sha256"]})
+    if candidate_stock is not None:
+        if not isinstance(candidate_stock, dict) or set(candidate_stock) != {"mode", "profile", "bridge", "bridge_sha256"}:
+            raise ValueError("candidate bounded stock source metadata differs from the fixed contract")
+        if candidate_stock.get("mode") != "daily_source_rehydration.v1" or restatement.get("candidate_stock_source") != candidate_stock:
+            raise ValueError("candidate bounded stock source transition is missing or inconsistent")
+        profile_reference = candidate_stock.get("profile")
+        bridge = candidate_stock.get("bridge")
+        if not isinstance(profile_reference, dict) or set(profile_reference) != {"path", "file_sha256"} or not isinstance(bridge, dict):
+            raise ValueError("candidate bounded stock source profile or bridge is malformed")
+        from data_module.bounded_candidate_stock_source import (
+            candidate_stock_feature_registry,
+            validate_candidate_stock_source_bridge,
+        )
+        from data_module.ml_restatement_research_candidate_source import verify_candidate_source_profile
+
+        profile = verify_candidate_source_profile(
+            Path(profile_reference["path"]),
+            str(profile_reference["file_sha256"]),
+            as_of=datetime.fromisoformat(manifest["training_as_of"]),
+        )
+        if (
+            profile.snapshot_db.resolve() != Path(identity["source_snapshot_path"]).resolve()
+            or profile.snapshot_sha256 != identity["source_snapshot_sha256"]
+            or profile.market_manifest.resolve() != source.manifest_path.resolve()
+            or profile.market_sha256 != source.manifest_file_sha256
+            or identity_candidate_stock != candidate_stock
+        ):
+            raise ValueError("candidate stock profile is not bound to the official snapshot/capture")
+        bridge_hash = validate_candidate_stock_source_bridge(
+            bridge,
+            profile=profile,
+            profile_sha256=str(profile_reference["file_sha256"]),
+            revision_observed_at=identity["revision_observed_at"],
+        )
+        if bridge_hash != candidate_stock.get("bridge_sha256"):
+            raise ValueError("candidate stock source identity or bridge hash mismatch")
+        registry = candidate_stock_feature_registry(
+            registry,
+            profile_sha256=profile.profile_file_sha256,
+            bridge_hash=bridge_hash,
+        )
+        expected_sources.update({
+            "candidate.stock_source_profile": profile.profile_file_sha256,
+            "contract.candidate_daily_source_bridge": bridge_hash,
+        })
+    if registry != manifest["feature_registry"] or _sha256_json(registry) != manifest["feature_registry_hash"]:
+        raise ValueError("official bounded registry differs from the fixed source-only revision")
     if manifest["source_manifest_hashes"] != [list(pair) for pair in sorted(expected_sources.items())]:
         raise ValueError("official bounded source aliases mismatch")
     excluded = restatement.get("excluded_rows")
@@ -175,8 +250,9 @@ def validate_official_registry_bridge(manifest: Mapping[str, Any], current_regis
 
 def _rebuild_labels(sample: Mapping[str, Any], calendar: list[str], calendar_index: Mapping[str, int],
                     benchmark: Mapping[str, Mapping[str, int | None]], prices: Mapping[str, Mapping[str, int | None]],
-                    corporate_action_dates: Sequence[str] = ()) -> list[dict[str, Any]]:
-    decision = sample["row"]["decision_at"][:10].replace("-", "")
+                    corporate_action_dates: Sequence[str] = (), *,
+                    taipei_local_decision: bool = False) -> list[dict[str, Any]]:
+    decision = _decision_day(sample["row"]["decision_at"], taipei_local=taipei_local_decision).strftime("%Y%m%d")
     if decision not in calendar_index:
         raise BoundedRestatementError("decision_not_in_official_calendar")
     labels = []
@@ -199,14 +275,34 @@ def _rebuild_labels(sample: Mapping[str, Any], calendar: list[str], calendar_ind
     return labels
 
 
+def _decision_day(value: str, *, taipei_local: bool) -> date:
+    if not taipei_local:
+        return date.fromisoformat(value[:10])
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("candidate decision_at must be an ISO datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("candidate decision_at must include a timezone")
+    return parsed.astimezone(_TAIPEI).date()
+
+
 def restate_bounded_official_market(*, parent_manifest_path: Path, expected_parent_hash: str,
     source_snapshot_path: Path, expected_snapshot_hash: str, official_market_manifest: Path,
-    expected_official_market_hash: str, corporate_action_manifest: Path, output_directory: Path) -> Path:
+    expected_official_market_hash: str, corporate_action_manifest: Path, output_directory: Path,
+    candidate_source_profile_path: Path | None = None, expected_candidate_source_profile_hash: str | None = None) -> Path:
     """不補價；缺完整四個 horizon 的列保留明確排除證據，其餘原 targets 不改。"""
     from ml_module.bounded_restated_research_consumer import _publication_shards
 
+    if (candidate_source_profile_path is None) != (expected_candidate_source_profile_hash is None):
+        raise ValueError("candidate stock source profile path and SHA must be supplied together")
+    candidate_stock = candidate_source_profile_path is not None
+    _require_candidate_profile_for_snapshot(
+        expected_snapshot_hash,
+        candidate_stock=candidate_stock,
+    )
     started = datetime.now(timezone.utc)
-    code_hashes = _source_hashes()
+    code_hashes = _source_hashes(candidate_stock=candidate_stock)
     parent_path = parent_manifest_path.resolve(strict=True)
     parent = _bound_parent(parent_path, expected_parent_hash)
     source = load_official_market_capture(official_market_manifest, expected_file_sha256=expected_official_market_hash, as_of=started)
@@ -229,6 +325,27 @@ def restate_bounded_official_market(*, parent_manifest_path: Path, expected_pare
     if actions.manifest_file_hash != parent["corporate_action_custody"]["manifest_file_hash"]:
         raise ValueError("corporate action manifest differs from the original bounded source")
     observed = datetime.now(timezone.utc).isoformat()
+    candidate_source_index = None
+    candidate_source_identity = None
+    if candidate_stock:
+        from data_module.bounded_candidate_stock_source import load_candidate_stock_source_index
+
+        if candidate_source_profile_path is None or expected_candidate_source_profile_hash is None:
+            raise ValueError("candidate source profile path and hash are required")
+        candidate_source_index = load_candidate_stock_source_index(
+            profile_path=candidate_source_profile_path,
+            expected_profile_sha256=str(expected_candidate_source_profile_hash),
+            snapshot_path=snapshot,
+            expected_snapshot_sha256=expected_snapshot_hash,
+            symbols=sorted(parent["restatement"]["full_prefix_kernel_audit"]["source_rows_by_symbol"]),
+            revision_observed_at=observed,
+        )
+        candidate_source_identity = {
+            "mode": "daily_source_rehydration.v1",
+            "profile": candidate_source_index.profile_reference,
+            "bridge": candidate_source_index.bridge_payload,
+            "bridge_sha256": candidate_source_index.bridge_hash,
+        }
     identity_payload = {
         "schema_version": OFFICIAL_RESTATEMENT_SCHEMA, "market_source_contract": MARKET_SOURCE_CONTRACT,
         "fold_profile": OFFICIAL_FOLD_PROFILE, "started_at": started.isoformat(), "revision_observed_at": observed,
@@ -241,12 +358,27 @@ def restate_bounded_official_market(*, parent_manifest_path: Path, expected_pare
         "corporate_action_manifest_path": str(corporate_action_manifest.resolve()),
         "corporate_action_manifest_file_sha256": actions.manifest_file_hash,
     }
+    if candidate_source_identity is not None:
+        identity_payload["candidate_stock_source"] = candidate_source_identity
     identity = _sha256_json(identity_payload)
     registry = official_feature_registry(parent, source.manifest_file_sha256)
+    if candidate_source_index is not None:
+        from data_module.bounded_candidate_stock_source import candidate_stock_feature_registry
+
+        registry = candidate_stock_feature_registry(
+            registry,
+            profile_sha256=candidate_source_index.profile.profile_file_sha256,
+            bridge_hash=candidate_source_index.bridge_hash,
+        )
     manifest = deepcopy(parent)
     source_pairs = dict(parent["source_manifest_hashes"])
     source_pairs.update({MARKET_SOURCE_ID: source.manifest_file_sha256, MARKET_QUALITY_SOURCE_ID: OFFICIAL_MARKET_CONTRACT_HASH,
         "contract.official_twse_market": OFFICIAL_MARKET_CONTRACT_HASH, "parent.bounded_stock_restatement": expected_parent_hash})
+    if candidate_source_index is not None:
+        source_pairs.update({
+            "candidate.stock_source_profile": candidate_source_index.profile.profile_file_sha256,
+            "contract.candidate_daily_source_bridge": candidate_source_index.bridge_hash,
+        })
     manifest.update(dataset_id="bounded-official-market-" + identity[7:31], dataset_identity_hash=identity,
         publication_id="bounded-official-market-" + identity[7:31], feature_registry=registry,
         feature_registry_hash=_sha256_json(registry), source_manifest_hashes=[list(pair) for pair in sorted(source_pairs.items())],
@@ -297,19 +429,25 @@ def restate_bounded_official_market(*, parent_manifest_path: Path, expected_pare
                         raise ValueError("duplicate bounded parent row")
                     all_ids.add(row_id)
                     try:
-                        labels = _rebuild_labels(sample, calendar, calendar_index, benchmark, prices[row["symbol"]], actions.effective_dates_by_symbol.get(row["symbol"], ()))
+                        labels = _rebuild_labels(sample, calendar, calendar_index, benchmark, prices[row["symbol"]], actions.effective_dates_by_symbol.get(row["symbol"], ()),
+                            taipei_local_decision=candidate_stock)
                     except BoundedRestatementError as exc:
                         excluded.append({"row_id": row_id, "reason": str(exc)})
                         continue
-                    decision = date.fromisoformat(row["decision_at"][:10])
+                    decision = _decision_day(row["decision_at"], taipei_local=candidate_stock)
                     if decision not in feature_cache:
                         feature_cache[decision] = build_restated_feature_values(decision=decision, stock=empty_frame, dates=[], raw_rows=[],
                             market_dates=sorted(source.rows), market_rows=source.rows, feature_scales=FEATURE_SCALES)
                     values, masks, _, market_day = feature_cache[decision]
                     if market_day is None:
                         raise ValueError("retained bounded row has no prior official market event")
+                    candidate_stock_ids: frozenset[str] = frozenset()
+                    if candidate_source_index is not None:
+                        from data_module.bounded_candidate_stock_source import CANDIDATE_STOCK_FEATURE_IDS
+
+                        candidate_stock_ids = CANDIDATE_STOCK_FEATURE_IDS
                     preserve = lambda item: {"row_id": item["row_id"], "decision_at": item["decision_at"], "symbol": item["symbol"],
-                        "features": [feature for feature in item["features"] if feature["feature_id"] not in MARKET_FEATURE_IDS],
+                        "features": [feature for feature in item["features"] if feature["feature_id"] not in (MARKET_FEATURE_IDS | candidate_stock_ids)],
                         "targets": item["targets"], "portfolio_state": item["portfolio_state"]}
                     preservation_before.update(_canonical_json(preserve(row)).encode("utf-8"))
                     for feature in row["features"]:
@@ -329,6 +467,32 @@ def restate_bounded_official_market(*, parent_manifest_path: Path, expected_pare
                             available_at=observed, event_at=event)
                         feature["revision_id"] = _sha256_json({"dataset": identity, "row_id": row_id, "feature": name, "value": value})
                         feature["content_hash"] = _sha256_json({key: val for key, val in feature.items() if key != "content_hash"})
+                    if candidate_source_index is not None:
+                        from data_module.bounded_candidate_stock_source import rebuild_candidate_stock_features
+
+                        stock_definitions = {
+                            str(item["feature_id"]): item
+                            for item in registry["features"]
+                        }
+                        old_stock_values = {
+                            str(feature["feature_id"]): feature.get("value_int")
+                            for feature in row["features"]
+                        }
+                        row["features"] = rebuild_candidate_stock_features(
+                            source=candidate_source_index,
+                            features=row["features"],
+                            row_id=row_id,
+                            symbol=str(row["symbol"]),
+                            decision_at=str(row["decision_at"]),
+                            definitions=stock_definitions,
+                            identity_hash=identity,
+                        )
+                        changes["candidate_stock_feature_slots"] += len(candidate_stock_ids)
+                        changes["candidate_stock_value_changes"] += sum(
+                            int(old_stock_values[feature["feature_id"]] != feature.get("value_int"))
+                            for feature in row["features"]
+                            if feature["feature_id"] in candidate_stock_ids
+                        )
                     preservation_after.update(_canonical_json(preserve(row)).encode("utf-8"))
                     row.update(dataset_identity_hash=identity, feature_registry_hash=manifest["feature_registry_hash"], source_manifest_hashes=manifest["source_manifest_hashes"])
                     row["missing_family_ids"] = sorted({feature["family_id"] for feature in row["features"] if feature["family_id"] != "data_quality" and not feature["observed"]})
@@ -350,15 +514,33 @@ def restate_bounded_official_market(*, parent_manifest_path: Path, expected_pare
         print(f"year={entry['year']} retained={len(retained_dates)} scanned={scanned} cumulative_excluded={len(excluded)}", flush=True)
     if preservation_before.digest() != preservation_after.digest() or len(all_ids) != parent["sample_count"]:
         raise ValueError("bounded retained stock features, row keys, targets or state changed")
-    if _file_sha256(snapshot) != expected_snapshot_hash or _file_sha256(parent_path) != expected_parent_hash or _source_hashes() != code_hashes:
+    if _file_sha256(snapshot) != expected_snapshot_hash or _file_sha256(parent_path) != expected_parent_hash or _source_hashes(candidate_stock=candidate_stock) != code_hashes:
         raise ValueError("bounded source or producer changed during build")
     load_official_market_capture(source.manifest_path, expected_file_sha256=source.manifest_file_sha256, as_of=datetime.now(timezone.utc))
+    restatement_payload = {
+        "schema_version": OFFICIAL_RESTATEMENT_SCHEMA,
+        "identity_payload": identity_payload,
+        "excluded_rows": excluded,
+        "changes": dict(changes),
+        "retained_nonmarket_preservation_hash": "sha256:" + preservation_after.hexdigest(),
+        "retained_nonmarket_feature_slots_per_row": 3 if candidate_source_index is not None else 49,
+        "market_feature_slots_per_row": 13,
+        "kernel_source_hashes": parent["restatement"]["kernel_source_hashes"],
+        "historical_pit": False,
+        "formal_oos_allowed": False,
+        "production_action_allowed": False,
+    }
+    if candidate_source_identity is not None:
+        if candidate_source_index is None:
+            raise ValueError("candidate source index is missing after candidate profile validation")
+        restatement_payload.update(
+            candidate_stock_source=candidate_source_identity,
+            candidate_stock_feature_slots_per_row=46,
+            candidate_stock_source_audit=candidate_source_index.audit,
+            candidate_stock_quality_age_policy="source_event_day_to_Taipei_local_decision_day; revision availability remains the actual candidate rebuild clock",
+        )
     manifest.update(shards=new_shards, sample_count=sum(item["sample_count"] for item in new_shards), dataset_created_at=datetime.now(timezone.utc).isoformat(),
-        restatement={"schema_version": OFFICIAL_RESTATEMENT_SCHEMA, "identity_payload": identity_payload,
-            "excluded_rows": excluded, "changes": dict(changes), "retained_nonmarket_preservation_hash": "sha256:" + preservation_after.hexdigest(),
-            "retained_nonmarket_feature_slots_per_row": 49, "market_feature_slots_per_row": 13,
-            "kernel_source_hashes": parent["restatement"]["kernel_source_hashes"],
-            "historical_pit": False, "formal_oos_allowed": False, "production_action_allowed": False})
+        restatement=restatement_payload)
     manifest["manifest_hash"] = _sha256_json(manifest)
     validate_official_bounded_manifest(manifest)
     _write_json(output / "manifest.json", manifest)
@@ -371,6 +553,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.add_argument("--" + name, type=Path, required=True)
     for name in ("expected-parent-hash", "expected-snapshot-hash", "expected-official-market-hash"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--candidate-source-profile-path", type=Path)
+    parser.add_argument("--expected-candidate-source-profile-hash")
     args = parser.parse_args(argv)
     path = restate_bounded_official_market(**vars(args))
     print(json.dumps({"manifest": str(path), "file_sha256": _file_sha256(path)}, ensure_ascii=False))

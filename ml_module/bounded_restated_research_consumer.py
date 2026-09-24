@@ -504,8 +504,15 @@ def _parse_sample(
             definitions=definitions,
             source_hash_by_id=source_hash_by_id,
             official_market=manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA,
+            candidate_stock_source=(
+                manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA
+                and isinstance(manifest["restatement"].get("candidate_stock_source"), dict)
+            ),
             stock_revision_clock=(
-                _aware_datetime(manifest["restatement"]["identity_payload"]["parent_training_as_of"], "parent_training_as_of")
+                revision_clock
+                if manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA
+                and isinstance(manifest["restatement"].get("candidate_stock_source"), dict)
+                else _aware_datetime(manifest["restatement"]["identity_payload"]["parent_training_as_of"], "parent_training_as_of")
                 if manifest["restatement"]["schema_version"] == OFFICIAL_RESTATEMENT_SCHEMA else None
             ),
         )
@@ -618,6 +625,7 @@ def _parse_feature(
     definitions: Mapping[str, Mapping[str, Any]],
     source_hash_by_id: Mapping[str, str],
     official_market: bool = False,
+    candidate_stock_source: bool = False,
     stock_revision_clock: datetime | None = None,
 ) -> RestatedResearchFeature:
     _reject_unknown(payload, _FEATURE_FIELDS, "feature")
@@ -651,7 +659,35 @@ def _parse_feature(
             f"feature revision is after training_as_of: {feature_id}"
         )
     is_market_feature = official_market and feature_id in MARKET_FEATURE_IDS
-    is_restatement_feature = feature_id in _RESEARCH_FEATURE_IDS or is_market_feature
+    candidate_stock_feature = False
+    candidate_expected_source: str | None = None
+    if candidate_stock_source:
+        if not official_market:
+            raise BoundedRestatedResearchError(
+                "candidate stock transition is only valid on an official bounded publication"
+            )
+        from data_module.bounded_candidate_stock_source import (
+            CANDIDATE_RAW_FEATURE_IDS,
+            CANDIDATE_STOCK_FEATURE_IDS,
+        )
+
+        candidate_stock_feature = feature_id in CANDIDATE_STOCK_FEATURE_IDS
+        if feature_id in CANDIDATE_RAW_FEATURE_IDS:
+            candidate_expected_source = "sqlite.daily_prices"
+        elif feature_id in TECHNICAL_FEATURE_IDS:
+            candidate_expected_source = TECHNICAL_SOURCE_ID
+        elif feature_id in QUALITY_FEATURE_IDS:
+            candidate_expected_source = QUALITY_SOURCE_ID
+        if candidate_stock_feature:
+            if available_clock != revision_clock:
+                raise BoundedRestatedResearchError(
+                    f"candidate stock feature does not carry the actual rebuild clock: {feature_id}"
+                )
+            if source_id != candidate_expected_source:
+                raise BoundedRestatedResearchError(
+                    f"candidate stock source transition mismatch: {feature_id}"
+                )
+    is_restatement_feature = feature_id in _RESEARCH_FEATURE_IDS or is_market_feature or candidate_stock_feature
     if is_restatement_feature:
         _required_sha(revision_id, "feature.revision_id")
     if available_clock > decision_clock:
@@ -671,6 +707,12 @@ def _parse_feature(
         )
         if is_market_feature:
             expected_source = MARKET_SOURCE_ID if feature_id in MARKET_RAW_IDS else MARKET_QUALITY_SOURCE_ID
+        if candidate_stock_feature:
+            if candidate_expected_source is None:
+                raise BoundedRestatedResearchError(
+                    f"candidate stock feature has no approved source: {feature_id}"
+                )
+            expected_source = candidate_expected_source
         if source_id != expected_source:
             raise BoundedRestatedResearchError(
                 f"restated feature source mismatch: {feature_id}"

@@ -21,3 +21,11 @@
 `scripts/build_ml_restatement_candidate.py` 先建立外部來源 profile，再交既有 v3 builder；原入口的預設股票快照與驗證規則不變。本輪固定新快照若移除 profile reference，消費者會拒絕。Profile 綁定四組已套用修訂、官方回應、run02 source.json／SQLite hashes，以及 validator 程式內容。建立時程式路徑保留作追溯，相同內容的程式換到另一 checkout 不會僅因路徑不同而失敗；程式內容或來源證據變更仍須重新核驗。
 
 真實唯讀來源 smoke 已確認九日 14,869 列的全部 17 欄、5/20 全日 1,954 列中受保護的 868 列與保留的 1,086 列、2,942 個排除 key 和官方 3,106 日。Profile、receipt 與 log 留在 repo 本機 QA 目錄；72 項 candidate／v3／current-input／training-integrity tests、4 檔 targeted mypy、py_compile 及 CLI 入口通過。這是建置前檢查，不能取代後續全量資料與模型驗收。
+
+## Bounded 股票來源相依項目
+
+22,093 列舊 bounded publication 的唯讀對照，依原登錄表七個日曆日陳舊規則排除合法 missing 後，確認 74 列日價特徵漏用已補回 session，另 20 列仍用已排除休市日。只重算市場欄位會留下這些舊值；按舊 `daily_prices.收盤價.event_at` 選技指也會留下錯誤特徵日期。因此本輪候選須按新的因果 T-1 來源重算股票原始值、20 個技指與五個品質統計，保持原 62 欄 ABI、尺度和公式。
+
+另外八列 technical quote 與舊 publication 不同。逐筆追到同日原始 CSV 和 `daily_prices` 都是缺值，舊技指複本卻有數字；歷史 producer 曾對整張 DataFrame 使用 `ffill().bfill()`，該行為已於 `09f0eb56` 移除。新候選的八個技指原始欄位明列對應權威日價來源，保留 NULL／文字非數值的 missing 狀態，不把舊衍生填值當觀測。
+
+候選股票 adapter 已完成：21 個原始欄位、20 個技指與五個品質欄位依臺北決策日取因果 T-1；沿用七日陳舊界線、正價格／無效值 gate、缺值和尺度。八個 alias 的登錄表來源變更有固定 bridge 與 hash，兩個文字方向欄位維持原有 missing。候選 profile、修訂實際取得時間、官方市場來源與完整 kernel 程式都納入驗證。Producer 和 consumer 都會拒絕這次 run02 快照缺少 profile 的 publication，不能移除來源資訊後改走舊版路徑。50 項 bounded 來源、標籤、完整特徵與 shadow tests 及三檔 targeted mypy 通過；這是程式驗證，完整候選資料、全量 fit 與獨立評估仍待本輪執行完成。

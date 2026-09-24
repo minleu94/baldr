@@ -243,9 +243,14 @@ def validate_official_registry_bridge(manifest: Mapping[str, Any], current_regis
     expected_stock = _restated_feature_registry(original, kernel_hash=parent["restatement"]["kernel_source_hashes"])
     if expected_stock != parent["feature_registry"]:
         raise ValueError("official bounded parent technical registry transition mismatch")
+    original_definitions = {item["feature_id"]: item for item in original["features"]}
+    revised_source_definitions = sum(
+        item != original_definitions[item["feature_id"]]
+        for item in manifest["feature_registry"]["features"]
+    )
     return {"status": "verified_stock_and_official_market_source_revision", "training": manifest["feature_registry_hash"],
             "current": current_registry_hash, "unchanged_numeric_slots": 62,
-            "revised_source_definitions": len(TECHNICAL_FEATURE_IDS) + len(MARKET_RAW_IDS)}
+            "revised_source_definitions": revised_source_definitions}
 
 
 def _rebuild_labels(sample: Mapping[str, Any], calendar: list[str], calendar_index: Mapping[str, int],

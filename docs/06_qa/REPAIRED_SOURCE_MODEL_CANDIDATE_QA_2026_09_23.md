@@ -29,3 +29,5 @@
 另外八列 technical quote 與舊 publication 不同。逐筆追到同日原始 CSV 和 `daily_prices` 都是缺值，舊技指複本卻有數字；歷史 producer 曾對整張 DataFrame 使用 `ffill().bfill()`，該行為已於 `09f0eb56` 移除。新候選的八個技指原始欄位明列對應權威日價來源，保留 NULL／文字非數值的 missing 狀態，不把舊衍生填值當觀測。
 
 候選股票 adapter 已完成：21 個原始欄位、20 個技指與五個品質欄位依臺北決策日取因果 T-1；沿用七日陳舊界線、正價格／無效值 gate、缺值和尺度。八個 alias 的登錄表來源變更有固定 bridge 與 hash，兩個文字方向欄位維持原有 missing。候選 profile、修訂實際取得時間、官方市場來源與完整 kernel 程式都納入驗證。Producer 和 consumer 都會拒絕這次 run02 快照缺少 profile 的 publication，不能移除來源資訊後改走舊版路徑。50 項 bounded 來源、標籤、完整特徵與 shadow tests 及三檔 targeted mypy 通過；這是程式驗證，完整候選資料、全量 fit 與獨立評估仍待本輪執行完成。
+
+當日推論的來源轉換摘要依實際登錄表差異計數，包含上述八個 alias，避免沿用舊版僅計算技指與市場欄位的數量。此摘要修正的官方來源／當日研究路由為 25 passed，沒有改動數值輸入。

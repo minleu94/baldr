@@ -374,6 +374,51 @@ def test_stage_preserves_full_cache_contract_and_revision_evidence(prepared_worl
     assert cache.file_hash(Path(prepared_world["source_path"])) == prepared_world["source_sha256"]
 
 
+def test_price_revision_accepts_other_legal_rows_on_allowlisted_date(
+    prepared_world: dict[str, Any],
+) -> None:
+    source_path = Path(prepared_world["source_path"])
+    extra_row = _row("20260520", "1101", 52.3, name="台泥")
+    quoted_columns = ",".join('"' + column + '"' for column in DB_COLUMNS)
+    placeholders = ",".join("?" for _ in DB_COLUMNS)
+    with sqlite3.connect(source_path) as connection:
+        connection.execute(
+            f"INSERT INTO daily_prices ({quoted_columns}) VALUES ({placeholders})",
+            [extra_row[column] for column in DB_COLUMNS],
+        )
+
+    with cache._immutable(source_path) as source:
+        payload, evidence = cache._price_revision_evidence(
+            Path(prepared_world["root"]),
+            Path(prepared_world["database"]),
+            source,
+            DB_COLUMNS,
+        )
+
+    assert payload["allowlist_count"] == 1
+    assert evidence["row_count"] == 2
+    assert evidence["protected_row_count"] == 1
+
+
+def test_price_revision_rejects_missing_allowlisted_key(
+    prepared_world: dict[str, Any],
+) -> None:
+    source_path = Path(prepared_world["source_path"])
+    with sqlite3.connect(source_path) as connection:
+        connection.execute(
+            "DELETE FROM daily_prices WHERE 日期='20260520' AND 證券代號='2330'"
+        )
+
+    with cache._immutable(source_path) as source:
+        with pytest.raises(ValueError, match="整表替換缺少已修訂 key"):
+            cache._price_revision_evidence(
+                Path(prepared_world["root"]),
+                Path(prepared_world["database"]),
+                source,
+                DB_COLUMNS,
+            )
+
+
 def test_apply_interruption_can_resume_and_rollback_pair(
     prepared_world: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -400,8 +400,8 @@ def _price_revision_evidence(
             ("20260520",),
         )
     ]
-    if len(raw_rows) != allowed_rows:
-        raise ValueError("2026-05-20 canonical source row count 不符")
+    # allowlist 只描述已修訂 keys，不能拿來限制當日其他合法證券。
+    # guard 仍逐值核對完整修訂集合；快取保留整日來源列。
     guard.prepare_frame(pd.DataFrame(raw_rows))
     guard.assert_full_replacement_complete()
     return payload, {
@@ -412,6 +412,7 @@ def _price_revision_evidence(
         "corrected_at": corrected_at,
         "official_capture_at": official_capture_at,
         "row_count": len(raw_rows),
+        "protected_row_count": allowed_rows,
         "historical_pit": False,
     }
 

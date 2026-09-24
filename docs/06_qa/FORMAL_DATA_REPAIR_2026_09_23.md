@@ -8,6 +8,8 @@
 
 先前 v3 股票快照未包含本輪補回交易日／錯日排除，新的候選資料與模型必須另行建置和驗收，進度見[修復來源候選驗收](REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md)。原 v3 版本保留供比較，不覆寫舊結果。
 
+追加唯讀對照發現舊技指表複製的六個數值欄位仍有全表補值殘留：`最後揭示買價`／`買量`、`最後揭示賣價`／`賣量`、`本益比`、`漲跌價差`。run02 日價與技指 5,260,667 個共同 key 中，1,099,011 列至少一欄不同；買量與賣量各有 1,041,382 個來源 NULL 卻被技指複本填值。該範圍是衍生欄位對照，不是新增日價修訂。20 個因果指標 staging 完成後，還須另行核對／同步這六欄；原始日價、已重算指標與其他欄位保持各自來源與驗收邊界。範圍證據為本機 `technical_raw_alias_scope_run02.json`，尚未視為發布完成。
+
 ## 執行前回滾清單
 
 | 檔案／資料 | 變更類型 | 預計變更 | 回滾方式 | 風險 |
@@ -17,6 +19,7 @@
 | `scripts/repair_formal_market_data.py` 與 tests | 新增 | 來源 hash 核對、dry-run、備份、逐列套用／回復 | 使用新工具 `--rollback <receipt-dir> --confirm repair-formal-market-data`；程式以 `git revert <commit>` 回復 | 僅當欄位仍等於 receipt after 值時回復；後續漂移拒絕 |
 | 正式 `market_indices` 與 `meta_data/market_index.csv` | 受控修訂 | 以驗證官方月報更新 TAIEX 指定日期，錯誤交易日留存於備份／receipt | 逐列 receipt rollback；不以整庫覆蓋其他後續資料 | SQLite／CSV 跨儲存體須 journal、鎖與中斷恢復 |
 | 正式 `technical_indicators`、既有技術／整合快取 | 受控修訂 | 正確價格完整前綴重算 20 指標，不補缺價；逐股 staging、彙總串流 | `scripts/repair_formal_technical_data.py --rollback --receipt-dir <dir> --confirm repair-formal-technical-data` | 僅在完整技指表仍等於本輪 after fingerprint，且日價未變動時回復；CSV before／after hash 逐檔核對；其他表不回復 |
+| 正式技指表與技術 CSV 的六個原始欄位複本 | 受控修訂 | 買賣價／量、本益比、漲跌價差依同日權威日價回復原值與 NULL；其餘欄位不變 | `scripts/repair_formal_technical_raw_aliases.py --rollback --receipt-dir <dir> --expected-manifest-hash <hash> --confirm repair-formal-technical-raw-aliases` | 必須先於 20 指標與來源修復回滾；完整檢查來源、備份與全部 CSV 狀態後才修改，後續漂移拒絕 |
 | `daily_prices` 九個完全缺漏交易日 | 受控新增 | 以實際封存的 TWSE／TPEx 報表補回既有股票範圍與四碼證券共 14,869 列；保留官方空值、不修改原始日檔 | `scripts/repair_historical_sessions.py --rollback --plan <plan.json> --expected-plan-hash <hash> --receipt-dir <dir> --confirm repair-historical-sessions` | 先回復相依技術指標；完整欄位／來源／備份任一漂移即拒絕 |
 | 歷史交易日與市場修訂讀取／重匯 gate | 新增 | 新來源僅以真正取得時鐘記錄；舊檔不能清掉新核驗來源 | 回復來源後才回復本輪程式；保留歷史 receipt | 不將資料修訂冒充原決策當時已知，也不自動晉升模型 |
 | 官方無行情的錯日紀錄 | 受控排除 | 三個完整休市日共 2,888 列，以及 5/20 額外 54 個 key；從正式價格／相依技指與衍生 CSV 排除，原值與原始檔保留 | `scripts/repair_excluded_daily_prices.py` 的逐列回復；先回復後續技指／快取發布 | 只依雙市場完整官方回應與已核驗大盤月報判定；非任意刪除缺報價列；後續漂移拒絕回復 |
@@ -48,6 +51,8 @@
 
 第一階段 baseline audit：868 檔、77,173 個 2026-05-20 起的既有 key；來源日價 4,340 欄核對正確，個股 CSV 中文 OHLCV 385,865 欄正確。與目前完整因果 kernel 相較，DB 尚有 7,515 個指標欄位、個股 CSV 7,279 個欄位不一致，包含先前修復白名單未含的 ATR，以及後續更新殘留；這些數字是修復前狀態。英文價格副本與 DB 幾乎全空的 alias 不當成新的來源價差。新重算會涵蓋完整前綴與 20 個既有指標，包含 MA／ATR／ADX，暖機 NaN 保留。
 
+技指 run02 已於 `2026-09-24T01:28:12Z` 完成 5,331,231 列、2,210 份 CSV 正式套用，發布後技指 table hash 為 `374d44ba1b3ab82f67deddc74b6d8836166776489c84f1aac0895d5af2dadfc0`；獨立正式讀回仍另行驗證。每日快取 prepare 檢查已修正全日與修訂名單的範圍混淆：5/20 的 1,954 列保留完整來源，868 個修訂 keys 仍逐值與完整性核驗，其餘 1,086 列不因不在修訂名單而丟棄。11 項快取 tests 通過，包含合法同日未修訂列與修訂 key 缺漏的正反例。
+
 ## 全市場交易日檢查追加發現
 
 將全庫日價日期與已核驗的 3,106 個官方交易日交叉核對，另找到 `20160211` 894 列、`20241002` 922 列、`20250929` 1,072 列。三日的 TWSE 回應均明確為無符合資料，TPEx 回應的請求日／表內日正確、狀態成功、筆數為零；對應月份 FMTQIK 與 MI_5MINS_HIST 都沒有該交易日。這是可驗證的錯日紀錄，不是 OHLC 缺值的正常列。
@@ -64,7 +69,7 @@
 
 完整技指重建逐股計算因果前綴，彙總快取透過 SQLite 暫存及串流輸出控制記憶體；這是本輪離線維護，不在 UI 每次開頁執行。staging 同時綁定排除範圍與 plan／receipt identity，相同 keys 但不同證據版本也拒絕發布。排除只涵蓋核驗的休市日期和 54 個精確 keys；其他無日價來源的舊快取列及非本輪欄位保留。
 
-來源、備份或回復證據 hash 不符時，工具停止且不以手動改 hash 解鎖。永久來源封存是 apply／resume／rollback 的必要依賴，來源損壞時先恢復封存，再進行受控回復。回復順序是每日整合快取 → 全量技指發布 → 錯日排除 → 原價格／歷史交易日／大盤修訂，避免相依層仍使用已回復的來源。
+來源、備份或回復證據 hash 不符時，工具停止且不以手動改 hash 解鎖。永久來源封存是 apply／resume／rollback 的必要依賴，來源損壞時先恢復封存，再進行受控回復。回復順序是六個原始欄位複本 → 每日整合快取 → 全量技指發布 → 錯日排除 → 原價格／歷史交易日／大盤修訂，避免相依層仍使用已回復的來源。
 
 更新頁 validator 為 25 passed／0 failed／4 skipped；相關來源、合併、發布及更新服務回歸 147 passed。程序池／中止恢復／延遲與 canary 測試 23 passed；舊 fixture 中的 7/32–7/35 已改成合法日期，計算器仍拒絕無效日期。本節測試結果不代替後續正式資料全量讀回。
 

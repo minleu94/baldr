@@ -5,10 +5,17 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 import data_module.fundamental_sqlite_provider as fundamental_sqlite_provider_module
 from data_module.fundamental_schema import apply_fundamental_schema
 from data_module.fundamental_sqlite_provider import FundamentalSQLiteProvider
+from data_module.fundamental_data import legacy_monthly_revenue_quality_value
 from decision_module.factors.factor_dtos import FactorQuality
+from decision_module.factors.statement_factor_adapters import statement_item_quality
+from decision_module.factors.valuation_adapters import (
+    valuation_source_record_to_observation,
+)
 
 
 _MAPPING_HEADER = (
@@ -100,7 +107,150 @@ def test_sqlite_provider_loads_monthly_revenue_records_available_by_decision_dat
     assert record.period == "2026-05"
     assert record.available_date == date(2026, 6, 11)
     assert record.revenue == Decimal("1000000000")
-    assert record.quality == FactorQuality.OBSERVED
+    assert record.legacy_quality_wire_value == "observed"
+
+
+@pytest.mark.parametrize(
+    "quality",
+    ("observed", "estimated", "degraded", "missing", "neutral", "stale"),
+)
+def test_sqlite_provider_round_trips_legacy_monthly_revenue_quality_wire_value(
+    tmp_path,
+    quality: str,
+):
+    db_file = tmp_path / "twstock.db"
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    with sqlite3.connect(db_file) as conn:
+        apply_fundamental_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO fundamental_monthly_revenues(
+                stock_code, period, as_of_date, announced_date, available_date,
+                revenue, source, source_version, quality
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2330",
+                "2026-05",
+                "2026-05-31",
+                "2026-06-10",
+                "2026-06-11",
+                "100.25",
+                "financial_data.monthly_revenue_csv",
+                "monthly-revenue-v1",
+                quality,
+            ),
+        )
+    _write_formal_mapping(
+        mapping_file,
+        [
+            (
+                "2330",
+                "2026-05",
+                "2026-05-31",
+                "2026-06-10",
+                "2026-06-11",
+                "twse.monthly_revenue_announcement",
+                "announcement-v1",
+                "formal-availability.v2",
+                "official_announcement",
+                "a" * 64,
+                "1",
+                "",
+            ),
+        ],
+    )
+
+    records = FundamentalSQLiteProvider(
+        db_file,
+        monthly_revenue_availability_file=mapping_file,
+    ).load_monthly_revenues(
+        stock_code="2330",
+        decision_date=date(2026, 6, 30),
+    )
+
+    assert len(records) == 1
+    assert records[0].legacy_quality_wire_value == quality
+    assert legacy_monthly_revenue_quality_value(records[0]) == quality
+    assert records[0].revenue == Decimal("100.25")
+
+
+def test_sqlite_provider_keeps_same_date_mapping_revision_history_at_key_level(
+    tmp_path,
+):
+    db_file = tmp_path / "twstock.db"
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    with sqlite3.connect(db_file) as conn:
+        apply_fundamental_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO fundamental_monthly_revenues(
+                stock_code, period, as_of_date, announced_date, available_date,
+                revenue, source, source_version, quality
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2330",
+                "2026-05",
+                "2026-05-31",
+                "2026-06-10",
+                "2026-06-11",
+                "100.25",
+                "financial_data.monthly_revenue_csv",
+                "monthly-revenue-row-v1",
+                "observed",
+            ),
+        )
+    _write_formal_mapping(
+        mapping_file,
+        [
+            (
+                "2330",
+                "2026-05",
+                "2026-05-31",
+                "2026-06-10",
+                "2026-06-11",
+                "twse.monthly_revenue_announcement",
+                "announcement-v1",
+                "formal-availability.v2",
+                "official_announcement",
+                "a" * 64,
+                "1",
+                "",
+            ),
+            (
+                "2330",
+                "2026-05",
+                "2026-05-31",
+                "2026-06-10",
+                "2026-06-11",
+                "twse.monthly_revenue_announcement",
+                "announcement-v2",
+                "formal-availability.v2",
+                "official_announcement",
+                "b" * 64,
+                "2",
+                "1",
+            ),
+        ],
+    )
+
+    records = FundamentalSQLiteProvider(
+        db_file,
+        monthly_revenue_availability_file=mapping_file,
+    ).load_monthly_revenues(
+        stock_code="2330",
+        decision_date=date(2026, 6, 30),
+    )
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.revenue == Decimal("100.25")
+    assert record.source_version == "monthly-revenue-row-v1"
+    assert record.available_date == date(2026, 6, 11)
+    assert record.availability_provenance is None
 
 
 def test_sqlite_provider_blocks_ambiguous_same_day_versions_regardless_of_insert_order(
@@ -610,7 +760,39 @@ def test_sqlite_provider_loads_valuation_observations_available_by_decision_date
     assert observation.metric_value == Decimal("20.5")
     assert observation.available_date == date(2026, 6, 16)
     assert observation.industry_percentile_bp == 7500
-    assert observation.quality == FactorQuality.OBSERVED
+    assert observation.legacy_quality_wire_value == "observed"
+    assert valuation_source_record_to_observation(observation).quality == FactorQuality.OBSERVED
+
+
+@pytest.mark.parametrize(
+    "quality",
+    ("observed", "estimated", "degraded", "missing", "neutral", "stale"),
+)
+def test_sqlite_provider_preserves_all_valuation_quality_wire_values(tmp_path, quality):
+    db_file = tmp_path / f"valuation-{quality}.db"
+    with sqlite3.connect(db_file) as conn:
+        apply_fundamental_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO fundamental_valuation_metrics(
+                stock_code, as_of_date, available_date, metric_name, value,
+                industry, industry_percentile_bp, source, source_version, quality
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2330", "2026-06-16", "2026-06-16", "pe", "20.5",
+                "semiconductor", 7500, "daily_prices.pe", "valuation-v1", quality,
+            ),
+        )
+
+    result = FundamentalSQLiteProvider(db_file).load_valuation_observations(
+        stock_code="2330",
+        decision_date=date(2026, 6, 16),
+    )
+
+    assert len(result.records) == 1
+    assert result.records[0].legacy_quality_wire_value == quality
+    assert valuation_source_record_to_observation(result.records[0]).quality.value == quality
 
 
 def test_sqlite_provider_loads_statement_items_available_by_decision_date(tmp_path):
@@ -666,4 +848,37 @@ def test_sqlite_provider_loads_statement_items_available_by_decision_date(tmp_pa
     assert records[0].period == "2023-Q4"
     assert records[0].item_code == "EPS"
     assert records[0].value == Decimal("9.21")
-    assert records[0].quality == FactorQuality.DEGRADED
+    assert records[0].legacy_quality_wire_value == "degraded"
+    assert statement_item_quality(records[0]) == FactorQuality.DEGRADED
+
+
+@pytest.mark.parametrize(
+    "quality",
+    ("observed", "estimated", "degraded", "missing", "neutral", "stale"),
+)
+def test_sqlite_provider_preserves_all_statement_quality_wire_values(tmp_path, quality):
+    db_file = tmp_path / f"statement-{quality}.db"
+    with sqlite3.connect(db_file) as conn:
+        apply_fundamental_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO fundamental_statement_items(
+                stock_code, statement_type, period, as_of_date, announced_date,
+                available_date, item_code, item_name, value, source, source_version, quality
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2330", "income_statement", "2024-Q1", "2024-03-31", None,
+                "2026-06-17", "EPS", "基本每股盈餘（元）", "2.3",
+                "financial_data.income_statement_csv", "statements-v1", quality,
+            ),
+        )
+
+    records = FundamentalSQLiteProvider(db_file).load_statement_items(
+        stock_code="2330",
+        decision_date=date(2026, 6, 17),
+    )
+
+    assert len(records) == 1
+    assert records[0].legacy_quality_wire_value == quality
+    assert statement_item_quality(records[0]).value == quality

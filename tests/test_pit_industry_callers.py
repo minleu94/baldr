@@ -24,6 +24,7 @@ from tests.pit_test_support import (
     load_json,
     write_json,
 )
+from recommendation_test_support import build_recommendation_test_preparer
 
 
 class _IndustryProvider:
@@ -235,13 +236,19 @@ def test_recommendation_cutoff_blocks_missing_unknown_and_partial_taxonomy(
     for index, fixture in enumerate(fixtures):
         reader = PITSectorMembershipReader([fixture.artifact_path])
         config = SimpleNamespace(pit_market_scope="twse_listed")
+        market_data_provider = lambda: _recommendation_frame()
         service = RecommendationService(
             config,
             industry_mapper=MagicMock(),
-            market_data_provider=lambda: _recommendation_frame(),
+            market_data_provider=market_data_provider,
             regime_detector=MagicMock(),
             calibration_consumer=None,
             pit_membership_reader=reader,
+            input_preparer=build_recommendation_test_preparer(
+                config,
+                market_data_provider=market_data_provider,
+                pit_membership_reader=reader,
+            ),
         )
         strategy = MagicMock()
         service.strategy_configurator = strategy

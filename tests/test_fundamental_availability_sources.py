@@ -6,7 +6,6 @@ from data_module.fundamental_availability_sources import (
     load_monthly_revenue_availability_overrides,
     load_monthly_revenue_availability_overrides_csv,
 )
-from decision_module.factors.factor_dtos import FactorQuality
 
 
 _HASH = "a" * 64
@@ -41,7 +40,6 @@ def test_load_monthly_revenue_availability_overrides_preserves_formal_announceme
     assert override.as_of_date == date(2026, 5, 31)
     assert override.announced_date == date(2026, 6, 10)
     assert override.available_date == date(2026, 6, 11)
-    assert override.quality == FactorQuality.OBSERVED
     assert override.source == "manual.twse_monthly_revenue_announcement_log"
     assert override.source_version == "announcement-log-2026-06-16"
     assert override.evidence_class == "official_announcement"
@@ -88,7 +86,7 @@ def test_load_monthly_revenue_availability_overrides_allows_retroactive_baseline
 
     assert override.announced_date is None
     assert override.available_date == date(2026, 6, 17)
-    assert override.quality == FactorQuality.DEGRADED
+    assert override.provenance_mode == "retroactive_baseline"
     assert override.provenance_mode == "retroactive_baseline"
     assert result.diagnostics == ()
 
@@ -97,7 +95,15 @@ def test_load_monthly_revenue_availability_overrides_rejects_missing_available_d
     result = load_monthly_revenue_availability_overrides([_formal_row(available_date="")])
 
     assert result.overrides == {}
-    assert result.diagnostics[0].code == "fundamental_availability.missing_available_date"
+    diagnostic = result.diagnostics[0]
+    assert diagnostic.code == "fundamental_availability.missing_available_date"
+    assert diagnostic.source_id == "manual.twse_monthly_revenue_announcement_log"
+    assert diagnostic.source_version == "announcement-log-2026-06-16"
+    assert diagnostic.source_hash == f"sha256:{_HASH}"
+    assert diagnostic.evidence_class == "official_announcement"
+    assert diagnostic.revision == "1"
+    assert diagnostic.parent_revision is None
+    assert diagnostic.provenance_mode == "formal_v2"
 
 
 def test_load_monthly_revenue_availability_overrides_rejects_raw_csv_date_as_source():
@@ -135,7 +141,6 @@ def test_load_monthly_revenue_availability_overrides_csv_reads_governed_file(tmp
     override = result.overrides[("2330", "2026-05")]
     assert override.announced_date == date(2026, 6, 10)
     assert override.available_date == date(2026, 6, 11)
-    assert override.quality == FactorQuality.OBSERVED
     assert result.diagnostics == ()
 
 

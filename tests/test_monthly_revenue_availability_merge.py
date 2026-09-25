@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 import sys
 
@@ -71,12 +72,37 @@ def test_preview_reports_conflicting_natural_key_and_fails_closed(tmp_path, caps
     candidate = tmp_path / "candidate.csv"
     _write(candidate, _formal_row(source_hash="sha256:" + "c" * 64))
 
-    assert main(["--candidate", str(candidate), "--target", str(target)]) == 1
+    assert (
+        main(
+            [
+                "--candidate",
+                str(candidate),
+                "--target",
+                str(target),
+                "--format",
+                "json",
+            ]
+        )
+        == 1
+    )
 
-    output = capsys.readouterr().out
-    assert "ready_for_apply: `false`" in output
-    assert "conflict_count: `1`" in output
-    assert "fundamental_availability.merge_conflict" in output
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "monthly-revenue-availability-merge.v1"
+    assert payload["ready_for_apply"] is False
+    assert payload["conflict_count"] == 1
+    assert payload["diagnostics"] == [
+        {
+            "code": "fundamental_availability.merge_conflict",
+            "factor_name": "fundamental.availability",
+            "stock_code": "2330",
+            "message": (
+                "candidate and existing monthly revenue availability rows disagree; "
+                "natural_key=2330|2026-07; revision=1; "
+                "existing_source=twse.monthly_revenue_announcement; "
+                "candidate_source=twse.monthly_revenue_announcement"
+            ),
+        }
+    ]
 
 
 def test_apply_requires_exact_confirmation_and_does_not_write(tmp_path, capsys):

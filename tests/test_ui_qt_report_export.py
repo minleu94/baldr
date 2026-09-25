@@ -18,6 +18,15 @@ from app_module.batch_backtest_service import (
 )
 from app_module.report_export_dtos import ReportMetadata
 from app_module.report_export_service import ReportExportService
+from app_module.recommendation.contracts import (
+    Context,
+    DecisionBatch,
+    ExecutionStatus,
+    RecommendationExecution,
+    Request,
+)
+from decision_module.recommendation.contracts import RecommendationItem
+from ui_qt.views.recommendation.execution_coordinator import RecommendationExecutionRequest
 
 class SynchronousTaskWorker:
     def __init__(self, task_function, *args, **kwargs):
@@ -122,20 +131,6 @@ class FakeRecommendationPortfolioResult:
         return pd.DataFrame([{"日期": "2026-06-01"}])
     def stock_contribution_dataframe(self):
         return pd.DataFrame([{"證券代號": "2330"}])
-
-class FakeRecommendationDTO:
-    def __init__(self, code, name, score, reason):
-        self.stock_code = code
-        self.stock_name = name
-        self.score = score
-        self.reason = reason
-    def to_dict(self):
-        return {
-            "證券代號": self.stock_code,
-            "證券名稱": self.stock_name,
-            "評分": self.score,
-            "推薦理由": self.reason
-        }
 
 @pytest.fixture
 def init_app():
@@ -269,11 +264,28 @@ def test_recommendation_export_hidden_without_results(recommendation_view):
     assert not recommendation_view.export_report_btn.isVisible()
 
 def test_recommendation_export_uses_result_snapshot(recommendation_view):
-    recs = [FakeRecommendationDTO("2330", "台積電", 90.0, "強勢突破")]
-    recommendation_view.current_recommendations = recs
+    config = {
+        "patterns": {"selected": ["W底"]},
+        "signals": {"technical_indicators": ["trend"]},
+        "strategy_id": "rec_strat",
+    }
+    snapshot = RecommendationExecutionRequest(config).config_snapshot
+    item = RecommendationItem(
+        stock_code="2330",
+        stock_name="台積電",
+        rule_score=90,
+        reason_text="強勢突破",
+    )
+    recommendation_view.current_execution = RecommendationExecution(
+        result_id="rec-export-1",
+        request=Request(config_snapshot=snapshot, max_stocks=200, top_n=50),
+        context=Context(as_of_date=datetime(2026, 6, 4).date()),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=(item,), regime="Trend"),
+    )
     recommendation_view.current_config = {"strategy_id": "rec_strat", "regime": "Trend"}
     payload = recommendation_view._build_current_recommendation_export_payload()
-    assert payload.recommendations.shape[0] == len(recs)
+    assert payload.recommendations.shape[0] == 1
     assert payload.metadata.strategy_id == "rec_strat"
     assert payload.metadata.strategy_version == ""
     assert payload.metadata.benchmark == ""

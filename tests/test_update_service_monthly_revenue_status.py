@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import sqlite3
+from types import SimpleNamespace
 from pathlib import Path
 
 from data_module.fundamental_availability_sources import (
@@ -10,6 +11,7 @@ from data_module.fundamental_availability_sources import (
 from data_module.monthly_revenue_snapshot_harvester import (
     MopsMonthlyRevenueSnapshotResult,
 )
+from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnosticKind
 
 from app_module.update_service import UpdateService
 
@@ -62,6 +64,47 @@ def test_fetch_mops_monthly_revenue_snapshot_candidate_is_candidate_only(
     assert output_csv.exists()
     assert "2026-07" in output_csv.name
     assert not test_config.db_file.exists()
+
+
+def test_monthly_revenue_dry_run_preserves_legacy_diagnostic_wire_payload(
+    test_config,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    snapshot = tmp_path / "snapshot.csv"
+    snapshot.write_text("market,period,stock_code\n", encoding="utf-8")
+    availability = tmp_path / "availability.csv"
+    expected_diagnostic = SourceDiagnostic(
+        code="fundamental_revenue.snapshot_invalid_row",
+        stock_code="2330",
+        message="snapshot row invalid",
+        kind=SourceDiagnosticKind.MONTHLY_REVENUE,
+        period="2026-07",
+    )
+    monkeypatch.setattr(
+        "data_module.monthly_revenue_backfill.plan_mops_snapshot_monthly_revenue_backfill",
+        lambda **kwargs: SimpleNamespace(
+            ready_for_apply=False,
+            raw_row_count=1,
+            records=(),
+            diagnostics=(expected_diagnostic,),
+        ),
+    )
+
+    result = UpdateService(test_config).dry_run_mops_monthly_revenue_backfill(
+        snapshot_file=snapshot,
+        availability_file=availability,
+        source_version="snapshot-v1",
+    )
+
+    assert result["diagnostics"] == [
+        {
+            "code": "fundamental_revenue.snapshot_invalid_row",
+            "factor_name": "fundamental.revenue",
+            "stock_code": "2330",
+            "message": "snapshot row invalid",
+        }
+    ]
 
 
 def test_update_phase3c_candidate_range_requires_explicit_candidate_path(

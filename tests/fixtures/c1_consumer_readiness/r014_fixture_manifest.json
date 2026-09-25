@@ -1,0 +1,26 @@
+{
+  "entries": [
+    {
+      "available_at": "2026-09-22T09:04:30+08:00",
+      "byte_length": 11700,
+      "created_at": "2026-09-22T09:04:00+08:00",
+      "decision_at": "2026-09-22T09:05:06+08:00",
+      "file": "r014_saved_execution.json",
+      "fixture_id": "c1-r014-saved-execution",
+      "hash_identities": {
+        "request_raw_config_sha256": "sha256:0f83b59ae13214d8605a66e0092d4665f8d0191ebb016af55b4b915aba9c1885",
+        "result_config_sha256": "sha256:c02be9ae26d0ce1de7c55a811bdcc307d9fc74eca125a9cc8889428fde7c51a8",
+        "strategy_config_hash": "sha256:c110e13e9fef826526877367faef99e4725b9e2b5f7b3bc482d61861d221713b"
+      },
+      "request_as_of_date": "2026-09-21",
+      "result_decision_date": "2026-09-22",
+      "result_id": "c1-r014-forward-saved-A",
+      "schema_revision": 2,
+      "schema_version": "recommendation-execution.v1",
+      "sha256": "sha256:ebe481f425be3efa1c3635a71df5ba7c3e1b4054662b53fb980426fe79c11099",
+      "trust_note": "synthetic fixture pin only; no authority for production data or artifacts"
+    }
+  ],
+  "manifest_kind": "c1_r014_synthetic_saved_execution_fixture",
+  "manifest_version": 1
+}

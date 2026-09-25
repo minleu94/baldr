@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from app_module.backtest_service import BacktestService
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from data_module.config import TWStockConfig
 
 

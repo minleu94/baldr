@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 from typing import cast
 
-from app_module.dtos import RecommendationDTO
+from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.decision_continuity_controller import DecisionIdentity
 from app_module.evidence_event_dtos import (
     EvidenceDataQuality,
@@ -35,7 +35,6 @@ from app_module.personalization_save_adapter import (
     PersonalizationRecommendationSaveAdapter,
 )
 from app_module.recommendation_repository import RecommendationRepository
-from app_module.recommendation_save_coordinator import RecommendationSaveRequest
 
 
 RESULT_ID = "rec_read_service_001"
@@ -164,31 +163,41 @@ def _save_sources(tmp_path: Path) -> tuple[Path, RecommendationRepository, Journ
         regime_match=True,
         calibration_provenance={"projection_receipt_hash": receipt["receipt_hash"]},
     )
-    request = RecommendationSaveRequest(
+    result = RecommendationResultDTO(
+        result_id=RESULT_ID,
         result_name="personalization read service integration",
-        config={"_recommendation_run_context": context},
-        recommendations=(recommendation,),
-        current_profile=None,
-        profile_meta={},
-        current_regime=None,
+        config={},
+        recommendations=[recommendation],
+        created_at=scope.decision_at,
+        notes="Profile: 進階模式, Regime: 未知",
+        run_context=context,
+    )
+    adapter = PersonalizationRecommendationSaveAdapter()
+    result, captures = adapter.bind_result(
+        result,
         personalization_scope=scope,
-        personalization_request_id="request_read_service_001",
+        request_id="request_read_service_001",
     )
-    outcome = request.persist(
+    assert len(captures) == 1
+    saved = adapter.save_and_readback(
         recommendation_repository=repository,
-        universe_service=None,
-        recommendation_service=SimpleNamespace(last_run_context={}),
-        regime_service=SimpleNamespace(),
+        result=result,
+        captures=captures,
     )
-    ack = PersonalizationRecommendationSaveAdapter().acknowledge_delivery(
+    outcome = SimpleNamespace(
+        result_id=saved.result_id,
+        personalization_delivery_id=captures[0].delivery_id,
+    )
+    ack = adapter.acknowledge_delivery(
         recommendation_repository=repository,
         journal_service=journal,
         result_id=outcome.result_id,
         scope_id=SCOPE_ID,
-        delivery_id=outcome.personalization_delivery_id or "",
+        delivery_id=outcome.personalization_delivery_id,
         persisted_at="2025-02-10T09:00:00+00:00",
         delivered_at="2025-02-10T09:00:00+00:00",
         recorded_at="2025-02-10T09:01:00+00:00",
+        expected_capture_hashes={STOCK_CODE: captures[0].capture_hash},
     )
     assert ack.status == "delivered"
     return output_root, repository, journal, outcome

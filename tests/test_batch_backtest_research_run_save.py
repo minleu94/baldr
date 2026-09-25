@@ -8,7 +8,7 @@ import pandas as pd
 
 from app_module.batch_backtest_service import BatchBacktestService, BatchBacktestResultDTO, StockBacktestResult
 from app_module.dtos import BacktestReportDTO, ValidationStatus
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
 
 

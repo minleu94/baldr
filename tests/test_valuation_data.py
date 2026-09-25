@@ -3,10 +3,13 @@ from decimal import Decimal
 
 from data_module.valuation_data import (
     build_valuation_observations,
-    calculate_industry_percentiles_bp,
 )
 from decision_module.factors.factor_dtos import FactorQuality
-from decision_module.factors.valuation_adapters import build_relative_valuation_factor
+from decision_module.factors.valuation_adapters import (
+    build_relative_valuation_factor,
+    valuation_source_record_to_observation,
+)
+from decision_module.factors.valuation_policy import calculate_industry_percentiles_bp
 
 
 def test_calculate_industry_percentiles_bp_uses_same_industry_universe():
@@ -50,7 +53,8 @@ def test_build_valuation_observations_preserves_contract():
     assert observation.metric_value == Decimal("18.5")
     assert observation.available_date == date(2026, 6, 16)
     assert observation.industry_percentile_bp == 3333
-    assert observation.quality == FactorQuality.OBSERVED
+    assert observation.legacy_quality_wire_value == "observed"
+    assert valuation_source_record_to_observation(observation).quality == FactorQuality.OBSERVED
 
 
 def test_valuation_data_layer_feeds_existing_relative_band_adapter():

@@ -8,7 +8,7 @@ from pathlib import Path
 from app_module.fundamental_factor_service import FundamentalFactorService
 from data_module.fundamental_schema import apply_fundamental_schema
 from data_module.fundamental_statement_data import StatementItemRecord
-from data_module.statement_semantic_mapping import map_statement_items_for_factors
+from decision_module.factors.statement_semantic_mapping import map_statement_items_for_factors
 from decision_module.factors.factor_dtos import FactorQuality
 
 
@@ -38,7 +38,7 @@ def _official_record(
         value=Decimal(value),
         source="mops.t164sb01.statement",
         source_version=_MATERIALIZED_SOURCE_VERSION,
-        quality=FactorQuality.OBSERVED,
+        legacy_quality_wire_value=FactorQuality.OBSERVED.value,
         report_basis="consolidated",
         item_code_source="mops.t164sb01.xbrl.row_code",
         item_code_lineage_sha256=_LINEAGE,

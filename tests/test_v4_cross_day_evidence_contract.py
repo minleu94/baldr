@@ -16,6 +16,7 @@ from app_module.evidence_event_dtos import (
 )
 from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from app_module.evidence_event_importers import RecommendationEvidenceImporter
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
 from app_module.scheduled_forward_outcome_service import run_scheduled_forward_outcomes
@@ -93,8 +94,25 @@ class _ResultRepository:
     def __init__(self, results: dict[str, RecommendationResultDTO]) -> None:
         self.results = results
 
-    def load_result(self, result_id: str) -> RecommendationResultDTO | None:
-        return self.results.get(result_id)
+    def get(self, result_id: str) -> RecommendationExecutionReadModel | None:
+        result = self.results.get(result_id)
+        return _read_model(result) if result is not None else None
+
+    def list(self) -> tuple[RecommendationExecutionReadModel, ...]:
+        return tuple(_read_model(result) for result in self.results.values())
+
+
+def _read_model(result: RecommendationResultDTO) -> RecommendationExecutionReadModel:
+    return RecommendationExecutionReadModel(
+        execution=None,
+        label=result.result_name,
+        notes=result.notes,
+        persisted_at=None,
+        payload_hash=None,
+        artifact_location="synthetic-legacy.json",
+        legacy_result=result,
+        ml_read_status="legacy_saved_fields",
+    )
 
 
 def _recommendation_result(

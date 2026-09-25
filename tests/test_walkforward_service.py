@@ -7,12 +7,13 @@ import pandas as pd
 
 from app_module.backtest_service import BacktestService
 from app_module.dtos import BacktestReportDTO
-from app_module.strategy_spec import StrategySpec
+from app_module.regime_service import RegimeService
+from decision_module.strategies.contracts import StrategySpec
 from app_module.walkforward_service import WalkForwardService
-from app_module.strategies.momentum_aggressive_executor import (
+from decision_module.strategies.momentum_aggressive_executor import (
     MomentumAggressiveExecutor,
 )
-from decision_module.market_regime_detector import MarketRegimeDetector
+from decision_module.market_regime_policy import transition_regime
 from scripts.run_walk_forward_comparison import (
     _build_equal_weight_daily_returns,
     _iter_walk_forward_windows,
@@ -289,14 +290,29 @@ def test_isolated_regime_detector_does_not_load_or_write_persistent_history(
         encoding="utf-8",
     )
     config = SimpleNamespace(resolve_output_path=lambda _: tmp_path)
-    detector = MarketRegimeDetector(config, use_persistent_history=False)
+    frame = pd.DataFrame(
+        {
+            "Date": pd.date_range("2026-04-03", periods=60, freq="D"),
+            "Close": [100.0] * 60,
+            "High": [101.0] * 60,
+            "Low": [99.0] * 60,
+        }
+    )
+    service = RegimeService(
+        config,
+        use_persistent_history=False,
+        market_frame_provider=lambda: frame,
+    )
 
-    detector._save_regime_history("2026-06-01", "Breakout")
+    result = service.detect_regime(date="2026-06-01")
 
-    assert detector.regime_history == {
-        "2026-06-01": {"regime": "Breakout", "timestamp": detector.regime_history["2026-06-01"]["timestamp"]}
+    assert result.details["date"] == "2026-06-01"
+    assert service._isolated_history["2026-06-01"]["regime"] in {
+        "Trend",
+        "Reversion",
+        "Breakout",
     }
-    assert "2099-01-01" not in detector.regime_history
+    assert "2099-01-01" not in service._isolated_history
     assert history_path.read_text(encoding="utf-8").startswith('{"2099-01-01"')
 
 
@@ -322,13 +338,13 @@ def test_failed_fold_does_not_prevent_later_walk_forward_windows():
 
 
 def test_regime_hysteresis_ignores_history_after_target_date(tmp_path: Path):
-    config = SimpleNamespace(resolve_output_path=lambda _: tmp_path)
-    detector = MarketRegimeDetector(config, use_persistent_history=False)
-    detector.regime_history = {
+    history = {
         "2026-05-31": {"regime": "Reversion", "timestamp": "past"},
         "2099-01-01": {"regime": "Trend", "timestamp": "future"},
     }
 
-    regime = detector._apply_regime_hysteresis("Trend", "2026-06-01")
+    transition = transition_regime("Trend", "2026-06-01", history)
 
-    assert regime == "Reversion"
+    assert transition.effective_regime == "Reversion"
+    assert transition.outcome == "candidate_pending"
+    assert transition.persist_candidate is True

@@ -1,15 +1,44 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation.contracts import (
+    Context,
+    ExecutionStatus,
+    QualityReport,
+    QualityStatus,
+    RecommendationConfigSnapshot,
+    RecommendationExecution,
+    Request,
+)
+from app_module.recommendation.persistence import RecommendationExecutionPersistence
+from app_module.recommendation.queries import (
+    RecommendationExecutionQueries,
+    RecommendationExecutionReadModel,
+)
+from data_module.result_artifact_store import ResultArtifactStore
+from decision_module.recommendation.contracts import DecisionBatch
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 
 
 class _Config:
     def __init__(self, output_root: Path) -> None:
         self.output_root = output_root
+
+
+class _QueryStub:
+    def __init__(self, read_models: tuple[RecommendationExecutionReadModel, ...]) -> None:
+        self._read_models = read_models
+
+    def list(self) -> tuple[RecommendationExecutionReadModel, ...]:
+        return self._read_models
 
 
 def _write_minimal_scheduled_statuses(output_root: Path) -> None:
@@ -247,10 +276,22 @@ def test_scheduled_evidence_status_reads_latest_status_and_report(tmp_path: Path
     )
     runs_dir = output_root / "recommendation" / "runs"
     runs_dir.mkdir(parents=True)
-    (runs_dir / "scheduled_rec_20260706_051001.json").write_text("{}", encoding="utf-8")
-    (runs_dir / "scheduled_rec_20260707_051001.json").write_text("{}", encoding="utf-8")
+    read_models = (
+        _legacy_read_model(
+            "scheduled_rec_20260706_051001",
+            decision_date="2026-07-06",
+            persisted_at=datetime(2026, 7, 6, 5, 10, tzinfo=timezone.utc),
+        ),
+        _legacy_read_model(
+            "scheduled_rec_20260707_051001",
+            decision_date="2026-07-07",
+            persisted_at=datetime(2026, 7, 7, 5, 10, tzinfo=timezone.utc),
+        ),
+    )
 
-    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+    status = ScheduledEvidenceStatusService(
+        _Config(output_root), recommendation_queries=_QueryStub(read_models)
+    ).load_latest()
 
     assert status.freshness_status == "passed"
     assert status.latest_data_date == "20260707"
@@ -465,8 +506,18 @@ def test_scheduled_evidence_status_uses_same_day_manual_recommendation_when_sche
         ),
         encoding="utf-8",
     )
+    before_manual_bytes = manual_path.read_bytes()
+    read_model = _legacy_read_model(
+        "rec_20260707_113744",
+        decision_date="2026-07-07",
+        persisted_at=None,
+        recommendations_count=2,
+        created_at="2026-07-07T11:37:44.761292",
+    )
 
-    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+    status = ScheduledEvidenceStatusService(
+        _Config(output_root), recommendation_queries=_QueryStub((read_model,))
+    ).load_latest()
 
     assert status.recommendation_status == "manual_observed"
     assert status.recommendation_source == "manual_result"
@@ -482,3 +533,538 @@ def test_scheduled_evidence_status_uses_same_day_manual_recommendation_when_sche
     assert status.recommendation_snapshot_observed_days == 0
     assert status.manual_recommendation_observed_days == 1
     assert status.scheduled_joint_observed_days == 0
+    assert manual_path.read_bytes() == before_manual_bytes
+
+
+def test_scheduled_status_uses_only_verified_same_day_canonical_qt_manual_provenance(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    recommendation_status_path = (
+        output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    )
+    recommendation_status_path.unlink()
+    evidence_path = output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["decision_date"] = "2026-09-08"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    runs_dir = output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    persistence = RecommendationExecutionPersistence(store)
+
+    def save_result(result_id: str, *, manual: bool, hour: int) -> Path:
+        raw_config = json.dumps(
+            {"manual_qt_snapshot": True} if manual else {"profile": "unmarked"},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        config_snapshot = RecommendationConfigSnapshot(
+            raw_config_json=raw_config,
+            raw_json_sha256="sha256:" + hashlib.sha256(raw_config.encode()).hexdigest(),
+        )
+        execution = RecommendationExecution(
+            result_id=result_id,
+            request=Request(
+                as_of_date=date(2026, 9, 8),
+                config_snapshot=config_snapshot,
+            ),
+            context=Context(
+                as_of_date=date(2026, 9, 8),
+                created_at=datetime(2026, 9, 8, hour, tzinfo=timezone.utc),
+            ),
+            status=ExecutionStatus.COMPLETED,
+            decision=DecisionBatch(items=()),
+            quality=QualityReport(QualityStatus.COMPLETE),
+        )
+        receipt = persistence.save(
+            execution,
+            label=result_id,
+            now=lambda: datetime(2026, 9, 8, hour, tzinfo=timezone.utc),
+        )
+        assert receipt.artifact_location is not None
+        return store.artifact_root / receipt.artifact_location
+
+    manual_artifact = save_result("canonical-qt-manual", manual=True, hour=8)
+    unmarked_artifact = save_result("canonical-unmarked", manual=False, hour=9)
+    before_manual = manual_artifact.read_bytes()
+    before_unmarked = unmarked_artifact.read_bytes()
+    queries = RecommendationExecutionQueries(persistence)
+
+    status = ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=queries,
+    ).load_latest()
+
+    # The manual result is observable, while the missing scheduled status keeps
+    # the overall loader in its existing conservative unknown state.
+    assert status.load_state == "unknown"
+    assert status.recommendation_status == "manual_observed"
+    assert status.recommendation_source == "canonical_manual_result"
+    assert status.recommendation_result_id == "canonical-qt-manual"
+    assert status.manual_recommendation_observed_days == 1
+    assert status.recommendation_snapshot_observed_days == 0
+    assert status.recommendations_count == 0
+    assert status.writes_recommendation_result is True
+    assert any(
+        item == "canonical_manual_recommendation_result_observed:canonical-qt-manual"
+        for item in status.diagnostics
+    )
+    assert manual_artifact.read_bytes() == before_manual
+    assert unmarked_artifact.read_bytes() == before_unmarked
+
+
+def _legacy_read_model(
+    result_id: str,
+    *,
+    decision_date: str,
+    persisted_at: datetime | None,
+    recommendations_count: int = 0,
+    created_at: str | None = None,
+) -> RecommendationExecutionReadModel:
+    recommendation = RecommendationDTO(
+        stock_code="2330",
+        stock_name="合成標的",
+        close_price=100,
+        price_change=0,
+        total_score=75,
+        indicator_score=25,
+        pattern_score=20,
+        volume_score=30,
+        recommendation_reasons="synthetic",
+        industry="synthetic",
+        regime_match=True,
+    )
+    legacy = RecommendationResultDTO(
+        result_id=result_id,
+        result_name=result_id,
+        config={},
+        recommendations=[recommendation] * recommendations_count,
+        created_at=(
+            created_at
+            if created_at is not None
+            else persisted_at.isoformat() if persisted_at is not None else None
+        ),
+        screening_matrix_json=[{"stock_code": "2330"}],
+        why_not_payload_json=[{"stock_code": "1101"}],
+        liquidity_gate_payload_json=[],
+        exclusion_quality="observed",
+        exclusion_warnings_json=["synthetic_verified_legacy"],
+        run_context={"as_of_date": decision_date},
+    )
+    return RecommendationExecutionReadModel(
+        execution=None,
+        label=result_id,
+        notes="",
+        persisted_at=persisted_at,
+        payload_hash=None,
+        artifact_location=f"{result_id}.json",
+        legacy_result=legacy,
+        raw_artifact_sha256="sha256:synthetic",
+        integrity_basis="legacy_read_time_hash_only",
+        ml_read_status="legacy_saved_fields",
+    )
+
+
+def _canonical_manual_read_model(
+    result_id: str,
+    *,
+    decision_date: date,
+    persisted_at: datetime | None,
+) -> RecommendationExecutionReadModel:
+    execution = SimpleNamespace(
+        result_id=result_id,
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=()),
+        request=SimpleNamespace(
+            config_snapshot=SimpleNamespace(
+                raw_config_json='{"manual_qt_snapshot": true}'
+            ),
+            as_of_date=decision_date,
+        ),
+        context=SimpleNamespace(
+            as_of_date=decision_date,
+            result_config_snapshot=None,
+            created_at=persisted_at,
+            warnings=(),
+            source_refs=(),
+            profile_ref=None,
+        ),
+        events=(),
+        quality=SimpleNamespace(status=QualityStatus.COMPLETE, warnings=()),
+    )
+    return RecommendationExecutionReadModel(
+        execution=execution,  # type: ignore[arg-type]
+        label=result_id,
+        notes="",
+        persisted_at=persisted_at,
+        payload_hash=None,
+        artifact_location=result_id,
+    )
+
+
+def test_unverified_recommendation_filenames_do_not_add_observed_dates(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    runs_dir = output_root / "recommendation" / "runs"
+    runs_dir.mkdir(parents=True)
+    (runs_dir / "rec_20260908_010101.json").write_text(
+        "{invalid",
+        encoding="utf-8",
+    )
+    (runs_dir / "scheduled_rec_20260909_010101.json").write_text(
+        json.dumps({"result_id": "different-result-id", "as_of_date": "2026-09-09"}),
+        encoding="utf-8",
+    )
+    symlink_path = runs_dir / "rec_20260910_010101.json"
+    try:
+        symlink_path.symlink_to(runs_dir / "rec_20260908_010101.json")
+    except (OSError, NotImplementedError):
+        symlink_created = False
+    else:
+        symlink_created = True
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.recommendation_snapshot_observed_days == 1
+    assert status.manual_recommendation_observed_days == 0
+    assert status.scheduled_joint_observed_dates == ("20260907",)
+    assert any(
+        item.startswith("recommendation_legacy_candidate_query_failure:")
+        for item in status.diagnostics
+    )
+    if symlink_created:
+        assert symlink_path.is_symlink()
+
+
+def test_unindexed_manual_result_uses_verified_exact_payload_and_preserves_bytes(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    (output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json").unlink()
+    evidence_path = output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["decision_date"] = "2026-09-08"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    runs_dir = output_root / "recommendation" / "runs"
+    runs_dir.mkdir(parents=True)
+    result_id = "rec_20260908_113744"
+    manual_path = runs_dir / f"{result_id}.json"
+    manual_payload = {
+        "result_id": result_id,
+        "created_at": "2026-09-08T11:37:44+08:00",
+        "run_context": {
+            "as_of_date": "2026-09-08",
+            "data_as_of_date": "2026-09-07",
+        },
+        "recommendations": [{"stock_code": "1409"}, {"stock_code": "1466"}],
+        "screening_matrix_json": [{"stock_code": "1409"}],
+        "why_not_payload_json": [{"stock_code": "2330"}],
+        "liquidity_gate_payload_json": [],
+        "exclusion_quality": "observed",
+        "exclusion_warnings_json": ["synthetic_saved_capture"],
+        "opaque_root": {"keep": [1, {"field": "value"}]},
+    }
+    manual_path.write_text(json.dumps(manual_payload), encoding="utf-8")
+    before = manual_path.read_bytes()
+    before_hash = hashlib.sha256(before).hexdigest()
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.recommendation_status == "manual_observed"
+    assert status.recommendation_source == "manual_result"
+    assert status.recommendation_result_id == result_id
+    assert status.manual_recommendation_result_path == manual_path.resolve()
+    assert status.recommendation_checked_at == manual_payload["created_at"]
+    assert status.recommendations_count == 2
+    assert status.screening_matrix_rows == 1
+    assert status.why_not_payload_rows == 1
+    assert status.writes_recommendation_result is True
+    assert status.manual_recommendation_observed_days == 1
+    assert any(
+        f"legacy_read_time_hash_only:{result_id}:sha256:{before_hash}" in item
+        for item in status.diagnostics
+    )
+    assert manual_path.read_bytes() == before
+
+
+def test_verified_unindexed_scheduled_file_adds_content_checked_inventory_date(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    runs_dir = output_root / "recommendation" / "runs"
+    runs_dir.mkdir(parents=True)
+    result_id = "scheduled_rec_20260906_051001"
+    path = runs_dir / f"{result_id}.json"
+    payload = {
+        "result_id": result_id,
+        "created_at": "2026-09-06T05:10:01+00:00",
+        "run_context": {"as_of_date": "2026-09-06"},
+        "recommendations": [{"stock_code": "2330"}],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    before = path.read_bytes()
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.recommendation_snapshot_observed_days == 2
+    assert status.manual_recommendation_observed_days == 0
+    assert path.read_bytes() == before
+
+
+def test_unindexed_file_reusing_canonical_result_id_is_ambiguous_and_excluded(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    (output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json").unlink()
+    evidence_path = output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["decision_date"] = "2026-09-08"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    result_id = "rec_20260908_010000"
+    runs_dir = output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    persistence = RecommendationExecutionPersistence(store)
+    raw_config = '{"manual_qt_snapshot": true}'
+    request_snapshot = RecommendationConfigSnapshot(
+        raw_config_json=raw_config,
+        raw_json_sha256="sha256:" + hashlib.sha256(raw_config.encode()).hexdigest(),
+    )
+    execution = RecommendationExecution(
+        result_id=result_id,
+        request=Request(as_of_date=date(2026, 9, 8), config_snapshot=request_snapshot),
+        context=Context(
+            as_of_date=date(2026, 9, 8),
+            created_at=datetime(2026, 9, 8, 10, tzinfo=timezone.utc),
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=()),
+        quality=QualityReport(QualityStatus.COMPLETE),
+    )
+    persistence.save(execution, label="canonical manual")
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    conflicting_path = runs_dir / f"{result_id}.json"
+    conflicting_payload = {
+        "result_id": result_id,
+        "created_at": "2026-09-08T11:00:00+00:00",
+        "run_context": {"as_of_date": "2026-09-08"},
+        "recommendations": [{"stock_code": "2330"}],
+    }
+    conflicting_path.write_text(json.dumps(conflicting_payload), encoding="utf-8")
+    before = conflicting_path.read_bytes()
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.recommendation_status == "missing"
+    assert status.recommendation_result_id is None
+    assert status.manual_recommendation_observed_days == 0
+    assert any(
+        item.startswith("recommendation_legacy_canonical_identity_collision:")
+        for item in status.diagnostics
+    )
+    assert conflicting_path.read_bytes() == before
+
+
+def test_same_day_mixed_manual_candidates_use_aware_latest_clock_or_fail_closed(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    (output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json").unlink()
+    evidence_path = output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["decision_date"] = "2026-09-08"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    legacy = _legacy_read_model(
+        "rec_20260908_120000",
+        decision_date="2026-09-08",
+        persisted_at=datetime(2026, 9, 8, 12, tzinfo=timezone.utc),
+        recommendations_count=3,
+    )
+    canonical = _canonical_manual_read_model(
+        "canonical-manual-1000",
+        decision_date=date(2026, 9, 8),
+        persisted_at=datetime(2026, 9, 8, 10, tzinfo=timezone.utc),
+    )
+
+    selected_legacy = ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=_QueryStub((legacy, canonical)),
+    ).load_latest()
+    assert selected_legacy.recommendation_status == "manual_observed"
+    assert selected_legacy.recommendation_source == "manual_result"
+    assert selected_legacy.recommendation_result_id == legacy.result_id
+    assert selected_legacy.manual_recommendation_result_path == (
+        output_root / "recommendation" / "runs" / f"{legacy.result_id}.json"
+    )
+
+    unknown_clock_legacy = _legacy_read_model(
+        "rec_20260908_120001",
+        decision_date="2026-09-08",
+        persisted_at=None,
+    )
+    ambiguous = ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=_QueryStub((unknown_clock_legacy, canonical)),
+    ).load_latest()
+    assert ambiguous.recommendation_status == "missing"
+    assert ambiguous.recommendation_result_id is None
+    assert "recommendation_latest_selection_ambiguous_clock" in ambiguous.diagnostics
+
+
+@pytest.mark.parametrize(
+    ("legacy_created_at", "expected_status", "expected_result_id"),
+    (
+        (
+            "2026-09-08T12:00:00+00:00",
+            "manual_observed",
+            "rec_20260908_120000",
+        ),
+        (
+            "2026-09-08T12:00:00",
+            "missing",
+            None,
+        ),
+    ),
+)
+def test_unindexed_manual_mixed_clock_selection_is_utc_or_ambiguous(
+    tmp_path: Path,
+    legacy_created_at: str,
+    expected_status: str,
+    expected_result_id: str | None,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    (output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json").unlink()
+    evidence_path = output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["decision_date"] = "2026-09-08"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    runs_dir = output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    persistence = RecommendationExecutionPersistence(store)
+    raw_config = '{"manual_qt_snapshot": true}'
+    request_snapshot = RecommendationConfigSnapshot(
+        raw_config_json=raw_config,
+        raw_json_sha256="sha256:" + hashlib.sha256(raw_config.encode()).hexdigest(),
+    )
+    canonical_execution = RecommendationExecution(
+        result_id="canonical-manual-1000",
+        request=Request(
+            as_of_date=date(2026, 9, 8),
+            config_snapshot=request_snapshot,
+        ),
+        context=Context(
+            as_of_date=date(2026, 9, 8),
+            created_at=datetime(2026, 9, 8, 10, tzinfo=timezone.utc),
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=()),
+        quality=QualityReport(QualityStatus.COMPLETE),
+    )
+    persistence.save(
+        canonical_execution,
+        label="canonical manual",
+        now=lambda: datetime(2026, 9, 8, 10, tzinfo=timezone.utc),
+    )
+    legacy_id = "rec_20260908_120000"
+    manual_path = runs_dir / f"{legacy_id}.json"
+    manual_path.parent.mkdir(parents=True, exist_ok=True)
+    manual_path.write_text(
+        json.dumps(
+            {
+                "result_id": legacy_id,
+                "created_at": legacy_created_at,
+                "run_context": {"as_of_date": "2026-09-08"},
+                "recommendations": [{"stock_code": "2330"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.recommendation_status == expected_status
+    assert status.recommendation_result_id == expected_result_id
+    if expected_result_id is None:
+        assert "recommendation_latest_selection_ambiguous_clock" in status.diagnostics
+
+
+def test_scheduled_recommendation_inventory_requires_saved_scheduled_marker(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+
+    def read_model(result_id: str, *, scheduled: bool, decision_date: str):
+        raw_result_config = json.dumps(
+            {
+                "scheduled_snapshot": scheduled,
+                "decision_date": decision_date,
+            }
+        )
+        execution = SimpleNamespace(
+            result_id=result_id,
+            status=ExecutionStatus.COMPLETED,
+            decision=DecisionBatch(items=()),
+            context=SimpleNamespace(
+                as_of_date=date.fromisoformat(decision_date),
+                result_config_snapshot=SimpleNamespace(
+                    raw_result_config_json=raw_result_config
+                ),
+            ),
+            request=SimpleNamespace(
+                as_of_date=date.fromisoformat(decision_date),
+                config_snapshot=SimpleNamespace(raw_config_json='{"manual_qt_snapshot": false}'),
+            ),
+        )
+        return RecommendationExecutionReadModel(
+            execution=execution,  # type: ignore[arg-type]
+            label=result_id,
+            notes="",
+            persisted_at=datetime(2026, 9, 8, tzinfo=timezone.utc),
+            payload_hash=None,
+            artifact_location=result_id,
+        )
+
+    scheduled_model = read_model(
+        "canonical-scheduled",
+        scheduled=True,
+        decision_date="2026-09-06",
+    )
+    unmarked_model = read_model(
+        "canonical-unmarked",
+        scheduled=False,
+        decision_date="2026-09-05",
+    )
+
+    class QueryStub:
+        def list(self):
+            return (scheduled_model, unmarked_model)
+
+    status = ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=QueryStub(),
+    ).load_latest()
+
+    assert status.recommendation_snapshot_observed_days == 2
+    assert status.manual_recommendation_observed_days == 0
+    assert status.recommendation_result_id == "scheduled_rec_20260907_050100"

@@ -11,7 +11,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from app_module.dtos import BacktestReportDTO
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from data_module.config import TWStockConfig
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
 from ui_qt.views.backtest_view import BacktestView
@@ -204,7 +204,8 @@ def test_recommendation_replay_save_uses_research_run_service(backtest_view):
     backtest_view.portfolio_run_repository.save_run.assert_not_called()
     metadata, equity, trades = backtest_view.research_run_service.save_run.call_args.args
     assert run_id == metadata.run_id
-    assert backtest_view.current_portfolio_run_id == metadata.run_id
+    assert backtest_view.current_portfolio_run_id is None
+    assert backtest_view.current_recommendation_registry_run_id == metadata.run_id
     assert metadata.run_type == "recommendation_portfolio"
     assert metadata.strategy_id == "recommendation_replay"
     assert metadata.normalized_params["top_n"] == 5
@@ -231,7 +232,8 @@ def test_recommendation_replay_updates_current_run_id_only_after_save(backtest_v
 
     run_id = backtest_view._save_recommendation_portfolio_to_research_registry("Replay Run", "")
 
-    assert backtest_view.current_portfolio_run_id == run_id
+    assert backtest_view.current_portfolio_run_id is None
+    assert backtest_view.current_recommendation_registry_run_id == run_id
 
 
 def test_fixed_basket_execution_forwards_research_mode_to_batch_service(backtest_view):

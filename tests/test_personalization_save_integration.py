@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import json
 import os
@@ -15,9 +15,7 @@ from threading import Barrier, Event, Lock
 
 import pytest
 
-from app_module.decision_continuity_controller import DecisionContinuityController
-from app_module.dtos import RecommendationDTO
-from app_module.dtos.decision_continuity_dtos import ACTION_DELIVERY_ACK, DecisionIdentity
+from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.journal_service import JournalService
 from app_module.personalization_contract import (
     PersonalizationDeliveryScope,
@@ -32,7 +30,13 @@ from app_module.recommendation_repository import (
     RecommendationRepository,
     _make_json_serializable,
 )
-from app_module.recommendation_save_coordinator import RecommendationSaveRequest
+from app_module.recommendation.contracts import (
+    Context,
+    ExecutionStatus,
+    RecommendationExecution,
+    Request,
+)
+from decision_module.recommendation.contracts import DecisionBatch, RecommendationItem
 
 
 RESULT_ID = "rec_personalization_save_001"
@@ -136,11 +140,18 @@ class _FailingRepository:
 
 class _FailingAckJournal:
     def list_personalization_delivery_acks(
-        self, result_id: str, stock_code: str, delivery_id: str = ""
+        self,
+        result_id: str,
+        stock_code: str,
+        delivery_id: str = "",
     ) -> list[Any]:
         return []
 
-    def record_personalization_delivery_acks(self, acknowledgements, **kwargs):  # type: ignore[no-untyped-def]
+    def record_personalization_delivery_acks(
+        self,
+        acknowledgements,
+        **kwargs,
+    ):  # type: ignore[no-untyped-def]
         raise RuntimeError("journal append failed")
 
 
@@ -217,6 +228,53 @@ def _recommendation() -> RecommendationDTO:
     )
 
 
+def _qt_manual_execution(*, score: Decimal = Decimal("80")) -> RecommendationExecution:
+    from ui_qt.views.recommendation.execution_coordinator import (
+        RecommendationExecutionRequest,
+    )
+
+    request_snapshot = RecommendationExecutionRequest(
+        {
+            "patterns": {"selected": ["W底"]},
+            "signals": {"technical_indicators": ["trend"]},
+            "filters": {"mode": "ui-manual"},
+        }
+    ).config_snapshot
+    decision_date = date(2025, 2, 10)
+    decision_at = datetime(2025, 2, 10, 9, 0, tzinfo=timezone.utc)
+    item = RecommendationItem(
+        stock_code=STOCK_CODE,
+        stock_name="台積電",
+        close_price=Decimal("100.00"),
+        price_change=Decimal("1"),
+        rule_score=score,
+        indicator_score=Decimal("80"),
+        pattern_score=Decimal("80"),
+        volume_score=Decimal("80"),
+        reason_text="Qt manual save integration",
+        industry="半導體",
+        regime_match=True,
+        rank=1,
+    )
+    return RecommendationExecution(
+        result_id=RESULT_ID,
+        request=Request(
+            as_of_date=decision_date,
+            config_snapshot=request_snapshot,
+            max_stocks=200,
+            top_n=50,
+        ),
+        context=Context(
+            as_of_date=decision_date,
+            decision_at=decision_at,
+            available_at=decision_at,
+            created_at=decision_at,
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=(item,), regime="Trend"),
+    )
+
+
 def _context() -> dict[str, Any]:
     receipt = _receipt()
     scope = _scope()
@@ -253,33 +311,82 @@ def _context() -> dict[str, Any]:
     }
 
 
-def _request(context: dict[str, Any] | None = None) -> RecommendationSaveRequest:
-    return RecommendationSaveRequest(
+def _request(context: dict[str, Any] | None = None) -> RecommendationResultDTO:
+    result = RecommendationResultDTO(
+        result_id=RESULT_ID,
         result_name="personalization save integration",
-        config={
-            "strategy_config": {"mode": "test"},
-            "_recommendation_run_context": deepcopy(context or _context()),
-        },
-        recommendations=(_recommendation(),),
-        current_profile=None,
-        profile_meta={},
-        current_regime=None,
+        config={"strategy_config": {"mode": "test"}},
+        recommendations=[_recommendation()],
+        created_at="2025-02-10T09:02:00+00:00",
+        run_context=deepcopy(context or _context()),
     )
-
-
-def _producer() -> SimpleNamespace:
-    return SimpleNamespace(last_run_context={})
+    bound, captures = PersonalizationRecommendationSaveAdapter().bind_result(
+        result,
+        request_id="request_personalization_save_001",
+    )
+    assert bool(captures) == bool(
+        result.run_context.get("personalization_scope")
+        or result.run_context.get("personalization_delivery_scope")
+    )
+    return bound
 
 
 def _persist(
-    request: RecommendationSaveRequest,
+    request: RecommendationResultDTO,
     repository: Any,
 ) -> Any:
-    return request.persist(
-        recommendation_repository=repository,
-        universe_service=None,
-        recommendation_service=_producer(),
-        regime_service=SimpleNamespace(),
+    adapter = PersonalizationRecommendationSaveAdapter()
+    captures = adapter.captures_from_result(request)
+    if not captures:
+        existing = adapter.load_existing_for_retry(
+            repository,
+            result_id=request.result_id,
+        )
+        if existing is not None and adapter.captures_from_result(existing):
+            raise RuntimeError("recommendation save would downgrade an existing personal capture")
+        result_id = str(repository.save_result(request))
+        return SimpleNamespace(
+            result_id=result_id,
+            personalization_capture_hashes=(),
+            personalization_delivery_statuses=(),
+            personalization_captures=(),
+            personalization_persisted_at=None,
+        )
+    existing = adapter.load_existing_for_retry(
+        repository,
+        result_id=request.result_id,
+    )
+    if existing is None:
+        saved = adapter.save_and_readback(
+            recommendation_repository=repository,
+            result=request,
+            captures=captures,
+        )
+        saved_captures = adapter.captures_from_result(saved)
+    else:
+        saved, saved_captures = adapter.merge_existing_retry(
+            candidate_result=request,
+            existing_result=existing,
+            candidate_captures=captures,
+        )
+    persisted_at = "2025-02-10T09:02:00.000000+00:00"
+    persisted = tuple(
+        adapter.capture_service.mark_persisted(
+            capture,
+            persisted_at=persisted_at,
+        )
+        if capture.status == "generated"
+        else capture
+        for capture in saved_captures
+    )
+    return SimpleNamespace(
+        result_id=saved.result_id,
+        personalization_capture_hashes=tuple(item.capture_hash for item in saved_captures),
+        personalization_delivery_statuses=tuple(item.status for item in persisted),
+        personalization_captures=persisted,
+        personalization_scope_id=persisted[0].scope.scope_id if persisted else None,
+        personalization_delivery_id=persisted[0].delivery_id if persisted else None,
+        personalization_persisted_at=persisted[0].persisted_at if persisted else None,
     )
 
 
@@ -290,7 +397,7 @@ def _later(value: str, seconds: int = 1) -> str:
 
 
 def _ack(
-    request: RecommendationSaveRequest,
+    request: RecommendationResultDTO,
     repository: Any,
     journal: Any,
     outcome: Any,
@@ -300,10 +407,10 @@ def _ack(
     expected_hash: str | None = None,
     delivered_at: str | None = None,
 ) -> Any:
-    return request.acknowledge_delivery(
+    return PersonalizationRecommendationSaveAdapter().acknowledge_delivery(
         recommendation_repository=repository,
         journal_service=journal,
-        result_id=outcome.result_id,
+        result_id=request.result_id,
         scope_id=scope_id,
         delivery_id=delivery_id,
         persisted_at=outcome.personalization_persisted_at,
@@ -378,10 +485,7 @@ def test_legacy_save_preserves_orphan_and_create_only_recovers_identical_bytes(
 ) -> None:
     config = _TempConfig(tmp_path / "output")
     repository = _CountingRecommendationRepository(config)
-    result = _request().build_result(
-        recommendation_service=_producer(),
-        regime_service=SimpleNamespace(),
-    )
+    result = _request()
     result_file = repository.runs_dir / f"{RESULT_ID}.json"
     serialized = json.dumps(
         _make_json_serializable(result.to_dict()),
@@ -391,10 +495,7 @@ def test_legacy_save_preserves_orphan_and_create_only_recovers_identical_bytes(
     result_file.write_text(serialized, encoding="utf-8")
     before_bytes = result_file.read_bytes()
 
-    legacy_result = _request().build_result(
-        recommendation_service=_producer(),
-        regime_service=SimpleNamespace(),
-    )
+    legacy_result = _request()
     with pytest.raises(RuntimeError, match="without metadata"):
         repository.save_result(legacy_result)
     assert result_file.read_bytes() == before_bytes
@@ -410,10 +511,7 @@ def test_legacy_save_refuses_unknown_existing_bytes_and_preserves_them(
 ) -> None:
     config = _TempConfig(tmp_path / "output")
     repository = _CountingRecommendationRepository(config)
-    result = _request().build_result(
-        recommendation_service=_producer(),
-        regime_service=SimpleNamespace(),
-    )
+    result = _request()
     result.run_context.pop("personalization_delivery_captures", None)
     repository.save_result(result)
     result_file = repository.runs_dir / f"{RESULT_ID}.json"
@@ -481,16 +579,17 @@ def test_personal_create_cannot_be_overwritten_by_racing_legacy_save(
     assert saved_capture.capture_hash in result_file.read_text(encoding="utf-8")
 
 
-def test_ui_owned_save_ack_reader_projection_and_missing_action(tmp_path: Path, monkeypatch) -> None:
-    config = _TempConfig(tmp_path / "output")
-    repository = _CountingRecommendationRepository(config)
-    journal = JournalService(config)  # type: ignore[arg-type]
-    context = _context()
-    producer = SimpleNamespace(last_run_context=context)
-    messages: list[str] = []
+def test_qt_manual_save_without_personal_scope_does_not_ack(tmp_path: Path, monkeypatch) -> None:
+    import pandas as pd
 
+    from app_module.recommendation.composition import build_recommendation_composition
     from ui_qt.views import recommendation_view as module
 
+    config = _TempConfig(tmp_path / "output")
+    journal = JournalService(config)  # type: ignore[arg-type]
+    composition = build_recommendation_composition(config)
+    execution = _qt_manual_execution()
+    messages: list[str] = []
     monkeypatch.setattr(
         module.QInputDialog,
         "getText",
@@ -506,69 +605,47 @@ def test_ui_owned_save_ack_reader_projection_and_missing_action(tmp_path: Path, 
         "critical",
         lambda *args: pytest.fail(str(args[-1])),
     )
+    monkeypatch.setattr(module, "PandasTableModel", lambda _frame: object())
+
+    class _Table:
+        def setModel(self, _model):  # type: ignore[no-untyped-def]
+            return None
+
+        def selectionModel(self):  # type: ignore[no-untyped-def]
+            return None
+
     view = SimpleNamespace(
-        recommendation_repository=repository,
-        current_recommendations=[_recommendation()],
-        current_config={"strategy_config": {"mode": "ui"}},
+        current_execution=execution,
+        current_result_id="",
+        current_read_model=None,
+        current_save_receipt=None,
+        _pending_save_receipt=None,
+        _pending_save_metadata=None,
+        _verified_saved_result_id=lambda: "",
+        _get_recommendation_composition=lambda: composition,
+        _selected_stock_code=lambda: "",
+        _current_table_rows=lambda: [],
+        _update_detail_text=lambda: None,
+        current_config={"filters": {"mode": "ui-manual"}},
         current_profile=None,
         current_regime=None,
         profiles={},
-        recommendation_service=producer,
         universe_service=None,
-        regime_service=SimpleNamespace(),
+        results_table=_Table(),
         journal_service=journal,
     )
 
     module.RecommendationView._save_recommendation_result(view)
 
-    loaded = repository.load_result(RESULT_ID)
-    assert loaded is not None
-    saved_capture = PersonalizationRecommendationSaveAdapter().captures_from_result(loaded)[0]
-    history = journal.list_personalization_delivery_acks(
-        RESULT_ID, STOCK_CODE, DELIVERY_ID
-    )
-    assert repository.save_calls == 1
-    assert len(history) == 1
-    assert history[0].action == ACTION_DELIVERY_ACK
-    assert saved_capture.status == "generated"
+    loaded = composition.queries.get(RESULT_ID)
+    assert loaded is not None and loaded.execution == execution
+    assert PersonalizationRecommendationSaveAdapter().captures_from_execution(execution) == ()
+    assert journal.list_personalization_delivery_acks(RESULT_ID, STOCK_CODE, DELIVERY_ID) == []
     assert messages and "推薦結果已保存" in messages[0]
-
-    projection = PersonalizationProjectionService(
-        delivery_reader=journal.list_personalization_delivery_acks,
-    ).build_for_candidate(
-        result_id=RESULT_ID,
-        stock_code=STOCK_CODE,
-        personalization_scope_id=SCOPE_ID,
-        result=loaded,
-        projection_receipt=_receipt(),
-        evaluated_as_of="2025-03-05",
-        evaluation_cutoff_at="2025-03-05T00:00:00+00:00",
-    )
-    assert projection.status == "linked_prediction"
-    assert projection.delivery_status == "delivered"
-    # Delivery ACK is later than producer inference, which is normal.  A
-    # late-delivery exclusion requires an explicit human/evaluation anchor.
-    assert projection.late_delivery is False
-    assert projection.prediction_decision_at == "2025-02-10T09:00:00.000000+00:00"
-    assert projection.delivery_at == history[0].payload["delivered_at"]
-    assert projection.human_decision_at is None
-    assert projection.evidence is not None
-    assert projection.evidence.action == "not_recorded"
-    assert projection.evidence.action_state == "not_recorded"
-    assert loaded.to_dict() == repository.load_result(RESULT_ID).to_dict()
-
-    controller = DecisionContinuityController(journal)
-    state = controller.read_state(
-        DecisionIdentity(
-            result_id=RESULT_ID,
-            stock_code=STOCK_CODE,
-            decision_date="2025-02-10",
-        )
-    )
-    assert state.history == ()
+    assert composition.store.read_artifact(RESULT_ID) is not None
 
 
-def test_main_window_host_integration_save_ack_readback(
+def test_main_window_host_integration_manual_save_does_not_ack(
     tmp_path: Path, monkeypatch
 ) -> None:
     """Host-level integration guard; the full process probe is separate."""
@@ -583,7 +660,7 @@ def test_main_window_host_integration_save_ack_readback(
     application = QApplication.instance() or QApplication([])
     config = _TempConfig(tmp_path / "output")
     journal = JournalService(config)  # type: ignore[arg-type]
-    producer = SimpleNamespace(last_run_context=_context())
+    execution = _qt_manual_execution()
 
     class _EmptyProfileService:
         def list_profiles(self):  # type: ignore[no-untyped-def]
@@ -598,7 +675,7 @@ def test_main_window_host_integration_save_ack_readback(
         lambda self: None,
     )
     view = view_module.RecommendationView(
-        recommendation_service=producer,
+        recommendation_service=SimpleNamespace(),
         regime_service=SimpleNamespace(),
         watchlist_service=None,
         config=config,  # type: ignore[arg-type]
@@ -626,37 +703,120 @@ def test_main_window_host_integration_save_ack_readback(
         "critical",
         lambda *args: pytest.fail(str(args[-1])),
     )
-    view.current_recommendations = [_recommendation()]
-    view.current_config = {"strategy_config": {"mode": "main_window"}}
+    view.current_execution = execution
+    view.current_config = view._execution_config(execution)
+    view.current_result_id = ""
     view._save_recommendation_result()
 
-    loaded = view.recommendation_repository.load_result(RESULT_ID)
-    assert loaded is not None
-    result_file = view.recommendation_repository.runs_dir / f"{RESULT_ID}.json"
-    saved_bytes = result_file.read_bytes()
+    loaded = view.current_read_model
+    assert loaded is not None and loaded.execution == execution
     history = main_window.journal_service.list_personalization_delivery_acks(
         RESULT_ID, STOCK_CODE, DELIVERY_ID
     )
-    assert len(history) == 1
+    assert history == []
     assert messages and "推薦結果已保存" in messages[0]
-    projection = PersonalizationProjectionService(
-        delivery_reader=main_window.journal_service.list_personalization_delivery_acks,
-    ).build_for_candidate(
-        result_id=RESULT_ID,
-        stock_code=STOCK_CODE,
-        personalization_scope_id=SCOPE_ID,
-        result=loaded,
-        projection_receipt=_receipt(),
-    )
-    assert projection.status == "linked_prediction"
-    assert projection.delivery_status == "delivered"
-    assert projection.evidence is not None
-    assert projection.evidence.action_state == "not_recorded"
-    assert result_file.read_bytes() == saved_bytes
-    assert loaded.to_dict() == view.recommendation_repository.load_result(RESULT_ID).to_dict()
+    assert PersonalizationRecommendationSaveAdapter().captures_from_execution(execution) == ()
+    composition = view._get_recommendation_composition()
+    artifact_bytes = composition.store.read_artifact(RESULT_ID)
+    assert artifact_bytes is not None
+    assert composition.queries.get(RESULT_ID) == loaded
+    assert main_window.journal_service.list_journal_history() == []
     main_window.close()
     application.processEvents()
     assert running_task_workers() == ()
+
+
+def test_qt_watchlist_failure_is_soft_after_canonical_save(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A legacy watchlist failure must not undo canonical save/readback."""
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QMainWindow
+
+    import ui_qt.main as main_module
+    from app_module.recommendation.composition import build_recommendation_composition
+    from ui_qt.views import recommendation_view as view_module
+    from ui_qt.workers.task_worker import running_task_workers
+
+    application = QApplication.instance() or QApplication([])
+    config = _TempConfig(tmp_path / "output")
+    journal = JournalService(config)  # type: ignore[arg-type]
+    execution = _qt_manual_execution()
+
+    class _EmptyProfileService:
+        def list_profiles(self):  # type: ignore[no-untyped-def]
+            return []
+
+    composition = build_recommendation_composition(config)
+    artifact_observed_by_watchlist: list[bytes | None] = []
+
+    def fail_watchlist(**_kwargs: Any) -> None:
+        artifact_observed_by_watchlist.append(
+            composition.store.read_artifact(execution.result_id)
+        )
+        raise RuntimeError("injected watchlist failure")
+
+    main_window = main_module.MainWindow.__new__(main_module.MainWindow)
+    QMainWindow.__init__(main_window)
+    main_window.journal_service = journal
+    monkeypatch.setattr(
+        view_module.RecommendationView,
+        "_load_current_regime",
+        lambda self: None,
+    )
+    view = view_module.RecommendationView(
+        recommendation_service=SimpleNamespace(),
+        regime_service=SimpleNamespace(),
+        watchlist_service=None,
+        config=config,  # type: ignore[arg-type]
+        universe_service=SimpleNamespace(save_watchlist=fail_watchlist),
+        profile_service=_EmptyProfileService(),  # type: ignore[arg-type]
+        journal_service=main_window.journal_service,
+        parent=main_window,
+    )
+    main_window.recommendation_view = view
+    view.recommendation_composition = composition
+
+    messages: list[str] = []
+    monkeypatch.setattr(
+        view_module.QInputDialog,
+        "getText",
+        lambda *args, **kwargs: ("Canonical watchlist failure", True),
+    )
+    monkeypatch.setattr(
+        view_module.QMessageBox,
+        "information",
+        lambda *args: messages.append(str(args[-1])),
+    )
+    monkeypatch.setattr(
+        view_module.QMessageBox,
+        "critical",
+        lambda *args: pytest.fail(str(args[-1])),
+    )
+    view.current_execution = execution
+    view.current_config = view._execution_config(execution)
+    view.current_result_id = ""
+    view._save_recommendation_result()
+
+    saved_bytes = composition.store.read_artifact(execution.result_id)
+    loaded = composition.queries.get(execution.result_id)
+    assert saved_bytes is not None
+    assert artifact_observed_by_watchlist == [saved_bytes]
+    assert loaded is not None and loaded.execution == execution
+    assert composition.store.read_artifact(execution.result_id) == saved_bytes
+    assert view.current_result_id == execution.result_id
+    assert journal.list_personalization_delivery_acks(
+        execution.result_id,
+        STOCK_CODE,
+        DELIVERY_ID,
+    ) == []
+    assert messages and "已保存" in messages[0]
+    assert "自動選股清單未建立：injected watchlist failure" in messages[0]
+    assert running_task_workers() == ()
+    main_window.close()
+    application.processEvents()
 
 
 def test_real_main_window_process_save_readback_probe(tmp_path: Path) -> None:
@@ -719,16 +879,15 @@ def test_real_main_window_process_save_readback_probe(tmp_path: Path) -> None:
     assert payload["real_recommendation_view"] is True
     assert payload["window_journal_owned"] is True
     assert payload["view_journal_is_window_journal"] is True
-    assert payload["real_repository"] is True
-    assert payload["fixture_producer_context_bound"] is True
+    assert payload["real_canonical_composition"] is True
+    assert payload["fixture_execution_bound"] is True
     assert payload["normal_save_entry_clicked"] is True
     assert payload["result_readback"] is True
-    assert payload["journal_ack_readback"] is True
-    assert payload["projection_readback"] is True
-    assert payload["projection_status"] == "linked_prediction"
-    assert payload["delivery_status"] == "delivered"
-    assert payload["action_state"] == "not_recorded"
-    assert payload["result_json_unchanged_after_projection"] is True
+    assert payload["personal_scope_present"] is False
+    assert payload["personal_ack_count"] == 0
+    assert payload["no_personal_ack_readback"] is True
+    assert payload["exact_query_readback"] is True
+    assert payload["result_artifact_unchanged_after_query"] is True
     assert payload["close_requests"] == 1
     assert payload["watchdog_fired"] is False
     assert payload["window_hidden_after_exec"] is True
@@ -738,49 +897,76 @@ def test_real_main_window_process_save_readback_probe(tmp_path: Path) -> None:
     assert "error" not in payload, payload.get("error")
 
 
-def test_ui_ack_failure_keeps_save_visible_with_simple_user_message(
+def test_qt_save_writer_failure_preserves_artifact_and_does_not_ack(
     tmp_path: Path, monkeypatch
 ) -> None:
-    config = _TempConfig(tmp_path / "output")
-    repository = _CountingRecommendationRepository(config)
-    messages: list[str] = []
+    import pandas as pd
 
+    from app_module.recommendation.composition import build_recommendation_composition
     from ui_qt.views import recommendation_view as module
 
+    config = _TempConfig(tmp_path / "output")
+    journal = JournalService(config)  # type: ignore[arg-type]
+    composition = build_recommendation_composition(config)
+    baseline = _qt_manual_execution()
+    composition.save_service.save_execution(baseline, label="original", notes="original")
+    before_bytes = composition.store.read_artifact(RESULT_ID)
+    assert before_bytes is not None
+    attempted = _qt_manual_execution(score=Decimal("81"))
+    messages: list[str] = []
     monkeypatch.setattr(
         module.QInputDialog,
         "getText",
-        lambda *args, **kwargs: ("UI ACK failure save", True),
-    )
-    monkeypatch.setattr(
-        module.QMessageBox,
-        "information",
-        lambda *args: messages.append(str(args[-1])),
+        lambda *args, **kwargs: ("UI failed save", True),
     )
     monkeypatch.setattr(
         module.QMessageBox,
         "critical",
-        lambda *args: pytest.fail(str(args[-1])),
+        lambda *args: messages.append(str(args[-1])),
     )
+    monkeypatch.setattr(module, "PandasTableModel", lambda _frame: object())
+
+    class _FailingSave:
+        def save_execution(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("canonical writer rejected changed hash")
+
+    class _Table:
+        def setModel(self, _model):  # type: ignore[no-untyped-def]
+            return None
+
+        def selectionModel(self):  # type: ignore[no-untyped-def]
+            return None
+
     view = SimpleNamespace(
-        recommendation_repository=repository,
-        current_recommendations=[_recommendation()],
-        current_config={"strategy_config": {"mode": "ui"}},
+        current_execution=attempted,
+        current_result_id="",
+        current_read_model=None,
+        current_save_receipt=None,
+        _pending_save_receipt=None,
+        _pending_save_metadata=None,
+        _verified_saved_result_id=lambda: "",
+        _get_recommendation_composition=lambda: SimpleNamespace(
+            save_service=_FailingSave(),
+            queries=composition.queries,
+        ),
+        _selected_stock_code=lambda: "",
+        _current_table_rows=lambda: [],
+        _update_detail_text=lambda: None,
+        current_config={"filters": {"mode": "ui-manual"}},
         current_profile=None,
         current_regime=None,
         profiles={},
-        recommendation_service=SimpleNamespace(last_run_context=_context()),
         universe_service=None,
-        regime_service=SimpleNamespace(),
-        journal_service=_FailingAckJournal(),
+        results_table=_Table(),
+        journal_service=journal,
     )
 
     module.RecommendationView._save_recommendation_result(view)
 
-    saved = repository.load_result(RESULT_ID)
-    assert saved is not None
-    assert repository.save_calls == 1
-    assert messages == ["推薦已儲存，但送達紀錄未完成，暫不納入個人化評估。"]
+    assert composition.store.read_artifact(RESULT_ID) == before_bytes
+    assert journal.list_personalization_delivery_acks(RESULT_ID, STOCK_CODE, DELIVERY_ID) == []
+    assert len(messages) == 1
+    assert "保存或 verified readback 失敗" in messages[0]
 
 
 def test_ack_retry_scope_cas_and_writer_failure_do_not_mutate_result(tmp_path: Path) -> None:

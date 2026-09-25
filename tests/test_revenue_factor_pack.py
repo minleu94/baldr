@@ -19,7 +19,7 @@ def _record(period: str, revenue: str, available_date: date) -> MonthlyRevenueRe
         revenue=Decimal(revenue),
         source="financial_data.monthly_revenue_csv",
         source_version="financial-data-csv-v1",
-        quality=FactorQuality.OBSERVED,
+        legacy_quality_wire_value="observed",
     )
 
 
@@ -44,6 +44,7 @@ def test_build_revenue_factor_pack_emits_yoy_mom_trend_and_new_high():
         assert record.missing_policy == MissingPolicy.SKIP
         assert record.score_bp is None
         assert record.source_version == "financial-data-csv-v1"
+        assert record.quality == FactorQuality.OBSERVED
 
 
 def test_revenue_factor_pack_reports_missing_yoy_baseline_without_neutral_record():

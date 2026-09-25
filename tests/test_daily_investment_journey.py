@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
+import hashlib
 import json
 from pathlib import Path
+
+import pytest
 
 from app_module.daily_investment_journey import (
     DailyInvestmentJourneyService,
@@ -31,9 +35,23 @@ from app_module.evidence_event_dtos import (
     EvidenceOutcomeStatus,
 )
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation_repository import RecommendationRepository
+from app_module.recommendation.contracts import (
+    Context,
+    ExecutionStatus,
+    QualityReport,
+    QualityStatus,
+    RecommendationExecution,
+    RecommendationResultConfigSnapshot,
+    Request,
+)
+from app_module.recommendation.persistence import RecommendationExecutionPersistence
+from data_module.result_artifact_store import ResultArtifactStore
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
 from app_module.workbench_dtos import WorkbenchLearningReceipt
 from data_module.config import TWStockConfig
+from decision_module.recommendation.contracts import DecisionBatch, RecommendationItem
 
 
 def _config(tmp_path: Path) -> TWStockConfig:
@@ -82,26 +100,111 @@ def _seed_candidate_outputs(config: TWStockConfig) -> None:
             },
         },
     )
-    _write_json(
-        runs_dir / f"{result_id}.json",
-        {
-            "result_id": result_id,
-            "recommendations": [
-                {
-                    "證券代號": "1528",
-                    "證券名稱": "恩德",
-                    "產業": "電機機械",
-                    "推薦理由": "圖形模式分數+",
-                    "總分": "73.13",
-                    "ranking_method": "fixed_threshold",
-                }
+    RecommendationRepository(config).save_result(
+        RecommendationResultDTO(
+            result_id=result_id,
+            result_name="合成排程結果",
+            config={},
+            recommendations=[
+                RecommendationDTO(
+                    stock_code="1528",
+                    stock_name="恩德",
+                    close_price=0,
+                    price_change=0,
+                    total_score=73.13,
+                    indicator_score=0,
+                    pattern_score=0,
+                    volume_score=0,
+                    recommendation_reasons="圖形模式分數+",
+                    industry="電機機械",
+                    regime_match=False,
+                    ranking_method="fixed_threshold",
+                )
             ],
-            "run_context": {
+            run_context={
                 "as_of_date": "2026-09-14",
                 "data_as_of_date": "2026-09-14",
             },
-        },
+            created_at="2026-09-14T08:00:00+08:00",
+        ),
+        result_name="合成排程結果",
     )
+
+
+def _seed_canonical_candidate(config: TWStockConfig, result_id: str) -> Path:
+    runs_dir = config.output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    persistence = RecommendationExecutionPersistence(store)
+    result_config: dict[str, object] = {
+        "data_as_of_date": "2026-09-13",
+        "strategy_version_id": "strategy-1",
+        "strategy_config_id": "config-1",
+        "universe_policy_id": "policy-1",
+        "universe_policy_hash": "sha256:policy-1",
+        "universe_snapshot_id": "snapshot-1",
+        "universe_snapshot_hash": "sha256:snapshot-1",
+        "cost_model_id": "cost-1",
+        "benchmark_id": "TAIEX",
+        "horizon_days": 20,
+        "return_basis": "close_to_close",
+    }
+    raw_config = json.dumps(result_config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    saved_config = RecommendationResultConfigSnapshot(
+        raw_result_config_json=raw_config,
+        config_sha256="sha256:" + hashlib.sha256(raw_config.encode("utf-8")).hexdigest(),
+    )
+    execution = RecommendationExecution(
+        result_id=result_id,
+        request=Request(as_of_date=date(2026, 9, 14)),
+        context=Context(
+            as_of_date=date(2026, 9, 14),
+            result_config_snapshot=saved_config,
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(
+            items=(
+                RecommendationItem(
+                    stock_code="1528",
+                    stock_name="恩德",
+                    industry="電機機械",
+                    rule_score=Decimal("73.13"),
+                    reason_text="圖形模式分數+",
+                    rank=4,
+                    ranking_method="fixed_threshold",
+                ),
+            )
+        ),
+        quality=QualityReport(QualityStatus.DEGRADED, warnings=("saved_quality_warning",)),
+    )
+    receipt = persistence.save(execution, label="合成 canonical 排程結果")
+    assert receipt.artifact_location is not None
+    artifact_path = store.artifact_root / receipt.artifact_location
+    return artifact_path
+
+
+def _seed_registered_legacy_payload(
+    config: TWStockConfig,
+    *,
+    result_id: str,
+    payload: dict[str, object],
+) -> Path:
+    repository = RecommendationRepository(config)
+    repository.save_result(
+        RecommendationResultDTO(
+            result_id=result_id,
+            result_name="合成 legacy 結果",
+            config={},
+            recommendations=[],
+            created_at="2026-09-14T08:00:00+08:00",
+        ),
+        result_name="合成 legacy 結果",
+    )
+    path = repository.runs_dir / f"{result_id}.json"
+    _write_json(path, payload)
+    return path
 
 
 def _write_forward_receipt(config: TWStockConfig, *, skipped: int = 1) -> None:
@@ -228,10 +331,12 @@ def _seed_evidence(config: TWStockConfig) -> None:
     )
 
 
-def _status(*, event_count: int = 1) -> ScheduledEvidenceStatus:
+def _status(
+    *, event_count: int = 1, result_id: str = "scheduled-rec-1"
+) -> ScheduledEvidenceStatus:
     return ScheduledEvidenceStatus(
         recommendation_status="passed",
-        recommendation_result_id="scheduled-rec-1",
+        recommendation_result_id=result_id,
         forward_outcome_status="passed_with_warnings",
         forward_outcome_events_scanned=event_count,
         forward_health_events_skipped_incomplete_identity=1,
@@ -283,6 +388,361 @@ def test_daily_journey_matches_scheduled_scope_and_keeps_learning_domains_separa
     assert "recommendation_included" not in daily.headline
     assert any("不完整 identity" in warning for warning in daily.warnings)
     assert any("candidate natural sample" in item for item in daily.diagnostics)
+
+
+def test_daily_journey_reads_canonical_execution_and_preserves_status_identity(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    result_id = "canonical-daily-rec-1"
+    artifact_path = _seed_canonical_candidate(config, result_id)
+    before = artifact_path.read_bytes()
+    before_hash = "sha256:" + hashlib.sha256(before).hexdigest()
+    _write_json(
+        config.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json",
+        {
+            "status": "passed",
+            "decision_date": "2026-09-14",
+            "data_as_of_date": "2026-09-13",
+            "result_id": result_id,
+            "source_snapshot_id": "snapshot-1",
+            "recommendations_count": 1,
+            "snapshot_cohort": {
+                "cohort_hash": "sha256:cohort-1",
+                "requested_count": 2,
+                "eligible_count": 1,
+                "degraded_symbols": 1,
+                "missing_symbols": 0,
+                "coverage_status": "degraded",
+                "universe_policy_id": "policy-1",
+                "universe_policy_hash": "sha256:policy-1",
+                "universe_snapshot_id": "snapshot-1",
+                "universe_snapshot_hash": "sha256:snapshot-1",
+            },
+            "evidence_identity": {
+                "strategy_version_id": "strategy-1",
+                "strategy_config_id": "config-1",
+                "universe_policy_id": "policy-1",
+                "universe_policy_hash": "sha256:policy-1",
+                "universe_snapshot_id": "snapshot-1",
+                "universe_snapshot_hash": "sha256:snapshot-1",
+                "benchmark_id": "TAIEX",
+                "cost_model_id": "cost-1",
+                "horizon_days": 20,
+            },
+        },
+    )
+    _write_forward_receipt(config)
+
+    daily = DailyInvestmentJourneyService(config, evidence_db_path=config.db_file).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_symbols == ("1528",)
+    assert daily.candidate_result_id == result_id
+    assert daily.candidate_source_id == result_id
+    assert daily.candidate_source_snapshot_id == "snapshot-1"
+    assert daily.candidate_data_date == "2026-09-13"
+    assert daily.candidate_status == "candidate_degraded"
+    assert daily.candidate_quality == "degraded"
+    assert daily.candidate_reasons == (
+        "1528 恩德｜產業 電機機械｜理由 圖形模式分數+｜排名分數 73.13",
+    )
+    assert "strategy_version_id=strategy-1" in daily.candidate_identity
+    assert any("format=RecommendationExecution" in item for item in daily.source_trace)
+    assert any("recommendation_rank=4" in item for item in daily.source_trace)
+    assert any(f"raw_artifact_sha256={before_hash}" in item for item in daily.source_trace)
+    assert not (config.output_root / "recommendation" / "runs" / f"{result_id}.json").exists()
+    assert artifact_path.read_bytes() == before
+    assert hashlib.sha256(artifact_path.read_bytes()).hexdigest() == before_hash.removeprefix("sha256:")
+
+
+def test_daily_journey_legacy_projection_preserves_exact_identity_rank_and_date(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    result_id = "daily-legacy-exact-payload"
+    payload = {
+        "result_id": result_id,
+        "result_name": "合成 legacy 結果",
+        "created_at": "2026-09-14T08:00:00+08:00",
+        "config": {},
+        "run_context": {"as_of_date": "2026-09-14"},
+        "source_id": "legacy-source-42",
+        "source_snapshot_id": "legacy-snapshot-42",
+        "source_snapshot_hash": "sha256:" + "c" * 64,
+        "payload_date": "2026-09-12",
+        "recommendations": [
+            {
+                "stock_code": "2330",
+                "stock_name": "台積電",
+                "推薦理由": "合成歷史推薦",
+                "總分": 88,
+                "recommendation_rank": 7,
+                "opaque_candidate": {"provider_rank_source": "saved"},
+            }
+        ],
+        "opaque_root": {"retained": [1, {"nested": True}]},
+    }
+    artifact_path = _seed_registered_legacy_payload(
+        config,
+        result_id=result_id,
+        payload=payload,
+    )
+    original_bytes = artifact_path.read_bytes()
+    original_hash = hashlib.sha256(original_bytes).hexdigest()
+    _write_json(
+        config.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json",
+        {
+            "status": "passed",
+            "decision_date": "2026-09-14",
+            "result_id": result_id,
+            "recommendations_count": 1,
+            "runs_dir": str(artifact_path.parent),
+        },
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_symbols == ("2330",)
+    assert daily.candidate_source_id == "legacy-source-42"
+    assert daily.candidate_source_snapshot_id == "legacy-snapshot-42"
+    assert daily.candidate_data_date == "2026-09-12"
+    assert any("recommendation_rank=7" in item for item in daily.source_trace)
+    assert any(f"raw_artifact_sha256=sha256:{original_hash}" in item for item in daily.source_trace)
+    assert artifact_path.read_bytes() == original_bytes
+
+
+def test_daily_journey_legacy_identity_mismatch_fails_closed_without_lineage_fallback(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    result_id = "daily-legacy-identity-conflict"
+    payload = {
+        "result_id": result_id,
+        "result_name": "合成 legacy 結果",
+        "created_at": "2026-09-14T08:00:00+08:00",
+        "config": {},
+        "run_context": {"as_of_date": "2026-09-14"},
+        "source_id": "legacy-source-42",
+        "source_snapshot_id": "legacy-snapshot-42",
+        "source_snapshot_hash": "sha256:" + "c" * 64,
+        "recommendations": [
+            {"stock_code": "2330", "stock_name": "台積電", "recommendation_rank": 7}
+        ],
+    }
+    artifact_path = _seed_registered_legacy_payload(
+        config,
+        result_id=result_id,
+        payload=payload,
+    )
+    original_bytes = artifact_path.read_bytes()
+    _write_json(
+        config.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json",
+        {
+            "status": "passed",
+            "decision_date": "2026-09-14",
+            "result_id": result_id,
+            "source_id": "wrapper-source-conflict",
+            "source_snapshot_id": "wrapper-snapshot-conflict",
+            "recommendations_count": 1,
+            "runs_dir": str(artifact_path.parent),
+        },
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_status == "degraded"
+    assert daily.candidate_symbols == ()
+    assert daily.candidate_source_id is None
+    assert daily.candidate_source_snapshot_id is None
+    assert any("recommendation_legacy_identity_mismatch:source_id" in item for item in daily.diagnostics)
+    assert not any("raw_artifact_sha256=" in item for item in daily.source_trace)
+    assert artifact_path.read_bytes() == original_bytes
+
+
+def test_daily_journey_unindexed_legacy_uses_query_verified_original_payload(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    result_id = "daily-unindexed-legacy"
+    runs_dir = config.output_root / "recommendation" / "runs"
+    artifact_path = runs_dir / f"{result_id}.json"
+    payload = {
+        "result_id": result_id,
+        "result_name": "合成 unindexed legacy 結果",
+        "created_at": "2026-09-14T08:00:00+08:00",
+        "config": {},
+        "run_context": {"as_of_date": "2026-09-14"},
+        "source_id": "unindexed-source-17",
+        "source_snapshot_id": "unindexed-snapshot-17",
+        "source_snapshot_hash": "sha256:" + "d" * 64,
+        "payload_date": "2026-09-11",
+        "recommendations": [
+            {
+                "stock_code": "2603",
+                "stock_name": "長榮",
+                "推薦理由": "合成 unindexed 候選",
+                "recommendation_rank": 3,
+                "opaque_candidate": {"provider": "saved"},
+            }
+        ],
+        "opaque_root": {"unindexed_extension": ["preserved"]},
+    }
+    _write_json(artifact_path, payload)
+    original_bytes = artifact_path.read_bytes()
+    original_hash = hashlib.sha256(original_bytes).hexdigest()
+    _write_json(
+        config.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json",
+        {
+            "status": "passed",
+            "decision_date": "2026-09-14",
+            "result_id": result_id,
+            "recommendations_count": 1,
+            "runs_dir": str(runs_dir),
+        },
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_symbols == ("2603",)
+    assert daily.candidate_source_id == "unindexed-source-17"
+    assert daily.candidate_source_snapshot_id == "unindexed-snapshot-17"
+    assert daily.candidate_data_date == "2026-09-11"
+    assert any("original_payload_source=unindexed_legacy_file" in item for item in daily.source_trace)
+    assert any("integrity_basis=legacy_read_time_hash_only" in item for item in daily.source_trace)
+    assert any(f"raw_artifact_sha256=sha256:{original_hash}" in item for item in daily.source_trace)
+    assert artifact_path.read_bytes() == original_bytes
+
+
+def test_daily_journey_registered_legacy_cross_read_byte_change_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    result_id = "daily-legacy-cross-read-change"
+    payload = {
+        "result_id": result_id,
+        "result_name": "合成 legacy 結果",
+        "created_at": "2026-09-14T08:00:00+08:00",
+        "config": {},
+        "run_context": {"as_of_date": "2026-09-14"},
+        "source_id": "legacy-source-original",
+        "source_snapshot_id": "legacy-snapshot-original",
+        "recommendations": [
+            {"stock_code": "2330", "stock_name": "台積電", "recommendation_rank": 1}
+        ],
+    }
+    artifact_path = _seed_registered_legacy_payload(
+        config,
+        result_id=result_id,
+        payload=payload,
+    )
+    _write_json(
+        config.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json",
+        {
+            "status": "passed",
+            "decision_date": "2026-09-14",
+            "result_id": result_id,
+            "recommendations_count": 1,
+            "runs_dir": str(artifact_path.parent),
+        },
+    )
+    service = DailyInvestmentJourneyService(config)
+    query = service.recommendation_queries
+    original_get_projection = query.get_legacy_original_payload
+
+    def replace_before_original_projection(
+        requested_id: str,
+        *,
+        allow_unindexed_legacy: bool = False,
+    ) -> object:
+        assert requested_id == result_id
+        changed_payload = dict(payload)
+        changed_payload["source_id"] = "legacy-source-replaced-between-reads"
+        _write_json(artifact_path, changed_payload)
+        return original_get_projection(
+            requested_id,
+            allow_unindexed_legacy=allow_unindexed_legacy,
+        )
+
+    monkeypatch.setattr(
+        query,
+        "get_legacy_original_payload",
+        replace_before_original_projection,
+    )
+
+    daily = service.build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_symbols == ()
+    assert daily.candidate_status == "degraded"
+    assert any("recommendation_run_legacy_payload_read_mismatch" in item for item in daily.diagnostics)
+    assert not any("raw_artifact_sha256=" in item for item in daily.source_trace)
+
+
+def test_daily_journey_legacy_payload_with_unsupported_row_fails_closed(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    result_id = "daily-legacy-unsupported-row"
+    payload = {
+        "result_id": result_id,
+        "result_name": "合成 legacy 結果",
+        "created_at": "2026-09-14T08:00:00+08:00",
+        "config": {},
+        "run_context": {"as_of_date": "2026-09-14"},
+        "source_id": "legacy-source-42",
+        "source_snapshot_id": "legacy-snapshot-42",
+        "recommendations": [
+            {"stock_code": "2330", "stock_name": "台積電", "recommendation_rank": 1},
+            "unsupported row",
+        ],
+    }
+    artifact_path = _seed_registered_legacy_payload(
+        config,
+        result_id=result_id,
+        payload=payload,
+    )
+    _write_json(
+        config.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json",
+        {
+            "status": "passed",
+            "decision_date": "2026-09-14",
+            "result_id": result_id,
+            "recommendations_count": 2,
+            "runs_dir": str(artifact_path.parent),
+        },
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_symbols == ()
+    assert daily.candidate_status == "degraded"
+    assert any("recommendation_run_legacy_candidate_rows_unsupported" in item for item in daily.diagnostics)
 
 
 def test_learning_date_is_checked_against_decision_date(tmp_path: Path) -> None:

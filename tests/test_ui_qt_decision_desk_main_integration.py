@@ -218,6 +218,9 @@ def _build_main_window(*, regime_service=None, portfolio_service=None, config=No
     main_window.watchlist_service = object()
     main_window.universe_service = object()
     main_window.research_session_store = object()
+    main_window.stock_research_report_service = object()
+    main_window.decision_outcome_journey_service = object()
+    main_window.decision_continuity_controller = object()
     main_window.portfolio_service = portfolio_service or object()
     main_window.journal_service = object()
     main_window.broker_flow_service = object()
@@ -314,6 +317,7 @@ def test_main_window_adds_unified_decision_workbench_tab(monkeypatch, tmp_path):
         "推薦分析",
         "策略回測",
         "觀察清單",
+        "個股研究",
         "持倉管理",
         "數據更新",
         "Runtime",

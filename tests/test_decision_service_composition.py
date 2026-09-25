@@ -17,10 +17,7 @@ def test_decision_service_composition_injects_shared_mapper_and_data_ports() -> 
         )
     }
     dependencies["IndustryMapper"].return_value = mapper = object()
-    dependencies["MarketRegimeDetector"].side_effect = [
-        regime_detector := object(),
-        recommendation_detector := object(),
-    ]
+    dependencies["MarketRegimeDetector"].return_value = regime_detector = object()
     dependencies["StockScreener"].return_value = stock_screener = object()
     industry_provider = object()
     market_provider = object()
@@ -38,15 +35,26 @@ def test_decision_service_composition_injects_shared_mapper_and_data_ports() -> 
     dependencies["ScreeningService"].assert_called_once_with(
         composition.config, industry_mapper=mapper, stock_screener=stock_screener
     )
-    assert dependencies["MarketRegimeDetector"].call_count == 2
+    stock_screener_kwargs = dependencies["StockScreener"].call_args.kwargs
+    assert callable(stock_screener_kwargs["recent_stock_provider"])
+    assert callable(stock_screener_kwargs["recent_industry_provider"])
+    assert callable(stock_screener_kwargs["stock_fallback_provider"])
+    assert callable(stock_screener_kwargs["industry_fallback_provider"])
+    dependencies["MarketRegimeDetector"].assert_called_once_with()
     dependencies["RegimeService"].assert_called_once_with(
-        composition.config, regime_detector=regime_detector
-    )
-    dependencies["RecommendationService"].assert_called_once_with(
         composition.config,
-        industry_mapper=mapper,
-        regime_detector=recommendation_detector,
+        regime_detector=regime_detector,
+        use_persistent_history=True,
+        market_frame_provider=market_provider,
     )
+    dependencies["RecommendationService"].assert_called_once()
+    recommendation_args = dependencies["RecommendationService"].call_args
+    assert recommendation_args.args == (composition.config,)
+    assert recommendation_args.kwargs["industry_mapper"] is mapper
+    assert recommendation_args.kwargs["regime_service"] is dependencies[
+        "RegimeService"
+    ].return_value
+    assert recommendation_args.kwargs["input_preparer"] is not None
 
 
 def test_normal_composition_injects_read_only_recommendation_calibration_consumer(monkeypatch) -> None:
@@ -62,7 +70,7 @@ def test_normal_composition_injects_read_only_recommendation_calibration_consume
         )
     }
     dependencies["IndustryMapper"].return_value = object()
-    dependencies["MarketRegimeDetector"].side_effect = [object(), object()]
+    dependencies["MarketRegimeDetector"].return_value = object()
     dependencies["StockScreener"].return_value = object()
     consumer = object()
     monkeypatch.setattr(

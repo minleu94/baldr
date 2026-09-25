@@ -8,6 +8,7 @@ import pytest
 from app_module.recommendation_service import RecommendationService
 from app_module.application_ports import MarketFrameProvider
 from data_module.fundamental_schema import apply_fundamental_schema
+from recommendation_test_support import build_recommendation_test_preparer
 
 
 class _FakeMarketFrameProvider(MarketFrameProvider):
@@ -228,7 +229,13 @@ def test_fundamental_filters_pe_and_yoy_scenarios(test_config) -> None:
 
     # 4. 初始化 Service
     provider = _FakeMarketFrameProvider(mock_df)
-    service = RecommendationService(config=test_config, market_data_provider=provider)
+    service = RecommendationService(
+        config=test_config,
+        market_data_provider=provider,
+        input_preparer=build_recommendation_test_preparer(
+            test_config, market_data_provider=provider
+        ),
+    )
 
     # 執行推薦生成
     result = service.run_recommendation(
@@ -343,9 +350,13 @@ def test_recommendation_yoy_filter_rejects_unmapped_snapshot_rows(test_config) -
             for index in range(20)
         ]
     )
+    provider = _FakeMarketFrameProvider(market_frame)
     service = RecommendationService(
         config=test_config,
-        market_data_provider=_FakeMarketFrameProvider(market_frame),
+        market_data_provider=provider,
+        input_preparer=build_recommendation_test_preparer(
+            test_config, market_data_provider=provider
+        ),
     )
     service.strategy_configurator.generate_recommendations = lambda _frame, _config: pd.DataFrame(
         {

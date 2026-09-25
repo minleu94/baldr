@@ -130,9 +130,7 @@ def _append_real_source_row(
     """用既有 writer 建立一筆獨立的 real-source fit/evaluation row。"""
 
     from decimal import Decimal
-    from types import SimpleNamespace
-
-    from app_module.dtos import RecommendationDTO
+    from app_module.dtos import RecommendationDTO, RecommendationResultDTO
     from app_module.evidence_event_dtos import (
         EvidenceDataQuality,
         EvidenceEvent,
@@ -145,7 +143,6 @@ def _append_real_source_row(
     from app_module.personalization_save_adapter import (
         PersonalizationRecommendationSaveAdapter,
     )
-    from app_module.recommendation_save_coordinator import RecommendationSaveRequest
 
     decision_at = f"{decision_date}T09:00:00+00:00"
     available_at = f"{decision_date}T08:55:00+00:00"
@@ -242,32 +239,38 @@ def _append_real_source_row(
         regime_match=True,
         calibration_provenance={"projection_receipt_hash": receipt["receipt_hash"]},
     )
-    request = RecommendationSaveRequest(
+    result = RecommendationResultDTO(
+        result_id=result_id,
         result_name=f"personalization fit runner {result_id}",
-        config={"_recommendation_run_context": context},
-        recommendations=(recommendation,),
-        current_profile=None,
-        profile_meta={},
-        current_regime=None,
+        config={},
+        recommendations=[recommendation],
+        created_at=decision_at,
+        notes="Profile: 進階模式, Regime: 未知",
+        run_context=context,
+    )
+    adapter = PersonalizationRecommendationSaveAdapter()
+    result, captures = adapter.bind_result(
+        result,
         personalization_scope=scope,
-        personalization_request_id=f"request_{result_id}",
+        request_id=f"request_{result_id}",
     )
-    outcome = request.persist(
+    assert len(captures) == 1
+    saved = adapter.save_and_readback(
         recommendation_repository=repository,
-        universe_service=None,
-        recommendation_service=SimpleNamespace(last_run_context={}),
-        regime_service=SimpleNamespace(),
+        result=result,
+        captures=captures,
     )
-    assert outcome.result_id == result_id
-    ack = PersonalizationRecommendationSaveAdapter().acknowledge_delivery(
+    assert saved.result_id == result_id
+    ack = adapter.acknowledge_delivery(
         recommendation_repository=repository,
         journal_service=journal,
         result_id=result_id,
         scope_id=SCOPE_ID,
-        delivery_id=outcome.personalization_delivery_id or "",
+        delivery_id=captures[0].delivery_id,
         persisted_at=decision_at,
         delivered_at=decision_at,
         recorded_at=f"{decision_date}T09:02:00+00:00",
+        expected_capture_hashes={STOCK_CODE: captures[0].capture_hash},
     )
     assert ack.status == "delivered"
 

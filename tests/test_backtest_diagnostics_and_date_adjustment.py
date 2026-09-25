@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
 from app_module.backtest_service import BacktestService
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from app_module.dtos import ValidationStatus
 
 class MockConfig:
@@ -81,7 +81,7 @@ def test_score_diagnostics_calculation():
     
     with patch.object(service, '_load_price_data', return_value=mock_df), \
          patch.object(service, '_load_indicator_data', return_value=None), \
-         patch("app_module.strategy_registry.StrategyRegistry.get_executor", return_value=mock_executor):
+         patch("decision_module.strategies.registry.StrategyRegistry.get_executor", return_value=mock_executor):
          
         report = service.run_backtest(
             stock_code="2330",
@@ -158,7 +158,7 @@ def test_backtest_diagnostics_quantile():
     
     with patch.object(service, '_load_price_data', return_value=mock_df), \
          patch.object(service, '_load_indicator_data', return_value=None), \
-         patch("app_module.strategy_registry.StrategyRegistry.get_executor", return_value=mock_executor):
+         patch("decision_module.strategies.registry.StrategyRegistry.get_executor", return_value=mock_executor):
          
         report = service.run_backtest(
             stock_code="2330",
@@ -206,7 +206,7 @@ def test_backtest_service_persists_trade_cost_and_notional_metadata():
     executor = MagicMock()
     executor.generate_signals.return_value = signal_frame
 
-    with patch("app_module.strategy_registry.StrategyRegistry.get_executor", return_value=executor):
+    with patch("decision_module.strategies.registry.StrategyRegistry.get_executor", return_value=executor):
         report = service.run_backtest(
             stock_code="2330",
             start_date="2026-07-01",
@@ -263,9 +263,9 @@ def test_strategy_regression_trades():
         res['RegimeMatch'] = pd.Series(True, index=df_arg.index)
         return res
         
-    from app_module.strategies.baseline_score_executor import BaselineScoreExecutor
-    from app_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
-    from app_module.strategies.stable_conservative_executor import StableConservativeExecutor
+    from decision_module.strategies.baseline_score_executor import BaselineScoreExecutor
+    from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
+    from decision_module.strategies.stable_conservative_executor import StableConservativeExecutor
     
     strategies_to_test = [
         ("baseline", BaselineScoreExecutor, 60.0, 40.0),
@@ -485,7 +485,7 @@ def test_total_score_projects_confirmed_pattern_summary_without_guessing():
 def test_reason_engine_consumes_confirmed_pattern_evidence_only():
     """ReasonEngine 顯示具體型態，沒有名稱時不從分數臆測型態。"""
     from decision_module.reason_engine import ReasonEngine
-    from app_module.reason_tags import ReasonTagGenerator
+    from decision_module.reason_tags import ReasonTagGenerator
 
     config = {'patterns': {'selected': ['W底', '雙頂']}}
     engine = ReasonEngine()

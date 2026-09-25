@@ -5,15 +5,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import datetime, timezone
 from decimal import Decimal
 import json
 from pathlib import Path
+import sqlite3
 from typing import Any, Mapping, Sequence
 
 import pytest
 
 from app_module.decision_outcome_journey import (
     DecisionOutcomeJourneyService,
+    JsonRecommendationReadAdapter,
     JourneyLinkStatus,
     JourneyStatus,
     JourneyTimelineItem,
@@ -22,6 +26,10 @@ from app_module.decision_outcome_journey import (
     project_outcome_maturity,
     _sort_time,
 )
+from app_module.recommendation.codec import decode_execution_envelope
+from app_module.recommendation.persistence import RecommendationExecutionPersistence
+from app_module.recommendation.contracts import ExecutionStatus, RecommendationExecution
+from data_module.result_artifact_store import ResultArtifactStore
 from data_module.portfolio_ledger_repository import PortfolioLedgerEvent, PortfolioLedgerRepository
 
 
@@ -148,6 +156,69 @@ def _result(*, stock_code: str = STOCK_CODE) -> dict[str, Any]:
             }
         ],
     }
+
+
+def _register_legacy_recommendation(
+    output_root: Path,
+    result_id: str,
+    payload: Mapping[str, Any],
+) -> tuple[Path, bytes]:
+    runs_dir = output_root / "recommendation" / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    result_path = runs_dir / f"{result_id}.json"
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    result_path.write_bytes(raw)
+    with sqlite3.connect(runs_dir / "recommendation_runs.db") as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runs (
+                result_id TEXT PRIMARY KEY,
+                result_name TEXT,
+                notes TEXT,
+                created_at TEXT,
+                data_path TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO runs (result_id, result_name, notes, created_at, data_path)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                result_id,
+                str(payload.get("result_name", "legacy fixture")),
+                str(payload.get("notes", "")),
+                payload.get("created_at"),
+                str(result_path),
+            ),
+        )
+    return result_path, raw
+
+
+def _save_canonical_recommendation(
+    output_root: Path,
+) -> tuple[RecommendationExecution, str]:
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "c1_consumer_readiness"
+        / "r016_execution_rev2.json"
+    )
+    execution = decode_execution_envelope(fixture.read_bytes()).execution
+    runs_dir = output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    receipt = RecommendationExecutionPersistence(store).save(
+        execution,
+        label="synthetic canonical journey fixture",
+        now=lambda: datetime(2026, 9, 23, tzinfo=timezone.utc),
+    )
+    return execution, receipt.artifact_location
 
 
 def _event(
@@ -693,12 +764,282 @@ def test_read_only_adapters_do_not_change_source_files(tmp_path: Path) -> None:
     journey = service.build(RESULT_ID)
 
     assert journey.recommendation_result.result_id == RESULT_ID
+    assert journey.recommendation_result.result_path == str(result_path.resolve())
+    assert journey.recommendation_result.to_dict()["original_payload"] == json.loads(
+        result_before[1]
+    )
+    assert journey.recommendation_result.source_identity.source_provider_id == (
+        "synthetic-provider-v1"
+    )
+    assert journey.recommendation_result.source_identity.source_snapshot_hash == (
+        SOURCE_SNAPSHOT_HASH
+    )
+    assert journey.recommendation_result.candidates[0].recommendation_rank == 1
+    assert journey.recommendation_result.candidates[0].to_dict()[
+        "original_payload"
+    ] == json.loads(result_before[1])["recommendations"][0]
     assert journey.journal_entries[0].journal_id == "journal-001"
     assert journey.portfolio_ledger_events[0].record_id == "ledger-trade-001"
     assert PortfolioLedgerRepositoryReadAdapter(ledger_path).repository.read_only is True
     assert (result_path.stat().st_mtime_ns, result_path.read_bytes()) == result_before
     assert (journal_path.stat().st_mtime_ns, journal_path.read_bytes()) == journal_before
     assert (ledger_path.stat().st_mtime_ns, ledger_path.read_bytes()) == ledger_before
+
+
+def test_journey_reads_registered_legacy_exact_payload_and_verified_path(
+    tmp_path: Path,
+) -> None:
+    result_id = "journey-registered-legacy"
+    output_root = tmp_path / "output"
+    payload = _result()
+    payload["result_id"] = result_id
+    payload["source_id"] = "provider-legacy"
+    payload["source_snapshot_id"] = "snapshot-legacy"
+    payload["source_snapshot_hash"] = "sha256:" + "a" * 64
+    payload["config"] = {
+        **payload["config"],
+        "source_id": "provider-legacy",
+        "source_snapshot_id": "snapshot-legacy",
+        "source_snapshot_hash": "sha256:" + "a" * 64,
+    }
+    payload["run_context"] = {
+        **payload["run_context"],
+        "source_id": "provider-legacy",
+        "source_snapshot_id": "snapshot-legacy",
+        "source_snapshot_hash": "sha256:" + "a" * 64,
+    }
+    candidate = dict(payload["recommendations"][0])
+    candidate["recommendation_rank"] = 9
+    candidate["opaque_provider_row"] = {"nested": ["keep", {"tag": "exact"}]}
+    payload["recommendations"] = [candidate]
+    payload["opaque_root"] = {"payload": [1, {"unknown": True}]}
+    legacy_path, raw = _register_legacy_recommendation(
+        output_root,
+        result_id,
+        payload,
+    )
+
+    adapter = JsonRecommendationReadAdapter(output_root)
+    service = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+    )
+    journey = service.build(result_id)
+
+    assert journey.recommendation_result.source_identity.source_provider_id == (
+        "provider-legacy"
+    )
+    assert journey.recommendation_result.source_identity.source_snapshot_id == (
+        "snapshot-legacy"
+    )
+    assert journey.recommendation_result.source_identity.source_snapshot_hash == (
+        "sha256:" + "a" * 64
+    )
+    assert journey.recommendation_result.candidates[0].recommendation_rank == 9
+    assert journey.recommendation_result.original_payload["opaque_root"]["payload"][1][
+        "unknown"
+    ] is True
+    assert journey.recommendation_result.to_dict()["original_payload"] == json.loads(raw)
+    assert journey.recommendation_result.candidates[0].to_dict()[
+        "original_payload"
+    ] == json.loads(raw)["recommendations"][0]
+    assert journey.recommendation_result.result_path == str(legacy_path.resolve())
+    assert legacy_path.read_bytes() == raw
+
+
+def test_journey_reads_canonical_query_projection_and_uses_verified_artifact_location(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root = tmp_path / "canonical-output"
+    execution, artifact_location = _save_canonical_recommendation(output_root)
+    adapter = JsonRecommendationReadAdapter(output_root)
+    query = adapter._queries
+    original_get = query.get
+    queried_ids: list[str] = []
+
+    def counted_get(result_id: str) -> Any:
+        queried_ids.append(result_id)
+        return original_get(result_id)
+
+    monkeypatch.setattr(query, "get", counted_get)
+    service = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+    )
+
+    journey = service.build(execution.result_id)
+
+    assert queried_ids == [execution.result_id]
+    assert journey.recommendation_result.result_id == execution.result_id
+    assert journey.recommendation_result.result_path == artifact_location
+    assert journey.recommendation_result.result_path != str(
+        output_root / "recommendation" / "runs" / f"{execution.result_id}.json"
+    )
+    assert (
+        journey.recommendation_result.decision_date
+        == execution.context.as_of_date.isoformat()
+    )
+    assert journey.recommendation_result.source_identity.source_provider_id == (
+        "daily-prices"
+    )
+    assert journey.recommendation_result.source_identity.source_snapshot_id == (
+        "snapshot-A"
+    )
+    assert journey.recommendation_result.source_identity.source_snapshot_hash is None
+    assert journey.recommendation_result.candidates[0].recommendation_rank == (
+        execution.decision.items[0].rank  # type: ignore[union-attr]
+    )
+    candidate = journey.recommendation_result.original_payload["recommendations"][0]
+    source_candidate = execution.decision.items[0]  # type: ignore[union-attr]
+    assert candidate["stock_code"] == source_candidate.stock_code
+    assert candidate["recommendation_rank"] == source_candidate.rank
+    assert candidate["rule_score"] == str(source_candidate.rule_score)
+    assert candidate["close_price"] == source_candidate.close_price
+    assert source_candidate.universe_ref is not None
+    assert candidate["universe_ref"]["as_of_date"] == (
+        source_candidate.universe_ref.as_of_date.isoformat()
+    )
+    assert journey.to_dict()["recommendation_result"]["original_payload"][
+        "recommendations"
+    ][0]["factor_contributions"] == [
+        {
+            "factor_id": contribution.factor_id,
+            "value": contribution.value,
+            "unit": contribution.unit,
+            "version": contribution.version,
+            "source_refs": [
+                {
+                    "source_id": source.source_id,
+                    "revision": source.revision,
+                    "snapshot_id": source.snapshot_id,
+                }
+                for source in contribution.source_refs
+            ],
+        }
+        for contribution in source_candidate.factor_contributions
+    ]
+    json.dumps(journey.to_dict(), allow_nan=False)
+
+
+def test_journey_rejects_canonical_read_model_without_canonical_integrity_basis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root = tmp_path / "unsupported-integrity-output"
+    execution, _artifact_location = _save_canonical_recommendation(output_root)
+    adapter = JsonRecommendationReadAdapter(output_root)
+    query = adapter._queries
+    original_get = query.get
+
+    def unsupported_get(result_id: str) -> Any:
+        read_model = original_get(result_id)
+        if read_model is None:
+            return None
+        return replace(read_model, integrity_basis="legacy_read_time_hash_only")
+
+    monkeypatch.setattr(query, "get", unsupported_get)
+    journey = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+    ).build(execution.result_id)
+
+    assert journey.recommendation_result.link_status is JourneyLinkStatus.UNKNOWN
+    assert journey.recommendation_result.result_path is None
+    assert any(
+        item.code == "recommendation_read_failure"
+        for item in journey.diagnostics
+    )
+
+
+def test_journey_rejects_non_completed_canonical_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root = tmp_path / "non-completed-output"
+    execution, _artifact_location = _save_canonical_recommendation(output_root)
+    adapter = JsonRecommendationReadAdapter(output_root)
+    query = adapter._queries
+    original_get = query.get
+
+    def unsupported_get(result_id: str) -> Any:
+        read_model = original_get(result_id)
+        if read_model is None or read_model.execution is None:
+            return read_model
+        failed_execution = replace(
+            read_model.execution,
+            status=ExecutionStatus.FAILED,
+            decision=None,
+            failure_reason="synthetic failure",
+        )
+        return replace(read_model, execution=failed_execution)
+
+    monkeypatch.setattr(query, "get", unsupported_get)
+    journey = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+    ).build(execution.result_id)
+
+    assert journey.recommendation_result.link_status is JourneyLinkStatus.UNKNOWN
+    assert journey.recommendation_result.result_path is None
+    assert any(
+        item.code == "recommendation_read_failure"
+        for item in journey.diagnostics
+    )
+
+
+def test_journey_list_result_ids_uses_verified_query_inventory_not_glob(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "inventory-output"
+    execution, _artifact_location = _save_canonical_recommendation(output_root)
+    legacy_id = "journey-indexed-legacy"
+    legacy_payload = _result()
+    legacy_payload["result_id"] = legacy_id
+    _register_legacy_recommendation(output_root, legacy_id, legacy_payload)
+    runs_dir = output_root / "recommendation" / "runs"
+    unindexed_id = "journey-unindexed-stray"
+    (runs_dir / f"{unindexed_id}.json").write_bytes(
+        json.dumps({**_result(), "result_id": unindexed_id}).encode("utf-8")
+    )
+
+    adapter = JsonRecommendationReadAdapter(output_root)
+
+    assert adapter.list_result_ids() == tuple(sorted((execution.result_id, legacy_id)))
+
+
+def test_journey_fails_closed_when_legacy_query_readback_changes_identity_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result_id = "journey-legacy-readback-mismatch"
+    output_root = tmp_path / "output"
+    payload = {**_result(), "result_id": result_id}
+    _register_legacy_recommendation(output_root, result_id, payload)
+    adapter = JsonRecommendationReadAdapter(output_root)
+    query = adapter._queries
+    original_projection = query.get_legacy_original_payload
+
+    def mismatched_projection(candidate_id: str, **kwargs: bool) -> Any:
+        projection = original_projection(candidate_id, **kwargs)
+        if projection is None:
+            return None
+        return replace(projection, raw_artifact_sha256="sha256:" + "0" * 64)
+
+    monkeypatch.setattr(query, "get_legacy_original_payload", mismatched_projection)
+    service = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+    )
+
+    journey = service.build(result_id)
+
+    assert journey.recommendation_result.link_status is JourneyLinkStatus.UNKNOWN
+    assert journey.recommendation_result.result_path is None
+    assert any(
+        item.code == "recommendation_read_failure"
+        for item in journey.diagnostics
+    )
 
 
 def test_no_actual_fill_does_not_block_recommendation_tracking() -> None:

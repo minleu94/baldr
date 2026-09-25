@@ -1,18 +1,18 @@
 """候選股下鑽使用畫面排序，且不依賴掃描榜 membership。"""
 import os
-import json
-import sqlite3
 from types import SimpleNamespace
 from datetime import date
+from decimal import Decimal
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEventLoop, QTimer, Qt
 from PySide6.QtWidgets import QApplication
-from PySide6.QtTest import QTest
 from ui_qt.views.watchlist_view import WatchlistView
 from ui_qt.views.smart_money.smart_money_flow_view import SmartMoneyFlowView
 from app_module.watchlist_analysis_service import WatchlistAnalysisService, WatchlistAnalysisDTO
+from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation_repository import RecommendationRepository
 
 
 class WatchlistStub:
@@ -62,21 +62,43 @@ def test_unranked_stock_loads_detail_through_service(monkeypatch):
     view.close()
 
 
-def test_saved_analysis_reads_exact_source_and_rejects_future_without_writing(tmp_path):
+def test_saved_analysis_reads_exact_source_and_rejects_future_without_writing(
+    tmp_path, monkeypatch
+):
+    class OutputRootConfig:
+        output_root = tmp_path
+
+        @staticmethod
+        def resolve_output_path(relative_path):
+            return tmp_path / relative_path
+
+    config = OutputRootConfig()
+    result = RecommendationResultDTO(
+        result_id="saved-1",
+        result_name="策略甲",
+        config={},
+        run_context={"as_of_date": "2026-09-04"},
+        recommendations=[
+            RecommendationDTO(
+                stock_code="2330",
+                stock_name="台積電",
+                close_price=Decimal("100"),
+                price_change=0.0,
+                total_score=75.0,
+                indicator_score=25.0,
+                pattern_score=25.0,
+                volume_score=25.0,
+                recommendation_reasons="均線向上",
+                industry="半導體",
+                regime_match=False,
+            )
+        ],
+        created_at="2026-09-04T00:00:00",
+    )
+    RecommendationRepository(config).save_result(result)
     runs = tmp_path / "recommendation" / "runs"
-    runs.mkdir(parents=True)
-    payload = {"result_id": "saved-1", "result_name": "策略甲", "config": {},
-               "run_context": {"as_of_date": "2026-09-04"},
-               "recommendations": [{"stock_code": "2330", "stock_name": "台積電",
-                                    "recommendation_reasons": "均線向上", "total_score": 75}]}
-    artifact = runs / "saved-1.json"
-    artifact.write_text(json.dumps(payload), encoding="utf-8")
-    database = runs / "recommendation_runs.db"
-    with sqlite3.connect(database) as conn:
-        conn.execute("CREATE TABLE runs (result_id TEXT, data_path TEXT, created_at TEXT)")
-        conn.execute("INSERT INTO runs VALUES (?, ?, ?)", ("saved-1", str(artifact), "2026-09-04"))
     before = {p.name: p.read_bytes() for p in runs.iterdir()}
-    service = WatchlistAnalysisService(SimpleNamespace(output_root=tmp_path))
+    service = WatchlistAnalysisService(config)
     result = service.fetch("2330", "saved-1", date(2026, 9, 6))
     assert result.status == "saved"
     assert result.reasons == "均線向上"
@@ -98,12 +120,43 @@ def test_saved_analysis_reads_exact_source_and_rejects_future_without_writing(tm
 
     view = WatchlistView(ExplicitSourceWatchlistStub())
     view.analysis_service = service
+
+    result_loop = QEventLoop(view)
+    worker_outcomes = []
+
+    # Capture the result/error signals before the worker starts. The view has
+    # already connected its presentation callbacks by the time start() runs.
+    from ui_qt.workers.task_worker import TaskWorker
+
+    original_worker_start = TaskWorker.start
+
+    def start_and_capture_worker(worker):
+        worker.finished.connect(
+            lambda result: (
+                worker_outcomes.append(("finished", result)),
+                result_loop.quit(),
+            )
+        )
+        worker.error.connect(
+            lambda error: (worker_outcomes.append(("error", error)), result_loop.quit())
+        )
+        worker.cancelled.connect(
+            lambda: (worker_outcomes.append(("cancelled", None)), result_loop.quit())
+        )
+        original_worker_start(worker)
+
+    monkeypatch.setattr(TaskWorker, "start", start_and_capture_worker)
     view.stocks_table.selectRow(0)
-    for _ in range(100):
-        app.processEvents()
-        if "均線向上" in view.analysis_text.toPlainText():
-            break
-        QTest.qWait(10)
+    if not worker_outcomes:
+        timeout = QTimer(view)
+        timeout.setSingleShot(True)
+        timeout.timeout.connect(result_loop.quit)
+        timeout.start(1_000)
+        result_loop.exec()
+        timeout.stop()
+    assert len(worker_outcomes) == 1
+    assert worker_outcomes[0][0] == "finished"
+    assert worker_outcomes[0][1].status == "saved"
     assert "均線向上" in view.analysis_text.toPlainText()
     assert "2026-09-04" in view.analysis_text.toPlainText()
     view.close()

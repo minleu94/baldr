@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from app_module.recommendation_service import RecommendationService
 from app_module.recommendation_errors import RecommendationUniverseTooSmallError
 from data_module.config import TWStockConfig
+from recommendation_test_support import build_recommendation_test_preparer
 
 @pytest.fixture
 def mock_config():
@@ -37,7 +38,11 @@ def mock_stock_data():
 @patch("pandas.read_csv")
 def test_recommendation_service_fixed_mode_keeps_original_behavior(mock_read_csv, mock_config, mock_stock_data):
     mock_read_csv.return_value = mock_stock_data
-    service = RecommendationService(mock_config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        mock_config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(mock_config),
+    )
     
     # Mock generate_recommendations
     def side_effect(stock_df, config):
@@ -81,7 +86,11 @@ def test_recommendation_service_accepts_decimal_scores_when_checking_regime_matc
     mock_read_csv, mock_config, mock_stock_data
 ):
     mock_read_csv.return_value = mock_stock_data[mock_stock_data["證券代號"] == "STOCK_0"]
-    service = RecommendationService(mock_config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        mock_config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(mock_config),
+    )
 
     def side_effect(stock_df, config):
         return pd.DataFrame({
@@ -106,7 +115,11 @@ def test_recommendation_service_accepts_decimal_scores_when_checking_regime_matc
 @patch("pandas.read_csv")
 def test_recommendation_service_quantile_mode_calculates_percentile_and_stable_sort(mock_read_csv, mock_config, mock_stock_data):
     mock_read_csv.return_value = mock_stock_data
-    service = RecommendationService(mock_config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        mock_config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(mock_config),
+    )
     
     def side_effect(stock_df, config):
         stock_code = stock_df["證券代號"].iloc[0]
@@ -198,7 +211,11 @@ def test_recommendation_ranking_rejects_invalid_or_incomplete_config(
     ranking_config,
 ):
     mock_read_csv.return_value = mock_stock_data
-    service = RecommendationService(mock_config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        mock_config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(mock_config),
+    )
 
     with pytest.raises(ValueError):
         service.run_recommendation(config={"recommendation_ranking": ranking_config})
@@ -206,7 +223,11 @@ def test_recommendation_ranking_rejects_invalid_or_incomplete_config(
 @patch("pandas.read_csv")
 def test_recommendation_service_quantile_mode_universe_too_small_raises_exception(mock_read_csv, mock_config, mock_stock_data):
     mock_read_csv.return_value = mock_stock_data
-    service = RecommendationService(mock_config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        mock_config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(mock_config),
+    )
     
     # 只返回一檔
     def side_effect(stock_df, config):
@@ -236,7 +257,11 @@ def test_recommendation_service_quantile_mode_universe_too_small_raises_exceptio
 @patch("pandas.read_csv")
 def test_recommendation_service_quantile_mode_top_n_does_not_affect_percentile_calculation(mock_read_csv, mock_config, mock_stock_data):
     mock_read_csv.return_value = mock_stock_data
-    service = RecommendationService(mock_config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        mock_config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(mock_config),
+    )
     
     def side_effect(stock_df, config):
         stock_code = stock_df["證券代號"].iloc[0]

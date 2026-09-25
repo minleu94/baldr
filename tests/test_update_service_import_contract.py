@@ -21,15 +21,16 @@ EXPECTED_ALL = [
     "RegimeResultDTO",
     "BacktestReportDTO",
 ]
-EXPECTED_EAGER_SERVICE_MODULES = [
-    "app_module.recommendation_service",
-    "app_module.screening_service",
-    "app_module.regime_service",
-    "app_module.update_service",
+EXPECTED_PUBLIC_SERVICE_MODULES = [
     "app_module.backtest_service",
-    "app_module.portfolio_service",
     "app_module.journal_service",
+    "app_module.portfolio_service",
+    "app_module.recommendation_service",
+    "app_module.regime_service",
+    "app_module.screening_service",
+    "app_module.update_service",
 ]
+EXPECTED_LAZY_SERVICE_MODULES = ["app_module.update_service"]
 EXPECTED_SERVICE_CLASS_MODULES = {
     "RecommendationService": "app_module.recommendation_service",
     "ScreeningService": "app_module.screening_service",
@@ -68,16 +69,33 @@ except Exception as exc:
     print(json.dumps({"exception": type(exc).__name__, "message": str(exc)}))
     raise
 
-loaded = [name for name in sys.modules if name.startswith("app_module.")]
+loaded_before_public_access = [
+    name for name in sys.modules if name.startswith("app_module.")
+]
+service_class_modules = {
+    class_name: getattr(app_module, class_name).__module__
+    for class_name in [
+        "RecommendationService",
+        "ScreeningService",
+        "RegimeService",
+        "UpdateService",
+        "BacktestService",
+        "PortfolioService",
+        "JournalService",
+    ]
+}
+loaded_after_public_access = [
+    name for name in sys.modules if name.startswith("app_module.")
+]
 print(
     json.dumps(
         {
             "update_service_module": update_service.UpdateService.__module__,
             "identity": app_module.UpdateService is update_service.UpdateService,
             "all": list(app_module.__all__),
-            "loaded_service_modules": [
+            "loaded_service_modules_before_public_access": [
                 name
-                for name in loaded
+                for name in loaded_before_public_access
                 if name in {
                     "app_module.recommendation_service",
                     "app_module.screening_service",
@@ -88,18 +106,20 @@ print(
                     "app_module.journal_service",
                 }
             ],
-            "service_class_modules": {
-                class_name: getattr(app_module, class_name).__module__
-                for class_name in [
-                    "RecommendationService",
-                    "ScreeningService",
-                    "RegimeService",
-                    "UpdateService",
-                    "BacktestService",
-                    "PortfolioService",
-                    "JournalService",
-                ]
-            },
+            "loaded_service_modules_after_public_access": [
+                name
+                for name in sorted(loaded_after_public_access)
+                if name in {
+                    "app_module.recommendation_service",
+                    "app_module.screening_service",
+                    "app_module.regime_service",
+                    "app_module.update_service",
+                    "app_module.backtest_service",
+                    "app_module.portfolio_service",
+                    "app_module.journal_service",
+                }
+            ],
+            "service_class_modules": service_class_modules,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -121,6 +141,7 @@ print(
         "update_service_module": "app_module.update_service",
         "identity": True,
         "all": EXPECTED_ALL,
-        "loaded_service_modules": EXPECTED_EAGER_SERVICE_MODULES,
+        "loaded_service_modules_before_public_access": EXPECTED_LAZY_SERVICE_MODULES,
+        "loaded_service_modules_after_public_access": EXPECTED_PUBLIC_SERVICE_MODULES,
         "service_class_modules": EXPECTED_SERVICE_CLASS_MODULES,
     }

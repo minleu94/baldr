@@ -9,6 +9,7 @@ import sqlite3
 import pytest
 
 from data_module import excluded_daily_price_revision as exclusions
+from data_module.formal_market_revision import RECEIPT_DIR as FORMAL_MARKET_RECEIPT_DIR
 from scripts import repair_excluded_daily_prices as repair
 
 
@@ -145,7 +146,7 @@ def _write_market_receipt(root: Path, database_path: Path, run_id: str) -> Path:
     }
     capture_path = source_dir / "capture.json"
     capture_sha = _hash(_write_json(capture_path, capture))
-    market_dir = root / exclusions.RECEIPT_DIR / "formal_market" / run_id
+    market_dir = root / FORMAL_MARKET_RECEIPT_DIR / run_id
     market_plan = {
         "schema_version": "formal-market-repair.v1",
         "database_path": str(database_path.resolve()),

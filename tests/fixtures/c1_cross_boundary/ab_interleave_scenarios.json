@@ -1,0 +1,48 @@
+{
+  "fixture_id": "c1-cross-boundary-ab-interleave-v1",
+  "save_order_cases": [
+    ["A", "B"],
+    ["B", "A"]
+  ],
+  "runs": [
+    {
+      "run_key": "A",
+      "result_id": "c1-cross-boundary-A",
+      "stock_code": "AAA",
+      "stock_name": "AAA synthetic",
+      "as_of_date": "2025-05-01",
+      "created_at": "2025-05-01T11:59:00+00:00",
+      "service_run_started_at": "2025-05-01T12:00:00+00:00",
+      "numeric_text": "1.2500",
+      "close_price": "101.25",
+      "rule_score": "91.5000",
+      "indicator_score": "31.2500",
+      "pattern_score": "27.5000",
+      "volume_score": "18.0000",
+      "receipt_ranking_score_bp": 7300,
+      "source_update_code": "UPDATED_AAA",
+      "source_update_close_price": "151.75"
+    },
+    {
+      "run_key": "B",
+      "result_id": "c1-cross-boundary-B",
+      "stock_code": "BBB",
+      "stock_name": "BBB synthetic",
+      "as_of_date": "2025-05-01",
+      "created_at": "2025-05-01T13:59:00+00:00",
+      "service_run_started_at": "2025-05-01T14:00:00+00:00",
+      "numeric_text": "2.5000",
+      "close_price": "202.50",
+      "rule_score": "82.7500",
+      "indicator_score": "30.0000",
+      "pattern_score": "25.2500",
+      "volume_score": "16.5000",
+      "receipt_ranking_score_bp": 7200,
+      "source_update_code": "UPDATED_BBB",
+      "source_update_close_price": "252.25"
+    }
+  ],
+  "receipt_candidate_id": "candidate-provenance-1",
+  "decision_date": "2025-05-01",
+  "source_update_start_date": "2025-04-01"
+}

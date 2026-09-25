@@ -1,6 +1,7 @@
 """TASK-03：歷史推薦、負面證據與跨卡 replay 接點的行為契約。"""
 
 from copy import deepcopy
+from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -14,8 +15,8 @@ import pytest
 from app_module.dtos import RecommendationResultDTO
 from app_module.recommendation_service import RecommendationService
 from app_module.recommendation_replay_service import RecommendationReplayService
-from app_module.recommendation_save_coordinator import RecommendationSaveRequest
 from decision_module.scoring_engine import ScoringEngine
+from recommendation_test_support import build_recommendation_test_preparer
 
 
 def market_frame(codes=("2330", "2317"), start="2026-05-01", periods=20):
@@ -26,17 +27,34 @@ def market_frame(codes=("2330", "2317"), start="2026-05-01", periods=20):
     ])
 
 
-def _without_result_id(context):
-    return {key: value for key, value in context.items() if key != "result_id"}
+def _without_invocation_identity(context):
+    return {
+        key: value
+        for key, value in context.items()
+        if key not in {"result_id", "decision_at"}
+    }
+
+
+def _assert_utc_aware_iso_timestamp(value):
+    assert isinstance(value, str)
+    parsed = datetime.fromisoformat(value)
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == timezone.utc.utcoffset(parsed)
 
 
 def make_service(tmp_path, frame, *, scores=None):
     mapper = MagicMock()
     mapper.get_stock_industries.return_value = []
+    config = SimpleNamespace(db_file=tmp_path / "missing.db", use_sqlite=False)
+    market_data_provider = lambda: frame
     service = RecommendationService(
-        SimpleNamespace(db_file=tmp_path / "missing.db", use_sqlite=False),
-        industry_mapper=mapper, market_data_provider=lambda: frame,
+        config,
+        industry_mapper=mapper,
+        market_data_provider=market_data_provider,
         regime_detector=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(
+            config, market_data_provider=market_data_provider
+        ),
     )
 
     def evaluate(stock_df, config):
@@ -61,7 +79,9 @@ def test_future_append_and_late_revision_preserve_historical_result(tmp_path):
     second = b.run_recommendation(config, as_of_date="2026-05-20", max_stocks=2, top_n=1)
     assert [r.to_dict() for r in first] == [r.to_dict() for r in second]
     assert a.last_run_context["result_id"] != b.last_run_context["result_id"]
-    assert _without_result_id(a.last_run_context) == _without_result_id(b.last_run_context)
+    _assert_utc_aware_iso_timestamp(a.last_run_context["decision_at"])
+    _assert_utc_aware_iso_timestamp(b.last_run_context["decision_at"])
+    assert _without_invocation_identity(a.last_run_context) == _without_invocation_identity(b.last_run_context)
     assert a.last_why_not_payload_json == b.last_why_not_payload_json
     assert first[0].eligible_universe_size == 2
     assert "mutated_by_engine" not in config.get("filters", {})
@@ -129,6 +149,9 @@ def test_explicit_cutoff_uses_readonly_db_window_not_global_latest(tmp_path):
     from app_module.recommendation_market_data_provider import DefaultRecommendationMarketDataProvider
     service.config = SimpleNamespace(db_file=db_file, use_sqlite=True)
     service.market_data_provider = DefaultRecommendationMarketDataProvider(service.config)
+    service.recommendation_input_preparer = build_recommendation_test_preparer(
+        service.config, market_data_provider=service.market_data_provider
+    )
     assert len(service.run_recommendation({}, as_of_date="2026-05-20")) == 2
     assert [rec.stock_code for rec in service.run_recommendation({})] == ["9999"]
     assert hashlib.sha256(db_file.read_bytes()).hexdigest() == before
@@ -155,7 +178,9 @@ def test_pe_future_append_candidate_quality_and_input_fingerprint(tmp_path):
         conn.execute("INSERT INTO fundamental_valuation_metrics(stock_code, as_of_date, available_date, metric_name, value, source, source_version, quality) VALUES ('2330','2026-05-18','2026-05-18','pe','99.00','fixture','candidate','candidate')")
     assert service.run_recommendation(config, as_of_date="2026-05-20")
     assert service.last_run_context["result_id"] != original["result_id"]
-    assert _without_result_id(service.last_run_context) == _without_result_id(original)
+    _assert_utc_aware_iso_timestamp(service.last_run_context["decision_at"])
+    _assert_utc_aware_iso_timestamp(original["decision_at"])
+    assert _without_invocation_identity(service.last_run_context) == _without_invocation_identity(original)
     assert service.last_run_context["fundamental_inputs"][0]["source_version"] == "v1"
     assert service.run_recommendation(config, as_of_date="2026-05-21") == []
     assert service.last_run_context["data_fingerprint"] != original["data_fingerprint"]
@@ -179,11 +204,23 @@ def test_unverified_historical_industry_membership_cannot_supply_reason(tmp_path
     assert service.last_why_not_payload_json[0]["reason_codes"] == ["industry_membership_pit_unavailable"]
 
 
-def test_existing_save_coordinator_preserves_run_context_and_why_not(tmp_path):
+def test_legacy_result_fixture_preserves_run_context_and_why_not(tmp_path):
     service = make_service(tmp_path, market_frame(), scores={"2330": None})
     recs = service.run_recommendation({}, as_of_date="2026-05-20")
-    request = RecommendationSaveRequest("測試", {"_recommendation_run_context": service.last_run_context}, tuple(recs), "momentum", {"version": "1.0"}, None)
-    dto = request.build_result(recommendation_service=service, regime_service=MagicMock())
+    dto = RecommendationResultDTO(
+        result_id=str(service.last_run_context["result_id"]),
+        result_name="測試",
+        config={"profile_id": "momentum", "profile_version": "1.0"},
+        recommendations=deepcopy(recs),
+        created_at=str(service.last_run_context["decision_at"]),
+        run_context=deepcopy(service.last_run_context),
+        excluded_candidates_json=deepcopy(service.last_excluded_candidates_json),
+        screening_matrix_json=deepcopy(service.last_screening_matrix),
+        why_not_payload_json=deepcopy(service.last_why_not_payload_json),
+        liquidity_gate_payload_json=deepcopy(service.last_liquidity_gate_payload_json),
+        exclusion_quality=str(service.last_exclusion_quality),
+        exclusion_warnings_json=deepcopy(service.last_exclusion_warnings_json),
+    )
     exported = dto.to_dict()
     roundtrip = RecommendationResultDTO.from_dict(json.loads(json.dumps(exported, default=str, allow_nan=False)))
     service.last_run_context["strategy_config"]["new"] = "later"
@@ -277,25 +314,3 @@ def test_ui_request_freezes_current_profile_identity(monkeypatch, beginner):
     assert captured[0].get("profile_id") == ("momentum" if beginner else None)
     assert captured[0].get("profile_version") == ("2.0" if beginner else None)
     assert "profile_id" not in source
-
-
-def test_saved_result_identity_is_recorded_and_cleared_by_next_analysis(monkeypatch):
-    from ui_qt.views import recommendation_view as module
-    outcome = SimpleNamespace(result_id="saved-rec-001", watchlist_error="", watchlist_id=None)
-    monkeypatch.setattr(module, "RecommendationSaveRequest", lambda **kwargs: SimpleNamespace(persist=lambda **kwargs: outcome))
-    monkeypatch.setattr(module.QInputDialog, "getText", lambda *args, **kwargs: ("保存名稱", True))
-    monkeypatch.setattr(module.QMessageBox, "information", lambda *args: None)
-    errors = []
-    monkeypatch.setattr(module.QMessageBox, "critical", lambda *args: errors.append(args))
-    view = SimpleNamespace(recommendation_repository=object(), current_recommendations=[object()],
-        current_config={"profile_id": "momentum"}, current_profile=None, current_regime=None,
-        profiles={}, recommendation_service=SimpleNamespace(last_run_context={}), universe_service=None,
-        regime_service=None, current_result_id="old-rec", execute_btn=MagicMock(),
-        progress_bar=MagicMock(), progress_label=MagicMock())
-    refreshed_result_ids = []
-    view._update_research_context_banner = lambda: refreshed_result_ids.append(view.current_result_id)
-    module.RecommendationView._save_recommendation_result(view)
-    assert not errors and view.current_result_id == "saved-rec-001"
-    module.RecommendationView._on_recommendation_finished(view, [])
-    assert view.current_result_id == ""
-    assert refreshed_result_ids == [""]

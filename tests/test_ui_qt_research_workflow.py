@@ -16,7 +16,7 @@ from ui_qt.views.backtest_view import BacktestView
 from ui_qt.views.recommendation_view import RecommendationView
 from ui_qt.views.watchlist_view import WatchlistView
 from ui_qt.models.pandas_table_model import PandasTableModel
-from app_module.dtos import BacktestReportDTO, RecommendationDTO, RecommendationResultDTO
+from app_module.dtos import BacktestReportDTO
 from app_module.optimizer_service import ParamRange
 from data_module.config import TWStockConfig
 
@@ -493,7 +493,7 @@ def test_result_tabs_first_entry_refreshes_history_and_chart_once(qt_app, tmp_pa
 
 
 def test_recommendation_view_preserves_provenance_on_portfolio_recording(qt_app):
-    """驗證推薦結果記錄到 Portfolio 時，會保留推薦來源、分數、理由、Profile 等 metadata"""
+    """右鍵記錄持倉只能從已保存 verified execution 保留來源。"""
     mock_rec_service = MagicMock()
     mock_regime_service = MagicMock()
     mock_portfolio_service = MagicMock()
@@ -508,37 +508,24 @@ def test_recommendation_view_preserves_provenance_on_portfolio_recording(qt_app)
     )
     view.window = MagicMock(return_value=mock_main_window)
 
-    # 模擬當前推薦狀態
-    view.current_result_id = "rec_test_777"
-    view.current_result_name = "短線暴衝推薦"
-    view.current_result_created_at = "2026-06-04T12:00:00"
-    view.current_config = {
-        "profile_id": "aggressive_short",
-        "profile_version": "1.2",
-        "regime_snapshot": {"regime": "trend", "confidence": 0.85}
-    }
-    view.current_profile = "aggressive_short"
+    from tests.test_ui_qt_recommendation_execution import _execution, _readback
 
-    # 設定模擬推薦資料 DTO（使用正確的 RecommendationDTO 屬性）
-    rec_dto = RecommendationDTO(
-        stock_code="2330",
-        stock_name="台積電",
-        close_price=900.0,
-        price_change=15.0,
-        total_score=85.0,
-        indicator_score=80.0,
-        pattern_score=90.0,
-        volume_score=85.0,
-        recommendation_reasons="量能放大；均線多頭",
-        industry="半導體",
-        regime_match=True
+    execution = _execution("rec_test_777")
+    receipt, read_model = _readback(
+        execution,
+        "短線暴衝推薦",
+        "Profile: momentum, Regime: Trend",
     )
-    view.current_recommendations = [rec_dto]
+    view.current_execution = execution
+    view.current_read_model = read_model
+    view.current_save_receipt = receipt
+    view.current_result_id = receipt.result_id
+    view.current_config = view._execution_config(execution)
+    view.current_profile = "momentum"
+    view.current_regime = "Trend"
 
     # 設定結果表格數據（使用真實的 PandasTableModel 以符合 PySide6 型態要求）
-    rec_df = pd.DataFrame([
-        {"證券代號": "2330", "證券名稱": "台積電", "總分": 85.0}
-    ])
+    rec_df = pd.DataFrame(view._current_table_rows())
     view.recommendations_model = PandasTableModel(rec_df)
     view.results_table.setModel(view.recommendations_model)
 
@@ -588,9 +575,9 @@ def test_recommendation_view_preserves_provenance_on_portfolio_recording(qt_app)
         assert kwargs["stock_code"] == "2330"
         assert kwargs["source_type"] == "recommendation_result"
         assert kwargs["source_id"] == "rec_test_777"
-        assert kwargs["source_summary"]["profile_id"] == "aggressive_short"
-        assert kwargs["source_summary"]["regime"] == "trend"
-        assert kwargs["source_summary"]["total_score"] == 85.0
+        assert kwargs["source_summary"]["profile_id"] == "momentum"
+        assert kwargs["source_summary"]["regime"] == "Trend"
+        assert kwargs["source_summary"]["total_score"] == 85
         assert "量能放大" in kwargs["source_summary"]["reasons"]
         assert kwargs["notes"] == "來自推薦"
 

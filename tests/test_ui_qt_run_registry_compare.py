@@ -152,6 +152,40 @@ def test_registry_compare_selection_persists_across_pages_and_can_be_cleared(qt_
     assert widget.compare_button.isEnabled() is False
 
 
+def test_registry_open_button_only_accepts_one_recommendation_run(qt_app):
+    opened: list[str] = []
+
+    def record_open(metadata: ResearchRunMetadataDTO) -> None:
+        opened.append(metadata.run_id)
+
+    widget = RunRegistryCompareWidget(
+        FakeResearchRunService(),
+        on_open_recommendation_run=record_open,
+        page_size=10,
+    )
+    widget.refresh_runs()
+
+    assert widget.open_recommendation_button.isEnabled() is False
+    widget.run_list.item(0).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is False
+
+    widget.clear_selection()
+    widget.run_list.item(2).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is True
+    widget.open_recommendation_button.click()
+    assert opened == ["run-c"]
+
+    widget.run_list.item(0).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is False
+    widget.clear_selection()
+    widget.run_type_filter.setCurrentIndex(
+        widget.run_type_filter.findData("single_backtest")
+    )
+    widget.refresh_runs()
+    widget.run_list.item(0).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is False
+
+
 def test_registry_compare_maps_batch_and_fixed_basket_run_types(qt_app):
     service = FakeResearchRunService()
     service.runs.extend(

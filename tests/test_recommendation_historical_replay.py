@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 import json
 import sqlite3
 
 import pytest
 
+from data_module import ml_historical_snapshot_provider as snapshot_provider_module
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.historical_feature_builder import HistoricalFeatureBuilder
@@ -240,6 +242,394 @@ def test_replay_is_bounded_causal_and_uses_absolute_labels(tmp_path):
     assert first.after_cost_profit_label is None
     assert first.observed_liquidity_cost_bp is None
     assert first.benchmark_return_bp != 0
+
+
+def test_replay_keeps_feature_and_forward_receipt_cutoffs_distinct_and_causal(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "per-call-cutoff.db"
+    _make_database(database, days=150, symbols=("AAA",))
+    provider = MLHistoricalSnapshotProvider(database)
+    service = RecommendationHistoricalReplayService(
+        provider,
+        feature_builder=HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY),
+    )
+
+    receipt_cutoffs = []
+    original_receipt_check = snapshot_provider_module.check_daily_price_source_revision
+
+    def record_receipt_check(*, database_path, decision_date, symbols, explicit_path=None):
+        receipt_cutoffs.append((decision_date, tuple(symbols)))
+        return original_receipt_check(
+            database_path=database_path,
+            decision_date=decision_date,
+            symbols=symbols,
+            explicit_path=explicit_path,
+        )
+
+    monkeypatch.setattr(
+        snapshot_provider_module,
+        "check_daily_price_source_revision",
+        record_receipt_check,
+    )
+    snapshots = []
+    forward_windows = []
+    original_load = provider.load
+    original_forward_load = provider.load_forward_price_window
+
+    def record_load(**kwargs):
+        snapshot = original_load(**kwargs)
+        snapshots.append((kwargs["decision_date"], snapshot))
+        return snapshot
+
+    def record_forward_load(**kwargs):
+        window = original_forward_load(**kwargs)
+        forward_windows.append((kwargs["start_date"], kwargs["end_date"], window))
+        return window
+
+    monkeypatch.setattr(provider, "load", record_load)
+    monkeypatch.setattr(provider, "load_forward_price_window", record_forward_load)
+
+    replay_end = "2014-04-15"
+    result = service.build(
+        RecommendationHistoricalReplayConfig(
+            history_start_date="2014-01-01",
+            replay_start_date="2014-03-15",
+            replay_end_date=replay_end,
+            symbols=("AAA",),
+            fixed_round_trip_cost_bp=35,
+            max_decision_dates=2,
+        )
+    )
+
+    expected_decisions = ("2014-03-15", "2014-03-16")
+    assert result.decision_dates == expected_decisions
+    assert [decision for decision, _ in snapshots] == list(expected_decisions)
+    assert [(start, end) for start, end, _ in forward_windows] == [
+        (decision, replay_end) for decision in expected_decisions
+    ]
+    assert receipt_cutoffs == [
+        (expected_decisions[0].replace("-", ""), ("AAA",)),
+        (replay_end.replace("-", ""), ("AAA",)),
+        (expected_decisions[1].replace("-", ""), ("AAA",)),
+        (replay_end.replace("-", ""), ("AAA",)),
+    ]
+
+    for decision_text, snapshot in snapshots:
+        decision = date.fromisoformat(decision_text)
+        assert snapshot.decision_date == decision_text
+        assert snapshot.feature_as_of_date == (decision - timedelta(days=1)).isoformat()
+        assert all(row.trading_date < decision_text for row in snapshot.prices)
+        assert all(row.trading_date < decision_text for row in snapshot.technicals)
+        assert all(row.trading_date < decision_text for row in snapshot.market)
+
+    expected_label_dates = {}
+    for decision_text, end_text, window in forward_windows:
+        assert window.start_date == decision_text
+        assert window.end_date == end_text == replay_end
+        assert all(
+            decision_text <= row.trading_date <= replay_end
+            for row in window.prices
+        )
+        future_dates = sorted(
+            {
+                row.trading_date
+                for row in window.prices
+                if row.trading_date > decision_text and row.close_price is not None
+            }
+        )
+        # The fixture has one actual daily row per calendar date. The locked
+        # twenty-trading-row label must use the twentieth available future row.
+        expected_label_dates[decision_text] = future_dates[19]
+
+    assert expected_label_dates == {
+        "2014-03-15": "2014-04-04",
+        "2014-03-16": "2014-04-05",
+    }
+
+    assert len(result.samples) == 2
+    for sample in result.samples:
+        assert sample.label_end_date == expected_label_dates[sample.decision_date]
+        assert sample.label_end_date > sample.decision_date
+        assert sample.label_available_date == sample.label_end_date
+
+
+def test_replay_fails_closed_when_sqlite_commit_occurs_inside_snapshot_read(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "interleaved-read.db"
+    _make_database(database, days=150, symbols=("AAA",))
+    setup = sqlite3.connect(database)
+    try:
+        mode = setup.execute("PRAGMA journal_mode=WAL").fetchone()
+        assert mode is not None and str(mode[0]).lower() == "wal"
+        setup.execute("PRAGMA wal_autocheckpoint=0")
+    finally:
+        setup.close()
+
+    provider = MLHistoricalSnapshotProvider(database)
+    service = RecommendationHistoricalReplayService(
+        provider,
+        feature_builder=HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY),
+    )
+    original_load = provider.load
+    original_validate_schema = provider._validate_schema
+    inside_load = False
+    current_decision = None
+    writer_commits = []
+
+    def record_load(**kwargs):
+        nonlocal current_decision, inside_load
+        current_decision = kwargs["decision_date"]
+        inside_load = True
+        try:
+            return original_load(**kwargs)
+        finally:
+            inside_load = False
+
+    def commit_after_snapshot_schema_is_read(connection):
+        schema = original_validate_schema(connection)
+        if inside_load and current_decision == "2014-03-16" and not writer_commits:
+            writer = sqlite3.connect(database, timeout=1)
+            try:
+                writer.execute("PRAGMA wal_autocheckpoint=0")
+                cursor = writer.execute(
+                    'UPDATE daily_prices SET "收盤價" = ? '
+                    'WHERE "日期" = ? AND "證券代號" = ?',
+                    ("999", "20140314", "AAA"),
+                )
+                assert cursor.rowcount == 1
+                writer.commit()
+                writer_commits.append("committed")
+            finally:
+                writer.close()
+        return schema
+
+    monkeypatch.setattr(provider, "load", record_load)
+    monkeypatch.setattr(provider, "_validate_schema", commit_after_snapshot_schema_is_read)
+
+    with pytest.raises(RuntimeError, match="historical SQLite source changed during read lease"):
+        service.build(
+            RecommendationHistoricalReplayConfig(
+                history_start_date="2014-01-01",
+                replay_start_date="2014-03-15",
+                replay_end_date="2014-04-15",
+                symbols=("AAA",),
+                fixed_round_trip_cost_bp=35,
+                max_decision_dates=2,
+            )
+        )
+    assert writer_commits == ["committed"]
+
+
+def test_replay_fails_closed_on_sqlite_commit_between_snapshot_and_forward_calls(tmp_path):
+    decision_date = "2014-03-15"
+    feature_date = "2014-03-14"
+    label_date = "2014-04-04"
+    replay_end = "2014-04-15"
+
+    def run_case(database_name: str, *, update_between_calls: bool):
+        database = tmp_path / database_name
+        _make_database(database, days=150, symbols=("AAA",))
+        setup = sqlite3.connect(database)
+        try:
+            journal_mode = setup.execute("PRAGMA journal_mode=WAL").fetchone()
+            assert journal_mode is not None and str(journal_mode[0]).lower() == "wal"
+            setup.execute("PRAGMA wal_autocheckpoint=0")
+        finally:
+            setup.close()
+
+        provider = MLHistoricalSnapshotProvider(database)
+        service = RecommendationHistoricalReplayService(
+            provider,
+            feature_builder=HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY),
+        )
+        original_load = provider.load
+        original_forward_load = provider.load_forward_price_window
+        original_compute = service.feature_builder.compute
+        snapshots = []
+        feature_rows = []
+        forward_windows = []
+        committed_between_calls = []
+
+        def load_then_optionally_commit(**kwargs):
+            snapshot = original_load(**kwargs)
+            snapshots.append(snapshot)
+            assert kwargs["decision_date"] == decision_date
+            captured_feature_price = next(
+                row
+                for row in snapshot.prices
+                if row.trading_date == feature_date and row.symbol == "AAA"
+            )
+            assert captured_feature_price.close_price == Decimal("172")
+
+            if update_between_calls:
+                writer = sqlite3.connect(database, timeout=1)
+                try:
+                    writer.execute("PRAGMA wal_autocheckpoint=0")
+                    feature_update = writer.execute(
+                        'UPDATE daily_prices SET "收盤價" = ? '
+                        'WHERE "日期" = ? AND "證券代號" = ?',
+                        ("900", feature_date.replace("-", ""), "AAA"),
+                    )
+                    label_update = writer.execute(
+                        'UPDATE daily_prices SET "收盤價" = ? '
+                        'WHERE "日期" = ? AND "證券代號" = ?',
+                        ("1000", label_date.replace("-", ""), "AAA"),
+                    )
+                    assert feature_update.rowcount == 1
+                    assert label_update.rowcount == 1
+                    writer.commit()
+                    committed_between_calls.append("committed")
+                finally:
+                    writer.close()
+            return snapshot
+
+        def record_feature_build(snapshot, *, industry_index_name_by_symbol):
+            rows = original_compute(
+                snapshot,
+                industry_index_name_by_symbol=industry_index_name_by_symbol,
+            )
+            feature_rows.append(rows)
+            return rows
+
+        def record_forward_load(**kwargs):
+            window = original_forward_load(**kwargs)
+            forward_windows.append(window)
+            return window
+
+        provider.load = load_then_optionally_commit
+        provider.load_forward_price_window = record_forward_load
+        service.feature_builder.compute = record_feature_build
+
+        config = RecommendationHistoricalReplayConfig(
+            history_start_date="2014-01-01",
+            replay_start_date=decision_date,
+            replay_end_date=replay_end,
+            symbols=("AAA",),
+            fixed_round_trip_cost_bp=35,
+            max_decision_dates=1,
+        )
+        if update_between_calls:
+            with pytest.raises(
+                RuntimeError,
+                match="historical SQLite source changed during read lease",
+            ):
+                service.build(config)
+            result = None
+        else:
+            result = service.build(config)
+            assert result.decision_dates == (decision_date,)
+            assert result.sample_count == 1
+
+        assert len(snapshots) == len(feature_rows) == len(forward_windows) == 1
+        feature_row = feature_rows[0][0]
+        assert feature_row.symbol == "AAA"
+        feature_values = dict(feature_row.values)
+        assert feature_values["stock_return_1d_bp"] == 58
+        label_observation = next(
+            row
+            for row in forward_windows[0].prices
+            if row.trading_date == label_date and row.symbol == "AAA"
+        )
+        expected_label_close = Decimal("1000") if update_between_calls else Decimal("193")
+        assert label_observation.close_price == expected_label_close
+        if result is not None:
+            sample = result.samples[0]
+            assert sample.feature_values == tuple(value for _, value in feature_row.values)
+            assert sample.feature_as_of_date == feature_date
+            assert sample.label_end_date == label_date
+            expected_return_bp = 1156
+            assert sample.stock_return_bp == expected_return_bp
+
+        current = sqlite3.connect(database)
+        try:
+            current_feature_price = current.execute(
+                'SELECT "收盤價" FROM daily_prices '
+                'WHERE "日期" = ? AND "證券代號" = ?',
+                (feature_date.replace("-", ""), "AAA"),
+            ).fetchone()
+            current_label_price = current.execute(
+                'SELECT "收盤價" FROM daily_prices '
+                'WHERE "日期" = ? AND "證券代號" = ?',
+                (label_date.replace("-", ""), "AAA"),
+            ).fetchone()
+        finally:
+            current.close()
+        assert current_feature_price is not None
+        assert current_label_price is not None
+        if update_between_calls:
+            assert committed_between_calls == ["committed"]
+            assert current_feature_price[0] == "900"
+            assert current_label_price[0] == "1000"
+        else:
+            assert committed_between_calls == []
+            assert current_feature_price[0] == "172"
+            assert current_label_price[0] == "193"
+
+        return result
+
+    control_sample = run_case("replay-control.db", update_between_calls=False)
+    mixed_result = run_case("replay-mixed-version.db", update_between_calls=True)
+
+    assert control_sample is not None
+    assert control_sample.samples[0].stock_return_bp == 1156
+    assert mixed_result is None
+
+
+def test_replay_postchecks_sqlite_commit_when_date_enumeration_is_empty(tmp_path):
+    database = tmp_path / "empty-dates.db"
+    _make_database(database, days=150, symbols=("AAA",))
+    setup = sqlite3.connect(database)
+    try:
+        journal_mode = setup.execute("PRAGMA journal_mode=WAL").fetchone()
+        assert journal_mode is not None and str(journal_mode[0]).lower() == "wal"
+        setup.execute("PRAGMA wal_autocheckpoint=0")
+    finally:
+        setup.close()
+
+    provider = MLHistoricalSnapshotProvider(database)
+    service = RecommendationHistoricalReplayService(
+        provider,
+        feature_builder=HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY),
+    )
+    original_list_dates = provider.list_trading_dates
+    writer_commits = []
+
+    def list_dates_then_commit(**kwargs):
+        trading_dates = original_list_dates(**kwargs)
+        assert trading_dates == ()
+        writer = sqlite3.connect(database, timeout=1)
+        try:
+            writer.execute("PRAGMA wal_autocheckpoint=0")
+            cursor = writer.execute(
+                'UPDATE daily_prices SET "收盤價" = ? '
+                'WHERE "日期" = ? AND "證券代號" = ?',
+                ("999", "20140314", "AAA"),
+            )
+            assert cursor.rowcount == 1
+            writer.commit()
+            writer_commits.append("committed")
+        finally:
+            writer.close()
+        return trading_dates
+
+    provider.list_trading_dates = list_dates_then_commit
+    with pytest.raises(
+        RuntimeError,
+        match="historical SQLite source changed during read lease",
+    ):
+        service.build(
+            RecommendationHistoricalReplayConfig(
+                history_start_date="2014-01-01",
+                replay_start_date="2014-03-15",
+                replay_end_date="2014-04-15",
+                symbols=("MISSING",),
+                fixed_round_trip_cost_bp=35,
+                max_decision_dates=1,
+            )
+        )
+    assert writer_commits == ["committed"]
 
 
 def test_verified_source_contract_unlocks_only_traceable_cost_and_source_gates(tmp_path):

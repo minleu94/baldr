@@ -1,0 +1,36 @@
+{
+  "entries": [
+    {
+      "byte_length": 5033,
+      "file": "r016_execution_rev1.json",
+      "fixture_id": "r016_execution_rev1",
+      "result_id": "rev1:baseline/0007 ",
+      "schema_revision": 1,
+      "schema_version": "recommendation-execution.v1",
+      "sha256": "sha256:dbd3c2194ef53c2fee3e41e772187d2453c52237328aa179833282e0cc76a52b",
+      "trust_note": "synthetic fixture pin only; not an expected hash authority for production legacy data"
+    },
+    {
+      "byte_length": 4302,
+      "file": "r016_execution_rev2.json",
+      "fixture_id": "r016_execution_rev2",
+      "result_id": "c1-r016-rev2",
+      "schema_revision": 2,
+      "schema_version": "recommendation-execution.v1",
+      "sha256": "sha256:0ef36ebabc8277ed5cf27a764dc359164cb3e27a6bc8d41111b4426f7e04e2f2",
+      "trust_note": "synthetic fixture pin only; not an expected hash authority for production legacy data"
+    },
+    {
+      "byte_length": 469,
+      "file": "r016_legacy_run_zh.json",
+      "fixture_id": "r016_legacy_run_zh",
+      "result_id": "c1-r016-legacy",
+      "schema_revision": null,
+      "schema_version": null,
+      "sha256": "sha256:f625d43792688b35beb78ea1e93e965e79858ee94293c786351d6511f9de5552",
+      "trust_note": "synthetic fixture pin only; not an expected hash authority for production legacy data"
+    }
+  ],
+  "manifest_kind": "c1_synthetic_consumer_readiness_fixtures",
+  "manifest_version": 1
+}

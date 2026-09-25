@@ -1,27 +1,38 @@
 from __future__ import annotations
 
-from datetime import date
+from dataclasses import replace
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.evidence_event_dtos import EvidenceEventType
 from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from app_module.evidence_event_importers import RecommendationEvidenceImporter
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 
 
-class FakeRecommendationRepository:
+class FakeRecommendationQueries:
     def __init__(self, result: RecommendationResultDTO):
         self.result = result
 
-    def load_result(self, result_id: str) -> RecommendationResultDTO | None:
-        return self.result if result_id == self.result.result_id else None
+    def get(self, result_id: str) -> RecommendationExecutionReadModel | None:
+        return _read_model(self.result) if result_id == self.result.result_id else None
 
-    def list_results(self) -> list[dict[str, object]]:
-        return [
-            {
-                "result_id": self.result.result_id,
-                "created_at": self.result.created_at,
-            }
-        ]
+    def list(self) -> tuple[RecommendationExecutionReadModel, ...]:
+        return (_read_model(self.result),)
+
+
+def _read_model(result: RecommendationResultDTO) -> RecommendationExecutionReadModel:
+    return RecommendationExecutionReadModel(
+        execution=None,
+        label=result.result_name,
+        notes=result.notes,
+        persisted_at=None,
+        payload_hash=None,
+        artifact_location="synthetic-legacy.json",
+        legacy_result=result,
+        ml_read_status="legacy_saved_fields",
+    )
 
 
 def _result(
@@ -56,7 +67,7 @@ def _result(
 
 
 def test_recommendation_importer_preserves_missing_percentile_with_warning():
-    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(_result()))
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(_result()))
 
     result = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-001"))
 
@@ -81,7 +92,7 @@ def test_recommendation_importer_preserves_missing_percentile_with_warning():
 
 def test_fixed_threshold_recommendation_does_not_emit_percentile_missing_warning():
     importer = RecommendationEvidenceImporter(
-        FakeRecommendationRepository(_result(threshold_mode="fixed"))
+        FakeRecommendationQueries(_result(threshold_mode="fixed"))
     )
 
     result = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-001"))
@@ -93,7 +104,7 @@ def test_fixed_threshold_recommendation_does_not_emit_percentile_missing_warning
 
 
 def test_recommendation_importer_uses_requested_decision_date_and_stable_source_id():
-    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(_result(score_percentile_bp=9000)))
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(_result(score_percentile_bp=9000)))
 
     result = importer.collect(
         EvidenceCaptureRequest(
@@ -128,7 +139,7 @@ def test_recommendation_importer_preserves_explicit_v4_identity_without_defaults
         "universe_identity_schema": "recommendation-universe.v1",
         "horizon_days": 5,
     }
-    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(result_dto))
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(result_dto))
 
     result = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-001"))
 
@@ -143,7 +154,7 @@ def test_recommendation_importer_preserves_explicit_v4_identity_without_defaults
 
 
 def test_recommendation_importer_does_not_infer_missing_v4_identity():
-    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(_result()))
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(_result()))
 
     result = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-001"))
 
@@ -153,3 +164,36 @@ def test_recommendation_importer_does_not_infer_missing_v4_identity():
     assert "benchmark_id" not in event
     assert "universe_id" not in event["metadata"]
     assert "horizon_days" not in event["metadata"]
+
+
+def test_recommendation_importer_rejects_mixed_latest_when_any_clock_is_unknown() -> None:
+    legacy = replace(_read_model(_result()), persisted_at=None)
+    canonical = RecommendationExecutionReadModel(
+        execution=SimpleNamespace(
+            result_id="canonical-with-aware-clock",
+            context=SimpleNamespace(
+                created_at=datetime(2026, 7, 3, 9, tzinfo=timezone.utc)
+            ),
+        ),
+        label="canonical",
+        notes="",
+        persisted_at=datetime(2026, 7, 3, 9, tzinfo=timezone.utc),
+        payload_hash=None,
+        artifact_location="canonical",
+    )
+
+    class MixedQueries:
+        def get(self, _result_id: str) -> RecommendationExecutionReadModel | None:
+            return None
+
+        def list(self) -> tuple[RecommendationExecutionReadModel, ...]:
+            return (canonical, legacy)
+
+    result = RecommendationEvidenceImporter(MixedQueries()).collect(
+        EvidenceCaptureRequest(source="recommendation")
+    )
+
+    assert result.events_seen == 0
+    assert result.diagnostics_by_code == {
+        "recommendation_latest_selection_ambiguous_clock": 1
+    }

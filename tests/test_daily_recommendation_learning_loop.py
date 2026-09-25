@@ -1018,6 +1018,7 @@ def test_preflight_failure_classifies_transient_and_integrity_faults() -> None:
     assert _preflight_requires_emergency(OSError("provider temporarily unavailable")) is False
     assert _preflight_requires_emergency(RuntimeError("database is locked")) is False
     assert _preflight_requires_emergency(RuntimeError("historical SQLite source changed during snapshot load")) is True
+    assert _preflight_requires_emergency(RuntimeError("historical SQLite source changed during read lease")) is True
     assert _preflight_requires_emergency(ValueError("required table is missing: daily_prices")) is True
 
 

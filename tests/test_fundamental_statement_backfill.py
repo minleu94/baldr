@@ -7,6 +7,10 @@ from data_module.fundamental_statement_backfill import (
     apply_statement_items_backfill,
     plan_statement_items_backfill,
 )
+from decision_module.factors.statement_factor_adapters import (
+    statement_item_quality_wire_value,
+    statement_quality_counts,
+)
 
 
 def _write_income_statement(raw_dir) -> None:
@@ -60,8 +64,7 @@ def test_plan_statement_items_backfill_builds_records(tmp_path):
     assert plan.raw_row_count == 1
     assert len(plan.records) == 1
     assert plan.records[0].item_code == "EPS"
-    assert plan.records[0].quality.value == "degraded"
-    assert plan.quality_summary == {"degraded": 1}
+    assert statement_quality_counts(plan.records) == {"degraded": 1}
 
 
 def test_apply_statement_items_backfill_inserts_records_and_backs_up_db(tmp_path):
@@ -80,6 +83,7 @@ def test_apply_statement_items_backfill_inserts_records_and_backs_up_db(tmp_path
         availability_file=availability_file,
         source_version="financial-data-statements-v1",
         statement_types=("income_statement",),
+        quality_projector=statement_item_quality_wire_value,
     )
 
     assert result.applied is True

@@ -6,7 +6,7 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -16,7 +16,20 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QToolButton
 
-from app_module.dtos import RecommendationDTO
+from app_module.recommendation.contracts import (
+    Context,
+    DecisionBatch,
+    ExecutionStatus,
+    IndexStatus,
+    RecommendationExecution,
+    Request,
+    SaveReceipt,
+    ReferenceKind,
+    VersionReference,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from decision_module.recommendation.contracts import RecommendationItem
+from ui_qt.views.recommendation.execution_coordinator import RecommendationExecutionRequest
 from app_module.research_console_dtos import (
     ResearchConsoleBoundaryDTO,
     ResearchConsoleDTO,
@@ -128,32 +141,68 @@ def _recommendation_view() -> RecommendationView:
         get_strategy_config=lambda _regime: {},
     )
     view = RecommendationView(MagicMock(), regime_service)
-    view.current_config = {"as_of_date": "2026-09-05"}
-    view.current_profile = "momentum"
-    view.current_result_id = "result-1"
-    view.recommendation_service.last_run_context = {
+    config = {
+        "patterns": {"selected": ["W底"]},
+        "signals": {"technical_indicators": ["trend"]},
         "as_of_date": "2026-09-05",
-        "data_date": "2026-09-04",
         "profile_id": "momentum",
-        "profile_version": "2.1",
-        "source_id": "provider-1",
     }
-    recommendation = RecommendationDTO(
+    snapshot = RecommendationExecutionRequest(config).config_snapshot
+    request = Request(
+        config_snapshot=snapshot,
+        profile_ref=VersionReference(ReferenceKind.PROFILE, "momentum", "2.1"),
+        max_stocks=200,
+        top_n=50,
+    )
+    recommendation = RecommendationItem(
         stock_code="2330",
         stock_name="台積電",
         close_price=100,
         price_change=1,
-        total_score=80,
+        rule_score=80,
         indicator_score=80,
         pattern_score=80,
         volume_score=80,
-        recommendation_reasons="均線向上",
+        reason_text="均線向上",
         industry="半導體",
         regime_match=True,
+        eligible_universe_date=date(2026, 9, 4),
     )
-    view.current_recommendations = [recommendation]
+    execution = RecommendationExecution(
+        result_id="result-1",
+        request=request,
+        context=Context(
+            as_of_date=date(2026, 9, 5),
+            created_at=datetime(2026, 9, 5, tzinfo=timezone.utc),
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=(recommendation,), regime="Trend"),
+    )
+    view.current_execution = execution
+    view.current_config = view._execution_config(execution)
+    view.current_profile = "momentum"
+    view.current_result_id = "result-1"
+    persisted_at = datetime(2026, 9, 5, 1, tzinfo=timezone.utc)
+    payload_hash = "sha256:" + "a" * 64
+    artifact = "C:/temp/result-1.json"
+    view.current_read_model = RecommendationExecutionReadModel(
+        execution=execution,
+        label="saved result",
+        notes="",
+        persisted_at=persisted_at,
+        payload_hash=payload_hash,
+        artifact_location=artifact,
+        integrity_basis="canonical_payload_and_index_verified",
+    )
+    view.current_save_receipt = SaveReceipt(
+        result_id="result-1",
+        payload_hash=payload_hash,
+        artifact_location=artifact,
+        persisted_at=persisted_at,
+        index_status=IndexStatus.INDEXED,
+    )
     view.recommendations_model = PandasTableModel(
-        pd.DataFrame([recommendation.to_dict()])
+        pd.DataFrame([view._current_table_rows()[0]])
     )
     view.results_table.setModel(view.recommendations_model)
     return view
@@ -174,7 +223,7 @@ def test_recommendation_drilldown_emits_saved_context_without_recompute() -> Non
     assert context.data_date == "2026-09-04"
     assert context.result_id == "result-1"
     assert context.profile_id == "momentum"
-    assert context.source_id == "provider-1"
+    assert context.source_id == "result-1"
     view.close()
 
 
@@ -215,10 +264,32 @@ def test_watchlist_drilldown_reads_saved_metadata_and_keeps_source_id(tmp_path: 
         encoding="utf-8",
     )
     with sqlite3.connect(runs / "recommendation_runs.db") as conn:
-        conn.execute("CREATE TABLE runs (result_id TEXT, data_path TEXT, created_at TEXT)")
         conn.execute(
-            "INSERT INTO runs VALUES (?, ?, ?)",
-            ("result-1", str(artifact), "2026-09-05"),
+            """
+            CREATE TABLE runs (
+                result_id TEXT PRIMARY KEY,
+                result_name TEXT NOT NULL,
+                regime TEXT,
+                stock_count INTEGER,
+                config TEXT,
+                notes TEXT,
+                created_at TEXT,
+                data_path TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "result-1",
+                "策略甲",
+                None,
+                0,
+                json.dumps({"profile_id": "momentum", "profile_version": "2.1"}),
+                "",
+                "2026-09-05",
+                str(artifact),
+            ),
         )
 
     app()

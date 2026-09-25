@@ -11,6 +11,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app_module.research_session import ResearchStockContextDTO
+from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation_repository import RecommendationRepository
 from app_module.stock_research_report_dtos import ReportSectionStatus
 from app_module.stock_research_report_service import (
     StockResearchReportReadService,
@@ -76,11 +78,13 @@ def _schema(database: Path) -> None:
 def _config(tmp_path: Path) -> SimpleNamespace:
     database = tmp_path / "twstock.db"
     _schema(database)
-    return SimpleNamespace(
+    config = SimpleNamespace(
         db_file=database,
         data_root=tmp_path,
         output_root=tmp_path / "output",
     )
+    config.resolve_output_path = lambda relative_path: config.output_root / relative_path
+    return config
 
 
 def _seed_normal(config: SimpleNamespace) -> None:
@@ -121,38 +125,29 @@ def _seed_normal(config: SimpleNamespace) -> None:
             ("outcome-1", "event-1", 5, "observed", 180, 40, "observed", "2026-09-08T10:00:00+08:00"),
         )
 
-    runs_dir = config.output_root / "recommendation" / "runs"
-    runs_dir.mkdir(parents=True)
-    artifact = runs_dir / "run-1.json"
-    artifact.write_text(
-        json.dumps(
-            {
-                "result_id": "run-1",
-                "result_name": "測試策略",
-                "config": {"profile_id": "test", "profile_version": "1"},
-                "run_context": {"as_of_date": "2026-09-08", "data_date": "2026-09-07"},
-                "recommendations": [
-                    {
-                        "stock_code": "2330",
-                        "stock_name": "台積電",
-                        "close_price": "100",
-                        "price_change": "1",
-                        "total_score": "72",
-                        "indicator_score": "70",
-                        "pattern_score": "71",
-                        "volume_score": "73",
-                        "recommendation_reasons": "均線向上",
-                        "industry": "半導體業",
-                        "regime_match": True,
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
+    result = RecommendationResultDTO(
+        result_id="run-1",
+        result_name="測試策略",
+        config={"profile_id": "test", "profile_version": "1"},
+        run_context={"as_of_date": "2026-09-08", "data_date": "2026-09-07"},
+        recommendations=[
+            RecommendationDTO(
+                stock_code="2330",
+                stock_name="台積電",
+                close_price=Decimal("100"),
+                price_change=1.0,
+                total_score=72.0,
+                indicator_score=70.0,
+                pattern_score=71.0,
+                volume_score=73.0,
+                recommendation_reasons="均線向上",
+                industry="半導體業",
+                regime_match=True,
+            )
+        ],
+        created_at="2026-09-08T00:00:00",
     )
-    with closing(sqlite3.connect(runs_dir / "recommendation_runs.db")) as conn, conn:
-        conn.execute("CREATE TABLE runs (result_id TEXT, data_path TEXT, created_at TEXT)")
-        conn.execute("INSERT INTO runs VALUES (?, ?, ?)", ("run-1", str(artifact), "2026-09-08"))
+    RecommendationRepository(config).save_result(result)
 
 
 def _write_freshness_receipt(

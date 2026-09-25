@@ -6,8 +6,22 @@ from data_module.fundamental_schema import apply_fundamental_schema
 from data_module.valuation_metrics_backfill import (
     apply_valuation_metrics_backfill,
     load_industry_by_stock_from_companies,
+    read_valuation_metrics_backfill_source,
+)
+from decision_module.factors.valuation_backfill_adapters import (
     plan_valuation_metrics_backfill,
 )
+
+
+def _plan(db_file, as_of_date, industry_by_stock, source_version="daily-prices-pe-test"):
+    return plan_valuation_metrics_backfill(
+        source_plan=read_valuation_metrics_backfill_source(
+            db_file=db_file,
+            as_of_date=as_of_date,
+        ),
+        industry_by_stock=industry_by_stock,
+        source_version=source_version,
+    )
 
 
 def _prepare_db(db_file):
@@ -37,15 +51,14 @@ def test_plan_valuation_metrics_backfill_uses_as_of_date_only(tmp_path) -> None:
     db_file = tmp_path / "twstock.db"
     _prepare_db(db_file)
 
-    plan = plan_valuation_metrics_backfill(
-        db_file=db_file,
-        as_of_date="2026-06-15",
-        industry_by_stock={
+    plan = _plan(
+        db_file,
+        "2026-06-15",
+        {
             "2330": "半導體業",
             "2303": "半導體業",
             "2317": "電子零組件業",
         },
-        source_version="daily-prices-pe-test",
     )
 
     assert plan.ready_for_apply is True
@@ -54,7 +67,11 @@ def test_plan_valuation_metrics_backfill_uses_as_of_date_only(tmp_path) -> None:
     assert {record.as_of_date.isoformat() for record in plan.records} == {"2026-06-15"}
     assert {record.available_date.isoformat() for record in plan.records} == {"2026-06-15"}
     assert {
-        (record.stock_code, record.industry_percentile_bp, record.quality.value)
+        (
+            record.stock_code,
+            record.industry_percentile_bp,
+            record.legacy_quality_wire_value,
+        )
         for record in plan.records
     } == {
         ("2330", 5000, "observed"),
@@ -67,11 +84,10 @@ def test_plan_valuation_metrics_backfill_reports_missing_industry(tmp_path) -> N
     db_file = tmp_path / "twstock.db"
     _prepare_db(db_file)
 
-    plan = plan_valuation_metrics_backfill(
-        db_file=db_file,
-        as_of_date="2026-06-15",
-        industry_by_stock={"2330": "半導體業", "2303": "半導體業"},
-        source_version="daily-prices-pe-test",
+    plan = _plan(
+        db_file,
+        "2026-06-15",
+        {"2330": "半導體業", "2303": "半導體業"},
     )
 
     assert len(plan.records) == 2
@@ -100,16 +116,19 @@ def test_apply_valuation_metrics_backfill_inserts_records_and_backs_up_db(tmp_pa
     backup_dir = tmp_path / "backup"
     _prepare_db(db_file)
 
-    result = apply_valuation_metrics_backfill(
-        db_file=db_file,
-        backup_dir=backup_dir,
-        as_of_date="2026-06-15",
-        industry_by_stock={
+    plan = _plan(
+        db_file,
+        "2026-06-15",
+        {
             "2330": "半導體業",
             "2303": "半導體業",
             "2317": "電子零組件業",
         },
-        source_version="daily-prices-pe-test",
+    )
+    result = apply_valuation_metrics_backfill(
+        db_file=db_file,
+        backup_dir=backup_dir,
+        records=plan.records,
     )
 
     assert result.applied is True
@@ -170,12 +189,15 @@ def test_apply_valuation_metrics_backfill_refuses_empty_plan(tmp_path) -> None:
     db_file = tmp_path / "twstock.db"
     _prepare_db(db_file)
 
+    plan = _plan(
+        db_file,
+        "2026-06-14",
+        {"2330": "半導體業"},
+    )
     result = apply_valuation_metrics_backfill(
         db_file=db_file,
         backup_dir=tmp_path / "backup",
-        as_of_date="2026-06-14",
-        industry_by_stock={"2330": "半導體業"},
-        source_version="daily-prices-pe-test",
+        records=plan.records,
     )
 
     assert result.applied is False

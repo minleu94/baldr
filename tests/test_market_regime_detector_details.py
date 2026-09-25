@@ -1,15 +1,10 @@
-from types import SimpleNamespace
-
 import pandas as pd
 
 from decision_module.market_regime_detector import MarketRegimeDetector
 
 
 def test_breakout_details_include_base_indicators(tmp_path):
-    detector = MarketRegimeDetector(
-        SimpleNamespace(resolve_output_path=lambda _: tmp_path),
-        use_persistent_history=False,
-    )
+    detector = MarketRegimeDetector()
     close = pd.Series([100.0] * 25)
     atr = pd.Series([5.0] * 25)
     bb_bandwidth = pd.Series([0.20] * 19 + [0.05])

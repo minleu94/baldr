@@ -1,8 +1,11 @@
 """R020 replay scalar 的 legacy NumPy comparison-domain 投影。
 
-本模組是 app numeric compatibility boundary。呼叫者必須傳入舊流程已算好的
-metric scalar，以及已完成舊 `float()`／成交量正規化的 Python float threshold。
-本模組只投影 operand，不重算 metric、不正規化 threshold，也不作大小比較。
+本模組是 app numeric compatibility boundary。既有
+`project_legacy_comparison_pair` 呼叫者必須傳入舊流程已算好的 metric scalar，
+以及已完成舊 `float()`／成交量正規化的 Python float threshold；
+`project_legacy_post_score_comparison_pair` 則只接受已表徵的原生 numeric
+metric／effective threshold 組合。兩條路徑都只投影 operand，不重算 metric、不正規化
+threshold，也不作大小比較。
 
 NumPy 弱 scalar promotion 依目前 Windows runtime 的 NumPy 2 行為驗證；一般
 runtime requirements 仍允許 NumPy 1.x，因此這個模組不宣稱跨 NumPy 主版本等價。
@@ -15,7 +18,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 import math
-from typing import Any, Final
+from typing import Any, Final, cast
 
 import numpy as np
 import pandas as pd
@@ -322,6 +325,149 @@ def project_legacy_comparison_pair(
     )
 
 
+def _exact_real_component(value: object) -> ReplayComparisonComponent:
+    if type(value) is bool:
+        return ReplayComparisonComponent.finite(int(value))
+    if type(value) is int:
+        return ReplayComparisonComponent.finite(value)
+    if type(value) is float:
+        return _component_from_python_float(value)
+    if type(value) is Decimal:
+        if not value.is_finite():
+            raise UnsupportedReplayNumericScalarError(
+                "Decimal replay scalar 必須是有限值"
+            )
+        numerator, denominator = value.as_integer_ratio()
+        return ReplayComparisonComponent.finite(numerator, denominator)
+    if isinstance(value, np.integer):
+        return ReplayComparisonComponent.finite(int(value))
+    if isinstance(value, np.floating):
+        return _component_from_numpy_float(value)
+    raise UnsupportedReplayNumericScalarError(
+        f"不支援的 replay real scalar：{type(value).__module__}."
+        f"{type(value).__qualname__}"
+    )
+
+
+def _numeric_origin(value: object) -> ReplayNumericOrigin:
+    if type(value) is bool:
+        return ReplayNumericOrigin(ReplayNumericOriginKind.PYTHON_INT)
+    if type(value) is int:
+        return ReplayNumericOrigin(ReplayNumericOriginKind.PYTHON_INT)
+    if type(value) is float:
+        return ReplayNumericOrigin(ReplayNumericOriginKind.PYTHON_FLOAT)
+    if type(value) is Decimal:
+        return ReplayNumericOrigin(ReplayNumericOriginKind.LEGACY_DECIMAL)
+    if isinstance(value, np.generic):
+        return _numpy_origin(value)
+    raise UnsupportedReplayNumericScalarError(
+        f"不支援的 replay numeric origin：{type(value).__module__}."
+        f"{type(value).__qualname__}"
+    )
+
+
+def _exact_real_operand(value: object) -> ReplayComparisonOperand:
+    return ReplayComparisonOperand(
+        origin=_numeric_origin(value),
+        domain=ReplayComparisonDomain.exact_rational(),
+        real=_exact_real_component(value),
+    )
+
+
+def project_legacy_post_score_comparison_pair(
+    metric_scalar: object,
+    effective_threshold: object,
+    *,
+    unit: ReplayThresholdUnit,
+) -> ReplayLegacyComparisonPair:
+    """投影 scored-row 原生 numeric operands；不轉 float、不正規化、不比較。
+
+    成交量 threshold 必須已由 legacy alias normalization 產生；其他 threshold
+    保留原 Python／NumPy scalar。NumPy metric 依同一 native promotion 域投影，
+    object scalar 則保留 exact-rational/Python-complex provenance。尚未表徵的
+    scalar 組合 fail closed，由呼叫端保留 v1-only 或原生例外路徑。
+    """
+
+    if type(unit) is not ReplayThresholdUnit:
+        raise TypeError("unit 必須是 ReplayThresholdUnit")
+
+    if type(metric_scalar) is complex:
+        if type(effective_threshold) not in (int, float):
+            raise UnsupportedReplayNumericScalarError(
+                "Python complex post-score threshold 只接受 Python int/float"
+            )
+        domain = ReplayComparisonDomain.python_complex()
+        metric = ReplayComparisonOperand(
+            origin=ReplayNumericOrigin(ReplayNumericOriginKind.PYTHON_COMPLEX),
+            domain=domain,
+            real=_component_from_python_float(metric_scalar.real),
+            imaginary=_component_from_python_float(metric_scalar.imag),
+        )
+        threshold = ReplayComparisonOperand(
+            origin=_numeric_origin(effective_threshold),
+            domain=domain,
+            real=_exact_real_component(effective_threshold),
+            imaginary=ReplayComparisonComponent.finite(0),
+        )
+        return ReplayLegacyComparisonPair(metric=metric, threshold=threshold, unit=unit)
+
+    numeric_types = (int, float, Decimal)
+    if type(metric_scalar) in numeric_types:
+        if type(effective_threshold) not in numeric_types:
+            raise UnsupportedReplayNumericScalarError(
+                "Python/object metric 與非 Python numeric threshold 組合尚未表徵"
+            )
+        return ReplayLegacyComparisonPair(
+            metric=_exact_real_operand(metric_scalar),
+            threshold=_exact_real_operand(effective_threshold),
+            unit=unit,
+        )
+
+    if isinstance(metric_scalar, np.generic):
+        if not isinstance(effective_threshold, (*numeric_types, np.integer, np.floating, np.complexfloating)):
+            raise UnsupportedReplayNumericScalarError(
+                "NumPy metric 與非 numeric threshold 組合尚未表徵"
+            )
+        origin = _numpy_origin(metric_scalar)
+        effective_dtype = np.dtype(
+            np.result_type(metric_scalar, cast(Any, effective_threshold))
+        )
+        if effective_dtype.kind not in {"i", "u", "f", "c"}:
+            raise UnsupportedReplayNumericScalarError(
+                f"NumPy post-score effective dtype 尚未表徵：{effective_dtype.name}"
+            )
+        # 保留 NumPy cast 的原生 warning/np.seterr 時點；不能抑制或重包例外。
+        effective_metric: Any = np.asarray(metric_scalar, dtype=effective_dtype)[()]
+        effective_threshold_scalar: Any = np.asarray(
+            effective_threshold, dtype=effective_dtype
+        )[()]
+        if effective_dtype.kind in {"i", "u"}:
+            metric = ReplayComparisonOperand(
+                origin=origin,
+                domain=ReplayComparisonDomain.exact_rational(),
+                real=ReplayComparisonComponent.finite(int(effective_metric)),
+            )
+            threshold = ReplayComparisonOperand(
+                origin=_numeric_origin(effective_threshold),
+                domain=ReplayComparisonDomain.exact_rational(),
+                real=ReplayComparisonComponent.finite(int(effective_threshold_scalar)),
+            )
+        else:
+            domain = _numpy_domain(effective_dtype)
+            metric = _numpy_operand(effective_metric, origin=origin, domain=domain)
+            threshold = _numpy_operand(
+                effective_threshold_scalar,
+                origin=_numeric_origin(effective_threshold),
+                domain=domain,
+            )
+        return ReplayLegacyComparisonPair(metric=metric, threshold=threshold, unit=unit)
+
+    raise UnsupportedReplayNumericScalarError(
+        f"不支援的 post-score metric scalar：{type(metric_scalar).__module__}."
+        f"{type(metric_scalar).__qualname__}"
+    )
+
+
 __all__: Final[tuple[str, ...]] = (
     "classify_legacy_post_score_metric_scalar",
     "project_legacy_post_score_threshold_input_hint",
@@ -329,4 +475,5 @@ __all__: Final[tuple[str, ...]] = (
     "ReplayThresholdUnit",
     "UnsupportedReplayNumericScalarError",
     "project_legacy_comparison_pair",
+    "project_legacy_post_score_comparison_pair",
 )

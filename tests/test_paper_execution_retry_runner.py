@@ -679,7 +679,7 @@ def test_retry_runner_turns_verified_weekday_holiday_gate_into_noop_before_adapt
         adapter_fn=adapter,
         sleep_fn=lambda _: (_ for _ in ()).throw(AssertionError("no sleep expected")),
         now_fn=lambda: datetime(2026, 9, 25, 13, 0, tzinfo=timezone.utc),
-        roll_forward_fn=lambda: None,
+        roll_forward_fn=roll_forward,
     )
 
     assert result["status"] == "skipped_non_trading_day"

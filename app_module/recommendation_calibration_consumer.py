@@ -79,6 +79,8 @@ _MAX_MODEL_GRAPH_ARRAYS = 512
 _MAX_MODEL_GRAPH_ARRAY_BYTES = 64 * 1024 * 1024
 _MAX_MODEL_GRAPH_ARRAY_ELEMENTS = 1_000_000
 _MAX_LIVE_INVOCATION_CAPABILITIES = 16
+# Capture the reviewed callables once; do not trust later runtime rebinding of
+# SciPy's class attributes to widen the model-graph schema.
 _VERIFIED_SCIPY_INTERP1D_CALLS = tuple(
     candidate
     for candidate in (

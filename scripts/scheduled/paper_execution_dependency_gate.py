@@ -767,6 +767,19 @@ def inspect_dependency(
         result.update({"status": "not_trading_day", "ready": True, "reason": "taipei_weekend"})
         return result
 
+    quick, quick_hash, quick_error = _read_json(quick_path)
+    result["quick_update_status_path"] = str(quick_path)
+    result["quick_update_status_hash"] = quick_hash
+    if quick_error:
+        result["quick_update_status"] = "unavailable"
+        result["quick_update_receipt_error"] = quick_error
+    elif quick is not None:
+        result["quick_update_status"] = str(quick.get("status") or "").lower()
+        raw_quick_errors = quick.get("errors")
+        result["quick_update_error_count"] = (
+            len(raw_quick_errors) if isinstance(raw_quick_errors, list) else 0
+        )
+
     calendar_evidence = _verified_closed_calendar_evidence(
         target=target,
         observed=observed,
@@ -780,17 +793,15 @@ def inspect_dependency(
                 "reason": "twse_holiday_schedule_cache_closed",
                 "adapter_noop": True,
                 "calendar_evidence": calendar_evidence,
+                "upstream_quick_update_status_preserved": True,
                 "blockers": [],
                 "warnings": [],
             }
         )
         return result
 
-    quick, quick_hash, quick_error = _read_json(quick_path)
     freshness, freshness_hash, freshness_error = _read_json(freshness_path)
-    result["quick_update_status_path"] = str(quick_path)
     result["freshness_status_path"] = str(freshness_path)
-    result["quick_update_status_hash"] = quick_hash
     result["freshness_status_hash"] = freshness_hash
     if quick_error:
         blockers.append(f"quick_update_receipt_unavailable:{quick_error}")

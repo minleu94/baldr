@@ -1058,13 +1058,19 @@ def test_dependency_gate_classifies_verified_weekday_holiday_before_upstream_fai
         closed_date=date(2026, 9, 25),
         captured_at=observed - timedelta(hours=1),
     )
+    data_root, output_root, db_path = _seed_ready_inputs(tmp_path)
+    quick_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    quick_payload = json.loads(quick_path.read_text(encoding="utf-8"))
+    quick_payload["status"] = "failed"
+    quick_payload["errors"] = ["upstream technical failure retained"]
+    quick_path.write_text(json.dumps(quick_payload), encoding="utf-8")
 
-    # 缺少 quick/freshness/source/DB 也不能阻止已驗證的 exact closed-day no-op；
-    # 這個分支不會讀取或重播任何上游 writer。
+    # quick 仍是 failed，但 verified exact closed-day 只讓 Paper adapter no-op；
+    # gate 將 upstream status/hash 保留在 receipt，不能把它報成 passed。
     result = inspect_dependency(
-        data_root=tmp_path / "missing-data",
-        output_root=tmp_path / "missing-output",
-        db_path=tmp_path / "missing.db",
+        data_root=data_root,
+        output_root=output_root,
+        db_path=db_path,
         calendar_cache_path=calendar_root,
         observed_at=observed,
     )
@@ -1073,6 +1079,9 @@ def test_dependency_gate_classifies_verified_weekday_holiday_before_upstream_fai
     assert result["ready"] is True
     assert result["reason"] == "twse_holiday_schedule_cache_closed"
     assert result["adapter_noop"] is True
+    assert result["quick_update_status"] == "failed"
+    assert result["quick_update_error_count"] == 1
+    assert result["upstream_quick_update_status_preserved"] is True
     assert result["blockers"] == []
     evidence = cast(dict[str, object], result["calendar_evidence"])
     assert evidence["target_date"] == "2026-09-25"

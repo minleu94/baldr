@@ -59,6 +59,10 @@ from app_module.recommendation_calibration_consumer import (
     RecommendationCalibrationProjection,
     build_default_recommendation_calibration_consumer,
 )
+from app_module.recommendation.input_preparation import (
+    RecommendationInputPreparer,
+    RecommendationInputSession,
+)
 from app_module.recommendation.evaluation_driver import evaluate_candidate_staged
 from app_module.recommendation.score_projection import project_legacy_recommendation_score
 from app_module.recommendation.source_fact_projection import (
@@ -138,10 +142,6 @@ if TYPE_CHECKING:
     from app_module.recommendation.contracts import (
         RecommendationConfigSnapshot,
         RecommendationExecution,
-    )
-    from app_module.recommendation.input_preparation import (
-        RecommendationInputPreparer,
-        RecommendationInputSession,
     )
     from app_module.recommendation.execute import (
         RecommendationPostprocessFacts,

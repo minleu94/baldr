@@ -72,10 +72,16 @@ def project_legacy_post_score_threshold_input_hint(
     *,
     filter_id: ReplayPostScoreRuleV1,
 ) -> ReplayPostScoreThresholdInputHintV1 | None:
-    """保留凍結案例所需的原始 Python 字串型別與顯示文字。"""
+    """保留 legacy 原始 Python 字串／None 型別與診斷顯示文字。"""
 
     if type(filter_id) is not ReplayPostScoreRuleV1:
         raise TypeError("filter_id 必須是 ReplayPostScoreRuleV1")
+    if raw_value is None:
+        return ReplayPostScoreThresholdInputHintV1(
+            filter_id=filter_id,
+            input_kind=ReplayPostScoreThresholdInputKindV1.PYTHON_NONE,
+            display_text="None",
+        )
     if type(raw_value) is not str:
         return None
     return ReplayPostScoreThresholdInputHintV1(

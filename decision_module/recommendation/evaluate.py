@@ -1691,6 +1691,7 @@ class ReplayPostScoreThresholdInputKindV1(str, Enum):
     """threshold adapter 尚未轉換前可安全傳給 evaluator 的原始型別分類。"""
 
     PYTHON_STRING = "python_string"
+    PYTHON_NONE = "python_none"
 
 
 class ReplayPostScoreDiagnosticCodeV1(str, Enum):
@@ -2369,6 +2370,17 @@ def _evaluate_replay_post_score_rule(
             metric.unsupported_reason or "unsupported_metric",
         )
     if threshold.status is ReplayThresholdStatus.UNSUPPORTED:
+        if (
+            spec.threshold_input_hint is not None
+            and spec.threshold_input_hint.input_kind
+            is ReplayPostScoreThresholdInputKindV1.PYTHON_NONE
+        ):
+            return ReplayPostScoreRuleOutcomeV1(
+                filter_id,
+                ReplayPostScoreRuleDispositionV1.REJECTED,
+                "legacy_none_threshold_rejected",
+                threshold_input_hint=spec.threshold_input_hint,
+            )
         return ReplayPostScoreRuleOutcomeV1(
             filter_id,
             ReplayPostScoreRuleDispositionV1.UNSUPPORTED,

@@ -23,9 +23,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import app_module.strategies  # noqa: F401  # 觸發策略註冊
+import decision_module.strategies  # noqa: F401  # 觸發策略註冊
 from app_module.backtest_service import BacktestService
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from app_module.walkforward_service import WalkForwardResult
 from data_module.config import TWStockConfig
 
@@ -272,9 +272,9 @@ def _strategy_spec(mode: str) -> StrategySpec:
 
 def _get_regime_cache(config: TWStockConfig) -> dict[str, str]:
     """預先計算並快取大盤每日的 regime。"""
-    from decision_module.market_regime_detector import MarketRegimeDetector
+    from app_module.regime_service import RegimeService
     from data_module.db_manager import DBManager
-    detector = MarketRegimeDetector(config, use_persistent_history=False)
+    regime_service = RegimeService(config, use_persistent_history=False)
     db = DBManager(config)
     sql_df = db.execute_query("SELECT 日期 FROM market_indices ORDER BY 日期 ASC;")
     if sql_df.empty:
@@ -286,11 +286,11 @@ def _get_regime_cache(config: TWStockConfig) -> dict[str, str]:
     regime_cache = {}
     print(f"預先計算大盤 {len(target_dates)} 個交易日的 Regime 標籤...")
     for d in target_dates:
-        res = detector.detect_regime(d)
-        if res.get("details", {}).get("error"):
+        res = regime_service.detect_regime(date=d)
+        if res.details.get("error"):
             continue
         regime, observed = _resolve_regime_label(
-            {d: str(res.get("regime", ""))},
+            {d: str(res.regime)},
             d,
         )
         if observed:

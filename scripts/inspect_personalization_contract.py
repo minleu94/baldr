@@ -25,6 +25,7 @@ from app_module.personalization_calibration import (
     PersonalizationCalibrationPolicy,
 )
 from app_module.personalization_contract import (
+    PERSONALIZATION_TEMPORAL_CONTRACT,
     PersonalizationDeliveryScope,
     PersonalizationEvaluationRow,
     canonical_payload_hash,
@@ -286,7 +287,29 @@ def run_fixture() -> dict[str, Any]:
     result: dict[str, Any] = {
         "result_id": FIXTURE_RESULT_ID,
         "run_context": {
+            "result_id": FIXTURE_RESULT_ID,
+            "temporal_contract": PERSONALIZATION_TEMPORAL_CONTRACT,
+            "temporal_mode": "natural_producer_clock",
+            "cutoff_selection": "producer_selected_latest_available_cutoff",
+            "cutoff_policy": "source_latest_available_exact",
+            "decision_clock_timezone": "UTC",
+            "market_calendar_timezone": "Asia/Taipei",
+            "prediction_decision_anchor": "actual_producer_decision_at",
+            "horizon_anchor": "immutable_projection_receipt",
+            "run_started_at": "2025-02-10T08:50:00+00:00",
+            "personalization_scope_declared_at": scope.declared_at,
+            "available_at": scope.available_at,
+            "captured_at": scope.captured_at,
+            "decision_at": scope.decision_at,
+            "calibration_projection_receipt_created_at": scope.receipt_created_at,
             "as_of_date": "2025-02-10",
+            "data_date": "2025-02-10",
+            "calibration_projection_receipt": receipt,
+            "calibration_projection_receipt_metadata": {
+                "result_id": FIXTURE_RESULT_ID,
+                "receipt_hash": receipt["receipt_hash"],
+                "receipt_created_at": scope.receipt_created_at,
+            },
             "personalization_delivery_captures": [delivered.to_dict()],
             "calibration_projection_rows": {
                 FIXTURE_STOCK_CODE: dict(receipt["projections"][0]),

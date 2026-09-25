@@ -19,6 +19,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from data_module.config import TWStockConfig
+from data_module.contracts.fundamental import (
+    SourceDiagnostic,
+    SourceDiagnosticKind,
+)
 from data_module.monthly_revenue_availability_merge import (
     apply_monthly_revenue_availability_merge,
     plan_monthly_revenue_availability_merge,
@@ -104,13 +108,26 @@ def _payload(plan: Any, result: Any) -> dict[str, Any]:
         "diagnostics": [
             {
                 "code": item.code,
-                "factor_name": item.factor_name,
+                "factor_name": _legacy_factor_name(item),
                 "stock_code": item.stock_code,
                 "message": item.message,
             }
             for item in plan.diagnostics
         ],
     }
+
+
+def _legacy_factor_name(diagnostic: SourceDiagnostic) -> str:
+    """維持 CLI v1 wire 欄位，僅在輸出邊界投影舊名稱。"""
+
+    kind = diagnostic.kind or SourceDiagnosticKind.AVAILABILITY
+    if kind is SourceDiagnosticKind.AVAILABILITY:
+        return "fundamental.availability"
+    if kind is SourceDiagnosticKind.AVAILABILITY_HISTORY:
+        return f"fundamental.availability.{diagnostic.market or 'unknown'}"
+    if kind is SourceDiagnosticKind.MONTHLY_REVENUE:
+        return "fundamental.revenue"
+    return f"fundamental.monthly_revenue_snapshot.{diagnostic.market or 'unknown'}"
 
 
 def _render_markdown(payload: dict[str, Any]) -> str:

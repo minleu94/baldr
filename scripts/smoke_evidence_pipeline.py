@@ -17,7 +17,7 @@ from app_module.evidence_event_importers import RecommendationEvidenceImporter
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
 from app_module.forward_performance_service import ForwardPerformanceService
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from data_module.config import TWStockConfig
 
 
@@ -106,7 +106,9 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
     capture_service = EvidenceCaptureService(
         EvidenceEventService(repository),
         {
-            "recommendation": RecommendationEvidenceImporter(RecommendationRepository(config)),
+            "recommendation": RecommendationEvidenceImporter(
+                build_recommendation_execution_queries(config)
+            ),
         },
     )
     capture = capture_service.capture(

@@ -1,17 +1,15 @@
 """Run the real MainWindow recommendation-save delivery/readback probe.
 
 The probe deliberately uses the production ``MainWindow()`` constructor and
-the RecommendationView, JournalService, and RecommendationRepository that
-the window composes.  Only the recommendation producer input is a bounded
+the RecommendationView, JournalService, and canonical RecommendationComposition
+that the window composes. Only the recommendation execution input is a bounded
 fixture; no page or window composition is replaced.
 """
 
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
-from datetime import datetime, timezone
-from decimal import Decimal
+from datetime import date, datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -28,16 +26,15 @@ if str(ROOT) not in sys.path:
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
-from app_module.dtos import RecommendationDTO
 from app_module.journal_service import JournalService
-from app_module.personalization_contract import (
-    PersonalizationDeliveryScope,
-    canonical_payload_hash,
+from app_module.recommendation.composition import RecommendationComposition
+from app_module.recommendation.contracts import (
+    Context,
+    ExecutionStatus,
+    RecommendationExecution,
+    Request,
 )
-from app_module.personalization_projection import PersonalizationProjectionService
-from app_module.personalization_save_adapter import (
-    PersonalizationRecommendationSaveAdapter,
-)
+from decision_module.recommendation.contracts import DecisionBatch, RecommendationItem
 from ui_qt.main import (
     MainWindow,
     _configure_console_streams,
@@ -48,17 +45,8 @@ from ui_qt.workers.task_worker import running_task_workers
 _configure_console_streams()
 
 
-RESULT_ID = "rec_personalization_mainwindow_probe_20260916"
+RESULT_ID = "rec_qt_manual_save_probe_20260923"
 STOCK_CODE = "2330"
-SCOPE_ID = "local_research_scope_v1"
-DELIVERY_ID = "delivery_personalization_mainwindow_probe_20260916"
-REQUEST_ID = "personalization-mainwindow-probe-20260916"
-PREDICTION_ID = "00000000-0000-0000-0000-000000000011"
-DATASET_HASH = "sha256:" + ("d" * 64)
-COST_SCENARIO_HASH = "sha256:" + ("b" * 64)
-UNIVERSE_POLICY_HASH = "sha256:" + ("e" * 64)
-LABEL_CONTRACT_ID = "label_projection_v1"
-RETURN_BASIS = "close_to_close_event_date"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -69,109 +57,51 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _receipt() -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "schema_version": "recommendation-calibration-projection-receipt.v1",
-        "result_id": RESULT_ID,
-        "decision_date": "2025-02-10",
-        "candidate_identity": {"candidate_id": "model_001"},
-        "model_id": "model_001",
-        "dataset_id": "dataset_001",
-        "dataset_hash": DATASET_HASH,
-        "label_contract_id": LABEL_CONTRACT_ID,
-        "return_basis": RETURN_BASIS,
-        "universe_policy_hash": UNIVERSE_POLICY_HASH,
-        "source_id": "recommendation_service",
-        "selection_contract": {
-            "authority": "rule_top_n",
-            "score_kind": "rule_total_score",
-            "percentile_kind": "rule_percentile",
-            "model_ranking_kind": "model_return_bp",
-            "top_n_changed_by_model": False,
-        },
-        "projections": [
-            {
-                "stock_code": STOCK_CODE,
-                "model_version": "model_001",
-                "dataset_version": "dataset_001",
-                "dataset_hash": DATASET_HASH,
-                "cost_scenario_hash": COST_SCENARIO_HASH,
-                "horizon": "20 trading days",
-                "prediction_id": PREDICTION_ID,
-                "label_contract_id": LABEL_CONTRACT_ID,
-                "return_basis": RETURN_BASIS,
-                "universe_policy_hash": UNIVERSE_POLICY_HASH,
-                "calibrated_probability_bp": 5200,
-                "status": "active_candidate",
-            }
-        ],
-        "formal_order_allowed": False,
-        "production_action_allowed": False,
-        "shadow_only": True,
-    }
-    return {**body, "receipt_hash": canonical_payload_hash(body)}
-
-
-def _scope() -> PersonalizationDeliveryScope:
-    return PersonalizationDeliveryScope.create(
-        scope_id=SCOPE_ID,
-        scope_type="local",
-        delivery_id=DELIVERY_ID,
-        declared_at="2025-02-10T08:50:00+00:00",
-        decision_at="2025-02-10T09:00:00+00:00",
-        available_at="2025-02-10T08:55:00+00:00",
-        captured_at="2025-02-10T08:55:00+00:00",
-        receipt_created_at="2025-02-10T09:01:00+00:00",
-        source="recommendation_service",
+def _execution() -> RecommendationExecution:
+    from ui_qt.views.recommendation.execution_coordinator import (
+        RecommendationExecutionRequest,
     )
 
-
-def _recommendation() -> RecommendationDTO:
-    return RecommendationDTO(
+    request_capture = RecommendationExecutionRequest(
+        {
+            "patterns": {"selected": ["W底"]},
+            "signals": {"technical_indicators": ["trend"]},
+            "filters": {"probe": "qt-manual-save"},
+        }
+    )
+    decision_date = date(2026, 9, 23)
+    decision_at = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
+    item = RecommendationItem(
         stock_code=STOCK_CODE,
         stock_name="台積電",
-        close_price=Decimal("100.00"),
-        price_change=1,
-        total_score=80,
+        close_price=900,
+        price_change=15,
+        rule_score=85,
         indicator_score=80,
-        pattern_score=80,
-        volume_score=80,
-        recommendation_reasons="real MainWindow save probe",
+        pattern_score=90,
+        volume_score=85,
+        reason_text="bounded Qt manual-save readback probe",
         industry="半導體",
         regime_match=True,
+        rank=1,
     )
-
-
-def _producer_context() -> dict[str, Any]:
-    receipt = _receipt()
-    scope = _scope()
-    return {
-        "schema_version": "recommendation-context.v1",
-        "result_id": RESULT_ID,
-        "as_of_date": "2025-02-10",
-        "data_date": "2025-02-10",
-        "temporal_contract": "recommendation-producer-clock.v1",
-        "temporal_mode": "natural_producer_clock",
-        "cutoff_selection": "producer_selected_latest_available_cutoff",
-        "cutoff_policy": "source_latest_available_exact",
-        "decision_clock_timezone": "UTC",
-        "market_calendar_timezone": "Asia/Taipei",
-        "prediction_decision_anchor": "actual_producer_decision_at",
-        "horizon_anchor": "immutable_projection_receipt",
-        "run_started_at": "2025-02-10T08:49:00+00:00",
-        "personalization_scope_declared_at": scope.declared_at,
-        "available_at": scope.available_at,
-        "captured_at": scope.captured_at,
-        "decision_at": scope.decision_at,
-        "calibration_projection_receipt_created_at": scope.receipt_created_at,
-        "calibration_projection_receipt": receipt,
-        "calibration_projection_rows": {
-            STOCK_CODE: dict(receipt["projections"][0]),
-        },
-        "personalization_scope": scope.to_dict(),
-        "personalization_delivery_scope": scope.to_dict(),
-        "personalization_request_id": REQUEST_ID,
-    }
+    return RecommendationExecution(
+        result_id=RESULT_ID,
+        request=Request(
+            as_of_date=decision_date,
+            config_snapshot=request_capture.config_snapshot,
+            max_stocks=200,
+            top_n=50,
+        ),
+        context=Context(
+            as_of_date=decision_date,
+            decision_at=decision_at,
+            available_at=decision_at,
+            created_at=decision_at,
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=(item,), regime="Trend"),
+    )
 
 
 def _not_visible(widget: object) -> bool:
@@ -204,7 +134,7 @@ def main() -> int:
     )
 
     receipt: dict[str, Any] = {
-        "schema_version": "personalization-mainwindow-save-readback-probe.v1",
+        "schema_version": "qt-manual-save-no-personal-ack-probe.v1",
         "process_id": os.getpid(),
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "data_root": str(data_root),
@@ -213,16 +143,14 @@ def main() -> int:
         "real_recommendation_view": False,
         "window_journal_owned": False,
         "view_journal_is_window_journal": False,
-        "real_repository": False,
-        "fixture_producer_context_bound": False,
+        "real_canonical_composition": False,
+        "fixture_execution_bound": False,
         "normal_save_entry_clicked": False,
         "result_readback": False,
-        "journal_ack_readback": False,
-        "projection_readback": False,
-        "result_json_unchanged_after_projection": False,
-        "projection_status": "",
-        "delivery_status": "",
-        "action_state": "",
+        "personal_scope_present": False,
+        "no_personal_ack_readback": False,
+        "exact_query_readback": False,
+        "result_artifact_unchanged_after_query": False,
         "close_requests": 0,
         "watchdog_fired": False,
         "app_exec_returncode": None,
@@ -238,32 +166,31 @@ def main() -> int:
         application = QApplication.instance() or QApplication(sys.argv)
         window = MainWindow()
         view = window.recommendation_view
-        repository = view.recommendation_repository
+        composition = view._get_recommendation_composition()
         journal = window.journal_service
         receipt["main_window_constructed"] = True
         receipt["real_recommendation_view"] = type(view).__name__ == "RecommendationView"
         receipt["window_journal_owned"] = isinstance(journal, JournalService)
         receipt["view_journal_is_window_journal"] = view.journal_service is journal
-        receipt["real_repository"] = repository is not None and type(repository).__name__ == "RecommendationRepository"
+        receipt["real_canonical_composition"] = isinstance(
+            composition,
+            RecommendationComposition,
+        )
         if not (
             receipt["real_recommendation_view"]
             and receipt["window_journal_owned"]
             and receipt["view_journal_is_window_journal"]
-            and receipt["real_repository"]
+            and receipt["real_canonical_composition"]
         ):
             raise RuntimeError("MainWindow composition did not retain real recommendation dependencies")
 
-        producer_context = _producer_context()
-        producer = view.recommendation_service
-        producer.last_run_context = deepcopy(producer_context)
-        view.current_recommendations = [_recommendation()]
-        view.current_config = {"strategy_config": {"mode": "mainwindow_process_probe"}}
+        execution = _execution()
+        view.current_execution = execution
+        view.current_config = view._execution_config(execution)
         view.current_profile = None
         view.current_regime = None
         view.save_result_btn.setVisible(True)
-        receipt["fixture_producer_context_bound"] = (
-            producer.last_run_context == producer_context
-        )
+        receipt["fixture_execution_bound"] = view.current_execution is execution
 
         from ui_qt.views import recommendation_view as view_module
 
@@ -292,59 +219,40 @@ def main() -> int:
             raise RuntimeError("normal recommendation save entry did not report success")
 
         result_id = str(view.current_result_id or "")
-        if result_id != RESULT_ID or repository is None:
+        if result_id != RESULT_ID:
             raise RuntimeError("saved result identity did not preserve the fixture receipt identity")
-        loaded = repository.load_result(result_id)
-        if loaded is None:
-            raise RuntimeError("real MainWindow save did not produce exact result readback")
-        adapter = PersonalizationRecommendationSaveAdapter()
-        captures = adapter.captures_from_result(loaded)
-        if len(captures) != 1 or captures[0].scope.scope_id != SCOPE_ID:
-            raise RuntimeError("real MainWindow result readback lacks the local capture")
-        result_file = repository.runs_dir / f"{result_id}.json"
-        before_projection_bytes = result_file.read_bytes()
+        loaded = composition.queries.get(result_id)
+        if loaded is None or loaded.execution != execution:
+            raise RuntimeError("real MainWindow save did not produce exact query readback")
+        before_query_bytes = composition.store.read_artifact(result_id)
+        if before_query_bytes is None:
+            raise RuntimeError("canonical result artifact was not published")
         receipt["result_readback"] = True
         receipt["result_id"] = result_id
-        receipt["result_path"] = str(result_file)
-        receipt["capture_hash"] = captures[0].capture_hash
-        receipt["scope_envelope_hash"] = captures[0].scope.envelope_hash
+        receipt["result_path"] = loaded.artifact_location
+        receipt["payload_hash"] = loaded.payload_hash
+        receipt["personal_scope_present"] = bool(
+            getattr(execution, "personalization_scope", None)
+            or getattr(execution, "personalization_scope_id", None)
+        )
 
         ack_rows = journal.list_personalization_delivery_acks(
             result_id,
             STOCK_CODE,
-            DELIVERY_ID,
+            "",
         )
-        if len(ack_rows) != 1:
-            raise RuntimeError("real MainWindow save did not append one delivery ACK")
-        receipt["journal_ack_readback"] = True
-        receipt["journal_ack_count"] = len(ack_rows)
-
-        projection = PersonalizationProjectionService(
-            delivery_reader=journal.list_personalization_delivery_acks,
-        ).build_for_candidate(
-            result_id=result_id,
-            stock_code=STOCK_CODE,
-            personalization_scope_id=SCOPE_ID,
-            result=loaded,
-            projection_receipt=_receipt(),
+        if ack_rows:
+            raise RuntimeError("Qt manual save unexpectedly appended personal delivery ACK")
+        if receipt["personal_scope_present"]:
+            raise RuntimeError("Qt manual-save probe unexpectedly includes personal scope")
+        receipt["no_personal_ack_readback"] = True
+        receipt["personal_ack_count"] = len(ack_rows)
+        receipt["exact_query_readback"] = composition.queries.get(result_id) == loaded
+        receipt["result_artifact_unchanged_after_query"] = (
+            composition.store.read_artifact(result_id) == before_query_bytes
         )
-        if (
-            projection.status != "linked_prediction"
-            or projection.delivery_status != "delivered"
-            or projection.evidence is None
-            or projection.evidence.action_state != "not_recorded"
-        ):
-            raise RuntimeError("real MainWindow ACK readback did not produce delivered read projection")
-        receipt["projection_readback"] = True
-        receipt["projection_status"] = projection.status
-        receipt["delivery_status"] = projection.delivery_status
-        receipt["action_state"] = projection.evidence.action_state
-        receipt["late_delivery"] = projection.late_delivery
-        receipt["result_json_unchanged_after_projection"] = (
-            result_file.read_bytes() == before_projection_bytes
-        )
-        if not receipt["result_json_unchanged_after_projection"]:
-            raise RuntimeError("read projection mutated the immutable recommendation result")
+        if not receipt["result_artifact_unchanged_after_query"]:
+            raise RuntimeError("exact read projection mutated the immutable recommendation artifact")
 
         # Restore modal methods before entering the normal close lifecycle.
         view_module.QInputDialog.getText = patched_dialog_methods[0]
@@ -381,13 +289,14 @@ def main() -> int:
             and receipt["real_recommendation_view"]
             and receipt["window_journal_owned"]
             and receipt["view_journal_is_window_journal"]
-            and receipt["real_repository"]
-            and receipt["fixture_producer_context_bound"]
+            and receipt["real_canonical_composition"]
+            and receipt["fixture_execution_bound"]
             and receipt["normal_save_entry_clicked"]
             and receipt["result_readback"]
-            and receipt["journal_ack_readback"]
-            and receipt["projection_readback"]
-            and receipt["result_json_unchanged_after_projection"]
+            and receipt["personal_scope_present"] is False
+            and receipt["no_personal_ack_readback"]
+            and receipt["exact_query_readback"]
+            and receipt["result_artifact_unchanged_after_query"]
             and receipt["close_requests"] == 1
             and receipt["watchdog_fired"] is False
             and receipt["window_hidden_after_exec"]

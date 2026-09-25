@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -18,13 +17,34 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app_module.dtos import RecommendationResultDTO
 from app_module.forward_position_thesis_candidate_producer import (
     ForwardPositionThesisCandidateProducer,
     SCHEMA_VERSION as FORWARD_CANDIDATE_SCHEMA_VERSION,
 )
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.recommendation.composition import build_recommendation_composition
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    IndexStatus,
+    RecommendationConfigSnapshot,
+    RecommendationResultConfigSnapshot,
+    RecommendationRunEvidenceIdentity,
+    SnapshotCohort,
+    SnapshotCohortCoverage,
+    SnapshotCohortCoverageStatus,
+)
+from app_module.recommendation.execute import (
+    RecommendationPostprocessFacts,
+    RecommendationPostprocessInput,
+)
+from app_module.recommendation.body_result import (
+    snapshot_cohort_from_body_result,
+    snapshot_cohort_payload_from_body_result,
+)
 from app_module.recommendation_service import RecommendationService
+from app_module.regime_service import RegimeService
+from app_module.recommendation.input_preparation import (
+    build_default_recommendation_input_preparer,
+)
 from app_module.v4_evidence_identity import (
     DEFAULT_RETURN_BASIS,
     SCHEDULED_RECOMMENDATION_BENCHMARK_ID,
@@ -114,15 +134,281 @@ def _runtime_config(value: Any) -> Any:
     return value
 
 
-def _build_result_id(now: datetime) -> str:
-    return f"scheduled_rec_{now.strftime('%Y%m%d_%H%M%S')}"
+def _canonical_json(value: Mapping[str, Any]) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
 
 
-def _with_fixed_threshold_metadata(recommendations: list[Any]) -> list[Any]:
-    return [
-        replace(item, threshold_mode="fixed", ranking_method="fixed_threshold")
-        for item in recommendations
-    ]
+def _canonical_json_sha256(value: Mapping[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _load_json_object(value: str, field_name: str) -> dict[str, Any]:
+    payload = json.loads(value)
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"{field_name} 必須是 JSON object")
+    return dict(payload)
+
+
+def _snapshot_cohort_from_payload(payload: Mapping[str, Any]) -> SnapshotCohort:
+    coverage_payload = payload.get("coverage_by_symbol")
+    if not isinstance(coverage_payload, Mapping):
+        raise ValueError("snapshot_cohort.coverage_by_symbol 必須是 object")
+    coverage = {
+        str(symbol): SnapshotCohortCoverage(
+            status=row.get("status"),
+            quality=row.get("quality"),
+            stage=row.get("stage"),
+            reason_codes=tuple(row.get("reason_codes") or ()),
+            warnings=tuple(row.get("warnings") or ()),
+        )
+        for symbol, row in coverage_payload.items()
+        if isinstance(row, Mapping)
+    }
+    if len(coverage) != len(coverage_payload):
+        raise ValueError("snapshot_cohort.coverage_by_symbol 包含無效列")
+    return SnapshotCohort(
+        cohort_hash=str(payload["cohort_hash"]),
+        requested_symbols=tuple(payload["requested_symbols"]),
+        eligible_symbols=tuple(payload["eligible_symbols"]),
+        missing_symbols=tuple(payload["missing_symbols"]),
+        degraded_symbols=tuple(payload["degraded_symbols"]),
+        excluded_symbols=tuple(payload["excluded_symbols"]),
+        requested_count=payload["requested_count"],
+        eligible_count=payload["eligible_count"],
+        missing_count=payload["missing_count"],
+        degraded_count=payload["degraded_count"],
+        excluded_count=payload["excluded_count"],
+        coverage_status=SnapshotCohortCoverageStatus(payload["coverage_status"]),
+        coverage_by_symbol=coverage,
+        eligible_definition=payload["eligible_definition"],
+        missing_definition=payload["missing_definition"],
+        degraded_definition=payload["degraded_definition"],
+        excluded_definition=payload["excluded_definition"],
+        schema_version=payload["schema_version"],
+    )
+
+
+def _execution_capture_summary(execution: Any) -> dict[str, Any]:
+    """讀取 execution 已封存的同次 legacy evidence 摘要。"""
+
+    event = next(
+        (
+            item
+            for item in execution.events
+            if item.event_type == "legacy_negative_evidence_capture"
+        ),
+        None,
+    )
+    details = event.details if event is not None else {}
+    return {
+        "screening_matrix": tuple(details.get("screening_matrix", ())),
+        "excluded_candidates": tuple(details.get("excluded_candidates", ())),
+        "why_not_payload": tuple(details.get("why_not_payload", ())),
+        "liquidity_gate_payload": tuple(details.get("liquidity_gate_payload", ())),
+        "exclusion_quality": str(details.get("exclusion_quality", "unknown")),
+        "exclusion_warnings": tuple(details.get("exclusion_warnings", ())),
+    }
+
+
+def _required_identity_text(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"scheduled 同次 execution 缺少 {field_name}")
+    return value
+
+
+def _build_scheduled_postprocess_callback(
+    *,
+    caller_config: Mapping[str, Any],
+    decision_date: str,
+    max_stocks: int,
+    top_n: int,
+):
+    """從 execute 同步 private capture 建立 scheduled post-run facts。"""
+
+    def capture(input_value: RecommendationPostprocessInput) -> RecommendationPostprocessFacts:
+        strategy = input_value.context.strategy_identity
+        universe = input_value.context.universe_identity
+        if strategy is None or universe is None or universe.policy is None or universe.snapshot is None:
+            raise ValueError("scheduled execution 缺少同次 strategy/universe identity")
+
+        raw_context = input_value.context.raw_context
+        body_result = input_value.body_result
+        typed_context = body_result.context
+        typed_evidence = typed_context.evidence_identity
+        if typed_evidence is None:
+            raise ValueError("scheduled execution 缺少同次 typed evidence identity")
+        evidence = RecommendationRunEvidenceIdentity(
+            cost_model_id=typed_evidence.cost_model_id,
+            benchmark_id=typed_evidence.benchmark_id,
+            industry_benchmark_id=typed_evidence.industry_benchmark_id,
+            horizon_days=typed_evidence.horizon_days,
+            evidence_tier="forward",
+            return_basis=typed_evidence.return_basis or DEFAULT_RETURN_BASIS,
+        )
+        legacy_evidence = RecommendationRunEvidenceIdentity(
+            cost_model_id=raw_context.get("cost_model_id"),
+            benchmark_id=raw_context.get("benchmark_id"),
+            industry_benchmark_id=raw_context.get("industry_benchmark_id"),
+            horizon_days=raw_context.get("horizon_days"),
+            evidence_tier="forward",
+            return_basis=raw_context.get("return_basis") or DEFAULT_RETURN_BASIS,
+        )
+        if evidence != legacy_evidence:
+            raise ValueError("legacy/typed scheduled evidence identity parity mismatch")
+        legacy_cohort_payload = _build_snapshot_cohort(
+            screening_matrix=[dict(row) for row in input_value.screening_matrix],
+            recommendations=list(input_value.recommendations),
+        )
+        cohort_payload = snapshot_cohort_payload_from_body_result(body_result)
+        if _canonical_json(legacy_cohort_payload) != _canonical_json(cohort_payload):
+            raise ValueError("legacy/typed snapshot cohort v1 parity mismatch")
+        cohort = snapshot_cohort_from_body_result(body_result)
+
+        typed_temporal_values = {
+            "data_as_of_date": typed_context.as_of_date,
+            "temporal_mode": typed_context.temporal_mode,
+            "cutoff_selection": typed_context.cutoff_selection,
+            "cutoff_policy": typed_context.cutoff_policy,
+        }
+        for key, expected in typed_temporal_values.items():
+            if key in caller_config and caller_config[key] != expected:
+                raise ValueError(
+                    f"scheduled caller config {key} 與同次 typed BodyResult 不一致"
+                )
+
+        result_config = deepcopy(dict(caller_config))
+        result_config.update(
+            {
+                "scheduled_snapshot": True,
+                "research_only": True,
+                "decision_date": decision_date,
+                **typed_temporal_values,
+                "max_stocks": max_stocks,
+                "top_n": top_n,
+                "profile_id": "scheduled_daily_research_default_v1",
+                "profile_name": "Scheduled daily research default v1",
+                "look_ahead_check": "uses latest available data at scheduled run time only",
+                "snapshot_cohort": cohort_payload,
+                "safety_boundary": {
+                    "confirm": False,
+                    "writes_evidence_db": False,
+                    "auto_trading": False,
+                    "lifecycle_action": False,
+                },
+                "strategy_version_id": _required_identity_text(
+                    strategy.strategy_version_id, "strategy_version_id"
+                ),
+                "strategy_config_id": _required_identity_text(
+                    strategy.strategy_config_id, "strategy_config_id"
+                ),
+                "strategy_config_hash": _required_identity_text(
+                    strategy.strategy_config_hash, "strategy_config_hash"
+                ),
+                "strategy_config_schema": _required_identity_text(
+                    strategy.strategy_config_schema, "strategy_config_schema"
+                ),
+                "strategy_config_spec": _load_json_object(
+                    _required_identity_text(
+                        strategy.strategy_config_spec_json,
+                        "strategy_config_spec_json",
+                    ),
+                    "strategy_config_spec",
+                ),
+                "universe_id": _required_identity_text(
+                    universe.universe_id, "universe_id"
+                ),
+                "universe_hash": _required_identity_text(
+                    universe.universe_hash, "universe_hash"
+                ),
+                "universe_identity_schema": _required_identity_text(
+                    universe.universe_identity_schema,
+                    "universe_identity_schema",
+                ),
+                "universe_policy_id": _required_identity_text(
+                    universe.policy.universe_policy_id,
+                    "universe_policy_id",
+                ),
+                "universe_policy_hash": _required_identity_text(
+                    universe.policy.universe_policy_hash,
+                    "universe_policy_hash",
+                ),
+                "universe_policy_schema": _required_identity_text(
+                    universe.policy.universe_policy_schema,
+                    "universe_policy_schema",
+                ),
+                "universe_policy_spec": _load_json_object(
+                    _required_identity_text(
+                        universe.policy.universe_policy_spec_json,
+                        "universe_policy_spec_json",
+                    ),
+                    "universe_policy_spec",
+                ),
+                "universe_snapshot_id": _required_identity_text(
+                    universe.snapshot.universe_snapshot_id,
+                    "universe_snapshot_id",
+                ),
+                "universe_snapshot_hash": _required_identity_text(
+                    universe.snapshot.universe_snapshot_hash,
+                    "universe_snapshot_hash",
+                ),
+                "universe_snapshot_schema": _required_identity_text(
+                    universe.snapshot.universe_snapshot_schema,
+                    "universe_snapshot_schema",
+                ),
+                "universe_snapshot_source_provider_id": _required_identity_text(
+                    universe.snapshot.universe_snapshot_source_provider_id,
+                    "universe_snapshot_source_provider_id",
+                ),
+                "universe_snapshot_selected_codes_hash": _required_identity_text(
+                    universe.snapshot.universe_snapshot_selected_codes_hash,
+                    "universe_snapshot_selected_codes_hash",
+                ),
+                "universe_snapshot_spec": _load_json_object(
+                    _required_identity_text(
+                        universe.snapshot.universe_snapshot_spec_json,
+                        "universe_snapshot_spec_json",
+                    ),
+                    "universe_snapshot_spec",
+                ),
+                "cost_model_id": _required_identity_text(
+                    evidence.cost_model_id, "cost_model_id"
+                ),
+                "benchmark_id": _required_identity_text(
+                    evidence.benchmark_id, "benchmark_id"
+                ),
+                "horizon_days": evidence.horizon_days,
+                "evidence_tier": _required_identity_text(
+                    evidence.evidence_tier, "evidence_tier"
+                ),
+                "return_basis": _required_identity_text(
+                    evidence.return_basis, "return_basis"
+                ),
+            }
+        )
+        if evidence.industry_benchmark_id is not None:
+            result_config["industry_benchmark_id"] = evidence.industry_benchmark_id
+
+        raw_result_config = _canonical_json(result_config)
+        result_config_snapshot = RecommendationResultConfigSnapshot(
+            raw_result_config_json=raw_result_config,
+            config_sha256=_canonical_json_sha256(result_config),
+        )
+        return RecommendationPostprocessFacts(
+            result_id=body_result.result_id,
+            invocation_id=body_result.invocation_id,
+            created_at=input_value.context.created_at,
+            snapshot_cohort=cohort,
+            evidence_identity=evidence,
+            result_config_snapshot=result_config_snapshot,
+        )
+
+    return capture
 
 
 def _symbol_from_value(value: Any) -> str:
@@ -651,6 +937,59 @@ def _write_blocked_forward_candidate_receipt(
     return latest
 
 
+def _read_verified_saved_execution(
+    *,
+    composition: Any,
+    execution: Any,
+    receipt: Any,
+) -> Any:
+    """要求同一 execution 的 create-only receipt 與 canonical query readback 完全一致。"""
+
+    if execution.status is not ExecutionStatus.COMPLETED:
+        raise RuntimeError(
+            f"recommendation_execution_not_completed:{execution.status.value}"
+        )
+    if receipt.result_id != execution.result_id:
+        raise ValueError("recommendation_save_receipt_result_id_mismatch")
+    if receipt.index_status is not IndexStatus.INDEXED:
+        raise ValueError("recommendation_execution_save_not_indexed")
+    if not receipt.artifact_location:
+        raise ValueError("recommendation_execution_save_artifact_location_missing")
+
+    read_model = composition.queries.get(execution.result_id)
+    if read_model is None:
+        raise ValueError("recommendation_execution_query_readback_missing")
+    if read_model.execution is None or read_model.legacy_result is not None:
+        raise ValueError("recommendation_execution_query_readback_not_canonical")
+    saved = read_model.execution
+    if saved != execution:
+        raise ValueError("recommendation_execution_query_readback_payload_mismatch")
+    if read_model.result_id != receipt.result_id:
+        raise ValueError("recommendation_execution_query_result_id_mismatch")
+    if read_model.payload_hash != receipt.payload_hash:
+        raise ValueError("recommendation_execution_query_payload_hash_mismatch")
+    if read_model.artifact_location != receipt.artifact_location:
+        raise ValueError("recommendation_execution_query_artifact_location_mismatch")
+    if read_model.integrity_basis != "canonical_payload_and_index_verified":
+        raise ValueError("recommendation_execution_query_integrity_not_verified")
+
+    request_snapshot = saved.request.config_snapshot
+    if request_snapshot is None or execution.request.config_snapshot is None:
+        raise ValueError("recommendation_execution_caller_config_snapshot_missing")
+    if request_snapshot != execution.request.config_snapshot:
+        raise ValueError("recommendation_execution_caller_config_snapshot_changed")
+    result_config_snapshot = saved.context.result_config_snapshot
+    if result_config_snapshot is None:
+        raise ValueError("recommendation_execution_result_config_snapshot_missing")
+    if result_config_snapshot != execution.context.result_config_snapshot:
+        raise ValueError("recommendation_execution_result_config_snapshot_changed")
+    if saved.context.decision_at != execution.context.decision_at:
+        raise ValueError("recommendation_execution_decision_clock_changed")
+    if saved.context.available_at != execution.context.available_at:
+        raise ValueError("recommendation_execution_available_clock_changed")
+    return read_model
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_root = Path(args.output_root)
@@ -676,107 +1015,84 @@ def main(argv: list[str] | None = None) -> int:
         config = TWStockConfig(data_root=Path(args.data_root), output_root=output_root)
         recommendation_config = _scheduled_default_config()
         runtime_config = _runtime_config(recommendation_config)
-        service = RecommendationService(config)
-        recommendations = _with_fixed_threshold_metadata(service.run_recommendation(
-            config=runtime_config,
+        raw_caller_config = _canonical_json(recommendation_config)
+        request_config_snapshot = RecommendationConfigSnapshot(
+            raw_config_json=raw_caller_config,
+            raw_json_sha256="sha256:"
+            + hashlib.sha256(raw_caller_config.encode("utf-8")).hexdigest(),
+        )
+        service = RecommendationService(
+            config,
+            input_preparer=build_default_recommendation_input_preparer(config),
+            regime_service=RegimeService(config, use_persistent_history=True),
+        )
+        execution = service.execute_recommendation(
+            runtime_config=runtime_config,
             max_stocks=args.max_stocks,
             top_n=args.top_n,
-        ))
-        screening_matrix = list(getattr(service, "last_screening_matrix", []))
-        snapshot_cohort = _build_snapshot_cohort(
-            screening_matrix=screening_matrix,
-            recommendations=recommendations,
+            request_config_snapshot=request_config_snapshot,
+            postprocess_callback=_build_scheduled_postprocess_callback(
+                caller_config=recommendation_config,
+                decision_date=decision_date,
+                max_stocks=args.max_stocks,
+                top_n=args.top_n,
+            ),
+            created_at=datetime.fromisoformat(checked_at),
         )
+        if execution.status is not ExecutionStatus.COMPLETED:
+            raise RuntimeError(
+                f"recommendation_execution_not_completed:{execution.status.value}"
+            )
 
-        result_config = deepcopy(recommendation_config)
-        result_config.update(
-            {
-                "scheduled_snapshot": True,
-                "research_only": True,
-                "decision_date": decision_date,
-                "max_stocks": args.max_stocks,
-                "top_n": args.top_n,
-                "profile_id": "scheduled_daily_research_default_v1",
-                "profile_name": "Scheduled daily research default v1",
-                "look_ahead_check": "uses latest available data at scheduled run time only",
-                "snapshot_cohort": snapshot_cohort,
-                "safety_boundary": {
-                    "confirm": False,
-                    "writes_evidence_db": False,
-                    "auto_trading": False,
-                    "lifecycle_action": False,
-                },
-            }
-        )
-        run_context = deepcopy(getattr(service, "last_run_context", {}) or {})
-        # 排程推薦是自然前瞻研究來源；這個宣告會沿 importer／event／outcome
-        # 保存，不能由下游依 source name 猜測。
-        run_context["evidence_tier"] = "forward"
-        run_context["return_basis"] = DEFAULT_RETURN_BASIS
-        for identity_key in (
-            "universe_id",
-            "universe_hash",
-            "universe_identity_schema",
-            "universe_policy_id",
-            "universe_policy_hash",
-            "universe_policy_schema",
-            "universe_policy_spec",
-            "universe_snapshot_id",
-            "universe_snapshot_hash",
-            "universe_snapshot_schema",
-            "universe_snapshot_source_provider_id",
-            "universe_snapshot_selected_codes_hash",
-            "universe_snapshot_spec",
-            "strategy_config_id",
-            "strategy_config_hash",
-            "strategy_config_schema",
-            "strategy_config_spec",
-            "strategy_version_id",
-            "cost_model_id",
-            "benchmark_id",
-            "industry_benchmark_id",
-            "horizon_days",
-            "evidence_tier",
-            "return_basis",
-        ):
-            value = run_context.get(identity_key)
-            if value is not None and str(value).strip():
-                result_config[identity_key] = value
-
-        result = RecommendationResultDTO(
-            result_id=_build_result_id(now),
-            result_name=f"Scheduled recommendation snapshot {decision_date}",
-            config=result_config,
-            recommendations=recommendations,
-            regime=str(runtime_config.get("regime") or ""),
-            created_at=checked_at,
+        composition = build_recommendation_composition(config)
+        result_name = f"Scheduled recommendation snapshot {decision_date}"
+        receipt = composition.save_service.save_execution(
+            execution,
+            label=result_name,
             notes="Research-only scheduled snapshot; not trading advice.",
-            excluded_candidates_json=list(getattr(service, "last_excluded_candidates_json", [])),
-            screening_matrix_json=screening_matrix,
-            why_not_payload_json=list(getattr(service, "last_why_not_payload_json", [])),
-            liquidity_gate_payload_json=list(getattr(service, "last_liquidity_gate_payload_json", [])),
-            exclusion_quality=str(getattr(service, "last_exclusion_quality", "observed")),
-            exclusion_warnings_json=list(getattr(service, "last_exclusion_warnings_json", [])),
-            run_context=run_context,
         )
-
-        repository = RecommendationRepository(config)
-        result_id = repository.save_result(result)
+        read_model = _read_verified_saved_execution(
+            composition=composition,
+            execution=execution,
+            receipt=receipt,
+        )
+        saved_execution = read_model.execution
+        assert saved_execution is not None
+        result_id = saved_execution.result_id
+        result_config_snapshot = saved_execution.context.result_config_snapshot
+        if result_config_snapshot is None:
+            raise ValueError("recommendation_execution_result_config_snapshot_missing")
+        result_config = _load_json_object(
+            result_config_snapshot.raw_result_config_json,
+            "raw_result_config_json",
+        )
+        if _canonical_json_sha256(result_config) != result_config_snapshot.config_sha256:
+            raise ValueError("recommendation_execution_result_config_hash_mismatch")
+        snapshot_cohort = result_config.get("snapshot_cohort")
+        if not isinstance(snapshot_cohort, Mapping):
+            raise ValueError("recommendation_execution_snapshot_cohort_missing")
+        cohort_from_result = _snapshot_cohort_from_payload(snapshot_cohort)
+        if cohort_from_result != saved_execution.context.snapshot_cohort:
+            raise ValueError("recommendation_execution_snapshot_cohort_mismatch")
+        capture_summary = _execution_capture_summary(saved_execution)
+        recommendations = saved_execution.decision.items if saved_execution.decision else ()
         warnings = []
         if not recommendations:
             warnings.append("no_recommendations_returned")
-        if snapshot_cohort["missing_symbols"]:
+        if snapshot_cohort.get("missing_symbols"):
             warnings.append("snapshot_cohort_partial_source_coverage")
-        elif snapshot_cohort["degraded_symbols"]:
+        elif snapshot_cohort.get("degraded_symbols"):
             warnings.append("snapshot_cohort_degraded_screening_quality")
 
         forward_candidate: dict[str, Any] | None = None
         forward_calendar_observation: dict[str, Any] | None = None
         if args.forward_candidate_output_root:
-            source_path = repository.runs_dir / f"{result_id}.json"
+            source_path = composition.store.artifact_root / str(receipt.artifact_location)
             if source_path.is_file():
                 try:
-                    actual_decision_at = _recommendation_decision_at(source_path)
+                    actual_decision_at = saved_execution.context.decision_at
+                    if actual_decision_at is None:
+                        raise ValueError("recommendation_decision_at_missing")
                     # The recommendation service records its decision clock
                     # after the wrapper's initial ``checked_at``.  Re-read
                     # the wall clock after persistence so a normal, slightly
@@ -815,10 +1131,11 @@ def main(argv: list[str] | None = None) -> int:
                     forward_candidate = ForwardPositionThesisCandidateProducer(
                         args.forward_candidate_output_root,
                         calendar_cache_path=str(forward_calendar_path),
-                    ).produce(
-                        source_path,
+                    ).produce_verified_read(
+                        read_model,
+                        receipt,
+                        source_artifact_path=source_path,
                         policy_path=args.forward_thesis_policy_path,
-                        decision_at=actual_decision_at,
                     )
                     if str(forward_candidate.get("status")) == "blocked":
                         warnings.append("forward_position_thesis_candidate_blocked")
@@ -838,20 +1155,20 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "status": "passed",
                 "result_id": result_id,
-                "result_name": result.result_name,
+                "result_name": result_name,
                 "recommendations_count": len(recommendations),
-                "screening_matrix_rows": len(result.screening_matrix_json),
-                "snapshot_cohort": snapshot_cohort,
-                "excluded_candidates_rows": len(result.excluded_candidates_json),
-                "why_not_payload_rows": len(result.why_not_payload_json),
-                "liquidity_gate_payload_rows": len(result.liquidity_gate_payload_json),
-                "exclusion_quality": result.exclusion_quality,
-                "exclusion_warnings": list(result.exclusion_warnings_json),
+                "screening_matrix_rows": len(capture_summary["screening_matrix"]),
+                "snapshot_cohort": dict(snapshot_cohort),
+                "excluded_candidates_rows": len(capture_summary["excluded_candidates"]),
+                "why_not_payload_rows": len(capture_summary["why_not_payload"]),
+                "liquidity_gate_payload_rows": len(capture_summary["liquidity_gate_payload"]),
+                "exclusion_quality": capture_summary["exclusion_quality"],
+                "exclusion_warnings": list(capture_summary["exclusion_warnings"]),
                 "warnings": warnings,
                 "forward_position_thesis": forward_candidate,
                 "forward_calendar_observation": forward_calendar_observation,
-                "db_path": str(repository.db_path),
-                "runs_dir": str(repository.runs_dir),
+                "db_path": str(composition.store.database_path),
+                "runs_dir": str(composition.runs_dir),
                 "writes_recommendation_result": True,
                 "writes_evidence_db": False,
                 "auto_trading": False,
@@ -892,7 +1209,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"decision_date={decision_date}",
                     f"result_id={result_id}",
                     f"recommendations_count={len(recommendations)}",
-                    f"screening_matrix_rows={len(result.screening_matrix_json)}",
+                    f"screening_matrix_rows={len(capture_summary['screening_matrix'])}",
                     "writes_evidence_db=false",
                     "auto_trading=false",
                     "lifecycle_action=false",

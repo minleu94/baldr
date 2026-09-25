@@ -133,7 +133,7 @@ def _with_fetch_diagnostics(
     diagnostics = tuple(result.diagnostics) + tuple(fetch_diagnostics)
     diagnostics_by_source = dict(result.diagnostics_by_source or {})
     for diagnostic in fetch_diagnostics:
-        source = diagnostic.factor_name.rsplit(".", maxsplit=1)[-1]
+        source = diagnostic.market or "unknown"
         diagnostics_by_source[source] = diagnostics_by_source.get(source, 0) + 1
     return MonthlyRevenueAvailabilityHistoryResult(
         rows=result.rows,

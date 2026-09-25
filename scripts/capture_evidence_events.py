@@ -24,7 +24,7 @@ from app_module.evidence_event_importers import (
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
 from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from data_module.config import TWStockConfig
 
 
@@ -163,12 +163,12 @@ def main(argv: list[str] | None = None) -> int:
 
     repository = EvidenceEventRepository(config)
     event_service = EvidenceEventService(repository)
-    recommendation_repository = RecommendationRepository(config)
+    recommendation_queries = build_recommendation_execution_queries(config)
     ddd_importers = _decision_desk_importers(config, _decision_date_for_snapshot(args))
     capture_service = EvidenceCaptureService(
         event_service,
         {
-            "recommendation": RecommendationEvidenceImporter(recommendation_repository),
+            "recommendation": RecommendationEvidenceImporter(recommendation_queries),
             **ddd_importers,
         },
     )

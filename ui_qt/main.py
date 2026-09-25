@@ -91,7 +91,7 @@ from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
 
 # 導入策略模組以觸發註冊
-import app_module.strategies
+import decision_module.strategies
 from ui_qt.views.strong_stocks_view import StrongStocksView
 from ui_qt.views.weak_stocks_view import WeakStocksView
 from ui_qt.views.market_regime_view import MarketRegimeView

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
-from typing import Optional, Sequence
+from typing import Mapping, Optional, Sequence
 from typing import Any
 
 
@@ -19,9 +19,10 @@ def format_regime_names(regimes: Sequence[Optional[str]]) -> str:
 
 def _decimal_value(value: Any) -> Decimal | None:
     try:
-        return Decimal(str(value))
+        parsed = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         return None
+    return parsed if parsed.is_finite() else None
 
 
 def format_profile_weight(value: Any) -> str:
@@ -262,6 +263,169 @@ def ranking_value_label(kind: str, value: Any) -> str:
     return mappings.get(kind, {}).get(text, text or "未設定")
 
 
+def recommendation_item_to_view_row(
+    item: Any,
+    *,
+    ml_status: str,
+    ml_projection: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """把 sealed RecommendationItem 投影成既有 Qt 表格欄位。
+
+    校準欄只接受已驗證 read model 的逐股 projection；其餘狀態維持未知或不可得。
+    """
+
+    percentile_bp = getattr(item, "score_percentile_bp", None)
+    universe_date = getattr(item, "eligible_universe_date", None)
+    if universe_date is not None:
+        universe_date = universe_date.isoformat()
+    projection = ml_projection if ml_status == "verified" else None
+
+    def projected_value(*names: str) -> Any:
+        if projection is None:
+            return None
+        for name in names:
+            value = projection.get(name)
+            if value is not None and value != "":
+                return value
+        return None
+
+    field_status = {
+        "not_requested": "unavailable",
+        "unknown": "unknown",
+        "unavailable": "unavailable",
+        "verified": "verified" if projection is not None else "unavailable",
+        "legacy_saved_fields": "verified" if projection is not None else "unavailable",
+    }.get(ml_status, "unknown")
+
+    row: dict[str, Any] = {
+        "證券代號": item.stock_code,
+        "證券名稱": item.stock_name or item.stock_code,
+        "收盤價": item.close_price,
+        "漲幅%": item.price_change,
+        "總分": item.rule_score,
+        "指標分": item.indicator_score,
+        "圖形分": item.pattern_score,
+        "成交量分": item.volume_score,
+        "推薦理由": item.reason_text or "",
+        "產業": item.industry or "",
+        "Regime匹配": (
+            "是" if item.regime_match is True
+            else "否" if item.regime_match is False
+            else "未知"
+        ),
+        "score_percentile_bp": percentile_bp,
+        "eligible_universe_size": item.eligible_universe_size,
+        "eligible_universe_date": universe_date,
+        "ranking_method": item.ranking_method,
+        "threshold_mode": item.threshold_mode,
+        "ranking_score_bp": projected_value("ranking_score_bp"),
+        "calibrated_probability_bp": projected_value("calibrated_probability_bp"),
+        "calibrated_probability_status": (
+            projected_value("calibrated_probability_status") or field_status
+        ),
+        "after_cost_profit_probability_bp": projected_value(
+            "after_cost_profit_probability_bp"
+        ),
+        "after_cost_profit_probability_status": (
+            projected_value("after_cost_profit_probability_status") or field_status
+        ),
+        "evidence_confidence": projected_value("evidence_confidence") or "",
+        "sample_size": projected_value("sample_size"),
+        "cost_basis_bp": projected_value("cost_basis_bp"),
+        "calibration_model_version": (
+            projected_value("calibration_model_version", "model_version", "model_id") or ""
+        ),
+        "calibration_dataset_version": (
+            projected_value("calibration_dataset_version", "dataset_version", "dataset_id") or ""
+        ),
+        "calibration_horizon": projected_value(
+            "calibration_horizon", "horizon_trading_days", "horizon"
+        ) or "",
+        "calibration_status": projected_value("calibration_status", "status") or field_status,
+        "calibration_source": projected_value("calibration_source", "source") or "",
+        "calibration_warnings": list(
+            projected_value("calibration_warnings", "warnings") or ()
+        ),
+        "calibration_source_trace": list(
+            projected_value("calibration_source_trace", "source_trace") or ()
+        ),
+        "calibration_probability_transform_id": (
+            projected_value("calibration_probability_transform_id", "probability_transform_id") or ""
+        ),
+        "calibration_probability_baseline_id": (
+            projected_value("calibration_probability_baseline_id", "probability_baseline_id") or ""
+        ),
+        "calibration_probability_baseline_kind": (
+            projected_value("calibration_probability_baseline_kind", "probability_baseline_kind") or ""
+        ),
+        "calibration_probability_baseline_probability_bp": projected_value(
+            "calibration_probability_baseline_probability_bp",
+            "probability_baseline_probability_bp",
+        ),
+        "calibration_raw_probability_bp": projected_value(
+            "calibration_raw_probability_bp", "raw_calibrated_probability_bp"
+        ),
+        "calibration_raw_after_cost_probability_bp": projected_value(
+            "calibration_raw_after_cost_probability_bp",
+            "raw_after_cost_profit_probability_bp",
+        ),
+        "calibration_provenance": {
+            "training_provenance": dict(projected_value("training_provenance") or {}),
+            "inference_provenance": dict(projected_value("inference_provenance") or {}),
+            "provenance_compatibility": dict(
+                projected_value("provenance_compatibility") or {}
+            ),
+            "provenance_status": projected_value("provenance_status") or "unavailable",
+        },
+    }
+    if item.threshold_mode == "quantile":
+        percentile = (
+            Decimal(percentile_bp) / Decimal(100)
+            if percentile_bp is not None
+            else None
+        )
+        row.update(
+            {
+                "百分位": (
+                    f"{percentile:.2f}%"
+                    if percentile is not None
+                    else "N/A"
+                ),
+                "母體數": (
+                    item.eligible_universe_size
+                    if item.eligible_universe_size is not None
+                    else "N/A"
+                ),
+                "排名日期": universe_date or "N/A",
+                "排名方法": item.ranking_method or "N/A",
+                "門檻模式": "百分位",
+            }
+        )
+    elif item.threshold_mode == "fixed":
+        row["門檻模式"] = "固定門檻"
+    else:
+        row["門檻模式"] = "未知"
+    return row
+
+
+def _recommendation_value(
+    recommendation: Any,
+    execution_field: str,
+    legacy_field: str,
+    default: Any = None,
+) -> Any:
+    """同時呈現 sealed item 與歷史 DTO，未知值維持 None。"""
+
+    if hasattr(recommendation, execution_field):
+        return getattr(recommendation, execution_field)
+    return getattr(recommendation, legacy_field, default)
+
+
+def _score_text(value: Any) -> str:
+    numeric = _decimal_value(value)
+    return f"{numeric:.1f}" if numeric is not None else "未知"
+
+
 def generate_explain_panel(recommendation: Any) -> str:
     """生成 Explain 面板 v1：推薦分數拆解 + 風險點（Phase 3.3）
 
@@ -276,51 +440,74 @@ def generate_explain_panel(recommendation: Any) -> str:
     html_text += "<table style='width: 100%; border-collapse: collapse; margin: 5px 0;'>"
 
     # 總分
-    total_score = recommendation.total_score
-    score_color = '#16a34a' if total_score >= 60 else '#f59e0b' if total_score >= 50 else '#dc2626'
+    total_score = _recommendation_value(recommendation, "rule_score", "total_score")
+    indicator_score = recommendation.indicator_score
+    pattern_score = recommendation.pattern_score
+    volume_score = recommendation.volume_score
+    total_number = _decimal_value(total_score)
+    score_color = (
+        '#16a34a' if total_number is not None and total_number >= 60
+        else '#f59e0b' if total_number is not None and total_number >= 50
+        else '#dc2626' if total_number is not None
+        else '#6b7280'
+    )
     html_text += f"""
     <tr style='background-color: #2d2d2d;'>
         <td style='padding: 5px; border: 1px solid #444;'><b>總分</b></td>
         <td style='padding: 5px; border: 1px solid #444; text-align: right;'>
-            <span style='color: {score_color}; font-weight: bold; font-size: 1.1em;'>{total_score:.1f}</span>
+            <span style='color: {score_color}; font-weight: bold; font-size: 1.1em;'>{_score_text(total_score)}</span>
         </td>
     </tr>
     """
 
     # 各子分數
-    indicator_score = recommendation.indicator_score
-    pattern_score = recommendation.pattern_score
-    volume_score = recommendation.volume_score
-
     # 指標分數
-    indicator_color = '#16a34a' if indicator_score >= 60 else '#f59e0b' if indicator_score >= 50 else '#dc2626'
+    indicator_number = _decimal_value(indicator_score)
+    indicator_color = (
+        '#16a34a' if indicator_number is not None and indicator_number >= 60
+        else '#f59e0b' if indicator_number is not None and indicator_number >= 50
+        else '#dc2626' if indicator_number is not None
+        else '#6b7280'
+    )
     html_text += f"""
     <tr style='background-color: #1e1e1e;'>
         <td style='padding: 5px; border: 1px solid #444;'>技術指標分數</td>
         <td style='padding: 5px; border: 1px solid #444; text-align: right;'>
-            <span style='color: {indicator_color};'>{indicator_score:.1f}</span>
+            <span style='color: {indicator_color};'>{_score_text(indicator_score)}</span>
         </td>
     </tr>
     """
 
     # 圖形分數
-    pattern_color = '#16a34a' if pattern_score >= 60 else '#f59e0b' if pattern_score >= 50 else '#dc2626'
+    pattern_number = _decimal_value(pattern_score)
+    pattern_color = (
+        '#16a34a' if pattern_number is not None and pattern_number >= 60
+        else '#f59e0b' if pattern_number is not None and pattern_number >= 50
+        else '#dc2626' if pattern_number is not None
+        else '#6b7280'
+    )
     html_text += f"""
     <tr style='background-color: #1e1e1e;'>
         <td style='padding: 5px; border: 1px solid #444;'>圖形模式分數</td>
         <td style='padding: 5px; border: 1px solid #444; text-align: right;'>
-            <span style='color: {pattern_color};'>{pattern_score:.1f}</span>
+            <span style='color: {pattern_color};'>{_score_text(pattern_score)}</span>
         </td>
     </tr>
     """
 
     # 成交量分數
-    volume_color = '#16a34a' if volume_score >= 60 else '#f59e0b' if volume_score >= 50 else '#dc2626'
+    volume_number = _decimal_value(volume_score)
+    volume_color = (
+        '#16a34a' if volume_number is not None and volume_number >= 60
+        else '#f59e0b' if volume_number is not None and volume_number >= 50
+        else '#dc2626' if volume_number is not None
+        else '#6b7280'
+    )
     html_text += f"""
     <tr style='background-color: #1e1e1e;'>
         <td style='padding: 5px; border: 1px solid #444;'>成交量分數</td>
         <td style='padding: 5px; border: 1px solid #444; text-align: right;'>
-            <span style='color: {volume_color};'>{volume_score:.1f}</span>
+            <span style='color: {volume_color};'>{_score_text(volume_score)}</span>
         </td>
     </tr>
     """
@@ -329,13 +516,17 @@ def generate_explain_panel(recommendation: Any) -> str:
 
     html_text += "<p style='margin: 10px 0 5px 0;'><b>排名門檻：</b></p>"
     html_text += "<ul style='margin: 5px 0; padding-left: 20px;'>"
-    html_text += f"<li>門檻模式：{ranking_value_label('threshold_mode', recommendation.threshold_mode)}</li>"
-    if recommendation.ranking_method:
-        html_text += f"<li>排名方法：{ranking_value_label('ranking_method', recommendation.ranking_method)}</li>"
-    if recommendation.score_percentile_bp is not None:
-        html_text += f"<li>分數百分位：{recommendation.score_percentile_bp / 100:.1f}%</li>"
-    if recommendation.eligible_universe_size is not None:
-        html_text += f"<li>合格母體數：{recommendation.eligible_universe_size} 檔</li>"
+    threshold_mode = getattr(recommendation, "threshold_mode", None)
+    ranking_method = getattr(recommendation, "ranking_method", None)
+    score_percentile_bp = getattr(recommendation, "score_percentile_bp", None)
+    eligible_universe_size = getattr(recommendation, "eligible_universe_size", None)
+    html_text += f"<li>門檻模式：{ranking_value_label('threshold_mode', threshold_mode)}</li>"
+    if ranking_method:
+        html_text += f"<li>排名方法：{ranking_value_label('ranking_method', ranking_method)}</li>"
+    if score_percentile_bp is not None:
+        html_text += f"<li>分數百分位：{Decimal(score_percentile_bp) / Decimal(100):.1f}%</li>"
+    if eligible_universe_size is not None:
+        html_text += f"<li>合格母體數：{eligible_universe_size} 檔</li>"
     html_text += "</ul>"
 
     # 風險點提示
@@ -345,31 +536,62 @@ def generate_explain_panel(recommendation: Any) -> str:
     risk_points = []
 
     # 檢查各項分數是否偏低
-    if indicator_score < 50:
-        risk_points.append(f"技術指標分數偏低（{indicator_score:.1f}），可能缺乏技術面支撐")
-    if pattern_score < 40:
-        risk_points.append(f"圖形模式分數偏低（{pattern_score:.1f}），圖形尚未完全形成")
-    if volume_score < 50:
-        risk_points.append(f"成交量分數偏低（{volume_score:.1f}），可能缺乏資金關注")
+    if indicator_number is not None and indicator_number < 50:
+        risk_points.append(f"技術指標分數偏低（{_score_text(indicator_score)}），可能缺乏技術面支撐")
+    if pattern_number is not None and pattern_number < 40:
+        risk_points.append(f"圖形模式分數偏低（{_score_text(pattern_score)}），圖形尚未完全形成")
+    if volume_number is not None and volume_number < 50:
+        risk_points.append(f"成交量分數偏低（{_score_text(volume_score)}），可能缺乏資金關注")
 
     # 檢查總分
-    if total_score < 50:
-        risk_points.append(f"總分偏低（{total_score:.1f}），綜合評分不足，建議謹慎")
-    elif total_score < 60:
-        risk_points.append(f"總分中等（{total_score:.1f}），建議觀察後續表現")
+    if total_number is not None and total_number < 50:
+        risk_points.append(f"總分偏低（{_score_text(total_score)}），綜合評分不足，建議謹慎")
+    elif total_number is not None and total_number < 60:
+        risk_points.append(f"總分中等（{_score_text(total_score)}），建議觀察後續表現")
 
     # 檢查 Regime 匹配
-    if not recommendation.regime_match:
+    regime_match = getattr(recommendation, "regime_match", None)
+    if regime_match is False:
         risk_points.append("市場狀態不匹配，策略可能不適用當前市場環境")
 
     # 檢查價格變化
-    if recommendation.price_change < 0:
-        risk_points.append(f"價格下跌（{recommendation.price_change:.1f}%），需注意趨勢反轉風險")
-    elif recommendation.price_change > 10:
-        risk_points.append(f"價格漲幅較大（{recommendation.price_change:.1f}%），需注意追高風險")
+    price_change = _decimal_value(getattr(recommendation, "price_change", None))
+    if price_change is not None and price_change < 0:
+        risk_points.append(f"價格下跌（{_score_text(price_change)}%），需注意趨勢反轉風險")
+    elif price_change is not None and price_change > 10:
+        risk_points.append(f"價格漲幅較大（{_score_text(price_change)}%），需注意追高風險")
 
     if not risk_points:
-        risk_points.append("✓ 各項指標表現良好，風險較低")
+        complete_positive_evidence = (
+            total_number is not None
+            and total_number >= 60
+            and indicator_number is not None
+            and indicator_number >= 60
+            and pattern_number is not None
+            and pattern_number >= 60
+            and volume_number is not None
+            and volume_number >= 60
+            and regime_match is True
+            and price_change is not None
+            and price_change <= 10
+        )
+        known_evidence = any(
+            value is not None
+            for value in (
+                total_number,
+                indicator_number,
+                pattern_number,
+                volume_number,
+                regime_match,
+                price_change,
+            )
+        )
+        if complete_positive_evidence:
+            risk_points.append("已提供分數、Regime 與漲幅未顯示明確風險；仍須依資料日期與其他限制判讀")
+        elif known_evidence:
+            risk_points.append("目前已提供欄位未辨識額外風險；缺少資料不代表風險較低")
+        else:
+            risk_points.append("風險評估資料不足，無法判定目前風險")
 
     for risk in risk_points:
         html_text += f"<li style='margin: 3px 0; color: #e0e0e0;'>{risk}</li>"
@@ -394,36 +616,45 @@ def generate_why_not(recommendation: Any, config: dict[str, Any]) -> str:
 
     # 檢查各子分數（相對於理想值）
     # 理想值：各子分數都應該在 60 以上才算優秀
-    ideal_score = 60.0
+    ideal_score = 60
 
-    if recommendation.indicator_score < ideal_score:
-        gap = ideal_score - recommendation.indicator_score
+    indicator_score = _decimal_value(recommendation.indicator_score)
+    pattern_score = _decimal_value(recommendation.pattern_score)
+    volume_score = _decimal_value(recommendation.volume_score)
+    price_change = _decimal_value(getattr(recommendation, "price_change", None))
+    total_score = _decimal_value(
+        _recommendation_value(recommendation, "rule_score", "total_score")
+    )
+    ideal_number = Decimal(ideal_score)
+
+    if indicator_score is not None and indicator_score < ideal_number:
+        gap = ideal_number - indicator_score
         why_not_items.append({
             'item': '技術指標分數',
-            'current': f'{recommendation.indicator_score:.1f}',
-            'ideal': f'{ideal_score:.1f}',
+            'current': _score_text(indicator_score),
+            'ideal': f'{ideal_number:.1f}',
             'gap': f'{gap:.1f}',
             'severity': 'high' if gap > 20 else 'medium' if gap > 10 else 'low',
             'hint': '可考慮等待更多技術指標訊號'
         })
 
-    if recommendation.pattern_score < ideal_score:
-        gap = ideal_score - recommendation.pattern_score
+    if pattern_score is not None and pattern_score < ideal_number:
+        gap = ideal_number - pattern_score
         why_not_items.append({
             'item': '圖形模式分數',
-            'current': f'{recommendation.pattern_score:.1f}',
-            'ideal': f'{ideal_score:.1f}',
+            'current': _score_text(pattern_score),
+            'ideal': f'{ideal_number:.1f}',
             'gap': f'{gap:.1f}',
             'severity': 'high' if gap > 20 else 'medium' if gap > 10 else 'low',
             'hint': '圖形模式尚未完全形成'
         })
 
-    if recommendation.volume_score < ideal_score:
-        gap = ideal_score - recommendation.volume_score
+    if volume_score is not None and volume_score < ideal_number:
+        gap = ideal_number - volume_score
         why_not_items.append({
             'item': '成交量分數',
-            'current': f'{recommendation.volume_score:.1f}',
-            'ideal': f'{ideal_score:.1f}',
+            'current': _score_text(volume_score),
+            'ideal': f'{ideal_number:.1f}',
             'gap': f'{gap:.1f}',
             'severity': 'medium' if gap > 15 else 'low',
             'hint': '成交量可能尚未明顯放大'
@@ -431,32 +662,32 @@ def generate_why_not(recommendation: Any, config: dict[str, Any]) -> str:
 
     # 檢查篩選條件（如果不符合會被直接過濾）
     filters = config.get('filters', {})
-    price_change_min = filters.get('price_change_min', 0.0)
-    if recommendation.price_change < price_change_min:
-        gap = price_change_min - recommendation.price_change
+    minimum_change = _decimal_value(filters.get('price_change_min'))
+    maximum_change = _decimal_value(filters.get('price_change_max'))
+    if price_change is not None and minimum_change is not None and price_change < minimum_change:
+        gap = minimum_change - price_change
         why_not_items.append({
             'item': '漲幅篩選',
-            'current': f'{recommendation.price_change:.1f}%',
-            'required': f'{price_change_min:.1f}%',
-            'gap': f'{gap:.1f}%',
+            'current': f'{_score_text(price_change)}%',
+            'required': f'{_score_text(minimum_change)}%',
+            'gap': f'{_score_text(gap)}%',
             'severity': 'high',
             'hint': '不符合漲幅篩選條件，可能被過濾'
         })
 
-    price_change_max = filters.get('price_change_max', 100.0)
-    if recommendation.price_change > price_change_max:
-        gap = recommendation.price_change - price_change_max
+    if price_change is not None and maximum_change is not None and price_change > maximum_change:
+        gap = price_change - maximum_change
         why_not_items.append({
             'item': '漲幅上限',
-            'current': f'{recommendation.price_change:.1f}%',
-            'required': f'{price_change_max:.1f}%',
-            'gap': f'{gap:.1f}%',
+            'current': f'{_score_text(price_change)}%',
+            'required': f'{_score_text(maximum_change)}%',
+            'gap': f'{_score_text(gap)}%',
             'severity': 'medium',
             'hint': '漲幅過大，可能不符合策略要求'
         })
 
     # 檢查 Regime 匹配
-    if not recommendation.regime_match:
+    if getattr(recommendation, "regime_match", None) is False:
         why_not_items.append({
             'item': '市場狀態匹配',
             'current': '不匹配',
@@ -467,19 +698,31 @@ def generate_why_not(recommendation: Any, config: dict[str, Any]) -> str:
         })
 
     # 總分相對排名提示（如果總分較低）
-    if recommendation.total_score < 50:
+    if total_score is not None and total_score < 50:
         why_not_items.append({
             'item': '總分偏低',
-            'current': f'{recommendation.total_score:.1f}',
+            'current': _score_text(total_score),
             'ideal': '60.0+',
-            'gap': f'{60 - recommendation.total_score:.1f}',
+            'gap': _score_text(Decimal(60) - total_score),
             'severity': 'high',
             'hint': '總分較低，可能排名較後'
         })
 
     # 格式化輸出
     if not why_not_items:
-        return "<div style='line-height: 1.6;'><p style='color: #16a34a;'><b>✓ 所有條件均符合，分數表現優秀</b></p></div>"
+        has_complete_evidence = (
+            indicator_score is not None
+            and pattern_score is not None
+            and volume_score is not None
+            and price_change is not None
+            and total_score is not None
+            and getattr(recommendation, "regime_match", None) is True
+            and minimum_change is not None
+            and maximum_change is not None
+        )
+        if has_complete_evidence:
+            return "<div style='line-height: 1.6;'><p style='color: #16a34a;'><b>已提供資料未顯示明確排名疑慮；仍須依其他風險限制判讀</b></p></div>"
+        return "<div style='line-height: 1.6;'><p style='color: #6b7280;'><b>分數或篩選資料不足，無法判定排名疑慮</b></p></div>"
 
     html_text = "<div style='line-height: 1.6;'>"
     html_text += "<p style='margin: 5px 0;'><b>可能影響排名的因素：</b></p>"

@@ -1,70 +1,61 @@
-"""RecommendationView 執行驗證與 service request。"""
+"""RecommendationView 執行驗證與 sealed execution request。"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import inspect
+from copy import deepcopy
+from dataclasses import dataclass, field
+import hashlib
+import json
 from typing import Any, Callable
+
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    RecommendationConfigSnapshot,
+    RecommendationExecution,
+)
+from app_module.recommendation.execute import execute_recommendation
 
 
 ProgressCallback = Callable[[str, int], None]
 CancellationCallback = Callable[[], bool]
 
 
-def _supports_named_keyword(method: Any, name: str) -> bool:
-    """檢查 service 是否支援指定 callback keyword，保留舊替身相容性。"""
+def _config_snapshot(
+    config: dict[str, Any],
+) -> tuple[dict[str, Any], RecommendationConfigSnapshot]:
+    """複製 caller 設定並保存其不可變 JSON／hash 快照。"""
 
-    try:
-        parameters = inspect.signature(method).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        parameter.name == name
-        or parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters
+    copied = deepcopy(config)
+    # 這個來源標記只保存在 request snapshot；execute() 會從 runtime
+    # config 移除，避免影響規則計算或策略選擇。
+    copied["manual_qt_snapshot"] = True
+    raw_json = json.dumps(
+        copied,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
     )
-
-
-def _supports_explicit_keyword(method: Any, name: str) -> bool:
-    """只接受明確宣告的 keyword，避免舊 variadic double 改變呼叫形狀。"""
-
-    try:
-        parameters = inspect.signature(method).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(parameter.name == name for parameter in parameters)
-
-
-def _invoke_with_optional_cancellation(
-    method: Any,
-    *,
-    cancellation_callback: CancellationCallback | None,
-    progress_callback: ProgressCallback | None = None,
-    **kwargs: Any,
-) -> Any:
-    """只對新版 service 傳遞合作式取消 callback。
-
-    RecommendationService 的既有介面沒有取消參數；透過簽章檢查只在
-    service 明確支援時注入 callback，讓舊 service double 與既有呼叫契約
-    維持不變。
-    """
-
-    call_kwargs = dict(kwargs)
-    if progress_callback is not None and _supports_explicit_keyword(method, "progress_callback"):
-        call_kwargs["progress_callback"] = progress_callback
-    if cancellation_callback is not None:
-        if _supports_named_keyword(method, "cancel_callback"):
-            call_kwargs["cancel_callback"] = cancellation_callback
-        elif _supports_named_keyword(method, "cancellation_callback"):
-            call_kwargs["cancellation_callback"] = cancellation_callback
-    return method(**call_kwargs)
+    snapshot = RecommendationConfigSnapshot(
+        raw_config_json=raw_json,
+        raw_json_sha256="sha256:" + hashlib.sha256(raw_json.encode("utf-8")).hexdigest(),
+    )
+    return copied, snapshot
 
 
 @dataclass(frozen=True)
 class RecommendationExecutionRequest:
+    """凍結一次 Qt caller 設定，回傳同次不可變 execution。"""
+
     config: dict[str, Any]
     max_stocks: int = 200
     top_n: int = 50
+    config_snapshot: RecommendationConfigSnapshot = field(init=False)
+
+    def __post_init__(self) -> None:
+        copied, snapshot = _config_snapshot(self.config)
+        object.__setattr__(self, "config", copied)
+        object.__setattr__(self, "config_snapshot", snapshot)
 
     def validation_error(self) -> str | None:
         if not self.config.get("patterns", {}).get("selected", []):
@@ -80,34 +71,50 @@ class RecommendationExecutionRequest:
         *,
         cancellation_callback: CancellationCallback | None = None,
         detailed_progress: bool = False,
-    ) -> Any:
-        if progress_callback:
-            progress_callback("讀取股票數據...", 10)
-        if cancellation_callback is not None and cancellation_callback():
-            if progress_callback:
-                progress_callback("已取消：推薦分析尚未開始", 10)
-            return []
+    ) -> RecommendationExecution:
+        """直接呼叫 execution use case，不投影成 legacy DTO list。"""
 
-        # 舊 callback 只收到原本的兩個 checkpoint；UI 另行要求詳細進度時，
-        # 才加入可量化的候選範圍、規則分析與結果整理階段。
-        if detailed_progress and progress_callback:
-            progress_callback("建立分析範圍...", 25)
-            progress_callback("執行推薦規則...", 35)
+        def report_progress(stage: str, percentage: int) -> None:
+            if progress_callback is None:
+                return
+            if stage == "recommendation_started":
+                progress_callback("讀取股票數據...", percentage)
+            elif stage == "recommendation_body_started":
+                if detailed_progress:
+                    progress_callback("建立分析範圍...", 25)
+                progress_callback("執行推薦規則...", percentage)
+            elif stage == "recommendation_body_finished":
+                progress_callback("整理推薦結果...", percentage)
+            elif stage == "recommendation_cancelled":
+                progress_callback("分析已取消", percentage)
+            elif stage == "recommendation_execution_finished":
+                progress_callback("分析完成", percentage)
 
-        recommendations = _invoke_with_optional_cancellation(
-            recommendation_service.run_recommendation,
-            cancellation_callback=cancellation_callback,
-            progress_callback=progress_callback,
-            config=self.config,
+        if progress_callback is not None and not detailed_progress:
+            def progress_without_details(stage: str, percentage: int) -> None:
+                if stage in {"recommendation_started", "recommendation_cancelled", "recommendation_execution_finished"}:
+                    report_progress(stage, percentage)
+
+            use_case_progress: ProgressCallback | None = progress_without_details
+        else:
+            use_case_progress = report_progress if progress_callback is not None else None
+
+        # 從 request snapshot 還原乾淨副本；caller 或其他 UI state 後續變更
+        # 不會改寫已送出的推薦設定。
+        runtime_config = json.loads(self.config_snapshot.raw_config_json)
+        runtime_config.pop("manual_qt_snapshot", None)
+        execution = execute_recommendation(
+            recommendation_service,
+            runtime_config,
             max_stocks=self.max_stocks,
             top_n=self.top_n,
+            request_config_snapshot=self.config_snapshot,
+            cancel=cancellation_callback,
+            progress=use_case_progress,
         )
-        if cancellation_callback is not None and cancellation_callback():
-            if progress_callback:
-                progress_callback("已取消：推薦分析結果未套用", 90)
-            return []
-        if detailed_progress and progress_callback:
-            progress_callback("整理推薦結果...", 90)
-        if progress_callback:
-            progress_callback("分析完成", 100)
-        return recommendations
+        if type(execution) is not RecommendationExecution:
+            raise TypeError("推薦 execution use case 必須回傳 RecommendationExecution")
+        if execution.status is not ExecutionStatus.COMPLETED:
+            # cancelled / failed 是具名 terminal outcome，不以空 list 代替。
+            return execution
+        return execution

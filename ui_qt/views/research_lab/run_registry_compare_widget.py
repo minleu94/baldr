@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 from PySide6.QtCore import QSize, QSignalBlocker, Qt
@@ -66,12 +66,14 @@ class RunRegistryCompareWidget(QWidget):
         research_run_service: Any,
         *,
         comparison_service: ResearchRunComparisonService | None = None,
+        on_open_recommendation_run: Callable[[ResearchRunMetadataDTO], object] | None = None,
         page_size: int = 25,
         parent=None,
     ):
         super().__init__(parent)
         self.research_run_service = research_run_service
         self.comparison_service = comparison_service or ResearchRunComparisonService()
+        self.on_open_recommendation_run = on_open_recommendation_run
         self.page_size = page_size
         self.current_page = 1
         self._loaded_once = False
@@ -177,6 +179,15 @@ class RunRegistryCompareWidget(QWidget):
         self.compare_button.clicked.connect(self.compare_selected_runs)
         self.compare_button.setEnabled(False)
         page_row.addWidget(self.compare_button)
+        self.open_recommendation_button = QPushButton("開啟推薦回放")
+        self.open_recommendation_button.setToolTip(
+            "只開啟一筆已保存的推薦回放 DTO；不會重新執行回測。"
+        )
+        self.open_recommendation_button.clicked.connect(
+            self.open_selected_recommendation_run
+        )
+        self.open_recommendation_button.setEnabled(False)
+        page_row.addWidget(self.open_recommendation_button)
         list_layout.addLayout(page_row)
         layout.addWidget(list_group, stretch=1)
 
@@ -481,10 +492,37 @@ class RunRegistryCompareWidget(QWidget):
     def _update_compare_button_state(self) -> None:
         selected_count = len(self.selected_run_ids())
         self.compare_button.setEnabled(2 <= selected_count <= 5)
+        selected_run = self._single_selected_recommendation_run()
+        self.open_recommendation_button.setEnabled(
+            selected_run is not None and self.on_open_recommendation_run is not None
+        )
         self.selection_hint_label.setText(
             f"已選 {selected_count} / 5；可跨頁多選，至少 2 筆才能比較。"
             + (" 已達上限。" if selected_count >= 5 else "")
         )
+
+    def _single_selected_recommendation_run(
+        self,
+    ) -> ResearchRunMetadataDTO | None:
+        selected_ids = self.selected_run_ids()
+        if len(selected_ids) != 1:
+            return None
+        selected_id = selected_ids[0]
+        for run in self._filtered_runs:
+            if run.run_id == selected_id and run.run_type == "recommendation_portfolio":
+                return run
+        return None
+
+    def open_selected_recommendation_run(self) -> None:
+        run = self._single_selected_recommendation_run()
+        if run is None or self.on_open_recommendation_run is None:
+            QMessageBox.warning(
+                self,
+                "無法開啟",
+                "請只選取一筆推薦回放 Registry run。",
+            )
+            return
+        self.on_open_recommendation_run(run)
 
     def _total_pages(self) -> int:
         if not self._filtered_runs:

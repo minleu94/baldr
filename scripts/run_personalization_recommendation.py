@@ -1,17 +1,17 @@
 """Generate, save, read back, and explicitly ACK one personal recommendation.
 
-This is the normal producer-side entry for a new personal cohort.  It runs
-the existing RecommendationService with an explicitly supplied strategy/data
-root, binds an explicitly supplied delivery scope, saves through
-RecommendationSaveRequest/RecommendationRepository, and appends only the
-technical delivery ACK to the existing Journal.  Human actions are a
-separate explicit command (``record_personalization_action.py``).
+The producer seals one RecommendationExecution with same-invocation personal
+capture, saves that immutable execution, verifies exact-ID readback, then
+appends only the technical delivery ACK to the existing Journal. Human
+actions are a separate explicit command (``record_personalization_action.py``).
 """
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import date, datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 from app_module.dtos import RecommendationDTO
 from app_module.journal_service import JournalService
 from app_module.personalization_contract import (
+    PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION,
     PersonalizationDeliveryScope,
     canonical_aware_datetime,
 )
@@ -28,9 +29,35 @@ from app_module.personalization_save_adapter import (
     PersonalizationRecommendationSaveAdapter,
 )
 from app_module.personalization_read_service import PersonalizationReadService
-from app_module.recommendation_save_coordinator import RecommendationSaveRequest
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.recommendation.codec import (
+    ExecutionCodecError,
+    decode_execution_envelope,
+    encode_execution,
+)
+from app_module.recommendation.composition import build_recommendation_composition
+from app_module.recommendation.contracts import (
+    ExecutionEvent,
+    ExecutionStatus,
+    RecommendationConfigSnapshot,
+    RecommendationExecution,
+    RecommendationResultConfigSnapshot,
+)
+from app_module.recommendation.execute import (
+    RecommendationPostprocessFacts,
+    RecommendationPostprocessInput,
+)
+from app_module.recommendation.body_result import (
+    snapshot_cohort_from_body_result,
+    snapshot_cohort_payload_from_body_result,
+)
+from app_module.recommendation.persistence import ExecutionArtifactIntegrityError
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.recommendation_service import RecommendationService
+from app_module.regime_service import RegimeService
+from app_module.recommendation.input_preparation import (
+    build_default_recommendation_input_preparer,
+)
+from app_module.recommendation_repository import RecommendationRepository
 from app_module.v4_evidence_identity import build_strategy_config_identity
 from data_module.config import TWStockConfig
 from ml_module.recommendation_inference_provenance import (
@@ -107,6 +134,188 @@ def _load_config(path: Path) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("config-json must contain an object")
     return raw
+
+
+class _OutputPathConfig:
+    """Resolve caller-owned output paths without constructing writer config."""
+
+    def __init__(self, output_root: Path) -> None:
+        self.output_root = output_root
+
+    def resolve_output_path(self, subfolder: str) -> Path:
+        return self.output_root / subfolder
+
+
+def _profiled_root(path: Path, profile: str) -> Path:
+    return path / "_test" if profile == "test" else path
+
+
+def _request_config_snapshot(path: Path) -> RecommendationConfigSnapshot:
+    raw_bytes = path.read_bytes()
+    raw_text = raw_bytes.decode("utf-8", errors="strict")
+    return RecommendationConfigSnapshot(
+        raw_config_json=raw_text,
+        raw_json_sha256="sha256:" + hashlib.sha256(raw_bytes).hexdigest(),
+    )
+
+
+def _canonical_json(value: Mapping[str, Any]) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _personalization_postprocess_callback(
+    *,
+    args: argparse.Namespace,
+    config_payload: Mapping[str, Any],
+    adapter: PersonalizationRecommendationSaveAdapter,
+    generated_capture_sink: list[Any],
+    temporal_context_sink: dict[str, Any],
+):
+    """Seal personal clocks, receipt bindings and capture in this execution."""
+
+    def capture(input_value: RecommendationPostprocessInput) -> RecommendationPostprocessFacts:
+        raw_context = input_value.context.raw_context
+        if not isinstance(raw_context, Mapping):
+            raise ValueError("same-invocation producer context is missing")
+        as_of_date = (
+            input_value.context.as_of_date.isoformat()
+            if input_value.context.as_of_date is not None
+            else ""
+        )
+        temporal_diagnostics, temporal = _validate_producer_temporal_contract(
+            args,
+            producer_context=raw_context,
+            as_of_date=as_of_date,
+        )
+        if as_of_date != _date_text(args.as_of_date, "--as-of-date"):
+            temporal_diagnostics.append("producer_as_of_date_mismatch")
+        if temporal_diagnostics:
+            raise ValueError(",".join(temporal_diagnostics))
+        temporal_context_sink.clear()
+        temporal_context_sink.update(
+            adapter.temporal_context_snapshot(raw_context)
+        )
+        scope = _scope(
+            args,
+            clocks=cast(Mapping[str, str], temporal["clocks"]),
+            source=_text(temporal.get("scope_source")) or "personalization_cli",
+        )
+        captures = adapter.captures_from_invocation(
+            context=raw_context,
+            candidates=tuple(input_value.recommendations),
+            result_id=input_value.result_id,
+            personalization_scope=scope,
+            request_id=_text(args.request_id),
+        )
+        if not captures:
+            raise ValueError("personalization capture missing or durable receipt unavailable")
+        generated_capture_sink[:] = captures
+
+        # 舊 cohort builder 僅作 v1 parity oracle；canonical payload 由 typed BodyResult 產生。
+        from scripts.scheduled.run_scheduled_recommendation_snapshot import (
+            _build_snapshot_cohort,
+        )
+
+        legacy_cohort_payload = _build_snapshot_cohort(
+            screening_matrix=[dict(row) for row in input_value.screening_matrix],
+            recommendations=list(input_value.recommendations),
+        )
+        body_result = input_value.body_result
+        typed_context = body_result.context
+        cohort_payload = snapshot_cohort_payload_from_body_result(body_result)
+        if _canonical_json(legacy_cohort_payload) != _canonical_json(cohort_payload):
+            raise ValueError("legacy/typed snapshot cohort v1 parity mismatch")
+        cohort = snapshot_cohort_from_body_result(body_result)
+        evidence = typed_context.evidence_identity
+        if evidence is None:
+            raise ValueError("same-invocation typed evidence identity is missing")
+        for name in ("temporal_mode", "cutoff_selection", "cutoff_policy"):
+            if temporal.get(name) != getattr(typed_context, name):
+                raise ValueError(f"producer temporal {name} 與 typed BodyResult 不一致")
+        result_config = {
+            "result_id": input_value.result_id,
+            "result_name": _text(args.result_name),
+            "as_of_date": as_of_date,
+            "temporal_mode": typed_context.temporal_mode,
+            "cutoff_selection": typed_context.cutoff_selection,
+            "cutoff_policy": typed_context.cutoff_policy,
+            "personalization_scope": scope.to_dict(),
+            "personalization_request_id": _text(args.request_id),
+            "snapshot_cohort": cohort_payload,
+            "strategy_config_identity": build_strategy_config_identity(
+                config_payload,
+                max_stocks=int(args.max_stocks),
+                top_n=int(args.top_n),
+            ),
+        }
+        result_config_json = _canonical_json(result_config)
+        result_config_hash = "sha256:" + hashlib.sha256(
+            result_config_json.encode("utf-8")
+        ).hexdigest()
+        return RecommendationPostprocessFacts(
+            result_id=body_result.result_id,
+            invocation_id=body_result.invocation_id,
+            created_at=input_value.context.created_at,
+            snapshot_cohort=cohort,
+            evidence_identity=evidence,
+            result_config_snapshot=RecommendationResultConfigSnapshot(
+                raw_result_config_json=result_config_json,
+                config_sha256=result_config_hash,
+            ),
+        )
+
+    return capture
+
+
+def _personalization_event(
+    *,
+    context: Mapping[str, Any],
+    scope: PersonalizationDeliveryScope,
+    captures: tuple[Any, ...],
+    decision_at: datetime | None,
+) -> ExecutionEvent:
+    return ExecutionEvent(
+        event_type="personalization_delivery_capture",
+        message="封存同次 producer 的 generated personalization captures；保存與 ACK lifecycle 分開。",
+        occurred_at=decision_at,
+        details={
+            "schema_version": PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION,
+            "scope": scope.to_dict(),
+            "request_id": _text(captures[0].request_id),
+            "captures": [capture.to_dict() for capture in captures],
+            "producer_temporal_context": PersonalizationRecommendationSaveAdapter.temporal_context_snapshot(
+                context
+            ),
+        },
+    )
+
+
+def _capture_hash_views(
+    adapter: PersonalizationRecommendationSaveAdapter,
+    captures: tuple[Any, ...],
+    *,
+    persisted_at: str,
+    delivered_at: str,
+) -> tuple[list[str], list[str], list[str]]:
+    generated_hashes = [capture.capture_hash for capture in captures]
+    persisted = tuple(
+        adapter.capture_service.mark_persisted(capture, persisted_at=persisted_at)
+        for capture in captures
+    )
+    persisted_hashes = [capture.capture_hash for capture in persisted]
+    delivered = tuple(
+        adapter.capture_service.mark_delivered(capture, delivered_at=delivered_at)
+        for capture in persisted
+    )
+    return generated_hashes, persisted_hashes, [
+        capture.capture_hash for capture in delivered
+    ]
 
 
 def _scope(
@@ -445,6 +654,10 @@ def _read_existing_personal_result(
     existing_context = existing.get("run_context")
     if not isinstance(existing_context, Mapping):
         raise ValueError("existing_result_run_context_missing")
+    _validate_legacy_personal_temporal_identity(
+        existing_context,
+        historical_research=bool(args.historical_research),
+    )
     if _date_text(existing_context.get("as_of_date"), "existing_result.as_of_date") != as_of_date:
         raise ValueError("existing_result_as_of_date_conflict")
     requested_identity = build_strategy_config_identity(
@@ -523,6 +736,266 @@ def _read_existing_personal_result(
     return existing, captures
 
 
+def _validate_legacy_personal_temporal_identity(
+    context: Mapping[str, Any],
+    *,
+    historical_research: bool,
+) -> None:
+    """Require a legacy retry's saved temporal policy to match this request."""
+
+    expected = (
+        {
+            "temporal_mode": "historical_research_not_as_if_available",
+            "cutoff_selection": "explicit_historical_cutoff",
+            "cutoff_policy": "explicit_historical_research",
+        }
+        if historical_research
+        else {
+            "temporal_mode": "natural_producer_clock",
+            "cutoff_selection": "producer_selected_latest_available_cutoff",
+            "cutoff_policy": "source_latest_available_exact",
+        }
+    )
+    for field_name, expected_value in expected.items():
+        stored_value = context.get(field_name)
+        if type(stored_value) is not str or stored_value != expected_value:
+            raise ValueError(
+                f"existing_result_temporal_contract_conflict:{field_name}"
+            )
+
+
+def _execution_temporal_context(execution: RecommendationExecution) -> Mapping[str, Any]:
+    events = tuple(
+        event
+        for event in execution.events
+        if event.event_type == "personalization_delivery_capture"
+    )
+    if len(events) != 1:
+        raise ValueError("canonical_personalization_capture_event_missing_or_ambiguous")
+    details = events[0].details
+    if (
+        not isinstance(details, Mapping)
+        or details.get("schema_version") != PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION
+    ):
+        raise ValueError("canonical_personalization_capture_schema_mismatch")
+    context = details.get("producer_temporal_context")
+    if not isinstance(context, Mapping):
+        raise ValueError("canonical_personalization_temporal_context_missing")
+    return context
+
+
+def _validate_canonical_personal_execution_identity(
+    *,
+    execution: RecommendationExecution,
+    result_name: str,
+    config_snapshot: RecommendationConfigSnapshot,
+    config_payload: Mapping[str, Any],
+    args: argparse.Namespace,
+    as_of_date: str,
+    adapter: PersonalizationRecommendationSaveAdapter,
+) -> tuple[Any, ...]:
+    if execution.result_id != _text(args.result_id):
+        raise ValueError("canonical_personal_result_identity_conflict")
+    if execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
+        raise ValueError("canonical_personal_result_not_completed")
+    if execution.context.as_of_date is None or execution.context.as_of_date.isoformat() != as_of_date:
+        raise ValueError("canonical_personal_result_as_of_date_conflict")
+    if execution.context.result_config_snapshot is None:
+        raise ValueError("canonical_personal_result_config_snapshot_missing")
+    try:
+        result_config = json.loads(
+            execution.context.result_config_snapshot.raw_result_config_json
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("canonical_personal_result_config_snapshot_invalid") from exc
+    if not isinstance(result_config, Mapping) or _text(result_config.get("result_name")) != _text(result_name):
+        raise ValueError("canonical_personal_result_name_conflict")
+    if execution.request.config_snapshot is None or (
+        execution.request.config_snapshot.raw_json_sha256
+        != config_snapshot.raw_json_sha256
+    ):
+        raise ValueError("canonical_personal_request_config_hash_conflict")
+    if execution.request.max_stocks != args.max_stocks or execution.request.top_n != args.top_n:
+        raise ValueError("canonical_personal_request_limits_conflict")
+
+    strategy = execution.context.strategy_identity
+    expected_strategy = build_strategy_config_identity(
+        config_payload,
+        max_stocks=int(args.max_stocks),
+        top_n=int(args.top_n),
+    )
+    if (
+        strategy is None
+        or strategy.strategy_config_id != expected_strategy["strategy_config_id"]
+        or strategy.strategy_config_hash != expected_strategy["strategy_config_hash"]
+        or strategy.strategy_config_schema != expected_strategy["strategy_config_schema"]
+        or strategy.strategy_config_spec_json is None
+        or json.loads(strategy.strategy_config_spec_json)
+        != expected_strategy["strategy_config_spec"]
+    ):
+        raise ValueError("canonical_personal_strategy_identity_conflict")
+    universe = execution.context.universe_identity
+    if universe is None or universe.snapshot is None:
+        raise ValueError("canonical_personal_universe_identity_missing")
+    universe_spec = json.loads(universe.snapshot.universe_snapshot_spec_json or "{}")
+    requested_codes = sorted(
+        {str(code).strip() for code in args.universe if str(code).strip()}
+    ) or None
+    if universe_spec.get("requested_codes") != requested_codes:
+        raise ValueError("canonical_personal_universe_identity_conflict")
+
+    captures = adapter.captures_from_execution(execution)
+    if not captures:
+        raise ValueError("canonical_personal_capture_missing")
+    first_scope = captures[0].scope
+    for capture in captures:
+        if (
+            capture.result_id != execution.result_id
+            or capture.scope.scope_id != _text(args.scope_id)
+            or capture.scope.scope_type != _text(args.scope_type)
+            or capture.delivery_id != _text(args.delivery_id)
+            or capture.request_id != _text(args.request_id)
+            or capture.scope.envelope_hash != first_scope.envelope_hash
+        ):
+            raise ValueError("canonical_personal_capture_identity_conflict")
+
+    temporal_context = _execution_temporal_context(execution)
+    temporal_diagnostics, temporal = _validate_producer_temporal_contract(
+        args,
+        producer_context=temporal_context,
+        as_of_date=as_of_date,
+    )
+    if temporal_diagnostics:
+        raise ValueError(",".join(temporal_diagnostics))
+    expected_scope = _scope(
+        args,
+        clocks=cast(Mapping[str, str], temporal["clocks"]),
+        source=_text(temporal.get("scope_source")) or "personalization_cli",
+    )
+    if expected_scope.envelope_hash != first_scope.envelope_hash:
+        raise ValueError("canonical_personal_scope_envelope_conflict")
+    for capture in captures:
+        try:
+            read_inference_projection_receipt(
+                _text(capture.projection_receipt_path),
+                expected_receipt_hash=capture.projection_receipt_hash,
+                expected_decision_date=as_of_date,
+                expected_result_id=execution.result_id,
+                expected_stock_code=capture.stock_code,
+            )
+        except (OSError, TypeError, ValueError, RecommendationProvenanceError) as exc:
+            raise ValueError("canonical_personal_capture_receipt_unverified") from exc
+    return captures
+
+
+def _read_existing_canonical_personal_result(
+    *,
+    output_root: Path,
+    journal_path: Path,
+    evidence_path: Path,
+    result_id: str,
+    result_name: str,
+    config_snapshot: RecommendationConfigSnapshot,
+    config_payload: Mapping[str, Any],
+    as_of_date: str,
+    args: argparse.Namespace,
+) -> tuple[
+    RecommendationExecutionReadModel,
+    tuple[Any, ...],
+    PersonalizationReadService,
+    bool,
+] | None:
+    reader = PersonalizationReadService.from_paths(
+        output_root=output_root,
+        journal_path=journal_path,
+        evidence_db_path=evidence_path,
+    )
+    composition = build_recommendation_composition(
+        _OutputPathConfig(output_root)
+    )
+    adapter = PersonalizationRecommendationSaveAdapter()
+    recovered_orphan = False
+    try:
+        read_model = reader.read_canonical_execution_exact(result_id)
+    except ExecutionArtifactIntegrityError as query_error:
+        # The R012 query intentionally rejects an unindexed artifact. Recovery
+        # is limited to its safe exact-ID store read, strict canonical codec,
+        # and existing same-ID/hash create-only writer.
+        raw_payload = composition.store.read_artifact(result_id)
+        if raw_payload is None:
+            raise
+        try:
+            envelope = decode_execution_envelope(raw_payload)
+        except (ExecutionCodecError, TypeError, ValueError):
+            raise query_error
+        if envelope.execution.result_id != result_id:
+            raise query_error
+        if composition.store.get_index(result_id) is not None:
+            raise query_error
+        if composition.store.has_legacy_run(result_id):
+            raise query_error
+        metadata_hash = composition.store.get_identity_payload_hash(result_id)
+        if metadata_hash is not None and metadata_hash != envelope.payload_hash:
+            raise query_error
+        _validate_canonical_personal_execution_identity(
+            execution=envelope.execution,
+            result_name=result_name,
+            config_snapshot=config_snapshot,
+            config_payload=config_payload,
+            args=args,
+            as_of_date=as_of_date,
+            adapter=adapter,
+        )
+        receipt = composition.save_service.save_execution(
+            envelope.execution,
+            label=_text(result_name),
+            notes="",
+        )
+        if receipt.payload_hash != envelope.payload_hash:
+            raise ValueError("canonical_personal_orphan_recovery_hash_conflict")
+        recovered_orphan = True
+        read_model = reader.read_canonical_execution_exact(result_id)
+    if read_model is None:
+        return None
+    execution = read_model.execution
+    if execution is None:
+        return None
+    captures = _validate_canonical_personal_execution_identity(
+        execution=execution,
+        result_name=result_name,
+        config_snapshot=config_snapshot,
+        config_payload=config_payload,
+        args=args,
+        as_of_date=as_of_date,
+        adapter=adapter,
+    )
+    if read_model.label is not None and _text(read_model.label) != _text(result_name):
+        raise ValueError("canonical_personal_result_label_conflict")
+    if read_model.integrity_basis != "canonical_payload_and_index_verified":
+        raise ValueError("canonical_personal_result_readback_unverified")
+
+    # Validate the same typed receipt, candidate binding, six clocks and ACK
+    # state before any new ACK attempt. The projection service uses the shared
+    # action/outcome/read semantics and never mutates the execution.
+    reader.journal_source.reset()
+    reader.journal_source.set_scope(_text(args.scope_id))
+    for capture in captures:
+        projection = reader.projection_service.build_for_execution(
+            read_model=read_model,
+            stock_code=capture.stock_code,
+            personalization_scope_id=_text(args.scope_id),
+            evaluated_as_of=as_of_date,
+        )
+        if projection.status not in {"not_delivered", "linked_prediction", "population_only"}:
+            raise ValueError(
+                "canonical_personal_readback_projection_invalid:"
+                + ",".join(projection.warnings)
+            )
+        if projection.delivery_status not in {"generated", "delivered"}:
+            raise ValueError("canonical_personal_readback_delivery_state_invalid")
+    return read_model, captures, reader, recovered_orphan
+
+
 def _readback_delivery(
     *,
     output_root: Path,
@@ -585,7 +1058,7 @@ def _readback_delivery(
 
 def _ack_and_readback(
     *,
-    repository: RecommendationRepository,
+    repository: Any,
     journal: JournalService,
     output_root: Path,
     journal_path: Path,
@@ -593,9 +1066,10 @@ def _ack_and_readback(
     result_id: str,
     scope: PersonalizationDeliveryScope,
     captures: tuple[Any, ...],
-        expected_capture_hashes: Mapping[str, str],
-        persisted_at_default: str,
-        args: argparse.Namespace,
+    expected_capture_hashes: Mapping[str, str],
+    persisted_at_default: str,
+    args: argparse.Namespace,
+    canonical_readback: RecommendationExecutionReadModel | None = None,
 ) -> tuple[Any, list[dict[str, Any]]]:
     stock_codes = tuple(capture.stock_code for capture in captures)
     existing_ack_clocks = _existing_ack_clocks(
@@ -625,6 +1099,7 @@ def _ack_and_readback(
         delivered_at=delivery_at,
         recorded_at=ack_recorded_at,
         expected_capture_hashes=expected_capture_hashes,
+        canonical_readback=canonical_readback,
     )
     readbacks = _readback_delivery(
         output_root=output_root,
@@ -661,16 +1136,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         data_root = Path(args.data_root).expanduser().resolve()
         output_root = Path(args.output_root).expanduser().resolve()
+        effective_data_root = _profiled_root(data_root, args.profile)
+        effective_output_root = _profiled_root(output_root, args.profile)
         config_path = Path(args.config_json).expanduser().resolve()
         journal_path = (
             Path(args.journal_path).expanduser().resolve()
             if args.journal_path
-            else output_root / "portfolio" / "journal_entries.jsonl"
+            else effective_output_root / "portfolio" / "journal_entries.jsonl"
         )
         evidence_path = (
             Path(args.evidence_db).expanduser().resolve()
             if args.evidence_db
-            else data_root / "sqlite" / "twstock.db"
+            else effective_data_root / "sqlite" / "twstock.db"
         )
         as_of_date = date.fromisoformat(str(args.as_of_date)[:10]).isoformat()
         if args.max_stocks < 1 or args.top_n < 0:
@@ -679,14 +1156,94 @@ def main(argv: list[str] | None = None) -> int:
                 write_attempted=False,
             )
         config_payload = _load_config(config_path)
+        config_snapshot = _request_config_snapshot(config_path)
 
-        # Retry classification is deliberately before TWStockConfig,
-        # RecommendationRepository, and RecommendationService.  Those
-        # constructors can create directories/SQLite schema; a read-only
-        # existing-result check must not do so and must never re-run a
-        # producer whose receipt may have changed after the first save.
+        # Canonical and legacy retry classification precedes the producer.
+        # An indexed canonical read is read-only; an orphan recovery decodes
+        # only the exact safe store artifact and reuses its same execution.
+        existing_canonical = _read_existing_canonical_personal_result(
+            output_root=effective_output_root,
+            journal_path=journal_path,
+            evidence_path=evidence_path,
+            result_id=_text(args.result_id),
+            result_name=_text(args.result_name),
+            config_snapshot=config_snapshot,
+            config_payload=config_payload,
+            as_of_date=as_of_date,
+            args=args,
+        )
+        if existing_canonical is not None:
+            read_model, captures, _reader, recovered_orphan = existing_canonical
+            execution = read_model.execution
+            if execution is None or read_model.persisted_at is None:
+                raise ValueError("canonical_personal_readback_metadata_missing")
+            write_attempted = recovered_orphan
+            adapter = PersonalizationRecommendationSaveAdapter()
+            persisted_at = read_model.persisted_at.isoformat(timespec="microseconds")
+            journal = _writer(effective_output_root, journal_path)
+            expected_capture_hashes = {
+                capture.stock_code: capture.capture_hash for capture in captures
+            }
+            ack, readbacks = _ack_and_readback(
+                repository=None,
+                journal=journal,
+                output_root=effective_output_root,
+                journal_path=journal_path,
+                evidence_path=evidence_path,
+                result_id=execution.result_id,
+                scope=captures[0].scope,
+                captures=captures,
+                expected_capture_hashes=expected_capture_hashes,
+                persisted_at_default=persisted_at,
+                args=args,
+                canonical_readback=read_model,
+            )
+            generated_hashes, persisted_hashes, delivered_hashes = _capture_hash_views(
+                adapter,
+                captures,
+                persisted_at=persisted_at,
+                delivered_at=ack.delivered_at,
+            )
+            existing_temporal_context = _execution_temporal_context(execution)
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "write_status": (
+                            "orphan_recovered_and_delivered_or_idempotent"
+                            if recovered_orphan
+                            else "existing_capture_reused_and_delivered_or_idempotent"
+                        ),
+                        "write_attempted": recovered_orphan,
+                        "producer_status": "existing_capture_reused",
+                        "immutable_result_reused": True,
+                        "scope": captures[0].scope.to_dict(),
+                        "result_id": execution.result_id,
+                        "recommendation_count": len(execution.items),
+                        "capture_count": len(captures),
+                        "capture_hashes": generated_hashes,
+                        "generated_capture_hashes": generated_hashes,
+                        "persisted_capture_hashes": persisted_hashes,
+                        "delivered_capture_hashes": delivered_hashes,
+                        "delivery_id": captures[0].delivery_id,
+                        "delivery_status": ack.status,
+                        "delivered_at": ack.delivered_at,
+                        "payload_hash": read_model.payload_hash,
+                        "readback": readbacks,
+                        "formal_order_allowed": False,
+                        "auto_action_allowed": False,
+                        "temporal_mode": _text(existing_temporal_context.get("temporal_mode")),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 0
+
+        # Keep the pre-migration path available only for exact legacy saved
+        # results. New producer calls below use the sealed execution writer.
         existing = _read_existing_personal_result(
-            output_root=output_root,
+            output_root=effective_output_root,
             journal_path=journal_path,
             evidence_path=evidence_path,
             result_id=_text(args.result_id),
@@ -711,7 +1268,7 @@ def main(argv: list[str] | None = None) -> int:
                 profile=args.profile,
             )
             repository = RecommendationRepository(config)
-            journal = _writer(output_root, journal_path)
+            journal = _writer(effective_output_root, journal_path)
             expected_capture_hashes = {
                 capture.stock_code: capture.capture_hash
                 for capture in existing_captures
@@ -722,7 +1279,7 @@ def main(argv: list[str] | None = None) -> int:
             ack, readbacks = _ack_and_readback(
                 repository=repository,
                 journal=journal,
-                output_root=output_root,
+                output_root=effective_output_root,
                 journal_path=journal_path,
                 evidence_path=evidence_path,
                 result_id=_text(args.result_id),
@@ -771,131 +1328,133 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
 
-        # This command is explicitly the producer/write entry, so the
-        # configured root is a caller-owned choice.  No production default is
-        # silently substituted for the required paths.
-        write_attempted = True
+        # This is the only new producer/save caller. Capture the typed result
+        # and personal receipt in the same execute postprocess invocation.
         config = TWStockConfig(
             data_root=data_root,
             output_root=output_root,
             profile=args.profile,
         )
-        producer = RecommendationService(config)
-        recommendations = producer.run_recommendation(
+        producer = RecommendationService(
+            config,
+            input_preparer=build_default_recommendation_input_preparer(config),
+            regime_service=RegimeService(config, use_persistent_history=True),
+        )
+        adapter = PersonalizationRecommendationSaveAdapter()
+        generated_captures: list[Any] = []
+        producer_temporal_context: dict[str, Any] = {}
+        callback = _personalization_postprocess_callback(
+            args=args,
+            config_payload=config_payload,
+            adapter=adapter,
+            generated_capture_sink=generated_captures,
+            temporal_context_sink=producer_temporal_context,
+        )
+        execution = producer.execute_recommendation(
             config_payload,
             max_stocks=args.max_stocks,
             top_n=args.top_n,
-            # Natural mode lets the producer choose its latest available
-            # cutoff.  The requested --as-of-date remains an exact assertion
-            # below, so an old caller-forced cutoff cannot be relabeled as a
-            # natural run merely because the runtime clock is current.
+            request_config_snapshot=config_snapshot,
+            postprocess_callback=callback,
             as_of_date=(None if not args.historical_research else as_of_date),
             universe=list(args.universe) or None,
-            result_id=args.result_id,
+            result_id=_text(args.result_id),
             historical_research=bool(args.historical_research),
             select_latest_available_cutoff=not bool(args.historical_research),
         )
-        if not isinstance(recommendations, list) or not all(
-            isinstance(item, RecommendationDTO) for item in recommendations
-        ):
+        if execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
             return _failure(
-                ["recommendation_producer_returned_invalid_rows"],
-                write_attempted=True,
-            )
-        if not recommendations:
-            return _failure(
-                ["recommendation_producer_returned_no_candidates"],
-                write_attempted=True,
-            )
-
-        producer_context = getattr(producer, "last_run_context", {})
-        if not isinstance(producer_context, Mapping):
-            return _failure(
-                ["recommendation_producer_context_missing"],
-                write_attempted=True,
-            )
-        temporal_diagnostics, temporal = _validate_producer_temporal_contract(
-            args,
-            producer_context=producer_context,
-            as_of_date=as_of_date,
-        )
-        if temporal_diagnostics:
-            return _failure(
-                temporal_diagnostics,
+                [execution.failure_reason or "recommendation_execution_not_completed"],
                 write_attempted=True,
                 result_id=_text(args.result_id),
-                temporal_mode=temporal.get("temporal_mode"),
             )
-        scope = _scope(
-            args,
-            clocks=cast(Mapping[str, str], temporal["clocks"]),
-            source=_text(temporal.get("scope_source")) or "personalization_cli",
-        )
-        request = RecommendationSaveRequest(
-            result_name=_text(args.result_name),
-            config={
-                "_recommendation_run_context": dict(producer_context),
-            },
-            recommendations=tuple(recommendations),
-            current_profile=None,
-            profile_meta={},
-            current_regime=None,
-            personalization_scope=scope,
-            personalization_request_id=_text(args.request_id),
-        )
-        # Build once before constructing RecommendationRepository.  A producer
-        # without a durable receipt cannot create a personal result and must
-        # not be downgraded into an ordinary result by this command.
-        preview = request.build_result(
-            recommendation_service=producer,
-            regime_service=SimpleNamespace(),
-        )
-        captures = PersonalizationRecommendationSaveAdapter().captures_from_result(
-            preview
-        )
+        captures = tuple(generated_captures)
         if not captures:
             return _failure(
                 ["personalization_capture_missing_or_receipt_unavailable"],
                 write_attempted=True,
                 result_id=_text(args.result_id),
-                scope_id=scope.scope_id,
+                scope_id=_text(args.scope_id),
             )
-
-        repository = RecommendationRepository(config)
-        outcome = request.persist(
-            recommendation_repository=repository,
-            universe_service=None,
-            recommendation_service=producer,
-            regime_service=SimpleNamespace(),
+        event = _personalization_event(
+            context=producer_temporal_context,
+            scope=captures[0].scope,
+            captures=captures,
+            decision_at=execution.context.decision_at,
         )
-        if not outcome.personalization_captures:
-            return _failure(
-                ["saved_result_personalization_capture_readback_missing"],
-                write_attempted=True,
-                result_id=outcome.result_id,
-            )
-        journal = _writer(output_root, journal_path)
+        if any(item.event_type == event.event_type for item in execution.events):
+            raise ValueError("producer_execution_already_contains_personal_capture_event")
+        execution = replace(execution, events=(*execution.events, event))
+        raw_execution = encode_execution(execution)
+        envelope = decode_execution_envelope(raw_execution)
+        if envelope.execution != execution:
+            raise ValueError("personalization_execution_codec_roundtrip_mismatch")
+
+        composition = build_recommendation_composition(config)
+        write_attempted = True
+        save_receipt = composition.save_service.save_execution(
+            execution,
+            label=_text(args.result_name),
+            notes="",
+        )
+        readback_service = PersonalizationReadService.from_paths(
+            output_root=config.output_root,
+            journal_path=journal_path,
+            evidence_db_path=evidence_path,
+        )
+        saved_read_model = readback_service.read_canonical_execution_exact(
+            execution.result_id
+        )
+        if (
+            saved_read_model is None
+            or saved_read_model.execution != execution
+            or saved_read_model.payload_hash != save_receipt.payload_hash
+            or saved_read_model.raw_artifact_sha256 != envelope.raw_payload_sha256
+            or saved_read_model.label != _text(args.result_name)
+            or save_receipt.index_status.value != "indexed"
+        ):
+            raise ValueError("saved_canonical_personal_execution_readback_mismatch")
+        verified_captures = _validate_canonical_personal_execution_identity(
+            execution=saved_read_model.execution,
+            result_name=_text(args.result_name),
+            config_snapshot=config_snapshot,
+            config_payload=config_payload,
+            args=args,
+            as_of_date=as_of_date,
+            adapter=adapter,
+        )
+        if tuple(item.to_dict() for item in verified_captures) != tuple(
+            item.to_dict() for item in captures
+        ):
+            raise ValueError("saved_personal_capture_hash_or_identity_mismatch")
+        if saved_read_model.persisted_at is None:
+            raise ValueError("saved_canonical_personal_persisted_at_missing")
+        persisted_at = saved_read_model.persisted_at.isoformat(timespec="microseconds")
+        journal = _writer(effective_output_root, journal_path)
         expected_capture_hashes = {
-            capture.stock_code: capture_hash
-            for capture, capture_hash in zip(
-                outcome.personalization_captures,
-                outcome.personalization_capture_hashes,
-            )
+            capture.stock_code: capture.capture_hash for capture in verified_captures
         }
         ack, readbacks = _ack_and_readback(
-            repository=repository,
+            repository=None,
             journal=journal,
-            output_root=output_root,
+            output_root=effective_output_root,
             journal_path=journal_path,
             evidence_path=evidence_path,
-            result_id=outcome.result_id,
-            scope=scope,
-            captures=outcome.personalization_captures,
+            result_id=execution.result_id,
+            scope=verified_captures[0].scope,
+            captures=verified_captures,
             expected_capture_hashes=expected_capture_hashes,
-            persisted_at_default=outcome.personalization_persisted_at or _now_iso(),
+            persisted_at_default=persisted_at,
             args=args,
+            canonical_readback=saved_read_model,
         )
-
+        generated_hashes, persisted_hashes, delivered_hashes = _capture_hash_views(
+            adapter,
+            verified_captures,
+            persisted_at=persisted_at,
+            delivered_at=ack.delivered_at,
+        )
+        temporal_mode = _text(producer_temporal_context.get("temporal_mode"))
         print(
             json.dumps(
                 {
@@ -904,22 +1463,30 @@ def main(argv: list[str] | None = None) -> int:
                     "write_attempted": True,
                     "producer_status": "generated",
                     "immutable_result_reused": False,
-                    "scope": scope.to_dict(),
-                    "result_id": outcome.result_id,
-                    "recommendation_count": len(recommendations),
-                    "capture_count": len(outcome.personalization_captures),
-                    "capture_hashes": list(outcome.personalization_capture_hashes),
-                    "delivery_id": outcome.personalization_delivery_id,
+                    "scope": verified_captures[0].scope.to_dict(),
+                    "result_id": execution.result_id,
+                    "recommendation_count": len(execution.items),
+                    "capture_count": len(verified_captures),
+                    "capture_hashes": generated_hashes,
+                    "generated_capture_hashes": generated_hashes,
+                    "persisted_capture_hashes": persisted_hashes,
+                    "delivered_capture_hashes": delivered_hashes,
+                    "payload_hash": saved_read_model.payload_hash,
+                    "delivery_id": verified_captures[0].delivery_id,
                     "delivery_status": ack.status,
                     "delivered_at": ack.delivered_at,
                     "readback": readbacks,
                     "formal_order_allowed": False,
                     "auto_action_allowed": False,
-                    "temporal_mode": temporal["temporal_mode"],
-                    "cutoff_selection": temporal["cutoff_selection"],
-                    "cutoff_policy": temporal["cutoff_policy"],
-                    "decision_market_date": temporal["decision_market_date"],
-                    "available_market_date": temporal["available_market_date"],
+                    "temporal_mode": temporal_mode,
+                    "cutoff_selection": _text(producer_temporal_context.get("cutoff_selection")),
+                    "cutoff_policy": _text(producer_temporal_context.get("cutoff_policy")),
+                    "decision_market_date": _text(
+                        producer_temporal_context.get("decision_market_date")
+                    ),
+                    "available_market_date": _text(
+                        producer_temporal_context.get("available_market_date")
+                    ),
                 },
                 ensure_ascii=False,
                 sort_keys=True,

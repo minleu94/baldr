@@ -36,8 +36,8 @@ from ui_qt.workers.task_worker import TaskWorker
 from app_module.backtest_service import BacktestService
 from app_module.backtest_analyst_diagnostics import build_backtest_analyst_diagnostics
 from app_module.backtest_optimization_stability import build_optimization_stability_summary
-from app_module.strategy_spec import StrategySpec
-from app_module.strategy_registry import StrategyRegistry
+from decision_module.strategies.contracts import StrategySpec
+from decision_module.strategies.registry import StrategyRegistry
 from app_module.dtos import BacktestReportDTO
 from app_module.preset_service import PresetService
 from app_module.universe_service import UniverseService
@@ -52,7 +52,9 @@ from app_module.walkforward_service import WalkForwardService
 from app_module.optimizer_service import OptimizerService
 from app_module.recommendation_dataframe_provider import RecommendationDataFrameProvider
 from app_module.recommendation_portfolio_backtest_service import RecommendationPortfolioBacktestService
+from app_module.recommendation_portfolio_dtos import RecommendationPortfolioBacktestResultDTO
 from app_module.recommendation_portfolio_dates import parse_stock_dates
+from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_result_presentation import (
     build_recommendation_replay_sections,
     build_train_test_reliability_notice,
@@ -225,6 +227,9 @@ class BacktestView(QWidget):
         self._execution_generation = 0
         self._single_backtest_result_generation: Optional[int] = None
         self._recommendation_portfolio_result_generation: Optional[int] = None
+        self._recommendation_portfolio_result_source: str | None = None
+        self._registry_portfolio_open_request_id = 0
+        self.current_recommendation_registry_run_id: str | None = None
 
         # 初始化說明資料結構（集中管理）
         self._init_parameter_descriptions()
@@ -770,10 +775,13 @@ class BacktestView(QWidget):
     def _mark_research_execution_started(self) -> None:
         """標記新一輪研究執行已開始，用於阻擋舊結果保存。"""
         self._execution_generation += 1
+        self._registry_portfolio_open_request_id += 1
         self.current_report = None
         self.current_run_id = None
         self.current_recommendation_portfolio_result = None
         self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = None
+        self._recommendation_portfolio_result_source = None
         self._single_backtest_result_generation = None
         self._recommendation_portfolio_result_generation = None
         result_panel = self.__dict__.get("result_panel")
@@ -1159,9 +1167,15 @@ class BacktestView(QWidget):
         if hasattr(self, 'export_report_btn'):
             self.export_report_btn.setEnabled(True)
 
-    def _show_recommendation_portfolio_result(self, result):
+    def _show_recommendation_portfolio_result(
+        self,
+        result,
+        *,
+        result_source: str = "execution",
+    ):
         """顯示推薦組合回測結果。"""
         self.current_recommendation_portfolio_result = result
+        self._recommendation_portfolio_result_source = result_source
         if hasattr(self, "portfolio_period_table"):
             self.portfolio_period_model = PandasTableModel(result.period_holdings_dataframe())
             self.portfolio_period_table.setModel(self.portfolio_period_model)
@@ -1179,9 +1193,37 @@ class BacktestView(QWidget):
                 "\n".join(build_recommendation_replay_sections(result))
             )
 
-        self._plot_recommendation_portfolio_charts(result)
+        self._plot_recommendation_portfolio_charts(
+            result,
+            allow_current_benchmark=result_source != "registry",
+        )
+        if result_source == "registry" and hasattr(self, "portfolio_summary_text"):
+            snapshots = tuple(getattr(result, "snapshots", ()) or ())
+            if not snapshots:
+                child_status = (
+                    "本次沒有 recommendation snapshots；canonical child 不可用。"
+                )
+            elif all(
+                getattr(snapshot, "canonical_execution", None) is not None
+                for snapshot in snapshots
+            ):
+                child_status = "已讀回並驗證所有 canonical child。"
+            else:
+                child_status = "推薦列仍保留，但 canonical child 不可用。"
+            self.portfolio_summary_text.append(
+                "\n【Registry 讀回】\n"
+                f"Registry run ID：{self.current_recommendation_registry_run_id or 'unknown'}\n"
+                f"Replay parent ID：{getattr(result, 'replay_parent_id', None) or 'unknown'}\n"
+                f"{child_status}\n"
+                "Benchmark 圖層不可用；讀回未重新抓取目前基準資料。"
+            )
 
-    def _plot_recommendation_portfolio_charts(self, result):
+    def _plot_recommendation_portfolio_charts(
+        self,
+        result,
+        *,
+        allow_current_benchmark: bool = True,
+    ):
         """Plot recommendation portfolio value and drawdown charts."""
         if not hasattr(self, "portfolio_equity_chart"):
             return
@@ -1191,7 +1233,7 @@ class BacktestView(QWidget):
             return
 
         benchmark_series = None
-        if self.chart_data_service:
+        if allow_current_benchmark and self.chart_data_service:
             try:
                 benchmark_series = self.chart_data_service.get_benchmark_series(
                     equity_series.index.min().strftime("%Y-%m-%d"),
@@ -1314,7 +1356,7 @@ class BacktestView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         self._recommendation_portfolio_result_generation = self._execution_generation
-        self._show_recommendation_portfolio_result(result)
+        self._show_recommendation_portfolio_result(result, result_source="execution")
 
         if hasattr(self, "save_portfolio_result_btn"):
             self.save_portfolio_result_btn.setEnabled(True)
@@ -1327,6 +1369,8 @@ class BacktestView(QWidget):
         if hasattr(self, "export_portfolio_report_btn"):
             self.export_portfolio_report_btn.setEnabled(True)
         self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = None
+        self._recommendation_portfolio_result_source = "execution"
 
         QMessageBox.information(self, "完成", "推薦組合回測完成，請查看右側「推薦組合」結果頁。")
 
@@ -1373,6 +1417,13 @@ class BacktestView(QWidget):
         config = getattr(self, "current_recommendation_portfolio_config", None)
         if not result or not config or not self.research_run_service:
             QMessageBox.warning(self, "錯誤", "沒有可保存的推薦回測結果")
+            return
+        if type(result) is not RecommendationPortfolioBacktestResultDTO:
+            QMessageBox.warning(
+                self,
+                "無法保存",
+                "Registry 推薦回放保存需要完整的 RecommendationPortfolioBacktestResultDTO。",
+            )
             return
 
         profile_id = config.get("profile_id") or "advanced"
@@ -1423,22 +1474,15 @@ class BacktestView(QWidget):
                     f"Run 名稱: {run_name}\n"
                     f"Profile: {config.get('profile_name') or config.get('profile_id') or '進階模式'}\n"
                     f"股票檔數: {len(getattr(result, 'stock_results', []) or [])}\n\n"
-                    "下一步可在歷史推薦回測下拉選單載入、匯出報告，或進行後續策略升級檢查。"
+                    "可於 Research Run Registry 查看這筆紀錄；「歷史推薦回測」下拉選單目前僅顯示舊格式紀錄。"
                 )
 
                 self._on_research_run_saved(run_id)
 
-                # 選中剛保存的結果
-                index = self.portfolio_history_combo.findData(run_id)
-                if index >= 0:
-                    self.portfolio_history_combo.blockSignals(True)
-                    self.portfolio_history_combo.setCurrentIndex(index)
-                    self.portfolio_history_combo.blockSignals(False)
-
-                # 啟用刪除按鈕
-                self.delete_portfolio_result_btn.setEnabled(True)
+                # Registry ID 不屬於 legacy portfolio repository 的歷史清單。
+                self.delete_portfolio_result_btn.setEnabled(False)
                 self.promote_portfolio_result_btn.setEnabled(False)
-                self.promote_portfolio_result_btn.setToolTip("已保存；如需升級，請從歷史推薦回測載入該 run 後執行升級流程。")
+                self.promote_portfolio_result_btn.setToolTip("Research Run Registry 紀錄目前不支援此處的 legacy 策略升級流程。")
             except Exception as e:
                 QMessageBox.critical(self, "錯誤", f"保存失敗: {str(e)}")
 
@@ -1501,10 +1545,16 @@ class BacktestView(QWidget):
                 return
 
             self.current_portfolio_run_id = run_id
+            self.current_recommendation_registry_run_id = None
+            self._recommendation_portfolio_result_source = "legacy_history"
+            self._recommendation_portfolio_result_generation = None
             result_dto = loaded_data["result_dto"]
 
             # 渲染歷史結果
-            self._show_recommendation_portfolio_result(result_dto)
+            self._show_recommendation_portfolio_result(
+                result_dto,
+                result_source="legacy_history",
+            )
 
             # 追加顯示 Metadata / 備註
             notes = loaded_data.get("notes", "")
@@ -1606,7 +1656,7 @@ class BacktestView(QWidget):
         """填充策略下拉選單"""
         try:
             # 確保策略模組已導入（觸發註冊）
-            import app_module.strategies
+            import decision_module.strategies
 
             strategies = StrategyRegistry.list_strategies()
             logger.info(f"[BacktestView] 已註冊的策略: {list(strategies.keys())}")
@@ -1667,9 +1717,8 @@ class BacktestView(QWidget):
 
             # 如果 params 為空，嘗試從策略的 get_meta 獲取
             if not params:
-                executor_cls = StrategyRegistry._registry.get(strategy_id)
-                if executor_cls and hasattr(executor_cls, 'get_meta'):
-                    meta = executor_cls.get_meta()
+                meta = StrategyRegistry.get_strategy_meta(strategy_id)
+                if meta is not None:
                     if isinstance(meta, dict):
                         params = meta.get('params', meta.get('default_params', {}))
                     else:
@@ -2353,6 +2402,8 @@ class BacktestView(QWidget):
             or not getattr(self, "current_recommendation_portfolio_run_params", None)
         ):
             raise ValueError("沒有可保存的推薦回測結果")
+        if getattr(self, "_recommendation_portfolio_result_source", "execution") != "execution":
+            raise ValueError("Registry 或歷史讀回結果不可重新保存；請執行新的推薦回放")
         if self._recommendation_portfolio_result_generation != self._execution_generation:
             raise ValueError("stale recommendation portfolio result cannot be saved")
 
@@ -2385,10 +2436,45 @@ class BacktestView(QWidget):
     def _save_recommendation_portfolio_to_research_registry(self, run_name: str, notes: str) -> str:
         self._ensure_current_recommendation_portfolio_is_saveable()
         result = self.current_recommendation_portfolio_result
+        if type(result) is not RecommendationPortfolioBacktestResultDTO:
+            raise TypeError(
+                "Registry 推薦回放保存需要 RecommendationPortfolioBacktestResultDTO"
+            )
         config = dict(getattr(self, "current_recommendation_portfolio_config", {}) or {})
         run_params = dict(getattr(self, "current_recommendation_portfolio_run_params", {}) or {})
         details = dict(getattr(result, "details", {}) or {})
         metrics = dict(getattr(result, "summary", {}) or {})
+        parent_result_id = result.replay_parent_id
+        if (
+            type(parent_result_id) is not str
+            or not parent_result_id.strip()
+            or parent_result_id != parent_result_id.strip()
+        ):
+            raise ValueError("推薦回放 Registry 保存需要明確 replay parent ID")
+        replay_lineage_sidecar = None
+        if result.snapshots:
+            from app_module.recommendation.composition import (
+                build_recommendation_composition,
+            )
+            from app_module.recommendation.replay_lineage_service import (
+                persist_replay_lineage_children,
+            )
+
+            composition = build_recommendation_composition(self.config)
+            replay_lineage_sidecar = persist_replay_lineage_children(
+                result, composition.persistence
+            )
+        manifest = dict(details.get("data_manifest", {}) or {})
+        if replay_lineage_sidecar is None:
+            manifest["replay_lineage_status"] = {
+                "schema_version": 1,
+                "status": "unavailable",
+                "parent_result_id": parent_result_id,
+                "reason": "canonical_child_unavailable",
+            }
+        else:
+            manifest.pop("replay_lineage_status", None)
+        details["data_manifest"] = manifest
         metadata = research_run_metadata.build_recommendation_portfolio_metadata(
             run_id=self._next_research_run_id("recommendation_portfolio"),
             run_name=run_name,
@@ -2401,9 +2487,104 @@ class BacktestView(QWidget):
         )
         equity = result.equity_curve if isinstance(result.equity_curve, pd.DataFrame) else pd.DataFrame()
         trades = result.trades if isinstance(result.trades, pd.DataFrame) else pd.DataFrame()
-        self.research_run_service.save_run(metadata, equity, trades)
-        self.current_portfolio_run_id = metadata.run_id
+        save_kwargs: dict[str, Any] = (
+            {"replay_lineage_sidecar": replay_lineage_sidecar}
+            if replay_lineage_sidecar is not None
+            else {}
+        )
+        save_kwargs["portfolio_result"] = result
+        self.research_run_service.save_run(metadata, equity, trades, **save_kwargs)
+        self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = metadata.run_id
         return metadata.run_id
+
+    def _open_recommendation_registry_run(
+        self,
+        metadata: ResearchRunMetadataDTO,
+    ) -> None:
+        """透過 strict reader 開啟已保存 portfolio DTO，不重新執行回放。"""
+
+        if not self.research_run_service:
+            QMessageBox.warning(self, "無法開啟", "Research Run Registry 尚未設定。")
+            return
+        if metadata.run_type != "recommendation_portfolio":
+            QMessageBox.warning(self, "無法開啟", "只支援開啟 Registry 推薦回放。")
+            return
+        run_id = metadata.run_id
+        self._registry_portfolio_open_request_id += 1
+        request_id = self._registry_portfolio_open_request_id
+        execution_generation = self._execution_generation
+        from app_module.recommendation.portfolio_result_reader import (
+            PortfolioResultReadbackUnavailable,
+            RecommendationPortfolioResultReadbackError,
+            RecommendationPortfolioResultReader,
+        )
+
+        try:
+            if self.config is None:
+                raise RuntimeError("缺少讀取 R012 child 所需的應用程式設定")
+            from app_module.recommendation.composition import build_recommendation_composition
+
+            composition = build_recommendation_composition(self.config)
+            reader = RecommendationPortfolioResultReader(
+                self.research_run_service,
+                composition.persistence,
+            )
+            result = reader.read(run_id)
+        except Exception as exc:
+            if (
+                request_id == self._registry_portfolio_open_request_id
+                and execution_generation == self._execution_generation
+            ):
+                message = (
+                    str(exc)
+                    if isinstance(exc, RecommendationPortfolioResultReadbackError)
+                    else "Registry portfolio 完整性讀取失敗；沒有套用部分結果。"
+                )
+                QMessageBox.critical(self, "推薦回放讀回失敗", message)
+            return
+
+        if (
+            request_id != self._registry_portfolio_open_request_id
+            or execution_generation != self._execution_generation
+        ):
+            return
+        if isinstance(result, PortfolioResultReadbackUnavailable):
+            QMessageBox.information(
+                self,
+                "完整結果不可用",
+                "此舊 Registry run 沒有完整推薦回放 DTO。既有 metadata／equity／trades 比較仍可使用；"
+                "不會從摘要重建推薦列或重新執行回測。原畫面結果保持不變。",
+            )
+            return
+        if type(result) is not RecommendationPortfolioBacktestResultDTO:
+            QMessageBox.critical(
+                self,
+                "推薦回放讀回失敗",
+                "Strict reader 回傳未支援的 portfolio DTO 型別；沒有套用部分結果。",
+            )
+            return
+
+        self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = run_id
+        self._recommendation_portfolio_result_generation = None
+        self.current_recommendation_portfolio_run_params = dict(
+            metadata.normalized_params
+        )
+        config_snapshot = metadata.original_input.get("config", {})
+        self.current_recommendation_portfolio_config = (
+            dict(config_snapshot) if isinstance(config_snapshot, dict) else {}
+        )
+        self._show_recommendation_portfolio_result(result, result_source="registry")
+        self.save_portfolio_result_btn.setEnabled(False)
+        self.delete_portfolio_result_btn.setEnabled(False)
+        self.promote_portfolio_result_btn.setEnabled(False)
+        self.promote_portfolio_result_btn.setToolTip(
+            "Registry 讀回結果為唯讀；legacy 刪除與升級操作不可用。"
+        )
+        self.export_portfolio_report_btn.setEnabled(True)
+        if hasattr(self, "result_panel"):
+            self.result_panel.focus_result_tab("recommendation")
 
     def _refresh_research_registry(self) -> None:
         """刷新 Research Run 相關列表、圖表選單與比較面板。"""
@@ -2959,9 +3140,8 @@ class BacktestView(QWidget):
 
             # 如果 params 為空，嘗試從策略的 get_meta 獲取（直接從執行器類別獲取）
             if not params:
-                executor_cls = StrategyRegistry._registry.get(strategy_id)
-                if executor_cls and hasattr(executor_cls, 'get_meta'):
-                    meta = executor_cls.get_meta()
+                meta = StrategyRegistry.get_strategy_meta(strategy_id)
+                if meta is not None:
                     if isinstance(meta, dict):
                         # baseline 策略格式：params 在 'params' 鍵下
                         params = meta.get('params', {})
@@ -2985,17 +3165,15 @@ class BacktestView(QWidget):
                     logger.info("[BacktestView] info['params']: {info.get('params', 'NOT FOUND')}")
                     logger.info("[BacktestView] info['default_params']: {info.get('default_params', 'NOT FOUND')}")
                 # 嘗試直接從執行器獲取
-                executor_cls = StrategyRegistry._registry.get(strategy_id)
-                if executor_cls:
+                meta = StrategyRegistry.get_strategy_meta(strategy_id)
+                if meta is not None:
                     logger.info("[BacktestView] 嘗試直接從執行器獲取...")
-                    if hasattr(executor_cls, 'get_meta'):
-                        meta = executor_cls.get_meta()
-                        logger.info("[BacktestView] get_meta() 返回類型: {type(meta)}")
-                        if isinstance(meta, dict):
-                            logger.info("[BacktestView] meta keys: {list(meta.keys())}")
-                            logger.info("[BacktestView] meta['params']: {meta.get('params', 'NOT FOUND')}")
-                        elif hasattr(meta, 'default_params'):
-                            logger.info("[BacktestView] meta.default_params: {meta.default_params}")
+                    logger.info("[BacktestView] get_meta() 返回類型: {type(meta)}")
+                    if isinstance(meta, dict):
+                        logger.info("[BacktestView] meta keys: {list(meta.keys())}")
+                        logger.info("[BacktestView] meta['params']: {meta.get('params', 'NOT FOUND')}")
+                    elif hasattr(meta, 'default_params'):
+                        logger.info("[BacktestView] meta.default_params: {meta.default_params}")
 
             # 調試：確保參數被正確讀取
             if params:

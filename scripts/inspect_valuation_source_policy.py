@@ -7,7 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from data_module.valuation_source_policy import inspect_valuation_source_policy
+from decision_module.factors.valuation_source_policy import inspect_valuation_source_policy
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -16,18 +16,29 @@ import pandas as pd
 from copy import deepcopy
 import time
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+import json
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.workers.task_worker import ProgressTaskWorker, TaskWorker
 from app_module.recommendation_service import RecommendationService
 from app_module.regime_service import RegimeService
 from app_module.watchlist_service import WatchlistService
-from app_module.recommendation_repository import RecommendationRepository
 from app_module.universe_service import UniverseService
-from app_module.dtos import RecommendationDTO, RecommendationResultDTO
-from app_module.portfolio_source_adapter import build_recommendation_trade_source
+from app_module.portfolio_source_adapter import (
+    build_recommendation_execution_trade_source,
+)
+from app_module.recommendation.composition import build_recommendation_composition
+from app_module.recommendation.persistence import PartialExecutionPersistenceError
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    IndexStatus,
+    RecommendationExecution,
+    SaveReceipt,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from decision_module.recommendation.contracts import RecommendationItem
 from app_module.recommendation_profile_service import (
     RecommendationProfile,
     RecommendationProfileService,
@@ -56,11 +67,11 @@ from ui_qt.views.recommendation.presenter import (
     profile_advanced_summary,
     profile_filter_summary,
     ranking_value_label,
+    recommendation_item_to_view_row,
 )
 from ui_qt.views.recommendation.execution_coordinator import (
     RecommendationExecutionRequest,
 )
-from app_module.recommendation_save_coordinator import RecommendationSaveRequest
 from app_module.journal_service import JournalService
 from app_module.research_session import ResearchStockContextDTO
 
@@ -84,6 +95,16 @@ def build_recommendation_portfolio_backtest_config(
         "holding_days": holding_days,
         "allocation_method": allocation_method,
     }
+
+
+def _personalization_ack_unavailable_notice(execution: object) -> str:
+    """Keep future scoped executions explicit; Qt does not own delivery ACKs."""
+
+    if getattr(execution, "personalization_scope", None) or getattr(
+        execution, "personalization_scope_id", None
+    ):
+        return "\n個人化送達 ACK 目前不可由 Qt 保存流程提供，需由 R015 owner 處理。"
+    return ""
 
 
 def format_execution_elapsed(seconds: float | int | None) -> str:
@@ -158,17 +179,17 @@ class RecommendationView(QWidget):
         self.regime_service = regime_service
         self.watchlist_service = watchlist_service
         self.journal_service = journal_service
+        self.config = config
+        self.recommendation_composition = None
 
-        # 初始化 Repository（如果提供了 config）
+        # 保存只在使用者明確點擊後建立 R014 composition；Qt 不持有 legacy writer。
         if config:
-            self.recommendation_repository = RecommendationRepository(config)
             # 如果沒有傳入 universe_service，則創建一個
             if universe_service is None:
                 self.universe_service = UniverseService(config)
             else:
                 self.universe_service = universe_service
         else:
-            self.recommendation_repository = None
             self.universe_service = universe_service
 
         # 數據模型
@@ -194,13 +215,18 @@ class RecommendationView(QWidget):
         self._execution_phase_position = "0/4"
         self._execution_state = "尚未執行"
         self._execution_cancel_requested = False
+        self._execution_generation = 0
         self._recommendation_narrow = False
 
         # 策略配置狀態
         self.strategy_config = self._get_default_config()
 
-        # 當前推薦結果（用於保存）
-        self.current_recommendations: Optional[List[RecommendationDTO]] = None
+        # 畫面只將 sealed execution / verified read model 當作推薦結果來源。
+        self.current_execution: RecommendationExecution | None = None
+        self.current_read_model: RecommendationExecutionReadModel | None = None
+        self.current_save_receipt: SaveReceipt | None = None
+        self._pending_save_receipt: SaveReceipt | None = None
+        self._pending_save_metadata: tuple[str, str] | None = None
         self.current_config: Optional[Dict[str, Any]] = None
         self.current_regime: Optional[str] = None
         self.current_profile: Optional[str] = None  # 當前使用的 Profile
@@ -1120,7 +1146,7 @@ class RecommendationView(QWidget):
         self.save_result_btn = QPushButton("保存結果")
         self.save_result_btn.setVisible(False)  # 初始隱藏
         self.save_result_btn.clicked.connect(self._save_recommendation_result)
-        if self.recommendation_repository:
+        if self.config:
             title_layout.addWidget(self.save_result_btn)
 
         # 加入觀察清單按鈕
@@ -2064,29 +2090,24 @@ class RecommendationView(QWidget):
             QMessageBox.warning(self, "配置錯誤", validation_error)
             return
 
-        # 保存當前配置和 Regime（用於後續保存）
-        self.current_config = config
-        self.current_regime = config.get('regime')
-        self.current_recommendation_source_created_at = ""
-        self._update_research_context_banner()
-
-        # 保存當前 Profile（如果在新手模式下）
-        if self.is_beginner_mode:
-            profile_index = self.profile_combo.currentIndex()
-            self.current_profile = self.profile_combo.itemData(profile_index)
-        else:
-            self.current_profile = None
-
         # 禁用執行按鈕
         self.execute_btn.setEnabled(False)
         self.execute_btn.setText("分析中...")
 
+        previous_read_model = getattr(self, "current_read_model", None)
+        previous_execution = getattr(self, "current_execution", None)
+        previous_result = previous_read_model or previous_execution
+        previous_result_id = (
+            previous_read_model.result_id
+            if previous_read_model is not None
+            else previous_execution.result_id
+            if previous_execution is not None
+            else ""
+        )
         self.result_status_label.setText(
             "正在分析：完成後會先顯示結果數量、資料品質與風險限制。"
+            + (f"目前保留上一筆結果 {previous_result_id}。" if previous_result else "")
         )
-        self.research_actions_toggle.setVisible(False)
-        self.research_actions_toggle.setChecked(False)
-        self.research_actions_widget.setVisible(False)
 
         self._begin_execution_status()
 
@@ -2096,21 +2117,11 @@ class RecommendationView(QWidget):
         self.progress_label.setVisible(True)
         self.progress_label.setText("準備開始分析...")
 
-        # 清空結果
-        self.results_table.setModel(None)
-        self.detail_text.clear()
+        # 既有 last-good execution、read model、表格與選取列持續可用；
+        # 新請求只有收到同 generation 的 completed execution 後才會套用。
+        self._execution_generation = getattr(self, "_execution_generation", 0) + 1
+        generation = self._execution_generation
 
-        # 隱藏保存按鈕（等待結果）
-        if self.recommendation_repository:
-            self.save_result_btn.setVisible(False)
-        self.export_report_btn.setVisible(False)
-        self.current_recommendations = None
-        self.current_result_id = ""
-        if hasattr(self, "stock_research_btn"):
-            self.stock_research_btn.setVisible(False)
-            self.stock_research_btn.setEnabled(False)
-
-        # 創建 Worker 包裝推薦服務調用
         def recommendation_task(progress_callback=None, cancel_callback=None):
             """推薦分析任務（支持詳細進度與合作式取消）。"""
             return request.execute(
@@ -2122,6 +2133,7 @@ class RecommendationView(QWidget):
 
         # 創建 Worker
         self.worker = ProgressTaskWorker(recommendation_task)
+        self.worker.execution_generation = generation
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_recommendation_finished)
         self.worker.error.connect(self._on_recommendation_error)
@@ -2245,14 +2257,51 @@ class RecommendationView(QWidget):
         self._mark_execution_cancel_requested()
         worker.cancel(cooperative=True, wait=False)
 
-    def _on_progress(self, message: str, percentage: int):
+    def _signal_generation_is_current(self, generation: int | None = None) -> bool:
+        if generation is None:
+            sender = self.sender()
+            generation = getattr(sender, "execution_generation", None)
+        return generation is None or generation == getattr(self, "_execution_generation", None)
+
+    def _current_items(self) -> tuple[RecommendationItem, ...]:
+        execution = getattr(self, "current_execution", None)
+        if execution is None:
+            return ()
+        return execution.items
+
+    @staticmethod
+    def _execution_config(execution: RecommendationExecution) -> dict[str, Any]:
+        snapshot = execution.request.config_snapshot
+        if snapshot is None:
+            return {}
+        try:
+            config = json.loads(snapshot.raw_config_json)
+        except (TypeError, ValueError):
+            return {}
+        if not isinstance(config, dict):
+            return {}
+        # provenance 標記不屬於策略設定，保留在 request snapshot 即可。
+        config.pop("manual_qt_snapshot", None)
+        return config
+
+    def _on_progress(
+        self,
+        message: str,
+        percentage: int,
+        generation: int | None = None,
+    ):
         """進度更新"""
+        if not self._signal_generation_is_current(generation):
+            return
         self.progress_label.setText(message)
         self.progress_bar.setValue(percentage)
         self._record_execution_activity(message, percentage)
 
-    def _on_recommendation_cancelled(self):
+    def _on_recommendation_cancelled(self, generation: int | None = None):
         """背景工作已安全收尾，保留可追蹤的取消結果。"""
+
+        if not self._signal_generation_is_current(generation):
+            return
 
         self._finish_execution_status("已取消")
         self.execute_btn.setEnabled(True)
@@ -2266,16 +2315,38 @@ class RecommendationView(QWidget):
         self.result_status_label.setText(
             "已取消：沒有套用部分結果。可確認日期或篩選條件後重新執行。"
         )
-        self.research_actions_toggle.setVisible(False)
-        self.research_actions_toggle.setChecked(False)
-        self.research_actions_widget.setVisible(False)
+        if not self._current_items():
+            self.research_actions_toggle.setVisible(False)
+            self.research_actions_toggle.setChecked(False)
+            self.research_actions_widget.setVisible(False)
 
-    def _on_recommendation_finished(self, recommendations: List[RecommendationDTO]):
-        """推薦分析完成"""
+    def _on_recommendation_finished(
+        self,
+        execution: RecommendationExecution,
+        generation: int | None = None,
+    ):
+        """只套用同一 worker 的 completed sealed execution。"""
+
+        if not self._signal_generation_is_current(generation):
+            return
+        if type(execution) is not RecommendationExecution:
+            self._on_recommendation_error(
+                "推薦 worker 未回傳 RecommendationExecution。", generation=generation
+            )
+            return
+        if execution.status is ExecutionStatus.CANCELLED:
+            self._on_recommendation_cancelled(generation=generation)
+            return
+        if execution.status is ExecutionStatus.FAILED:
+            self._on_recommendation_error(
+                execution.failure_reason or "推薦 execution 失敗。",
+                generation=generation,
+            )
+            return
         # 取消請求與 finished signal 可能在 Qt queued delivery 期間競速；
         # 一旦使用者已要求取消，結果不得在畫面上套用。
         if getattr(self, "_execution_cancel_requested", False):
-            self._on_recommendation_cancelled()
+            self._on_recommendation_cancelled(generation=generation)
             return
         finish_status = getattr(self, "_finish_execution_status", None)
         if callable(finish_status):
@@ -2291,13 +2362,32 @@ class RecommendationView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
 
-        # 保存當前推薦結果（用於保存功能）
-        self.current_recommendations = recommendations
+        previous_stock_code = self._selected_stock_code()
+        self.current_execution = execution
+        self.current_read_model = None
+        self.current_save_receipt = None
+        self._pending_save_receipt = None
+        self._pending_save_metadata = None
+        # 只有 verified canonical readback 才能進入持久化來源欄位。
         self.current_result_id = ""
+        self.current_config = self._execution_config(execution)
+        self.current_profile = (
+            execution.request.profile_ref.reference_id
+            if execution.request.profile_ref is not None
+            else str(self.current_config.get("profile_id") or "") or None
+        )
+        self.current_regime = (
+            execution.decision.regime
+            if execution.decision is not None and execution.decision.regime is not None
+            else self.current_config.get("regime")
+        )
+        recommendations = execution.items
         self._update_research_context_banner()
 
         # 顯示結果
         if not recommendations:
+            self.recommendations_model = PandasTableModel(pd.DataFrame())
+            self.results_table.setModel(self.recommendations_model)
             if hasattr(self, "stock_research_btn"):
                 self.stock_research_btn.setVisible(False)
                 self.stock_research_btn.setEnabled(False)
@@ -2308,6 +2398,10 @@ class RecommendationView(QWidget):
             self.research_actions_toggle.setVisible(False)
             self.research_actions_toggle.setChecked(False)
             self.research_actions_widget.setVisible(False)
+            self.save_result_btn.setVisible(False)
+            self.send_to_backtest_btn.setVisible(False)
+            self.send_profile_to_portfolio_backtest_btn.setVisible(False)
+            self.export_report_btn.setVisible(False)
             QMessageBox.information(
                 self,
                 "分析完成",
@@ -2316,12 +2410,25 @@ class RecommendationView(QWidget):
             return
 
         # 轉換為 DataFrame
-        data = [rec.to_dict() for rec in recommendations]
+        ml_status = execution.ml_availability.status.value
+        data = [
+            recommendation_item_to_view_row(
+                item,
+                ml_status=ml_status,
+            )
+            for item in recommendations
+        ]
         df = pd.DataFrame(data)
 
         # 設置模型
         self.recommendations_model = PandasTableModel(df)
         self.results_table.setModel(self.recommendations_model)
+
+        if previous_stock_code:
+            for row_number, code in enumerate(df.get("證券代號", ())):
+                if str(code).strip() == previous_stock_code:
+                    self.results_table.selectRow(row_number)
+                    break
 
         # 連接表格選擇事件（在設置模型後）
         selection_model = self.results_table.selectionModel()
@@ -2348,7 +2455,7 @@ class RecommendationView(QWidget):
         # 顯示按鈕
         if self.watchlist_service:
             self.add_to_watchlist_btn.setVisible(True)
-        if self.recommendation_repository:
+        if self.config:
             self.save_result_btn.setVisible(True)
         # 一鍵送回測按鈕（只要有推薦結果就顯示）
         self.send_to_backtest_btn.setVisible(True)
@@ -2360,8 +2467,14 @@ class RecommendationView(QWidget):
         self.research_actions_toggle.setChecked(False)
         self.research_actions_widget.setVisible(False)
 
-    def _on_recommendation_error(self, error_msg: str):
+    def _on_recommendation_error(
+        self,
+        error_msg: str,
+        generation: int | None = None,
+    ):
         """推薦分析出錯"""
+        if not self._signal_generation_is_current(generation):
+            return
         finish_status = getattr(self, "_finish_execution_status", None)
         if callable(finish_status):
             finish_status("失敗")
@@ -2380,9 +2493,10 @@ class RecommendationView(QWidget):
             "分析未完成：沒有套用部分結果。請檢查資料日期、標的與篩選條件後再試；"
             "完整錯誤可在詳細資訊中查看。"
         )
-        self.research_actions_toggle.setVisible(False)
-        self.research_actions_toggle.setChecked(False)
-        self.research_actions_widget.setVisible(False)
+        if not self._current_items():
+            self.research_actions_toggle.setVisible(False)
+            self.research_actions_toggle.setChecked(False)
+            self.research_actions_widget.setVisible(False)
 
         # 判斷是否為 UniverseTooSmall 錯誤
         if "eligible universe too small" in error_msg:
@@ -2422,7 +2536,8 @@ class RecommendationView(QWidget):
 
     def _send_to_backtest(self):
         """送 Research Lab 批次回測（Profile → Backtest）（Phase 3.3）"""
-        if not self.current_recommendations or not self.current_config:
+        recommendations = self._current_items()
+        if not recommendations or not self.current_config:
             QMessageBox.warning(self, "錯誤", "沒有可送回測的推薦結果")
             return
 
@@ -2441,7 +2556,7 @@ class RecommendationView(QWidget):
                         selected_stocks.append(str(stock_code))
         else:
             # 使用所有推薦股票（最多前 20 檔）
-            for rec in self.current_recommendations[:20]:
+            for rec in recommendations[:20]:
                 selected_stocks.append(rec.stock_code)
 
         if not selected_stocks:
@@ -2464,22 +2579,12 @@ class RecommendationView(QWidget):
             backtest_config['profile_name'] = profile.get('name') or '推薦分析'
             backtest_config['profile_version'] = profile.get('version', '1.0.0')
 
-        # 創建 Regime snapshot
+        # 只傳 sealed execution 已有的 regime；不得為了回測送出而重查 regime。
         if self.current_regime:
-            try:
-                regime_result = self.regime_service.detect_regime()
-                backtest_config['regime_snapshot'] = {
-                    'regime': regime_result.regime,
-                    'regime_name_cn': regime_result.regime_name_cn,
-                    'confidence': regime_result.confidence,
-                    'details': regime_result.details,
-                    'detected_at': datetime.now().isoformat()
-                }
-            except:
-                backtest_config['regime_snapshot'] = {
-                    'regime': self.current_regime,
-                    'detected_at': datetime.now().isoformat()
-                }
+            backtest_config['regime_snapshot'] = {
+                'regime': self.current_regime,
+                'source': 'sealed_recommendation_execution',
+            }
 
         # 發送信號
         self.sendToBacktestRequested.emit(backtest_config)
@@ -2530,45 +2635,38 @@ class RecommendationView(QWidget):
             QMessageBox.warning(self, "提示", "請先選擇要加入觀察清單的股票")
             return
 
-        # 取得選中的股票
+        execution = self.current_execution
+        if execution is None:
+            QMessageBox.warning(self, "提示", "目前沒有可加入觀察清單的封存推薦結果")
+            return
+
         df = self.recommendations_model.getDataFrame()
         stocks = []
-        recommendation_service = getattr(self, "recommendation_service", None)
-        run_context = getattr(recommendation_service, "last_run_context", {}) or {}
-        if not isinstance(run_context, dict):
-            run_context = {}
-        current_config = getattr(self, "current_config", None)
-        config = current_config if isinstance(current_config, dict) else {}
-        result_id = str(getattr(self, "current_result_id", "") or "").strip()
-        decision_date = str(
-            run_context.get("as_of_date")
-            or config.get("as_of_date")
-            or ""
-        ).strip()
-        source_snapshot_id = str(
-            run_context.get("source_snapshot_id")
-            or config.get("source_snapshot_id")
-            or ""
-        ).strip()
-        source_snapshot_hash = str(
-            run_context.get("source_snapshot_hash")
-            or config.get("source_snapshot_hash")
-            or ""
-        ).strip()
+        items_by_code = {item.stock_code: item for item in execution.items}
+        result_id = (
+            self.current_read_model.result_id
+            if self.current_read_model is not None
+            and self.current_read_model.integrity_basis
+            == "canonical_payload_and_index_verified"
+            else ""
+        )
+        decision_date = (
+            execution.context.as_of_date.isoformat()
+            if execution.context.as_of_date is not None
+            else ""
+        )
+        source_snapshot_id, source_snapshot_hash = self._source_snapshot_identity(execution)
         for index in selection:
             row = index.row()
             if row < len(df):
                 stock_code = df.iloc[row].get('證券代號')
-                stock_name = df.iloc[row].get('證券名稱', stock_code)
-                if stock_code:
+                item = items_by_code.get(str(stock_code or "").strip())
+                stock_name = item.stock_name if item is not None else ""
+                if stock_code and item is not None:
                     stocks.append({
-                        'stock_code': str(stock_code),
-                        'stock_name': str(stock_name),
-                        # source_id 維持既有 lineage；typed candidate identity
-                        # 另以 result_id + stock_code 保存，不能只靠 source_id。
-                        'source_id': str(
-                            run_context.get("source_id") or result_id or ""
-                        ).strip(),
+                        'stock_code': item.stock_code,
+                        'stock_name': stock_name or item.stock_code,
+                        'source_id': result_id,
                         'result_id': result_id,
                         'decision_date': decision_date,
                         'source_snapshot_id': source_snapshot_id,
@@ -2597,174 +2695,235 @@ class RecommendationView(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "錯誤", f"加入觀察清單失敗：\n{str(e)}")
 
-    def _build_current_result_snapshot(self) -> RecommendationResultDTO:
-        """建立未保存推薦結果快照，僅供 Portfolio 來源追溯使用。"""
+    @staticmethod
+    def _source_snapshot_identity(
+        execution: RecommendationExecution,
+    ) -> tuple[str, str]:
+        context = execution.context
+        identity = context.universe_identity
+        if identity is not None and identity.snapshot is not None:
+            return (
+                identity.snapshot.universe_snapshot_id or "",
+                identity.snapshot.universe_snapshot_hash or "",
+            )
+        if context.universe_snapshot_ref is not None:
+            return context.universe_snapshot_ref.reference_id, ""
+        if len(context.data_snapshot_refs) == 1:
+            return context.data_snapshot_refs[0].reference_id, ""
+        return "", ""
 
-        config_with_meta = dict(self.current_config or {})
-        if self.current_profile:
-            profile = self.profiles.get(self.current_profile, {})
-            config_with_meta.setdefault("profile_id", self.current_profile)
-            config_with_meta.setdefault("profile_name", profile.get("name", ""))
-            config_with_meta.setdefault("profile_version", profile.get("version", "1.0.0"))
-        if self.current_regime:
-            config_with_meta.setdefault("regime", self.current_regime)
-            config_with_meta.setdefault("regime_snapshot", {"regime": self.current_regime})
+    def _find_unique_current_recommendation(
+        self,
+        stock_code: str,
+    ) -> RecommendationItem | None:
+        matches = [
+            item for item in self._current_items()
+            if item.stock_code == str(stock_code).strip()
+        ]
+        return matches[0] if len(matches) == 1 else None
 
-        return RecommendationResultDTO(
-            result_id=getattr(self, "current_result_id", "") or "unsaved_recommendation_result",
-            result_name=getattr(self, "current_result_name", "") or "未保存推薦結果",
-            config=config_with_meta,
-            recommendations=list(self.current_recommendations or []),
-            regime=self.current_regime,
-            created_at=self._current_recommendation_source_created_at(),
-            notes="Portfolio 來源追溯快照",
-            excluded_candidates_json=list(getattr(self.recommendation_service, "last_excluded_candidates_json", [])),
-            screening_matrix_json=list(getattr(self.recommendation_service, "last_screening_matrix", [])),
-            why_not_payload_json=list(getattr(self.recommendation_service, "last_why_not_payload_json", [])),
-            liquidity_gate_payload_json=list(getattr(self.recommendation_service, "last_liquidity_gate_payload_json", [])),
-            exclusion_quality=str(getattr(self.recommendation_service, "last_exclusion_quality", "observed")),
-            exclusion_warnings_json=list(getattr(self.recommendation_service, "last_exclusion_warnings_json", [])),
-            run_context=deepcopy(getattr(self.recommendation_service, "last_run_context", {})),
+    def _current_table_rows(self) -> list[dict[str, Any]]:
+        execution = self.current_execution
+        if execution is None:
+            return []
+        read_model = self.current_read_model
+        ml_status = (
+            read_model.ml_read_status
+            if read_model is not None
+            else execution.ml_availability.status.value
         )
+        projections: dict[str, Any] = {}
+        duplicate_projection_codes: set[str] = set()
+        if read_model is not None and read_model.ml_read_status == "verified":
+            for row in read_model.ml_projection_rows:
+                stock_code = str(row.get("stock_code") or "").strip()
+                if stock_code and stock_code in duplicate_projection_codes:
+                    continue
+                if stock_code and stock_code not in projections:
+                    projections[stock_code] = row
+                elif stock_code:
+                    projections.pop(stock_code, None)
+                    duplicate_projection_codes.add(stock_code)
+        return [
+            recommendation_item_to_view_row(
+                item,
+                ml_status=ml_status,
+                ml_projection=projections.get(item.stock_code),
+            )
+            for item in execution.items
+        ]
 
-    def _current_recommendation_source_created_at(self) -> str:
-        created_at = getattr(self, "current_result_created_at", "")
-        if created_at:
-            return created_at
-        created_at = getattr(self, "current_recommendation_source_created_at", "")
-        if not created_at:
-            created_at = datetime.now().isoformat()
-            self.current_recommendation_source_created_at = created_at
-        return created_at
+    def _selected_stock_code(self) -> str:
+        table = getattr(self, "results_table", None)
+        model = getattr(self, "recommendations_model", None)
+        selection = table.selectionModel() if table is not None else None
+        rows = selection.selectedRows() if selection is not None else []
+        if not rows or model is None:
+            return ""
+        frame = model.getDataFrame()
+        row_number = rows[0].row()
+        if row_number < 0 or row_number >= len(frame):
+            return ""
+        return str(frame.iloc[row_number].get("證券代號", "") or "").strip()
 
-    def _find_unique_current_recommendation(self, stock_code: str) -> Optional[RecommendationDTO]:
-        matches = [rec for rec in (self.current_recommendations or []) if str(rec.stock_code) == str(stock_code)]
-        if len(matches) == 1:
-            return matches[0]
-        return None
+    def _get_recommendation_composition(self):
+        if self.recommendation_composition is not None:
+            return self.recommendation_composition
+        if self.config is None:
+            raise RuntimeError("推薦保存設定未初始化")
+        self.recommendation_composition = build_recommendation_composition(self.config)
+        return self.recommendation_composition
 
     def _save_recommendation_result(self):
-        """保存推薦結果"""
-        if not self.recommendation_repository:
-            QMessageBox.warning(self, "錯誤", "推薦結果儲存庫未初始化")
+        """以同一 sealed execution 保存，並以 canonical query 驗證 readback。"""
+        execution = self.current_execution
+        if execution is None or execution.status is not ExecutionStatus.COMPLETED or not execution.items:
+            QMessageBox.warning(self, "錯誤", "沒有可保存的 completed 推薦 execution")
             return
 
-        if not self.current_recommendations or not self.current_config:
-            QMessageBox.warning(self, "錯誤", "沒有可保存的推薦結果")
+        if self._verified_saved_result_id():
+            QMessageBox.information(
+                self,
+                "已保存",
+                f"此 execution 已保存並完成 verified readback：{self.current_read_model.result_id}。"
+                "不會重複寫入或再次建立自動選股清單。",
+            )
             return
 
-        # 顯示輸入對話框
-        from PySide6.QtWidgets import QInputDialog
-        result_name, ok = QInputDialog.getText(
-            self,
-            "保存推薦結果",
-            "請輸入結果名稱:",
-            text=f"推薦結果_{datetime.now().strftime('%Y%m%d_%H%M')}"
-        )
+        pending_receipt = self._pending_save_receipt
+        pending_metadata = self._pending_save_metadata
+        if pending_receipt is not None and pending_receipt.index_status is IndexStatus.INDEXED:
+            if self._pending_save_metadata is None:
+                QMessageBox.critical(self, "錯誤", "待驗證保存缺少固定 metadata；請勿重新保存。")
+                return
+            label, notes = self._pending_save_metadata
+        elif pending_metadata is not None:
+            # PartialExecutionPersistenceError 代表 artifact 已發布、index pending；
+            # 保留原 metadata 並再次呼叫唯一 writer，以相同 ID/hash 修復 index。
+            label, notes = pending_metadata
+            pending_receipt = None
+        else:
+            result_name, ok = QInputDialog.getText(
+                self,
+                "保存推薦結果",
+                "請輸入結果名稱:",
+                text=f"推薦結果_{datetime.now().strftime('%Y%m%d_%H%M')}",
+            )
+            if not ok or not result_name.strip():
+                return
+            label = result_name.strip()
+            notes = f"Profile: {self.current_profile or '進階模式'}, Regime: {self.current_regime or '未知'}"
+            self._pending_save_metadata = (label, notes)
 
-        if not ok or not result_name.strip():
-            return
+        profile_label = "進階模式"
+        if self.current_profile and self.current_profile in self.profiles:
+            profile_label = self.profiles[self.current_profile].get("name") or self.current_profile
 
         try:
-            profile_meta = (
-                self.profiles.get(self.current_profile, {}) if self.current_profile else {}
-            )
-            request = RecommendationSaveRequest(
-                result_name=result_name.strip(),
-                config={
-                    **deepcopy(self.current_config),
-                    "_recommendation_run_context": deepcopy(getattr(self.recommendation_service, "last_run_context", {})),
-                },
-                recommendations=tuple(self.current_recommendations),
-                current_profile=self.current_profile,
-                profile_meta=profile_meta,
-                current_regime=self.current_regime,
-            )
-            outcome = request.persist(
-                recommendation_repository=self.recommendation_repository,
-                universe_service=self.universe_service,
-                recommendation_service=self.recommendation_service,
-                regime_service=self.regime_service,
-            )
-            delivery_ack_error = ""
-            journal_service = getattr(self, "journal_service", None)
-            if (
-                journal_service is not None
-                and outcome.personalization_captures
-                and outcome.personalization_scope_id
-                and outcome.personalization_delivery_id
-                and outcome.personalization_persisted_at
-                and len(outcome.personalization_capture_hashes)
-                == len(outcome.personalization_captures)
-            ):
-                ack_at = datetime.now(timezone.utc).isoformat(
-                    timespec="microseconds"
-                )
-                expected_capture_hashes = {
-                    capture.stock_code: capture_hash
-                    for capture, capture_hash in zip(
-                        outcome.personalization_captures,
-                        outcome.personalization_capture_hashes,
-                    )
-                }
+            composition = self._get_recommendation_composition()
+            receipt = pending_receipt
+            if receipt is None:
                 try:
-                    request.acknowledge_delivery(
-                        recommendation_repository=self.recommendation_repository,
-                        journal_service=journal_service,
-                        result_id=outcome.result_id,
-                        scope_id=outcome.personalization_scope_id,
-                        delivery_id=outcome.personalization_delivery_id,
-                        persisted_at=outcome.personalization_persisted_at,
-                        delivered_at=ack_at,
-                        recorded_at=ack_at,
-                        expected_capture_hashes=expected_capture_hashes,
+                    receipt = composition.save_service.save_execution(
+                        execution,
+                        label=label,
+                        notes=notes,
                     )
-                except Exception as exc:  # noqa: BLE001 - result save remains visible; ACK stays fail-closed
-                    delivery_ack_error = str(exc)
-                    print(
-                        "[RecommendationView] personalisation delivery ACK 未保存："
-                        f"{delivery_ack_error}"
-                    )
-            self.current_result_id = outcome.result_id
-            if outcome.watchlist_error:
-                print(
-                    "[RecommendationView] 創建選股清單失敗: "
-                    f"{outcome.watchlist_error}"
-                )
+                except PartialExecutionPersistenceError as exc:
+                    self._pending_save_receipt = None
+                    self._pending_save_metadata = (label, notes)
+                    raise
+            if receipt.result_id != execution.result_id or receipt.index_status is not IndexStatus.INDEXED:
+                raise RuntimeError("canonical save receipt 與 execution 身分／索引狀態不符")
+            self._pending_save_receipt = receipt
+            self._pending_save_metadata = (label, notes)
+            read_model = composition.queries.get(receipt.result_id)
+            if (
+                read_model is None
+                or read_model.execution != execution
+                or read_model.result_id != execution.result_id
+                or read_model.integrity_basis != "canonical_payload_and_index_verified"
+                or read_model.payload_hash != receipt.payload_hash
+                or read_model.artifact_location != receipt.artifact_location
+                or read_model.persisted_at != receipt.persisted_at
+                or read_model.label != label
+                or read_model.notes != notes
+            ):
+                raise RuntimeError("canonical recommendation save readback 驗證不一致")
 
-            # 顯示成功訊息
-            profile_label = "進階模式"
-            if self.current_profile and self.current_profile in self.profiles:
-                profile_label = self.profiles[self.current_profile].get("name") or self.current_profile
+            # 只有 canonical save 與 verified readback 都成功後才套用保存身份。
+            self.current_read_model = read_model
+            self.current_save_receipt = receipt
+            self.current_result_id = read_model.result_id
+            self._pending_save_receipt = None
+            self._pending_save_metadata = None
+            selected_code = self._selected_stock_code()
+            rows = self._current_table_rows()
+            self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
+            self.results_table.setModel(self.recommendations_model)
+            selection_model = self.results_table.selectionModel()
+            if selection_model:
+                selection_model.selectionChanged.connect(self._on_selection_changed)
+            if selected_code:
+                for row_number, row in enumerate(rows):
+                    if str(row.get("證券代號", "")).strip() == selected_code:
+                        self.results_table.selectRow(row_number)
+                        break
+            self._update_detail_text()
+
+            watchlist_id = None
+            watchlist_error = ""
+            if self.universe_service is None:
+                watchlist_error = "自動選股清單服務未初始化。"
+            else:
+                description = f"來自推薦結果: {execution.result_id}\n"
+                if self.current_profile:
+                    description += f"Profile: {self.current_profile}\n"
+                if self.current_regime:
+                    description += f"Regime: {self.current_regime}\n"
+                description += f"股票數量: {len(execution.items)}"
+                try:
+                    watchlist_id = self.universe_service.save_watchlist(
+                        name=label,
+                        codes=[item.stock_code for item in execution.items],
+                        source="recommendation",
+                        description=description,
+                    )
+                except Exception as exc:  # existing watchlist side effect is soft-failure
+                    watchlist_error = str(exc)
+
             success_msg = (
-                f"推薦結果已保存！\n"
-                f"結果ID: {outcome.result_id}\n"
+                "推薦結果已保存並完成 canonical readback 驗證。\n"
+                f"結果 ID: {read_model.result_id}\n"
                 f"Profile: {profile_label}\n"
                 f"Regime: {self.current_regime or '未知'}\n"
-                f"股票數量: {len(self.current_recommendations)}\n\n"
+                f"股票數量: {len(execution.items)}\n"
+                f"保存 artifact: {read_model.artifact_location}\n\n"
                 "下一步：可從本頁送 Research Lab 批次回測目前名單，或送 Research Lab 推薦回放以"
                 "重播整套 Profile/Config；推薦回放不是只回測今日名單。"
                 "升降級判讀需保存 Research Run / Evidence 後人工審核，也可在結果表右鍵記錄到持倉管理。"
             )
-            if outcome.watchlist_id:
-                success_msg += (
-                    f"\n\n已自動創建選股清單：{outcome.watchlist_name}\n"
-                    "可在「策略回測」Tab 的選股清單中查看。"
-                )
-            if delivery_ack_error:
-                success_msg = "推薦已儲存，但送達紀錄未完成，暫不納入個人化評估。"
+            if watchlist_id:
+                success_msg += f"\n\n已自動建立選股清單：{label}（ID: {watchlist_id}）。"
+            elif watchlist_error:
+                success_msg += f"\n\n推薦結果已保存；自動選股清單未建立：{watchlist_error}"
+            success_msg += _personalization_ack_unavailable_notice(execution)
 
-            QMessageBox.information(
+            QMessageBox.information(self, "成功", success_msg)
+        except PartialExecutionPersistenceError as exc:
+            QMessageBox.warning(
                 self,
-                "成功",
-                success_msg
+                "保存等待索引重試",
+                "canonical artifact 已發布，但索引尚未完成。尚未建立自動選股清單；"
+                "再次按保存會沿用首次名稱與備註，以同一 result ID 重試索引。\n"
+                f"細節：{exc}",
             )
-        except Exception as e:
-            import traceback
+        except Exception as exc:
             QMessageBox.critical(
                 self,
                 "錯誤",
-                f"保存推薦結果失敗：\n{str(e)}\n\n{traceback.format_exc()}"
+                "推薦結果保存或 verified readback 失敗；未套用未驗證來源或建立自動選股清單。\n"
+                f"{exc}",
             )
 
     def _on_selection_changed(self):
@@ -2807,14 +2966,7 @@ class RecommendationView(QWidget):
         code = str(row.get("證券代號", "")).strip()
         if not code:
             return
-        recommendation = next(
-            (
-                item
-                for item in (self.current_recommendations or ())
-                if str(getattr(item, "stock_code", "")).strip() == code
-            ),
-            None,
-        )
+        recommendation = self._find_unique_current_recommendation(code)
         stock_name = str(row.get("證券名稱", "") or "").strip()
         if recommendation is not None and not stock_name:
             stock_name = str(getattr(recommendation, "stock_name", "") or "").strip()
@@ -2826,49 +2978,46 @@ class RecommendationView(QWidget):
         self,
         stock_code: str,
         stock_name: str = "",
-        recommendation: RecommendationDTO | None = None,
+        recommendation: RecommendationItem | None = None,
     ) -> ResearchStockContextDTO:
         """由目前畫面結果建立唯讀 context；不補抓行情也不重算。"""
-
-        run_context = getattr(self.recommendation_service, "last_run_context", {}) or {}
-        if not isinstance(run_context, dict):
-            run_context = {}
+        execution = self.current_execution
+        context = execution.context if execution is not None else None
+        request_profile = execution.request.profile_ref if execution is not None else None
         config = self.current_config if isinstance(self.current_config, dict) else {}
-        profile_id = str(
-            run_context.get("profile_id")
-            or self.current_profile
-            or config.get("profile_id")
-            or ""
+        profile_id = (
+            request_profile.reference_id
+            if request_profile is not None
+            else str(config.get("profile_id") or "")
         )
-        profile_version = str(
-            run_context.get("profile_version")
-            or config.get("profile_version")
-            or ""
+        profile_version = (
+            request_profile.version or ""
+            if request_profile is not None
+            else str(config.get("profile_version") or "")
         )
-        result_id = str(getattr(self, "current_result_id", "") or "")
-        source_id = str(run_context.get("source_id") or result_id or "")
-        source_kind = str(run_context.get("source_kind") or "recommendation")
-        source_snapshot_id = str(
-            run_context.get("source_snapshot_id")
-            or config.get("source_snapshot_id")
-            or ""
+        result_id = self._verified_saved_result_id()
+        source_id = result_id
+        source_kind = "recommendation"
+        source_snapshot_id, source_snapshot_hash = (
+            self._source_snapshot_identity(execution)
+            if execution is not None
+            else ("", "")
         )
-        source_snapshot_hash = str(
-            run_context.get("source_snapshot_hash")
-            or config.get("source_snapshot_hash")
-            or ""
+        fallback_data_date = (
+            recommendation.eligible_universe_date.isoformat()
+            if recommendation is not None and recommendation.eligible_universe_date is not None
+            else ""
         )
-        fallback_data_date = getattr(recommendation, "eligible_universe_date", "") or ""
+        decision_date = (
+            context.as_of_date.isoformat()
+            if context is not None and context.as_of_date is not None
+            else str(config.get("as_of_date") or "")
+        )
         return ResearchStockContextDTO(
             stock_code=stock_code,
             stock_name=stock_name,
-            decision_date=str(run_context.get("as_of_date") or config.get("as_of_date") or ""),
-            data_date=str(
-                run_context.get("data_date")
-                or config.get("data_date")
-                or fallback_data_date
-                or ""
-            ),
+            decision_date=decision_date,
+            data_date=fallback_data_date or str(config.get("data_date") or ""),
             result_id=result_id,
             source_snapshot_id=source_snapshot_id,
             source_snapshot_hash=source_snapshot_hash,
@@ -2885,48 +3034,60 @@ class RecommendationView(QWidget):
         self,
         *,
         stock_code: str = "",
-        recommendation: RecommendationDTO | None = None,
+        recommendation: RecommendationItem | None = None,
     ) -> None:
         """在結果頂端重述同一份研究 context；不補抓資料、不重算日期。"""
         label = getattr(self, "research_context_label", None)
         if label is None:
             return
-        run_context = getattr(self.recommendation_service, "last_run_context", {}) or {}
-        if not isinstance(run_context, dict):
-            run_context = {}
+        execution = self.current_execution
+        context = execution.context if execution is not None else None
         config = self.current_config if isinstance(self.current_config, dict) else {}
 
-        def _context_value(*keys: str) -> str:
-            for source in (run_context, config):
-                for key in keys:
-                    value = str(source.get(key) or "").strip()
-                    if value:
-                        return value
+        def _config_value(*keys: str) -> str:
+            for key in keys:
+                value = str(config.get(key) or "").strip()
+                if value:
+                    return value
             return "未提供"
 
         selected = str(stock_code or "").strip() or "尚未選取"
-        data_date = _context_value("data_date", "data_as_of_date")
+        data_date = (
+            recommendation.eligible_universe_date.isoformat()
+            if recommendation is not None and recommendation.eligible_universe_date is not None
+            else _config_value("data_date", "data_as_of_date")
+        )
         if data_date == "未提供" and recommendation is not None:
-            data_date = str(getattr(recommendation, "eligible_universe_date", "") or "").strip() or "未提供"
-        start_date = _context_value("start_date", "range_start", "period_start")
-        end_date = _context_value("end_date", "range_end", "period_end")
+            data_date = "未提供"
+        start_date = _config_value("start_date", "range_start", "period_start")
+        end_date = _config_value("end_date", "range_end", "period_end")
         interval = (
             f"{start_date}～{end_date}"
             if start_date != "未提供" and end_date != "未提供"
             else "未提供（推薦來源未提供期間）"
         )
-        profile_id = _context_value("profile_id")
+        request_profile = execution.request.profile_ref if execution is not None else None
+        profile_id = (
+            request_profile.reference_id
+            if request_profile is not None
+            else _config_value("profile_id")
+        )
         profile = self._get_profile_option(profile_id)
         profile_label = profile.display_label if profile is not None else profile_id
-        source = _context_value("source_label", "source_id", "source_kind")
-        result_id = str(getattr(self, "current_result_id", "") or "") or "目前未保存"
+        source = "已保存推薦結果" if self._verified_saved_result_id() else "目前推薦結果"
+        result_id = self._verified_saved_result_id() or "目前未保存"
+        decision_date = (
+            context.as_of_date.isoformat()
+            if context is not None and context.as_of_date is not None
+            else _config_value("as_of_date", "decision_date")
+        )
         summary_label = getattr(self, "research_context_summary_label", None)
         if summary_label is not None:
             if data_date == "未提供":
                 data_summary = "價格／指標更新日期：未提供"
             else:
                 data_summary = f"價格／指標更新至：{data_date}"
-            recommendations = getattr(self, "current_recommendations", None)
+            recommendations = self._current_items()
             result_count = len(recommendations) if recommendations else 0
             if result_count:
                 result_summary = f"候選結果：{result_count} 檔；請先看理由與風險限制"
@@ -2939,7 +3100,7 @@ class RecommendationView(QWidget):
         label.setText(
             "研究上下文\n"
             f"標的：{selected}｜區間：{interval}\n"
-            f"決策基準日：{_context_value('as_of_date', 'decision_date')}｜"
+            f"決策基準日：{decision_date}｜"
             f"資料日期：{data_date}\n"
             f"Profile：{profile_label}｜來源：{source}｜結果：{result_id}\n"
             "信心／Regime 只作判讀證據，不等於勝率或風險預算；Profile policy 仍由既有服務決定。"
@@ -2952,12 +3113,32 @@ class RecommendationView(QWidget):
         selection = self.results_table.selectionModel()
         button.setEnabled(bool(self.recommendations_model and selection and selection.selectedRows()))
 
+    def _verified_saved_result_id(self) -> str:
+        read_model = self.current_read_model
+        receipt = self.current_save_receipt
+        execution = self.current_execution
+        if (
+            read_model is None
+            or receipt is None
+            or execution is None
+            or read_model.integrity_basis != "canonical_payload_and_index_verified"
+            or read_model.execution != execution
+            or read_model.result_id != execution.result_id
+            or receipt.result_id != execution.result_id
+            or receipt.index_status is not IndexStatus.INDEXED
+            or receipt.payload_hash != read_model.payload_hash
+            or receipt.artifact_location != read_model.artifact_location
+            or receipt.persisted_at != read_model.persisted_at
+        ):
+            return ""
+        return read_model.result_id
+
     def select_stock(self, stock_code: str, result_id: str | None = None) -> bool:
         """回到推薦頁時定位既有結果列，不執行新的推薦。"""
 
         if self.recommendations_model is None:
             return False
-        if result_id and self.current_result_id and result_id != self.current_result_id:
+        if result_id and result_id != self._verified_saved_result_id():
             return False
         code = str(stock_code).strip()
         frame = self.recommendations_model.getDataFrame()
@@ -2969,7 +3150,7 @@ class RecommendationView(QWidget):
                 return True
         return False
 
-    def _generate_why_not(self, recommendation: RecommendationDTO, config: Dict[str, Any]) -> str:
+    def _generate_why_not(self, recommendation: RecommendationItem, config: Dict[str, Any]) -> str:
         """生成 Why Not（相容入口，委派純 presenter）。"""
         return generate_why_not(recommendation, config)
 
@@ -3005,14 +3186,9 @@ class RecommendationView(QWidget):
         df = self.recommendations_model.getDataFrame()
 
         if row < len(df):
-            # 獲取對應的 RecommendationDTO
+            # 只用同一 sealed execution 的 item 產生解釋。
             stock_code = df.iloc[row].get('證券代號', '')
-            recommendation = None
-            if self.current_recommendations:
-                for rec in self.current_recommendations:
-                    if str(rec.stock_code) == str(stock_code):
-                        recommendation = rec
-                        break
+            recommendation = self._find_unique_current_recommendation(str(stock_code))
 
             self._update_research_context_banner(
                 stock_code=str(stock_code),
@@ -3049,7 +3225,7 @@ class RecommendationView(QWidget):
         else:
             self.detail_text.clear()
 
-    def _generate_explain_panel(self, recommendation: RecommendationDTO) -> str:
+    def _generate_explain_panel(self, recommendation: RecommendationItem) -> str:
         """生成 Explain 面板（相容入口，委派純 presenter）。"""
         return generate_explain_panel(recommendation)
 
@@ -3113,8 +3289,25 @@ class RecommendationView(QWidget):
                         QMessageBox.warning(self, "錯誤", "交易股票代號已被修改，無法保留原推薦來源追溯資訊")
                         return
 
-                    source = build_recommendation_trade_source(
-                        self._build_current_result_snapshot(),
+                    execution = self.current_execution
+                    read_model = self.current_read_model
+                    receipt = self.current_save_receipt
+                    if (
+                        execution is None
+                        or read_model is None
+                        or receipt is None
+                        or not self._verified_saved_result_id()
+                    ):
+                        QMessageBox.warning(
+                            self,
+                            "無法保留來源",
+                            "記錄持倉前請先保存推薦結果並完成 canonical readback 驗證。",
+                        )
+                        return
+                    source = build_recommendation_execution_trade_source(
+                        execution,
+                        read_model,
+                        receipt,
                         selected_recommendation,
                     )
                     try:
@@ -3154,7 +3347,15 @@ class RecommendationView(QWidget):
         from datetime import datetime
 
         config = self.current_config or {}
-        regime = config.get("regime", "")
+        execution = self.current_execution
+        context = execution.context if execution is not None else None
+        regime = (
+            execution.decision.regime
+            if execution is not None
+            and execution.decision is not None
+            and execution.decision.regime is not None
+            else ""
+        )
 
         data_version = config.get("data_version", "")
         strategy_version = config.get("strategy_version", "")
@@ -3162,7 +3363,11 @@ class RecommendationView(QWidget):
         metadata = ReportMetadata(
             report_type="current_recommendation",
             generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            data_as_of_date=config.get("data_as_of_date", ""),
+            data_as_of_date=(
+                context.as_of_date.isoformat()
+                if context is not None and context.as_of_date is not None
+                else config.get("data_as_of_date", "")
+            ),
             data_version=data_version,
             strategy_id=config.get("strategy_id", ""),
             strategy_version=strategy_version,
@@ -3180,18 +3385,13 @@ class RecommendationView(QWidget):
             ),
         }
 
-        regime_snapshot = None
-        if hasattr(self, "_last_suggestion") and self._last_suggestion:
-            regime_snapshot = {
-                "偵測 Regime": self._last_suggestion.get("regime", "N/A"),
-                "Regime 判讀信心": self._last_suggestion.get("confidence", 0.0),
-                "推薦配置 ID": self._last_suggestion.get("profile_id", "N/A"),
-            }
+        regime_snapshot = (
+            {"偵測 Regime": regime, "證據來源": "sealed recommendation execution"}
+            if regime
+            else None
+        )
 
-        recs_df = pd.DataFrame()
-        if self.current_recommendations:
-            data = [rec.to_dict() for rec in self.current_recommendations]
-            recs_df = pd.DataFrame(data)
+        recs_df = pd.DataFrame(self._current_table_rows())
 
         return CurrentRecommendationExportPayload(
             metadata=metadata,
@@ -3201,7 +3401,7 @@ class RecommendationView(QWidget):
         )
 
     def _export_current_recommendation(self):
-        if not self.current_recommendations:
+        if not self._current_items():
             QMessageBox.warning(self, "錯誤", "無可匯出的推薦結果")
             return
 

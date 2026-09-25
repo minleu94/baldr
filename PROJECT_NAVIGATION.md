@@ -338,13 +338,13 @@ python ui_qt/main.py
 - `backtest_module/performance_analyzer.py`：績效分析器（計算績效指標）
 - `backtest_module/performance_metrics.py`：績效指標計算（包含 Walk-Forward 退化、一致性、過擬合風險）
 - `backtest_module/broker_simulator.py`：券商模擬器（模擬交易執行）
-- `app_module/strategies/`：策略執行器（實際策略邏輯）
+- `decision_module/strategies/`：策略契約、唯一 registry 與策略執行器 owner；舊 `app_module/strategies/` 僅為 `TMP-STR-01` 薄相容 facade
 
 **如果我要改回測邏輯**：
 - 改回測流程 → `app_module/backtest_service.py`
 - 改推薦組合歷史重播 → `app_module/recommendation_replay_service.py` / `app_module/recommendation_portfolio_backtest_service.py`
 - 改績效計算 → `backtest_module/performance_metrics.py`
-- 改策略執行 → `app_module/strategies/` 對應的執行器
+- 改策略執行 → `decision_module/strategies/` 對應的執行器
 - 改 Walk-Forward → `app_module/walkforward_service.py`
 - 改報告匯出或 Excel 結構 → `app_module/report_export_service.py` / `app_module/report_export_dtos.py`
 - 改研究結果保存、hash、archive 或 legacy backfill → `app_module/research_run_service.py` / `app_module/research_run_repository.py` / `scripts/backfill_legacy_runs.py`

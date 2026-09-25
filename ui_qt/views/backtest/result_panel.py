@@ -552,7 +552,12 @@ class BacktestResultPanel(QWidget):
         if service is None:
             return None
 
-        self.run_registry_compare_widget = RunRegistryCompareWidget(service)
+        self.run_registry_compare_widget = RunRegistryCompareWidget(
+            service,
+            on_open_recommendation_run=(
+                self.parent_view._open_recommendation_registry_run
+            ),
+        )
         registry_banner = QLabel(
             "研究 Registry：正式研究 run 比較與 promotion evidence 入口；"
             "比較不等於可 promote，仍需通過既有驗證與升級條件。"

@@ -14,6 +14,7 @@ import traceback
 import logging
 import tempfile
 import sqlite3
+import time
 from typing import List, Dict, Any, Optional
 
 # 添加專案根目錄到路徑
@@ -183,6 +184,53 @@ def _close_isolated_file_handlers(root: Path) -> None:
             if is_isolated:
                 logger.removeHandler(handler)
                 handler.close()
+
+
+def _cleanup_isolated_temporary_directory(
+    temporary_directory: tempfile.TemporaryDirectory[str],
+    sandbox_root: Path,
+    *,
+    deadline_seconds: float = 5.0,
+) -> None:
+    """只對系統 TEMP 下的 QA sandbox 重試短暫 Windows sharing violation。"""
+
+    system_temp_root = Path(tempfile.gettempdir()).resolve()
+    resolved_sandbox = sandbox_root.resolve()
+    managed_root = Path(temporary_directory.name).resolve()
+    if (
+        resolved_sandbox != managed_root
+        or resolved_sandbox == system_temp_root
+        or not resolved_sandbox.is_relative_to(system_temp_root)
+    ):
+        raise ValueError("QA sandbox cleanup target 必須是 system TEMP 下的該 TemporaryDirectory")
+    if deadline_seconds <= 0:
+        raise ValueError("cleanup deadline_seconds 必須大於 0")
+
+    started_at = time.monotonic()
+    deadline = started_at + deadline_seconds
+    attempt = 1
+    backoff_seconds = 0.1
+    while True:
+        try:
+            temporary_directory.cleanup()
+            return
+        except OSError as exc:
+            if os.name != "nt" or getattr(exc, "winerror", None) != 32:
+                raise
+            elapsed = time.monotonic() - started_at
+            logger.warning(
+                "QA TEMP cleanup 遇到 Windows sharing violation；"
+                "attempt=%s elapsed=%.2fs error=%s",
+                attempt,
+                elapsed,
+                exc,
+            )
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(backoff_seconds, remaining))
+            backoff_seconds = min(backoff_seconds * 2, 1.0)
+            attempt += 1
 
 
 def validate_closed_loop_fixture(config: TWStockConfig, result: "ValidationResult") -> None:
@@ -836,8 +884,11 @@ def main():
     
     try:
         # 所有可寫入資料都落在暫存雙根；不讀取、不修改正式資料根目錄。
-        with tempfile.TemporaryDirectory(prefix="task-loop-01-qa-") as sandbox:
-            sandbox_root = Path(sandbox)
+        temporary_directory = tempfile.TemporaryDirectory(
+            prefix="task-loop-01-qa-"
+        )
+        sandbox_root = Path(temporary_directory.name)
+        try:
             config = _isolated_config(sandbox_root)
             _seed_isolated_fixture(config)
 
@@ -850,6 +901,11 @@ def main():
                 validate_data_status_logic(config, result)
             finally:
                 _close_isolated_file_handlers(sandbox_root)
+        finally:
+            _cleanup_isolated_temporary_directory(
+                temporary_directory,
+                sandbox_root,
+            )
         
     except Exception as e:
         logger.error(f"驗證過程發生錯誤: {e}")

@@ -497,6 +497,7 @@ class UpdateService :
         """Plan MOPS snapshot monthly revenue backfill without writing SQLite."""
         try :
             from data_module .monthly_revenue_backfill import plan_mops_snapshot_monthly_revenue_backfill
+            from decision_module .factors .fundamental_adapters import source_diagnostics_to_factor_diagnostics
 
             snapshot_path =self ._resolve_monthly_revenue_snapshot_file (snapshot_file )
             availability_path =Path (availability_file or self .config .monthly_revenue_availability_file )
@@ -506,7 +507,7 @@ class UpdateService :
             availability_file =availability_path ,
             source_version =version ,
             )
-            diagnostic_payloads =[diagnostic .to_dict ()for diagnostic in plan .diagnostics ]
+            diagnostic_payloads =[diagnostic .to_dict ()for diagnostic in source_diagnostics_to_factor_diagnostics(plan.diagnostics) ]
             return {
             'success':plan .ready_for_apply ,
             'ready_for_apply':plan .ready_for_apply ,

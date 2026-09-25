@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Callable, Dict, List, cast
+from uuid import uuid4
 
 import pandas as pd
 
@@ -116,6 +117,7 @@ class RecommendationPortfolioBacktestService:
         注意：目前本服務進場點（PeriodHoldingDTO.entry_price）採用 rebalance_ts（訊號日）當天的收盤價。
         此模式隱含「同日收盤訊號同日收盤成交」之理想化研究假設，在實盤操作中可能存在時間差而無法以該價格買入。
         """
+        replay_parent_id = f"replay-parent-{uuid4().hex}"
         if cost_policy_id is not None:
             if cost_policy_id != self._banktaiwan_cost_policy.policy_id:
                 raise ValueError(f"不支援的 cost_policy_id：{cost_policy_id}")
@@ -140,6 +142,7 @@ class RecommendationPortfolioBacktestService:
                 cost_policy_id=cost_policy_id,
                 cost_policy_instrument_type=cost_policy_instrument_type,
                 cost_policy_lot_type=cost_policy_lot_type,
+                parent_result_id=replay_parent_id,
             )
         if execution_contract != LEGACY_CLOSE_CONTRACT:
             raise ValueError("不支援的 execution_contract")
@@ -198,6 +201,7 @@ class RecommendationPortfolioBacktestService:
                 history=data,
                 universe=None,
                 top_n=top_n,
+                parent_result_id=replay_parent_id,
             )
             snapshots.append(snapshot)
             recommendations = snapshot.recommendations
@@ -345,6 +349,7 @@ class RecommendationPortfolioBacktestService:
                     history=data,
                     universe=None,
                     top_n=top_n,
+                    parent_result_id=replay_parent_id,
                 )
             )
 
@@ -372,7 +377,7 @@ class RecommendationPortfolioBacktestService:
                 "microstructure_preflight": microstructure_preflight,
                 "relative_attribution": relative_attribution,
             }
-            return RecommendationPortfolioBacktestResultDTO(
+            result = RecommendationPortfolioBacktestResultDTO(
                 summary={
                     "total_return": 0.0,
                     "max_drawdown": 0.0,
@@ -401,6 +406,8 @@ class RecommendationPortfolioBacktestService:
                 ),
                 details=details,
             )
+            result.attach_replay_parent_id(replay_parent_id)
+            return result
 
         final_equity = initial_capital + sum(holding.pnl() for holding in period_holdings)
         equity_curve = self._build_equity_curve(initial_capital, period_holdings, start_ts, end_ts, data)
@@ -459,7 +466,7 @@ class RecommendationPortfolioBacktestService:
             "relative_attribution": relative_attribution,
         }
 
-        return RecommendationPortfolioBacktestResultDTO(
+        result = RecommendationPortfolioBacktestResultDTO(
             summary=summary,
             equity_curve=equity_curve,
             trades=pd.DataFrame(trade_rows),
@@ -474,6 +481,8 @@ class RecommendationPortfolioBacktestService:
             improvement_hints=improvement_hints,
             details=details,
         )
+        result.attach_replay_parent_id(replay_parent_id)
+        return result
 
     def _next_open_execution_costs(
         self,
@@ -533,8 +542,11 @@ class RecommendationPortfolioBacktestService:
          cost_policy_instrument_type: str | None = None,
          cost_policy_lot_type: str | None = None,
          include_benchmark: bool = True,
+         parent_result_id: str | None = None,
     ) -> RecommendationPortfolioBacktestResultDTO:
         """日序事件撮合；精確帳務直到 DTO 產出才轉展示型別。"""
+        if parent_result_id is None:
+            parent_result_id = f"replay-parent-{uuid4().hex}"
         capital = quantize_money(to_decimal(initial_capital))
         cost_policy = None
         normalized_policy_lot_type = None
@@ -801,7 +813,8 @@ class RecommendationPortfolioBacktestService:
             curve_rows.append({"date": session.strftime("%Y-%m-%d"), "equity": float(final_equity), "cash": float(cash), "position_value": float(quantize_money(value))})  # numeric-boundary: dto
             if session in rebalance_dates:
                 snapshot = self.replay_service.run_snapshot(as_of_date=session.strftime("%Y-%m-%d"), profile_id=profile_id,
-                    config=dict(config), history=data, universe=None, top_n=top_n)
+                    config=dict(config), history=data, universe=None, top_n=top_n,
+                    parent_result_id=parent_result_id)
                 snapshots.append(snapshot)
                 recs = snapshot.recommendations
                 scores = [max(to_decimal(rec.get("total_score", 0)), Decimal("0")) for rec in recs]
@@ -952,9 +965,11 @@ class RecommendationPortfolioBacktestService:
             details["unallocated_allocations"] = unallocated_allocations
             summary["unallocated_cash"] = float(unallocated_cash)  # numeric-boundary: dto
             summary["unallocated_allocation_count"] = len(unallocated_allocations)
-        return RecommendationPortfolioBacktestResultDTO(summary=summary, equity_curve=equity_curve, trades=pd.DataFrame(trade_rows), snapshots=snapshots,
+        result = RecommendationPortfolioBacktestResultDTO(summary=summary, equity_curve=equity_curve, trades=pd.DataFrame(trade_rows), snapshots=snapshots,
             period_holdings=holdings, stock_contribution=contributions, selection_diagnostics=diagnostics + [str(o["reason"]) for o in unfilled],
             details=details)
+        result.attach_replay_parent_id(parent_result_id)
+        return result
 
     def _get_rebalance_dates(
         self,

@@ -3,18 +3,19 @@
 提供股票推薦的業務邏輯，供 UI 層調用
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any, Mapping, Optional, cast
+from typing import Callable, List, Dict, Any, Mapping, Optional, TYPE_CHECKING, cast
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from copy import deepcopy
-from contextlib import closing
 import hashlib
 import json
-import sqlite3
+from threading import RLock
 from uuid import uuid4
 
 # 確保 pd.isna 可用（pandas 兼容性）
@@ -29,9 +30,9 @@ if not hasattr(pd, 'isna'):
 from decision_module.strategy_configurator import StrategyConfigurator
 from decision_module.reason_engine import ReasonEngine
 from decision_module.industry_mapper import IndustryMapper
-from decision_module.market_regime_detector import MarketRegimeDetector
 from app_module.dtos import RecommendationDTO
-from app_module.strategy_spec import StrategySpec
+from app_module.regime_service import RegimeService
+from decision_module.strategies.contracts import StrategySpec
 from app_module.preset_service import PresetService
 from app_module.strategy_version_service import StrategyVersionService
 from decision_module.derived_market_features import (
@@ -46,12 +47,7 @@ from app_module.recommendation_run_support import (
     matrix_row,
     validate_ranking_config,
 )
-from app_module.recommendation_market_data_provider import (
-    DefaultRecommendationMarketDataProvider,
-)
-from app_module.recommendation_market_frame import normalize_market_frame
-from app_module.recommendation_portfolio_dates import parse_stock_dates
-from app_module.recommendation_ranking_pipeline import build_ranking_plan
+from app_module.recommendation_errors import RecommendationUniverseTooSmallError
 from app_module.application_ports import MarketFrameProvider
 from data_module.fundamental_sqlite_provider import FundamentalSQLiteProvider
 from app_module.v4_evidence_identity import (
@@ -63,6 +59,57 @@ from app_module.recommendation_calibration_consumer import (
     RecommendationCalibrationProjection,
     build_default_recommendation_calibration_consumer,
 )
+from app_module.recommendation.evaluation_driver import evaluate_candidate_staged
+from app_module.recommendation.score_projection import project_legacy_recommendation_score
+from app_module.recommendation.source_fact_projection import (
+    project_industry_context_fact,
+    project_legacy_industry_reason,
+    project_monthly_revenue_records,
+    project_optional_final_score,
+    project_pe_observation,
+    project_required_legacy_decimal,
+)
+from decision_module.recommendation.evaluate import (
+    CandidatePrefilterFact,
+    CandidateEvaluationOutcome,
+    CandidateHistoryFacts,
+    CandidateSeed,
+    DecisionUniverseTooSmallError,
+    NeedSourceFact,
+    RecommendationEvaluationPolicy,
+    RecommendationEvaluationResult,
+    RecommendationEvaluator,
+    RecommendationScore,
+    SourceFactKind,
+    SourceFactResponse,
+    StrategyEvaluationError,
+)
+from decision_module.recommendation.contracts import RecommendationItem
+from decision_module.recommendation.industry_reasons import (
+    build_industry_performance_reason,
+)
+from decision_module.recommendation.finalization import (
+    FinalScoreDisposition,
+    FinalScoreFacts,
+    RecommendationItemFacts,
+    RegimeMatchFacts,
+    classify_final_score,
+    evaluate_regime_match,
+    finalize_candidate_item,
+    reason_tags_from_legacy_reasons,
+)
+from app_module.recommendation.body_result import (
+    CandidateRowFacts,
+    InvocationLegacyContextOwner,
+    LegacyRecommendationSnapshot,
+    RecommendationBodyContextFacts,
+    RecommendationBodyResult,
+    build_candidate_row_payload,
+    enrich_evaluation_result,
+    strategy_identity_from_payload,
+    universe_identity_from_payload,
+)
+from app_module.recommendation.contracts import RecommendationRunEvidenceIdentity
 from data_module.pit_sector_membership_reader import (
     PITMembershipReadResult,
     PITSectorMembershipReader,
@@ -78,6 +125,28 @@ from ml_module.recommendation_inference_provenance import (
     persist_inference_projection_receipt,
     read_inference_projection_receipt,
 )
+
+
+class _FinalizationFailure(Exception):
+    """App-boundary wrapper that preserves the original typed error identity."""
+
+    def __init__(self, error: StrategyEvaluationError) -> None:
+        self.error = error
+        super().__init__(error.message)
+
+if TYPE_CHECKING:
+    from app_module.recommendation.contracts import (
+        RecommendationConfigSnapshot,
+        RecommendationExecution,
+    )
+    from app_module.recommendation.input_preparation import (
+        RecommendationInputPreparer,
+        RecommendationInputSession,
+    )
+    from app_module.recommendation.execute import (
+        RecommendationPostprocessFacts,
+        RecommendationPostprocessInput,
+    )
 
 
 def _industry_names_match(actual: str, requested: str) -> bool:
@@ -101,6 +170,39 @@ def _industry_names_match(actual: str, requested: str) -> bool:
     return bool(left and right and (left == right or left in right or right in left))
 
 
+def _recommendation_evidence_identity(
+    declared_identity: Mapping[str, object],
+) -> RecommendationRunEvidenceIdentity | None:
+    """Build typed evidence identity from explicit same-run config inputs."""
+
+    def optional_text(key: str) -> str | None:
+        value = declared_identity.get(key)
+        if value is None or not str(value).strip():
+            return None
+        return cast(str, value)
+
+    horizon_value = declared_identity.get("horizon_days")
+    horizon_days = (
+        cast(Decimal | int | str, horizon_value)
+        if horizon_value is not None and str(horizon_value).strip()
+        else None
+    )
+    values = (
+        optional_text("cost_model_id"),
+        optional_text("benchmark_id"),
+        optional_text("industry_benchmark_id"),
+        horizon_days,
+    )
+    if all(value is None for value in values):
+        return None
+    return RecommendationRunEvidenceIdentity(
+        cost_model_id=values[0],
+        benchmark_id=values[1],
+        industry_benchmark_id=values[2],
+        horizon_days=values[3],
+    )
+
+
 class RecommendationService:
     """推薦服務類"""
 
@@ -109,9 +211,11 @@ class RecommendationService:
         config,
         industry_mapper: Optional[IndustryMapper] = None,
         market_data_provider: Optional[MarketFrameProvider] = None,
-        regime_detector: Optional[MarketRegimeDetector] = None,
+        regime_detector: Any | None = None,
         calibration_consumer: RecommendationCalibrationConsumer | None = None,
         pit_membership_reader: PITSectorMembershipReader | None = None,
+        input_preparer: RecommendationInputPreparer | None = None,
+        regime_service: Any | None = None,
     ):
         """初始化推薦服務
 
@@ -126,12 +230,35 @@ class RecommendationService:
             self.industry_mapper = IndustryMapper(config)
         else:
             self.industry_mapper = industry_mapper
+        if input_preparer is None:
+            raise ValueError(
+                "RecommendationService 必須由 application composition 注入 input_preparer"
+            )
+        if (
+            market_data_provider is not None
+            and market_data_provider is not input_preparer.market_data_provider
+        ):
+            raise ValueError("market_data_provider 必須與 input_preparer 使用同一實例")
+        self.recommendation_input_preparer = input_preparer
         self.market_data_provider = (
             market_data_provider
             if market_data_provider is not None
-            else DefaultRecommendationMarketDataProvider(config)
+            else input_preparer.market_data_provider
         )
-        self.regime_detector = regime_detector or MarketRegimeDetector(config)
+        if regime_service is not None:
+            self.regime_service = regime_service
+        elif regime_detector is not None:
+            # Temporary app-side adapter for existing custom/test constructor callers.
+            self.regime_service = RegimeService(
+                config,
+                regime_detector=regime_detector,
+                use_persistent_history=True,
+            )
+        else:
+            self.regime_service = RegimeService(
+                config,
+                use_persistent_history=True,
+            )
         self.calibration_consumer = (
             calibration_consumer
             if calibration_consumer is not None
@@ -147,8 +274,7 @@ class RecommendationService:
         self.last_exclusion_warnings_json: List[str] = []
         self.last_run_context: Dict[str, Any] = {}
         self._personalization_execution_clocks: Dict[str, str] = {}
-        self._fundamental_sqlite_provider: FundamentalSQLiteProvider | None = None
-        self._fundamental_provider_initialization_attempted = False
+        self._r011_last_state_lock = RLock()
 
     def _reset_negative_evidence_buffers(self) -> None:
         self.last_screening_matrix = []
@@ -178,12 +304,28 @@ class RecommendationService:
         """
 
         consumer = self.calibration_consumer
+        invocation_capture = getattr(self, "_r011_invocation_capture", None)
+        if isinstance(invocation_capture, dict):
+            invocation_capture["calibration_consumer_configured"] = consumer is not None
         if consumer is None:
             return
         if not decision_date or not recommendations:
             return
+        if isinstance(invocation_capture, dict):
+            invocation_capture["calibration_attempted"] = True
+        # The R026 source scope is transient and local to this calibration
+        # invocation.  It is intentionally independent of result_id and the
+        # legacy staged_invocation_id, and is never written to provenance.
+        source_scope_id = f"recommendation-live-{uuid4().hex}"
         try:
             from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
+            from data_module.source_revision_evidence_collector import (
+                collect_source_revision_evidence_v1,
+            )
+            from data_module.contracts.source_revision import (
+                SOURCE_REVISION_EVIDENCE_SCHEMA_V1,
+                ValidatedSourceEvidenceV1,
+            )
             from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
             from ml_module.historical_feature_builder import HistoricalFeatureBuilder
 
@@ -191,147 +333,249 @@ class RecommendationService:
             if db_file is None:
                 raise FileNotFoundError("recommendation calibration source database is not configured")
             provider = MLHistoricalSnapshotProvider(db_file)
-            snapshot = provider.load(
-                decision_date=decision_date,
-                history_start_date=str(getattr(self.config, "default_start_date", "2014-01-01"))[:10],
-                symbols=tuple(sorted({str(item.stock_code) for item in recommendations})),
-                industry_index_names=(),
+            cutoff_date = date.fromisoformat(decision_date[:10])
+            source_symbols = tuple(
+                sorted({str(item.stock_code) for item in recommendations})
             )
-            feature_builder = HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY)
-            rows = feature_builder.compute(
-                snapshot,
-                industry_index_name_by_symbol={},
-            )
-            feature_values = {
-                row.symbol: tuple(value for _, value in row.values)
-                for row in rows
-            }
-            provenance_rows = [
-                {
-                    "symbol": row.symbol,
-                    "decision_date": getattr(row, "decision_date", snapshot.decision_date),
-                    "feature_as_of_date": getattr(
-                        row, "feature_as_of_date", snapshot.feature_as_of_date
-                    ),
-                    "feature_available_date": getattr(
-                        row, "feature_available_date", snapshot.decision_date
-                    ),
-                    "values": row.values,
-                    "snapshot_hash": getattr(row, "snapshot_hash", ""),
-                }
-                for row in rows
-            ]
-            active_identity_provider = getattr(consumer, "active_identity", None)
-            active_identity = (
-                active_identity_provider(decision_date=decision_date)
-                if callable(active_identity_provider)
-                else None
-            )
-            active_identity = active_identity if isinstance(active_identity, Mapping) else {}
-            active_cost_provider = getattr(consumer, "active_cost_scenario", None)
-            active_cost_scenario = (
-                active_cost_provider(decision_date=decision_date)
-                if callable(active_cost_provider)
-                else None
-            )
-            active_cost_hash = active_identity.get("cost_scenario_hash")
-            active_cost_id = active_identity.get("cost_scenario_id")
-            active_cost_version = active_identity.get("cost_scenario_version")
-            if active_cost_scenario is not None:
-                active_cost_hash = getattr(active_cost_scenario, "scenario_hash", None)
-                active_cost_id = getattr(active_cost_scenario, "scenario_id", None)
-                active_cost_version = getattr(active_cost_scenario, "scenario_version", None)
-            inference_feature_schema = getattr(
-                consumer,
-                "feature_schema",
-                CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
-            )
-            inference_feature_registry_hash = str(
-                getattr(
-                    consumer,
-                    "feature_registry_hash",
-                    CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+            source_database_path = provider.database_path
+            history_start_date = str(
+                getattr(self.config, "default_start_date", "2014-01-01")
+            )[:10]
+            with provider.open_read_lease() as lease:
+                source_evidence_before = collect_source_revision_evidence_v1(
+                    database_path=source_database_path,
+                    scope_id=source_scope_id,
+                    cutoff_date=cutoff_date,
+                    symbols=source_symbols,
+                    explicit_path=None,
                 )
-            )
-            inference_provenance = build_inference_provenance(
-                snapshot=snapshot,
-                feature_rows=provenance_rows,
-                feature_schema=inference_feature_schema,
-                feature_registry_hash=inference_feature_registry_hash,
-                feature_builder_schema_hash=feature_builder.load_contract.schema_hash,
-                source_database=str(provider.database_path),
-                history_start_date=str(
-                    getattr(self.config, "default_start_date", "2014-01-01")
-                )[:10],
-                cost_scenario_hash=(
-                    str(active_cost_hash)
-                    if active_cost_hash
+                if type(source_evidence_before) is not ValidatedSourceEvidenceV1:
+                    raise TypeError("source revision collector returned an invalid aggregate")
+                if (
+                    source_evidence_before.schema_version
+                    != SOURCE_REVISION_EVIDENCE_SCHEMA_V1
+                    or source_evidence_before.scope_id != source_scope_id
+                    or source_evidence_before.cutoff_date != cutoff_date
+                ):
+                    raise RuntimeError(
+                        "source revision evidence identity mismatch before calibration"
+                    )
+
+                snapshot = lease.load(
+                    decision_date=decision_date,
+                    history_start_date=history_start_date,
+                    symbols=source_symbols,
+                    industry_index_names=(),
+                )
+                feature_builder = HistoricalFeatureBuilder(
+                    CORE_LONG_HISTORY_FEATURE_REGISTRY
+                )
+                rows = feature_builder.compute(
+                    snapshot,
+                    industry_index_name_by_symbol={},
+                )
+                source_evidence_after = collect_source_revision_evidence_v1(
+                    database_path=source_database_path,
+                    scope_id=source_scope_id,
+                    cutoff_date=cutoff_date,
+                    symbols=source_symbols,
+                    explicit_path=None,
+                )
+                if type(source_evidence_after) is not ValidatedSourceEvidenceV1:
+                    raise TypeError("source revision collector returned an invalid aggregate")
+                if (
+                    source_evidence_after.schema_version
+                    != SOURCE_REVISION_EVIDENCE_SCHEMA_V1
+                    or source_evidence_after.scope_id != source_scope_id
+                    or source_evidence_after.cutoff_date != cutoff_date
+                ):
+                    self.last_run_context.setdefault("warnings", []).append(
+                        "calibration_source_revision_identity_changed_fail_closed"
+                    )
+                    raise RuntimeError(
+                        "source revision evidence identity mismatch after calibration"
+                    )
+                if source_evidence_before.digest_sha256 != source_evidence_after.digest_sha256:
+                    self.last_run_context.setdefault("warnings", []).append(
+                        "calibration_source_revision_changed_fail_closed"
+                    )
+                    raise RuntimeError("source revision evidence changed during calibration")
+
+                feature_values = {
+                    row.symbol: tuple(value for _, value in row.values)
+                    for row in rows
+                }
+                provenance_rows = [
+                    {
+                        "symbol": row.symbol,
+                        "decision_date": getattr(
+                            row, "decision_date", snapshot.decision_date
+                        ),
+                        "feature_as_of_date": getattr(
+                            row, "feature_as_of_date", snapshot.feature_as_of_date
+                        ),
+                        "feature_available_date": getattr(
+                            row, "feature_available_date", snapshot.decision_date
+                        ),
+                        "values": row.values,
+                        "snapshot_hash": getattr(row, "snapshot_hash", ""),
+                    }
+                    for row in rows
+                ]
+                active_identity_provider = getattr(consumer, "active_identity", None)
+                active_identity = (
+                    active_identity_provider(decision_date=decision_date)
+                    if callable(active_identity_provider)
                     else None
-                ),
-                cost_scenario_id=(
-                    str(active_cost_id)
-                    if active_cost_id
+                )
+                active_identity = (
+                    active_identity if isinstance(active_identity, Mapping) else {}
+                )
+                active_cost_provider = getattr(consumer, "active_cost_scenario", None)
+                active_cost_scenario = (
+                    active_cost_provider(decision_date=decision_date)
+                    if callable(active_cost_provider)
                     else None
-                ),
-                cost_scenario_version=(
-                    str(active_cost_version)
-                    if active_cost_version
-                    else None
-                ),
-                probability_transform_id=PROBABILITY_TRANSFORM_ID,
-                source_contract_binding=getattr(
-                    self.config, "recommendation_source_contract_binding", None
-                ),
-            )
+                )
+                active_cost_hash = active_identity.get("cost_scenario_hash")
+                active_cost_id = active_identity.get("cost_scenario_id")
+                active_cost_version = active_identity.get("cost_scenario_version")
+                if active_cost_scenario is not None:
+                    active_cost_hash = getattr(
+                        active_cost_scenario, "scenario_hash", None
+                    )
+                    active_cost_id = getattr(active_cost_scenario, "scenario_id", None)
+                    active_cost_version = getattr(
+                        active_cost_scenario, "scenario_version", None
+                    )
+                inference_feature_schema = getattr(
+                    consumer,
+                    "feature_schema",
+                    CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
+                )
+                inference_feature_registry_hash = str(
+                    getattr(
+                        consumer,
+                        "feature_registry_hash",
+                        CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+                    )
+                )
+                inference_provenance = build_inference_provenance(
+                    snapshot=snapshot,
+                    feature_rows=provenance_rows,
+                    feature_schema=inference_feature_schema,
+                    feature_registry_hash=inference_feature_registry_hash,
+                    feature_builder_schema_hash=feature_builder.load_contract.schema_hash,
+                    source_database=str(provider.database_path),
+                    history_start_date=history_start_date,
+                    cost_scenario_hash=(
+                        str(active_cost_hash)
+                        if active_cost_hash
+                        else None
+                    ),
+                    cost_scenario_id=(
+                        str(active_cost_id)
+                        if active_cost_id
+                        else None
+                    ),
+                    cost_scenario_version=(
+                        str(active_cost_version)
+                        if active_cost_version
+                        else None
+                    ),
+                    probability_transform_id=PROBABILITY_TRANSFORM_ID,
+                    source_contract_binding=getattr(
+                        self.config, "recommendation_source_contract_binding", None
+                    ),
+                )
+
+                # Read all active identity/cost baselines inside the lease so
+                # the same source observation spans the complete projection.
+                after_cost_baseline = None
+                baseline_provider = getattr(consumer, "active_after_cost_baseline", None)
+                if callable(baseline_provider):
+                    after_cost_baseline = baseline_provider(decision_date=decision_date)
+                after_cost_rule_probability: dict[str, int] = {}
+                after_cost_rule_baseline_ids: dict[str, str] = {}
+                if after_cost_baseline is not None:
+                    baseline_id, baseline_probability = after_cost_baseline
+                    after_cost_rule_probability = {
+                        str(item.stock_code): baseline_probability
+                        for item in recommendations
+                    }
+                    after_cost_rule_baseline_ids = {
+                        str(item.stock_code): baseline_id
+                        for item in recommendations
+                    }
+                rule_probability = {
+                    str(item.stock_code): 5_000 for item in recommendations
+                }
+                percentiles = {
+                    str(item.stock_code): int(item.score_percentile_bp)
+                    for item in recommendations
+                    if item.score_percentile_bp is not None
+                }
+                projections = consumer.project_many(
+                    feature_values_by_symbol=feature_values,
+                    rule_probability_by_symbol=rule_probability,
+                    after_cost_rule_probability_by_symbol=after_cost_rule_probability,
+                    after_cost_rule_baseline_id_by_symbol=after_cost_rule_baseline_ids,
+                    ranking_percentile_by_symbol=percentiles,
+                    decision_date=decision_date,
+                    data_quality="observed",
+                    rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
+                    inference_provenance=inference_provenance,
+                    selection_authority=selection_authority,
+                    selection_score_kind=selection_score_kind,
+                    selection_percentile_kind=selection_percentile_kind,
+                    top_n_changed_by_model=top_n_changed_by_model,
+                )
+                lease.assert_unchanged()
         except Exception as exc:  # noqa: BLE001 - consumer must fail closed
+            self.last_calibration_projections = {}
+            for key in (
+                "calibration_rule_baseline_id",
+                "calibration_after_cost_baseline_id",
+                "calibration_projection_source",
+                "calibration_projection_rows",
+                "calibration_projection_receipt",
+                "calibration_projection_receipt_created_at",
+                "calibration_projection_receipt_error",
+                "calibration_projection_receipt_error_detail",
+                "personalization_scope",
+                "personalization_delivery_scope",
+            ):
+                self.last_run_context.pop(key, None)
             self.last_run_context["calibration_projection_status"] = "unavailable"
+            self.last_run_context["calibration_projection_receipt_status"] = "unavailable"
             self.last_run_context.setdefault("warnings", []).append(
                 f"calibration_feature_source_unavailable:{type(exc).__name__}"
             )
             for recommendation in recommendations:
+                recommendation.ranking_score_bp = None
+                recommendation.calibrated_probability_bp = None
+                recommendation.calibrated_probability_status = "unavailable"
+                recommendation.after_cost_profit_probability_bp = None
+                recommendation.after_cost_profit_probability_status = "unavailable"
+                recommendation.evidence_confidence = ""
+                recommendation.sample_size = None
+                recommendation.cost_basis_bp = None
+                recommendation.calibration_model_version = ""
+                recommendation.calibration_dataset_version = ""
+                recommendation.calibration_horizon = ""
                 recommendation.calibration_status = "unavailable"
                 recommendation.calibration_source = "recommendation_calibration_consumer"
                 recommendation.calibration_warnings = ["feature_vector_source_unavailable_fail_closed"]
+                recommendation.calibration_source_trace = []
+                recommendation.calibration_probability_transform_id = ""
+                recommendation.calibration_probability_baseline_id = ""
+                recommendation.calibration_probability_baseline_kind = ""
+                recommendation.calibration_probability_baseline_probability_bp = None
+                recommendation.calibration_raw_probability_bp = None
+                recommendation.calibration_raw_after_cost_probability_bp = None
+                recommendation.calibration_provenance = {}
             return
 
-        rule_probability = {str(item.stock_code): 5_000 for item in recommendations}
-        # After-cost is a distinct target.  Only pass its frozen 5,000 bp null
-        # benchmark when the active candidate declares that exact contract;
-        # declared-but-unpriced baselines remain unavailable.
-        after_cost_baseline = None
-        baseline_provider = getattr(consumer, "active_after_cost_baseline", None)
-        if callable(baseline_provider):
-            after_cost_baseline = baseline_provider(decision_date=decision_date)
-        after_cost_rule_probability: dict[str, int] = {}
-        after_cost_rule_baseline_ids: dict[str, str] = {}
-        if after_cost_baseline is not None:
-            baseline_id, baseline_probability = after_cost_baseline
-            after_cost_rule_probability = {
-                str(item.stock_code): baseline_probability for item in recommendations
-            }
-            after_cost_rule_baseline_ids = {
-                str(item.stock_code): baseline_id for item in recommendations
-            }
-        percentiles = {
-            str(item.stock_code): int(item.score_percentile_bp)
-            for item in recommendations
-            if item.score_percentile_bp is not None
-        }
-        projections = consumer.project_many(
-            feature_values_by_symbol=feature_values,
-            rule_probability_by_symbol=rule_probability,
-            after_cost_rule_probability_by_symbol=after_cost_rule_probability,
-            after_cost_rule_baseline_id_by_symbol=after_cost_rule_baseline_ids,
-            ranking_percentile_by_symbol=percentiles,
-            decision_date=decision_date,
-            data_quality="observed",
-            rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
-            inference_provenance=inference_provenance,
-            selection_authority=selection_authority,
-            selection_score_kind=selection_score_kind,
-            selection_percentile_kind=selection_percentile_kind,
-            top_n_changed_by_model=top_n_changed_by_model,
-        )
         self.last_calibration_projections = dict(projections)
         self.last_run_context["calibration_projection_status"] = (
             "active_candidate"
@@ -360,9 +604,14 @@ class RecommendationService:
                 selection_score_kind=selection_score_kind,
                 selection_percentile_kind=selection_percentile_kind,
                 top_n_changed_by_model=top_n_changed_by_model,
+                invocation_capture=invocation_capture,
             )
         except (OSError, TypeError, ValueError, RecommendationProvenanceError) as exc:
             receipt_path = None
+            if isinstance(invocation_capture, dict):
+                receipt_capture = invocation_capture.setdefault("receipt", {})
+                if isinstance(receipt_capture, dict):
+                    receipt_capture["error"] = f"{type(exc).__name__}: {exc}"
             self.last_run_context.setdefault("warnings", []).append(
                 f"calibration_projection_receipt_unavailable:{type(exc).__name__}"
             )
@@ -502,6 +751,7 @@ class RecommendationService:
         selection_score_kind: str,
         selection_percentile_kind: str,
         top_n_changed_by_model: bool,
+        invocation_capture: dict[str, Any] | None = None,
     ) -> dict[str, str] | None:
         """Persist the exact bounded projection batch when a real consumer is loaded."""
 
@@ -600,11 +850,43 @@ class RecommendationService:
                 "top_n_changed_by_model": bool(top_n_changed_by_model),
             },
         )
+        capture = invocation_capture.setdefault("receipt", {}) if isinstance(invocation_capture, dict) else None
+        if isinstance(capture, dict):
+            capture.update(
+                {
+                    "attempted": True,
+                    "result_id": str(result_id or ""),
+                    "decision_date": str(decision_date),
+                    "candidate_identity": {
+                        key: str(identity.get(key) or "")
+                        for key in (
+                            "candidate_id",
+                            "candidate_manifest_hash",
+                            "candidate_artifact_hash",
+                            "candidate_freeze_hash",
+                            "pointer_version",
+                        )
+                    },
+                    "receipt_hash": receipt.receipt_hash,
+                    "receipt_payload": deepcopy(dict(receipt.payload)),
+                    "write_status": "pending",
+                }
+            )
         path = persist_inference_projection_receipt(Path(pointer_path).parent, receipt)
+        if isinstance(capture, dict):
+            capture.update(
+                {
+                    "persisted": True,
+                    "path": str(path),
+                    "write_status": "persisted",
+                }
+            )
         receipt_created_at = datetime.now(timezone.utc).isoformat(
             timespec="microseconds"
         )
-        read_inference_projection_receipt(
+        if isinstance(capture, dict):
+            capture["receipt_created_at"] = receipt_created_at
+        verified_receipt = read_inference_projection_receipt(
             path,
             expected_receipt_hash=receipt.receipt_hash,
             expected_decision_date=decision_date,
@@ -612,6 +894,11 @@ class RecommendationService:
             expected_result_id=result_id,
             expected_cost_scenario_hash=receipt.payload.get("cost_scenario_hash"),
         )
+        if isinstance(capture, dict):
+            capture["readback_verified"] = True
+            capture["readback_status"] = "verified"
+            capture["receipt_payload"] = deepcopy(dict(verified_receipt.payload))
+            capture["receipt_hash"] = verified_receipt.receipt_hash
         post_identity = identity_provider(decision_date=decision_date)
         if not isinstance(post_identity, Mapping):
             raise RecommendationProvenanceError(
@@ -628,6 +915,9 @@ class RecommendationService:
                 raise RecommendationProvenanceError(
                     "candidate/model race: active candidate changed during projection receipt publication"
                 )
+        if isinstance(capture, dict):
+            capture["identity_verified"] = True
+            capture["identity_status"] = "verified"
         return {
             "path": str(path),
             "receipt_hash": receipt.receipt_hash,
@@ -725,148 +1015,51 @@ class RecommendationService:
     def _load_governed_monthly_revenues(
         self,
         *,
+        input_session: RecommendationInputSession,
         stock_code: str,
         decision_date: date,
     ):
         """只讀取有獨立正式 availability mapping 支持的月營收。"""
-
-        provider = self._get_fundamental_sqlite_provider()
-        if provider is None:
-            return ()
-        try:
-            return provider.load_monthly_revenues(
-                stock_code=stock_code,
-                decision_date=decision_date,
-            )
-        except Exception as exc:
-            # 基本面門檻無法建立正式 PIT 證據時，後續流程會以 missing 排除；
-            # 不可退回到直接讀 SQLite row 的舊路徑。
-            import logging
-
-            logging.getLogger(__name__).error("查詢受治理月營收失敗: %s", exc)
-            return ()
+        return input_session.load_monthly_revenues(
+            stock_code=stock_code,
+            decision_date=decision_date,
+        )
 
     def _get_fundamental_sqlite_provider(self) -> FundamentalSQLiteProvider | None:
-        if self._fundamental_sqlite_provider is not None:
-            return self._fundamental_sqlite_provider
-        if self._fundamental_provider_initialization_attempted:
-            return None
+        lock = getattr(self, "_r011_last_state_lock", None)
+        if lock is None:
+            return self._get_fundamental_sqlite_provider_locked()
+        with lock:
+            return self._get_fundamental_sqlite_provider_locked()
 
-        self._fundamental_provider_initialization_attempted = True
-        db_file = getattr(self.config, "db_file", None)
-        if db_file is None:
-            return None
-        try:
-            db_path = Path(cast(str, db_file))
-        except (TypeError, ValueError):
-            return None
-        if not db_path.is_file():
-            return None
-
-        availability_file = getattr(
-            self.config,
-            "monthly_revenue_availability_file",
-            None,
-        )
-        try:
-            availability_path = (
-                Path(availability_file) if availability_file is not None else None
-            )
-        except (TypeError, ValueError):
-            availability_file = None
-        else:
-            availability_file = availability_path
-
-        self._fundamental_sqlite_provider = FundamentalSQLiteProvider(
-            db_path,
-            monthly_revenue_availability_file=availability_file,
-        )
-        return self._fundamental_sqlite_provider
+    def _get_fundamental_sqlite_provider_locked(self) -> FundamentalSQLiteProvider | None:
+        return self.recommendation_input_preparer.fundamental_input_provider.get_monthly_revenue_provider()
 
     def _load_historical_market_frame(self, cutoff: str | None) -> pd.DataFrame:
-        """歷史入口使用決策日窗口及唯讀連線，不初始化 DBManager。"""
-        if getattr(self.config, "use_sqlite", False):
-            db_path = Path(self.config.db_file).resolve()
-            with closing(sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)) as conn:
-                conn.execute("PRAGMA query_only=ON")
-                tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-                if cutoff is None:
-                    latest = conn.execute("SELECT MAX(日期) FROM daily_prices").fetchone()[0]
-                    if latest is None:
-                        return pd.DataFrame(columns=["日期", "證券代號"])
-                    cutoff = self._normalize_decision_date(latest)
-                start = (pd.Timestamp(cutoff) - pd.Timedelta(days=60)).strftime("%Y%m%d")
-                end = cutoff.replace("-", "")
-                if "technical_indicators" in tables:
-                    query = (
-                        "SELECT p.*, t.* FROM daily_prices p LEFT JOIN technical_indicators t "
-                        "ON p.證券代號=t.證券代號 AND p.日期=t.日期 "
-                    )
-                else:
-                    query = "SELECT p.* FROM daily_prices p "
-                query += "WHERE replace(CAST(p.日期 AS TEXT), '-', '') BETWEEN ? AND ? ORDER BY p.日期, p.證券代號"
-                frame = pd.read_sql_query(query, conn, params=(start, end))
-                return frame.loc[:, ~frame.columns.duplicated()].copy()
-        paths = [getattr(self.config, "all_stocks_data_file", None), getattr(self.config, "stock_data_file", None)]
-        for candidate in paths:
-            if candidate is not None and candidate.is_file():
-                return pd.read_csv(candidate, encoding="utf-8-sig", dtype={"證券代號": str, "股票代號": str})
-        raise FileNotFoundError("歷史推薦缺少唯讀行情來源")
+        """相容 wrapper；資料來源由 composition 注入的 reader 擁有。"""
+        return self.recommendation_input_preparer.historical_market_provider(cutoff)
 
     def _decision_frame(self, frame: pd.DataFrame, cutoff: str | None) -> tuple[pd.DataFrame, str, str]:
-        frame, stock_col = normalize_market_frame(frame)
-        if frame.empty:
-            return frame, stock_col, cutoff or ""
-        frame["日期"] = parse_stock_dates(frame["日期"])
-        frame = frame[frame["日期"].notna()].copy()
-        decision_date = cutoff or (frame["日期"].max().strftime("%Y-%m-%d") if not frame.empty else "")
-        if decision_date:
-            limit = pd.Timestamp(decision_date)
-            frame = frame[frame["日期"] <= limit].copy()
-            if "available_date" in frame:
-                available = parse_stock_dates(frame["available_date"])
-                frame = frame[available.notna() & (available <= limit)].copy()
-                frame["available_date"] = available.loc[frame.index]
-                # 已知修訂優先；未到可得日的修訂不影響歷史窗口。
-                frame = frame.sort_values("available_date", kind="stable").drop_duplicates([stock_col, "日期"], keep="last")
-        frame[stock_col] = frame[stock_col].astype(str)
-        return frame.reset_index(drop=True), stock_col, decision_date
+        """相容 wrapper；frame 正規化／available-date 規則由 app prep 擁有。"""
+        from app_module.recommendation.input_preparation import (
+            prepare_recommendation_market,
+        )
+
+        prepared = prepare_recommendation_market(
+            source_frame=frame,
+            cutoff=cutoff,
+            market_data_provider=self.market_data_provider,
+        )
+        return prepared.frame, prepared.stock_column, prepared.decision_cutoff
 
     def _read_pit_membership_for_recommendation(
         self,
         cutoff: str,
         config: Dict[str, Any],
     ) -> PITMembershipReadResult | None:
-        reader = self.pit_membership_reader
-        if reader is None:
-            return None
-        decision_date = date.fromisoformat(cutoff)
-        configured_cutoff = config.get("pit_decision_at") or config.get("decision_at")
-        decision_at = configured_cutoff or reader.default_decision_at(decision_date)
-        market_scope = config.get("pit_market_scope") or getattr(
-            self.config, "pit_market_scope", None
+        return self.recommendation_input_preparer.pit_membership_provider.read(
+            cutoff, config
         )
-        try:
-            return reader.read(
-                as_of_date=decision_date,
-                decision_at=decision_at,
-                market_scope=market_scope,
-            )
-        except Exception as exc:  # noqa: BLE001 - recommendation fails closed
-            return PITMembershipReadResult(
-                as_of_date=decision_date,
-                decision_at=reader.default_decision_at(decision_date),
-                status="unavailable",
-                quality="missing",
-                rows=(),
-                warnings=(f"pit_membership_reader_error:{type(exc).__name__}",),
-                lineage={
-                    "reader_schema_version": "pit-sector-membership-reader.v1",
-                    "status": "unavailable",
-                    "market_scope_requested": None,
-                    "error": str(exc),
-                },
-            )
 
     @staticmethod
     def _pit_codes_for_industry(
@@ -891,7 +1084,93 @@ class RecommendationService:
         historical_research: bool = False,
         select_latest_available_cutoff: bool = False,
     ) -> List[RecommendationDTO]:
-        """執行推薦分析
+        """由新的單次 execute 用例提供向後相容的 DTO list。"""
+
+        from app_module.recommendation.execute import (
+            execute_recommendation,
+            project_legacy_recommendations,
+            publish_legacy_invocation_state,
+        )
+
+        capture: dict[str, Any] = {}
+        execution = execute_recommendation(
+            self,
+            config,
+            max_stocks=max_stocks,
+            top_n=top_n,
+            as_of_date=as_of_date,
+            universe=universe,
+            result_id=result_id,
+            historical_research=historical_research,
+            select_latest_available_cutoff=select_latest_available_cutoff,
+            capture_sink=capture,
+        )
+        publish_legacy_invocation_state(self, capture)
+        error = capture.get("error")
+        if error is not None:
+            raise error.with_traceback(capture.get("traceback"))
+        if execution.status.value != "completed":
+            return []
+        return project_legacy_recommendations(execution, capture)
+
+    def execute_recommendation(
+        self,
+        runtime_config: Mapping[str, Any],
+        max_stocks: int = 200,
+        top_n: int = 50,
+        *,
+        request_config_snapshot: RecommendationConfigSnapshot,
+        postprocess_callback: Callable[
+            [RecommendationPostprocessInput], RecommendationPostprocessFacts
+        ],
+        created_at: datetime | None = None,
+        as_of_date: str | date | None = None,
+        universe: Optional[List[str]] = None,
+        result_id: str | None = None,
+        historical_research: bool = False,
+        select_latest_available_cutoff: bool = False,
+        cancel: Callable[[], bool] | None = None,
+        progress: Callable[[str, int], None] | None = None,
+    ) -> RecommendationExecution:
+        """執行具原 caller snapshot 與同步 postprocess 的完整 capture。"""
+
+        if not callable(postprocess_callback):
+            raise TypeError("postprocess_callback 必須是 callable")
+        from app_module.recommendation.execute import (
+            execute_recommendation as execute_use_case,
+        )
+
+        return execute_use_case(
+            self,
+            runtime_config,
+            max_stocks=max_stocks,
+            top_n=top_n,
+            as_of_date=as_of_date,
+            universe=universe,
+            result_id=result_id,
+            historical_research=historical_research,
+            select_latest_available_cutoff=select_latest_available_cutoff,
+            request_config_snapshot=request_config_snapshot,
+            postprocess_callback=postprocess_callback,
+            created_at=created_at,
+            cancel=cancel,
+            progress=progress,
+        )
+
+    def _run_recommendation_body_result(
+        self,
+        config: Dict[str, Any],
+        max_stocks: int = 200,
+        top_n: int = 50,
+        *,
+        as_of_date: str | date | None = None,
+        universe: Optional[List[str]] = None,
+        result_id: str | None = None,
+        historical_research: bool = False,
+        select_latest_available_cutoff: bool = False,
+        input_session: RecommendationInputSession | None = None,
+    ) -> RecommendationBodyResult:
+        """執行推薦分析並直接回傳同次 invocation 的 typed body result。
 
         這是從 ui_app/main.py 的 _execute_strategy_analysis_thread 提取的核心邏輯
 
@@ -907,64 +1186,33 @@ class RecommendationService:
                 不接受 caller 另傳的 cutoff
 
         Returns:
-            List[RecommendationDTO]: 推薦股票列表，按總分降序排列
+            RecommendationBodyResult: canonical DecisionBatch 與凍結 legacy DTO sidecar。
         """
         import logging
         logger = logging.getLogger(__name__)
         config = deepcopy(config)
+        if input_session is None:
+            raise ValueError("推薦計算必須由 execute 注入 invocation-local input_session")
         if max_stocks < 1 or top_n < 0:
             raise ValueError("max_stocks 必須為正數，top_n 不得為負數")
-        if not isinstance(historical_research, bool):
-            raise ValueError("historical_research 必須是布林值")
-        if not isinstance(select_latest_available_cutoff, bool):
-            raise ValueError("select_latest_available_cutoff 必須是布林值")
-        config_cutoff = config.get("as_of_date")
-        has_config_cutoff = config_cutoff not in (None, "")
-        if historical_research and select_latest_available_cutoff:
-            raise ValueError(
-                "historical_research 不得與 select_latest_available_cutoff 同時啟用"
-            )
-        if historical_research and as_of_date is None:
-            raise ValueError("historical_research 必須明示 as_of_date")
-        if select_latest_available_cutoff and (
-            as_of_date is not None or has_config_cutoff
-        ):
-            raise ValueError(
-                "select_latest_available_cutoff 不得搭配 caller cutoff"
-            )
+        input_session.validate_cutoff_request(
+            runtime_config=config,
+            as_of_date=as_of_date,
+            historical_research=historical_research,
+            select_latest_available_cutoff=select_latest_available_cutoff,
+        )
         ranking_config, threshold_mode = self._validate_ranking_config(config)
         self._reset_negative_evidence_buffers()
-        cutoff_input = (
-            as_of_date
-            if historical_research
-            else None
-            if select_latest_available_cutoff
-            else as_of_date
-            if as_of_date is not None
-            else config_cutoff
+        cutoff_resolution = input_session.resolve_cutoff(
+            runtime_config=config,
+            as_of_date=as_of_date,
+            historical_research=historical_research,
+            select_latest_available_cutoff=select_latest_available_cutoff,
         )
-        cutoff = self._normalize_decision_date(cutoff_input) if cutoff_input is not None else None
-        temporal_mode = (
-            "historical_research_not_as_if_available"
-            if historical_research
-            else "natural_producer_clock"
-            if select_latest_available_cutoff or not (as_of_date is not None or has_config_cutoff)
-            else "explicit_cutoff_not_natural"
-        )
-        cutoff_selection = (
-            "explicit_historical_cutoff"
-            if historical_research
-            else "producer_selected_latest_available_cutoff"
-            if select_latest_available_cutoff or not (as_of_date is not None or has_config_cutoff)
-            else "caller_requested_cutoff"
-        )
-        cutoff_policy = (
-            "explicit_historical_research"
-            if historical_research
-            else "source_latest_available_exact"
-            if cutoff_selection == "producer_selected_latest_available_cutoff"
-            else "caller_explicit_cutoff_not_natural"
-        )
+        cutoff = cutoff_resolution.cutoff
+        temporal_mode = cutoff_resolution.temporal_mode
+        cutoff_selection = cutoff_resolution.cutoff_selection
+        cutoff_policy = cutoff_resolution.cutoff_policy
         strategy_identity = build_strategy_config_identity(
             config,
             max_stocks=max_stocks,
@@ -981,12 +1229,13 @@ class RecommendationService:
             f"技術指標啟用={config.get('technical', {}).get('momentum', {}).get('enabled', False) or config.get('technical', {}).get('trend', {}).get('enabled', False)}"
         )
 
-        source = (
-            self._load_historical_market_frame(cutoff)
-            if isinstance(self.market_data_provider, DefaultRecommendationMarketDataProvider) and (cutoff or getattr(self.config, "use_sqlite", False))
-            else self.market_data_provider()
+        prepared_market = input_session.prepare_market(
+            cutoff=cutoff,
+            universe=universe,
         )
-        df, stock_col, decision_cutoff = self._decision_frame(source, cutoff)
+        df = prepared_market.frame
+        stock_col = prepared_market.stock_column
+        decision_cutoff = prepared_market.decision_cutoff
         source_available_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
         self._personalization_execution_clocks = {
             "run_started_at": run_started_at,
@@ -994,21 +1243,27 @@ class RecommendationService:
             "captured_at": source_available_at,
             "personalization_scope_declared_at": run_started_at,
         }
-        if universe is not None and not df.empty:
-            df = df[df[stock_col].isin({str(code) for code in universe})].copy()
-        canonical = df.sort_values([stock_col, "日期"], kind="stable") if not df.empty else df
-        fingerprint_payload = canonical.reindex(sorted(canonical.columns), axis=1).astype(str).to_dict("records")
-        self.last_run_context = {
+        resolved_result_id = str(result_id or config.get("result_id") or "").strip()
+        if not resolved_result_id:
+            # Allocate the run identity before calibration receipt publication.
+            # UUID entropy prevents same-second runs from sharing a saved result
+            # or projection receipt identity; the context keeps it stable for
+            # every save performed from this run.
+            resolved_result_id = f"rec_{uuid4().hex}"
+        staged_invocation_id = f"{resolved_result_id}:{uuid4().hex}"
+        context_owner = InvocationLegacyContextOwner(staged_invocation_id)
+        self.last_run_context = context_owner.mutable_context
+        self.last_run_context.update({
             "schema_version": "recommendation-context.v1",
             "as_of_date": decision_cutoff,
             "strategy_config": deepcopy(config),
             "profile_id": str(config.get("profile_id") or ""),
             "profile_version": str(config.get("profile_version") or ""),
             "universe_spec": {"codes": sorted({str(code) for code in universe}) if universe is not None else None, "max_stocks": max_stocks},
-            "source_id": type(self.market_data_provider).__name__,
-            "market_data_fingerprint": hashlib.sha256(json.dumps(fingerprint_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest(),
+            "source_id": prepared_market.source_id,
+            "market_data_fingerprint": prepared_market.market_data_fingerprint,
             "fundamental_inputs": [],
-            "data_date": canonical["日期"].max().strftime("%Y-%m-%d") if not canonical.empty else "",
+            "data_date": prepared_market.data_date,
             "warnings": ["industry_membership_not_point_in_time"] if cutoff else [],
             "temporal_contract": "recommendation-producer-clock.v1",
             "temporal_mode": temporal_mode,
@@ -1019,14 +1274,7 @@ class RecommendationService:
             "prediction_decision_anchor": "actual_producer_decision_at",
             "horizon_anchor": "immutable_projection_receipt",
             **strategy_identity,
-        }
-        resolved_result_id = str(result_id or config.get("result_id") or "").strip()
-        if not resolved_result_id:
-            # Allocate the run identity before calibration receipt publication.
-            # UUID entropy prevents same-second runs from sharing a saved result
-            # or projection receipt identity; the context keeps it stable for
-            # every save performed from this run.
-            resolved_result_id = f"rec_{uuid4().hex}"
+        })
         self.last_run_context["result_id"] = resolved_result_id
         declared_identity = {
             "strategy_version_id": config.get("strategy_version_id") or config.get("strategy_version"),
@@ -1044,9 +1292,7 @@ class RecommendationService:
         pit_membership: PITMembershipReadResult | None = None
         pit_industry_codes: set[str] | None = None
         if cutoff and industry_filter and industry_filter != '全部':
-            pit_membership = self._read_pit_membership_for_recommendation(
-                cutoff, config
-            )
+            pit_membership = input_session.read_pit_membership(cutoff, config)
             if pit_membership is not None:
                 self.last_run_context["industry_membership"] = dict(
                     pit_membership.lineage
@@ -1069,10 +1315,224 @@ class RecommendationService:
                     pit_industry_codes = self._pit_codes_for_industry(
                         pit_membership, str(industry_filter)
                     )
-        if df.empty:
-            self.last_run_context["eligible_universe_size"] = 0
+
+        candidate_outcomes: list[CandidateEvaluationOutcome] = []
+        candidate_facts: list[CandidateRowFacts] = []
+        legacy_matrix_codes: list[str] = []
+        staged_evaluator = RecommendationEvaluator()
+        decision_clock = ""
+        universe_identity: dict[str, Any] | None = None
+
+        def remember_candidate(
+            outcome: CandidateEvaluationOutcome,
+            *,
+            stock_name: str,
+            industry: str = "",
+            total_score_text: str = "",
+        ) -> None:
+            facts = CandidateRowFacts(
+                stock_code=outcome.stock_code,
+                stock_name=stock_name,
+                industry=industry,
+                total_score_text=total_score_text,
+                threshold_mode=threshold_mode,
+                invocation_id=staged_invocation_id,
+            )
+            candidate_outcomes.append(outcome)
+            candidate_facts.append(facts)
+
+        def remember_prefilter(code: str, *, membership_usable: bool) -> None:
+            outcome = staged_evaluator.prefilter_outcome(
+                CandidatePrefilterFact(
+                    invocation_id=staged_invocation_id,
+                    stock_code=code,
+                    requested_industry=str(industry_filter),
+                    point_in_time_required=bool(cutoff),
+                    membership_usable=membership_usable,
+                    matching_stock_count=0,
+                )
+            )
+            remember_candidate(outcome, stock_name=code)
+
+        def make_batch_policy(decision_date_text: str) -> RecommendationEvaluationPolicy:
+            decision_date_value = (
+                date.fromisoformat(decision_date_text)
+                if decision_date_text
+                else None
+            )
+            return RecommendationEvaluationPolicy(
+                invocation_id=staged_invocation_id,
+                decision_date=decision_date_value,
+                decision_date_text=decision_date_text,
+                threshold_mode=threshold_mode,
+                top_n=top_n,
+                minimum_percentile_bp=(
+                    int(ranking_config["recommendation_min_percentile_bp"])
+                    if threshold_mode == "quantile"
+                    else None
+                ),
+                minimum_universe_size=(
+                    int(ranking_config["recommendation_min_universe_size"])
+                    if threshold_mode == "quantile"
+                    else None
+                ),
+                ranking_method=(
+                    str(ranking_config["recommendation_ranking_method"])
+                    if threshold_mode == "quantile"
+                    else "fixed"
+                ),
+                eligible_universe_date=decision_date_value,
+            )
+
+        def evaluate_candidates(
+            policy: RecommendationEvaluationPolicy,
+        ) -> RecommendationEvaluationResult:
+            try:
+                return staged_evaluator.evaluate_batch_result(
+                    tuple(candidate_outcomes), policy
+                )
+            except DecisionUniverseTooSmallError as exc:
+                raise RecommendationUniverseTooSmallError(
+                    exc.actual, exc.minimum
+                ) from exc
+
+        def publish_body_result(
+            *,
+            evaluation_result: RecommendationEvaluationResult,
+            policy: RecommendationEvaluationPolicy,
+            eligible_universe_size: int,
+            legacy_recommendations: list[RecommendationDTO],
+        ) -> RecommendationBodyResult:
+            self.last_run_context["eligible_universe_size"] = eligible_universe_size
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    {
+                        "market": prepared_market.market_data_fingerprint,
+                        "fundamental": context_owner.mutable_context[
+                            "fundamental_inputs"
+                        ],
+                    },
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            self.last_run_context["data_fingerprint"] = fingerprint
+            warning_values = self.last_run_context.get("warnings", [])
+            if not isinstance(warning_values, list) or any(
+                type(item) is not str for item in warning_values
+            ):
+                raise TypeError("recommendation context warnings 必須是 str list")
+            context = RecommendationBodyContextFacts.capture(
+                result_id=resolved_result_id,
+                invocation_id=staged_invocation_id,
+                as_of_date=decision_cutoff or "",
+                data_fingerprint=fingerprint,
+                market_data_fingerprint=str(
+                    prepared_market.market_data_fingerprint
+                ),
+                source_id=str(prepared_market.source_id),
+                temporal_mode=temporal_mode,
+                decision_at=decision_clock,
+                eligible_universe_size=eligible_universe_size,
+                warnings=tuple(warning_values),
+                legacy_context=context_owner.freeze_current_context(),
+                evidence_identity=_recommendation_evidence_identity(
+                    declared_identity
+                ),
+                cutoff_selection=cutoff_selection,
+                cutoff_policy=cutoff_policy,
+                strategy_identity=strategy_identity_from_payload(
+                    strategy_identity,
+                    strategy_version_id=(
+                        (
+                            config.get("strategy_version_id")
+                            or config.get("strategy_version")
+                        )
+                        if str(
+                            config.get("strategy_version_id")
+                            or config.get("strategy_version")
+                            or ""
+                        ).strip()
+                        else None
+                    ),
+                ),
+                universe_identity=universe_identity_from_payload(
+                    universe_identity
+                ),
+                calibration_projection_status=cast(
+                    str | None,
+                    context_owner.mutable_context.get("calibration_projection_status"),
+                ),
+                calibration_projection_receipt_status=cast(
+                    str | None,
+                    context_owner.mutable_context.get(
+                        "calibration_projection_receipt_status"
+                    ),
+                ),
+                calibration_projection_receipt_error_detail=cast(
+                    str | None,
+                    context_owner.mutable_context.get(
+                        "calibration_projection_receipt_error_detail"
+                    ),
+                ),
+            )
+            enriched_result = enrich_evaluation_result(
+                evaluation_result,
+                tuple(candidate_facts),
+                context,
+                policy,
+            )
+
+            dispositions_by_code = {
+                item.stock_code: item for item in enriched_result.dispositions
+            }
+            facts_by_code = {
+                item.stock_code: item for item in candidate_facts
+            }
+            projected_matrix: list[Dict[str, Any]] = []
+            for code in legacy_matrix_codes:
+                projected_matrix.append(
+                    cast(
+                        Dict[str, Any],
+                        build_candidate_row_payload(
+                            dispositions_by_code[code],
+                            facts_by_code[code],
+                            context,
+                            policy,
+                        ),
+                    )
+                )
+            self.last_screening_matrix = projected_matrix
             self._finalize_negative_evidence_buffers()
-            return []
+
+            sidecars = tuple(
+                LegacyRecommendationSnapshot.capture(
+                    recommendation,
+                    invocation_id=staged_invocation_id,
+                    result_id=resolved_result_id,
+                )
+                for recommendation in legacy_recommendations
+            )
+            body_result = RecommendationBodyResult(
+                result_id=resolved_result_id,
+                invocation_id=staged_invocation_id,
+                decision=enriched_result.decision,
+                dispositions=enriched_result.dispositions,
+                candidate_facts=tuple(candidate_facts),
+                context=context,
+                legacy_recommendations=sidecars,
+            )
+            return body_result
+
+        if df.empty:
+            empty_policy = make_batch_policy(str(decision_cutoff or ""))
+            return publish_body_result(
+                evaluation_result=evaluate_candidates(empty_policy),
+                policy=empty_policy,
+                eligible_universe_size=0,
+                legacy_recommendations=[],
+            )
 
         # ✅ 記錄數據讀取結果
         import logging
@@ -1089,23 +1549,31 @@ class RecommendationService:
 
         if cutoff and industry_filter and industry_filter != '全部':
             if pit_membership is None or not pit_membership.industry_filter_usable:
-                self.last_screening_matrix = [self._matrix_row(
-                    stock_code=str(code), status="missing", reason_codes=["industry_membership_pit_unavailable"],
-                    quality="missing", stage="universe_gate", threshold_mode=threshold_mode,
-                ) for code in all_stocks]
-                self.last_run_context["eligible_universe_size"] = 0
-                self._finalize_negative_evidence_buffers()
-                return []
+                for code in all_stocks:
+                    stock_code_text = str(code)
+                    remember_prefilter(stock_code_text, membership_usable=False)
+                    legacy_matrix_codes.append(stock_code_text)
+                empty_policy = make_batch_policy(str(decision_cutoff or ""))
+                return publish_body_result(
+                    evaluation_result=evaluate_candidates(empty_policy),
+                    policy=empty_policy,
+                    eligible_universe_size=0,
+                    legacy_recommendations=[],
+                )
             filtered_stocks = pit_industry_codes or set()
             if not filtered_stocks:
                 self.last_run_context["warnings"].append("industry_filter_empty")
-                self.last_screening_matrix = [self._matrix_row(
-                    stock_code=str(code), status="excluded", reason_codes=["industry_filter_empty"],
-                    quality="observed", stage="universe_gate", threshold_mode=threshold_mode,
-                ) for code in all_stocks]
-                self.last_run_context["eligible_universe_size"] = 0
-                self._finalize_negative_evidence_buffers()
-                return []
+                for code in all_stocks:
+                    stock_code_text = str(code)
+                    remember_prefilter(stock_code_text, membership_usable=True)
+                    legacy_matrix_codes.append(stock_code_text)
+                empty_policy = make_batch_policy(str(decision_cutoff or ""))
+                return publish_body_result(
+                    evaluation_result=evaluate_candidates(empty_policy),
+                    policy=empty_policy,
+                    eligible_universe_size=0,
+                    legacy_recommendations=[],
+                )
             stocks = [s for s in all_stocks if str(s) in filtered_stocks]
             stocks = stocks[:max_stocks]
 
@@ -1142,6 +1610,8 @@ class RecommendationService:
                         error_msg += f"\n範例：股票 {test_stock} 屬於：{', '.join(test_industries[:3])}"
                         break
                 self.last_run_context["warnings"].append("industry_filter_empty")
+                for code in all_stocks:
+                    remember_prefilter(str(code), membership_usable=True)
 
             # 只保留屬於該產業的股票
             stocks = [s for s in all_stocks if str(s) in current_filtered_stocks]
@@ -1179,7 +1649,7 @@ class RecommendationService:
             max_stocks=max_stocks,
             requested_codes=requested_codes,
             selected_codes=universe_selected_codes,
-            source_provider_id=type(self.market_data_provider).__name__,
+            source_provider_id=prepared_market.source_id,
         )
         self.last_run_context.update(universe_identity)
         self.last_run_context["universe_spec"].update(
@@ -1204,7 +1674,6 @@ class RecommendationService:
 
         # 對每支股票執行策略分析
         all_recommendations = []
-        matrix_rows_by_stock: Dict[str, Dict[str, Any]] = {}
 
         # 調試統計
         stats = {
@@ -1215,7 +1684,6 @@ class RecommendationService:
             'skipped_exception': 0,
             'success': 0
         }
-
         for idx, stock_code in enumerate(stocks):
             stock_df = df[df[stock_col] == stock_code].copy()
             stock_df = stock_df.sort_values('日期').reset_index(drop=True)
@@ -1224,35 +1692,56 @@ class RecommendationService:
             if len(stock_df) > 0 and '證券名稱' in stock_df.columns:
                 stock_name_text = str(stock_df.iloc[-1].get('證券名稱', stock_code_text))
 
-            # 確保至少有20筆數據才能計算技術指標
-            if len(stock_df) < 20:
+            history_outcome = staged_evaluator.preflight_history(
+                CandidateHistoryFacts(
+                    invocation_id=staged_invocation_id,
+                    stock_code=stock_code_text,
+                    history_rows=len(stock_df),
+                )
+            )
+            if history_outcome is not None:
                 stats['skipped_insufficient_data'] += 1
+                remember_candidate(
+                    history_outcome,
+                    stock_name=stock_name_text,
+                )
                 row = self._matrix_row(
                     stock_code=stock_code_text,
                     stock_name=stock_name_text,
-                    status="missing",
-                    reason_codes=["insufficient_history"],
-                    quality="missing",
-                    stage="pre_evaluation",
-                    threshold_name="minimum_history_rows",
-                    observed_value=len(stock_df),
-                    required_value=20,
+                    status=history_outcome.status,
+                    reason_codes=list(history_outcome.reason_codes),
+                    quality=history_outcome.quality,
+                    stage=history_outcome.stage,
+                    threshold_name=history_outcome.threshold_name,
+                    observed_value=history_outcome.observed_value,
+                    required_value=history_outcome.required_value,
                     threshold_mode=threshold_mode,
                 )
                 self.last_screening_matrix.append(row)
-                matrix_rows_by_stock[stock_code_text] = row
+                legacy_matrix_codes.append(stock_code_text)
                 continue
 
             stock_df = enrich_latest_market_features(stock_df)
 
             try:
                 # 生成推薦（generate_recommendations 內部會處理篩選，這裡不需要額外篩選）
-                result_df = self.strategy_configurator.generate_recommendations(stock_df, deepcopy(config))
+                strategy_error: StrategyEvaluationError | None = None
+                try:
+                    result_df = self.strategy_configurator.generate_recommendations(
+                        stock_df, deepcopy(config)
+                    )
+                except Exception as exc:
+                    strategy_error = StrategyEvaluationError(
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
+                    result_df = pd.DataFrame()
 
-                stats['processed'] += 1
+                if strategy_error is None:
+                    stats['processed'] += 1
 
                 # ✅ 添加調試信息：記錄為什麼返回空 DataFrame
-                if len(result_df) == 0:
+                if strategy_error is None and len(result_df) == 0:
                     # 記錄前3個被過濾的股票詳情
                     if stats['skipped_no_result'] < 3:
                         logger.warning(
@@ -1261,262 +1750,388 @@ class RecommendationService:
                             f"日期範圍={stock_df['日期'].min() if '日期' in stock_df.columns else 'N/A'} ~ "
                             f"{stock_df['日期'].max() if '日期' in stock_df.columns else 'N/A'}"
                         )
-                    reason_codes = ["strategy_filter_no_signal"]
-                    threshold_name = "strategy_configurator_result"
-                    observed_value: Any = "empty"
-                    required_value: Any = "non_empty"
-                    volume_min = self._configured_volume_change_min_percent(config)
-                    observed_volume_change = latest_feature_decimal(
-                        stock_df,
-                        "成交量變化率%",
+                if strategy_error is not None or len(result_df) == 0:
+                    early_seed = CandidateSeed(
+                        invocation_id=staged_invocation_id,
+                        stock_code=stock_code_text,
+                        stock_name=stock_name_text,
+                        history_rows=len(stock_df),
+                        strategy_result_present=False,
+                        strategy_error=strategy_error,
+                        latest_volume_change_percent=latest_feature_decimal(
+                            stock_df,
+                            "成交量變化率%",
+                        ),
                     )
-                    if (
-                        volume_min is not None
-                        and observed_volume_change is not None
-                        and observed_volume_change < volume_min
-                    ):
-                        reason_codes = ["liquidity_volume_ratio_below_min"]
-                        threshold_name = "liquidity.volume_ratio_min"
-                        observed_value = self._format_decimal_for_payload(observed_volume_change)
-                        required_value = self._format_decimal_for_payload(volume_min)
+                    early_policy = RecommendationEvaluationPolicy(
+                        invocation_id=staged_invocation_id,
+                        decision_date=None,
+                        decision_date_text=str(decision_cutoff or ""),
+                        volume_change_min_percent=(
+                            self._configured_volume_change_min_percent(config)
+                        ),
+                    )
+                    early_step = staged_evaluator.start(early_seed, early_policy)
+                    outcome = early_step.outcome
+                    if outcome is None:
+                        raise RuntimeError("strategy early outcome unexpectedly requested a fact")
                     row = self._matrix_row(
                         stock_code=stock_code_text,
                         stock_name=stock_name_text,
-                        status="skipped",
-                        reason_codes=reason_codes,
-                        quality="degraded",
-                        stage="strategy_evaluation",
-                        threshold_name=threshold_name,
-                        observed_value=observed_value,
-                        required_value=required_value,
+                        status=outcome.status,
+                        reason_codes=list(outcome.reason_codes),
+                        quality=outcome.quality,
+                        stage=outcome.stage,
+                        threshold_name=outcome.threshold_name,
+                        observed_value=outcome.observed_value,
+                        required_value=outcome.required_value,
                         threshold_mode=threshold_mode,
+                        warnings=list(outcome.warnings),
                     )
                     self.last_screening_matrix.append(row)
-                    matrix_rows_by_stock[stock_code_text] = row
+                    legacy_matrix_codes.append(stock_code_text)
+                    remember_candidate(
+                        outcome,
+                        stock_name=stock_name_text,
+                    )
+                    if strategy_error is not None:
+                        stats['skipped_exception'] += 1
+                        if stats['skipped_exception'] <= 3:
+                            logger.warning(
+                                "處理股票 %s 時發生異常: %s (%s)",
+                                stock_code,
+                                strategy_error.message,
+                                strategy_error.error_type,
+                            )
+                    else:
+                        stats['skipped_no_result'] += 1
+                    continue
 
                 if len(result_df) > 0:
                     latest_row = result_df.iloc[-1]
 
-                    # 取得決策日期。基本面篩選只接受可標準化的日期，避免無效日期
-                    # 造成 PIT 查詢意外納入未來資料。
+                    # 取得決策日期與目前候選政策；實際 PE／月營收門檻由 decision evaluator 判定。
                     raw_date = decision_cutoff
-                    pe_ratio_max = to_decimal(config.get('filters', {}).get('pe_ratio_max', "999.0"))
-                    revenue_yoy_min = to_decimal(config.get('filters', {}).get('monthly_revenue_yoy_min', "-100.0"))
-                    fundamental_filters_enabled = (
-                        pe_ratio_max < to_decimal("999.0")
-                        or revenue_yoy_min > to_decimal("-100.0")
+                    pe_ratio_max = to_decimal(
+                        config.get('filters', {}).get('pe_ratio_max', "999.0")
+                    )
+                    revenue_yoy_min = to_decimal(
+                        config.get('filters', {}).get(
+                            'monthly_revenue_yoy_min', "-100.0"
+                        )
+                    )
+                    pe_threshold = (
+                        pe_ratio_max
+                        if pe_ratio_max < to_decimal("999.0")
+                        else None
+                    )
+                    revenue_threshold = (
+                        revenue_yoy_min
+                        if revenue_yoy_min > to_decimal("-100.0")
+                        else None
                     )
                     try:
-                        decision_date = self._normalize_decision_date(raw_date)
+                        decision_date_text = self._normalize_decision_date(raw_date)
                     except (TypeError, ValueError):
-                        if fundamental_filters_enabled:
-                            row = self._matrix_row(
-                                stock_code=stock_code_text,
-                                stock_name=stock_name_text,
-                                status="skipped",
-                                reason_codes=["fundamental_decision_date_invalid"],
-                                quality="degraded",
-                                stage="strategy_evaluation",
-                                threshold_name="decision_date",
-                                observed_value=str(raw_date),
-                                required_value="YYYY-MM-DD",
-                                threshold_mode=threshold_mode,
-                            )
-                            self.last_screening_matrix.append(row)
-                            matrix_rows_by_stock[stock_code_text] = row
-                            stats['skipped_no_result'] += 1
-                            continue
-                        decision_date = ""
+                        decision_date_text = ""
+                    decision_date_value = (
+                        date.fromisoformat(decision_date_text)
+                        if decision_date_text
+                        else None
+                    )
 
-                    # 1. 本益比 PE 過濾
-                    if pe_ratio_max < to_decimal("999.0"):
-                        pe_val_dec = None
+                    final_score = latest_row.get(
+                        'FinalScore',
+                        latest_row.get('TotalScore', latest_row.get('綜合評分')),
+                    )
+                    candidate_item: RecommendationItem | None = None
+                    candidate_score: RecommendationScore | None = None
+                    if final_score is not None:
                         try:
-                            db_uri = Path(self.config.db_file).resolve().as_uri() + "?mode=ro"
-                            with closing(sqlite3.connect(db_uri, uri=True)) as conn:
-                                conn.execute("PRAGMA query_only=ON")
-                                conn.row_factory = sqlite3.Row
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    "SELECT value, as_of_date, available_date, source, source_version, quality FROM fundamental_valuation_metrics "
-                                    "WHERE stock_code = ? AND metric_name = 'pe' AND available_date <= ? AND as_of_date <= ? AND quality = 'observed' "
-                                    "ORDER BY as_of_date DESC, available_date DESC, source_version DESC LIMIT 1",
-                                    (stock_code_text, decision_date, decision_date)
-                                )
-                                row = cursor.fetchone()
-                                if row and row['value'] is not None:
-                                    pe_val_dec = to_decimal(row['value'])
-                                    self.last_run_context["fundamental_inputs"].append({"stock_code": stock_code_text, "metric": "pe", **dict(row)})
-                        except Exception as e:
-                            logger.error(f"查詢 PE 失敗: {e}")
-
-                        if pe_val_dec is None:
-                            # 查不到基本面資料，明確排除
-                            row = self._matrix_row(
-                                stock_code=stock_code_text,
-                                stock_name=stock_name_text,
-                                status="skipped",
-                                reason_codes=["valuation_pe_missing"],
-                                quality="missing",
-                                stage="strategy_evaluation",
-                                threshold_name="filters.pe_ratio_max",
-                                observed_value="missing",
-                                required_value=pe_ratio_max,
-                                threshold_mode=threshold_mode,
-                            )
-                            self.last_screening_matrix.append(row)
-                            matrix_rows_by_stock[stock_code_text] = row
-                            stats['skipped_no_result'] += 1
-                            continue
-
-                        if pe_val_dec > pe_ratio_max:
-                            row = self._matrix_row(
-                                stock_code=stock_code_text,
-                                stock_name=stock_name_text,
-                                status="skipped",
-                                reason_codes=["valuation_pe_above_max"],
-                                quality="observed",
-                                stage="strategy_evaluation",
-                                threshold_name="filters.pe_ratio_max",
-                                observed_value=pe_val_dec,
-                                required_value=pe_ratio_max,
-                                threshold_mode=threshold_mode,
-                            )
-                            self.last_screening_matrix.append(row)
-                            matrix_rows_by_stock[stock_code_text] = row
-                            stats['skipped_no_result'] += 1
-                            continue
-
-                    # 2. 月營收 YOY% 過濾
-                    if revenue_yoy_min > to_decimal("-100.0"):
-                        yoy_val_dec = None
-                        revenue_records = self._load_governed_monthly_revenues(
-                            stock_code=stock_code_text,
-                            decision_date=date.fromisoformat(decision_date),
-                        )
-                        if revenue_records:
-                            self.last_run_context["fundamental_inputs"].extend({
-                                "stock_code": stock_code_text, "metric": "monthly_revenue", "period": record.period,
-                                "available_date": record.available_date.isoformat(), "source": record.source,
-                                "source_version": record.source_version, "value": str(record.revenue),
-                            } for record in sorted(revenue_records, key=lambda item: (item.period, item.available_date, item.source_version)))
-                            latest_revenue = max(
-                                revenue_records,
-                                key=lambda record: (
-                                    record.period,
-                                    record.available_date,
-                                    record.source_version,
-                                ),
-                            )
-                            year_curr, month_curr = map(
-                                int,
-                                latest_revenue.period.split("-"),
-                            )
-                            period_prev = f"{year_curr - 1:04d}-{month_curr:02d}"
-                            prior_candidates = [
-                                record
-                                for record in revenue_records
-                                if record.period == period_prev
-                            ]
-                            if prior_candidates:
-                                prior_revenue = max(
-                                    prior_candidates,
-                                    key=lambda record: (
-                                        record.available_date,
-                                        record.source_version,
+                            score_decimal = to_decimal(final_score)
+                        except Exception:
+                            score_decimal = None
+                        if score_decimal is not None and score_decimal.is_finite():
+                            try:
+                                score_projection = project_legacy_recommendation_score(
+                                    final_score,
+                                    include_quantile_score_bp=(
+                                        threshold_mode == "quantile"
                                     ),
                                 )
-                                if prior_revenue.revenue > to_decimal("0"):
-                                    yoy_val_dec = (
-                                        (latest_revenue.revenue - prior_revenue.revenue)
-                                        / prior_revenue.revenue
-                                    ) * to_decimal("100.0")
-
-                        if yoy_val_dec is None:
-                            # 查不到營收或去年同期營收，明確排除
-                            row = self._matrix_row(
+                                score_value = score_projection.contract_value
+                                candidate_score = score_projection.score
+                            except Exception:
+                                score_value = score_decimal
+                                candidate_score = RecommendationScore(
+                                    ordering_value=score_decimal
+                                )
+                            candidate_item = RecommendationItem(
                                 stock_code=stock_code_text,
                                 stock_name=stock_name_text,
-                                status="skipped",
-                                reason_codes=["fundamental_revenue_yoy_missing"],
-                                quality="missing",
-                                stage="strategy_evaluation",
-                                threshold_name="filters.monthly_revenue_yoy_min",
-                                observed_value="missing",
-                                required_value=revenue_yoy_min,
-                                threshold_mode=threshold_mode,
+                                rule_score=score_value,
                             )
-                            self.last_screening_matrix.append(row)
-                            matrix_rows_by_stock[stock_code_text] = row
-                            stats['skipped_no_result'] += 1
-                            continue
 
-                        if yoy_val_dec < revenue_yoy_min:
-                            row = self._matrix_row(
-                                stock_code=stock_code_text,
-                                stock_name=stock_name_text,
-                                status="skipped",
-                                reason_codes=["fundamental_revenue_yoy_below_min"],
-                                quality="observed",
-                                stage="strategy_evaluation",
-                                threshold_name="filters.monthly_revenue_yoy_min",
-                                observed_value=yoy_val_dec.quantize(to_decimal("0.01")),
-                                required_value=revenue_yoy_min,
-                                threshold_mode=threshold_mode,
-                            )
-                            self.last_screening_matrix.append(row)
-                            matrix_rows_by_stock[stock_code_text] = row
-                            stats['skipped_no_result'] += 1
-                            continue
-
-                    # 獲取收盤價
-                    close_col = None
-                    for col in ['收盤價', 'Close', 'close']:
-                        if col in latest_row.index:
-                            close_col = col
-                            break
-
-                    price_change_value = latest_feature_decimal(stock_df, "漲幅%")
                     volume_change_value = latest_feature_decimal(
                         stock_df,
                         "成交量變化率%",
                     )
-                    price_change = float(price_change_value or Decimal("0"))
-
-                    # DTO / reason DataFrame 邊界沿用既有數值欄位型態，不重新計算。
-                    latest_row = latest_row.copy()
-                    latest_row['漲幅%'] = price_change
-                    latest_row['成交量變化率%'] = float(
-                        volume_change_value or Decimal("0")
+                    if (
+                        volume_change_value is not None
+                        and not volume_change_value.is_finite()
+                    ):
+                        volume_change_value = None
+                    candidate_seed = CandidateSeed(
+                        invocation_id=staged_invocation_id,
+                        stock_code=stock_code_text,
+                        stock_name=stock_name_text,
+                        history_rows=len(stock_df),
+                        strategy_result_present=True,
+                        latest_volume_change_percent=volume_change_value,
+                        item=candidate_item,
+                        score=candidate_score,
                     )
+                    candidate_policy = RecommendationEvaluationPolicy(
+                        invocation_id=staged_invocation_id,
+                        decision_date=decision_date_value,
+                        decision_date_text=(decision_date_text or str(raw_date)),
+                        pe_ratio_max=pe_threshold,
+                        monthly_revenue_yoy_min=revenue_threshold,
+                        volume_change_min_percent=(
+                            self._configured_volume_change_min_percent(config)
+                        ),
+                        industry_context_required=(
+                            not bool(cutoff) and decision_date_value is not None
+                        ),
+                        top_n=top_n,
+                    )
+                    industry_readback: dict[str, Any] = {
+                        "loaded": False,
+                        "industries": (),
+                        "display": "未知",
+                        "reasons": None,
+                    }
+                    close_col: str | None = None
+                    price_change = 0.0
+                    output_row_prepared = False
+
+                    def prepare_output_row() -> None:
+                        nonlocal latest_row, close_col, price_change, output_row_prepared
+                        if output_row_prepared:
+                            return
+                        close_col = None
+                        for candidate_column in ['收盤價', 'Close', 'close']:
+                            if candidate_column in latest_row.index:
+                                close_col = candidate_column
+                                break
+                        price_change_value = latest_feature_decimal(
+                            stock_df,
+                            "漲幅%",
+                        )
+                        output_volume_change = latest_feature_decimal(
+                            stock_df,
+                            "成交量變化率%",
+                        )
+                        price_change = float(
+                            price_change_value or Decimal("0")
+                        )
+                        # DTO / reason DataFrame boundary retains the legacy numeric fields.
+                        latest_row = latest_row.copy()
+                        latest_row['漲幅%'] = price_change
+                        latest_row['成交量變化率%'] = float(
+                            output_volume_change or Decimal("0")
+                        )
+                        output_row_prepared = True
+
+                    def read_candidate_fact(
+                        request: NeedSourceFact,
+                    ) -> SourceFactResponse:
+                        if request.kind is SourceFactKind.PE:
+                            try:
+                                observation = input_session.load_pe(
+                                    stock_code=request.stock_code,
+                                    decision_date=request.decision_date.isoformat(),
+                                )
+                            except Exception as exc:
+                                logger.error("查詢 PE 失敗: %s", exc)
+                                raise
+                            fact = project_pe_observation(observation)
+                            if (
+                                observation is not None
+                                and observation.value is not None
+                                and fact.value is not None
+                            ):
+                                self.last_run_context["fundamental_inputs"].append(
+                                    {
+                                        "stock_code": request.stock_code,
+                                        "metric": "pe",
+                                        **observation.as_context(),
+                                    }
+                                )
+                            return SourceFactResponse(request=request, value=fact)
+
+                        if request.kind is SourceFactKind.MONTHLY_REVENUE:
+                            try:
+                                records = self._load_governed_monthly_revenues(
+                                    input_session=input_session,
+                                    stock_code=request.stock_code,
+                                    decision_date=request.decision_date,
+                                )
+                            except Exception as exc:
+                                logger.error("查詢受治理月營收失敗: %s", exc)
+                                raise
+                            if records:
+                                self.last_run_context["fundamental_inputs"].extend(
+                                    {
+                                        "stock_code": request.stock_code,
+                                        "metric": "monthly_revenue",
+                                        "period": record.period,
+                                        "available_date": (
+                                            record.available_date.isoformat()
+                                        ),
+                                        "source": record.source,
+                                        "source_version": record.source_version,
+                                        "value": str(record.revenue),
+                                    }
+                                    for record in sorted(
+                                        records,
+                                        key=lambda item: (
+                                            item.period,
+                                            item.available_date,
+                                            item.source_version,
+                                        ),
+                                    )
+                                )
+                            return SourceFactResponse(
+                                request=request,
+                                value=project_monthly_revenue_records(records),
+                            )
+
+                        if request.kind is SourceFactKind.INDUSTRY_CONTEXT:
+                            prepare_output_row()
+                            stock_industries = self.industry_mapper.get_stock_industries(
+                                request.stock_code
+                            )
+                            industry_display = (
+                                ', '.join(stock_industries[:2])
+                                if stock_industries
+                                else '未知'
+                            )
+                            if len(stock_industries) > 2:
+                                industry_display += '...'
+                            reasons = self.reason_engine.generate_reasons(
+                                latest_row, config
+                            )
+                            industry_fact = project_industry_context_fact(
+                                tuple(stock_industries)
+                            )
+                            if stock_industries:
+                                for industry in stock_industries[:1]:
+                                    industry_perf = (
+                                        self.industry_mapper.get_industry_performance(
+                                            industry,
+                                            date=decision_date_text,
+                                        )
+                                    )
+                                    if industry_perf:
+                                        industry_fact = project_industry_context_fact(
+                                            tuple(stock_industries), industry_perf
+                                        )
+                                        industry_reason = build_industry_performance_reason(
+                                            industry_fact
+                                        )
+                                        if industry_reason is not None:
+                                            reasons.append(
+                                                project_legacy_industry_reason(
+                                                    industry_reason
+                                                )
+                                            )
+                            industry_readback["loaded"] = True
+                            industry_readback["industries"] = tuple(
+                                stock_industries
+                            )
+                            industry_readback["display"] = industry_display
+                            industry_readback["reasons"] = reasons
+                            return SourceFactResponse(
+                                request=request,
+                                value=industry_fact,
+                            )
+                        raise ValueError(f"unsupported source fact kind: {request.kind}")
+
+                    candidate_outcome = evaluate_candidate_staged(
+                        staged_evaluator,
+                        candidate_seed,
+                        candidate_policy,
+                        read_candidate_fact,
+                    )
+                    if candidate_outcome.reason_codes not in {
+                        ("pending_final_selection",),
+                        ("total_score_missing_or_nonfinite",),
+                    }:
+                        row = self._matrix_row(
+                            stock_code=stock_code_text,
+                            stock_name=stock_name_text,
+                            status=candidate_outcome.status,
+                            reason_codes=list(candidate_outcome.reason_codes),
+                            quality=candidate_outcome.quality,
+                            stage=candidate_outcome.stage,
+                            threshold_name=candidate_outcome.threshold_name,
+                            observed_value=candidate_outcome.observed_value,
+                            required_value=candidate_outcome.required_value,
+                            threshold_mode=threshold_mode,
+                            warnings=list(candidate_outcome.warnings),
+                        )
+                        self.last_screening_matrix.append(row)
+                        legacy_matrix_codes.append(stock_code_text)
+                        remember_candidate(
+                            candidate_outcome,
+                            stock_name=stock_name_text,
+                        )
+                        if candidate_outcome.status == "degraded":
+                            stats['skipped_exception'] += 1
+                        else:
+                            stats['skipped_no_result'] += 1
+                        continue
+
+                    prepare_output_row()
 
                     # 獲取股票所屬產業
-                    stock_industries = [] if cutoff else self.industry_mapper.get_stock_industries(stock_code)
-                    industry_display = ', '.join(stock_industries[:2]) if stock_industries else '未知'
-                    if len(stock_industries) > 2:
-                        industry_display += '...'
+                    if industry_readback["loaded"]:
+                        stock_industries = list(industry_readback["industries"])
+                        industry_display = str(industry_readback["display"])
+                        reasons = industry_readback["reasons"]
+                    else:
+                        stock_industries = (
+                            []
+                            if cutoff
+                            else self.industry_mapper.get_stock_industries(stock_code)
+                        )
+                        industry_display = ', '.join(stock_industries[:2]) if stock_industries else '未知'
+                        if len(stock_industries) > 2:
+                            industry_display += '...'
 
-                    # 生成推薦理由（包含市場狀態和產業信息）
-                    reasons = self.reason_engine.generate_reasons(latest_row, config)
+                        # 生成推薦理由（包含市場狀態和產業信息）
+                        reasons = self.reason_engine.generate_reasons(latest_row, config)
 
-                    # 添加產業表現理由
-                    if stock_industries:
-                        for industry in stock_industries[:1]:  # 只取第一個產業
-                            industry_perf = self.industry_mapper.get_industry_performance(industry, date=decision_date)
-                            if industry_perf:
-                                industry_change = industry_perf.get('漲跌百分比', 0)
-                                if isinstance(industry_change, str):
-                                    try:
-                                        industry_change = float(industry_change.replace('%', ''))
-                                    except:
-                                        industry_change = 0
-
-                                if industry_change > 0:
-                                    reasons.append({
-                                        'tag': f'{industry}指數上漲',
-                                        'evidence': f'{industry}類指數漲幅 {industry_change:.2f}%',
-                                        'score_contrib': min(industry_change * 0.5, 10)
-                                    })
+                        # 無可用 decision date 的 legacy fallback；有效日期都由 staged request 讀取。
+                        if stock_industries:
+                            for industry in stock_industries[:1]:
+                                industry_perf = self.industry_mapper.get_industry_performance(
+                                    industry, date=decision_date_text
+                                )
+                                if industry_perf:
+                                    industry_fact = project_industry_context_fact(
+                                        tuple(stock_industries), industry_perf
+                                    )
+                                    industry_reason = build_industry_performance_reason(
+                                        industry_fact
+                                    )
+                                    if industry_reason is not None:
+                                        reasons.append(
+                                            project_legacy_industry_reason(
+                                                industry_reason
+                                            )
+                                        )
 
                     reason_text = self.reason_engine.format_reason_text(reasons, max_reasons=3)
 
@@ -1525,42 +2140,149 @@ class RecommendationService:
                         'FinalScore',
                         latest_row.get('TotalScore', latest_row.get('綜合評分'))
                     )
-                    if final_score is None or not to_decimal(final_score).is_finite():
+                    final_score_result = classify_final_score(
+                        FinalScoreFacts(
+                            invocation_id=staged_invocation_id,
+                            stock_code=stock_code_text,
+                            score=project_optional_final_score(final_score),
+                        )
+                    )
+                    if (
+                        final_score_result.invocation_id != staged_invocation_id
+                        or final_score_result.stock_code != stock_code_text
+                    ):
+                        raise RuntimeError("final score result candidate identity 不一致")
+                    if final_score_result.error is not None:
+                        raise _FinalizationFailure(final_score_result.error)
+                    if final_score_result.disposition is FinalScoreDisposition.MISSING:
+                        if (
+                            candidate_outcome.invocation_id != staged_invocation_id
+                            or candidate_outcome.stock_code != stock_code_text
+                            or candidate_outcome.status != "missing"
+                            or candidate_outcome.quality != "missing"
+                            or candidate_outcome.stage != "strategy_evaluation"
+                            or candidate_outcome.reason_codes
+                            != ("total_score_missing_or_nonfinite",)
+                        ):
+                            raise RuntimeError(
+                                "missing final score 與 staged evaluator outcome 不一致"
+                            )
                         row = self._matrix_row(
                             stock_code=stock_code_text, stock_name=stock_name_text,
-                            status="missing", reason_codes=["total_score_missing_or_nonfinite"],
-                            quality="missing", stage="strategy_evaluation", threshold_mode=threshold_mode,
+                            status=candidate_outcome.status,
+                            reason_codes=list(candidate_outcome.reason_codes),
+                            quality=candidate_outcome.quality,
+                            stage=candidate_outcome.stage,
+                            threshold_name=candidate_outcome.threshold_name,
+                            observed_value=candidate_outcome.observed_value,
+                            required_value=candidate_outcome.required_value,
+                            threshold_mode=threshold_mode,
+                            warnings=list(candidate_outcome.warnings),
                         )
                         self.last_screening_matrix.append(row)
-                        matrix_rows_by_stock[stock_code_text] = row
+                        legacy_matrix_codes.append(stock_code_text)
                         stats['skipped_no_result'] += 1
+                        remember_candidate(
+                            candidate_outcome,
+                            stock_name=stock_name_text,
+                        )
                         continue
 
-                    # 判斷 Regime Match
-                    regime = config.get('regime', None)
-                    regime_match = False
-                    if regime:
-                        # 簡單判斷：如果 FinalScore > TotalScore，則匹配
-                        total_score = latest_row.get('TotalScore', 0)
-                        if to_decimal(final_score) > to_decimal(total_score) * to_decimal("1.05"):  # 允許5%誤差
-                            regime_match = True
+                    if final_score_result.score is None:
+                        raise RuntimeError(
+                            "ready final score 缺少 canonical Decimal"
+                        )
+                    regime_enabled = bool(config.get('regime', None))
+                    regime_result = evaluate_regime_match(
+                        RegimeMatchFacts(
+                            invocation_id=staged_invocation_id,
+                            stock_code=stock_code_text,
+                            final_score=final_score_result.score,
+                            enabled=regime_enabled,
+                            total_score=(
+                                project_required_legacy_decimal(
+                                    latest_row.get('TotalScore', 0)
+                                )
+                                if regime_enabled
+                                else None
+                            ),
+                        )
+                    )
+                    if (
+                        regime_result.invocation_id != staged_invocation_id
+                        or regime_result.stock_code != stock_code_text
+                    ):
+                        raise RuntimeError("regime result candidate identity 不一致")
+                    if regime_result.error is not None:
+                        raise _FinalizationFailure(regime_result.error)
+                    regime_match = regime_result.regime_match
 
-                    # 創建 DTO
+                    legacy_stock_name = latest_row.get(
+                        '證券名稱', stock_df.iloc[-1].get('證券名稱', stock_code)
+                    )
+                    legacy_indicator_score = latest_row.get('IndicatorScore', 0)
+                    legacy_pattern_score = latest_row.get('PatternScore', 0)
+                    legacy_volume_score = latest_row.get('VolumeScore', 0)
+                    candidate_outcome = finalize_candidate_item(
+                        candidate_outcome,
+                        RecommendationItemFacts(
+                            invocation_id=staged_invocation_id,
+                            stock_code=stock_code_text,
+                            stock_name=str(legacy_stock_name),
+                            close_price=(
+                                to_decimal(
+                                    latest_row.get(
+                                        close_col,
+                                        stock_df.iloc[-1].get(close_col, 0),
+                                    )
+                                )
+                                if close_col
+                                else Decimal("0")
+                            ),
+                            price_change=to_decimal(price_change),
+                            indicator_score=to_decimal(legacy_indicator_score),
+                            pattern_score=to_decimal(legacy_pattern_score),
+                            volume_score=to_decimal(legacy_volume_score),
+                            industry=industry_display,
+                            reason_text=reason_text,
+                            reasons=reason_tags_from_legacy_reasons(reasons),
+                            universe_policy_id=str(
+                                universe_identity["universe_policy_id"]
+                            ),
+                            universe_snapshot_id=str(
+                                universe_identity["universe_snapshot_id"]
+                            ),
+                            universe_as_of_date=(
+                                date.fromisoformat(decision_cutoff)
+                                if decision_cutoff
+                                else None
+                            ),
+                            universe_members_hash=str(
+                                universe_identity[
+                                    "universe_snapshot_selected_codes_hash"
+                                ]
+                            ),
+                            regime_match=regime_match,
+                        ),
+                    )
+                    canonical_item = candidate_outcome.item
+                    if canonical_item is None:
+                        raise RuntimeError(
+                            "successful recommendation is missing evaluator item"
+                        )
                     recommendation = RecommendationDTO(
-                        stock_code=stock_code_text,
-                        stock_name=latest_row.get('證券名稱', stock_df.iloc[-1].get('證券名稱', stock_code)),
-                        close_price=to_decimal(latest_row.get(close_col, stock_df.iloc[-1].get(close_col, 0))) if close_col else Decimal("0"),
+                        stock_code=canonical_item.stock_code,
+                        stock_name=legacy_stock_name,
+                        close_price=cast(Decimal, canonical_item.close_price),
                         price_change=price_change,
                         total_score=final_score,
-                        indicator_score=latest_row.get('IndicatorScore', 0),
-                        pattern_score=latest_row.get('PatternScore', 0),
-                        volume_score=latest_row.get('VolumeScore', 0),
-                        recommendation_reasons=reason_text,
-                        industry=industry_display,
-                        regime_match=regime_match
+                        indicator_score=legacy_indicator_score,
+                        pattern_score=legacy_pattern_score,
+                        volume_score=legacy_volume_score,
+                        recommendation_reasons=canonical_item.reason_text or "",
+                        industry=canonical_item.industry or "",
+                        regime_match=cast(bool, canonical_item.regime_match),
                     )
-
-                    all_recommendations.append(recommendation)
                     row = self._matrix_row(
                         stock_code=stock_code_text,
                         stock_name=str(recommendation.stock_name),
@@ -1572,8 +2294,15 @@ class RecommendationService:
                         threshold_mode=threshold_mode,
                         industry=industry_display,
                     )
+                    remember_candidate(
+                        candidate_outcome,
+                        stock_name=str(recommendation.stock_name),
+                        industry=industry_display,
+                        total_score_text=str(final_score),
+                    )
+                    all_recommendations.append(recommendation)
                     self.last_screening_matrix.append(row)
-                    matrix_rows_by_stock[stock_code_text] = row
+                    legacy_matrix_codes.append(stock_code_text)
                     stats['success'] += 1
                 else:
                     stats['skipped_no_result'] += 1
@@ -1581,6 +2310,38 @@ class RecommendationService:
             except Exception as e:
                 # 跳過處理失敗的股票
                 stats['skipped_exception'] += 1
+                failure = (
+                    e.error
+                    if isinstance(e, _FinalizationFailure)
+                    else StrategyEvaluationError(
+                        error_type=type(e).__name__,
+                        message=str(e),
+                    )
+                )
+                exception_seed = CandidateSeed(
+                    invocation_id=staged_invocation_id,
+                    stock_code=stock_code_text,
+                    stock_name=stock_name_text,
+                    history_rows=len(stock_df),
+                    strategy_result_present=False,
+                    strategy_error=failure,
+                )
+                exception_policy = RecommendationEvaluationPolicy(
+                    invocation_id=staged_invocation_id,
+                    decision_date=None,
+                    decision_date_text=str(decision_cutoff or ""),
+                )
+                exception_step = staged_evaluator.start(
+                    exception_seed, exception_policy
+                )
+                if exception_step.outcome is None:
+                    raise RuntimeError(
+                        "screening exception unexpectedly requested a source fact"
+                    ) from e
+                remember_candidate(
+                    exception_step.outcome,
+                    stock_name=stock_name_text,
+                )
                 row = self._matrix_row(
                     stock_code=stock_code_text,
                     stock_name=stock_name_text,
@@ -1588,22 +2349,22 @@ class RecommendationService:
                     reason_codes=["screening_exception"],
                     quality="degraded",
                     stage="strategy_evaluation",
-                    threshold_name=type(e).__name__,
-                    observed_value=str(e),
+                    threshold_name=failure.error_type,
+                    observed_value=failure.message,
                     required_value="successful_evaluation",
                     threshold_mode=threshold_mode,
-                    warnings=[f"screening_exception:{type(e).__name__}"],
+                    warnings=[f"screening_exception:{failure.error_type}"],
                 )
                 self.last_screening_matrix.append(row)
-                matrix_rows_by_stock[stock_code_text] = row
+                legacy_matrix_codes.append(stock_code_text)
                 # 記錄前3個異常的詳細信息（避免日誌過多）
                 if stats['skipped_exception'] <= 3:
                     import logging
                     import traceback
                     logger = logging.getLogger(__name__)
                     logger.warning(
-                        f"處理股票 {stock_code} 時發生異常: {str(e)}\n"
-                        f"異常類型: {type(e).__name__}\n"
+                        f"處理股票 {stock_code} 時發生異常: {failure.message}\n"
+                        f"異常類型: {failure.error_type}\n"
                         f"堆疊追蹤:\n{traceback.format_exc()}"
                     )
                 continue
@@ -1642,82 +2403,49 @@ class RecommendationService:
 
         latest_date_str = ""
         if not all_recommendations:
-            self.last_run_context["eligible_universe_size"] = 0
-            self._finalize_negative_evidence_buffers()
-            return []
+            empty_policy = make_batch_policy(str(decision_cutoff or ""))
+            return publish_body_result(
+                evaluation_result=evaluate_candidates(empty_policy),
+                policy=empty_policy,
+                eligible_universe_size=0,
+                legacy_recommendations=[],
+            )
         if not df.empty and "日期" in df.columns:
             latest_date_str = df["日期"].max().strftime("%Y-%m-%d")
-        ranking_plan = build_ranking_plan(
-            [(rec.stock_code, rec.total_score) for rec in all_recommendations],
-            mode=threshold_mode,
-            top_n=top_n,
-            ranking_config=ranking_config,
-            eligible_universe_date=decision_cutoff or latest_date_str,
-        )
-        self.last_run_context["eligible_universe_size"] = ranking_plan.eligible_universe_size
+        eligible_universe_date = decision_cutoff or latest_date_str
+        batch_policy = make_batch_policy(eligible_universe_date)
+        evaluation_result = evaluate_candidates(batch_policy)
+
+        eligible_universe_size = len(all_recommendations)
         recommendations_by_code = {
             rec.stock_code: rec for rec in all_recommendations
         }
+        items_by_code = {
+            item.stock_code: item for item in evaluation_result.decision.items
+        }
 
-        for rec in all_recommendations:
-            rec.threshold_mode = ranking_plan.mode
-            rec.eligible_universe_size = ranking_plan.eligible_universe_size
-            rec.eligible_universe_date = ranking_plan.eligible_universe_date
-            rec.ranking_method = ranking_plan.ranking_method
-            matrix_row_for_rec = matrix_rows_by_stock.get(rec.stock_code)
-            if ranking_plan.mode != "quantile":
-                continue
-            percentile_bp = ranking_plan.percentiles_bp.get(rec.stock_code, 0)
-            if matrix_row_for_rec is not None:
-                matrix_row_for_rec["score_percentile_bp"] = percentile_bp
-                matrix_row_for_rec["eligible_universe_size"] = (
-                    ranking_plan.eligible_universe_size
-                )
-                matrix_row_for_rec["threshold_name"] = (
-                    "recommendation_min_percentile_bp"
-                )
-                matrix_row_for_rec["observed_value"] = str(percentile_bp)
-                matrix_row_for_rec["required_value"] = str(
-                    ranking_plan.minimum_percentile_bp
-                )
-                matrix_row_for_rec["threshold_mode"] = "quantile"
-            if rec.stock_code in ranking_plan.ordered_codes:
-                rec.score_percentile_bp = percentile_bp
-                rec.eligible_universe_size = ranking_plan.eligible_universe_size
-                rec.eligible_universe_date = ranking_plan.eligible_universe_date
-                rec.ranking_method = ranking_plan.ranking_method
-            elif matrix_row_for_rec is not None:
-                matrix_row_for_rec["status"] = "fail"
-                matrix_row_for_rec["reason_codes"] = [
-                    "recommendation_percentile_below_min"
-                ]
-                matrix_row_for_rec["quality"] = "observed"
-                matrix_row_for_rec["stage"] = "threshold_gate"
-
-        ordered_recommendations = [
-            recommendations_by_code[code] for code in ranking_plan.ordered_codes
-        ]
-        selected_codes = set(ranking_plan.selected_codes)
-        for rank, rec in enumerate(ordered_recommendations, start=1):
-            matrix_row_for_rec = matrix_rows_by_stock.get(rec.stock_code)
-            if matrix_row_for_rec is None:
-                continue
-            if rec.stock_code in selected_codes:
-                matrix_row_for_rec["status"] = "pass"
-                matrix_row_for_rec["reason_codes"] = ["recommendation_selected"]
-                matrix_row_for_rec["stage"] = "final_selection"
-            else:
-                matrix_row_for_rec["status"] = "fail"
-                matrix_row_for_rec["reason_codes"] = [
-                    "recommendation_outside_top_n"
-                ]
-                matrix_row_for_rec["stage"] = "top_n_gate"
-                matrix_row_for_rec["threshold_name"] = "top_n"
-                matrix_row_for_rec["observed_value"] = str(rank)
-                matrix_row_for_rec["required_value"] = str(top_n)
+        selected_codes = tuple(
+            item.stock_code for item in evaluation_result.decision.items
+        )
         all_recommendations = [
-            recommendations_by_code[code] for code in ranking_plan.selected_codes
+            recommendations_by_code[code] for code in selected_codes
         ]
+        for rec in all_recommendations:
+            item = items_by_code.get(rec.stock_code)
+            if item is None:
+                raise RuntimeError(
+                    f"decision evaluator omitted selected item for {rec.stock_code}"
+                )
+            rec.threshold_mode = item.threshold_mode or threshold_mode
+            rec.eligible_universe_size = item.eligible_universe_size
+            rec.eligible_universe_date = (
+                item.eligible_universe_date.isoformat()
+                if item.eligible_universe_date is not None
+                else None
+            )
+            rec.ranking_method = item.ranking_method
+            rec.score_percentile_bp = item.score_percentile_bp
+
         decision_clock = datetime.now(timezone.utc).isoformat(timespec="microseconds")
         self._personalization_execution_clocks["decision_at"] = decision_clock
         # Persist the actual producer decision clock even when an optional
@@ -1733,8 +2461,40 @@ class RecommendationService:
             selection_percentile_kind="rule_percentile",
             top_n_changed_by_model=False,
         )
-        self._finalize_negative_evidence_buffers()
-        return all_recommendations
+        return publish_body_result(
+            evaluation_result=evaluation_result,
+            policy=batch_policy,
+            eligible_universe_size=eligible_universe_size,
+            legacy_recommendations=all_recommendations,
+        )
+
+    def _run_recommendation_body(
+        self,
+        config: Dict[str, Any],
+        max_stocks: int = 200,
+        top_n: int = 50,
+        *,
+        as_of_date: str | date | None = None,
+        universe: Optional[List[str]] = None,
+        result_id: str | None = None,
+        historical_research: bool = False,
+        select_latest_available_cutoff: bool = False,
+        input_session: RecommendationInputSession | None = None,
+    ) -> List[RecommendationDTO]:
+        """Materialize the canonical body result through the legacy list ABI."""
+
+        body_result = self._run_recommendation_body_result(
+            config=config,
+            max_stocks=max_stocks,
+            top_n=top_n,
+            as_of_date=as_of_date,
+            universe=universe,
+            result_id=result_id,
+            historical_research=historical_research,
+            select_latest_available_cutoff=select_latest_available_cutoff,
+            input_session=input_session,
+        )
+        return [snapshot.materialize() for snapshot in body_result.legacy_recommendations]
 
     def detect_regime(self) -> Dict[str, Any]:
         """檢測市場狀態
@@ -1747,10 +2507,10 @@ class RecommendationService:
                 'regime_name_cn': str
             }
         """
-        regime_result = self.regime_detector.detect_regime()
-        regime = regime_result.get('regime', 'Trend')
-        confidence = regime_result.get('confidence', 0.5)
-        details = regime_result.get('details', {})
+        regime_result = self.regime_service.detect_regime()
+        regime = regime_result.regime
+        confidence = regime_result.confidence
+        details = regime_result.details
 
         regime_name_map = {
             'Trend': '趨勢追蹤',
@@ -1775,7 +2535,7 @@ class RecommendationService:
         Returns:
             dict: 策略配置字典
         """
-        return self.regime_detector.get_strategy_config(regime)
+        return self.regime_service.get_strategy_config(regime)
 
     def load_strategy_from_preset(
         self,

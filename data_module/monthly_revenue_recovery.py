@@ -22,7 +22,10 @@ from data_module.monthly_revenue_availability_merge import (
     plan_monthly_revenue_availability_merge,
     reserve_monthly_revenue_mapping_backup_path,
 )
-from data_module.fundamental_data import MonthlyRevenueRecord
+from data_module.fundamental_data import (
+    MonthlyRevenueRecord,
+    legacy_monthly_revenue_quality_value,
+)
 from data_module.monthly_revenue_backfill import (
     MonthlyRevenueBackfillApplyResult,
     MonthlyRevenueBackfillPlan,
@@ -680,7 +683,7 @@ def _database_contains_records(
                 record.available_date.isoformat(),
                 str(record.revenue),
                 str(record.source),
-                record.quality.value,
+                legacy_monthly_revenue_quality_value(record),
             )
             if tuple(row) != expected:
                 return False

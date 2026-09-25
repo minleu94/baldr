@@ -21,6 +21,15 @@ from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.recommendation_learning_evidence_projection_service import (
     RecommendationLearningEvidenceProjection,
 )
+from app_module.recommendation.contracts import ExecutionStatus
+from app_module.recommendation.persistence import ExecutionPersistenceError
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    execution_result_config,
+    recommendation_runs_dir,
+    verified_saved_calibration_projections,
+)
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
 from app_module.workbench_dtos import (
     WorkbenchDailyEvidence,
@@ -106,6 +115,7 @@ class DailyInvestmentJourneyService:
         *,
         evidence_db_path: str | Path | None = None,
         trading_calendar: Any | None = None,
+        recommendation_queries: Any | None = None,
     ) -> None:
         self.config = config
         self.output_root = Path(config.output_root).resolve()
@@ -118,6 +128,12 @@ class DailyInvestmentJourneyService:
             trading_calendar
             if trading_calendar is not None
             else OfficialTradingCalendar(db_path=getattr(config, "db_file", None))
+        )
+        self._injected_recommendation_queries = recommendation_queries
+        self.recommendation_queries = (
+            recommendation_queries
+            if recommendation_queries is not None
+            else build_recommendation_execution_queries(config)
         )
 
     def build(
@@ -436,35 +452,158 @@ class DailyInvestmentJourneyService:
             warnings.append("推薦 snapshot 不是目前決策日，候選只保留為 stale 參考")
 
         cohort = _mapping(payload.get("snapshot_cohort"))
-        recommendations_raw: Any = payload.get("recommendations")
+        rows: tuple[Mapping[str, Any], ...] = ()
         run_payload: Mapping[str, Any] | None = None
+        run_context: Mapping[str, Any] = {}
+        saved_read: RecommendationExecutionReadModel | None = None
+        legacy_original_payload: Any | None = None
+        legacy_projection_accepted = False
+        legacy_identity_conflict = False
         if result_id:
             runs_dir_raw = _text(payload.get("runs_dir"))
-            runs_dir = self.output_root / "recommendation" / "runs"
+            runs_dir = recommendation_runs_dir(self.config)
             if runs_dir_raw:
                 safe_runs_dir = _safe_output_path(self.output_root, Path(runs_dir_raw))
                 if safe_runs_dir is None:
                     diagnostics.append("recommendation_snapshot_runs_dir_outside_output_root")
                 else:
                     runs_dir = safe_runs_dir
-            run_path = _safe_output_path(self.output_root, runs_dir / f"{result_id}.json")
-            if run_path is None:
-                diagnostics.append("recommendation_snapshot_run_path_unsafe")
+            if not runs_dir_raw or _safe_output_path(self.output_root, runs_dir) is not None:
+                queries = self._queries_for_runs_dir(runs_dir)
+                try:
+                    saved_read = queries.get(result_id)
+                    if saved_read is None or saved_read.legacy_result is not None:
+                        legacy_original_payload = queries.get_legacy_original_payload(
+                            result_id,
+                            allow_unindexed_legacy=True,
+                        )
+                except (ExecutionPersistenceError, ValueError) as exc:
+                    diagnostics.append(
+                        f"recommendation_run_query_failure:{type(exc).__name__}"
+                    )
+                    saved_read = None
+                    legacy_original_payload = None
             else:
-                run_payload = _read_json_object(run_path, diagnostics, "recommendation_run")
-                if run_payload is None and not run_path.exists():
-                    diagnostics.append(f"recommendation_run_missing:{run_path}")
-        if run_payload is not None:
-            run_result_id = _text(run_payload.get("result_id"))
-            if run_result_id and result_id and run_result_id != result_id:
+                saved_read = None
+            if saved_read is None and legacy_original_payload is None and not any(
+                item.startswith("recommendation_run_query_failure:")
+                or item == "recommendation_snapshot_runs_dir_outside_output_root"
+                for item in diagnostics
+            ):
+                diagnostics.append(f"recommendation_run_missing:{result_id}")
+        if saved_read is not None:
+            if saved_read.result_id != result_id:
                 diagnostics.append(
-                    f"recommendation_run_result_id_mismatch:{run_result_id}!={result_id}"
+                    f"recommendation_run_result_id_mismatch:{saved_read.result_id}!={result_id}"
                 )
-                run_payload = None
+                saved_read = None
+            elif saved_read.execution is not None:
+                execution = saved_read.execution
+                selected_date = execution.context.as_of_date or execution.request.as_of_date
+                if (
+                    selected_date is not None
+                    and payload_date is not None
+                    and selected_date.isoformat() != payload_date
+                ):
+                    diagnostics.append(
+                        "recommendation_execution_as_of_mismatch:"
+                        f"{selected_date.isoformat()}!={payload_date}"
+                    )
+                    saved_read = None
+                elif execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
+                    diagnostics.append(
+                        f"recommendation_execution_unsupported:{execution.status.value}"
+                    )
+                    saved_read = None
+                else:
+                    execution_cohort = _canonical_cohort(saved_read)
+                    if execution_cohort:
+                        status_cohort_hash = _text(cohort.get("cohort_hash"))
+                        execution_cohort_hash = _text(execution_cohort.get("cohort_hash"))
+                        if (
+                            status_cohort_hash
+                            and execution_cohort_hash
+                            and status_cohort_hash != execution_cohort_hash
+                        ):
+                            diagnostics.append("recommendation_execution_cohort_mismatch")
+                            saved_read = None
+                        else:
+                            cohort = cohort or execution_cohort
+                    if saved_read is not None:
+                        canonical_rows, canonical_context = _canonical_candidate_rows(saved_read)
+                        identity_mismatch = _canonical_identity_mismatch(
+                            payload,
+                            cohort,
+                            canonical_context,
+                        )
+                        if identity_mismatch:
+                            diagnostics.append(
+                                f"recommendation_execution_identity_mismatch:{identity_mismatch}"
+                            )
+                            saved_read = None
+                        else:
+                            rows = canonical_rows
+                            run_context = canonical_context
+                            run_payload = {"result_id": result_id}
+            elif saved_read.legacy_result is not None:
+                legacy = saved_read.legacy_result
+                if legacy_original_payload is None:
+                    diagnostics.append("recommendation_run_legacy_original_payload_missing")
+                    saved_read = None
+                elif not _legacy_read_view_matches_projection(
+                    saved_read,
+                    legacy_original_payload,
+                ):
+                    diagnostics.append("recommendation_run_legacy_payload_read_mismatch")
+                    saved_read = None
+                elif (
+                    legacy_original_payload.result_id != result_id
+                    or legacy_original_payload.payload.get("result_id") != result_id
+                ):
+                    diagnostics.append("recommendation_run_legacy_original_payload_identity_mismatch")
+                    saved_read = None
+                else:
+                    exact_payload = legacy_original_payload.payload
+                    identity_mismatch = _legacy_identity_mismatch(payload, exact_payload)
+                    if identity_mismatch:
+                        diagnostics.append(
+                            f"recommendation_legacy_identity_mismatch:{identity_mismatch}"
+                        )
+                        legacy_identity_conflict = True
+                        saved_read = None
+                    else:
+                        legacy_projection_accepted = True
+                        rows, row_diagnostic = _legacy_payload_candidate_rows(exact_payload)
+                        if row_diagnostic:
+                            diagnostics.append(row_diagnostic)
+                        run_context = _mapping(exact_payload.get("run_context")) or _mapping(legacy.run_context)
+                        run_payload = exact_payload
             else:
-                recommendations_raw = run_payload.get("recommendations")
-
-        rows = _sequence_of_mappings(recommendations_raw)
+                diagnostics.append("recommendation_run_read_view_unsupported")
+                saved_read = None
+        elif legacy_original_payload is not None:
+            if (
+                legacy_original_payload.source != "unindexed_legacy_file"
+                or
+                legacy_original_payload.result_id != result_id
+                or legacy_original_payload.payload.get("result_id") != result_id
+            ):
+                diagnostics.append("recommendation_run_legacy_original_payload_identity_mismatch")
+            else:
+                exact_payload = legacy_original_payload.payload
+                identity_mismatch = _legacy_identity_mismatch(payload, exact_payload)
+                if identity_mismatch:
+                    diagnostics.append(
+                        f"recommendation_legacy_identity_mismatch:{identity_mismatch}"
+                    )
+                    legacy_identity_conflict = True
+                else:
+                    rows, row_diagnostic = _legacy_payload_candidate_rows(exact_payload)
+                    if row_diagnostic:
+                        diagnostics.append(row_diagnostic)
+                    legacy_projection_accepted = True
+                    run_context = _mapping(exact_payload.get("run_context"))
+                    run_payload = exact_payload
         symbols = tuple(
             dict.fromkeys(
                 code
@@ -499,7 +638,7 @@ class DailyInvestmentJourneyService:
         )
         if not rows and _int_or_none(payload.get("recommendations_count")):
             diagnostics.append("recommendation_snapshot_rows_missing_but_count_nonzero")
-            warnings.append("推薦 snapshot 宣稱有候選，但 run JSON 未提供候選列")
+            warnings.append("推薦 snapshot 宣稱有候選，但 verified saved result 未提供候選列")
         if not result_id:
             diagnostics.append("recommendation_snapshot_result_id_missing")
         if result_id and not rows:
@@ -513,20 +652,38 @@ class DailyInvestmentJourneyService:
         else:
             status = "missing"
 
-        run_context = _mapping(run_payload.get("run_context")) if run_payload else {}
         data_date = _date_key(
-            (run_context.get("data_as_of_date") if run_context else None)
-            or (run_context.get("as_of_date") if run_context else None)
-            or (run_payload.get("data_as_of_date") if run_payload else None)
+            run_context.get("data_as_of_date")
+            or run_context.get("data_date")
+            or run_context.get("payload_date")
+            or _mapping(run_payload).get("data_as_of_date")
+            or _mapping(run_payload).get("data_date")
+            or _mapping(run_payload).get("payload_date")
             or payload.get("data_as_of_date")
+            or payload.get("data_date")
+            or payload.get("payload_date")
+            or run_context.get("as_of_date")
             or payload_date
         )
-        identity = _candidate_identity(payload, cohort, run_payload, run_context)
-        source_snapshot_id = _text(payload.get("source_snapshot_id"))
-        if not source_snapshot_id and run_payload is not None:
-            source_snapshot_id = _text(run_payload.get("source_snapshot_id"))
-        source_snapshot_id = source_snapshot_id or _text(cohort.get("universe_snapshot_id"))
-        source_id = _text(payload.get("source_id")) or result_id
+        identity_payload = {} if legacy_identity_conflict else payload
+        identity_cohort = {} if legacy_identity_conflict else cohort
+        identity = _candidate_identity(
+            identity_payload, identity_cohort, run_payload, run_context
+        )
+        source_snapshot_id: str | None = _text(identity_payload.get("source_snapshot_id"))
+        source_snapshot_id = (
+            source_snapshot_id
+            or _text(_mapping(run_payload).get("source_snapshot_id"))
+            or _text(identity_cohort.get("universe_snapshot_id"))
+        )
+        source_id: str | None = (
+            _text(identity_payload.get("source_id"))
+            or _text(_mapping(run_payload).get("source_id"))
+            or result_id
+        )
+        if legacy_identity_conflict:
+            source_id = None
+            source_snapshot_id = None
         trace = [
             f"recommendation_snapshot.result_id={result_id or 'unknown'}",
             f"recommendation_snapshot.decision_date={payload_date or 'unknown'}",
@@ -534,14 +691,61 @@ class DailyInvestmentJourneyService:
         ]
         if cohort.get("cohort_hash"):
             trace.append(f"recommendation_snapshot.cohort_hash={_text(cohort.get('cohort_hash'))}")
-        if run_payload is not None:
-            trace.append(f"recommendation_run.result_id={_text(run_payload.get('result_id')) or 'unknown'}")
+        if saved_read is not None:
+            trace.append(f"recommendation_run.result_id={saved_read.result_id}")
+            trace.append(f"recommendation_run.integrity_basis={saved_read.integrity_basis}")
+            if saved_read.raw_artifact_sha256:
+                trace.append(f"recommendation_run.raw_artifact_sha256={saved_read.raw_artifact_sha256}")
+            if saved_read.execution is not None:
+                trace.append("recommendation_run.format=RecommendationExecution")
+        elif legacy_original_payload is not None and legacy_projection_accepted:
+            trace.append(f"recommendation_run.result_id={legacy_original_payload.result_id}")
+            trace.append(
+                "recommendation_run.integrity_basis="
+                f"{legacy_original_payload.integrity_basis}"
+            )
+            trace.append(
+                "recommendation_run.original_payload_source="
+                f"{legacy_original_payload.source}"
+            )
+            trace.append(
+                "recommendation_run.raw_artifact_sha256="
+                f"{legacy_original_payload.raw_artifact_sha256}"
+            )
+        legacy_source_snapshot_hash = _text(
+            _mapping(run_payload).get("source_snapshot_hash")
+        )
+        if legacy_source_snapshot_hash:
+            trace.append(
+                f"recommendation_run.source_snapshot_hash={legacy_source_snapshot_hash}"
+            )
+        calibration_by_code = (
+            verified_saved_calibration_projections(saved_read)
+            if saved_read is not None and saved_read.execution is not None
+            else {}
+        )
         for row in rows[:20]:
             code = _text(row.get("stock_code")) or _text(row.get("證券代號")) or "unknown"
-            for key in ("ranking_method", "calibrated_probability_status"):
-                value = _text(row.get(key))
-                if value:
-                    trace.append(f"recommendation_candidate[{code}].{key}={value}")
+            ranking_method = _text(row.get("ranking_method"))
+            if ranking_method:
+                trace.append(f"recommendation_candidate[{code}].ranking_method={ranking_method}")
+            recommendation_rank = row.get("recommendation_rank")
+            if isinstance(recommendation_rank, int) and not isinstance(
+                recommendation_rank, bool
+            ):
+                trace.append(
+                    f"recommendation_candidate[{code}].recommendation_rank={recommendation_rank}"
+                )
+            calibration = calibration_by_code.get(code)
+            calibration_status = (
+                calibration.calibrated_probability_status
+                if calibration is not None
+                else _text(row.get("calibrated_probability_status"))
+            )
+            if calibration_status:
+                trace.append(
+                    f"recommendation_candidate[{code}].calibrated_probability_status={calibration_status}"
+                )
         return _CandidateRead(
             status=status,
             result_id=result_id,
@@ -559,6 +763,15 @@ class DailyInvestmentJourneyService:
             diagnostics=tuple(diagnostics),
             source_trace=tuple(trace),
         )
+
+    def _queries_for_runs_dir(self, runs_dir: Path) -> Any:
+        """依 wrapper 已保存且通過 output-root 邊界的 runs_dir 取得 query view。"""
+
+        configured_runs_dir = recommendation_runs_dir(self.config).resolve()
+        if self._injected_recommendation_queries is not None or runs_dir.resolve() == configured_runs_dir:
+            return self.recommendation_queries
+        return build_recommendation_execution_queries(self.config, runs_dir=runs_dir)
+
 
     def _read_evidence(
         self,
@@ -932,6 +1145,211 @@ class DailyInvestmentJourneyService:
                 f"scheduled_forward_event_count_mismatch:{evidence.event_count}!={receipt_events}"
             )
             warnings.append("排程 forward receipt 與唯讀事件分母不一致")
+
+
+def _legacy_payload_candidate_rows(
+    payload: Mapping[str, Any],
+) -> tuple[tuple[Mapping[str, Any], ...], str | None]:
+    """從 query 已驗證的 opaque legacy mapping 做唯讀呈現欄位投影。"""
+
+    raw_rows = payload.get("recommendations")
+    if not isinstance(raw_rows, (list, tuple)):
+        return (), "recommendation_run_legacy_recommendations_unsupported"
+    rows: list[Mapping[str, Any]] = []
+    unsupported = False
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, Mapping):
+            unsupported = True
+            break
+        row = dict(raw_row)
+        if "recommendation_rank" not in row and "rank" in row:
+            row["recommendation_rank"] = row["rank"]
+        if "recommendation_reason" not in row:
+            row["recommendation_reason"] = row.get(
+                "recommendation_reasons",
+                row.get("推薦理由"),
+            )
+        if "總分" not in row and "score" not in row and "total_score" in row:
+            row["總分"] = row["total_score"]
+        rows.append(row)
+    if unsupported:
+        return (), "recommendation_run_legacy_candidate_rows_unsupported"
+    return tuple(rows), None
+
+
+def _legacy_read_view_matches_projection(
+    read_model: RecommendationExecutionReadModel,
+    projection: Any,
+) -> bool:
+    return (
+        read_model.legacy_result is not None
+        and projection.source == "registered_legacy_run"
+        and read_model.result_id == projection.result_id
+        and read_model.artifact_location == projection.data_path
+        and read_model.raw_artifact_sha256 == projection.raw_artifact_sha256
+        and read_model.integrity_basis == projection.integrity_basis
+    )
+
+
+def _legacy_identity_mismatch(
+    status_payload: Mapping[str, Any],
+    legacy_payload: Mapping[str, Any],
+) -> str | None:
+    for field in ("source_id", "source_snapshot_id", "source_snapshot_hash"):
+        wrapper_value = _text(status_payload.get(field))
+        saved_value = _text(legacy_payload.get(field))
+        if wrapper_value and saved_value and wrapper_value != saved_value:
+            return field
+    return None
+
+
+def _canonical_candidate_rows(
+    read_model: RecommendationExecutionReadModel,
+) -> tuple[tuple[Mapping[str, Any], ...], Mapping[str, Any]]:
+    execution = read_model.execution
+    if execution is None or execution.decision is None:
+        return (), {}
+    rows: list[Mapping[str, Any]] = []
+    for item in execution.decision.items:
+        reason = item.reason_text
+        if reason is None and item.reasons:
+            reason = "; ".join(item.reasons)
+        rows.append(
+            {
+                "stock_code": item.stock_code,
+                "stock_name": item.stock_name,
+                "industry": item.industry,
+                "recommendation_reason": reason,
+                "recommendation_rank": item.rank,
+                "總分": item.rule_score,
+                "ranking_method": item.ranking_method,
+            }
+        )
+
+    context = execution.context
+    result_config = execution_result_config(execution)
+    run_context: dict[str, Any] = {}
+    if context.as_of_date is not None:
+        run_context["as_of_date"] = context.as_of_date.isoformat()
+    for name in (
+        "data_as_of_date",
+        "strategy_version_id",
+        "strategy_config_id",
+        "universe_policy_id",
+        "universe_policy_hash",
+        "universe_snapshot_id",
+        "universe_snapshot_hash",
+        "cost_model_id",
+        "benchmark_id",
+        "horizon_days",
+        "cost_scenario_id",
+        "learning_candidate_id",
+        "candidate_id",
+        "return_basis",
+    ):
+        value = result_config.get(name)
+        if value is not None:
+            run_context[name] = value
+    strategy = context.strategy_identity
+    if strategy is not None:
+        for name in ("strategy_version_id", "strategy_config_id"):
+            value = getattr(strategy, name)
+            if value is not None:
+                run_context[name] = value
+    universe = context.universe_identity
+    if universe is not None:
+        policy = universe.policy
+        if policy is not None:
+            for name in ("universe_policy_id", "universe_policy_hash"):
+                value = getattr(policy, name)
+                if value is not None:
+                    run_context[name] = value
+        snapshot = universe.snapshot
+        if snapshot is not None:
+            for name in ("universe_snapshot_id", "universe_snapshot_hash"):
+                value = getattr(snapshot, name)
+                if value is not None:
+                    run_context[name] = value
+    evidence = context.evidence_identity
+    if evidence is not None:
+        if evidence.return_basis is not None:
+            run_context["return_basis"] = evidence.return_basis
+        if evidence.cost_model_id is not None:
+            run_context["cost_model_id"] = evidence.cost_model_id
+        if evidence.benchmark_id is not None:
+            run_context["benchmark_id"] = evidence.benchmark_id
+        if evidence.horizon_days is not None:
+            run_context["horizon_days"] = evidence.horizon_days
+    return tuple(rows), run_context
+
+
+def _canonical_cohort(read_model: RecommendationExecutionReadModel) -> dict[str, Any]:
+    execution = read_model.execution
+    if execution is None:
+        return {}
+    cohort = execution.context.snapshot_cohort
+    if cohort is not None:
+        result: dict[str, Any] = {
+            "cohort_hash": cohort.cohort_hash,
+            "requested_count": cohort.requested_count,
+            "eligible_count": cohort.eligible_count,
+            "degraded_count": cohort.degraded_count,
+            "missing_count": cohort.missing_count,
+            "coverage_status": cohort.coverage_status.value,
+        }
+    else:
+        result = {}
+    result_config = execution_result_config(execution)
+    saved_cohort = result_config.get("snapshot_cohort")
+    if not result and isinstance(saved_cohort, Mapping):
+        result.update(saved_cohort)
+    universe = execution.context.universe_identity
+    if universe is not None:
+        if universe.policy is not None:
+            result.setdefault("universe_policy_id", universe.policy.universe_policy_id)
+            result.setdefault("universe_policy_hash", universe.policy.universe_policy_hash)
+        if universe.snapshot is not None:
+            result.setdefault("universe_snapshot_id", universe.snapshot.universe_snapshot_id)
+            result.setdefault("universe_snapshot_hash", universe.snapshot.universe_snapshot_hash)
+    for name in (
+        "universe_policy_id",
+        "universe_policy_hash",
+        "universe_snapshot_id",
+        "universe_snapshot_hash",
+    ):
+        if name in result_config:
+            result.setdefault(name, result_config[name])
+    return result
+
+
+def _canonical_identity_mismatch(
+    status_payload: Mapping[str, Any],
+    status_cohort: Mapping[str, Any],
+    execution_context: Mapping[str, Any],
+) -> str | None:
+    status_evidence_identity = _mapping(status_payload.get("evidence_identity"))
+    comparisons = (
+        ("strategy_version_id", status_evidence_identity, execution_context),
+        ("strategy_config_id", status_evidence_identity, execution_context),
+        ("universe_policy_id", status_evidence_identity, execution_context),
+        ("universe_policy_hash", status_evidence_identity, execution_context),
+        ("universe_snapshot_id", status_evidence_identity, execution_context),
+        ("universe_snapshot_hash", status_evidence_identity, execution_context),
+        ("cost_model_id", status_evidence_identity, execution_context),
+        ("benchmark_id", status_evidence_identity, execution_context),
+        ("return_basis", status_evidence_identity, execution_context),
+        ("horizon_days", status_evidence_identity, execution_context),
+        ("universe_policy_id", status_cohort, execution_context),
+        ("universe_policy_hash", status_cohort, execution_context),
+        ("universe_snapshot_id", status_cohort, execution_context),
+        ("universe_snapshot_hash", status_cohort, execution_context),
+    )
+    for name, left, right in comparisons:
+        saved_value = _text(left.get(name))
+        execution_value = _text(right.get(name))
+        if saved_value and execution_value and saved_value != execution_value:
+            return name
+    return None
 
 
 def _fallback_lane(

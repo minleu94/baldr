@@ -12,7 +12,10 @@ from app_module.evidence_rehearsal_source_reader import EvidenceRehearsalSourceR
 from app_module.evidence_pipeline_runner import EvidencePipelineRunner
 from app_module.evidence_pipeline_runner_dtos import EvidencePipelineRunRequest
 from app_module.forward_performance_service import ForwardPerformanceService
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    select_latest_saved_recommendation,
+)
 from data_module.config import TWStockConfig
 
 if TYPE_CHECKING:
@@ -162,11 +165,13 @@ class HistoricalEvidenceReplayService:
         event_repository = EvidenceEventRepository(replay_config, db_path=replay_db)
         outcome_service = ForwardPerformanceService(replay_config, event_repository)
         for decision_date in trading_dates:
-            selected_result_id = self._select_recommendation_result_id(
+            selected_result_id, selection_diagnostic = self._select_recommendation_result_for_day(
                 decision_date,
                 replay_config,
             )
             sources, diagnostics = self._sources_for_day(request.sources, selected_result_id)
+            if selection_diagnostic:
+                diagnostics = (*diagnostics, selection_diagnostic)
             runner_summary = EvidencePipelineRunner(replay_config, db_path=replay_db).run(
                 EvidencePipelineRunRequest(
                     decision_date=decision_date,
@@ -310,6 +315,10 @@ class HistoricalEvidenceReplayService:
 
     def _replay_config(self, replay_db: Path) -> TWStockConfig:
         replay_config = TWStockConfig(data_root=self.config.data_root, output_root=self.config.output_root)
+        # Constructor test-profile suffixing must not move saved recommendation
+        # lookup away from the already-resolved source output root.
+        replay_config.data_root = self.config.data_root
+        replay_config.output_root = self.config.output_root
         replay_config.db_file = replay_db
         replay_config.sqlite_dir = replay_db.parent
         return replay_config
@@ -319,18 +328,36 @@ class HistoricalEvidenceReplayService:
         decision_date: str,
         replay_config: TWStockConfig,
     ) -> str | None:
+        result_id, _diagnostic = self._select_recommendation_result_for_day(
+            decision_date,
+            replay_config,
+        )
+        return result_id
+
+    def _select_recommendation_result_for_day(
+        self,
+        decision_date: str,
+        replay_config: TWStockConfig,
+    ) -> tuple[str | None, str | None]:
         decision_key = _date_key(decision_date)
-        repository = RecommendationRepository(replay_config)
-        eligible: list[dict[str, Any]] = []
-        for row in repository.list_results():
-            created_at = str(row.get("created_at") or "")
+        queries = build_recommendation_execution_queries(replay_config)
+        eligible = []
+        for row in queries.list():
+            if row.legacy_result is not None:
+                created_at = str(row.legacy_result.created_at or "")
+            elif row.execution is not None and row.execution.context.created_at is not None:
+                created_at = row.execution.context.created_at.isoformat()
+            else:
+                created_at = ""
             created_key = _date_key(created_at[:10])
             if created_key and created_key <= decision_key:
                 eligible.append(row)
         if not eligible:
-            return None
-        latest = sorted(eligible, key=lambda row: str(row.get("created_at") or ""), reverse=True)[0]
-        return str(latest.get("result_id") or "") or None
+            return None, None
+        latest, diagnostic = select_latest_saved_recommendation(tuple(eligible))
+        if diagnostic:
+            return None, diagnostic
+        return (latest.result_id, None) if latest is not None else (None, None)
 
     def _sources_for_day(
         self,

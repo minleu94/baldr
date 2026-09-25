@@ -13,6 +13,12 @@ from app_module.evidence_pipeline_runner_dtos import (
     READINESS_NOT_READY,
     READINESS_READY_FOR_DESIGN,
 )
+from app_module.recommendation.persistence import ExecutionPersistenceError
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    saved_recommendation_capture_projection,
+    select_latest_saved_recommendation,
+)
 from app_module.paper_portfolio_time import taiwan_market_today
 from data_module.config import TWStockConfig
 from data_module.data_source_capability_registry import build_default_data_source_capability_registry
@@ -65,9 +71,20 @@ class EvidenceSourceCoverageInspection:
 class EvidenceSourceCoverageService:
     """Read-only evidence source coverage inspection for V1.5 source gates."""
 
-    def __init__(self, config: TWStockConfig, *, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        config: TWStockConfig,
+        *,
+        db_path: str | Path | None = None,
+        recommendation_queries: Any | None = None,
+    ) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
+        self.recommendation_queries = (
+            recommendation_queries
+            if recommendation_queries is not None
+            else build_recommendation_execution_queries(config)
+        )
 
     def inspect(
         self,
@@ -77,7 +94,7 @@ class EvidenceSourceCoverageService:
     ) -> EvidenceSourceCoverageInspection:
         today = taiwan_market_today()
         cutoff_date, requested_future_date = _bounded_decision_date(decision_date, today)
-        recommendation = self._latest_recommendation(result_id)
+        recommendation, recommendation_diagnostic = self._latest_recommendation(result_id)
         snapshots = _list_snapshots_read_only(self.db_path)
         active_snapshots = [item for item in snapshots if item.get("snapshot_status") == "active"]
         future_snapshot_dates = tuple(
@@ -127,6 +144,8 @@ class EvidenceSourceCoverageService:
             liquidity_ready=liquidity_ready,
             screening_matrix_ready=screening_matrix_ready,
         )
+        if recommendation_diagnostic:
+            warnings.append(recommendation_diagnostic)
         snapshot_ready = latest_snapshot is not None and watchlist_ready and portfolio_ready and risk_ready
         if not recommendation_available or not snapshot_ready or blocking_gaps:
             readiness = READINESS_NOT_READY
@@ -161,8 +180,14 @@ class EvidenceSourceCoverageService:
             future_decision_desk_snapshot_dates=future_snapshot_dates,
         )
 
-    def _latest_recommendation(self, result_id: str | None) -> dict[str, Any] | None:
-        return _latest_recommendation_read_only(self.config, result_id)
+    def _latest_recommendation(
+        self, result_id: str | None
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        return _latest_recommendation_read_only(
+            self.config,
+            result_id,
+            queries=self.recommendation_queries,
+        )
 
     def _blocking_gaps(
         self,
@@ -255,39 +280,30 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
 def _latest_recommendation_read_only(
     config: TWStockConfig,
     result_id: str | None,
-) -> dict[str, Any] | None:
-    runs_dir = Path(config.output_root) / "recommendation" / "runs"
-    db_path = runs_dir / "recommendation_runs.db"
+    *,
+    queries: Any | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    read_queries = (
+        queries
+        if queries is not None
+        else build_recommendation_execution_queries(config)
+    )
     try:
-        with _connect_read_only(db_path) as conn:
-            if not _table_exists(conn, "runs"):
-                return None
-            if result_id:
-                row = conn.execute(
-                    "SELECT data_path FROM runs WHERE result_id = ? LIMIT 1",
-                    (str(result_id),),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    """
-                    SELECT data_path
-                    FROM runs
-                    ORDER BY created_at DESC, result_id ASC
-                    LIMIT 1
-                    """
-                ).fetchone()
-    except (FileNotFoundError, sqlite3.Error):
-        return None
-    if row is None:
-        return None
-    data_path = Path(str(row["data_path"] or ""))
-    if not data_path.is_absolute():
-        data_path = runs_dir / data_path
-    try:
-        payload = json.loads(data_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
+        if result_id:
+            read_model = read_queries.get(str(result_id))
+            if read_model is None:
+                return None, None
+        else:
+            read_model, diagnostic = select_latest_saved_recommendation(
+                read_queries.list()
+            )
+            if diagnostic:
+                return None, diagnostic
+            if read_model is None:
+                return None, None
+        return saved_recommendation_capture_projection(read_model), None
+    except (ExecutionPersistenceError, ValueError) as exc:
+        return None, f"recommendation_query_failure:{type(exc).__name__}"
 
 
 def _list_snapshots_read_only(db_path: Path) -> list[dict[str, Any]]:

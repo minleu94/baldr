@@ -8,11 +8,20 @@ sidecar，caller 省略選配 CSV 參數也不能繞過 hold。本模組只讀 J
 
 from __future__ import annotations
 
+import base64
 from datetime import date, datetime
 import hashlib
 import json
 from pathlib import Path
+import stat
 from typing import Any, Iterable, Mapping
+
+from data_module.contracts.source_revision import (
+    SourceEvidenceNamespaceV1,
+    SourceEvidencePresenceV1,
+    ValidatedEvidenceFileV1,
+    ValidatedNamespaceEvidenceV1,
+)
 
 
 REPAIR_SCHEMA = "historical-price-spike-repair-20260921.v1"
@@ -72,29 +81,177 @@ def source_revision_receipt_candidates(
     都會被檢查。
     """
 
+    candidates, _, _, _ = _receipt_candidates_with_policy(
+        database_path=database_path,
+        explicit_path=explicit_path,
+    )
+    return candidates
+
+
+def _receipt_candidates_with_policy(
+    *,
+    database_path: Path,
+    explicit_path: Path | None,
+    strict_explicit_slots: bool = False,
+) -> tuple[tuple[Path, ...], frozenset[Path], Path, Mapping[Path, Path]]:
     database_root = database_path.resolve().parent
     if database_root.name.casefold() == "sqlite":
         database_root = database_root.parent
-    receipt_dir = database_root / REPAIR_RECEIPT_RELATIVE_DIR
-    automatic = tuple(
-        path
-        for path in (receipt_dir / "pending.json", receipt_dir / "receipt.json")
-        if path.is_file()
-    )
+    database_root = database_root.resolve()
+    automatic_pairs = _automatic_receipt_candidates(database_root)
+    automatic = tuple(dict.fromkeys(path for path, _ in automatic_pairs))
+    automatic_set = frozenset(automatic)
+    automatic_sources = {
+        path: source_path for path, source_path in automatic_pairs
+    }
     if explicit_path is None:
-        return automatic
+        return automatic, automatic_set, database_root, automatic_sources
     explicit = explicit_path.resolve()
     explicit_paths = (
         (explicit / "pending.json", explicit / "receipt.json")
         if explicit.is_dir()
         else (explicit,)
     )
-    existing_explicit = (
-        tuple(path for path in explicit_paths if path.is_file())
-        if explicit.is_dir()
-        else explicit_paths
+    if explicit.is_dir() and strict_explicit_slots:
+        existing_explicit = tuple(
+            resolved
+            for path in explicit_paths
+            if (resolved := _resolve_explicit_receipt_slot(path)) is not None
+        )
+    elif explicit.is_dir():
+        # 舊 public gate 保留原有的 is_file() 篩選與 None 行為。
+        existing_explicit = tuple(path for path in explicit_paths if path.is_file())
+    else:
+        existing_explicit = explicit_paths
+    return (
+        tuple(dict.fromkeys((*automatic, *existing_explicit))),
+        automatic_set,
+        database_root,
+        automatic_sources,
     )
-    return tuple(dict.fromkeys((*automatic, *existing_explicit)))
+
+
+def _resolve_explicit_receipt_slot(path: Path) -> Path | None:
+    """在 typed collection 中區分真正缺席與不完整的 explicit slot。"""
+
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise DailyPriceSourceRevisionError(
+            f"explicit receipt slot is unreadable: {path}"
+        ) from exc
+
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise DailyPriceSourceRevisionError(
+            f"explicit receipt slot is unresolved: {path}"
+        ) from exc
+    try:
+        file_info = resolved.lstat()
+    except OSError as exc:
+        raise DailyPriceSourceRevisionError(
+            f"explicit receipt slot is unreadable: {resolved}"
+        ) from exc
+    if not stat.S_ISREG(file_info.st_mode):
+        raise DailyPriceSourceRevisionError(
+            f"explicit receipt slot is not a regular file: {resolved}"
+        )
+    return resolved
+
+
+def _automatic_receipt_candidates(database_root: Path) -> tuple[tuple[Path, Path], ...]:
+    """逐段驗證固定自動搜尋路徑，只有普通缺席可代表無候選。"""
+
+    try:
+        root_info = database_root.lstat()
+    except FileNotFoundError:
+        return ()
+    except OSError as exc:
+        raise DailyPriceSourceRevisionError(
+            f"automatic source revision receipt root is unreadable: {database_root}"
+        ) from exc
+    if not stat.S_ISDIR(root_info.st_mode):
+        raise DailyPriceSourceRevisionError(
+            f"automatic source revision receipt root is not a directory: {database_root}"
+        )
+
+    current = database_root
+    lexical_current = database_root
+    for component in REPAIR_RECEIPT_RELATIVE_DIR.parts:
+        lexical_current = lexical_current / component
+        try:
+            lexical_current.lstat()
+        except FileNotFoundError:
+            return ()
+        except OSError as exc:
+            raise DailyPriceSourceRevisionError(
+                f"automatic source revision receipt path is unreadable: {lexical_current}"
+            ) from exc
+        current = _resolve_automatic_receipt_path(
+            lexical_current,
+            database_root=database_root,
+            require_file=False,
+        )
+        if not current.is_dir():
+            raise DailyPriceSourceRevisionError(
+                f"automatic source revision receipt path is not a directory: {current}"
+            )
+
+    candidates: list[tuple[Path, Path]] = []
+    for filename in ("pending.json", "receipt.json"):
+        child = lexical_current / filename
+        try:
+            child.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise DailyPriceSourceRevisionError(
+                f"automatic source revision receipt is unreadable: {child}"
+            ) from exc
+        candidates.append((
+            _resolve_automatic_receipt_path(
+                child,
+                database_root=database_root,
+                require_file=True,
+            ),
+            child,
+        ))
+    return tuple(dict.fromkeys(candidates))
+
+
+def _resolve_automatic_receipt_path(
+    path: Path,
+    *,
+    database_root: Path,
+    require_file: bool,
+) -> Path:
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise DailyPriceSourceRevisionError(
+            f"automatic source revision receipt path is unresolved: {path}"
+        ) from exc
+    try:
+        resolved.relative_to(database_root)
+    except ValueError as exc:
+        raise DailyPriceSourceRevisionError(
+            f"automatic source revision receipt path is outside data root: {path}"
+        ) from exc
+    if require_file:
+        try:
+            file_info = resolved.lstat()
+        except OSError as exc:
+            raise DailyPriceSourceRevisionError(
+                f"automatic source revision receipt is unreadable: {resolved}"
+            ) from exc
+        if not stat.S_ISREG(file_info.st_mode):
+            raise DailyPriceSourceRevisionError(
+                f"automatic source revision receipt is not a regular file: {resolved}"
+            )
+    return resolved
 
 
 def check_daily_price_source_revision(
@@ -131,22 +288,121 @@ def check_daily_price_source_revision(
     if normalized_symbols is not None and not normalized_symbols:
         raise ValueError("symbols must not be empty when supplied")
 
-    receipts = source_revision_receipt_candidates(
+    summary, _evidence_files = _inspect_daily_price_repair_receipts_once(
+        database_path=database_path,
+        decision=cutoff,
+        symbols=normalized_symbols,
+        explicit_path=explicit_path,
+        strict_explicit_slots=False,
+    )
+    return summary
+
+
+def collect_daily_price_repair_receipt_evidence(
+    *,
+    database_path: Path,
+    decision_date: date | datetime | str,
+    symbols: Iterable[str] | None = None,
+    explicit_path: Path | None = None,
+) -> ValidatedNamespaceEvidenceV1:
+    """收集 direct daily-price receipt namespace 的同次 bytes 證據。
+
+    此入口只負責 direct receipt namespace；同層的 market、session、excluded
+    namespace 仍由其各自 collector 檢查。既有 public guard 仍保留那些 guard
+    的呼叫順序與 ``dict | None`` 回傳 ABI。
+    """
+
+    cutoff = _as_date(decision_date)
+    normalized_symbols = _normalized_receipt_symbols(symbols)
+    _, evidence_files = _inspect_daily_price_repair_receipts_once(
+        database_path=database_path,
+        decision=cutoff,
+        symbols=normalized_symbols,
+        explicit_path=explicit_path,
+        strict_explicit_slots=True,
+    )
+    presence = (
+        SourceEvidencePresenceV1.PRESENT
+        if evidence_files
+        else SourceEvidencePresenceV1.EMPTY
+    )
+    return ValidatedNamespaceEvidenceV1(
+        namespace=SourceEvidenceNamespaceV1.DAILY_PRICE_REPAIR_RECEIPT,
+        presence=presence,
+        files=evidence_files,
+    )
+
+
+def _normalized_receipt_symbols(
+    symbols: Iterable[str] | None,
+) -> frozenset[str] | None:
+    normalized = (
+        None
+        if symbols is None
+        else frozenset(str(symbol).strip() for symbol in symbols if str(symbol).strip())
+    )
+    if normalized is not None and not normalized:
+        raise ValueError("symbols must not be empty when supplied")
+    return normalized
+
+
+def _inspect_daily_price_repair_receipts_once(
+    *,
+    database_path: Path,
+    decision: date,
+    symbols: frozenset[str] | None,
+    explicit_path: Path | None,
+    strict_explicit_slots: bool,
+) -> tuple[dict[str, Any] | None, tuple[ValidatedEvidenceFileV1, ...]]:
+    """掃描候選一次，並以每份 receipt 的同次 bytes 同時產生摘要與證據。"""
+
+    (
+        receipts,
+        automatic_receipts,
+        database_root,
+        automatic_sources,
+    ) = _receipt_candidates_with_policy(
         database_path=database_path,
         explicit_path=explicit_path,
+        strict_explicit_slots=strict_explicit_slots,
     )
     if not receipts:
-        return None
+        return None, ()
 
-    summaries = [
-        _check_receipt(
+    summaries: list[dict[str, Any]] = []
+    evidence_files: list[ValidatedEvidenceFileV1] = []
+    for path in receipts:
+        summary, receipt_sha256 = _check_receipt_with_evidence(
             path=path,
-            decision=cutoff,
-            symbols=normalized_symbols,
+            decision=decision,
+            symbols=symbols,
+            containment_root=(database_root if path in automatic_receipts else None),
+            automatic_source_path=automatic_sources.get(path),
         )
-        for path in receipts
-    ]
-    return {
+        summaries.append(summary)
+        resolved_path = Path(str(summary["receipt_path"]))
+        if path in automatic_receipts:
+            try:
+                relative_path = resolved_path.relative_to(database_root).as_posix()
+            except ValueError as exc:
+                raise DailyPriceSourceRevisionError(
+                    f"automatic source revision receipt is outside data root: {resolved_path}"
+                ) from exc
+            role_token = base64.urlsafe_b64encode(
+                relative_path.encode("utf-8")
+            ).decode("ascii").rstrip("=")
+            role_id = f"automatic/{role_token}"
+        else:
+            path_identity = resolved_path.as_posix().encode("utf-8")
+            role_id = "explicit/" + hashlib.sha256(path_identity).hexdigest()
+        evidence_files.append(
+            ValidatedEvidenceFileV1(
+                role_id=role_id,
+                sha256=receipt_sha256,
+            )
+        )
+
+    summary_result = {
         "schema_version": REPAIR_SCHEMA,
         "checked_receipt_count": len(summaries),
         "checked_receipts": summaries,
@@ -155,6 +411,7 @@ def check_daily_price_source_revision(
         ),
         "policy": "fail_closed_until_repaired_source_rebuild",
     }
+    return summary_result, tuple(evidence_files)
 
 
 def _check_receipt(
@@ -162,18 +419,64 @@ def _check_receipt(
     path: Path,
     decision: date,
     symbols: frozenset[str] | None,
+    containment_root: Path | None = None,
+    automatic_source_path: Path | None = None,
 ) -> dict[str, Any]:
-    path = path.resolve()
-    if not path.is_file() or path.is_symlink():
+    summary, _receipt_sha256 = _check_receipt_with_evidence(
+        path=path,
+        decision=decision,
+        symbols=symbols,
+        containment_root=containment_root,
+        automatic_source_path=automatic_source_path,
+    )
+    return summary
+
+
+def _check_receipt_with_evidence(
+    *,
+    path: Path,
+    decision: date,
+    symbols: frozenset[str] | None,
+    containment_root: Path | None = None,
+    automatic_source_path: Path | None = None,
+) -> tuple[dict[str, Any], str]:
+    if containment_root is None:
+        path = path.resolve()
+    else:
+        source_path = automatic_source_path or path
+        expected_path = path
+        path = _resolve_automatic_receipt_path(
+            source_path,
+            database_root=containment_root,
+            require_file=True,
+        )
+        if path != expected_path:
+            raise DailyPriceSourceRevisionError(
+                f"automatic source revision receipt changed before read: {expected_path}"
+            )
+    if not path.is_file() or (containment_root is None and path.is_symlink()):
         raise DailyPriceSourceRevisionError(
             f"source revision receipt is missing: {path}"
         )
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        receipt_bytes = path.read_bytes()
+        payload = json.loads(receipt_bytes.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise DailyPriceSourceRevisionError(
             f"source revision receipt is unreadable: {path}"
         ) from exc
+    if containment_root is not None:
+        current_path = _resolve_automatic_receipt_path(
+            automatic_source_path or path,
+            database_root=containment_root,
+            require_file=True,
+        )
+        if current_path != path:
+            raise DailyPriceSourceRevisionError(
+                f"automatic source revision receipt changed during read: {path}"
+            )
+    receipt_sha256 = hashlib.sha256(receipt_bytes).hexdigest()
+    receipt_hash = f"sha256:{receipt_sha256}"
     if not isinstance(payload, Mapping):
         raise DailyPriceSourceRevisionError(
             f"source revision receipt must be a JSON object: {path}"
@@ -260,7 +563,7 @@ def _check_receipt(
     summary: dict[str, Any] = {
         "schema_version": REPAIR_SCHEMA,
         "receipt_path": str(path),
-        "receipt_hash": _file_sha256(path),
+        "receipt_hash": receipt_hash,
         "receipt_kind": str(payload.get("receipt_kind", "")),
         "status": str(payload.get("status", "")),
         "source_date": source_date.isoformat(),
@@ -284,7 +587,7 @@ def _check_receipt(
             f"status={payload.get('status', '')!s} path={path}; "
             "rebuild features/labels with a revision-aware research or formal process"
         )
-    return summary
+    return summary, receipt_sha256
 
 
 def _as_date(value: date | datetime | str) -> date:
@@ -317,11 +620,3 @@ def _row_symbol(row: Mapping[str, Any]) -> str:
     if symbol.endswith(".0") and symbol[:-2].isdigit():
         symbol = symbol[:-2]
     return symbol.zfill(4) if symbol.isdigit() else symbol
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(64 * 1024):
-            digest.update(chunk)
-    return f"sha256:{digest.hexdigest()}"

@@ -4,6 +4,8 @@
 """
 
 import json
+import hashlib
+import os
 import sqlite3
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -111,6 +113,51 @@ class RecommendationRepository:
         
         conn.commit()
         conn.close()
+
+    def _assert_no_canonical_execution_identity(
+        self, cursor: sqlite3.Cursor, result_id: str
+    ) -> None:
+        """Fail closed if the new immutable namespace already claims this ID.
+
+        This check is called inside the legacy writer's ``BEGIN IMMEDIATE``
+        transaction, so it serializes with the canonical writer's identity
+        reservation. The file check also protects a canonical file-only orphan
+        left by a process interruption before its metadata transaction commits.
+        """
+
+        tables = {
+            row[0]
+            for row in cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        for table_name in ("result_artifact_index", "result_artifact_metadata"):
+            if table_name not in tables:
+                continue
+            if cursor.execute(
+                f"SELECT 1 FROM {table_name} WHERE result_id = ? LIMIT 1",
+                (result_id,),
+            ).fetchone() is not None:
+                raise RuntimeError(
+                    "recommendation legacy save refused: result_id is claimed "
+                    "by the canonical execution namespace"
+                )
+
+        try:
+            opaque_id = result_id.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            raise RuntimeError(
+                "recommendation legacy save cannot safely check canonical identity"
+            ) from exc
+        canonical_file = (
+            self.runs_dir
+            / "execution_artifacts"
+            / f"{hashlib.sha256(opaque_id).hexdigest()}.json"
+        )
+        if os.path.lexists(canonical_file):
+            raise RuntimeError(
+                "recommendation legacy save refused: canonical artifact already exists"
+            )
 
     @staticmethod
     def _contains_personalization_capture(data_file: Path) -> bool:
@@ -221,6 +268,7 @@ class RecommendationRepository:
         try:
             conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
+            self._assert_no_canonical_execution_identity(cursor, result.result_id)
             cursor.execute(
                 "SELECT data_path FROM runs WHERE result_id = ?",
                 (result.result_id,),
@@ -304,6 +352,7 @@ class RecommendationRepository:
         try:
             connection.execute("BEGIN IMMEDIATE")
             cursor = connection.cursor()
+            self._assert_no_canonical_execution_identity(cursor, result.result_id)
             cursor.execute(
                 "SELECT result_id FROM runs WHERE result_id = ?",
                 (result.result_id,),

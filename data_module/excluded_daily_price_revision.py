@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
+import stat
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+
+from data_module.contracts.source_revision import (
+    SourceEvidenceNamespaceV1,
+    SourceEvidencePresenceV1,
+    ValidatedEvidenceFileV1,
+    ValidatedNamespaceEvidenceV1,
+)
 
 
 RECEIPT_DIR = Path("output/scheduled/excluded_daily_price_repair_receipts")
@@ -55,10 +66,101 @@ def _hash_file(path: Path) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    return _json_from_bytes(path.read_bytes(), path)
+
+
+def _json_from_bytes(data: bytes, path: Path) -> dict[str, Any]:
+    """以呼叫端已讀取的同一份 UTF-8 bytes 解析 JSON 物件。"""
+    value = json.loads(data.decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"JSON 必須是物件：{path}")
     return value
+
+
+class _ExcludedEvidenceCapture:
+    """摘要 excluded revision 單次驗證實際讀取的檔案 bytes。"""
+
+    def __init__(self, data_root: Path) -> None:
+        self.data_root = data_root.resolve(strict=True)
+        self.files: list[ValidatedEvidenceFileV1] = []
+        self._roles: set[str] = set()
+
+    def read_bytes(
+        self,
+        path: Path,
+        role_id: str,
+        *,
+        expected_directory: Path | None = None,
+    ) -> tuple[bytes, str]:
+        try:
+            resolved_before = path.resolve(strict=True)
+            parent_before = path.parent.resolve(strict=True)
+            resolved_before.relative_to(self.data_root)
+        except (FileNotFoundError, RuntimeError, OSError, ValueError) as exc:
+            raise ValueError(f"排除修訂證據路徑無法安全解析：{path}") from exc
+        if expected_directory is not None and parent_before != expected_directory:
+            raise ValueError(f"排除修訂證據目錄在驗證期間改變：{path.parent}")
+        try:
+            if not stat.S_ISREG(resolved_before.stat().st_mode):
+                raise ValueError(f"排除修訂證據不是一般檔案：{path}")
+        except OSError as exc:
+            raise ValueError(f"無法檢查排除修訂證據：{path}") from exc
+
+        payload = path.read_bytes()
+        try:
+            resolved_after = path.resolve(strict=True)
+            parent_after = path.parent.resolve(strict=True)
+            resolved_after.relative_to(self.data_root)
+        except (FileNotFoundError, RuntimeError, OSError, ValueError) as exc:
+            raise ValueError(f"排除修訂證據讀取後路徑改變或越界：{path}") from exc
+        if (
+            resolved_after != resolved_before
+            or parent_after != parent_before
+            or (expected_directory is not None and parent_after != expected_directory)
+        ):
+            raise ValueError(f"排除修訂證據路徑在讀取期間改變：{path}")
+        try:
+            if not stat.S_ISREG(resolved_after.stat().st_mode):
+                raise ValueError(f"排除修訂證據讀取後不是一般檔案：{path}")
+        except OSError as exc:
+            raise ValueError(f"無法檢查排除修訂證據讀取後狀態：{path}") from exc
+
+        if role_id in self._roles:
+            raise ValueError(f"排除修訂 evidence role 重複：{role_id}")
+        digest = _hash_bytes(payload)
+        self._roles.add(role_id)
+        self.files.append(ValidatedEvidenceFileV1(role_id=role_id, sha256=digest))
+        return payload, digest
+
+    def read_json(
+        self,
+        path: Path,
+        role_id: str,
+        *,
+        expected_directory: Path | None = None,
+    ) -> tuple[dict[str, Any], str]:
+        payload, digest = self.read_bytes(
+            path, role_id, expected_directory=expected_directory
+        )
+        return _json_from_bytes(payload, path), digest
+
+
+@dataclass(frozen=True, slots=True)
+class _RevisionMarkerCandidate:
+    marker_path: Path
+    resolved_run: Path
+    role_prefix: str
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedExcludedRun:
+    marker_path: Path
+    marker: dict[str, Any]
+    plan: dict[str, Any]
+    journal: dict[str, Any]
+    files: tuple[ValidatedEvidenceFileV1, ...]
+    keys: tuple[tuple[str, str], ...]
+    dates: tuple[str, ...]
 
 
 def _root(database_path: Path) -> Path:
@@ -119,6 +221,9 @@ def _verify_archive(
     archive_relative: object,
     expected_archive_sha256: object,
     source_files: object,
+    *,
+    capture: _ExcludedEvidenceCapture | None = None,
+    role_prefix: str | None = None,
 ) -> tuple[dict[str, Any], datetime, set[str]]:
     """驗證封存的八份官方回應、八個 acquisition receipt 和 archive manifest。"""
     archive_dir = _resolve_relative(root, archive_relative)
@@ -127,10 +232,19 @@ def _verify_archive(
     ):
         raise ValueError("官方來源封存目錄不在指定來源區")
     archive_path = archive_dir / "archive.json"
-    archive_bytes = archive_path.read_bytes()
-    if _hash_bytes(archive_bytes) != expected_archive_sha256:
+    archive_role = None if role_prefix is None else f"{role_prefix}/archive/archive.json"
+    if capture is None:
+        archive_bytes = archive_path.read_bytes()
+        archive_sha256 = _hash_bytes(archive_bytes)
+    else:
+        if archive_role is None:
+            raise ValueError("excluded evidence capture 缺少 archive role prefix")
+        archive_bytes, archive_sha256 = capture.read_bytes(
+            archive_path, archive_role, expected_directory=archive_dir
+        )
+    if archive_sha256 != expected_archive_sha256:
         raise ValueError("官方來源 archive manifest hash 不符")
-    archive = _read_json(archive_path)
+    archive = _json_from_bytes(archive_bytes, archive_path)
     if archive.get("historical_pit") is not False:
         raise ValueError("官方證據不得宣稱歷史 PIT")
     entries = archive.get("files")
@@ -163,11 +277,25 @@ def _verify_archive(
         for venue in ("twse", "tpex"):
             payload_name = f"{venue}-{day}.json"
             receipt_name = f"{venue}-{day}.receipt.json"
+            verified_files: dict[str, tuple[bytes, str]] = {}
+            # 同一檔案的長度、摘要與解析都依據這次讀取的 bytes。
             for name in (payload_name, receipt_name):
                 entry = by_name[name]
                 path = archive_dir / name
-                data = path.read_bytes()
-                actual_hash = _hash_bytes(data)
+                role_id = (
+                    None
+                    if role_prefix is None
+                    else f"{role_prefix}/archive/files/{name}"
+                )
+                if capture is None:
+                    data = path.read_bytes()
+                    actual_hash = _hash_bytes(data)
+                else:
+                    if role_id is None:
+                        raise ValueError("excluded evidence capture 缺少 archive file role")
+                    data, actual_hash = capture.read_bytes(
+                        path, role_id, expected_directory=archive_dir
+                    )
                 item = declared_by_name[name]
                 if (
                     actual_hash != entry.get("sha256")
@@ -176,8 +304,11 @@ def _verify_archive(
                     or len(data) != item.get("bytes")
                 ):
                     raise ValueError(f"官方來源 hash/大小不符：{name}")
-            body = _read_json(archive_dir / payload_name)
-            receipt = _read_json(archive_dir / receipt_name)
+                verified_files[name] = (data, actual_hash)
+            payload_bytes, payload_hash = verified_files[payload_name]
+            receipt_bytes, _receipt_hash = verified_files[receipt_name]
+            body = _json_from_bytes(payload_bytes, archive_dir / payload_name)
+            receipt = _json_from_bytes(receipt_bytes, archive_dir / receipt_name)
             expected_url = _expected_url(venue, day)
             captured_at = _clock(receipt.get("captured_at"), f"{venue}/{day}")
             if (
@@ -186,7 +317,7 @@ def _verify_archive(
                 or receipt.get("http_status") != 200
                 or receipt.get("historical_pit") is not False
                 or receipt.get("url") != expected_url
-                or receipt.get("sha256") != _hash_file(archive_dir / payload_name)
+                or receipt.get("sha256") != payload_hash
             ):
                 raise ValueError(f"官方來源 receipt 不符：{receipt_name}")
             if receipt_name in declared_by_name and declared_by_name[receipt_name].get(
@@ -295,15 +426,46 @@ def _validate_market_chain(
     market_relative: object,
     *,
     full_source_validation: bool,
+    capture: _ExcludedEvidenceCapture | None = None,
+    role_prefix: str | None = None,
 ) -> dict[str, Any]:
     market_dir = _resolve_relative(root, market_relative)
     revision_path = market_dir / "revision.json"
-    marker = _read_json(revision_path)
-    journal = _read_json(market_dir / "journal.json")
-    receipt_bytes = (market_dir / "receipt.json").read_bytes()
-    receipt = json.loads(receipt_bytes)
-    plan_bytes = (market_dir / "plan.json").read_bytes()
-    plan_sha = _hash_bytes(plan_bytes)
+    if capture is None:
+        marker = _read_json(revision_path)
+        journal = _read_json(market_dir / "journal.json")
+        receipt_bytes = (market_dir / "receipt.json").read_bytes()
+        receipt = json.loads(receipt_bytes)
+        plan_bytes = (market_dir / "plan.json").read_bytes()
+        plan_sha = _hash_bytes(plan_bytes)
+        plan = json.loads(plan_bytes)
+    else:
+        if role_prefix is None:
+            raise ValueError("excluded evidence capture 缺少 market role prefix")
+        marker, _marker_sha = capture.read_json(
+            revision_path,
+            f"{role_prefix}/market/revision.json",
+            expected_directory=market_dir,
+        )
+        journal, _journal_sha = capture.read_json(
+            market_dir / "journal.json",
+            f"{role_prefix}/market/journal.json",
+            expected_directory=market_dir,
+        )
+        receipt_path = market_dir / "receipt.json"
+        receipt_bytes, _receipt_sha = capture.read_bytes(
+            receipt_path,
+            f"{role_prefix}/market/receipt.json",
+            expected_directory=market_dir,
+        )
+        receipt = _json_from_bytes(receipt_bytes, receipt_path)
+        plan_path = market_dir / "plan.json"
+        plan_bytes, plan_sha = capture.read_bytes(
+            plan_path,
+            f"{role_prefix}/market/plan.json",
+            expected_directory=market_dir,
+        )
+        plan = _json_from_bytes(plan_bytes, plan_path)
     if (
         marker.get("schema_version") != "formal-market-revision.v1"
         or marker.get("state") != "applied"
@@ -318,7 +480,6 @@ def _validate_market_chain(
         raise ValueError("正式市場修訂 receipt/journal/plan 鏈不符")
     if marker.get("plan_sha256", plan_sha) != plan_sha:
         raise ValueError("正式市場修訂標記 plan hash 不符")
-    plan = json.loads(plan_bytes)
     if plan.get("database_path") != str(Path(database_path).resolve()):
         raise ValueError("正式市場修訂資料庫路徑不符")
     sources = plan.get("sources")
@@ -327,7 +488,7 @@ def _validate_market_chain(
     required_months = {day[:6] for day in CLOSED_DATES}
     covered: set[str] = set()
     absent_dates: set[str] = set()
-    for source in sources:
+    for source_index, source in enumerate(sources):
         if not isinstance(source, dict) or not isinstance(source.get("path"), str):
             raise ValueError("正式市場來源清冊格式不符")
         source_path = Path(source["path"]).resolve(strict=True)
@@ -338,20 +499,33 @@ def _validate_market_chain(
         if full_source_validation:
             from data_module.ml_restatement_official_market import load_official_market_capture
 
-            capture = load_official_market_capture(
+            market_capture = load_official_market_capture(
                 source_path,
                 expected_file_sha256="sha256:" + str(source.get("sha256", "")).removeprefix("sha256:"),
                 as_of=datetime.now(timezone.utc),
             )
-            covered.update(month.strftime("%Y%m") for month in capture.rows)
+            covered.update(month.strftime("%Y%m") for month in market_capture.rows)
             absent_dates.update(
                 day for day in CLOSED_DATES
-                if date(int(day[:4]), int(day[4:6]), int(day[6:8])) not in capture.rows
+                if date(int(day[:4]), int(day[4:6]), int(day[6:8])) not in market_capture.rows
             )
         else:
-            if _hash_file(source_path) != str(source.get("sha256", "")).removeprefix("sha256:"):
+            # Market source plan 只宣告 SHA；hash 與 JSON 解析共用此讀取結果。
+            if capture is None:
+                source_bytes = source_path.read_bytes()
+                source_sha = _hash_bytes(source_bytes)
+                manifest = _json_from_bytes(source_bytes, source_path)
+            else:
+                if role_prefix is None:
+                    raise ValueError("excluded evidence capture 缺少 market source role prefix")
+                source_bytes, source_sha = capture.read_bytes(
+                    source_path,
+                    f"{role_prefix}/market/sources/source-{source_index:06d}.json",
+                    expected_directory=source_path.parent,
+                )
+                manifest = _json_from_bytes(source_bytes, source_path)
+            if source_sha != str(source.get("sha256", "")).removeprefix("sha256:"):
                 raise ValueError("正式市場來源清冊 hash 不符")
-            manifest = _read_json(source_path)
             months = manifest.get("months")
             receipts = manifest.get("receipts")
             if not isinstance(months, list) or not isinstance(receipts, list):
@@ -389,17 +563,152 @@ def _validate_market_chain(
     }
 
 
-def _marker_paths(database_path: Path) -> list[Path]:
+def _strict_resolve_within(path: Path, boundary: Path, label: str) -> tuple[Path, os.stat_result, os.stat_result]:
+    """以 lstat 與 strict resolve 確認路徑及其實際目標仍在指定根目錄內。"""
+    try:
+        lexical_stat = path.lstat()
+        resolved = path.resolve(strict=True)
+        resolved_stat = resolved.stat()
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"{label} 無法完整解析或讀取：{path}: {exc}") from exc
+    try:
+        resolved.relative_to(boundary)
+    except ValueError as exc:
+        raise ValueError(f"{label} 越界：{path}") from exc
+    return resolved, lexical_stat, resolved_stat
+
+
+def _scan_directory(path: Path, label: str) -> list[os.DirEntry[str]]:
+    """完成一次目錄列舉；任何 scandir／迭代錯誤都不降級成空集合。"""
+    try:
+        with os.scandir(path) as iterator:
+            return sorted(list(iterator), key=lambda entry: entry.name)
+    except OSError as exc:
+        raise ValueError(f"{label} 無法完整掃描：{path}: {exc}") from exc
+
+
+def _resolved_receipt_root(root: Path) -> Path | None:
+    """逐段檢查固定 receipt root；只把真正不存在的普通元件視為無候選。"""
+    try:
+        data_root = root.resolve(strict=True)
+        if not stat.S_ISDIR(data_root.stat().st_mode):
+            raise ValueError(f"資料根目錄不是目錄：{root}")
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"資料根目錄無法解析或讀取：{root}: {exc}") from exc
+
+    current = data_root
+    for part in RECEIPT_DIR.parts:
+        candidate = current / part
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ValueError(f"排除修訂目錄元件無法檢查：{candidate}: {exc}") from exc
+        resolved, _lexical_stat, resolved_stat = _strict_resolve_within(
+            candidate, data_root, "排除修訂目錄元件",
+        )
+        if not stat.S_ISDIR(resolved_stat.st_mode):
+            raise ValueError(f"排除修訂路徑元件不是目錄：{candidate}")
+        current = resolved
+    return current
+
+
+def _run_role_prefix(relative_run: str) -> str:
+    if not relative_run or relative_run.startswith("/") or any(
+        part in {"", ".", ".."} for part in relative_run.split("/")
+    ):
+        raise ValueError("排除修訂 run 路徑不是固定 receipt root 下的相對路徑")
+    encoded = base64.urlsafe_b64encode(relative_run.encode("utf-8")).decode("ascii")
+    return f"run_{encoded.rstrip('=')}"
+
+
+def _marker_paths(database_path: Path) -> list[_RevisionMarkerCandidate]:
     root = _root(database_path)
-    directory = root / RECEIPT_DIR
-    if not directory.exists():
+    directory = _resolved_receipt_root(root)
+    if directory is None:
         return []
-    return sorted(directory.glob("*/revision.json"))
+
+    root_entries = _scan_directory(directory, "排除修訂 receipt root")
+    root_names = tuple(entry.name for entry in root_entries)
+    seen_directories: set[str] = set()
+    markers: list[_RevisionMarkerCandidate] = []
+    for entry in root_entries:
+        run_candidate = directory / entry.name
+        run_directory, _run_lstat, run_stat = _strict_resolve_within(
+            run_candidate, directory, "排除修訂 run 目錄",
+        )
+        if not stat.S_ISDIR(run_stat.st_mode):
+            raise ValueError(f"排除修訂 receipt root 含非目錄項目：{run_candidate}")
+        run_identity = os.path.normcase(str(run_directory))
+        if run_identity in seen_directories:
+            raise ValueError(f"排除修訂 receipt root 含重複目錄別名：{run_candidate}")
+        seen_directories.add(run_identity)
+
+        run_entries = _scan_directory(run_directory, "排除修訂 run 目錄")
+        run_names = tuple(child.name for child in run_entries)
+        if "revision.json" not in run_names:
+            if set(run_names) != {"before_rows.json", "plan.json"}:
+                raise ValueError(f"無 revision 標記的修訂目錄不是完整 prepare-only 形狀：{run_candidate}")
+            for name in ("before_rows.json", "plan.json"):
+                child = run_directory / name
+                _resolved, child_lstat, child_stat = _strict_resolve_within(
+                    child, run_directory, "prepare-only 修訂檔",
+                )
+                if not stat.S_ISREG(child_lstat.st_mode) or not stat.S_ISREG(child_stat.st_mode):
+                    raise ValueError(f"prepare-only 修訂項目不是一般檔案：{child}")
+        else:
+            marker = run_directory / "revision.json"
+            resolved_marker, marker_lstat, marker_stat = _strict_resolve_within(
+                marker, run_directory, "排除修訂標記",
+            )
+            if not stat.S_ISREG(marker_lstat.st_mode) or not stat.S_ISREG(marker_stat.st_mode):
+                raise ValueError(f"排除修訂標記不是一般檔案：{marker}")
+            relative_run = run_candidate.relative_to(directory).as_posix()
+            markers.append(
+                _RevisionMarkerCandidate(
+                    marker_path=resolved_marker,
+                    resolved_run=run_directory,
+                    role_prefix=_run_role_prefix(relative_run),
+                )
+            )
+
+        # 重新觀察路徑與目錄項目，拒絕掃描期間持續存在的替換或不完整列舉。
+        run_again, _run_lstat_again, _run_stat_again = _strict_resolve_within(
+            run_candidate, directory, "排除修訂 run 目錄",
+        )
+        if run_again != run_directory:
+            raise ValueError(f"排除修訂 run 目錄在掃描期間改變：{run_candidate}")
+        if tuple(child.name for child in _scan_directory(run_directory, "排除修訂 run 目錄")) != run_names:
+            raise ValueError(f"排除修訂 run 目錄在掃描期間改變：{run_candidate}")
+
+    root_again = _resolved_receipt_root(root)
+    if root_again != directory:
+        raise ValueError("排除修訂 receipt root 在掃描期間改變")
+    if tuple(entry.name for entry in _scan_directory(directory, "排除修訂 receipt root")) != root_names:
+        raise ValueError("排除修訂 receipt root 在掃描期間改變")
+    return sorted(markers, key=lambda candidate: candidate.marker_path.as_posix())
 
 
-def _validate_revision(path: Path, database_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def _validate_revision(
+    path: Path,
+    database_path: Path,
+    *,
+    capture: _ExcludedEvidenceCapture | None = None,
+    role_prefix: str | None = None,
+    expected_run: Path | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     root = _root(database_path)
-    marker = _read_json(path)
+    if capture is None:
+        marker = _read_json(path)
+    else:
+        if role_prefix is None or expected_run is None:
+            raise ValueError("excluded evidence capture 缺少 run role 或身分")
+        marker, _marker_sha = capture.read_json(
+            path,
+            f"{role_prefix}/revision.json",
+            expected_directory=expected_run,
+        )
     if (
         marker.get("schema_version") != REVISION_SCHEMA
         or Path(str(marker.get("database_path"))).resolve() != Path(database_path).resolve()
@@ -408,10 +717,23 @@ def _validate_revision(path: Path, database_path: Path) -> tuple[dict[str, Any],
         raise ValueError("錯日排除修訂標記不符")
     plan_path = path.parent / "plan.json"
     journal_path = path.parent / "journal.json"
-    plan_bytes = plan_path.read_bytes()
-    plan_sha = _hash_bytes(plan_bytes)
-    plan = json.loads(plan_bytes)
-    journal = _read_json(journal_path)
+    if capture is None:
+        plan_bytes = plan_path.read_bytes()
+        plan_sha = _hash_bytes(plan_bytes)
+        plan = json.loads(plan_bytes)
+        journal = _read_json(journal_path)
+    else:
+        plan_bytes, plan_sha = capture.read_bytes(
+            plan_path,
+            f"{role_prefix}/plan.json",
+            expected_directory=expected_run,
+        )
+        plan = _json_from_bytes(plan_bytes, plan_path)
+        journal, _journal_sha = capture.read_json(
+            journal_path,
+            f"{role_prefix}/journal.json",
+            expected_directory=expected_run,
+        )
     if (
         plan.get("schema_version") != SCHEMA
         or plan.get("database_path") != str(Path(database_path).resolve())
@@ -426,8 +748,17 @@ def _validate_revision(path: Path, database_path: Path) -> tuple[dict[str, Any],
     if marker["state"] == "pending":
         return marker, plan, journal
     receipt_name = "receipt.json" if marker["state"] == "applied" else "rollback.json"
-    receipt_bytes = (path.parent / receipt_name).read_bytes()
-    receipt = json.loads(receipt_bytes)
+    receipt_path = path.parent / receipt_name
+    if capture is None:
+        receipt_bytes = receipt_path.read_bytes()
+        receipt = json.loads(receipt_bytes)
+    else:
+        receipt_bytes, _receipt_sha = capture.read_bytes(
+            receipt_path,
+            f"{role_prefix}/{receipt_name}",
+            expected_directory=expected_run,
+        )
+        receipt = _json_from_bytes(receipt_bytes, receipt_path)
     sha_field = "receipt_sha256" if marker["state"] == "applied" else "rollback_sha256"
     if (
         marker.get(sha_field) != _hash_bytes(receipt_bytes)
@@ -443,6 +774,8 @@ def _validate_revision(path: Path, database_path: Path) -> tuple[dict[str, Any],
             plan.get("evidence_archive_relative"),
             plan.get("evidence_archive_sha256"),
             plan.get("source_files"),
+            capture=capture,
+            role_prefix=role_prefix,
         )
         if (
             receipt.get("evidence_archive_sha256") != plan.get("evidence_archive_sha256")
@@ -453,6 +786,8 @@ def _validate_revision(path: Path, database_path: Path) -> tuple[dict[str, Any],
         market = _validate_market_chain(
             Path(database_path), root, plan.get("market_receipt_relative_dir"),
             full_source_validation=False,
+            capture=capture,
+            role_prefix=role_prefix,
         )
         if (
             market["plan_sha256"] != plan.get("market_plan_sha256")
@@ -498,45 +833,116 @@ def _validate_scope(
     return set(keys), dates
 
 
+def _validated_excluded_runs(database_path: Path) -> tuple[_ValidatedExcludedRun, ...]:
+    """一次掃描並驗證所有 revision；legacy 與 typed API 共用此路徑。"""
+    root = _root(database_path)
+    result: list[_ValidatedExcludedRun] = []
+    seen: set[tuple[str, str]] = set()
+    seen_dates: set[str] = set()
+    for candidate in _marker_paths(database_path):
+        capture = _ExcludedEvidenceCapture(root)
+        path = candidate.marker_path
+        try:
+            marker, plan, journal = _validate_revision(
+                path,
+                database_path,
+                capture=capture,
+                role_prefix=candidate.role_prefix,
+                expected_run=candidate.resolved_run,
+            )
+            if marker["state"] == "pending":
+                raise ValueError("錯日排除修訂進行中，來源讀寫必須暫停")
+            keys: set[tuple[str, str]] = set()
+            dates: set[str] = set()
+            if marker["state"] == "applied":
+                keys, dates = _validate_scope(plan)
+                if seen & keys:
+                    raise ValueError("多個已套用排除修訂的精確 keys 重疊")
+                if seen_dates & dates:
+                    raise ValueError("多個已套用排除修訂的休市日重疊")
+                seen.update(keys)
+                seen_dates.update(dates)
+            result.append(
+                _ValidatedExcludedRun(
+                    marker_path=path,
+                    marker=marker,
+                    plan=plan,
+                    journal=journal,
+                    files=tuple(capture.files),
+                    keys=tuple(sorted(keys)),
+                    dates=tuple(sorted(dates)),
+                )
+            )
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"錯日排除來源修訂證據無法驗證：{path}: {exc}") from exc
+    return tuple(result)
+
+
+def _cutoff_date(decision_date: date | datetime | str) -> date:
+    try:
+        normalized = _normal_date(decision_date)
+        return date(int(normalized[:4]), int(normalized[4:6]), int(normalized[6:8]))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("決策日期格式不符") from exc
+
+
+def _assert_cutoff_safe(
+    runs: Iterable[_ValidatedExcludedRun], cutoff: date,
+) -> None:
+    starts = [
+        date.fromisoformat(run.plan["source_start_date"])
+        for run in runs
+        if run.marker["state"] == "applied"
+    ]
+    if starts and cutoff >= min(starts):
+        raise ValueError(
+            "excluded daily-price source revision blocks historical PIT from "
+            f"{min(starts).isoformat()}; rebuild from explicitly revised sources"
+        )
+
+
+def collect_excluded_daily_price_revision_evidence(
+    database_path: Path,
+    decision_date: date | datetime | str,
+) -> ValidatedNamespaceEvidenceV1:
+    """回傳同次完整驗證所讀取的 excluded daily-price revision evidence。"""
+    cutoff = _cutoff_date(decision_date)
+    runs = _validated_excluded_runs(database_path)
+    _assert_cutoff_safe(runs, cutoff)
+    files = tuple(item for run in runs for item in run.files)
+    return ValidatedNamespaceEvidenceV1(
+        namespace=SourceEvidenceNamespaceV1.EXCLUDED_DAILY_PRICE_REVISION,
+        presence=(
+            SourceEvidencePresenceV1.PRESENT
+            if runs
+            else SourceEvidencePresenceV1.EMPTY
+        ),
+        files=files,
+    )
+
+
 def load_exclusion_evidence(database_path: Path) -> list[dict[str, Any]]:
     """回傳已驗證且仍作用中的排除修訂；pending/格式錯誤一律 fail closed。
 
     此函式只讀小型 revision/journal/receipt/plan、官方來源封存檔和市場
     capture manifests；不讀備份 DB、不重 hash 大型 SQLite 或掃描整表。
+    typed namespace collector 共用本函式的單次 marker scan 與 validated-run path。
     """
-    result: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    seen_dates: set[str] = set()
-    for path in _marker_paths(database_path):
-        try:
-            marker, plan, _journal = _validate_revision(path, database_path)
-            if marker["state"] == "pending":
-                raise ValueError("錯日排除修訂進行中，來源讀寫必須暫停")
-            if marker["state"] == "rolled_back":
-                continue
-            keys, dates = _validate_scope(plan)
-            if seen & keys:
-                raise ValueError("多個已套用排除修訂的精確 keys 重疊")
-            if seen_dates & dates:
-                raise ValueError("多個已套用排除修訂的休市日重疊")
-            seen.update(keys)
-            seen_dates.update(dates)
-            result.append(
-                {
-                    "keys": sorted(keys),
-                    "closed_dates": sorted(dates),
-                    "plan_sha256": marker["plan_sha256"],
-                    "receipt_sha256": marker["receipt_sha256"],
-                    "receipt_path": str((path.parent / "receipt.json").resolve()),
-                    "acquired_at": plan["source_available_at"],
-                    "source_start_date": plan["source_start_date"],
-                    "evidence_archive_relative": plan["evidence_archive_relative"],
-                    "market_plan_sha256": plan["market_plan_sha256"],
-                }
-            )
-        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"錯日排除來源修訂證據無法驗證：{path}: {exc}") from exc
-    return result
+    return [
+        {
+            "keys": list(run.keys),
+            "closed_dates": list(run.dates),
+            "plan_sha256": run.marker["plan_sha256"],
+            "receipt_sha256": run.marker["receipt_sha256"],
+            "receipt_path": str((run.marker_path.parent / "receipt.json").resolve()),
+            "acquired_at": run.plan["source_available_at"],
+            "source_start_date": run.plan["source_start_date"],
+            "evidence_archive_relative": run.plan["evidence_archive_relative"],
+            "market_plan_sha256": run.plan["market_plan_sha256"],
+        }
+        for run in _validated_excluded_runs(database_path)
+        if run.marker["state"] == "applied"
+    ]
 
 
 def load_exclusions(database_path: Path) -> set[tuple[str, str]]:
@@ -592,15 +998,5 @@ def assert_excluded_source_revision_safe(
     database_path: Path, decision_date: date | datetime | str,
 ) -> None:
     """拒絕從最早受影響休市日前起使用目前來源修訂資料做歷史 PIT。"""
-    try:
-        normalized = _normal_date(decision_date)
-        cutoff = date(int(normalized[:4]), int(normalized[4:6]), int(normalized[6:8]))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("決策日期格式不符") from exc
-    evidence = load_exclusion_evidence(database_path)
-    starts = [date.fromisoformat(item["source_start_date"]) for item in evidence]
-    if starts and cutoff >= min(starts):
-        raise ValueError(
-            "excluded daily-price source revision blocks historical PIT from "
-            f"{min(starts).isoformat()}; rebuild from explicitly revised sources"
-        )
+    cutoff = _cutoff_date(decision_date)
+    _assert_cutoff_safe(_validated_excluded_runs(database_path), cutoff)

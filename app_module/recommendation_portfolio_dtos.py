@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import pandas as pd
 
 from financial_module.units import quantize_money, to_decimal
+
+if TYPE_CHECKING:
+    from app_module.recommendation.contracts import RecommendationExecution
 
 
 @dataclass
@@ -14,6 +17,37 @@ class RecommendationSnapshotDTO:
     regime: str
     recommendations: List[Dict[str, Any]]
     diagnostics: List[str] = field(default_factory=list)
+
+    @property
+    def canonical_execution(self) -> "RecommendationExecution | None":
+        """回傳本 snapshot instance 的記憶體型 child execution。"""
+
+        return getattr(self, "_canonical_execution", None)
+
+    @property
+    def replay_parent_id(self) -> str | None:
+        """回傳此 snapshot 的暫存 replay parent 身分。"""
+
+        return getattr(self, "_replay_parent_id", None)
+
+    def attach_replay_parent_id(self, parent_result_id: str) -> None:
+        if type(parent_result_id) is not str or not parent_result_id.strip():
+            raise ValueError("parent_result_id 不可為空")
+        existing = self.replay_parent_id
+        if existing is not None and existing != parent_result_id:
+            raise ValueError("snapshot replay parent ID 不可重新綁定")
+        object.__setattr__(self, "_replay_parent_id", parent_result_id)
+
+    def attach_canonical_execution(
+        self, execution: "RecommendationExecution"
+    ) -> None:
+        """附加暫存 child；不加入 dataclass 欄位或 legacy wire shape。"""
+
+        from app_module.recommendation.contracts import RecommendationExecution
+
+        if type(execution) is not RecommendationExecution:
+            raise TypeError("execution 必須是 RecommendationExecution")
+        object.__setattr__(self, "_canonical_execution", execution)
 
 
 @dataclass
@@ -69,6 +103,37 @@ class RecommendationPortfolioBacktestResultDTO:
     selection_diagnostics: List[str] = field(default_factory=list)
     improvement_hints: List[str] = field(default_factory=list)
     details: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def replay_parent_id(self) -> str | None:
+        """回傳本次執行中所有 snapshot 共用的暫存 replay parent。"""
+
+        attached = getattr(self, "_replay_parent_id", None)
+        parent_ids = {
+            snapshot.replay_parent_id
+            for snapshot in self.snapshots
+            if snapshot.replay_parent_id is not None
+        }
+        if self.snapshots and any(
+            snapshot.replay_parent_id is None for snapshot in self.snapshots
+        ) and (attached is not None or parent_ids):
+            raise ValueError("同一次 portfolio 執行不可混用已知與未知 replay parent")
+        if len(parent_ids) > 1:
+            raise ValueError("同一次 portfolio 執行不可混用 replay parent ID")
+        if attached is not None:
+            if parent_ids and parent_ids != {attached}:
+                raise ValueError("portfolio parent ID 與 snapshot parent 不一致")
+            return attached
+        return next(iter(parent_ids), None)
+
+    def attach_replay_parent_id(self, parent_result_id: str) -> None:
+        if type(parent_result_id) is not str or not parent_result_id.strip():
+            raise ValueError("parent_result_id 不可為空")
+        existing = self.replay_parent_id
+        if existing is not None and existing != parent_result_id:
+            raise ValueError("portfolio replay parent ID 不可重新綁定")
+        object.__setattr__(self, "_replay_parent_id", parent_result_id)
+        _ = self.replay_parent_id
 
     def to_dict(self) -> Dict[str, Any]:
         from dataclasses import asdict

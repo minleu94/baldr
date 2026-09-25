@@ -6,10 +6,12 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from app_module.decision_data_providers import (
+    industry_screen_fallback_provider,
     industry_index_frame_provider,
     market_index_frame_provider,
     recent_industry_screen_provider,
     recent_stock_screen_provider,
+    stock_screen_fallback_provider,
 )
 from app_module.application_ports import MarketFrameProvider
 from data_module.pit_sector_membership_reader import PITSectorMembershipReader
@@ -25,6 +27,27 @@ class DecisionServiceComposition:
     industry_strength_service: Any = None
 
 
+def build_stock_screener(
+    config: Any,
+    industry_mapper: Any = None,
+    *,
+    constructor: Any = None,
+) -> Any:
+    """在 application composition 建立並注入 concrete data providers。"""
+    if constructor is None:
+        from decision_module.stock_screener import StockScreener
+
+        constructor = StockScreener
+    return constructor(
+        config,
+        industry_mapper,
+        recent_stock_provider=recent_stock_screen_provider(config),
+        recent_industry_provider=recent_industry_screen_provider(config),
+        stock_fallback_provider=stock_screen_fallback_provider(config),
+        industry_fallback_provider=industry_screen_fallback_provider(config),
+    )
+
+
 def _default_dependencies() -> dict[str, Any]:
     from app_module.recommendation_service import RecommendationService
     from app_module.regime_service import RegimeService
@@ -32,7 +55,6 @@ def _default_dependencies() -> dict[str, Any]:
     from app_module.industry_strength_service import IndustryStrengthService
     from decision_module.industry_mapper import IndustryMapper
     from decision_module.market_regime_detector import MarketRegimeDetector
-    from decision_module.stock_screener import StockScreener
 
     return {
         "IndustryMapper": IndustryMapper,
@@ -41,7 +63,6 @@ def _default_dependencies() -> dict[str, Any]:
         "MarketRegimeDetector": MarketRegimeDetector,
         "RegimeService": RegimeService,
         "RecommendationService": RecommendationService,
-        "StockScreener": StockScreener,
     }
 
 
@@ -53,7 +74,7 @@ def build_decision_service_composition(
     market_index_provider: MarketFrameProvider | None = None,
     pit_membership_reader: PITSectorMembershipReader | None = None,
 ) -> DecisionServiceComposition:
-    """建立共享 mapper 與各自獨立的 regime detector。"""
+    """建立共享 mapper、app-side regime provider 與各領域服務。"""
     constructors = dict(dependencies or _default_dependencies())
     industry_provider = (
         industry_index_provider
@@ -69,11 +90,10 @@ def build_decision_service_composition(
         config, industry_index_provider=industry_provider
     )
     active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
-    stock_screener = constructors["StockScreener"](
+    stock_screener = build_stock_screener(
         config,
         mapper,
-        recent_stock_provider=recent_stock_screen_provider(config),
-        recent_industry_provider=recent_industry_screen_provider(config),
+        constructor=constructors.get("StockScreener"),
     )
     screening_kwargs: dict[str, Any] = {
         "industry_mapper": mapper,
@@ -97,19 +117,27 @@ def build_decision_service_composition(
             # 產業強弱是可降級的研究 read model；保留既有篩選服務契約。
             pass
     screening_service = constructors["ScreeningService"](config, **screening_kwargs)
-    regime_detector = constructors["MarketRegimeDetector"](
-        config, market_frame_provider=market_provider
-    )
-    recommendation_detector = constructors["MarketRegimeDetector"](
-        config, market_frame_provider=market_provider
-    )
+    regime_detector = constructors["MarketRegimeDetector"]()
     regime_service = constructors["RegimeService"](
-        config, regime_detector=regime_detector
+        config,
+        regime_detector=regime_detector,
+        use_persistent_history=True,
+        market_frame_provider=market_provider,
     )
     recommendation_kwargs: dict[str, Any] = {
         "industry_mapper": mapper,
-        "regime_detector": recommendation_detector,
+        "regime_service": regime_service,
     }
+    from app_module.recommendation.input_preparation import (
+        build_default_recommendation_input_preparer,
+    )
+
+    recommendation_kwargs["input_preparer"] = (
+        build_default_recommendation_input_preparer(
+            config,
+            pit_membership_reader=active_pit_reader,
+        )
+    )
     if active_pit_reader is not None:
         recommendation_kwargs["pit_membership_reader"] = active_pit_reader
     # The normal application composition explicitly injects the read-only

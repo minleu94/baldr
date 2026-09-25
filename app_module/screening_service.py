@@ -38,9 +38,11 @@ class ScreeningService:
             self.industry_mapper = IndustryMapper(config)
         else:
             self.industry_mapper = industry_mapper
-        self.stock_screener = stock_screener or StockScreener(
-            config, self.industry_mapper
-        )
+        if stock_screener is None:
+            from app_module.decision_service_composition import build_stock_screener
+
+            stock_screener = build_stock_screener(config, self.industry_mapper)
+        self.stock_screener = stock_screener
         self.industry_strength_service = industry_strength_service
     
     def get_strong_stocks(

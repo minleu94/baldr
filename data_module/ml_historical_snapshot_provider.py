@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
-from typing import Iterable
-from contextlib import closing
+from typing import Callable, Iterable, Iterator
 
 from data_module.ml_daily_price_revision_gate import (
     check_daily_price_source_revision,
@@ -115,6 +116,11 @@ class MLHistoricalSnapshotProvider:
         if not self.database_path.is_file():
             raise FileNotFoundError(self.database_path)
 
+    def open_read_lease(self) -> "MLHistoricalSnapshotReadLease":
+        """Open a same-connection observation lease without holding a read transaction."""
+
+        return MLHistoricalSnapshotReadLease(self)
+
     def load(
         self,
         *,
@@ -123,18 +129,39 @@ class MLHistoricalSnapshotProvider:
         symbols: tuple[str, ...],
         industry_index_names: tuple[str, ...] = (),
     ) -> HistoricalRawSnapshot:
-        source_stat_before = self.database_path.stat()
+        connection = self._connect()
+        with closing(connection):
+            return self._load_on_connection(
+                connection,
+                decision_date=decision_date,
+                history_start_date=history_start_date,
+                symbols=symbols,
+                industry_index_names=industry_index_names,
+            )
+
+    def _load_on_connection(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        decision_date: str,
+        history_start_date: str,
+        symbols: tuple[str, ...],
+        industry_index_names: tuple[str, ...] = (),
+    ) -> HistoricalRawSnapshot:
         decision = _compact_date(decision_date)
         history_start = _compact_date(history_start_date)
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
-        check_daily_price_source_revision(
-            database_path=self.database_path,
-            decision_date=decision,
-            symbols=normalized_symbols,
-        )
         normalized_industries = tuple(sorted({str(value).strip() for value in industry_index_names if str(value).strip()}))
         query_count = 0
-        with closing(self._connect()) as connection:
+        with self._read_snapshot_transaction(
+            connection,
+            before_begin=lambda: check_daily_price_source_revision(
+                database_path=self.database_path,
+                decision_date=decision,
+                symbols=normalized_symbols,
+            ),
+            changed_message="historical SQLite source changed during snapshot load",
+        ) as source_stat_before:
             schema = self._validate_schema(connection)
             symbol_clause = _placeholders(normalized_symbols)
             cutoff_row = connection.execute(
@@ -232,11 +259,14 @@ class MLHistoricalSnapshotProvider:
     ) -> tuple[str, ...]:
         """Return bounded stock trading dates without discovering a universe."""
 
-        source_stat_before = self.database_path.stat()
         start = _compact_date(start_date)
         end = _compact_date(end_date)
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
-        with closing(self._connect()) as connection:
+        connection = self._connect()
+        with closing(connection), self._read_snapshot_transaction(
+            connection,
+            changed_message="historical SQLite source changed during trading-date load",
+        ) as source_stat_before:
             self._validate_schema(connection)
             symbol_clause = _placeholders(normalized_symbols)
             rows = connection.execute(
@@ -262,17 +292,20 @@ class MLHistoricalSnapshotProvider:
     ) -> HistoricalForwardPriceWindow:
         """Load raw prices and benchmark rows for labels, in SQLite read-only mode."""
 
-        source_stat_before = self.database_path.stat()
         start = _compact_date(start_date)
         end = _compact_date(end_date)
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
-        check_daily_price_source_revision(
-            database_path=self.database_path,
-            decision_date=end,
-            symbols=normalized_symbols,
-        )
         query_count = 0
-        with closing(self._connect()) as connection:
+        connection = self._connect()
+        with closing(connection), self._read_snapshot_transaction(
+            connection,
+            before_begin=lambda: check_daily_price_source_revision(
+                database_path=self.database_path,
+                decision_date=end,
+                symbols=normalized_symbols,
+            ),
+            changed_message="historical SQLite source changed during forward window load",
+        ) as source_stat_before:
             schema = self._validate_schema(connection)
             symbol_clause = _placeholders(normalized_symbols)
             prices = tuple(
@@ -324,6 +357,41 @@ class MLHistoricalSnapshotProvider:
             query_count=query_count,
         )
 
+    @contextmanager
+    def _read_snapshot_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        changed_message: str,
+        before_begin: Callable[[], object] | None = None,
+    ) -> Iterator[os.stat_result]:
+        """Run provider reads against one SQLite snapshot and detect other commits."""
+
+        data_version_before = self._data_version(connection)
+        source_stat_before = self.database_path.stat()
+        if before_begin is not None:
+            before_begin()
+
+        connection.execute("BEGIN")
+        try:
+            yield source_stat_before
+            connection.commit()
+            if self._data_version(connection) != data_version_before:
+                raise RuntimeError(changed_message)
+        finally:
+            if connection.in_transaction:
+                connection.rollback()
+
+    @staticmethod
+    def _data_version(connection: sqlite3.Connection) -> int:
+        row = connection.execute("PRAGMA data_version").fetchone()
+        if row is None or len(row) != 1:
+            raise RuntimeError("SQLite data_version is unavailable")
+        try:
+            return int(row[0])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("SQLite data_version is invalid") from exc
+
     def _connect(self) -> sqlite3.Connection:
         uri = f"file:{self.database_path.as_posix()}?mode=ro"
         connection = sqlite3.connect(uri, uri=True)
@@ -359,6 +427,119 @@ class MLHistoricalSnapshotProvider:
         }
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return f"sha256:{digest}"
+
+
+class MLHistoricalSnapshotReadLease:
+    """Keep one read-only connection open for a bounded same-connection check.
+
+    The lease does not keep a SQLite transaction open after ``load``. Its
+    ``data_version`` comparison is meaningful only on this connection and for
+    this object's lifetime; it is not a durable or cross-connection generation
+    identifier.
+    """
+
+    def __init__(self, provider: MLHistoricalSnapshotProvider) -> None:
+        self._provider = provider
+        self._connection: sqlite3.Connection | None = None
+        self._baseline_data_version: int | None = None
+        self._baseline_stat: os.stat_result | None = None
+        self._load_attempted = False
+        self._load_completed = False
+
+    def __enter__(self) -> "MLHistoricalSnapshotReadLease":
+        if self._connection is not None:
+            raise RuntimeError("SQLite read lease is already open")
+        if self._load_attempted or self._load_completed:
+            raise RuntimeError("SQLite read lease has already been used")
+        connection = self._provider._connect()
+        try:
+            baseline_data_version = self._provider._data_version(connection)
+            baseline_stat = self._provider.database_path.stat()
+        except BaseException:
+            connection.close()
+            raise
+        self._connection = connection
+        self._baseline_data_version = baseline_data_version
+        self._baseline_stat = baseline_stat
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        connection = self._connection
+        self._connection = None
+        self._baseline_data_version = None
+        self._baseline_stat = None
+        if connection is not None:
+            try:
+                if connection.in_transaction:
+                    connection.rollback()
+            finally:
+                connection.close()
+
+    def load(
+        self,
+        *,
+        decision_date: str,
+        history_start_date: str,
+        symbols: tuple[str, ...],
+        industry_index_names: tuple[str, ...] = (),
+    ) -> HistoricalRawSnapshot:
+        connection = self._require_connection()
+        if self._load_attempted:
+            raise RuntimeError("SQLite read lease already loaded a snapshot")
+        self._assert_same_source_observation()
+        self._load_attempted = True
+        snapshot = self._provider._load_on_connection(
+            connection,
+            decision_date=decision_date,
+            history_start_date=history_start_date,
+            symbols=symbols,
+            industry_index_names=industry_index_names,
+        )
+        self._load_completed = True
+        return snapshot
+
+    def assert_unchanged(self) -> None:
+        self._require_connection()
+        if not self._load_completed:
+            raise RuntimeError("SQLite read lease has no completed snapshot")
+        self.assert_observation_unchanged()
+
+    def assert_observation_unchanged(self) -> None:
+        """Check the same-connection source observation, with or without load().
+
+        This is an observation boundary only. It does not hold a SQLite read
+        transaction open or provide a durable generation identifier.
+        """
+
+        self._require_connection()
+        self._assert_same_source_observation()
+
+    def _assert_same_source_observation(self) -> None:
+        connection = self._require_connection()
+        baseline_data_version = self._baseline_data_version
+        baseline_stat = self._baseline_stat
+        if baseline_data_version is None or baseline_stat is None:
+            raise RuntimeError("SQLite read lease baseline is unavailable")
+        if self._provider._data_version(connection) != baseline_data_version:
+            raise RuntimeError("historical SQLite source changed during read lease")
+        try:
+            current_stat = self._provider.database_path.stat()
+        except OSError as exc:
+            raise RuntimeError("historical SQLite source path changed during read lease") from exc
+        if (current_stat.st_size, current_stat.st_mtime_ns) != (
+            baseline_stat.st_size,
+            baseline_stat.st_mtime_ns,
+        ):
+            raise RuntimeError("historical SQLite source changed during read lease")
+
+    def _require_connection(self) -> sqlite3.Connection:
+        connection = self._connection
+        if connection is None:
+            raise RuntimeError("SQLite read lease is closed")
+        return connection
 
 
 def _normalized_texts(values: Iterable[str], *, field_name: str) -> tuple[str, ...]:

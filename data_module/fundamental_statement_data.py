@@ -7,14 +7,15 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Iterable, Mapping
 
+from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnosticKind
+from data_module.contracts.statement import (
+    StatementAvailabilityOverride,
+    StatementItemRecord,
+)
 from data_module.fundamental_availability import (
     FundamentalAvailabilityInput,
     resolve_fundamental_availability,
 )
-from data_module.fundamental_statement_availability_sources import (
-    StatementAvailabilityOverride,
-)
-from decision_module.factors.factor_dtos import FactorDiagnostic, FactorQuality
 
 
 StatementAvailableDateKey = tuple[str, str, str]
@@ -22,41 +23,9 @@ StatementAvailableDateValue = date | StatementAvailabilityOverride
 
 
 @dataclass(frozen=True)
-class StatementItemRecord:
-    stock_code: str
-    statement_type: str
-    period: str
-    as_of_date: date
-    announced_date: date | None
-    available_date: date
-    item_code: str
-    item_name: str
-    value: Decimal
-    source: str
-    source_version: str
-    quality: FactorQuality
-    # 研究財報 sidecar 會提供個別／合併範圍；正式舊表沒有此欄時維持合併相容預設。
-    report_basis: str = "consolidated"
-    # factor 語意 adapter 不覆寫官方 row code；以下欄位保留原始碼及其證據。
-    raw_item_code: str | None = None
-    item_code_source: str | None = None
-    item_code_lineage_sha256: str | None = None
-    official_item_name: str | None = None
-    xbrl_concept: str | None = None
-    candidate_source_version: str | None = None
-    industry_category: str | None = None
-    semantic_mapping_source: str | None = None
-    period_start: date | None = None
-    period_end: date | None = None
-    period_basis: str | None = None
-    value_unit: str | None = None
-    value_scale: int | None = None
-
-
-@dataclass(frozen=True)
 class StatementItemParseResult:
     records: tuple[StatementItemRecord, ...] = ()
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "records", tuple(self.records))
@@ -71,7 +40,7 @@ def parse_statement_rows(
     source_version: str,
 ) -> StatementItemParseResult:
     records: list[StatementItemRecord] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     source = f"financial_data.{statement_type}_csv"
 
     for row in rows:
@@ -79,20 +48,21 @@ def parse_statement_rows(
         as_of_date = _parse_iso_date(row.get("date", ""))
         period = _quarter_period(as_of_date)
         item_code = row.get("type", "").strip()
-        factor_name = f"fundamental.statement.{statement_type}"
-
         try:
             value = Decimal(row.get("value", "").strip())
         except (InvalidOperation, AttributeError):
             diagnostics.append(
-                FactorDiagnostic(
+                SourceDiagnostic(
                     code="fundamental_statement.invalid_value",
-                    factor_name=factor_name,
                     stock_code=stock_code,
                     message=(
                         "statement item value is not a valid Decimal; "
                         f"statement_type={statement_type}; period={period}; item_code={item_code}"
                     ),
+                    kind=SourceDiagnosticKind.STATEMENT,
+                    period=period,
+                    statement_type=statement_type,
+                    source_id=source,
                 )
             )
             continue
@@ -122,7 +92,6 @@ def parse_statement_rows(
                 value=value,
                 source=source,
                 source_version=source_version,
-                quality=availability.quality,
             )
         )
 

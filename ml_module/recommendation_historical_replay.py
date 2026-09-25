@@ -256,6 +256,19 @@ class RecommendationHistoricalReplayService:
         scenario = config.cost_scenario
         if not isinstance(scenario, RecommendationCostScenario):
             raise ValueError("replay cost scenario was not normalized")
+        # Observe this entire multi-call build from one connection. The lease
+        # does not pin a long SQLite transaction; its postcheck rejects a
+        # result if another connection committed while the build was running.
+        with self.provider.open_read_lease() as lease:
+            result = self._build_result(config, scenario)
+            lease.assert_observation_unchanged()
+            return result
+
+    def _build_result(
+        self,
+        config: RecommendationHistoricalReplayConfig,
+        scenario: RecommendationCostScenario,
+    ) -> RecommendationHistoricalReplayResult:
         trading_dates = self.provider.list_trading_dates(
             start_date=config.replay_start_date,
             end_date=config.replay_end_date,

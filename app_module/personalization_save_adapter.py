@@ -293,6 +293,207 @@ class PersonalizationRecommendationSaveAdapter:
         result.run_context = context
         return result, tuple(captures)
 
+    def captures_from_invocation(
+        self,
+        *,
+        context: Mapping[str, Any],
+        candidates: tuple[Any, ...],
+        result_id: str,
+        personalization_scope: PersonalizationDeliveryScope,
+        request_id: str,
+    ) -> tuple[PersonalizationDeliveryCapture, ...]:
+        """Capture personal identity from one sealed execute callback.
+
+        The candidate objects are the same invocation-local producer rows
+        delivered to ``RecommendationPostprocessInput``. This method does not
+        mutate them or construct a legacy result DTO.
+        """
+
+        resolved_result_id = _text(result_id)
+        if not resolved_result_id or not isinstance(personalization_scope, PersonalizationDeliveryScope):
+            raise PersonalizationSaveAdapterError(
+                "personalization invocation requires exact result and scope identities"
+            )
+        producer_context = deepcopy(_mapping(context))
+        temporal_state, temporal_warnings = inspect_personalization_temporal_context(
+            producer_context,
+            actual_decision_date=personalization_scope.decision_date,
+            scope=personalization_scope,
+            expected_result_id=resolved_result_id,
+        )
+        if temporal_state in {"invalid", "legacy_unverified"}:
+            raise PersonalizationSaveAdapterError(
+                "personalization invocation temporal contract is unverified: "
+                + ",".join(temporal_warnings or ("temporal_contract_unverified",))
+            )
+
+        receipt_references = tuple(
+            self._receipt_reference(
+                context=producer_context,
+                candidate=_mapping(getattr(candidate, "calibration_provenance", {})),
+                stock_code=_text(getattr(candidate, "stock_code", "")),
+                result_id=resolved_result_id,
+            )
+            for candidate in candidates
+        )
+        if not any(reference is not None for reference in receipt_references):
+            return ()
+
+        resolved_request_id = self._request_id(
+            context=producer_context,
+            result_id=resolved_result_id,
+            request_id=request_id,
+        )
+        captures: list[PersonalizationDeliveryCapture] = []
+        seen_stocks: set[str] = set()
+        for candidate, reference in zip(candidates, receipt_references):
+            if reference is None:
+                continue
+            stock_code = _text(getattr(candidate, "stock_code", ""))
+            if not stock_code:
+                raise PersonalizationSaveAdapterError(
+                    "personalization invocation candidate stock identity is missing"
+                )
+            if stock_code in seen_stocks:
+                raise PersonalizationSaveAdapterError(
+                    "personalization invocation candidate stock identity is duplicated"
+                )
+            seen_stocks.add(stock_code)
+            metadata = self._prediction_metadata(
+                context=producer_context,
+                candidate=_mapping(getattr(candidate, "calibration_provenance", {})),
+                reference=reference,
+                stock_code=stock_code,
+            )
+            if metadata is None:
+                raise PersonalizationSaveAdapterError(
+                    f"personalization invocation receipt lineage is incomplete:{stock_code}"
+                )
+            prediction_id = _uuid_or_none(metadata.get("prediction_id"))
+            declared_prediction_id = _text(metadata.get("declared_prediction_id"))
+            if declared_prediction_id and prediction_id is None:
+                raise PersonalizationSaveAdapterError(
+                    f"personalization invocation prediction id is invalid:{stock_code}"
+                )
+            if prediction_id is None:
+                prediction_id = str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        "|".join(
+                            (
+                                personalization_scope.scope_id,
+                                resolved_result_id,
+                                stock_code,
+                                reference["receipt_hash"],
+                            )
+                        ),
+                    )
+                )
+            try:
+                capture = self.capture_service.capture(
+                    scope=personalization_scope,
+                    request_id=resolved_request_id,
+                    result_id=resolved_result_id,
+                    stock_code=stock_code,
+                    projection_receipt_hash=reference["receipt_hash"],
+                    generated_at=personalization_scope.decision_at,
+                    prediction_id=prediction_id,
+                    projection_receipt_path=reference.get("receipt_path"),
+                    model_id=_text(metadata.get("model_id")),
+                    dataset_id=_text(metadata.get("dataset_id")),
+                    dataset_hash=_text(metadata.get("dataset_hash")),
+                    cost_scenario_hash=_text(metadata.get("cost_scenario_hash")) or None,
+                    horizon_days=metadata.get("horizon_days"),
+                )
+            except (TypeError, ValueError, PersonalizationProjectionError) as exc:
+                raise PersonalizationSaveAdapterError(
+                    f"personalization invocation capture is invalid:{stock_code}"
+                ) from exc
+            captures.append(capture)
+        return tuple(captures)
+
+    @staticmethod
+    def temporal_context_snapshot(context: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep only the exact, scalar clock declarations needed by readback."""
+
+        fields = (
+            "result_id",
+            "as_of_date",
+            "data_date",
+            "run_started_at",
+            "personalization_scope_declared_at",
+            "available_at",
+            "captured_at",
+            "decision_at",
+            "calibration_projection_receipt_created_at",
+            "temporal_contract",
+            "decision_clock_timezone",
+            "market_calendar_timezone",
+            "prediction_decision_anchor",
+            "horizon_anchor",
+            "temporal_mode",
+            "cutoff_selection",
+            "cutoff_policy",
+        )
+        snapshot: dict[str, Any] = {}
+        for name in fields:
+            value = context.get(name)
+            if value is not None and type(value) is not str:
+                raise PersonalizationSaveAdapterError(
+                    f"personalization temporal context field must be exact text:{name}"
+                )
+            snapshot[name] = value
+        receipt = _mapping(context.get("calibration_projection_receipt"))
+        snapshot["calibration_projection_receipt"] = {
+            name: receipt.get(name)
+            for name in ("path", "receipt_hash", "result_id", "receipt_created_at")
+        }
+        return snapshot
+
+    def captures_from_execution(self, execution: Any) -> tuple[PersonalizationDeliveryCapture, ...]:
+        """Read the generated ABI capture set from a canonical execution event."""
+
+        result_id = _text(getattr(execution, "result_id", ""))
+        events = tuple(getattr(execution, "events", ()))
+        matches = tuple(
+            event
+            for event in events
+            if _text(getattr(event, "event_type", "")) == "personalization_delivery_capture"
+        )
+        if not matches:
+            return ()
+        if len(matches) != 1:
+            raise PersonalizationSaveAdapterError(
+                "canonical execution has duplicate personalization capture events"
+            )
+        details = _mapping(getattr(matches[0], "details", {}))
+        if details.get("schema_version") != PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION:
+            raise PersonalizationSaveAdapterError(
+                "canonical execution personalization capture schema is unsupported"
+            )
+        raw_captures = details.get("captures")
+        if not isinstance(raw_captures, (tuple, list)):
+            raise PersonalizationSaveAdapterError(
+                "canonical execution personalization captures are missing"
+            )
+        captures: list[PersonalizationDeliveryCapture] = []
+        for raw in raw_captures:
+            try:
+                captures.append(PersonalizationDeliveryCapture.from_mapping(_mapping(raw)))
+            except (TypeError, ValueError) as exc:
+                raise PersonalizationSaveAdapterError(
+                    "canonical execution personalization capture is invalid"
+                ) from exc
+        if any(capture.result_id != result_id or capture.status != "generated" for capture in captures):
+            raise PersonalizationSaveAdapterError(
+                "canonical execution must retain exact generated capture identities"
+            )
+        if len({capture.stock_code for capture in captures}) != len(captures):
+            raise PersonalizationSaveAdapterError(
+                "canonical execution personalization capture set has duplicate candidate"
+            )
+        return tuple(captures)
+
     def build_local_scope(
         self,
         *,
@@ -449,6 +650,7 @@ class PersonalizationRecommendationSaveAdapter:
         delivered_at: str,
         recorded_at: str | None = None,
         expected_capture_hashes: Mapping[str, str] | None = None,
+        canonical_readback: Any = None,
     ) -> RecommendationDeliveryAckOutcome:
         """Append a CAS-style ACK to the existing Journal stream.
 
@@ -484,8 +686,16 @@ class PersonalizationRecommendationSaveAdapter:
             raise PersonalizationSaveAdapterError(
                 "delivery ACK recorded_at must not precede delivered_at"
             )
-        current = self._load_result(recommendation_repository, result_id_text)
-        captures = self.captures_from_result(current)
+        if canonical_readback is None:
+            current = self._load_result(recommendation_repository, result_id_text)
+            captures = self.captures_from_result(current)
+        else:
+            execution = getattr(canonical_readback, "execution", None)
+            if execution is None or _text(getattr(execution, "result_id", "")) != result_id_text:
+                raise PersonalizationSaveAdapterError(
+                    "delivery ACK canonical readback identity mismatch"
+                )
+            captures = self.captures_from_execution(execution)
         if not captures:
             raise PersonalizationSaveAdapterError("delivery ACK capture set is missing")
         if any(capture.result_id != result_id_text for capture in captures):

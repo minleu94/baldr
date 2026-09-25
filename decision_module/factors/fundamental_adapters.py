@@ -5,7 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Iterable
 
+from data_module.contracts.fundamental import (
+    SourceDiagnostic,
+    SourceDiagnosticKind,
+)
+from data_module.contracts.market import AvailabilityStatus
+from data_module.fundamental_availability import FundamentalAvailabilityResolution
 from data_module.fundamental_data import MonthlyRevenueRecord
 from decision_module.factors.factor_dtos import (
     FactorDiagnostic,
@@ -36,6 +43,61 @@ class FundamentalFactorBuildResult:
     def __post_init__(self) -> None:
         object.__setattr__(self, "records", tuple(self.records))
         object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
+
+
+def availability_resolution_to_factor_quality(
+    resolution: FundamentalAvailabilityResolution,
+) -> FactorQuality:
+    """唯一將基本面 availability facts 轉為 factor quality 的映射。"""
+
+    if resolution.availability.status is not AvailabilityStatus.KNOWN:
+        return FactorQuality.MISSING
+    if resolution.announced_date is None:
+        return FactorQuality.DEGRADED
+    return FactorQuality.OBSERVED
+
+
+def source_diagnostics_to_factor_diagnostics(
+    diagnostics: Iterable[SourceDiagnostic],
+) -> tuple[FactorDiagnostic, ...]:
+    """將來源診斷投影為 domain 因子診斷，不改 code/message 順序。"""
+
+    result: list[FactorDiagnostic] = []
+    for diagnostic in diagnostics:
+        kind = diagnostic.kind or SourceDiagnosticKind.AVAILABILITY
+        if kind is SourceDiagnosticKind.AVAILABILITY:
+            factor_name = "fundamental.availability"
+        elif kind is SourceDiagnosticKind.AVAILABILITY_HISTORY:
+            factor_name = "fundamental.availability"
+            if diagnostic.market:
+                factor_name = f"{factor_name}.{diagnostic.market}"
+        elif kind is SourceDiagnosticKind.MONTHLY_REVENUE:
+            factor_name = "fundamental.revenue"
+        elif kind is SourceDiagnosticKind.STATEMENT:
+            factor_name = "fundamental.statement"
+            if diagnostic.statement_type:
+                factor_name = f"{factor_name}.{diagnostic.statement_type}"
+        elif kind is SourceDiagnosticKind.STATEMENT_AVAILABILITY:
+            factor_name = "fundamental.statement_availability"
+        elif kind is SourceDiagnosticKind.VALUATION:
+            factor_name = (
+                f"valuation.{diagnostic.metric_name}"
+                if diagnostic.metric_name
+                else "valuation.pe"
+            )
+        else:
+            factor_name = "fundamental.monthly_revenue_snapshot"
+            if diagnostic.market:
+                factor_name = f"{factor_name}.{diagnostic.market}"
+        result.append(
+            FactorDiagnostic(
+                code=diagnostic.code,
+                factor_name=factor_name,
+                stock_code=diagnostic.stock_code,
+                message=diagnostic.message,
+            )
+        )
+    return tuple(result)
 
 
 def build_revenue_yoy_factor(
@@ -226,11 +288,19 @@ def _base_record(record: MonthlyRevenueRecord, factor_name: str, value: Decimal 
         available_date=record.available_date,
         value=value,
         score_bp=None,
-        quality=record.quality,
+        quality=_monthly_revenue_factor_quality(record),
         missing_policy=MissingPolicy.SKIP,
         source_version=record.source_version,
         metadata=_factor_metadata(record),
     )
+
+
+def _monthly_revenue_factor_quality(record: MonthlyRevenueRecord) -> FactorQuality:
+    if record.legacy_quality_wire_value is not None:
+        return FactorQuality(record.legacy_quality_wire_value)
+    if record.announced_date is None:
+        return FactorQuality.DEGRADED
+    return FactorQuality.OBSERVED
 
 
 def _period_parts(period: str) -> tuple[int, int]:

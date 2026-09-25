@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence
@@ -17,11 +18,37 @@ from app_module.advice_dtos import (
 from app_module.advice_policy import AdvicePolicy
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.saved_recommendation_queries import (
+    execution_result_config,
+    verified_saved_calibration_projections,
+)
 from app_module.portfolio_construction_dtos import PortfolioAllocationRow, PortfolioConstructionResult
 from app_module.portfolio_allocation_dtos import (
     PortfolioAllocationResultV2,
     PortfolioAllocationRowV2,
 )
+
+
+@dataclass(frozen=True)
+class _SavedExecutionRecommendationRow:
+    """Advice 所需的保存值投影，不將 execution row 解碼成舊 DTO。"""
+
+    stock_code: str
+    stock_name: str | None
+    close_price: object
+    price_change: object
+    total_score: object
+    indicator_score: object
+    pattern_score: object
+    volume_score: object
+    recommendation_reasons: str
+    industry: str
+    regime_match: bool | None
+    score_percentile_bp: int | None
+    eligible_universe_size: int | None
+    ranking_method: str | None
+    threshold_mode: str | None
 
 
 class AdviceComposer:
@@ -33,7 +60,7 @@ class AdviceComposer:
     def compose(
         self,
         *,
-        recommendations: RecommendationResultDTO | Sequence[RecommendationDTO],
+        recommendations: RecommendationResultDTO | RecommendationExecutionReadModel | Sequence[RecommendationDTO],
         portfolio_result: PortfolioConstructionResult | PortfolioAllocationResultV2 | None,
         evidence_quality: str | None,
         decision_date: date | str,
@@ -61,12 +88,21 @@ class AdviceComposer:
         current_weights_known = current_weights_bp is not None
         current_weights = self._weights(current_weights_bp or {})
         calibration_by_stock = dict(calibration_by_stock_code or {})
-        result_id, config, recommendation_rows = self._recommendation_payload(recommendations)
+        result_id, config, recommendation_rows, source_trace_kind = self._recommendation_payload(recommendations)
         # A normal RecommendationService run persists the projection fields on
         # each RecommendationDTO.  Reuse that exact object for portfolio rows
         # as well, so Advice does not require a parallel caller-only mapping.
+        saved_projections = (
+            verified_saved_calibration_projections(recommendations)
+            if isinstance(recommendations, RecommendationExecutionReadModel)
+            else {}
+        )
         for recommendation in recommendation_rows:
-            calibration_by_stock.setdefault(recommendation.stock_code, recommendation)
+            calibration_by_stock.setdefault(
+                recommendation.stock_code,
+                saved_projections.get(recommendation.stock_code)
+                or (recommendation if isinstance(recommendation, RecommendationDTO) else None),
+            )
         legacy_allocations = (
             portfolio_result.allocations
             if isinstance(portfolio_result, PortfolioConstructionResult)
@@ -129,6 +165,7 @@ class AdviceComposer:
                     strategy_version=self._string_or_empty(config.get("strategy_version")),
                     market_regime=self._string_or_empty(config.get("market_regime") or config.get("regime")),
                     calibration=calibration_by_stock.get(recommendation.stock_code),
+                    source_trace_kind=source_trace_kind,
                 )
                 for recommendation in recommendation_rows
             )
@@ -179,7 +216,7 @@ class AdviceComposer:
 
     def _recommendation_advice(
         self,
-        recommendation: RecommendationDTO,
+        recommendation: Any,
         *,
         result_id: str,
         strategy_status: str | None,
@@ -198,6 +235,7 @@ class AdviceComposer:
         strategy_version: str,
         market_regime: str,
         calibration: object | None,
+        source_trace_kind: str = "RecommendationResultDTO",
     ) -> RecommendationAdviceDTO:
         decision = self._policy.decide(
             mode=mode,
@@ -216,7 +254,7 @@ class AdviceComposer:
             expected_stock_code=recommendation.stock_code,
         )
         source_trace = (
-            ("RecommendationResultDTO",)
+            (source_trace_kind,)
             + ((str(result_id),) if result_id else ())
             + tuple(calibration_fields.pop("_source_trace", ()))
         )
@@ -652,11 +690,65 @@ class AdviceComposer:
 
     @staticmethod
     def _recommendation_payload(
-        recommendations: RecommendationResultDTO | Sequence[RecommendationDTO],
-    ) -> tuple[str, Mapping[str, object], tuple[RecommendationDTO, ...]]:
+        recommendations: RecommendationResultDTO | RecommendationExecutionReadModel | Sequence[RecommendationDTO],
+    ) -> tuple[str, Mapping[str, object], tuple[Any, ...], str]:
         if isinstance(recommendations, RecommendationResultDTO):
-            return recommendations.result_id, recommendations.config, tuple(recommendations.recommendations)
-        return "", {}, tuple(recommendations)
+            return (
+                recommendations.result_id,
+                recommendations.config,
+                tuple(recommendations.recommendations),
+                "RecommendationResultDTO",
+            )
+        if isinstance(recommendations, RecommendationExecutionReadModel):
+            if recommendations.legacy_result is not None:
+                legacy = recommendations.legacy_result
+                return (
+                    legacy.result_id,
+                    legacy.config,
+                    tuple(legacy.recommendations),
+                    "RecommendationResultDTO",
+                )
+            execution = recommendations.execution
+            if execution is None or execution.decision is None:
+                return recommendations.result_id, {}, (), "RecommendationExecution"
+            config = execution_result_config(execution)
+            if execution.context.strategy_identity is not None:
+                strategy_version = execution.context.strategy_identity.strategy_version_id
+                if strategy_version:
+                    config.setdefault("strategy_version", strategy_version)
+            if execution.decision.regime is not None:
+                config.setdefault("regime", execution.decision.regime)
+            rows = tuple(
+                _SavedExecutionRecommendationRow(
+                    stock_code=item.stock_code,
+                    stock_name=item.stock_name,
+                    close_price=item.close_price,
+                    price_change=item.price_change,
+                    total_score=item.rule_score,
+                    indicator_score=item.indicator_score,
+                    pattern_score=item.pattern_score,
+                    volume_score=item.volume_score,
+                    recommendation_reasons=(
+                        item.reason_text
+                        if item.reason_text is not None
+                        else "; ".join(item.reasons)
+                    ),
+                    industry=item.industry or "",
+                    regime_match=item.regime_match,
+                    score_percentile_bp=item.score_percentile_bp,
+                    eligible_universe_size=item.eligible_universe_size,
+                    ranking_method=item.ranking_method,
+                    threshold_mode=item.threshold_mode,
+                )
+                for item in execution.decision.items
+            )
+            return (
+                execution.result_id,
+                config,
+                rows,
+                "RecommendationExecution",
+            )
+        return "", {}, tuple(recommendations), "RecommendationResultDTO"
 
     @classmethod
     def _weights(cls, values: Mapping[str, int]) -> dict[str, int]:

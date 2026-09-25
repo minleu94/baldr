@@ -7,7 +7,8 @@ from datetime import date
 import re
 from typing import Iterable
 
-from decision_module.factors.factor_dtos import FactorDiagnostic, FactorQuality
+from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnosticKind
+from data_module.contracts.market import Availability, AvailabilityStatus
 
 RETROACTIVE_BASELINE_SOURCE = "manual.retroactive_baseline_mapping"
 RETROACTIVE_STATEMENT_BASELINE_SOURCE = "manual.retroactive_statement_baseline_mapping"
@@ -328,30 +329,28 @@ class FundamentalAvailabilityInput:
 @dataclass(frozen=True)
 class FundamentalAvailabilityResolution:
     announced_date: date | None
-    available_date: date | None
-    quality: FactorQuality
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    availability: Availability
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
+
+    @property
+    def available_date(self) -> date | None:
+        return self.availability.available_date
 
 
 def resolve_fundamental_availability(
     observation: FundamentalAvailabilityInput,
 ) -> FundamentalAvailabilityResolution:
-    factor_name = "fundamental.availability"
-    diagnostics: list[FactorDiagnostic] = []
-
     available_date = observation.explicit_available_date
     if available_date is None:
         return FundamentalAvailabilityResolution(
             announced_date=observation.announced_date,
-            available_date=None,
-            quality=FactorQuality.MISSING,
+            availability=Availability(status=AvailabilityStatus.UNKNOWN),
             diagnostics=(
                 _diagnostic(
                     observation,
-                    factor_name,
                     "fundamental_availability.missing_available_date",
                     "fundamental observation has no explicit available_date",
                 ),
@@ -361,12 +360,10 @@ def resolve_fundamental_availability(
     if available_date < observation.as_of_date:
         return FundamentalAvailabilityResolution(
             announced_date=observation.announced_date,
-            available_date=None,
-            quality=FactorQuality.MISSING,
+            availability=Availability(status=AvailabilityStatus.UNKNOWN),
             diagnostics=(
                 _diagnostic(
                     observation,
-                    factor_name,
                     "fundamental_availability.available_before_period_end",
                     "available_date is before period end date",
                 ),
@@ -376,12 +373,10 @@ def resolve_fundamental_availability(
     if observation.announced_date is not None and available_date < observation.announced_date:
         return FundamentalAvailabilityResolution(
             announced_date=observation.announced_date,
-            available_date=None,
-            quality=FactorQuality.MISSING,
+            availability=Availability(status=AvailabilityStatus.UNKNOWN),
             diagnostics=(
                 _diagnostic(
                     observation,
-                    factor_name,
                     "fundamental_availability.available_before_announcement",
                     "available_date is before announced_date",
                 ),
@@ -389,42 +384,42 @@ def resolve_fundamental_availability(
         )
 
     if observation.announced_date is None:
-        if observation.source in RETROACTIVE_BASELINE_SOURCES:
+        if observation.source not in RETROACTIVE_BASELINE_SOURCES:
             return FundamentalAvailabilityResolution(
                 announced_date=None,
-                available_date=available_date,
-                quality=FactorQuality.DEGRADED,
-                diagnostics=(),
+                availability=Availability(
+                    status=AvailabilityStatus.KNOWN,
+                    available_date=available_date,
+                ),
+                diagnostics=(
+                    _diagnostic(
+                        observation,
+                        "fundamental_availability.missing_announced_date",
+                        "announced_date missing; available_date is explicit but quality is degraded",
+                    ),
+                ),
             )
-        diagnostics.append(
-            _diagnostic(
-                observation,
-                factor_name,
-                "fundamental_availability.missing_announced_date",
-                "announced_date missing; available_date is explicit but quality is degraded",
-            )
-        )
-        quality = FactorQuality.DEGRADED
-    else:
-        quality = FactorQuality.OBSERVED
 
     return FundamentalAvailabilityResolution(
         announced_date=observation.announced_date,
-        available_date=available_date,
-        quality=quality,
-        diagnostics=tuple(diagnostics),
+        availability=Availability(
+            status=AvailabilityStatus.KNOWN,
+            available_date=available_date,
+        ),
     )
 
 
 def _diagnostic(
     observation: FundamentalAvailabilityInput,
-    factor_name: str,
     code: str,
     message: str,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=code,
-        factor_name=factor_name,
         stock_code=observation.stock_code,
         message=f"{message}; period={observation.period}; source={observation.source}",
+        kind=SourceDiagnosticKind.AVAILABILITY,
+        period=observation.period,
+        source_id=observation.source,
+        available_date=observation.explicit_available_date,
     )

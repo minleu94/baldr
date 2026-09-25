@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app_module.backtest_service import BacktestService
 from app_module.backtest_repository import BacktestRunRepository
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from app_module.dtos import BacktestReportDTO
 from app_module.exceptions import BacktestCancelledError
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json
@@ -53,7 +53,7 @@ def _run_batch_backtest_worker(
 ) -> BacktestReportDTO:
     """在子進程中執行單檔回測的 Worker 函數 (Windows spawn 相容)"""
 
-    import app_module.strategies  # 確保子進程載入並註冊所有內建策略
+    import decision_module.strategies  # 確保子進程載入並註冊所有內建策略
     from app_module.backtest_service import BacktestService
     # 為防止多行程連線衝突，每個子行程重新實例化
     service = BacktestService(config)

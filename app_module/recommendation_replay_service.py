@@ -1,13 +1,274 @@
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from collections.abc import Mapping
 from copy import deepcopy
+from datetime import date
+from decimal import Decimal, InvalidOperation
+import hashlib
+import inspect
+import json
+import operator
+from typing import Any, Callable, Dict, Iterable, List, Optional, cast
+from uuid import uuid4
 
 import pandas as pd
 
+from app_module.recommendation.contracts import (
+    Context,
+    ExecutionStatus,
+    RecommendationConfigSnapshot,
+    RecommendationExecution,
+    ReferenceKind,
+    Request,
+    VersionReference,
+)
 from app_module.recommendation_portfolio_dtos import RecommendationSnapshotDTO
 from app_module.recommendation_portfolio_dates import parse_stock_dates
+from app_module.recommendation_dataframe_provider import (
+    RecommendationDataFrameProvider,
+    ReplayProviderCallResultV1,
+    _replay_score_order_token,
+)
+from decision_module.recommendation.contracts import DecisionBatch, RecommendationItem
+from decision_module.recommendation.evaluate import (
+    ReplayCandidateScoringOutcomeV1,
+    ReplayScorerDispositionV1,
+)
 
 
 RecommendationProvider = Callable[[pd.DataFrame, Dict[str, Any], int], List[Dict[str, Any]]]
+
+
+def _has_json_object_keys(value: object, active: set[int] | None = None) -> bool:
+    if not isinstance(value, (Mapping, list, tuple)):
+        return True
+    active_values = set() if active is None else active
+    value_id = id(value)
+    if value_id in active_values:
+        return False
+    active_values.add(value_id)
+    try:
+        if isinstance(value, Mapping):
+            return all(
+                type(key) is str and _has_json_object_keys(item, active_values)
+                for key, item in value.items()
+            )
+        return all(_has_json_object_keys(item, active_values) for item in value)
+    finally:
+        active_values.remove(value_id)
+
+
+def _config_snapshot(
+    config: object,
+) -> tuple[RecommendationConfigSnapshot | None, VersionReference | None]:
+    if not isinstance(config, Mapping) or not _has_json_object_keys(config):
+        return None, None
+    try:
+        raw_config_json = json.dumps(
+            config,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        raw_config_hash = "sha256:" + hashlib.sha256(
+            raw_config_json.encode("utf-8", errors="strict")
+        ).hexdigest()
+        snapshot = RecommendationConfigSnapshot(
+            raw_config_json=raw_config_json,
+            raw_json_sha256=raw_config_hash,
+        )
+    except (
+        TypeError,
+        ValueError,
+        OverflowError,
+        UnicodeEncodeError,
+        RecursionError,
+    ):
+        return None, None
+    return snapshot, VersionReference(
+        kind=ReferenceKind.CONFIG,
+        reference_id=raw_config_hash,
+        version=snapshot.schema_version,
+    )
+
+
+def _optional_decimal(value: object) -> tuple[Decimal | None, bool]:
+    if value is None:
+        return None, False
+    if type(value) not in (int, float, Decimal):
+        return None, True
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None, True
+    if not decimal_value.is_finite():
+        return None, True
+    return decimal_value, False
+
+
+def _profile_reference(profile_id: object) -> VersionReference | None:
+    if type(profile_id) is not str or not profile_id.strip():
+        return None
+    return VersionReference(
+        kind=ReferenceKind.PROFILE,
+        reference_id=profile_id,
+    )
+
+
+def _positive_optional_int(value: object) -> int | None:
+    if type(value) is not int or value <= 0:
+        return None
+    return value
+
+
+def _effective_max_stocks(config: Mapping[str, Any]) -> int | None:
+    if "_portfolio_max_stocks" not in config:
+        return None
+    raw_value = config["_portfolio_max_stocks"]
+    if type(raw_value) is bool:
+        return None
+    if type(raw_value) not in (int, float, str):
+        return None
+    if type(raw_value) is float and not raw_value.is_integer():
+        return None
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return value if value > 0 else None
+
+
+def _supports_explicit_as_of_call(provider: object) -> bool:
+    """避免三參數 provider 子類誤用繼承的四參數 as-of wrapper。"""
+
+    run_with_as_of = getattr(provider, "run_with_as_of", None)
+    if not callable(run_with_as_of):
+        return False
+    if not isinstance(provider, RecommendationDataFrameProvider):
+        return True
+    if type(provider).run_with_as_of is not RecommendationDataFrameProvider.run_with_as_of:
+        return True
+    try:
+        parameters = inspect.signature(type(provider).__call__).parameters
+    except (TypeError, ValueError):
+        return False
+    return "_call_context" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+
+
+def _canonical_replay_execution_from_decision(
+    snapshot: RecommendationSnapshotDTO,
+    *,
+    top_n: object,
+    parent_result_id: str,
+    decision: DecisionBatch,
+) -> RecommendationExecution:
+    config_snapshot, config_ref = _config_snapshot(snapshot.strategy_config)
+    profile_ref = _profile_reference(snapshot.profile_id)
+    request = Request(
+        as_of_date=date.fromisoformat(snapshot.as_of_date),
+        config_ref=config_ref,
+        profile_ref=profile_ref,
+        config_snapshot=config_snapshot,
+        max_stocks=_effective_max_stocks(snapshot.strategy_config),
+        top_n=_positive_optional_int(top_n),
+    )
+
+    execution_context = Context(
+        as_of_date=date.fromisoformat(snapshot.as_of_date),
+        config_ref=config_ref,
+        profile_ref=profile_ref,
+    )
+    child_result_id = f"replay-{uuid4().hex}"
+    while child_result_id == parent_result_id:
+        child_result_id = f"replay-{uuid4().hex}"
+    return RecommendationExecution(
+        result_id=child_result_id,
+        request=request,
+        context=execution_context,
+        status=ExecutionStatus.COMPLETED,
+        decision=decision,
+        related_references=(
+            VersionReference(
+                kind=ReferenceKind.REPLAY_PARENT,
+                reference_id=parent_result_id,
+            ),
+        ),
+    )
+
+
+def _build_canonical_replay_execution_from_handoff(
+    snapshot: RecommendationSnapshotDTO,
+    scoring_outcomes: tuple[ReplayCandidateScoringOutcomeV1 | None, ...],
+    *,
+    top_n: object,
+    parent_result_id: str,
+) -> RecommendationExecution | None:
+    """直接採同次 evaluator 的 typed item；v1 row 僅做對齊驗證。"""
+
+    if len(snapshot.recommendations) != len(scoring_outcomes):
+        return None
+    expected_date = date.fromisoformat(snapshot.as_of_date)
+    items: list[RecommendationItem] = []
+    assessments = []
+    seen_codes: set[str] = set()
+    for row, outcome in zip(snapshot.recommendations, scoring_outcomes):
+        if type(row) is not dict or type(outcome) is not ReplayCandidateScoringOutcomeV1:
+            return None
+        if outcome.disposition is not ReplayScorerDispositionV1.SCORED:
+            return None
+        item = outcome.item
+        if item is None or outcome.score_ordering is None:
+            return None
+        stock_code = row.get("stock_code")
+        if (
+            type(stock_code) is not str
+            or not stock_code.strip()
+            or stock_code in seen_codes
+            or stock_code != outcome.request.stock_code
+            or stock_code != item.stock_code
+            or outcome.request.as_of_date != expected_date
+        ):
+            return None
+        seen_codes.add(stock_code)
+        if row.get("stock_name") != item.stock_name:
+            return None
+        raw_score = row.get("total_score")
+        if type(raw_score) is not float:
+            return None
+        rule_score, invalid_rule_score = _optional_decimal(raw_score)
+        if (
+            invalid_rule_score
+            or rule_score != item.rule_score
+            or outcome.score_ordering != _replay_score_order_token(raw_score)
+        ):
+            return None
+        factor_scores = row.get("factor_scores")
+        if type(factor_scores) is not dict:
+            return None
+        for factor_name, expected_score in (
+            ("technical", item.indicator_score),
+            ("pattern", item.pattern_score),
+            ("volume", item.volume_score),
+        ):
+            observed_score, invalid = _optional_decimal(factor_scores.get(factor_name))
+            if invalid or observed_score != expected_score:
+                return None
+        reason_text = row.get("selection_reason")
+        if (reason_text is not None and type(reason_text) is not str) or reason_text != item.reason_text:
+            return None
+        items.append(item)
+        assessments.append(outcome.assessment)
+    return _canonical_replay_execution_from_decision(
+        snapshot,
+        top_n=top_n,
+        parent_result_id=parent_result_id,
+        decision=DecisionBatch(
+            items=tuple(items),
+            assessments=tuple(assessments),
+            regime=snapshot.regime,
+        ),
+    )
 
 
 class RecommendationReplayService:
@@ -22,7 +283,16 @@ class RecommendationReplayService:
         history: pd.DataFrame,
         universe: Optional[Iterable[str]],
         top_n: int,
+        parent_result_id: str | None = None,
     ) -> RecommendationSnapshotDTO:
+        parent_ref = VersionReference(
+            kind=ReferenceKind.REPLAY_PARENT,
+            reference_id=(
+                f"replay-parent-{uuid4().hex}"
+                if parent_result_id is None
+                else parent_result_id
+            ),
+        )
         if "日期" not in history.columns:
             raise ValueError("history 必須包含 日期 欄位")
 
@@ -48,9 +318,31 @@ class RecommendationReplayService:
                 diagnostics.append("missing_stock_code_column")
 
         frozen_config = deepcopy(config)
-        recommendations = deepcopy(self.provider(data, deepcopy(frozen_config), top_n)[:top_n])
+        provider_config = deepcopy(frozen_config)
+        handoff: ReplayProviderCallResultV1 | None = None
+        if type(self.provider) is RecommendationDataFrameProvider:
+            concrete_provider = cast(RecommendationDataFrameProvider, self.provider)
+            handoff = concrete_provider.run_with_as_of_handoff(
+                data,
+                provider_config,
+                top_n,
+                as_of_ts.date(),
+            )
+            provider_rows = handoff.rows
+        else:
+            run_with_as_of = getattr(self.provider, "run_with_as_of", None)
+            if _supports_explicit_as_of_call(self.provider) and callable(run_with_as_of):
+                provider_rows = run_with_as_of(
+                    data,
+                    provider_config,
+                    top_n,
+                    as_of_ts.date(),
+                )
+            else:
+                provider_rows = self.provider(data, provider_config, top_n)
+        recommendations = deepcopy(provider_rows[:top_n])
 
-        return RecommendationSnapshotDTO(
+        snapshot = RecommendationSnapshotDTO(
             as_of_date=as_of_ts.strftime("%Y-%m-%d"),
             profile_id=profile_id,
             strategy_config=frozen_config,
@@ -58,3 +350,19 @@ class RecommendationReplayService:
             recommendations=recommendations,
             diagnostics=diagnostics,
         )
+        snapshot.attach_replay_parent_id(parent_ref.reference_id)
+        if handoff is not None and (
+            handoff.as_of_date == as_of_ts.date()
+            and handoff.requested_top_n == operator.index(top_n)
+        ):
+            canonical_execution = _build_canonical_replay_execution_from_handoff(
+                snapshot,
+                handoff.scoring_outcomes[:top_n],
+                top_n=top_n,
+                parent_result_id=parent_ref.reference_id,
+            )
+        else:
+            canonical_execution = None
+        if canonical_execution is not None:
+            snapshot.attach_canonical_execution(canonical_execution)
+        return snapshot

@@ -14,17 +14,18 @@ from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
 
+from data_module.contracts.fundamental import SourceDiagnostic
 from data_module.fundamental_availability_sources import (
     load_monthly_revenue_availability_overrides_csv,
 )
 from data_module.fundamental_data import (
     MonthlyRevenueRecord,
+    legacy_monthly_revenue_quality_value,
     parse_monthly_revenue_rows,
 )
 from data_module.monthly_revenue_availability_history import (
     _snapshot_session_available_date,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
 
 MOPS_MONTHLY_REVENUE_SNAPSHOT_SOURCE = "mops.monthly_revenue_static_snapshot"
 
@@ -32,7 +33,7 @@ MOPS_MONTHLY_REVENUE_SNAPSHOT_SOURCE = "mops.monthly_revenue_static_snapshot"
 @dataclass(frozen=True)
 class MonthlyRevenueBackfillPlan:
     records: tuple[MonthlyRevenueRecord, ...]
-    diagnostics: tuple[FactorDiagnostic, ...]
+    diagnostics: tuple[SourceDiagnostic, ...]
     raw_row_count: int
     snapshot_duplicate_row_count: int = 0
     snapshot_unmatched_mapping_count: int = 0
@@ -162,9 +163,8 @@ def plan_mops_snapshot_monthly_revenue_backfill(
             "",
         )
         diagnostics.append(
-            FactorDiagnostic(
+            SourceDiagnostic(
                 code="fundamental_availability.snapshot_mapping_incomplete",
-                factor_name="fundamental.availability",
                 stock_code="",
                 message=(
                     "MOPS snapshot rows without a governed availability mapping; "
@@ -186,9 +186,8 @@ def plan_mops_snapshot_monthly_revenue_backfill(
             and session_available_date > override.available_date.isoformat()
         ):
             diagnostics.append(
-                FactorDiagnostic(
+                SourceDiagnostic(
                     code="fundamental_availability.snapshot_capture_after_available_date",
-                    factor_name="fundamental.availability",
                     stock_code=row["stock_id"],
                     message=(
                         "MOPS snapshot value was captured after the mapping available_date; "
@@ -200,9 +199,8 @@ def plan_mops_snapshot_monthly_revenue_backfill(
 
     if len(session_available_dates) > 1:
         diagnostics.append(
-            FactorDiagnostic(
+            SourceDiagnostic(
                 code="fundamental_availability.snapshot_capture_date_inconsistent",
-                factor_name="fundamental.availability",
                 stock_code="",
                 message=(
                     "MOPS snapshot contains more than one capture date; "
@@ -474,14 +472,14 @@ def _load_snapshot_scope_manifest(
     snapshot_row_count: int,
     snapshot_file: Path,
     snapshot_rows: tuple[dict[str, str], ...],
-) -> tuple[str, int, int, tuple[FactorDiagnostic, ...]]:
+) -> tuple[str, int, int, tuple[SourceDiagnostic, ...]]:
     """讀取 accepted scope manifest，將 partial 邊界固定在可稽核分母。"""
 
     if manifest_file is None:
         return "complete", snapshot_row_count, 0, ()
 
     path = Path(manifest_file)
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     try:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
@@ -746,10 +744,9 @@ def _sha256_file(path: Path) -> str | None:
         return None
 
 
-def _snapshot_scope_diagnostic(message: str) -> FactorDiagnostic:
-    return FactorDiagnostic(
+def _snapshot_scope_diagnostic(message: str) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code="fundamental_revenue.snapshot_scope_manifest_invalid",
-        factor_name="fundamental.revenue",
         stock_code="",
         message=message,
     )
@@ -783,12 +780,12 @@ class _MopsSnapshotRows:
     raw_row_count: int
     duplicate_row_count: int
     invalid_row_count: int
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
 
 
 def _load_mops_snapshot_rows(snapshot_file: Path) -> _MopsSnapshotRows:
     rows: list[dict[str, str]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     seen_keys: set[tuple[str, str]] = set()
     raw_row_count = 0
     duplicate_row_count = 0
@@ -802,9 +799,8 @@ def _load_mops_snapshot_rows(snapshot_file: Path) -> _MopsSnapshotRows:
             except (TypeError, ValueError, KeyError) as exc:
                 invalid_row_count += 1
                 diagnostics.append(
-                    FactorDiagnostic(
+                    SourceDiagnostic(
                         code="fundamental_revenue.snapshot_invalid_row",
-                        factor_name="fundamental.revenue",
                         stock_code=str(source_row.get("stock_code") or "").strip(),
                         message=f"MOPS snapshot row is invalid; error={exc}",
                     )
@@ -818,9 +814,8 @@ def _load_mops_snapshot_rows(snapshot_file: Path) -> _MopsSnapshotRows:
             rows.append(row)
     if duplicate_row_count:
         diagnostics.append(
-            FactorDiagnostic(
+            SourceDiagnostic(
                 code="fundamental_revenue.snapshot_duplicate_rows",
-                factor_name="fundamental.revenue",
                 stock_code="",
                 message=(
                     "MOPS snapshot has duplicate (stock_code, period) rows; "
@@ -907,7 +902,7 @@ def _insert_monthly_revenue_records(
                 str(record.revenue),
                 record.source,
                 record.source_version,
-                record.quality.value,
+                legacy_monthly_revenue_quality_value(record),
             )
             for record in records
         ],

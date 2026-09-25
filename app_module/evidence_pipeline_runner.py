@@ -60,7 +60,7 @@ from app_module.forward_performance_read_model import (
     SUMMARY_STATUS_READY,
 )
 from app_module.forward_performance_service import ForwardPerformanceService
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from data_module.config import TWStockConfig
 
 
@@ -710,7 +710,9 @@ class EvidencePipelineRunner:
 
     def _build_importers(self, request: EvidencePipelineRunRequest) -> dict[str, Any]:
         importers: dict[str, Any] = {
-            "recommendation": RecommendationEvidenceImporter(RecommendationRepository(self.config)),
+            "recommendation": RecommendationEvidenceImporter(
+                build_recommendation_execution_queries(self.config)
+            ),
         }
         snapshot_repository = DecisionDeskSnapshotRepository(self.config, db_path=self.db_path)
         stored = snapshot_repository.latest_before_or_on(request.decision_date)

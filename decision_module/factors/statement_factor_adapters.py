@@ -10,8 +10,13 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from data_module.fundamental_statement_data import StatementItemRecord
-from data_module.statement_semantic_mapping import map_statement_items_for_factors
+from data_module.contracts.statement import StatementItemRecord
+from data_module.contracts.statement import (
+    StatementAvailabilityOverride,
+)
+from decision_module.factors.statement_semantic_mapping import (
+    map_statement_items_for_factors,
+)
 from decision_module.factors.factor_dtos import (
     FactorDiagnostic,
     FactorQuality,
@@ -134,6 +139,38 @@ def build_statement_factor_pack(
         records=tuple(records_out),
         diagnostics=tuple(diagnostics),
     )
+
+
+def statement_item_quality(record: StatementItemRecord) -> FactorQuality:
+    """把 statement source availability／舊 quality literal 投影為 factor quality。"""
+
+    if record.legacy_quality_wire_value is not None:
+        return FactorQuality(record.legacy_quality_wire_value)
+    if record.announced_date is None:
+        return FactorQuality.DEGRADED
+    return FactorQuality.OBSERVED
+
+
+def statement_availability_quality(
+    override: StatementAvailabilityOverride,
+) -> FactorQuality:
+    if override.announced_date is None:
+        return FactorQuality.DEGRADED
+    return FactorQuality.OBSERVED
+
+
+def statement_item_quality_wire_value(record: StatementItemRecord) -> str:
+    return statement_item_quality(record).value
+
+
+def statement_quality_counts(
+    records: tuple[StatementItemRecord, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        quality = statement_item_quality_wire_value(record)
+        counts[quality] = counts.get(quality, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def build_statement_yoy_factor(
@@ -509,9 +546,10 @@ def _base_record(
 
 
 def _combined_quality(items: tuple[StatementItemRecord, ...]) -> FactorQuality:
-    if any(item.quality == FactorQuality.MISSING for item in items):
+    qualities = tuple(statement_item_quality(item) for item in items)
+    if any(quality == FactorQuality.MISSING for quality in qualities):
         return FactorQuality.MISSING
-    if any(item.quality == FactorQuality.DEGRADED for item in items):
+    if any(quality == FactorQuality.DEGRADED for quality in qualities):
         return FactorQuality.DEGRADED
     return FactorQuality.OBSERVED
 

@@ -171,8 +171,8 @@ class OptimizerService:
         Returns:
             最佳化結果列表（已排序）
         """
-        from app_module.strategy_spec import StrategySpec
-        from app_module.strategy_registry import StrategyRegistry
+        from decision_module.strategies.contracts import StrategySpec
+        from decision_module.strategies.registry import StrategyRegistry
 
         # 生成參數網格
         param_combinations = self.generate_param_grid(param_ranges)

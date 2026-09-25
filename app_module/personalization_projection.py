@@ -25,6 +25,7 @@ from app_module.personalization_contract import (
     PERSONALIZATION_ACTION_STATES,
     PERSONALIZATION_OUTCOME_STATUSES,
     PERSONALIZATION_DELIVERY_ACK_SCHEMA_VERSION,
+    PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION,
     PERSONALIZATION_PREDICTION_RECEIPT_SCHEMA_VERSION,
     PersonalizationDecisionEvidence,
     PersonalizationDeliveryCapture,
@@ -35,6 +36,8 @@ from app_module.personalization_contract import (
     parse_aware_datetime,
     validate_forward_outcome_chronology,
 )
+from app_module.recommendation.contracts import ExecutionStatus, RecommendationExecution
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 
 
 PERSONALIZATION_PROJECTION_SCHEMA_VERSION = "personalization-projection.v1"
@@ -1088,6 +1091,643 @@ class PersonalizationProjectionService:
                 warnings=(receipt_warning,),
                 source_trace=("recommendation_result_reader", "personalization_delivery_capture", "projection_receipt"),
             )
+        return self._finish_verified_delivery(
+            result_id=resolved_result_id,
+            stock_code=resolved_stock_code,
+            decision_date=decision_date,
+            scope=scope,
+            capture=capture,
+            prediction=prediction,
+            cutoff=cutoff,
+            evaluated_as_of=evaluated_date,
+            source_trace=(
+                "recommendation_result_reader",
+                "personalization_delivery_capture",
+                "projection_receipt",
+                "decision_continuity_reader",
+                "evidence_outcome_reader",
+            ),
+        )
+
+    def build_for_execution(
+        self,
+        *,
+        read_model: RecommendationExecutionReadModel,
+        stock_code: str,
+        personalization_scope_id: str | None = None,
+        evaluated_as_of: str | None = None,
+        evaluation_cutoff_at: str | None = None,
+    ) -> PersonalizationProjectionResult:
+        """Project one personal candidate from a verified typed execution.
+
+        This exact-ID path consumes only a canonical read model and its typed
+        personalization event. It does not decode or synthesize a legacy
+        ``RecommendationResultDTO``/JSON mapping.
+        """
+
+        stock = _text(stock_code)
+        execution = read_model.execution
+        result_id = read_model.result_id
+        if execution is None or read_model.integrity_basis != "canonical_payload_and_index_verified":
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                warnings=("canonical_execution_readback_required",),
+                source_trace=("recommendation_execution_query",),
+            )
+        if type(execution) is not RecommendationExecution or execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                warnings=("completed_recommendation_execution_required",),
+                source_trace=("recommendation_execution_query",),
+            )
+        if not stock:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                warnings=("stock_code_required",),
+                source_trace=("recommendation_execution_query",),
+            )
+        evaluated_date = (
+            _date_text(evaluated_as_of, "evaluated_as_of")
+            if evaluated_as_of is not None
+            else None
+        )
+        cutoff = _datetime_optional(evaluation_cutoff_at, "evaluation_cutoff_at")
+        if cutoff is not None and evaluated_date is not None:
+            if cutoff.astimezone(_MARKET_TIMEZONE).date() > date.fromisoformat(evaluated_date):
+                return self._empty(
+                    result_id,
+                    stock,
+                    status="unavailable",
+                    warnings=("evaluation_cutoff_after_evaluated_as_of",),
+                    source_trace=("evaluation_clock",),
+                )
+
+        matching_items = tuple(item for item in execution.items if item.stock_code == stock)
+        if not matching_items:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                warnings=("exact_candidate_not_found",),
+                source_trace=("recommendation_execution_query",),
+            )
+        if len(matching_items) > 1:
+            if all(item == matching_items[0] for item in matching_items[1:]):
+                return self._empty(
+                    result_id,
+                    stock,
+                    status="duplicate_exact",
+                    duplicate_exact_count=len(matching_items) - 1,
+                    warnings=("exact_candidate_duplicate_exact",),
+                    source_trace=("recommendation_execution_query",),
+                )
+            return self._empty(
+                result_id,
+                stock,
+                status="duplicate_conflict",
+                duplicate_conflict_count=len(matching_items),
+                warnings=("exact_candidate_duplicate_conflict",),
+                source_trace=("recommendation_execution_query",),
+            )
+
+        events = tuple(
+            event
+            for event in execution.events
+            if event.event_type == "personalization_delivery_capture"
+        )
+        if not events:
+            return self._population_only(
+                result_id=result_id,
+                stock_code=stock,
+                decision_date=(
+                    execution.context.as_of_date.isoformat()
+                    if execution.context.as_of_date is not None
+                    else ""
+                ),
+                scope=None,
+                warnings=("personalization_delivery_capture_missing",),
+            )
+        if len(events) != 1:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                warnings=("personalization_delivery_capture_event_conflict",),
+                source_trace=("recommendation_execution_query",),
+            )
+        details = events[0].details
+        if not isinstance(details, Mapping) or details.get("schema_version") != PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                warnings=("personalization_delivery_capture_schema_unsupported",),
+                source_trace=("recommendation_execution_query",),
+            )
+        try:
+            scope = PersonalizationDeliveryScope.from_mapping(
+                _mapping(details.get("scope"), "personalization scope")
+            )
+        except (PersonalizationProjectionError, TypeError, ValueError):
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                warnings=("personalization_scope_invalid",),
+                source_trace=("recommendation_execution_query",),
+            )
+        requested_scope = _text(personalization_scope_id)
+        if requested_scope and scope.scope_id != requested_scope:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                warnings=("personalization_scope_identity_mismatch",),
+                source_trace=("recommendation_execution_query",),
+            )
+        raw_captures = details.get("captures")
+        if not isinstance(raw_captures, (tuple, list)):
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                warnings=("personalization_capture_rows_missing",),
+                source_trace=("recommendation_execution_query",),
+            )
+        captures: list[PersonalizationDeliveryCapture] = []
+        try:
+            captures = [
+                PersonalizationDeliveryCapture.from_mapping(_mapping(raw, "capture"))
+                for raw in raw_captures
+            ]
+        except (PersonalizationProjectionError, TypeError, ValueError):
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                warnings=("personalization_capture_invalid",),
+                source_trace=("recommendation_execution_query",),
+            )
+        candidate_captures = tuple(item for item in captures if item.stock_code == stock)
+        if len(candidate_captures) != 1:
+            status = "duplicate_conflict" if len(candidate_captures) > 1 else "population_only"
+            return self._empty(
+                result_id,
+                stock,
+                status=status,
+                decision_date=scope.decision_date,
+                scope=scope,
+                warnings=(
+                    "personalization_capture_duplicate_candidate"
+                    if candidate_captures
+                    else "delivery_capture_missing_for_candidate",
+                ),
+                duplicate_conflict_count=len(candidate_captures) if candidate_captures else 0,
+                source_trace=("recommendation_execution_query", "personalization_delivery_capture"),
+            ) if candidate_captures else self._population_only(
+                result_id=result_id,
+                stock_code=stock,
+                decision_date=scope.decision_date,
+                scope=scope,
+                warnings=("delivery_capture_missing_for_candidate",),
+            )
+        capture = candidate_captures[0]
+        if (
+            capture.result_id != result_id
+            or capture.scope.envelope_hash != scope.envelope_hash
+            or capture.scope.scope_id != scope.scope_id
+            or capture.status != "generated"
+        ):
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=("personalization_capture_identity_mismatch",),
+                source_trace=("recommendation_execution_query", "personalization_delivery_capture"),
+            )
+        resolved_capture, delivery_warning = self._resolve_delivery_ack(
+            capture,
+            result_id=result_id,
+            stock_code=stock,
+        )
+        if delivery_warning or resolved_capture is None:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=(
+                    resolved_capture.status
+                    if resolved_capture is not None
+                    else capture.status
+                ),
+                warnings=(delivery_warning or "delivery_ack_capture_missing",),
+                source_trace=("recommendation_execution_query", "personalization_delivery_ack"),
+            )
+        capture = resolved_capture
+
+        temporal_context = details.get("producer_temporal_context")
+        if not isinstance(temporal_context, Mapping):
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=("producer_temporal_context_missing",),
+                source_trace=("recommendation_execution_query", "producer_temporal_contract"),
+            )
+        context_map = dict(temporal_context)
+        actual_decision_at = execution.context.decision_at
+        actual_available_at = execution.context.available_at
+        try:
+            scope_decision = parse_aware_datetime(scope.decision_at, "scope.decision_at")
+            scope_available = parse_aware_datetime(scope.available_at, "scope.available_at")
+        except ValueError:
+            scope_decision = None
+            scope_available = None
+        if (
+            actual_decision_at is None
+            or actual_available_at is None
+            or actual_decision_at != scope_decision
+            or actual_available_at != scope_available
+        ):
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=("execution_scope_clock_parity_mismatch",),
+                source_trace=("recommendation_execution_query", "producer_temporal_contract"),
+            )
+        if execution.context.as_of_date is None:
+            source_cutoff_date = None
+        else:
+            source_cutoff_date = execution.context.as_of_date.isoformat()
+        if (
+            source_cutoff_date is not None
+            and source_cutoff_date != _text(context_map.get("as_of_date"))
+        ):
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=("execution_context_cutoff_parity_mismatch",),
+                source_trace=("recommendation_execution_query", "producer_temporal_contract"),
+            )
+        temporal_state, temporal_warnings = inspect_personalization_temporal_context(
+            context_map,
+            actual_decision_date=scope.decision_date,
+            scope=scope,
+            expected_result_id=result_id,
+            expected_receipt_hash=capture.projection_receipt_hash,
+        )
+        if temporal_state == "invalid":
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=temporal_warnings or ("temporal_contract_invalid",),
+                source_trace=("recommendation_execution_query", "producer_temporal_contract"),
+            )
+        if temporal_state in {"historical", "legacy_unverified"}:
+            return self._population_only(
+                result_id=result_id,
+                stock_code=stock,
+                decision_date=scope.decision_date,
+                scope=scope,
+                capture=capture,
+                warnings=(
+                    "historical_research_not_natural"
+                    if temporal_state == "historical"
+                    else "temporal_contract_unverified",
+                    *temporal_warnings,
+                ),
+            )
+        if (
+            scope.scope_status != "bound"
+            or not scope.is_personal_scope
+            or scope.captured_at is None
+            or scope.temporal_status != "verified"
+        ):
+            return self._population_only(
+                result_id=result_id,
+                stock_code=stock,
+                decision_date=scope.decision_date,
+                scope=scope,
+                capture=capture,
+                warnings=("personalization_scope_unbound_or_temporal_unverified",),
+            )
+
+        binding_rows = tuple(
+            binding
+            for binding in execution.ml_receipt_refs
+            if binding.result_id == result_id
+            and binding.receipt_hash == capture.projection_receipt_hash
+            and stock in binding.projected_stock_codes
+        )
+        if len(binding_rows) != 1:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=("execution_ml_receipt_binding_missing_or_ambiguous",),
+                source_trace=("recommendation_execution_query", "ml_receipt_binding"),
+            )
+        binding = binding_rows[0]
+        if execution.context.as_of_date is not None and binding.decision_date != execution.context.as_of_date:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=("execution_ml_receipt_decision_date_mismatch",),
+                source_trace=("recommendation_execution_query", "ml_receipt_binding"),
+            )
+        prediction, receipt_warning = self._resolve_execution_prediction(
+            execution=execution,
+            binding=binding,
+            capture=capture,
+            result_id=result_id,
+            stock_code=stock,
+            decision_date=scope.decision_date,
+            source_cutoff_date=source_cutoff_date,
+        )
+        if receipt_warning:
+            return self._empty(
+                result_id,
+                stock,
+                status="unavailable",
+                decision_date=scope.decision_date,
+                scope=scope,
+                delivery_status=capture.status,
+                warnings=(receipt_warning,),
+                source_trace=("recommendation_execution_query", "personalization_delivery_capture", "projection_receipt"),
+            )
+        if resolved_capture.status != "delivered":
+            return self._not_delivered(
+                result_id=result_id,
+                stock_code=stock,
+                decision_date=scope.decision_date,
+                scope=scope,
+                capture=resolved_capture,
+            )
+
+        return self._finish_verified_delivery(
+            result_id=result_id,
+            stock_code=stock,
+            decision_date=scope.decision_date,
+            scope=scope,
+            capture=resolved_capture,
+            prediction=prediction,
+            cutoff=cutoff,
+            evaluated_as_of=evaluated_date,
+            source_trace=(
+                "recommendation_execution_query",
+                "personalization_delivery_capture",
+                "projection_receipt",
+                "decision_continuity_reader",
+                "evidence_outcome_reader",
+            ),
+        )
+
+    def _resolve_execution_prediction(
+        self,
+        *,
+        execution: RecommendationExecution,
+        binding: Any,
+        capture: PersonalizationDeliveryCapture,
+        result_id: str,
+        stock_code: str,
+        decision_date: str,
+        source_cutoff_date: str | None,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Resolve only the immutable receipt already bound by this execution."""
+
+        receipt_path = _text(capture.projection_receipt_path)
+        if not receipt_path:
+            return {}, "projection receipt path is missing from saved capture"
+        try:
+            from ml_module.recommendation_inference_provenance import read_inference_projection_receipt
+
+            verified = read_inference_projection_receipt(
+                Path(receipt_path),
+                expected_receipt_hash=capture.projection_receipt_hash,
+                expected_decision_date=source_cutoff_date,
+                expected_result_id=result_id,
+                expected_stock_code=stock_code,
+            )
+            payload, receipt_row = _verify_receipt_mapping(
+                dict(verified.payload) | {"receipt_hash": verified.receipt_hash},
+                expected_hash=capture.projection_receipt_hash,
+                result_id=result_id,
+                stock_code=stock_code,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            return {}, f"projection receipt invalid:{type(exc).__name__}"
+
+        receipt_decision_date = _date_text(payload.get("decision_date"), "projection receipt decision_date")
+        if source_cutoff_date is not None and receipt_decision_date != source_cutoff_date:
+            return {}, "projection receipt source cutoff date mismatch"
+        if _text(receipt_row.get("prediction_id")) not in {"", capture.prediction_id}:
+            return {}, "projection receipt prediction identity mismatch"
+        candidate_identity = payload.get("candidate_identity")
+        candidate_map = candidate_identity if isinstance(candidate_identity, Mapping) else {}
+        candidate_id = _text(candidate_map.get("candidate_id"))
+        if not candidate_id or candidate_id != binding.model_candidate_id:
+            return {}, "execution candidate identity does not match immutable receipt"
+
+        training_value = payload.get("training_provenance")
+        training = dict(training_value) if isinstance(training_value, Mapping) else {}
+        inference_value = payload.get("inference_provenance")
+        inference = dict(inference_value) if isinstance(inference_value, Mapping) else {}
+        if not training or not inference:
+            return {}, "projection receipt training/inference provenance is missing"
+        try:
+            model_id = _consistent_text(
+                (
+                    receipt_row.get("model_id"),
+                    receipt_row.get("model_version"),
+                    payload.get("model_id"),
+                    candidate_map.get("model_id"),
+                    inference.get("model_id"),
+                ),
+                "model_id",
+            )
+            dataset_id = _consistent_text(
+                (
+                    receipt_row.get("dataset_id"),
+                    receipt_row.get("dataset_version"),
+                    payload.get("dataset_id"),
+                    training.get("dataset_id"),
+                    inference.get("dataset_id"),
+                ),
+                "dataset_id",
+            )
+            cost_hash = _consistent_text(
+                (
+                    receipt_row.get("cost_scenario_hash"),
+                    payload.get("cost_scenario_hash"),
+                    inference.get("cost_scenario_hash"),
+                ),
+                "cost_scenario_hash",
+            )
+            dataset_hash = _consistent_text(
+                (
+                    receipt_row.get("dataset_hash"),
+                    payload.get("dataset_hash"),
+                    training.get("dataset_hash"),
+                ),
+                "dataset_hash",
+                required=False,
+            )
+        except PersonalizationProjectionError as exc:
+            return {}, str(exc)
+        if not capture.model_id or capture.model_id != model_id:
+            return {}, "capture model identity is not verified"
+        if not capture.dataset_id or capture.dataset_id != dataset_id:
+            return {}, "capture dataset identity is not verified"
+        if capture.cost_scenario_hash is None or capture.cost_scenario_hash != cost_hash:
+            return {}, "capture cost scenario identity is not verified"
+        if capture.dataset_hash and capture.dataset_hash != dataset_hash:
+            return {}, "capture dataset hash is not verified"
+        if binding.cost_scenario_hash is not None and binding.cost_scenario_hash != cost_hash:
+            return {}, "execution cost scenario hash does not match immutable receipt"
+
+        training_hashes: dict[str, str] = {}
+        for key in (
+            "training_source_hash",
+            "training_pit_hash",
+            "feature_transform_contract_hash",
+        ):
+            value = training.get(key)
+            if value not in (None, ""):
+                if type(value) is not str or not value.startswith("sha256:"):
+                    return {}, f"projection receipt {key} is invalid"
+                training_hashes[key] = value
+        if ("training_source_hash" in training_hashes) != ("training_pit_hash" in training_hashes):
+            return {}, "projection receipt training source/PIT hash pair is incomplete"
+
+        try:
+            horizon = _horizon_days(
+                receipt_row.get("horizon_days") or receipt_row.get("horizon"),
+                "projection receipt horizon",
+            )
+        except PersonalizationProjectionError as exc:
+            return {}, str(exc)
+        if horizon is None or capture.horizon_days is None or horizon != capture.horizon_days:
+            return {}, "projection receipt horizon mismatch"
+        if not capture.prediction_id:
+            return {}, "personalization prediction identity is missing"
+
+        probability_fields: dict[str, int] = {}
+        for key in (
+            "calibrated_probability_bp",
+            "after_cost_profit_probability_bp",
+            "population_probability_bp",
+        ):
+            if receipt_row.get(key) not in (None, ""):
+                probability = _probability_bp(receipt_row.get(key), f"receipt.{key}")
+                if probability is not None:
+                    probability_fields[key] = probability
+        if not probability_fields:
+            return {}, "projection receipt probability is not verified"
+
+        prediction: dict[str, Any] = {
+            "stock_code": stock_code,
+            "prediction_id": capture.prediction_id,
+            "projection_receipt_hash": capture.projection_receipt_hash,
+            "projection_receipt_result_id": result_id,
+            "prediction_receipt_schema_version": PERSONALIZATION_PREDICTION_RECEIPT_SCHEMA_VERSION,
+            "decision_date": decision_date,
+            "prediction_decision_date": decision_date,
+            "data_as_of_date": receipt_decision_date,
+            "projection_receipt_decision_date": receipt_decision_date,
+            "model_id": model_id,
+            "model_version": model_id,
+            "model_candidate_id": candidate_id,
+            "dataset_id": dataset_id,
+            "dataset_version": dataset_id,
+            "cost_scenario_hash": cost_hash,
+            "horizon_days": horizon,
+            "horizon": f"{horizon} trading days",
+            "source_id": _text(payload.get("source_id") or inference.get("source_id") or capture.source),
+            "training_provenance": training,
+            "inference_provenance": inference,
+        }
+        if capture.dataset_hash:
+            prediction["dataset_hash"] = capture.dataset_hash
+        elif dataset_hash:
+            prediction["dataset_hash"] = dataset_hash
+        prediction.update(probability_fields)
+        prediction["calibrated_probability_bp"] = probability_fields.get(
+            "calibrated_probability_bp",
+            probability_fields.get(
+                "after_cost_profit_probability_bp",
+                probability_fields.get("population_probability_bp"),
+            ),
+        )
+        for key in ("label_contract_id", "return_basis", "universe_policy_hash"):
+            values = (
+                receipt_row.get(key),
+                payload.get(key),
+                inference.get(key),
+            )
+            try:
+                value = _consistent_text(values, key, required=False)
+            except PersonalizationProjectionError as exc:
+                return {}, str(exc)
+            if value:
+                prediction[key] = value
+        if execution.context.decision_at is None or _text(capture.scope.decision_at) != execution.context.decision_at.isoformat(timespec="microseconds"):
+            return {}, "execution decision clock does not match saved personal scope"
+        return prediction, None
+
+    def _finish_verified_delivery(
+        self,
+        *,
+        result_id: str,
+        stock_code: str,
+        decision_date: str,
+        scope: PersonalizationDeliveryScope,
+        capture: PersonalizationDeliveryCapture,
+        prediction: Mapping[str, Any],
+        cutoff: datetime | None,
+        evaluated_as_of: str | None,
+        source_trace: Sequence[str],
+    ) -> PersonalizationProjectionResult:
+        """Shared legacy/canonical action and outcome projection semantics."""
+
         (
             action,
             action_state,
@@ -1097,29 +1737,25 @@ class PersonalizationProjectionService:
             current_state,
             human_decision_at,
         ) = self._resolve_action(
-            resolved_result_id,
-            resolved_stock_code,
+            result_id,
+            stock_code,
             scope=scope,
             capture=capture,
             prediction=prediction,
             cutoff=cutoff,
         )
         outcomes, outcome_status, outcome_warnings, duplicate_exact, duplicate_conflict = self._resolve_outcomes(
-            resolved_result_id,
-            resolved_stock_code,
+            result_id,
+            stock_code,
             scope=scope,
             capture=capture,
             prediction=prediction,
             cutoff=cutoff,
-            evaluated_as_of=evaluated_date,
+            evaluated_as_of=evaluated_as_of,
         )
         warnings = list(action_warnings) + list(outcome_warnings)
         delivered_at = _datetime_optional(capture.delivered_at, "delivered_at")
         prediction_decision_at = _datetime_optional(scope.decision_at, "decision_at")
-        # ACK naturally follows producer inference.  ``late_delivery`` is a
-        # personal-evaluation gate only when an explicit human/evaluation
-        # anchor exists and the ACK arrived after that anchor.  The producer
-        # clock is still exposed separately as ``prediction_decision_at``.
         late_delivery = bool(
             delivered_at is not None
             and human_decision_at is not None
@@ -1127,11 +1763,26 @@ class PersonalizationProjectionService:
         )
         if late_delivery:
             warnings.append("late_delivery_no_natural_credit")
-        evidence_status = "linked_prediction"
+        prediction_decision_text = (
+            prediction_decision_at.isoformat(timespec="microseconds")
+            if prediction_decision_at is not None
+            else None
+        )
+        delivered_text = (
+            delivered_at.isoformat(timespec="microseconds")
+            if delivered_at is not None
+            else None
+        )
+        human_decision_text = (
+            human_decision_at.isoformat(timespec="microseconds")
+            if human_decision_at is not None
+            else None
+        )
+        immutable_trace = tuple(source_trace)
         evidence = PersonalizationDecisionEvidence(
             scope=scope,
-            result_id=resolved_result_id,
-            stock_code=resolved_stock_code,
+            result_id=result_id,
+            stock_code=stock_code,
             decision_date=decision_date,
             prediction_id=capture.prediction_id,
             prediction_status="delivered" if not late_delivery else "delivered_late",
@@ -1143,38 +1794,20 @@ class PersonalizationProjectionService:
             current_action_state=current_state,
             outcome_status=outcome_status,
             outcomes=tuple(outcomes),
-            source_trace=(
-                "recommendation_result_reader",
-                "personalization_delivery_capture",
-                "projection_receipt",
-                "decision_continuity_reader",
-                "evidence_outcome_reader",
-            ),
+            source_trace=immutable_trace,
             warnings=tuple(warnings),
-            status=evidence_status,
+            status="linked_prediction",
             delivery_capture=capture,
-            prediction_decision_at=(
-                prediction_decision_at.isoformat(timespec="microseconds")
-                if prediction_decision_at is not None
-                else None
-            ),
-            delivery_at=(
-                delivered_at.isoformat(timespec="microseconds")
-                if delivered_at is not None
-                else None
-            ),
-            human_decision_at=(
-                human_decision_at.isoformat(timespec="microseconds")
-                if human_decision_at is not None
-                else None
-            ),
+            prediction_decision_at=prediction_decision_text,
+            delivery_at=delivered_text,
+            human_decision_at=human_decision_text,
             formal_order_allowed=False,
             auto_action_allowed=False,
         )
         return PersonalizationProjectionResult(
             status="linked_prediction",
-            result_id=resolved_result_id,
-            stock_code=resolved_stock_code,
+            result_id=result_id,
+            stock_code=stock_code,
             decision_date=decision_date,
             scope=scope,
             evidence=evidence,
@@ -1188,25 +1821,13 @@ class PersonalizationProjectionService:
             outcomes=tuple(outcomes),
             delivery_status=capture.status,
             late_delivery=late_delivery,
-            prediction_decision_at=(
-                prediction_decision_at.isoformat(timespec="microseconds")
-                if prediction_decision_at is not None
-                else None
-            ),
-            delivery_at=(
-                delivered_at.isoformat(timespec="microseconds")
-                if delivered_at is not None
-                else None
-            ),
-            human_decision_at=(
-                human_decision_at.isoformat(timespec="microseconds")
-                if human_decision_at is not None
-                else None
-            ),
+            prediction_decision_at=prediction_decision_text,
+            delivery_at=delivered_text,
+            human_decision_at=human_decision_text,
             duplicate_exact_count=duplicate_exact,
             duplicate_conflict_count=duplicate_conflict,
             warnings=tuple(warnings),
-            source_trace=evidence.source_trace,
+            source_trace=immutable_trace,
         )
 
     def _resolve_delivery_ack(

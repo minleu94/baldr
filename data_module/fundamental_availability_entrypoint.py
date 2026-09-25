@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
+from data_module.contracts.fundamental import SourceDiagnostic
 from data_module.fundamental_availability import RETROACTIVE_BASELINE_SOURCE
 from data_module.fundamental_availability_sources import (
     MONTHLY_REVENUE_ALLOWED_AVAILABILITY_SOURCES as _MONTHLY_REVENUE_ALLOWED_AVAILABILITY_SOURCES,
     FundamentalAvailabilityOverride,
     load_monthly_revenue_availability_overrides_csv,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
 
 
 # Keep the public entrypoint constant for callers, but make the loader and the
@@ -28,7 +28,7 @@ class MonthlyRevenueAvailabilityValidationResult:
     valid: bool
     accepted_count: int
     source_versions: tuple[str, ...]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_versions", tuple(self.source_versions))
@@ -80,15 +80,21 @@ def validate_monthly_revenue_availability_file(
 
 def _unsupported_source_diagnostic(
     override: FundamentalAvailabilityOverride,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code="fundamental_availability.unsupported_available_date_source",
-        factor_name="fundamental.availability",
         stock_code=override.stock_code,
         message=(
             "monthly revenue availability source is not in allowed source list; "
             f"period={override.period}; source={override.source}"
         ),
+        period=override.period,
+        source_id=override.source,
+        source_version=override.source_version,
+        evidence_class=override.evidence_class,
+        available_date=override.available_date,
+        revision=override.revision,
+        parent_revision=override.parent_revision,
     )
 
 
@@ -100,10 +106,9 @@ def _requires_disclosure_window_check(
 
 def _unreasonably_late_available_date_diagnostic(
     override: FundamentalAvailabilityOverride,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code="fundamental_availability.available_date_unreasonably_late",
-        factor_name="fundamental.availability",
         stock_code=override.stock_code,
         message=(
             "monthly revenue availability date is outside the allowed disclosure window; "
@@ -111,4 +116,11 @@ def _unreasonably_late_available_date_diagnostic(
             f"available_date={override.available_date.isoformat()}; "
             f"max_lag_days={MONTHLY_REVENUE_MAX_AVAILABLE_LAG_DAYS}"
         ),
+        period=override.period,
+        source_id=override.source,
+        source_version=override.source_version,
+        evidence_class=override.evidence_class,
+        available_date=override.available_date,
+        revision=override.revision,
+        parent_revision=override.parent_revision,
     )

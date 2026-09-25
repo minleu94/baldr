@@ -4,10 +4,7 @@ from datetime import date, datetime
 from typing import Any, Callable, Protocol, TypeVar
 from dataclasses import replace
 from copy import deepcopy
-from contextlib import closing
 from pathlib import Path
-import sqlite3
-import json
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
@@ -22,6 +19,14 @@ from app_module.decision_desk_dtos import (
     RecommendationDeskSummary,
 )
 from app_module.dtos import RecommendationResultDTO
+from app_module.recommendation.contracts import QualityStatus, RecommendationExecution
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    execution_result_config,
+    recommendation_runs_dir,
+    select_latest_saved_recommendation,
+)
 from app_module.decision_desk_snapshot_support import compute_overall_quality, collect_snapshot_warnings, collect_smart_money_candidate_codes
 from app_module.decision_desk_dashboard_service import DecisionDeskDashboardComposer
 from app_module.decision_desk_risk_prompt_service import DecisionDeskRiskPromptService
@@ -80,28 +85,110 @@ class MarketDataVisibilitySectionService(Protocol):
 class SavedRecommendationDeskProvider:
     """讀取已保存推薦，不初始化 writer，不重新評分。"""
 
-    def __init__(self, config: Any):
-        self.runs_dir = Path(config.output_root) / "recommendation" / "runs"
+    def __init__(self, config: Any, *, queries: Any | None = None):
+        self.runs_dir = recommendation_runs_dir(config)
+        self.queries = queries or build_recommendation_execution_queries(config)
 
-    def fetch(self, as_of_date: date) -> RecommendationResultDTO | None:
-        db_path = self.runs_dir / "recommendation_runs.db"
-        if not db_path.is_file():
+    def fetch(self, as_of_date: date):
+        candidates: list[
+            tuple[str, RecommendationExecutionReadModel, RecommendationDeskSummary]
+        ] = []
+        for read_model in self.queries.list():
+            summary = self._summary(read_model, as_of_date)
+            if summary is not None and summary.as_of_date is not None:
+                candidates.append(
+                    (
+                        summary.as_of_date.isoformat(),
+                        read_model,
+                        summary,
+                    )
+                )
+        if not candidates:
             return None
-        with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
-            conn.execute("PRAGMA query_only=ON")
-            rows = conn.execute("SELECT data_path FROM runs ORDER BY created_at DESC, result_id").fetchall()
-        candidates = []
-        for (raw_path,) in rows:
-            path = Path(raw_path).resolve()
-            if not path.is_relative_to(self.runs_dir.resolve()):
-                raise ValueError("推薦來源路徑不在 runs 根目錄")
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            result = RecommendationResultDTO.from_dict(payload)
-            cutoff = result.run_context.get("as_of_date")
-            if cutoff and date.fromisoformat(str(cutoff)) <= as_of_date:
-                candidates.append(result)
-        return max(candidates, key=lambda item: (str(item.run_context["as_of_date"]), item.created_at or "", item.result_id)) if candidates else None
+        latest_as_of_date = max(item[0] for item in candidates)
+        same_day = tuple(item for item in candidates if item[0] == latest_as_of_date)
+        latest, diagnostic = select_latest_saved_recommendation(
+            tuple(item[1] for item in same_day)
+        )
+        if diagnostic or latest is None:
+            return None
+        return next(summary for _day, model, summary in same_day if model is latest)
 
+    def _summary(
+        self,
+        read_model: RecommendationExecutionReadModel,
+        requested_date: date,
+    ) -> RecommendationDeskSummary | None:
+        legacy = read_model.legacy_result
+        if legacy is not None:
+            context = deepcopy(legacy.run_context)
+            cutoff_text = str(context.get("as_of_date") or "")
+            if not cutoff_text:
+                return None
+            cutoff = date.fromisoformat(cutoff_text)
+            if cutoff > requested_date:
+                return None
+            warnings = tuple(str(item) for item in context.get("warnings", [])) + tuple(
+                legacy.exclusion_warnings_json
+            )
+            quality = DecisionDeskQuality.OBSERVED
+            if cutoff < requested_date:
+                warnings += (f"recommendation_as_of_fallback:{cutoff.isoformat()}",)
+                quality = DecisionDeskQuality.DEGRADED
+            if legacy.exclusion_quality in {"missing", "degraded"}:
+                quality = DecisionDeskQuality.DEGRADED
+            return RecommendationDeskSummary(
+                cutoff,
+                quality,
+                warnings,
+                legacy.result_id,
+                tuple(item.stock_code for item in legacy.recommendations),
+                str(context.get("profile_id") or legacy.config.get("profile_id") or ""),
+                context,
+            )
+
+        execution = read_model.execution
+        if execution is None or execution.decision is None:
+            return None
+        canonical_cutoff = execution.context.as_of_date
+        if canonical_cutoff is None or canonical_cutoff > requested_date:
+            return None
+        config = execution_result_config(execution)
+        profile_id = str(
+            config.get("profile_id")
+            or (
+                execution.context.profile_ref.reference_id
+                if execution.context.profile_ref is not None
+                else ""
+            )
+        )
+        warnings = tuple(execution.context.warnings) + tuple(execution.quality.warnings)
+        quality = {
+            QualityStatus.COMPLETE: DecisionDeskQuality.OBSERVED,
+            QualityStatus.DEGRADED: DecisionDeskQuality.DEGRADED,
+            QualityStatus.UNKNOWN: DecisionDeskQuality.MISSING,
+            QualityStatus.UNAVAILABLE: DecisionDeskQuality.MISSING,
+        }[execution.quality.status]
+        canonical_context: dict[str, Any] = {
+            "as_of_date": canonical_cutoff.isoformat(),
+            "warnings": list(warnings),
+        }
+        if profile_id:
+            canonical_context["profile_id"] = profile_id
+        if execution.context.created_at is not None:
+            canonical_context["created_at"] = execution.context.created_at.isoformat()
+        source_ids = tuple(dict.fromkeys(item.source_id for item in execution.context.source_refs))
+        if len(source_ids) == 1:
+            canonical_context["source_id"] = source_ids[0]
+        return RecommendationDeskSummary(
+            canonical_cutoff,
+            quality,
+            warnings,
+            execution.result_id,
+            tuple(item.stock_code for item in execution.decision.items),
+            profile_id,
+            canonical_context,
+        )
 
 class PortfolioLedgerDeskProvider:
     """消費已注入的候選 ledger App 服務；不初始化 repository 或計算風控。"""
@@ -315,6 +402,8 @@ class DecisionDeskSnapshotBuilder:
             result = self.recommendation_provider.fetch(as_of_date)
             if result is None:
                 return RecommendationDeskSummary(None, DecisionDeskQuality.MISSING, ("recommendation_snapshot_missing",))
+            if isinstance(result, RecommendationDeskSummary):
+                return result
             context = deepcopy(result.run_context)
             cutoff = date.fromisoformat(str(context["as_of_date"]))
             if cutoff > as_of_date:

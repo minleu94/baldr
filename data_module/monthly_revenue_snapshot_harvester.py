@@ -17,11 +17,11 @@ from typing import Callable, Iterable
 
 from bs4 import BeautifulSoup
 
+from data_module.contracts.fundamental import SourceDiagnostic
 from data_module.monthly_revenue_availability_history import (
     _fetch_mops_static_monthly_revenue_html,
     _iter_periods,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
 
 
 MOPS_SNAPSHOT_SOURCE = "mops.monthly_revenue_static_snapshot"
@@ -50,7 +50,7 @@ class MopsMonthlyRevenueSnapshotResult:
     rows: list[dict[str, str]]
     requested_periods: tuple[str, ...]
     fetched_periods: tuple[str, ...]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
 
     @property
     def valid_candidate(self) -> bool:
@@ -107,7 +107,7 @@ def build_mops_monthly_revenue_snapshot(
     requested_periods = tuple(_iter_periods(start_period, end_period))
     rows: list[dict[str, str]] = []
     fetched_periods: set[str] = set()
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     fetched_at = _utc_now_text()
 
     request_pairs = [(market, period) for period in requested_periods for market in markets]
@@ -163,10 +163,10 @@ def parse_mops_monthly_revenue_snapshot_html(
     period: str,
     fetched_at: str,
     source_version: str,
-) -> tuple[list[dict[str, str]], tuple[FactorDiagnostic, ...]]:
+) -> tuple[list[dict[str, str]], tuple[SourceDiagnostic, ...]]:
     soup = BeautifulSoup(html, "html.parser")
     rows: list[dict[str, str]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     saw_company_column = False
     saw_required_columns = False
     seen_stock_codes: set[str] = set()
@@ -298,10 +298,10 @@ def _utc_now_text() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _diagnostic(code: str, market: str, message: str) -> FactorDiagnostic:
-    return FactorDiagnostic(
+def _diagnostic(code: str, market: str, message: str) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=code,
-        factor_name=f"fundamental.monthly_revenue_snapshot.{market}",
         stock_code="",
         message=message,
+        market=market,
     )

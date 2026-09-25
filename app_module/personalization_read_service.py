@@ -24,6 +24,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -48,6 +49,9 @@ from app_module.personalization_projection import (
     PersonalizationProjectionResult,
     PersonalizationProjectionService,
 )
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
+from data_module.result_artifact_store import ResultArtifactStore
 
 
 PERSONALIZATION_READ_REPORT_SCHEMA_VERSION = "personalization-read-report.v1"
@@ -1362,6 +1366,8 @@ class PersonalizationReadService:
         evidence_source: ReadOnlyEvidenceSource,
         receipt_source: ReadOnlyProjectionReceiptSource | None = None,
         *,
+        execution_queries: Any = None,
+        canonical_runs_dir: str | Path | None = None,
         max_candidates_per_result: int = DEFAULT_MAX_CANDIDATES_PER_RESULT,
     ) -> None:
         if isinstance(max_candidates_per_result, bool) or max_candidates_per_result <= 0:
@@ -1370,6 +1376,12 @@ class PersonalizationReadService:
         self.journal_source = journal_source
         self.evidence_source = evidence_source
         self.receipt_source = receipt_source
+        self.execution_queries = execution_queries
+        self.canonical_runs_dir = (
+            Path(canonical_runs_dir).expanduser().resolve()
+            if canonical_runs_dir is not None
+            else None
+        )
         self.max_candidates_per_result = max_candidates_per_result
         self._pending_diagnostics: list[str] = []
         self._last_projection_objects: dict[
@@ -1404,13 +1416,38 @@ class PersonalizationReadService:
             if evidence_db_path is not None
             else root.parent / "sqlite" / "twstock.db"
         )
+        runs_dir = root / "recommendation" / "runs"
         return cls(
             ReadOnlyRecommendationSource(root, max_results=max_results),
             ReadOnlyJournalRevisionSource(resolved_journal, max_records=max_journal_rows),
             ReadOnlyEvidenceSource(resolved_evidence, max_events=max_evidence_events),
             ReadOnlyProjectionReceiptSource(root),
+            execution_queries=build_recommendation_execution_queries(
+                SimpleNamespace(output_root=root)
+            ),
+            canonical_runs_dir=runs_dir,
             max_candidates_per_result=max_candidates_per_result,
         )
+
+    def read_canonical_execution_exact(
+        self,
+        result_id: str,
+    ) -> RecommendationExecutionReadModel | None:
+        """Read one canonical execution by its caller-supplied exact identity."""
+
+        resolved = _safe_result_id(result_id)
+        if not resolved:
+            raise ValueError("result_id must be a filename-like exact id")
+        if self.execution_queries is None:
+            return None
+        read_model = self.execution_queries.get(resolved)
+        if read_model is None or read_model.execution is None:
+            return None
+        if read_model.result_id != resolved:
+            raise ValueError("canonical recommendation exact result identity mismatch")
+        if read_model.integrity_basis != "canonical_payload_and_index_verified":
+            raise ValueError("canonical recommendation exact readback is not verified")
+        return read_model
 
     def inspect_scope(
         self,
@@ -1468,6 +1505,8 @@ class PersonalizationReadService:
         )
         source_paths.update(self.journal_source.paths_for_fingerprint())
         source_paths.update(self.evidence_source.paths_for_fingerprint())
+        if requested_result and self.canonical_runs_dir is not None:
+            source_paths.update(self._canonical_paths_for_result(requested_result))
         if self.receipt_source is not None:
             source_paths.update(self.receipt_source.candidate_paths())
         before = self._capture_sources(source_paths)
@@ -1476,6 +1515,20 @@ class PersonalizationReadService:
         # action/ACK bound: unrelated history may be physically truncated for
         # the broad inventory while the requested exact query remains complete.
         self.journal_source.scan_integrity()
+
+        if requested_result:
+            read_model = self.read_canonical_execution_exact(requested_result)
+            if read_model is not None:
+                return self._inspect_canonical_execution(
+                    read_model=read_model,
+                    scope_id=resolved_scope,
+                    evaluated_as_of=resolved_as_of,
+                    evaluation_cutoff_at=resolved_cutoff,
+                    requested_stock=requested_stock,
+                    fit_artifact=fit_artifact,
+                    source_paths=source_paths,
+                    before=before,
+                )
 
         result_ids = list(
             self.recommendation_source.list_result_ids(
@@ -1716,6 +1769,215 @@ class PersonalizationReadService:
             inventory=inventory,
             candidate_inventory=candidate_inventory,
             diagnostics=tuple(diagnostics),
+            evaluation=evaluation,
+        )
+
+    def _canonical_paths_for_result(self, result_id: str) -> set[Path]:
+        if self.canonical_runs_dir is None:
+            return set()
+        artifact_name = ResultArtifactStore.artifact_name_for(result_id)
+        return {
+            self.canonical_runs_dir / "recommendation_runs.db",
+            self.canonical_runs_dir / "execution_artifacts" / artifact_name,
+        }
+
+    def _inspect_canonical_execution(
+        self,
+        *,
+        read_model: RecommendationExecutionReadModel,
+        scope_id: str,
+        evaluated_as_of: str,
+        evaluation_cutoff_at: str | None,
+        requested_stock: str,
+        fit_artifact: PersonalizationCalibrationFitArtifact | None,
+        source_paths: set[Path],
+        before: dict[str, PersonalizationSourceFingerprint],
+    ) -> PersonalizationReadReport:
+        execution = read_model.execution
+        if execution is None:
+            raise ValueError("canonical read path requires a typed execution")
+        result_id = read_model.result_id
+        inventory: dict[str, Any] = {
+            "selection_mode": "explicit_result_id",
+            "selected_result_ids": [result_id],
+            "selected_result_count": 1,
+            "excluded_result_count": 0,
+            "truncated": False,
+            "exclusion_reason": "explicit_result_id_filter",
+            "canonical_execution_exact": True,
+        }
+        metadata = {
+            "result_id": result_id,
+            "result_name": read_model.label,
+            "notes": read_model.notes,
+            "created_at": (
+                read_model.persisted_at.isoformat(timespec="microseconds")
+                if read_model.persisted_at is not None
+                else None
+            ),
+            "payload_hash": read_model.payload_hash,
+            "artifact_location": read_model.artifact_location,
+            "integrity_basis": read_model.integrity_basis,
+        }
+        metadata_rows: tuple[Mapping[str, Any], ...] = (metadata,)
+        source_paths.add(self.evidence_source.db_path)
+        source_paths.add(self.journal_source.path)
+        capture_events = tuple(
+            event
+            for event in execution.events
+            if event.event_type == "personalization_delivery_capture"
+        )
+        for event in capture_events:
+            details = event.details
+            raw_captures = details.get("captures") if isinstance(details, Mapping) else None
+            if isinstance(raw_captures, (list, tuple)):
+                for row in raw_captures:
+                    if not isinstance(row, Mapping):
+                        continue
+                    receipt_path = _text(row.get("projection_receipt_path"))
+                    if receipt_path:
+                        source_paths.add(Path(receipt_path).expanduser().resolve())
+        self._capture_new_source_baselines(before, source_paths)
+
+        if not self.evidence_source.db_path.is_file():
+            self._pending_diagnostics.append("evidence_database_missing")
+        if not self.journal_source.path.is_file():
+            self._pending_diagnostics.append("journal_jsonl_missing")
+        codes = tuple(item.stock_code for item in execution.items)
+        bounded_codes, candidate_inventory_row = self._bound_candidate_inventory(
+            codes,
+            result_id=result_id,
+            requested_stock_code=requested_stock,
+        )
+        candidate_inventory: dict[str, Mapping[str, Any]] = {
+            result_id: candidate_inventory_row
+        }
+        diagnostics = list(read_model.diagnostics)
+        diagnostics.extend(self._pending_diagnostics)
+        if not bounded_codes:
+            diagnostics.append(f"recommendation_candidate_scope_empty:{result_id}")
+
+        projection_objects: list[
+            tuple[str, str, PersonalizationProjectionResult, Mapping[str, Any] | None]
+        ] = []
+        projection_rows: list[dict[str, Any]] = []
+        for stock_code in bounded_codes:
+            projection = self.projection_service.build_for_execution(
+                read_model=read_model,
+                stock_code=stock_code,
+                personalization_scope_id=scope_id,
+                evaluated_as_of=evaluated_as_of,
+                evaluation_cutoff_at=evaluation_cutoff_at,
+            )
+            projection_objects.append((result_id, stock_code, projection, metadata))
+            self._last_projection_objects[(result_id, stock_code)] = projection
+            projection_rows.append(
+                {
+                    "result_id": result_id,
+                    "stock_code": stock_code,
+                    "recommendation_metadata": dict(metadata),
+                    "projection": projection.to_dict(),
+                    "source_consistency_status": "unverified_until_read_complete",
+                }
+            )
+
+        candidate_evaluation_rows: list[PersonalizationEvaluationRow] = []
+        excluded_reason_counts: Counter[str] = Counter()
+        denominators = self._empty_denominators()
+        for result_key, stock_key, projection, _metadata in projection_objects:
+            self._count_projection_denominators(denominators, projection)
+            if projection.status != "linked_prediction":
+                reason = self._projection_exclusion_reason(projection)
+                excluded_reason_counts[reason] += 1
+                diagnostics.append(f"{reason}:{result_key}:{stock_key}")
+                continue
+            row, row_reasons = self._evaluation_row_from_projection(
+                projection,
+                resolved_as_of=evaluated_as_of,
+                evaluation_cutoff_at=evaluation_cutoff_at,
+            )
+            if row is None:
+                for reason in row_reasons:
+                    excluded_reason_counts[reason] += 1
+                    diagnostics.append(f"{reason}:{result_key}:{stock_key}")
+                continue
+            candidate_evaluation_rows.append(row)
+
+        if self.receipt_source is not None:
+            source_paths.update(self.receipt_source.paths_for_fingerprint())
+        after = self._capture_sources(source_paths)
+        source_fingerprints, source_unchanged = self._pair_fingerprints(before, after)
+        if not source_unchanged:
+            diagnostics.append("source_bytes_or_mtime_changed_during_read")
+        diagnostics.extend(self.journal_source.diagnostics)
+        diagnostics.extend(self.evidence_source.diagnostics)
+        if self.receipt_source is not None:
+            diagnostics.extend(self.receipt_source.diagnostics)
+        diagnostics = list(dict.fromkeys(diagnostics))
+
+        source_consistency_status = "verified" if source_unchanged else "invalidated"
+        source_completeness_status = self.journal_source.completeness_status
+        inventory["journal"] = dict(self.journal_source.inventory_summary())
+        if source_completeness_status != "verified":
+            diagnostics.append("journal_source_completeness_incomplete")
+        evaluation_rows: list[PersonalizationEvaluationRow]
+        evaluation: PersonalizationCalibrationEvaluation | None = None
+        if source_unchanged and source_completeness_status == "verified":
+            evaluation_rows = candidate_evaluation_rows
+            denominators["outcome_ready_count"] += len(evaluation_rows)
+            denominators["evaluation_row_count"] = len(evaluation_rows)
+            if fit_artifact is None:
+                diagnostics.append("fit_artifact_missing:evaluation_not_run")
+            else:
+                try:
+                    evaluation = PersonalizationCalibrationEvaluator().evaluate(
+                        fit_artifact,
+                        evaluation_rows,
+                        evaluated_as_of=evaluated_as_of,
+                        evaluation_cutoff_at=evaluation_cutoff_at,
+                    )
+                except Exception as exc:  # noqa: BLE001 - report the read diagnostic
+                    diagnostics.append(f"evaluation_failed:{type(exc).__name__}")
+        elif not source_unchanged:
+            evaluation_rows = []
+            denominators = self._empty_denominators()
+            denominators["source_consistency_invalidated_count"] = 1
+            diagnostics.append("evaluation_not_run:source_consistency_invalidated")
+        else:
+            evaluation_rows = []
+            denominators["source_completeness_incomplete_count"] = 1
+            diagnostics.append("evaluation_not_run:source_completeness_incomplete")
+        for item in projection_rows:
+            item["source_consistency_status"] = source_consistency_status
+
+        cohort = self._cohort_summary(
+            scope_id,
+            projection_objects,
+            evaluation_rows,
+            excluded_reason_counts,
+            source_consistency_status=source_consistency_status,
+            source_completeness_status=source_completeness_status,
+        )
+        source_manifest_hash = canonical_payload_hash(
+            [{"path": item["path"], "before": item["before"]} for item in source_fingerprints]
+        )
+        return PersonalizationReadReport(
+            scope_id=scope_id,
+            evaluated_as_of=evaluated_as_of,
+            evaluation_cutoff_at=evaluation_cutoff_at,
+            source_manifest_hash=source_manifest_hash,
+            source_bytes_unchanged=source_unchanged,
+            source_consistency_status=source_consistency_status,
+            source_completeness_status=source_completeness_status,
+            source_fingerprints=tuple(source_fingerprints),
+            recommendation_metadata=metadata_rows,
+            projections=tuple(projection_rows),
+            evaluation_rows=tuple(row.to_dict() for row in evaluation_rows),
+            denominators=dict(denominators),
+            cohort=cohort,
+            inventory=inventory,
+            candidate_inventory=candidate_inventory,
+            diagnostics=tuple(dict.fromkeys(diagnostics)),
             evaluation=evaluation,
         )
 

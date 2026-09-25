@@ -15,6 +15,12 @@ from app_module.agent_evidence_access_service import (
 from app_module.decision_desk_snapshot_storage_dtos import section_is_ready
 from app_module.approved_weekly_history_projection import load_approved_weekly_history_projection
 from app_module.paper_portfolio_time import taiwan_market_today
+from app_module.recommendation.persistence import ExecutionPersistenceError
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    saved_recommendation_capture_projection,
+    select_latest_saved_recommendation,
+)
 
 
 STATUS_READY = "ready"
@@ -90,6 +96,7 @@ class PreV2ReadinessService:
         research_db_path: str | Path | None = None,
         approved_weekly_history_projection_path: str | Path | None = None,
         weekly_collection_sidecar_path: str | Path | None = None,
+        recommendation_queries: Any | None = None,
     ) -> None:
         self.config = config
         self.evidence_db_path = Path(evidence_db_path) if evidence_db_path is not None else Path(config.db_file)
@@ -101,6 +108,11 @@ class PreV2ReadinessService:
             Path(weekly_collection_sidecar_path)
             if weekly_collection_sidecar_path is not None
             else None
+        )
+        self.recommendation_queries = (
+            recommendation_queries
+            if recommendation_queries is not None
+            else build_recommendation_execution_queries(config)
         )
 
     def inspect(
@@ -345,6 +357,7 @@ class PreV2ReadinessService:
             self.config,
             evidence_db_path=self.evidence_db_path,
             decision_date=decision_date,
+            queries=self.recommendation_queries,
         )
         blocking_gaps = tuple(payload["blocking_gaps"])
         warnings = tuple(payload["warnings"])
@@ -490,10 +503,14 @@ def _inspect_source_gaps_read_only(
     *,
     evidence_db_path: Path,
     decision_date: str | None,
+    queries: Any | None = None,
 ) -> dict[str, Any]:
     today = taiwan_market_today()
     effective_decision_date, requested_future_date = _bounded_decision_date(decision_date, today)
-    recommendation = _latest_recommendation_payload(config)
+    recommendation, recommendation_diagnostic = _latest_recommendation_payload(
+        config,
+        queries=queries,
+    )
     latest_snapshot, future_snapshot_dates = _latest_decision_desk_snapshot(
         evidence_db_path,
         effective_decision_date,
@@ -541,6 +558,9 @@ def _inspect_source_gaps_read_only(
         warnings.append("liquidity_gate_payload_missing")
     if not screening_matrix_ready:
         warnings.append("screening_matrix_missing")
+    if recommendation_diagnostic:
+        warnings.append(recommendation_diagnostic)
+        diagnostics.append(recommendation_diagnostic)
 
     scheduled_closeout = _scheduled_dry_run_source_gap_closeout(
         config,
@@ -553,6 +573,7 @@ def _inspect_source_gaps_read_only(
         and scheduled_closeout is not None
         and not future_snapshot_dates
         and requested_future_date is None
+        and not recommendation_diagnostic
     ):
         return scheduled_closeout
 
@@ -656,35 +677,27 @@ def _scheduled_dry_run_source_gap_closeout(
     }
 
 
-def _latest_recommendation_payload(config: Any) -> dict[str, Any] | None:
-    runs_dir = Path(config.output_root) / "recommendation" / "runs"
-    db_path = runs_dir / "recommendation_runs.db"
+def _latest_recommendation_payload(
+    config: Any,
+    *,
+    queries: Any | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    read_queries = (
+        queries
+        if queries is not None
+        else build_recommendation_execution_queries(config)
+    )
     try:
-        with _connect_read_only(db_path) as conn:
-            if not _table_exists(conn, "runs"):
-                return None
-            row = conn.execute(
-                """
-                SELECT result_id, data_path, created_at
-                FROM runs
-                ORDER BY created_at DESC, result_id ASC
-                LIMIT 1
-                """
-            ).fetchone()
-    except (FileNotFoundError, sqlite3.Error):
-        return None
-    if row is None:
-        return None
-    data_path = Path(str(row["data_path"]))
-    if not data_path.is_absolute():
-        data_path = runs_dir / data_path
-    if not data_path.exists():
-        return None
-    try:
-        loaded = json.loads(data_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return loaded if isinstance(loaded, dict) else None
+        read_model, diagnostic = select_latest_saved_recommendation(
+            read_queries.list()
+        )
+        if diagnostic:
+            return None, diagnostic
+        if read_model is None:
+            return None, None
+        return saved_recommendation_capture_projection(read_model), None
+    except (ExecutionPersistenceError, ValueError) as exc:
+        return None, f"recommendation_query_failure:{type(exc).__name__}"
 
 
 def _latest_decision_desk_snapshot(

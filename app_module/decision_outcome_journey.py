@@ -24,8 +24,10 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 import json
+import math
 from pathlib import Path
 from types import MappingProxyType
+from threading import local
 from typing import Any, Iterable, Mapping, Protocol, Sequence, cast
 
 from app_module.evidence_event_dtos import EvidenceEvent, EvidenceOutcome
@@ -34,6 +36,16 @@ from app_module.dtos.decision_continuity_dtos import (
     IDENTITY_STATUS_CONFLICT,
     DecisionIdentity,
 )
+from app_module.recommendation.contracts import ExecutionStatus, RecommendationExecution
+from app_module.recommendation.persistence import (
+    ExecutionArtifactIntegrityError,
+    RecommendationExecutionPersistence,
+)
+from app_module.recommendation.queries import (
+    RecommendationExecutionQueries,
+    RecommendationExecutionReadModel,
+)
+from data_module.result_artifact_store import ResultArtifactStore
 from data_module.portfolio_ledger_repository import (
     PortfolioLedgerEvent,
     PortfolioLedgerRepository,
@@ -691,29 +703,392 @@ class PortfolioTradeReadPort(Protocol):
 
 
 class JsonRecommendationReadAdapter:
-    """只讀讀取 ``output/recommendation/runs/<result_id>.json``。"""
+    """經唯一 verified query seam 讀 canonical 與歷史 recommendation results。"""
 
-    def __init__(self, output_root: str | Path) -> None:
+    def __init__(
+        self,
+        output_root: str | Path,
+        *,
+        queries: RecommendationExecutionQueries | None = None,
+    ) -> None:
         self.output_root = Path(output_root).expanduser().resolve()
+        runs_dir = self.output_root / "recommendation" / "runs"
+        if queries is None:
+            store = ResultArtifactStore(
+                artifact_root=runs_dir / "execution_artifacts",
+                database_path=runs_dir / "recommendation_runs.db",
+            )
+            queries = RecommendationExecutionQueries(
+                RecommendationExecutionPersistence(store)
+            )
+        self._queries = queries
+        self._read_state = local()
 
     def path_for(self, result_id: str) -> Path:
-        _require_simple_id(result_id, "result_id")
-        return self.output_root / "recommendation" / "runs" / f"{result_id}.json"
+        if getattr(self._read_state, "result_id", None) != result_id:
+            raise ValueError("path_for 只能取得同次 read_result 的 verified path")
+        artifact_location = getattr(self._read_state, "path", None)
+        if type(artifact_location) is not str or not artifact_location:
+            raise FileNotFoundError("query read model 沒有 verified artifact location")
+        return Path(artifact_location)
 
     def read_result(self, result_id: str) -> Mapping[str, Any] | None:
-        path = self.path_for(result_id)
-        if not path.is_file():
+        self._read_state.result_id = result_id
+        self._read_state.path = None
+        read_model = self._queries.get(result_id)
+        if read_model is not None:
+            if read_model.result_id != result_id:
+                raise ExecutionArtifactIntegrityError(
+                    "recommendation query result_id 與 requested identity 不符"
+                )
+            if read_model.execution is not None:
+                payload = self._canonical_execution_payload(read_model)
+                self._remember_path(result_id, read_model.artifact_location)
+                return payload
+            if read_model.legacy_result is None:
+                raise ExecutionArtifactIntegrityError(
+                    "recommendation query read model 缺少 execution 與 legacy result"
+                )
+
+            projection = self._queries.get_legacy_original_payload(result_id)
+            if projection is None:
+                raise ExecutionArtifactIntegrityError(
+                    "registered legacy result 在 Journey readback 期間消失"
+                )
+            if (
+                projection.result_id != read_model.result_id
+                or projection.source != "registered_legacy_run"
+                or projection.data_path != read_model.artifact_location
+                or projection.raw_artifact_sha256 != read_model.raw_artifact_sha256
+                or projection.integrity_basis != read_model.integrity_basis
+            ):
+                raise ExecutionArtifactIntegrityError(
+                    "legacy DTO readback 與 exact payload query identity/path/hash 不一致"
+                )
+            self._remember_path(result_id, projection.data_path)
+            return cast(Mapping[str, Any], projection.payload)
+
+        projection = self._queries.get_legacy_original_payload(
+            result_id,
+            allow_unindexed_legacy=True,
+        )
+        if projection is None:
             return None
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, Mapping):
-            raise ValueError(f"recommendation result must be a JSON object: {path}")
-        return cast(Mapping[str, Any], payload)
+        if projection.result_id != result_id:
+            raise ExecutionArtifactIntegrityError(
+                "unindexed legacy payload 與 requested identity 不符"
+            )
+        self._remember_path(result_id, projection.data_path)
+        return cast(Mapping[str, Any], projection.payload)
 
     def list_result_ids(self) -> tuple[str, ...]:
-        directory = self.output_root / "recommendation" / "runs"
-        if not directory.is_dir():
-            return ()
-        return tuple(sorted(item.stem for item in directory.glob("*.json")))
+        return tuple(sorted(read_model.result_id for read_model in self._queries.list()))
+
+    def _remember_path(self, result_id: str, artifact_location: str) -> None:
+        if type(artifact_location) is not str or not artifact_location:
+            raise ExecutionArtifactIntegrityError(
+                "recommendation query 沒有 verified artifact location"
+            )
+        self._read_state.result_id = result_id
+        self._read_state.path = artifact_location
+
+    @staticmethod
+    def _snapshot_mapping(raw_json: str, field_name: str) -> dict[str, Any]:
+        try:
+            value = json.loads(raw_json)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ExecutionArtifactIntegrityError(
+                f"verified execution {field_name} snapshot 無法轉成 consumer mapping"
+            ) from exc
+        if type(value) is not dict:
+            raise ExecutionArtifactIntegrityError(
+                f"verified execution {field_name} snapshot 必須是 JSON object"
+            )
+        return cast(dict[str, Any], value)
+
+    @classmethod
+    def _canonical_projection_json_value(cls, value: Any, field_name: str) -> Any:
+        """Convert typed canonical values to lossless Journey JSON scalars."""
+
+        if isinstance(value, Enum):
+            return cls._canonical_projection_json_value(value.value, field_name)
+        if value is None or type(value) in (str, int, bool):
+            return value
+        if type(value) is Decimal:
+            if not value.is_finite():
+                raise ExecutionArtifactIntegrityError(
+                    f"canonical projection {field_name} Decimal 必須為有限值"
+                )
+            return str(value)
+        if type(value) is datetime:
+            return value.isoformat()
+        if type(value) is date:
+            return value.isoformat()
+        if type(value) is float:
+            if not math.isfinite(value):
+                raise ExecutionArtifactIntegrityError(
+                    f"canonical projection {field_name} 不可含非有限 JSON number"
+                )
+            return value
+        if isinstance(value, Mapping):
+            normalized: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise ExecutionArtifactIntegrityError(
+                        f"canonical projection {field_name} mapping key 必須是 str"
+                    )
+                normalized[key] = cls._canonical_projection_json_value(
+                    item,
+                    f"{field_name}.{key}",
+                )
+            return normalized
+        if type(value) in (tuple, list):
+            return [
+                cls._canonical_projection_json_value(item, f"{field_name}[{index}]")
+                for index, item in enumerate(value)
+            ]
+        raise ExecutionArtifactIntegrityError(
+            f"canonical projection {field_name} 含未支援 JSON 型別 {type(value).__name__}"
+        )
+
+    @classmethod
+    def _canonical_execution_payload(
+        cls,
+        read_model: RecommendationExecutionReadModel,
+    ) -> Mapping[str, Any]:
+        execution = read_model.execution
+        if type(execution) is not RecommendationExecution:
+            raise ExecutionArtifactIntegrityError(
+                "canonical recommendation read model 缺少 typed execution"
+            )
+        if read_model.integrity_basis != "canonical_payload_and_index_verified":
+            raise ExecutionArtifactIntegrityError(
+                "canonical recommendation read model 缺少 canonical payload/index 驗證"
+            )
+        if execution.result_id != read_model.result_id:
+            raise ExecutionArtifactIntegrityError(
+                "canonical execution 與 verified query identity 不一致"
+            )
+        if (
+            execution.status is not ExecutionStatus.COMPLETED
+            or execution.decision is None
+        ):
+            raise ExecutionArtifactIntegrityError(
+                "Journey canonical recommendation 必須是 completed 且含 DecisionBatch"
+            )
+
+        request = execution.request
+        context = execution.context
+        config: dict[str, Any] = {}
+        if context.result_config_snapshot is not None:
+            config = cls._snapshot_mapping(
+                context.result_config_snapshot.raw_result_config_json,
+                "result_config",
+            )
+        elif request.config_snapshot is not None:
+            config = cls._snapshot_mapping(
+                request.config_snapshot.raw_config_json,
+                "request_config",
+            )
+
+        run_context: dict[str, Any] = {}
+        as_of_date = context.as_of_date or request.as_of_date
+        if as_of_date is not None:
+            run_context["as_of_date"] = as_of_date.isoformat()
+            config.setdefault("decision_date", as_of_date.isoformat())
+        if context.decision_at is not None:
+            run_context["decision_at"] = context.decision_at.isoformat()
+        if context.created_at is not None:
+            run_context["created_at"] = context.created_at.isoformat()
+        if context.available_at is not None:
+            run_context["available_at"] = context.available_at.isoformat()
+
+        source_refs = [
+            {
+                "source_id": item.source_id,
+                "revision": item.revision,
+                "snapshot_id": item.snapshot_id,
+            }
+            for item in context.source_refs
+        ]
+        if source_refs:
+            run_context["source_refs"] = source_refs
+            source_ids = {item.source_id for item in context.source_refs}
+            if len(source_ids) == 1:
+                run_context["source_id"] = next(iter(source_ids))
+                source_snapshots = {
+                    item.snapshot_id
+                    for item in context.source_refs
+                    if item.snapshot_id is not None
+                }
+                if len(source_snapshots) == 1:
+                    run_context["source_snapshot_id"] = next(iter(source_snapshots))
+
+        run_context["data_snapshot_refs"] = [
+            {
+                "kind": item.kind.value,
+                "reference_id": item.reference_id,
+                "version": item.version,
+            }
+            for item in context.data_snapshot_refs
+        ]
+
+        strategy_identity = context.strategy_identity
+        if strategy_identity is not None:
+            for name in (
+                "strategy_version_id",
+                "strategy_config_id",
+                "strategy_config_hash",
+            ):
+                value = getattr(strategy_identity, name)
+                if value is not None:
+                    run_context[name] = value
+            strategy_config = {
+                name: getattr(strategy_identity, name)
+                for name in (
+                    "strategy_version_id",
+                    "strategy_config_id",
+                    "strategy_config_hash",
+                    "strategy_config_schema",
+                )
+                if getattr(strategy_identity, name) is not None
+            }
+            if strategy_identity.strategy_config_spec_json is not None:
+                strategy_config["strategy_config_spec"] = cls._snapshot_mapping(
+                    strategy_identity.strategy_config_spec_json,
+                    "strategy_config_spec",
+                )
+            if strategy_config:
+                run_context["strategy_config"] = strategy_config
+
+        universe_identity = context.universe_identity
+        if universe_identity is not None:
+            if universe_identity.universe_id is not None:
+                run_context["universe_id"] = universe_identity.universe_id
+            if universe_identity.universe_hash is not None:
+                run_context["universe_hash"] = universe_identity.universe_hash
+            if universe_identity.policy is not None:
+                policy = universe_identity.policy
+                if policy.universe_policy_id is not None:
+                    run_context["universe_policy_id"] = policy.universe_policy_id
+                if policy.universe_policy_hash is not None:
+                    run_context["universe_policy_hash"] = policy.universe_policy_hash
+            if universe_identity.snapshot is not None:
+                snapshot = universe_identity.snapshot
+                if snapshot.universe_snapshot_id is not None:
+                    run_context["universe_snapshot_id"] = (
+                        snapshot.universe_snapshot_id
+                    )
+                if snapshot.universe_snapshot_hash is not None:
+                    run_context["universe_snapshot_hash"] = (
+                        snapshot.universe_snapshot_hash
+                    )
+
+        if context.evidence_identity is not None:
+            evidence_identity = context.evidence_identity
+            for name in (
+                "cost_model_id",
+                "benchmark_id",
+                "industry_benchmark_id",
+                "horizon_days",
+                "evidence_tier",
+                "return_basis",
+            ):
+                value = getattr(evidence_identity, name)
+                if value is not None:
+                    run_context[name] = value
+
+        if request.config_snapshot is not None and context.result_config_snapshot is not None:
+            run_context["request_config"] = cls._snapshot_mapping(
+                request.config_snapshot.raw_config_json,
+                "request_config",
+            )
+
+        recommendations: list[dict[str, Any]] = []
+        if execution.decision is not None:
+            for item in execution.decision.items:
+                candidate: dict[str, Any] = {
+                    "stock_code": item.stock_code,
+                    "recommendation_rank": item.rank,
+                    "rule_score": item.rule_score,
+                    "close_price": item.close_price,
+                    "price_change": item.price_change,
+                    "indicator_score": item.indicator_score,
+                    "pattern_score": item.pattern_score,
+                    "volume_score": item.volume_score,
+                    "industry": item.industry,
+                    "reason_text": item.reason_text,
+                    "reasons": item.reasons,
+                    "confidence": item.confidence,
+                    "stock_name": item.stock_name,
+                    "score_percentile_bp": item.score_percentile_bp,
+                    "eligible_universe_size": item.eligible_universe_size,
+                    "eligible_universe_date": item.eligible_universe_date,
+                    "ranking_method": item.ranking_method,
+                    "threshold_mode": item.threshold_mode,
+                    "regime_match": item.regime_match,
+                    "factor_contributions": [
+                        {
+                            "factor_id": contribution.factor_id,
+                            "value": contribution.value,
+                            "unit": contribution.unit,
+                            "version": contribution.version,
+                            "source_refs": [
+                                {
+                                    "source_id": source.source_id,
+                                    "revision": source.revision,
+                                    "snapshot_id": source.snapshot_id,
+                                }
+                                for source in contribution.source_refs
+                            ],
+                        }
+                        for contribution in item.factor_contributions
+                    ],
+                    "universe_ref": (
+                        None
+                        if item.universe_ref is None
+                        else {
+                            "policy_id": item.universe_ref.policy_id,
+                            "snapshot_id": item.universe_ref.snapshot_id,
+                            "as_of_date": item.universe_ref.as_of_date,
+                            "members_hash": item.universe_ref.members_hash,
+                        }
+                    ),
+                }
+                recommendations.append(candidate)
+
+        payload: dict[str, Any] = {
+            "result_id": execution.result_id,
+            "config": config,
+            "run_context": run_context,
+            "recommendations": recommendations,
+            "execution_status": execution.status.value,
+            "execution_schema_version": read_model.schema_version,
+            "execution_schema_revision": read_model.schema_revision,
+        }
+        if read_model.label is not None:
+            payload["result_name"] = read_model.label
+        if read_model.notes is not None:
+            payload["notes"] = read_model.notes
+        if context.created_at is not None:
+            payload["created_at"] = context.created_at.isoformat()
+        if context.source_refs:
+            source_ids = {item.source_id for item in context.source_refs}
+            if len(source_ids) == 1:
+                payload["source_id"] = next(iter(source_ids))
+            source_snapshots = {
+                item.snapshot_id
+                for item in context.source_refs
+                if item.snapshot_id is not None
+            }
+            if len(source_snapshots) == 1:
+                payload["source_snapshot_id"] = next(iter(source_snapshots))
+        if execution.decision is not None and execution.decision.regime is not None:
+            payload["regime"] = execution.decision.regime
+        return cast(
+            Mapping[str, Any],
+            cls._canonical_projection_json_value(payload, "journey_payload"),
+        )
 
 
 class EvidenceRepositoryReadAdapter:

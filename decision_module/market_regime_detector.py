@@ -14,17 +14,19 @@
 
 import pandas as pd
 import numpy as np
-from pathlib import Path
-from datetime import datetime, timedelta
-import json
 import logging
 import warnings
-from typing import Callable, Optional
+from typing import Mapping
 from decision_module.market_regime_kernels import (
     calculate_bollinger_bandwidth,
     calculate_ma_slope,
 )
 from decision_module.market_frame_contracts import normalize_market_index_frame
+from decision_module.market_regime_policy import (
+    RegimeAssessment,
+    RegimeTransition,
+    transition_regime,
+)
 
 # 嘗試導入 ta 套件
 try:
@@ -38,110 +40,25 @@ logger = logging.getLogger(__name__)
 
 
 class MarketRegimeDetector:
-    """市場狀態判斷器"""
+    """只計算 regime 的純 detector；資料來源與狀態保存由 app 負責。"""
     
     def __init__(
         self,
-        config,
+        config: object | None = None,
         *,
-        use_persistent_history: bool = True,
-        market_frame_provider: Optional[Callable[[], pd.DataFrame]] = None,
+        min_confirm_days: int = 2,
+        cooldown_days: int = 3,
     ):
-        """初始化市場狀態判斷器
-        
-        Args:
-            config: TWStockConfig 實例
+        """初始化純 detector。
+
+        ``config`` 僅為過渡期間舊 app constructor 的相容位置參數；本類不讀取它。
+        data provider 與 persistent-history 選項均由 ``RegimeService`` 持有。
         """
-        self.config = config
-        self.use_persistent_history = use_persistent_history
-        self.market_frame_provider = market_frame_provider
-        
-        # Regime 抖動防護：保存歷史狀態
-        # 注意：resolve_output_path 用於目錄，對於文件需要手動構建路徑
-        output_dir = config.resolve_output_path('')  # 獲取輸出目錄
-        self.regime_history_file = output_dir / 'regime_history.json'
-        self.regime_history = (
-            self._load_regime_history() if use_persistent_history else {}
-        )
-        
-        # 抖動防護參數
-        self.min_confirm_days = 2  # 至少連續 N 天才切換
-        self.cooldown_days = 3  # 切換後至少鎖定 M 天
-    
-    def _load_regime_history(self) -> dict:
-        """載入歷史 Regime 狀態"""
-        if self.regime_history_file.exists():
-            try:
-                with open(self.regime_history_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
-    
-    def _save_regime_history(self, date: str, regime: str):
-        """保存 Regime 歷史（使用原子寫入避免權限問題）"""
-        self.regime_history[date] = {
-            'regime': regime,
-            'timestamp': datetime.now().isoformat()
-        }
-        if not self.use_persistent_history:
-            return
-        try:
-            # 確保目錄存在
-            self.regime_history_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # 先寫入臨時文件，然後重命名（原子操作）
-            temp_file = self.regime_history_file.with_suffix('.json.tmp')
-            
-            # 寫入臨時文件
-            json_str = json.dumps(self.regime_history, ensure_ascii=False, indent=2)
-            temp_file.write_text(json_str, encoding='utf-8')
-            
-            # 驗證 JSON 是否有效
-            json.loads(json_str)
-            
-            # 原子操作：直接重命名臨時文件為正式文件（不備份，避免權限問題）
-            # 如果原文件存在且無法刪除，嘗試直接覆蓋
-            if self.regime_history_file.exists():
-                try:
-                    # 嘗試刪除原文件
-                    self.regime_history_file.unlink()
-                except (PermissionError, OSError) as e:
-                    # 如果無法刪除（文件被占用），嘗試直接覆蓋
-                    logger.debug(f"無法刪除原文件，嘗試直接覆蓋: {e}")
-                    try:
-                        # 直接寫入原文件（覆蓋）
-                        self.regime_history_file.write_text(json_str, encoding='utf-8')
-                        # 刪除臨時文件
-                        if temp_file.exists():
-                            temp_file.unlink()
-                        logger.debug(f"成功保存 Regime 歷史（直接覆蓋）: {self.regime_history_file}")
-                        return
-                    except Exception as e2:
-                        logger.warning(f"直接覆蓋也失敗: {e2}")
-                        raise
-            
-            # 如果原文件不存在或已刪除，重命名臨時文件
-            try:
-                temp_file.rename(self.regime_history_file)
-                logger.debug(f"成功保存 Regime 歷史: {self.regime_history_file}")
-            except Exception as e:
-                # 如果重命名失敗，嘗試直接覆蓋
-                logger.debug(f"重命名失敗，嘗試直接覆蓋: {e}")
-                self.regime_history_file.write_text(json_str, encoding='utf-8')
-                if temp_file.exists():
-                    temp_file.unlink()
-                logger.debug(f"成功保存 Regime 歷史（直接覆蓋）: {self.regime_history_file}")
-                
-        except Exception as e:
-            logger.warning(f"保存 Regime 歷史失敗: {e}")
-            # 清理臨時文件
-            temp_file = self.regime_history_file.with_suffix('.json.tmp')
-            if temp_file.exists():
-                try:
-                    temp_file.unlink()
-                except:
-                    pass
+        del config
+        if min_confirm_days < 1 or cooldown_days < 1:
+            raise ValueError("regime confirmation/cooldown days 必須為正整數")
+        self.min_confirm_days = min_confirm_days
+        self.cooldown_days = cooldown_days
     
     def _calculate_adx_and_di(self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14):
         """計算真正的 ADX、PLUS_DI 和 MINUS_DI
@@ -270,56 +187,34 @@ class MarketRegimeDetector:
         """
         return calculate_bollinger_bandwidth(close, window, std_dev)
     
-    def detect_regime(self, date: str = None) -> dict:
-        """檢測市場狀態
-        
-        Args:
-            date: 日期（YYYY-MM-DD格式），如果為None則使用最新日期
-            
-        Returns:
-            dict: {
-                'regime': 'Trend' | 'Reversion' | 'Breakout',
-                'confidence': float,  # 0-1
-                'details': dict  # 詳細判斷依據
-            }
+    def detect_regime(
+        self,
+        market_frame: pd.DataFrame,
+        date: str | None = None,
+        prior_history: Mapping[str, object] | None = None,
+    ) -> RegimeAssessment:
+        """從明示市場資料與 prior history 計算 regime 與 transition。
+
+        此方法不讀取 DB、檔案或 service 狀態，也不會寫入 history。
         """
-        # 讀取大盤數據
-        market_file = self.config.market_index_file
-        df = (
-            self.market_frame_provider().copy()
-            if self.market_frame_provider is not None
-            else None
-        )
-        
-        if df is None and getattr(self.config, 'use_sqlite', False):
-            try:
-                from data_module.db_manager import DBManager
-                db = DBManager(self.config)
-                sql_df = db.execute_query("SELECT * FROM market_indices ORDER BY 日期 ASC;")
-                if not sql_df.empty:
-                    df = sql_df
-                    logger.info("成功從 SQLite 載入大盤指數數據進行狀態檢測")
-            except Exception as sql_err:
-                logger.warning(f"從 SQLite 載入大盤指數數據失敗: {sql_err}，將降級讀取 CSV")
-                
-        if df is None:
-            if not market_file.exists():
-                return {
-                    'regime': 'Trend',  # 預設
-                    'confidence': 0.5,
-                    'details': {'error': '找不到大盤數據文件'}
-                }
-            try:
-                df = pd.read_csv(market_file, encoding='utf-8-sig')
-            except Exception as e:
-                logger.error(f"讀取文件失敗: {market_file}, 錯誤: {e}")
-                return {
-                    'regime': 'Trend',
-                    'confidence': 0.5,
-                    'details': {'error': str(e)}
-                }
-            
-        df = normalize_market_index_frame(df)
+        df = normalize_market_index_frame(market_frame.copy())
+        history = prior_history or {}
+
+        def unavailable(message: str, transition_date: str | None = date) -> RegimeAssessment:
+            transition = RegimeTransition(
+                transition_date=transition_date,
+                candidate_regime="Trend",
+                effective_regime="Trend",
+                prior_regime=None,
+                persist_candidate=False,
+                outcome="unavailable",
+            )
+            return RegimeAssessment(
+                regime="Trend",
+                confidence=0.5,
+                details={"error": message},
+                transition=transition,
+            )
 
         try:
             # 處理日期欄位
@@ -330,11 +225,7 @@ class MarketRegimeDetector:
                     break
             
             if date_col is None:
-                return {
-                    'regime': 'Trend',
-                    'confidence': 0.5,
-                    'details': {'error': '找不到日期欄位'}
-                }
+                return unavailable("找不到日期欄位")
             
             df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
             df = df[df[date_col].notna()].sort_values(date_col)
@@ -345,14 +236,12 @@ class MarketRegimeDetector:
                 df = df[df[date_col] <= target_date]
             else:
                 # 使用最新日期
+                if df.empty:
+                    return unavailable("找不到日期欄位")
                 date = df[date_col].iloc[-1].strftime('%Y-%m-%d')
             
             if len(df) < 60:
-                return {
-                    'regime': 'Trend',
-                    'confidence': 0.5,
-                    'details': {'error': '數據不足'}
-                }
+                return unavailable("數據不足", date)
             
             # 獲取價格欄位
             close_col = None
@@ -378,11 +267,7 @@ class MarketRegimeDetector:
                     break
             
             if close_col is None:
-                return {
-                    'regime': 'Trend',
-                    'confidence': 0.5,
-                    'details': {'error': '找不到收盤價欄位'}
-                }
+                return unavailable("找不到收盤價欄位", date)
             
             # 獲取價格序列
             close = pd.to_numeric(df[close_col], errors='coerce')
@@ -450,103 +335,33 @@ class MarketRegimeDetector:
                 latest_atr, atr, latest_bb_bandwidth, bb_bandwidth,
                 latest_rsi, trend_distance, volume, date
             )
+
+            transition = transition_regime(
+                str(regime_result["regime"]),
+                date,
+                history,
+                min_confirm_days=self.min_confirm_days,
+                cooldown_days=self.cooldown_days,
+            )
+            regime_result["regime"] = transition.effective_regime
             
             # 將最新資料日期加入到 details 中
             if 'details' not in regime_result:
                 regime_result['details'] = {}
             regime_result['details']['date'] = date
             
-            return regime_result
+            return RegimeAssessment(
+                regime=str(regime_result["regime"]),
+                confidence=float(regime_result["confidence"]),
+                details=regime_result["details"],
+                transition=transition,
+            )
             
         except Exception as e:
             logger.error(f"檢測市場狀態失敗: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            return {
-                'regime': 'Trend',
-                'confidence': 0.5,
-                'details': {'error': str(e)}
-            }
-    
-    def _apply_regime_hysteresis(self, new_regime: str, date: str) -> str:
-        """應用 Regime 抖動防護（hysteresis）- 改進版
-        
-        實現「兩天確認」和「切換冷卻」機制：
-        1. 今日新 regime ≠ 昨日 regime 時 → 先標記為 candidate_regime
-        2. 連續 2 天一致才正式切換
-        3. 切換後鎖 3 天不切回（cooldown）
-        
-        Args:
-            new_regime: 新檢測到的 Regime
-            date: 當前日期
-            
-        Returns:
-            str: 最終的 Regime（可能被防護機制修改）
-        """
-        # 獲取最近 N 天的 Regime 歷史（按日期排序）
-        sorted_history = sorted(
-            (
-                (hist_date, hist_data)
-                for hist_date, hist_data in self.regime_history.items()
-                if hist_date < date
-            ),
-            reverse=True,
-        )
-        
-        if len(sorted_history) == 0:
-            # 沒有歷史，直接保存
-            self._save_regime_history(date, new_regime)
-            return new_regime
-        
-        # 獲取最近幾天的 Regime 和日期
-        recent_regimes = []
-        recent_dates = []
-        for hist_date, hist_data in sorted_history[:self.min_confirm_days + self.cooldown_days]:
-            recent_regimes.append(hist_data.get('regime'))
-            recent_dates.append(hist_date)
-        
-        # 檢查 cooldown：如果最近切換過，鎖定當前 Regime
-        if len(recent_regimes) >= self.cooldown_days:
-            # 檢查最近 cooldown_days 天內是否有切換
-            for i in range(min(self.cooldown_days, len(recent_regimes) - 1)):
-                if recent_regimes[i] != recent_regimes[i + 1]:
-                    # 發現切換，檢查是否在 cooldown 期內
-                    # 如果切換發生在 cooldown 期內，保持當前 Regime
-                    if recent_regimes[0] != new_regime:
-                        logger.debug(f"Regime 切換在 cooldown 期內（{self.cooldown_days}天），保持當前 Regime: {recent_regimes[0]}")
-                        return recent_regimes[0]
-                    break
-        
-        # 檢查連續確認：如果新 Regime 與昨日不同，需要連續確認
-        if len(recent_regimes) > 0:
-            last_regime = recent_regimes[0]
-            if last_regime != new_regime:
-                # 新檢測的與昨日不同，檢查是否有 candidate_regime
-                # 如果最近有 candidate_regime 且與新檢測一致，則確認切換
-                if len(recent_regimes) >= 2:
-                    # 檢查是否有 candidate_regime（昨天可能是 candidate）
-                    # 如果昨天是 candidate 且今天一致，則確認切換
-                    if recent_regimes[1] == new_regime:
-                        # 連續兩天一致，確認切換
-                        logger.debug(f"Regime 連續兩天確認，從 {last_regime} 切換到 {new_regime}")
-                        self._save_regime_history(date, new_regime)
-                        return new_regime
-                    else:
-                        # 昨天不是 candidate，今天標記為 candidate（但還不切換）
-                        logger.debug(f"Regime 首次檢測到 {new_regime}，標記為 candidate（昨日: {last_regime}）")
-                        # 保存為 candidate（在 details 中標記）
-                        self._save_regime_history(date, new_regime)
-                        # 但返回原 Regime（需要明天確認）
-                        return last_regime
-                else:
-                    # 歷史不足，標記為 candidate
-                    logger.debug(f"歷史不足，標記 {new_regime} 為 candidate")
-                    self._save_regime_history(date, new_regime)
-                    return last_regime
-        
-        # 沒有切換，直接保存
-        self._save_regime_history(date, new_regime)
-        return new_regime
+            return unavailable(str(e), date)
     
     def _classify_regime(
         self, close, ma20, ma60, ma20_slope, adx_value, plus_di, minus_di,
@@ -646,9 +461,8 @@ class MarketRegimeDetector:
                 **trend_conditions
             }
             
-            final_regime = self._apply_regime_hysteresis('Trend', date)
             return {
-                'regime': final_regime,
+                'regime': 'Trend',
                 'confidence': trend_confidence,
                 'details': details
             }
@@ -705,9 +519,8 @@ class MarketRegimeDetector:
                 **breakout_conditions
             }
             
-            final_regime = self._apply_regime_hysteresis('Breakout', date)
             return {
-                'regime': final_regime,
+                'regime': 'Breakout',
                 'confidence': breakout_confidence,
                 'details': details
             }
@@ -770,9 +583,8 @@ class MarketRegimeDetector:
                 **reversion_conditions
             }
             
-            final_regime = self._apply_regime_hysteresis('Reversion', date)
             return {
-                'regime': final_regime,
+                'regime': 'Reversion',
                 'confidence': reversion_confidence,
                 'details': details
             }
@@ -783,9 +595,8 @@ class MarketRegimeDetector:
             'default': True
         }
         
-        final_regime = self._apply_regime_hysteresis('Reversion', date)
         return {
-            'regime': final_regime,
+            'regime': 'Reversion',
             'confidence': 0.5,
             'details': details
         }

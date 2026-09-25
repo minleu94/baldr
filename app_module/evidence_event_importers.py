@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from typing import Any, Mapping, Protocol
 
 from app_module.decision_desk_dtos import (
@@ -21,6 +23,17 @@ from app_module.evidence_importer_support import (
     normalize_quality as _quality,
     score_bp as _score_bp,
     string_tuple as _tuple,
+)
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    QualityStatus,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.recommendation.persistence import ExecutionPersistenceError
+from app_module.saved_recommendation_queries import (
+    execution_result_config,
+    select_latest_saved_recommendation,
+    verified_saved_calibration_projections,
 )
 
 
@@ -74,12 +87,31 @@ class MissingSnapshotEvidenceImporter:
 class RecommendationEvidenceImporter:
     source_name = "recommendation"
 
-    def __init__(self, repository: Any) -> None:
-        self.repository = repository
+    def __init__(self, queries: Any) -> None:
+        self.queries = queries
 
     def collect(self, request: EvidenceCaptureRequest) -> EvidenceImportResult:
-        result = self._load_result(request)
-        if result is None:
+        read_model, latest_selection_diagnostic = self._load_result(request)
+        if read_model is None:
+            if latest_selection_diagnostic:
+                is_query_failure = latest_selection_diagnostic.startswith(
+                    "recommendation_query_failure:"
+                )
+                return EvidenceImportResult(
+                    source_name=self.source_name,
+                    decision_date=request.decision_date_text,
+                    diagnostics=(
+                        EvidenceImportDiagnostic(
+                            code=latest_selection_diagnostic,
+                            message=(
+                                "推薦結果 query 驗證失敗；拒絕使用未驗證資料。"
+                                if is_query_failure
+                                else "canonical/legacy mixed latest timestamp 不完整或不明確；拒絕猜測選取結果。"
+                            ),
+                            source_name=self.source_name,
+                        ),
+                    ),
+                )
             return EvidenceImportResult(
                 source_name=self.source_name,
                 decision_date=request.decision_date_text,
@@ -92,11 +124,43 @@ class RecommendationEvidenceImporter:
                 ),
             )
 
-        decision_date = request.decision_date_text or _date_text(getattr(result, "created_at", None))
+        result = self._consumer_result(read_model)
+        if result is None:
+            return EvidenceImportResult(
+                source_name=self.source_name,
+                decision_date=request.decision_date_text,
+                diagnostics=(
+                    EvidenceImportDiagnostic(
+                        code="source_unsupported_execution",
+                        message="保存 execution 沒有可讀的 completed decision；未使用其他 decoder。",
+                        source_name=self.source_name,
+                    ),
+                ),
+            )
+
+        if request.decision_date_text:
+            decision_date = request.decision_date_text
+        elif read_model.execution is not None:
+            if result.as_of_date is None:
+                return EvidenceImportResult(
+                    source_name=self.source_name,
+                    decision_date=None,
+                    diagnostics=(
+                        EvidenceImportDiagnostic(
+                            code="source_missing_as_of_date",
+                            message="execution 未保存 as_of_date，不能以 created_at 補造決策日。",
+                            source_name=self.source_name,
+                        ),
+                    ),
+                )
+            decision_date = result.as_of_date.isoformat()
+        else:
+            decision_date = _date_text(getattr(result, "created_at", None))
         config = dict(getattr(result, "config", {}) or {})
         profile_id = str(config.get("profile_id") or config.get("selected_profile") or "")
         profile_version = str(config.get("profile_version") or "")
         identity = self._identity_payload(result)
+        saved_calibrations = verified_saved_calibration_projections(read_model)
         payloads: list[dict[str, Any]] = []
         diagnostics: list[EvidenceImportDiagnostic] = []
 
@@ -116,7 +180,12 @@ class RecommendationEvidenceImporter:
 
             warnings = []
             percentile = getattr(rec, "score_percentile_bp", None)
-            threshold_mode = str(getattr(rec, "threshold_mode", "") or "fixed").strip().lower()
+            threshold_value = getattr(rec, "threshold_mode", None)
+            threshold_mode = (
+                str(threshold_value or "fixed").strip().lower()
+                if read_model.legacy_result is not None
+                else str(threshold_value).strip().lower() if threshold_value is not None else ""
+            )
             if percentile is None and threshold_mode != "fixed":
                 warnings.append("score_percentile_missing")
             payloads.append(
@@ -157,6 +226,11 @@ class RecommendationEvidenceImporter:
                         "indicator_score_bp": _score_bp(getattr(rec, "indicator_score", None)),
                         "pattern_score_bp": _score_bp(getattr(rec, "pattern_score", None)),
                         "volume_score_bp": _score_bp(getattr(rec, "volume_score", None)),
+                        **(
+                            {"saved_calibration_projection": saved_calibrations[symbol].to_dict()}
+                            if symbol in saved_calibrations
+                            else {}
+                        ),
                     },
                     **identity["fields"],
                 }
@@ -174,7 +248,7 @@ class RecommendationEvidenceImporter:
             diagnostics.append(
                 EvidenceImportDiagnostic(
                     code="source_missing_screening_matrix",
-                    message="RecommendationResultDTO does not persist V1.7 screening matrix payload",
+                    message="saved recommendation does not contain screening matrix evidence",
                     source_name=self.source_name,
                 )
             )
@@ -190,7 +264,7 @@ class RecommendationEvidenceImporter:
                 diagnostics.append(
                     EvidenceImportDiagnostic(
                         code="source_missing_exclusion_payload",
-                        message="RecommendationResultDTO does not persist why-not/liquidity exclusion payloads",
+                        message="saved recommendation does not contain why-not/liquidity exclusion payloads",
                         source_name=self.source_name,
                     )
                 )
@@ -200,6 +274,181 @@ class RecommendationEvidenceImporter:
             decision_date=decision_date,
             event_payloads=tuple(payloads),
             diagnostics=tuple(diagnostics),
+        )
+
+    def _consumer_result(self, read_model: RecommendationExecutionReadModel) -> Any | None:
+        if read_model.legacy_result is not None:
+            return read_model.legacy_result
+        execution = read_model.execution
+        if execution is None or execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
+            return None
+        config = execution_result_config(execution)
+        context = execution.context
+        run_context: dict[str, Any] = {}
+        if context.as_of_date is not None:
+            run_context["as_of_date"] = context.as_of_date.isoformat()
+        if context.profile_ref is not None:
+            run_context["profile_id"] = context.profile_ref.reference_id
+            if context.profile_ref.version is not None:
+                run_context["profile_version"] = context.profile_ref.version
+        source_ids = tuple(dict.fromkeys(item.source_id for item in context.source_refs))
+        if len(source_ids) == 1:
+            run_context["source_id"] = source_ids[0]
+        snapshot_ids = tuple(dict.fromkeys(item.snapshot_id for item in context.source_refs if item.snapshot_id))
+        if len(snapshot_ids) == 1:
+            run_context["source_snapshot_id"] = snapshot_ids[0]
+        if context.strategy_identity is not None:
+            strategy_identity = context.strategy_identity
+            for name in ("strategy_version_id", "strategy_config_id", "strategy_config_hash", "strategy_config_schema"):
+                value = getattr(strategy_identity, name)
+                if value is not None:
+                    run_context[name] = value
+            if strategy_identity.strategy_config_spec_json is not None:
+                run_context["strategy_config"] = json.loads(strategy_identity.strategy_config_spec_json)
+        if context.universe_identity is not None:
+            universe_identity = context.universe_identity
+            for name in ("universe_id", "universe_hash", "universe_identity_schema"):
+                value = getattr(universe_identity, name)
+                if value is not None:
+                    run_context[name] = value
+            if universe_identity.policy is not None:
+                for name in ("universe_policy_id", "universe_policy_hash", "universe_policy_schema"):
+                    value = getattr(universe_identity.policy, name)
+                    if value is not None:
+                        run_context[name] = value
+                if universe_identity.policy.universe_policy_spec_json is not None:
+                    run_context["universe_policy_spec"] = json.loads(universe_identity.policy.universe_policy_spec_json)
+            if universe_identity.snapshot is not None:
+                for name in (
+                    "universe_snapshot_id",
+                    "universe_snapshot_hash",
+                    "universe_snapshot_schema",
+                    "universe_snapshot_source_provider_id",
+                    "universe_snapshot_selected_codes_hash",
+                ):
+                    value = getattr(universe_identity.snapshot, name)
+                    if value is not None:
+                        run_context[name] = value
+                if universe_identity.snapshot.universe_snapshot_spec_json is not None:
+                    run_context["universe_snapshot_spec"] = json.loads(universe_identity.snapshot.universe_snapshot_spec_json)
+        if context.evidence_identity is not None:
+            evidence_identity = context.evidence_identity
+            for name in (
+                "cost_model_id",
+                "benchmark_id",
+                "industry_benchmark_id",
+                "horizon_days",
+                "evidence_tier",
+                "return_basis",
+            ):
+                value = getattr(evidence_identity, name)
+                if value is not None:
+                    run_context[name] = value
+
+        calibrations = verified_saved_calibration_projections(read_model)
+        item_rows = []
+        for item in execution.decision.items:
+            calibration = calibrations.get(item.stock_code)
+            item_rows.append(
+                SimpleNamespace(
+                    stock_code=item.stock_code,
+                    stock_name=item.stock_name or "",
+                    recommendation_reasons=(
+                        "; ".join(item.reasons)
+                        if item.reasons
+                        else item.reason_text or ""
+                    ),
+                    total_score=item.rule_score,
+                    score_percentile_bp=(
+                        calibration.ranking_percentile_bp
+                        if calibration is not None
+                        else item.score_percentile_bp
+                    ),
+                    threshold_mode=item.threshold_mode,
+                    industry=item.industry,
+                    eligible_universe_size=item.eligible_universe_size,
+                    eligible_universe_date=(
+                        item.eligible_universe_date.isoformat()
+                        if item.eligible_universe_date is not None
+                        else None
+                    ),
+                    ranking_method=item.ranking_method,
+                    indicator_score=item.indicator_score,
+                    pattern_score=item.pattern_score,
+                    volume_score=item.volume_score,
+                )
+            )
+
+        screening_rows: list[dict[str, Any]] = []
+        why_not_rows: list[dict[str, Any]] = []
+        liquidity_rows: list[dict[str, Any]] = []
+        quality = _quality_for_execution(execution.quality.status)
+        for assessment in execution.decision.assessments:
+            filter_outcomes = assessment.filter_outcomes or {}
+            for filter_id, outcome in filter_outcomes.items():
+                outcome_evidence: Mapping[str, object] = outcome.evidence or {}
+                status = "pass" if outcome.passed is True else "fail" if outcome.passed is False else "missing"
+                row: dict[str, Any] = {
+                    "stock_code": assessment.stock_code,
+                    "status": status,
+                    "quality": quality if status != "missing" else EvidenceDataQuality.MISSING.value,
+                    "stage": filter_id,
+                    "reason_codes": (outcome.reason,) if outcome.reason else (),
+                    "evidence": dict(outcome_evidence),
+                }
+                for name in ("threshold_name", "observed_value", "required_value", "score_percentile_bp", "eligible_universe_size", "threshold_mode"):
+                    if name in outcome_evidence:
+                        row[name] = outcome_evidence[name]
+                screening_rows.append(row)
+            for negative in assessment.negative_evidence:
+                negative_details: Mapping[str, object] = negative.details or {}
+                row = {
+                    "stock_code": assessment.stock_code,
+                    "exclusion_reason_codes": (negative.reason,),
+                    "quality": quality,
+                    "evidence_id": negative.evidence_id,
+                    "source_refs": tuple(
+                        {
+                            "source_id": ref.source_id,
+                            "revision": ref.revision,
+                            "snapshot_id": ref.snapshot_id,
+                        }
+                        for ref in negative.source_refs
+                    ),
+                    "observed_at": negative.observed_at.isoformat() if negative.observed_at else None,
+                    "details": dict(negative_details),
+                    **dict(negative_details),
+                }
+                why_not_rows.append(row)
+            liquidity = assessment.liquidity
+            if liquidity is not None and liquidity.acceptable is False:
+                liquidity_rows.append(
+                    {
+                        "stock_code": assessment.stock_code,
+                        "exclusion_reason_codes": liquidity.reasons,
+                        "quality": quality,
+                        "missing_data": liquidity.missing_data,
+                        "observations": dict(liquidity.observations or {}),
+                    }
+                )
+        if execution.quality.status in (QualityStatus.UNKNOWN, QualityStatus.UNAVAILABLE):
+            exclusion_quality = EvidenceDataQuality.MISSING.value
+        else:
+            exclusion_quality = quality
+        return SimpleNamespace(
+            result_id=execution.result_id,
+            result_name=read_model.label or "",
+            config=config,
+            recommendations=tuple(item_rows),
+            regime=execution.decision.regime,
+            created_at=(execution.context.created_at.isoformat() if execution.context.created_at else None),
+            as_of_date=execution.context.as_of_date,
+            screening_matrix_json=screening_rows,
+            why_not_payload_json=why_not_rows,
+            liquidity_gate_payload_json=liquidity_rows,
+            exclusion_quality=exclusion_quality,
+            exclusion_warnings_json=tuple(execution.context.warnings) + tuple(execution.quality.warnings),
+            run_context=run_context,
         )
 
     def _screening_matrix_payloads(
@@ -251,9 +500,11 @@ class RecommendationEvidenceImporter:
             "threshold_mode": row.get("threshold_mode"),
             "source_result_id": str(getattr(result, "result_id", "")),
         }
+        if "evidence" in row:
+            metadata["evidence"] = row["evidence"]
         identity = self._identity_payload(result)
         metadata.update(identity["metadata"])
-        return {
+        payload: dict[str, Any] = {
             "event_date": decision_date,
             "decision_date": decision_date,
             "symbol": symbol,
@@ -278,6 +529,7 @@ class RecommendationEvidenceImporter:
             "metadata": metadata,
             **identity["fields"],
         }
+        return payload
 
     def _screening_event_type(self, status: str) -> EvidenceEventType:
         mapping = {
@@ -369,7 +621,7 @@ class RecommendationEvidenceImporter:
         why_not_codes = reason_codes if event_type == EvidenceEventType.WHY_NOT_EXCLUDED else ()
         risk_codes = reason_codes if event_type == EvidenceEventType.LIQUIDITY_GATE_EXCLUDED else ()
         identity = self._identity_payload(result)
-        return {
+        payload: dict[str, Any] = {
             "event_date": decision_date,
             "decision_date": decision_date,
             "symbol": symbol,
@@ -399,6 +651,10 @@ class RecommendationEvidenceImporter:
             },
             **identity["fields"],
         }
+        for name in ("evidence_id", "source_refs", "observed_at", "details", "missing_data", "observations"):
+            if name in row:
+                payload["metadata"][name] = row[name]
+        return payload
 
     def _identity_payload(self, result: Any) -> dict[str, dict[str, Any]]:
         """Read only explicitly declared V4 identity; never infer missing fields."""
@@ -529,14 +785,28 @@ class RecommendationEvidenceImporter:
                     return value
         return None
 
-    def _load_result(self, request: EvidenceCaptureRequest) -> Any | None:
-        if request.result_id:
-            return self.repository.load_result(request.result_id)
-        results = self.repository.list_results()
-        if not results:
-            return None
-        latest = sorted(results, key=lambda item: str(item.get("created_at") or ""), reverse=True)[0]
-        return self.repository.load_result(str(latest.get("result_id") or ""))
+    def _load_result(
+        self, request: EvidenceCaptureRequest
+    ) -> tuple[Any | None, str | None]:
+        try:
+            if request.result_id:
+                return self.queries.get(request.result_id), None
+            results = self.queries.list()
+            if not results:
+                return None, None
+            latest, diagnostic = select_latest_saved_recommendation(results)
+            return latest, diagnostic
+        except (ExecutionPersistenceError, ValueError) as exc:
+            return None, f"recommendation_query_failure:{type(exc).__name__}"
+
+
+def _quality_for_execution(status: QualityStatus) -> str:
+    return {
+        QualityStatus.COMPLETE: EvidenceDataQuality.OBSERVED.value,
+        QualityStatus.DEGRADED: EvidenceDataQuality.DEGRADED.value,
+        QualityStatus.UNKNOWN: EvidenceDataQuality.MISSING.value,
+        QualityStatus.UNAVAILABLE: EvidenceDataQuality.MISSING.value,
+    }[status]
 
 
 class WatchlistTriggerEvidenceImporter:

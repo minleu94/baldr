@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from app_module.machine_status_classification import (
     MACHINE_STATUS_HUMAN_REVIEW,
@@ -17,6 +17,15 @@ from app_module.machine_status_classification import (
     MACHINE_STATUS_UNKNOWN,
     MACHINE_STATUS_WAITING_FOR_TIME,
     classify_machine_status,
+)
+from app_module.recommendation.persistence import ExecutionPersistenceError
+from app_module.recommendation.queries import LegacyRecommendationOriginalPayload
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    canonical_manual_decision_date,
+    canonical_scheduled_decision_date,
+    saved_recommendation_capture_projection,
+    select_latest_saved_recommendation,
 )
 
 
@@ -204,8 +213,14 @@ class ScheduledEvidenceStatusService:
         config: Any,
         *,
         clock: Callable[[], datetime] | None = None,
+        recommendation_queries: Any | None = None,
     ) -> None:
         self.output_root = Path(config.output_root)
+        self.recommendation_queries = (
+            recommendation_queries
+            if recommendation_queries is not None
+            else build_recommendation_execution_queries(config)
+        )
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._last_good_status: ScheduledEvidenceStatus | None = None
 
@@ -283,10 +298,17 @@ class ScheduledEvidenceStatusService:
             or checks.get("technical_indicators_latest_date")
         )
         decision_date_key = _date_key(evidence.get("decision_date")) or _date_key(latest_data_date)
+        read_models = self._read_saved_recommendations(diagnostics)
         manual_recommendation: dict[str, Any] = {}
         manual_recommendation_path: Path | None = None
+        canonical_manual_selected = False
         if not recommendation:
-            manual_recommendation, manual_recommendation_path = _latest_manual_recommendation_result(
+            (
+                manual_recommendation,
+                manual_recommendation_path,
+                canonical_manual_selected,
+            ) = _latest_manual_recommendation_result(
+                read_models,
                 self.output_root,
                 decision_date_key,
                 diagnostics,
@@ -295,6 +317,8 @@ class ScheduledEvidenceStatusService:
         recommendation_source = (
             "scheduled_latest_status"
             if recommendation
+            else "canonical_manual_result"
+            if canonical_manual_selected
             else "manual_result"
             if manual_recommendation
             else "missing"
@@ -302,8 +326,14 @@ class ScheduledEvidenceStatusService:
         recommendation_status = (
             str(recommendation.get("status") or "missing") if recommendation else "manual_observed" if manual_recommendation else "missing"
         )
-        recommendation_dates = _scheduled_recommendation_dates(self.output_root)
-        manual_recommendation_dates = _manual_recommendation_dates(self.output_root)
+        recommendation_dates = _scheduled_recommendation_dates(read_models)
+        recommendation_dates.update(
+            _canonical_recommendation_dates(read_models, canonical_scheduled_decision_date)
+        )
+        manual_recommendation_dates = _manual_recommendation_dates(read_models)
+        manual_recommendation_dates.update(
+            _canonical_recommendation_dates(read_models, canonical_manual_decision_date)
+        )
         evidence_dates = _scheduled_evidence_report_dates(self.output_root)
         for raw_date in (recommendation.get("decision_date"), evidence.get("decision_date")):
             date_key = _date_key(raw_date)
@@ -446,6 +476,123 @@ class ScheduledEvidenceStatusService:
             ),
             evidence_progress_next_action=_str_or_none(progress.get("next_action")),
             evidence_progress_status_path=progress_path if progress else None,
+        )
+
+    def _read_saved_recommendations(self, diagnostics: list[str]) -> tuple[Any, ...]:
+        read_models: list[Any] = []
+        try:
+            read_models.extend(self.recommendation_queries.list())
+        except (ExecutionPersistenceError, ValueError) as exc:
+            diagnostics.append(f"recommendation_query_failure:{type(exc).__name__}")
+        known_by_id = {
+            result_id: item
+            for item in read_models
+            if (result_id := _str_or_none(getattr(item, "result_id", None)))
+        }
+        ambiguous_ids: set[str] = set()
+        for result_id in _legacy_candidate_ids(self.output_root):
+            known = known_by_id.get(result_id)
+            if known is not None:
+                if getattr(known, "legacy_result", None) is not None:
+                    # `list()` 已驗證 registered legacy bytes／identity。
+                    continue
+                if getattr(known, "execution", None) is None:
+                    continue
+                # A root-level legacy filename that reuses a canonical ID is
+                # ambiguous even when the canonical index itself is valid.
+                exact_query = getattr(
+                    self.recommendation_queries,
+                    "get_legacy_original_payload",
+                    None,
+                )
+                try:
+                    projection = (
+                        exact_query(result_id, allow_unindexed_legacy=True)
+                        if callable(exact_query)
+                        else None
+                    )
+                except (ExecutionPersistenceError, ValueError, OSError) as exc:
+                    diagnostics.append(
+                        "recommendation_legacy_canonical_identity_collision:"
+                        f"{result_id}:{type(exc).__name__}"
+                    )
+                    ambiguous_ids.add(result_id)
+                    continue
+                if projection is None:
+                    diagnostics.append(
+                        f"recommendation_legacy_canonical_identity_collision:{result_id}:unverified"
+                    )
+                    ambiguous_ids.add(result_id)
+                    continue
+                diagnostics.append(
+                    f"recommendation_legacy_canonical_identity_collision:{result_id}"
+                )
+                ambiguous_ids.add(result_id)
+                continue
+            exact_query = getattr(
+                self.recommendation_queries,
+                "get_legacy_original_payload",
+                None,
+            )
+            if not callable(exact_query):
+                diagnostics.append(
+                    f"recommendation_query_unavailable:legacy_original_payload:{result_id}"
+                )
+                continue
+            try:
+                projection = exact_query(
+                    result_id,
+                    allow_unindexed_legacy=True,
+                )
+            except (ExecutionPersistenceError, ValueError, OSError) as exc:
+                diagnostics.append(
+                    "recommendation_legacy_candidate_query_failure:"
+                    f"{result_id}:{type(exc).__name__}"
+                )
+                continue
+            if projection is None:
+                continue
+            if not isinstance(projection, LegacyRecommendationOriginalPayload):
+                diagnostics.append(
+                    f"recommendation_legacy_candidate_projection_unsupported:{result_id}"
+                )
+                continue
+            if (
+                projection.result_id != result_id
+                or projection.payload.get("result_id") != result_id
+            ):
+                diagnostics.append(
+                    f"recommendation_legacy_candidate_identity_mismatch:{result_id}"
+                )
+                continue
+            if projection.source == "registered_legacy_run":
+                try:
+                    read_model = self.recommendation_queries.get(result_id)
+                except (ExecutionPersistenceError, ValueError, OSError) as exc:
+                    diagnostics.append(
+                        "recommendation_legacy_candidate_query_failure:"
+                        f"{result_id}:{type(exc).__name__}"
+                    )
+                    continue
+                if not _registered_legacy_matches_projection(read_model, projection):
+                    diagnostics.append(
+                        f"recommendation_legacy_candidate_read_mismatch:{result_id}"
+                    )
+                    continue
+                read_models.append(read_model)
+                known_by_id[result_id] = read_model
+                continue
+            if projection.source != "unindexed_legacy_file":
+                diagnostics.append(
+                    f"recommendation_legacy_candidate_source_unsupported:{result_id}"
+                )
+                continue
+            read_models.append(projection)
+            known_by_id[result_id] = projection
+        return tuple(
+            item
+            for item in read_models
+            if _str_or_none(getattr(item, "result_id", None)) not in ambiguous_ids
         )
 
     def _accept_candidate(
@@ -597,47 +744,281 @@ def _optional_path(value: Any) -> Path | None:
     return Path(str(value))
 
 
-def _scheduled_recommendation_dates(output_root: Path) -> set[str]:
-    runs_dir = output_root / "recommendation" / "runs"
+def _scheduled_recommendation_dates(read_models: tuple[Any, ...]) -> set[str]:
+    """只將 query 已驗證且 ID/content 日期一致的 legacy scheduled 結果列入。"""
+
+    return {
+        date_key
+        for read_model in read_models
+        if (date_key := _verified_legacy_result_date(read_model, scheduled=True))
+    }
+
+
+def _canonical_recommendation_dates(
+    read_models: tuple[Any, ...],
+    date_projection: Callable[[Any], str | None],
+) -> set[str]:
     dates: set[str] = set()
-    if not runs_dir.exists():
-        return dates
-    for path in runs_dir.glob("scheduled_rec_*.json"):
-        parts = path.stem.split("_")
-        if len(parts) >= 3 and len(parts[2]) == 8 and parts[2].isdigit():
-            dates.add(parts[2])
+    for read_model in read_models:
+        if getattr(read_model, "execution", None) is None:
+            continue
+        decision_date = date_projection(read_model)
+        date_key = _date_key(decision_date)
+        if date_key:
+            dates.add(date_key)
     return dates
 
 
-def _manual_recommendation_dates(output_root: Path) -> set[str]:
-    runs_dir = output_root / "recommendation" / "runs"
-    dates: set[str] = set()
-    if not runs_dir.exists():
-        return dates
-    for path in runs_dir.glob("rec_*.json"):
-        parts = path.stem.split("_")
-        if len(parts) >= 3 and len(parts[1]) == 8 and parts[1].isdigit():
-            dates.add(parts[1])
+def _manual_recommendation_dates(read_models: tuple[Any, ...]) -> set[str]:
+    """只將 query 已驗證且有 explicit manual marker/legacy date 的結果列入。"""
+
+    dates = _canonical_recommendation_dates(read_models, canonical_manual_decision_date)
+    dates.update(
+        date_key
+        for read_model in read_models
+        if (date_key := _verified_legacy_result_date(read_model, scheduled=False))
+    )
     return dates
 
 
 def _latest_manual_recommendation_result(
+    read_models: tuple[Any, ...],
     output_root: Path,
     date_key: str | None,
     diagnostics: list[str],
-) -> tuple[dict[str, Any], Path | None]:
+) -> tuple[dict[str, Any], Path | None, bool]:
     if not date_key:
-        return {}, None
+        return {}, None, False
+    legacy_candidates = tuple(
+        read_model
+        for read_model in read_models
+        if _verified_legacy_result_date(read_model, scheduled=False) == date_key
+    )
+    canonical_candidates = tuple(
+        read_model
+        for read_model in read_models
+        if getattr(read_model, "execution", None) is not None
+        and _date_key(canonical_manual_decision_date(read_model)) == date_key
+    )
+    if not legacy_candidates and not canonical_candidates:
+        return {}, None, False
+
+    if legacy_candidates and canonical_candidates:
+        candidates = (*legacy_candidates, *canonical_candidates)
+        if any(isinstance(item, LegacyRecommendationOriginalPayload) for item in candidates):
+            latest, selection_diagnostic = _latest_mixed_manual_candidate(candidates)
+        else:
+            latest, selection_diagnostic = select_latest_saved_recommendation(candidates)
+        if selection_diagnostic:
+            diagnostics.append(selection_diagnostic)
+            return {}, None, False
+    elif canonical_candidates:
+        latest, selection_diagnostic = select_latest_saved_recommendation(
+            canonical_candidates
+        )
+        if selection_diagnostic:
+            diagnostics.append(selection_diagnostic)
+            return {}, None, False
+    else:
+        # 純 legacy 保留舊 same-day filename 反向排序，不依 ISO 時字串猜 mixed 最新。
+        latest = max(legacy_candidates, key=lambda item: item.result_id)
+
+    if latest is None:
+        return {}, None, False
+    if isinstance(latest, LegacyRecommendationOriginalPayload):
+        payload = _unindexed_legacy_capture_projection(latest)
+        payload["writes_recommendation_result"] = True
+        diagnostics.append(
+            f"manual_recommendation_result_observed:{latest.result_id}"
+        )
+        diagnostics.append(
+            f"legacy_read_time_hash_only:{latest.result_id}:{latest.raw_artifact_sha256}"
+        )
+        return payload, Path(latest.data_path), False
+    payload = dict(saved_recommendation_capture_projection(latest))
+    payload["writes_recommendation_result"] = True
+    canonical_selected = getattr(latest, "execution", None) is not None
+    if canonical_selected:
+        diagnostics.append(
+            f"canonical_manual_recommendation_result_observed:{latest.result_id}"
+        )
+        return payload, None, True
+    legacy = latest.legacy_result
+    if legacy is None:
+        return {}, None, False
+    result_path = _registered_legacy_result_path(latest, output_root)
+    diagnostics.append(f"manual_recommendation_result_observed:{latest.result_id}")
+    return payload, result_path, False
+
+
+def _latest_mixed_manual_candidate(
+    candidates: tuple[Any, ...],
+) -> tuple[Any | None, str | None]:
+    """跨 canonical/legacy 僅以所有 aware clocks 的 UTC instant 選最新。"""
+
+    clocks: list[tuple[Any, datetime]] = []
+    for item in candidates:
+        if isinstance(item, LegacyRecommendationOriginalPayload):
+            created_at = item.payload.get("created_at")
+            clock = _aware_timestamp(created_at)
+        else:
+            clock_value = getattr(item, "persisted_at", None)
+            clock = (
+                clock_value
+                if isinstance(clock_value, datetime)
+                and clock_value.tzinfo is not None
+                and clock_value.utcoffset() is not None
+                else None
+            )
+        if clock is None:
+            return None, "recommendation_latest_selection_ambiguous_clock"
+        clocks.append((item, clock.astimezone(timezone.utc)))
+    latest_time = max(timestamp for _item, timestamp in clocks)
+    tied = [item for item, timestamp in clocks if timestamp == latest_time]
+    return min(tied, key=lambda item: item.result_id), None
+
+
+def _aware_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed
+
+
+def _unindexed_legacy_capture_projection(
+    projection: LegacyRecommendationOriginalPayload,
+) -> dict[str, object]:
+    payload = projection.payload
+    run_context = payload.get("run_context")
+    context = run_context if isinstance(run_context, Mapping) else {}
+    recommendations = payload.get("recommendations")
+    result: dict[str, object] = {
+        "result_id": projection.result_id,
+        "created_at": payload.get("created_at"),
+        "decision_date": context.get("as_of_date"),
+        "data_as_of_date": (
+            context.get("data_as_of_date")
+            or context.get("data_date")
+            or payload.get("data_as_of_date")
+            or payload.get("data_date")
+        ),
+        "recommendations_count": (
+            len(recommendations)
+            if isinstance(recommendations, (list, tuple))
+            else None
+        ),
+    }
+    for key in (
+        "screening_matrix_json",
+        "excluded_candidates_json",
+        "why_not_payload_json",
+        "liquidity_gate_payload_json",
+        "exclusion_quality",
+        "exclusion_warnings_json",
+    ):
+        result[key] = payload.get(key)
+    return result
+
+
+def _registered_legacy_result_path(
+    read_model: Any,
+    output_root: Path,
+) -> Path:
+    artifact_location = getattr(read_model, "artifact_location", None)
+    if isinstance(artifact_location, str) and artifact_location.strip():
+        path = Path(artifact_location)
+        if path.is_absolute():
+            return path
+        return output_root / "recommendation" / "runs" / path
+    return output_root / "recommendation" / "runs" / f"{read_model.result_id}.json"
+
+
+def _verified_legacy_result_date(
+    read_model: Any,
+    *,
+    scheduled: bool,
+) -> str | None:
+    """由 verified typed model 或 exact original projection 核對 ID 與 as-of。"""
+
+    result_id = getattr(read_model, "result_id", None)
+    if not isinstance(result_id, str):
+        return None
+    parts = result_id.split("_")
+    if scheduled:
+        if len(parts) < 4 or parts[:2] != ["scheduled", "rec"]:
+            return None
+        id_date = parts[2]
+    else:
+        if len(parts) < 3 or parts[0] != "rec":
+            return None
+        id_date = parts[1]
+    if not _valid_compact_date(id_date):
+        return None
+    if isinstance(read_model, LegacyRecommendationOriginalPayload):
+        payload = read_model.payload
+        if (
+            read_model.source != "unindexed_legacy_file"
+            or payload.get("result_id") != result_id
+        ):
+            return None
+        raw_context = payload.get("run_context")
+        context = raw_context if isinstance(raw_context, Mapping) else {}
+        content_date = _date_key(context.get("as_of_date"))
+    else:
+        legacy = getattr(read_model, "legacy_result", None)
+        if legacy is None or legacy.result_id != result_id:
+            return None
+        content_date = _date_key(legacy.run_context.get("as_of_date"))
+    if content_date != id_date:
+        return None
+    return id_date
+
+
+def _legacy_candidate_ids(output_root: Path) -> tuple[str, ...]:
+    """從既有檔名發現 exact ID；候選內容只由 query 驗證，不在此開檔。"""
+
     runs_dir = output_root / "recommendation" / "runs"
     if not runs_dir.exists():
-        return {}, None
-    candidates = sorted(runs_dir.glob(f"rec_{date_key}_*.json"), key=lambda path: path.name, reverse=True)
-    for path in candidates:
-        payload = _read_json(path, diagnostics)
-        if payload:
-            diagnostics.append(f"manual_recommendation_result_observed:{path}")
-            return payload, path
-    return {}, None
+        return ()
+    result_ids = {
+        path.stem
+        for pattern in ("rec_*.json", "scheduled_rec_*.json")
+        for path in runs_dir.glob(pattern)
+    }
+    return tuple(sorted(result_ids))
+
+
+def _registered_legacy_matches_projection(
+    read_model: Any,
+    projection: LegacyRecommendationOriginalPayload,
+) -> bool:
+    return bool(
+        read_model is not None
+        and getattr(read_model, "legacy_result", None) is not None
+        and getattr(read_model, "result_id", None) == projection.result_id
+        and getattr(read_model, "artifact_location", None) == projection.data_path
+        and getattr(read_model, "raw_artifact_sha256", None)
+        == projection.raw_artifact_sha256
+        and getattr(read_model, "integrity_basis", None) == projection.integrity_basis
+    )
+
+
+def _valid_compact_date(value: str) -> bool:
+    if len(value) != 8 or not value.isdigit():
+        return False
+    try:
+        parsed = datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return False
+    return parsed.strftime("%Y%m%d") == value
 
 
 def _scheduled_evidence_report_dates(output_root: Path) -> set[str]:

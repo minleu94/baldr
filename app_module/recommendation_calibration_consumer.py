@@ -7,15 +7,25 @@ rule-only/unavailable；不補零、不回填、不把 shadow model 變成正式
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields as dataclass_fields, replace
 from datetime import date
 from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from threading import Lock, get_ident
+from types import FunctionType
+from typing import Any, Mapping, NoReturn, Sequence, SupportsIndex
+from weakref import WeakValueDictionary
 
+import joblib
 import numpy as np
+from scipy.interpolate import interp1d as _ScipyInterp1d
+from sklearn.impute import SimpleImputer
+from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from app_module.recommendation_learning_paths import (
     resolve_recommendation_learning_paths,
@@ -25,6 +35,7 @@ from ml_module.model_artifact_manifest import FeatureSchema
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.recommendation_calibration_training import (
     RECOMMENDATION_RETURN_BASIS,
+    RunnableRecommendationCalibrationModel,
     RecommendationPrediction,
     recommendation_cost_contract_hash,
     recommendation_label_contract_id,
@@ -38,6 +49,7 @@ from ml_module.recommendation_cost_scenario import (
     RecommendationCostScenarioError,
     cost_scenario_from_metadata,
 )
+from ml_module.probability_calibration import FittedShadowProbabilityCalibrator
 from ml_module.recommendation_calibration_authority import RecommendationPromotionPolicy
 from ml_module.recommendation_probability_transform import (
     AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
@@ -57,6 +69,27 @@ from ml_module.recommendation_inference_provenance import (
     build_training_provenance,
     validate_provenance_compatibility,
     verify_inference_provenance,
+)
+
+
+_MODEL_GRAPH_SCHEMA_VERSION = "r026-known-model-graph.v1"
+_MAX_MODEL_GRAPH_DEPTH = 24
+_MAX_MODEL_GRAPH_NODES = 4096
+_MAX_MODEL_GRAPH_ARRAYS = 512
+_MAX_MODEL_GRAPH_ARRAY_BYTES = 64 * 1024 * 1024
+_MAX_MODEL_GRAPH_ARRAY_ELEMENTS = 1_000_000
+_MAX_LIVE_INVOCATION_CAPABILITIES = 16
+_VERIFIED_SCIPY_INTERP1D_CALLS = tuple(
+    candidate
+    for candidate in (
+        getattr(_ScipyInterp1d, "_call_linear_np", None),
+        getattr(_ScipyInterp1d, "_call_linear", None),
+    )
+    if type(candidate) is FunctionType
+    and candidate.__closure__ is None
+    and candidate.__defaults__ in (None, ())
+    and candidate.__kwdefaults__ is None
+    and not candidate.__dict__
 )
 
 
@@ -262,6 +295,115 @@ class RecommendationCalibrationConsumer:
         self._cost_scenario: RecommendationCostScenario | None = None
         self._pointer_stat: tuple[int, int] | None = None
         self._loaded_decision_date: str | None = None
+        self._invocation_capability_lock = Lock()
+        self._invocation_capabilities: WeakValueDictionary[
+            str, _InvocationProjectionCapability
+        ] = WeakValueDictionary()
+
+    def resolve_invocation_projection_capability(
+        self,
+        *,
+        invocation_scope_id: str,
+        decision_date: str,
+        expected_identity: Mapping[str, Any],
+    ) -> "_InvocationProjectionCapability | None":
+        """以 fresh safe-loader 解析結果建立一次性、invocation-local 投影能力。
+
+        此路徑直接讀取 pointer bytes，再建立全新 consumer 重新走
+        SafeShadowModelArtifactLoader；不依賴原 consumer 的 stat cache，也不複製其
+        model、lineage 或 mutable provenance cache。只有呼叫端先前捕獲的 identity、
+        fresh consumer identity 與 pointer bytes 前後讀值相符時才回傳能力。能力只
+        保留 fresh consumer，不能序列化、複製或重用。這是 model-resolution
+        capability，不是 pointer lease；resolve 返回後的 pointer 變更仍不在保護內。
+        """
+
+        if (
+            type(invocation_scope_id) is not str
+            or not invocation_scope_id
+            or not invocation_scope_id.isascii()
+            or any(not (char.isalnum() or char in "-_.") for char in invocation_scope_id)
+        ):
+            return None
+        current_day = _date_text_or_none(decision_date)
+        if current_day is None or not isinstance(expected_identity, Mapping):
+            return None
+        if (
+            type(self) is not RecommendationCalibrationConsumer
+            or type(self._loader) is not SafeShadowModelArtifactLoader
+            or self._loader._deserializer is not joblib.load
+        ):
+            return None
+        with self._invocation_capability_lock:
+            if invocation_scope_id in self._invocation_capabilities:
+                return None
+        try:
+            expected_hash = _hash_payload(expected_identity)
+            pointer_bytes_before = self.pointer_path.read_bytes()
+            parsed_pointer_before = json.loads(pointer_bytes_before.decode("utf-8"))
+            if not isinstance(parsed_pointer_before, Mapping):
+                return None
+
+            resolved = RecommendationCalibrationConsumer(
+                pointer_path=self.pointer_path,
+                feature_schema=self.feature_schema,
+                feature_registry_hash=self.feature_registry_hash,
+                data_root=self._loader._data_root,
+                expected_model_family=self.expected_model_family,
+            )
+            # Preserve only the loader implementation/configuration.  The newly
+            # deserialized model and every lineage model remain private to this
+            # invocation-owned consumer.
+            resolved._loader = SafeShadowModelArtifactLoader(
+                data_root=self._loader._data_root,
+                deserializer=joblib.load,
+            )
+            if resolved.reload(decision_date=current_day) != "active":
+                return None
+            pointer_bytes_after = self.pointer_path.read_bytes()
+            if pointer_bytes_after != pointer_bytes_before:
+                return None
+            if resolved._loaded_pointer != parsed_pointer_before:
+                return None
+            resolved_identity = resolved.active_identity(decision_date=current_day)
+            if resolved_identity is None or _hash_payload(resolved_identity) != expected_hash:
+                return None
+            if type(resolved._model) is not RunnableRecommendationCalibrationModel:
+                return None
+            if any(
+                type(model) is not RunnableRecommendationCalibrationModel
+                for _node, model in resolved._lineage_models
+            ):
+                return None
+            if _loaded_model_state_aliases(self, resolved):
+                return None
+            if resolved._model is None or not resolved._lineage_models:
+                return None
+            capability = _InvocationProjectionCapability(
+                owner=self,
+                resolved_consumer=resolved,
+                invocation_scope_id=invocation_scope_id,
+                decision_date=current_day,
+                identity_hash=expected_hash,
+            )
+            with self._invocation_capability_lock:
+                if invocation_scope_id in self._invocation_capabilities:
+                    return None
+                live_capabilities = tuple(self._invocation_capabilities.values())
+                if len(live_capabilities) >= _MAX_LIVE_INVOCATION_CAPABILITIES:
+                    return None
+                if any(
+                    _loaded_model_state_aliases(
+                        existing._resolved_consumer_for_isolation(), resolved
+                    )
+                    for existing in live_capabilities
+                ):
+                    return None
+                self._invocation_capabilities[invocation_scope_id] = capability
+            return capability
+        except Exception:
+            # This optional shadow capability is fail-closed.  The existing
+            # legacy projection route remains responsible for its own errors.
+            return None
 
     def reload(self, *, decision_date: str | None = None) -> str:
         """Load and validate the pointer once; return machine-readable status."""
@@ -540,13 +682,16 @@ class RecommendationCalibrationConsumer:
         decision_date: str,
         baseline_probability_bp: int = NULL_BENCHMARK_PROBABILITY_BP,
         baseline_after_cost_probability_bp: int | None = None,
+        _invocation_capability: "_InvocationProjectionCapability | None" = None,
     ) -> RecommendationPrediction | None:
         """Return the previous champion's effective, already-delivered output."""
 
         current_day = _date_text_or_none(decision_date)
         if current_day is None:
             return None
-        if (
+        if _invocation_capability is not None:
+            _invocation_capability.assert_projection_use(self, current_day)
+        elif (
             self._model is None
             or self._loaded_pointer is None
             or self._pointer_stat != _path_stat(self.pointer_path)
@@ -729,6 +874,7 @@ class RecommendationCalibrationConsumer:
         selection_score_kind: str = "rule_total_score",
         selection_percentile_kind: str = "rule_percentile",
         top_n_changed_by_model: bool = False,
+        _invocation_capability: "_InvocationProjectionCapability | None" = None,
     ) -> RecommendationCalibrationProjection:
         current_day = _date_text_or_none(decision_date)
         if current_day is None:
@@ -737,7 +883,10 @@ class RecommendationCalibrationConsumer:
                 warning="decision_date_invalid_fail_closed",
                 ranking_percentile_bp=ranking_percentile_bp,
             )
-        if (
+        if _invocation_capability is not None:
+            _invocation_capability.assert_projection_use(self, current_day)
+            _reject_capability_source_contract_binding(inference_provenance)
+        elif (
             self._model is None
             or self._loaded_pointer is None
             or self._pointer_stat != _path_stat(self.pointer_path)
@@ -865,6 +1014,7 @@ class RecommendationCalibrationConsumer:
             decision_date=current_day,
             baseline_probability_bp=rule_probability_bp,
             baseline_after_cost_probability_bp=after_cost_rule_probability_bp,
+            _invocation_capability=_invocation_capability,
         )
         if baseline_prediction is not None and baseline_prediction.calibrated_probability_bp is not None:
             baseline_kind = "active_model_previous_champion"
@@ -1012,7 +1162,11 @@ class RecommendationCalibrationConsumer:
         selection_score_kind: str = "rule_total_score",
         selection_percentile_kind: str = "rule_percentile",
         top_n_changed_by_model: bool = False,
+        _invocation_capability: "_InvocationProjectionCapability | None" = None,
     ) -> dict[str, RecommendationCalibrationProjection]:
+        if _invocation_capability is not None:
+            _invocation_capability.assert_projection_use(self, decision_date)
+            _reject_capability_source_contract_binding(inference_provenance)
         percentiles = ranking_percentile_by_symbol or {}
         after_cost_baselines = after_cost_rule_probability_by_symbol or {}
         after_cost_baseline_ids = after_cost_rule_baseline_id_by_symbol or {}
@@ -1033,9 +1187,568 @@ class RecommendationCalibrationConsumer:
                 selection_score_kind=selection_score_kind,
                 selection_percentile_kind=selection_percentile_kind,
                 top_n_changed_by_model=top_n_changed_by_model,
+                _invocation_capability=_invocation_capability,
             )
             for symbol in symbols
         }
+
+
+class _InvocationProjectionCapability:
+    """不可複製、一次性持有 fresh model/lineage 的私有投影能力。"""
+
+    __slots__ = (
+        "__weakref__",
+        "__owner",
+        "__resolved_consumer",
+        "__invocation_scope_id",
+        "__decision_date",
+        "__identity_hash",
+        "__lock",
+        "__used",
+        "__active_thread",
+    )
+
+    def __init__(
+        self,
+        *,
+        owner: RecommendationCalibrationConsumer,
+        resolved_consumer: RecommendationCalibrationConsumer,
+        invocation_scope_id: str,
+        decision_date: str,
+        identity_hash: str,
+    ) -> None:
+        self.__owner = owner
+        self.__resolved_consumer = resolved_consumer
+        self.__invocation_scope_id = invocation_scope_id
+        self.__decision_date = decision_date
+        self.__identity_hash = identity_hash
+        self.__lock = Lock()
+        self.__used = False
+        self.__active_thread: int | None = None
+
+    def __repr__(self) -> str:
+        return "<invocation-local calibration projection capability>"
+
+    def __copy__(self) -> Any:
+        raise TypeError("invocation projection capability cannot be copied")
+
+    def __deepcopy__(self, _memo: dict[int, Any]) -> Any:
+        raise TypeError("invocation projection capability cannot be copied")
+
+    def __reduce_ex__(self, _protocol: SupportsIndex) -> Any:
+        raise TypeError("invocation projection capability cannot be serialized")
+
+    def project_many(
+        self,
+        *,
+        owner: RecommendationCalibrationConsumer,
+        invocation_scope_id: str,
+        expected_identity: Mapping[str, Any],
+        feature_values_by_symbol: Mapping[str, Sequence[int | None]],
+        rule_probability_by_symbol: Mapping[str, int],
+        decision_date: str,
+        after_cost_rule_probability_by_symbol: Mapping[str, int] | None = None,
+        after_cost_rule_baseline_id_by_symbol: Mapping[str, str] | None = None,
+        rule_baseline_id: str = NULL_BENCHMARK_BASELINE_ID,
+        ranking_percentile_by_symbol: Mapping[str, int] | None = None,
+        data_quality: str = "observed",
+        inference_provenance: Mapping[str, Any] | None = None,
+        selection_authority: str = "rule_top_n",
+        selection_score_kind: str = "rule_total_score",
+        selection_percentile_kind: str = "rule_percentile",
+        top_n_changed_by_model: bool = False,
+    ) -> dict[str, RecommendationCalibrationProjection]:
+        current_day = _date_text_or_none(decision_date)
+        try:
+            supplied_identity_hash = _hash_payload(expected_identity)
+        except Exception as exc:
+            raise ValueError("invocation capability identity is invalid") from exc
+        with self.__lock:
+            if self.__used:
+                raise RuntimeError("invocation projection capability is already consumed")
+            if owner is not self.__owner:
+                raise ValueError("invocation capability belongs to a different consumer")
+            if (
+                invocation_scope_id != self.__invocation_scope_id
+                or current_day != self.__decision_date
+                or supplied_identity_hash != self.__identity_hash
+            ):
+                raise ValueError("invocation capability scope or identity mismatch")
+            _reject_capability_source_contract_binding(inference_provenance)
+            self.__used = True
+            self.__active_thread = get_ident()
+
+        try:
+            return self.__resolved_consumer.project_many(
+                feature_values_by_symbol=feature_values_by_symbol,
+                rule_probability_by_symbol=rule_probability_by_symbol,
+                decision_date=self.__decision_date,
+                after_cost_rule_probability_by_symbol=after_cost_rule_probability_by_symbol,
+                after_cost_rule_baseline_id_by_symbol=after_cost_rule_baseline_id_by_symbol,
+                rule_baseline_id=rule_baseline_id,
+                ranking_percentile_by_symbol=ranking_percentile_by_symbol,
+                data_quality=data_quality,
+                inference_provenance=inference_provenance,
+                selection_authority=selection_authority,
+                selection_score_kind=selection_score_kind,
+                selection_percentile_kind=selection_percentile_kind,
+                top_n_changed_by_model=top_n_changed_by_model,
+                _invocation_capability=self,
+            )
+        finally:
+            with self.__lock:
+                self.__active_thread = None
+
+    def _resolved_consumer_for_isolation(self) -> RecommendationCalibrationConsumer:
+        """Return the private resolved graph only to the capability owner."""
+
+        return self.__resolved_consumer
+
+    def assert_projection_use(
+        self,
+        consumer: RecommendationCalibrationConsumer,
+        decision_date: str,
+    ) -> None:
+        if (
+            consumer is not self.__resolved_consumer
+            or _date_text_or_none(decision_date) != self.__decision_date
+            or self.__active_thread != get_ident()
+        ):
+            raise ValueError("invocation capability is not active for this projection")
+
+
+def _reject_capability_source_contract_binding(
+    inference_provenance: Mapping[str, Any] | None,
+) -> None:
+    """Keep the capability profile free of provenance-time filesystem reads."""
+
+    if (
+        inference_provenance is not None
+        and inference_provenance.get("source_contract_binding") is not None
+    ):
+        raise ValueError(
+            "invocation capability does not support filesystem-bound source contracts"
+        )
+
+
+def _loaded_model_state_roots(
+    consumer: RecommendationCalibrationConsumer,
+) -> tuple[Any, ...]:
+    """Return the complete known mutable model and lineage state roots."""
+
+    return (
+        consumer._model,
+        consumer._baseline_model,
+        consumer._lineage_models,
+        consumer._probability_lineage,
+        consumer._loaded_pointer,
+        consumer._baseline_identity,
+        consumer._training_provenance,
+    )
+
+
+@dataclass(frozen=True)
+class _LoadedModelGraphSnapshot:
+    schema_version: str
+    mutable_object_ids: frozenset[int]
+    arrays: tuple[np.ndarray, ...]
+
+
+class _UnsupportedKnownModelGraph(ValueError):
+    """The loaded graph is outside the bounded production allowlist."""
+
+
+def _loaded_model_graph_snapshot(
+    consumer: RecommendationCalibrationConsumer,
+) -> _LoadedModelGraphSnapshot:
+    """Collect an exact-type, bounded snapshot of known mutable model state.
+
+    The allowlist is deliberately version-sensitive.  New estimator classes,
+    fitted fields, callables, object arrays, cycles, or oversized graphs make
+    this optional capability unavailable instead of silently widening it.
+    """
+
+    mutable_ids: set[int] = set()
+    arrays: list[np.ndarray] = []
+    visited: set[int] = set()
+    active: set[int] = set()
+    node_count = 0
+    total_array_bytes = 0
+
+    def reject(message: str) -> NoReturn:
+        raise _UnsupportedKnownModelGraph(message)
+
+    def attrs_for(
+        value: Any,
+        *,
+        allowed: frozenset[str],
+        required: frozenset[str],
+        exact: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            attrs = vars(value)
+        except TypeError as exc:
+            raise _UnsupportedKnownModelGraph("known node has no supported instance state") from exc
+        if type(attrs) is not dict:
+            reject("known node state is not a plain dict")
+        keys = frozenset(attrs)
+        if not required.issubset(keys) or not keys.issubset(allowed):
+            reject("known node fields do not match the versioned allowlist")
+        if exact and keys != allowed:
+            reject("known node is missing a required allowlisted field")
+        return attrs
+
+    def dataclass_attrs(value: Any, expected_type: type[Any]) -> dict[str, Any]:
+        if type(value) is not expected_type:
+            reject("model or calibrator class is not the exact supported type")
+        expected_fields = frozenset(field.name for field in dataclass_fields(expected_type))
+        attrs = attrs_for(
+            value,
+            allowed=expected_fields,
+            required=expected_fields,
+            exact=True,
+        )
+        return attrs
+
+    def pipeline_attrs(value: Any, *, final_type: type[Any]) -> dict[str, Any]:
+        if type(value) is not Pipeline:
+            reject("model component is not the exact sklearn Pipeline type")
+        attrs = attrs_for(
+            value,
+            allowed=frozenset({"memory", "steps", "transform_input", "verbose"}),
+            required=frozenset({"memory", "steps", "transform_input", "verbose"}),
+            exact=True,
+        )
+        steps = attrs["steps"]
+        if type(steps) is not list or len(steps) != 3:
+            reject("Pipeline layout is outside the fitted recommendation profile")
+        step_names: list[Any] = []
+        for step in steps:
+            if type(step) is not tuple or len(step) != 2:
+                reject("Pipeline step is outside the fitted recommendation profile")
+            step_names.append(step[0])
+        if (
+            tuple(step_names) != ("imputer", "scaler", "model")
+            or type(steps[0][1]) is not SimpleImputer
+            or type(steps[1][1]) is not StandardScaler
+            or type(steps[2][1]) is not final_type
+            or attrs["memory"] is not None
+            or attrs["transform_input"] is not None
+            or type(attrs["verbose"]) is not bool
+        ):
+            reject("Pipeline layout is outside the fitted recommendation profile")
+        return attrs
+
+    def known_children(value: Any) -> tuple[Any, ...] | None:
+        value_type = type(value)
+        if value_type is RunnableRecommendationCalibrationModel:
+            attrs = dataclass_attrs(value, RunnableRecommendationCalibrationModel)
+            if (
+                type(attrs["return_model"]) is not Pipeline
+                or type(attrs["upside_model"]) is not Pipeline
+                or type(attrs["upside_calibrator"])
+                is not FittedShadowProbabilityCalibrator
+                or (
+                    attrs["after_cost_model"] is not None
+                    and type(attrs["after_cost_model"]) is not Pipeline
+                )
+                or (
+                    attrs["after_cost_calibrator"] is not None
+                    and type(attrs["after_cost_calibrator"])
+                    is not FittedShadowProbabilityCalibrator
+                )
+            ):
+                reject("recommendation model component graph has an unknown shape")
+            pipeline_attrs(attrs["return_model"], final_type=Ridge)
+            pipeline_attrs(attrs["upside_model"], final_type=LogisticRegression)
+            if attrs["after_cost_model"] is not None:
+                pipeline_attrs(attrs["after_cost_model"], final_type=LogisticRegression)
+            return tuple(attrs.values())
+
+        if value_type is FittedShadowProbabilityCalibrator:
+            attrs = dataclass_attrs(value, FittedShadowProbabilityCalibrator)
+            if type(attrs["estimator"]) is not IsotonicRegression:
+                reject("calibrator estimator is outside the supported type")
+            return tuple(attrs.values())
+
+        if value_type is Pipeline:
+            attrs = attrs_for(
+                value,
+                allowed=frozenset({"memory", "steps", "transform_input", "verbose"}),
+                required=frozenset({"memory", "steps", "transform_input", "verbose"}),
+                exact=True,
+            )
+            return tuple(attrs.values())
+
+        estimator_fields: dict[type[Any], tuple[frozenset[str], frozenset[str]]] = {
+            SimpleImputer: (
+                frozenset(
+                    {
+                        "missing_values",
+                        "add_indicator",
+                        "keep_empty_features",
+                        "strategy",
+                        "fill_value",
+                        "copy",
+                        "n_features_in_",
+                        "_fit_dtype",
+                        "_fill_dtype",
+                        "indicator_",
+                        "statistics_",
+                    }
+                ),
+                frozenset({"indicator_", "statistics_", "n_features_in_"}),
+            ),
+            StandardScaler: (
+                frozenset(
+                    {
+                        "with_mean",
+                        "with_std",
+                        "copy",
+                        "n_features_in_",
+                        "n_samples_seen_",
+                        "mean_",
+                        "var_",
+                        "scale_",
+                    }
+                ),
+                frozenset(
+                    {
+                        "n_features_in_",
+                        "n_samples_seen_",
+                        "mean_",
+                        "var_",
+                        "scale_",
+                    }
+                ),
+            ),
+            Ridge: (
+                frozenset(
+                    {
+                        "alpha",
+                        "fit_intercept",
+                        "copy_X",
+                        "max_iter",
+                        "tol",
+                        "solver",
+                        "positive",
+                        "random_state",
+                        "n_features_in_",
+                        "coef_",
+                        "n_iter_",
+                        "solver_",
+                        "intercept_",
+                    }
+                ),
+                frozenset({"n_features_in_", "coef_", "intercept_"}),
+            ),
+            LogisticRegression: (
+                frozenset(
+                    {
+                        "penalty",
+                        "C",
+                        "l1_ratio",
+                        "dual",
+                        "tol",
+                        "fit_intercept",
+                        "intercept_scaling",
+                        "class_weight",
+                        "random_state",
+                        "solver",
+                        "max_iter",
+                        "verbose",
+                        "warm_start",
+                        "n_jobs",
+                        "n_features_in_",
+                        "classes_",
+                        "n_iter_",
+                        "coef_",
+                        "intercept_",
+                    }
+                ),
+                frozenset(
+                    {
+                        "n_features_in_",
+                        "classes_",
+                        "n_iter_",
+                        "coef_",
+                        "intercept_",
+                    }
+                ),
+            ),
+        }
+        field_profile = estimator_fields.get(value_type)
+        if field_profile is not None:
+            attrs = attrs_for(
+                value,
+                allowed=field_profile[0],
+                required=field_profile[1],
+            )
+            if value_type is SimpleImputer and attrs.get("indicator_") is not None:
+                reject("SimpleImputer indicator graph is outside the supported profile")
+            return tuple(attrs.values())
+
+        if value_type is IsotonicRegression:
+            attrs = attrs_for(
+                value,
+                allowed=frozenset(
+                    {
+                        "y_min",
+                        "y_max",
+                        "increasing",
+                        "out_of_bounds",
+                        "increasing_",
+                        "X_min_",
+                        "X_max_",
+                        "X_thresholds_",
+                        "y_thresholds_",
+                        "f_",
+                    }
+                ),
+                required=frozenset(
+                    {"X_min_", "X_max_", "X_thresholds_", "y_thresholds_", "f_"}
+                ),
+            )
+            if type(attrs["f_"]) is not _ScipyInterp1d:
+                reject("isotonic interpolation function is outside the supported type")
+            return tuple(attrs.values())
+
+        if value_type is _ScipyInterp1d:
+            attrs = attrs_for(
+                value,
+                allowed=frozenset(
+                    {
+                        "bounds_error",
+                        "copy",
+                        "axis",
+                        "y",
+                        "_y",
+                        "x",
+                        "_kind",
+                        "_call",
+                        "_fill_value_below",
+                        "_fill_value_above",
+                        "_extrapolate",
+                        "_fill_value_orig",
+                    }
+                ),
+                required=frozenset({"x", "y", "_y", "_call"}),
+            )
+            call = attrs["_call"]
+            if (
+                type(call) is not FunctionType
+                or not any(
+                    call is candidate for candidate in _VERIFIED_SCIPY_INTERP1D_CALLS
+                )
+                or call.__closure__ is not None
+                or call.__defaults__ not in (None, ())
+                or call.__kwdefaults__ is not None
+                or bool(call.__dict__)
+            ):
+                reject("interpolation callable is outside the immutable allowlist")
+            return tuple(value for name, value in attrs.items() if name != "_call")
+
+        return None
+
+    def walk(value: Any, *, depth: int) -> None:
+        nonlocal node_count, total_array_bytes
+        node_count += 1
+        if node_count > _MAX_MODEL_GRAPH_NODES or depth > _MAX_MODEL_GRAPH_DEPTH:
+            reject("model graph exceeded its node or depth budget")
+
+        if value is None or type(value) in (bool, int, float, str, bytes, Decimal):
+            return
+        if isinstance(value, np.dtype):
+            return
+        if isinstance(value, np.generic):
+            if value.dtype.kind not in "biufcUS":
+                reject("numpy scalar dtype is outside the immutable allowlist")
+            return
+
+        value_type = type(value)
+        known_object = False
+        if value_type not in (np.ndarray, list, dict, tuple):
+            children = known_children(value)
+            if children is None:
+                reject("model graph contains an unknown object type")
+            known_object = True
+        elif value_type is np.ndarray:
+            if (
+                value.dtype.kind not in "biufc"
+                or value.dtype.hasobject
+                or value.dtype.fields is not None
+                or value.ndim > 2
+                or value.size > _MAX_MODEL_GRAPH_ARRAY_ELEMENTS
+            ):
+                reject("numpy array dtype or shape is outside the supported profile")
+            total_array_bytes += value.nbytes
+            if (
+                len(arrays) >= _MAX_MODEL_GRAPH_ARRAYS
+                or total_array_bytes > _MAX_MODEL_GRAPH_ARRAY_BYTES
+            ):
+                reject("model graph exceeded its array budget")
+            children = ()
+            arrays.append(value)
+        elif value_type is list:
+            children = tuple(value)
+        elif value_type is tuple:
+            children = value
+        else:
+            children = tuple(item for pair in value.items() for item in pair)
+
+        identity = id(value)
+        if identity in active:
+            reject("model graph contains a cycle")
+        if identity in visited:
+            return
+        visited.add(identity)
+        active.add(identity)
+        if value_type in (np.ndarray, list, dict) or known_object:
+            mutable_ids.add(identity)
+        try:
+            for child in children:
+                walk(child, depth=depth + 1)
+            if value_type is np.ndarray and value.base is not None:
+                if type(value.base) is not np.ndarray:
+                    if type(value.base) is not bytes:
+                        reject("numpy array has an unsupported backing owner")
+                else:
+                    walk(value.base, depth=depth + 1)
+        finally:
+            active.remove(identity)
+
+    for root in _loaded_model_state_roots(consumer):
+        walk(root, depth=0)
+    return _LoadedModelGraphSnapshot(
+        schema_version=_MODEL_GRAPH_SCHEMA_VERSION,
+        mutable_object_ids=frozenset(mutable_ids),
+        arrays=tuple(arrays),
+    )
+
+
+def _loaded_model_state_aliases(
+    source: RecommendationCalibrationConsumer,
+    fresh: RecommendationCalibrationConsumer,
+) -> bool:
+    """Fail closed on unsupported graphs or shared mutable model/lineage state."""
+
+    try:
+        source_graph = _loaded_model_graph_snapshot(source)
+        fresh_graph = _loaded_model_graph_snapshot(fresh)
+    except Exception:
+        return True
+    if source_graph.schema_version != fresh_graph.schema_version:
+        return True
+    if source_graph.mutable_object_ids & fresh_graph.mutable_object_ids:
+        return True
+    try:
+        for source_array in source_graph.arrays:
+            for fresh_array in fresh_graph.arrays:
+                if np.shares_memory(source_array, fresh_array, max_work=10_000):
+                    return True
+    except Exception:
+        return True
+    return False
 
 
 def _legacy_training_provenance(reason: str) -> dict[str, Any]:

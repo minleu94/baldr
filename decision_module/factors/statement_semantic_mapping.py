@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Iterable
 
-from data_module.fundamental_statement_data import StatementItemRecord
+from data_module.contracts.statement import StatementItemRecord
 from decision_module.factors.factor_dtos import FactorDiagnostic
 
 

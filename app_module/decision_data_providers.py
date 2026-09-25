@@ -73,7 +73,7 @@ def industry_index_frame_provider(config: Any) -> SqliteFirstFrameProvider:
 
 def recent_stock_screen_provider(config: Any) -> Callable[[str, int], Any]:
     """建立 StockScreener recent stock frame adapter。"""
-    from decision_module.stock_screener_sqlite_reader import load_recent_stock_prices
+    from data_module.stock_screener_reader import load_recent_stock_prices
 
     return lambda period, volume_lookback: load_recent_stock_prices(
         config, period, volume_lookback
@@ -82,6 +82,22 @@ def recent_stock_screen_provider(config: Any) -> Callable[[str, int], Any]:
 
 def recent_industry_screen_provider(config: Any) -> Callable[[str], Any]:
     """建立 StockScreener recent industry frame adapter。"""
-    from decision_module.stock_screener_sqlite_reader import load_recent_industry_indices
+    from data_module.stock_screener_reader import load_recent_industry_indices
 
     return lambda period: load_recent_industry_indices(config, period)
+
+
+def stock_screen_fallback_provider(config: Any) -> Callable[..., Any]:
+    """建立強弱勢個股的唯讀 legacy fallback adapter。"""
+    from data_module.stock_screener_reader import load_stock_fallback_frames
+
+    return lambda period, direction, start_date, days_back: load_stock_fallback_frames(
+        config, period, direction, start_date, days_back
+    )
+
+
+def industry_screen_fallback_provider(config: Any) -> Callable[..., Any]:
+    """建立強弱勢產業的唯讀 legacy fallback adapter。"""
+    from data_module.stock_screener_reader import load_industry_fallback_frame
+
+    return lambda direction: load_industry_fallback_frame(config, direction)

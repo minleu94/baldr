@@ -26,15 +26,36 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import tempfile
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    IndexStatus,
+    RecommendationConfigSnapshot,
+    RecommendationExecution,
+    RecommendationResultConfigSnapshot,
+    RecommendationRunEvidenceIdentity,
+    RecommendationUniverseIdentity,
+    SaveReceipt,
+    SnapshotCohort,
+    StrategyConfigIdentity,
+    _validate_result_config_context_overlap,
+)
+from app_module.recommendation.codec import (
+    ExecutionCodecError,
+    decode_execution_envelope,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.position_thesis_contract import PositionInvalidationRule
 from data_module.official_trading_calendar import OfficialTradingCalendar
 from data_module.official_trading_calendar_cache import (
     OFFICIAL_CALENDAR_CACHE_SCHEMA_VERSION,
 )
+from data_module.result_artifact_store import ResultArtifactStore
+from decision_module.recommendation.contracts import RecommendationItem
 
 
 UTC = timezone.utc
@@ -90,6 +111,13 @@ class _RecommendationSource:
     created_at: datetime
     available_at: datetime
     config_sha256: str
+    payload_hash: str | None = None
+    request_config_sha256: str | None = None
+    strategy_config_hash: str | None = None
+    request_as_of_date: date | None = None
+    request_max_stocks: int | None = None
+    request_top_n: int | None = None
+    allow_float_scores: bool = True
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -194,6 +222,207 @@ def _read_json_with_hash(path: Path, field_name: str) -> tuple[dict[str, Any], s
     if not isinstance(payload, Mapping):
         raise ForwardPositionThesisError(f"{field_name}_must_be_object")
     return dict(payload), _sha256_bytes(before)
+
+
+def _is_symlink_or_reparse(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise ForwardPositionThesisError("recommendation_artifact_path_unreadable") from exc
+    if path.is_symlink():
+        return True
+    if os.name == "nt":
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
+        return bool(getattr(metadata, "st_file_attributes", 0) & reparse_flag)
+    return False
+
+
+def _read_canonical_execution_artifact(
+    path_value: str | Path,
+    *,
+    result_id: str,
+    artifact_location: str,
+) -> tuple[Path, bytes, str]:
+    """驗證 U4 canonical execution artifact 的固定路徑並讀取原始 bytes。"""
+
+    input_path = Path(path_value).expanduser()
+    if not input_path.is_absolute() or ".." in input_path.parts:
+        raise ForwardPositionThesisError("recommendation_artifact_path_not_canonical")
+    try:
+        absolute_path = Path(os.path.abspath(input_path))
+        canonical_path = absolute_path.resolve(strict=True)
+    except OSError as exc:
+        raise ForwardPositionThesisError("recommendation_artifact_path_unreadable") from exc
+    if canonical_path != absolute_path:
+        raise ForwardPositionThesisError("recommendation_artifact_path_not_canonical")
+
+    chain = (canonical_path, *canonical_path.parents)
+    if any(_is_symlink_or_reparse(part) for part in chain):
+        raise ForwardPositionThesisError("recommendation_artifact_path_reparse")
+    try:
+        file_info = canonical_path.lstat()
+        if not stat.S_ISREG(file_info.st_mode):
+            raise ForwardPositionThesisError("recommendation_artifact_not_regular_file")
+        if (
+            canonical_path.parent.name != "execution_artifacts"
+            or canonical_path.parent.parent.name != "runs"
+        ):
+            raise ForwardPositionThesisError("recommendation_artifact_path_layout_invalid")
+        expected_name = ResultArtifactStore.artifact_name_for(result_id)
+        if (
+            artifact_location != expected_name
+            or Path(artifact_location).name != artifact_location
+            or canonical_path.name != artifact_location
+        ):
+            raise ForwardPositionThesisError("recommendation_artifact_location_mismatch")
+        before = canonical_path.read_bytes()
+        after_info = canonical_path.lstat()
+        after = canonical_path.read_bytes()
+    except ForwardPositionThesisError:
+        raise
+    except OSError as exc:
+        raise ForwardPositionThesisError("recommendation_artifact_unreadable") from exc
+    if (
+        before != after
+        or file_info.st_dev != after_info.st_dev
+        or file_info.st_ino != after_info.st_ino
+    ):
+        raise ForwardPositionThesisError("recommendation_artifact_changed_during_read")
+    return canonical_path, before, _sha256_bytes(before)
+
+
+def _typed_numeric_text(value: object, field_name: str) -> str:
+    """將 RecommendationItem 的 Decimal/int 數值明確投影為文字。"""
+
+    if type(value) not in (Decimal, int):
+        raise ForwardPositionThesisError(f"{field_name}_must_be_decimal_or_int")
+    return _decimal_text(str(value), field_name)
+
+
+def _recommendation_item_packet_row(item: object, row_number: int) -> dict[str, Any]:
+    """只把封存推薦列映射到既有 packet builder 所讀取的欄位。"""
+
+    if type(item) is not RecommendationItem:
+        raise ForwardPositionThesisError(
+            f"recommendation_row_{row_number}_must_be_typed_recommendation_item"
+        )
+    typed_item = cast(RecommendationItem, item)
+    if typed_item.industry is None or not typed_item.industry.strip():
+        raise ForwardPositionThesisError(
+            f"recommendation_row_{row_number}_industry_missing"
+        )
+    if typed_item.reason_text is None or not typed_item.reason_text.strip():
+        raise ForwardPositionThesisError(
+            f"recommendation_row_{row_number}_reason_text_missing"
+        )
+    if typed_item.rank is not None and typed_item.rank != row_number:
+        raise ForwardPositionThesisError(
+            f"recommendation_row_{row_number}_rank_mismatch"
+        )
+
+    score_fields = (
+        ("close_price", typed_item.close_price),
+        ("price_change", typed_item.price_change),
+        ("total_score", typed_item.rule_score),
+        ("indicator_score", typed_item.indicator_score),
+        ("pattern_score", typed_item.pattern_score),
+        ("volume_score", typed_item.volume_score),
+    )
+    row: dict[str, Any] = {
+        "stock_code": typed_item.stock_code,
+        "stock_name": typed_item.stock_name or "",
+        "industry": typed_item.industry,
+        "recommendation_reasons": typed_item.reason_text,
+    }
+    for field_name, value in score_fields:
+        row[field_name] = _typed_numeric_text(
+            value, f"recommendation_row_{row_number}_{field_name}"
+        )
+    if typed_item.regime_match is not None:
+        row["regime_match"] = typed_item.regime_match
+    if typed_item.threshold_mode is not None:
+        row["threshold_mode"] = typed_item.threshold_mode
+    return row
+
+
+def _recommendation_source_to_dict(source: _RecommendationSource) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "result_id": source.result_id,
+        "path": str(source.path),
+        "file_sha256": source.file_sha256,
+        "content_sha256": source.content_sha256,
+        "created_at": source.created_at.isoformat(),
+        "available_at": source.available_at.isoformat(),
+        "decision_at": source.decision_at.isoformat(),
+        "decision_date": source.decision_date.isoformat(),
+        "config_sha256": source.config_sha256,
+    }
+    if source.payload_hash is not None:
+        result.update(
+            {
+                "payload_hash": source.payload_hash,
+                "request_raw_config_sha256": source.request_config_sha256,
+                "request_as_of_date": (
+                    None
+                    if source.request_as_of_date is None
+                    else source.request_as_of_date.isoformat()
+                ),
+                "request_max_stocks": source.request_max_stocks,
+                "request_top_n": source.request_top_n,
+                "strategy_config_hash": source.strategy_config_hash,
+            }
+        )
+    return result
+
+
+def _recommendation_receipt_source_to_dict(
+    source: _RecommendationSource,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "path": str(source.path),
+        "file_sha256": source.file_sha256,
+        "content_sha256": source.content_sha256,
+        "created_at": source.created_at.isoformat(),
+        "available_at": source.available_at.isoformat(),
+        "decision_date": source.decision_date.isoformat(),
+        "config_sha256": source.config_sha256,
+    }
+    if source.payload_hash is not None:
+        result.update(
+            {
+                "payload_hash": source.payload_hash,
+                "request_raw_config_sha256": source.request_config_sha256,
+                "request_as_of_date": (
+                    None
+                    if source.request_as_of_date is None
+                    else source.request_as_of_date.isoformat()
+                ),
+                "request_max_stocks": source.request_max_stocks,
+                "request_top_n": source.request_top_n,
+                "strategy_config_hash": source.strategy_config_hash,
+            }
+        )
+    return result
+
+
+def _recommendation_source_trace(source: _RecommendationSource) -> list[str]:
+    trace = [
+        f"recommendation:{source.result_id}",
+        f"recommendation_source_hash:{source.file_sha256}",
+        f"recommendation_config_hash:{source.config_sha256}",
+    ]
+    if source.payload_hash is not None:
+        trace.extend(
+            (
+                f"recommendation_artifact_file_sha256:{source.file_sha256}",
+                f"recommendation_content_sha256:{source.content_sha256}",
+                f"recommendation_payload_hash:{source.payload_hash}",
+                f"recommendation_request_raw_config_sha256:{source.request_config_sha256}",
+                f"recommendation_strategy_config_hash:{source.strategy_config_hash}",
+                f"recommendation_result_config_sha256:{source.config_sha256}",
+            )
+        )
+    return trace
 
 
 def _read_file_hash(path: Path, field_name: str) -> str:
@@ -418,6 +647,71 @@ class ForwardPositionThesisCandidateProducer:
                 source_path=source_path,
             )
 
+        return self._produce_source(
+            source=source,
+            recommendations=source.payload.get("recommendations"),
+            policy_path=policy_path,
+            operation="produce",
+        )
+
+    def produce_verified_read(
+        self,
+        read_model: RecommendationExecutionReadModel,
+        save_receipt: SaveReceipt,
+        *,
+        source_artifact_path: str | Path,
+        policy_path: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """只從已 create-only 保存且 U4 query readback 的 rev2 execution 建立候選。"""
+
+        # Keep a safe display path if a malformed caller value cannot be
+        # converted; the public typed seam must fail closed rather than leak
+        # an exception before its blocked receipt is recorded.
+        source_path = Path(".")
+        try:
+            source_path = Path(source_artifact_path).expanduser()
+            source, recommendations = self._parse_verified_read(
+                read_model=read_model,
+                save_receipt=save_receipt,
+                source_artifact_path=source_artifact_path,
+            )
+        except (ForwardPositionThesisError, OSError, TypeError, ValueError) as exc:
+            return self._blocked_result(
+                operation="produce_verified_read",
+                blockers=(
+                    f"recommendation_source_blocked:{type(exc).__name__}:{exc}",
+                ),
+                source_path=source_path,
+                source_hash=(
+                    read_model.raw_artifact_sha256
+                    if isinstance(read_model, RecommendationExecutionReadModel)
+                    and _is_sha256(read_model.raw_artifact_sha256)
+                    else None
+                ),
+                result_id=(
+                    read_model.result_id
+                    if isinstance(read_model, RecommendationExecutionReadModel)
+                    and read_model.execution is not None
+                    else None
+                ),
+            )
+        return self._produce_source(
+            source=source,
+            recommendations=recommendations,
+            policy_path=policy_path,
+            operation="produce_verified_read",
+        )
+
+    def _produce_source(
+        self,
+        *,
+        source: _RecommendationSource,
+        recommendations: object,
+        policy_path: str | Path | None,
+        operation: str,
+    ) -> dict[str, Any]:
+        """將已驗證來源交給共用 packet builder，保留既有封包規則。"""
+
         policy: _PolicySnapshot | None = None
         policy_error: str | None = None
         if policy_path is not None:
@@ -437,7 +731,7 @@ class ForwardPositionThesisCandidateProducer:
 
         if policy_error is not None:
             return self._blocked_result(
-                operation="produce",
+                operation=operation,
                 blockers=(policy_error,),
                 source_path=source.path,
                 source_hash=source.file_sha256,
@@ -445,10 +739,9 @@ class ForwardPositionThesisCandidateProducer:
                 decision_date=source.decision_date.isoformat(),
             )
 
-        recommendations = source.payload.get("recommendations")
         if not isinstance(recommendations, list):
             return self._blocked_result(
-                operation="produce",
+                operation=operation,
                 blockers=("recommendations_must_be_list",),
                 source_path=source.path,
                 source_hash=source.file_sha256,
@@ -468,7 +761,7 @@ class ForwardPositionThesisCandidateProducer:
                 )
             except (ForwardPositionThesisError, TypeError, ValueError) as exc:
                 return self._blocked_result(
-                    operation="produce",
+                    operation=operation,
                     blockers=(
                         f"recommendation_row_{rank}_blocked:{type(exc).__name__}:{exc}",
                     ),
@@ -505,20 +798,12 @@ class ForwardPositionThesisCandidateProducer:
             overall = "degraded"
         receipt = {
             "schema_version": SCHEMA_VERSION,
-            "operation": "produce",
+            "operation": operation,
             "status": overall,
             "result_id": source.result_id,
             "decision_date": source.decision_date.isoformat(),
             "decision_at": source.decision_at.isoformat(),
-            "recommendation_source": {
-                "path": str(source.path),
-                "file_sha256": source.file_sha256,
-                "content_sha256": source.content_sha256,
-                "created_at": source.created_at.isoformat(),
-                "available_at": source.available_at.isoformat(),
-                "decision_date": source.decision_date.isoformat(),
-                "config_sha256": source.config_sha256,
-            },
+            "recommendation_source": _recommendation_receipt_source_to_dict(source),
             "policy": _policy_to_dict(policy),
             "candidate_count": len(packets),
             "candidates": packets,
@@ -584,6 +869,182 @@ class ForwardPositionThesisCandidateProducer:
             }
         self._persist_binding_receipt(result)
         return result
+
+    def _parse_verified_read(
+        self,
+        *,
+        read_model: RecommendationExecutionReadModel,
+        save_receipt: SaveReceipt,
+        source_artifact_path: str | Path,
+    ) -> tuple[_RecommendationSource, list[dict[str, Any]]]:
+        if type(read_model) is not RecommendationExecutionReadModel:
+            raise ForwardPositionThesisError("recommendation_read_model_type_invalid")
+        if type(save_receipt) is not SaveReceipt:
+            raise ForwardPositionThesisError("recommendation_save_receipt_type_invalid")
+        if read_model.execution is None or read_model.legacy_result is not None:
+            raise ForwardPositionThesisError("recommendation_read_model_not_canonical_execution")
+        execution = read_model.execution
+        if type(execution) is not RecommendationExecution:
+            raise ForwardPositionThesisError("recommendation_execution_type_invalid")
+        if execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
+            raise ForwardPositionThesisError("recommendation_execution_not_completed")
+        if read_model.integrity_basis != "canonical_payload_and_index_verified":
+            raise ForwardPositionThesisError("recommendation_read_integrity_not_canonical")
+        if (
+            read_model.schema_version != RecommendationExecution.schema_version
+            or read_model.schema_revision != 2
+            or save_receipt.schema_version != RecommendationExecution.schema_version
+            or save_receipt.schema_revision != 2
+        ):
+            raise ForwardPositionThesisError("recommendation_execution_revision_not_rev2")
+        if save_receipt.index_status is not IndexStatus.INDEXED:
+            raise ForwardPositionThesisError("recommendation_save_receipt_not_indexed")
+        if read_model.result_id != execution.result_id or save_receipt.result_id != execution.result_id:
+            raise ForwardPositionThesisError("recommendation_result_id_mismatch")
+        if (
+            not _is_sha256(read_model.payload_hash)
+            or read_model.payload_hash != save_receipt.payload_hash
+        ):
+            raise ForwardPositionThesisError("recommendation_payload_hash_mismatch")
+        if (
+            save_receipt.artifact_location is None
+            or read_model.artifact_location != save_receipt.artifact_location
+        ):
+            raise ForwardPositionThesisError("recommendation_artifact_location_mismatch")
+        if not _is_sha256(read_model.raw_artifact_sha256):
+            raise ForwardPositionThesisError("recommendation_artifact_raw_hash_missing")
+
+        source_path, source_bytes, source_hash = _read_canonical_execution_artifact(
+            source_artifact_path,
+            result_id=execution.result_id,
+            artifact_location=save_receipt.artifact_location,
+        )
+        if source_hash != read_model.raw_artifact_sha256:
+            raise ForwardPositionThesisError("recommendation_artifact_raw_hash_mismatch")
+        try:
+            artifact_envelope = decode_execution_envelope(source_bytes)
+        except (ExecutionCodecError, TypeError, ValueError, KeyError) as exc:
+            raise ForwardPositionThesisError(
+                "recommendation_artifact_execution_decode_failed"
+            ) from exc
+        if (
+            artifact_envelope.schema_version != read_model.schema_version
+            or artifact_envelope.schema_revision != read_model.schema_revision
+            or artifact_envelope.payload_hash != read_model.payload_hash
+            or artifact_envelope.raw_payload_sha256 != read_model.raw_artifact_sha256
+            or artifact_envelope.execution != execution
+        ):
+            raise ForwardPositionThesisError(
+                "recommendation_read_model_artifact_execution_mismatch"
+            )
+
+        request = execution.request
+        context = execution.context
+        request_snapshot = request.config_snapshot
+        if type(request_snapshot) is not RecommendationConfigSnapshot:
+            raise ForwardPositionThesisError("recommendation_request_snapshot_missing")
+        if request.max_stocks is None or request.top_n is None:
+            raise ForwardPositionThesisError("recommendation_request_limits_missing")
+        try:
+            raw_request_config = json.loads(request_snapshot.raw_config_json)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ForwardPositionThesisError("recommendation_request_snapshot_invalid") from exc
+        if not isinstance(raw_request_config, Mapping) or not raw_request_config:
+            raise ForwardPositionThesisError("recommendation_request_snapshot_empty")
+        request_snapshot_hash = _sha256_bytes(
+            request_snapshot.raw_config_json.encode("utf-8", errors="strict")
+        )
+        if request_snapshot_hash != request_snapshot.raw_json_sha256:
+            raise ForwardPositionThesisError("recommendation_request_snapshot_hash_mismatch")
+
+        result_snapshot = context.result_config_snapshot
+        if type(result_snapshot) is not RecommendationResultConfigSnapshot:
+            raise ForwardPositionThesisError("recommendation_result_config_snapshot_missing")
+        if (
+            type(context.strategy_identity) is not StrategyConfigIdentity
+            or type(context.universe_identity) is not RecommendationUniverseIdentity
+            or type(context.evidence_identity) is not RecommendationRunEvidenceIdentity
+            or type(context.snapshot_cohort) is not SnapshotCohort
+        ):
+            raise ForwardPositionThesisError("recommendation_typed_context_owner_missing")
+        try:
+            result_config = json.loads(result_snapshot.raw_result_config_json)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ForwardPositionThesisError("recommendation_result_config_invalid") from exc
+        if not isinstance(result_config, Mapping) or result_config.get("scheduled_snapshot") is not True:
+            raise ForwardPositionThesisError("recommendation_result_config_not_scheduled")
+        result_config_hash = _sha256_json(dict(result_config))
+        if (
+            result_config_hash != result_snapshot.config_sha256
+        ):
+            raise ForwardPositionThesisError("recommendation_result_config_hash_mismatch")
+        for limit_name in ("max_stocks", "top_n"):
+            if (
+                type(result_config.get(limit_name)) is not int
+                or result_config[limit_name] != getattr(request, limit_name)
+            ):
+                raise ForwardPositionThesisError(
+                    f"recommendation_{limit_name}_result_config_mismatch"
+                )
+        try:
+            _validate_result_config_context_overlap(result_config, context)
+        except (TypeError, ValueError) as exc:
+            raise ForwardPositionThesisError(
+                "recommendation_result_config_context_owner_mismatch"
+            ) from exc
+
+        decision_date = _parse_date(
+            result_config.get("decision_date"), "recommendation_result_config_decision_date"
+        )
+        if context.created_at is None:
+            raise ForwardPositionThesisError("recommendation_caller_created_at_missing")
+        if context.available_at is None:
+            raise ForwardPositionThesisError("recommendation_available_at_missing")
+        if context.decision_at is None:
+            raise ForwardPositionThesisError("recommendation_decision_at_missing")
+        created_at = _parse_aware(context.created_at, "recommendation_created_at")
+        available_at = _parse_aware(context.available_at, "recommendation_available_at")
+        decision_at = _parse_aware(context.decision_at, "recommendation_decision_at")
+        if available_at > decision_at:
+            raise ForwardPositionThesisError("recommendation_available_after_decision")
+        current = _parse_aware(self.now_provider(), "observed_at")
+        if created_at > current:
+            raise ForwardPositionThesisError("recommendation_created_at_future")
+        if decision_at > current:
+            raise ForwardPositionThesisError("recommendation_decision_at_future")
+        if created_at.astimezone(TAIPEI).date() != decision_date:
+            raise ForwardPositionThesisError("recommendation_created_date_mismatch")
+
+        has_ml_bindings = bool(execution.ml_receipt_refs or execution.ml_projection_refs)
+        if has_ml_bindings and read_model.ml_read_status != "verified":
+            raise ForwardPositionThesisError("recommendation_ml_readback_not_verified")
+
+        rows = [
+            _recommendation_item_packet_row(item, index)
+            for index, item in enumerate(execution.decision.items, start=1)
+        ]
+        source = _RecommendationSource(
+            payload={},
+            path=source_path,
+            file_sha256=source_hash,
+            # Rev2 artifact bytes are the canonical JSON source; preserving this
+            # identity separately lets other formats canonicalize differently.
+            content_sha256=_sha256_bytes(source_bytes),
+            result_id=execution.result_id,
+            decision_date=decision_date,
+            decision_at=decision_at,
+            created_at=created_at,
+            available_at=available_at,
+            config_sha256=result_config_hash,
+            payload_hash=read_model.payload_hash,
+            request_config_sha256=request_snapshot.raw_json_sha256,
+            strategy_config_hash=context.strategy_identity.strategy_config_hash,
+            request_as_of_date=request.as_of_date,
+            request_max_stocks=request.max_stocks,
+            request_top_n=request.top_n,
+            allow_float_scores=False,
+        )
+        return source, rows
 
     def _parse_recommendation_source(
         self,
@@ -804,7 +1265,7 @@ class ForwardPositionThesisCandidateProducer:
             score_values[field] = _decimal_text(
                 raw_value,
                 f"recommendation_{field}",
-                allow_float=True,
+                allow_float=source.allow_float_scores,
             )
         regime_match_value = raw_recommendation.get(
             "regime_match", raw_recommendation.get("Regime匹配", False)
@@ -867,17 +1328,7 @@ class ForwardPositionThesisCandidateProducer:
             "human_approval_required": True,
             "auto_action_allowed": False,
             "research_only": True,
-            "recommendation_source": {
-                "result_id": source.result_id,
-                "path": str(source.path),
-                "file_sha256": source.file_sha256,
-                "content_sha256": source.content_sha256,
-                "created_at": source.created_at.isoformat(),
-                "available_at": source.available_at.isoformat(),
-                "decision_at": source.decision_at.isoformat(),
-                "decision_date": source.decision_date.isoformat(),
-                "config_sha256": source.config_sha256,
-            },
+            "recommendation_source": _recommendation_source_to_dict(source),
             "instrument": {"stock_code": code, "stock_name": name},
             "decision_observation": {
                 "rank": rank,
@@ -892,9 +1343,7 @@ class ForwardPositionThesisCandidateProducer:
                 "kind": "machine_observation",
                 "statement": "machine_observation_only; no human investment thesis supplied",
                 "source_trace": [
-                    f"recommendation:{source.result_id}",
-                    f"recommendation_source_hash:{source.file_sha256}",
-                    f"recommendation_config_hash:{source.config_sha256}",
+                    *_recommendation_source_trace(source),
                     *calendar_trace,
                     *policy_trace,
                 ],

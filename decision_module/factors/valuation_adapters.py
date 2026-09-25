@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from decision_module.factors.factor_dtos import FactorDiagnostic, FactorRecord, MissingPolicy
+from data_module.contracts.valuation import ValuationMetricRecord
+from decision_module.factors.factor_dtos import (
+    FactorDiagnostic,
+    FactorQuality,
+    FactorRecord,
+    MissingPolicy,
+)
 from decision_module.factors.valuation_policy import (
     ValuationBand,
     ValuationObservation,
@@ -23,8 +29,10 @@ class ValuationFactorBuildResult:
 
 
 def build_relative_valuation_factor(
-    observation: ValuationObservation,
+    observation: ValuationObservation | ValuationMetricRecord,
 ) -> ValuationFactorBuildResult:
+    if isinstance(observation, ValuationMetricRecord):
+        observation = valuation_source_record_to_observation(observation)
     policy_result = classify_relative_valuation(observation)
     diagnostics = tuple(policy_result.diagnostics)
 
@@ -44,3 +52,21 @@ def build_relative_valuation_factor(
         metadata=policy_result.to_metadata(),
     )
     return ValuationFactorBuildResult(records=(record,), diagnostics=diagnostics)
+
+
+def valuation_source_record_to_observation(
+    record: ValuationMetricRecord,
+) -> ValuationObservation:
+    """Interpret legacy source quality literals only at the decision boundary."""
+
+    return ValuationObservation(
+        stock_code=record.stock_code,
+        metric_name=record.metric_name,
+        metric_value=record.metric_value,
+        as_of_date=record.as_of_date,
+        available_date=record.available_date,
+        industry_percentile_bp=record.industry_percentile_bp,
+        quality=FactorQuality(record.legacy_quality_wire_value),
+        source=record.source,
+        source_version=record.source_version,
+    )

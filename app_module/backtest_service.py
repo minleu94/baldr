@@ -16,9 +16,9 @@ from app_module.recommendation_portfolio_dates import parse_stock_dates
 
 logger = logging.getLogger(__name__)
 
-from app_module.strategy_spec import StrategySpec, StrategyExecutor
-from app_module.strategy_registry import StrategyRegistry
-from app_module.daily_signal import DailySignalFrame
+from decision_module.strategies.contracts import StrategySpec, StrategyExecutor
+from decision_module.strategies.registry import StrategyRegistry
+from decision_module.strategies.contracts import DailySignalFrame
 from app_module.dtos import BacktestReportDTO, ValidationStatus
 from app_module.sop_validator import SOPValidator
 from backtest_module.broker_simulator import BrokerSimulator, BrokerConfig, NEXT_OPEN_CONTRACT, LEGACY_CLOSE_CONTRACT

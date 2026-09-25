@@ -12,9 +12,9 @@
 
 此段更新取代前一 checkpoint 的「只驗直接 component、尚無 nested traversal」描述。`_loaded_model_graph_snapshot()` 使用 `r026-known-model-graph.v1` exact-type／field allowlist，遞迴檢查 `RunnableRecommendationCalibrationModel`、`Pipeline`、`SimpleImputer`、`StandardScaler`、`Ridge`、`LogisticRegression`、`FittedShadowProbabilityCalibrator`、`IsotonicRegression` 與 SciPy `interp1d`。根集合含 active/baseline/lineage models、probability lineage、loaded pointer、baseline identity 及 training provenance；巢狀 plain dict/list/tuple、primitive 與 ndarray 也納入。它比對 source/fresh 與仍存活 A/B capability 的 mutable object identity，並以 `np.shares_memory(..., max_work=10_000)` 拒絕共用 ndarray backing storage。
 
-此 slice 只驗證本機 synthetic production-shape：Windows 10 build `10.0.26200-SP0`、CPython `3.11.9`、NumPy `2.3.5`、Pandas `2.3.3`、scikit-learn `1.8.0`、SciPy `1.16.3`、joblib `1.5.2`。一個本輪 active candidate fixture 的完整已載入 model/lineage graph 遍歷到 **70 個 mutable object IDs、41 個 ndarray、936 bytes**；這是 fixture-specific 觀測，不是所有 candidate 的固定規模。另一合成模型圖曾觀測 72 nodes/35 arrays；計數會隨 lineage/model shape 改變，兩組都不構成上限或跨版本證據。此 profile 的 arrays 為 float64、int32、int64。
+此 slice 只驗證本機 synthetic production-shape：Windows 10 build `10.0.26200-SP0`、CPython `3.11.9`、NumPy `2.3.5`、Pandas `2.3.3`、scikit-learn `1.8.0`、SciPy `1.16.3`、joblib `1.5.2`。一個本輪 active candidate fixture 的完整已載入 model/lineage graph 遍歷到 **70 個 mutable object IDs、41 個 ndarray、936 bytes**；這是 fixture-specific 觀測，不是所有 candidate 的固定規模。另一合成模型圖曾觀測 72 nodes/35 arrays；計數會隨 lineage/model shape 改變，兩組都不構成上限或跨版本證據。此 profile 的 arrays 為 float64、int32、int64。Optional capability resolver 在 pointer I/O 前比較 `sys.platform`、Python major/minor/patch、NumPy、scikit-learn、SciPy 與 joblib 的精確版本；不符即回 `None`。Pandas 版本只記錄、不參與此 graph profile gate。
 
-Walker fail-closed 條件含未知 exact type/field、不同 Pipeline steps、未知 callable、closure/default/可變 function attrs、object/structured/非數值 ndarray、unsupported backing owner、cycle，以及 depth 24、4096 nodes、512 arrays、64 MiB aggregate array bytes、每 array 1,000,000 elements 的 budget。`interp1d._call` 只接受 module import 時捕獲的 SciPy reviewed `_call_linear_np`／`_call_linear` exact function identity，並重驗 no closure/default/kwdefaults/function attrs；執行期 class attr 被換成新 closure-free callable 也會拒絕。這個 allowlist 並未在 NumPy／sklearn／SciPy／joblib 其他版本驗證，未知版本不可外推；不保證任意 Python subclass、未知 native buffer owner 或 future fitted field。**目前 capability resolver 尚無 runtime package-version guard**：同一個 type/field/callable shape 的另一套件版本仍可能通過，故本 fingerprint 是測試證據而非入口限制；版本 guard 是獨立 follow-up gate。
+Walker fail-closed 條件含未知 exact type/field、不同 Pipeline steps、未知 callable、closure/default/可變 function attrs、object/structured/非數值 ndarray、unsupported backing owner、cycle，以及 depth 24、4096 nodes、512 arrays、64 MiB aggregate array bytes、每 array 1,000,000 elements 的 budget。`interp1d._call` 只接受 module import 時捕獲的 SciPy reviewed `_call_linear_np`／`_call_linear` exact function identity，並重驗 no closure/default/kwdefaults/function attrs；執行期 class attr 被換成新 closure-free callable 也會拒絕。此 allowlist 與 runtime gate 只支援上段列出的 exact profile；未知版本回 `None`，不保證任意 Python subclass、未知 native buffer owner 或 future fitted field。
 
 ## Historical QA 收據（nested-graph follow-up 前）
 
@@ -42,23 +42,23 @@ R015 獨立複核另以 fresh short TEMP 重跑最終 frozen source：專項路�
 
 ## Current nested-graph follow-up QA
 
-新測試涵蓋 nested Pipeline estimator、Isotonic estimator、ndarray/view 與 interp1d x-view alias、nested provenance dict、pointer lineage list、A/B capability 共用 ndarray view；另驗 cycle、unknown model field/type、object array、未知 no-closure callable、closure callable 和 node budget fail closed。測試不呼叫 model fitting/predict，不接 live service runtime handoff。
+新測試涵蓋 nested Pipeline estimator、Isotonic estimator、ndarray/view 與 interp1d x-view alias、nested provenance dict、pointer lineage list、A/B capability 共用 ndarray view；另驗 cycle、unknown model field/type、object array、未知 no-closure callable、closure callable、node budget fail closed，以及 runtime mismatch 在 pointer/loader I/O 前 fail closed。測試不呼叫 model fitting/predict，不接 live service runtime handoff。
 
-Fresh short TEMP 專項根 `C:\r26q\f7f40af51`，`PROFILE=test`，`DATA_ROOT`、`OUTPUT_ROOT`、`TEMP`、`TMP` 與 pytest basetemp 隔離：
-
-```powershell
-.\.venv\Scripts\python.exe -B -m pytest tests/test_r026_invocation_model_capability.py -q --tb=short -o addopts= -p no:cacheprovider --basetemp C:\r26q\f7f40af51\p
-```
-
-結果 **19 passed**；pytest log SHA-256 `8401E8EBD3E43184C1175DD5FBDF97BA91BECDD64103A3ED623905D9ACE3462B`。
-
-Fresh short TEMP 相鄰 route 根 `C:\r26q\ab24bf5a4`：
+Fresh short TEMP 專項根 `C:\r26q\v8a0be52b`，`PROFILE=test`，`DATA_ROOT`、`OUTPUT_ROOT`、`TEMP`、`TMP` 與 pytest basetemp 隔離：
 
 ```powershell
-.\.venv\Scripts\python.exe -B -m pytest tests/test_r026_invocation_model_capability.py tests/test_prepared_ml_input_contract.py tests/test_recommendation_service_calibration_integration.py -k 'not workbench_ui and not isolated_producer_consumer_advice' -q --tb=short -o addopts= -p no:cacheprovider --basetemp C:\r26q\ab24bf5a4\p
+.\.venv\Scripts\python.exe -B -m pytest tests/test_r026_invocation_model_capability.py -q --tb=short -o addopts= -p no:cacheprovider --basetemp C:\r26q\v8a0be52b\p
 ```
 
-結果 **53 passed／2 deselected**，pytest log SHA-256 `56FEC228E329805F4D177F8F8CB9855AE8242560AF7B3DBF11A639DEB4E7780F`。先前以長 TEMP root 執行同兩個 receipt tests 時，投影 receipt status 變為 unavailable；使用短根重跑同 tests 為 2 passed。此回歸收據只採短根結果，避免把 Windows 長路徑的失敗誤作 graph 行為差異。
+結果 **20 passed**；pytest log SHA-256 `C2A36889563AD3EE8490701ABE49A6C36A250AA6C815A60E4408D6977221515C`。
+
+Fresh short TEMP 相鄰 route 根 `C:\r26q\be0284eda`：
+
+```powershell
+.\.venv\Scripts\python.exe -B -m pytest tests/test_r026_invocation_model_capability.py tests/test_prepared_ml_input_contract.py tests/test_recommendation_service_calibration_integration.py -k 'not workbench_ui and not isolated_producer_consumer_advice' -q --tb=short -o addopts= -p no:cacheprovider --basetemp C:\r26q\be0284eda\p
+```
+
+結果 **54 passed／2 deselected**，pytest log SHA-256 `0CE5418A6D5C0152EE5E9AF9820BBC7E72EBF51252382A0BC07B8195A2DBE67C`。先前以長 TEMP root 執行同兩個 receipt tests 時，投影 receipt status 變為 unavailable；使用短根重跑同 tests 為 2 passed。此回歸收據只採短根結果，避免把 Windows 長路徑的失敗誤作 graph 行為差異。
 
 Scoped mypy：
 
@@ -70,11 +70,11 @@ Scoped mypy：
 
 ## 凍結 SHA-256 與限制
 
-- `app_module/recommendation_calibration_consumer.py`: `2419225D81FCAA012C5529CEA95FB8A3DDCB8FC993580B5F7BB3169F79606E87`
-- `tests/test_r026_invocation_model_capability.py`: `A8192EC9B5AD64871BBCAA5DC81718F16B30EB257FB10A75A9071633EB1F4048`
+- `app_module/recommendation_calibration_consumer.py`: `442A5EB46A5F3241D217834554788FC8A800881BECE494882F519142D85CA4BC`
+- `tests/test_r026_invocation_model_capability.py`: `8D6403B8803BD4294745ED46C0CF3F0B41DD1650232674E4803FD5FB5E4D91E2`
 - unchanged `app_module/recommendation_service.py`: `B66C6BF37A8EF63798FF6AAF2EB25603852BEEBB23C4378920425F804EB3D0EF`
 - unchanged `ml_module/recommendation_calibration_training.py`: `F394E427234A8A43D30BD7688D1AD41BAE4A2174A510FE2F5067E5A661941B61`
 - unchanged `ml_module/probability_calibration.py`: `6AB7BCD2074E5588C7B03B6E93E219663727A4EFFA83457D3E17A375B788BB87`
 - unchanged `ml_module/model_artifact_loader.py`: `0B76494E757F6DEDDAFC13A5BFFB64B8C09B8C1A4C533A2FF02FC3D1002AB484`
 
-The service integration tests exercise the existing default projection path without passing `_invocation_capability`; the service source remained byte-identical at the cited SHA. The current adjacent evidence is 53P/2D. This slice still does not wire the experimental capability into live service, construct `PreparedMLInput`/`PreparedMLRuntimeInputV1`, call `PreparedMLProjector`, or write receipts. It proves alias isolation only for the exact bounded model/lineage profile and runtime recorded above. It does not prove other package/runtime layouts, pointer lease/ABA exclusion, DB/source/model/receipt shared transaction, or full R026/TMP-ML-01 completion.
+The service integration tests exercise the existing default projection path without passing `_invocation_capability`; the service source remained byte-identical at the cited SHA. The current adjacent evidence is 54P/2D. This slice still does not wire the experimental capability into live service, construct `PreparedMLInput`/`PreparedMLRuntimeInputV1`, call `PreparedMLProjector`, or write receipts. It proves alias isolation only for the exact gated model/lineage profile above. It does not prove pointer lease/ABA exclusion, DB/source/model/receipt shared transaction, or full R026/TMP-ML-01 completion.

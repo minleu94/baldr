@@ -13,6 +13,7 @@ from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
+import sys
 from threading import Lock, get_ident
 from types import FunctionType
 from typing import Any, Mapping, NoReturn, Sequence, SupportsIndex
@@ -20,6 +21,8 @@ from weakref import WeakValueDictionary
 
 import joblib
 import numpy as np
+import scipy
+import sklearn
 from scipy.interpolate import interp1d as _ScipyInterp1d
 from sklearn.impute import SimpleImputer
 from sklearn.isotonic import IsotonicRegression
@@ -73,6 +76,14 @@ from ml_module.recommendation_inference_provenance import (
 
 
 _MODEL_GRAPH_SCHEMA_VERSION = "r026-known-model-graph.v1"
+_SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILE = (
+    "win32",
+    (3, 11, 9),
+    "2.3.5",  # NumPy
+    "1.8.0",  # scikit-learn
+    "1.16.3",  # SciPy
+    "1.5.2",  # joblib
+)
 _MAX_MODEL_GRAPH_DEPTH = 24
 _MAX_MODEL_GRAPH_NODES = 4096
 _MAX_MODEL_GRAPH_ARRAYS = 512
@@ -334,6 +345,8 @@ class RecommendationCalibrationConsumer:
             or type(self._loader) is not SafeShadowModelArtifactLoader
             or self._loader._deserializer is not joblib.load
         ):
+            return None
+        if _current_model_graph_runtime_profile() != _SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILE:
             return None
         with self._invocation_capability_lock:
             if invocation_scope_id in self._invocation_capabilities:
@@ -1358,6 +1371,19 @@ class _LoadedModelGraphSnapshot:
 
 class _UnsupportedKnownModelGraph(ValueError):
     """The loaded graph is outside the bounded production allowlist."""
+
+
+def _current_model_graph_runtime_profile() -> tuple[Any, ...]:
+    """Return the exact runtime profile reviewed for this optional API."""
+
+    return (
+        sys.platform,
+        tuple(sys.version_info[:3]),
+        np.__version__,
+        sklearn.__version__,
+        scipy.__version__,
+        joblib.__version__,
+    )
 
 
 def _loaded_model_graph_snapshot(

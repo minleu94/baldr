@@ -209,6 +209,33 @@ def test_capability_rejects_filesystem_bound_provenance_without_io(
         )
 
 
+def test_capability_rejects_unreviewed_runtime_before_pointer_or_loader_io(
+    active_consumer: tuple[Any, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app_module.recommendation_calibration_consumer as consumer_module
+    from ml_module.model_artifact_loader import SafeShadowModelArtifactLoader
+
+    consumer, _pointer_path, _candidate_root = active_consumer
+    identity = consumer.active_identity(decision_date="2026-07-27")
+    assert identity is not None
+
+    def no_io(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("unsupported runtime must be rejected before pointer/loader I/O")
+
+    monkeypatch.setattr(consumer_module.np, "__version__", "999.0")
+    monkeypatch.setattr(Path, "read_bytes", no_io)
+    monkeypatch.setattr(SafeShadowModelArtifactLoader, "load", no_io)
+    assert (
+        _capability(
+            consumer,
+            scope="live-call-unreviewed-runtime-0001",
+            identity=identity,
+        )
+        is None
+    )
+    assert _legacy_project(consumer)["AAA"].status == "active_candidate"
+
+
 def test_capability_uses_fresh_pointer_bytes_even_if_owner_stat_cache_matches(
     active_consumer: tuple[Any, Path, Path]
 ) -> None:

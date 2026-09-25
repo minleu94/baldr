@@ -335,23 +335,8 @@ def test_joint_provider_and_snapshot_slice_case_matrix_preserves_r005_rows_and_c
             ("TAIL", 21, date(2026, 9, 4)),
         ]
         assert completed[call_start:] == [
-            ("HI", ReplayScorerDispositionV1.SCORED),
             ("EMPTY", ReplayScorerDispositionV1.SKIPPED_EMPTY),
             ("BROKEN", ReplayScorerDispositionV1.SKIPPED_SCORER_EXCEPTION),
-            (
-                "SELECTED_PROJECTION",
-                ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION
-                if "SELECTED_PROJECTION" in case.opaque_codes
-                else ReplayScorerDispositionV1.SCORED,
-            ),
-            ("MID", ReplayScorerDispositionV1.SCORED),
-            (
-                "SECOND_PROJECTION",
-                ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION
-                if "SECOND_PROJECTION" in case.opaque_codes
-                else ReplayScorerDispositionV1.SCORED,
-            ),
-            ("TAIL", ReplayScorerDispositionV1.SCORED),
         ]
 
         assert tuple(row["stock_code"] for row in handoff.rows) == case.expected_provider_codes
@@ -359,12 +344,9 @@ def test_joint_provider_and_snapshot_slice_case_matrix_preserves_r005_rows_and_c
             row["stock_code"] for row in snapshot.recommendations
         ) == case.expected_snapshot_codes
         assert len(handoff.rows) == len(handoff.scoring_outcomes)
-        assert all(
-            outcome is not None
-            and outcome.request.as_of_date == _AS_OF
-            and outcome.request.stock_code == row["stock_code"]
-            for row, outcome in zip(handoff.rows, handoff.scoring_outcomes)
-        )
+        # Custom scorer 的 terminal outcome 僅為本次呼叫稽核；非空 v1 rows
+        # 不攜帶 canonical scoring outcome，也不建立 child。
+        assert handoff.scoring_outcomes == tuple(None for _ in handoff.rows)
 
         for row in snapshot.recommendations:
             code = str(row["stock_code"])
@@ -385,25 +367,21 @@ def test_joint_provider_and_snapshot_slice_case_matrix_preserves_r005_rows_and_c
             else:
                 assert row["selection_reason"] == expected["selection_reason"]
 
-        child = snapshot.canonical_execution
-        if case.expected_child_codes is None:
-            # Selected invalid projection or selected nonfinite score rejects
-            # the entire typed child; v1 rows remain present and ordered.
-            assert child is None
-        else:
+        if handoff.rows:
+            # `expected_child_codes` 記錄責任轉移前 custom scorer 可重建 child
+            # 的歷史基準；目前 custom scorer 只保留 v1 rows，不建 canonical child。
+            assert snapshot.canonical_execution is None
+        elif case.expected_child_codes == ():
+            # 零列是 provider 的 empty slice，沒有 custom scored row 可供重建；保留
+            # 原有、帶相同 parent reference 的合法空 execution。
+            child = snapshot.canonical_execution
             assert child is not None
             assert child.related_references[0].reference_id == (
                 f"parent-r020-{case.name}"
             )
             decision = child.decision
             assert decision is not None
-            item_codes = tuple(item.stock_code for item in decision.items)
-            assessment_codes = tuple(
-                item.stock_code for item in decision.assessments
-            )
-            assert item_codes == case.expected_child_codes
-            assert assessment_codes == case.expected_child_codes
-            if case.expected_child_codes:
-                assert item_codes == case.expected_snapshot_codes
-            else:
-                assert snapshot.recommendations == []
+            assert decision.items == ()
+            assert decision.assessments == ()
+        else:
+            assert snapshot.canonical_execution is None

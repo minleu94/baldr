@@ -30,7 +30,6 @@ from decision_module.recommendation.replay_prefilter import (
     ReplayVolumeThresholdV1,
     evaluate_replay_prefilter,
 )
-from decision_module.recommendation.evaluate import ReplayScorerDispositionV1
 
 
 _AS_OF = date(2026, 9, 6)  # 週日 cutoff；資料最後交易日是週五 9/4。
@@ -406,7 +405,7 @@ def test_real_no_filter_provider_candidate_is_scored_under_current_rank_warning_
     assert scorer.calls == ["RANK-WARNING"]
     assert result.compatibility_scoring_outcomes == ()
     assert len(result.scoring_outcomes) == 1
-    assert result.scoring_outcomes[0].disposition is ReplayScorerDispositionV1.SCORED
+    assert result.scoring_outcomes == (None,)
 
 
 @pytest.mark.parametrize(

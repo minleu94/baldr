@@ -172,13 +172,8 @@ def test_portfolio_caller_preserves_cutoff_rows_child_boundary_and_accounting(
     # 19-row P19 先佔 first-seen 名額再由 history gate 排除，不到 scorer。
     assert "P19" not in expected_encounter
     assert completed == [
-        ("SELECTED_PROJECTION", ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION),
         ("BROKEN", ReplayScorerDispositionV1.SKIPPED_SCORER_EXCEPTION),
-        ("SECOND_PROJECTION", ReplayScorerDispositionV1.SCORED),
         ("EMPTY", ReplayScorerDispositionV1.SKIPPED_EMPTY),
-        ("TAIL", ReplayScorerDispositionV1.SCORED),
-        ("MID", ReplayScorerDispositionV1.SCORED),
-        ("HI", ReplayScorerDispositionV1.SCORED),
     ]
 
     assert len(handoffs) == 1
@@ -190,24 +185,7 @@ def test_portfolio_caller_preserves_cutoff_rows_child_boundary_and_accounting(
         "SELECTED_PROJECTION",
     )
     assert len(handoff.rows) == len(handoff.scoring_outcomes) == 2
-    assert [
-        (outcome.request.stock_code, outcome.disposition)
-        if outcome is not None
-        else None
-        for outcome in handoff.scoring_outcomes
-    ] == [
-        ("HI", ReplayScorerDispositionV1.SCORED),
-        (
-            "SELECTED_PROJECTION",
-            ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION,
-        ),
-    ]
-    assert all(
-        outcome is not None
-        and outcome.request.stock_code == row["stock_code"]
-        and outcome.request.as_of_date == _CUTOFF
-        for row, outcome in zip(handoff.rows, handoff.scoring_outcomes)
-    )
+    assert handoff.scoring_outcomes == (None, None)
 
     expected_rows = snapshot.recommendations
     assert [row["stock_code"] for row in expected_rows] == [

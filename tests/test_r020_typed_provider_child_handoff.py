@@ -5,7 +5,6 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import date
-from decimal import Decimal
 from threading import Barrier, Lock
 from typing import Any
 
@@ -19,7 +18,6 @@ from app_module.recommendation_dataframe_provider import (
     ReplayProviderCallResultV1,
 )
 from app_module.recommendation_replay_service import RecommendationReplayService
-from decision_module.recommendation.evaluate import ReplayScorerDispositionV1
 
 
 def _history(codes: tuple[str, ...], *, periods: int = 26) -> pd.DataFrame:
@@ -202,24 +200,9 @@ def test_concrete_provider_uses_one_scorer_pass_for_typed_child(
     assert handoff.as_of_date == date(2026, 9, 24)
     assert handoff.requested_top_n == 5
     assert [row["stock_code"] for row in handoff.rows] == ["A", "B", "C"]
-    assert all(outcome is not None for outcome in handoff.scoring_outcomes)
-
-    child = snapshot.canonical_execution
-    assert child is not None
-    assert child.context.as_of_date == date(2026, 9, 24)
-    assert child.request.as_of_date == date(2026, 9, 24)
-    assert child.related_references[0].reference_id == "parent-r020-synthetic"
-    assert child.decision.items == tuple(
-        outcome.item for outcome in handoff.scoring_outcomes if outcome is not None
-    )
-    assert child.decision.assessments == tuple(
-        outcome.assessment
-        for outcome in handoff.scoring_outcomes
-        if outcome is not None
-    )
-    assert [row["stock_code"] for row in snapshot.recommendations] == [
-        item.stock_code for item in child.decision.items
-    ]
+    assert handoff.scoring_outcomes == (None, None, None)
+    # 注入 scorer 的 v1 rows 不得被提升為 canonical child。
+    assert snapshot.canonical_execution is None
 
 
 def test_typed_provider_children_keep_distinct_result_ids() -> None:
@@ -239,11 +222,8 @@ def test_typed_provider_children_keep_distinct_result_ids() -> None:
 
     first_child = first.canonical_execution
     second_child = second.canonical_execution
-    assert first_child is not None
-    assert second_child is not None
-    assert first_child.result_id != second_child.result_id
-    assert first_child.related_references[0].reference_id == "parent-r020-typed-distinct"
-    assert second_child.related_references[0].reference_id == "parent-r020-typed-distinct"
+    assert first_child is None
+    assert second_child is None
 
 
 def test_handoff_rows_match_legacy_provider_rows_for_the_same_synthetic_input() -> None:
@@ -269,7 +249,7 @@ def test_handoff_rows_match_legacy_provider_rows_for_the_same_synthetic_input() 
     assert handoff.rows == legacy_rows
     assert len(scorer.calls) == legacy_call_count * 2
     assert len(handoff.rows) == len(handoff.scoring_outcomes)
-    assert all(outcome is not None for outcome in handoff.scoring_outcomes)
+    assert handoff.scoring_outcomes == (None, None, None)
 
 
 @pytest.mark.parametrize(
@@ -279,7 +259,7 @@ def test_handoff_rows_match_legacy_provider_rows_for_the_same_synthetic_input() 
         (0, [], []),
     ],
 )
-def test_typed_child_preserves_provider_then_snapshot_double_slice(
+def test_custom_scorer_preserves_provider_then_snapshot_double_slice(
     monkeypatch: pytest.MonkeyPatch,
     top_n: int,
     provider_codes: list[str],
@@ -299,9 +279,14 @@ def test_typed_child_preserves_provider_then_snapshot_double_slice(
     handoff = handoffs[0]
     assert [row["stock_code"] for row in handoff.rows] == provider_codes
     assert [row["stock_code"] for row in snapshot.recommendations] == snapshot_codes
-    assert [item.stock_code for item in snapshot.canonical_execution.decision.items] == snapshot_codes
-    assert [item.stock_code for item in snapshot.canonical_execution.decision.assessments] == snapshot_codes
-    assert snapshot.canonical_execution.request.top_n is None
+    if provider_codes:
+        assert snapshot.canonical_execution is None
+    else:
+        empty_child = snapshot.canonical_execution
+        assert empty_child is not None
+        assert empty_child.related_references[0].reference_id == "parent-r020-synthetic"
+        assert empty_child.decision.items == ()
+        assert empty_child.decision.assessments == ()
 
 
 def test_empty_snapshot_keeps_completed_empty_child_but_nonfinite_fails_closed(
@@ -363,8 +348,7 @@ def test_typed_projection_failure_keeps_v1_row_without_canonical_child(
     assert snapshot.recommendations[0]["stock_code"] == "OPAQUE"
     assert len(handoffs) == 1
     outcome = handoffs[0].scoring_outcomes[0]
-    assert outcome is not None
-    assert outcome.disposition is ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION
+    assert outcome is None
     assert snapshot.canonical_execution is None
 
 
@@ -610,12 +594,5 @@ def test_parallel_concrete_provider_calls_keep_cutoff_and_scoring_local() -> Non
         (early, date(2026, 9, 20), "parent-r020-early"),
         (late, date(2026, 9, 24), "parent-r020-late"),
     ):
-        child = snapshot.canonical_execution
-        assert child is not None
-        assert child.context.as_of_date == expected_date
-        assert child.request.as_of_date == expected_date
-        assert child.related_references[0].reference_id == expected_parent
-        assessment = child.decision.assessments[0]
-        prefilter = assessment.filter_outcomes["replay_prefilter"]
-        assert prefilter.evidence["as_of_date"] == expected_date.isoformat()
-        assert child.decision.items[0].rule_score == Decimal(str(expected_date.day))
+        assert snapshot.canonical_execution is None
+        assert snapshot.recommendations[0]["total_score"] == float(expected_date.day)

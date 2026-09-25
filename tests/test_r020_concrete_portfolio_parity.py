@@ -169,32 +169,14 @@ def test_concrete_provider_portfolio_golden_with_empty_and_error_rebalance_day()
     assert result.snapshots[1].diagnostics == []
     assert result.snapshots[1].recommendations == []
 
-    # 同一 portfolio parent 下兩個 cutoff 都有 typed child；後者是合法空決策。
+    # 自訂 scorer 的 v1 rows 不建立 canonical child；portfolio parent 仍保留。
     parent_id = result.replay_parent_id
     assert isinstance(parent_id, str) and parent_id.startswith("replay-parent-")
     assert {snapshot.replay_parent_id for snapshot in result.snapshots} == {parent_id}
-    first_child, empty_child = [
-        snapshot.canonical_execution for snapshot in result.snapshots
-    ]
-    assert first_child is not None
+    assert result.snapshots[0].canonical_execution is None
+    empty_child = result.snapshots[1].canonical_execution
     assert empty_child is not None
-    for snapshot, child in zip(result.snapshots, (first_child, empty_child)):
-        assert child.status.value == "completed"
-        assert child.request.as_of_date == date.fromisoformat(snapshot.as_of_date)
-        assert child.context.as_of_date == date.fromisoformat(snapshot.as_of_date)
-        assert child.request.top_n == 2
-        assert len(child.related_references) == 1
-        assert child.related_references[0].kind.value == "replay_parent"
-        assert child.related_references[0].reference_id == parent_id
-    assert [
-        (item.stock_code, item.stock_name, item.rule_score, item.indicator_score,
-         item.pattern_score, item.volume_score, item.reason_text)
-        for item in first_child.decision.items
-    ] == [
-        ("A", "Alpha", 90.0, 70.0, 60.0, 50.0, "fixture_reason"),
-        ("B", "Beta", 80.0, 65.0, 55.0, 45.0, "fixture_reason"),
-    ]
-    assert [assessment.stock_code for assessment in first_child.decision.assessments] == ["A", "B"]
+    assert empty_child.related_references[0].reference_id == parent_id
     assert empty_child.decision.items == ()
     assert empty_child.decision.assessments == ()
 
@@ -568,14 +550,7 @@ def test_concrete_provider_portfolio_fixed_vector_with_pit_and_weekend_cutoff():
         ("B", 21, expected_dates["B"]),
     ]
     assert all(max(dates) == "2026-09-04" for _, dates in scorer.calls)
-    assert snapshot.canonical_execution is not None
-    assert [item.stock_code for item in snapshot.canonical_execution.decision.items] == [
-        "B",
-        "A",
-    ]
-    assert [
-        item.stock_code for item in snapshot.canonical_execution.decision.assessments
-    ] == ["B", "A"]
+    assert snapshot.canonical_execution is None
 
     # Factor records由 R005 frozen 欄位投影固定；只有實際選取的兩檔進 manifest。
     factor_snapshot = result.details["data_manifest"]["factor_snapshot"]
@@ -750,8 +725,7 @@ def test_concrete_provider_portfolio_fixed_vector_with_pit_and_weekend_cutoff():
         ("B", 21, expected_dates["B"]),
     ]
     assert all(max(dates) == "2026-09-04" for _, dates in weekend_scorer.calls)
-    assert weekend_snapshot.canonical_execution is not None
-    assert weekend_snapshot.canonical_execution.request.as_of_date == date(2026, 9, 6)
+    assert weekend_snapshot.canonical_execution is None
 
 
 def test_next_open_portfolio_caller_keeps_pit_snapshot_factor_golden() -> None:
@@ -882,16 +856,7 @@ def test_next_open_portfolio_caller_keeps_pit_snapshot_factor_golden() -> None:
     ]
     assert all(max(dates) == "2026-09-04" for _, dates in scorer.calls)
 
-    assert snapshot.canonical_execution is not None
-    assert snapshot.canonical_execution.request.as_of_date == date(2026, 9, 4)
-    assert snapshot.canonical_execution.context.as_of_date == date(2026, 9, 4)
-    assert [item.stock_code for item in snapshot.canonical_execution.decision.items] == [
-        "B",
-        "A",
-    ]
-    assert [
-        item.stock_code for item in snapshot.canonical_execution.decision.assessments
-    ] == ["B", "A"]
+    assert snapshot.canonical_execution is None
 
     assert result.details["data_manifest"]["factor_snapshot"] == {
         "schema_version": 1,
@@ -1143,13 +1108,8 @@ def test_next_open_portfolio_caller_keeps_pit_snapshot_factor_golden() -> None:
         "max_drawdown": -0.007266,
     }
 
-    # Parent 是 invocation 專屬 identity；typed child 必須明確且唯一地引用它。
+    # Parent 是 invocation 專屬 identity；custom scorer 不產生 typed child。
     parent_id = result.replay_parent_id
     assert parent_id.startswith("replay-parent-")
     assert snapshot.replay_parent_id == parent_id
-    assert snapshot.canonical_execution is not None
-    child = snapshot.canonical_execution
-    assert child.result_id != parent_id
-    assert len(child.related_references) == 1
-    assert child.related_references[0].kind.value == "replay_parent"
-    assert child.related_references[0].reference_id == parent_id
+    assert snapshot.canonical_execution is None

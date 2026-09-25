@@ -329,7 +329,8 @@ def test_blank_and_valid_candidates_keep_v1_order_top_n_and_child_boundary() -> 
         top_n=1,
     )
     assert [row["stock_code"] for row in valid_only.recommendations] == ["VALID"]
-    assert valid_only.canonical_execution is not None
+    # 自訂 scorer 的 v1 row 不足以建立 canonical child。
+    assert valid_only.canonical_execution is None
 
 
 def test_blank_filter_cutoff_is_applied_before_evaluator_and_scorer() -> None:
@@ -494,11 +495,11 @@ def test_blank_compatibility_scorer_completes_all_terminal_paths_without_canonic
     if mode == "success":
         assert [row["stock_code"] for row in result.rows] == ["", "VALID"]
         assert result.scoring_outcomes[0] is None
-        assert result.scoring_outcomes[1] is not None
+        assert result.scoring_outcomes[1] is None
     else:
         assert [row["stock_code"] for row in result.rows] == ["VALID"]
         assert len(result.scoring_outcomes) == 1
-        assert result.scoring_outcomes[0] is not None
+        assert result.scoring_outcomes[0] is None
     assert scorer.stock_codes == ["", "VALID"]
     assert result.compatibility_scoring_outcomes == (terminal,)
 

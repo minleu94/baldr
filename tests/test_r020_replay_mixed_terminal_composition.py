@@ -245,19 +245,8 @@ def test_mixed_terminals_keep_selected_v1_rows_and_fail_child_atomically(
     assert scorer.calls == list(codes)
     assert scorer.latest_dates == [_AS_OF] * len(codes)
     assert completions == [
-        ("HI", ReplayScorerDispositionV1.SCORED),
         ("EMPTY", ReplayScorerDispositionV1.SKIPPED_EMPTY),
         ("BROKEN", ReplayScorerDispositionV1.SKIPPED_SCORER_EXCEPTION),
-        (
-            "SELECTED_PROJECTION",
-            ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION,
-        ),
-        ("MID", ReplayScorerDispositionV1.SCORED),
-        (
-            "SECOND_SLICE_PROJECTION",
-            ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION,
-        ),
-        ("FIRST_SLICE_TAIL", ReplayScorerDispositionV1.SCORED),
     ]
     assert len(handoffs) == 1
     handoff = handoffs[0]
@@ -271,21 +260,7 @@ def test_mixed_terminals_keep_selected_v1_rows_and_fail_child_atomically(
         "MID",
         "SECOND_SLICE_PROJECTION",
     ]
-    assert all(outcome is not None for outcome in handoff.scoring_outcomes)
-    assert [
-        outcome.disposition
-        for outcome in handoff.scoring_outcomes
-        if outcome is not None
-    ] == [
-        ReplayScorerDispositionV1.SCORED,
-        ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION,
-        ReplayScorerDispositionV1.SCORED,
-        ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION,
-    ]
-    assert all(
-        outcome is not None and outcome.request.as_of_date == _AS_OF
-        for outcome in handoff.scoring_outcomes
-    )
+    assert handoff.scoring_outcomes == tuple(None for _ in handoff.rows)
 
     # Provider 的第一次 [-1] 已去除 TAIL；snapshot 的第二次 [-1] 再去除 SECOND。
     assert [row["stock_code"] for row in snapshot.recommendations] == [
@@ -339,16 +314,8 @@ def test_second_slice_excludes_projection_failure_before_child_materialization(
     assert scorer.calls == list(codes)
     assert scorer.latest_dates == [_AS_OF] * len(codes)
     assert completions == [
-        ("HI", ReplayScorerDispositionV1.SCORED),
         ("EMPTY", ReplayScorerDispositionV1.SKIPPED_EMPTY),
         ("BROKEN", ReplayScorerDispositionV1.SKIPPED_SCORER_EXCEPTION),
-        ("MID", ReplayScorerDispositionV1.SCORED),
-        ("LO", ReplayScorerDispositionV1.SCORED),
-        (
-            "SECOND_SLICE_PROJECTION",
-            ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION,
-        ),
-        ("FIRST_SLICE_TAIL", ReplayScorerDispositionV1.SCORED),
     ]
     assert len(handoffs) == 1
     handoff = handoffs[0]
@@ -358,17 +325,7 @@ def test_second_slice_excludes_projection_failure_before_child_materialization(
         "LO",
         "SECOND_SLICE_PROJECTION",
     ]
-    assert all(outcome is not None for outcome in handoff.scoring_outcomes)
-    assert [
-        outcome.disposition
-        for outcome in handoff.scoring_outcomes
-        if outcome is not None
-    ] == [
-        ReplayScorerDispositionV1.SCORED,
-        ReplayScorerDispositionV1.SCORED,
-        ReplayScorerDispositionV1.SCORED,
-        ReplayScorerDispositionV1.SKIPPED_PROJECTION_EXCEPTION,
-    ]
+    assert handoff.scoring_outcomes == tuple(None for _ in handoff.rows)
 
     # The one invalid projection is present after provider slicing, then excluded
     # by the wrapper's second slice; only the three typed successes reach the child.
@@ -376,11 +333,7 @@ def test_second_slice_excludes_projection_failure_before_child_materialization(
     _assert_v1_row(snapshot.recommendations[0], "HI", 100.0)
     _assert_v1_row(snapshot.recommendations[1], "MID", 90.0)
     _assert_v1_row(snapshot.recommendations[2], "LO", 80.0)
-    child = snapshot.canonical_execution
-    assert child is not None
-    assert [item.stock_code for item in child.decision.items] == ["HI", "MID", "LO"]
-    assert [item.stock_code for item in child.decision.assessments] == ["HI", "MID", "LO"]
-    assert child.related_references[0].reference_id == "parent-r020-second-slice-projection"
+    assert snapshot.canonical_execution is None
 
 
 def test_native_nan_and_infinities_remain_v1_rows_and_fail_child_closed(
@@ -409,9 +362,7 @@ def test_native_nan_and_infinities_remain_v1_rows_and_fail_child_closed(
     expected_codes = ["NAN", "POS_INF", "TWENTY", "TEN", "NEG_INF"]
     assert scorer.calls == list(codes)
     assert scorer.latest_dates == [_AS_OF] * len(codes)
-    assert completions == [
-        (code, ReplayScorerDispositionV1.SCORED) for code in codes
-    ]
+    assert completions == []
     assert [row["stock_code"] for row in snapshot.recommendations] == expected_codes
     scores_by_code = {
         row["stock_code"]: row["total_score"] for row in snapshot.recommendations

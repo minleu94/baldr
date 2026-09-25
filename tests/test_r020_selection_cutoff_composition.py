@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
 from typing import Any, cast
 
 import pandas as pd
@@ -169,15 +168,7 @@ def test_signed_selection_limits_and_cutoff_share_one_replay_call() -> None:
             "selection_reason": "固定原因-A",
         }
     ]
-    limited_child = limited_snapshot.canonical_execution
-    assert limited_child is not None
-    limited_decision = limited_child.decision
-    assert limited_decision is not None
-    assert limited_child.request.as_of_date == date(2026, 9, 24)
-    assert limited_child.context.as_of_date == date(2026, 9, 24)
-    assert limited_child.related_references[0].reference_id == "parent-r020-selection-limited"
-    assert [item.stock_code for item in limited_decision.items] == ["A"]
-    assert [item.stock_code for item in limited_decision.assessments] == ["A"]
+    assert limited_snapshot.canonical_execution is None
 
     # 同一 positive lookback 下放寬一席，明確證明 21-row B 通過；
     # 這與 max=2 例共同固定 first-seen 上限是在 history gate 前套用。
@@ -198,13 +189,7 @@ def test_signed_selection_limits_and_cutoff_share_one_replay_call() -> None:
         90.0,
         80.0,
     ]
-    boundary_child = boundary_snapshot.canonical_execution
-    assert boundary_child is not None
-    boundary_decision = boundary_child.decision
-    assert boundary_decision is not None
-    assert boundary_child.related_references[0].reference_id == "parent-r020-selection-boundary"
-    assert [item.stock_code for item in boundary_decision.items] == ["B", "A"]
-    assert [item.stock_code for item in boundary_decision.assessments] == ["B", "A"]
+    assert boundary_snapshot.canonical_execution is None
 
     # 負 lookback 沿舊規則不裁日期；max_stocks=-1 保留 Python 的 unique()[:-1]。
     # P19 仍先佔 first-seen 名額後被 19-row gate 略過；末位 C（含 cutoff 後資料）不進 scorer。
@@ -248,16 +233,4 @@ def test_signed_selection_limits_and_cutoff_share_one_replay_call() -> None:
             "selection_reason": "固定原因-A",
         },
     ]
-    signed_child = signed_snapshot.canonical_execution
-    assert signed_child is not None
-    signed_decision = signed_child.decision
-    assert signed_decision is not None
-    assert signed_child.request.as_of_date == date(2026, 9, 24)
-    assert signed_child.context.as_of_date == date(2026, 9, 24)
-    assert signed_child.related_references[0].reference_id == "parent-r020-selection-signed"
-    assert [item.stock_code for item in signed_decision.items] == ["B", "A"]
-    assert [item.stock_code for item in signed_decision.assessments] == ["B", "A"]
-    assert [item.rule_score for item in signed_decision.items] == [
-        Decimal("90.0"),
-        Decimal("80.0"),
-    ]
+    assert signed_snapshot.canonical_execution is None

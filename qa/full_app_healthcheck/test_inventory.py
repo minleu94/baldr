@@ -379,6 +379,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_r020_replay_post_score_evaluator.py": "service-oracle-recommendation",
     "tests/test_r020_post_score_diagnostics_characterization.py": "service-oracle-recommendation",
     "tests/test_r020_post_score_diagnostics_observer.py": "service-oracle-recommendation",
+    "tests/test_r020_post_score_threshold_metric_pairing.py": "service-oracle-recommendation",
     "tests/test_r020_strategy_filter_normalization.py": "service-oracle-recommendation",
     "tests/test_r020_post_score_unsupported_metric_legacy_characterization.py": "service-oracle-recommendation",
     "tests/test_r020_replay_parent_identity.py": "service-oracle-recommendation",

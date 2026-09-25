@@ -23,6 +23,10 @@ import sys
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
 from data_module.official_trading_calendar_cache import (
     OfficialCalendarCacheError,
     VerifiedOfficialCalendarCache,
@@ -31,7 +35,6 @@ from data_module.official_trading_calendar_cache import (
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
 DEFAULT_OUTPUT_ROOT = DEFAULT_DATA_ROOT / "output"
 DEFAULT_DB_PATH = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"

@@ -11,6 +11,7 @@ gate 使用 `data_module.official_trading_calendar_cache.load_verified_twse_cale
 - gate 同時保留 upstream quick receipt 的 `status=failed`、SHA-256 `e8569f423021a8dd482f689ccef7f3c1c01032a5fd3cb85bc95364552759e898` 與 `error_count=1`，沒有把 technical failure 投影成 quick success。
 - cache 為 `output/paper_execution_eod_replay/calendar_cache/twse_holiday_schedule_2026_20260921T231502556070Z_4784f9cff832.json`，file SHA-256 `2b145dacedbd267eef4df7f9043e0534eaa8d19a76ed6532c5218397bb5605c1`，有效至 `2026-09-28T23:15:03.981649Z`；9/25 row 是 TWSE 中秋節休市，source response hash 為 `7644c1a8af784c09f54670fd7413f536b13eb76c54d658058e8873d1aee32117`。
 - 未重播 scheduler、retry runner、producer、writer 或 adapter；未改 quick receipt、正式 binding、market DB、Paper ledger 或 credit。
+- `scripts\scheduled\paper_execution_dependency_gate.py --help` 與 `-m scripts.scheduled.paper_execution_dependency_gate --help` 均以 exit code 0 通過；直接檔案路徑啟動已補 repo-root import bootstrap，沒有因此呼叫 writer 或改檔。
 
 忽略型 direct inspect proof 在 `output/qa/paper_eod_holiday_gate_fix_20260925/readback.json`，SHA-256 為 `E67B5549B3273CA4FC0C81EC9651FDE23E3278DC8EB41451220CDA5178BBE63D`，JSON parse 通過。
 

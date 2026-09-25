@@ -157,7 +157,7 @@ $TrainingAsOf = [DateTimeOffset]::UtcNow.ToString('o')
 
 - **候選池**：先選股票看摘要、觸發原因、資料日／品質與下一步；再按「查看選中個股研究報告」。完整分析與共用證據在「顯示進階研究」內；「選擇原推薦來源」是日常下一步按鈕，先核對 exact identity 再開啟原理由。推薦來源是追溯 identity，不是評分或買賣訊號。
 - **個股研究報告**：先看「摘要」的結論、證據、變化、風險、資料是否足夠與下一步。價格／技術、基本面／營收財報、籌碼／產業事件、持倉／Health／Exit、Rule／ML／歷史會在進入對應分頁時才繪製；完整開高低收才顯示 K 線／成交量，缺開高低收時改顯示收盤圖。按「顯示進階：逐項證據與欄位」或「顯示進階：來源與各區塊日期」查看欄位、來源、品質、資料日、可得時間與版本。
-- **推薦分析**：新手入口先選 Profile 與資料範圍，結果頁先看結論、Why／Why Not、風險與資料日；需要調整時進入進階 Profile／設定。保存結果會沿用既有保存與後續追蹤流程，保留對應當次推薦的來源與股票，並可在 Journal 與後續查詢中讀回；成功保存不代表已成交或個人化效果成立。
+- **推薦分析**：新手入口先選 Profile 與資料範圍，結果頁先看結論、Why／Why Not、風險與資料日；需要調整時進入進階 Profile／設定。保存結果會封存該次推薦並以相同 `result_id` 驗證讀回，保留來源與股票供後續研究；一般 Qt 手動保存不會建立個人化送達 ACK。成功保存不代表已送達、已成交或個人化效果成立。
 - **策略回測**：先選研究模式、股票／清單、日期、策略，再看畫面上的資金、費用、滑價、執行價格與停損停利摘要。按「修改資金與風控設定」展開資金、成本、成交與停損停利欄位；按「顯示進階研究設定」展開策略詳細參數、最佳化與 Walk-forward。兩個切換只改可見性，不切換模式或重設參數。按唯一主要「執行」按鈕後，在結果頁分開判讀摘要、診斷、圖表、最佳化或驗證 evidence；回測不等於正式策略升級或交易許可。
 - **持倉管理**：先看持倉摘要、資料缺口與下一步，再選列查看價格／停損停利、策略來源或個股研究。歷史、Journal、模擬持倉、Paper 與 Stress 位於「顯示進階：交易歷史／日誌／模擬持倉／壓力測試」；模擬或 Paper projection 不等於實際成交。
 
@@ -267,7 +267,9 @@ $env:PYTHONIOENCODING = "utf-8"
 
 ### 明示產生、保存並送達新的 personal recommendation
 
-若目前沒有任何 scope-linked prediction，先用 `scripts\run_personalization_recommendation.py` 走 producer chain。這個入口要求 caller 明示 data/output/config、result identity、scope type/id 與 delivery/request identity；六個 producer execution clock（其中五個透過 scope／receipt 欄位呈現）由實際 `RecommendationService` producer context 與 durable projection receipt 產生，CLI clock 參數只作可選 assertion，與 producer 不一致即 fail closed。自然模式會要求 producer 從實際來源選取 `producer_selected_latest_available_cutoff`；`--as-of-date` 只是對該實際 cutoff 的 exact assertion，不能把 caller 指定的舊 cutoff 重新標成自然模式。要明確重播舊 cutoff，必須加 `--historical-research`，結果會隔離為 `historical_research_not_as_if_available`。它執行既有 `RecommendationService`，再經 `RecommendationSaveRequest`／`RecommendationRepository` create-only save/readback，最後只追加 technical delivery ACK。producer 沒有 durable projection receipt 或 temporal anchor 時會 fail closed，不會保存成普通結果。
+若目前沒有任何 scope-linked prediction，先用 `scripts\run_personalization_recommendation.py` 走 producer chain。這個入口要求 caller 明示 data/output/config、result identity、scope type/id 與 delivery/request identity；六個 producer execution clock（其中五個透過 scope／receipt 欄位呈現）由實際 `RecommendationService.execute_recommendation` 同次 sealed execution/postprocess capture 與 durable projection receipt 產生，CLI clock 參數只作可選 assertion，與 producer 不一致即 fail closed。自然模式會要求 producer 從實際來源選取 `producer_selected_latest_available_cutoff`；`--as-of-date` 只是對該實際 cutoff 的 exact assertion，不能把 caller 指定的舊 cutoff重新標成自然模式。要明確重播舊 cutoff，必須加 `--historical-research`，結果會隔離為 `historical_research_not_as_if_available`。同次 callback 產生的 typed capture event 隨 execution codec roundtrip 後，由 canonical create-only writer 保存；exact-ID readback 驗證 result ID、payload hash、integrity basis 與 generated capture identity 後，CLI 才以既有 Journal CAS writer 追加 technical delivery ACK。ACK 與 execution 保存分離，不進 execution payload/hash。producer 沒有 durable projection receipt 或 temporal anchor 時會 fail closed，不會保存或 ACK。
+
+相同 `result_id`／payload hash 的 canonical retry 讀取既有 execution，不重跑 producer、不重寫 artifact；不同 request identity、config、scope、receipt 或 hash 會 fail closed。artifact 已存在但 SQLite index 缺列時，CLI 只透過 R012 opaque-ID `store.read_artifact()` 讀取，嚴格驗證 execution envelope、identity、payload hash 後呼叫同一 create-only writer 修復 index；一般 exact query 對未索引 artifact 仍 fail closed。既有 legacy personal JSON 僅由 legacy 唯讀 decoder 讀取與重試送達 ACK，CLI 不重解碼或寫回 JSON。
 
 ```powershell
 $env:PYTHONIOENCODING = "utf-8"
@@ -276,11 +278,11 @@ $env:PYTHONIOENCODING = "utf-8"
   --config-json <STRATEGY_CONFIG_JSON> --result-id <NEW_RESULT_ID> `
   --result-name "<結果名稱>" --as-of-date YYYY-MM-DD `
   --scope-id <SCOPE_ID> --scope-type local --delivery-id <DELIVERY_ID> `
-  --request-id <DELIVERY_REQUEST_ID> `
+  --request-id <DELIVERY_REQUEST_ID> --profile test `
   --evidence-db <EVIDENCE_DB>
 ```
 
-`--declared-at`、`--decision-at`、`--available-at`、`--captured-at`、`--receipt-created-at` 都是可選的 aware ISO assertion；省略時以 producer 實際 clock 為準，若提供則必須與保存 context 完全相同。`--delivery-at`／`--ack-recorded-at` 省略時使用 append 後的實際 UTC clock；重試會沿用既有 ACK 的 persisted／delivered clocks。producer context 的 `decision_at` 只代表 `prediction_decision_at`，不會被 ACK 或人工作答時間覆寫；後續 action 的 `human_decision_at` 由最後一筆 recorded revision 的 `action_at` 決定。`--as-of-date` 是市場資料 cutoff，不要求等於 runtime `decision_at`；合法的 T-1 cutoff 可以在下一個台北市場日執行，但 cutoff 不得晚於 producer 的 available market date。日期型欄位與成熟度判定採 `Asia/Taipei`，不得以 UTC 日期手動替代。自然 producer 依實際來源的最新可得 row 決定 cutoff，不用日期差／星期幾猜 session；若 caller 提供的 `--as-of-date` 與 producer 選出的 cutoff 不同，命令會在 save 前 fail closed。只有明確指定 `--historical-research` 才能使用舊 cutoff，並標記 `historical_research_not_as_if_available`，不能把歷史重播冒充自然可得的即時決策。這條命令只保存 research prediction 與 technical ACK，不建立 human action、不建立 order、不改寫 receipt body；成功後再以本節上方的 action command 明示 `accepted`／`skipped`／`note`／`review_scheduled`。正式 D 槽使用前應先以隔離 output root 做 bounded QA，不能拿 scheduled population-only 結果當作新 personal delivery。
+`--profile test` 將 QA 輸出隔離到 test root；實際輸出仍要指定新的 `--output-root`。`--declared-at`、`--decision-at`、`--available-at`、`--captured-at`、`--receipt-created-at` 都是可選的 aware ISO assertion；省略時以 producer 實際 clock 為準，若提供則必須與保存 context 完全相同。六個 producer clock 須依 `run_started_at ≤ scope_declared_at ≤ available_at ≤ captured_at ≤ decision_at ≤ receipt_created_at` 排序，尤其 `available_at ≤ decision_at`；任一缺值、逆序或 assertion 不同都會 fail closed。`--delivery-at`／`--ack-recorded-at` 省略時使用 append 後的實際 UTC clock；重試會沿用既有 ACK 的 persisted／delivered clocks。CLI 的 `generated_capture_hashes` 是 execution 內封存的原始 capture hash；`persisted_capture_hashes` 與 `delivered_capture_hashes` 是含 lifecycle status／timestamp 的派生 capture hashes，不能用來取代原 hash或推斷 execution bytes 已改變。producer context 的 `decision_at` 只代表 `prediction_decision_at`，不會被 ACK 或人工作答時間覆寫；後續 action 的 `human_decision_at` 由最後一筆 recorded revision 的 `action_at` 決定。`--as-of-date` 是市場資料 cutoff，不要求等於 runtime `decision_at`；合法的 T-1 cutoff 可以在下一個台北市場日執行，但 cutoff 不得晚於 producer 的 available market date。日期型欄位與成熟度判定採 `Asia/Taipei`，不得以 UTC 日期手動替代。自然 producer 依實際來源的最新可得 row 決定 cutoff，不用日期差／星期幾猜 session；若 caller 提供的 `--as-of-date` 與 producer 選出的 cutoff 不同，命令會在 save 前 fail closed。只有明確指定 `--historical-research` 才能使用舊 cutoff，並標記 `historical_research_not_as_if_available`，不能把歷史重播冒充自然可得的即時決策。這條命令只保存 research prediction 與 technical ACK，不建立 human action、不建立 order、不改寫 receipt body；成功後再以本節上方的 action command 明示 `accepted`／`skipped`／`note`／`review_scheduled`。正式 D 槽使用前應先以隔離 output root 做 bounded QA，不能拿 scheduled population-only 結果當作新 personal delivery。
 
 若報告顯示 `population_only`、`scope_missing`、`not_delivered`、`pending_maturity`、`matured_missing`、`source_consistency_invalidated` 或 `fit_artifact_missing`，保留原診斷並核對 source fingerprint；不要手動補 scope、label、outcome、action 或把 fixture／Paper／user-declared context 當作 natural user evidence。正式資料檢視的 command、hash、分母與實際 pending 結果見 [Personalization 唯讀來源 QA](../06_qa/PERSONALIZATION_READONLY_SOURCE_QA_2026_09_16.md)。
 
@@ -2489,6 +2491,8 @@ process-pool throughput 與 crash recovery 已有獨立 staging probe，broker H
 
 Regime 是對當下市場環境的分類，不是未來預測。規則匹配度是 detector 對目前資料符合既有規則的程度；100% 代表達到目前規則上限，不代表未來勝率或成功機率。
 
+若市場資料來源讀取失敗，`Trend`／`0.5` 與 `details.error` 是降級結果，不是新訊號；判讀前先確認來源資料可讀及有效日期。若 history 損壞或偵測到其他程序同時更新造成提交衝突，本輪狀態視為不可用，不要把上一輪 Regime 當成本輪成功結果。先檢查市場來源及是否有同時寫入，再保留 `regime_history.json` 原狀；不要手動刪除或覆寫。問題持續時依系統維護流程處理後再重試。
+
 ### 5.2 強勢與弱勢個股
 
 市場服務同時保留決策日與實際有效日。較舊資料會標為 degraded 並保留 fallback 日期；只有未來資料、日期未知或有效樣本不足時保持 missing。Breadth 的比例以基點、Regime 的規則匹配度以分類分數交換，均不是勝率。指定歷史決策日的應用服務先裁切可用資料才排名，追加未來行情不改當日已凍結母體；本次沒有新增歷史日期 UI 控件。
@@ -2506,7 +2510,9 @@ Regime 是對當下市場環境的分類，不是未來預測。規則匹配度�
 
 弱勢個股頁的 `跌幅%` 會把來源的負漲幅取絕對值顯示，例如來源 `-9.90%` 在畫面顯示為 `9.90`，並以紅色表示下跌語意；欄名已經說明這是跌幅，所以不再用負號重複表意。這只是視覺語意修正，不改變篩選排名或 scoring。
 
-效能邊界：強 / 弱勢個股在 SQLite 啟用時會優先從 SQLite `daily_prices` 只讀近期交易日與必要欄位，不依賴全量 indicator CSV 掃描；產業共振理由會使用 `IndustryMapper` 最新產業表現快取，避免逐檔股票重掃產業指數 DataFrame；讀取失敗才降級為既有 CSV / 舊查詢路徑。若仍感到卡頓，應先量測 SQLite 查詢、DataFrame 分組與 UI thread 更新時間；不要把排名結果解讀成交易指令。
+效能邊界：強 / 弱勢個股在 SQLite 啟用時會優先從 SQLite `daily_prices` 只讀近期交易日與必要欄位；產業共振理由會使用 `IndustryMapper` 最新產業表現快取，避免逐檔股票重掃產業指數 DataFrame。recent provider 回傳空 `DataFrame` 代表來源已成功讀取，結果為空時不會再掃描舊來源；只有回傳 `None`（例如資料庫不存在或 recent 查詢失敗）才會進入 fallback。個股 fallback 先嘗試唯讀 SQLite `daily_prices`／`technical_indicators` JOIN，無可用資料時再掃描 `technical_dir/*_indicators.csv`；產業 fallback 先嘗試唯讀 SQLite `industry_indices`，再依序檢查設定的 `industry_index_file`、`technical_dir/industry_index.csv`、`meta_data_dir/industry_index.csv`。所有 SQLite 查詢使用唯讀連線，不會修改正式資料庫。
+
+若狀態列顯示 0 筆，先分辨 recent 資料來源可用但沒有候選，還是資料來源缺失／查詢失敗。再核對設定的資料庫路徑與個股技術指標目錄、產業 CSV 路徑；來源修復後按「刷新」重試。若仍感到卡頓，應先量測 SQLite 查詢、DataFrame 分組與 UI thread 更新時間；不要把排名結果解讀成交易指令。
 
 候選池頁同樣採狀態列語意：載入中、已更新筆數、空候選與錯誤都會直接顯示在表格下方；空清單或載入失敗不會插入 `-` 佔位資料列，批次回測按鈕也會維持停用。
 
@@ -2579,6 +2585,8 @@ Regime 是對當下市場環境的分類，不是未來預測。規則匹配度�
 執行或選取結果後，結果區上方的「研究上下文」會沿用同一檔股票、研究區間、決策日、資料日期、來源與 Profile。切到個股研究、Research Lab 或 Portfolio 時，應以這組 context 核對是否仍在同一研究假說；缺少欄位會顯示未知，不由 UI 猜測或重新計算。
 
 推薦分析執行期間，進度列會顯示目前百分比；下方「執行狀態」會同步顯示四個階段（讀取資料、建立分析範圍、執行推薦規則、整理結果）、耗時與最後活動時間。這些欄位是本輪背景工作的可觀測狀態，不會把等待中的時間推算成額外完成度。按「取消分析」只會送出合作式取消，按鈕會改為「取消中…」並等待背景工作安全收尾；收尾前不套用部分結果，也不會強制終止仍可能持有資料資源的執行緒。完成後畫面會保留「已安全取消」及本輪耗時，需重新按「執行推薦分析」才能開始新一輪。
+
+按下執行時，畫面會凍結當次 Profile 與設定；工作期間仍可查看、保存上一筆完整結果。取消、失敗或晚到的舊工作回呼不會套用部分結果或覆蓋上一筆結果與選取列。新一輪完整完成後才切換到新結果；若完整結果為空，舊股票列會清空。Qt 手動執行會在封存的 caller 設定快照中標記 `manual_qt_snapshot=true` 供來源辨識，執行規則前會移除此來源標記，因此不影響策略選擇或分數。
 
 市場狀態卡會顯示 Regime 中文名、regime code、confidence / 規則匹配度、Regime score、資料日期與來源。confidence / 規則匹配度是當下資料符合分類規則的程度，不是未來走勢勝率。
 
@@ -2670,35 +2678,38 @@ receipt 或推薦列 provenance 的 identity 不一致，會拒絕保存並提�
 - `unavailable`／`not_persisted`：receipt、source、pointer 或 identity 核對失敗；系統保留原 rule selection，但撤回 model-derived probability／ranking 欄位，不應手動補成 verified。
 - `estimated`：成本或成交資料是研究估算（例如 fees/tax-only），不是 observed fill；只可作 research-only 判讀，不得當成正式成本、promotion、績效或 broker 依據。
 
+一般使用仍按既有「執行推薦分析」流程，不需新參數。若 live calibration 的 SQLite 來源在 snapshot 載入後或模型 projection 期間變更，系統保留 rule 排序與分數，將校準標為 `unavailable`，不發布 model-derived 欄位或模型 receipt。Historical recommendation replay 另在日期列舉前開啟同連線 SQLite observation lease，並於整輪建立完成後檢查來源；若期間有其他連線提交變更，整輪 replay 會 fail closed，不發布部分結果。每日 scheduled learning 將 `changed during read lease` 分類為 source-integrity emergency rollback，不是可直接重試的 recoverable dependency failure；先查看 finalized status 與來源修訂狀態，再依排程維護流程處理。不要手動修改 receipt/hash，也不要拿舊 receipt 代替本輪結果。這些 lease 只比較同一連線的 `data_version` 與來源檔案 stat，不會持有整輪 SQLite transaction，也不建立 durable generation；sidecar 與 SQLite 仍不在共同原子交易內，所有 ABA 情境亦未排除。
+
 缺少自然成熟 evidence 時，receipt 仍只證明工程 provenance 與當次 projection，不會自動 promotion、產生自然證據信用或下單；看到 identity conflict、future row 或 hash mismatch 時，應停止採用該 projection，保留 rule-only 結果並處理警告。
 
 ### 6.5 結果後續操作
 
-保存時一併保留執行當時的 Profile／設定、決策日、行情與實際基本面輸入指紋、母體及負面證據。送推薦回放會傳送獨立設定快照，後續修改畫面設定不改已送出內容。歷史 as_of_date 目前是應用服務接點；若歷史產業篩選缺當時成分證據，回報 `industry_membership_pit_unavailable`，不能改用今日產業分類解鎖。
+保存時會沿用本輪 sealed execution 的 Profile／設定、決策日、候選列、母體與負面證據，不再從推薦服務的「最新一次執行」狀態補資料。送推薦回放會傳送獨立設定快照，後續修改畫面設定不改已送出內容。歷史 as_of_date 目前是應用服務接點；若歷史產業篩選缺當時成分證據，回報 `industry_membership_pit_unavailable`，不能改用今日產業分類解鎖。
 
 加入觀察清單只附上真實已保存的推薦結果 ID；未保存的新分析不捏造 source_id，開始或完成另一輪分析會清除前一輪 ID，避免候選被錯接到舊結果。
 
-- 「保存結果」：保存推薦配置、Profile、Regime、推薦名單、screening matrix 與 negative evidence payload；成功訊息會顯示保存 ID、保存範圍與下一步入口。
+- 「保存結果」：保存同一份 completed execution 的 canonical artifact，並以 exact `result_id` 查詢 verified readback；成功訊息會顯示保存 ID、artifact 位置、Profile、Regime、名單數與下一步入口。只有 readback 的 execution、payload hash、artifact、時間與名稱／備註都符合保存回條後，畫面才採用已保存身份。
+- canonical 保存與 verified readback 成功後，系統會以同一份 execution 的股票代號建立既有自動選股清單；清單建立失敗是 soft failure，不回滾已驗證的推薦結果，畫面會分別說明清單未建立的原因。
 - 「加入觀察清單」：把選取股票加入 Watchlist。
 - 「送 Research Lab 批次回測」：用推薦名單建立批次研究輸入。
 - 「送 Research Lab 推薦回放」：重播整套推薦 Profile / Config 在歷史期間每個決策點會產生的推薦，不是只拿今日名單回測。回放結果可保存為 Research Run / Evidence，再由 Registry 與 lifecycle gate 判讀 promote / hold / demote_candidate / retire_candidate；目前不會從推薦頁直接自動降級或刪除策略版本。
-- 表格右鍵「記錄到持倉管理」：建立帶推薦來源 metadata 的交易。
+- 表格右鍵「記錄到持倉管理」：只有推薦結果已 canonical 保存並 verified readback 才能記錄；來源必須是同一份封存 execution、保存回條與選取股票，保留結果 ID、候選身份、artifact 位置及 payload hash。未提供的校準／機率資料維持不可得，不會用畫面文字或舊結果補值。
 - 「匯出 Excel」：建立包含元數據、今日推薦配置、Regime 狀態以及推薦股票名單的 Excel 報告，並在背景執行原子寫入。
 
-#### 保存結果與送達紀錄
+#### canonical 保存、重試與來源追溯
 
 1. 在「推薦分析」完成一輪分析後，按「保存結果」並輸入結果名稱。
-2. 保存成功代表推薦結果、執行設定、screening matrix、negative evidence 與可用的校準 provenance 已寫入既有 Recommendation Run；畫面會顯示 `result_id`。
-3. 若本輪具有明確的本機研究 scope，保存後系統會由同一個 MainWindow-owned JournalService 追加技術性送達紀錄；只有讀取到相同結果、股票、scope、prediction 與 hash 的送達紀錄，查詢才會顯示為已送達。
-4. 送達紀錄不代表使用者採納、接受或交易，也不會自動建立 `accepted`、`skipped`、`held` 或 broker order。沒有實際 action 時，後續判讀維持 `not_recorded`，不把缺少紀錄推成 skipped。
+2. 畫面先用唯一推薦 execution ID 寫入 canonical artifact，再查回該 ID 驗證 execution、payload hash、artifact、保存時間與本次名稱／備註；只有驗證通過才顯示保存完成並建立自動選股清單。
+3. 若 artifact 已發布但索引尚未完成，畫面會提示索引待重試；再次按「保存結果」會沿用首次名稱／備註，並以相同 result ID 呼叫保存服務修復索引。若保存已回條但 readback 失敗，重試會先查回同一 result ID，不重複寫 artifact。這些未驗證狀態都不建立選股清單。
+4. 已完成保存的 execution 再按「保存結果」只顯示已保存資訊，不會重寫結果或重複建立自動選股清單。選取其他股票時， Portfolio 來源摘要仍需與目前 verified result、execution item 及保存回條一致。
+5. 一般 Qt 手動推薦沒有個人化 scope／request identity，因此此保存流程不建立個人化送達 ACK；保存成功不等於已送達、採納、接受或交易。若 execution 帶有個人化 scope，畫面會明確提示 ACK 目前不可由 Qt 保存流程提供，後續送達紀錄由 R015 負責。
 
 操作限制與排錯：
 
-- 本入口不新增 user/profile/holding 選擇欄位；profile、持倉或 portfolio 不會被猜成個人 scope。缺少可驗證 scope 或 receipt 時，結果仍可作一般研究保存，但不進入個人化評估範圍。
-- 如果保存成功但送達紀錄未完成，畫面會顯示：「推薦已儲存，但送達紀錄未完成，暫不納入個人化評估。」可保留該 `result_id`，稍後依相同結果重新讀取；不要把這個狀態當成已採納。
-- 同一個個人化結果重試時，系統以既有結果的 exact readback 與 create-only 邊界保留原 capture；既有個人化結果不可被普通保存流程覆寫或降級。若看到 identity、scope、hash 或送達時間衝突，先保留原始結果與錯誤訊息，勿刪除 JSON 或 Journal 檔案。
-- 若顯示「保存推薦結果失敗」，先確認輸出路徑可寫、`result_id`／推薦列 provenance 沒有互相衝突，再重試；若仍失敗，保存錯誤不會追加送達紀錄，該筆也不會進入 delivered 判讀。
-- 這些送達與評估資料仍屬 research-only；不會下單、調整持倉、改寫既有 projection receipt、修改 global active pointer，亦不代表已證明個人化效果。
+- 若顯示「保存或 verified readback 失敗」，先保留畫面中的 `result_id` 與完整錯誤；再次點擊會依目前狀態重試 readback，或沿用首次名稱／備註修復索引。不要刪除 canonical artifact、索引或改寫 hash。
+- 若推薦保存成功但自動選股清單未建立，推薦結果仍已驗證保存；依訊息檢查 Universe service 或輸出路徑，再從下次完整推薦保存建立新的清單。
+- `manual_qt_snapshot=true` 只標記來源，不代表資料品質、策略驗證、個人化送達或交易權限。
+- 保存與跨頁追溯都是 research-only；不會下單或自動調整持倉。個人化 ACK、接受狀態及 broker order 由各自授權流程處理。
 
 ### 6.6 鍵盤與圖表文字替代
 
@@ -3347,12 +3358,12 @@ Research Lab 左側設定面板預設保留足夠寬度給長下拉選項與表�
 
 - 下方綠色「主要執行」是唯一執行 CTA；它會依模式與進階選項顯示「執行單股回測」「執行批次回測」「執行固定清單逐檔回測」「執行推薦回放」「執行參數最佳化」或「執行 Walk-forward 驗證」。按鈕旁的執行意圖會說明輸入母體；最佳化、Walk-forward、推薦回放的舊內嵌按鈕只保留相容屬性，不再重複顯示。
 - 「取消執行」：合作式取消；已開始的單檔工作可能安全收尾。
-- 「保存結果」：將單股回測、批次回測單檔結果、固定組合 per-stock 結果或推薦回放結果保存到 Research Run Registry；系統會保存參數快照、資料 fingerprint、成本、成交假設、績效摘要、factor snapshot / contribution metadata、equity curve 與 trades。單股、批次與固定組合 per-stock 結果的 factor metadata 來自該次回測已產生的 score/factor records，不會在保存時重算分數或重新抓取資料。
+- 「保存結果」：將單股回測、批次回測單檔結果、固定組合 per-stock 結果或推薦回放結果保存到 Research Run Registry；系統會保存參數快照、資料 fingerprint、成本、成交假設、績效摘要、factor snapshot / contribution metadata、equity curve 與 trades。單股、批次與固定組合 per-stock 結果的 factor metadata 來自該次回測已產生的 score/factor records，不會在保存時重算分數或重新抓取資料。新的推薦回放 Registry save 必須有該次執行的完整 `RecommendationPortfolioBacktestResultDTO`，並把 v1 snapshots、holdings、contributions、summary、diagnostics、hints 與 details 封存；不接受從摘要或舊 row dict 拼出 DTO。若有同次 invocation 的 typed parent／children，UI 保存前會逐一 create-only 保存並讀回驗證 R012 child，再保存 lineage sidecar descriptor。Registry `run_id`、replay parent ID 與 legacy portfolio run ID 是不同識別碼。
 - 「升級為策略版本」：新版 Gate 必須讀取 Research Run Registry，不得只靠單次 summary；run 需 committed / valid、未封存、未升級、具備可還原參數合約版本，且通過最低 validation gate 與 Month 6 lifecycle gate。Lifecycle gate 會檢查交易次數、總報酬、Sharpe、最大回撤、勝率、benchmark excess return、factor quality 與 regime compatibility。成功升級後，若 lifecycle evidence repository 已啟用，系統會保存 applied evidence，包含 decision snapshot、gate reasons 與 version id。
 
 「保存結果」與「升級為策略版本」按鈕會依目前是否已有可保存結果、是否已保存、validation 是否允許而啟用；停用時 tooltip 會說明原因。保存成功訊息會顯示 Registry run ID 與下一步。
 
-保存、刪除或升級成功後，Research Lab 會刷新歷史列表、圖表選單與 Registry 比較面板，並在進度文字顯示剛保存的 run ID 或升級後的策略版本 ID。
+保存、刪除或升級成功後，Research Lab 會刷新歷史列表、圖表選單與 Registry 比較面板，並在進度文字顯示剛保存的 run ID 或升級後的策略版本 ID。推薦回放存入 Registry 後，可到「研究 Registry」篩選「推薦回放」，只選取一筆並按「開啟推薦回放」讀回已保存結果；開啟不會重新跑回測，也不會把 Registry run 放入「歷史推薦回測」舊格式下拉選單。Registry 讀回為唯讀，不可由舊刪除／升級按鈕操作或再存成另一筆。
 
 Month 6 lifecycle gate 的預設最低交易數為 20 筆，且缺 benchmark excess return 或 factor snapshot 時會保守降級，不允許只靠單次高報酬升級策略版本。通過 Gate 不代表已完成實盤驗證。Demote / retire 判斷會先以 proposed evidence 保存，供人工 review；系統不會自動刪除策略版本或改寫歷史 run。
 
@@ -3361,6 +3372,7 @@ Month 6 lifecycle gate 的預設最低交易數為 20 筆，且缺 benchmark exc
 - 只有目前成功完成且尚未被新一輪執行取代的結果可以保存。
 - 開始新一輪回測或推薦回放後，舊 pending result 會被視為 stale，不可再保存。
 - Registry 寫入採 SQLite metadata + Parquet 明細；若 hash 不符或檔案不完整，載入時會以完整性錯誤處理，不會靜默讀取部分結果。
+- 推薦回放若有完整 DTO、但 custom／legacy provider 沒有可封存的 canonical child，v1 recommendation rows 仍會保存，manifest 會以 schema version 1、相同 replay parent ID 標示 lineage `unavailable`；這不代表沒有推薦列，也不會補造歷史 child。Registry 讀回時會先驗 sidecar、Parquet 與 manifest identity/hash，再驗完整 declared R012 child 集合；任一完整性錯誤都不顯示 partial DTO／children，也不會暗中修復或重算。舊 markerless Registry run 可供既有 metadata／equity／trades 比較，但沒有完整 portfolio DTO；開啟時會明示 unavailable，不從摘要重建。Registry 回放圖表不回抓目前 benchmark，因此 benchmark 時序 overlay 會標示不可用。舊 portfolio JSON 與「歷史推薦回測」下拉選單仍只屬 legacy repository；跨 store failure recovery 與 V-REPLAY 仍是獨立限制。
 - Legacy 單股回測 / 推薦組合保存庫仍可用於歷史資料與 backfill；新的「保存結果」入口以 Research Run Registry 為準。
 
 ### 9.9 結果分頁
@@ -3378,14 +3390,15 @@ Evidence 的 close-to-close outcome 是事後診斷，不是 v2 執行 PnL；成
 - 圖表：權益、回撤、交易報酬、持有天數。交易報酬會依樣本數自適應：少於 10 筆逐筆用零軸發散條／lollipop 顯示，每筆標出正負與數值，並明示不宜解讀為分布或 95% VaR；至少 10 筆才顯示直方圖，至少 20 筆才顯示 95% VaR。樣本不足時只代表估計不穩定，不應把單筆或小樣本視為策略分布。
 - 最佳化 / 驗證：參數掃描與 Walk-forward。
 - Legacy 歷史：載入、刪除與比較舊 `BacktestRunRepository` 結果；這是相容歷史入口，不是統一 Research evidence SSOT，不自動遷移或重算。
-- 研究 Registry：列出正式 Research Run Registry 中的 run，可依類型、strategy、tag 篩選並分頁瀏覽；類型在 UI 會明確顯示「單股回測」「批次股票回測」「固定組合（逐檔）」或「推薦回放」，存檔 metadata 仍保留原始 run type。run 清單每列以兩行顯示名稱、類型、策略與時間，勾選可跨頁保留（最多 5 筆，畫面顯示選取計數與清除入口），不需要猜測 Ctrl 多選是否能跨頁。選取 2 至 5 個 run 後，先以深色語意狀態列顯示「可直接比較 / 需謹慎比較 / 不可直接比較」與中文原因，再把所選 run 映射為 A / B / C / D / E 代號；摘要卡只顯示代號與中文欄位重點，長 run name / run_id 保留在上方對照與 tooltip，不塞進每個差異欄位。指標區會以小型對照表呈現，左欄為中文指標名稱，右欄為 A / B / C 數值，避免長段落混在一起。標準化權益需先按「比較選中」才會觸發，且所選 run 必須都有 equity curve 與共同日期；沒有共同日期或缺欄位時會顯示原因，不會補值或推估。比較是 evidence 入口，不等於可 promote。
+- 研究 Registry：列出正式 Research Run Registry 中的 run，可依類型、strategy、tag 篩選並分頁瀏覽；類型在 UI 會明確顯示「單股回測」「批次股票回測」「固定組合（逐檔）」或「推薦回放」，存檔 metadata 仍保留原始 run type。run 清單每列以兩行顯示名稱、類型、策略與時間，勾選可跨頁保留（最多 5 筆，畫面顯示選取計數與清除入口），不需要猜測 Ctrl 多選是否能跨頁。選取 2 至 5 個 run 後，先以深色語意狀態列顯示「可直接比較 / 需謹慎比較 / 不可直接比較」與中文原因，再把所選 run 映射為 A / B / C / D / E 代號；摘要卡只顯示代號與中文欄位重點，長 run name / run_id 保留在上方對照與 tooltip，不塞進每個差異欄位。指標區會以小型對照表呈現，左欄為中文指標名稱，右欄為 A / B / C 數值，避免長段落混在一起。標準化權益需先按「比較選中」才會觸發，且所選 run 必須都有 equity curve 與共同日期；沒有共同日期或缺欄位時會顯示原因，不會補值或推估。比較是 evidence 入口，不等於可 promote。推薦回放另有單筆「開啟推薦回放」入口；舊 markerless run 顯示完整 DTO unavailable，不重新計算。開啟完整 DTO 時只讀 Registry 與已驗證 child artifact，完整性錯誤不顯示部分結果；Registry run 不會進入 legacy history 下拉選單或 legacy 刪除／升級流程。
 - 批次／固定清單模式會把批次結果設為 primary，仍保留摘要、分析診斷、圖表供雙擊單檔 drill-down；固定清單的 per-stock 結果不代表共享現金 portfolio。
 - 證據覆盤：唯讀檢查已保存 evidence / observation / review，以及 Windows Task Scheduler 產出的最新 scheduled dry-run 狀態。子頁包含「前瞻證據」、「研究落差」、「訊號衰退」、「決策品質」、「覆盤歷史」與「排程狀態」。頁面上方會顯示目前實際讀取的 SQLite 資料庫路徑，並提供「複製路徑」按鈕，方便確認是否使用 working-copy DB。各子頁日期欄位使用日曆選擇器，未選日期時不套用日期篩選；未選日期的日曆會先定位到今天，不會停在 sentinel 年份。
   - 前瞻證據：檢查已保存 evidence events / outcomes 的 forward summary。可依日期、event type / family、source type、股票、regime、sector、profile、strategy version、window days、group by 與最小樣本數篩選，並查看事件總數、已完成 / 等待中 / 缺失結果、樣本不足、benchmark / industry 缺口、quality 與 warnings。close-to-close forward return 是 research basis，不代表可執行績效。
   - 研究落差：檢查 portfolio source trace、Research Run / strategy version、evidence event / outcome link、portfolio mode、gap metrics、attribution categories、match confidence、quality 與 warnings。沒有真實交易與人工 override 記錄時，只能解讀為 research / simulated gap。
   - 訊號衰退：檢查 event_type、event_family、strategy_version、profile scope 的短窗 / 長窗樣本、decay score、status、lifecycle candidate、confidence、quality 與 warnings。`demote_candidate` / `retire_candidate` 只是人工覆盤候選，不會自動套用。
   - 決策品質：檢查週 / 月 / custom review item、process score、reason codes、review question、open / reviewed / dismissed 狀態、quality 與 warnings。score 只代表流程 evidence，不是投資能力、不是交易建議，也不是責備使用者。
-  - 排程狀態：唯讀讀取 `OUTPUT_ROOT/scheduled/data_freshness/latest_status.json`、`OUTPUT_ROOT/scheduled/recommendation_snapshot/latest_status.json`、`OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/latest_status.json`、`OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 與 latest status 指向的 report preview。畫面顯示 data freshness、recommendation snapshot result id / 筆數 / screening matrix rows、evidence dry-run、forward outcome 的 status／掃描事件數／寫入結果數／待成熟數，並顯示 health 的最新合格事件日、完整身份事件數、cohort／決策日數、各 horizon ready／pending／missing、最近 capture／outcome／evaluation、下一成熟日、blocking reason、next action、recovery verification 與 blockers／warnings；同時保留 `pipeline_overall_status`、report path、warning occurrences、blocking gaps 與 `confirm / writes_recommendation_result / writes_evidence_db / forward_outcome_writes_evidence_db / auto_trading / lifecycle_action` 安全邊界。health 分類 `normal_completion`、`normal_no_new_outcomes`、`waiting_for_natural_maturity`、`actionable_engineering_blocker` 與 `external_source_missing` 會投影到 machine status；confirmed run 的工程／來源阻塞也會在 receipt 頂層以 `blocked`／非零 exit code fail closed；缺少新 receipt 會顯示 source gap，不補值。推薦結果寫入與 forward outcome 寫入會分別標示 research-only output，不會和 production evidence / trading write risk 混為同一概念。若 scheduled recommendation latest status 缺失，但同一 decision date 已有人工保存的 `OUTPUT_ROOT/recommendation/runs/rec_YYYYMMDD_*.json`，頁面會把 recommendation source 顯示為 `manual_result`、status 顯示為 `manual_observed`；這只代表人工補跑結果可供判讀，不代表 scheduled snapshot 正常，也不計入 scheduled 共同觀測天數。下方狀態明細採「判讀摘要 / 人工要看 / 關鍵欄位 / 安全邊界」優先，report preview 只保留前段 metadata，完整 JSON diagnostics 請依 `report_path` 或 `forward_outcome_status_path` 開啟原始 receipt。這只是讓每日 scheduled output、forward outcome 累積與人工補跑觀察在 UI 可見；頁面不重跑 producer／pipeline、不寫 evidence DB、不自動追加 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`。
+  - 排程狀態：唯讀讀取 `OUTPUT_ROOT/scheduled/data_freshness/latest_status.json`、`OUTPUT_ROOT/scheduled/recommendation_snapshot/latest_status.json`、`OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/latest_status.json`、`OUTPUT_ROOT/scheduled/forward_outcomes/latest_status.json` 與 latest status 指向的 report preview。畫面顯示 data freshness、recommendation snapshot result id / 筆數 / screening matrix rows、evidence dry-run、forward outcome 的 status／掃描事件數／寫入結果數／待成熟數，並顯示 health 的最新合格事件日、完整身份事件數、cohort／決策日數、各 horizon ready／pending／missing、最近 capture／outcome／evaluation、下一成熟日、blocking reason、next action、recovery verification 與 blockers／warnings；同時保留 `pipeline_overall_status`、report path、warning occurrences、blocking gaps 與 `confirm / writes_recommendation_result / writes_evidence_db / forward_outcome_writes_evidence_db / auto_trading / lifecycle_action` 安全邊界。health 分類 `normal_completion`、`normal_no_new_outcomes`、`waiting_for_natural_maturity`、`actionable_engineering_blocker` 與 `external_source_missing` 會投影到 machine status；confirmed run 的工程／來源阻塞也會在 receipt 頂層以 `blocked`／非零 exit code fail closed；缺少新 receipt 會顯示 source gap，不補值。推薦結果寫入與 forward outcome 寫入會分別標示 research-only output，不會和 production evidence / trading write risk 混為同一概念。若 scheduled recommendation latest status 缺失，只有已由唯讀 query 驗證、同一 decision date 且完成決策的舊人工結果，或保存的 `execution.request.config_snapshot.manual_qt_snapshot=true` canonical Qt manual execution，才會把 recommendation source 顯示為 `manual_result`、status 顯示為 `manual_observed`；這只代表人工結果可供判讀，不代表 scheduled snapshot 正常，也不計入 scheduled 共同觀測天數。下方狀態明細採「判讀摘要 / 人工要看 / 關鍵欄位 / 安全邊界」優先，report preview 只保留前段 metadata，完整 JSON diagnostics 請依 `report_path` 或 `forward_outcome_status_path` 開啟原始 receipt。這只是讓每日 scheduled output、forward outcome 累積與人工補跑觀察在 UI 可見；頁面不重跑 producer／pipeline、不寫 evidence DB、不自動追加 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`。
+  - 推薦結果來源判讀與排錯：入口在「證據覆盤 → 排程狀態」。舊 `rec_YYYYMMDD_*.json` 與 `scheduled_rec_YYYYMMDD_*.json` 檔名只用來發現候選 ID；實際 bytes、payload `result_id` 與 `run_context.as_of_date` 都由唯讀 Recommendation Execution query 驗證後，才計入人工或排程觀測日。損毀、連結檔、ID／日期不符、unsafe ID 或 query integrity 錯誤會留診斷且不算觀測，不要手動修檔或複製成第二份 JSON。當排程 latest status 缺失時，只有同日、完成且決策可用的已驗證 legacy manual 結果，或 `execution.request.config_snapshot.manual_qt_snapshot=true` 且日期一致的 canonical Qt execution，才可顯示為 `manual_observed`；舊結果按 `rec_YYYYMMDD_*.json` ID 日期和已驗證 `run_context.as_of_date` 判別。canonical scheduled inventory 需有已保存 `scheduled_snapshot=true`，其決策日期還要與可用的 request／context as-of 日期相同；沒有來源標記或日期矛盾時會顯示 unavailable／ambiguous，不推測為人工或排程。單一 legacy namespace 保留既有檔名排序；legacy 與 canonical 同日候選只有在全部保存時鐘含時區且可轉 UTC 比較時才選較新，naive／未知時間會明示 ambiguous。舊檔沒有可信歷史 digest 時，畫面只取得此次 read-time hash，不能證明檔案過去未被替換。排錯時先查看狀態診斷中的 result ID、日期與 query failure；觀測日缺少時確認結果是否已保存、是否同日及是否具來源標記，不用重新執行推薦或 ML 補值。
   這個分頁只使用 dashboard service、已保存 read model 與 scheduled output status 檔，不重算推薦、不重算策略、不讀 UI state、不寫 evidence，也不建立或修改排程；樣本不足或資料降級時只能作資料品質檢查，不可作訊號有效性判斷。
   - 覆盤歷史：只讀取已保存 weekly review；若 history DB／table 不存在，畫面會顯示 `evidence_operations_history_db_missing`／`...table_missing` 診斷與 CLI 建立指引，絕不因刷新畫面建立空 schema。
 - 批次結果：排行榜與整體統計，雙擊股票可載入明細；排行榜的 MDD 以回撤幅度絕對值排序，較小回撤優先。摘要會分開顯示總標的數、有效回測、失敗／無交易、coverage（有效回測／總標的），以及「獲利標的／有效回測」；後者是標的層級比例，不是交易筆勝率。排行榜的 `WinRate%` 只有在單檔交易明細有值時才代表交易筆勝率。CAGR／MDD 中位數會標出各自有效樣本數，不把缺值或失敗標的混入母體。這些欄位只用來理解本批次覆蓋率與結果分布，不代表正式策略判斷、交易建議或持倉調整。
@@ -4124,6 +4137,8 @@ matured=0，待後續合法來源更新後由既有排程重試。
 - 自然 evidence 只接受 immutable capture 加上後來真正成熟的 forward price／market source；至少 20 筆且至少 20 個 distinct decision dates 才能進比較。重複 `(symbol, decision_date, horizon)` 不增加分母。candidate 與 active monitor 分開計算；active monitor 的新成熟 receipt 會在同一次 main run 重新檢查，若超過 drift gate 即同日 fail-closed rollback。
 - 每輪都會產生 `recommendation-calibration-source-contract.v1` inspection receipt。它至少要有 component、source id/table、status、coverage、available-at、SHA-256、source columns 與 verification 欄位；service 另外重算 symbol-scoped 實際 source rows digest、期間／symbol coverage，並驗證 feature builder 實際使用的 technical row `available_at <= decision`。只填 `verified=1` 或只填任意 hash 不會通過；contract blocked 時仍可保留 historical research artifact，但 prospective capture 與 promotion 會保留明確 source blockers。固定 caller symbol cohort 不宣稱 PIT constituent history。
 - source custody 每輪以帶 timezone 的精確 `availability_cutoff_at` 判定：timestamp 先正規化 UTC，再要求 `available_at <= capture cutoff`；同一 instant 的 `+08:00` 與 `Z` 可接受，晚於 cutoff 的同日 publication 會拒絕。technical publication、daily source receipt、prospective feature snapshot、official event publication 與 corporate-adjustment manifest 都要逐一通過 availability binding；這只建立 prospective boundary，不授予 historical PIT eligibility。
+- 即時推薦校準的 fail-closed 判讀：若來源在單次 SQLite snapshot 載入後或模型 projection 期間變更，服務保留規則推薦與規則分數，將校準結果標示為 unavailable，丟棄尚未發布的模型 projection，且不發布模型 receipt。來源穩定後，可由既有推薦流程重新執行；若反覆發生，先檢查同時寫入與來源修訂狀態，依維護流程處理，不要手動改寫或刪除 source receipt、資料庫或 hash。
+- Live calibration 的 lease 涵蓋單次 provider load 至 model projection 後的 postcheck；historical replay 的 lease 涵蓋整輪多次讀取前後的同連線 observation check，任一可見的外部 commit 都會拒絕整輪結果。這不是長讀取交易或 durable generation，也不提供 sidecar／SQLite 跨資源原子性，或排除所有 ABA 與 postcheck 後競態。規則推薦仍是規則結果，不代表校準 projection 可用。
 - corporate action source 必須有實際可讀 records、有效 adjustment factor、coverage 與一致 digest。raw close 沒有可驗證 adjusted-price custody 時，non-unit action 落在 label window 會保守排除該列並保留 blocker；不可只因 table 存在或 bool 為 true 就把 raw label 當成 adjusted。
 - after-cost label 只在取得可追溯的 `evidence_outcomes.liquidity_cost_bp` 時建立。成本存在時，使用獨立命名的 `after_cost_null_benchmark_50pct_v1`／5000 bp baseline；成本缺失時 after-cost target、model output 與 consumer projection 均保持 `None`，不補零、不借用 upside baseline。adopted active model 的 post-adoption matured rows 會在其 label availability cutoff 通過後，以同一 null-baseline contract 供下一 training cycle 使用，不把 active prediction 當 target。
 
@@ -4212,7 +4227,7 @@ Phase 2 起，Qt 主 UI 新增 `決策工作台` 分頁作為 read-only Unified 
 - 今日待判讀：只列出需要人工 review 的 watchlist trigger、portfolio alert、risk prompt 或 readiness gap；它不是買賣建議，也不會產生下單動作。
 - 詳情檢視 / Inspector：點選今日待判讀、背景證據流或 Action Items 的任一列，右側會用狀態徽章與三個分區顯示完整內容：「重點摘要」看標題與 summary，「來源與邊界」看 source trace、degraded reason、drill-down target 與 read-only 保證，「診斷訊號」看 diagnostics token。表格只保留掃描欄位；完整證據不要在表格橫向捲動找，改看 Inspector。
 - 背景證據流：只彙整既有 DTO / service payload，包括 Daily Decision snapshot、Evidence Review readiness、Portfolio alerts 與可選 replay summary diagnostics。清單表格只顯示「證據來源 / 狀態 / 摘要」，完整 source trace、degraded reason、diagnostics 需點列後在 Inspector 查看。這個區塊不讀 replay DB、不重跑 Evidence Pipeline、不重新判斷 portfolio 或 scoring。若清單為空，文案會提醒只是 DTO payload 為空，不代表 gate 通過；若來源降級，文案會要求依 source trace / diagnostics 人工檢查，不補值、不重跑 pipeline。
-- 背景證據流也會顯示 `Scheduled morning pipeline`，來源是 `ScheduledEvidenceStatusService` 唯讀讀取 `OUTPUT_ROOT/scheduled/*/latest_status.json`、recommendation snapshot 檔、同日人工 recommendation result fallback、evidence dry-run report 檔與 forward outcome receipt。它會顯示最新 scheduled 或 manual recommendation result id、推薦筆數、recommendation snapshot 觀測天數、manual recommendation 觀測天數、evidence dry-run 觀測天數、forward outcome status 與 scheduled recommendation/evidence 共同觀測天數；`manual_observed` 只解除人工判讀的資訊缺口，不會把 scheduled 狀態標成 passed，也不會自動解除正式 multi-day gate。forward outcome receipt 缺失時只呈現 source gap，不以推薦結果或資料日期推估 outcome。
+- 背景證據流也會顯示 `Scheduled morning pipeline`，來源是 `ScheduledEvidenceStatusService` 唯讀讀取 `OUTPUT_ROOT/scheduled/*/latest_status.json`、recommendation snapshot 檔、經 query 驗證的同日人工 recommendation result fallback、evidence dry-run report 檔與 forward outcome receipt。它會顯示最新 scheduled 或 manual recommendation result id、推薦筆數、recommendation snapshot 觀測天數、manual recommendation 觀測天數、evidence dry-run 觀測天數、forward outcome status 與 scheduled recommendation/evidence 共同觀測天數；`manual_observed` 只解除人工判讀的資訊缺口，不會把 scheduled 狀態標成 passed，也不會自動解除正式 multi-day gate。forward outcome receipt 缺失時只呈現 source gap，不以推薦結果或資料日期推估 outcome。
 - 只讀 Action Items：只顯示人工待處理事項；清單供排序與掃描，完整 `queue_group`、`severity`、`source_label`、`source_trace`、`degraded_reason`、`drilldown_target` 與 `write_intent=false` 可點列後在 Inspector 查看。Composer 會先依 severity，再依 queue group 與 source 排序，讓持倉警示、風險提示、觀察清單與 readiness gap 更容易掃描。空狀態不代表可以交易或 gate 已通過；降級狀態只供人工覆盤排序，不是買賣建議。Workbench 不建立 action item repository、不 append DB、不標記完成、不套用 lifecycle action。
 - 操作節奏：只從 `WorkbenchDashboardDTO.operating_loop_steps` 顯示 daily first-look、manual queue、weekly review history、multi-day dry-run、manual review note 與 scheduler gate。這個區塊預設收合；展開後以直列 timeline card 呈現步驟編號、狀態 badge、摘要與 linked item chips，避免水平捲動。長的 source trace、人工提示與 `write_intent=false` 會收在「展開細節」中；Workbench 不會把項目標記完成、不會寫 DB、不會補 weekly history / multi-day dry-run、不會啟用 scheduler。
 - Evidence mode / data quality：讀取 DTO 內的 evidence summary 與 diagnostics；上方以兩張摘要卡拆分「邊界與 Gate 摘要」及「覆蓋率與缺口」，下方表格只保留證據、狀態與摘要，完整 diagnostics 需點列後在 Inspector 查看。若 payload 帶 replay summary，會揭露 `simulated_scheduler`、source gap / coverage、payload gap、outcome maturity、benchmark coverage、industry benchmark coverage、missing industry benchmark 與 pending future-data 限制。2026-07-06 `_reference_fix` summary 的目前判讀是市場 benchmark coverage 已補齊成熟 outcomes，但 screening matrix source gap、產業 benchmark 大量缺口與 pending future-data 仍阻擋 production readiness；這不是投資有效性結論。
@@ -6048,3 +6063,19 @@ ML natural shadow 的 weekly projection 是唯讀證據摘要，不等同 V2.2 w
 `scripts\scheduled\run_paper_execution_daily_isolated.cmd` 對應的 EOD writer 在既有 scope/path preflight 通過後、queue selection 前，以既有 `PaperTradeLedgerRepository` 的 create-only schema ensure 建立或補齊 `paper_trade_ledger` 與 `paper_trade_transitions`，再以 `mode=ro`／`PRAGMA query_only=ON` 回讀必要欄位與 row count。這個步驟只建立 schema，不新增 fill、transition、歷史成交或 Formal／ML credit；既有 fill rows 會保留，沒有 transition rows 時仍不可當作 transition evidence。
 
 EOD writer 的 canonical ledger 是隔離 repository output 下的 `paper_trade_ledger.sqlite`。ledger target 若不在既有 operation scope，preflight 會 fail closed；初始化並回讀後仍缺必要表或欄位的 SQLite 不會被標成 ready。空 recommendation queue 與 no-fill result 仍會保留 schema readiness readback。直接使用 `scripts\run_paper_execution_daily.py` 時，省略 `--confirm-append-paper-ledger` 仍是 preview，不能藉由 preview 建立或修改 ledger schema；缺 transition table 的既有 ledger 仍由 ML／Paper consumer 拒絕，必須等待 authoritative EOD writer 完成 schema readback。2026-09-21 已依受控 maintenance receipt 對 canonical repository runtime ledger 執行一次 schema-only ensure；8 筆 fill 的逐列與 aggregate hash 前後一致，transition table 為 0 rows。這不補造舊 9/8 fills 的 transition evidence；當前 window 與後續 ML readiness 必須用正式 caller 參數另驗，不能由全歷史 ledger rows 推導；formal DB、ML child 與 credit 均未執行或改判。
+
+## 2026-09-24 推薦組合回放 Registry 保存與重啟讀回
+
+「策略回測」結果面板的「研究 Registry」分頁可依類型篩選「推薦回放」。只選一筆推薦回放 run 後按「開啟推薦回放」，系統使用 strict reader 驗證已保存 portfolio DTO、Registry／Parquet hashes 與 declared R012 children，並在右側「推薦回放」結果頁顯示保存結果；這個入口不會呼叫推薦 provider、portfolio backtest 或目前行情來源。多選、選取其他 run type、markerless 舊 run 或 integrity check 失敗時不會套用部分 DTO。舊 markerless run 仍可用 Registry 比較查看 metadata／equity／trades，但明示沒有完整 DTO，不從摘要拼回 snapshots。已標記且 DTO 完整、但沒有 declared canonical child 的新 run 會明示 child 不可用：若保存 snapshots 有推薦列則保留推薦列；若 snapshots 為空，則明示本次沒有 recommendation snapshots。這兩種 marked DTO 都不同於舊 markerless run 沒有完整 DTO。
+
+新 Registry 保存需使用該次執行的完整 `RecommendationPortfolioBacktestResultDTO`，並依序完成以下步驟：
+
+1. 若有同次 invocation 的 typed child，UI 先以 create-only 保存各 R012 child artifact，再逐一讀回驗證；完成後才呼叫 Research Run Registry 保存。
+2. Registry 內部 staging portfolio result sidecar、equity curve、trades 與 metadata，驗證實際 bytes hashes，執行 guarded manifest／payload-hash finalize，最後發布為 committed。這描述 Registry 自身的受控發布順序；R012 child store 與 Registry 不共用交易，也不會共同回滾。
+3. 若沒有可驗的 typed child（包括 `snapshots` 為空），不發布空 lineage sidecar；完整 v1 DTO 仍可保存，manifest 會以相同 parent ID 標示 lineage `unavailable` 和 `canonical_child_unavailable`。若 `snapshots` 有推薦列，讀回會保留這些列；若為空，畫面會標示沒有 recommendation snapshots。若有 sidecar，就不能同時宣告 unavailable。
+
+`ResearchRunService.load_run_data` 可驗 Registry sidecar envelope；child payload bytes 由 strict reader 呼叫 `verify_replay_lineage_children` 讀回驗證。Registry run ID、replay parent ID、legacy portfolio run ID 互不替代。兩個 store 之間的 process-crash 或 child-missing recovery 尚未完成；中途失敗可能留下已 create-only 保存的 child。勿手動刪除或覆寫 artifact；依 owner 的同 ID、同 bytes 流程重試，開啟時如遇 integrity error，保留原檔並走維護處理。
+
+讀回的 summary、snapshots、holdings、contributions、diagnostics、hints、details 與 trades 來自保存 DTO／Parquet，不會依目前資料重跑。因 portfolio DTO 沒有 benchmark 時序，Registry 結果不回抓 benchmark overlay；畫面會標示該圖層不可用。舊「歷史推薦回測」下拉選單仍只列 legacy JSON repository，不收錄新 Registry run；Registry readback 是唯讀，不啟用 legacy 刪除、升級或再次保存。
+
+Registry artifact、R012 child artifact 與 SQLite 各自保存，沒有共同 transaction。若開啟顯示 integrity error，保留原檔並確認 Registry run ID、manifest 與 child reference；不要以重新整理或重新執行回測修補歷史。R012 child 失敗後可能留下 create-only artifact 的處理方式，依上方限制辦理。

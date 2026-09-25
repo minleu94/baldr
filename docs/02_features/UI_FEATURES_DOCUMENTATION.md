@@ -221,7 +221,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - Strategy registry / preset / promotion 整合。
 - Walk-forward、baseline comparison、overfitting risk、validation status。
 - Fixed / quantile threshold mode UI 控制與無交易診斷。
-- 結果保存已接入 Research Run Registry；Research Lab 內新增 Registry 比較子頁，可篩選、分頁、多選 2 至 5 個 run，顯示 comparability、參數差異、normalized equity、metrics、Regime 與保存 benchmark。Registry-based Promote Gate 已接入 service 層，且 Month 6 起需通過 lifecycle gate；策略版本 JSON 與 Registry 回填具補償與 reconciliation 防線。
+- 結果保存已接入 Research Run Registry；Research Lab 內新增 Registry 比較子頁，可篩選、分頁、多選 2 至 5 個 run，顯示 comparability、參數差異、normalized equity、metrics、Regime 與保存 benchmark。推薦回放另要求完整 DTO 才能新存為 marked Registry run；單選推薦回放可走 strict reader 開啟保存的 DTO 與已驗證 child，不重新執行，也不進 legacy portfolio history dropdown。舊 markerless Registry run 明示完整 DTO unavailable；marked DTO 沒有 canonical child 時，若保存 snapshots 有推薦列則保留並標明 child 不可用；snapshots 為空則顯示沒有推薦 snapshots、canonical child 不可用。損毀或錯誤 hash 不顯示 partial 結果。Registry-based Promote Gate 已接入 service 層，且 Month 6 起需通過 lifecycle gate；策略版本 JSON 與 Registry 回填具補償與 reconciliation 防線。
 - 規格化 Excel 報告匯出：單股、批次及組合回放結果的背景原子匯出，缺值自動標記 N/A。
 - Fast chart renderer：權益曲線、回撤曲線、報酬分佈、持有天數。
 - 策略回測日期欄與 Research Lab 證據覆盤日期篩選採受控日曆 popup；回測日期開啟時定位今天，未設定的 evidence 日期篩選也定位今天，不落到 sentinel 年份。

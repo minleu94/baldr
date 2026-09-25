@@ -1,7 +1,12 @@
 # baldr 理想目標系統架構
 
+> **2026-09-22 最終架構權威入口**：[FINAL_TARGET_ARCHITECTURE](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 已逐項裁決紅隊審查，是後續實作唯一目標架構 SSOT；其五份 FINAL 分冊細化資料流、擴充、ML 相容、不變條件與遷移。先前六份草案已被取代，只保留審查歷史。[現況評估](target_architecture_2026_09_22/SYSTEM_ARCHITECTURE_ASSESSMENT.md) 保留為來源證據。
+>
+> **權威範圍**：本文件保留產品領域背景與導覽；下文的概念邊界、候選 package 或舊過渡建議不再獨立授權實作。package、契約、依賴、資料表示與遷移順序一律以 FINAL 主文為準。設計尚未實作，不改 Roadmap、正式資料、ML promotion 或產品 Gate。
+
 > **建立日期**：2026-07-11
 > **定位**：本文件描述 baldr 的 Transitional / Target Architecture（過渡／目標架構），不代表目前皆已實作。
+> **實作判讀**：原 Scoped SSOT 的本入口現導向 FINAL 主文；不得從本文件與舊草案各挑一套設計並行實作。
 > **目前架構權威**：真實存在的 package、service、DTO、資料流與依賴以 [system_architecture.md](system_architecture.md) 為準。
 > **產品方向**：能力優先序與產品 Gate 以 [PRODUCT_ROADMAP_POST_REFACTOR.md](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 為準。
 > **禁止推論**：`market_module`／`advice_module` 仍是 target-only 候選邊界，不授權立即建立 package。`ml_module` 已有工程實作，其 current 能力與 shadow／Formal 限制以目前架構為準；不得把下列目標職責當成正式模型權限。
@@ -516,6 +521,10 @@ portfolio_advice_eligible
 ---
 
 ## 更新記錄
+
+- 2026-09-22：導向完成紅隊裁決的六份 FINAL 文件；本入口保留背景與權限導覽，工程目標決策統一由 FINAL_TARGET_ARCHITECTURE 管理。
+
+- 2026-09-22：加入七份工程架構設計分冊入口；補足執行契約、局部擴充與保守 ML 遷移設計，不代表 production code 已變更。
 
 - 2026-09-14：補上 content-first Workbench 可與 V4 formal evidence 並行的目標邊界、既有
   Journal／Evidence／Portfolio ledger identity 重用原則，以及既有 daily shadow policy 的

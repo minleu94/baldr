@@ -469,6 +469,8 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 ### Research Run Registry 保存
 - 單股回測與推薦組合回放完成後，新的「保存結果」入口會寫入 Research Run Registry。
 - Registry 會保存執行參數、資料 fingerprint、成本與成交假設、績效摘要、equity curve 與 trades；明細使用 Parquet，metadata 使用 SQLite。
+- 推薦組合的新 Registry run 需以該次執行的完整結果保存；保存後可在「研究 Registry」分頁篩選推薦回放、單選一筆並按「開啟推薦回放」讀回。這個入口不會重跑推薦或回測，也不會把 Registry run 加入舊「歷史推薦回測」下拉選單。只有完整性驗證成功才會更新畫面；舊 markerless run 的完整 DTO 顯示為不可用，損毀資料不套用部分結果。新 run 若 snapshots 有推薦列但無 canonical child，仍保留推薦列並明示 child 不可用；若 snapshots 為空，則明示沒有推薦 snapshots、canonical child 不可用。這兩種 marked DTO 狀態都不同於舊 markerless run 沒有完整 DTO。
+- Registry 讀回不會依目前行情重新抓 benchmark overlay；該圖層會標示不可用。Registry 讀回結果為唯讀，不能用 legacy 刪除、升級或再次保存操作。
 - 開始新一輪回測後，上一輪尚未保存的結果會視為 stale，系統不允許再保存。
 - 舊 Backtest / Recommendation Portfolio 保存庫仍可作歷史查詢與受控 backfill 來源；Cross-run Comparison 與 Registry-based Promote service Gate 已存在。保存不等於升級，仍需完整性、版本可比性、lifecycle 與人工 Gate；本輪沒有執行正式 promotion。
 

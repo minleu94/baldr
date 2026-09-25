@@ -417,22 +417,24 @@ Research Run metadata 可透過 `data_manifest.factor_snapshot` 與 `data_manife
 - Recommendation Why Not presenter 只讀既有 RecommendationDTO 與 config filters，呈現子分數差距、漲幅上下限、Regime mismatch、總分與 severity；理想值與既有 HTML token 不變，View 不再擁有此差距呈現公式。
 - Recommendation 保存 Application orchestration 已提升至 `app_module/recommendation_save_coordinator.py`；`persist()` 將 recommendation result 視為必要寫入、watchlist 視為 soft-failure 副作用，回傳 outcome 供 UI 顯示。舊 `ui_qt/views/recommendation/save_coordinator.py` 路徑已移除。
 - UI thin-shell gate：`tests/test_ui_thin_shell_boundaries.py` 禁止 BacktestView、RecommendationView、UpdateView、UnifiedDecisionWorkbenchView 與 MainWindow 直接呼叫 backtest/batch/grid/walk-forward/recommendation/update 等核心 execution entrypoints，並鎖定大型 presenter/orchestrator 的 delegate 尺寸。
-- Recommendation market-history port：`RecommendationService` 可注入零參數 market data provider；default `app_module/recommendation_market_data_provider.py` 封裝原 SQLite-first `daily_prices`/`technical_indicators` join、CSV fallback、60 日窗口與欄位 normalization。Pipeline 不再直接具體依賴 DBManager/CSV transport，provider output 仍為同一 DataFrame contract。
+- Recommendation input preparation：`RecommendationService` 必須由 composition 明示注入 `RecommendationInputPreparer`；`app_module/recommendation/input_preparation.py` 負責 cutoff request 驗證／解析、行情日期與 `available_date` 篩選、universe 與既有 fingerprint/context identity。每次 `execute_recommendation` 建立 invocation-local session，市場與基本面仍在原流程需要時逐步讀取，沒有全候選預取。
+- Recommendation source owners：目前行情 provider 維持 `app_module/recommendation_market_data_provider.py` 的零參數 contract；`data_module/recommendation_input_providers.py` 擁有歷史行情唯讀 SQLite `daily_prices`／`technical_indicators` join、CSV `all_stocks_data_file`→`stock_data_file` fallback、PIT industry membership 與 PE source observations。月營收使用 app preparation 明示傳入的 lazy `FundamentalSQLiteProvider` factory；首次 DB missing 不建檔且不重試，PIT 讀取失敗維持 unavailable／missing fail-closed。
+- Recommendation input parity：source readers 保留原 60 日窗口、`YYYYMMDD` 日期解析、SQLite 優先序、availability cutoff、修訂選擇、候選 loop 的 PE→月營收時點與 early-exit。`RecommendationService` 保留 filter/factor/ranking/reasons 與 context 組裝，但不再直接查推薦 history／PE SQLite 或自行建構市場／基本面/PIT provider。
 - Decision service composition：`app_module/decision_service_composition.py` 組裝共享 `IndustryMapper`、`ScreeningService`、`RegimeService` 與 `RecommendationService`；`app_module/decision_data_providers.py` 擁有 market/industry index 的 SQLite-first、CSV-fallback transport。`IndustryMapper` / `MarketRegimeDetector` 只消費可注入 frame provider，MainWindow 不再建立這組 concrete dependency graph；相容 constructor fallback 仍保留給既有非 UI consumers。
-- Domain contract ownership：`analysis_module/technical_analysis/indicator_parameter_registry.py` 是指標參數 schema 唯一入口；`decision_module/flow_contracts.py` 是 Broker/Flow dataclasses 唯一入口。舊 decision registry 與 Application Flow DTO shim 已於 2026-07-12 移除，核心不再反向 import Application DTO。
+- Domain contract ownership：`analysis_module/technical_analysis/indicator_parameter_registry.py` 是指標參數 schema 唯一入口；`decision_module/flow_contracts.py` 是 Broker/Flow dataclasses 唯一入口；`decision_module/strategies/contracts.py`、`registry.py` 與 `decision_module/strategies/` executors 是 strategy 契約、唯一 registry 與執行器 owner。舊 app strategy import paths 僅透過 `TMP-STR-01` 薄 facade 暫時相容。舊 decision registry 與 Application Flow DTO shim 已於 2026-07-12 移除，核心不再反向 import Application DTO。
 - Indicator pure kernel：`analysis_module/technical_analysis/indicator_kernels.py` 提供 causal price normalization；缺值只允許 forward-fill 過去觀測值，前導缺值使用零邊界，不允許 backward-fill 未來價格。
 - Scoring pure kernel：`decision_module/scoring_kernels.py` 擁有 Decimal 最大餘額法與 10,000 bp 不變量；`ScoringEngine` 保留 façade method 與公開結果型態。
-- Stock screening port：`StockScreener` 可注入 recent stock/industry frame providers；MainWindow 路徑由 `decision_service_composition` 注入 Application adapters，`ScreeningService` 接收已組裝 screener。Provider 回傳 `DataFrame` 代表資料取得成功，即使為空也直接形成空篩選結果且不再 self-load；只有回傳 `None` 代表來源不可用，才進入既有 SQLite-first／CSV-second fallback。
+- Stock screening port：`decision_module.StockScreener` 只消費 injected recent frames 與 fallback frame providers，保留強／弱勢兩條既有計算分支及輸出 schema。`data_module.stock_screener_reader` 擁有 SQLite `mode=ro`／`query_only`、daily-price/indicator JOIN、逐檔 indicator CSV，以及產業 SQLite／CSV fallback；`app_module.decision_data_providers` 提供 adapters，`decision_service_composition.build_stock_screener()` 是 concrete provider 的建立入口。Qt composition、`ScreeningService` 自建路徑與 legacy `ui_app/main.py` 均經由該入口接線。Provider 回傳 `DataFrame` 代表取得成功，即使為空也直接形成空結果且不呼叫 fallback；只有 `None` 代表 recent source 不可用，才由已注入的 fallback provider 嘗試 SQLite-first／CSV-second。Decision 層本身不建立 reader、路徑或 SQLite connection。
 
   | Consumer | 建立方式 | 是否仍需要 `StockScreener` self-loading fallback |
   |---|---|---|
-  | Qt composition | `build_decision_service_composition()` 建立 `StockScreener`，注入 `recent_stock_screen_provider(config)` 與 `recent_industry_screen_provider(config)`，再注入 `ScreeningService` | 正常路徑不依賴；保留 fallback 作 provider 回傳 `None` 時的降級與 constructor 相容 |
-  | App service | `ScreeningService(config, industry_mapper)` 未收到 `stock_screener` 時自行建立未注入 provider 的 `StockScreener` | 需要 |
-  | Scripts | `scripts/qa_validate_phase2_5.py` 與 `scripts/qa_validate_phase3_3b.py` 建立 `ScreeningService(config, industry_mapper)`，沿用 app service 自建路徑 | 需要 |
-  | Legacy `ui_app/main.py` | 直接建立 `StockScreener(config, industry_mapper)` | 需要 |
-  | Tests | provider contract tests 直接建立 `StockScreener`，composition tests 以 fake constructors 驗證 wiring | 依測試目的：fallback tests 保留 self-loading，provider tests 必須證明不 self-load |
+  | Qt composition | `build_decision_service_composition()` 經 `build_stock_screener()` 建立 `StockScreener`，注入 recent 與 fallback providers，再注入 `ScreeningService` | 不需要 decision self-loading；fallback 由 data provider 明確執行 |
+  | App service | `ScreeningService(config, industry_mapper)` 未收到 `stock_screener` 時呼叫 `build_stock_screener()` | 不需要 decision self-loading；仍有 SQLite/CSV 降級 |
+  | QA scripts | `qa_validate_phase2_5.py`、`qa_validate_phase3_3b.py` 沿用 `ScreeningService` app factory；`qa_validate_market_loop.py` 直接建立帶測試 frame provider 的 screener | factory 路徑有 fallback；market-loop fixture 僅測 injected frame／as-of 行為 |
+  | Legacy `ui_app/main.py` | 經 `build_stock_screener(config, industry_mapper)` 建立 | 不需要 decision self-loading；fallback 由 data provider 明確執行 |
+  | Tests | fallback contract tests 明確注入 data providers；fast-path tests 直接注入 recent providers；composition tests 驗證 provider wiring | 依測試目的，不允許 constructor 暗中建立 concrete reader |
 
-  Public characterization 位於 `tests/test_stock_screener_provider.py` 與 `tests/test_stock_screener_sqlite_first.py`：直接覆蓋四個 public methods 的 injected data、成功空結果、`None` fallback、SQLite／CSV fallback、strong／weak schema 與個股 universe count。這些 contract 不調整 ranking、score、reason、日期窗口或 liquidity 規則。
+  Public characterization 位於 `tests/test_stock_screener_provider.py`、`tests/test_stock_screener_sqlite_reader.py`、`tests/test_stock_screener_sqlite_first.py` 與 `tests/test_stock_screener_import_guard.py`：覆蓋四個 public methods 的 injected data、成功空結果、`None` fallback、SQLite／CSV fallback、strong／weak schema、個股 universe count 與 decision import boundary。這些 contract 不調整 ranking、score、reason、日期窗口或 liquidity 規則。
 - Canonical market-frame contract：`decision_module/market_frame_contracts.py` 統一 SQLite `YYYYMMDD`／CSV ISO date，並將 raw market index `收盤指數` 映射至 detector 使用的 `收盤價`；injected、SQLite、CSV paths 共用同一 normalization，不再因 DI 繞過 schema adapter。
 - Application ports：`app_module/application_ports.py` 以 Protocol 定義 market frame、recommendation evidence/repository、regime、watchlist 與 Broker Branch writer seams；composition 與 coordinator constructor 不再以 `Any` 取代跨層契約。
 - Broker branch update boundaries：`broker_branch_registry.py` 擁有 registry 純解析規則，`broker_branch_transport.py` 擁有 MoneyDJ request URL contract，`broker_branch_merge.py` 擁有 E/B merge plan，`broker_branch_write_coordinator.py` 擁有 daily/merged CSV write 與 merged backup boundary；`BrokerBranchUpdateService` 保留 transport fallback 與 orchestration façade。
@@ -880,7 +882,8 @@ Roadmap Hub 只負責入口與短版 Next，不保存完整歷史或架構細節
 - `decision_module/scoring_engine.py`
 - `decision_module/score_threshold_policy.py`
 - `decision_module/strategy_configurator.py`
-- `app_module/strategies/`
+- `decision_module/strategies/`（策略契約、唯一 registry 與 executor owner）
+- `app_module/strategies/`（`TMP-STR-01` 薄相容 facade，退出條件見 FINAL_MIGRATION_SEQUENCE）
 - `portfolio_module/core.py`
 - `app_module/portfolio_condition_monitor.py`
 - `data_module/config.py`

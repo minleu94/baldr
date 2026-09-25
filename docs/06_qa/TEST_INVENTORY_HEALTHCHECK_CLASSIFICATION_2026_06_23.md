@@ -60,6 +60,30 @@ focused fit／CLI／calibration／read service 為 41 passed。這些測試維�
 不折抵正式 evidence。前次 2026-09-15 machine refresh 的摘要僅作歷史對照；本節 current counts
 以 2026-09-17 machine audit 為準，下一次 shared registry refresh 應重新計算 filesystem／registry／collection 差異。
 
+## 2026-09-24 inventory delta（非完整 machine refresh）
+
+本輪先延續先前五個 R020 測試檔，再登錄第六檔
+`tests/test_research_run_portfolio_finalize.py`；後續再登錄第七檔
+`tests/test_r020_portfolio_result_registry_service.py`，兩者皆分類為
+`service-oracle-research-backtest`。目前七檔合計為 `service-oracle-recommendation` 2 檔、
+`service-oracle-research-backtest` 5 檔。上方 2026-09-17 machine refresh 數字保留為歷史快照，
+未以本輪局部登錄改寫。
+
+先前五檔 route 的歷史 audit 記錄為：filesystem 985 檔、pytest collection 7,469 cases；registry 由 872 增至
+877、missing 由 113 降至 108，stale 與 collection errors 均為 0。本次另以 fresh TEMP／`PROFILE=test` 執行
+fast audit；新增 entry 前後 filesystem 均為 986 檔，registry 由 877 增至 878、missing 由 109 降至 108，
+stale 與 collection errors 均為 0，`service-oracle-research-backtest` 由 78 增至 79。fast audit 跳過 pytest
+collection，故本輪沒有新的 collected-case 數字；7,469 仍只代表先前五檔 route 的歷史 collection 結果。
+
+audit 仍未通過：剩餘 108 個未登錄檔案不屬本輪範圍，且 registry 與 2026-09-17 歷史摘要間仍有 5 個計數欄位
+不一致。此差異註記不是全庫 refresh 或 inventory audit PASS。
+
+2026-09-24 後續增補第七檔前，fast audit 為 filesystem 987、registry 878、missing 109；其中
+`tests/test_r020_portfolio_result_registry_service.py` 是本輪新增的未登錄檔。完成登錄後為 filesystem 987、
+registry 879、missing 108，stale 與 collection errors 均為 0，`service-oracle-research-backtest` 由 79 增至
+80。fresh TEMP／`PROFILE=test` fast audit 跳過 pytest collection，沒有新的 collected-case 數字。
+剩餘 108 個 missing entries 與歷史摘要計數 drift 仍未處理；本輪不是全庫 inventory audit PASS。
+
 ## Runner 規則
 
 - quick 模式只允許已明確註冊的快速、非破壞 UI 檢查。

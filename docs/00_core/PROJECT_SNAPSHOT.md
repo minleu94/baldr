@@ -1,5 +1,9 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-23 R025 strategy owner 搬移（ACCEPTED_SCOPE）
+
+`StrategySpec`／`StrategyMeta`／`StrategyExecutor`／`DailySignalFrame`、唯一 registry 與三個既有 executor 的實作 owner 已移至 `decision_module/strategies/`；舊 `app_module` paths 現為 `TMP-STR-01` 薄 facade，預定於 R029 完成 source caller 清查與支援期後退休。策略 ID／順序、公式、threshold、signal、持久化 keys/defaults、回測及 UI list 未改；focused tests 100 passed、look-ahead guard 與 44-file `py_compile` 通過；root 獨立重跑 focused suite 為 100 passed 並確認無剩餘舊 app strategy caller。R025 已 `ACCEPTED_SCOPE`，不代表 Wave7 整體完成。R025 驗證時 broad mypy 為 693 個 source files、0 issues；之後共享 R018 新檔出現 1 個錯誤，目前由 R018 owner 處理，最新跨範圍 gate 待修復後重跑；`TMP-STR-01` 仍 ACTIVE。詳見 [R025 實作報告](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R025_IMPLEMENTATION_REPORT.md)。
+
 ## 2026-09-23 正式行情與相依資料修復完成
 
 正式 SQLite 與大盤 CSV 已套用 3,106 個官方 TAIEX 交易日的 OHLC／成交股數，補入 19 日並保留備份後移除查詢表 2 個非交易日。九個原先完全缺漏的歷史週六已補入上市／上櫃共 14,869 列；三個休市日與 5/20 額外 54 個錯日 keys 共排除 2,942 列，before 值與原始檔保留。全歷史 5,331,231 列的 20 個技指、2,210 份 CSV 及 17 欄每日整合快取均已正式發布並完成獨立全量讀回；買賣價／量、本益比及漲跌價差六個衍生複本也已正式同步並完成獨立全量讀回；來源空值不補零或前值，20 指標、其他欄位、日價、大盤與 schema 保持。這代表本輪已確認的行情與相依快取修復完成，不代表所有基本面 PIT／產業歷史資料已補齊。日常重匯與完整重算防護已提交，保留既有五、六碼證券，缺值不補零／前值。

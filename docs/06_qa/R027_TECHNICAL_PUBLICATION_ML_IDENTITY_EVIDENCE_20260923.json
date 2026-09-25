@@ -1,0 +1,2461 @@
+{
+  "architecture_blocker": "AB-ML-01=OPEN",
+  "cases": {
+    "cancel_resume": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 3,
+          "calculate_start": 3,
+          "calculation_call_end": 2,
+          "calculation_call_start": 2,
+          "cancel_requested": 1,
+          "indicator_file_publish_end": 3,
+          "indicator_file_publish_start": 3,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 15,
+          "sqlite_commit_returned": 6,
+          "sqlite_transaction_enter": 6
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/meta_data/all_stocks_data.csv": {
+              "sha256": "sha256:aac8f6288378ce3cbe12889a6ca7ada7272b319dcd1585239a4013a8395bf744",
+              "size_bytes": 18518
+            },
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:57f8ded01584edf83cd090c3593b9e6a087db0ed44aa1f6678c824614192f643",
+              "size_bytes": 98304
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:ce28675d66c95b9e84a7009ef61f707c0a93b7772d0c6133049712e674102c05",
+              "size_bytes": 9436
+            },
+            "data/_test/technical_analysis/2330_indicators.csv": {
+              "sha256": "sha256:109b7b46bf4324525aa8b673f979aa3f939da7b3edf0b1007eed9f49c4b24190",
+              "size_bytes": 9432
+            }
+          },
+          "publication_paths": [
+            "data/_test/meta_data/all_stocks_data.csv",
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv",
+            "data/_test/technical_analysis/2330_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:0f0456f84fd6df32f3a6e5a0416956bd3a2d39c5f0b319087b7ede97ed194de8",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              80,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:ee175ad8c3844c7287801872cdb3cfe0c99810d1b15db868cc22ab07930595c5",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              80,
+              29
+            ],
+            "row_keys_hash": "sha256:71f3b038aa567ab53a437729c3a93a432b5c8f74ab120680d8afa2efe6b2c2de",
+            "shape": [
+              80,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              },
+              "2330": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "cancelled_partial_run",
+            "source_mutated": false,
+            "success": false
+          },
+          {
+            "label": "cancel_recovery_force_all",
+            "source_mutated": false,
+            "success": true
+          }
+        ],
+        "pid_recorded": 52148,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:43d4de5a534c424bfe4d7808201f3f313a62ed7d1131de7c2b24f6e842c687ca"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 43476,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:dd2e703768a4a62f00829e8a598a1e91ba971f82d062b2546c8d9380879a1b21"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 92,
+        "file_mtime_and_publication_snapshot": 11
+      },
+      "exact_timing_difference_count": 103,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 52148,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 43476,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    },
+    "clean": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 2,
+          "calculate_start": 2,
+          "calculation_call_end": 1,
+          "calculation_call_start": 1,
+          "indicator_file_publish_end": 2,
+          "indicator_file_publish_start": 2,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 9,
+          "sqlite_commit_returned": 5,
+          "sqlite_transaction_enter": 5
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/meta_data/all_stocks_data.csv": {
+              "sha256": "sha256:aac8f6288378ce3cbe12889a6ca7ada7272b319dcd1585239a4013a8395bf744",
+              "size_bytes": 18518
+            },
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:57f8ded01584edf83cd090c3593b9e6a087db0ed44aa1f6678c824614192f643",
+              "size_bytes": 98304
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:ce28675d66c95b9e84a7009ef61f707c0a93b7772d0c6133049712e674102c05",
+              "size_bytes": 9436
+            },
+            "data/_test/technical_analysis/2330_indicators.csv": {
+              "sha256": "sha256:109b7b46bf4324525aa8b673f979aa3f939da7b3edf0b1007eed9f49c4b24190",
+              "size_bytes": 9432
+            }
+          },
+          "publication_paths": [
+            "data/_test/meta_data/all_stocks_data.csv",
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv",
+            "data/_test/technical_analysis/2330_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:0f0456f84fd6df32f3a6e5a0416956bd3a2d39c5f0b319087b7ede97ed194de8",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              80,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:ee175ad8c3844c7287801872cdb3cfe0c99810d1b15db868cc22ab07930595c5",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              80,
+              29
+            ],
+            "row_keys_hash": "sha256:71f3b038aa567ab53a437729c3a93a432b5c8f74ab120680d8afa2efe6b2c2de",
+            "shape": [
+              80,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              },
+              "2330": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "clean_full_synthetic_publication",
+            "source_mutated": false,
+            "success": true
+          }
+        ],
+        "pid_recorded": 42348,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:824ee2cfe69f43498cfd071cb9c3766240cf0e6c5058533786c3f9dc9a6ff4bf"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 2860,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:e86ca10ba17a1ccc1d0701c8a995861d39dff4af31bfb499943df387e5212099"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 62,
+        "file_mtime_and_publication_snapshot": 9
+      },
+      "exact_timing_difference_count": 71,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 42348,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 2860,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    },
+    "failure_recovery": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 3,
+          "calculate_start": 4,
+          "calculation_call_end": 2,
+          "calculation_call_start": 2,
+          "indicator_file_publish_end": 3,
+          "indicator_file_publish_start": 3,
+          "injected_calculation_failure": 1,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 18,
+          "sqlite_commit_returned": 9,
+          "sqlite_transaction_enter": 9
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/meta_data/all_stocks_data.csv": {
+              "sha256": "sha256:aac8f6288378ce3cbe12889a6ca7ada7272b319dcd1585239a4013a8395bf744",
+              "size_bytes": 18518
+            },
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:4d4c0f1e86f88c1cc5d2916c2d44dbb0ac4676713cafe4b28c38812643f16af7",
+              "size_bytes": 98304
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:ce28675d66c95b9e84a7009ef61f707c0a93b7772d0c6133049712e674102c05",
+              "size_bytes": 9436
+            },
+            "data/_test/technical_analysis/2330_indicators.csv": {
+              "sha256": "sha256:109b7b46bf4324525aa8b673f979aa3f939da7b3edf0b1007eed9f49c4b24190",
+              "size_bytes": 9432
+            }
+          },
+          "publication_paths": [
+            "data/_test/meta_data/all_stocks_data.csv",
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv",
+            "data/_test/technical_analysis/2330_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:0f0456f84fd6df32f3a6e5a0416956bd3a2d39c5f0b319087b7ede97ed194de8",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              80,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:ee175ad8c3844c7287801872cdb3cfe0c99810d1b15db868cc22ab07930595c5",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              80,
+              29
+            ],
+            "row_keys_hash": "sha256:71f3b038aa567ab53a437729c3a93a432b5c8f74ab120680d8afa2efe6b2c2de",
+            "shape": [
+              80,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              },
+              "2330": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "injected_calculation_failure",
+            "source_mutated": false,
+            "success": false
+          },
+          {
+            "label": "calculation_failure_recovery",
+            "source_mutated": false,
+            "success": true
+          }
+        ],
+        "pid_recorded": 36560,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:c3fc3870fb82acc02f9b69caa74e428e1907f0a4ca07c9c9aadbd9c064a1d67e"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 26688,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:6894b3e38a04dd9bce6eb4c97acf6ebdccdfa9efcfc00535151b74955c135d13"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 112,
+        "file_mtime_and_publication_snapshot": 11
+      },
+      "exact_timing_difference_count": 123,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 36560,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 26688,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    },
+    "partial": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 1,
+          "calculate_start": 1,
+          "calculation_call_end": 1,
+          "calculation_call_start": 1,
+          "indicator_file_publish_end": 1,
+          "indicator_file_publish_start": 1,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 8,
+          "sqlite_commit_returned": 5,
+          "sqlite_transaction_enter": 5
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:e63e8d3765e97a12eb7298dae257b38d623bd92e5a1e368e75d7933f1a0bff51",
+              "size_bytes": 94208
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:ce28675d66c95b9e84a7009ef61f707c0a93b7772d0c6133049712e674102c05",
+              "size_bytes": 9436
+            }
+          },
+          "publication_paths": [
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:2cce61ac7377ab3d193a17ad3c5b0b6e7931a3b9a1f54aa0b98d918f0270728c",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              40,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:6ad8d44e1139e01277243663d5e58bbc22be230566b98100049fceff98015468",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              40,
+              29
+            ],
+            "row_keys_hash": "sha256:fe77b4f8ed0f5bd08885a9d24f40f79365f93ed8b6c90db43765f12bb03a15f3",
+            "shape": [
+              40,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "partial_targeted_publication",
+            "source_mutated": false,
+            "success": true
+          }
+        ],
+        "pid_recorded": 51708,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:57c5a12363663fd1c1477351c6d8ca01627d2678119de31d12e051e511dd307f"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 35544,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:75b0b5bc3812f6585aec2fbab3d910966bb40e7c84cb1b617fe32ef2ac1acb62"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 52,
+        "file_mtime_and_publication_snapshot": 11,
+        "sqlite_transient_snapshot": 2
+      },
+      "exact_timing_difference_count": 65,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 51708,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 35544,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    },
+    "publication_failure_recovery": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 4,
+          "calculate_start": 4,
+          "calculation_call_end": 2,
+          "calculation_call_start": 2,
+          "indicator_file_publish_end": 4,
+          "indicator_file_publish_start": 4,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 18,
+          "sqlite_commit_returned": 8,
+          "sqlite_rollback": 1,
+          "sqlite_transaction_enter": 9
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/meta_data/all_stocks_data.csv": {
+              "sha256": "sha256:aac8f6288378ce3cbe12889a6ca7ada7272b319dcd1585239a4013a8395bf744",
+              "size_bytes": 18518
+            },
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:b5c42d8c1df93fcc03772058d47ea9d098c3618a8342fa5f4912cf9f0f8549cd",
+              "size_bytes": 98304
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:ce28675d66c95b9e84a7009ef61f707c0a93b7772d0c6133049712e674102c05",
+              "size_bytes": 9436
+            },
+            "data/_test/technical_analysis/2330_indicators.csv": {
+              "sha256": "sha256:109b7b46bf4324525aa8b673f979aa3f939da7b3edf0b1007eed9f49c4b24190",
+              "size_bytes": 9432
+            }
+          },
+          "publication_paths": [
+            "data/_test/meta_data/all_stocks_data.csv",
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv",
+            "data/_test/technical_analysis/2330_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:0f0456f84fd6df32f3a6e5a0416956bd3a2d39c5f0b319087b7ede97ed194de8",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              80,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:ee175ad8c3844c7287801872cdb3cfe0c99810d1b15db868cc22ab07930595c5",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              80,
+              29
+            ],
+            "row_keys_hash": "sha256:71f3b038aa567ab53a437729c3a93a432b5c8f74ab120680d8afa2efe6b2c2de",
+            "shape": [
+              80,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              },
+              "2330": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "injected_sqlite_publication_failure",
+            "source_mutated": false,
+            "success": false
+          },
+          {
+            "label": "sqlite_publication_failure_recovery",
+            "source_mutated": false,
+            "success": true
+          }
+        ],
+        "pid_recorded": 32252,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:c0f39394df2988487562e33391dcd8e44b4ca39f679a2a656c78584770ef17c2"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 41896,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:43ec55328cbcf2f0768b81f852277f0a6b4af4a0d8d44942d7b4f5549e43cf65"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 116,
+        "file_mtime_and_publication_snapshot": 23,
+        "sqlite_transient_snapshot": 2
+      },
+      "exact_timing_difference_count": 141,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 32252,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 41896,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    },
+    "same_input_rerun": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 4,
+          "calculate_start": 4,
+          "calculation_call_end": 2,
+          "calculation_call_start": 2,
+          "indicator_file_publish_end": 4,
+          "indicator_file_publish_start": 4,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 18,
+          "sqlite_commit_returned": 9,
+          "sqlite_transaction_enter": 9
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/meta_data/all_stocks_data.csv": {
+              "sha256": "sha256:aac8f6288378ce3cbe12889a6ca7ada7272b319dcd1585239a4013a8395bf744",
+              "size_bytes": 18518
+            },
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:0298bf6f52c1590de84b21384304b67d8c6d5bddaeaa89eb25db1f4d9f115235",
+              "size_bytes": 98304
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:ce28675d66c95b9e84a7009ef61f707c0a93b7772d0c6133049712e674102c05",
+              "size_bytes": 9436
+            },
+            "data/_test/technical_analysis/2330_indicators.csv": {
+              "sha256": "sha256:109b7b46bf4324525aa8b673f979aa3f939da7b3edf0b1007eed9f49c4b24190",
+              "size_bytes": 9432
+            }
+          },
+          "publication_paths": [
+            "data/_test/meta_data/all_stocks_data.csv",
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv",
+            "data/_test/technical_analysis/2330_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:0f0456f84fd6df32f3a6e5a0416956bd3a2d39c5f0b319087b7ede97ed194de8",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              80,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:ee175ad8c3844c7287801872cdb3cfe0c99810d1b15db868cc22ab07930595c5",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              80,
+              29
+            ],
+            "row_keys_hash": "sha256:71f3b038aa567ab53a437729c3a93a432b5c8f74ab120680d8afa2efe6b2c2de",
+            "shape": [
+              80,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              },
+              "2330": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "same_input_first_publication",
+            "source_mutated": false,
+            "success": true
+          },
+          {
+            "label": "same_input_repeat_publication",
+            "source_mutated": false,
+            "success": true
+          }
+        ],
+        "pid_recorded": 1924,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:ebd1b21dc966d34e28801a98546ce89baca8cefd881e7e630cf091fc3861fb6e"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 31552,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:c9325d5c7a1fd526aae5526521f5e921564773e53315cd6cad563e0485612ab7"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 116,
+        "file_mtime_and_publication_snapshot": 13
+      },
+      "exact_timing_difference_count": 129,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 1924,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 31552,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    },
+    "source_changed_during_run": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 4,
+          "calculate_start": 4,
+          "calculation_call_end": 2,
+          "calculation_call_start": 2,
+          "indicator_file_publish_end": 4,
+          "indicator_file_publish_start": 4,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 18,
+          "source_changed_after_input_read": 1,
+          "sqlite_commit_returned": 11,
+          "sqlite_transaction_enter": 11
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/meta_data/all_stocks_data.csv": {
+              "sha256": "sha256:c4248b2dda02398ab283e49f326eb704d02a6504954bb444c6358b26237b2734",
+              "size_bytes": 19274
+            },
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:b163953a25030b9950354118dac3659f5e2ea372df71ac336a3a2b83ea223d6e",
+              "size_bytes": 98304
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:58c5f252a5c324fa2e3e6db81ae8e529b0478a8e54ffc30d9e04b547d0886737",
+              "size_bytes": 9814
+            },
+            "data/_test/technical_analysis/2330_indicators.csv": {
+              "sha256": "sha256:c0a787ca2c1b2d9f50bef0f2a4c1846ec585125f2ddda56a5c584181670c0d11",
+              "size_bytes": 9810
+            }
+          },
+          "publication_paths": [
+            "data/_test/meta_data/all_stocks_data.csv",
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv",
+            "data/_test/technical_analysis/2330_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:828c3bec1c9fa3187f9b83b20188b795094134ca871b4fb7d95bc24b8294dfce",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              82,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:46d04587725132dcc0a4985647e7bb877a79fb33af5e45268cedb390dede9ba5",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              82,
+              29
+            ],
+            "row_keys_hash": "sha256:ae4c2547f9a563c730885de13932ce1e8a67fb34dbbe756fcbaaaa105af1170f",
+            "shape": [
+              82,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 41
+              },
+              "2330": {
+                "leading_adx_null_count": 27,
+                "row_count": 41
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "source_change_after_snapshot",
+            "source_mutated": true,
+            "success": true
+          },
+          {
+            "label": "source_change_republication",
+            "source_mutated": true,
+            "success": true
+          }
+        ],
+        "pid_recorded": 42156,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:e9e63c624babad885315314acb5fe731e3e92c59a706f048b930cc83f618a8b8"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 46884,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:fca35046e28e2de1c950e382ae6a20fb1669ddabc77c5d8f9af5dd55fedc92e5"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 126,
+        "file_mtime_and_publication_snapshot": 13
+      },
+      "exact_timing_difference_count": 139,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 42156,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 46884,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    },
+    "unchanged": {
+      "baseline_reference_result": {
+        "direct_checkpoint_fixtures": {
+          "changed_identity_rejection_classification": "computation_identity_drift",
+          "changed_identity_rejection_type": "DirectCheckpointProvenanceError",
+          "changed_identity_resume_rejected": true,
+          "fixture_paths": [
+            "synthetic_checkpoint_fixtures\\same_identity_checkpoint.json",
+            "synthetic_checkpoint_fixtures\\changed_identity_checkpoint.json"
+          ],
+          "same_identity_resume_accepted": true
+        },
+        "direct_identity": {
+          "dependency_payload_sha256": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+          "loaded_module_count": 14,
+          "ordered_path_set": [
+            "data_module/portfolio_ml_direct_numeric_store.py",
+            "data_module/portfolio_ml_dataset_assembler.py",
+            "data_module/portfolio_ml_out_of_core_store.py",
+            "data_module/ml_storage_capacity.py",
+            "data_module/ml_pit_shared_block_resolver.py",
+            "data_module/ml_direct_shared_block_resolver.py",
+            "data_module/formal_portfolio_ledger.py",
+            "data_module/rule_champion_snapshot_service.py",
+            "data_module/teacher_input_source_producer.py",
+            "ml_module/allocation_training_service.py",
+            "ml_module/allocation_contracts.py",
+            "ml_module/allocation_teacher.py",
+            "ml_module/immutable_ml_block_store.py",
+            "ml_module/purged_walk_forward.py",
+            "data_module/ml_price_availability_contract.py"
+          ],
+          "path_count": 15,
+          "raw_sha256_match_r006": true,
+          "runtime_snapshot_match_r006": true,
+          "stable_identity_match_r006": true,
+          "stable_identity_sha256": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c"
+        },
+        "event_counts": {
+          "calculate_end": 2,
+          "calculate_start": 2,
+          "calculation_call_end": 1,
+          "calculation_call_start": 1,
+          "indicator_file_publish_end": 2,
+          "indicator_file_publish_start": 2,
+          "post_scenario_temp_checkpoint_end": 1,
+          "post_scenario_temp_checkpoint_start": 1,
+          "progress": 9,
+          "sqlite_commit_returned": 5,
+          "sqlite_transaction_enter": 5
+        },
+        "final_publication": {
+          "files": {
+            "data/_test/sqlite/twstock.db": {
+              "sha256": "sha256:57f8ded01584edf83cd090c3593b9e6a087db0ed44aa1f6678c824614192f643",
+              "size_bytes": 98304
+            },
+            "data/_test/technical_analysis/1101_indicators.csv": {
+              "sha256": "sha256:1ee160d8c145a5ba616ed813709493da8341b37be02026cf3848abe8ec588d06",
+              "size_bytes": 9756
+            },
+            "data/_test/technical_analysis/2330_indicators.csv": {
+              "sha256": "sha256:967e6b93f944789a4c877e9fe811ec4cc546b8b87987046bada2dd4bbea6ee6c",
+              "size_bytes": 9752
+            }
+          },
+          "publication_paths": [
+            "data/_test/sqlite/twstock.db",
+            "data/_test/technical_analysis/1101_indicators.csv",
+            "data/_test/technical_analysis/2330_indicators.csv"
+          ],
+          "technical_rows": {
+            "columns": [
+              "日期",
+              "證券代號",
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "dtypes": {
+              "ADX": "float64",
+              "ATR": "float64",
+              "DEMA30": "object",
+              "EMA30": "float64",
+              "MA10": "float64",
+              "MA20": "float64",
+              "MA5": "float64",
+              "MA60": "object",
+              "MACD": "float64",
+              "MACD_hist": "float64",
+              "MACD_signal": "float64",
+              "RSI": "float64",
+              "SAR": "float64",
+              "SMA30": "float64",
+              "TSF": "float64",
+              "lowerband": "float64",
+              "middleband": "float64",
+              "slowd": "float64",
+              "slowk": "float64",
+              "upperband": "float64",
+              "成交筆數": "int64",
+              "成交金額": "int64",
+              "日期": "object",
+              "最後揭示買價": "float64",
+              "最後揭示買量": "int64",
+              "最後揭示賣價": "float64",
+              "最後揭示賣量": "int64",
+              "本益比": "float64",
+              "漲跌": "object",
+              "漲跌價差": "float64",
+              "證券代號": "object"
+            },
+            "mask_bytes_sha256": "sha256:0f0456f84fd6df32f3a6e5a0416956bd3a2d39c5f0b319087b7ede97ed194de8",
+            "mask_dtype": "uint8",
+            "mask_shape": [
+              80,
+              29
+            ],
+            "numeric_bytes_sha256": "sha256:ee175ad8c3844c7287801872cdb3cfe0c99810d1b15db868cc22ab07930595c5",
+            "numeric_columns": [
+              "成交筆數",
+              "成交金額",
+              "漲跌",
+              "漲跌價差",
+              "最後揭示買價",
+              "最後揭示買量",
+              "最後揭示賣價",
+              "最後揭示賣量",
+              "本益比",
+              "SMA30",
+              "DEMA30",
+              "EMA30",
+              "MA5",
+              "MA10",
+              "MA20",
+              "MA60",
+              "RSI",
+              "MACD",
+              "MACD_signal",
+              "MACD_hist",
+              "slowk",
+              "slowd",
+              "middleband",
+              "upperband",
+              "lowerband",
+              "SAR",
+              "TSF",
+              "ATR",
+              "ADX"
+            ],
+            "numeric_dtype": "float64",
+            "numeric_shape": [
+              80,
+              29
+            ],
+            "row_keys_hash": "sha256:71f3b038aa567ab53a437729c3a93a432b5c8f74ab120680d8afa2efe6b2c2de",
+            "shape": [
+              80,
+              31
+            ],
+            "warmup": {
+              "1101": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              },
+              "2330": {
+                "leading_adx_null_count": 27,
+                "row_count": 40
+              }
+            }
+          }
+        },
+        "input": {
+          "canonical_rows_hash": "sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b",
+          "data_root_is_temp_workspace": true,
+          "output_root_is_temp_workspace": true,
+          "row_count": 80,
+          "source_variant": "original",
+          "symbols": [
+            "1101",
+            "2330"
+          ]
+        },
+        "mode_recorded": "baseline",
+        "phase_outcomes": [
+          {
+            "label": "unchanged_source_skip",
+            "source_mutated": false,
+            "success": true
+          }
+        ],
+        "pid_recorded": 51332,
+        "profile": "test",
+        "return_code_recorded": 0,
+        "source_inventory": {
+          "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+          "after_path_count": 1482,
+          "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+          "before_path_count": 1478,
+          "late_loaded_source_paths": [
+            ".venv/Lib/site-packages/pandas/io/formats/csvs.py",
+            "data_module/excluded_daily_price_revision.py",
+            "data_module/formal_technical_raw_alias_repair.py",
+            "data_module/historical_session_revision.py"
+          ],
+          "preexisting_entries_unchanged": true
+        },
+        "update_service_source_sha256_at_worker_end": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88",
+        "worker_receipt_sha256": "sha256:d98ff901e697ce3f1d5663dcc412c13909f9487b2180816266c89668c7c7ec24"
+      },
+      "candidate_process_recorded": {
+        "mode": "candidate",
+        "pid": 52692,
+        "return_code": 0,
+        "worker_receipt_sha256": "sha256:b7e6c3c23aca0fc85e61724ed0e46576037bec1ba838e85f99b82c44f5cfe9cb"
+      },
+      "comparison_status": "incomparable_clock",
+      "exact_timing_difference_categories": {
+        "event_clock": 62,
+        "file_mtime_and_publication_snapshot": 13,
+        "sqlite_transient_snapshot": 2
+      },
+      "exact_timing_difference_count": 77,
+      "semantic_difference_count": 0,
+      "semantic_publication_and_runtime_equal": true,
+      "worker_processes_recorded_not_pairwise_compared": {
+        "baseline": {
+          "mode": "baseline",
+          "pid": 51332,
+          "return_code": 0
+        },
+        "candidate": {
+          "mode": "candidate",
+          "pid": 52692,
+          "return_code": 0
+        },
+        "return_code_gate": "compare_workers rejects any nonzero worker rc; exact rc/mode/PID pairwise fields are not in flatten_comparable"
+      }
+    }
+  },
+  "generated_by": "scripts/experiments/r027/project_receipt.py; Python stdlib JSON projection from the full TEMP receipt; no production data reads/writes",
+  "negative_controls": {
+    "all_detected": true,
+    "controls": {
+      "byte": {
+        "detected": true,
+        "difference_count": 1,
+        "first_difference": {
+          "left": "sha256:aac8f6288378ce3cbe12889a6ca7ada7272b319dcd1585239a4013a8395bf744",
+          "path": "$.final_publication.files.data/_test/meta_data/all_stocks_data.csv.sha256",
+          "reason": "value",
+          "right": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "path": {
+        "detected": true,
+        "difference_count": 1,
+        "first_difference": {
+          "left": "data/_test/meta_data/all_stocks_data.csv",
+          "path": "$.final_publication.publication_paths[0]",
+          "reason": "value",
+          "right": "negative-control-renamed/data/_test/meta_data/all_stocks_data.csv"
+        }
+      },
+      "resume": {
+        "detected": true,
+        "difference_count": 1,
+        "first_difference": {
+          "left": true,
+          "path": "$.direct_checkpoint_fixtures.same_identity_resume_accepted",
+          "reason": "value",
+          "right": false
+        }
+      },
+      "timing": {
+        "detected": true,
+        "difference_count": 1,
+        "first_difference": {
+          "left": 84938789352900,
+          "path": "$.timings.events[0].monotonic_ns",
+          "reason": "value",
+          "right": 84938789352901
+        }
+      }
+    }
+  },
+  "r006_direct_identity": {
+    "files": [
+      {
+        "loaded_code_fingerprint": "sha256:2a8bfa6880726b7f4d58aa80b63581afb24dd388cfca9ef30b03ee6f828214d1",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:c104666cfaa3450c6b3938601573338955908ac29526b196f56d3e73a00637f0",
+        "loaded_module": "data_module.portfolio_ml_direct_numeric_store",
+        "path": "data_module/portfolio_ml_direct_numeric_store.py",
+        "sha256": "sha256:017ae82cc6dd3466a6a1e3a17eca1edc88a94d114f03783acb4c14f90cc41509",
+        "size_bytes": 240272,
+        "source_code_fingerprint": "sha256:b8ce09ec7c81f24d6c962a0a108d601f203da43686f780117f14db707470dc7b"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:48f2ca16f760e3eee8a72bcb24eaf20e0950e60ff80608d007c15d516cc8b5c5",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:3430ce5a765ef0d8401fa336d5012d2de47e7d3077f8baef2a37a486047fa73f",
+        "loaded_module": "data_module.portfolio_ml_dataset_assembler",
+        "path": "data_module/portfolio_ml_dataset_assembler.py",
+        "sha256": "sha256:f8fd70c43bf18a3e507e0b44325aaf45a856a537829af7d7d0f2a0c7d6cf3b91",
+        "size_bytes": 198677,
+        "source_code_fingerprint": "sha256:d9a095fb858ff8d569fd6a7a7eabb0698c341ff1734b159d0101e27ad7656a30"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:e7f83f3daf8244ff74ba253fb51d3d220c1d33334ed9691894fcd450e29f85b0",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:b5a3fca6abebf8505926b17d866dc8bc3af81dd3c515d72b179e3762dfd1261f",
+        "loaded_module": "data_module.portfolio_ml_out_of_core_store",
+        "path": "data_module/portfolio_ml_out_of_core_store.py",
+        "sha256": "sha256:11ab46b71e81b0d72b6a39ec587454a9d332dc7360e53eb58d745c66ab09225a",
+        "size_bytes": 61094,
+        "source_code_fingerprint": "sha256:8106f9f79fe7470a65f59eaedc91c4c53cf20a32b17f287294c91dc73038c473"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:d0a78fcaea343fe46e8d4551d0899a28e8f3d8db41c4658e58118686d57b2e64",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:a9fc5d128b205fd0120be971921642773b6d3e4f1250d369678b80291b78cad5",
+        "loaded_module": "data_module.ml_storage_capacity",
+        "path": "data_module/ml_storage_capacity.py",
+        "sha256": "sha256:60202f419c06015a1d283579fd8ce204f6f7218a2348f3d74f4ec3fabdc4bb15",
+        "size_bytes": 82443,
+        "source_code_fingerprint": "sha256:992f6f59645deb0d2fc9abbb5420acef71b5e5f0454b8039c43fd606eef1685d"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:cac987498a71b91bea370105e6a60cfd4f25f907fd36f0d4f43bcfa99da0d2db",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:6d42f5e6a3031431992a8c5096ceb1e378725829791113781c2a91db94b656e4",
+        "loaded_module": "data_module.ml_pit_shared_block_resolver",
+        "path": "data_module/ml_pit_shared_block_resolver.py",
+        "sha256": "sha256:1ec0b283a5fa8a1eb9c69e87cdca25ccbf04381743944c62a1df6fc8e90e2709",
+        "size_bytes": 31682,
+        "source_code_fingerprint": "sha256:eef754917d5681c4d911bf583d118f5638a6a559dc3e259adc2725dca5e4084f"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:1c61ebf74d52b797406dc08335041cf60be4f30e78f12a0d2abbc3e3f94e827b",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:71ddce0479b30c161d4430e3ed590144810f8dc4bfee5689ab359e335f08908d",
+        "loaded_module": "data_module.ml_direct_shared_block_resolver",
+        "path": "data_module/ml_direct_shared_block_resolver.py",
+        "sha256": "sha256:9972bcd53fdc2a02abea47487f8c62f92b62895afde93e32212bd1661b98a4c4",
+        "size_bytes": 20198,
+        "source_code_fingerprint": "sha256:1c61ebf74d52b797406dc08335041cf60be4f30e78f12a0d2abbc3e3f94e827b"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:f95b3517e723b16d54159ee8bc84a447480eae2f40db957e746e1ae42c4aa35c",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:8a897889604ea70b283a24477dda1adff1d2f7ae8b0191636266995790a09b05",
+        "loaded_module": "data_module.formal_portfolio_ledger",
+        "path": "data_module/formal_portfolio_ledger.py",
+        "sha256": "sha256:1859ba515a4c4a33e61b139bb2a2b72eed93802f6c9ad00d81333bf74967112f",
+        "size_bytes": 24107,
+        "source_code_fingerprint": "sha256:519ae003ade58e8cb61ca397cd57fdc819fe3bdd5c414c1911c77f168a858930"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:19249808fd977450ff12a6e641845e44c5f82633aa462e40dd46c0b9148ed10d",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:0c48c95daa107d404fd68ff3ed2b60a124aa2d0ed73d4c9213dbebffff066699",
+        "loaded_module": "data_module.rule_champion_snapshot_service",
+        "path": "data_module/rule_champion_snapshot_service.py",
+        "sha256": "sha256:99c45420050e0ac78c17341dc4f9cc530435882b78fa0cc9f4a2dd5726b05645",
+        "size_bytes": 34744,
+        "source_code_fingerprint": "sha256:3c93159084e8e5d310db44d2f1b9c96ca02c9e2f0ce467d22e1f413af56dfbdc"
+      },
+      {
+        "loaded_code_fingerprint": null,
+        "loaded_code_matches_source": null,
+        "loaded_constants_sha256": null,
+        "loaded_module": null,
+        "path": "data_module/teacher_input_source_producer.py",
+        "sha256": "sha256:68bca304f7d2505d3f6a394f44a20b0507e99169600e790d119f171a9e11d5ad",
+        "size_bytes": 34715,
+        "source_code_fingerprint": "sha256:fdb49d56fc66a8d40761c185f896291befc8dc5686a0ba2000b65f19c43a22f4"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:f8c841a31f59e959da8f411bfa6eb13d6820b1300d109c12e622342545adb8a0",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:2c5e55c47dc534c3a0eae4b14cf21d31b0299ff2626300ee63d8cd3cd32d4e03",
+        "loaded_module": "ml_module.allocation_training_service",
+        "path": "ml_module/allocation_training_service.py",
+        "sha256": "sha256:b898d97cbcc7033ff53fe34c4f3ffedf53542942718a257a2db6a733f62881f6",
+        "size_bytes": 84519,
+        "source_code_fingerprint": "sha256:81a48b1cc2f7b90939ad0f94bfc29796dd5a834994d662295d316e25f013f6f6"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:eb1747becb67050f585ed91b222ce5a132c9f4b51f96497ddb602d16e692c83c",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "loaded_module": "ml_module.allocation_contracts",
+        "path": "ml_module/allocation_contracts.py",
+        "sha256": "sha256:dd18d81a5409b8aa176e77d89cbcd515da41e8140ae7f9b248c4ca526fc84343",
+        "size_bytes": 23660,
+        "source_code_fingerprint": "sha256:39fdac6e29bb685c24552af69dbc572bd33aa8b201f208d1778bcac0b94ee6f3"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:5851538465c685d69523dfa099786c9c3ed6f04f7ce53fd037f395e5bc5fe9f4",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:8a2d7670637f424cf87a4979442e4392e93b2d1633cb5bab3c5c3aea23405b38",
+        "loaded_module": "ml_module.allocation_teacher",
+        "path": "ml_module/allocation_teacher.py",
+        "sha256": "sha256:c34f6ce1023ab1eb8f3899819cbb93701ab198c0f5bfcc20287d8e36f75477f1",
+        "size_bytes": 23302,
+        "source_code_fingerprint": "sha256:00d9f52e1d8845d524d1f4e22d05629167602e2f83c45925765ed0a6910a22e9"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:bcec01ab5d48fb017c674a27a1709f516e2268cb6351ef074991ccc8f6339cd3",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:95ada5f03fcdc85c1371a8e903229ea669b823bf593db08ce0099bec5ec5561d",
+        "loaded_module": "ml_module.immutable_ml_block_store",
+        "path": "ml_module/immutable_ml_block_store.py",
+        "sha256": "sha256:cd14ef0b8da2af8e1953f2f28c299277a779a9ffb1f06fb5f6d86057f7ac3400",
+        "size_bytes": 39379,
+        "source_code_fingerprint": "sha256:cce77f835bed901c4bcafe0cdd20c87096a365d08720b3edac10f4b16b534358"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:1d211b8a8824c23e16b8d182b3f033431ad0a4ee5a6bad70a433538744c3555e",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "loaded_module": "ml_module.purged_walk_forward",
+        "path": "ml_module/purged_walk_forward.py",
+        "sha256": "sha256:345edaccddfcc658d63bd1e0a69508594954eb9d72e2c48e1d9944c5e487ff4a",
+        "size_bytes": 3895,
+        "source_code_fingerprint": "sha256:9356fd310fe22576e0c9cfce88f618ce76674ec8dcebd899fe94552be4898f32"
+      },
+      {
+        "loaded_code_fingerprint": "sha256:ec6b533e0a2b4e1cb27b815c3cf02c7289f081552f764e4ea8480db9c5037fbe",
+        "loaded_code_matches_source": true,
+        "loaded_constants_sha256": "sha256:54dde7818aa9b437305821f76bd9c838d1e2b58cbab93527ae08f7b7c7bb7c1c",
+        "loaded_module": "data_module.ml_price_availability_contract",
+        "path": "data_module/ml_price_availability_contract.py",
+        "sha256": "sha256:6d503e6c2d77a16b0a49efdddb3770971b774be9d563d9668235a84e0bf6af9b",
+        "size_bytes": 11019,
+        "source_code_fingerprint": "sha256:ec6b533e0a2b4e1cb27b815c3cf02c7289f081552f764e4ea8480db9c5037fbe"
+      }
+    ],
+    "loaded_module_count": 14,
+    "ordered_path_set": [
+      "data_module/portfolio_ml_direct_numeric_store.py",
+      "data_module/portfolio_ml_dataset_assembler.py",
+      "data_module/portfolio_ml_out_of_core_store.py",
+      "data_module/ml_storage_capacity.py",
+      "data_module/ml_pit_shared_block_resolver.py",
+      "data_module/ml_direct_shared_block_resolver.py",
+      "data_module/formal_portfolio_ledger.py",
+      "data_module/rule_champion_snapshot_service.py",
+      "data_module/teacher_input_source_producer.py",
+      "ml_module/allocation_training_service.py",
+      "ml_module/allocation_contracts.py",
+      "ml_module/allocation_teacher.py",
+      "ml_module/immutable_ml_block_store.py",
+      "ml_module/purged_walk_forward.py",
+      "data_module/ml_price_availability_contract.py"
+    ],
+    "path_count": 15,
+    "raw_sha256_match": true,
+    "runtime_dependency_payload_hash": "sha256:0b23fbb44dc99c13f75c638aca1bc325f4585e714d018d2d8a223a15a20e7087",
+    "runtime_snapshot_match": true,
+    "stable_identity_hash": "sha256:1591edf147512bf07adad7311f1a3392bd8ddcdb09e60665746b9ef83032715c",
+    "stable_identity_match": true
+  },
+  "r028_unlocked": false,
+  "run": {
+    "candidate_extraction": {
+      "candidate_path": "C:\\Users\\archi\\AppData\\Local\\Temp\\r027-r023-freeze-all-20260923-dd1c0d4c58404dfa8d94a6275de96f2a\\candidate\\technical_indicator_job.py",
+      "candidate_sha256": "sha256:6a5a9156170ad3cb0882ebbcf87f6569430206d49ad1b45f4d26c115f861d173",
+      "extraction": "AST source extraction + method rename; no production write",
+      "method_source_sha256": "sha256:7efb02d06b7a76bd273d69693468bfd3e89d3912980019d706d53725fe2767c7",
+      "source_line_end": 5421,
+      "source_line_start": 4614,
+      "source_path": "app_module/update_service.py",
+      "source_sha256": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88"
+    },
+    "full_receipt": {
+      "path": "C:\\Users\\archi\\AppData\\Local\\Temp\\r027-r023-freeze-all-20260923-dd1c0d4c58404dfa8d94a6275de96f2a\\r027_comparison.json",
+      "sha256": "sha256:4fe75c19e16e7bd241108638813f5ba5d89235cdc884dff224f337a8c9847616",
+      "size_bytes": 17045681
+    },
+    "head": "777c06d039a7676475f7f6eecebf9a24bb790692",
+    "python_executable": "C:\\Projects\\PythonProjects\\technical_analysis\\.venv\\Scripts\\python.exe",
+    "repository_root": "C:\\Projects\\PythonProjects\\technical_analysis",
+    "run_name": "r027-r023-freeze-all-20260923-dd1c0d4c58404dfa8d94a6275de96f2a",
+    "run_root_temp": "C:\\Users\\archi\\AppData\\Local\\Temp\\r027-r023-freeze-all-20260923-dd1c0d4c58404dfa8d94a6275de96f2a",
+    "update_service_source_sha256": "sha256:df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25ee3bc3c69dae88"
+  },
+  "schema": "r027-current-state-evidence-summary.v2",
+  "scope": {
+    "all_data_and_output_roots_temp": true,
+    "formal_data_touched": false,
+    "fresh_process_per_mode_per_case": true,
+    "mode_counts": {
+      "baseline": 8,
+      "candidate": 8
+    },
+    "production_source_write_performed": false,
+    "profile": "test",
+    "unique_pid_count": 16,
+    "worker_count": 16,
+    "worker_return_codes": [
+      0
+    ]
+  },
+  "source_inventory": {
+    "after_fingerprint_sha256": "sha256:2bd63e1e844f55849faf5559c33ea44e273bcd78df51689f853913d214467bac",
+    "after_raw_file_count": 1482,
+    "all_workers_have_same_inventory_transition": true,
+    "all_workers_preexisting_entries_unchanged": true,
+    "before_fingerprint_sha256": "sha256:2d1e3dad0fe4e33709fb2a39d8d7232554fe74218d01f6ee2ade579baae5105d",
+    "before_raw_file_count": 1478,
+    "new_repo_paths": [
+      "data_module/excluded_daily_price_revision.py",
+      "data_module/formal_technical_raw_alias_repair.py",
+      "data_module/historical_session_revision.py"
+    ],
+    "new_third_party_runtime_paths": [
+      ".venv/Lib/site-packages/pandas/io/formats/csvs.py"
+    ],
+    "preexisting_path_sha_and_source_fingerprints_unchanged": true,
+    "worker_source_inventory_stable_flag_semantics": "all pre-existing path raw SHA/source fingerprints still match; new late-loaded paths are separately listed"
+  },
+  "stale_historical_receipt": {
+    "path": "C:\\Users\\archi\\AppData\\Local\\Temp\\r027-all-cases-final-r006-state-20260923\\r027_comparison.json",
+    "reason": "captured before current UpdateService source SHA; retained for history, not current gate evidence",
+    "sha256": "sha256:0b5acd75fb242858db32c76820a03337f9e95b9b4e8788a10be38c4b98bf9de7",
+    "status": "STALE_HISTORICAL"
+  },
+  "strict_verdict": "INCONCLUSIVE",
+  "temporary_component": "TMP-ML-02=ACTIVE"
+}

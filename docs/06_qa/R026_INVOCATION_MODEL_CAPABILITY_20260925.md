@@ -1,6 +1,6 @@
 # R026 invocation model-resolution capability — bounded experimental evidence
 
-**狀態：** 原 consumer-side model-resolution API 已有 bounded `ACCEPTED_SCOPE`。本次補上 exact known-model graph traversal，實作與 focused QA 完成，等待此 follow-up 的獨立 review。能力仍只屬 experimental model-resolution API，不得接入 runtime handoff；不證明未知模型類別／套件版本或任意 Python object graph 的隔離，也不是 `PreparedMLRuntimeInputV1` handoff。R026 與 `TMP-ML-01` 維持 open。
+**狀態：** 原 consumer-side model-resolution API 已有 bounded `ACCEPTED_SCOPE`。Nested known-model graph traversal 與 exact runtime-profile guard follow-up 經 R015 獨立複核，root 判為 bounded `ACCEPTED_SCOPE`，無 P1/P2。接受僅限下列 exact model/lineage graph 與 runtime profile 的 experimental model-resolution API，不得接入 runtime handoff；R026 與 `TMP-ML-01` 維持 open。
 
 ## 實作界線
 
@@ -78,3 +78,9 @@ Scoped mypy：
 - unchanged `ml_module/model_artifact_loader.py`: `0B76494E757F6DEDDAFC13A5BFFB64B8C09B8C1A4C533A2FF02FC3D1002AB484`
 
 The service integration tests exercise the existing default projection path without passing `_invocation_capability`; the service source remained byte-identical at the cited SHA. The current adjacent evidence is 54P/2D. This slice still does not wire the experimental capability into live service, construct `PreparedMLInput`/`PreparedMLRuntimeInputV1`, call `PreparedMLProjector`, or write receipts. It proves alias isolation only for the exact gated model/lineage profile above. It does not prove pointer lease/ABA exclusion, DB/source/model/receipt shared transaction, or full R026/TMP-ML-01 completion.
+
+## 獨立複核收據與 residual
+
+R015 對上述 frozen source/test 的獨立複核無 P1/P2，root 判定本 nested-graph/runtime-profile follow-up 為 bounded `ACCEPTED_SCOPE`。Reviewer fresh short TEMP 專項 route **20 passed**，log `C:\t\r26g1\pytest.log` SHA-256 `0DD309BA6814B30BD32BC9F745BA0903E41B432C084463802A7E5B1CF0F2661E`；相鄰 route **54 passed／2 deselected**，log `C:\t\r26g2\pytest.log` SHA-256 `462DC72865B970F7AE5C9354A1F94F3C3AE94B716B7D5515411F1CCD5B7BD696`。Reviewer scoped mypy 4 files／0 issues，py_compile 與 diff-check 通過。
+
+此 bounded acceptance 不外推到未列 runtime profile；depth/node/array/byte/element 各 budget 維度未逐一觸發驗證；capability 未綁定 feature/source/receipt；pointer ABA 與 receipt publication race 未解。能力仍是 experimental model-resolution API，不得 runtime handoff；未接 `PreparedMLRuntimeInputV1`，亦不表示 R026 或 `TMP-ML-01` 完成。

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 from typing import cast
 
 from data_module.official_trading_calendar_cache import (
@@ -58,6 +61,31 @@ def _write_calendar_cache(
     path = root / f"twse_holiday_schedule_{year}_paper_gate_fixture.json"
     write_twse_calendar_cache(path, cache, allowed_root=root)
     return path
+
+
+def test_dependency_gate_direct_cli_help_bootstraps_repo_import(tmp_path: Path) -> None:
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "scheduled"
+        / "paper_execution_dependency_gate.py"
+    )
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    completed = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "usage:" in completed.stdout.lower()
+    assert not any(tmp_path.iterdir())
 
 
 def _seed_ready_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:

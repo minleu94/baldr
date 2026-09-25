@@ -467,7 +467,7 @@ def _verified_closed_calendar_evidence(
                     observed_at=observed,
                 )
             )
-        except OfficialCalendarCacheError:
+        except (OfficialCalendarCacheError, OSError):
             continue
     if not verified:
         return None

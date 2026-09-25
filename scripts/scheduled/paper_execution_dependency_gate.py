@@ -2,8 +2,9 @@
 
 這個 gate 只觀察固定 D 槽來源，不呼叫 API、不寫入來源檔或 SQLite。Paper
 EOD 只有在 quick update、freshness、daily_prices 交易日與來源檔 hash 同屬
-當日且可重驗時才會進入既有 isolated adapter。週末或 quick update 明確記錄
-官方無資料日則交給 adapter 依官方交易日曆判斷，避免把休市誤判成資料故障。
+當日且可重驗時才會進入既有 isolated adapter。週末或 hash-bound 官方年度
+休市 cache 明確關閉 exact target date 時直接回傳 no-op；quick update 的真實
+錯誤仍由其自身 receipt 保留，不被休市分類改寫。
 """
 
 from __future__ import annotations
@@ -22,11 +23,21 @@ import sys
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from data_module.official_trading_calendar_cache import (
+    OfficialCalendarCacheError,
+    VerifiedOfficialCalendarCache,
+    load_verified_twse_calendar_cache,
+)
+
 
 TAIPEI = ZoneInfo("Asia/Taipei")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
 DEFAULT_OUTPUT_ROOT = DEFAULT_DATA_ROOT / "output"
 DEFAULT_DB_PATH = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
+DEFAULT_CALENDAR_CACHE_ROOT = (
+    REPOSITORY_ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
+)
 
 # Paper EOD 只消費下列三個 freshness 市場來源；其他來源由各自 lane
 # 另行判定，不能因跨 lane 的降級狀態直接阻擋 Paper。
@@ -401,6 +412,83 @@ def _step_passed(payload: Mapping[str, object] | None, name: str) -> bool:
     return isinstance(step, Mapping) and step.get("status") == "passed"
 
 
+def _calendar_cache_candidates(
+    cache_path: str | Path,
+    *,
+    calendar_year: int,
+) -> tuple[Path, ...]:
+    """列出指定年度 cache candidates，並拒絕 reparse 後逃離 root 的檔案。"""
+
+    root = Path(cache_path).expanduser().resolve()
+    if root.exists() and root.is_file():
+        return (root,)
+    if root.suffix.casefold() == ".json":
+        return (root,)
+    if not root.is_dir():
+        return ()
+    candidates = list(root.glob(f"twse_holiday_schedule_{calendar_year}_*.json"))
+    exact = root / f"twse_holiday_schedule_{calendar_year}.json"
+    if exact.exists():
+        candidates.append(exact)
+    resolved: list[Path] = []
+    for candidate in sorted(set(candidates)):
+        candidate_resolved = candidate.resolve()
+        try:
+            candidate_resolved.relative_to(root)
+        except ValueError:
+            continue
+        resolved.append(candidate_resolved)
+    return tuple(resolved)
+
+
+def _verified_closed_calendar_evidence(
+    *,
+    target: date,
+    observed: datetime,
+    cache_path: str | Path,
+) -> dict[str, object] | None:
+    """只把 exact target 的 hash-bound 官方 annual closed row 當作 no-op。
+
+    loader 會以同一個 gate observed clock 驗證 raw/content hash、完整年度、
+    available/captured 時間鏈與 freshness；open、缺失、過期或任何驗證失敗
+    都回傳 ``None``，讓既有 required-source gate 繼續 fail closed。
+    """
+
+    verified: list[VerifiedOfficialCalendarCache] = []
+    for candidate in _calendar_cache_candidates(
+        cache_path,
+        calendar_year=target.year,
+    ):
+        try:
+            verified.append(
+                load_verified_twse_calendar_cache(
+                    candidate,
+                    calendar_year=target.year,
+                    observed_at=observed,
+                )
+            )
+        except OfficialCalendarCacheError:
+            continue
+    if not verified:
+        return None
+
+    selected = max(
+        verified,
+        key=lambda item: str(item.evidence.get("captured_at", "")),
+    )
+    if selected.schedule.get(target) is not False:
+        return None
+    evidence = dict(selected.evidence)
+    evidence.update(
+        {
+            "target_date": target.isoformat(),
+            "is_trading_day": False,
+            "reason_code": "twse_holiday_schedule_cache_closed",
+        }
+    )
+    return evidence
+
+
 def _candidate_non_eod_policy(
     *,
     source_id: str,
@@ -636,9 +724,15 @@ def inspect_dependency(
     data_root: str | Path = DEFAULT_DATA_ROOT,
     output_root: str | Path = DEFAULT_OUTPUT_ROOT,
     db_path: str | Path = DEFAULT_DB_PATH,
+    calendar_cache_path: str | Path = DEFAULT_CALENDAR_CACHE_ROOT,
     observed_at: datetime | None = None,
 ) -> dict[str, object]:
-    """回傳可重驗的 gate 結果；所有輸入皆固定為 read-only observation。"""
+    """回傳可重驗的 gate 結果；所有輸入皆固定為 read-only observation。
+
+    只有 exact target date 的 hash-bound 官方 annual cache 明確標示休市時，
+    才會在讀取 quick/freshness/market source 前回傳 Paper no-op。開市、cache
+    缺失、過期或驗證失敗都保留既有 required-source gate。
+    """
 
     observed = (observed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
     taipei_now = observed.astimezone(TAIPEI)
@@ -671,6 +765,25 @@ def inspect_dependency(
 
     if target.weekday() >= 5:
         result.update({"status": "not_trading_day", "ready": True, "reason": "taipei_weekend"})
+        return result
+
+    calendar_evidence = _verified_closed_calendar_evidence(
+        target=target,
+        observed=observed,
+        cache_path=calendar_cache_path,
+    )
+    if calendar_evidence is not None:
+        result.update(
+            {
+                "status": "not_trading_day",
+                "ready": True,
+                "reason": "twse_holiday_schedule_cache_closed",
+                "adapter_noop": True,
+                "calendar_evidence": calendar_evidence,
+                "blockers": [],
+                "warnings": [],
+            }
+        )
         return result
 
     quick, quick_hash, quick_error = _read_json(quick_path)

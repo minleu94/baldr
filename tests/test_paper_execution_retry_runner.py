@@ -645,6 +645,49 @@ def test_retry_runner_turns_weekend_gate_into_noop_before_adapter(
     assert result["runtime_roll_forward"]["status"] == "runtime_config_created"
 
 
+def test_retry_runner_turns_verified_weekday_holiday_gate_into_noop_before_adapter(
+    tmp_path: Path,
+) -> None:
+    adapter_called = False
+
+    def adapter() -> dict[str, object]:
+        nonlocal adapter_called
+        adapter_called = True
+        return {"status": "machine_verified_candidate"}
+
+    def roll_forward() -> dict[str, object]:
+        return {
+            "status": "runtime_config_created",
+            "exit_code": 0,
+            "candidate_only": True,
+        }
+
+    result = run_scheduled(
+        max_attempts=3,
+        gate_output_root=tmp_path / "gate",
+        gate_fn=lambda: {
+            "status": "not_trading_day",
+            "ready": True,
+            "reason": "twse_holiday_schedule_cache_closed",
+            "adapter_noop": True,
+            "calendar_evidence": {
+                "target_date": "2026-09-25",
+                "is_trading_day": False,
+                "mode": "hash_bound_official_calendar_cache",
+            },
+        },
+        adapter_fn=adapter,
+        sleep_fn=lambda _: (_ for _ in ()).throw(AssertionError("no sleep expected")),
+        now_fn=lambda: datetime(2026, 9, 25, 13, 0, tzinfo=timezone.utc),
+        roll_forward_fn=lambda: None,
+    )
+
+    assert result["status"] == "skipped_non_trading_day"
+    assert result["non_trading_day"] is True
+    assert result["adapter_called"] is False
+    assert adapter_called is False
+
+
 def test_retry_runner_retries_transient_adapter_source_blocker(tmp_path: Path) -> None:
     adapter_results = iter(
         (

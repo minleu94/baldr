@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
 from typing import cast
 
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    write_twse_calendar_cache,
+)
 from scripts.scheduled.paper_execution_dependency_gate import (
     _paper_eod_freshness_projection,
     inspect_dependency,
@@ -19,6 +23,41 @@ OBSERVED = datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _write_calendar_cache(
+    root: Path,
+    *,
+    year: int,
+    closed_date: date,
+    captured_at: datetime,
+    max_age: timedelta = timedelta(days=7),
+) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    raw_response = json.dumps(
+        [
+            {
+                "Name": "測試年度休市",
+                "Date": f"{closed_date.year - 1911:03d}{closed_date:%m%d}",
+                "Weekday": str(closed_date.weekday()),
+                "Description": "isolated official closed-day fixture",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache = build_twse_calendar_cache(
+        calendar_year=year,
+        raw_response=raw_response,
+        requested_at=captured_at - timedelta(seconds=1),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"ETag": f'"paper-gate-fixture-{year}"'},
+        max_age=max_age,
+    )
+    path = root / f"twse_holiday_schedule_{year}_paper_gate_fixture.json"
+    write_twse_calendar_cache(path, cache, allowed_root=root)
+    return path
 
 
 def _seed_ready_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -1006,3 +1045,77 @@ def test_dependency_gate_treats_weekend_as_calendar_delegation(tmp_path: Path) -
     assert result["status"] == "not_trading_day"
     assert result["ready"] is True
     assert result["reason"] == "taipei_weekend"
+
+
+def test_dependency_gate_classifies_verified_weekday_holiday_before_upstream_failure(
+    tmp_path: Path,
+) -> None:
+    observed = datetime(2026, 9, 25, 13, 0, tzinfo=timezone.utc)
+    calendar_root = tmp_path / "calendar"
+    cache_path = _write_calendar_cache(
+        calendar_root,
+        year=2026,
+        closed_date=date(2026, 9, 25),
+        captured_at=observed - timedelta(hours=1),
+    )
+
+    # 缺少 quick/freshness/source/DB 也不能阻止已驗證的 exact closed-day no-op；
+    # 這個分支不會讀取或重播任何上游 writer。
+    result = inspect_dependency(
+        data_root=tmp_path / "missing-data",
+        output_root=tmp_path / "missing-output",
+        db_path=tmp_path / "missing.db",
+        calendar_cache_path=calendar_root,
+        observed_at=observed,
+    )
+
+    assert result["status"] == "not_trading_day"
+    assert result["ready"] is True
+    assert result["reason"] == "twse_holiday_schedule_cache_closed"
+    assert result["adapter_noop"] is True
+    assert result["blockers"] == []
+    evidence = cast(dict[str, object], result["calendar_evidence"])
+    assert evidence["target_date"] == "2026-09-25"
+    assert evidence["is_trading_day"] is False
+    assert evidence["reason_code"] == "twse_holiday_schedule_cache_closed"
+    assert evidence["path"] == str(cache_path.resolve())
+    assert evidence["mode"] == "hash_bound_official_calendar_cache"
+    assert evidence["available_at"] == "2026-09-25T12:00:00+00:00"
+
+
+def test_dependency_gate_keeps_open_or_unverified_calendar_on_original_blockers(
+    tmp_path: Path,
+) -> None:
+    observed = OBSERVED
+    for mode in ("open", "missing", "expired", "tampered"):
+        case_root = tmp_path / mode
+        data_root, output_root, db_path = _seed_ready_inputs(case_root)
+        quick_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+        quick_payload = json.loads(quick_path.read_text(encoding="utf-8"))
+        quick_payload["status"] = "failed"
+        quick_path.write_text(json.dumps(quick_payload), encoding="utf-8")
+
+        calendar_root = case_root / "calendar"
+        if mode != "missing":
+            cache_path = _write_calendar_cache(
+                calendar_root,
+                year=2026,
+                closed_date=date(2026, 9, 1),
+                captured_at=observed - timedelta(hours=1),
+                max_age=timedelta(days=1) if mode == "expired" else timedelta(days=7),
+            )
+            if mode == "tampered":
+                cache_path.write_text("{}", encoding="utf-8")
+
+        result = inspect_dependency(
+            data_root=data_root,
+            output_root=output_root,
+            db_path=db_path,
+            calendar_cache_path=calendar_root,
+            observed_at=observed,
+        )
+
+        assert result["status"] == "blocked", mode
+        assert result["ready"] is False, mode
+        assert "quick_update_status_not_success:failed" in result["blockers"], mode  # type: ignore[operator]
+        assert "calendar_evidence" not in result, mode

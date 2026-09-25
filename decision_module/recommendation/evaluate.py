@@ -1816,6 +1816,7 @@ class ReplayPostScoreFactsV1:
     rsi_source_column: str | None
     identity_token: _ReplayPostScoreFactsIdentityTokenV1 = field(
         default_factory=_ReplayPostScoreFactsIdentityTokenV1,
+        init=False,
         compare=False,
         repr=False,
     )
@@ -2986,6 +2987,55 @@ class RecommendationEvaluator:
             )
         if paired_projection is not None and paired_projection.request != pending:
             raise SourceFactMismatchError("paired metric candidate/rule identity 不一致")
+
+        none_hint = next(
+            (
+                hint
+                for hint in state.deferred_policy.threshold_input_hints
+                if hint.filter_id is pending.filter_id
+            ),
+            None,
+        )
+        if (
+            response.threshold.status is ReplayThresholdStatus.UNSUPPORTED
+            and response.threshold.unsupported_reason == "legacy_none_threshold"
+            and none_hint is not None
+            and none_hint.input_kind is ReplayPostScoreThresholdInputKindV1.PYTHON_NONE
+        ):
+            resolved_policy = _replace_replay_post_score_threshold(
+                state.deferred_policy.policy,
+                pending.filter_id,
+                response.threshold,
+            )
+            deferred_policy = replace(
+                state.deferred_policy,
+                policy=resolved_policy,
+                deferred_rules=tuple(
+                    rule
+                    for rule in state.deferred_policy.deferred_rules
+                    if rule is not pending.filter_id
+                ),
+                threshold_input_hints=tuple(
+                    hint
+                    for hint in state.deferred_policy.threshold_input_hints
+                    if hint.filter_id is not pending.filter_id
+                ),
+            )
+            none_outcome = ReplayPostScoreRuleOutcomeV1(
+                filter_id=pending.filter_id,
+                disposition=ReplayPostScoreRuleDispositionV1.REJECTED,
+                reason_code="legacy_none_threshold_rejected",
+                threshold_input_hint=none_hint,
+            )
+            return _advance_replay_post_score_state(
+                replace(
+                    state,
+                    deferred_policy=deferred_policy,
+                    next_rule_index=state.next_rule_index + 1,
+                    rules=(*state.rules, none_outcome),
+                    pending=None,
+                )
+            )
 
         resolved_policy = _replace_replay_post_score_threshold(
             state.deferred_policy.policy,

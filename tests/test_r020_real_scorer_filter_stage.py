@@ -10,9 +10,11 @@ from app_module.recommendation_dataframe_provider import (
     RecommendationDataFrameProvider,
     ReplayProviderCallResultV1,
 )
+from app_module.recommendation_replay_service import RecommendationReplayService
 from decision_module.recommendation.evaluate import (
-    NeedCandidateScoring,
     RecommendationEvaluator,
+    ReplayPostScoreDispositionV1,
+    ReplayPostScoreEvaluationStepV1,
     ReplayCandidateScoringOutcomeV1,
     ReplayScorerDispositionV1,
     ReplayScorerResponseV1,
@@ -69,6 +71,30 @@ def _capture_scorer_terminals(
     return terminals
 
 
+def _capture_post_score_terminals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[ReplayPostScoreDispositionV1]:
+    terminals: list[ReplayPostScoreDispositionV1] = []
+    original = RecommendationEvaluator.advance_replay_post_score_staged
+
+    def observe_terminal(
+        evaluator: RecommendationEvaluator,
+        step: ReplayPostScoreEvaluationStepV1,
+        response: Any,
+    ) -> ReplayPostScoreEvaluationStepV1:
+        terminal = original(evaluator, step, response)
+        if terminal.outcome is not None:
+            terminals.append(terminal.outcome.disposition)
+        return terminal
+
+    monkeypatch.setattr(
+        RecommendationEvaluator,
+        "advance_replay_post_score_staged",
+        observe_terminal,
+    )
+    return terminals
+
+
 def _run_real_provider(
     history: pd.DataFrame,
     config: dict[str, Any],
@@ -84,10 +110,35 @@ def _run_real_provider(
     )
 
 
-def test_real_volume_scorer_applies_twenty_row_fallback_after_prefilter(
+def _capture_builtin_scorer_config(
+    provider: RecommendationDataFrameProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[dict[str, Any] | None]:
+    """透過 built-in 技術準備邊界觀察完整 scorer config，不覆寫 scorer。"""
+
+    received: list[dict[str, Any] | None] = []
+    original = provider.strategy_configurator.configure_technical_indicators
+
+    def observe_config(
+        frame: pd.DataFrame,
+        technical_config: dict[str, Any],
+        full_config: dict[str, Any] | None = None,
+    ) -> pd.DataFrame:
+        received.append(None if full_config is None else dict(full_config))
+        return original(frame, technical_config, full_config)
+
+    monkeypatch.setattr(
+        provider.strategy_configurator,
+        "configure_technical_indicators",
+        observe_config,
+    )
+    return received
+
+
+def test_real_volume_scorer_is_unfiltered_then_replay_evaluator_rejects_twenty_row_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """20 列不足以產生快篩量比，但既有 scorer 仍用 19 列衍生量比篩選。"""
+    """20 列 scorer 產生 fallback 量比後，由 replay evaluator 拒絕。"""
 
     history = _synthetic_history(20, "VOL20", final_volume=1000)
     config = {"filters": {"volume_ratio_min": 1.5}}
@@ -97,21 +148,10 @@ def test_real_volume_scorer_applies_twenty_row_fallback_after_prefilter(
     assert direct_legacy.empty
 
     terminals = _capture_scorer_terminals(monkeypatch)
+    post_score_terminals = _capture_post_score_terminals(monkeypatch)
     provider = RecommendationDataFrameProvider()
     assert type(provider.strategy_configurator) is StrategyConfigurator
-    scorer_calls: list[tuple[int, int]] = []
-    original_generate = provider.strategy_configurator.generate_recommendations
-
-    def observe_generate(frame: pd.DataFrame, received_config: dict[str, Any]) -> pd.DataFrame:
-        scored = original_generate(frame, received_config)
-        scorer_calls.append((len(frame), len(scored)))
-        return scored
-
-    monkeypatch.setattr(
-        provider.strategy_configurator,
-        "generate_recommendations",
-        observe_generate,
-    )
+    scorer_configs = _capture_builtin_scorer_config(provider, monkeypatch)
     result = provider.run_with_as_of_handoff(
         history,
         config,
@@ -119,11 +159,11 @@ def test_real_volume_scorer_applies_twenty_row_fallback_after_prefilter(
         as_of_date=date(2026, 9, 20),
     )
 
-    assert scorer_calls == [(20, 0)]
+    assert scorer_configs == [{}]
+    assert config == {"filters": {"volume_ratio_min": 1.5}}
     assert len(terminals) == 1
-    assert type(terminals[0].request) is NeedCandidateScoring
-    assert terminals[0].request.stock_code == "VOL20"
     assert terminals[0].response.disposition is ReplayScorerDispositionV1.SKIPPED_EMPTY
+    assert post_score_terminals == [ReplayPostScoreDispositionV1.REJECTED]
     assert result.rows == []
     assert result.scoring_outcomes == ()
     assert result.as_of_date == date(2026, 9, 20)
@@ -185,10 +225,41 @@ def test_real_twenty_one_row_scorer_matches_frozen_v1_row_and_typed_outcome(
     assert outcome.response.disposition is ReplayScorerDispositionV1.SCORED
 
 
-def test_rsi_only_filter_is_applied_by_real_scorer_after_fast_prefilter(
+def test_builtin_replay_scorer_builds_canonical_child_after_post_score_accept() -> None:
+    history = _synthetic_history(21, "BUILTIN-CHILD", final_volume=1500)
+    parent_id = "parent-r020-builtin-post-score"
+    snapshot = RecommendationReplayService(
+        RecommendationDataFrameProvider()
+    ).run_snapshot(
+        as_of_date="2026-09-21",
+        profile_id="profile-r020-builtin-post-score",
+        config={"filters": {"volume_ratio_min": 1.5}},
+        history=history,
+        universe=None,
+        top_n=10,
+        parent_result_id=parent_id,
+    )
+
+    assert [row["stock_code"] for row in snapshot.recommendations] == [
+        "BUILTIN-CHILD"
+    ]
+    child = snapshot.canonical_execution
+    assert child is not None
+    assert child.related_references[0].reference_id == parent_id
+    decision = child.decision
+    assert decision is not None
+    assert [item.stock_code for item in decision.items] == [
+        "BUILTIN-CHILD"
+    ]
+    assert [assessment.stock_code for assessment in decision.assessments] == [
+        "BUILTIN-CHILD"
+    ]
+
+
+def test_real_rsi_scorer_is_unfiltered_then_replay_evaluator_rejects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """RSI 不屬 fast policy；既有 scorer 對 RSI=50/min=101 回空列。"""
+    """RSI 不屬 fast policy；無 filters scorer 返回列後由 replay evaluator 拒絕。"""
 
     history = _synthetic_history(21, "RSI50", final_volume=1000, rsi=50)
     config = {"filters": {"rsi_min": 101}}
@@ -197,21 +268,92 @@ def test_rsi_only_filter_is_applied_by_real_scorer_after_fast_prefilter(
     )
     assert direct_legacy.empty
 
-    terminals = _capture_scorer_terminals(monkeypatch)
     provider = RecommendationDataFrameProvider()
     assert type(provider.strategy_configurator) is StrategyConfigurator
-    scorer_calls: list[tuple[int, int]] = []
-    original_generate = provider.strategy_configurator.generate_recommendations
+    scorer_configs = _capture_builtin_scorer_config(provider, monkeypatch)
+    scorer_terminals = _capture_scorer_terminals(monkeypatch)
+    post_score_terminals = _capture_post_score_terminals(monkeypatch)
+    result = provider.run_with_as_of_handoff(
+        history,
+        config,
+        top_n=10,
+        as_of_date=date(2026, 9, 21),
+    )
 
-    def observe_generate(frame: pd.DataFrame, received_config: dict[str, Any]) -> pd.DataFrame:
-        scored = original_generate(frame, received_config)
-        scorer_calls.append((len(frame), len(scored)))
-        return scored
+    assert scorer_configs == [{}]
+    assert config == {"filters": {"rsi_min": 101}}
+    assert len(scorer_terminals) == 1
+    assert scorer_terminals[0].response.disposition is ReplayScorerDispositionV1.SKIPPED_EMPTY
+    assert post_score_terminals == [ReplayPostScoreDispositionV1.REJECTED]
+    assert result.rows == []
+    assert result.scoring_outcomes == ()
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {},
+        {"filters": {"price_change_min": -1}},
+        {"filters": {"volume_ratio_min": 0}},
+        {"filters": {"rsi_min": 40}},
+        {"filters": None},
+    ],
+)
+def test_custom_strategy_keeps_v1_rows_without_canonical_scoring_child(
+    config: dict[str, Any],
+) -> None:
+    """自訂 scorer 對空、price、volume、RSI、None filters 僅保留 v1。"""
+
+    class CustomStrategyConfigurator(StrategyConfigurator):
+        def generate_recommendations(
+            self, frame: pd.DataFrame, received_config: dict[str, Any]
+        ) -> pd.DataFrame:
+            assert received_config == config
+            result = frame.iloc[[-1]].copy()
+            result["漲幅%"] = 0.0
+            result["成交量變化率%"] = 0.0
+            result["FinalScore"] = 7.0
+            result["IndicatorScore"] = 3.0
+            result["PatternScore"] = 2.0
+            result["VolumeScore"] = 1.0
+            return result
+
+    history = _synthetic_history(21, "CUSTOM", final_volume=1000, rsi=50)
+    provider = RecommendationDataFrameProvider()
+    provider.strategy_configurator = CustomStrategyConfigurator()
+
+    result = provider.run_with_as_of_handoff(
+        history,
+        config,
+        top_n=10,
+        as_of_date=date(2026, 9, 21),
+    )
+
+    assert len(result.rows) == 1
+    assert result.rows[0]["stock_code"] == "CUSTOM"
+    assert result.scoring_outcomes == (None,)
+
+
+def test_overridden_builtin_scorer_is_v1_only_without_filter_shape_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = _synthetic_history(21, "OVERRIDE", final_volume=1500, rsi=50)
+    config = {"filters": None}
+    provider = RecommendationDataFrameProvider()
+    observed_configs: list[dict[str, Any]] = []
+
+    def override(frame: pd.DataFrame, received_config: dict[str, Any]) -> pd.DataFrame:
+        observed_configs.append(received_config.copy())
+        result = frame.iloc[[-1]].copy()
+        result["漲幅%"] = 0.0
+        result["成交量變化率%"] = 50.0
+        result["FinalScore"] = 7.0
+        return result
 
     monkeypatch.setattr(
         provider.strategy_configurator,
         "generate_recommendations",
-        observe_generate,
+        override,
     )
     result = provider.run_with_as_of_handoff(
         history,
@@ -220,10 +362,93 @@ def test_rsi_only_filter_is_applied_by_real_scorer_after_fast_prefilter(
         as_of_date=date(2026, 9, 21),
     )
 
-    assert scorer_calls == [(21, 0)]
-    assert len(terminals) == 1
-    assert type(terminals[0].request) is NeedCandidateScoring
-    assert terminals[0].request.stock_code == "RSI50"
-    assert terminals[0].response.disposition is ReplayScorerDispositionV1.SKIPPED_EMPTY
+    assert observed_configs == [config]
+    assert len(result.rows) == 1
+    assert result.rows[0]["stock_code"] == "OVERRIDE"
+    assert result.scoring_outcomes == (None,)
+
+
+@pytest.mark.parametrize(
+    ("filter_key", "expected_screen_warning"),
+    [
+        ("price_change_min", True),
+        ("rsi_min", False),
+    ],
+)
+def test_present_none_threshold_keeps_legacy_rejection_and_diagnostics(
+    filter_key: str,
+    expected_screen_warning: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    history = _synthetic_history(21, "NONE", final_volume=1000, rsi=50)
+    config = {"filters": {filter_key: None}}
+    monkeypatch.setattr(StrategyConfigurator, "_filter_log_count", 0, raising=False)
+    monkeypatch.setattr(StrategyConfigurator, "_price_filter_log_count", 0, raising=False)
+    assert StrategyConfigurator().generate_recommendations(
+        history.copy(deep=True), config
+    ).empty
+
+    caplog.set_level("WARNING", logger="decision_module.strategy_configurator")
+    provider = RecommendationDataFrameProvider()
+    terminals = _capture_scorer_terminals(monkeypatch)
+    post_score_terminals = _capture_post_score_terminals(monkeypatch)
+
+    result = provider.run_with_as_of_handoff(
+        history,
+        config,
+        top_n=10,
+        as_of_date=date(2026, 9, 21),
+    )
+
     assert result.rows == []
     assert result.scoring_outcomes == ()
+    assert [terminal.response.disposition for terminal in terminals] == [
+        ReplayScorerDispositionV1.SKIPPED_EMPTY
+    ]
+    assert post_score_terminals == [ReplayPostScoreDispositionV1.REJECTED]
+    warning_messages = [record.getMessage() for record in caplog.records]
+    assert any(message.startswith("[篩選診斷 #") for message in warning_messages)
+    assert any(message.startswith("[漲幅篩選]") for message in warning_messages) is expected_screen_warning
+
+
+@pytest.mark.parametrize(
+    ("filter_key", "expected_error_type", "expected_error_message"),
+    [
+        ("price_change_max", KeyError, "'price_change_min'"),
+        ("volume_ratio_min", TypeError, "'<=' not supported"),
+    ],
+)
+def test_present_none_legacy_error_still_occurs_after_unfiltered_scorer(
+    filter_key: str,
+    expected_error_type: type[Exception],
+    expected_error_message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = _synthetic_history(21, "NONE-ERROR", final_volume=1000, rsi=50)
+    config = {"filters": {filter_key: None}}
+    # 既有 diagnostic counter 是 process-global；固定測試起點，避免前序測試
+    # 消耗 warning quota 後改變 missing-min KeyError 的舊路徑觀察。
+    monkeypatch.setattr(StrategyConfigurator, "_filter_log_count", 0, raising=False)
+    monkeypatch.setattr(StrategyConfigurator, "_price_filter_log_count", 0, raising=False)
+    with pytest.raises(expected_error_type, match=expected_error_message):
+        StrategyConfigurator().generate_recommendations(
+            history.copy(deep=True), config
+    )
+
+    provider = RecommendationDataFrameProvider()
+    scorer_configs = _capture_builtin_scorer_config(provider, monkeypatch)
+    terminals = _capture_scorer_terminals(monkeypatch)
+    result = provider.run_with_as_of_handoff(
+        history,
+        config,
+        top_n=10,
+        as_of_date=date(2026, 9, 21),
+    )
+
+    assert scorer_configs == [{}]
+    assert result.rows == []
+    assert result.scoring_outcomes == ()
+    assert len(terminals) == 1
+    assert terminals[0].response.disposition is ReplayScorerDispositionV1.SKIPPED_SCORER_EXCEPTION
+    assert terminals[0].response.error_type == expected_error_type.__name__

@@ -78,16 +78,20 @@ def _run_provider(
     provider = RecommendationDataFrameProvider()
     assert type(provider.strategy_configurator) is StrategyConfigurator
     calls: list[int] = []
-    original_generate = provider.strategy_configurator.generate_recommendations
+    original_configure = provider.strategy_configurator.configure_technical_indicators
 
-    def observe_generate(frame: pd.DataFrame, received_config: dict[str, Any]) -> pd.DataFrame:
+    def observe_configure(
+        frame: pd.DataFrame,
+        technical_config: dict[str, Any],
+        full_config: dict[str, Any] | None = None,
+    ) -> pd.DataFrame:
         calls.append(len(frame))
-        return original_generate(frame, received_config)
+        return original_configure(frame, technical_config, full_config)
 
     monkeypatch.setattr(
         provider.strategy_configurator,
-        "generate_recommendations",
-        observe_generate,
+        "configure_technical_indicators",
+        observe_configure,
     )
     cutoff = as_of_date or pd.to_datetime(
         history["日期"], format="%Y%m%d"
@@ -327,16 +331,20 @@ def test_invalid_volume_threshold_keeps_legacy_error_and_terminal_stage(
     if raises is not None:
         provider = RecommendationDataFrameProvider()
         calls: list[int] = []
-        original_generate = provider.strategy_configurator.generate_recommendations
+        original_configure = provider.strategy_configurator.configure_technical_indicators
 
-        def observe_generate(frame: pd.DataFrame, received_config: dict[str, Any]) -> pd.DataFrame:
+        def observe_configure(
+            frame: pd.DataFrame,
+            technical_config: dict[str, Any],
+            full_config: dict[str, Any] | None = None,
+        ) -> pd.DataFrame:
             calls.append(len(frame))
-            return original_generate(frame, received_config)
+            return original_configure(frame, technical_config, full_config)
 
         monkeypatch.setattr(
             provider.strategy_configurator,
-            "generate_recommendations",
-            observe_generate,
+            "configure_technical_indicators",
+            observe_configure,
         )
         with pytest.raises(raises):
             provider.run_with_as_of_handoff(
@@ -406,16 +414,20 @@ def test_future_row_or_availability_is_rejected_before_scorer(
     history.loc[history.index[-1], "日期"] = int(last_row_date.strftime("%Y%m%d"))
     provider = RecommendationDataFrameProvider()
     calls: list[int] = []
-    original_generate = provider.strategy_configurator.generate_recommendations
+    original_configure = provider.strategy_configurator.configure_technical_indicators
 
-    def observe_generate(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    def observe_configure(
+        frame: pd.DataFrame,
+        technical_config: dict[str, Any],
+        full_config: dict[str, Any] | None = None,
+    ) -> pd.DataFrame:
         calls.append(len(frame))
-        return original_generate(frame, config)
+        return original_configure(frame, technical_config, full_config)
 
     monkeypatch.setattr(
         provider.strategy_configurator,
-        "generate_recommendations",
-        observe_generate,
+        "configure_technical_indicators",
+        observe_configure,
     )
     with pytest.raises(ValueError, match=expected_message):
         provider.run_with_as_of_handoff(

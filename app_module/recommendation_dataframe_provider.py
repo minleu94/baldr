@@ -2,6 +2,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from datetime import date
 from enum import Enum
+import logging
 import math
 import operator
 from typing import Any, Dict, List, Literal, Optional
@@ -13,17 +14,26 @@ import pandas as pd
 
 from decision_module.industry_mapper import IndustryMapper
 from decision_module.reason_engine import ReasonEngine
-from decision_module.strategy_configurator import StrategyConfigurator
+from decision_module.strategy_configurator import (
+    StrategyConfigurator,
+    normalize_recommendation_filter_aliases,
+    observe_screening_diagnostics,
+)
 from app_module.recommendation_portfolio_dates import parse_stock_dates
 from decision_module.recommendation.contracts import RecommendationItem
 from app_module.recommendation.replay_numeric_projection import (
     ReplayThresholdUnit,
+    UnsupportedReplayNumericScalarError,
+    classify_legacy_post_score_metric_scalar,
     project_legacy_comparison_pair,
+    project_legacy_post_score_comparison_pair,
+    project_legacy_post_score_threshold_input_hint,
 )
 from decision_module.recommendation.evaluate import (
     NeedCandidateScoring,
     NeedCompatibilityScoring,
     NeedReplayPrefilterFact,
+    NeedReplayPostScoreThresholdV1,
     RecommendationEvaluator,
     ReplayCandidateHistoryFacts,
     ReplayCandidatePrefilterStep,
@@ -32,6 +42,15 @@ from decision_module.recommendation.evaluate import (
     ReplayCompatibilityScorerResponseV1,
     ReplayCompatibilityScoringOutcomeV1,
     ReplayPrefilterFactResponse,
+    ReplayPostScoreDeferredPolicyV1,
+    ReplayPostScoreDispositionV1,
+    ReplayPostScoreFactsV1,
+    ReplayPostScoreMetricFactV1,
+    ReplayPostScorePolicyV1,
+    ReplayPostScoreRuleV1,
+    ReplayPostScoreThresholdResponseV1,
+    ReplayPostScorePairedMetricV1,
+    ReplayScoredRowReadyV1,
     ReplayScorerDispositionV1,
     ReplayScorerResponseV1,
 )
@@ -50,6 +69,24 @@ from decision_module.recommendation.replay_policy import (
     ReplayExecutionPolicyV1,
     ReplayScoreOrderingV1,
 )
+
+
+_BUILTIN_STRATEGY_GENERATE_RECOMMENDATIONS = (
+    StrategyConfigurator.generate_recommendations
+)
+
+
+def _is_builtin_strategy_scorer(
+    configurator: StrategyConfigurator,
+    scorer: object,
+) -> bool:
+    """只將原始 built-in scorer 接入 replay canonical child。"""
+
+    return (
+        type(configurator) is StrategyConfigurator
+        and getattr(scorer, "__func__", None)
+        is _BUILTIN_STRATEGY_GENERATE_RECOMMENDATIONS
+    )
 
 
 def _resolve_numpy_rank_warning(numpy_module: Any) -> type[Warning]:
@@ -289,6 +326,227 @@ def _capture_legacy_filter_value(
         capture.available = False
 
 
+_POST_SCORE_RULE_SCREEN_KEYS = {
+    ReplayPostScoreRuleV1.PRICE_CHANGE_MIN: "price_change_min",
+    ReplayPostScoreRuleV1.PRICE_CHANGE_MAX: "price_change_max",
+    ReplayPostScoreRuleV1.VOLUME_CHANGE_MIN: "volume_ratio_min",
+    ReplayPostScoreRuleV1.RSI_MIN: "rsi_min",
+    ReplayPostScoreRuleV1.RSI_MAX: "rsi_max",
+}
+
+
+def _post_score_metric_fact(
+    frame: pd.DataFrame,
+    column: str | None,
+) -> ReplayPostScoreMetricFactV1:
+    if column is None or column not in frame.columns:
+        return ReplayPostScoreMetricFactV1(
+            status=ReplayMetricStatus.MISSING_COLUMN,
+            value=None,
+        )
+    series = frame[column]
+    metric = series.iloc[-1]
+    return ReplayPostScoreMetricFactV1(
+        status=ReplayMetricStatus.AWAITING_THRESHOLD_PROJECTION,
+        value=None,
+        legacy_kind=classify_legacy_post_score_metric_scalar(
+            metric,
+            series_dtype=series.dtype,
+        ),
+    )
+
+
+def _raise_legacy_rsi_string_threshold_error(
+    metric_series: pd.Series,
+    threshold: object,
+    *,
+    rule: ReplayPostScoreRuleV1,
+) -> None:
+    """重現 RSI object/numeric 與字串比較的原生錯誤，而不作篩選比較。"""
+
+    if type(threshold) is not str:
+        return
+    if pd.api.types.is_numeric_dtype(metric_series.dtype):
+        raise TypeError(
+            f"Invalid comparison between dtype={metric_series.dtype} and str"
+        )
+    metric = metric_series.iloc[-1]
+    if metric is None or metric is pd.NA:
+        return
+    if type(metric) in (int, float, complex, Decimal):
+        symbol = (
+            ">="
+            if rule is ReplayPostScoreRuleV1.RSI_MIN
+            else "<="
+        )
+        type_name = (
+            "decimal.Decimal" if type(metric) is Decimal else type(metric).__name__
+        )
+        raise TypeError(
+            f"'{symbol}' not supported between instances of '{type_name}' and 'str'"
+        )
+
+
+def _emit_legacy_filter_rejection_warning(
+    frame: pd.DataFrame,
+    screen_filters: dict[str, Any],
+) -> None:
+    logger = logging.getLogger(StrategyConfigurator.__module__)
+    row = frame.iloc[0]
+    before_score = row.get("TotalScore", row.get("FinalScore", 0))
+    before_price_change = row.get("漲幅%", "N/A")
+    before_volume_change = row.get("成交量變化率%", "N/A")
+    stock_code = row.get("證券代號", "Unknown")
+    filter_log_count = getattr(StrategyConfigurator, "_filter_log_count", 0) + 1
+    setattr(StrategyConfigurator, "_filter_log_count", filter_log_count)
+    if filter_log_count <= 5:
+        has_price_change = "漲幅%" in frame.columns
+        has_volume_change = "成交量變化率%" in frame.columns
+        logger.warning(
+            f"[篩選診斷 #{filter_log_count}] 股票 {stock_code} 被過濾："
+            f"總分={before_score:.2f}, "
+            f"漲幅%={before_price_change} (欄位存在: {has_price_change}), "
+            f"成交量變化率%={before_volume_change} (欄位存在: {has_volume_change}), "
+            f"篩選條件={screen_filters}"
+        )
+
+
+def _evaluate_replay_post_score_filters(
+    frame: pd.DataFrame,
+    raw_filters: Any,
+    request: NeedCandidateScoring,
+    evaluator: RecommendationEvaluator,
+) -> bool:
+    """保留 scorer 後診斷，再由 typed evaluator 唯一裁決最終 eligibility。"""
+
+    # 與 StrategyConfigurator.generate_recommendations 同步：原始別名正規化
+    # 僅在非空 scorer result 後發生，保留原始 Python 算術與例外時點。
+    copied_filters = raw_filters.copy()
+    screen_filters = normalize_recommendation_filter_aliases(copied_filters)
+    observe_screening_diagnostics(
+        frame,
+        screen_filters,
+        logger=logging.getLogger(StrategyConfigurator.__module__),
+        counter_owner=StrategyConfigurator,
+    )
+
+    rsi_column = next(
+        (column for column in ("RSI", "rsi", "RSI_14") if column in frame.columns),
+        None,
+    )
+    facts = ReplayPostScoreFactsV1(
+        request=request,
+        price_change=_post_score_metric_fact(frame, "漲幅%"),
+        volume_change_percent=_post_score_metric_fact(frame, "成交量變化率%"),
+        rsi=_post_score_metric_fact(frame, rsi_column),
+        rsi_source_column=rsi_column,
+    )
+    enabled_rules = tuple(
+        rule
+        for rule, screen_key in _POST_SCORE_RULE_SCREEN_KEYS.items()
+        if screen_key in screen_filters
+    )
+    hints = tuple(
+        hint
+        for rule in enabled_rules
+        if (
+            hint := project_legacy_post_score_threshold_input_hint(
+                screen_filters[_POST_SCORE_RULE_SCREEN_KEYS[rule]],
+                filter_id=rule,
+            )
+        ) is not None
+    )
+    deferred = ReplayPostScoreDeferredPolicyV1(
+        policy=ReplayPostScorePolicyV1(invocation_id=request.invocation_id),
+        deferred_rules=enabled_rules,
+        threshold_input_hints=hints,
+    )
+    step = evaluator.start_replay_post_score_staged(
+        ReplayScoredRowReadyV1(request=request, facts=facts),
+        deferred,
+    )
+    metric_columns = {
+        ReplayPostScoreRuleV1.PRICE_CHANGE_MIN: "漲幅%",
+        ReplayPostScoreRuleV1.PRICE_CHANGE_MAX: "漲幅%",
+        ReplayPostScoreRuleV1.VOLUME_CHANGE_MIN: "成交量變化率%",
+        ReplayPostScoreRuleV1.RSI_MIN: rsi_column,
+        ReplayPostScoreRuleV1.RSI_MAX: rsi_column,
+    }
+
+    while step.request is not None:
+        pending = step.request
+        if type(pending) is not NeedReplayPostScoreThresholdV1:
+            raise AssertionError("未知 replay post-score threshold request")
+        rule = pending.filter_id
+        screen_key = _POST_SCORE_RULE_SCREEN_KEYS[rule]
+        raw_threshold = screen_filters[screen_key]
+        metric_column = metric_columns[rule]
+        if metric_column is None or metric_column not in frame.columns:
+            raise AssertionError("evaluator 不應要求缺欄位 threshold")
+        metric_series = frame[metric_column]
+        metric_scalar = metric_series.iloc[-1]
+
+        if rule in {ReplayPostScoreRuleV1.RSI_MIN, ReplayPostScoreRuleV1.RSI_MAX}:
+            _raise_legacy_rsi_string_threshold_error(
+                metric_series,
+                raw_threshold,
+                rule=rule,
+            )
+
+        if raw_threshold is None:
+            threshold = ReplayThreshold.unsupported("legacy_none_threshold")
+            paired_metric = None
+        else:
+            unit = (
+                ReplayThresholdUnit.VOLUME_EFFECTIVE_CHANGE_PERCENT
+                if rule is ReplayPostScoreRuleV1.VOLUME_CHANGE_MIN
+                else ReplayThresholdUnit.PRICE_CHANGE_PERCENT
+            )
+            try:
+                pair = project_legacy_post_score_comparison_pair(
+                    metric_scalar,
+                    raw_threshold,
+                    unit=unit,
+                )
+            except UnsupportedReplayNumericScalarError as exc:
+                threshold = ReplayThreshold.unsupported(
+                    f"legacy_post_score_pair_unavailable:{type(exc).__name__}"
+                )
+                paired_metric = None
+            else:
+                threshold = ReplayThreshold.enabled(pair.threshold)
+                paired_metric = ReplayPostScorePairedMetricV1(
+                    request=pending,
+                    metric=ReplayPostScoreMetricFactV1(
+                        status=ReplayMetricStatus.AVAILABLE,
+                        value=pair.metric,
+                    ),
+                )
+
+        response = ReplayPostScoreThresholdResponseV1(
+            request=pending,
+            threshold=threshold,
+            paired_metric=paired_metric,
+        )
+        step = evaluator.advance_replay_post_score_staged(step, response)
+
+    outcome = step.outcome
+    if outcome is None:
+        raise AssertionError("post-score evaluator 未回傳 terminal outcome")
+    if outcome.disposition is ReplayPostScoreDispositionV1.LEGACY_ERROR:
+        legacy_error = next(
+            rule
+            for rule in outcome.rules
+            if rule.legacy_exception_type is not None
+        )
+        raise TypeError(legacy_error.legacy_exception_message or "legacy TypeError")
+    if outcome.disposition is ReplayPostScoreDispositionV1.ACCEPTED:
+        return True
+
+    _emit_legacy_filter_rejection_warning(frame, screen_filters)
+    return False
+
+
 class RecommendationDataFrameProvider:
     """Use the existing recommendation scoring flow against an in-memory history slice."""
 
@@ -427,10 +685,36 @@ class RecommendationDataFrameProvider:
                 continue
 
             try:
+                scorer = self.strategy_configurator.generate_recommendations
+                uses_builtin_scorer = _is_builtin_strategy_scorer(
+                    self.strategy_configurator,
+                    scorer,
+                )
+                uses_builtin_replay_filters = (
+                    _call_context is not None
+                    and scoring_request is not None
+                    and uses_builtin_scorer
+                    and "filters" in config
+                    and bool(config["filters"])
+                )
+                scorer_config = config
+                if uses_builtin_replay_filters:
+                    # Replay 的內建 scorer 只負責建立 scored latest row；原始 filter
+                    # 設定留在呼叫區域，後續由唯一 typed evaluator 消費。
+                    scorer_config = dict(config)
+                    scorer_config.pop("filters")
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", _resolve_numpy_rank_warning(np))
-                    result_df = self.strategy_configurator.generate_recommendations(stock_df, config)
+                    result_df = scorer(stock_df, scorer_config)
                     result_is_empty = bool(result_df.empty)
+                    if result_is_empty is False and uses_builtin_replay_filters:
+                        assert scoring_request is not None
+                        result_is_empty = not _evaluate_replay_post_score_filters(
+                            result_df,
+                            config["filters"],
+                            scoring_request,
+                            evaluator,
+                        )
             except Exception as exc:
                 if scoring_request is not None:
                     assert prefilter_step is not None
@@ -544,6 +828,11 @@ class RecommendationDataFrameProvider:
                 continue
 
             assert prefilter_step is not None and scoring_request is not None
+            if _call_context is not None and not uses_builtin_scorer:
+                # 注入／覆寫 scorer 無法宣稱已套用 built-in replay policy；
+                # 保留 v1 row，但關閉 canonical child，不解析自訂 filter 形狀。
+                recommendations.append(candidate)
+                continue
             try:
                 if candidate.selection_reason is None:
                     typed_reason_text = None

@@ -2,7 +2,9 @@
 
 from dataclasses import replace
 from datetime import date
+from decimal import Decimal
 
+import numpy as np
 import pytest
 
 from decision_module.recommendation.evaluate import (
@@ -24,6 +26,7 @@ from decision_module.recommendation.evaluate import (
 from decision_module.recommendation.replay_prefilter import (
     ReplayComparisonComponent,
     ReplayComparisonDomain,
+    ReplayComparisonOperator,
     ReplayComparisonOperand,
     ReplayFastFilterPolicyV1,
     ReplayMetricStatus,
@@ -31,6 +34,12 @@ from decision_module.recommendation.replay_prefilter import (
     ReplayNumericOriginKind,
     ReplayPrefilterObservations,
     ReplayThreshold,
+    compare_replay_operands_with_status,
+)
+from app_module.recommendation.replay_numeric_projection import (
+    ReplayThresholdUnit,
+    UnsupportedReplayNumericScalarError,
+    project_legacy_post_score_comparison_pair,
 )
 
 
@@ -234,6 +243,33 @@ def test_same_candidate_with_different_scored_facts_rejects_stale_pair() -> None
         evaluator_b.advance_replay_post_score_staged(step_b, stale_response)
 
 
+def test_dataclass_replace_reissues_scored_facts_identity_token() -> None:
+    evaluator, request, ready = _ready()
+    first_step = evaluator.start_replay_post_score_staged(ready, _deferred(request))
+    assert first_step.request is not None
+
+    copied_facts = replace(ready.facts)
+    assert copied_facts == ready.facts
+    assert copied_facts.identity_token is not ready.facts.identity_token
+    replaced_ready = ReplayScoredRowReadyV1(request, copied_facts)
+    second_step = evaluator.start_replay_post_score_staged(
+        replaced_ready,
+        _deferred(request),
+    )
+    assert second_step.request is not None
+    assert second_step.request.request_id == first_step.request.request_id
+    assert second_step.request.facts_identity_token is not first_step.request.facts_identity_token
+
+    stale_response = _response(
+        first_step.request,
+        metric_value=1,
+        threshold_value=0,
+        format_name="float16",
+    )
+    with pytest.raises(SourceFactMismatchError, match="identity"):
+        evaluator.advance_replay_post_score_staged(second_step, stale_response)
+
+
 def test_paired_metric_cannot_be_rebound_to_another_rule() -> None:
     evaluator, request, ready = _ready()
     step = evaluator.start_replay_post_score_staged(ready, _deferred(request))
@@ -254,4 +290,98 @@ def test_paired_metric_cannot_be_rebound_to_another_rule() -> None:
             request=step.request,
             threshold=ReplayThreshold.enabled(_operand(0, format_name="float16")),
             paired_metric=paired,
+        )
+
+
+@pytest.mark.parametrize(
+    ("metric", "threshold", "operator", "unit"),
+    [
+        (
+            np.float16(1.0),
+            1.0001,
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
+        ),
+        (
+            np.float32(1.0),
+            1.00000001,
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
+        ),
+        (
+            Decimal("1.2"),
+            1.2,
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
+        ),
+        (
+            np.complex64(complex(2.0, float("nan"))),
+            1.0,
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
+        ),
+    ],
+)
+def test_post_score_projector_pair_matches_supported_native_ordering(
+    metric: object,
+    threshold: object,
+    operator: ReplayComparisonOperator,
+    unit: ReplayThresholdUnit,
+) -> None:
+    pair = project_legacy_post_score_comparison_pair(
+        metric,
+        threshold,
+        unit=unit,
+    )
+    native = metric >= threshold  # type: ignore[operator]
+    projected = compare_replay_operands_with_status(
+        pair.metric,
+        pair.threshold,
+        operator=operator,
+    )
+    assert pair.metric.domain == pair.threshold.domain
+    assert projected.matched is bool(native)
+
+
+def test_post_score_projector_keeps_volume_effective_threshold_without_renormalizing() -> None:
+    metric = np.float16(10.0)
+    effective_threshold = (1.1 - 1) * 100
+    pair = project_legacy_post_score_comparison_pair(
+        metric,
+        effective_threshold,
+        unit=ReplayThresholdUnit.VOLUME_EFFECTIVE_CHANGE_PERCENT,
+    )
+    projected = compare_replay_operands_with_status(
+        pair.metric,
+        pair.threshold,
+        operator=ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+    )
+    assert pair.unit is ReplayThresholdUnit.VOLUME_EFFECTIVE_CHANGE_PERCENT
+    assert pair.metric.domain == pair.threshold.domain
+    assert projected.matched is bool(metric >= effective_threshold)
+
+
+def test_post_score_projector_keeps_python_complex_native_type_error_in_evaluator() -> None:
+    pair = project_legacy_post_score_comparison_pair(
+        complex(1.0, 0.0),
+        0.0,
+        unit=ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
+    )
+    with pytest.raises(
+        TypeError,
+        match=r"'<=' not supported between instances of 'complex' and 'float'",
+    ):
+        compare_replay_operands_with_status(
+            pair.metric,
+            pair.threshold,
+            operator=ReplayComparisonOperator.LESS_THAN_OR_EQUAL,
+        )
+
+
+def test_post_score_projector_rejects_unclassified_string_metric_without_comparison() -> None:
+    with pytest.raises(UnsupportedReplayNumericScalarError):
+        project_legacy_post_score_comparison_pair(
+            "1.25",
+            1.0,
+            unit=ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
         )

@@ -118,3 +118,18 @@ R027 對本 staged deferred-threshold P2 修補給予 bounded `ACCEPTED_SCOPE`�
 獨立 reviewer 在 fresh TEMP `C:\Users\archi\AppData\Local\Temp\r2psdab1786e`、`PROFILE=test` 重跑五檔相鄰路由，`55 passed in 1.49s`。確認 present-but-unsupported metric 先要求 deferred threshold、`MISSING_COLUMN` 可略過、`DISABLED`／`PENDING` 回覆 fail closed，且 eager/staged 共用同一規則核心。完整路由及重跑命令見 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 的本次複審紀錄。
 
 此 bounded acceptance 僅適用 pure deferred API；不代表原生 Pandas/object-dtype comparison、diagnostic warning/counter side effects、threshold coercion/error timing 或 live provider cutover parity 已完成。R020 仍 `IN_PROGRESS`；`TMP-REC-04`／`TMP-NUM-01` 仍 `ACTIVE`；C2 未放行，R028 `BLOCKED`。
+
+## Replay provider 接線收據（2026-09-25）
+
+後續 replay-only adapter 已接入 `RecommendationDataFrameProvider`。內建
+`StrategyConfigurator` 在 typed `as_of_date` 呼叫中收到不含 `filters` 的 call-local config，
+只負責產生非空 scored row；原始 filters 由 provider 建立 request-bound facts，交給 staged
+post-score evaluator 逐規則投影與裁決。provider 仍在 scorer 後呼叫既有 diagnostics
+observer，以保留 warning/counter 順序；interactive/live 路徑不改。自訂 scorer 不宣稱
+built-in canonical post-score 結果：RSI-only filter 會保留 v1 row 並關閉 canonical child，
+既有 fast-filter compatibility route 則保留原 typed child 邊界。
+
+Focused route：`tests/test_r020_post_score_threshold_metric_pairing.py`
+與 `tests/test_r020_real_scorer_filter_stage.py` 為 `27 passed`；全 R020 route 為
+`358 passed, 1 skipped`。此收據只證明 replay provider 的 bounded cutover 與 identity
+fail-closed 行為，不宣稱完整 same-mode parity、所有資料源 freshness 或 R020/C2 完成。

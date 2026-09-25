@@ -665,3 +665,23 @@ log SHA；複審 TEMP 為 `C:\Users\archi\AppData\Local\Temp\r020_sem_review_c56
 套用 diagnostic event 的 warning/counter。因此不能宣稱 provider side-effect/error timing、
 same-mode v1 output 或 full V-REPLAY parity；保留 `StrategyConfigurator`、live provider 與
 wire/codec 不變。R020 維持 `IN_PROGRESS`，`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`，C2 未放行。
+
+## 2026-09-25 replay provider post-score cutover（bounded ACCEPTED_SCOPE）
+
+`RecommendationDataFrameProvider` 已完成受控 replay-only 接線：當呼叫帶有 typed
+`as_of_date`、使用內建 `StrategyConfigurator` 且有 active filters 時，provider 會以移除
+`filters` 的 call-local config 取得非空 scored row，再以同一 scorer request 建立
+`ReplayScoredRowReadyV1`／`ReplayPostScoreFactsV1`，透過 staged evaluator 逐一投影
+price、effective volume-change 與 RSI threshold。原始 filters 僅留在 adapter 供 alias
+normalization、legacy diagnostic observer、threshold hint 與 native exception timing 使用；
+interactive `StrategyConfigurator` 與 `RecommendationService` 路徑不改。post-score
+`REJECTED`／`UNSUPPORTED`／`LEGACY_ERROR` 不會產生 v1 row；`ACCEPTED` 才進入既有 typed
+scorer handoff。自訂／override scorer 不會被假裝成 built-in post-score evaluator；RSI-only
+post-score filter 走 v1-only／無 canonical child，fast-filter 相容路徑維持原 typed child
+邊界。`ReplayPostScoreFactsV1` 的 dataclass copy 會重新發行 opaque identity token，避免
+staged response 被 `dataclasses.replace()` 的舊 facts 接受。
+
+驗證：`tests -k r020` 為 `358 passed, 1 skipped`（pytest cache 權限 warning 僅環境噪音）；
+R020 provider／post-score focused route 為 `27 passed`。這是 bounded replay cutover evidence，
+不等同所有資料源、interactive output 或完整 V-REPLAY parity 已完成；R020 仍維持
+`IN_PROGRESS`，`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`，C2 未放行，R028 維持 `BLOCKED`。

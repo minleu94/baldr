@@ -57,7 +57,7 @@
 | Position Health & Exit | `CURRENT_ENGINEERING`：thesis contract、state machine、append-only transition、Exit read model | 累積真實 thesis、人工 transition 與 exit outcome | domain reposition候選；不自動平倉 |
 | Data Source Governance | `data_module` registry / policy / candidate readiness | Source Registry、Control Center、quarantine、eligibility port | 所有來源具 PIT、quality、license、missing 與 downstream eligibility；未接受來源無法進 formal layer |
 | Execution Realism | Backtest broker simulator、sandbox trace | 統一 execution assumption / feasibility / rejected taxonomy | 研究撮合與 broker execution port 分離；正式系統仍不提供 broker command |
-| ML Shadow Layer | 已存在 `ml_module` 的工程實作；current 能力依目前架構，正式權限仍受 Gate 限制 | Feature / Label / Dataset / Model Registry 與 shadow store 的受治理整合 | Challenger 只透過 Promotion Review 影響 formal Advice；不是本輪八卡啟用項目 |
+| ML Shadow Layer | `RecommendationService` 在 exact consumer、明列 NP1／NP2 profile 與同次 capability 成立時預設使用 `PreparedMLRuntimeInputV1`；其餘 caller 保留 `project_many()` 相容路徑。此 bounded R026 runtime migration 已獲 C2 接受，`TMP-ML-01` 對此支援集合已關閉；C3 新 exact imports 已限縮為 source/symbol allowlist，584-file guard 回報 11 個既有 occurrences，具名 owners 追蹤；C4 union 為 2,446P／2F／5S／35W，root 接受 `ACCEPTED_WITH_NAMED_BOUNDARY_BASELINE`，兩項既有 shadow-boundary aggregate assertion failure 與 11-occurrence baseline 仍列管。Rule／ML snapshot identity 分離，typed projector 不做 I/O；formal 權限仍受 Gate 限制 | Feature / Label / Dataset / Model Registry 與 shadow store 的受治理整合；完成所有合法 runtime profile/model graph adapter 與 parity gate | Challenger 只透過 Promotion Review 影響 formal Advice；不是本輪八卡啟用項目 |
 | AI Research Copilot | read-only evidence access / MCP | governed retrieval + citation / permission boundary | 只能摘要、比較、提問與找 evidence gap；不成為計算或 action owner |
 | Runtime / Scheduling / Operations | `runtime/`、Windows tasks、dry-run wrappers | 依 job type 區隔 market data write、evidence dry-run、approved evidence write | Scheduler 只執行已核准 application command；不交易、不自動 lifecycle |
 | Storage & Artifact Registry | SQLite、Parquet、JSON、Research Run / Evidence repositories | 統一 artifact identity、hash、status、lineage、backup / rollback | 每個 decision / advice / model / policy / outcome 可重建與稽核 |
@@ -521,6 +521,8 @@ portfolio_advice_eligible
 ---
 
 ## 更新記錄
+
+- 2026-09-25：同步 R026 bounded NP1／NP2 runtime migration 與 C2 acceptance；C3 exact-import edges 已修復，但 11 個既有 shadow-boundary diagnostics 仍由 owners 列管。C4 union 為 2,446P／2F／5S／35W，root 接受 named boundary baseline；R031 工程範圍完成，target 仍要求其餘合法 profile/model graph adapters 與 parity evidence。
 
 - 2026-09-22：導向完成紅隊裁決的六份 FINAL 文件；本入口保留背景與權限導覽，工程目標決策統一由 FINAL_TARGET_ARCHITECTURE 管理。
 

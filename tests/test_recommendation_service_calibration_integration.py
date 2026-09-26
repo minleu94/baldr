@@ -308,17 +308,29 @@ def test_normal_recommendation_service_consumes_injected_projection_adapter(tmp_
 
 
 @pytest.mark.parametrize("failure", (PermissionError("receipt directory denied"), ValueError("immutable receipt conflict")))
-def test_active_projection_receipt_storage_failure_withdraws_model_fields_but_keeps_rule_selection(
+def test_active_projection_receipt_build_failure_withdraws_model_fields_but_keeps_rule_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     failure: Exception,
 ) -> None:
+    from app_module.recommendation.ml_postcalibration_handoff import (
+        CalibrationProjectionStatusV1,
+        RecommendationPostCalibrationHandoffSinkV1,
+    )
+    import app_module.recommendation_service as service_module
+
     database = tmp_path / "source.db"
     _make_database(database)
     consumer = _RecordingConsumer()
     consumer.pointer_path = tmp_path / "active-pointer.json"
     consumer.active_identity = lambda *, decision_date: {
         "candidate_id": "candidate-model-1",
+        "training_provenance": {
+            "status": "verified",
+            "label_registry_hash": "label-registry-hash",
+            "label_contract_id": "label-contract-v1",
+            "return_basis": "close_to_close",
+        },
     }
     service = build_recommendation_test_service(
         SimpleNamespace(
@@ -332,10 +344,14 @@ def test_active_projection_receipt_storage_failure_withdraws_model_fields_but_ke
         regime_detector=MagicMock(),
         calibration_consumer=consumer,
     )
+    handoff_sink = RecommendationPostCalibrationHandoffSinkV1(
+        consumer_configured=True
+    )
+    service._r026_post_calibration_handoff_sink = handoff_sink
     monkeypatch.setattr(
-        RecommendationService,
-        "_persist_calibration_projection_receipt",
-        staticmethod(lambda **_: (_ for _ in ()).throw(failure)),
+        service_module,
+        "build_inference_projection_receipt",
+        lambda **_: (_ for _ in ()).throw(failure),
     )
     recommendation = _recommendation()
     original_total_score = recommendation.total_score
@@ -351,6 +367,14 @@ def test_active_projection_receipt_storage_failure_withdraws_model_fields_but_ke
     assert recommendation.calibration_provenance["projection_receipt_status"] == "not_persisted"
     assert service.last_run_context["calibration_projection_status"] == "unavailable"
     assert service.last_run_context["calibration_projection_receipt_status"] == "unavailable"
+    handoff = handoff_sink.snapshot()
+    assert handoff.attempted is True
+    assert handoff.projection_status is CalibrationProjectionStatusV1.UNAVAILABLE
+    assert handoff.receipt_error_detail == str(failure)
+    assert handoff.receipt_event is not None
+    assert handoff.receipt_event.attempted is False
+    assert handoff.receipt_event.payload_present is False
+    assert handoff.receipt_event.error == f"{type(failure).__name__}: {failure}"
     assert any(
         warning.startswith("calibration_projection_receipt_unavailable:")
         for warning in service.last_run_context["warnings"]
@@ -834,7 +858,6 @@ def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
         regime_detector=MagicMock(),
         calibration_consumer=consumer,
     )
-
     # Only the rule scorer is deterministic here.  The public service still
     # runs its real SQLite snapshot provider and HistoricalFeatureBuilder.
     service.strategy_configurator.generate_recommendations = lambda _stock_df, _config: pd.DataFrame(
@@ -876,7 +899,10 @@ def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
     result_id = str(service.last_run_context["result_id"])
     assert result_id.startswith("rec_")
     assert len(result_id) > len("rec_") + 16
-    assert service.last_run_context["calibration_projection_receipt_status"] == "persisted"
+    assert service.last_run_context["calibration_projection_receipt_status"] == "persisted", (
+        service.last_run_context.get("warnings"),
+        service.last_run_context.get("calibration_projection_receipt_error_detail"),
+    )
     assert service.last_run_context["calibration_projection_receipt"]["result_id"] == result_id
     assert service.last_run_context["as_of_date"] == "2026-07-27"
     assert service.last_run_context["temporal_contract"] == (
@@ -1737,6 +1763,7 @@ def test_live_calibration_brackets_one_provider_snapshot_with_matching_source_ev
         "provider.load",
         "feature_builder.compute",
         "source_evidence",
+        "source_evidence",
         "lease.assert_unchanged",
         "lease.close",
         "lease.open",
@@ -1744,14 +1771,15 @@ def test_live_calibration_brackets_one_provider_snapshot_with_matching_source_ev
         "provider.load",
         "feature_builder.compute",
         "source_evidence",
+        "source_evidence",
         "lease.assert_unchanged",
         "lease.close",
     ]
-    assert len(aggregate_calls) == 4
-    assert aggregate_calls[0] == aggregate_calls[1]
-    assert aggregate_calls[2] == aggregate_calls[3]
+    assert len(aggregate_calls) == 6
+    assert aggregate_calls[0] == aggregate_calls[1] == aggregate_calls[2]
+    assert aggregate_calls[3] == aggregate_calls[4] == aggregate_calls[5]
     first_scope_id = str(aggregate_calls[0]["scope_id"])
-    second_scope_id = str(aggregate_calls[2]["scope_id"])
+    second_scope_id = str(aggregate_calls[3]["scope_id"])
     assert first_scope_id != second_scope_id
     assert re.fullmatch(r"recommendation-live-[A-Za-z0-9]{32}", first_scope_id)
     assert re.fullmatch(r"recommendation-live-[A-Za-z0-9]{32}", second_scope_id)

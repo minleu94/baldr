@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Sequence
 from zoneinfo import ZoneInfo
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QDate, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QDate, Qt, Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -232,6 +232,9 @@ class UserDeclaredHoldingResearchWidget(QWidget):
         self._editing_revision_number: int | None = None
         self._refresh_generation = 0
         self._refresh_worker: TaskWorker | None = None
+        self._refresh_worker_contexts: dict[
+            int, tuple[TaskWorker, int, tuple[str, int | None] | None]
+        ] = {}
         self._refresh_pending = False
         self._pending_request: tuple[date, datetime] | None = None
         self._pending_selection: tuple[str, int | None] | None = None
@@ -545,19 +548,46 @@ class UserDeclaredHoldingResearchWidget(QWidget):
             self.condition_source,
         )
         self._refresh_worker = worker
-        worker.finished.connect(
-            lambda model, item=worker, value=generation, target=selection:
-            self._on_research_worker_finished(model, value, item, target)
-        )
-        worker.error.connect(
-            lambda message, item=worker, value=generation:
-            self._on_research_worker_error(message, value, item)
-        )
-        worker.cancelled.connect(
-            lambda item=worker, value=generation:
-            self._on_research_worker_cancelled(value, item)
-        )
+        self._refresh_worker_contexts[id(worker)] = (worker, generation, selection)
+        worker.finished.connect(self._receive_research_worker_finished)
+        worker.error.connect(self._receive_research_worker_error)
+        worker.cancelled.connect(self._receive_research_worker_cancelled)
         worker.start()
+
+    def _take_research_worker_context(
+        self,
+    ) -> tuple[TaskWorker, int, tuple[str, int | None] | None] | None:
+        sender = self.sender()
+        if not isinstance(sender, TaskWorker):
+            return None
+        context = self._refresh_worker_contexts.pop(id(sender), None)
+        if context is None or context[0] is not sender:
+            return None
+        return context
+
+    @Slot(object)
+    def _receive_research_worker_finished(self, model: object) -> None:
+        context = self._take_research_worker_context()
+        if context is None:
+            return
+        worker, generation, selection = context
+        self._on_research_worker_finished(model, generation, worker, selection)
+
+    @Slot(str)
+    def _receive_research_worker_error(self, message: str) -> None:
+        context = self._take_research_worker_context()
+        if context is None:
+            return
+        worker, generation, _selection = context
+        self._on_research_worker_error(message, generation, worker)
+
+    @Slot()
+    def _receive_research_worker_cancelled(self) -> None:
+        context = self._take_research_worker_context()
+        if context is None:
+            return
+        worker, generation, _selection = context
+        self._on_research_worker_cancelled(generation, worker)
 
     def _on_research_worker_finished(
         self,
@@ -599,6 +629,7 @@ class UserDeclaredHoldingResearchWidget(QWidget):
         self._release_research_worker(worker)
 
     def _release_research_worker(self, worker: TaskWorker) -> None:
+        self._refresh_worker_contexts.pop(id(worker), None)
         if worker is not self._refresh_worker:
             worker.deleteLater()
             return

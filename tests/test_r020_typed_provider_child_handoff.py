@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import date
 from threading import Barrier, Lock
 from typing import Any
@@ -252,6 +252,28 @@ def test_handoff_rows_match_legacy_provider_rows_for_the_same_synthetic_input() 
     assert handoff.scoring_outcomes == (None, None, None)
 
 
+def test_typed_handoff_stores_candidates_and_projects_fresh_v1_rows() -> None:
+    provider, scorer = _provider({"A": 75, "B": 92})
+    result = provider.run_with_as_of_handoff(
+        _history(("A", "B"), periods=24),
+        {},
+        2,
+        date(2026, 9, 24),
+    )
+
+    field_names = {field.name for field in fields(result)}
+    assert "candidates" in field_names
+    assert "rows" not in field_names
+    assert tuple(candidate.stock_code for candidate in result.candidates) == ("B", "A")
+    assert len(scorer.calls) == 2  # 單次 handoff 每檔只執行一次 scorer。
+
+    first_projection = result.rows
+    assert [row["stock_code"] for row in first_projection] == ["B", "A"]
+    first_projection[0]["factor_scores"]["technical"] = -999.0
+    assert result.rows[0]["factor_scores"]["technical"] == 61.0
+    assert result.scoring_outcomes == (None, None)
+
+
 @pytest.mark.parametrize(
     ("top_n", "provider_codes", "snapshot_codes"),
     [
@@ -372,8 +394,8 @@ def test_blank_stock_code_without_effective_threshold_keeps_legacy_row_only() ->
     assert snapshot.canonical_execution is None
 
 
-@pytest.mark.parametrize("corruption", ["row_score", "row_reason", "outcome_order"])
-def test_handoff_row_and_outcome_mismatch_keeps_rows_without_child(
+@pytest.mark.parametrize("corruption", ["row_score", "row_reason", "candidate_order"])
+def test_handoff_candidate_mismatch_keeps_v1_rows_without_child(
     monkeypatch: pytest.MonkeyPatch,
     corruption: str,
 ) -> None:
@@ -388,15 +410,15 @@ def test_handoff_row_and_outcome_mismatch_keeps_rows_without_child(
         as_of_date: date,
     ) -> ReplayProviderCallResultV1:
         result = original(as_of_data, config, top_n, as_of_date)
-        rows = [dict(row) for row in result.rows]
-        outcomes = result.scoring_outcomes
+        candidates = list(result.candidates)
         if corruption == "row_score":
-            rows[0]["total_score"] = 999.0
+            candidates[0] = replace(candidates[0], total_score=999.0)
         elif corruption == "row_reason":
-            rows[0]["selection_reason"] = "遭竄改的理由"
+            candidates[0] = replace(candidates[0], selection_reason="遭竄改的理由")
         else:
-            outcomes = tuple(reversed(outcomes))
-        changed = replace(result, rows=rows, scoring_outcomes=outcomes)
+            # 序號跟著候選保存；只交換完整候選仍必須在 service 邊界拒絕 child。
+            candidates.reverse()
+        changed = replace(result, candidates=tuple(candidates))
         returned.append(changed)
         return changed
 
@@ -417,7 +439,7 @@ def test_handoff_row_and_outcome_mismatch_keeps_rows_without_child(
     elif corruption == "row_reason":
         assert snapshot.recommendations[0]["selection_reason"] == "遭竄改的理由"
     else:
-        assert [row["stock_code"] for row in snapshot.recommendations] == ["A", "B"]
+        assert [row["stock_code"] for row in snapshot.recommendations] == ["B", "A"]
     assert snapshot.canonical_execution is None
 
 

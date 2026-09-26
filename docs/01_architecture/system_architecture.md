@@ -1,7 +1,15 @@
-﻿# 系統架構
+# 系統架構
 
-> **最後更新：2026-09-23｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-09-25｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
+
+## Recommendation calibration prepared runtime 與 typed handoff（2026-09-25）
+
+`RecommendationService._apply_recommendation_calibration` 在 exact `RecommendationCalibrationConsumer`、明列 NP1／NP2 runtime profile 與同次 capability 成立時，預設以 `PreparedMLRuntimeInputV1` 投影；自訂 consumer、未支援 profile 或 capability 無法成立時，沿用相容 `project_many()` 路徑。NoModel identity 只表達同次 fresh reload 真正回報 `rule_only` 且 `_model is None` 的狀態，不能由 active capability 失敗推定。Rule 與 ML snapshot identity 分別保存；runtime input 攜帶同次特徵、決策時鐘、候選與 source-contract evidence，projector 不讀 SQLite、網路或檔案。
+
+校準後的可用性、receipt binding、projection 與 event facts 由 invocation-local `RecommendationPostCalibrationHandoffV1` 傳給 execution assembly；既有 receipt bytes 與 event/result 契約保持不變，handoff 不新增 serialized `RecommendationExecution` 欄位。這些 typed facts 由本次 producer 建立，執行層不從 R011 generic capture 或已發布的 legacy service state 回讀 ML truth。Root 已接受 R026 exact consumer、明列 NP1／NP2 profile 與同次 capability 的 bounded runtime migration，`TMP-ML-01` 對此支援集合已關閉；custom／unverified profile 保留既有相容路徑，不宣稱全部 runtime profile 已驗證。
+
+C2 current union 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`，其中 Update SQLite teardown `WinError 32` 仍保留為該次歷史例外。C3 首次 union 的 4 個失敗均保留原始收據；UI fixture 後續指定 route 為 22 passed，R026 exact-import guard 後續 route 在 584 files 上回到既有 11 diagnostic occurrences，30 passed／2 failed 僅涉及原 aggregate assertions，baseline 有具名 owner。C4 full union 為 2,446 passed／2 failed／5 skipped／35 warnings，640.25 秒、exit 1；root 裁定 `ACCEPTED_WITH_NAMED_BOUNDARY_BASELINE`。兩個失敗是既有 shadow-boundary CLI／repository aggregate assertions；584-file scan 為 11 occurrences／10 distinct diagnostics，仍由具名 owners 追蹤。471 個 route inputs 前後 hash 未變（SHA-256 `CBE8B12FE5EF41DFFC58EE4F118BD1CF5BA3186A4A56DFD2EC84CBCB6AE016FF`）；log `C:\Users\archi\AppData\Local\Temp\c4r_de0d7b\pytest.log`，SHA-256 `88797C7C2476576D771E88099E0016D49C10A78D29B0494B2A3CE834A8CF29F9`；route SHA-256 `3E7CF99F6CB2133D5B019B8E99C305FAC1CF386E973210CA49D7490F57358E72`。C4 mandatory Workbench／Update／mypy／compile／diff gates亦通過；C4 Update validator 的成功不回寫 C2 原始結果。R031 有限工程範圍已完成並保留 named boundary baseline／blocked owners，不代表整體重構、正式資料或 production acceptance。詳見 [R026 實作報告](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)、[R026 shadow-boundary follow-up](../06_qa/ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md)、[R031 closeout](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)、[C2 mandatory gate receipt](../06_qa/C2_MANDATORY_UI_STATIC_GATES_20260925.md) 與 [C4 mandatory gate receipt](../06_qa/C4_FINAL_MANDATORY_STATIC_GATES_20260925.md)。
 
 ## 行情來源修訂與衍生資料發布（2026-09-23）
 
@@ -929,6 +937,9 @@ UI 修改：
 `WorkbenchReadOnlyComposer` 只把 `AdviceDashboardDTO` 放入 `WorkbenchDashboardDTO.advice_dashboard`；`ui_qt/views/workbench_view.py` 與 table model 只渲染 DTO。UI 不得呼叫 policy / composer、修改風險限制、重算核心或送出交易。Guided Mode 僅接受 promoted strategy；Professional Mode 的 candidate 只可研究呈現。最低現金 `2000 bp`、最多 8 檔、單檔 `1500 bp`、整數 bp 與 `Decimal` 金額屬 application contract。此 slice 不建立 broker、scheduler、write repository 或 lifecycle action。
 
 ## 16. 更新記錄
+
+- 2026-09-25（歷史快照，已由當日稍後 R031 closeout 更新）：同步 R026 exact NP1／NP2 bounded runtime migration 的 C2 acceptance 與 `TMP-ML-01` scoped closeout；當時保留 C3／C4 pending 與 Update SQLite teardown named baseline。請以 [R031 final closeout](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 的 C3／C4 acceptance、named boundary baseline 及 retained owners 為現況。
+- 2026-09-26：Wave14 candidate 在獨立 managed worktree 首次完整 union 為 2,404P／44F／5S／35W；42 個 exact-fixture byte／EOL mismatch 與 2 個既有 shadow-boundary aggregate failures 已具名，首次 480-input unchanged 不含全部實際 C1 fixture bytes，因此不能視為完整 input closure。五個 byte-pinned fixture 已還原至原 HEAD blobs，focused route 80P／1S；526-input 第二輪 union 為 2,431P／17F／5S。第三輪 526-input short-path full union 為 2,446P／2F／5S／35W；15 個 custody nodes 已在 short-path focused route 全數通過。Root 比對第三輪 CLI captured stdout JSON 與 C4 為 584 files／11 occurrences／10 distinct、`shadow_only=true` 且兩個 failing nodes 相同，裁定 `ACCEPTED_WITH_NAMED_BOUNDARY_BASELINE`；R031 engineering scope complete with retained blockers。這不是全綠或整體 refactor unqualified PASS。9/25 C4 receipts 保持獨立歷史收據；不代表產品／正式資料 gate。詳見 [R031 final closeout](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 與 [Wave14 candidate manifest](../06_qa/WAVE14_CANDIDATE_CHANGE_MANIFEST_20260926.json)。
 
 - 2026-09-14：同步 Decision Workbench 的 probability／rank provenance 詳情、unknown／shadow
   判讀、既有 Journal／Evidence／Portfolio ledger identity 重用原則，以及 daily shadow policy

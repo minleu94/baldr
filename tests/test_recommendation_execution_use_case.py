@@ -252,7 +252,7 @@ def test_contract_evidence_fails_closed_for_unknowns_keys_and_nonfinite_numbers(
     ) == {"integer": 7, "float": Decimal("1.25"), "text": "ok"}
 
 
-def test_tmp_rec06_paired_legacy_and_execution_lanes_match_with_isolated_side_effects(
+def test_legacy_list_abi_and_execution_abi_match_with_isolated_side_effects(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -265,9 +265,9 @@ def test_tmp_rec06_paired_legacy_and_execution_lanes_match_with_isolated_side_ef
             return current.astimezone(tz) if tz is not None else current.replace(tzinfo=None)
 
     monkeypatch.setattr(service_module, "datetime", _FrozenRecommendationDatetime)
-    legacy_root = tmp_path / "legacy-baseline-lane"
-    execution_root = tmp_path / "execution-lane"
-    legacy_root.mkdir()
+    legacy_list_root = tmp_path / "legacy-list-abi"
+    execution_root = tmp_path / "execution-abi"
+    legacy_list_root.mkdir()
     execution_root.mkdir()
     codes = ("TIE_B", "HIGH", "TIE_A", "BROKEN")
     scores = {
@@ -276,23 +276,23 @@ def test_tmp_rec06_paired_legacy_and_execution_lanes_match_with_isolated_side_ef
         "TIE_A": Decimal("70.0100"),
         "BROKEN": Decimal("10.000"),
     }
-    errors = {"BROKEN": RuntimeError("paired-baseline rejection")}
+    errors = {"BROKEN": RuntimeError("paired-compatibility rejection")}
 
-    # The baseline lane bypasses execute and invokes the preserved calculation body
-    # on a separate service. The execution lane uses another service and output root.
-    legacy_service = _service(legacy_root, codes, scores, errors=errors)
+    # 相容 list 入口與 typed execution 入口使用隔離的 service 與輸出路徑。
+    # 兩者共用同一計算流程；本測試只比較公開相容 ABI 的結果與狀態。
+    legacy_service = _service(legacy_list_root, codes, scores, errors=errors)
     execution_service = _service(execution_root, codes, scores, errors=errors)
     fixed_config = _config()
     expected = legacy_service._run_recommendation_body(
         fixed_config,
         top_n=3,
-        result_id="r011-tmp-rec-06",
+        result_id="r029-rec06-abi-parity",
         input_session=legacy_service.recommendation_input_preparer.begin(
             legacy_service.config
         ),
     )
     actual = execution_service.run_recommendation(
-        fixed_config, top_n=3, result_id="r011-tmp-rec-06"
+        fixed_config, top_n=3, result_id="r029-rec06-abi-parity"
     )
 
     assert legacy_service.config.db_file != execution_service.config.db_file
@@ -320,7 +320,7 @@ def test_tmp_rec06_paired_legacy_and_execution_lanes_match_with_isolated_side_ef
         name: getattr(execution_service, name) for name in state_fields
     }
     assert execution_state == legacy_state
-    assert execution_state["last_run_context"]["result_id"] == "r011-tmp-rec-06"
+    assert execution_state["last_run_context"]["result_id"] == "r029-rec06-abi-parity"
     assert execution_state["last_screening_matrix"] == legacy_state[
         "last_screening_matrix"
     ]

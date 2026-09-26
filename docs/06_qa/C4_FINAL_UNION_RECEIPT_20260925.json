@@ -1,0 +1,75 @@
+{
+  "schema": "c4-final-union-receipt-v1",
+  "date": "2026-09-25",
+  "decision": "ACCEPTED_WITH_NAMED_BOUNDARY_BASELINE",
+  "profile": "NP2",
+  "runtime": {
+    "python": "3.11.9",
+    "numpy": "2.3.5",
+    "scikit_learn": "1.8.0",
+    "scipy": "1.16.3",
+    "joblib": "1.5.2"
+  },
+  "head": "bec423eef1d9e9d4a32410dac96cd233304489aa",
+  "route": {
+    "system_temp_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\c4r_de0d7b",
+    "source_manifest": "C:\\Users\\archi\\AppData\\Local\\Temp\\c4r_de0d7b\\route.json",
+    "workspace_manifest": "docs/06_qa/C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json",
+    "manifest_bytes": 142438,
+    "manifest_sha256": "3E7CF99F6CB2133D5B019B8E99C305FAC1CF386E973210CA49D7490F57358E72",
+    "workspace_manifest_sha256": "3E7CF99F6CB2133D5B019B8E99C305FAC1CF386E973210CA49D7490F57358E72",
+    "test_files": 234,
+    "source_files": 237,
+    "input_files": 471,
+    "pre_json_sha256": "CBE8B12FE5EF41DFFC58EE4F118BD1CF5BA3186A4A56DFD2EC84CBCB6AE016FF",
+    "post_json_sha256": "CBE8B12FE5EF41DFFC58EE4F118BD1CF5BA3186A4A56DFD2EC84CBCB6AE016FF",
+    "input_bytes_unchanged": true
+  },
+  "pytest": {
+    "passed": 2446,
+    "failed": 2,
+    "skipped": 5,
+    "warnings": 35,
+    "elapsed_seconds": 640.25,
+    "exit_code": 1,
+    "log": "C:\\Users\\archi\\AppData\\Local\\Temp\\c4r_de0d7b\\pytest.log",
+    "log_bytes": 10878,
+    "log_sha256": "88797C7C2476576D771E88099E0016D49C10A78D29B0494B2A3CE834A8CF29F9"
+  },
+  "named_boundary_baseline": {
+    "failed_tests": [
+      "tests/test_ml_shadow_boundary_cli.py::test_shadow_boundary_cli_passes_repository",
+      "tests/test_ml_shadow_dependency_boundary.py::test_repository_respects_ml_shadow_dependency_boundary"
+    ],
+    "guard_inspected_files": 584,
+    "retained_occurrences": 11,
+    "retained_distinct_diagnostics": 10,
+    "new_failures_introduced_by_c4": 0
+  },
+  "c3_to_c4_input_delta": [
+    {
+      "path": "ml_module/shadow_boundary_guard.py",
+      "c3_sha256": "48074B1F4F5A73737530A409F18E5BFCC91D6A70F2A0750F2813ADA5EA7B1D05",
+      "c4_sha256": "1E5E4AF198A9FC2FEC0AAF1A35786701F94734B245C98212A9349D75D594A4A9"
+    },
+    {
+      "path": "tests/test_ml_shadow_dependency_boundary.py",
+      "c3_sha256": "550C09EE88A75F86751F92B893823630C64D4066FE1CA707DB2D286BF71600CE",
+      "c4_sha256": "3C0408DD7C810E6F9AD183CD36370AA278FEE2063391E571D3589C688FC9B59F"
+    },
+    {
+      "path": "tests/test_ui_qt_research_run_save.py",
+      "c3_sha256": "E06B166088595CB14A4063EF04ABD41C6E1CB554754191D7F68765E1C2EA1044",
+      "c4_sha256": "53C230AA1D6AEB193A01ED558103359AD6C5BB0489C6357DD9904315A0181D7B"
+    }
+  ],
+  "safety": {
+    "profile_test": true,
+    "synthetic_data": true,
+    "formal_data_accessed": false,
+    "scheduler_executed": false,
+    "full_market_ml_rebuild": false,
+    "model_promotion": false,
+    "stage_commit_push": false
+  }
+}

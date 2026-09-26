@@ -1,6 +1,12 @@
 # R020 replay 共用 evaluator 與版本化 policy 實作進度
 
-## 狀態與範圍
+## 目前 checkpoint（2026-09-25）
+
+Root 已接受 R020 bounded engineering scope，並裁定 `TMP-REC-04` `CLOSED`。C2 current union route 為 **1860 passed／5 skipped／34 warnings**、102.75 秒、exit 0，141 個測試路徑前後 229 hashes unchanged；log `C:\Users\archi\AppData\Local\Temp\c2s_bcd34f\pytest.log` SHA-256 `193EF45EA69B984A356F238CFAD4D00D714AB2B026E01CE89887260E59604687`。Workbench 84 passed，broad mypy 724 files／0 issues；Update validator 的 Windows `WinError 32` cleanup failure 保留為具名 baseline（25 passed／1 teardown failure／4 skipped、exit 1），因此 C2 是 `ACCEPTED_WITH_NAMED_QA_BASELINE`，非全綠。`TMP-NUM-01` 仍 `BLOCKED_WITH_OWNER`（decision recommendation／app codec），其獨立數值支援與 caller parity 範圍不由 R020 closeout 關閉。此接受不代表正式資料或 model promotion 已完成。細節見 [C2 mandatory UI/static gate 現況收據](../../../06_qa/C2_MANDATORY_UI_STATIC_GATES_20260925.md)。
+
+## 歷史切片狀態與範圍
+
+下列逐切片記錄保留各 frozen snapshot 時的狀態、限制與 bounded receipts；其中較早的 `IN_PROGRESS`、`ACTIVE`、`尚待 C2` 等語句不是本 checkpoint 的 current status，也不改寫各 slice 原 acceptance 範圍。
 
 - R020 整體狀態：`IN_PROGRESS`。C0、C1a、C1b、C1c、requested-as-of transport、`ReplayExecutionPolicyV1`、typed scorer candidate／evaluator ranking 與 provider first-slice 等 bounded slices 均已記錄於下文。Concrete provider typed scorer→canonical child handoff、獨立 replay parent 與 Research Run Registry lineage sidecar 已有合成整合；generic v1 row→canonical child builder 已移除，custom／legacy provider 只保留 v1 rows 與 transient parent、canonical child 為 `None`。`<20` rows 的 count-only preflight 已 bounded accepted；空白 code active-filter compatibility slice 依 R023 frozen SHA 的獨立 review（156 passed、無 P1/P2）已 bounded accepted。兩者都不建立 canonical assessment／child，完整 V-REPLAY parity 仍待收口，TMP-REC-04 不可退休。
 - C1c 將 provider 的 fast-filter 比較交由 pure evaluator；app 仍按舊次序產生 metric、lazy 解析 `float(raw)` 門檻並正規化 volume threshold，以 request ID 在候選呼叫區域保存 raw scalar，並保留 requested-as-of 與 best-effort trace。C1c 原始接線 review 的 bounded runtime 證據限 Windows NumPy 2.3.5；後續 2026-09-24 `TMP-NUM-01` follow-up 已在 Windows NumPy 1.26.4 與 2.3.5 profile 對各自 native-operator oracle 重跑 provider route（見下文）。這些證據仍未覆蓋其他 runtime、完整 row-level PIT／V-REPLAY parity；`TMP-REC-04` 與 `TMP-NUM-01` 維持 `ACTIVE`。
@@ -8,6 +14,7 @@
 - Registry portfolio-result integration 的最新狀態：Stage A codec、Stage B1 repository CAS、Stage B2 Registry publish、Stage C strict DTO／child readback 與 Stage D BacktestView UI／Manual 各自 bounded `ACCEPTED_SCOPE`。最新 B2 service/repository/tests SHA 為 `DC47816C62D1249629B2CE6303608B52503E3735882EAD74A68C75AF7D7B00CF`／`8AA0454D124615B0CD783C83826A678A04CCD54BC47740571E825446729AE503`／`CA18D12AF9F483C8302BF3C146D915B272BE42E79AED4A81C88AE9BE46B6D1C1`，R015 fresh TEMP non-UI route 70 passed、mypy 0、compile 通過。Stage D 由 R023 frozen-source 獨立 bounded accepted：7-file fresh TEMP route 95P；Workbench 84P；broad mypy 712 files／0；compile／diff-check 通過。Stage D 整合 route 為 82P。Update QA 分列實作者 R027 的 `25P/0F/4S` exit 0，以及 reviewer R023 的 `25P/1F/4S`，其唯一失敗是 WinError32 TEMP SQLite teardown、非功能 assertion，不計 reviewer pass。零 snapshots 不呼叫 child persistence、不發布空 lineage sidecar，改以相同 parent ID 標記 `unavailable`；讀回保留空 DTO 並明示沒有 recommendation snapshots／canonical child 不可用。Stage D 先保存有可驗 child 的 R012 artifacts 再呼叫 B2；若 Registry metadata 本身無效，B2 的 guard 在 Registry writes 前拒絕，但不能撤回已保存 child，BacktestView 尚無一個涵蓋所有 metadata failure 的上游 preflight。以上不代表 R020、`TMP-REC-04`、`TMP-NUM-01` 或 C2 完成。
 - Same-mode 固定向量 parity 有 bounded acceptance：原 16-file receipt 固定在當時 test SHA-256 `9A274320B298C6C4BE659FD35A607187E9A455556FDF4CA453ADD872F66F8BC1`（211 passed、24 個既有 warnings、scoped mypy 4/0、compile 通過）；後續新增 next-open PIT 向量後，當前 test SHA-256 為 `3AC9E5CE3EB9FA303857CB577258518C9AE7AE68C2F20EF71A2ACAB192FA7030`，其六檔 fresh TEMP route 74 passed。兩筆都是固定 scorer/reason 的 synthetic evidence，不是完整 V-REPLAY corpus 或所有 caller/mode parity，也不關閉 `TMP-REC-04`、`TMP-NUM-01` 或 C2。
 - R019 evaluator-core dependency 已滿足。`RecommendationSnapshotDTO.recommendations` v1 live compatibility projection、portfolio／factor-manifest consumers 仍需保留；C0 不改該 projection 或 R005 replay 行為。
+- 2026-09-25 concrete replay post-score cutover 的平台修補切片已由 R015 獨立複審並獲 root bounded `ACCEPTED_SCOPE`：只在 typed `as_of_date`、精確 built-in `StrategyConfigurator` 與 active filters 的 replay 呼叫走 typed post-score evaluator；所有 injected／subclass／overridden scorer 的非空列維持 v1-only、沒有 canonical child。Win32／Python 3.11.9／Pandas 2.3.3 下 NumPy 1.26.4 與 2.3.5 各自 route 為 `455 passed, 1 skipped`；R015 另對兩個 runtime 各跑定向 11P，並完成 5-file mypy／compile／guard／diff checks。唯一 skip 是此環境的 `longdouble` mantissa 未寬於 float64。接受僅限已測 runtime/capability 與該切片，不關閉完整 V-REPLAY、TMP gate 或 C2。
 - 本 slice 只用 fresh TEMP／`PROFILE=test` synthetic tests；未讀寫正式資料、正式 SQLite、正式 replay snapshots 或 artifacts。
 
 ## Frozen evidence identity
@@ -528,9 +535,9 @@ R015 獨立 review 對此 bounded portfolio caller slice 判定 `ACCEPTED_SCOPE`
 
 ## 尚未關閉的 TMP-REC-04／R020 gate
 
-- **Single evaluator／post-score filters：open，受控 replay-only 遷移已獲架構裁定。** Provider 在 scorer 前將 prefilter 送 evaluator（`app_module/recommendation_dataframe_provider.py:681-809`）；`StrategyConfigurator` scorer 後置 filters 的行為已由 frozen characterization 固定。root 依 R023 獨立架構複核裁定，可在既有 `RecommendationEvaluator` 增加 replay-only typed post-score phase，provider 以 call-local 無 `filters` config 呼叫 scorer；原 config 保留供 versioned policy／receipt，`StrategyConfigurator` 與 interactive `RecommendationService` source／API／預設行為不改。R015 對目前 source 的 `CHANGES_REQUIRED` finding 仍待遷移 patch 與獨立 parity review 閉合。此為實作授權，尚未完成接線；invalid threshold timing、20-row volume、RSI、alias 與同模式輸出仍是必過 gate。
+- **Single evaluator／post-score filters：bounded cutover accepted，完整 V-REPLAY 仍 open。** Provider 在 scorer 前將 prefilter 送 evaluator（`app_module/recommendation_dataframe_provider.py:681-809`）；R015 對平台修補後 source 做兩個 runtime 的定向 11P 複審，root 接受此有限切片。cutover 只適用 typed `as_of_date`、精確 built-in `StrategyConfigurator` 與 active filters；injected／subclass／overridden scorer 的非空列仍是 v1-only、沒有 canonical child。原始 config 保留作 versioned policy／receipt，interactive `StrategyConfigurator` 與 `RecommendationService` source／API／預設行為不改。原先 R015 `CHANGES_REQUIRED` finding 因非 Win32 complex fail-closed gate與 NP1 runner 路徑修正而關閉；完整 R005/caller/mode parity、支援矩陣內其他 runtime 與所有尚未驗的 numeric/profile 行為仍是 gate。
 - **Bounded compatibility terminals 不等同 canonical replay closure。** `<20` history count-only preflight 已 accepted，但 reject 不產生 `CandidateAssessment`／child；blank `stock_code` compatibility route 即使 scorer success／empty／exception／projection exception，也只產 identity-bound noncanonical terminal／call-local audit，不進 canonical assessment／child；custom／legacy provider 保留 v1 rows＋transient parent，canonical child 為 `None`。這些是明示例外，不得當成已證明所有 provider 都產生同一 canonical child。
-- **完整 caller／V-REPLAY matrix 尚未由同一 frozen route 證明。** 已有 32-file safe subset 與多個接受的 directed vectors，但三個 heavy caller/recovery files 未與 32-file route 在同一次全路由執行；各自 bounded receipt不能互相拼成 full V-REPLAY PASS。仍需處理 R020 要求的同 mode fast-filter、cutoff／future／PIT、排序／empty、factor-manifest、portfolio output 與 caller parity，並完成 repo 搜尋以確認沒有第二個 replay row/ranker/filter policy owner。
+- **32-file safe subset 的三個 caller/recovery 檔缺口已由後續 route 取代。** 歷史 32-file route 未同次執行 `test_r020_cross_store_recovery.py`、`test_r020_process_crash_recovery.py`、`test_r020_ui_replay_lineage_save.py`；2026-09-25 的 40-file expanded route 已包含這三檔，並由 R015 對凍結 manifest、NP1／NP2 logs 與額外 accounting/PIT route 獨立 bounded accepted（詳下節）。此修正只關閉該 route-combination 缺口；scheduled、personalization、saved-result consumers 與 affected UI 的 C2 union 尚未執行，R026 source-backed historical replay 亦未納入。完整 V-REPLAY／C2 gate 還要求同 mode 的 fast-filter、cutoff／future／PIT、排序／empty、factor-manifest、portfolio output、consumer parity 與 repo 搜尋，不能把不同 route 拼成未驗範圍的 PASS。
 - **TMP-NUM-01 support policy 仍需產品／工程 owner 決定。** 本 ledger不把單一 Windows constraints snapshot解讀為排除 Linux 或鎖定全部使用者至兩個 Windows profile；在支援矩陣正式定義並對矩陣內所需 runtime補齊 evidence 前，numeric gate保持 ACTIVE。
 - R020 仍 `IN_PROGRESS`；`TMP-REC-04`、`TMP-NUM-01` 均 `ACTIVE`；C2 未放行，R028 維持 `BLOCKED`。本 ledger 不宣稱 R020 acceptance、V-REPLAY full PASS 或 REC-04 retirement。
 
@@ -666,7 +673,9 @@ log SHA；複審 TEMP 為 `C:\Users\archi\AppData\Local\Temp\r020_sem_review_c56
 same-mode v1 output 或 full V-REPLAY parity；保留 `StrategyConfigurator`、live provider 與
 wire/codec 不變。R020 維持 `IN_PROGRESS`，`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`，C2 未放行。
 
-## 2026-09-25 replay provider post-score cutover（bounded ACCEPTED_SCOPE）
+## 2026-09-25 replay provider post-score cutover 初版收據（歷史狀態）
+
+以下保留初版接線時的原始數字與邊界敘述；後續實作與獨立複審前 QA 已更新於本報告末尾。本節所載 `358 passed`／`27 passed` 與 RSI-only/custom scorer 描述是歷史收據，不是目前 code 的最終行為或 acceptance。
 
 `RecommendationDataFrameProvider` 已完成受控 replay-only 接線：當呼叫帶有 typed
 `as_of_date`、使用內建 `StrategyConfigurator` 且有 active filters 時，provider 會以移除
@@ -685,3 +694,197 @@ staged response 被 `dataclasses.replace()` 的舊 facts 接受。
 R020 provider／post-score focused route 為 `27 passed`。這是 bounded replay cutover evidence，
 不等同所有資料源、interactive output 或完整 V-REPLAY parity 已完成；R020 仍維持
 `IN_PROGRESS`，`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`，C2 未放行，R028 維持 `BLOCKED`。
+
+## 2026-09-25 concrete replay post-score cutover（修補前實作者收據；由下節更新）
+
+在 typed `as_of_date` replay 呼叫中，只有精確 built-in `StrategyConfigurator` 與 active filters 會採新的責任分工：provider 複製 config 並移除 `filters`，取得非空 scored row 後，再依同次 `NeedCandidateScoring` 以 `ReplayScoredRowReadyV1`／`ReplayPostScoreFactsV1` 逐項呼叫 staged evaluator；原始 filters 留在 call-local adapter，維持 alias normalization、legacy diagnostic observer、lazy threshold conversion 與原生例外順序。通過的 typed outcome 才能投影 v1 row 與 canonical child。無 filters 的既有 built-in route 維持舊 handoff。所有 injected、subclass、override scorer 的非空輸出一律保留 v1 row、`scoring_outcomes=None`，不建立 canonical child；沒有非空列時仍可保留合法 empty canonical execution。Interactive `StrategyConfigurator`／`RecommendationService` 路徑與 v1 wire／codec 未改。
+
+Side-effect 差異以 synthetic scored-row 對照固定於 `tests/test_r020_real_scorer_filter_stage.py`：float16／float32 且 `price_change_max=1e100` 時，native 舊路徑的兩次 `filter_completed_frame` cast 與 replay 的 diagnostic pass 加 paired numeric projection 各產生兩個順序相同的 `RuntimeWarning: overflow encountered in cast`，兩者都保留一列；`np.errstate(over="raise")` 時兩者都在第一個 diagnostic filter comparison 遇到 `FloatingPointError`，replay 的既有 provider exception boundary 將它記為 `SKIPPED_SCORER_EXCEPTION` 並不輸出 row，paired projection 未執行。另固定 price reject 後的 invalid RSI 字串：price warning/counter 先發生，空 int64 RSI 比較仍以同一 TypeError 結束；provider boundary 以 scorer exception terminal 吸收，沒有 v1 row。這些受控例涵蓋 dtype／例外路徑，不能外推至所有 NumPy runtime、Pandas extension/object scalar 或所有 legacy warning quota 狀態。
+
+Fresh TEMP `C:\Users\archi\AppData\Local\Temp\r020_final_postscore_627326433c164890a3d54da420ab6631`、`PROFILE=test`、獨立 `DATA_ROOT`／`OUTPUT_ROOT`／pytest `basetemp`，以 33 個 `tests/test_r020_*.py` 加三個 staged evaluator／prefilter／numeric projector 路由重跑：`432 passed, 1 skipped in 17.61s`。唯一 skip 是 `tests/test_r020_numeric_runtime_differential.py:685`：此執行環境的 `longdouble` mantissa 未寬於 float64，較寬 runtime 分支未覆蓋。Scoped mypy（provider、evaluate、真實 scorer filter tests）為 3 files／0 issues；三檔 `py_compile` 通過；`scripts/quant_guard_linter.py` 的 financial float 與 look-ahead checks 通過；`git diff --check` 通過。該測試檔原已登錄 `service-oracle-recommendation`，本次未修改 inventory。
+
+可重跑命令：
+
+```powershell
+$run = 'C:\Users\archi\AppData\Local\Temp\r020_final_postscore_627326433c164890a3d54da420ab6631'
+$env:TEMP = $run
+$env:TMP = $run
+$env:PROFILE = 'test'
+$env:DATA_ROOT = Join-Path $run 'data'
+$env:OUTPUT_ROOT = Join-Path $run 'output'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$r020Files = @(rg --files tests | Where-Object { $_ -like 'tests\test_r020_*.py' })
+.\.venv\Scripts\python.exe -B -m pytest @r020Files tests/test_recommendation_evaluator_replay_staged.py tests/test_recommendation_replay_prefilter.py tests/test_recommendation_replay_numeric_projection.py -q -rs -o addopts= -p no:cacheprovider --basetemp (Join-Path $run 'pytest') --tb=short
+```
+
+目前檔案 SHA-256：`app_module/recommendation_dataframe_provider.py` `79B96627E40FAD39B6430B51E36F1D7A231E339E5C9F15A52233AA85012BA08`；`decision_module/recommendation/evaluate.py` `EAE0E2263DBDFC8A1C0BE4FDD0100C10186D5551FD0CB147E1DA56D514160EFD`；`tests/test_r020_real_scorer_filter_stage.py`（本輪修改）`F9A3FA8094B4A8BA7B1694D0FCBD34858F4B6CB1DA79486605A49BE1E92116FC`；`tests/test_r020_post_score_threshold_metric_pairing.py` `D12AF21C0733283F320310B64ACF716B584B48585C7F64F378C88BE9977A594F`；`tests/test_r020_replay_post_score_evaluator.py` `053E2B2CB71AFDAB903D0A2B7B924E4190EB44DD12EC86EAC81C4A78FD29C4A8`；inventory `qa/full_app_healthcheck/test_inventory.py` `73C1389DCFA3C5EC453C8395A0AE293007D53F85314CF9461A04EBDF7C5F0077`（現有 membership 驗證，未修改）。QA 明細與重跑命令見 [R020 post-score deferred threshold QA](../../../06_qa/R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925.md)。
+
+此處收據記錄 complex-Pandas 修補前的實作者路由，不宣告 R020 bounded acceptance、full V-REPLAY parity 或 TMP 退休；最新同模式收據見下節。R020 維持 `IN_PROGRESS`，`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`，C2 未放行，R028 `BLOCKED`。
+
+## 2026-09-25 Pandas complex post-score same-mode 修補（平台 P2 修補後 bounded acceptance）
+
+### 修補與 parity 邊界
+
+修補前的 NumPy 1.26.4 differential repro：`np.complex64(2+nanj) >= 1.0` 經原生 Pandas Series 篩選拒絕，但舊 typed comparator 接受，實際 provider 多輸出一列。修補前 R015 單項失敗 log SHA-256 為 `E9A04BFD2DE87608D7530C06E887D5755A9B685C5F493FE3796A5AE805462AD6`；該紅燈是歷史證據，不算通過。舊 projector unit test 仍期待 post-score pair 使用 `NUMPY_COMPLEX`，亦已按 post-score Pandas Series 語意改為 `PANDAS_COMPLEX_SERIES`，保留 NumPy scalar origin、dtype、threshold/domain 與 imaginary-zero 驗證。
+
+`project_legacy_post_score_comparison_pair` 現把 NumPy complex operands 放入 `PANDAS_COMPLEX_SERIES` comparison domain，保存 NumPy provenance；含 NaN component 依原生 Pandas Series unordered 結果拒絕。runtime capability guard 包含整個 complex domain，即使 real component 已決定方向且 native 不發 invalid warning（例如 `2+nanj`）。僅 `sys.platform == "win32"`、Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 或 2.3.5，且 Pandas `_evaluate_standard` bytecode 與 warning line/module/path 符合驗證，才可建立 row。非 Win32、未知平台、其他 runtime、bytecode shape 或 warning site 無法確認時，`ReplayNativeEffectProjectionUnavailableError` 會在 canonical row/child 前 fail closed。這是已測 Win32 profile 的 bounded evidence，不宣稱所有 Windows 版本或 build 均已驗，也不是對 `requirements-runtime.txt` 全部 Pandas/NumPy 版本的 parity 承諾。
+
+Evaluator 只輸出 rule-bound immutable NumPy invalid effect；app adapter 按目前 `np.errstate` 投影 effect，無第二 eligibility comparison。`warn` 路徑使用原生 Pandas module globals、`__warningregistry__`、category/message/filename/line，並尊重 module warning filter 與 default 重複抑制。`raise` 保留 `FloatingPointError` type/message 並位於 scorer 外層相同 error boundary；`ignore`／`print`／`log`／`call` 有 same-provider 對照。每個 pending rule 重新清空並取得 warning capability；`test_unsupported_rule_cannot_reuse_previous_complex_warning_capability` 以 synthetic future effect 負控證明 unsupported rule 不會誤用前一 rule 的 site。當 profile/location 不可驗證時，整次 replay 呼叫 fail closed，而不是回傳 generic skipped scorer outcome。
+
+舊路徑 oracle 為同一 concrete provider 的 `provider(history, config, top_n)`；新路徑為同 instance 的 `provider.run_with_as_of_handoff(...)`，各自使用相同 warning context 與 native config。直接呼叫 `StrategyConfigurator` 僅作 scorer／原生例外機制診斷，不用於跨呼叫比較 warning count。已固定 complex min/max、real component 1 與 2、NaN component、native warning location／filter／registry 及 errstate channel。float16／float32 overflow case 仍逐 runtime 比較原生 wrapper 與新 adapter，不將 NumPy 1、2 的 warning 數視為應跨版相同。測試用 autouse `monkeypatch` 隔離 `StrategyConfigurator` 的 process-local diagnostic counters，避免影響後續 legacy characterization；沒有改動那些 characterization 的預期輸出。
+
+### Fresh TEMP 完整路由
+
+兩個 runtime 各用 fresh short TEMP；`TEMP`、`TMP`、`PROFILE=test`、`DATA_ROOT`、`OUTPUT_ROOT`、pytest `basetemp` 皆指向該 runtime 獨立根目錄。路由包含 33 個 `tests/test_r020_*.py` 加 staged evaluator、replay prefilter、numeric projection 三個相鄰 test files：
+
+| Runtime | TEMP root | 結果 |
+|---|---|---|
+| Python 3.11.9／NumPy 1.26.4／Pandas 2.3.3 | `C:\r20q\n1_platform_final_327f5450` | 455 passed, 1 skipped, 11 warnings in 18.61s；log SHA-256 `697E1D71160AA9ACF4DC19735C3760A2C136F360676FA83CB88996D86B9B88B5` |
+| Python 3.11.9／NumPy 2.3.5／Pandas 2.3.3 | `C:\r20q\n2_platform_final_5a9fb6e3` | 455 passed, 1 skipped, 8 warnings in 17.69s；log SHA-256 `01CCE08C8E92B819BF04D84A0EA29080D5E2CDEA28F61BFC5599BA9C9399A091` |
+
+R015 首次獨立複審對前一版各 449 passed／1 skipped 收據判為 `CHANGES_REQUIRED`：缺少非 Win32 fail-closed gate，且 NP1 runner 會在 NP2 改寫 `$env:TEMP` 後從該變數錯誤組成路徑。舊 owner log SHA `31FA13F71AC4EB4054E8B819ECDD93DF04B5A5B48269E7AAA68E91652E11AF72`／`660C8972301EDCB9F82904CF9EB8FC6DC3DC07204F7A259F470BD7D284798279`，以及 reviewer log SHA `0624082127BA3014F1BF24A6A24B42BC7311C53B5AE88E43D6380041B8463E0A`／`E984E71EC42F53DAB4A03B6D145FFDF1C8D074A2AF0C945D57909B5F622197AB` 均為平台修補前歷史收據，不作此版 gate。新增負測證明 Linux、Darwin 與未知 `sys.platform` 的 `2+nanj` concrete replay 在產生 row／child 前 fail closed；另證一般 `np.float32` replay 在 Linux 仍可產生 row／child。
+
+兩個 warning summary 數不同是 runtime-specific 測試 oracle／NumPy 行為差異；每個 provider cutover assertion 都比較同一 runtime 的原生 provider wrapper 與 replay。兩邊唯一 skip 均是 `tests/test_r020_numeric_runtime_differential.py:685`：`longdouble` mantissa 未寬於 float64，較寬分支未覆蓋。沒有聲稱跨 runtime 行為一致。
+
+可重跑命令：
+
+```powershell
+# NumPy 2.3.5（先建立全新短 TEMP）
+$base = 'C:\r20q'
+$null = New-Item -ItemType Directory -Force -Path $base
+$run = Join-Path $base ('n2_' + [guid]::NewGuid().ToString('N').Substring(0,8))
+$null = New-Item -ItemType Directory -Path $run
+$env:TEMP = $run
+$env:TMP = $run
+$env:PROFILE = 'test'
+$env:DATA_ROOT = Join-Path $run 'data'
+$env:OUTPUT_ROOT = Join-Path $run 'output'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$r020Files = @(rg --files tests | Where-Object { $_ -like 'tests\test_r020_*.py' })
+.\.venv\Scripts\python.exe -B -m pytest @r020Files `
+  tests/test_recommendation_evaluator_replay_staged.py `
+  tests/test_recommendation_replay_prefilter.py `
+  tests/test_recommendation_replay_numeric_projection.py `
+  -q -rs -o addopts= -p no:cacheprovider `
+  --basetemp (Join-Path $run 'pytest') --tb=short
+
+# NumPy 1.26.4（以穩定的 LocalAppData 路徑定位預建隔離 venv，不依賴已改寫的 $env:TEMP）
+$py = Join-Path $env:LOCALAPPDATA 'Temp\r020_num01_win_np1264_ad276b8ab2e643b993dc2e4493cf730c\venv\Scripts\python.exe'
+$base = 'C:\r20q'
+$null = New-Item -ItemType Directory -Force -Path $base
+$run = Join-Path $base ('n1_' + [guid]::NewGuid().ToString('N').Substring(0,8))
+$null = New-Item -ItemType Directory -Path $run
+$env:TEMP = $run
+$env:TMP = $run
+$env:PROFILE = 'test'
+$env:DATA_ROOT = Join-Path $run 'data'
+$env:OUTPUT_ROOT = Join-Path $run 'output'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$r020Files = @(rg --files tests | Where-Object { $_ -like 'tests\test_r020_*.py' })
+& $py -B -m pytest @r020Files `
+  tests/test_recommendation_evaluator_replay_staged.py `
+  tests/test_recommendation_replay_prefilter.py `
+  tests/test_recommendation_replay_numeric_projection.py `
+  -q -rs -o addopts= -p no:cacheprovider `
+  --basetemp (Join-Path $run 'pytest') --tb=short
+```
+
+Scoped mypy（四個 production 檔與 real scorer filter test，以 `--follow-imports=silent` 隔離並行 R026 模組）為 `5 files／0 issues`；四個 production 與四個測試檔 `py_compile` 通過；`scripts/quant_guard_linter.py` financial-float／look-ahead 檢查通過；`git diff --check` 通過。此平台 P2 只新增 fail-closed 測試，並將既有 `np.errstate` 測試 action 收窄為 `Literal` 型別；沒有改一般 scalar／threshold 行為。
+
+凍結 SHA-256：
+
+| 檔案 | SHA-256 |
+|---|---|
+| `decision_module/recommendation/replay_prefilter.py` | `B7B7AF5FA0359523FCADD4547A0C23D59A981F961AD8304ABD603C85BCB795FF` |
+| `app_module/recommendation/replay_numeric_projection.py` | `A32AB4F23E0C16B3C768DB801BEF7B64793E7D81D25ADDA48FB74A88A9D49381` |
+| `decision_module/recommendation/evaluate.py` | `588569069C44C2B4AFE3608BB44EE98FDA2348416575C9A6E6CA441C6DDE9AA9` |
+| `app_module/recommendation_dataframe_provider.py` | `0CF7C8B60FCD1BB6B51D9398213B93A1A1EABD5E7A1569AF1F053485F66C95B3` |
+| `tests/test_r020_post_score_threshold_metric_pairing.py` | `DFBBE3347AD08CB677901594DC656AEFD0FB9B7A487C8E5A6C85BE3DCBEB78CB` |
+| `tests/test_r020_replay_post_score_evaluator.py` | `DD19BAF6DC9DD2C3017C164BCBCC0F2C44BADCB453B18C97EF89362C5281CD78` |
+| `tests/test_r020_real_scorer_filter_stage.py` | `23E5DF76E728EE889A59FB31E18808896A4793C44F008A9FE33479D8EDEEFA00` |
+| `tests/test_r020_post_score_native_numeric_projection.py` | `62B1659145120E5DFB7C174FB78AD4167F22BDA8529F3CAF5D6843015237F0AE` |
+
+R015 獨立複審對 NP1／NP2 各完成定向 11P，5-file mypy 為 0 issues，compile／quant guard／diff checks 通過；root 對此平台 P2 修補切片給予 bounded `ACCEPTED_SCOPE`。接受範圍限上述已測 Win32 profile與 complex capability fail-closed 行為，不代表其他 Python／Pandas／NumPy profile、其他 Windows OS/build、其他 complex scalar、Pandas extension/object scalar 或 full V-REPLAY parity 通過。R020 維持 `IN_PROGRESS`；`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`；C2 未放行，R028 `BLOCKED`。
+
+## 2026-09-25 擴大 V-REPLAY 合成 parity route（bounded ACCEPTED_SCOPE）
+
+此 route 在已接受的平台切片之外，把相關合成 replay、timeline、portfolio 與交易成本測試放入同一個短 TEMP 路由；它仍不是完整 V-REPLAY/C2 gate。凍結輸入 manifest 位於 `C:\r20q\x11_4750a051\manifest.json`，SHA-256 `3D27664FDB98E2607C57E6F85A2CD0DF4F17B8BFD5BC9D9E5768CC15390A63F2`，綁定 HEAD `bec423eef1d9e9d4a32410dac96cd233304489aa`、40 個測試檔（33 個 `tests/test_r020_*.py` 加 7 個相鄰檔）及 6 個 provider/replay/evaluator/portfolio 核心來源的逐檔 SHA-256。兩次執行前後均比對同一 manifest，沒有測試、來源或 HEAD 漂移。
+
+| Runtime | fresh TEMP／PROFILE=test | 結果 | pytest log SHA-256 |
+|---|---|---|---|
+| Python 3.11.9／NumPy 1.26.4／Pandas 2.3.3（實作者） | `C:\r20q\x11_n1_effe0fd3` | 512 passed, 1 skipped, 35 warnings；pytest 19.66s | `EDC9A16A146E9501092847E7970216A2FEDEF3BFBECF21194AFFD87CF5E5F12A` |
+| Python 3.11.9／NumPy 2.3.5／Pandas 2.3.3（實作者） | `C:\r20q\x11_n2_edacd620` | 512 passed, 1 skipped, 32 warnings；pytest 18.91s | `25E3F631F8323EAF75686B971FD07C57265FE8C28ACDA77A3D3075B7BE061B6B` |
+
+每個 runtime 的 `TEMP`、`TMP`、`PROFILE=test`、`DATA_ROOT`、`OUTPUT_ROOT` 與 pytest `--basetemp` 都指向各自新建的短 TEMP 根。每邊唯一 skip 是 `tests/test_r020_numeric_runtime_differential.py:685`：該 runtime 的 `longdouble` mantissa 沒有寬於 float64，較寬分支未覆蓋。warnings 數量因 NumPy/Pandas runtime 與各測試原生 oracle 而異，不把跨 profile 的 summary 數量當作 parity 要求。
+
+### 覆蓋證據與邊界
+
+- R005 原生 provider 固定 v1 row 欄位、score fallback、穩定排序/tie、top-N、過濾與 per-stock 例外、factor survivors：`tests/test_recommendation_replay_characterization.py:456-604,613+`。
+- Provider 與 snapshot 的雙層切片、mixed scorer terminal、ordered v1 rows、diagnostics、factor scores、typed child/空 child/child fail-closed：`tests/test_r020_replay_pipeline_composition.py:252-387`、`tests/test_r020_replay_mixed_terminal_composition.py:210-375`、`tests/test_r020_typed_provider_child_handoff.py:180-421`。內建 scorer 正例建立 canonical child；自訂或 override scorer 保留 v1 rows，但不把 rows 偽裝成 canonical child。
+- Legacy-close portfolio 固定推薦列、diagnostics、factor manifest、空日/例外日與帳務：`tests/test_r020_concrete_portfolio_parity.py:91-179,481-728`。Next-open caller 固定 PIT rows、factor manifest、開盤成交日、cash/equity/summary 與 parent：同檔 `:731-1116`。兩種 execution contract 各自對照獨立手算 oracle，沒有要求彼此帳務相等；Bank Taiwan cost route 另由 manifest 中的 `tests/test_recommendation_portfolio_banktaiwan_cost.py` 覆蓋。
+- 完整清單及每一測試/來源的精確雜湊只由上述 manifest 定義；兩個逐次 pytest log 位於各自 TEMP 根，SHA 見表格。重跑時須使用同一 manifest，並在執行前後拒絕任何 path/hash/HEAD 漂移。
+- R015 獨立複審確認 manifest、HEAD 與 46 個 test/source SHA 完全相符，沒有漂移；複審 fresh TEMP receipts：NP1 `C:\t\x11np1r\pytest.log` SHA-256 `C90DB3934A494EE669E7A8621E6F3FAB48B8501140AED086D2118F44434D9EDE`（512 passed、1 skipped、35 warnings），NP2 `C:\t\x11np2r\pytest.log` SHA-256 `4B5022D4ED7AE00230F8F749EC78C9F460EBD93F85C6DC3566AB2BDCCF991BE6`（512 passed、1 skipped、32 warnings）。R015 另以 fresh TEMP 跑 6-file accounting/PIT route，56 passed、4 warnings，log `C:\t\x11r1r\pytest.log` SHA-256 `5D4F88775EB4CF88E75ACE19D6E43EFC7A84CE15AEE97D6D8A15246DD1A19E6A`。Root 對此 expanded synthetic route 給予 bounded `ACCEPTED_SCOPE`，無 P1/P2；三份複審收據分開記錄，不與實作者 logs 疊加計數。
+
+可重跑的 pytest invocation 由 manifest 的 40 個 `tests[].path` 作位置參數；例如從 repo root 依序設定 profile 環境後執行：
+
+```powershell
+$manifestPath = 'C:\r20q\x11_4750a051\manifest.json'
+$manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+$testFiles = @($manifest.tests | ForEach-Object { $_.path })
+$runtimes = @(
+  [PSCustomObject]@{ name = 'np1'; python = (Join-Path $env:LOCALAPPDATA 'Temp\r020_num01_win_np1264_ad276b8ab2e643b993dc2e4493cf730c\venv\Scripts\python.exe') },
+  [PSCustomObject]@{ name = 'np2'; python = 'C:\Projects\PythonProjects\technical_analysis\.venv\Scripts\python.exe' }
+)
+$frozenEntries = @($manifest.tests) + @($manifest.sources)
+foreach ($runtimeEntry in $runtimes) {
+  if ((git rev-parse HEAD).Trim() -ne $manifest.head) { throw 'HEAD drift' }
+  foreach ($entry in $frozenEntries) {
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $entry.path).Hash -ne $entry.sha256) { throw "Manifest drift: $($entry.path)" }
+  }
+  if (-not (Test-Path -LiteralPath $runtimeEntry.python)) { throw "Missing interpreter: $($runtimeEntry.name)" }
+  $run = Join-Path 'C:\r20q' ('x11_' + $runtimeEntry.name + '_' + [guid]::NewGuid().ToString('N').Substring(0,8))
+  $null = New-Item -ItemType Directory -Path $run
+  $null = New-Item -ItemType Directory -Path (Join-Path $run 'data')
+  $null = New-Item -ItemType Directory -Path (Join-Path $run 'output')
+  $env:TEMP = $run
+  $env:TMP = $run
+  $env:PROFILE = 'test'
+  $env:DATA_ROOT = Join-Path $run 'data'
+  $env:OUTPUT_ROOT = Join-Path $run 'output'
+  $env:PYTHONDONTWRITEBYTECODE = '1'
+  $pytestArgs = @($testFiles) + @('-q', '-o', 'addopts=', '--basetemp', (Join-Path $run 'pt'))
+  & $runtimeEntry.python -m pytest @pytestArgs 2>&1 | Tee-Object -FilePath (Join-Path $run 'pytest.log')
+  if ($LASTEXITCODE -ne 0) { throw "$($runtimeEntry.name) pytest failed with $LASTEXITCODE" }
+  foreach ($entry in $frozenEntries) {
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $entry.path).Hash -ne $entry.sha256) { throw "Post-run manifest drift: $($entry.path)" }
+  }
+  if ((git rev-parse HEAD).Trim() -ne $manifest.head) { throw 'Post-run HEAD drift' }
+}
+```
+
+此 expanded route 的 R015 獨立複審與 root bounded acceptance 已完成，但它不包含 R026 source-backed historical replay，也未把 scheduled／personalization／saved-result consumers 與 affected UI 合併為 C2 matrix。平台證據仍限已驗 Win32 Python 3.11.9、Pandas 2.3.3、NumPy 1.26.4／2.3.5；longdouble 寬 mantissa、其他 OS/runtime/object-dtype profile 仍未驗。故 R020 維持 `IN_PROGRESS`，`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`，C2 未放行，R028 `BLOCKED`。
+
+## 2026-09-25 typed-only replay child handoff parity（實作者 bounded 收據；等待 R023 獨立複審）
+
+本 slice 延續 concrete replay provider 的 typed scorer cutover，讓一份排序後 `_ReplayScoredCandidateV1` tuple 作為 typed child 與 v1 compatibility rows 的共同來源。`ReplayProviderCallResultV1.candidates` 是 handoff 儲存欄位；`.rows`、`.scoring_outcomes` 保留舊讀取形狀作 properties，每次從 candidates 投影，避免 row/outcome 平行清單錯接。`RecommendationReplayService._build_canonical_replay_execution_from_handoff` 只讀 candidate 的 typed `ReplayCandidateScoringOutcomeV1.item`／assessment 建立 `DecisionBatch`，未由外層 row dict 反造 canonical state。
+
+在建立 child 前，service 會將已 deep-copy 到 `RecommendationSnapshotDTO.recommendations` 的實際 v1 rows 與同次 child candidate 的 `to_v1_row()` 結果逐列比對；欄位、值、型別或順序不符時維持 compatibility rows、拒絕 canonical child。原 v1 row scoring 欄位不供 child builder 使用。對 primitive row scalar 要求 exact type/value，float 以 binary64 bytes 核對；opaque compatibility payload 只接受同一物件，且不符合 typed reason contract 的候選本身不會建立 child。這是 sidecar parity guard，不改 v1 rows。自訂／legacy／override provider 仍 v1-only/no-child；既有 zero-row empty canonical decision 保留。
+
+先加三個故障注入測試，改動 `project_v1_rows()` 所產生列的 score、reason 或順序。修補前三個測試均紅：snapshot 雖保留污染後 rows，仍錯誤附加 child；修補後 rows 原樣保留、child 均為 `None`。現有 candidate 欄位/outcome corruption、built-in scorer typed child 正例、v1 row projection alias isolation、single scorer pass、negative/zero double slicing、custom provider boundary 與 portfolio same-mode golden 一併納入 route。
+
+同一 frozen manifest `C:\t\r020_typed_child_union_abd24a427bbb4204bea398cca1ec4d16\manifest.json` SHA-256 `C57627D0CF545920C10A5E43C2DB20861A17FA1C814C275D867EDCE5C1BC79F7`，綁定 HEAD `bec423eef1d9e9d4a32410dac96cd233304489aa`、40 個 R020/R005/replay/timeline/portfolio test paths 與 6 個 production source paths（46 個 path/SHA entries）。NP1／NP2 都在 fresh short TEMP、`PROFILE=test`、獨立 `DATA_ROOT`／`OUTPUT_ROOT`／pytest basetemp 執行；執行前後所有 entries 與 HEAD 一致：
+
+| Runtime | 結果 | pytest log SHA-256 |
+|---|---|---|
+| Python 3.11.9／NumPy 1.26.4／Pandas 2.3.3，TEMP `C:\t\r020_typed_union_np1_af24dca3a63e4fb6bf015dfd8893e914` | 517 passed, 1 skipped, 35 warnings；pytest 21.99s | `DDD9A3D0563DF8200BC38650D353DEED73D705483D972F2488D3386595E3C0F3` |
+| Python 3.11.9／NumPy 2.3.5／Pandas 2.3.3，TEMP `C:\Users\archi\AppData\Local\Temp\r020_typed_union_np2_b36104ece9974570a68a81c5b60638d3` | 517 passed, 1 skipped, 32 warnings；pytest 22.14s | `56BFC29C0BD8B0E3585FB5BDE023D83EBA8981A95197AD96C77E48152E129A06` |
+
+唯一 skip 為 longdouble mantissa 未寬於 float64。兩 profile warning summary 由各 runtime native-oracle／portfolio warnings 決定，不要求 warning 計數相同。另 fresh TEMP 跑 R026 source-backed historical replay 與 snapshot provider adjacent route 為 16 passed，log SHA-256 `898716FFC8292A8792590AC5CE1591C74038286C38416BD659A8B184C52895E8`；這是鄰接相容檢查，不替代 R026 source/availability gates。核心五檔 route 65 passed／4 warnings；scoped mypy 2 source files／0 issues，py_compile、quant financial-float/look-ahead guard 與 scoped `git diff --check` 通過。
+
+凍結 SHA-256：provider `E30BCF375C1256877F79E15FC87B4DECFDA83F9DB0E36608BD11A79BE44412EB`；replay service `4B2897DB1CED80302AA0F1B706193C5FBE3E254CABEDFCD348008450A9A79903`；`tests/test_r020_typed_provider_child_handoff.py` `6672592231ABE0294CDA3CAA7AEC282EB5FA4F0D36A70F4F02C1D07BA8EE77A5`；`tests/test_r020_real_scorer_filter_stage.py` `92F4FEEA22EFD43CD6AB9922200F610A9CE4450C1BF1499F1C0E724E7943F6D7`。完整路由與重跑方式見 [typed-handoff QA note](../../../06_qa/R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925.md)，此次追加後該 note SHA-256 為 `7A6C97AFC8BFB2072F0C150712AD09E205DFA952AF45A926D6AFB08967DCF50C`。此 frozen typed-handoff slice 曾待獨立複核；其後由 2026-09-25 root finite closeout 裁定更新，見下節。
+
+## 2026-09-25 root finite closeout 裁定
+
+Root 複核 R005 policy vectors、V-REPLAY bounded route、40-test typed handoff 與五個 distinct process-crash recovery states，裁定 **沒有剩餘的 R020-specific recovery/R005 vector gap**。Current C2 union 已接受：141 unique tests／88 sources，1,860 passed／5 skipped／34 warnings、exit 0；229 frozen inputs 的 pre/post SHA 完全一致。C2 狀態為 `ACCEPTED_WITH_NAMED_QA_BASELINE`；Update validator 的 WinError 32 TEMP SQLite teardown 是具名既有 QA baseline，不改寫成全綠。詳見 [C2 current union receipt](../../../06_qa/C2_CURRENT_UNION_PYTEST_BASELINE_20260925.md)、[C2 mandatory gates receipt](../../../06_qa/C2_MANDATORY_UI_STATIC_GATES_20260925.md) 與 [hard-exit recovery QA](../../../06_qa/R020_PROCESS_CRASH_RECOVERY_HARD_EXIT_QA_20260925.md)。
+
+因此退休帳中的 **`TMP-REC-04` bounded replay/recovery scope 已 CLOSED**；這不宣稱所有 runtime、平台與任意 caller 的無界 parity。`TMP-NUM-01` 仍為獨立 `BLOCKED_WITH_OWNER` numeric gate，且不反向阻塞 R020 bounded closeout。既有歷史快照中「C2 未放行／`TMP-REC-04` ACTIVE／full R005 vectors 待驗」的文字只記錄當時狀態，由本節及 current retirement ledger supersede。跨 store 共同原子交易、補償 rollback、自動重建原 execution 不是已承諾能力，不列為本次 closeout 前置。

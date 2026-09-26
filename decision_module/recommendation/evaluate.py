@@ -1743,6 +1743,37 @@ class ReplayPostScoreDiagnosticEventV1:
             raise ValueError("counter_delta 必須是正整數")
 
 
+class ReplayPostScoreEffectKindV1(str, Enum):
+    NUMPY_INVALID_COMPARISON = "numpy_invalid_comparison"
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayPostScoreEffectV1:
+    """純 comparator 識別的 native side effect；由 app 依 runtime policy 投影。"""
+
+    kind: ReplayPostScoreEffectKindV1
+    operator: ReplayComparisonOperator
+
+    def __post_init__(self) -> None:
+        if type(self.kind) is not ReplayPostScoreEffectKindV1:
+            raise TypeError("kind 必須是 ReplayPostScoreEffectKindV1")
+        if type(self.operator) is not ReplayComparisonOperator:
+            raise TypeError("operator 必須是 ReplayComparisonOperator")
+        if self.operator not in {
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            ReplayComparisonOperator.LESS_THAN_OR_EQUAL,
+        }:
+            raise ValueError("post-score native effect 只支援 inclusive threshold operator")
+
+    @property
+    def message(self) -> str:
+        ufunc = {
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL: "greater_equal",
+            ReplayComparisonOperator.LESS_THAN_OR_EQUAL: "less_equal",
+        }[self.operator]
+        return f"invalid value encountered in {ufunc}"
+
+
 @dataclass(frozen=True, slots=True)
 class ReplayPostScoreMetricFactV1:
     """由 app numeric projector 投影的單一 scored-row metric。"""
@@ -1903,6 +1934,7 @@ class ReplayPostScoreRuleOutcomeV1:
     legacy_exception_type: str | None = None
     legacy_exception_message: str | None = None
     diagnostic_event: ReplayPostScoreDiagnosticEventV1 | None = None
+    effects: tuple[ReplayPostScoreEffectV1, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.filter_id) is not ReplayPostScoreRuleV1:
@@ -1942,6 +1974,27 @@ class ReplayPostScoreRuleOutcomeV1:
                 is not ReplayPostScoreThresholdInputKindV1.PYTHON_STRING
             ):
                 raise ValueError("diagnostic_event 必須綁定目前 rejected rule 與原始 threshold hint")
+        if type(self.effects) is not tuple or any(
+            type(effect) is not ReplayPostScoreEffectV1 for effect in self.effects
+        ):
+            raise TypeError("effects 必須是 ReplayPostScoreEffectV1 tuple")
+        if self.effects:
+            expected_operator = {
+                ReplayPostScoreRuleV1.PRICE_CHANGE_MIN: ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+                ReplayPostScoreRuleV1.PRICE_CHANGE_MAX: ReplayComparisonOperator.LESS_THAN_OR_EQUAL,
+                ReplayPostScoreRuleV1.VOLUME_CHANGE_MIN: ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+                ReplayPostScoreRuleV1.RSI_MIN: ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+                ReplayPostScoreRuleV1.RSI_MAX: ReplayComparisonOperator.LESS_THAN_OR_EQUAL,
+            }[self.filter_id]
+            if (
+                len(self.effects) != 1
+                or self.effects[0].kind
+                is not ReplayPostScoreEffectKindV1.NUMPY_INVALID_COMPARISON
+                or self.effects[0].operator is not expected_operator
+                or self.disposition is not ReplayPostScoreRuleDispositionV1.REJECTED
+                or self.reason_code != "unordered_value"
+            ):
+                raise ValueError("native effect 必須綁定目前 unordered rejected rule")
 
 
 @dataclass(frozen=True, slots=True)
@@ -2412,7 +2465,22 @@ def _evaluate_replay_post_score_rule(
     else:
         disposition = ReplayPostScoreRuleDispositionV1.PASSED
         reason_code = "passed"
-    return ReplayPostScoreRuleOutcomeV1(filter_id, disposition, reason_code)
+    effects = (
+        (
+            ReplayPostScoreEffectV1(
+                kind=ReplayPostScoreEffectKindV1.NUMPY_INVALID_COMPARISON,
+                operator=spec.operator,
+            ),
+        )
+        if comparison.numpy_invalid_effect
+        else ()
+    )
+    return ReplayPostScoreRuleOutcomeV1(
+        filter_id,
+        disposition,
+        reason_code,
+        effects=effects,
+    )
 
 
 def _replay_post_score_outcome(
@@ -4270,6 +4338,8 @@ __all__ = (
     "ReplayPostScoreEvaluationStateV1",
     "ReplayPostScoreEvaluationStepV1",
     "ReplayPostScoreFactsV1",
+    "ReplayPostScoreEffectKindV1",
+    "ReplayPostScoreEffectV1",
     "ReplayPostScoreMetricFactV1",
     "ReplayPostScoreMetricLegacyKindV1",
     "ReplayPostScorePairedMetricV1",

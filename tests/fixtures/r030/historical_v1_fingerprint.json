@@ -1,0 +1,30 @@
+{
+  "registry_id": "core-long-history-features-v1",
+  "registry_hash": "sha256:1a2adbeee4aa4a3935be1e30bf31bfbc6136a8fa84d975a1429e5fee4326e4b6",
+  "schema_hash": "sha256:6584386cf16161c8cbd3a70b9f8b2143ba7e3d49d6081b1eb46fec7e9194f5be",
+  "contract_hash": "sha256:7b3cf2ed47daba5cc5ed19a70b8233742ce163b1a6b4f72e68a516ecbc1f04e1",
+  "decision_timing": "decision_t_uses_previous_trading_day",
+  "missing_policy": "missing_is_not_zero",
+  "canonical_schema": [
+    ["stock_return_1d_bp", "int", "bp"],
+    ["stock_return_5d_bp", "int", "bp"],
+    ["stock_return_20d_bp", "int", "bp"],
+    ["stock_return_60d_bp", "int", "bp"],
+    ["trailing_volatility_20d_bp", "int", "bp"],
+    ["high_low_range_20d_bp", "int", "bp"],
+    ["close_to_ma_5d_bp", "int", "bp"],
+    ["close_to_ma_20d_bp", "int", "bp"],
+    ["close_to_ma_60d_bp", "int", "bp"],
+    ["rsi_normalized_bp", "int", "bp"],
+    ["adx_normalized_bp", "int", "bp"],
+    ["macd_normalized_bp", "int", "bp"],
+    ["volume_ratio_5d_bp", "int", "bp"],
+    ["volume_ratio_20d_bp", "int", "bp"],
+    ["turnover_amount_minor", "int", "minor_currency_unit"],
+    ["market_return_5d_bp", "int", "bp"],
+    ["market_return_20d_bp", "int", "bp"],
+    ["market_return_60d_bp", "int", "bp"],
+    ["stock_minus_market_20d_bp", "int", "bp"],
+    ["industry_relative_return_20d_bp", "int", "bp"]
+  ]
+}

@@ -11,6 +11,9 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from app_module.dtos import BacktestReportDTO
+from app_module.recommendation_portfolio_dtos import (
+    RecommendationPortfolioBacktestResultDTO,
+)
 from decision_module.strategies.contracts import StrategySpec
 from data_module.config import TWStockConfig
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
@@ -59,26 +62,35 @@ def _backtest_report():
     )
 
 
-class _FakePortfolioResult:
-    summary = {"total_return": 0.15, "max_drawdown": -0.05, "total_trades": 4}
-    equity_curve = pd.DataFrame([{"日期": "2026-01-02", "equity": 1000000}])
-    trades = pd.DataFrame([{"日期": "2026-01-05", "stock_code": "2330"}])
-    details = {
-        "data_version": "sha256:data",
-        "data_as_of_date": "2026-06-13",
-        "strategy_version": "recommendation_replay@1.0",
-        "execution_price": "next_open",
-        "data_manifest": {
-            "factor_snapshot": {
-                "schema_version": 1,
-                "records": [{"factor_name": "technical.total_score"}],
-            },
-            "factor_contributions": {
-                "schema_version": 1,
-                "by_stock": {"2330": [{"factor_name": "technical.total_score"}]},
+def _portfolio_result() -> RecommendationPortfolioBacktestResultDTO:
+    result = RecommendationPortfolioBacktestResultDTO(
+        summary={"total_return": 0.15, "max_drawdown": -0.05, "total_trades": 4},
+        equity_curve=pd.DataFrame([{"日期": "2026-01-02", "equity": 1000000}]),
+        trades=pd.DataFrame([{"日期": "2026-01-05", "stock_code": "2330"}]),
+        snapshots=[],
+        period_holdings=[],
+        stock_contribution=[],
+        details={
+            "data_version": "sha256:data",
+            "data_as_of_date": "2026-06-13",
+            "strategy_version": "recommendation_replay@1.0",
+            "execution_price": "next_open",
+            "data_manifest": {
+                "factor_snapshot": {
+                    "schema_version": 1,
+                    "records": [{"factor_name": "technical.total_score"}],
+                },
+                "factor_contributions": {
+                    "schema_version": 1,
+                    "by_stock": {
+                        "2330": [{"factor_name": "technical.total_score"}]
+                    },
+                },
             },
         },
-    }
+    )
+    result.attach_replay_parent_id("synthetic-replay-parent")
+    return result
 
 
 def test_single_backtest_save_uses_research_run_service_not_legacy_repo(backtest_view):
@@ -177,7 +189,7 @@ def test_single_backtest_save_rejects_stale_result(backtest_view):
 
 
 def test_recommendation_replay_save_uses_research_run_service(backtest_view):
-    result = _FakePortfolioResult()
+    result = _portfolio_result()
     backtest_view.current_recommendation_portfolio_result = result
     backtest_view.current_recommendation_portfolio_config = {
         "profile_id": "advanced",
@@ -194,6 +206,7 @@ def test_recommendation_replay_save_uses_research_run_service(backtest_view):
     }
     backtest_view._execution_generation = 3
     backtest_view._recommendation_portfolio_result_generation = 3
+    backtest_view._recommendation_portfolio_result_source = "execution"
 
     run_id = backtest_view._save_recommendation_portfolio_to_research_registry(
         "Replay Run",
@@ -217,12 +230,13 @@ def test_recommendation_replay_save_uses_research_run_service(backtest_view):
 
 
 def test_recommendation_replay_updates_current_run_id_only_after_save(backtest_view):
-    result = _FakePortfolioResult()
+    result = _portfolio_result()
     backtest_view.current_recommendation_portfolio_result = result
     backtest_view.current_recommendation_portfolio_config = {"profile_id": "advanced"}
     backtest_view.current_recommendation_portfolio_run_params = {"initial_capital": 1000000}
     backtest_view._execution_generation = 3
     backtest_view._recommendation_portfolio_result_generation = 3
+    backtest_view._recommendation_portfolio_result_source = "execution"
     backtest_view.current_portfolio_run_id = "previous-run"
 
     def assert_save_order(metadata, equity, trades, **kwargs):

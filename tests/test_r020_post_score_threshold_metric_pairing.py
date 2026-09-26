@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from decision_module.recommendation.evaluate import (
@@ -314,9 +315,9 @@ def test_paired_metric_cannot_be_rebound_to_another_rule() -> None:
             ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
             ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
         ),
-        (
-            np.complex64(complex(2.0, float("nan"))),
-            1.0,
+    (
+        np.complex64(complex(2.0, float("nan"))),
+        1.0,
             ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
             ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
         ),
@@ -333,7 +334,12 @@ def test_post_score_projector_pair_matches_supported_native_ordering(
         threshold,
         unit=unit,
     )
-    native = metric >= threshold  # type: ignore[operator]
+    if isinstance(metric, np.complexfloating):
+        # 最終 post-score 過濾操作數來自 Pandas Series，不能用 NumPy scalar
+        # 的 ordering 取代它的 NaN 與 warning 語意。
+        native = bool(pd.Series([metric], dtype=metric.dtype).__ge__(threshold).iloc[0])
+    else:
+        native = metric >= threshold  # type: ignore[operator]
     projected = compare_replay_operands_with_status(
         pair.metric,
         pair.threshold,
@@ -341,6 +347,61 @@ def test_post_score_projector_pair_matches_supported_native_ordering(
     )
     assert pair.metric.domain == pair.threshold.domain
     assert projected.matched is bool(native)
+
+
+@pytest.mark.parametrize(
+    ("metric", "threshold", "operator", "expected_effect"),
+    [
+        (
+            np.complex64(complex(2.0, float("nan"))),
+            1.0,
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            False,
+        ),
+        (
+            np.complex64(complex(1.0, float("nan"))),
+            1.0,
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            True,
+        ),
+        (
+            np.complex64(complex(1.0, float("nan"))),
+            np.float32(1.0),
+            ReplayComparisonOperator.LESS_THAN_OR_EQUAL,
+            True,
+        ),
+        (
+            np.complex64(complex(float("nan"), 2.0)),
+            1,
+            ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
+            True,
+        ),
+    ],
+)
+def test_post_score_complex_pair_matches_pandas_series_nan_and_effect(
+    metric: object,
+    threshold: object,
+    operator: ReplayComparisonOperator,
+    expected_effect: bool,
+) -> None:
+    pair = project_legacy_post_score_comparison_pair(
+        metric,
+        threshold,
+        unit=ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
+    )
+    native_series = pd.Series([metric], dtype=np.asarray([metric]).dtype)
+    if operator is ReplayComparisonOperator.GREATER_THAN_OR_EQUAL:
+        native = native_series >= threshold
+    else:
+        native = native_series <= threshold
+    projected = compare_replay_operands_with_status(
+        pair.metric,
+        pair.threshold,
+        operator=operator,
+    )
+
+    assert projected.matched is bool(native.iloc[0])
+    assert projected.numpy_invalid_effect is expected_effect
 
 
 def test_post_score_projector_keeps_volume_effective_threshold_without_renormalizing() -> None:

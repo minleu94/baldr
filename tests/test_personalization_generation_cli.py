@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from decimal import Decimal
 import json
@@ -17,6 +18,14 @@ from app_module.journal_service import JournalService
 from app_module.personalization_contract import (
     PersonalizationDeliveryScope,
     canonical_payload_hash,
+)
+from app_module.recommendation.ml_postcalibration_handoff import (
+    CalibrationProjectionStatusV1,
+    CalibrationReceiptEventFactsV1,
+    CalibrationReceiptStatusV1,
+    RecommendationPostCalibrationHandoffSinkV1,
+    RecommendationPostCalibrationHandoffV1,
+    encode_candidate_identity_event_json_v1,
 )
 from app_module.v4_evidence_identity import build_strategy_config_identity
 from app_module.v4_evidence_identity import build_recommendation_universe_identity
@@ -147,6 +156,74 @@ def _persist_test_receipt(root: Path, receipt: RecommendationInferenceProjection
     return path
 
 
+def _publish_test_calibration_handoff(
+    producer: Any,
+    receipt: RecommendationInferenceProjectionReceipt,
+    receipt_path: Path,
+) -> None:
+    """依本 fixture 實際寫入及精確讀回的 receipt 發布 typed facts。"""
+
+    sink = getattr(producer, "_r026_post_calibration_handoff_sink", None)
+    if type(sink) is not RecommendationPostCalibrationHandoffSinkV1:
+        # 舊版單獨時鐘測試未建立 execution sink，保留其原相容路徑。
+        return
+    payload = receipt.payload
+    candidate = payload["candidate_identity"]
+    inference = payload["inference_provenance"]
+    projections = payload["projections"]
+    persisted_bytes = receipt_path.read_bytes()
+    expected_bytes = (
+        json.dumps(receipt.to_dict(), ensure_ascii=False, sort_keys=True, indent=2)
+        + "\n"
+    ).encode("utf-8")
+    assert persisted_bytes == expected_bytes
+    assert json.loads(persisted_bytes) == receipt.to_dict()
+    receipt_created_at = "2025-02-10T09:01:00.000000+00:00"
+    sink.publish(
+        RecommendationPostCalibrationHandoffV1(
+            consumer_configured=(
+                getattr(producer, "calibration_consumer", None) is not None
+            ),
+            attempted=True,
+            projection_status=CalibrationProjectionStatusV1.ACTIVE_CANDIDATE,
+            receipt_status=CalibrationReceiptStatusV1.PERSISTED,
+            receipt_event=CalibrationReceiptEventFactsV1(
+                payload_present=True,
+                attempted=True,
+                persisted=True,
+                readback_verified=True,
+                identity_verified=True,
+                path=str(receipt_path),
+                receipt_hash=receipt.receipt_hash,
+                receipt_created_at=receipt_created_at,
+                result_id=str(payload.get("result_id") or ""),
+                decision_date=str(payload.get("decision_date") or ""),
+                candidate_id=str(candidate.get("candidate_id") or ""),
+                candidate_identity_json=encode_candidate_identity_event_json_v1(
+                    candidate
+                ),
+                cost_scenario_hash=str(payload.get("cost_scenario_hash") or ""),
+                cost_scenario_id=str(inference.get("cost_scenario_id") or ""),
+                projected_stock_codes=tuple(
+                    str(row.get("stock_code") or "")
+                    for row in projections
+                    if isinstance(row, Mapping)
+                ),
+                projection_rows_sha256=str(
+                    payload.get("projection_rows_sha256") or ""
+                ),
+                inference_source_hash=str(
+                    inference.get("inference_source_hash") or ""
+                ),
+                inference_pit_hash=str(inference.get("inference_pit_hash") or ""),
+                feature_rows_sha256=str(
+                    inference.get("feature_rows_sha256") or ""
+                ),
+            ),
+        )
+    )
+
+
 class _FakeRecommendationProducer:
     calls = 0
 
@@ -170,7 +247,7 @@ class _FakeRecommendationProducer:
         self.last_exclusion_quality = "observed"
         self.last_exclusion_warnings_json: list[str] = []
         self._personalization_execution_clocks: dict[str, str] = {}
-        self.calibration_consumer = None
+        self.calibration_consumer = object()
         self._r011_last_state_lock = None
 
     def _reset_negative_evidence_buffers(self) -> None:
@@ -206,6 +283,7 @@ class _FakeRecommendationProducer:
             self.config.output_root,
             receipt,
         )
+        _publish_test_calibration_handoff(self, receipt, receipt_path)
         type(self).calls += 1
         resolved_as_of = as_of_date or "2025-02-10"
         temporal_mode = (
@@ -300,18 +378,6 @@ class _FakeRecommendationProducer:
                 "warnings": [],
             }
         ]
-        capture = getattr(self, "_r011_invocation_capture", None)
-        if isinstance(capture, dict):
-            capture["receipt"] = {
-                "attempted": True,
-                "persisted": True,
-                "readback_verified": True,
-                "identity_verified": True,
-                "path": str(receipt_path),
-                "receipt_hash": receipt.receipt_hash,
-                "receipt_created_at": "2025-02-10T09:01:00.000000+00:00",
-                "receipt_payload": dict(receipt.payload),
-            }
         return [
             RecommendationDTO(
                 stock_code=STOCK_CODE,

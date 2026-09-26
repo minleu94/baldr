@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 import json
 from pathlib import Path
 import sqlite3
 
+import pandas as pd
 import pytest
 
 from scripts import repair_formal_market_data as repair
 from data_module.formal_market_revision import RECEIPT_DIR, assert_market_revision_safe, validate_market_replacement
 from data_module.ml_daily_price_revision_gate import check_daily_price_source_revision, DailyPriceSourceRevisionError
 from data_module.ml_restatement_official_market import REPORT_FIELDS, REPORT_PATHS, file_sha256, parse_monthly_report
+from app_module.update_service import UpdateService
+from data_module.config import TWStockConfig
 
 
 @pytest.fixture
@@ -159,6 +163,94 @@ def test_market_reimport_and_missing_history_protection(scenario):
     with pytest.raises(ValueError, match='非交易日'):
         validate_market_replacement(db, [{**rows[0], '日期': '20240103'}])
     validate_market_replacement(db, [{'日期': '20240202', '收盤價': 120}])
+
+
+def _taiex_publication_config(db: Path, csv_path: Path, output_root: Path) -> TWStockConfig:
+    config = TWStockConfig(data_root=db.parent.parent, output_root=output_root, profile='prod')
+    config.market_index_file = csv_path
+    return config
+
+
+def test_taiex_specialized_publisher_passes_official_revision_guard(scenario, tmp_path):
+    db, csv_path, plan, _, _, _ = scenario
+    perform(scenario)
+    config = _taiex_publication_config(db, csv_path, tmp_path / 'output')
+
+    result = UpdateService(config).publish_taiex_market_index(
+        capture_manifests=[], market_update_result={'success': True},
+    )
+
+    assert result['success'] is True
+    assert result['row_evidence']['status'] == 'unknown'
+    assert result['row_evidence']['reason_code'] == 'no_explicit_capture'
+    with repair.readonly(db) as connection:
+        expected_target = {
+            row['日期']: row for row in plan['after']['rows'] if row['指數名稱'] == 'TAIEX'
+        }
+        actual_target = connection.execute(
+            'SELECT 日期, 指數名稱, 開盤價, 最高價, 最低價, 收盤價, 收盤指數, 成交量 '
+            'FROM market_indices WHERE 指數名稱=? ORDER BY 日期', ('TAIEX',)
+        ).fetchall()
+        assert len(actual_target) == len(expected_target)
+        for actual in actual_target:
+            day, name, opening, high, low, close, close_index, volume = actual
+            expected = expected_target[day]
+            assert name == 'TAIEX'
+            for actual_value, column in (
+                (opening, '開盤價'), (high, '最高價'), (low, '最低價'),
+                (close, '收盤價'), (close_index, '收盤指數'), (volume, '成交量'),
+            ):
+                assert Decimal(str(actual_value)) == Decimal(str(expected[column]))
+        assert connection.execute(
+            "SELECT 收盤價 FROM market_indices WHERE 指數名稱='OTHER' AND 日期='20240102'"
+        ).fetchone() == (1,)
+
+
+def test_taiex_specialized_publisher_rejects_stale_row_before_mutation(scenario, tmp_path):
+    db, csv_path, _, _, _, _ = scenario
+    perform(scenario)
+    config = _taiex_publication_config(db, csv_path, tmp_path / 'output')
+    with repair.readonly(db) as connection:
+        before_db = repair.snapshot(connection)
+    before_csv = csv_path.read_bytes()
+    stale_csv = pd.read_csv(csv_path, encoding='utf-8-sig', dtype=str)
+    stale_csv.loc[stale_csv['日期'] == '2024-01-02', '收盤價'] = '999'
+    stale_csv.to_csv(csv_path, index=False, encoding='utf-8-sig')
+    tampered_csv = csv_path.read_bytes()
+
+    result = UpdateService(config).publish_taiex_market_index(
+        capture_manifests=[], market_update_result={'success': True},
+    )
+
+    assert result['success'] is False
+    assert result['row_evidence']['reason_code'] == 'formal_market_guard_rejected'
+    assert csv_path.read_bytes() == tampered_csv
+    with repair.readonly(db) as connection:
+        assert repair.snapshot(connection) == before_db
+    assert before_csv != tampered_csv
+
+
+def test_taiex_specialized_publisher_rejects_missing_protected_column_before_mutation(
+    scenario, tmp_path,
+):
+    db, csv_path, _, _, _, _ = scenario
+    perform(scenario)
+    config = _taiex_publication_config(db, csv_path, tmp_path / 'output')
+    with repair.readonly(db) as connection:
+        before_db = repair.snapshot(connection)
+    incomplete = pd.read_csv(csv_path, encoding='utf-8-sig', dtype=str).drop(columns=['最高價'])
+    incomplete.to_csv(csv_path, index=False, encoding='utf-8-sig')
+    before_publish_csv = csv_path.read_bytes()
+
+    result = UpdateService(config).publish_taiex_market_index(
+        capture_manifests=[], market_update_result={'success': True},
+    )
+
+    assert result['success'] is False
+    assert result['row_evidence']['reason_code'] == 'formal_market_guard_rejected'
+    assert csv_path.read_bytes() == before_publish_csv
+    with repair.readonly(db) as connection:
+        assert repair.snapshot(connection) == before_db
 
 
 def test_tampered_marker_cannot_shift_historical_hold(scenario):

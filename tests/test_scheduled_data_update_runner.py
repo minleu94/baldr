@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timezone
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from scripts.batch_update_daily_data import _format_update_diagnostic
@@ -77,6 +78,40 @@ def test_scheduled_target_weekday_uses_today_on_weekday() -> None:
     assert _scheduled_target_weekday(date(2026, 7, 3)) == date(2026, 7, 3)
 
 
+def test_market_run_passes_one_capture_sink_to_specialized_publisher() -> None:
+    capture = Path("C:/tmp/explicit-capture/manifest.json")
+    calls: list[tuple[str, object]] = []
+
+    class _Service:
+        def update_market(self, start_date, end_date, *, capture_manifests):
+            calls.append(("update", capture_manifests))
+            capture_manifests.append(capture)
+            return {"success": True, "updated_dates": [end_date]}
+
+        def publish_taiex_market_index(self, *, capture_manifests, market_update_result):
+            calls.append(("publish", (capture_manifests, market_update_result)))
+            return {"success": True, "row_evidence": {"status": "captured"}}
+
+        def sync_source_to_sqlite(self, source):
+            raise AssertionError(f"generic sync must not be used: {source}")
+
+    service = _Service()
+    capture_manifests: list[Path] = []
+    update_result = runner._update_market_with_capture(
+        service, "2026-05-28", "2026-05-28", capture_manifests,
+    )
+    publish_result = runner._sync_market_index_for_run(
+        service,
+        capture_manifests=capture_manifests,
+        market_update_result=update_result,
+    )
+
+    assert publish_result["success"] is True
+    assert calls[0] == ("update", capture_manifests)
+    assert calls[1] == ("publish", (capture_manifests, update_result))
+    assert capture_manifests == [capture]
+
+
 def test_scheduled_target_weekday_falls_back_to_friday_on_weekend() -> None:
     assert _scheduled_target_weekday(date(2026, 7, 4)) == date(2026, 7, 3)
     assert _scheduled_target_weekday(date(2026, 7, 5)) == date(2026, 7, 3)
@@ -128,6 +163,7 @@ def test_technical_is_not_current_when_latest_date_coverage_lags() -> None:
 
     assert current is False
     assert "1/2" in message
+
 
 
 def test_quick_update_publishes_running_before_work_and_terminal_metadata(

@@ -1256,7 +1256,9 @@ class PortfolioView(QWidget):
             self.portfolio_advanced_scroll.updateGeometry()
             self.portfolio_advanced_scroll.widget().adjustSize()
             if self.width() > 0 and not self._portfolio_splitter_user_resized:
-                QTimer.singleShot(0, self._restore_portfolio_splitter_default_sizes)
+                QTimer.singleShot(
+                    0, self, self._restore_portfolio_splitter_default_sizes
+                )
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)

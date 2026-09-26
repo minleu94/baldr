@@ -33,6 +33,10 @@ from app_module.recommendation.replay_lineage import ReplayLineageSidecarV1
 from app_module.recommendation.replay_lineage_service import (
     persist_replay_lineage_children,
 )
+from app_module.research_run_repository import (
+    ResearchRunConflictError,
+    ResearchRunRepository,
+)
 from app_module.recommendation.portfolio_result_reader import (
     RecommendationPortfolioResultReadbackError,
     RecommendationPortfolioResultReader,
@@ -53,7 +57,7 @@ from ui_qt.views.backtest.research_run_metadata import (
 
 _FIRST_DATE = date(2026, 9, 22)
 _SECOND_DATE = date(2026, 9, 23)
-_PROCESS_EXIT_CODES = (71, 72, 73)
+_PROCESS_EXIT_CODES = (71, 72, 73, 74, 75, 76, 77, 78)
 
 
 def _config(root: Path) -> TWStockConfig:
@@ -264,6 +268,79 @@ def _worker_exit_after_files_ready(
     os._exit(93)
 
 
+def _worker_exit_at_portfolio_state(
+    root_text: str,
+    parent_result_id: str,
+    run_id: str,
+    boundary: str,
+    exit_code: int,
+) -> None:
+    """在一個 distinct marked-portfolio 持久狀態後硬退出。"""
+
+    root = Path(root_text)
+    result = _portfolio(parent_result_id)
+    sidecar = persist_replay_lineage_children(result, _persistence(root))
+    service = ResearchRunService(_config(root))
+    paths = service._paths_for(run_id)
+
+    if boundary == "after_portfolio_finalize":
+        original_finalize = ResearchRunRepository.finalize_portfolio_result_staging
+
+        def finalize_then_exit(self, *args, **kwargs):
+            original_finalize(self, *args, **kwargs)
+            os._exit(exit_code)
+
+        setattr(
+            ResearchRunRepository,
+            "finalize_portfolio_result_staging",
+            finalize_then_exit,
+        )
+    elif boundary in {
+        "after_equity_publish",
+        "after_trades_publish",
+        "after_portfolio_result_publish",
+    }:
+        target_key = {
+            "after_equity_publish": "equity_final",
+            "after_trades_publish": "trades_final",
+            "after_portfolio_result_publish": "portfolio_result_final",
+        }[boundary]
+        target_path = paths[target_key]
+        original_publish = ResearchRunService._publish_bytes_create_only
+
+        def publish_then_exit(self, temp_path, final_path, *, expected_hash):
+            original_publish(
+                self, temp_path, final_path, expected_hash=expected_hash
+            )
+            if final_path == target_path:
+                os._exit(exit_code)
+
+        setattr(
+            ResearchRunService,
+            "_publish_bytes_create_only",
+            publish_then_exit,
+        )
+    elif boundary == "after_replay_lineage_publish_before_commit":
+        target_path = paths["replay_lineage_final"]
+        original_publish_lineage = ResearchRunService._publish_replay_lineage
+
+        def publish_lineage_then_exit(self, metadata, temp_path, final_path):
+            original_publish_lineage(self, metadata, temp_path, final_path)
+            if final_path == target_path:
+                os._exit(exit_code)
+
+        setattr(
+            ResearchRunService,
+            "_publish_replay_lineage",
+            publish_lineage_then_exit,
+        )
+    else:
+        os._exit(94)
+
+    _save_portfolio(service, result, sidecar, run_id)
+    os._exit(95)
+
+
 def _spawn_and_expect_exit(
     target,
     args: tuple[object, ...],
@@ -439,6 +516,161 @@ def test_files_ready_process_exit_reconciles_and_stage_c_restarts(
     assert type(loaded) is RecommendationPortfolioBacktestResultDTO
     assert [_execution_for_snapshot(snapshot).result_id for snapshot in loaded.snapshots] == (
         child_ids
+    )
+
+
+@pytest.mark.parametrize(
+    ("boundary", "exit_code", "expected_state", "expected_final_keys"),
+    [
+        pytest.param(
+            "after_portfolio_finalize",
+            _PROCESS_EXIT_CODES[3],
+            "failed",
+            (),
+            id="finalized-descriptor-still-staging",
+        ),
+        pytest.param(
+            "after_equity_publish",
+            _PROCESS_EXIT_CODES[4],
+            "committed",
+            ("equity_final",),
+            id="equity-only-published",
+        ),
+        pytest.param(
+            "after_trades_publish",
+            _PROCESS_EXIT_CODES[5],
+            "committed",
+            ("equity_final", "trades_final"),
+            id="equity-and-trades-published",
+        ),
+        pytest.param(
+            "after_portfolio_result_publish",
+            _PROCESS_EXIT_CODES[6],
+            "committed",
+            ("equity_final", "trades_final", "portfolio_result_final"),
+            id="portfolio-sidecar-published",
+        ),
+        pytest.param(
+            "after_replay_lineage_publish_before_commit",
+            _PROCESS_EXIT_CODES[7],
+            "committed",
+            (
+                "equity_final",
+                "trades_final",
+                "portfolio_result_final",
+                "replay_lineage_final",
+            ),
+            id="all-files-published-before-commit",
+        ),
+    ],
+)
+def test_portfolio_registry_crash_windows_reconcile_or_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+    exit_code: int,
+    expected_state: str,
+    expected_final_keys: tuple[str, ...],
+) -> None:
+    monkeypatch.setenv("PROFILE", "test")
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("OUTPUT_ROOT", str(tmp_path / "output"))
+    parent_id = f"parent-r020-{boundary}"
+    run_id = f"registry-r020-{boundary}"
+
+    _spawn_and_expect_exit(
+        _worker_exit_at_portfolio_state,
+        (str(tmp_path), parent_id, run_id, boundary),
+        exit_code,
+    )
+
+    service = ResearchRunService(_config(tmp_path))
+    persistence = _persistence(tmp_path)
+    row = service.repository.get_raw_metadata_row(run_id)
+    assert row is not None
+    expected_pre_reconcile_state = (
+        "staging" if boundary == "after_portfolio_finalize" else "files_ready"
+    )
+    assert (row["storage_state"], row["integrity_status"]) == (
+        expected_pre_reconcile_state,
+        "pending",
+    )
+
+    paths = service._paths_for(run_id)
+    final_keys = (
+        "equity_final",
+        "trades_final",
+        "portfolio_result_final",
+        "replay_lineage_final",
+    )
+    assert set(expected_final_keys).issubset(final_keys)
+    for key in final_keys:
+        assert paths[key].is_file() == (key in expected_final_keys)
+
+    result = _portfolio(parent_id)
+    child_ids = [
+        _execution_for_snapshot(snapshot).result_id for snapshot in result.snapshots
+    ]
+    store = _artifact_store(persistence)
+    child_bytes_before = {
+        child_id: store.read_artifact(child_id) for child_id in child_ids
+    }
+    assert all(payload is not None for payload in child_bytes_before.values())
+
+    service.reconcile_incomplete_saves()
+    recovered_row = service.repository.get_raw_metadata_row(run_id)
+    assert recovered_row is not None
+    assert recovered_row["storage_state"] == expected_state
+    assert recovered_row["integrity_status"] == (
+        "failed" if expected_state == "failed" else "valid"
+    )
+    assert {child_id: store.read_artifact(child_id) for child_id in child_ids} == (
+        child_bytes_before
+    )
+
+    reader = RecommendationPortfolioResultReader(service, persistence)
+    if expected_state == "failed":
+        with pytest.raises(RecommendationPortfolioResultReadbackError):
+            reader.read(run_id)
+        return
+
+    loaded = reader.read(run_id)
+    assert type(loaded) is RecommendationPortfolioBacktestResultDTO
+    assert loaded.to_dict() == result.to_dict()
+    assert [
+        _execution_for_snapshot(snapshot).result_id for snapshot in loaded.snapshots
+    ] == child_ids
+    published_bytes = {key: paths[key].read_bytes() for key in final_keys}
+
+    sidecar = persist_replay_lineage_children(result, persistence)
+    _save_portfolio(service, result, sidecar, run_id)
+    assert {key: paths[key].read_bytes() for key in final_keys} == published_bytes
+    assert {child_id: store.read_artifact(child_id) for child_id in child_ids} == (
+        child_bytes_before
+    )
+
+    conflicting_result = _portfolio(parent_id)
+    conflicting_result.summary["total_return"] = "0.02"
+    conflicting_sidecar = persist_replay_lineage_children(
+        conflicting_result, persistence
+    )
+    with pytest.raises(ResearchRunConflictError):
+        _save_portfolio(service, conflicting_result, conflicting_sidecar, run_id)
+    assert {key: paths[key].read_bytes() for key in final_keys} == published_bytes
+    assert {child_id: store.read_artifact(child_id) for child_id in child_ids} == (
+        child_bytes_before
+    )
+
+    changed_child = _execution(
+        parent_id,
+        _FIRST_DATE,
+        result_id=child_ids[0],
+        score=Decimal("82.6"),
+    )
+    with pytest.raises(ExecutionIdentityConflict):
+        persistence.save(changed_child)
+    assert {child_id: store.read_artifact(child_id) for child_id in child_ids} == (
+        child_bytes_before
     )
 
 

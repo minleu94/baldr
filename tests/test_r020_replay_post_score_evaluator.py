@@ -6,10 +6,11 @@ from decimal import Decimal
 
 import pytest
 import numpy as np
+import pandas as pd
 
 from app_module.recommendation.replay_numeric_projection import (
     ReplayThresholdUnit,
-    project_legacy_comparison_pair,
+    project_legacy_post_score_comparison_pair,
 )
 from decision_module.recommendation.contracts import RecommendationItem
 from decision_module.recommendation.evaluate import (
@@ -256,23 +257,23 @@ def test_unordered_metric_rejects_inclusive_price_and_volume_rules() -> None:
 
 
 @pytest.mark.parametrize(
-    ("real_component", "expected_native", "expected_rule", "expected_reason"),
+    ("real_component", "expected_effect"),
     [
-        (2, True, ReplayPostScoreRuleDispositionV1.PASSED, "passed"),
-        (1, False, ReplayPostScoreRuleDispositionV1.REJECTED, "unordered_value"),
+        (2, False),
+        (1, True),
     ],
 )
-def test_numpy_complex_nan_imaginary_respects_legacy_real_first_order(
+def test_post_score_complex_nan_uses_pandas_series_unordered_policy(
     real_component: int,
-    expected_native: bool,
-    expected_rule: ReplayPostScoreRuleDispositionV1,
-    expected_reason: str,
+    expected_effect: bool,
 ) -> None:
     evaluator, scored, request = _scored()
     legacy_metric = np.complex64(complex(real_component, float("nan")))
     legacy_threshold = 1.0
-    native_result = bool(legacy_metric >= legacy_threshold)
-    pair = project_legacy_comparison_pair(
+    native_result = bool(
+        pd.Series([legacy_metric], dtype=np.complex64).__ge__(legacy_threshold).iloc[0]
+    )
+    pair = project_legacy_post_score_comparison_pair(
         legacy_metric,
         legacy_threshold,
         unit=ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
@@ -282,7 +283,7 @@ def test_numpy_complex_nan_imaginary_respects_legacy_real_first_order(
         pair.threshold,
         operator=ReplayComparisonOperator.GREATER_THAN_OR_EQUAL,
     )
-    assert native_result is expected_native
+    assert native_result is False
     assert shared_result is native_result
 
     facts = replace(
@@ -301,8 +302,41 @@ def test_numpy_complex_nan_imaginary_respects_legacy_real_first_order(
         ),
     )
 
-    assert result.rules[0].disposition is expected_rule
-    assert result.rules[0].reason_code == expected_reason
+    assert result.rules[0].disposition is ReplayPostScoreRuleDispositionV1.REJECTED
+    assert result.rules[0].reason_code == "unordered_value"
+    assert bool(result.rules[0].effects) is expected_effect
+
+
+def test_post_score_complex_nan_max_rule_returns_less_equal_effect_fact() -> None:
+    evaluator, scored, request = _scored()
+    metric = np.complex64(complex(1.0, float("nan")))
+    pair = project_legacy_post_score_comparison_pair(
+        metric,
+        1.0,
+        unit=ReplayThresholdUnit.PRICE_CHANGE_PERCENT,
+    )
+    facts = replace(
+        _post_facts(request),
+        price_change=ReplayPostScoreMetricFactV1(
+            status=ReplayMetricStatus.AVAILABLE,
+            value=pair.metric,
+        ),
+    )
+
+    result = evaluator.evaluate_replay_post_score(
+        scored,
+        facts,
+        _policy(
+            request.invocation_id,
+            price_change_max=ReplayThreshold.enabled(pair.threshold),
+        ),
+    )
+
+    assert result.rules[0].filter_id is ReplayPostScoreRuleV1.PRICE_CHANGE_MAX
+    assert result.rules[0].disposition is ReplayPostScoreRuleDispositionV1.REJECTED
+    assert len(result.rules[0].effects) == 1
+    assert result.rules[0].effects[0].operator is ReplayComparisonOperator.LESS_THAN_OR_EQUAL
+    assert result.rules[0].effects[0].message == "invalid value encountered in less_equal"
 
 
 def test_missing_metric_column_skips_even_unsupported_threshold() -> None:

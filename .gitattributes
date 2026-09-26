@@ -1,1 +1,6 @@
 *.cmd text eol=crlf
+tests/fixtures/c1_cross_boundary/ab_interleave_scenarios.json -text
+tests/fixtures/c1_consumer_readiness/r014_saved_execution.json -text
+tests/fixtures/c1_consumer_readiness/r016_legacy_run_zh.json -text
+tests/fixtures/c1_consumer_readiness/ml_abi_manifest.json -text
+tests/fixtures/c1_replay_bridge/r017_stored_annotation_snapshot.json -text

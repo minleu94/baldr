@@ -52,14 +52,14 @@ def test_numpy_weak_promotion_keeps_effective_real_domain() -> None:
     assert pair.threshold.real.numerator is not None
 
 
-def test_numpy_complex_pair_preserves_non_orderable_domain() -> None:
+def test_numpy_complex_pair_uses_pandas_series_domain() -> None:
     pair = project_legacy_post_score_comparison_pair(
         np.complex64(1 + 2j),
         2.0,
         unit=_UNIT,
     )
 
-    assert pair.metric.domain.kind is ReplayComparisonDomainKind.NUMPY_COMPLEX
+    assert pair.metric.domain.kind is ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES
     assert pair.threshold.domain == pair.metric.domain
     assert pair.metric.origin.kind is ReplayNumericOriginKind.NUMPY_COMPLEX
     assert pair.threshold.origin.kind is ReplayNumericOriginKind.PYTHON_FLOAT

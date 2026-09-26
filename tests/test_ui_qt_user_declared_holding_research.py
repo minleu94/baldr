@@ -10,8 +10,8 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QDate
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QCoreApplication, QDate, QEvent
+from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtTest import QTest
 
 from app_module.user_declared_holding_research import (
@@ -19,6 +19,7 @@ from app_module.user_declared_holding_research import (
     MarketObservation,
     RESEARCH_ACTION_REDUCE,
     UserDeclaredHoldingDraft,
+    UserDeclaredHoldingResearchReadModel,
     UserDeclaredHoldingResearchService,
     UserDeclaredHoldingResearchStore,
 )
@@ -279,3 +280,61 @@ def test_user_declared_widget_cancels_slow_refresh_and_closes_naturally(tmp_path
         widget.close()
     finally:
         _close_widget(widget)
+
+
+def test_parent_destruction_drops_late_research_worker_callback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _app()
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+    applied_models = []
+
+    class BarrierService:
+        def read_research(
+            self,
+            *,
+            evaluation_date,
+            evaluated_at,
+            portfolio_id,
+            market_source,
+            condition_source,
+            cancel_callback=None,
+        ):
+            worker_started.set()
+            if not release_worker.wait(timeout=5):
+                raise TimeoutError("測試 barrier 未釋放")
+            return UserDeclaredHoldingResearchReadModel(
+                evaluation_date=evaluation_date,
+                evaluated_at=evaluated_at.isoformat(),
+                status="empty",
+                rows=(),
+            )
+
+    monkeypatch.setattr(
+        UserDeclaredHoldingResearchWidget,
+        "_apply_research_read_model",
+        lambda self, model, selection: applied_models.append((model, selection)),
+    )
+    parent = QWidget()
+    widget = UserDeclaredHoldingResearchWidget(
+        BarrierService(),
+        now_provider=lambda: NOW,
+        parent=parent,
+    )
+    worker = widget._refresh_worker
+    assert worker is not None
+
+    try:
+        assert worker_started.wait(timeout=2)
+        parent.deleteLater()
+        QCoreApplication.sendPostedEvents(parent, QEvent.DeferredDelete)
+        release_worker.set()
+        assert worker.wait(5000)
+        _app().processEvents()
+
+        assert applied_models == []
+    finally:
+        release_worker.set()
+        worker.wait(5000)
+        _app().processEvents()

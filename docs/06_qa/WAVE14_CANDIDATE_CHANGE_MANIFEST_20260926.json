@@ -1,0 +1,1160 @@
+{
+  "schema": "wave14-candidate-change-manifest.v1",
+  "captured_at_utc": "2026-09-26T08:18:10Z",
+  "candidate_worktree": "C:\\Users\\archi\\.codex\\worktrees\\wave14-closeout\\technical_analysis",
+  "candidate_head": "bec423eef1d9e9d4a32410dac96cd233304489aa",
+  "assembly_baseline": {
+    "source": "docs/06_qa/BALDR_PRODUCT_INTEGRATION_BASELINE_20260925.json",
+    "source_sha256": "3A560B11898F279115E30CAA44EF3C9D65C63CD7E83338D733A3A0126D2E8BC5",
+    "source_captured_at_local": "2026-09-25T20:41:35.913478-07:00",
+    "tracked_dirty_paths": 50,
+    "eligible_untracked_paths": 68,
+    "assembled_path_count": 118,
+    "exclusions": [
+      "all .tmp_* QA/temp roots",
+      "all .obsidian contents",
+      "Untitled.canvas",
+      "product slices added after the frozen baseline"
+    ],
+    "files": [
+      {
+        "baseline_status": " M",
+        "path": "app_module/recommendation/execute.py",
+        "bytes": 56571,
+        "sha256": "401124F45A5E00302EF650F8BB501B48CA4474A81FA2C87AF0730095087E263F"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/historical_snapshot_custody.py",
+        "bytes": 18014,
+        "sha256": "FC00C47719847CEBC25B0DCA7AF25F2EC51A4AB49C182FFA5954FC244373EA51"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/live_source_identity.py",
+        "bytes": 9999,
+        "sha256": "3634E4E4FEE5D98B223CFA8598CBB47C14BB0009DDA9A747A48180AC31B2D2DE"
+      },
+      {
+        "baseline_status": " M",
+        "path": "app_module/recommendation/ml_adapter.py",
+        "bytes": 2730,
+        "sha256": "34B90885A0607050A788240CF202548276BC95ACEE81DF2F35E639F13D77B156"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/ml_postcalibration_handoff.py",
+        "bytes": 15498,
+        "sha256": "22AF958D1978DCADFDE52A9110CB0FA3093D80138589856AD11AE9088F21C044"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/ml_preparation_facts.py",
+        "bytes": 22658,
+        "sha256": "06752E976C340CDEABD9DC89B2E655AD890A60B5EE03F0A99FFA4820CF517151"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/model_resolution_facts.py",
+        "bytes": 41550,
+        "sha256": "5898378B4EB6FE0038DDC750607B6DB183F7E48767A3255684A5973CE2040C59"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/prepared_runtime_input.py",
+        "bytes": 29015,
+        "sha256": "3855FC9C42E3E2D3962999F1E20FBAD29FFEB1029716E72BF43DCFDFA09C53F6"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/prepared_runtime_preparation.py",
+        "bytes": 13000,
+        "sha256": "C96F6D064A38370BAE4084B3B26EBE909438FA5E708A494F0B73492C93BAA01D"
+      },
+      {
+        "baseline_status": "??",
+        "path": "app_module/recommendation/prepared_runtime_projector.py",
+        "bytes": 10037,
+        "sha256": "D2E151403B838FB4D77DC918E72ACC7B7C95C972EAB79A9F76C32A17267B69AA"
+      },
+      {
+        "baseline_status": " M",
+        "path": "app_module/recommendation/replay_numeric_projection.py",
+        "bytes": 20170,
+        "sha256": "A32AB4F23E0C16B3C768DB801BEF7B64793E7D81D25ADDA48FB74A88A9D49381"
+      },
+      {
+        "baseline_status": " M",
+        "path": "app_module/recommendation_calibration_consumer.py",
+        "bytes": 167471,
+        "sha256": "6D4747C588DAAB3890B6562A47F517EECB8E068646FEFA21A33A9A848D042DDE"
+      },
+      {
+        "baseline_status": " M",
+        "path": "app_module/recommendation_dataframe_provider.py",
+        "bytes": 63102,
+        "sha256": "E30BCF375C1256877F79E15FC87B4DECFDA83F9DB0E36608BD11A79BE44412EB"
+      },
+      {
+        "baseline_status": " M",
+        "path": "app_module/recommendation_replay_service.py",
+        "bytes": 15013,
+        "sha256": "4B2897DB1CED80302AA0F1B706193C5FBE3E254CABEDFCD348008450A9A79903"
+      },
+      {
+        "baseline_status": " M",
+        "path": "app_module/recommendation_service.py",
+        "bytes": 144194,
+        "sha256": "5AEF66DC6993B5967AFAE17692C0AD342B7880E26813B6A681F50A153F9A0381"
+      },
+      {
+        "baseline_status": " M",
+        "path": "app_module/update_service.py",
+        "bytes": 268823,
+        "sha256": "999AA0B014CAADE4DACCB2CAAA03A2A7BB667EA9E1F02E0C7525AF20A9B6B9AF"
+      },
+      {
+        "baseline_status": " M",
+        "path": "data_module/data_loader.py",
+        "bytes": 57612,
+        "sha256": "153E59ADAD0C7C9259AE5A8594549B257401EFAD26FB4E0FB9EAEE76F86FE959"
+      },
+      {
+        "baseline_status": " M",
+        "path": "data_module/ml_historical_snapshot_provider.py",
+        "bytes": 30666,
+        "sha256": "1BE1E2F37AE49B9753D52ED5344AD7C1363F165E7E926B8E8616DBA4D00208D7"
+      },
+      {
+        "baseline_status": " M",
+        "path": "data_module/official_market_daily.py",
+        "bytes": 11521,
+        "sha256": "F8C1C3BB6F52F60E5ACF0E70F409147BA2BD941005D085FE0DF0DB0FA59ACA0E"
+      },
+      {
+        "baseline_status": "??",
+        "path": "data_module/taiex_market_index_publication.py",
+        "bytes": 34986,
+        "sha256": "80ECF0BBB74FAE3FF277793BF623CFA54AA5D3A8EC4355743F75AD4B12DB8593"
+      },
+      {
+        "baseline_status": "??",
+        "path": "data_module/twse_daily_price_publication.py",
+        "bytes": 43330,
+        "sha256": "466CC7C1E22F37C2D83E516BA3F9D3E6A3C4BCA3B37DB72EF3363636F7F40EDD"
+      },
+      {
+        "baseline_status": " M",
+        "path": "decision_module/recommendation/evaluate.py",
+        "bytes": 188297,
+        "sha256": "588569069C44C2B4AFE3608BB44EE98FDA2348416575C9A6E6CA441C6DDE9AA9"
+      },
+      {
+        "baseline_status": " M",
+        "path": "decision_module/recommendation/replay_prefilter.py",
+        "bytes": 61569,
+        "sha256": "B7B7AF5FA0359523FCADD4547A0C23D59A981F961AD8304ABD603C85BCB795FF"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/00_core/DOCUMENTATION_INDEX.md",
+        "bytes": 146685,
+        "sha256": "65C711B62A9F25CAD81A5A09CDEC6D5C26EDC10205E3293F9791A7313327DD21"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "bytes": 82826,
+        "sha256": "1CB3F417B1DA031D8E4FB6805B4BB5D7AA4E023F6CE9FD872F283F28A1E5D9AA"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/system_architecture.md",
+        "bytes": 153856,
+        "sha256": "F51AE8C36B472B3DF6FBC4ABA1AA005066D1E49E3002EFFF8251B2CB212DE6CE"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md",
+        "bytes": 47120,
+        "sha256": "AF2DAB4E28BF5DD4885A808D996860802B976018B967C34BDB578E02D131FA7F"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md",
+        "bytes": 148842,
+        "sha256": "6A98C4AD2FD37E5D73AAA76DA32E2D24A89ECD2CC8C12FD3210254F9C0940F23"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md",
+        "bytes": 130032,
+        "sha256": "0A0A07C24D10E036F7DACDEBD36001CB0ABEA3AD21B899CC5870AA207E80229C"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_LEGACY_SHADOW_RUNTIME_IDENTITY_DESIGN_ADDENDUM_20260925.md",
+        "bytes": 12653,
+        "sha256": "14520942425802EB07067D7DAB8ADC2BD50613E676ED0B626316F5B57A91F577"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_PREPARED_RUNTIME_INPUT_DECISION_ADDENDUM_20260924.md",
+        "bytes": 6736,
+        "sha256": "8382A89CB2AB9005CB0759024E918DDB92CFDAB3D972EE6C091DC9F866BE648B"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md",
+        "bytes": 8181,
+        "sha256": "45013F79B228AA2FCCEF14592857B6A6138DD644A264998889061CAF7C79DC7D"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_RISK_REGISTER.md",
+        "bytes": 16276,
+        "sha256": "D0E4C5FE021A8D1D7605FD8F66A9E4D4868EF6A465FFE581C52549DA159499D3"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/R026.md",
+        "bytes": 9186,
+        "sha256": "2649F8971CC6F90F4D806F9C68BA9B31C8F296E457284700A8DC94F825264021"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/R029.md",
+        "bytes": 6751,
+        "sha256": "3961E5B18947CEAD63A927F6DBABF81D529298F9EC4037959B1202DC1A3E4D38"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/01_architecture/target_system_architecture.md",
+        "bytes": 37093,
+        "sha256": "EA15E25AB23D4C674EE2DFED25D2C48E09272642DE318D16E7CCBD7AC2482A30"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C2_CURRENT_UNION_PYTEST_BASELINE_20260925.md",
+        "bytes": 5420,
+        "sha256": "DCCDF2E8DFD03CD9EA763566BCB1EC3445FBBCCA6614FD7BD6ACE14DA53C8A9D"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C2_MANDATORY_UI_STATIC_GATES_20260925.md",
+        "bytes": 8276,
+        "sha256": "24050D7D163B936A76D838AA1792D74B70D89C588FBBCC0FADC3AE136C175EE7"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C2_NON_ML_CONSUMER_UNION_PREFLIGHT_20260925.md",
+        "bytes": 13359,
+        "sha256": "2F87F0E39B828F4ECC7D55B5C9DE3439208A46CDCACA29DB59C8442BE16579ED"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C3_C4_RELEVANT_SUITE_DRAFT_MANIFEST_20260925.json",
+        "bytes": 142439,
+        "sha256": "69DDB58CA8D5A49C69C533A565770E2BE946FE6853ECD8C3F3FFC15412B12BDD"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C3_C4_RELEVANT_SUITE_PREFLIGHT_DRAFT_20260925.md",
+        "bytes": 8673,
+        "sha256": "69FA0B8954833F5B9300A013F4DE61E62518887CA52778D65A1229D61A5AD795"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C4_FINAL_MANDATORY_STATIC_GATES_20260925.md",
+        "bytes": 9359,
+        "sha256": "169C4E88A2F4165AD388A0F9F24DB8CD17ADBF2D5CB152D37FBFC73717ADFBCE"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json",
+        "bytes": 142438,
+        "sha256": "3E7CF99F6CB2133D5B019B8E99C305FAC1CF386E973210CA49D7490F57358E72"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/C4_FINAL_UNION_RECEIPT_20260925.json",
+        "bytes": 2857,
+        "sha256": "409D3AE85ACB72419BF3238CA5A58A7E1270A1DD0EB1221F4681506492710ABF"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md",
+        "bytes": 8594,
+        "sha256": "B6C937801CD54E26B8F410E0645276278B4B28E0F1CE94841DBC6316E571B477"
+      },
+      {
+        "baseline_status": " M",
+        "path": "docs/06_qa/R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925.md",
+        "bytes": 25725,
+        "sha256": "7A6C97AFC8BFB2072F0C150712AD09E205DFA952AF45A926D6AFB08967DCF50C"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R020_PROCESS_CRASH_RECOVERY_HARD_EXIT_QA_20260925.md",
+        "bytes": 7751,
+        "sha256": "EB1931D78602DA34C324855F719C977D937D63A503317E0E6BB2147A9586A6CC"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R020_TYPED_HANDOFF_INDEPENDENT_REVIEW_20260925.md",
+        "bytes": 16512,
+        "sha256": "FD6C50CAE748432A3E382C1E35123430955962B22B249078EF7E8C5847FFA7BA"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_CAPABILITY_CANDIDATE_JSON_CAPTURED_BYTES_20260925.md",
+        "bytes": 6926,
+        "sha256": "C412F37E0B830344660080230BC8D0576D94300ADC8748A1306B3BC9D62BD62B"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_CAPABILITY_MODEL_MANIFEST_CAPTURED_BYTES_20260925.md",
+        "bytes": 9335,
+        "sha256": "9A59C4D64A5FF524878DCC418CECB93290AE9F34208F2050D2753E10F9364DDF"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_CAPABILITY_MODEL_MANIFEST_CAPTURED_BYTES_INDEPENDENT_REVIEW_20260925.md",
+        "bytes": 4121,
+        "sha256": "3D7D50053624353FFFCA2FDAC20253F7A9967604DD7F1AB394CB8EDA2884B7EF"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_CAPABILITY_POINTER_CAPTURED_BYTES_20260925.md",
+        "bytes": 4472,
+        "sha256": "8987C491991B38C9EA56AC3003DE9907D4B18C73FE79E9E9E00230258984D004"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_HISTORICAL_RAW_SNAPSHOT_CUSTODY_20260925.md",
+        "bytes": 7263,
+        "sha256": "F7801A9A435B0324BE0C5396998077915D875195BB08576856E3CEAC273A65AD"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_LIVE_SOURCE_IDENTITY_POST_PROJECTION_20260925.md",
+        "bytes": 5376,
+        "sha256": "0539BAC1CECC7C5A46E364C9A91DA3AD1425DA964AFA44F6D65AD3447EAC8AAC"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_LIVE_SOURCE_IDENTITY_SHADOW_20260925.md",
+        "bytes": 6338,
+        "sha256": "16652E56F31BE49F70D7FE78D1402B1EDD4AB5AACB38A169B36E81D97D4D2152"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_MODEL_ARTIFACT_SAME_BYTES_20260925.md",
+        "bytes": 7892,
+        "sha256": "BBD815E833B38B1A3EE9612DF4149E865EFC8A7EAA40D9257F3ABDA5E3B59077"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_MODEL_RESOLUTION_FACTS_20260925.md",
+        "bytes": 17316,
+        "sha256": "F1316B3AF9AA8B7B09E95E81CCE4677BEB1A07BC530565B9954CB3899FA2BA1B"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_ORDERED_PREPARATION_FACTS_20260925.md",
+        "bytes": 6236,
+        "sha256": "C23ED2C0986C3CA2FA2E7DA5FA9CD342703064DB0782B750112C092FF70809AF"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_POSTCALIBRATION_TYPED_HANDOFF_API_20260925.md",
+        "bytes": 5213,
+        "sha256": "F87B57577562BE50976CB9CDA07CAFA54A5DFD9252AC5BAF61ED56779DFA6235"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_PREPARED_RUNTIME_INPUT_TYPES_API_DESIGN_20260925.md",
+        "bytes": 14357,
+        "sha256": "AA903E8F2832357BD6E5516ADDE8A05B0B8A0E46789883B3A83BABD81A89CA3F"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_TAIEX_MARKET_INDEX_ROW_EVIDENCE_20260925.md",
+        "bytes": 8553,
+        "sha256": "76261573A5AAA738479D38998275962B5E8F7B60D862056C19498A24813FF49E"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_TAIEX_MARKET_INDEX_ROW_EVIDENCE_INDEPENDENT_REVIEW_20260925.md",
+        "bytes": 7100,
+        "sha256": "4095D3A381CCD84F2F35301CBCC294079B201BF255A6AF2817222F81C823DEB5"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R026_TWSE_DAILY_PRICE_SQLITE_ROW_EVIDENCE_20260925.md",
+        "bytes": 5963,
+        "sha256": "6C18E1888A8D5B6AD3DF9B158063E825507B00D2A47746B756EF7C7FDBF5B45B"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R029_RETIREMENT_GATE_DRAFT_20260925.md",
+        "bytes": 8988,
+        "sha256": "70237418C12321496EA76B31C431767B796D5DC4B7ED6CE735AFD076007BA228"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925.md",
+        "bytes": 17042,
+        "sha256": "CD6591348521FA9DECEE2E9AB9D9171038FEA766F7CCFAC2D8272BEEB8768F42"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R030_EXTENSIBILITY_FIXTURE_QA_20260925.md",
+        "bytes": 5671,
+        "sha256": "BF9BCCAABAC937C06048F1D651D7793F0C89359A680DF0AE2901DDC24C5C3227"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R030_EXTENSIBILITY_FIXTURE_QA_MANIFEST_20260925.json",
+        "bytes": 6147,
+        "sha256": "FE841A21BE0016A0F54B75BE03CB41304CFB66A14F44DDB786CF51EFF6C02C94"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md",
+        "bytes": 13371,
+        "sha256": "572E68326F95BA089BD9FF3A6974131FB133589470E264175E9700EB0B3A5D0E"
+      },
+      {
+        "baseline_status": "??",
+        "path": "docs/06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md",
+        "bytes": 13952,
+        "sha256": "5E93FE6AFD35837EC4E914170844FAA2D6CF113E06D01E9383AE503C33849C04"
+      },
+      {
+        "baseline_status": " M",
+        "path": "ml_module/model_artifact_loader.py",
+        "bytes": 24035,
+        "sha256": "95D30503215B022888ED2D94E061DE27B4648F1C60A6C56D90F9B68DDB412F08"
+      },
+      {
+        "baseline_status": "??",
+        "path": "ml_module/prepared_source_contract.py",
+        "bytes": 27746,
+        "sha256": "9568839F471AA341C7F7CEEB97BBC325FDF5D6B31D547582A07384AC59F1FACF"
+      },
+      {
+        "baseline_status": " M",
+        "path": "ml_module/recommendation_inference_provenance.py",
+        "bytes": 99970,
+        "sha256": "7C64A5710B512FC306878F22AAC3C92061779794E10052F833DED83BE09A8517"
+      },
+      {
+        "baseline_status": " M",
+        "path": "ml_module/shadow_boundary_guard.py",
+        "bytes": 14972,
+        "sha256": "1E5E4AF198A9FC2FEC0AAF1A35786701F94734B245C98212A9349D75D594A4A9"
+      },
+      {
+        "baseline_status": " M",
+        "path": "qa/full_app_healthcheck/test_inventory.py",
+        "bytes": 83170,
+        "sha256": "B33456CC7F7551DA2179086E9B2A4DA3E694C6A197CD70288C5E18CAB82BEA5F"
+      },
+      {
+        "baseline_status": " M",
+        "path": "scripts/batch_update_market_and_industry_index.py",
+        "bytes": 19825,
+        "sha256": "E705ADD97A491D730848072B735765F484C2FE42FF98FC1D8E8B67F7E9D8D07F"
+      },
+      {
+        "baseline_status": "??",
+        "path": "scripts/check_refactor_architecture_boundary.py",
+        "bytes": 6612,
+        "sha256": "14807F8E9DBEF56932DF680A784D293360937CA26902410BDD4DF5433C0871F4"
+      },
+      {
+        "baseline_status": " M",
+        "path": "scripts/scheduled/run_daily_data_update_quick.py",
+        "bytes": 43466,
+        "sha256": "C93D0EFBB8AF53AE6FBEEBDD056F71621AF47DE12A46AA0AC92E3F1AA03828AE"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/business_last_state.py",
+        "bytes": 172,
+        "sha256": "0209CB196156891B8B41EAE64E2C4A6CD5F7CED9A0C46B4E08A82640EDFB39AF"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/confidence_extension_contract.json",
+        "bytes": 601,
+        "sha256": "0B8C2A22E1A7CE1B93F3F891AC2A0F654996CE8544A2C29F2910EFFC117BAC22"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/decision_imports_app.py",
+        "bytes": 143,
+        "sha256": "E7FA2A524852BB071DDDD3EEA37233FE5E6753ECA142A26BF16F459745C4299D"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/duplicate_row_map.py",
+        "bytes": 582,
+        "sha256": "594454AA084DF39B6848CCC87F5A20B382BB1D0E42AEC871D86885697B5FA8DA"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/historical_v1_fingerprint.json",
+        "bytes": 1341,
+        "sha256": "2CAF5838E3B568256B90F6DB3A117FE4EFB489B537F64AE28453CC142AAB6F75"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/new_technical_feature.json",
+        "bytes": 438,
+        "sha256": "D43D8C74E038831A504C2EB5461C254E5BF9D3D7218B2A4D7EF0C6214B6D0ECB"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/registry_bypass.py",
+        "bytes": 274,
+        "sha256": "9FCE3AABCDC1CF69E0668B7BBD04CF04968889B60522EDD02CF1652A6F67D811"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/fixtures/r030/unknown_codec_record.json",
+        "bytes": 57,
+        "sha256": "6C76783A81A0AE5A9DA61F1E10A997BE92737DA86409802AF5CB4BBEC70123BD"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_c1_execution_artifact_ab_interleave.py",
+        "bytes": 37249,
+        "sha256": "CA1475488ECA057DCA9FFC20C0F507FA29464627CD8D8DF2567F280A366B2ABB"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_formal_market_data_repair.py",
+        "bytes": 14635,
+        "sha256": "FF7C0CAAA29D7FDDEC6328B94D119564953FEB42D819B78100941A031F917D3B"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_ml_postcalibration_handoff.py",
+        "bytes": 31651,
+        "sha256": "DA8822BB2EA609883D7FB1EDFEE08DDB622A0D61F5D21EE38612A54522B9335C"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_ml_shadow_dependency_boundary.py",
+        "bytes": 14852,
+        "sha256": "3C0408DD7C810E6F9AD183CD36370AA278FEE2063391E571D3589C688FC9B59F"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_personalization_generation_cli.py",
+        "bytes": 48881,
+        "sha256": "40F209EED4ABD6400AEB361539CD050A57C20D1F528D17C55B53CB3B14AD7F90"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_prepared_runtime_input.py",
+        "bytes": 38885,
+        "sha256": "8391E9C61604F6CE2F9CCDCD0885A931EC4998E4499F43C5E5A69D0662AD83BE"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_r020_post_score_native_numeric_projection.py",
+        "bytes": 2903,
+        "sha256": "62B1659145120E5DFB7C174FB78AD4167F22BDA8529F3CAF5D6843015237F0AE"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_r020_post_score_threshold_metric_pairing.py",
+        "bytes": 15361,
+        "sha256": "DFBBE3347AD08CB677901594DC656AEFD0FB9B7A487C8E5A6C85BE3DCBEB78CB"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_r020_process_crash_recovery.py",
+        "bytes": 26920,
+        "sha256": "AEE58FA99D089DDA40D368062299871333D4BD104C477BA1B1256611BFB3A998"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_r020_real_scorer_filter_stage.py",
+        "bytes": 50970,
+        "sha256": "92F4FEEA22EFD43CD6AB9922200F610A9CE4450C1BF1499F1C0E724E7943F6D7"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_r020_replay_post_score_evaluator.py",
+        "bytes": 28229,
+        "sha256": "DD19BAF6DC9DD2C3017C164BCBCC0F2C44BADCB453B18C97EF89362C5281CD78"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_r020_typed_provider_child_handoff.py",
+        "bytes": 21596,
+        "sha256": "6672592231ABE0294CDA3CAA7AEC282EB5FA4F0D36A70F4F02C1D07BA8EE77A5"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_historical_raw_snapshot_custody.py",
+        "bytes": 14563,
+        "sha256": "205647601F2B6B1A5ECB592884C740F2D3BAF48855AD0AE2021293CAEBF7471F"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_r026_invocation_model_capability.py",
+        "bytes": 60070,
+        "sha256": "6AE9276D31A4ED8FD642830F6916A7BB4C2D9337AB559692E3C47AE632B65605"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_live_source_identity.py",
+        "bytes": 27516,
+        "sha256": "184D79C728C0E782DB0C2C2C1A57F757FD0121B6502C49D57FE32E9646F93582"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_ml_preparation_facts.py",
+        "bytes": 10306,
+        "sha256": "E8C8EEF258538683A5F22708FB8A6B2416FE994306093338BB88F64AF49E00BA"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_model_artifact_same_bytes_loader.py",
+        "bytes": 12757,
+        "sha256": "17DC26416471327F11675A620292F3619236BEC5F3DA0BC012E80A0186946CFB"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_model_resolution_facts.py",
+        "bytes": 12840,
+        "sha256": "1DF9A984E7C6ED06582068F3B7208F32798750456AD2CD2B9C7494D6DA152DE0"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_no_model_projection_capability.py",
+        "bytes": 13365,
+        "sha256": "7EB99393E824052CDAA5A067D0F5724A73687B88CDE320F5339BD28CA6C36579"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_prepared_runtime_projection.py",
+        "bytes": 2318,
+        "sha256": "DCD067CC657BD7FA0318E5B9DAFA8987CCA9D01FF83929BB1D6559BBDBCC0475"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r026_prepared_runtime_service.py",
+        "bytes": 37231,
+        "sha256": "1C563C497B3872F05EC8686749B467B4ECDB048A78EFBF48BC0C1DA542DF0371"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r030_architecture_guards.py",
+        "bytes": 2610,
+        "sha256": "89ACFC99AA50E06FB3101B5DA63C20FF00D31E1B310373D8716264C8F8580BC4"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_r030_extensibility_acceptance.py",
+        "bytes": 32489,
+        "sha256": "3E4BECC1AFE58BB8931B8F7F76EF1A9687EC11E0D248F8535515C04FCF7E97DF"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_recommendation_execution_use_case.py",
+        "bytes": 26737,
+        "sha256": "5E423619EFD7DB021B33DCF62DF05E1419C3B8598177F881AF3EE5AFF80AB543"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_recommendation_service_calibration_integration.py",
+        "bytes": 79690,
+        "sha256": "9E7CE52BC4832BA0DD742693803729DDA158376775AD6B18DDF71CBCD323D6E2"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_scheduled_data_update_runner.py",
+        "bytes": 18709,
+        "sha256": "8BAC2AF39E449E08390ED3D21EC458CD5A962210EFF25A3B044471562FE599D5"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_taiex_market_index_publication.py",
+        "bytes": 25965,
+        "sha256": "202F54082A5ACAB7B54B8EF8D83BA5549A73FD5B0CE58A9B6AE627235074F2F9"
+      },
+      {
+        "baseline_status": "??",
+        "path": "tests/test_twse_daily_price_sqlite_publication.py",
+        "bytes": 27822,
+        "sha256": "FAF30E398227F6772DF646CBD27AC744A6E8973B92797AD957CB1545A29DF6A3"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_ui_qt_portfolio_view.py",
+        "bytes": 38021,
+        "sha256": "95E6104FED145C3781A7FF6ED79721FA4957AF88489487BEAFBF41BF5DA22630"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_ui_qt_research_run_save.py",
+        "bytes": 11829,
+        "sha256": "53C230AA1D6AEB193A01ED558103359AD6C5BB0489C6357DD9904315A0181D7B"
+      },
+      {
+        "baseline_status": " M",
+        "path": "tests/test_ui_qt_user_declared_holding_research.py",
+        "bytes": 11830,
+        "sha256": "6DC4AFE1E8450C5601977EFBE65B1AB8D877B37EF5BF6F1861E4514EA9A2EAC4"
+      },
+      {
+        "baseline_status": " M",
+        "path": "ui_qt/views/portfolio_view.py",
+        "bytes": 182971,
+        "sha256": "0FFD4E1EA8C241D5A552AFE6612FAE9C84D68E369C26A68B05B7584817D2EB2A"
+      },
+      {
+        "baseline_status": " M",
+        "path": "ui_qt/widgets/user_declared_holding_research_widget.py",
+        "bytes": 36358,
+        "sha256": "4CF2332011CDC7A2366054B645530C88516DFBF9AA692B56C9642F96092B2806"
+      }
+    ],
+    "source_is_local_provenance_only": true,
+    "reproduction_note": "The manifest embeds the complete 118 relative paths and their captured hashes; the source baseline JSON is provenance only and is not required to reproduce the candidate path set or part of the submission.",
+    "hash_capture_status": "Historical initial 118-path capture; .gitattributes is a post-assembly candidate EOL policy. This historical capture is not refreshed after the final documentation freeze. Final source/test byte integrity is evidenced by the 526-input pre/post fingerprint; the complete submission path set is fixed by submission_pathset, and the resulting commit will fix the submitted bytes."
+  },
+  "post_assembly_document_updates": [
+    {
+      "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md",
+      "reason": "Correct Wave11–14 task-to-wave mapping and current bounded status."
+    },
+    {
+      "path": "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/R031.md",
+      "reason": "Align invariant reference with INV-01–18."
+    },
+    {
+      "path": "docs/01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md",
+      "reason": "Mark dated progress paragraphs as historical and link current TMP/R026/R031 status."
+    },
+    {
+      "path": "docs/01_architecture/system_architecture.md",
+      "reason": "Supersede the 9/25 pending snapshot with accepted C3/C4 history and candidate revalidation entry."
+    },
+    {
+      "path": "docs/00_core/PROJECT_SNAPSHOT.md",
+      "reason": "Pending final 9/26 Wave14 candidate receipt synchronization."
+    },
+    {
+      "path": "docs/06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md",
+      "reason": "Remove stale draft title and link the candidate manifest and final receipt."
+    },
+    {
+      "path": "docs/06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md",
+      "reason": "Append Wave14 candidate assembly, revalidation receipt and commit-scope authorization."
+    },
+    {
+      "path": "docs/06_qa/WAVE14_CANDIDATE_CHANGE_MANIFEST_20260926.json",
+      "reason": "Machine-readable candidate inventory; its own hash is excluded to avoid recursion."
+    }
+  ],
+  "c4_reconciliation": {
+    "historical_manifest": "docs/06_qa/C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json",
+    "historical_manifest_sha256": "3E7CF99F6CB2133D5B019B8E99C305FAC1CF386E973210CA49D7490F57358E72",
+    "historical_inputs": 471,
+    "strict_raw_candidate_vs_c4": {
+      "exact": 162,
+      "mismatch": 309,
+      "missing": 0,
+      "interpretation": "Strict-byte comparison only; mismatches include checkout line-ending normalization and the identified post-C4 product edits."
+    },
+    "candidate_vs_current_primary_normalized": {
+      "equivalent": 462,
+      "content_differences": 9,
+      "missing": 0,
+      "paths": [
+        "tests/test_recommendation_calibration_contract_guards.py",
+        "app_module/recommendation/queries.py",
+        "app_module/research_run_dtos.py",
+        "app_module/research_run_repository.py",
+        "app_module/research_run_service.py",
+        "ui_qt/views/backtest_view.py",
+        "app_module/update_service.py",
+        "scripts/scheduled/run_daily_data_update_quick.py",
+        "tests/test_scheduled_data_update_runner.py"
+      ],
+      "interpretation": "Text files compared after CRLF/CR to LF normalization; the nine content differences are excluded post-C4 product hunks."
+    },
+    "product_only_paths_left_at_candidate_head": [
+      "tests/test_recommendation_calibration_contract_guards.py",
+      "app_module/recommendation/queries.py",
+      "app_module/research_run_dtos.py",
+      "app_module/research_run_repository.py",
+      "app_module/research_run_service.py",
+      "ui_qt/views/backtest_view.py"
+    ],
+    "mixed_paths_with_later_product_hunks_removed": [
+      "app_module/update_service.py",
+      "scripts/scheduled/run_daily_data_update_quick.py",
+      "tests/test_scheduled_data_update_runner.py"
+    ],
+    "note": "The old C4 raw hashes remain historical evidence. Candidate attempt 1 failed on 42 exact-fixture EOL mismatches and two known aggregate assertions; attempt 2 eliminated fixture failures but hit 15 create-only custody temp-path ENOENT errors at 260 characters plus the same two aggregate assertions. Five original fixture blobs were restored, five -text rules were added to existing .gitattributes, and short-path focused coverage passed all 15 affected nodes. Final 526-input short-path union matched C4 captured stdout JSON on the 584-file/11-occurrence/10-distinct shadow-only report and failed on the same two nodes; root accepted named baseline."
+  },
+  "candidate_validation": {
+    "profile": "test",
+    "temp_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14u_069e19",
+    "test_paths": 234,
+    "hash_inputs": 480,
+    "route_inputs": 471,
+    "additional_r030_fixtures": 8,
+    "status_at_capture": "final short-path full union completed; root accepted bounded Wave14 engineering scope with two named historical boundary failures; not an unqualified all-green refactor PASS",
+    "formal_data_scheduler_full_market_ml_rebuild_or_promotion": "not run",
+    "first_attempt": {
+      "result": {
+        "passed": 2404,
+        "failed": 44,
+        "skipped": 5,
+        "warnings": 35,
+        "duration_seconds": 683.02,
+        "exit_code": 1
+      },
+      "pytest_log": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14u_069e19\\pytest.log",
+      "pytest_log_sha256": "B74F56450B2E55AE5D5037CF7258849D8E86D4B6A3935960C686FA4B38844B00",
+      "pre_manifest_sha256": "AC616C4A20BD7CCA66093623DB1CF47E94D79D5140C95DB7C9981CCFA295C5F7",
+      "fingerprint_inputs": 480,
+      "inputs_unchanged": true,
+      "input_closure_limitation": "The 480 entries did not include all C1 fixture bytes actually read by this route; unchanged applies only to captured entries, not full test-input closure.",
+      "failure_classification": {
+        "exact_fixture_bytes_or_eol": 42,
+        "known_shadow_boundary_aggregate_assertions": 2,
+        "note": "The first 42 failures are tied to exact pinned fixture byte expectations after checkout EOL conversion. The two boundary assertions are the existing named aggregate baseline (11 occurrences / 10 distinct diagnostics)."
+      },
+      "rerun_status": "Fixture dependencies and exact bytes were restored; focused verification and full union rerun completed and are recorded below."
+    },
+    "fixture_restoration": {
+      "attributes_path": ".gitattributes",
+      "policy": "Five byte-pinned synthetic fixture paths receive five new -text rules in the existing candidate .gitattributes; expected bytes, lengths, and hashes were not changed.",
+      "private_index_checkout_proof": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14_checkout_o4dd_22_\\receipt.json",
+      "private_index_checkout_proof_sha256": "548D9A68D292C05F6A691F23F0F729B2D9FC78F3A5645EFBC924968FB5084C9F",
+      "restore_receipt": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14_bf020cba\\fixture_restore_receipt.json",
+      "restore_receipt_sha256": "215A40978EA503141F560B222B528B41CB34DEA09520F60784FA9EE79CC72C41",
+      "focused_route": {
+        "passed": 80,
+        "skipped": 1,
+        "duration_seconds": 4.82,
+        "log": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14_bf020cba\\07_fixture_focused_escalated\\pytest.log",
+        "log_sha256": "E19610707C2B9B449AC7B67BE4A1EA04964A056ECB3AC2FC82D3B32B66BB2421"
+      }
+    },
+    "second_attempt": {
+      "profile": "test",
+      "temp_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14r2_622ff943",
+      "test_paths": 234,
+      "source_paths": 237,
+      "fixture_file_count": 53,
+      "fingerprint_inputs": 526,
+      "input_closure": "C4 471 route inputs plus all 53 tests/fixtures files (excluding pycache), inventory, and .gitattributes, deduplicated by path",
+      "result": {
+        "passed": 2431,
+        "failed": 17,
+        "skipped": 5,
+        "warnings": 35,
+        "duration_seconds": 664.3,
+        "exit_code": 1
+      },
+      "receipt": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14r2_622ff943\\fullunion_receipt.json",
+      "receipt_sha256": "DFA83C1668F941A8A89BA4689967698BE0FECA71B3755B24F48A56E8BDD5D8D2",
+      "pytest_log": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14r2_622ff943\\pytest.log",
+      "pytest_log_sha256": "32D6814E148A3E77C5FB750B1EF7790E3965BEAEBABC6B8CDE02FB7CAE88CC10",
+      "pre_fingerprint_sha256": "2D5163E3A03ECF080DA561F34FB0E0A6739C1313FAB1DE7A2BC43AE0CCB2980F",
+      "post_fingerprint_sha256": "2D5163E3A03ECF080DA561F34FB0E0A6739C1313FAB1DE7A2BC43AE0CCB2980F",
+      "inputs_unchanged": true,
+      "resolved_from_first_attempt": "All 42 exact fixture byte/EOL mismatches no longer occur after restoration of five pinned fixtures.",
+      "failure_classification": {
+        "confirmed_windows_temp_path_boundary": 15,
+        "known_shadow_boundary_aggregate_assertions": 2,
+        "independent_review": "cross confirmed 15 create-only temporary receipt open ENOENT failures at a 260-character path (parent 186, basename 73; target receipt path 216)."
+      },
+      "note": "All 15 errors are from official_daily_price_custody._write_create_only temporary.open(\"xb\") ENOENT under the long nested TEMP path. The short-root focused route passed all 15 affected nodes with unchanged test inputs; the two aggregate boundary failures are the known residual."
+    },
+    "short_path_focused": {
+      "temp_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\w3_3cfcfc",
+      "result": {
+        "passed": 31,
+        "failed": 2,
+        "duration_seconds": 7.75,
+        "target_twse_nodes_passed": 15,
+        "known_boundary_aggregate_failures": 2
+      },
+      "log": "C:\\Users\\archi\\AppData\\Local\\Temp\\w3_3cfcfc\\affected_files.log",
+      "log_sha256": "1E9A9AC95F172D5257E7FAD04A07409791093E2E8B97B785F7C9457F17D64B7F",
+      "path_length_observation": {
+        "failed_temporary_path_chars": 260,
+        "temporary_parent_chars": 186,
+        "temporary_basename_chars": 73,
+        "receipt_path_chars": 216,
+        "interpretation": "Cross independently confirmed the ENOENT at temporary.open(\"xb\") under the 260-character path; all 15 affected nodes pass with the short TEMP route and unchanged 526 input fingerprints."
+      }
+    },
+    "short_path_full_rerun": {
+      "profile": "test",
+      "temp_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\w3_bc8b75",
+      "test_paths": 234,
+      "source_paths": 237,
+      "fixture_file_count": 53,
+      "fingerprint_path_count": 526,
+      "input_closure": "471 paths from the frozen C4 route (234 tests + 237 sources) plus all 53 tests/fixtures files, qa/full_app_healthcheck/test_inventory.py, and .gitattributes, deduplicated by path",
+      "result": {
+        "passed": 2446,
+        "failed": 2,
+        "skipped": 5,
+        "warnings": 35,
+        "duration_seconds": 653.9,
+        "exit_code": 1
+      },
+      "receipt": "C:\\Users\\archi\\AppData\\Local\\Temp\\w3_bc8b75\\fullunion_receipt.json",
+      "receipt_sha256": "75C649AB31F0EFAC7900A030E6119C2B370EC051C1B1EB1A375A747EFF5939AC",
+      "pytest_log": "C:\\Users\\archi\\AppData\\Local\\Temp\\w3_bc8b75\\pytest.log",
+      "pytest_log_sha256": "B5B22DA669D9C4E2BD8988012A62EE73D465841EBD8D36DCF3EAC162B5C7127F",
+      "pre_fingerprint_sha256": "2D5163E3A03ECF080DA561F34FB0E0A6739C1313FAB1DE7A2BC43AE0CCB2980F",
+      "post_fingerprint_sha256": "2D5163E3A03ECF080DA561F34FB0E0A6739C1313FAB1DE7A2BC43AE0CCB2980F",
+      "changed_paths": [],
+      "runtime_sha256": "ACF74778E196C8962FA2C6EDB9884EFE3959D758ECD2BC61E5407471CF0C9A3A",
+      "skip_reasons": {
+        "windows_symlink_privilege": 4,
+        "longdouble_runtime_specific": 1
+      },
+      "named_failures": [
+        "tests/test_ml_shadow_boundary_cli.py::test_shadow_boundary_cli_passes_repository",
+        "tests/test_ml_shadow_dependency_boundary.py::test_repository_respects_ml_shadow_dependency_boundary"
+      ],
+      "boundary_check": {
+        "captured_stdout_json_matches_c4": true,
+        "inspected_files": 584,
+        "diagnostic_occurrences": 11,
+        "distinct_diagnostics": 10,
+        "shadow_only": true,
+        "same_failure_nodes_as_c4": true
+      },
+      "root_verdict": {
+        "r031": "ENGINEERING_SCOPE_COMPLETE_WITH_RETAINED_BLOCKERS",
+        "c4": "ACCEPTED_WITH_NAMED_BOUNDARY_BASELINE",
+        "unqualified_all_green": false
+      }
+    },
+    "mandatory_gates": {
+      "receipt": "C:\\Users\\archi\\AppData\\Local\\Temp\\w14_bf020cba\\mandatory_gate_receipt.json",
+      "receipt_sha256": "26B7CB337B0234991112B19B94D85F1DB314D7387BD451C019519C476BDDDC57",
+      "workbench": {
+        "passed": 84
+      },
+      "update_validator": {
+        "passed": 25,
+        "failed": 0,
+        "skipped": 4,
+        "log_sha256": "5424E71EF700731DC7F8F32E325FB3B49866D783B01976E72DDBD92251ED750F"
+      },
+      "broad_mypy": {
+        "files": 724,
+        "issues": 0,
+        "log_sha256": "24AACBC9F81E6E28993808804EFF64BD05E02E27D75D1F6064296186DF3386ED"
+      },
+      "changed_python_py_compile": {
+        "files": 68,
+        "exit_code": 0,
+        "log_sha256": "25C3CA74B8E4C3C29AAF74B231083DC2C0213D29DAB50C6276A329704D59D92C"
+      },
+      "non_document_source_test_fingerprint": {
+        "path_count": 72,
+        "unchanged": true,
+        "manifest_sha256": "624D4B1218BA95566E632F206B08601D31E6FE7E71BE236A9E8D88F4AAB95CCA"
+      }
+    }
+  },
+  "self_hash_note": "This manifest does not contain its own hash; record its SHA-256 in R031 closeout after file creation.",
+  "post_assembly_candidate_changes": [
+    {
+      "path": ".gitattributes",
+      "reason": "Five new -text rules in the existing .gitattributes keep exact byte-pinned synthetic C1 JSON fixture files at their original blob bytes across candidate checkout; verified with a private temporary Git index and focused route."
+    }
+  ],
+  "submission_pathset": {
+    "path_count": 122,
+    "path_list_temp": "C:\\Users\\archi\\AppData\\Local\\Temp\\wave14_candidate_stage_paths_20260926.txt",
+    "path_list_sha256": "A75E82E145AFECB34BBCD1C626A41845BC8FA81DF84138B876F59D69D411AFCE",
+    "paths": [
+      ".gitattributes",
+      "app_module/recommendation/execute.py",
+      "app_module/recommendation/historical_snapshot_custody.py",
+      "app_module/recommendation/live_source_identity.py",
+      "app_module/recommendation/ml_adapter.py",
+      "app_module/recommendation/ml_postcalibration_handoff.py",
+      "app_module/recommendation/ml_preparation_facts.py",
+      "app_module/recommendation/model_resolution_facts.py",
+      "app_module/recommendation/prepared_runtime_input.py",
+      "app_module/recommendation/prepared_runtime_preparation.py",
+      "app_module/recommendation/prepared_runtime_projector.py",
+      "app_module/recommendation/replay_numeric_projection.py",
+      "app_module/recommendation_calibration_consumer.py",
+      "app_module/recommendation_dataframe_provider.py",
+      "app_module/recommendation_replay_service.py",
+      "app_module/recommendation_service.py",
+      "app_module/update_service.py",
+      "data_module/data_loader.py",
+      "data_module/ml_historical_snapshot_provider.py",
+      "data_module/official_market_daily.py",
+      "data_module/taiex_market_index_publication.py",
+      "data_module/twse_daily_price_publication.py",
+      "decision_module/recommendation/evaluate.py",
+      "decision_module/recommendation/replay_prefilter.py",
+      "docs/00_core/DOCUMENTATION_INDEX.md",
+      "docs/00_core/PROJECT_SNAPSHOT.md",
+      "docs/01_architecture/system_architecture.md",
+      "docs/01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_LEGACY_SHADOW_RUNTIME_IDENTITY_DESIGN_ADDENDUM_20260925.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_PREPARED_RUNTIME_INPUT_DECISION_ADDENDUM_20260924.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_RISK_REGISTER.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/R026.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/R029.md",
+      "docs/01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/R031.md",
+      "docs/01_architecture/target_system_architecture.md",
+      "docs/06_qa/C2_CURRENT_UNION_PYTEST_BASELINE_20260925.md",
+      "docs/06_qa/C2_MANDATORY_UI_STATIC_GATES_20260925.md",
+      "docs/06_qa/C2_NON_ML_CONSUMER_UNION_PREFLIGHT_20260925.md",
+      "docs/06_qa/C3_C4_RELEVANT_SUITE_DRAFT_MANIFEST_20260925.json",
+      "docs/06_qa/C3_C4_RELEVANT_SUITE_PREFLIGHT_DRAFT_20260925.md",
+      "docs/06_qa/C4_FINAL_MANDATORY_STATIC_GATES_20260925.md",
+      "docs/06_qa/C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json",
+      "docs/06_qa/C4_FINAL_UNION_RECEIPT_20260925.json",
+      "docs/06_qa/ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md",
+      "docs/06_qa/R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925.md",
+      "docs/06_qa/R020_PROCESS_CRASH_RECOVERY_HARD_EXIT_QA_20260925.md",
+      "docs/06_qa/R020_TYPED_HANDOFF_INDEPENDENT_REVIEW_20260925.md",
+      "docs/06_qa/R026_CAPABILITY_CANDIDATE_JSON_CAPTURED_BYTES_20260925.md",
+      "docs/06_qa/R026_CAPABILITY_MODEL_MANIFEST_CAPTURED_BYTES_20260925.md",
+      "docs/06_qa/R026_CAPABILITY_MODEL_MANIFEST_CAPTURED_BYTES_INDEPENDENT_REVIEW_20260925.md",
+      "docs/06_qa/R026_CAPABILITY_POINTER_CAPTURED_BYTES_20260925.md",
+      "docs/06_qa/R026_HISTORICAL_RAW_SNAPSHOT_CUSTODY_20260925.md",
+      "docs/06_qa/R026_LIVE_SOURCE_IDENTITY_POST_PROJECTION_20260925.md",
+      "docs/06_qa/R026_LIVE_SOURCE_IDENTITY_SHADOW_20260925.md",
+      "docs/06_qa/R026_MODEL_ARTIFACT_SAME_BYTES_20260925.md",
+      "docs/06_qa/R026_MODEL_RESOLUTION_FACTS_20260925.md",
+      "docs/06_qa/R026_ORDERED_PREPARATION_FACTS_20260925.md",
+      "docs/06_qa/R026_POSTCALIBRATION_TYPED_HANDOFF_API_20260925.md",
+      "docs/06_qa/R026_PREPARED_RUNTIME_INPUT_TYPES_API_DESIGN_20260925.md",
+      "docs/06_qa/R026_TAIEX_MARKET_INDEX_ROW_EVIDENCE_20260925.md",
+      "docs/06_qa/R026_TAIEX_MARKET_INDEX_ROW_EVIDENCE_INDEPENDENT_REVIEW_20260925.md",
+      "docs/06_qa/R026_TWSE_DAILY_PRICE_SQLITE_ROW_EVIDENCE_20260925.md",
+      "docs/06_qa/R029_RETIREMENT_GATE_DRAFT_20260925.md",
+      "docs/06_qa/R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925.md",
+      "docs/06_qa/R030_EXTENSIBILITY_FIXTURE_QA_20260925.md",
+      "docs/06_qa/R030_EXTENSIBILITY_FIXTURE_QA_MANIFEST_20260925.json",
+      "docs/06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md",
+      "docs/06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md",
+      "docs/06_qa/WAVE14_CANDIDATE_CHANGE_MANIFEST_20260926.json",
+      "ml_module/model_artifact_loader.py",
+      "ml_module/prepared_source_contract.py",
+      "ml_module/recommendation_inference_provenance.py",
+      "ml_module/shadow_boundary_guard.py",
+      "qa/full_app_healthcheck/test_inventory.py",
+      "scripts/batch_update_market_and_industry_index.py",
+      "scripts/check_refactor_architecture_boundary.py",
+      "scripts/scheduled/run_daily_data_update_quick.py",
+      "tests/fixtures/r030/business_last_state.py",
+      "tests/fixtures/r030/confidence_extension_contract.json",
+      "tests/fixtures/r030/decision_imports_app.py",
+      "tests/fixtures/r030/duplicate_row_map.py",
+      "tests/fixtures/r030/historical_v1_fingerprint.json",
+      "tests/fixtures/r030/new_technical_feature.json",
+      "tests/fixtures/r030/registry_bypass.py",
+      "tests/fixtures/r030/unknown_codec_record.json",
+      "tests/test_c1_execution_artifact_ab_interleave.py",
+      "tests/test_formal_market_data_repair.py",
+      "tests/test_ml_postcalibration_handoff.py",
+      "tests/test_ml_shadow_dependency_boundary.py",
+      "tests/test_personalization_generation_cli.py",
+      "tests/test_prepared_runtime_input.py",
+      "tests/test_r020_post_score_native_numeric_projection.py",
+      "tests/test_r020_post_score_threshold_metric_pairing.py",
+      "tests/test_r020_process_crash_recovery.py",
+      "tests/test_r020_real_scorer_filter_stage.py",
+      "tests/test_r020_replay_post_score_evaluator.py",
+      "tests/test_r020_typed_provider_child_handoff.py",
+      "tests/test_r026_historical_raw_snapshot_custody.py",
+      "tests/test_r026_invocation_model_capability.py",
+      "tests/test_r026_live_source_identity.py",
+      "tests/test_r026_ml_preparation_facts.py",
+      "tests/test_r026_model_artifact_same_bytes_loader.py",
+      "tests/test_r026_model_resolution_facts.py",
+      "tests/test_r026_no_model_projection_capability.py",
+      "tests/test_r026_prepared_runtime_projection.py",
+      "tests/test_r026_prepared_runtime_service.py",
+      "tests/test_r030_architecture_guards.py",
+      "tests/test_r030_extensibility_acceptance.py",
+      "tests/test_recommendation_execution_use_case.py",
+      "tests/test_recommendation_service_calibration_integration.py",
+      "tests/test_scheduled_data_update_runner.py",
+      "tests/test_taiex_market_index_publication.py",
+      "tests/test_twse_daily_price_sqlite_publication.py",
+      "tests/test_ui_qt_portfolio_view.py",
+      "tests/test_ui_qt_research_run_save.py",
+      "tests/test_ui_qt_user_declared_holding_research.py",
+      "ui_qt/views/portfolio_view.py",
+      "ui_qt/widgets/user_declared_holding_research_widget.py"
+    ],
+    "excluded_status_only_tracked_files": [
+      {
+        "path": "tests/fixtures/c1_consumer_readiness/ml_abi_manifest.json",
+        "status": " M",
+        "head_blob": "e5c8275e6035ca6444c17aa5671a4987227159ba"
+      },
+      {
+        "path": "tests/fixtures/c1_consumer_readiness/r014_saved_execution.json",
+        "status": " M",
+        "head_blob": "55673bf4e6fd9cdf2c1b640804827fdae2792172"
+      },
+      {
+        "path": "tests/fixtures/c1_consumer_readiness/r016_legacy_run_zh.json",
+        "status": " M",
+        "head_blob": "dbd06d3f7f8c698413f9197ecbd836f4d6bec164"
+      },
+      {
+        "path": "tests/fixtures/c1_cross_boundary/ab_interleave_scenarios.json",
+        "status": " M",
+        "head_blob": "403bdc2e2e7268a49b4db5787a375aab75e9d343"
+      },
+      {
+        "path": "tests/fixtures/c1_replay_bridge/r017_stored_annotation_snapshot.json",
+        "status": " M",
+        "head_blob": "967021eb25b03e856eb70714bd9eaff550a0c646"
+      }
+    ],
+    "note": "This exact 122-path candidate submission set is distinct from the 526 full-union validation fingerprint inputs. Five status-only fixture entries have raw bytes exactly equal to their HEAD blobs and are omitted from staging; the five .gitattributes -text rules are included."
+  },
+  "test_paths_entry": {
+    "manifest": "docs/06_qa/C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json",
+    "manifest_sha256": "3E7CF99F6CB2133D5B019B8E99C305FAC1CF386E973210CA49D7490F57358E72",
+    "test_count": 234,
+    "note": "The frozen 234 test paths are read from the tests[].path entries; this manifest is in the 122-path candidate submission set."
+  },
+  "reproduction": {
+    "working_directory": "C:\\Users\\archi\\.codex\\worktrees\\wave14-closeout\\technical_analysis",
+    "python_executable": "C:\\Projects\\PythonProjects\\technical_analysis\\.venv\\Scripts\\python.exe",
+    "profile": "test",
+    "qt_qpa_platform": "offscreen",
+    "test_paths_source": "docs/06_qa/C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json: tests[].path (234 entries)",
+    "fingerprint_inputs": "526 deduplicated paths listed by final route receipt: 234 tests + 237 sources + 53 tests/fixtures files + qa/full_app_healthcheck/test_inventory.py + .gitattributes",
+    "powershell_template": "$runRoot = Join-Path $env:TEMP ('w14_' + [guid]::NewGuid().ToString('N').Substring(0,6))`nNew-Item -ItemType Directory -Path $runRoot | Out-Null`n$env:TEMP = $runRoot; $env:TMP = $runRoot; $env:PROFILE = 'test'; $env:QT_QPA_PLATFORM = 'offscreen'`n$env:DATA_ROOT = Join-Path $runRoot 'd'; $env:OUTPUT_ROOT = Join-Path $runRoot 'o'`n$testPaths = @((Get-Content 'docs/06_qa/C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json' -Raw | ConvertFrom-Json).tests | ForEach-Object { $_.path })`n& 'C:\\Projects\\PythonProjects\\technical_analysis\\.venv\\Scripts\\python.exe' -m pytest -q -o addopts= --basetemp (Join-Path $runRoot 'p') $testPaths",
+    "note": "Use a fresh short system TEMP root for each run; the .gitattributes exact-byte rules and all 53 fixture files are part of the input closure. The original BALDR baseline JSON is not needed to reproduce this route."
+  }
+}

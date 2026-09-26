@@ -32,9 +32,7 @@ from app_module.recommendation.contracts import (
     ExecutionEvent,
     ExecutionStatus,
     MLAvailability,
-    MLAvailabilityReason,
     MLAvailabilityStatus,
-    MLReceiptBinding,
     QualityReport,
     QualityStatus,
     RecommendationConfigSnapshot,
@@ -49,6 +47,12 @@ from app_module.recommendation.contracts import (
     UniverseSnapshotIdentity,
     RecommendationUniverseIdentity,
     VersionReference,
+)
+from app_module.recommendation.ml_postcalibration_handoff import (
+    RecommendationPostCalibrationHandoffSinkV1,
+    RecommendationPostCalibrationHandoffV1,
+    ml_availability_from_handoff_v1,
+    verified_receipt_references_v1,
 )
 from decision_module.recommendation.contracts import (
     DecisionBatch,
@@ -237,6 +241,12 @@ def execute_recommendation(
 
     invocation = copy(service)
     invocation._r011_invocation_capture = capture
+    post_calibration_sink = RecommendationPostCalibrationHandoffSinkV1(
+        consumer_configured=(
+            getattr(service, "calibration_consumer", None) is not None
+        )
+    )
+    invocation._r026_post_calibration_handoff_sink = post_calibration_sink
     invocation.last_run_context = object()
     input_preparer = getattr(service, "recommendation_input_preparer", None)
     begin_input_session = getattr(input_preparer, "begin", None)
@@ -431,6 +441,7 @@ def execute_recommendation(
             as_of_date=as_of_date,
             capture=capture,
             compatibility_snapshot=compatibility_snapshot,
+            post_calibration_handoff=post_calibration_sink.snapshot(),
             status=ExecutionStatus.FAILED,
             failure_reason=f"{type(caught).__name__}: {caught}",
             request=request,
@@ -442,6 +453,7 @@ def execute_recommendation(
             as_of_date=as_of_date,
             capture=capture,
             compatibility_snapshot=compatibility_snapshot,
+            post_calibration_handoff=post_calibration_sink.snapshot(),
             status=ExecutionStatus.CANCELLED,
             failure_reason="cancelled_after_recommendation_body",
             request=request,
@@ -454,6 +466,7 @@ def execute_recommendation(
             as_of_date=as_of_date,
             capture=capture,
             compatibility_snapshot=compatibility_snapshot,
+            post_calibration_handoff=post_calibration_sink.snapshot(),
             status=ExecutionStatus.COMPLETED,
             recommendations=capture["legacy_recommendations"],
             request=request,
@@ -857,6 +870,7 @@ def _build_execution(
     postprocess_facts: RecommendationPostprocessFacts | None = None,
     body_result: RecommendationBodyResult | None = None,
     compatibility_snapshot: LegacyCompatibilitySnapshot | None = None,
+    post_calibration_handoff: RecommendationPostCalibrationHandoffV1,
 ) -> RecommendationExecution:
     body_context = body_result.context if body_result is not None else None
     if compatibility_snapshot is not None and type(
@@ -995,32 +1009,21 @@ def _build_execution(
         ),
     )
 
-    receipt_capture = capture.get("receipt", {})
-    receipt_binding, projection_refs = _verified_receipt_refs(
-        receipt_capture=receipt_capture,
+    receipt_binding, projection_refs = verified_receipt_references_v1(
+        handoff=post_calibration_handoff,
         result_id=result_id,
         context_date=actual_date,
     )
-    ml_context: Mapping[str, Any] = (
-        {
-            "calibration_projection_status": body_context.calibration_projection_status,
-            "calibration_projection_receipt_status": body_context.calibration_projection_receipt_status,
-            "calibration_projection_receipt_error_detail": body_context.calibration_projection_receipt_error_detail,
-        }
-        if body_context is not None
-        else {}
-    )
-    ml_availability = _ml_availability(
-        ml_context,
-        receipt_capture,
-        receipt_binding,
-        calibration_consumer_configured=bool(
-            capture.get("calibration_consumer_configured")
-        ),
-        calibration_attempted=bool(capture.get("calibration_attempted")),
+    ml_availability = ml_availability_from_handoff_v1(
+        handoff=post_calibration_handoff,
+        bindings=receipt_binding,
         recommendation_count=canonical_recommendation_count,
     )
-    events = _capture_events(compatibility_snapshot, capture, receipt_capture)
+    events = _capture_events(
+        compatibility_snapshot,
+        capture,
+        post_calibration_handoff,
+    )
     if invocation_context is not None:
         events = (
             *events,
@@ -1085,7 +1088,7 @@ def _build_execution(
 def _capture_events(
     compatibility_snapshot: LegacyCompatibilitySnapshot | None,
     capture: Mapping[str, Any],
-    receipt_capture: Mapping[str, Any],
+    post_calibration_handoff: RecommendationPostCalibrationHandoffV1,
 ) -> tuple[ExecutionEvent, ...]:
     events: list[ExecutionEvent] = []
     legacy_state = (
@@ -1142,12 +1145,13 @@ def _capture_events(
                 },
             )
         )
-    if receipt_capture:
+    receipt_event = post_calibration_handoff.receipt_event
+    if receipt_event is not None:
         events.append(
             ExecutionEvent(
                 event_type="ml_projection_receipt_capture",
                 message="封存本次 receipt 寫入、readback 與候選 identity 檢查結果。",
-                details=_receipt_event_details(receipt_capture),
+                details=receipt_event.event_details(),
             )
         )
     error = capture.get("error")
@@ -1181,173 +1185,6 @@ def _capture_events(
             )
         )
     return tuple(events)
-
-
-def _verified_receipt_refs(
-    *,
-    receipt_capture: Mapping[str, Any],
-    result_id: str,
-    context_date: date | None,
-) -> tuple[tuple[MLReceiptBinding, ...], tuple[VersionReference, ...]]:
-    if not receipt_capture.get("readback_verified"):
-        return (), ()
-    payload = receipt_capture.get("receipt_payload")
-    if not isinstance(payload, Mapping):
-        return (), ()
-    candidate = payload.get("candidate_identity")
-    inference = payload.get("inference_provenance")
-    if not isinstance(candidate, Mapping) or not isinstance(inference, Mapping):
-        return (), ()
-    candidate_id = str(candidate.get("candidate_id") or "").strip()
-    receipt_path = str(receipt_capture.get("path") or "").strip()
-    receipt_hash = str(receipt_capture.get("receipt_hash") or "").strip()
-    receipt_result_id = str(payload.get("result_id") or "").strip()
-    decision_date = _date_value(payload.get("decision_date"))
-    stocks = payload.get("projections")
-    stock_codes = tuple(
-        str(row.get("stock_code") or "")
-        for row in stocks
-        if isinstance(row, Mapping)
-    ) if isinstance(stocks, Sequence) and not isinstance(stocks, (str, bytes)) else ()
-    if (
-        not receipt_path
-        or not receipt_hash
-        or not candidate_id
-        or not decision_date
-        or receipt_result_id != result_id
-        or (context_date is not None and context_date != decision_date)
-        or not stock_codes
-    ):
-        return (), ()
-    try:
-        binding = MLReceiptBinding(
-            receipt_ref=VersionReference(ReferenceKind.ML_RECEIPT, receipt_path),
-            receipt_hash=receipt_hash,
-            result_id=receipt_result_id,
-            decision_date=decision_date,
-            model_candidate_id=candidate_id,
-            projected_stock_codes=stock_codes,
-            cost_scenario_hash=(
-                str(payload.get("cost_scenario_hash"))
-                if payload.get("cost_scenario_hash")
-                else None
-            ),
-        )
-        projection_hash = str(payload.get("projection_rows_sha256") or "").strip()
-        projection_ref = (
-            VersionReference(ReferenceKind.ML_PROJECTION, projection_hash)
-            if projection_hash
-            else None
-        )
-    except (TypeError, ValueError):
-        return (), ()
-    return (binding,), ((projection_ref,) if projection_ref is not None else ())
-
-
-def _ml_availability(
-    legacy_context: Mapping[str, Any],
-    receipt_capture: Mapping[str, Any],
-    bindings: tuple[MLReceiptBinding, ...],
-    *,
-    calibration_consumer_configured: bool,
-    calibration_attempted: bool,
-    recommendation_count: int,
-) -> MLAvailability:
-    if receipt_capture.get("identity_verified") and bindings:
-        return MLAvailability(status=MLAvailabilityStatus.AVAILABLE)
-    if not calibration_consumer_configured or (
-        recommendation_count == 0 and not calibration_attempted
-    ):
-        return MLAvailability(status=MLAvailabilityStatus.NOT_REQUESTED)
-    receipt_status = str(
-        legacy_context.get("calibration_projection_receipt_status") or ""
-    )
-    projection_status = str(
-        legacy_context.get("calibration_projection_status") or ""
-    )
-    if receipt_capture.get("persisted") or receipt_capture.get("readback_verified"):
-        detail = str(receipt_capture.get("error") or "active_candidate_identity_not_verified")
-        return MLAvailability(
-            status=MLAvailabilityStatus.UNAVAILABLE,
-            reason=MLAvailabilityReason.SOURCE_VERSION_UNAVAILABLE,
-            reason_detail=detail,
-        )
-    if receipt_status == "unavailable" or projection_status == "unavailable":
-        detail = str(
-            legacy_context.get("calibration_projection_receipt_error_detail")
-            or legacy_context.get("calibration_projection_status")
-            or "legacy_calibration_unavailable"
-        )
-        return MLAvailability(
-            status=MLAvailabilityStatus.UNAVAILABLE,
-            reason=MLAvailabilityReason.MISSING,
-            reason_detail=detail,
-        )
-    return MLAvailability(status=MLAvailabilityStatus.UNKNOWN)
-
-
-def _receipt_event_details(receipt_capture: Mapping[str, Any]) -> dict[str, Any]:
-    payload = receipt_capture.get("receipt_payload")
-    details: dict[str, Any] = {
-        "attempted": bool(receipt_capture.get("attempted")),
-        "persisted": bool(receipt_capture.get("persisted")),
-        "readback_verified": bool(receipt_capture.get("readback_verified")),
-        "identity_verified": bool(receipt_capture.get("identity_verified")),
-        "path": str(receipt_capture.get("path") or ""),
-        "receipt_hash": str(receipt_capture.get("receipt_hash") or ""),
-        "receipt_created_at": str(receipt_capture.get("receipt_created_at") or ""),
-        "error": str(receipt_capture.get("error") or ""),
-    }
-    if isinstance(payload, Mapping):
-        candidate = payload.get("candidate_identity")
-        inference = payload.get("inference_provenance")
-        details.update(
-            {
-                "result_id": str(payload.get("result_id") or ""),
-                "decision_date": str(payload.get("decision_date") or ""),
-                "candidate_id": str(
-                    candidate.get("candidate_id") or ""
-                    if isinstance(candidate, Mapping)
-                    else ""
-                ),
-                "candidate_identity": _safe_contract_value(
-                    candidate if isinstance(candidate, Mapping) else {}
-                ),
-                "cost_scenario_hash": str(payload.get("cost_scenario_hash") or ""),
-                "cost_scenario_id": str(
-                    inference.get("cost_scenario_id") or ""
-                    if isinstance(inference, Mapping)
-                    else ""
-                ),
-                "projected_stock_codes": tuple(
-                    str(row.get("stock_code") or "")
-                    for row in payload.get("projections", ())
-                    if isinstance(row, Mapping)
-                ),
-                "projection_rows_sha256": str(
-                    payload.get("projection_rows_sha256") or ""
-                ),
-                "inference_source_hash": str(
-                    inference.get("inference_source_hash") or ""
-                    if isinstance(inference, Mapping)
-                    else ""
-                ),
-                "inference_pit_hash": str(
-                    inference.get("inference_pit_hash") or ""
-                    if isinstance(inference, Mapping)
-                    else ""
-                ),
-                "feature_rows_sha256": str(
-                    inference.get("feature_rows_sha256") or ""
-                    if isinstance(inference, Mapping)
-                    else ""
-                ),
-                "receipt_body_hash_verified": bool(
-                    receipt_capture.get("readback_verified")
-                ),
-            }
-        )
-    return details
 
 
 def _universe_reference(

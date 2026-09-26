@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, TypeVar
+from typing import Mapping, Protocol, TypeVar
 
 from app_module.recommendation.contracts import RecommendationExecution
 from ml_module.prepared_input_contract import (
@@ -14,6 +14,7 @@ from ml_module.prepared_input_contract import (
     PreparedMLInput,
     SnapshotReference,
 )
+from app_module.recommendation.prepared_runtime_input import PreparedMLRuntimeInputV1
 
 
 _ProjectionT = TypeVar("_ProjectionT", covariant=True)
@@ -56,4 +57,22 @@ class PreparedMLProjector(Protocol[_ProjectionT]):
         ...
 
 
-__all__ = ("PreparedMLProjector", "RecommendationMLAdapter")
+class PreparedMLRuntimeProjector(Protocol[_ProjectionT]):
+    """R026 同次 runtime envelope 的一次性投影邊界。
+
+    capability、owner/scope identity、feature facts、projection context 與 provenance
+    都必須由單一不可變輸入取得；實作不得再接收外部 consumer 或查詢其他來源。
+    """
+
+    def project_prepared_runtime_input(
+        self, runtime_input: PreparedMLRuntimeInputV1, /
+    ) -> Mapping[str, _ProjectionT]:
+        """消費同次 runtime input；成功或失敗後均不得重用其 capability。"""
+        ...
+
+
+__all__ = (
+    "PreparedMLProjector",
+    "PreparedMLRuntimeProjector",
+    "RecommendationMLAdapter",
+)

@@ -652,6 +652,28 @@ class DataLoader:
             # 保存每日價格數據
             df.to_csv(daily_price_file, index=False, encoding='utf-8-sig')
             self.logger.info(f"成功保存 {date} 的個股交易資料，共 {len(df)} 筆記錄")
+            try:
+                from data_module.twse_daily_price_publication import (
+                    create_download_projection_manifest,
+                )
+
+                row_projection_manifest = create_download_projection_manifest(
+                    output_root=self.config.output_root,
+                    data_root=self.config.data_root,
+                    csv_path=daily_price_file,
+                    source_date=formatted_date,
+                    source_custody=source_custody,
+                    source_payload=data,
+                    parsed_frame=df,
+                )
+            except Exception as evidence_error:
+                # CSV 是既有主輸出；新證據失敗只代表無法作嚴格 attestation，
+                # 不回滾既有下載或讓舊消費者失敗。
+                row_projection_manifest = {
+                    "status": "unknown",
+                    "reason_code": "projection_manifest_failed",
+                    "error_type": type(evidence_error).__name__,
+                }
             self.last_daily_download_outcome = "success"
             self.last_daily_download_diagnostics = {
                 "date": date,
@@ -659,6 +681,7 @@ class DataLoader:
                 "reason_code": "twse_data_available",
                 "request_attempts": request_attempts,
                 "source_custody": source_custody,
+                "row_projection_manifest": row_projection_manifest,
             }
             
             return df
@@ -1080,15 +1103,23 @@ class DataLoader:
             self.logger.error(f"更新產業指數數據時發生未處理的錯誤: {str(e)}")
             return False
 
-    def update_market_index(self, date: str, skip_backup: bool = False) -> bool:
+    def update_market_index(
+        self,
+        date: str,
+        skip_backup: bool = False,
+        *,
+        capture_manifests: Optional[List[Path]] = None,
+    ) -> bool:
         """以 TWSE 月報更新指定日大盤資料；任一來源缺件即拒絕發布。"""
         try:
             requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+            pending_captures: list[Path] = []
             rows = fetch_official_market_daily(
                 requested_date,
                 requested_date,
                 requester=lambda url, params: self._make_request(url, dict(params)),
                 source_dir=self.config.meta_data_dir,
+                capture_manifests=pending_captures,
             )
             if len(rows) != 1 or rows[0]["日期"] != requested_date.isoformat():
                 self.logger.error("TWSE 官方月報沒有指定交易日 %s，拒絕更新", date)
@@ -1098,6 +1129,8 @@ class DataLoader:
             ):
                 self.logger.error("大盤 CSV 更新未完成（鎖定、備份或原子寫入失敗）")
                 return False
+            if capture_manifests is not None:
+                capture_manifests.extend(pending_captures)
             self.logger.info("已使用 TWSE 官方來源更新 %s 大盤資料", date)
             return True
         except Exception as exc:

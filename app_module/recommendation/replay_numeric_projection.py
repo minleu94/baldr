@@ -225,13 +225,39 @@ def _numpy_domain(dtype: Any) -> ReplayComparisonDomain:
     )
 
 
+def _pandas_series_complex_domain(dtype: Any) -> ReplayComparisonDomain:
+    """標記最後 Pandas Series 比較面；一般 NumPy scalar domain 保持獨立。"""
+
+    domain = _numpy_domain(dtype)
+    if domain.kind is not ReplayComparisonDomainKind.NUMPY_COMPLEX:
+        return domain
+    if (
+        type(domain.format_name) is not str
+        or type(domain.precision_bits) is not int
+        or type(domain.min_exponent) is not int
+        or type(domain.max_exponent) is not int
+    ):
+        raise UnsupportedReplayNumericScalarError(
+            "Pandas complex comparison domain metadata 不完整"
+        )
+    return ReplayComparisonDomain.pandas_complex_series(
+        domain.format_name,
+        precision_bits=domain.precision_bits,
+        min_exponent=domain.min_exponent,
+        max_exponent=domain.max_exponent,
+    )
+
+
 def _numpy_operand(
     value: Any,
     *,
     origin: ReplayNumericOrigin,
     domain: ReplayComparisonDomain,
 ) -> ReplayComparisonOperand:
-    if domain.kind is ReplayComparisonDomainKind.NUMPY_COMPLEX:
+    if domain.kind in {
+        ReplayComparisonDomainKind.NUMPY_COMPLEX,
+        ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES,
+    }:
         if not isinstance(value, np.complexfloating):
             raise UnsupportedReplayNumericScalarError(
                 "NumPy complex effective domain 必須使用 complex scalar"
@@ -453,7 +479,7 @@ def project_legacy_post_score_comparison_pair(
                 real=ReplayComparisonComponent.finite(int(effective_threshold_scalar)),
             )
         else:
-            domain = _numpy_domain(effective_dtype)
+            domain = _pandas_series_complex_domain(effective_dtype)
             metric = _numpy_operand(effective_metric, origin=origin, domain=domain)
             threshold = _numpy_operand(
                 effective_threshold_scalar,

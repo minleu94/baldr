@@ -2,9 +2,11 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from datetime import date
 from enum import Enum
+import dis
 import logging
 import math
 import operator
+import sys
 from typing import Any, Dict, List, Literal, Optional
 from uuid import uuid4
 import warnings
@@ -44,6 +46,8 @@ from decision_module.recommendation.evaluate import (
     ReplayPrefilterFactResponse,
     ReplayPostScoreDeferredPolicyV1,
     ReplayPostScoreDispositionV1,
+    ReplayPostScoreEffectKindV1,
+    ReplayPostScoreEffectV1,
     ReplayPostScoreFactsV1,
     ReplayPostScoreMetricFactV1,
     ReplayPostScorePolicyV1,
@@ -57,6 +61,7 @@ from decision_module.recommendation.evaluate import (
 from decision_module.recommendation.replay_prefilter import (
     ReplayCompatibilityCandidateKeyV1,
     ReplayCompatibilityPrefilterObservationsV1,
+    ReplayComparisonDomainKind,
     ReplayFastFilterPolicyV1,
     ReplayHistoryPreflightDisposition,
     ReplayMetricStatus,
@@ -147,7 +152,7 @@ class _RecommendationProviderCallContext:
 
 @dataclass(frozen=True, slots=True)
 class _ReplayScoredCandidateV1:
-    """保留 v1 row，並攜帶可表達時的 typed scorer outcome。"""
+    """保留一次排序候選，供 typed child 與 v1 相容輸出共同投影。"""
 
     stock_code: str
     stock_name: str
@@ -157,13 +162,19 @@ class _ReplayScoredCandidateV1:
     volume_score: float
     broker_flow_score: float
     revenue_score: float
+    # legacy v1 row 可攜帶不支援 typed child 的 opaque reason object。
     selection_reason: object
     legacy_score_ordering: ReplayScoreOrderingV1
     scoring_outcome: ReplayCandidateScoringOutcomeV1 | None = None
+    selected_ordinal: int | None = None
 
     def __post_init__(self) -> None:
         if type(self.legacy_score_ordering) is not ReplayScoreOrderingV1:
             raise TypeError("legacy_score_ordering 必須是 ReplayScoreOrderingV1")
+        if self.selected_ordinal is not None and (
+            type(self.selected_ordinal) is not int or self.selected_ordinal < 0
+        ):
+            raise ValueError("selected_ordinal 必須是非負整數或 None")
         if self.scoring_outcome is None:
             return
         outcome = self.scoring_outcome
@@ -196,24 +207,37 @@ class _ReplayScoredCandidateV1:
 
 @dataclass(frozen=True, slots=True)
 class ReplayProviderCallResultV1:
-    """單次 concrete provider 呼叫的 v1 rows、canonical 結果與相容稽核。"""
+    """單次 provider 呼叫的 typed candidates；v1 rows 僅由 candidates 投影。"""
 
-    rows: List[Dict[str, Any]]
-    scoring_outcomes: tuple[ReplayCandidateScoringOutcomeV1 | None, ...]
+    candidates: tuple[_ReplayScoredCandidateV1, ...]
     as_of_date: date
     requested_top_n: int
     # 只供本次 handoff 稽核；不進 SnapshotDTO、child 或任何保存 payload。
     compatibility_scoring_outcomes: tuple[ReplayCompatibilityScoringOutcomeV1, ...] = ()
 
     def __post_init__(self) -> None:
-        if type(self.rows) is not list or any(type(row) is not dict for row in self.rows):
-            raise TypeError("rows 必須是普通 dict list")
-        if type(self.scoring_outcomes) is not tuple:
-            raise TypeError("scoring_outcomes 必須是 tuple")
-        if len(self.rows) != len(self.scoring_outcomes):
-            raise ValueError("v1 rows 與 typed scorer 結果數量不一致")
+        if type(self.candidates) is not tuple or any(
+            type(candidate) is not _ReplayScoredCandidateV1
+            for candidate in self.candidates
+        ):
+            raise TypeError("candidates 必須是 typed candidate tuple")
         if type(self.as_of_date) is not date or type(self.requested_top_n) is not int:
             raise TypeError("handoff date/top_n 型別不正確")
+        if any(candidate.selected_ordinal is None for candidate in self.candidates):
+            raise ValueError("handoff candidates 必須帶有 provider 排序序號")
+        scoring_requests = tuple(
+            candidate.scoring_outcome.request
+            for candidate in self.candidates
+            if candidate.scoring_outcome is not None
+        )
+        if any(request.as_of_date != self.as_of_date for request in scoring_requests):
+            raise ValueError("typed scorer cutoff 與 call result 不一致")
+        if len({request.request_id for request in scoring_requests}) != len(
+            scoring_requests
+        ):
+            raise ValueError("typed scorer request_id 不可重複")
+        if len({request.invocation_id for request in scoring_requests}) > 1:
+            raise ValueError("typed scorer outcomes 必須來自同一 invocation")
         if type(self.compatibility_scoring_outcomes) is not tuple or any(
             type(outcome) is not ReplayCompatibilityScoringOutcomeV1
             for outcome in self.compatibility_scoring_outcomes
@@ -238,6 +262,27 @@ class ReplayProviderCallResultV1:
         audit_invocations = {request.invocation_id for request in compatibility_requests}
         if len(audit_invocations) > 1:
             raise ValueError("compatibility scorer audit 必須來自同一 invocation")
+        if scoring_requests and audit_invocations and {
+            request.invocation_id for request in scoring_requests
+        } != audit_invocations:
+            raise ValueError("typed 與 compatibility scorer audit 必須來自同一 invocation")
+
+    def project_v1_rows(self) -> List[Dict[str, Any]]:
+        """從同一候選序列新建 v1 list，不回讀 list 建立 typed child。"""
+
+        return [candidate.to_v1_row() for candidate in self.candidates]
+
+    @property
+    def rows(self) -> List[Dict[str, Any]]:
+        """相容讀取介面；每次都由 typed candidates 建立新 list。"""
+
+        return self.project_v1_rows()
+
+    @property
+    def scoring_outcomes(self) -> tuple[ReplayCandidateScoringOutcomeV1 | None, ...]:
+        """與候選同序的 scorer outcome 投影；不另存可錯接的平行序列。"""
+
+        return tuple(candidate.scoring_outcome for candidate in self.candidates)
 
 
 def _replay_score_order_token(score: float) -> ReplayScoreOrderingV1:
@@ -411,6 +456,174 @@ def _emit_legacy_filter_rejection_warning(
         )
 
 
+class ReplayNativeEffectProjectionUnavailableError(RuntimeError):
+    """目前 runtime 的 Pandas warning location 未經 native parity 驗證。"""
+
+
+def _pandas_comparison_warning_location() -> tuple[str, int, str, dict[str, Any]]:
+    """只接受已驗證的 runtime 與 Pandas 原生比較 bytecode 位置。"""
+
+    if sys.platform != "win32":
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "未驗證的作業系統平台；拒絕投影 Pandas comparison effect"
+        )
+    if tuple(sys.version_info[:3]) != (3, 11, 9):
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "未驗證的 Python runtime；拒絕投影 Pandas comparison effect"
+        )
+    if pd.__version__ != "2.3.3" or np.__version__ not in {"1.26.4", "2.3.5"}:
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "未驗證的 Pandas/NumPy runtime；拒絕投影 Pandas comparison effect"
+        )
+
+    module = sys.modules.get("pandas.core.computation.expressions")
+    standard_compare = getattr(module, "_evaluate_standard", None)
+    if module is None or not callable(standard_compare):
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "無法定位 Pandas native comparison warning source"
+        )
+    code = getattr(standard_compare, "__code__", None)
+    if (
+        code is None
+        or code.co_name != "_evaluate_standard"
+        or code.co_firstlineno != 67
+    ):
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "Pandas native comparison function metadata 與驗證版本不符"
+        )
+    instructions = tuple(dis.get_instructions(standard_compare))
+    call_positions = tuple(
+        index for index, instruction in enumerate(instructions) if instruction.opname == "CALL"
+    )
+    if len(call_positions) != 2:
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "Pandas native comparison bytecode call shape 未經驗證"
+        )
+    call_position = call_positions[-1]
+    expected_ops = (
+        "PUSH_NULL",
+        "LOAD_FAST",
+        "LOAD_FAST",
+        "LOAD_FAST",
+        "PRECALL",
+        "CALL",
+        "RETURN_VALUE",
+    )
+    observed_ops = tuple(
+        instruction.opname
+        for instruction in instructions[call_position - 5 : call_position + 2]
+    )
+    if (
+        observed_ops != expected_ops
+        or tuple(
+            instruction.argval
+            for instruction in instructions[call_position - 4 : call_position - 1]
+        )
+        != ("op", "a", "b")
+        or instructions[call_position - 1].argval != 2
+        or instructions[call_position].arg != 2
+    ):
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "Pandas native comparison call site bytecode 未經驗證"
+        )
+    operation_offset = instructions[call_position].offset
+    starts = tuple(dis.findlinestarts(code))
+    operation_lines = tuple(
+        line for offset, line in starts if offset <= operation_offset
+    )
+    if not operation_lines or operation_lines[-1] != 73:
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "Pandas native comparison line 未經 warning-filter parity 驗證"
+        )
+    filename = getattr(module, "__file__", None)
+    module_name = getattr(module, "__name__", None)
+    module_globals = getattr(module, "__dict__", None)
+    if (
+        type(filename) is not str
+        or type(module_name) is not str
+        or module_name != "pandas.core.computation.expressions"
+        or type(module_globals) is not dict
+        or not filename.replace("\\", "/").endswith(
+            "/pandas/core/computation/expressions.py"
+        )
+    ):
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "Pandas native comparison warning metadata 不完整或未經驗證"
+        )
+    return filename, 73, module_name, module_globals
+
+
+def _project_replay_post_score_effect(
+    effect: ReplayPostScoreEffectV1,
+    *,
+    warning_location: tuple[str, int, str, dict[str, Any]] | None,
+) -> None:
+    """依 NumPy errstate 投影純 evaluator 回傳的 native warning effect。"""
+
+    if type(effect) is not ReplayPostScoreEffectV1:
+        raise TypeError("effect 必須是 ReplayPostScoreEffectV1")
+    if effect.kind is not ReplayPostScoreEffectKindV1.NUMPY_INVALID_COMPARISON:
+        raise ValueError("不支援的 replay post-score effect")
+
+    if warning_location is None:
+        raise ReplayNativeEffectProjectionUnavailableError(
+            "native effect 缺少本次 complex comparison 的已驗證 runtime capability"
+        )
+    action = np.geterr()["invalid"]
+    message = effect.message
+    ufunc_name = message.rsplit(" ", 1)[-1]
+    if action == "ignore":
+        return
+    if action == "raise":
+        raise FloatingPointError(message)
+    if action == "warn":
+        filename, lineno, module_name, module_globals = warning_location
+        registry = module_globals.setdefault("__warningregistry__", {})
+        if type(registry) is not dict:
+            raise ReplayNativeEffectProjectionUnavailableError(
+                "Pandas warning registry 型別與 native warning 不相容"
+            )
+        warnings.warn_explicit(
+            message,
+            RuntimeWarning,
+            filename=filename,
+            lineno=lineno,
+            module=module_name,
+            module_globals=module_globals,
+            registry=registry,
+        )
+        return
+    if action == "print":
+        sys.stderr.write(f"Warning: {message}\n")
+        return
+    if action == "log":
+        callback = np.geterrcall()
+        if callback is None:
+            raise NameError(
+                f"python callback specified for invalid value (in  {ufunc_name}) but no function found."
+            )
+        write_method = getattr(callback, "write", None)
+        if not callable(write_method):
+            raise ReplayNativeEffectProjectionUnavailableError(
+                "NumPy log errstate callback 缺少 native write capability"
+            )
+        write_method(f"Warning: {message}\n")
+        return
+    if action == "call":
+        callback = np.geterrcall()
+        if callback is None:
+            raise NameError(
+                f"python callback specified for invalid value (in  {ufunc_name}) but no function found."
+            )
+        if not callable(callback):
+            raise ReplayNativeEffectProjectionUnavailableError(
+                "NumPy call errstate callback 不是可呼叫物件"
+            )
+        callback("invalid value", 8)
+        return
+    raise RuntimeError(f"不支援的 NumPy invalid errstate action：{action}")
+
+
 def _evaluate_replay_post_score_filters(
     frame: pd.DataFrame,
     raw_filters: Any,
@@ -477,6 +690,8 @@ def _evaluate_replay_post_score_filters(
         pending = step.request
         if type(pending) is not NeedReplayPostScoreThresholdV1:
             raise AssertionError("未知 replay post-score threshold request")
+        # 每個 deferred rule 都獨立取得 runtime capability；不沿用前一 rule 的位置。
+        warning_location = None
         rule = pending.filter_id
         screen_key = _POST_SCORE_RULE_SCREEN_KEYS[rule]
         raw_threshold = screen_filters[screen_key]
@@ -496,6 +711,7 @@ def _evaluate_replay_post_score_filters(
         if raw_threshold is None:
             threshold = ReplayThreshold.unsupported("legacy_none_threshold")
             paired_metric = None
+            warning_location = None
         else:
             unit = (
                 ReplayThresholdUnit.VOLUME_EFFECTIVE_CHANGE_PERCENT
@@ -522,13 +738,27 @@ def _evaluate_replay_post_score_filters(
                         value=pair.metric,
                     ),
                 )
+                warning_location = (
+                    _pandas_comparison_warning_location()
+                    if pair.metric.domain.kind
+                    is ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES
+                    else None
+                )
 
         response = ReplayPostScoreThresholdResponseV1(
             request=pending,
             threshold=threshold,
             paired_metric=paired_metric,
         )
+        previous_rule_count = len(step.state.rules)
         step = evaluator.advance_replay_post_score_staged(step, response)
+        completed_rules = step.state.rules[previous_rule_count:]
+        for completed_rule in completed_rules:
+            for effect in completed_rule.effects:
+                _project_replay_post_score_effect(
+                    effect,
+                    warning_location=warning_location,
+                )
 
     outcome = step.outcome
     if outcome is None:
@@ -579,21 +809,21 @@ class RecommendationDataFrameProvider:
         top_n: int,
         as_of_date: date,
     ) -> ReplayProviderCallResultV1:
-        """同一次 scorer/evaluator 呼叫交出 rows 與 typed 結果。"""
+        """同一次 scorer/evaluator 呼叫交出 typed candidates。"""
 
         selected: list[_ReplayScoredCandidateV1] = []
         compatibility_outcomes: list[ReplayCompatibilityScoringOutcomeV1] = []
-        rows = self(
+        self(
             as_of_data,
             config,
             top_n,
             _call_context=_RecommendationProviderCallContext(as_of_date=as_of_date),
             _handoff_sink=selected,
             _compatibility_handoff_sink=compatibility_outcomes,
+            _typed_handoff_only=True,
         )
         return ReplayProviderCallResultV1(
-            rows=rows,
-            scoring_outcomes=tuple(item.scoring_outcome for item in selected),
+            candidates=tuple(selected),
             as_of_date=as_of_date,
             requested_top_n=operator.index(top_n),
             compatibility_scoring_outcomes=tuple(compatibility_outcomes),
@@ -609,9 +839,14 @@ class RecommendationDataFrameProvider:
         _call_context: _RecommendationProviderCallContext | None = None,
         _handoff_sink: list[_ReplayScoredCandidateV1] | None = None,
         _compatibility_handoff_sink: list[ReplayCompatibilityScoringOutcomeV1] | None = None,
+        _typed_handoff_only: bool = False,
     ) -> List[Dict[str, Any]]:
         if _call_context is not None and type(_call_context) is not _RecommendationProviderCallContext:
             raise TypeError("_call_context 必須是 RecommendationProviderCallContext 或 None")
+        if type(_typed_handoff_only) is not bool:
+            raise TypeError("_typed_handoff_only 必須是 bool")
+        if _typed_handoff_only and _handoff_sink is None:
+            raise ValueError("typed-only handoff 必須提供 invocation-local candidate sink")
         if _compatibility_handoff_sink is not None and (
             type(_compatibility_handoff_sink) is not list or _compatibility_handoff_sink
         ):
@@ -715,6 +950,10 @@ class RecommendationDataFrameProvider:
                             scoring_request,
                             evaluator,
                         )
+            except ReplayNativeEffectProjectionUnavailableError:
+                # 沒有經驗證的 warning location 時，中止整次 replay 呼叫；
+                # 不把未知 runtime 偽裝成可產生 canonical empty child 的 scorer skip。
+                raise
             except Exception as exc:
                 if scoring_request is not None:
                     assert prefilter_step is not None
@@ -875,9 +1114,14 @@ class RecommendationDataFrameProvider:
             tuple(item.legacy_score_ordering for item in recommendations),
             policy,
         )
-        selected = [recommendations[index] for index in ordinals]
+        selected = [
+            replace(recommendations[index], selected_ordinal=ordinal)
+            for ordinal, index in enumerate(ordinals)
+        ]
         if _handoff_sink is not None:
             _handoff_sink.extend(selected)
+        if _typed_handoff_only:
+            return []
         return [item.to_v1_row() for item in selected]
 
     def _passes_fast_filters(

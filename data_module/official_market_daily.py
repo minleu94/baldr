@@ -123,6 +123,7 @@ def fetch_official_market_daily(
     *,
     requester: Callable[[str, Mapping[str, str]], Any],
     source_dir: Path,
+    capture_manifests: list[Path] | None = None,
 ) -> list[dict[str, Any]]:
     """取得並核對範圍內 TWSE 官方大盤列，成交量使用股數整數。"""
     start, cutoff = _as_date(start_date), _as_date(end_date)
@@ -196,9 +197,11 @@ def fetch_official_market_daily(
     if not rows:
         raise OfficialMarketDailyError("TWSE 官方報表在請求日期範圍內沒有交易日資料")
 
-    _capture_raw_sources(
+    manifest_path = _capture_raw_sources(
         Path(source_dir), start=start, cutoff=cutoff, captures=captures, row_count=len(rows),
     )
+    if capture_manifests is not None:
+        capture_manifests.append(manifest_path)
     return rows
 
 

@@ -246,6 +246,46 @@ def _twse_skip_warning_messages(result: dict[str, Any]) -> list[str]:
     return [f"TWSE 官方無交易資料日（休市／颱風等），已略過日期：{', '.join(skipped_dates)}"]
 
 
+def _update_market_with_capture(
+    service: Any, start_date: str, end_date: str, capture_manifests: list[Path],
+) -> dict[str, Any]:
+    """支援舊 service double，同時傳遞本次 TWSE capture sink。"""
+    import inspect
+
+    update_market = service.update_market
+    parameters = inspect.signature(update_market).parameters
+    if "capture_manifests" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return update_market(
+            start_date,
+            end_date,
+            capture_manifests=capture_manifests,
+        )
+    return update_market(start_date, end_date)
+
+
+def _sync_market_index_for_run(
+    service: Any,
+    *,
+    capture_manifests: list[Path],
+    market_update_result: Any,
+) -> dict[str, Any]:
+    """實際服務走 TAIEX 複合鍵發布；舊 service double 保留原同步介面。"""
+    publisher = getattr(service, "publish_taiex_market_index", None)
+    if callable(publisher):
+        return publisher(
+            capture_manifests=capture_manifests,
+            market_update_result=(
+                market_update_result
+                if isinstance(market_update_result, dict)
+                else {"success": False}
+            ),
+        )
+    return service.sync_source_to_sqlite("market_index")
+
+
 def _run_step(
     *,
     steps: list[dict[str, Any]],
@@ -275,6 +315,35 @@ def _run_step(
         return result
     logging.info("Step passed: %s", name)
     return None
+
+
+def _sync_daily_price_files_with_twse_evidence(
+    service: Any,
+    *,
+    steps: list[dict[str, Any]],
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """只把本次 TWSE subprocess 明確回報的 projection 傳給 SQLite publisher。"""
+
+    twse_result: dict[str, Any] = {}
+    for step in steps:
+        result = step.get("result")
+        if step.get("name") == "update_twse_daily_prices" and isinstance(result, dict):
+            twse_result = result
+            break
+    diagnostics = twse_result.get("source_diagnostics", [])
+    if not isinstance(diagnostics, list):
+        diagnostics = []
+    trusted_diagnostics = [
+        item for item in diagnostics if isinstance(item, dict)
+    ]
+    return service.sync_source_to_sqlite(
+        "daily_price_files",
+        start_date,
+        end_date,
+        row_evidence_source_diagnostics=trusted_diagnostics,
+    )
 
 
 def _technical_is_current(
@@ -554,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
     steps: list[dict[str, Any]] = []
     warnings: list[str] = []
     failed: dict[str, Any] | None = None
+    market_capture_manifests: list[Path] = []
 
     logging.info("Scheduled quick data update window: %s to %s", start_date, end_date)
 
@@ -624,12 +694,42 @@ def main(argv: list[str] | None = None) -> int:
         failed = _run_step(
             steps=steps,
             name="sync_daily_prices_to_sqlite",
-            action=lambda: service.sync_source_to_sqlite("daily_price_files", start_date, end_date),
+            action=lambda: _sync_daily_price_files_with_twse_evidence(
+                service,
+                steps=steps,
+                start_date=start_date,
+                end_date=end_date,
+            ),
         )
     if failed is None:
-        failed = _run_step(steps=steps, name="update_market_index", action=lambda: service.update_market(start_date, end_date))
+        failed = _run_step(
+            steps=steps,
+            name="update_market_index",
+            action=lambda: _update_market_with_capture(
+                service,
+                start_date,
+                end_date,
+                market_capture_manifests,
+            ),
+        )
     if failed is None:
-        failed = _run_step(steps=steps, name="sync_market_index_to_sqlite", action=lambda: service.sync_source_to_sqlite("market_index"))
+        market_update_result: Any = next(
+            (
+                step.get("result")
+                for step in steps
+                if step.get("name") == "update_market_index"
+            ),
+            {},
+        )
+        failed = _run_step(
+            steps=steps,
+            name="sync_market_index_to_sqlite",
+            action=lambda: _sync_market_index_for_run(
+                service,
+                capture_manifests=market_capture_manifests,
+                market_update_result=market_update_result,
+            ),
+        )
     if failed is None:
         failed = _run_step(steps=steps, name="update_industry_index", action=lambda: service.update_industry(start_date, end_date))
     if failed is None:

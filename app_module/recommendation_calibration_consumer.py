@@ -12,11 +12,12 @@ from datetime import date
 from decimal import Decimal
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 from threading import Lock, get_ident
 from types import FunctionType
-from typing import Any, Mapping, NoReturn, Sequence, SupportsIndex
+from typing import Any, Mapping, NoReturn, Protocol, Sequence, SupportsIndex, cast
 from weakref import WeakValueDictionary
 
 import joblib
@@ -33,8 +34,18 @@ from sklearn.preprocessing import StandardScaler
 from app_module.recommendation_learning_paths import (
     resolve_recommendation_learning_paths,
 )
-from ml_module.model_artifact_loader import ArtifactCompatibilityExpectation, SafeShadowModelArtifactLoader
-from ml_module.model_artifact_manifest import FeatureSchema
+from app_module.recommendation.model_resolution_facts import (
+    CapabilityLoadedArtifactLineageEvidenceV1,
+    CapabilityLoadedArtifactLineageNodeV1,
+    RecommendationModelResolutionEvidenceV1,
+    capture_model_resolution_evidence_v1,
+)
+from ml_module.model_artifact_loader import (
+    ArtifactCompatibilityExpectation,
+    SafeShadowModelArtifactLoader,
+    SameBytesShadowModelArtifactWithManifestLoadResultV1,
+)
+from ml_module.model_artifact_manifest import FeatureSchema, ModelArtifactManifest
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.recommendation_calibration_training import (
     RECOMMENDATION_RETURN_BASIS,
@@ -73,16 +84,29 @@ from ml_module.recommendation_inference_provenance import (
     validate_provenance_compatibility,
     verify_inference_provenance,
 )
+from ml_module.prepared_source_contract import VerifiedSourceContractEvidenceV1
 
 
 _MODEL_GRAPH_SCHEMA_VERSION = "r026-known-model-graph.v1"
-_SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILE = (
-    "win32",
-    (3, 11, 9),
-    "2.3.5",  # NumPy
-    "1.8.0",  # scikit-learn
-    "1.16.3",  # SciPy
-    "1.5.2",  # joblib
+_SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILES: frozenset[tuple[Any, ...]] = frozenset(
+    {
+        (
+            "win32",
+            (3, 11, 9),
+            "1.26.4",  # NumPy 1 組合
+            "1.8.0",  # scikit-learn 版本
+            "1.16.3",  # SciPy 版本
+            "1.5.2",  # joblib 版本
+        ),
+        (
+            "win32",
+            (3, 11, 9),
+            "2.3.5",  # NumPy 2 組合
+            "1.8.0",  # scikit-learn 版本
+            "1.16.3",  # SciPy 版本
+            "1.5.2",  # joblib 版本
+        ),
+    }
 )
 _MAX_MODEL_GRAPH_DEPTH = 24
 _MAX_MODEL_GRAPH_NODES = 4096
@@ -90,6 +114,8 @@ _MAX_MODEL_GRAPH_ARRAYS = 512
 _MAX_MODEL_GRAPH_ARRAY_BYTES = 64 * 1024 * 1024
 _MAX_MODEL_GRAPH_ARRAY_ELEMENTS = 1_000_000
 _MAX_LIVE_INVOCATION_CAPABILITIES = 16
+_NO_MODEL_PROJECTION_CAPABILITY_SEAL = object()
+_POINTER_BYTES_UNSET = object()
 # Capture the reviewed callables once; do not trust later runtime rebinding of
 # SciPy's class attributes to widen the model-graph schema.
 _VERIFIED_SCIPY_INTERP1D_CALLS = tuple(
@@ -104,6 +130,167 @@ _VERIFIED_SCIPY_INTERP1D_CALLS = tuple(
     and candidate.__kwdefaults__ is None
     and not candidate.__dict__
 )
+
+
+@dataclass(frozen=True)
+class _ModelResolutionCaptureInputs:
+    """只在 fresh resolve 內暫存，待外層 bytes/identity checks 完成後封裝。"""
+
+    pointer: Mapping[str, Any]
+    candidate_payload: Mapping[str, Any]
+    manifest: ModelArtifactManifest
+    loaded_model_training_as_of: Any
+    training_provenance: Mapping[str, Any]
+    probability_lineage: tuple[Mapping[str, Any], ...]
+    runtime_profile: tuple[Any, ...]
+
+
+@dataclass(frozen=True)
+class _CapabilityPointerBytesEvidenceV1:
+    """Capability 專用 pointer 原始 bytes 與 canonical payload 摘要。"""
+
+    raw_bytes_sha256: str
+    canonical_payload_sha256: str
+    canonicalization_id: str = "recommendation-consumer-json.v1"
+
+
+@dataclass(frozen=True)
+class _CapabilityCandidateJsonBytesNodeV1:
+    """同次 candidate JSON parse 的 immutable bytes/identity evidence。"""
+
+    position: int
+    kind: str
+    candidate_id: str | None
+    model_id: str | None
+    normalized_candidate_root: str | None
+    manifest_hash: str | None
+    artifact_hash: str | None
+    freeze_hash: str | None
+    dataset_hash: str | None
+    raw_bytes_sha256: str | None
+    canonical_payload_sha256: str | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "position": self.position,
+            "kind": self.kind,
+            "candidate_id": self.candidate_id,
+            "model_id": self.model_id,
+            "normalized_candidate_root": self.normalized_candidate_root,
+            "manifest_hash": self.manifest_hash,
+            "artifact_hash": self.artifact_hash,
+            "freeze_hash": self.freeze_hash,
+            "dataset_hash": self.dataset_hash,
+            "raw_bytes_sha256": self.raw_bytes_sha256,
+            "canonical_payload_sha256": self.canonical_payload_sha256,
+        }
+
+
+@dataclass(frozen=True)
+class _CapabilityCandidateJsonBytesLineageV1:
+    """Capability-local ordered candidate JSON evidence, including null baseline."""
+
+    nodes: tuple[_CapabilityCandidateJsonBytesNodeV1, ...]
+    schema_version: str = "recommendation-capability-candidate-json-bytes.v1"
+    canonicalization_id: str = "recommendation-candidate-json.v1"
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.nodes) is not tuple
+            or not self.nodes
+            or any(type(node) is not _CapabilityCandidateJsonBytesNodeV1 for node in self.nodes)
+            or tuple(node.position for node in self.nodes) != tuple(range(len(self.nodes)))
+            or self.nodes[0].kind != "null_benchmark"
+            or any(node.kind == "null_benchmark" for node in self.nodes[1:])
+            or any(node.kind != "active_model" for node in self.nodes[1:])
+        ):
+            raise ValueError("candidate JSON evidence lineage is invalid")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "canonicalization_id": self.canonicalization_id,
+            "nodes": [node.to_payload() for node in self.nodes],
+        }
+
+
+@dataclass(frozen=True)
+class _CapabilityModelManifestBytesNodeV1:
+    """保存單次解析之 manifest 身分與原始 bytes 摘要。"""
+
+    position: int
+    kind: str
+    candidate_id: str | None
+    model_id: str | None
+    normalized_candidate_root: str | None
+    raw_bytes_sha256: str | None
+    canonical_manifest_hash: str | None
+
+    def __post_init__(self) -> None:
+        if type(self.position) is not int or self.position < 0:
+            raise ValueError("manifest lineage position must be non-negative")
+        if self.kind not in {"null_benchmark", "active_model"}:
+            raise ValueError("manifest lineage node kind is unsupported")
+        if self.kind == "null_benchmark":
+            if any(
+                value is not None
+                for value in (
+                    self.candidate_id,
+                    self.model_id,
+                    self.normalized_candidate_root,
+                    self.raw_bytes_sha256,
+                    self.canonical_manifest_hash,
+                )
+            ):
+                raise ValueError("null benchmark cannot carry manifest evidence")
+        elif (
+            not self.candidate_id
+            or not self.model_id
+            or not self.normalized_candidate_root
+            or not _is_prefixed_sha256(self.raw_bytes_sha256)
+            or not _is_prefixed_sha256(self.canonical_manifest_hash)
+        ):
+            raise ValueError("active model requires captured manifest evidence")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "position": self.position,
+            "kind": self.kind,
+            "candidate_id": self.candidate_id,
+            "model_id": self.model_id,
+            "normalized_candidate_root": self.normalized_candidate_root,
+            "raw_bytes_sha256": self.raw_bytes_sha256,
+            "canonical_manifest_hash": self.canonical_manifest_hash,
+        }
+
+
+@dataclass(frozen=True)
+class _CapabilityModelManifestBytesLineageV1:
+    """保存單次 invocation capability 的 active 與 ancestor manifest 順序證據。"""
+
+    nodes: tuple[_CapabilityModelManifestBytesNodeV1, ...]
+    schema_version: str = "recommendation-capability-model-manifest-bytes.v1"
+    canonicalization_id: str = "ml-model-artifact-manifest.self-hash.v1"
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.nodes) is not tuple
+            or len(self.nodes) < 2
+            or any(type(node) is not _CapabilityModelManifestBytesNodeV1 for node in self.nodes)
+            or tuple(node.position for node in self.nodes) != tuple(range(len(self.nodes)))
+            or self.nodes[0].kind != "null_benchmark"
+            or any(node.kind != "active_model" for node in self.nodes[1:])
+            or self.schema_version != "recommendation-capability-model-manifest-bytes.v1"
+            or self.canonicalization_id != "ml-model-artifact-manifest.self-hash.v1"
+        ):
+            raise ValueError("model manifest evidence lineage is invalid")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "canonicalization_id": self.canonicalization_id,
+            "nodes": [node.to_payload() for node in self.nodes],
+        }
 
 
 @dataclass(frozen=True)
@@ -278,6 +465,16 @@ class RecommendationCalibrationProjection:
         }
 
 
+class _ProjectionInvocationCapabilityProtocol(Protocol):
+    """限制原投影只接受持有本次執行權限的 capability。"""
+
+    def assert_projection_use(
+        self,
+        consumer: RecommendationCalibrationConsumer,
+        decision_date: str,
+    ) -> None: ...
+
+
 class RecommendationCalibrationConsumer:
     """Fail-closed inference adapter for Recommendation → Advice → Presentation."""
 
@@ -310,8 +507,33 @@ class RecommendationCalibrationConsumer:
         self._loaded_decision_date: str | None = None
         self._invocation_capability_lock = Lock()
         self._invocation_capabilities: WeakValueDictionary[
-            str, _InvocationProjectionCapability
+            str, _InvocationProjectionCapability | _NoModelProjectionCapability
         ] = WeakValueDictionary()
+        self._capture_model_resolution_evidence = False
+        self._model_resolution_runtime_profile: tuple[Any, ...] | None = None
+        self._model_resolution_capture_inputs: _ModelResolutionCaptureInputs | None = None
+        self._captured_pointer_bytes_for_reload: bytes | None = None
+        self._model_resolution_captured_pointer_bytes_sha256: str | None = None
+        self._model_resolution_active_artifact_sha256: str | None = None
+        self._model_resolution_active_candidate_json_hashes: tuple[str, str] | None = None
+        self._model_resolution_candidate_json_lineage: (
+            _CapabilityCandidateJsonBytesLineageV1 | None
+        ) = None
+        self._model_resolution_active_manifest_result: (
+            SameBytesShadowModelArtifactWithManifestLoadResultV1 | None
+        ) = None
+        self._model_resolution_manifest_nodes_by_position: dict[
+            int, _CapabilityModelManifestBytesNodeV1
+        ] = {}
+        self._model_resolution_manifest_lineage: (
+            _CapabilityModelManifestBytesLineageV1 | None
+        ) = None
+        self._model_resolution_captured_manifest_paths_and_bytes: list[
+            tuple[Path, bytes]
+        ] = []
+        self._model_resolution_loaded_artifact_lineage: (
+            CapabilityLoadedArtifactLineageEvidenceV1 | None
+        ) = None
 
     def resolve_invocation_projection_capability(
         self,
@@ -346,11 +568,13 @@ class RecommendationCalibrationConsumer:
             or self._loader._deserializer is not joblib.load
         ):
             return None
-        if _current_model_graph_runtime_profile() != _SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILE:
+        runtime_profile = _current_model_graph_runtime_profile()
+        if runtime_profile not in _SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILES:
             return None
         with self._invocation_capability_lock:
             if invocation_scope_id in self._invocation_capabilities:
                 return None
+        resolved: RecommendationCalibrationConsumer | None = None
         try:
             expected_hash = _hash_payload(expected_identity)
             pointer_bytes_before = self.pointer_path.read_bytes()
@@ -372,15 +596,53 @@ class RecommendationCalibrationConsumer:
                 data_root=self._loader._data_root,
                 deserializer=joblib.load,
             )
+            resolved._capture_model_resolution_evidence = True
+            resolved._model_resolution_runtime_profile = runtime_profile
+            resolved._model_resolution_captured_manifest_paths_and_bytes = []
+            resolved._captured_pointer_bytes_for_reload = pointer_bytes_before
             if resolved.reload(decision_date=current_day) != "active":
                 return None
             pointer_bytes_after = self.pointer_path.read_bytes()
             if pointer_bytes_after != pointer_bytes_before:
                 return None
+            if (
+                resolved._model_resolution_captured_pointer_bytes_sha256
+                != _sha256_bytes(pointer_bytes_before)
+            ):
+                return None
             if resolved._loaded_pointer != parsed_pointer_before:
                 return None
             resolved_identity = resolved.active_identity(decision_date=current_day)
             if resolved_identity is None or _hash_payload(resolved_identity) != expected_hash:
+                return None
+            capture = resolved._model_resolution_capture_inputs
+            if capture is None or capture.pointer != parsed_pointer_before:
+                return None
+            model_resolution_evidence = capture_model_resolution_evidence_v1(
+                pointer=capture.pointer,
+                candidate_payload=capture.candidate_payload,
+                manifest=capture.manifest,
+                loaded_model_training_as_of=capture.loaded_model_training_as_of,
+                training_provenance=capture.training_provenance,
+                probability_lineage=capture.probability_lineage,
+                runtime_profile=capture.runtime_profile,
+                decision_date=current_day,
+                pointer_bytes_equal=True,
+                candidate_identity_path_rechecked=True,
+            )
+            loaded_artifact_lineage = resolved._model_resolution_loaded_artifact_lineage
+            if loaded_artifact_lineage is None:
+                return None
+            candidate_json_lineage = resolved._model_resolution_candidate_json_lineage
+            if candidate_json_lineage is None:
+                return None
+            manifest_lineage = resolved._model_resolution_manifest_lineage
+            if (
+                manifest_lineage is None
+                or len(resolved._model_resolution_captured_manifest_paths_and_bytes)
+                != len(manifest_lineage.nodes) - 1
+                or not resolved._recheck_captured_model_manifests()
+            ):
                 return None
             if type(resolved._model) is not RunnableRecommendationCalibrationModel:
                 return None
@@ -399,6 +661,14 @@ class RecommendationCalibrationConsumer:
                 invocation_scope_id=invocation_scope_id,
                 decision_date=current_day,
                 identity_hash=expected_hash,
+                model_resolution_evidence=model_resolution_evidence,
+                loaded_artifact_lineage=loaded_artifact_lineage,
+                pointer_bytes_evidence=_CapabilityPointerBytesEvidenceV1(
+                    raw_bytes_sha256=_sha256_bytes(pointer_bytes_before),
+                    canonical_payload_sha256=_hash_payload(parsed_pointer_before),
+                ),
+                candidate_json_bytes_lineage=candidate_json_lineage,
+                model_manifest_bytes_lineage=manifest_lineage,
             )
             with self._invocation_capability_lock:
                 if invocation_scope_id in self._invocation_capabilities:
@@ -419,8 +689,144 @@ class RecommendationCalibrationConsumer:
             # This optional shadow capability is fail-closed.  The existing
             # legacy projection route remains responsible for its own errors.
             return None
+        finally:
+            if resolved is not None:
+                # The immutable facts outlive only the capability; raw mutable
+                # capture mappings are never retained by its private consumer.
+                resolved._model_resolution_capture_inputs = None
+                resolved._captured_pointer_bytes_for_reload = None
+                resolved._model_resolution_captured_pointer_bytes_sha256 = None
+                resolved._capture_model_resolution_evidence = False
+                resolved._model_resolution_runtime_profile = None
+                resolved._model_resolution_active_manifest_result = None
+                resolved._model_resolution_manifest_nodes_by_position.clear()
+                resolved._model_resolution_captured_manifest_paths_and_bytes.clear()
 
-    def reload(self, *, decision_date: str | None = None) -> str:
+    def resolve_invocation_no_model_projection_capability_v1(
+        self,
+        *,
+        invocation_scope_id: str,
+        decision_date: str,
+        expected_identity: Mapping[str, Any],
+    ) -> "_NoModelProjectionCapability | None":
+        """封存 fresh baseline reload 明確回報的 rule-only/no-model 終止結果。"""
+
+        from app_module.recommendation.prepared_runtime_input import (
+            NoModelShadowIdentityV1,
+        )
+
+        if (
+            type(invocation_scope_id) is not str
+            or not invocation_scope_id
+            or not invocation_scope_id.isascii()
+            or any(not (char.isalnum() or char in "-_.") for char in invocation_scope_id)
+        ):
+            return None
+        current_day = _date_text_or_none(decision_date)
+        if current_day is None or not isinstance(expected_identity, Mapping):
+            return None
+        try:
+            expected_hash = _hash_payload(expected_identity)
+            empty_identity_hash = _hash_payload({})
+        except Exception:
+            return None
+        if expected_hash != empty_identity_hash:
+            return None
+        runtime_profile = _current_model_graph_runtime_profile()
+        if (
+            type(self) is not RecommendationCalibrationConsumer
+            or type(self._loader) is not SafeShadowModelArtifactLoader
+            or self._loader._deserializer is not joblib.load
+            or runtime_profile not in _SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILES
+        ):
+            return None
+        with self._invocation_capability_lock:
+            if invocation_scope_id in self._invocation_capabilities:
+                return None
+
+        resolved: RecommendationCalibrationConsumer | None = None
+        try:
+            pointer_raw_bytes = (
+                self.pointer_path.read_bytes()
+                if self.pointer_path.is_file()
+                else None
+            )
+            resolved = RecommendationCalibrationConsumer(
+                pointer_path=self.pointer_path,
+                feature_schema=self.feature_schema,
+                feature_registry_hash=self.feature_registry_hash,
+                data_root=self._loader._data_root,
+                expected_model_family=self.expected_model_family,
+            )
+            resolved._loader = SafeShadowModelArtifactLoader(
+                data_root=self._loader._data_root,
+                deserializer=joblib.load,
+            )
+            reload_status = resolved.reload(
+                decision_date=current_day,
+                _captured_pointer_bytes=pointer_raw_bytes,
+            )
+            if reload_status != "rule_only" or resolved._model is not None:
+                return None
+            if pointer_raw_bytes is None:
+                if self.pointer_path.is_file():
+                    return None
+            else:
+                if self.pointer_path.read_bytes() != pointer_raw_bytes:
+                    return None
+
+            pointer_status: str | None = None
+            if pointer_raw_bytes is not None:
+                try:
+                    raw_pointer_payload = json.loads(
+                        pointer_raw_bytes.decode("utf-8")
+                    )
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    raw_pointer_payload = None
+                if isinstance(raw_pointer_payload, Mapping):
+                    raw_pointer_status = raw_pointer_payload.get("status")
+                    if type(raw_pointer_status) is str:
+                        pointer_status = raw_pointer_status
+            identity = NoModelShadowIdentityV1(
+                decision_date=current_day,
+                reload_status="rule_only",
+                blocker=resolved._blocker,
+                pointer_status=pointer_status,
+                pointer_raw_bytes=pointer_raw_bytes,
+            )
+            capability = _NoModelProjectionCapability(
+                owner=self,
+                resolved_consumer=resolved,
+                invocation_scope_id=invocation_scope_id,
+                decision_date=current_day,
+                identity_hash=expected_hash,
+                identity=identity,
+                _seal=_NO_MODEL_PROJECTION_CAPABILITY_SEAL,
+            )
+            with self._invocation_capability_lock:
+                if invocation_scope_id in self._invocation_capabilities:
+                    return None
+                live_capabilities = tuple(self._invocation_capabilities.values())
+                if len(live_capabilities) >= _MAX_LIVE_INVOCATION_CAPABILITIES:
+                    return None
+                if any(
+                    _loaded_model_state_aliases(
+                        existing._resolved_consumer_for_isolation(), resolved
+                    )
+                    for existing in live_capabilities
+                ):
+                    return None
+                self._invocation_capabilities[invocation_scope_id] = capability
+            return capability
+        except Exception:
+            return None
+
+    def reload(
+        self,
+        *,
+        decision_date: str | None = None,
+        _captured_pointer_bytes: bytes | None | object = _POINTER_BYTES_UNSET,
+    ) -> str:
         """Load and validate the pointer once; return machine-readable status."""
 
         self._loaded_pointer = None
@@ -436,10 +842,39 @@ class RecommendationCalibrationConsumer:
         self._cost_scenario = None
         self._pointer_stat = None
         self._loaded_decision_date = None
-        if not self.pointer_path.is_file():
+        self._model_resolution_capture_inputs = None
+        self._model_resolution_captured_pointer_bytes_sha256 = None
+        self._model_resolution_active_artifact_sha256 = None
+        self._model_resolution_active_candidate_json_hashes = None
+        self._model_resolution_candidate_json_lineage = None
+        self._model_resolution_active_manifest_result = None
+        self._model_resolution_manifest_nodes_by_position.clear()
+        self._model_resolution_manifest_lineage = None
+        self._model_resolution_captured_manifest_paths_and_bytes.clear()
+        self._model_resolution_loaded_artifact_lineage = None
+        if _captured_pointer_bytes is _POINTER_BYTES_UNSET:
+            if not self.pointer_path.is_file():
+                return "rule_only"
+        elif _captured_pointer_bytes is None:
             return "rule_only"
+        elif type(_captured_pointer_bytes) is not bytes:
+            raise TypeError("captured pointer bytes 必須是 bytes 或 None")
         try:
-            pointer = json.loads(self.pointer_path.read_text(encoding="utf-8"))
+            captured_pointer_bytes = (
+                self._captured_pointer_bytes_for_reload
+                if self._capture_model_resolution_evidence
+                else None
+            )
+            if _captured_pointer_bytes is not _POINTER_BYTES_UNSET:
+                pointer_text = cast(bytes, _captured_pointer_bytes).decode("utf-8")
+            elif captured_pointer_bytes is None:
+                pointer_text = self.pointer_path.read_text(encoding="utf-8")
+            else:
+                self._model_resolution_captured_pointer_bytes_sha256 = _sha256_bytes(
+                    captured_pointer_bytes
+                )
+                pointer_text = captured_pointer_bytes.decode("utf-8")
+            pointer = json.loads(pointer_text)
         except (OSError, json.JSONDecodeError):
             self._blocker = "active_pointer_invalid_json"
             return "rule_only"
@@ -494,8 +929,15 @@ class RecommendationCalibrationConsumer:
         if declared_cost_hash and declared_cost_hash != expected_cost_hash:
             self._blocker = "active_pointer_cost_contract_mismatch"
             return "rule_only"
+        candidate_json_bytes: bytes | None = None
         try:
-            candidate_payload = _read_json(candidate_root / "candidate.json")
+            if self._capture_model_resolution_evidence:
+                candidate_json_bytes = (candidate_root / "candidate.json").read_bytes()
+                candidate_payload = _read_json_object_bytes(
+                    candidate_json_bytes, candidate_root / "candidate.json"
+                )
+            else:
+                candidate_payload = _read_json(candidate_root / "candidate.json")
             candidate_scenario = cost_scenario_from_metadata(
                 candidate_payload,
                 fixed_round_trip_cost_bp=_optional_int(
@@ -537,14 +979,39 @@ class RecommendationCalibrationConsumer:
             expected_feature_schema=self.feature_schema,
             installed_library_versions=_library_versions(),
         )
-        loaded = self._loader.load(candidate_root, expectation=expectation)
+        same_bytes_result = None
+        if self._capture_model_resolution_evidence:
+            same_bytes_result = self._loader.load_same_bytes_with_manifest_v1(
+                candidate_root, expectation=expectation
+            )
+            loaded = same_bytes_result.artifact_result.artifact_result
+        else:
+            loaded = self._loader.load(candidate_root, expectation=expectation)
         if loaded.status != "shadow_model_ready" or loaded.model is None:
             self._blocker = loaded.blockers[0] if loaded.blockers else "candidate_load_failed"
             return "rule_only"
         if str(pointer.get("candidate_id") or "") != str(getattr(loaded.model, "model_id", "")):
             self._blocker = "active_pointer_candidate_identity_mismatch"
             return "rule_only"
-        if not _pointer_candidate_hashes_match(pointer, candidate_root, loaded.manifest):
+        if self._capture_model_resolution_evidence:
+            if (
+                candidate_json_bytes is None
+                or not _candidate_json_path_matches_bytes(
+                    candidate_root, candidate_json_bytes
+                )
+                or not _pointer_candidate_payload_hashes_match(
+                    pointer, candidate_root, loaded.manifest, candidate_payload
+                )
+            ):
+                self._blocker = "active_pointer_candidate_hash_mismatch"
+                return "rule_only"
+            self._model_resolution_active_candidate_json_hashes = (
+                _sha256_bytes(candidate_json_bytes),
+                _hash_payload(candidate_payload),
+            )
+        elif not _pointer_candidate_hashes_match(
+            pointer, candidate_root, loaded.manifest
+        ):
             self._blocker = "active_pointer_candidate_hash_mismatch"
             return "rule_only"
         if pointer.get("policy_hash") != RecommendationPromotionPolicy().policy_hash:
@@ -569,6 +1036,26 @@ class RecommendationCalibrationConsumer:
         if training_error is not None:
             self._blocker = training_error
             return "rule_only"
+        if self._capture_model_resolution_evidence:
+            if (
+                same_bytes_result is None
+                or same_bytes_result.loaded_serialized_bytes_sha256 is None
+                or same_bytes_result.captured_manifest_bytes is None
+                or same_bytes_result.manifest_raw_bytes_sha256 is None
+                or same_bytes_result.canonical_manifest_payload_sha256 is None
+                or loaded.manifest is None
+                or same_bytes_result.canonical_manifest_payload_sha256
+                != loaded.manifest.manifest_hash
+            ):
+                self._blocker = "active_manifest_same_bytes_evidence_missing"
+                return "rule_only"
+            self._model_resolution_active_artifact_sha256 = (
+                same_bytes_result.loaded_serialized_bytes_sha256
+            )
+            self._model_resolution_active_manifest_result = same_bytes_result
+            self._model_resolution_captured_manifest_paths_and_bytes.append(
+                (candidate_root / "manifest.json", same_bytes_result.captured_manifest_bytes)
+            )
         self._loaded_pointer = pointer
         self._model = loaded.model
         self._cost_scenario = scenario
@@ -586,6 +1073,24 @@ class RecommendationCalibrationConsumer:
         self._blocker = ""
         self._pointer_stat = _path_stat(self.pointer_path)
         self._loaded_decision_date = current_day
+        if self._capture_model_resolution_evidence:
+            if loaded.manifest is None or self._model_resolution_runtime_profile is None:
+                self._blocker = "model_resolution_capture_inputs_missing"
+                self._model = None
+                self._loaded_pointer = None
+                self._probability_lineage = ()
+                self._lineage_models = ()
+                self._model_resolution_capture_inputs = None
+                return "rule_only"
+            self._model_resolution_capture_inputs = _ModelResolutionCaptureInputs(
+                pointer=dict(pointer),
+                candidate_payload=dict(candidate_payload),
+                manifest=loaded.manifest,
+                loaded_model_training_as_of=getattr(loaded.model, "training_as_of", None),
+                training_provenance=dict(training_provenance),
+                probability_lineage=tuple(dict(item) for item in lineage),
+                runtime_profile=self._model_resolution_runtime_profile,
+            )
         return "active"
 
     def active_after_cost_baseline(
@@ -608,6 +1113,19 @@ class RecommendationCalibrationConsumer:
         if baseline_id != AFTER_COST_NULL_BENCHMARK_BASELINE_ID:
             return None
         return baseline_id, AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+
+    def _recheck_captured_model_manifests(self) -> bool:
+        """比對能力建立前捕獲的每個 manifest path bytes。"""
+
+        for manifest_path, captured_bytes in tuple(
+            self._model_resolution_captured_manifest_paths_and_bytes
+        ):
+            try:
+                if manifest_path.read_bytes() != captured_bytes:
+                    return False
+            except OSError:
+                return False
+        return bool(self._model_resolution_captured_manifest_paths_and_bytes)
 
     def active_cost_scenario(
         self,
@@ -697,7 +1215,7 @@ class RecommendationCalibrationConsumer:
         decision_date: str,
         baseline_probability_bp: int = NULL_BENCHMARK_PROBABILITY_BP,
         baseline_after_cost_probability_bp: int | None = None,
-        _invocation_capability: "_InvocationProjectionCapability | None" = None,
+        _invocation_capability: _ProjectionInvocationCapabilityProtocol | None = None,
     ) -> RecommendationPrediction | None:
         """Return the previous champion's effective, already-delivered output."""
 
@@ -751,7 +1269,29 @@ class RecommendationCalibrationConsumer:
         cap = int(pointer.get("maximum_probability_change_bp", -1))
         if cap < 0:
             return (), "active_pointer_cap_invalid"
+        if self._capture_model_resolution_evidence:
+            active_candidate_id = str(pointer.get("candidate_id") or "")
+            active_positions = [
+                index
+                for index, node in enumerate(lineage)
+                if str(node.get("candidate_id") or "") == active_candidate_id
+            ]
+            if (
+                not active_candidate_id
+                or active_positions != [len(lineage) - 1]
+                or not _capability_active_lineage_node_matches_pointer(
+                    lineage[-1], pointer, self.pointer_path.parent
+                )
+                or self._model_resolution_active_artifact_sha256 is None
+            ):
+                return (), "active_pointer_probability_lineage_identity_invalid"
         loaded_models: list[tuple[Mapping[str, Any], Any]] = []
+        loaded_artifact_hashes_by_position: list[str | None] = [
+            None for _node in lineage
+        ]
+        candidate_json_nodes_by_position: list[
+            _CapabilityCandidateJsonBytesNodeV1 | None
+        ] = [None for _node in lineage]
         for index, node in enumerate(lineage):
             if node.get("transform_id") != PROBABILITY_TRANSFORM_ID:
                 return (), "active_pointer_probability_transform_invalid"
@@ -767,6 +1307,7 @@ class RecommendationCalibrationConsumer:
                 return (), "active_pointer_probability_lineage_cost_scenario_mismatch"
             identity = {
                 "candidate_id": node.get("candidate_id"),
+                "model_id": node.get("model_id"),
                 "candidate_root": node.get("candidate_root"),
                 "candidate_manifest_hash": node.get("candidate_manifest_hash"),
                 "candidate_artifact_hash": node.get("candidate_artifact_hash"),
@@ -792,6 +1333,58 @@ class RecommendationCalibrationConsumer:
                 return (), "active_pointer_probability_lineage_baseline_invalid"
             if str(identity["candidate_id"]) == str(pointer.get("candidate_id")):
                 model = current_model
+                if self._capture_model_resolution_evidence:
+                    loaded_artifact_hashes_by_position[index] = (
+                        self._model_resolution_active_artifact_sha256
+                    )
+                    active_candidate_hashes = (
+                        self._model_resolution_active_candidate_json_hashes
+                    )
+                    if active_candidate_hashes is None:
+                        return (), "active_pointer_probability_lineage_candidate_json_missing"
+                    candidate_json_node = _candidate_json_evidence_node(
+                        position=index,
+                        identity=node,
+                        relative_to=self.pointer_path.parent,
+                        raw_bytes_sha256=active_candidate_hashes[0],
+                        canonical_payload_sha256=active_candidate_hashes[1],
+                    )
+                    if candidate_json_node is None:
+                        return (), "active_pointer_probability_lineage_candidate_json_invalid"
+                    candidate_json_nodes_by_position[index] = candidate_json_node
+                    active_manifest_result = (
+                        self._model_resolution_active_manifest_result
+                    )
+                    if active_manifest_result is None:
+                        return (), "active_pointer_probability_lineage_manifest_bytes_missing"
+                    manifest_node = _model_manifest_bytes_evidence_node(
+                        position=index,
+                        identity=node,
+                        relative_to=self.pointer_path.parent,
+                        load_result=active_manifest_result,
+                    )
+                    if manifest_node is None:
+                        return (), "active_pointer_probability_lineage_manifest_bytes_invalid"
+                    self._model_resolution_manifest_nodes_by_position[index] = (
+                        manifest_node
+                    )
+            elif self._capture_model_resolution_evidence:
+                (
+                    model,
+                    loaded_digest,
+                    candidate_json_node,
+                    manifest_node,
+                ) = (
+                    self._load_identity_model_same_bytes(identity, position=index)
+                )
+                if loaded_digest is not None:
+                    loaded_artifact_hashes_by_position[index] = loaded_digest
+                if candidate_json_node is None:
+                    return (), "active_pointer_probability_lineage_candidate_json_invalid"
+                candidate_json_nodes_by_position[index] = candidate_json_node
+                if manifest_node is None:
+                    return (), "active_pointer_probability_lineage_manifest_bytes_invalid"
+                self._model_resolution_manifest_nodes_by_position[index] = manifest_node
             else:
                 model = self._load_identity_model(identity)
             if model is None:
@@ -802,6 +1395,110 @@ class RecommendationCalibrationConsumer:
         previous_identity = _previous_identity(pointer)
         if previous_identity is not None and str(loaded_models[-2][1].model_id) != str(previous_identity.get("candidate_id")):
             return (), "active_pointer_previous_candidate_mismatch"
+        if self._capture_model_resolution_evidence:
+            try:
+                candidate_json_evidence_nodes = [
+                    _null_benchmark_candidate_json_evidence_node()
+                ]
+                for index, lineage_node in enumerate(lineage[1:], start=1):
+                    candidate_json_node = candidate_json_nodes_by_position[index]
+                    if (
+                        candidate_json_node is None
+                        or not _candidate_json_evidence_matches_lineage_node(
+                            candidate_json_node,
+                            index=index,
+                            lineage_node=lineage_node,
+                            relative_to=self.pointer_path.parent,
+                        )
+                    ):
+                        return (), "active_pointer_probability_lineage_candidate_json_invalid"
+                    candidate_json_evidence_nodes.append(candidate_json_node)
+                self._model_resolution_candidate_json_lineage = (
+                    _CapabilityCandidateJsonBytesLineageV1(
+                        nodes=tuple(candidate_json_evidence_nodes)
+                    )
+                )
+                manifest_evidence_nodes = [
+                    _null_benchmark_model_manifest_evidence_node()
+                ]
+                for index, lineage_node in enumerate(lineage[1:], start=1):
+                    manifest_node = self._model_resolution_manifest_nodes_by_position.get(
+                        index
+                    )
+                    if (
+                        manifest_node is None
+                        or manifest_node.candidate_id
+                        != str(lineage_node.get("candidate_id") or "")
+                        or manifest_node.canonical_manifest_hash
+                        != str(lineage_node.get("candidate_manifest_hash") or "")
+                    ):
+                        return (), "active_pointer_probability_lineage_manifest_bytes_invalid"
+                    manifest_evidence_nodes.append(manifest_node)
+                self._model_resolution_manifest_lineage = (
+                    _CapabilityModelManifestBytesLineageV1(
+                        nodes=tuple(manifest_evidence_nodes)
+                    )
+                )
+                artifact_nodes = [
+                    CapabilityLoadedArtifactLineageNodeV1(
+                        position=index,
+                        kind=str(node.get("kind") or ""),
+                        candidate_id=(
+                            str(node.get("candidate_id"))
+                            if node.get("candidate_id") is not None
+                            else None
+                        ),
+                        model_id=(
+                            str(node.get("model_id"))
+                            if node.get("model_id") is not None
+                            else None
+                        ),
+                        normalized_candidate_root=(
+                            _normalize_candidate_root(
+                                node.get("candidate_root"), self.pointer_path.parent
+                            )
+                            if node.get("kind") == "active_model"
+                            else None
+                        ),
+                        manifest_hash=(
+                            str(node.get("candidate_manifest_hash"))
+                            if node.get("candidate_manifest_hash") is not None
+                            else None
+                        ),
+                        declared_artifact_hash=(
+                            str(node.get("candidate_artifact_hash"))
+                            if node.get("candidate_artifact_hash") is not None
+                            else None
+                        ),
+                        freeze_hash=(
+                            str(node.get("candidate_freeze_hash"))
+                            if node.get("candidate_freeze_hash") is not None
+                            else None
+                        ),
+                        dataset_hash=(
+                            str(node.get("dataset_hash"))
+                            if node.get("dataset_hash") is not None
+                            else None
+                        ),
+                        loaded_serialized_bytes_sha256=(
+                            loaded_artifact_hashes_by_position[index]
+                        ),
+                    )
+                    for index, node in enumerate(lineage)
+                ]
+                if any(
+                    node.kind == "active_model"
+                    and node.loaded_serialized_bytes_sha256 is None
+                    for node in artifact_nodes
+                ):
+                    return (), "active_pointer_probability_lineage_same_bytes_missing"
+                self._model_resolution_loaded_artifact_lineage = (
+                    CapabilityLoadedArtifactLineageEvidenceV1(
+                        nodes=tuple(artifact_nodes)
+                    )
+                )
+            except (TypeError, ValueError, OSError, RuntimeError):
+                return (), "active_pointer_probability_lineage_identity_invalid"
         self._lineage_models = tuple(loaded_models)
         return tuple(lineage), None
 
@@ -872,6 +1569,89 @@ class RecommendationCalibrationConsumer:
             return None
         return loaded.model
 
+    def _load_identity_model_same_bytes(
+        self, identity: Mapping[str, Any], *, position: int
+    ) -> tuple[
+        Any | None,
+        str | None,
+        _CapabilityCandidateJsonBytesNodeV1 | None,
+        _CapabilityModelManifestBytesNodeV1 | None,
+    ]:
+        """Capability 專用 ancestor 載入，並保留 manifest/artifact 捕獲證據。"""
+
+        root_text = str(identity.get("candidate_root") or "").strip()
+        if not root_text:
+            return None, None, None, None
+        root = Path(root_text)
+        if not root.is_absolute():
+            root = (self.pointer_path.parent / root).resolve()
+        expectation = ArtifactCompatibilityExpectation(
+            expected_model_family=self.expected_model_family,
+            expected_feature_registry_hash=self.feature_registry_hash,
+            expected_label_registry_hash=_identity_label_registry_hash(identity),
+            expected_feature_schema=self.feature_schema,
+            installed_library_versions=_library_versions(),
+        )
+        loaded_result = self._loader.load_same_bytes_with_manifest_v1(
+            root, expectation=expectation
+        )
+        loaded = loaded_result.artifact_result
+        if loaded.status != "shadow_model_ready" or loaded.model is None:
+            return None, None, None, None
+        if (
+            loaded_result.captured_manifest_bytes is None
+            or loaded_result.manifest_raw_bytes_sha256 is None
+            or loaded_result.canonical_manifest_payload_sha256 is None
+            or loaded.manifest is None
+            or loaded_result.canonical_manifest_payload_sha256
+            != loaded.manifest.manifest_hash
+        ):
+            return None, None, None, None
+        if str(identity.get("candidate_id") or "") != str(
+            getattr(loaded.model, "model_id", "")
+        ):
+            return None, None, None, None
+        self._model_resolution_captured_manifest_paths_and_bytes.append(
+            (root / "manifest.json", loaded_result.captured_manifest_bytes)
+        )
+        candidate_path = root / "candidate.json"
+        try:
+            candidate_json_bytes = candidate_path.read_bytes()
+            candidate_payload = _read_json_object_bytes(
+                candidate_json_bytes, candidate_path
+            )
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return None, None, None, None
+        if not _pointer_candidate_payload_hashes_match(
+            identity, root, loaded.manifest, candidate_payload
+        ):
+            return None, None, None, None
+        if candidate_path.read_bytes() != candidate_json_bytes:
+            return None, None, None, None
+        candidate_json_node = _candidate_json_evidence_node(
+            position=position,
+            identity=identity,
+            relative_to=self.pointer_path.parent,
+            raw_bytes_sha256=_sha256_bytes(candidate_json_bytes),
+            canonical_payload_sha256=_hash_payload(candidate_payload),
+        )
+        if candidate_json_node is None:
+            return None, None, None, None
+        manifest_node = _model_manifest_bytes_evidence_node(
+            position=position,
+            identity=identity,
+            relative_to=self.pointer_path.parent,
+            load_result=loaded_result,
+        )
+        if manifest_node is None:
+            return None, None, None, None
+        return (
+            loaded.model,
+            loaded_result.loaded_serialized_bytes_sha256,
+            candidate_json_node,
+            manifest_node,
+        )
+
     def project(
         self,
         *,
@@ -889,7 +1669,8 @@ class RecommendationCalibrationConsumer:
         selection_score_kind: str = "rule_total_score",
         selection_percentile_kind: str = "rule_percentile",
         top_n_changed_by_model: bool = False,
-        _invocation_capability: "_InvocationProjectionCapability | None" = None,
+        _invocation_capability: _ProjectionInvocationCapabilityProtocol | None = None,
+        _verified_source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
     ) -> RecommendationCalibrationProjection:
         current_day = _date_text_or_none(decision_date)
         if current_day is None:
@@ -900,7 +1681,13 @@ class RecommendationCalibrationConsumer:
             )
         if _invocation_capability is not None:
             _invocation_capability.assert_projection_use(self, current_day)
-            _reject_capability_source_contract_binding(inference_provenance)
+            _reject_capability_source_contract_binding(
+                inference_provenance, _verified_source_contract_evidence
+            )
+        elif _verified_source_contract_evidence is not None:
+            raise ValueError(
+                "prepared source-contract evidence requires an invocation capability"
+            )
         elif (
             self._model is None
             or self._loaded_pointer is None
@@ -943,6 +1730,7 @@ class RecommendationCalibrationConsumer:
             expected_registry_hash=self.feature_registry_hash,
             expected_schema=self.feature_schema,
             expected_cost_scenario_hash=scenario_for_provenance.scenario_hash,
+            source_contract_evidence=_verified_source_contract_evidence,
         )
         if provenance_warning is not None:
             return RecommendationCalibrationProjection.unavailable(
@@ -1177,11 +1965,18 @@ class RecommendationCalibrationConsumer:
         selection_score_kind: str = "rule_total_score",
         selection_percentile_kind: str = "rule_percentile",
         top_n_changed_by_model: bool = False,
-        _invocation_capability: "_InvocationProjectionCapability | None" = None,
+        _invocation_capability: _ProjectionInvocationCapabilityProtocol | None = None,
+        _verified_source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
     ) -> dict[str, RecommendationCalibrationProjection]:
         if _invocation_capability is not None:
             _invocation_capability.assert_projection_use(self, decision_date)
-            _reject_capability_source_contract_binding(inference_provenance)
+            _reject_capability_source_contract_binding(
+                inference_provenance, _verified_source_contract_evidence
+            )
+        elif _verified_source_contract_evidence is not None:
+            raise ValueError(
+                "prepared source-contract evidence requires an invocation capability"
+            )
         percentiles = ranking_percentile_by_symbol or {}
         after_cost_baselines = after_cost_rule_probability_by_symbol or {}
         after_cost_baseline_ids = after_cost_rule_baseline_id_by_symbol or {}
@@ -1203,6 +1998,7 @@ class RecommendationCalibrationConsumer:
                 selection_percentile_kind=selection_percentile_kind,
                 top_n_changed_by_model=top_n_changed_by_model,
                 _invocation_capability=_invocation_capability,
+                _verified_source_contract_evidence=_verified_source_contract_evidence,
             )
             for symbol in symbols
         }
@@ -1218,6 +2014,11 @@ class _InvocationProjectionCapability:
         "__invocation_scope_id",
         "__decision_date",
         "__identity_hash",
+        "__model_resolution_evidence",
+        "__loaded_artifact_lineage",
+        "__pointer_bytes_evidence",
+        "__candidate_json_bytes_lineage",
+        "__model_manifest_bytes_lineage",
         "__lock",
         "__used",
         "__active_thread",
@@ -1231,18 +2032,71 @@ class _InvocationProjectionCapability:
         invocation_scope_id: str,
         decision_date: str,
         identity_hash: str,
+        model_resolution_evidence: RecommendationModelResolutionEvidenceV1,
+        loaded_artifact_lineage: CapabilityLoadedArtifactLineageEvidenceV1,
+        pointer_bytes_evidence: _CapabilityPointerBytesEvidenceV1,
+        candidate_json_bytes_lineage: _CapabilityCandidateJsonBytesLineageV1,
+        model_manifest_bytes_lineage: _CapabilityModelManifestBytesLineageV1,
     ) -> None:
         self.__owner = owner
         self.__resolved_consumer = resolved_consumer
         self.__invocation_scope_id = invocation_scope_id
         self.__decision_date = decision_date
         self.__identity_hash = identity_hash
+        self.__model_resolution_evidence = model_resolution_evidence
+        self.__loaded_artifact_lineage = loaded_artifact_lineage
+        self.__pointer_bytes_evidence = pointer_bytes_evidence
+        self.__candidate_json_bytes_lineage = candidate_json_bytes_lineage
+        self.__model_manifest_bytes_lineage = model_manifest_bytes_lineage
         self.__lock = Lock()
         self.__used = False
         self.__active_thread: int | None = None
 
     def __repr__(self) -> str:
         return "<invocation-local calibration projection capability>"
+
+    @property
+    def model_resolution_evidence(self) -> RecommendationModelResolutionEvidenceV1:
+        """Expose immutable evidence from the same fresh resolve, without I/O."""
+
+        return self.__model_resolution_evidence
+
+    @property
+    def loaded_model_runtime_class(self) -> tuple[str, str]:
+        """Return the actual loaded class identity without resolving or reading paths."""
+
+        model = self.__resolved_consumer._model
+        if model is None:
+            raise RuntimeError("invocation capability no longer owns a loaded model")
+        return type(model).__module__, type(model).__qualname__
+
+    @property
+    def loaded_artifact_lineage(self) -> CapabilityLoadedArtifactLineageEvidenceV1:
+        """Expose ordered same-buffer artifact digests for this capability only."""
+
+        return self.__loaded_artifact_lineage
+
+    @property
+    def pointer_bytes_evidence(self) -> _CapabilityPointerBytesEvidenceV1:
+        """Expose raw and canonical hashes for the exact pointer bytes parsed."""
+
+        return self.__pointer_bytes_evidence
+
+    @property
+    def candidate_json_bytes_lineage(
+        self,
+    ) -> _CapabilityCandidateJsonBytesLineageV1:
+        """Expose ordered raw/canonical hashes for captured candidate JSON parses."""
+
+        return self.__candidate_json_bytes_lineage
+
+    @property
+    def model_manifest_bytes_lineage(
+        self,
+    ) -> _CapabilityModelManifestBytesLineageV1:
+        """提供此 invocation 讀取的 active 與 ancestor manifest 有序證據。"""
+
+        return self.__model_manifest_bytes_lineage
 
     def __copy__(self) -> Any:
         raise TypeError("invocation projection capability cannot be copied")
@@ -1268,6 +2122,7 @@ class _InvocationProjectionCapability:
         ranking_percentile_by_symbol: Mapping[str, int] | None = None,
         data_quality: str = "observed",
         inference_provenance: Mapping[str, Any] | None = None,
+        source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
         selection_authority: str = "rule_top_n",
         selection_score_kind: str = "rule_total_score",
         selection_percentile_kind: str = "rule_percentile",
@@ -1289,7 +2144,9 @@ class _InvocationProjectionCapability:
                 or supplied_identity_hash != self.__identity_hash
             ):
                 raise ValueError("invocation capability scope or identity mismatch")
-            _reject_capability_source_contract_binding(inference_provenance)
+            _reject_capability_source_contract_binding(
+                inference_provenance, source_contract_evidence
+            )
             self.__used = True
             self.__active_thread = get_ident()
 
@@ -1304,6 +2161,7 @@ class _InvocationProjectionCapability:
                 ranking_percentile_by_symbol=ranking_percentile_by_symbol,
                 data_quality=data_quality,
                 inference_provenance=inference_provenance,
+                _verified_source_contract_evidence=source_contract_evidence,
                 selection_authority=selection_authority,
                 selection_score_kind=selection_score_kind,
                 selection_percentile_kind=selection_percentile_kind,
@@ -1313,6 +2171,62 @@ class _InvocationProjectionCapability:
         finally:
             with self.__lock:
                 self.__active_thread = None
+
+    def project_prepared_runtime_input_v1(
+        self, runtime_input: Any
+    ) -> dict[str, RecommendationCalibrationProjection]:
+        """以同一不可變 runtime input 呼叫此 capability 的一次性舊投影 seam。"""
+
+        from app_module.recommendation.prepared_runtime_input import (
+            LegacyShadowIdentityV1,
+            LoadedModelRuntimeClassV1,
+            PreparedMLRuntimeInputV1,
+        )
+        from app_module.recommendation.prepared_runtime_projector import (
+            prepare_ml_projection_arguments_v1,
+        )
+
+        if type(runtime_input) is not PreparedMLRuntimeInputV1:
+            raise TypeError("runtime_input 必須是 exact PreparedMLRuntimeInputV1")
+        if runtime_input.invocation_capability is not self:
+            raise ValueError("runtime input capability identity mismatch")
+        identity = runtime_input.identity
+        if type(identity) is not LegacyShadowIdentityV1:
+            raise TypeError(
+                "此 model-resolution capability 僅接受 legacy shadow identity"
+            )
+        if identity.model_resolution != self.__model_resolution_evidence:
+            raise ValueError("runtime model-resolution facts 不符同次 capability")
+        runtime_class = self.loaded_model_runtime_class
+        if identity.loaded_model_runtime_class != LoadedModelRuntimeClassV1(
+            module=runtime_class[0], qualified_name=runtime_class[1]
+        ):
+            raise ValueError("runtime loaded model class 不符同次 capability")
+
+        arguments = prepare_ml_projection_arguments_v1(runtime_input)
+        return self.project_many(
+            owner=self.__owner,
+            invocation_scope_id=arguments.invocation_scope_id,
+            expected_identity=arguments.expected_identity,
+            feature_values_by_symbol=arguments.feature_values_by_symbol,
+            rule_probability_by_symbol=arguments.rule_probability_by_symbol,
+            decision_date=arguments.decision_date,
+            after_cost_rule_probability_by_symbol=(
+                arguments.after_cost_rule_probability_by_symbol
+            ),
+            after_cost_rule_baseline_id_by_symbol=(
+                arguments.after_cost_rule_baseline_id_by_symbol
+            ),
+            rule_baseline_id=arguments.rule_baseline_id,
+            ranking_percentile_by_symbol=arguments.ranking_percentile_by_symbol,
+            data_quality=arguments.data_quality,
+            inference_provenance=arguments.inference_provenance,
+            source_contract_evidence=arguments.source_contract_evidence,
+            selection_authority=arguments.selection_authority,
+            selection_score_kind=arguments.selection_score_kind,
+            selection_percentile_kind=arguments.selection_percentile_kind,
+            top_n_changed_by_model=arguments.top_n_changed_by_model,
+        )
 
     def _resolved_consumer_for_isolation(self) -> RecommendationCalibrationConsumer:
         """Return the private resolved graph only to the capability owner."""
@@ -1332,18 +2246,251 @@ class _InvocationProjectionCapability:
             raise ValueError("invocation capability is not active for this projection")
 
 
+class _NoModelProjectionCapability:
+    """不可複製、一次性持有 baseline rule-only/no-model 結果的私有能力。"""
+
+    __slots__ = (
+        "__weakref__",
+        "__owner",
+        "__resolved_consumer",
+        "__invocation_scope_id",
+        "__decision_date",
+        "__identity_hash",
+        "__identity",
+        "__lock",
+        "__used",
+        "__active_thread",
+    )
+
+    def __init__(
+        self,
+        *,
+        owner: RecommendationCalibrationConsumer,
+        resolved_consumer: RecommendationCalibrationConsumer,
+        invocation_scope_id: str,
+        decision_date: str,
+        identity_hash: str,
+        identity: Any,
+        _seal: object,
+    ) -> None:
+        from app_module.recommendation.prepared_runtime_input import (
+            NoModelShadowIdentityV1,
+        )
+
+        if _seal is not _NO_MODEL_PROJECTION_CAPABILITY_SEAL:
+            raise TypeError("no-model projection capability constructor is sealed")
+        if type(identity) is not NoModelShadowIdentityV1:
+            raise TypeError("identity 必須是 exact NoModelShadowIdentityV1")
+        if resolved_consumer._model is not None:
+            raise ValueError("no-model capability 不可持有 loaded model")
+        if (
+            identity.decision_date != decision_date
+            or identity.reload_status != "rule_only"
+            or identity.blocker != resolved_consumer._blocker
+        ):
+            raise ValueError("no-model identity 與 baseline reload 不一致")
+        self.__owner = owner
+        self.__resolved_consumer = resolved_consumer
+        self.__invocation_scope_id = invocation_scope_id
+        self.__decision_date = decision_date
+        self.__identity_hash = identity_hash
+        self.__identity = identity
+        self.__lock = Lock()
+        self.__used = False
+        self.__active_thread: int | None = None
+
+    def __repr__(self) -> str:
+        return "<invocation-local no-model projection capability>"
+
+    @property
+    def no_model_identity(self) -> Any:
+        """回傳由此 fresh baseline reload 封存的 immutable terminal identity。"""
+
+        return self.__identity
+
+    def __copy__(self) -> Any:
+        raise TypeError("no-model projection capability cannot be copied")
+
+    def __deepcopy__(self, _memo: dict[int, Any]) -> Any:
+        raise TypeError("no-model projection capability cannot be copied")
+
+    def __reduce_ex__(self, _protocol: SupportsIndex) -> Any:
+        raise TypeError("no-model projection capability cannot be serialized")
+
+    def _resolved_consumer_for_isolation(
+        self,
+    ) -> RecommendationCalibrationConsumer:
+        return self.__resolved_consumer
+
+    def assert_projection_use(
+        self,
+        consumer: RecommendationCalibrationConsumer,
+        decision_date: str,
+    ) -> None:
+        if (
+            consumer is not self.__resolved_consumer
+            or _date_text_or_none(decision_date) != self.__decision_date
+            or self.__active_thread != get_ident()
+            or consumer._model is not None
+            or consumer._blocker != self.__identity.blocker
+        ):
+            raise ValueError("no-model capability is not active for this projection")
+
+    def project_many(
+        self,
+        *,
+        owner: RecommendationCalibrationConsumer,
+        invocation_scope_id: str,
+        expected_identity: Mapping[str, Any],
+        feature_values_by_symbol: Mapping[str, Sequence[int | None]],
+        rule_probability_by_symbol: Mapping[str, int],
+        decision_date: str,
+        after_cost_rule_probability_by_symbol: Mapping[str, int] | None = None,
+        after_cost_rule_baseline_id_by_symbol: Mapping[str, str] | None = None,
+        rule_baseline_id: str = NULL_BENCHMARK_BASELINE_ID,
+        ranking_percentile_by_symbol: Mapping[str, int] | None = None,
+        data_quality: str = "observed",
+        inference_provenance: Mapping[str, Any] | None = None,
+        source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
+        selection_authority: str = "rule_top_n",
+        selection_score_kind: str = "rule_total_score",
+        selection_percentile_kind: str = "rule_percentile",
+        top_n_changed_by_model: bool = False,
+    ) -> dict[str, RecommendationCalibrationProjection]:
+        current_day = _date_text_or_none(decision_date)
+        try:
+            supplied_identity_hash = _hash_payload(expected_identity)
+        except Exception as exc:
+            raise ValueError("no-model capability identity is invalid") from exc
+        with self.__lock:
+            if self.__used:
+                raise RuntimeError("no-model projection capability is already consumed")
+            if owner is not self.__owner:
+                raise ValueError("no-model capability belongs to a different consumer")
+            if (
+                invocation_scope_id != self.__invocation_scope_id
+                or current_day != self.__decision_date
+                or supplied_identity_hash != self.__identity_hash
+            ):
+                raise ValueError("no-model capability scope or identity mismatch")
+            _reject_capability_source_contract_binding(
+                inference_provenance,
+                source_contract_evidence,
+            )
+            self.__used = True
+            self.__active_thread = get_ident()
+        try:
+            return self.__resolved_consumer.project_many(
+                feature_values_by_symbol=feature_values_by_symbol,
+                rule_probability_by_symbol=rule_probability_by_symbol,
+                decision_date=self.__decision_date,
+                after_cost_rule_probability_by_symbol=(
+                    after_cost_rule_probability_by_symbol
+                ),
+                after_cost_rule_baseline_id_by_symbol=(
+                    after_cost_rule_baseline_id_by_symbol
+                ),
+                rule_baseline_id=rule_baseline_id,
+                ranking_percentile_by_symbol=ranking_percentile_by_symbol,
+                data_quality=data_quality,
+                inference_provenance=inference_provenance,
+                _verified_source_contract_evidence=source_contract_evidence,
+                selection_authority=selection_authority,
+                selection_score_kind=selection_score_kind,
+                selection_percentile_kind=selection_percentile_kind,
+                top_n_changed_by_model=top_n_changed_by_model,
+                _invocation_capability=self,
+            )
+        finally:
+            with self.__lock:
+                self.__active_thread = None
+
+    def project_prepared_runtime_input_v1(
+        self,
+        runtime_input: Any,
+    ) -> dict[str, RecommendationCalibrationProjection]:
+        """只接受與此 no-model resolve 完全相同的 typed runtime input。"""
+
+        from app_module.recommendation.prepared_runtime_input import (
+            NoModelShadowIdentityV1,
+            PreparedMLRuntimeInputV1,
+        )
+        from app_module.recommendation.prepared_runtime_projector import (
+            prepare_ml_projection_arguments_v1,
+        )
+
+        if type(runtime_input) is not PreparedMLRuntimeInputV1:
+            raise TypeError("runtime_input 必須是 exact PreparedMLRuntimeInputV1")
+        if runtime_input.invocation_capability is not self:
+            raise ValueError("runtime input capability identity mismatch")
+        if type(runtime_input.identity) is not NoModelShadowIdentityV1:
+            raise TypeError("no-model capability 僅接受 no-model shadow identity")
+        if runtime_input.identity != self.__identity:
+            raise ValueError("runtime no-model identity 不符同次 baseline reload")
+
+        arguments = prepare_ml_projection_arguments_v1(runtime_input)
+        return self.project_many(
+            owner=self.__owner,
+            invocation_scope_id=arguments.invocation_scope_id,
+            expected_identity=arguments.expected_identity,
+            feature_values_by_symbol=arguments.feature_values_by_symbol,
+            rule_probability_by_symbol=arguments.rule_probability_by_symbol,
+            decision_date=arguments.decision_date,
+            after_cost_rule_probability_by_symbol=(
+                arguments.after_cost_rule_probability_by_symbol
+            ),
+            after_cost_rule_baseline_id_by_symbol=(
+                arguments.after_cost_rule_baseline_id_by_symbol
+            ),
+            rule_baseline_id=arguments.rule_baseline_id,
+            ranking_percentile_by_symbol=arguments.ranking_percentile_by_symbol,
+            data_quality=arguments.data_quality,
+            inference_provenance=arguments.inference_provenance,
+            source_contract_evidence=arguments.source_contract_evidence,
+            selection_authority=arguments.selection_authority,
+            selection_score_kind=arguments.selection_score_kind,
+            selection_percentile_kind=arguments.selection_percentile_kind,
+            top_n_changed_by_model=arguments.top_n_changed_by_model,
+        )
+
+
 def _reject_capability_source_contract_binding(
     inference_provenance: Mapping[str, Any] | None,
+    evidence: VerifiedSourceContractEvidenceV1 | None = None,
 ) -> None:
-    """Keep the capability profile free of provenance-time filesystem reads."""
+    """Require same-call typed bytes for an opt-in source-contract binding."""
 
-    if (
-        inference_provenance is not None
-        and inference_provenance.get("source_contract_binding") is not None
-    ):
+    binding = (
+        inference_provenance.get("source_contract_binding")
+        if inference_provenance is not None
+        else None
+    )
+    if binding is None:
+        if evidence is not None:
+            raise ValueError("prepared source-contract evidence has no provenance binding")
+        return
+    if type(evidence) is not VerifiedSourceContractEvidenceV1:
         raise ValueError(
-            "invocation capability does not support filesystem-bound source contracts"
+            "filesystem-bound source contracts require same-invocation verified bytes"
         )
+    try:
+        canonical_binding = json.dumps(
+            dict(binding),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("source-contract binding is not canonicalizable") from exc
+    if canonical_binding != evidence.binding_payload_json:
+        raise ValueError("source-contract binding does not match prepared evidence")
+    raw_source_database = (
+        inference_provenance.get("source_database")
+        if inference_provenance is not None
+        else None
+    )
+    if raw_source_database and raw_source_database != evidence.source_database_original:
+        raise ValueError("source database input does not match prepared evidence")
 
 
 def _loaded_model_state_roots(
@@ -1927,6 +3074,7 @@ def _resolve_projection_provenance(
     expected_registry_hash: str,
     expected_schema: Any,
     expected_cost_scenario_hash: str,
+    source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], str, str | None]:
     if inference_provenance is None:
         legacy_inference = _legacy_inference_provenance(decision_date, stock_code)
@@ -1945,6 +3093,7 @@ def _resolve_projection_provenance(
             expected_registry_hash=expected_registry_hash,
             expected_schema=expected_schema,
             expected_probability_transform_id=PROBABILITY_TRANSFORM_ID,
+            source_contract_evidence=source_contract_evidence,
         )
         symbols = {
             str(item).strip()
@@ -2044,6 +3193,20 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"JSON object required: {path}")
     return payload
+
+
+def _read_json_object_bytes(raw_bytes: bytes, source_path: Path) -> dict[str, Any]:
+    payload = json.loads(raw_bytes.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON object required: {source_path}")
+    return payload
+
+
+def _candidate_json_path_matches_bytes(candidate_root: Path, expected_bytes: bytes) -> bool:
+    try:
+        return (candidate_root / "candidate.json").read_bytes() == expected_bytes
+    except OSError:
+        return False
 
 
 def _legacy_scenario_from_pointer(pointer: Mapping[str, Any] | None) -> RecommendationCostScenario:
@@ -2200,6 +3363,205 @@ def _pointer_identity(pointer: Mapping[str, Any]) -> dict[str, Any]:
     return identity
 
 
+def _normalize_candidate_root(value: Any, relative_to: Path) -> str | None:
+    if type(value) is not str or not value.strip():
+        return None
+    try:
+        root = Path(value)
+        if not root.is_absolute():
+            root = relative_to / root
+        resolved = root.resolve(strict=True)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    return os.path.normcase(os.path.normpath(str(resolved)))
+
+
+def _capability_active_lineage_node_matches_pointer(
+    node: Mapping[str, Any], pointer: Mapping[str, Any], relative_to: Path
+) -> bool:
+    if node.get("kind") != "active_model":
+        return False
+    identity = _pointer_identity(pointer)
+    active_candidate_id = identity.get("candidate_id")
+    if (
+        type(active_candidate_id) is not str
+        or not active_candidate_id
+        or node.get("candidate_id") != active_candidate_id
+        or node.get("model_id") != active_candidate_id
+    ):
+        return False
+    if _normalize_candidate_root(
+        node.get("candidate_root"), relative_to
+    ) != _normalize_candidate_root(identity.get("candidate_root"), relative_to):
+        return False
+    for node_key, pointer_key in (
+        ("candidate_manifest_hash", "candidate_manifest_hash"),
+        ("candidate_artifact_hash", "candidate_artifact_hash"),
+        ("candidate_freeze_hash", "candidate_freeze_hash"),
+        ("dataset_hash", "dataset_hash"),
+    ):
+        node_value = node.get(node_key)
+        pointer_value = identity.get(pointer_key)
+        if (
+            type(node_value) is not str
+            or not _is_prefixed_sha256(node_value)
+            or node_value != pointer_value
+        ):
+            return False
+    return True
+
+
+def _null_benchmark_candidate_json_evidence_node(
+) -> _CapabilityCandidateJsonBytesNodeV1:
+    return _CapabilityCandidateJsonBytesNodeV1(
+        position=0,
+        kind="null_benchmark",
+        candidate_id=None,
+        model_id=None,
+        normalized_candidate_root=None,
+        manifest_hash=None,
+        artifact_hash=None,
+        freeze_hash=None,
+        dataset_hash=None,
+        raw_bytes_sha256=None,
+        canonical_payload_sha256=None,
+    )
+
+
+def _null_benchmark_model_manifest_evidence_node(
+) -> _CapabilityModelManifestBytesNodeV1:
+    return _CapabilityModelManifestBytesNodeV1(
+        position=0,
+        kind="null_benchmark",
+        candidate_id=None,
+        model_id=None,
+        normalized_candidate_root=None,
+        raw_bytes_sha256=None,
+        canonical_manifest_hash=None,
+    )
+
+
+def _model_manifest_bytes_evidence_node(
+    *,
+    position: int,
+    identity: Mapping[str, Any],
+    relative_to: Path,
+    load_result: SameBytesShadowModelArtifactWithManifestLoadResultV1,
+) -> _CapabilityModelManifestBytesNodeV1 | None:
+    manifest = load_result.manifest
+    candidate_id = identity.get("candidate_id")
+    model_id = identity.get("model_id")
+    normalized_root = _normalize_candidate_root(
+        identity.get("candidate_root"), relative_to
+    )
+    manifest_hash = identity.get("candidate_manifest_hash")
+    raw_bytes_hash = load_result.manifest_raw_bytes_sha256
+    canonical_manifest_hash = load_result.canonical_manifest_payload_sha256
+    if (
+        type(position) is not int
+        or position <= 0
+        or type(candidate_id) is not str
+        or not candidate_id
+        or type(model_id) is not str
+        or model_id != candidate_id
+        or normalized_root is None
+        or manifest is None
+        or manifest.model_id != model_id
+        or manifest.manifest_hash != manifest_hash
+        or canonical_manifest_hash != manifest.manifest_hash
+        or not _is_prefixed_sha256(raw_bytes_hash)
+        or not _is_prefixed_sha256(canonical_manifest_hash)
+    ):
+        return None
+    return _CapabilityModelManifestBytesNodeV1(
+        position=position,
+        kind="active_model",
+        candidate_id=candidate_id,
+        model_id=model_id,
+        normalized_candidate_root=normalized_root,
+        raw_bytes_sha256=raw_bytes_hash,
+        canonical_manifest_hash=canonical_manifest_hash,
+    )
+
+
+def _candidate_json_evidence_node(
+    *,
+    position: int,
+    identity: Mapping[str, Any],
+    relative_to: Path,
+    raw_bytes_sha256: str,
+    canonical_payload_sha256: str,
+) -> _CapabilityCandidateJsonBytesNodeV1 | None:
+    candidate_id = identity.get("candidate_id")
+    model_id = identity.get("model_id")
+    normalized_root = _normalize_candidate_root(
+        identity.get("candidate_root"), relative_to
+    )
+    manifest_hash = identity.get("candidate_manifest_hash")
+    artifact_hash = identity.get("candidate_artifact_hash")
+    freeze_hash = identity.get("candidate_freeze_hash")
+    dataset_hash = identity.get("dataset_hash")
+    if (
+        type(position) is not int
+        or position <= 0
+        or type(candidate_id) is not str
+        or not candidate_id
+        or type(model_id) is not str
+        or model_id != candidate_id
+        or normalized_root is None
+        or any(
+            not _is_prefixed_sha256(value)
+            for value in (manifest_hash, artifact_hash, freeze_hash, dataset_hash)
+        )
+        or not _is_prefixed_sha256(raw_bytes_sha256)
+        or not _is_prefixed_sha256(canonical_payload_sha256)
+    ):
+        return None
+    return _CapabilityCandidateJsonBytesNodeV1(
+        position=position,
+        kind="active_model",
+        candidate_id=candidate_id,
+        model_id=model_id,
+        normalized_candidate_root=normalized_root,
+        manifest_hash=str(manifest_hash),
+        artifact_hash=str(artifact_hash),
+        freeze_hash=str(freeze_hash),
+        dataset_hash=str(dataset_hash),
+        raw_bytes_sha256=raw_bytes_sha256,
+        canonical_payload_sha256=canonical_payload_sha256,
+    )
+
+
+def _candidate_json_evidence_matches_lineage_node(
+    evidence: _CapabilityCandidateJsonBytesNodeV1,
+    *,
+    index: int,
+    lineage_node: Mapping[str, Any],
+    relative_to: Path,
+) -> bool:
+    return (
+        evidence.position == index
+        and evidence.kind == lineage_node.get("kind") == "active_model"
+        and evidence.candidate_id == lineage_node.get("candidate_id")
+        and evidence.model_id == lineage_node.get("model_id")
+        and evidence.normalized_candidate_root
+        == _normalize_candidate_root(lineage_node.get("candidate_root"), relative_to)
+        and evidence.manifest_hash == lineage_node.get("candidate_manifest_hash")
+        and evidence.artifact_hash == lineage_node.get("candidate_artifact_hash")
+        and evidence.freeze_hash == lineage_node.get("candidate_freeze_hash")
+        and evidence.dataset_hash == lineage_node.get("dataset_hash")
+    )
+
+
+def _is_prefixed_sha256(value: Any) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
+
+
 def _optional_int(value: Any) -> int | None:
     if value is None or isinstance(value, bool):
         return None
@@ -2260,6 +3622,10 @@ def _sha256_file(path: Path) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def _sha256_bytes(payload: bytes) -> str:
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
 def _hash_payload(payload: Any) -> str:
     return "sha256:" + hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -2274,6 +3640,17 @@ def _pointer_candidate_hashes_match(pointer: Mapping[str, Any], candidate_root: 
         return False
     if not isinstance(payload, Mapping):
         return False
+    return _pointer_candidate_payload_hashes_match(
+        pointer, candidate_root, manifest, payload
+    )
+
+
+def _pointer_candidate_payload_hashes_match(
+    pointer: Mapping[str, Any],
+    candidate_root: Path,
+    manifest: Any,
+    payload: Mapping[str, Any],
+) -> bool:
     if payload.get("candidate_id") != pointer.get("candidate_id"):
         return False
     if payload.get("manifest_hash") != pointer.get("candidate_manifest_hash"):

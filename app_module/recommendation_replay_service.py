@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import operator
+import struct
 from typing import Any, Callable, Dict, Iterable, List, Optional, cast
 from uuid import uuid4
 
@@ -25,6 +26,7 @@ from app_module.recommendation_portfolio_dates import parse_stock_dates
 from app_module.recommendation_dataframe_provider import (
     RecommendationDataFrameProvider,
     ReplayProviderCallResultV1,
+    _ReplayScoredCandidateV1,
     _replay_score_order_token,
 )
 from decision_module.recommendation.contracts import DecisionBatch, RecommendationItem
@@ -35,6 +37,45 @@ from decision_module.recommendation.evaluate import (
 
 
 RecommendationProvider = Callable[[pd.DataFrame, Dict[str, Any], int], List[Dict[str, Any]]]
+
+
+def _v1_projection_matches_candidates(
+    projected_rows: object,
+    candidates: tuple[_ReplayScoredCandidateV1, ...],
+) -> bool:
+    """確認外層列仍是這批 typed candidates 的逐列投影。"""
+
+    if type(projected_rows) is not list or type(candidates) is not tuple:
+        return False
+    if len(projected_rows) != len(candidates):
+        return False
+
+    def same_value(expected: object, actual: object) -> bool:
+        if type(expected) is not type(actual):
+            return False
+        if type(expected) is dict:
+            expected_dict = cast(dict[object, object], expected)
+            actual_dict = cast(dict[object, object], actual)
+            if expected_dict.keys() != actual_dict.keys():
+                return False
+            return all(
+                same_value(value, actual_dict[key])
+                for key, value in expected_dict.items()
+            )
+        if type(expected) is float:
+            # 位元比較也能處理 NaN；此處只驗相容投影，不做金融運算。
+            return struct.pack(">d", expected) == struct.pack(">d", cast(float, actual))
+        if type(expected) in {str, int, bool, type(None)}:
+            return expected == actual
+        # 不呼叫不透明相容 payload 的自訂 __eq__；僅接受原物件投影。
+        return expected is actual
+
+    for row, candidate in zip(projected_rows, candidates, strict=True):
+        if type(candidate) is not _ReplayScoredCandidateV1:
+            return False
+        if not same_value(candidate.to_v1_row(), row):
+            return False
+    return True
 
 
 def _has_json_object_keys(value: object, active: set[int] | None = None) -> bool:
@@ -199,28 +240,34 @@ def _canonical_replay_execution_from_decision(
 
 def _build_canonical_replay_execution_from_handoff(
     snapshot: RecommendationSnapshotDTO,
-    scoring_outcomes: tuple[ReplayCandidateScoringOutcomeV1 | None, ...],
+    candidates: tuple[_ReplayScoredCandidateV1, ...],
     *,
     top_n: object,
     parent_result_id: str,
 ) -> RecommendationExecution | None:
-    """直接採同次 evaluator 的 typed item；v1 row 僅做對齊驗證。"""
+    """直接採同次 typed candidate/outcome；不從外層 v1 row 重建決策。"""
 
-    if len(snapshot.recommendations) != len(scoring_outcomes):
+    if type(candidates) is not tuple:
         return None
     expected_date = date.fromisoformat(snapshot.as_of_date)
     items: list[RecommendationItem] = []
     assessments = []
     seen_codes: set[str] = set()
-    for row, outcome in zip(snapshot.recommendations, scoring_outcomes):
-        if type(row) is not dict or type(outcome) is not ReplayCandidateScoringOutcomeV1:
+    for ordinal, candidate in enumerate(candidates):
+        if (
+            type(candidate) is not _ReplayScoredCandidateV1
+            or candidate.selected_ordinal != ordinal
+        ):
+            return None
+        outcome = candidate.scoring_outcome
+        if type(outcome) is not ReplayCandidateScoringOutcomeV1:
             return None
         if outcome.disposition is not ReplayScorerDispositionV1.SCORED:
             return None
         item = outcome.item
         if item is None or outcome.score_ordering is None:
             return None
-        stock_code = row.get("stock_code")
+        stock_code = candidate.stock_code
         if (
             type(stock_code) is not str
             or not stock_code.strip()
@@ -231,9 +278,9 @@ def _build_canonical_replay_execution_from_handoff(
         ):
             return None
         seen_codes.add(stock_code)
-        if row.get("stock_name") != item.stock_name:
+        if candidate.stock_name != item.stock_name:
             return None
-        raw_score = row.get("total_score")
+        raw_score = candidate.total_score
         if type(raw_score) is not float:
             return None
         rule_score, invalid_rule_score = _optional_decimal(raw_score)
@@ -243,18 +290,17 @@ def _build_canonical_replay_execution_from_handoff(
             or outcome.score_ordering != _replay_score_order_token(raw_score)
         ):
             return None
-        factor_scores = row.get("factor_scores")
-        if type(factor_scores) is not dict:
-            return None
-        for factor_name, expected_score in (
-            ("technical", item.indicator_score),
-            ("pattern", item.pattern_score),
-            ("volume", item.volume_score),
+        for observed_score, expected_score in (
+            (candidate.technical_score, item.indicator_score),
+            (candidate.pattern_score, item.pattern_score),
+            (candidate.volume_score, item.volume_score),
         ):
-            observed_score, invalid = _optional_decimal(factor_scores.get(factor_name))
-            if invalid or observed_score != expected_score:
+            if type(observed_score) is not float:
                 return None
-        reason_text = row.get("selection_reason")
+            observed_decimal, invalid = _optional_decimal(observed_score)
+            if invalid or observed_decimal != expected_score:
+                return None
+        reason_text = candidate.selection_reason
         if (reason_text is not None and type(reason_text) is not str) or reason_text != item.reason_text:
             return None
         items.append(item)
@@ -328,7 +374,7 @@ class RecommendationReplayService:
                 top_n,
                 as_of_ts.date(),
             )
-            provider_rows = handoff.rows
+            provider_rows = handoff.project_v1_rows()
         else:
             run_with_as_of = getattr(self.provider, "run_with_as_of", None)
             if _supports_explicit_as_of_call(self.provider) and callable(run_with_as_of):
@@ -355,12 +401,18 @@ class RecommendationReplayService:
             handoff.as_of_date == as_of_ts.date()
             and handoff.requested_top_n == operator.index(top_n)
         ):
+            child_candidates = handoff.candidates[:top_n]
             canonical_execution = _build_canonical_replay_execution_from_handoff(
                 snapshot,
-                handoff.scoring_outcomes[:top_n],
+                child_candidates,
                 top_n=top_n,
                 parent_result_id=parent_ref.reference_id,
             )
+            if canonical_execution is not None and not _v1_projection_matches_candidates(
+                snapshot.recommendations,
+                child_candidates,
+            ):
+                canonical_execution = None
         else:
             canonical_execution = None
         if canonical_execution is not None:

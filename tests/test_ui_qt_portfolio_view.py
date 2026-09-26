@@ -11,7 +11,7 @@ from typing import Any
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -973,6 +973,8 @@ def test_portfolio_monitoring_shows_price_as_of_manual_source_and_chinese_chip_r
 
 
 def test_portfolio_drill_down_passes_selected_stock_to_parent(tmp_path):
+    app()
+
     class Parent(QWidget):
         def __init__(self):
             super().__init__()
@@ -988,3 +990,49 @@ def test_portfolio_drill_down_passes_selected_stock_to_parent(tmp_path):
     view._on_drill_down_chip_clicked()
 
     assert parent.received == "2330"
+
+
+def test_deferred_splitter_restore_runs_while_portfolio_view_is_alive(
+    tmp_path, monkeypatch
+):
+    app()
+    calls = []
+    monkeypatch.setattr(
+        PortfolioView,
+        "_restore_portfolio_splitter_default_sizes",
+        lambda self: calls.append(self),
+    )
+    parent = QWidget()
+    parent.resize(1000, 800)
+    view = make_portfolio_view(tmp_path, parent=parent)
+    view.resize(1000, 700)
+    app().processEvents()
+
+    calls.clear()
+    view._portfolio_splitter_user_resized = False
+    view._apply_portfolio_advanced_visibility()
+    app().processEvents()
+    assert calls == [view]
+
+
+def test_deferred_splitter_restore_is_canceled_when_portfolio_view_is_destroyed(
+    tmp_path, monkeypatch
+):
+    app()
+    calls = []
+    monkeypatch.setattr(
+        PortfolioView,
+        "_restore_portfolio_splitter_default_sizes",
+        lambda self: calls.append(self),
+    )
+    parent = QWidget()
+    parent.resize(1000, 800)
+    view = make_portfolio_view(tmp_path, parent=parent)
+    view.resize(1000, 700)
+    view._portfolio_splitter_user_resized = False
+    view._apply_portfolio_advanced_visibility()
+    parent.deleteLater()
+    QCoreApplication.sendPostedEvents(parent, QEvent.DeferredDelete)
+    app().processEvents()
+
+    assert calls == []

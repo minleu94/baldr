@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pandas as pd
 import numpy as np
-from typing import Callable, List, Dict, Any, Mapping, Optional, TYPE_CHECKING, cast
-from dataclasses import dataclass
+from typing import Callable, List, Dict, Any, Mapping, Optional, Sequence, TYPE_CHECKING, cast
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -17,6 +17,8 @@ import hashlib
 import json
 from threading import RLock
 from uuid import uuid4
+
+_STANDARD_DATETIME = datetime
 
 # 確保 pd.isna 可用（pandas 兼容性）
 if not hasattr(pd, 'isna'):
@@ -113,6 +115,18 @@ from app_module.recommendation.body_result import (
     strategy_identity_from_payload,
     universe_identity_from_payload,
 )
+from app_module.recommendation.ml_postcalibration_handoff import (
+    CalibrationProjectionStatusV1,
+    CalibrationReceiptEventFactsV1,
+    CalibrationReceiptStatusV1,
+    RecommendationPostCalibrationHandoffSinkV1,
+    RecommendationPostCalibrationHandoffV1,
+    encode_candidate_identity_event_json_v1,
+)
+from app_module.recommendation.prepared_runtime_preparation import (
+    build_prepared_runtime_input_v1,
+    read_source_contract_bytes_for_preparation,
+)
 from app_module.recommendation.contracts import RecommendationRunEvidenceIdentity
 from data_module.pit_sector_membership_reader import (
     PITMembershipReadResult,
@@ -126,8 +140,10 @@ from ml_module.recommendation_inference_provenance import (
     RecommendationProvenanceError,
     build_inference_projection_receipt,
     build_inference_provenance,
+    build_inference_provenance_with_source_evidence_v1,
     persist_inference_projection_receipt,
     read_inference_projection_receipt,
+    verify_inference_provenance,
 )
 
 
@@ -138,6 +154,86 @@ class _FinalizationFailure(Exception):
         self.error = error
         super().__init__(error.message)
 
+
+def _post_calibration_receipt_event_v1(
+    payload_value: object,
+    *,
+    attempted: bool,
+    persisted: bool = False,
+    readback_verified: bool = False,
+    identity_verified: bool = False,
+    path: str = "",
+    receipt_hash: str = "",
+    receipt_created_at: str = "",
+    error: str = "",
+) -> CalibrationReceiptEventFactsV1:
+    """將同次 receipt payload 凍結為 typed event facts。"""
+
+    payload = payload_value if isinstance(payload_value, Mapping) else None
+    candidate_value = payload.get("candidate_identity") if payload is not None else None
+    candidate = candidate_value if isinstance(candidate_value, Mapping) else None
+    candidate_id = str(candidate.get("candidate_id") or "") if candidate else ""
+    candidate_identity_json = None
+    if candidate is not None:
+        try:
+            candidate_identity_json = encode_candidate_identity_event_json_v1(candidate)
+        except (TypeError, ValueError):
+            candidate_identity_json = None
+
+    inference_value = payload.get("inference_provenance") if payload is not None else None
+    inference = inference_value if isinstance(inference_value, Mapping) else {}
+    rows_value = payload.get("projections") if payload is not None else None
+    rows = rows_value if isinstance(rows_value, Sequence) and not isinstance(
+        rows_value, (str, bytes)
+    ) else ()
+    stock_codes = tuple(
+        str(row.get("stock_code") or "")
+        for row in rows
+        if isinstance(row, Mapping)
+    )
+    cost_hash = payload.get("cost_scenario_hash") if payload is not None else None
+    cost_id = inference.get("cost_scenario_id")
+    return CalibrationReceiptEventFactsV1(
+        payload_present=payload is not None,
+        attempted=attempted,
+        persisted=persisted,
+        readback_verified=readback_verified,
+        identity_verified=identity_verified,
+        path=path,
+        receipt_hash=receipt_hash,
+        receipt_created_at=receipt_created_at,
+        error=error,
+        result_id=str(payload.get("result_id") or "") if payload is not None else "",
+        decision_date=str(payload.get("decision_date") or "") if payload is not None else "",
+        candidate_id=candidate_id,
+        candidate_identity_json=candidate_identity_json,
+        cost_scenario_hash=str(cost_hash or ""),
+        cost_scenario_id=str(cost_id or ""),
+        projected_stock_codes=stock_codes,
+        projection_rows_sha256=str(
+            payload.get("projection_rows_sha256") or ""
+        ) if payload is not None else "",
+        inference_source_hash=str(inference.get("inference_source_hash") or ""),
+        inference_pit_hash=str(inference.get("inference_pit_hash") or ""),
+        feature_rows_sha256=str(inference.get("feature_rows_sha256") or ""),
+    )
+
+
+def _assert_prepared_source_contract_bytes_unchanged_v1(
+    inference_provenance: Mapping[str, Any],
+    source_contract_evidence: Any,
+) -> None:
+    """在原 receipt 時點重用既有檔案驗證及錯誤語意。"""
+
+    if source_contract_evidence is None:
+        return
+    verify_inference_provenance(
+        inference_provenance,
+        expected_decision_date=str(inference_provenance.get("decision_date") or ""),
+        expected_probability_transform_id=PROBABILITY_TRANSFORM_ID,
+    )
+
+
 if TYPE_CHECKING:
     from app_module.recommendation.contracts import (
         RecommendationConfigSnapshot,
@@ -146,6 +242,9 @@ if TYPE_CHECKING:
     from app_module.recommendation.execute import (
         RecommendationPostprocessFacts,
         RecommendationPostprocessInput,
+    )
+    from app_module.recommendation.live_source_identity import (
+        LiveCalibrationSourceIdentityV1,
     )
 
 
@@ -290,12 +389,13 @@ class RecommendationService:
         self,
         recommendations: List[RecommendationDTO],
         *,
+        selected_items: Sequence[RecommendationItem] | None = None,
         decision_date: str,
         selection_authority: str = "rule_top_n",
         selection_score_kind: str = "rule_total_score",
         selection_percentile_kind: str = "rule_percentile",
         top_n_changed_by_model: bool = False,
-    ) -> None:
+    ) -> LiveCalibrationSourceIdentityV1 | None:
         """Inject the verified active pointer projection into the normal DTO path.
 
         This is deliberately a read-only adapter.  If the pointer, artifact,
@@ -305,18 +405,59 @@ class RecommendationService:
 
         consumer = self.calibration_consumer
         invocation_capture = getattr(self, "_r011_invocation_capture", None)
+        post_calibration_sink = getattr(
+            self, "_r026_post_calibration_handoff_sink", None
+        )
+        receipt_event_facts: list[CalibrationReceiptEventFactsV1] = []
+
+        def publish_post_calibration_handoff(
+            *,
+            consumer_configured: bool,
+            attempted: bool,
+            projection_status: CalibrationProjectionStatusV1 | None = None,
+            receipt_status: CalibrationReceiptStatusV1 | None = None,
+            receipt_error_detail: str | None = None,
+        ) -> None:
+            if type(post_calibration_sink) is not RecommendationPostCalibrationHandoffSinkV1:
+                return
+            event = receipt_event_facts[-1] if receipt_event_facts else None
+            post_calibration_sink.publish(
+                RecommendationPostCalibrationHandoffV1(
+                    consumer_configured=consumer_configured,
+                    attempted=attempted,
+                    projection_status=projection_status,
+                    receipt_status=receipt_status,
+                    receipt_error_detail=receipt_error_detail,
+                    receipt_event=event,
+                )
+            )
+
         if isinstance(invocation_capture, dict):
             invocation_capture["calibration_consumer_configured"] = consumer is not None
         if consumer is None:
-            return
+            publish_post_calibration_handoff(
+                consumer_configured=False,
+                attempted=False,
+            )
+            return None
         if not decision_date or not recommendations:
-            return
+            publish_post_calibration_handoff(
+                consumer_configured=True,
+                attempted=False,
+            )
+            return None
         if isinstance(invocation_capture, dict):
             invocation_capture["calibration_attempted"] = True
         # The R026 source scope is transient and local to this calibration
         # invocation.  It is intentionally independent of result_id and the
         # legacy staged_invocation_id, and is never written to provenance.
         source_scope_id = f"recommendation-live-{uuid4().hex}"
+        live_source_identity: LiveCalibrationSourceIdentityV1 | None = None
+        source_contract_evidence: Any = None
+        prepared_runtime_capability: Any = None
+        prepared_runtime_enabled = False
+        handoff_projection_status: CalibrationProjectionStatusV1 | None = None
+        receipt_error_detail: str | None = None
         try:
             from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
             from data_module.source_revision_evidence_collector import (
@@ -423,14 +564,65 @@ class RecommendationService:
                     for row in rows
                 ]
                 active_identity_provider = getattr(consumer, "active_identity", None)
-                active_identity = (
+                active_identity_value = (
                     active_identity_provider(decision_date=decision_date)
                     if callable(active_identity_provider)
                     else None
                 )
                 active_identity = (
-                    active_identity if isinstance(active_identity, Mapping) else {}
+                    active_identity_value
+                    if isinstance(active_identity_value, Mapping)
+                    else {}
                 )
+                if (
+                    type(consumer) is RecommendationCalibrationConsumer
+                    and selected_items is not None
+                    and len(selected_items) == len(recommendations)
+                    and bool(self.last_run_context.get("result_id"))
+                ):
+                    decision_clock_text = str(
+                        self.last_run_context.get("decision_at") or ""
+                    )
+                    try:
+                        prepared_decision_clock = _STANDARD_DATETIME.fromisoformat(
+                            decision_clock_text
+                        )
+                    except ValueError:
+                        prepared_decision_clock = None
+                    if (
+                        prepared_decision_clock is not None
+                        and prepared_decision_clock.tzinfo is not None
+                    ):
+                        if isinstance(active_identity_value, Mapping) and active_identity:
+                            capability_resolver = getattr(
+                                consumer,
+                                "resolve_invocation_projection_capability",
+                                None,
+                            )
+                            if callable(capability_resolver):
+                                prepared_runtime_capability = capability_resolver(
+                                    invocation_scope_id=source_scope_id,
+                                    decision_date=decision_date,
+                                    expected_identity=active_identity,
+                                )
+                                prepared_runtime_enabled = (
+                                    prepared_runtime_capability is not None
+                                )
+                        elif active_identity_value is None:
+                            no_model_resolver = getattr(
+                                consumer,
+                                "resolve_invocation_no_model_projection_capability_v1",
+                                None,
+                            )
+                            if callable(no_model_resolver):
+                                prepared_runtime_capability = no_model_resolver(
+                                    invocation_scope_id=source_scope_id,
+                                    decision_date=decision_date,
+                                    expected_identity={},
+                                )
+                                prepared_runtime_enabled = (
+                                    prepared_runtime_capability is not None
+                                )
                 active_cost_provider = getattr(consumer, "active_cost_scenario", None)
                 active_cost_scenario = (
                     active_cost_provider(decision_date=decision_date)
@@ -460,34 +652,57 @@ class RecommendationService:
                         CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
                     )
                 )
-                inference_provenance = build_inference_provenance(
-                    snapshot=snapshot,
-                    feature_rows=provenance_rows,
-                    feature_schema=inference_feature_schema,
-                    feature_registry_hash=inference_feature_registry_hash,
-                    feature_builder_schema_hash=feature_builder.load_contract.schema_hash,
-                    source_database=str(provider.database_path),
-                    history_start_date=history_start_date,
-                    cost_scenario_hash=(
-                        str(active_cost_hash)
-                        if active_cost_hash
-                        else None
-                    ),
-                    cost_scenario_id=(
-                        str(active_cost_id)
-                        if active_cost_id
-                        else None
-                    ),
-                    cost_scenario_version=(
-                        str(active_cost_version)
-                        if active_cost_version
-                        else None
-                    ),
-                    probability_transform_id=PROBABILITY_TRANSFORM_ID,
-                    source_contract_binding=getattr(
-                        self.config, "recommendation_source_contract_binding", None
-                    ),
+                source_contract_binding = getattr(
+                    self.config, "recommendation_source_contract_binding", None
                 )
+                if prepared_runtime_enabled:
+                    contract_bytes = read_source_contract_bytes_for_preparation(
+                        source_contract_binding
+                    )
+                    inference_provenance, source_contract_evidence = (
+                        build_inference_provenance_with_source_evidence_v1(
+                            snapshot=snapshot,
+                            feature_rows=provenance_rows,
+                            feature_schema=inference_feature_schema,
+                            feature_registry_hash=inference_feature_registry_hash,
+                            feature_builder_schema_hash=feature_builder.load_contract.schema_hash,
+                            source_database=str(provider.database_path),
+                            history_start_date=history_start_date,
+                            cost_scenario_hash=(
+                                str(active_cost_hash) if active_cost_hash else None
+                            ),
+                            cost_scenario_id=(
+                                str(active_cost_id) if active_cost_id else None
+                            ),
+                            cost_scenario_version=(
+                                str(active_cost_version) if active_cost_version else None
+                            ),
+                            probability_transform_id=PROBABILITY_TRANSFORM_ID,
+                            source_contract_binding=source_contract_binding,
+                            source_contract_file_bytes=contract_bytes,
+                        )
+                    )
+                else:
+                    inference_provenance = build_inference_provenance(
+                        snapshot=snapshot,
+                        feature_rows=provenance_rows,
+                        feature_schema=inference_feature_schema,
+                        feature_registry_hash=inference_feature_registry_hash,
+                        feature_builder_schema_hash=feature_builder.load_contract.schema_hash,
+                        source_database=str(provider.database_path),
+                        history_start_date=history_start_date,
+                        cost_scenario_hash=(
+                            str(active_cost_hash) if active_cost_hash else None
+                        ),
+                        cost_scenario_id=(
+                            str(active_cost_id) if active_cost_id else None
+                        ),
+                        cost_scenario_version=(
+                            str(active_cost_version) if active_cost_version else None
+                        ),
+                        probability_transform_id=PROBABILITY_TRANSFORM_ID,
+                        source_contract_binding=source_contract_binding,
+                    )
 
                 # Read all active identity/cost baselines inside the lease so
                 # the same source observation spans the complete projection.
@@ -515,22 +730,139 @@ class RecommendationService:
                     for item in recommendations
                     if item.score_percentile_bp is not None
                 }
-                projections = consumer.project_many(
-                    feature_values_by_symbol=feature_values,
-                    rule_probability_by_symbol=rule_probability,
-                    after_cost_rule_probability_by_symbol=after_cost_rule_probability,
-                    after_cost_rule_baseline_id_by_symbol=after_cost_rule_baseline_ids,
-                    ranking_percentile_by_symbol=percentiles,
-                    decision_date=decision_date,
-                    data_quality="observed",
-                    rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
-                    inference_provenance=inference_provenance,
-                    selection_authority=selection_authority,
-                    selection_score_kind=selection_score_kind,
-                    selection_percentile_kind=selection_percentile_kind,
-                    top_n_changed_by_model=top_n_changed_by_model,
-                )
+                if prepared_runtime_enabled:
+                    from app_module.recommendation.prepared_runtime_projector import (
+                        project_prepared_ml_runtime_input_v1,
+                    )
+
+                    runtime_input = build_prepared_runtime_input_v1(
+                        selected_items=selected_items or (),
+                        recommendations=recommendations,
+                        feature_rows=rows,
+                        feature_builder=feature_builder,
+                        snapshot=snapshot,
+                        capability=prepared_runtime_capability,
+                        active_identity=active_identity,
+                        result_id=str(self.last_run_context.get("result_id") or ""),
+                        history_start_date=history_start_date,
+                        invocation_scope_id=source_scope_id,
+                        decision_clock=_STANDARD_DATETIME.fromisoformat(
+                            str(self.last_run_context.get("decision_at") or "")
+                        ),
+                        inference_provenance=inference_provenance,
+                        source_contract_evidence=source_contract_evidence,
+                        rule_probability_by_symbol=rule_probability,
+                        after_cost_rule_probability_by_symbol=after_cost_rule_probability,
+                        after_cost_rule_baseline_id_by_symbol=after_cost_rule_baseline_ids,
+                        selection_authority=selection_authority,
+                        selection_score_kind=selection_score_kind,
+                        selection_percentile_kind=selection_percentile_kind,
+                        top_n_changed_by_model=top_n_changed_by_model,
+                    )
+                    projections = dict(
+                        project_prepared_ml_runtime_input_v1(runtime_input)
+                    )
+                else:
+                    projections = consumer.project_many(
+                        feature_values_by_symbol=feature_values,
+                        rule_probability_by_symbol=rule_probability,
+                        after_cost_rule_probability_by_symbol=after_cost_rule_probability,
+                        after_cost_rule_baseline_id_by_symbol=after_cost_rule_baseline_ids,
+                        ranking_percentile_by_symbol=percentiles,
+                        decision_date=decision_date,
+                        data_quality="observed",
+                        rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
+                        inference_provenance=inference_provenance,
+                        selection_authority=selection_authority,
+                        selection_score_kind=selection_score_kind,
+                        selection_percentile_kind=selection_percentile_kind,
+                        top_n_changed_by_model=top_n_changed_by_model,
+                    )
+                source_evidence_after_projection: ValidatedSourceEvidenceV1 | None = None
+                try:
+                    candidate_evidence_after_projection = collect_source_revision_evidence_v1(
+                        database_path=source_database_path,
+                        scope_id=source_scope_id,
+                        cutoff_date=cutoff_date,
+                        symbols=source_symbols,
+                        explicit_path=None,
+                    )
+                    if type(candidate_evidence_after_projection) is not ValidatedSourceEvidenceV1:
+                        raise TypeError(
+                            "source revision collector returned an invalid post-projection aggregate"
+                        )
+                    if (
+                        candidate_evidence_after_projection.schema_version
+                        != SOURCE_REVISION_EVIDENCE_SCHEMA_V1
+                        or candidate_evidence_after_projection.scope_id != source_scope_id
+                        or candidate_evidence_after_projection.cutoff_date != cutoff_date
+                    ):
+                        raise RuntimeError(
+                            "source revision evidence identity mismatch after projection"
+                        )
+                    if (
+                        candidate_evidence_after_projection != source_evidence_before
+                        or candidate_evidence_after_projection != source_evidence_after
+                        or candidate_evidence_after_projection.digest_sha256
+                        != source_evidence_before.digest_sha256
+                        or candidate_evidence_after_projection.digest_sha256
+                        != source_evidence_after.digest_sha256
+                    ):
+                        raise RuntimeError(
+                            "source revision evidence changed during model projection"
+                        )
+                    source_evidence_after_projection = candidate_evidence_after_projection
+                except Exception:
+                    # The post-projection sidecar sample is shadow-only.  Its
+                    # failure suppresses identity publication, not the legacy
+                    # projection or receipt path.
+                    source_evidence_after_projection = None
                 lease.assert_unchanged()
+                # This invocation-local shadow value joins the actual captured
+                # rows, the validated sidecar aggregate, and the completed
+                # same-connection lease check.  It is deliberately not handed
+                # to the consumer, receipt, legacy capture, or provenance yet.
+                try:
+                    from app_module.recommendation.historical_snapshot_custody import (
+                        HistoricalRawSnapshotQueryScopeV1,
+                    )
+                    from app_module.recommendation.live_source_identity import (
+                        SQLiteReadLeaseObservationV1,
+                        compose_live_calibration_source_identity_v1,
+                    )
+                    from data_module.ml_historical_snapshot_provider import (
+                        HISTORICAL_SNAPSHOT_PROVIDER_CONTRACT_ID_V1,
+                    )
+
+                    provider_contract_id = snapshot.provider_contract_id
+                    if provider_contract_id != HISTORICAL_SNAPSHOT_PROVIDER_CONTRACT_ID_V1:
+                        raise ValueError("provider snapshot has no approved contract ID")
+                    custody_query_scope = HistoricalRawSnapshotQueryScopeV1(
+                        source_id=provider_contract_id,
+                        decision_date=cutoff_date,
+                        history_start_date=date.fromisoformat(history_start_date),
+                        symbols=source_symbols,
+                        industry_index_names=(),
+                    )
+                    if source_evidence_after_projection is None:
+                        raise ValueError(
+                            "post-projection source evidence is unavailable"
+                        )
+                    live_source_identity = compose_live_calibration_source_identity_v1(
+                        snapshot=snapshot,
+                        query_scope=custody_query_scope,
+                        source_evidence_before=source_evidence_before,
+                        source_evidence_after=source_evidence_after_projection,
+                        sqlite_lease_observation=SQLiteReadLeaseObservationV1(
+                            provider_contract_id=provider_contract_id,
+                            scope_id=source_scope_id,
+                        ),
+                    )
+                except Exception:
+                    # Shadow capture is observational only.  A missing or
+                    # invalid shadow fact must not change the existing model
+                    # projection or receipt path.
+                    live_source_identity = None
         except Exception as exc:  # noqa: BLE001 - consumer must fail closed
             self.last_calibration_projections = {}
             for key in (
@@ -574,13 +906,22 @@ class RecommendationService:
                 recommendation.calibration_raw_probability_bp = None
                 recommendation.calibration_raw_after_cost_probability_bp = None
                 recommendation.calibration_provenance = {}
-            return
+            handoff_projection_status = CalibrationProjectionStatusV1.UNAVAILABLE
+            publish_post_calibration_handoff(
+                consumer_configured=True,
+                attempted=True,
+                projection_status=handoff_projection_status,
+            )
+            return None
 
         self.last_calibration_projections = dict(projections)
-        self.last_run_context["calibration_projection_status"] = (
-            "active_candidate"
+        handoff_projection_status = (
+            CalibrationProjectionStatusV1.ACTIVE_CANDIDATE
             if any(item.status == "active_candidate" for item in projections.values())
-            else "rule_only"
+            else CalibrationProjectionStatusV1.RULE_ONLY
+        )
+        self.last_run_context["calibration_projection_status"] = (
+            handoff_projection_status.value
         )
         self.last_run_context["calibration_rule_baseline_id"] = NULL_BENCHMARK_BASELINE_ID
         self.last_run_context["calibration_after_cost_baseline_id"] = (
@@ -597,6 +938,7 @@ class RecommendationService:
                 decision_date=decision_date,
                 projections=projections,
                 inference_provenance=inference_provenance,
+                source_contract_evidence=source_contract_evidence,
                 result_id=(
                     str(self.last_run_context.get("result_id") or "") or None
                 ),
@@ -605,9 +947,24 @@ class RecommendationService:
                 selection_percentile_kind=selection_percentile_kind,
                 top_n_changed_by_model=top_n_changed_by_model,
                 invocation_capture=invocation_capture,
+                receipt_event_out=receipt_event_facts,
             )
         except (OSError, TypeError, ValueError, RecommendationProvenanceError) as exc:
             receipt_path = None
+            receipt_error_detail = str(exc)
+            if receipt_event_facts:
+                receipt_event_facts[-1] = replace(
+                    receipt_event_facts[-1],
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            else:
+                receipt_event_facts.append(
+                    _post_calibration_receipt_event_v1(
+                        None,
+                        attempted=False,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                )
             if isinstance(invocation_capture, dict):
                 receipt_capture = invocation_capture.setdefault("receipt", {})
                 if isinstance(receipt_capture, dict):
@@ -637,6 +994,7 @@ class RecommendationService:
             self.last_calibration_projections = dict(projections)
             self.last_run_context["calibration_projection_status"] = "unavailable"
             self.last_run_context["calibration_projection_receipt_status"] = "unavailable"
+            handoff_projection_status = CalibrationProjectionStatusV1.UNAVAILABLE
         elif receipt_path is not None:
             self.last_run_context["calibration_projection_receipt_status"] = "persisted"
         self.last_run_context["calibration_projection_rows"] = {
@@ -737,6 +1095,23 @@ class RecommendationService:
                         "projection_receipt_required": True,
                     }
                 )
+        handoff_receipt_status = (
+            CalibrationReceiptStatusV1.PERSISTED
+            if receipt_path is not None
+            else (
+                CalibrationReceiptStatusV1.UNAVAILABLE
+                if receipt_error_detail is not None or receipt_required
+                else None
+            )
+        )
+        publish_post_calibration_handoff(
+            consumer_configured=True,
+            attempted=True,
+            projection_status=handoff_projection_status,
+            receipt_status=handoff_receipt_status,
+            receipt_error_detail=receipt_error_detail,
+        )
+        return live_source_identity
 
     @staticmethod
     def _persist_calibration_projection_receipt(
@@ -746,12 +1121,14 @@ class RecommendationService:
         decision_date: str,
         projections: Mapping[str, Any],
         inference_provenance: Mapping[str, Any],
+        source_contract_evidence: Any = None,
         result_id: str | None,
         selection_authority: str,
         selection_score_kind: str,
         selection_percentile_kind: str,
         top_n_changed_by_model: bool,
         invocation_capture: dict[str, Any] | None = None,
+        receipt_event_out: list[CalibrationReceiptEventFactsV1] | None = None,
     ) -> dict[str, str] | None:
         """Persist the exact bounded projection batch when a real consumer is loaded."""
 
@@ -831,6 +1208,14 @@ class RecommendationService:
         first = next(iter(projections.values()), None)
         if first is None:
             return None
+        _assert_prepared_source_contract_bytes_unchanged_v1(
+            inference_provenance,
+            source_contract_evidence,
+        )
+        if receipt_event_out is not None:
+            receipt_event_out.append(
+                _post_calibration_receipt_event_v1(None, attempted=False)
+            )
         compatibility = getattr(first, "provenance_compatibility", {})
         receipt = build_inference_projection_receipt(
             decision_date=decision_date,
@@ -849,7 +1234,14 @@ class RecommendationService:
                 "model_ranking_kind": "model_return_bp",
                 "top_n_changed_by_model": bool(top_n_changed_by_model),
             },
+            source_contract_evidence=source_contract_evidence,
         )
+        if receipt_event_out is not None:
+            receipt_event_out[-1] = _post_calibration_receipt_event_v1(
+                receipt.payload,
+                attempted=True,
+                receipt_hash=receipt.receipt_hash,
+            )
         capture = invocation_capture.setdefault("receipt", {}) if isinstance(invocation_capture, dict) else None
         if isinstance(capture, dict):
             capture.update(
@@ -873,6 +1265,12 @@ class RecommendationService:
                 }
             )
         path = persist_inference_projection_receipt(Path(pointer_path).parent, receipt)
+        if receipt_event_out is not None:
+            receipt_event_out[-1] = replace(
+                receipt_event_out[-1],
+                persisted=True,
+                path=str(path),
+            )
         if isinstance(capture, dict):
             capture.update(
                 {
@@ -886,6 +1284,15 @@ class RecommendationService:
         )
         if isinstance(capture, dict):
             capture["receipt_created_at"] = receipt_created_at
+        if receipt_event_out is not None:
+            receipt_event_out[-1] = replace(
+                receipt_event_out[-1],
+                receipt_created_at=receipt_created_at,
+            )
+        _assert_prepared_source_contract_bytes_unchanged_v1(
+            inference_provenance,
+            source_contract_evidence,
+        )
         verified_receipt = read_inference_projection_receipt(
             path,
             expected_receipt_hash=receipt.receipt_hash,
@@ -893,12 +1300,23 @@ class RecommendationService:
             expected_candidate_id=candidate_id,
             expected_result_id=result_id,
             expected_cost_scenario_hash=receipt.payload.get("cost_scenario_hash"),
+            source_contract_evidence=source_contract_evidence,
         )
         if isinstance(capture, dict):
             capture["readback_verified"] = True
             capture["readback_status"] = "verified"
             capture["receipt_payload"] = deepcopy(dict(verified_receipt.payload))
             capture["receipt_hash"] = verified_receipt.receipt_hash
+        if receipt_event_out is not None:
+            receipt_event_out[-1] = _post_calibration_receipt_event_v1(
+                verified_receipt.payload,
+                attempted=True,
+                persisted=True,
+                readback_verified=True,
+                path=str(path),
+                receipt_hash=verified_receipt.receipt_hash,
+                receipt_created_at=receipt_created_at,
+            )
         post_identity = identity_provider(decision_date=decision_date)
         if not isinstance(post_identity, Mapping):
             raise RecommendationProvenanceError(
@@ -918,6 +1336,11 @@ class RecommendationService:
         if isinstance(capture, dict):
             capture["identity_verified"] = True
             capture["identity_status"] = "verified"
+        if receipt_event_out is not None:
+            receipt_event_out[-1] = replace(
+                receipt_event_out[-1],
+                identity_verified=True,
+            )
         return {
             "path": str(path),
             "receipt_hash": receipt.receipt_hash,
@@ -2455,6 +2878,7 @@ class RecommendationService:
         self.last_run_context["decision_at"] = decision_clock
         self._apply_recommendation_calibration(
             all_recommendations,
+            selected_items=evaluation_result.decision.items,
             decision_date=decision_cutoff or latest_date_str,
             selection_authority="rule_top_n",
             selection_score_kind="rule_total_score",

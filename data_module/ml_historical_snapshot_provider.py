@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import closing, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -32,6 +32,108 @@ _REQUIRED_COLUMNS = {
     "market_indices": frozenset({"日期", "收盤指數", "收盤價"}),
     "industry_indices": frozenset({"日期", "指數名稱", "收盤指數"}),
 }
+_VALIDATED_SCHEMA_CONTRACT = "historical-sqlite-schema.v1"
+HISTORICAL_SNAPSHOT_PROVIDER_CONTRACT_ID_V1 = (
+    "twstock-historical-sqlite-four-table.v1"
+)
+
+
+def _schema_digest(table_columns: tuple[tuple[str, tuple[str, ...]], ...]) -> str:
+    payload = {
+        "contract": _VALIDATED_SCHEMA_CONTRACT,
+        "tables": [
+            {"name": table, "columns": list(columns)}
+            for table, columns in table_columns
+        ],
+    }
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedHistoricalSchemaEvidenceV1:
+    """同次唯讀載入已驗證的四表欄位；不代表資料修訂版或 durable generation。"""
+
+    table_columns: tuple[tuple[str, tuple[str, ...]], ...]
+    schema_sha256: str
+
+    def __post_init__(self) -> None:
+        if type(self.table_columns) is not tuple:
+            raise TypeError("validated schema table_columns 必須是 tuple")
+        if len(self.table_columns) != len(_SOURCE_TABLES):
+            raise ValueError("validated schema 必須涵蓋完整 source table whitelist")
+        for expected_table, record in zip(_SOURCE_TABLES, self.table_columns):
+            if type(record) is not tuple or len(record) != 2:
+                raise TypeError("validated schema table record 格式錯誤")
+            table, columns = record
+            if type(table) is not str or table != expected_table:
+                raise ValueError("validated schema table 順序/名稱不符 whitelist")
+            if type(columns) is not tuple or any(type(column) is not str for column in columns):
+                raise TypeError("validated schema columns 必須是 immutable text tuple")
+            if len(set(columns)) != len(columns):
+                raise ValueError("validated schema columns 不可重複")
+            if not _REQUIRED_COLUMNS[table].issubset(columns):
+                raise ValueError(f"validated schema 缺少 {table} 必要欄位")
+        if type(self.schema_sha256) is not str or len(self.schema_sha256) != 64:
+            raise ValueError("validated schema digest 必須是 64 位小寫 SHA-256")
+        if any(character not in "0123456789abcdef" for character in self.schema_sha256):
+            raise ValueError("validated schema digest 必須是 64 位小寫 SHA-256")
+        if self.schema_sha256 != _schema_digest(self.table_columns):
+            raise ValueError("validated schema digest 與欄位內容不符")
+
+    @classmethod
+    def from_validated_columns(
+        cls, schema: dict[str, tuple[str, ...]]
+    ) -> "ValidatedHistoricalSchemaEvidenceV1":
+        if type(schema) is not dict or set(schema) != set(_SOURCE_TABLES):
+            raise ValueError("validated schema source table set 不符 whitelist")
+        table_columns = tuple((table, tuple(schema[table])) for table in _SOURCE_TABLES)
+        return cls(table_columns=table_columns, schema_sha256=_schema_digest(table_columns))
+
+    @property
+    def schema_version(self) -> str:
+        return f"{_VALIDATED_SCHEMA_CONTRACT}:sha256:{self.schema_sha256}"
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedHistoricalLoadScopeV1:
+    """同次 provider load 正規化後的選取參數；不含推測的來源身分。"""
+
+    decision_date: str
+    history_start_date: str
+    symbols: tuple[str, ...]
+    industry_index_names: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("decision_date", self.decision_date),
+            ("history_start_date", self.history_start_date),
+        ):
+            if type(value) is not str:
+                raise TypeError(f"{name} 必須是 str")
+            try:
+                parsed = date.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError(f"{name} 必須是 canonical ISO date") from exc
+            if parsed.isoformat() != value:
+                raise ValueError(f"{name} 必須是 canonical ISO date")
+        if type(self.symbols) is not tuple or not self.symbols:
+            raise ValueError("validated query symbols 必須是非空 tuple")
+        if any(type(value) is not str or not value or value != value.strip() for value in self.symbols):
+            raise ValueError("validated query symbols 必須是正規化文字")
+        if tuple(sorted(set(self.symbols))) != self.symbols:
+            raise ValueError("validated query symbols 必須排序且唯一")
+        if type(self.industry_index_names) is not tuple:
+            raise TypeError("validated query industry names 必須是 tuple")
+        if any(
+            type(value) is not str or not value or value != value.strip()
+            for value in self.industry_index_names
+        ):
+            raise ValueError("validated query industry names 必須是正規化文字")
+        if tuple(sorted(set(self.industry_index_names))) != self.industry_index_names:
+            raise ValueError("validated query industry names 必須排序且唯一")
 
 
 @dataclass(frozen=True)
@@ -76,6 +178,15 @@ class HistoricalRawSnapshot:
     query_only: bool = True
     shadow_only: bool = True
     production_action_allowed: bool = False
+    validated_schema: ValidatedHistoricalSchemaEvidenceV1 | None = field(
+        default=None, compare=False, repr=False
+    )
+    validated_query_scope: ValidatedHistoricalLoadScopeV1 | None = field(
+        default=None, compare=False, repr=False
+    )
+    provider_contract_id: str | None = field(
+        default=None, compare=False, repr=False, kw_only=True
+    )
 
     def __post_init__(self) -> None:
         if date.fromisoformat(self.feature_as_of_date) >= date.fromisoformat(self.decision_date):
@@ -84,6 +195,16 @@ class HistoricalRawSnapshot:
             raise ValueError("historical ML snapshot source whitelist mismatch")
         if not self.query_only or not self.shadow_only or self.production_action_allowed:
             raise ValueError("historical ML snapshot must remain read-only and shadow-only")
+        if self.validated_schema is not None and type(self.validated_schema) is not ValidatedHistoricalSchemaEvidenceV1:
+            raise TypeError("validated_schema must be provider-issued schema evidence")
+        if self.validated_query_scope is not None and type(self.validated_query_scope) is not ValidatedHistoricalLoadScopeV1:
+            raise TypeError("validated_query_scope must be provider-issued query evidence")
+        if self.provider_contract_id is not None and (
+            type(self.provider_contract_id) is not str
+            or self.provider_contract_id
+            != HISTORICAL_SNAPSHOT_PROVIDER_CONTRACT_ID_V1
+        ):
+            raise ValueError("historical snapshot provider contract ID is unsupported")
 
 
 @dataclass(frozen=True)
@@ -248,6 +369,14 @@ class MLHistoricalSnapshotProvider:
             decision_date=_iso_date(decision), feature_as_of_date=_iso_date(cutoff),
             prices=prices, technicals=technicals, market=market, industries=industries,
             source_fingerprint=self._fingerprint(schema, source_stat_before), query_count=query_count,
+            validated_schema=ValidatedHistoricalSchemaEvidenceV1.from_validated_columns(schema),
+            validated_query_scope=ValidatedHistoricalLoadScopeV1(
+                decision_date=_iso_date(decision),
+                history_start_date=_iso_date(history_start),
+                symbols=normalized_symbols,
+                industry_index_names=normalized_industries,
+            ),
+            provider_contract_id=HISTORICAL_SNAPSHOT_PROVIDER_CONTRACT_ID_V1,
         )
 
     def list_trading_dates(

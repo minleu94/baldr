@@ -159,3 +159,227 @@ def test_guard_detects_true_production_flag(tmp_path: Path) -> None:
     report = MLShadowBoundaryGuard(tmp_path).inspect()
 
     assert any("forbidden_true_flag" in item for item in report.violations)
+
+
+def test_guard_allows_only_reviewed_r026_app_to_ml_edges(tmp_path: Path) -> None:
+    imports_by_path = {
+        "app_module/recommendation/prepared_runtime_input.py": (
+            "from ml_module.prepared_input_contract import ("
+            "AvailabilityStatus, PreparedMLInput, SnapshotReference, _freeze_aware_datetime)\n"
+            "from ml_module.prepared_source_contract import VerifiedSourceContractEvidenceV1\n"
+        ),
+        "app_module/recommendation/prepared_runtime_projector.py": (
+            "from ml_module.prepared_source_contract import VerifiedSourceContractEvidenceV1\n"
+        ),
+        "app_module/recommendation/prepared_runtime_preparation.py": (
+            "from ml_module.historical_contracts import HistoricalFeatureRow\n"
+            "from ml_module.historical_feature_builder import HistoricalFeatureBuilder\n"
+            "from ml_module.prepared_source_contract import VerifiedSourceContractEvidenceV1\n"
+            "from ml_module.recommendation_inference_provenance import RecommendationProvenanceError\n"
+            "from ml_module.recommendation_probability_transform import "
+            "NULL_BENCHMARK_BASELINE_ID\n"
+        ),
+        "app_module/recommendation_calibration_consumer.py": (
+            "from ml_module.prepared_source_contract import VerifiedSourceContractEvidenceV1\n"
+            "from ml_module.model_artifact_loader import SameBytesShadowModelArtifactWithManifestLoadResultV1\n"
+            "from ml_module.model_artifact_manifest import ModelArtifactManifest\n"
+            "from ml_module.probability_calibration import FittedShadowProbabilityCalibrator\n"
+            "from ml_module.recommendation_calibration_training import ("
+            "RECOMMENDATION_RETURN_BASIS, RunnableRecommendationCalibrationModel, "
+            "recommendation_label_contract_id)\n"
+        ),
+        "app_module/recommendation_service.py": (
+            "from ml_module.recommendation_inference_provenance import "
+            "build_inference_provenance_with_source_evidence_v1, "
+            "verify_inference_provenance\n"
+        ),
+        "app_module/recommendation/historical_snapshot_custody.py": (
+            "from ml_module.prepared_input_contract import ("
+            "AvailabilityBinding, AvailabilityStatus, DateRange, SnapshotKind, "
+            "SnapshotQualityStatus, SnapshotReference, SnapshotScopeStatus)\n"
+        ),
+        "app_module/recommendation/ml_adapter.py": (
+            "from ml_module.prepared_input_contract import "
+            "CandidateIdentity, PreparedMLInput, SnapshotReference\n"
+        ),
+        "app_module/recommendation/ml_preparation_facts.py": (
+            "from ml_module.feature_registry import FeatureRegistry\n"
+            "from ml_module.historical_contracts import HistoricalFeatureRow\n"
+            "from ml_module.historical_feature_builder import ("
+            "HistoricalFeatureBuilder, HistoricalFeatureBuilderLoadContract, "
+            "HistoricalFeatureVector)\n"
+        ),
+        "app_module/recommendation/model_resolution_facts.py": (
+            "from ml_module.model_artifact_manifest import ModelArtifactManifest\n"
+        ),
+        "app_module/personalization_projection.py": (
+            "from ml_module.recommendation_inference_provenance import "
+            "read_inference_projection_receipt\n"
+        ),
+        "app_module/personalization_save_adapter.py": (
+            "from ml_module.recommendation_inference_provenance import "
+            "read_inference_projection_receipt\n"
+        ),
+        "app_module/recommendation/queries.py": (
+            "from ml_module.recommendation_inference_provenance import "
+            "read_inference_projection_receipt\n"
+        ),
+    }
+    for relative_path, source in imports_by_path.items():
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+
+    report = MLShadowBoundaryGuard(tmp_path).inspect()
+
+    assert report.violations == ()
+
+
+def test_guard_rejects_unlisted_symbol_from_each_reviewed_r026_leaf(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        (
+            "app_module/recommendation/prepared_runtime_input.py",
+            "ml_module.prepared_input_contract",
+            "UnreviewedPreparedInputOverride",
+        ),
+        (
+            "app_module/recommendation/prepared_runtime_input.py",
+            "ml_module.prepared_source_contract",
+            "UnreviewedSourceEvidenceOverride",
+        ),
+        (
+            "app_module/recommendation_service.py",
+            "ml_module.recommendation_inference_provenance",
+            "unreviewed_provenance_helper",
+        ),
+        (
+            "app_module/recommendation_calibration_consumer.py",
+            "ml_module.model_artifact_loader",
+            "UnreviewedShadowLoaderResult",
+        ),
+        (
+            "app_module/recommendation_calibration_consumer.py",
+            "ml_module.model_artifact_manifest",
+            "UnreviewedManifestHelper",
+        ),
+        (
+            "app_module/recommendation_calibration_consumer.py",
+            "ml_module.probability_calibration",
+            "UnreviewedCalibrationHelper",
+        ),
+        (
+            "app_module/recommendation_calibration_consumer.py",
+            "ml_module.recommendation_calibration_training",
+            "UnreviewedTrainingHelper",
+        ),
+        (
+            "app_module/recommendation/ml_preparation_facts.py",
+            "ml_module.feature_registry",
+            "UnreviewedFeatureRegistryAPI",
+        ),
+        (
+            "app_module/recommendation/ml_preparation_facts.py",
+            "ml_module.historical_contracts",
+            "UnreviewedTrainingRow",
+        ),
+        (
+            "app_module/recommendation/ml_preparation_facts.py",
+            "ml_module.historical_feature_builder",
+            "UnreviewedTrainingRunner",
+        ),
+        (
+            "app_module/recommendation/prepared_runtime_preparation.py",
+            "ml_module.historical_feature_builder",
+            "UnreviewedPreparationRunner",
+        ),
+        (
+            "app_module/recommendation/prepared_runtime_preparation.py",
+            "ml_module.prepared_source_contract",
+            "UnreviewedSourceEvidenceOverride",
+        ),
+        (
+            "app_module/recommendation/prepared_runtime_preparation.py",
+            "ml_module.recommendation_inference_provenance",
+            "verify_inference_provenance",
+        ),
+        (
+            "app_module/recommendation/historical_snapshot_custody.py",
+            "ml_module.prepared_input_contract",
+            "UnreviewedSnapshotStore",
+        ),
+        (
+            "app_module/recommendation/ml_adapter.py",
+            "ml_module.prepared_input_contract",
+            "UnreviewedModelLoader",
+        ),
+        (
+            "app_module/recommendation/model_resolution_facts.py",
+            "ml_module.model_artifact_manifest",
+            "UnreviewedManifestLoader",
+        ),
+        (
+            "app_module/personalization_projection.py",
+            "ml_module.recommendation_inference_provenance",
+            "build_inference_provenance",
+        ),
+        (
+            "app_module/personalization_save_adapter.py",
+            "ml_module.recommendation_inference_provenance",
+            "persist_inference_projection_receipt",
+        ),
+        (
+            "app_module/recommendation/queries.py",
+            "ml_module.recommendation_inference_provenance",
+            "verify_inference_provenance",
+        ),
+    )
+    for index, (relative_path, module, symbol) in enumerate(cases):
+        case_root = tmp_path / str(index)
+        path = case_root / relative_path
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            f"from {module} import {symbol}\n",
+            encoding="utf-8",
+        )
+
+        report = MLShadowBoundaryGuard(case_root).inspect()
+
+        assert any(
+            item.endswith(f"{module}:{symbol}") for item in report.violations
+        ), relative_path
+
+
+def test_new_provenance_edges_remain_source_scoped_and_symbol_exact(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        (
+            "app_module/recommendation/prepared_runtime_preparation.py",
+            "from ml_module.recommendation_inference_provenance import *\n",
+            "ml_module.recommendation_inference_provenance:*",
+        ),
+        (
+            "app_module/recommendation/prepared_runtime_preparation.py",
+            "import ml_module.recommendation_inference_provenance\n",
+            "ml_module.recommendation_inference_provenance",
+        ),
+        (
+            "app_module/recommendation_service.py",
+            "from ml_module.recommendation_inference_provenance import "
+            "UnreviewedReceiptHelper\n",
+            "ml_module.recommendation_inference_provenance:UnreviewedReceiptHelper",
+        ),
+    )
+    for index, (relative_path, source, diagnostic_suffix) in enumerate(cases):
+        case_root = tmp_path / f"source-scoped-{index}"
+        path = case_root / relative_path
+        path.parent.mkdir(parents=True)
+        path.write_text(source, encoding="utf-8")
+
+        report = MLShadowBoundaryGuard(case_root).inspect()
+
+        assert any(
+            item.endswith(diagnostic_suffix) for item in report.violations
+        ), relative_path

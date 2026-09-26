@@ -93,6 +93,7 @@ class ReplayComparisonDomainKind(str, Enum):
     EXACT_RATIONAL = "exact_rational"
     BINARY_REAL = "binary_real"
     NUMPY_COMPLEX = "numpy_complex"
+    PANDAS_COMPLEX_SERIES = "pandas_complex_series"
     PYTHON_COMPLEX = "python_complex"
 
 
@@ -112,6 +113,7 @@ class ReplayComparisonDomain:
         has_binary_format = self.kind in {
             ReplayComparisonDomainKind.BINARY_REAL,
             ReplayComparisonDomainKind.NUMPY_COMPLEX,
+            ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES,
         }
         metadata = (
             self.format_name,
@@ -121,7 +123,7 @@ class ReplayComparisonDomain:
         )
         if has_binary_format:
             if type(self.format_name) is not str or not self.format_name.strip():
-                raise ValueError("binary/NumPy complex domain 必須明示 format_name")
+                raise ValueError("binary/complex domain 必須明示 format_name")
             if type(self.precision_bits) is not int or self.precision_bits < 2:
                 raise ValueError("precision_bits 必須至少為 2")
             if type(self.min_exponent) is not int or type(self.max_exponent) is not int:
@@ -163,6 +165,25 @@ class ReplayComparisonDomain:
     ) -> ReplayComparisonDomain:
         return cls(
             ReplayComparisonDomainKind.NUMPY_COMPLEX,
+            format_name,
+            precision_bits,
+            min_exponent,
+            max_exponent,
+        )
+
+    @classmethod
+    def pandas_complex_series(
+        cls,
+        format_name: str,
+        *,
+        precision_bits: int,
+        min_exponent: int,
+        max_exponent: int,
+    ) -> ReplayComparisonDomain:
+        """Pandas Series relational ops 的 complex 比較面與 NumPy scalar 分開標記。"""
+
+        return cls(
+            ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES,
             format_name,
             precision_bits,
             min_exponent,
@@ -238,6 +259,7 @@ class ReplayComparisonOperand:
             raise TypeError("real 必須是 ReplayComparisonComponent")
         complex_domain = self.domain.kind in {
             ReplayComparisonDomainKind.NUMPY_COMPLEX,
+            ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES,
             ReplayComparisonDomainKind.PYTHON_COMPLEX,
         }
         if complex_domain:
@@ -1066,12 +1088,19 @@ class ReplayComparisonResult:
 
     matched: bool
     unordered: bool
+    numpy_invalid_effect: bool = False
 
     def __post_init__(self) -> None:
-        if type(self.matched) is not bool or type(self.unordered) is not bool:
+        if (
+            type(self.matched) is not bool
+            or type(self.unordered) is not bool
+            or type(self.numpy_invalid_effect) is not bool
+        ):
             raise TypeError("comparison result 欄位必須是 bool")
         if self.unordered and self.matched:
             raise ValueError("unordered comparison 不可 matched")
+        if self.numpy_invalid_effect and (not self.unordered or self.matched):
+            raise ValueError("NumPy invalid effect 必須對應 unordered rejection")
 
 
 def _compare_replay_operands(
@@ -1105,12 +1134,33 @@ def _compare_replay_operands(
             "replay metric 與 threshold comparison domain 不一致"
         )
 
-    if left_operand.domain.kind is ReplayComparisonDomainKind.NUMPY_COMPLEX:
+    if left_operand.domain.kind in {
+        ReplayComparisonDomainKind.NUMPY_COMPLEX,
+        ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES,
+    }:
         if left_operand.imaginary is None or right_operand.imaginary is None:
             raise AssertionError("NumPy complex operand 缺少 imaginary component")
         real_order = _compare_components(left_operand.real, right_operand.real)
         if real_order is None:
-            return ReplayComparisonResult(matched=False, unordered=True)
+            return ReplayComparisonResult(
+                matched=False,
+                unordered=True,
+                numpy_invalid_effect=(
+                    left_operand.domain.kind
+                    is ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES
+                ),
+            )
+        if left_operand.domain.kind is ReplayComparisonDomainKind.PANDAS_COMPLEX_SERIES:
+            imaginary_order = _compare_components(
+                left_operand.imaginary,
+                right_operand.imaginary,
+            )
+            if imaginary_order is None:
+                return ReplayComparisonResult(
+                    matched=False,
+                    unordered=True,
+                    numpy_invalid_effect=real_order == 0,
+                )
         if real_order != 0:
             return ReplayComparisonResult(
                 matched=_comparison_order_satisfies(real_order, operator),

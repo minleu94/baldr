@@ -32,6 +32,14 @@ from app_module.recommendation.execute import (
     RecommendationPostprocessFacts,
     RecommendationPostprocessInput,
 )
+from app_module.recommendation.ml_postcalibration_handoff import (
+    CalibrationProjectionStatusV1,
+    CalibrationReceiptEventFactsV1,
+    CalibrationReceiptStatusV1,
+    RecommendationPostCalibrationHandoffSinkV1,
+    RecommendationPostCalibrationHandoffV1,
+    encode_candidate_identity_event_json_v1,
+)
 from app_module.recommendation.persistence import (
     ExecutionIdentityConflict,
     RecommendationExecutionPersistence,
@@ -531,17 +539,68 @@ def test_c1_ab_capture_create_only_save_and_single_readback_keep_identity(
         result_id = str(run_by_key[run_key]["result_id"])
         receipt = synthetic_receipts[result_id]
         assert decision_date == str(scenarios["decision_date"])
-        capture = invocation_service._r011_invocation_capture
-        capture["calibration_attempted"] = True
-        capture["receipt"] = {
-            "attempted": True,
-            "persisted": True,
-            "readback_verified": True,
-            "identity_verified": True,
-            "path": receipt["path"],
-            "receipt_hash": receipt["receipt_hash"],
-            "receipt_payload": receipt["payload"],
-        }
+        payload = receipt["payload"]
+        candidate = payload["candidate_identity"]
+        inference = payload["inference_provenance"]
+        projections = payload["projections"]
+        assert isinstance(candidate, Mapping)
+        assert isinstance(inference, Mapping)
+        assert isinstance(projections, list)
+        handoff_sink = getattr(
+            invocation_service,
+            "_r026_post_calibration_handoff_sink",
+            None,
+        )
+        assert isinstance(handoff_sink, RecommendationPostCalibrationHandoffSinkV1)
+        handoff_sink.publish(
+            RecommendationPostCalibrationHandoffV1(
+                consumer_configured=(
+                    getattr(invocation_service, "calibration_consumer", None)
+                    is not None
+                ),
+                attempted=True,
+                projection_status=CalibrationProjectionStatusV1.ACTIVE_CANDIDATE,
+                receipt_status=CalibrationReceiptStatusV1.PERSISTED,
+                receipt_event=CalibrationReceiptEventFactsV1(
+                    payload_present=True,
+                    attempted=True,
+                    persisted=True,
+                    readback_verified=True,
+                    identity_verified=True,
+                    path=str(receipt["path"]),
+                    receipt_hash=str(receipt["receipt_hash"]),
+                    result_id=str(payload.get("result_id") or ""),
+                    decision_date=str(payload.get("decision_date") or ""),
+                    candidate_id=str(candidate.get("candidate_id") or ""),
+                    candidate_identity_json=encode_candidate_identity_event_json_v1(
+                        candidate
+                    ),
+                    cost_scenario_hash=str(
+                        payload.get("cost_scenario_hash") or ""
+                    ),
+                    cost_scenario_id=str(
+                        inference.get("cost_scenario_id") or ""
+                    ),
+                    projected_stock_codes=tuple(
+                        str(row.get("stock_code") or "")
+                        for row in projections
+                        if isinstance(row, Mapping)
+                    ),
+                    projection_rows_sha256=str(
+                        payload.get("projection_rows_sha256") or ""
+                    ),
+                    inference_source_hash=str(
+                        inference.get("inference_source_hash") or ""
+                    ),
+                    inference_pit_hash=str(
+                        inference.get("inference_pit_hash") or ""
+                    ),
+                    feature_rows_sha256=str(
+                        inference.get("feature_rows_sha256") or ""
+                    ),
+                ),
+            )
+        )
         invocation_service.last_run_context.update(
             {
                 "calibration_projection_status": "active_candidate",

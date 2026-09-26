@@ -20,6 +20,11 @@ import tempfile
 from typing import Any, Mapping, Sequence, cast
 
 from ml_module.recommendation_probability_transform import PROBABILITY_TRANSFORM_ID
+from ml_module.prepared_source_contract import (
+    SourceContractFeatureRowV1,
+    VerifiedSourceContractEvidenceV1,
+    build_verified_source_contract_evidence_v1,
+)
 
 
 INFERENCE_PROVENANCE_SCHEMA_VERSION = "recommendation-inference-provenance.v1"
@@ -478,6 +483,143 @@ def build_inference_provenance(
     return provenance
 
 
+def build_inference_provenance_with_source_evidence_v1(
+    *,
+    snapshot: Any,
+    feature_rows: Sequence[Any],
+    feature_schema: Sequence[Sequence[str]],
+    feature_registry_hash: str,
+    feature_builder_schema_hash: str | None = None,
+    source_database: str | None = None,
+    history_start_date: str | None = None,
+    cost_scenario_hash: str | None = None,
+    cost_scenario_id: str | None = None,
+    cost_scenario_version: str | None = None,
+    probability_transform_id: str | None = None,
+    source_contract_binding: Mapping[str, Any] | None = None,
+    source_contract_file_bytes: bytes | None = None,
+    row_ids_by_symbol: Mapping[str, str] | None = None,
+) -> tuple[dict[str, Any], VerifiedSourceContractEvidenceV1 | None]:
+    """同次 build provenance 與 typed source evidence，不重讀合約檔。
+
+    合約 bytes 必須由呼叫端在 preparation 階段讀取並傳入。一般舊 API 仍保留
+    原 filesystem verifier；此 opt-in API 只用 typed evidence 的純 bytes 驗證。
+    """
+
+    if source_contract_binding is None:
+        if source_contract_file_bytes is not None:
+            raise ValueError("未提供 source binding 時不可附帶 contract bytes")
+        return (
+            build_inference_provenance(
+                snapshot=snapshot,
+                feature_rows=feature_rows,
+                feature_schema=feature_schema,
+                feature_registry_hash=feature_registry_hash,
+                feature_builder_schema_hash=feature_builder_schema_hash,
+                source_database=source_database,
+                history_start_date=history_start_date,
+                cost_scenario_hash=cost_scenario_hash,
+                cost_scenario_id=cost_scenario_id,
+                cost_scenario_version=cost_scenario_version,
+                probability_transform_id=probability_transform_id,
+                source_contract_binding=None,
+                row_ids_by_symbol=row_ids_by_symbol,
+            ),
+            None,
+        )
+    if type(source_contract_file_bytes) is not bytes:
+        raise TypeError("source_contract_file_bytes 必須是同次讀取的 bytes")
+
+    provenance = build_inference_provenance(
+        snapshot=snapshot,
+        feature_rows=feature_rows,
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry_hash,
+        feature_builder_schema_hash=feature_builder_schema_hash,
+        source_database=source_database,
+        history_start_date=history_start_date,
+        cost_scenario_hash=cost_scenario_hash,
+        cost_scenario_id=cost_scenario_id,
+        cost_scenario_version=cost_scenario_version,
+        probability_transform_id=probability_transform_id,
+        source_contract_binding=None,
+        row_ids_by_symbol=row_ids_by_symbol,
+    )
+    binding = _json_mapping(source_contract_binding)
+    contract_path = str(binding.get("contract_path") or "")
+    normalized_rows = provenance["feature_rows"]
+    # 保留 strict V1 file verifier 在舊 preparation 入口的拒絕政策與例外語意；
+    # 後續 typed evidence 僅供本次 projector/receipt 的純 bytes 重驗使用。
+    verify_source_contract_binding(
+        binding,
+        decision_date=str(provenance["decision_date"]),
+        feature_rows=normalized_rows,
+        feature_registry_hash=str(provenance["feature_registry_hash"]),
+        feature_schema_hash=str(provenance["feature_schema_hash"]),
+        feature_builder_schema_hash=(
+            str(provenance["feature_builder_schema_hash"])
+            if provenance.get("feature_builder_schema_hash") not in (None, "")
+            else None
+        ),
+        source_database=source_database,
+        history_start_date=history_start_date,
+    )
+    typed_rows = tuple(
+        SourceContractFeatureRowV1(
+            symbol=str(row["symbol"]),
+            decision_date=str(row["decision_date"]),
+            feature_as_of_date=str(row["feature_as_of_date"]),
+            feature_available_date=str(row["feature_available_date"]),
+            feature_ids=tuple(str(item) for item in row["feature_ids"]),
+            feature_values=tuple(row["feature_values"]),
+            snapshot_hash=str(row.get("snapshot_hash") or ""),
+        )
+        for row in normalized_rows
+    )
+    # 路徑解析只發生於 preparation；原始 provenance 字串會另存於 typed evidence。
+    resolved_source_database = (
+        str(Path(str(source_database)).expanduser().resolve())
+        if source_database
+        else None
+    )
+    evidence = build_verified_source_contract_evidence_v1(
+        binding_payload_json=_canonical_json_bytes(binding),
+        contract_file_bytes=source_contract_file_bytes,
+        contract_path=contract_path,
+        decision_date=str(provenance["decision_date"]),
+        symbols=tuple(sorted({str(item) for item in provenance["symbols"]})),
+        source_database=resolved_source_database,
+        source_database_original=(str(source_database) if source_database else None),
+        history_start_date=(
+            str(provenance["history_start_date"])
+            if provenance.get("history_start_date") is not None
+            else None
+        ),
+        feature_registry_hash=str(provenance["feature_registry_hash"]),
+        feature_schema_hash=str(provenance["feature_schema_hash"]),
+        feature_builder_schema_hash=(
+            str(provenance["feature_builder_schema_hash"])
+            if provenance.get("feature_builder_schema_hash") not in (None, "")
+            else None
+        ),
+        consumed_feature_rows=typed_rows,
+    )
+    provenance["source_contract_status"] = "verified"
+    provenance["source_contract_binding"] = binding
+    provenance["provenance_hash"] = _hash_payload(
+        {key: value for key, value in provenance.items() if key != "provenance_hash"}
+    )
+    verify_inference_provenance(
+        provenance,
+        expected_decision_date=str(provenance["decision_date"]),
+        expected_registry_hash=str(provenance["feature_registry_hash"]),
+        expected_schema=feature_schema,
+        expected_probability_transform_id=probability_transform_id,
+        source_contract_evidence=evidence,
+    )
+    return provenance, evidence
+
+
 def verify_inference_provenance(
     provenance: Mapping[str, Any],
     *,
@@ -486,6 +628,7 @@ def verify_inference_provenance(
     expected_registry_hash: str | None = None,
     expected_schema: Sequence[Sequence[str]] | None = None,
     expected_probability_transform_id: str | None = None,
+    source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
 ) -> None:
     """Recompute row/PIT/source identity from a persisted inference payload."""
 
@@ -632,17 +775,36 @@ def verify_inference_provenance(
     ):
         raise RecommendationProvenanceError("inference source contract status is inconsistent")
     if provenance.get("source_contract_binding") is not None:
-        verify_source_contract_binding(
-            provenance["source_contract_binding"],
-            decision_date=decision_date,
-            feature_rows=normalized_rows,
-            feature_registry_hash=registry_hash,
-            feature_schema_hash=schema_hash,
-            feature_builder_schema_hash=(
-                str(builder_schema_hash) if builder_schema_hash not in (None, "") else None
-            ),
-            source_database=provenance.get("source_database"),
-            history_start_date=provenance.get("history_start_date"),
+        if source_contract_evidence is None:
+            verify_source_contract_binding(
+                provenance["source_contract_binding"],
+                decision_date=decision_date,
+                feature_rows=normalized_rows,
+                feature_registry_hash=registry_hash,
+                feature_schema_hash=schema_hash,
+                feature_builder_schema_hash=(
+                    str(builder_hash_value) if builder_hash_value not in (None, "") else None
+                ),
+                source_database=provenance.get("source_database"),
+                history_start_date=provenance.get("history_start_date"),
+            )
+        else:
+            verify_prepared_source_contract_evidence_v1(
+                provenance["source_contract_binding"],
+                evidence=source_contract_evidence,
+                decision_date=decision_date,
+                feature_rows=normalized_rows,
+                feature_registry_hash=registry_hash,
+                feature_schema_hash=schema_hash,
+                feature_builder_schema_hash=(
+                    str(builder_hash_value) if builder_hash_value not in (None, "") else None
+                ),
+                source_database=provenance.get("source_database"),
+                history_start_date=provenance.get("history_start_date"),
+            )
+    elif source_contract_evidence is not None:
+        raise RecommendationProvenanceError(
+            "typed source-contract evidence has no matching provenance binding"
         )
     declared_provenance_hash = str(provenance.get("provenance_hash") or "")
     _require_hash(declared_provenance_hash, "inference provenance hash")
@@ -773,6 +935,7 @@ def build_inference_projection_receipt(
     compatibility: Mapping[str, Any],
     projections: Sequence[Mapping[str, Any]],
     selection_contract: Mapping[str, Any] | None = None,
+    source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
 ) -> "RecommendationInferenceProjectionReceipt":
     """Build one immutable receipt for the exact visible projection batch."""
 
@@ -790,6 +953,7 @@ def build_inference_projection_receipt(
         inference_provenance,
         expected_decision_date=day,
         expected_probability_transform_id=PROBABILITY_TRANSFORM_ID,
+        source_contract_evidence=source_contract_evidence,
     )
     rows = [_json_mapping(item) for item in projections]
     if not rows:
@@ -964,6 +1128,7 @@ def read_inference_projection_receipt(
     expected_result_id: str | None = None,
     expected_stock_code: str | None = None,
     expected_cost_scenario_hash: str | None = None,
+    source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
 ) -> RecommendationInferenceProjectionReceipt:
     """Read, hash-check, and identity-check one immutable projection receipt."""
 
@@ -984,7 +1149,9 @@ def read_inference_projection_receipt(
         raise RecommendationProvenanceError("projection receipt filename hash mismatch")
     body = dict(payload)
     body.pop("receipt_hash", None)
-    _validate_receipt_body(body)
+    _validate_receipt_body(
+        body, source_contract_evidence=source_contract_evidence
+    )
     actual_hash = _hash_payload(body)
     if actual_hash != supplied_hash:
         raise RecommendationProvenanceError("projection receipt body hash mismatch")
@@ -1163,6 +1330,75 @@ def verify_source_contract_binding(
             raise RecommendationProvenanceError("source contract feature values mismatch")
 
 
+def verify_prepared_source_contract_evidence_v1(
+    binding: Mapping[str, Any],
+    *,
+    evidence: VerifiedSourceContractEvidenceV1,
+    decision_date: str,
+    feature_rows: Sequence[Mapping[str, Any]],
+    feature_registry_hash: str,
+    feature_schema_hash: str,
+    feature_builder_schema_hash: str | None = None,
+    source_database: str | None = None,
+    history_start_date: str | None = None,
+) -> None:
+    """純 bytes 重驗同次 source evidence，不解析 path 或讀取檔案。"""
+
+    if type(evidence) is not VerifiedSourceContractEvidenceV1:
+        raise RecommendationProvenanceError(
+            "prepared source-contract evidence type is invalid"
+        )
+    normalized_binding = _json_mapping(binding)
+    binding_bytes = _canonical_json_bytes(normalized_binding)
+    if binding_bytes != evidence.binding_payload_json:
+        raise RecommendationProvenanceError(
+            "source-contract evidence binding bytes mismatch"
+        )
+    if evidence.contract_path != str(normalized_binding.get("contract_path") or ""):
+        raise RecommendationProvenanceError(
+            "source-contract evidence path declaration mismatch"
+        )
+    typed_rows = tuple(
+        SourceContractFeatureRowV1(
+            symbol=str(row.get("symbol") or ""),
+            decision_date=str(row.get("decision_date") or ""),
+            feature_as_of_date=str(row.get("feature_as_of_date") or ""),
+            feature_available_date=str(row.get("feature_available_date") or ""),
+            feature_ids=tuple(str(item) for item in row.get("feature_ids") or ()),
+            feature_values=tuple(row.get("feature_values") or ()),
+            snapshot_hash=str(row.get("snapshot_hash") or ""),
+        )
+        for row in feature_rows
+    )
+    if source_database != evidence.source_database_original:
+        raise RecommendationProvenanceError(
+            "prepared source-contract source database input mismatch"
+        )
+    try:
+        rebuilt = build_verified_source_contract_evidence_v1(
+            binding_payload_json=binding_bytes,
+            contract_file_bytes=evidence.contract_file_bytes,
+            contract_path=evidence.contract_path,
+            decision_date=decision_date,
+            symbols=tuple(sorted({str(row.get("symbol") or "") for row in feature_rows})),
+            source_database=evidence.source_database,
+            source_database_original=evidence.source_database_original,
+            history_start_date=history_start_date,
+            feature_registry_hash=feature_registry_hash,
+            feature_schema_hash=feature_schema_hash,
+            feature_builder_schema_hash=feature_builder_schema_hash,
+            consumed_feature_rows=typed_rows,
+        )
+    except (TypeError, ValueError) as exc:
+        raise RecommendationProvenanceError(
+            "prepared source-contract evidence content mismatch"
+        ) from exc
+    if rebuilt != evidence:
+        raise RecommendationProvenanceError(
+            "prepared source-contract evidence self-hash mismatch"
+        )
+
+
 def _source_contract_feature_rows_hash(
     *,
     source_db: str,
@@ -1317,7 +1553,11 @@ def _source_kind_from_provenance(provenance: Mapping[str, Any]) -> str:
     return str(provenance.get("source_kind") or "HistoricalRawSnapshot")
 
 
-def _validate_receipt_body(body: Mapping[str, Any]) -> None:
+def _validate_receipt_body(
+    body: Mapping[str, Any],
+    *,
+    source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
+) -> None:
     if body.get("schema_version") != PROJECTION_RECEIPT_SCHEMA_VERSION:
         raise RecommendationProvenanceError("projection receipt schema is unsupported")
     if body.get("receipt_kind") != "recommendation_inference_projection":
@@ -1355,6 +1595,7 @@ def _validate_receipt_body(body: Mapping[str, Any]) -> None:
         inference,
         expected_decision_date=day,
         expected_probability_transform_id=PROBABILITY_TRANSFORM_ID,
+        source_contract_evidence=source_contract_evidence,
     )
     compatibility = body.get("provenance_compatibility")
     if not isinstance(compatibility, Mapping) or compatibility.get("status") not in {"verified", "legacy_unproven", "blocked"}:
@@ -1824,6 +2065,16 @@ def _json_ready(value: Any) -> Any:
 def _hash_payload(value: Any) -> str:
     encoded = json.dumps(_json_ready(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        _json_ready(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
 
 
 def _sha256_file(path: Path) -> str:

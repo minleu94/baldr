@@ -86,18 +86,30 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
     # or namespace wholesale.
     "app_module/recommendation_calibration_consumer.py": {
         "ml_module.model_artifact_loader": frozenset(
-            {"ArtifactCompatibilityExpectation", "SafeShadowModelArtifactLoader"}
+            {
+                "ArtifactCompatibilityExpectation",
+                "SafeShadowModelArtifactLoader",
+                "SameBytesShadowModelArtifactWithManifestLoadResultV1",
+            }
         ),
-        "ml_module.model_artifact_manifest": frozenset({"FeatureSchema"}),
+        "ml_module.model_artifact_manifest": frozenset(
+            {"FeatureSchema", "ModelArtifactManifest"}
+        ),
         "ml_module.feature_registry": frozenset({"CORE_LONG_HISTORY_FEATURE_REGISTRY"}),
         "ml_module.recommendation_calibration_training": frozenset(
             {
                 "RECOMMENDATION_LABEL_CONTRACT_ID",
+                "RECOMMENDATION_RETURN_BASIS",
                 "RecommendationPrediction",
+                "RunnableRecommendationCalibrationModel",
                 "recommendation_cost_contract_hash",
+                "recommendation_label_contract_id",
                 "recommendation_label_registry_hash",
                 "candidate_freeze_hash",
             }
+        ),
+        "ml_module.probability_calibration": frozenset(
+            {"FittedShadowProbabilityCalibrator"}
         ),
         "ml_module.recommendation_cost_scenario": frozenset(
             {
@@ -135,6 +147,91 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
                 "RecommendationTrainingLineageError",
                 "read_recommendation_training_lineage",
             }
+        ),
+        "ml_module.prepared_source_contract": frozenset(
+            {"VerifiedSourceContractEvidenceV1"}
+        ),
+    },
+    "app_module/recommendation/historical_snapshot_custody.py": {
+        "ml_module.prepared_input_contract": frozenset(
+            {
+                "AvailabilityBinding",
+                "AvailabilityStatus",
+                "DateRange",
+                "SnapshotKind",
+                "SnapshotQualityStatus",
+                "SnapshotReference",
+                "SnapshotScopeStatus",
+            }
+        ),
+    },
+    # 此 adapter 是 R010/R026 typed application boundary，只使用 prepared-input
+    # ABI；`_inspect_ml_tree` 仍拒絕 ML 反向 import app。
+    "app_module/recommendation/ml_adapter.py": {
+        "ml_module.prepared_input_contract": frozenset(
+            {"CandidateIdentity", "PreparedMLInput", "SnapshotReference"}
+        ),
+    },
+    "app_module/recommendation/ml_preparation_facts.py": {
+        "ml_module.feature_registry": frozenset({"FeatureRegistry"}),
+        "ml_module.historical_contracts": frozenset({"HistoricalFeatureRow"}),
+        "ml_module.historical_feature_builder": frozenset(
+            {
+                "HistoricalFeatureBuilder",
+                "HistoricalFeatureBuilderLoadContract",
+                "HistoricalFeatureVector",
+            }
+        ),
+    },
+    "app_module/recommendation/model_resolution_facts.py": {
+        "ml_module.model_artifact_manifest": frozenset({"ModelArtifactManifest"}),
+    },
+    "app_module/recommendation/prepared_runtime_input.py": {
+        "ml_module.prepared_input_contract": frozenset(
+            {
+                "AvailabilityStatus",
+                "PreparedMLInput",
+                "SnapshotReference",
+                "_freeze_aware_datetime",
+            }
+        ),
+        "ml_module.prepared_source_contract": frozenset(
+            {"VerifiedSourceContractEvidenceV1"}
+        ),
+    },
+    "app_module/recommendation/prepared_runtime_projector.py": {
+        "ml_module.prepared_source_contract": frozenset(
+            {"VerifiedSourceContractEvidenceV1"}
+        ),
+    },
+    "app_module/recommendation/prepared_runtime_preparation.py": {
+        "ml_module.historical_contracts": frozenset({"HistoricalFeatureRow"}),
+        "ml_module.historical_feature_builder": frozenset(
+            {"HistoricalFeatureBuilder"}
+        ),
+        "ml_module.prepared_source_contract": frozenset(
+            {"VerifiedSourceContractEvidenceV1"}
+        ),
+        "ml_module.recommendation_inference_provenance": frozenset(
+            {"RecommendationProvenanceError"}
+        ),
+        "ml_module.recommendation_probability_transform": frozenset(
+            {"NULL_BENCHMARK_BASELINE_ID"}
+        ),
+    },
+    "app_module/personalization_projection.py": {
+        "ml_module.recommendation_inference_provenance": frozenset(
+            {"read_inference_projection_receipt"}
+        ),
+    },
+    "app_module/personalization_save_adapter.py": {
+        "ml_module.recommendation_inference_provenance": frozenset(
+            {"read_inference_projection_receipt"}
+        ),
+    },
+    "app_module/recommendation/queries.py": {
+        "ml_module.recommendation_inference_provenance": frozenset(
+            {"read_inference_projection_receipt"}
         ),
     },
     "app_module/recommendation_learning_evidence_projection_service.py": {
@@ -175,8 +272,10 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
                 "RecommendationProvenanceError",
                 "build_inference_projection_receipt",
                 "build_inference_provenance",
+                "build_inference_provenance_with_source_evidence_v1",
                 "persist_inference_projection_receipt",
                 "read_inference_projection_receipt",
+                "verify_inference_provenance",
             }
         ),
     },

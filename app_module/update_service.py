@@ -750,6 +750,8 @@ class UpdateService :
     start_date :Optional [str ]=None ,
     end_date :Optional [str ]=None ,
     cancel_callback :Optional [Callable [[],bool ]]=None ,
+    *,
+    row_evidence_source_diagnostics: Optional[List[Dict[str, Any]]] = None,
     )->Dict [str ,Any ]:
         """將既有 CSV 更新結果同步到 SQLite，保留日常 CSV 輸出行為。"""
         import logging
@@ -830,12 +832,18 @@ class UpdateService :
                 delete_date_keys =False
 
             if df .empty :
-                return {
+                empty_result = {
                 'success':True ,
                 'message':f'{source} 沒有可同步的 CSV 資料',
                 'source':source ,
                 'synced_records':0 ,
                 }
+                if normalized == 'daily_price_files':
+                    empty_result['row_evidence'] = {
+                        'status': 'unknown',
+                        'reason_code': 'no_rows_to_read_back',
+                    }
+                return empty_result
 
             if _is_cancel_requested(cancel_callback):
                 return {
@@ -870,13 +878,37 @@ class UpdateService :
                 }
 
             logger .info ("[UpdateService] %s 已同步 SQLite table %s，共 %s 筆",source ,table_name ,len (df ))
-            return {
+            result = {
             'success':True ,
             'message':f'{source} 已同步 SQLite',
             'source':source ,
             'table':table_name ,
             'synced_records':int (len (df )),
             }
+            if normalized == 'daily_price_files':
+                from data_module.twse_daily_price_publication import (
+                    publish_sqlite_row_evidence,
+                )
+
+                try:
+                    result['row_evidence'] = publish_sqlite_row_evidence(
+                        output_root=self.config.output_root,
+                        data_root=self.config.data_root,
+                        database_path=db.db_path,
+                        source_diagnostics=row_evidence_source_diagnostics or [],
+                        merged_frame=df,
+                    )
+                except Exception as evidence_error:
+                    # SQLite 已提交；新證據失敗不改寫舊同步結果，也不補發空覆蓋。
+                    logger.warning(
+                        "[UpdateService] SQLite row evidence unavailable after commit: %s",
+                        type(evidence_error).__name__,
+                    )
+                    result['row_evidence'] = {
+                        'status': 'unknown',
+                        'reason_code': 'publication_failed',
+                    }
+            return result
         except Exception as e :
             logger .exception ("[UpdateService] 同步 SQLite 失敗: source=%s",source )
             return {
@@ -2544,7 +2576,9 @@ class UpdateService :
     def update_market (
     self ,
     start_date :str ,
-    end_date :str
+    end_date :str,
+    *,
+    capture_manifests: Optional[List[Path]] = None,
     )->Dict [str ,Any ]:
         """更新大盤指數數據
 
@@ -2632,12 +2666,16 @@ class UpdateService :
                 sig =inspect .signature (update_func )
                 params =list (sig .parameters .keys ())
 
-                if 'config'in params :
-                    logger .debug (f"[UpdateService] 更新函數支持 config 參數，傳遞配置")
-                    result =update_func (start_date =start_date ,end_date =end_date ,config =self .config )
-                else :
-                    logger .debug (f"[UpdateService] 更新函數不支持 config 參數，使用默認參數")
-                    result =update_func (start_date =start_date ,end_date =end_date )
+                update_kwargs: Dict[str, Any] = {
+                    "start_date": start_date,
+                    "end_date": end_date,
+                }
+                if 'config' in params:
+                    logger.debug("更新函數支持 config 參數，傳遞配置")
+                    update_kwargs["config"] = self.config
+                if capture_manifests is not None and 'capture_manifests' in params:
+                    update_kwargs["capture_manifests"] = capture_manifests
+                result = update_func(**update_kwargs)
                 logger .info (f"[UpdateService] 大盤指數更新函數執行完成")
 
                 # 解析結果（函數可能沒有返回值）
@@ -2692,6 +2730,21 @@ class UpdateService :
             'updated_dates':[],
             'failed_dates':[]
             }
+
+    def publish_taiex_market_index(
+        self,
+        *,
+        capture_manifests: List[Path],
+        market_update_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """以 TAIEX 複合鍵同步完整 CSV，保留其他同日指數列。"""
+        from data_module.taiex_market_index_publication import publish_taiex_market_index
+
+        return publish_taiex_market_index(
+            config=self.config,
+            capture_manifests=capture_manifests,
+            market_update_result=market_update_result,
+        )
 
     def update_industry (
     self ,

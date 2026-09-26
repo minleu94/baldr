@@ -1,0 +1,4504 @@
+{
+  "schema": "c3-c4-relevant-suite-draft-v1",
+  "status": "DRAFT_ONLY_NOT_FROZEN_SOURCE_MAY_CHANGE",
+  "generated_at_local": "2026-09-25T19:42:48-07:00",
+  "repo_head_at_generation": "bec423eef1d9e9d4a32410dac96cd233304489aa",
+  "base_c2_manifest": {
+    "path": "C:\\Users\\archi\\AppData\\Local\\Temp\\c2_luna_union_20260925_be52bcaa\\manifest.json",
+    "sha256": "64D7EB0FD2A7E7ED9E775562650B58E6D8B51EE5E99722785CD9EB113CDF0291",
+    "test_count": 136,
+    "source_count": 78,
+    "manifest_head": "bec423eef1d9e9d4a32410dac96cd233304489aa"
+  },
+  "planned_route": {
+    "unique_tests": 234,
+    "unique_sources": 237,
+    "new_tests_over_c2": 98,
+    "new_sources_over_c2": 159,
+    "c2_current_worktree_drift_inputs": 8
+  },
+  "groups": {
+    "V-SCREENER": {
+      "owner": "R021；Decision stock screener、data SQLite reader/provider 與受影響 Decision Desk UI。",
+      "test_paths": [
+        "tests/test_decision_data_providers.py",
+        "tests/test_decision_service_composition.py",
+        "tests/test_main_window_coordinator.py",
+        "tests/test_stock_screener_import_guard.py",
+        "tests/test_stock_screener_provider.py",
+        "tests/test_stock_screener_sqlite_first.py",
+        "tests/test_stock_screener_sqlite_reader.py",
+        "tests/test_task_loop_02_contract.py",
+        "tests/test_ui_qt_dashboard_view.py",
+        "tests/test_ui_qt_decision_desk_main_integration.py",
+        "tests/test_ui_qt_market_regime_view.py",
+        "tests/test_ui_qt_weak_market_views.py"
+      ],
+      "missing_paths": [],
+      "direct_import_source_paths": [
+        "app_module/decision_data_providers.py",
+        "app_module/decision_desk_dtos.py",
+        "app_module/decision_service_composition.py",
+        "app_module/dtos/__init__.py",
+        "app_module/market_breadth_service.py",
+        "app_module/regime_service.py",
+        "app_module/relative_strength_liquidity_service.py",
+        "app_module/research_console_source_service.py",
+        "app_module/screening_service.py",
+        "app_module/sector_rotation_service.py",
+        "data_module/db_manager.py",
+        "data_module/stock_screener_reader.py",
+        "decision_module/__init__.py",
+        "decision_module/stock_screener.py",
+        "ui_qt/main.py",
+        "ui_qt/main_window_coordinator.py",
+        "ui_qt/models/pandas_table_model.py",
+        "ui_qt/theme/__init__.py",
+        "ui_qt/views/dashboard_view.py",
+        "ui_qt/views/market_regime_view.py",
+        "ui_qt/views/strong_industries_view.py",
+        "ui_qt/views/strong_stocks_view.py",
+        "ui_qt/views/weak_industries_view.py",
+        "ui_qt/views/weak_stocks_view.py"
+      ],
+      "source_import_parse_errors": []
+    },
+    "V-REGIME": {
+      "owner": "R022；RegimeService、market regime provider、walkforward 與 regime presentation。",
+      "test_paths": [
+        "tests/test_market_regime_data_provider.py",
+        "tests/test_market_regime_detector_details.py",
+        "tests/test_market_regime_kernels.py",
+        "tests/test_pit_industry_callers.py",
+        "tests/test_r019_reason_regime_parity.py",
+        "tests/test_r019_score_regime_finalization.py",
+        "tests/test_r022_regime_state_separation.py",
+        "tests/test_recommendation_execution_state_characterization.py",
+        "tests/test_recommendation_execution_use_case.py",
+        "tests/test_recommendation_input_preparation.py",
+        "tests/test_recommendation_input_read_order_characterization.py",
+        "tests/test_recommendation_refactor_characterization.py",
+        "tests/test_recommendation_service_calibration_integration.py",
+        "tests/test_task_loop_02_contract.py",
+        "tests/test_task_loop_03_contract.py",
+        "tests/test_ui_app_regime_result_dto.py",
+        "tests/test_ui_qt_market_regime_view.py",
+        "tests/test_ui_qt_recommendation_execution.py",
+        "tests/test_walkforward_service.py"
+      ],
+      "missing_paths": [],
+      "direct_import_source_paths": [
+        "app_module/advice_composer.py",
+        "app_module/advice_dtos.py",
+        "app_module/advice_policy.py",
+        "app_module/backtest_service.py",
+        "app_module/decision_desk_service.py",
+        "app_module/decision_presentation.py",
+        "app_module/decision_service_composition.py",
+        "app_module/dtos/__init__.py",
+        "app_module/evidence_event_dtos.py",
+        "app_module/evidence_event_repository.py",
+        "app_module/industry_strength_service.py",
+        "app_module/journal_service.py",
+        "app_module/market_breadth_service.py",
+        "app_module/personalization_action_recorder.py",
+        "app_module/personalization_read_service.py",
+        "app_module/personalization_save_adapter.py",
+        "app_module/recommendation/__init__.py",
+        "app_module/recommendation/body_result.py",
+        "app_module/recommendation/contracts.py",
+        "app_module/recommendation/execute.py",
+        "app_module/recommendation/input_preparation.py",
+        "app_module/recommendation/ml_postcalibration_handoff.py",
+        "app_module/recommendation/persistence.py",
+        "app_module/recommendation/queries.py",
+        "app_module/recommendation_calibration_consumer.py",
+        "app_module/recommendation_market_data_provider.py",
+        "app_module/recommendation_replay_service.py",
+        "app_module/recommendation_repository.py",
+        "app_module/recommendation_service.py",
+        "app_module/regime_history_store.py",
+        "app_module/regime_service.py",
+        "app_module/relative_strength_liquidity_service.py",
+        "app_module/screening_service.py",
+        "app_module/sector_rotation_service.py",
+        "app_module/walkforward_service.py",
+        "app_module/workbench_dtos.py",
+        "data_module/__init__.py",
+        "data_module/config.py",
+        "data_module/contracts/source_revision.py",
+        "data_module/formal_rule_source_producer.py",
+        "data_module/fundamental_data.py",
+        "data_module/fundamental_schema.py",
+        "data_module/fundamental_sqlite_provider.py",
+        "data_module/ml_historical_snapshot_provider.py",
+        "data_module/pit_sector_membership_reader.py",
+        "data_module/recommendation_input_providers.py",
+        "data_module/source_revision_evidence_collector.py",
+        "decision_module/market_regime_detector.py",
+        "decision_module/market_regime_kernels.py",
+        "decision_module/market_regime_policy.py",
+        "decision_module/recommendation/contracts.py",
+        "decision_module/scoring_engine.py",
+        "decision_module/stock_screener.py",
+        "decision_module/strategies/contracts.py",
+        "decision_module/strategies/momentum_aggressive_executor.py",
+        "ml_module/feature_registry.py",
+        "ml_module/historical_feature_builder.py",
+        "ml_module/recommendation_calibration_authority.py",
+        "ml_module/recommendation_calibration_training.py",
+        "ml_module/recommendation_cost_scenario.py",
+        "ml_module/recommendation_inference_provenance.py",
+        "ml_module/recommendation_probability_transform.py",
+        "ml_module/recommendation_training_lineage.py",
+        "scripts/qa_validate_recommendation_tab.py",
+        "scripts/run_walk_forward_comparison.py",
+        "ui_qt/models/pandas_table_model.py",
+        "ui_qt/theme/__init__.py",
+        "ui_qt/views/market_regime_view.py",
+        "ui_qt/views/recommendation/execution_coordinator.py",
+        "ui_qt/views/recommendation_view.py",
+        "ui_qt/views/workbench_view.py",
+        "ui_qt/workers/task_worker.py"
+      ],
+      "source_import_parse_errors": []
+    },
+    "V-FACTOR": {
+      "owner": "R023/R024；factor contracts/adapters/registry/gate、fundamental/revenue/statement/valuation。",
+      "test_paths": [
+        "tests/test_cross_sectional_factor_attribution.py",
+        "tests/test_cross_sectional_factor_pipeline.py",
+        "tests/test_cross_sectional_factor_repository.py",
+        "tests/test_factor_adapters.py",
+        "tests/test_factor_contract.py",
+        "tests/test_factor_gate.py",
+        "tests/test_factor_registry.py",
+        "tests/test_factor_service_research_run.py",
+        "tests/test_fundamental_availability.py",
+        "tests/test_fundamental_availability_entrypoint.py",
+        "tests/test_fundamental_availability_sources.py",
+        "tests/test_fundamental_data.py",
+        "tests/test_fundamental_factor_adapters.py",
+        "tests/test_fundamental_factor_service.py",
+        "tests/test_fundamental_sqlite_provider.py",
+        "tests/test_fundamental_statement_availability_entrypoint.py",
+        "tests/test_fundamental_statement_availability_sources.py",
+        "tests/test_fundamental_statement_backfill.py",
+        "tests/test_fundamental_statement_backfill_cli.py",
+        "tests/test_fundamental_statement_data.py",
+        "tests/test_inspect_cross_sectional_factor_snapshot_cli.py",
+        "tests/test_inspect_fundamental_factors_cli.py",
+        "tests/test_monthly_revenue_availability_history.py",
+        "tests/test_monthly_revenue_availability_history_cli.py",
+        "tests/test_monthly_revenue_availability_merge.py",
+        "tests/test_monthly_revenue_backfill.py",
+        "tests/test_monthly_revenue_recovery.py",
+        "tests/test_monthly_revenue_snapshot_harvester.py",
+        "tests/test_r023_fundamental_contract_characterization.py",
+        "tests/test_r023_fundamental_dependency_guard.py",
+        "tests/test_r024_fundamental_contract_characterization.py",
+        "tests/test_r024_fundamental_dependency_guard.py",
+        "tests/test_revenue_factor_pack.py",
+        "tests/test_statement_availability_cli.py",
+        "tests/test_statement_factor_pack.py",
+        "tests/test_statement_semantic_mapping.py",
+        "tests/test_update_service_monthly_revenue_status.py",
+        "tests/test_valuation_data.py",
+        "tests/test_valuation_factor_adapters.py",
+        "tests/test_valuation_metrics_backfill.py",
+        "tests/test_valuation_metrics_backfill_cli.py",
+        "tests/test_valuation_policy.py",
+        "tests/test_valuation_source_policy.py",
+        "tests/test_valuation_source_policy_cli.py"
+      ],
+      "missing_paths": [],
+      "direct_import_source_paths": [
+        "app_module/cross_sectional_factor_attribution.py",
+        "app_module/cross_sectional_factor_dtos.py",
+        "app_module/cross_sectional_factor_pipeline.py",
+        "app_module/cross_sectional_factor_repository.py",
+        "app_module/factor_service.py",
+        "app_module/fundamental_factor_service.py",
+        "app_module/research_run_dtos.py",
+        "app_module/update_service.py",
+        "data_module/__init__.py",
+        "data_module/contracts/fundamental.py",
+        "data_module/contracts/market.py",
+        "data_module/fundamental_availability.py",
+        "data_module/fundamental_availability_entrypoint.py",
+        "data_module/fundamental_availability_sources.py",
+        "data_module/fundamental_data.py",
+        "data_module/fundamental_schema.py",
+        "data_module/fundamental_sqlite_provider.py",
+        "data_module/fundamental_statement_availability_entrypoint.py",
+        "data_module/fundamental_statement_availability_sources.py",
+        "data_module/fundamental_statement_backfill.py",
+        "data_module/fundamental_statement_data.py",
+        "data_module/monthly_revenue_availability_history.py",
+        "data_module/monthly_revenue_availability_merge.py",
+        "data_module/monthly_revenue_backfill.py",
+        "data_module/monthly_revenue_recovery.py",
+        "data_module/monthly_revenue_snapshot_harvester.py",
+        "data_module/valuation_data.py",
+        "data_module/valuation_metrics_backfill.py",
+        "decision_module/factors/__init__.py",
+        "decision_module/factors/factor_adapters.py",
+        "decision_module/factors/factor_dtos.py",
+        "decision_module/factors/factor_gate.py",
+        "decision_module/factors/factor_registry.py",
+        "decision_module/factors/fundamental_adapters.py",
+        "decision_module/factors/statement_factor_adapters.py",
+        "decision_module/factors/statement_semantic_mapping.py",
+        "decision_module/factors/valuation_adapters.py",
+        "decision_module/factors/valuation_backfill_adapters.py",
+        "decision_module/factors/valuation_policy.py",
+        "decision_module/factors/valuation_source_policy.py",
+        "scripts/apply_monthly_revenue_availability_candidate.py",
+        "scripts/backfill_fundamental_statement_items.py",
+        "scripts/backfill_valuation_metrics.py",
+        "scripts/build_monthly_revenue_availability_history.py",
+        "scripts/inspect_cross_sectional_factor_snapshot.py",
+        "scripts/inspect_fundamental_factors.py",
+        "scripts/inspect_valuation_source_policy.py",
+        "scripts/validate_statement_availability.py"
+      ],
+      "source_import_parse_errors": []
+    },
+    "V-STRATEGY": {
+      "owner": "R025；decision strategy registry、Backtest/optimizer/walkforward 與 strategy list UI。",
+      "test_paths": [
+        "tests/test_backtest/test_parallel_safety.py",
+        "tests/test_backtest_diagnostics_and_date_adjustment.py",
+        "tests/test_backtest_factor_metadata.py",
+        "tests/test_batch_backtest_research_run_save.py",
+        "tests/test_decision_strategy_owner.py",
+        "tests/test_optimizer_service.py",
+        "tests/test_strategy_lifecycle_repository.py",
+        "tests/test_strategy_lifecycle_service.py",
+        "tests/test_strategy_params_persistence_roundtrip.py",
+        "tests/test_strategy_screening_support.py",
+        "tests/test_strategy_threshold_modes.py",
+        "tests/test_ui_qt_research_lab_mode_driven_ui.py",
+        "tests/test_ui_qt_research_run_save.py",
+        "tests/test_ui_qt_research_workflow.py",
+        "tests/test_ui_qt_strategy_list_contract.py",
+        "tests/test_walkforward_service.py"
+      ],
+      "missing_paths": [],
+      "direct_import_source_paths": [
+        "app_module/backtest_analyst_diagnostics.py",
+        "app_module/backtest_repository.py",
+        "app_module/backtest_service.py",
+        "app_module/batch_backtest_service.py",
+        "app_module/daily_signal.py",
+        "app_module/dtos/__init__.py",
+        "app_module/exceptions.py",
+        "app_module/optimizer_service.py",
+        "app_module/preset_service.py",
+        "app_module/promotion_reconciliation_service.py",
+        "app_module/reason_tags.py",
+        "app_module/regime_service.py",
+        "app_module/research_run_dtos.py",
+        "app_module/research_run_service.py",
+        "app_module/strategies/__init__.py",
+        "app_module/strategies/baseline_score_executor.py",
+        "app_module/strategy_executor_adapter.py",
+        "app_module/strategy_lifecycle_repository.py",
+        "app_module/strategy_lifecycle_service.py",
+        "app_module/strategy_registry.py",
+        "app_module/strategy_spec.py",
+        "app_module/strategy_version_service.py",
+        "app_module/walkforward_service.py",
+        "data_module/config.py",
+        "decision_module/factors/factor_adapters.py",
+        "decision_module/market_regime_policy.py",
+        "decision_module/reason_engine.py",
+        "decision_module/reason_tags.py",
+        "decision_module/scoring_engine.py",
+        "decision_module/strategies/__init__.py",
+        "decision_module/strategies/baseline_score_executor.py",
+        "decision_module/strategies/contracts.py",
+        "decision_module/strategies/momentum_aggressive_executor.py",
+        "decision_module/strategies/registry.py",
+        "decision_module/strategies/stable_conservative_executor.py",
+        "decision_module/strategy_configurator.py",
+        "decision_module/strategy_screening_support.py",
+        "scripts/run_walk_forward_comparison.py",
+        "ui_qt/models/pandas_table_model.py",
+        "ui_qt/views/backtest_view.py",
+        "ui_qt/views/recommendation_view.py",
+        "ui_qt/views/watchlist_view.py"
+      ],
+      "source_import_parse_errors": []
+    },
+    "V-BOUNDARY": {
+      "owner": "R030；窄型 import/schema/state/mapping guards 與 synthetic extensibility fixtures。",
+      "test_paths": [
+        "tests/test_indicator_registry_dependency_boundary.py",
+        "tests/test_ml_direct_checkpoint_provenance_recovery.py",
+        "tests/test_ml_direct_computation_dependency_guard.py",
+        "tests/test_ml_direct_numeric_shared_reuse.py",
+        "tests/test_ml_shadow_boundary_cli.py",
+        "tests/test_ml_shadow_dependency_boundary.py",
+        "tests/test_r023_fundamental_dependency_guard.py",
+        "tests/test_r024_fundamental_dependency_guard.py",
+        "tests/test_r030_architecture_guards.py",
+        "tests/test_r030_extensibility_acceptance.py",
+        "tests/test_stock_screener_import_guard.py",
+        "tests/test_workbench_read_only_boundary.py"
+      ],
+      "missing_paths": [],
+      "direct_import_source_paths": [
+        "app_module/recommendation/codec.py",
+        "app_module/recommendation/contracts.py",
+        "app_module/recommendation/persistence.py",
+        "app_module/recommendation/queries.py",
+        "app_module/recommendation_dataframe_provider.py",
+        "app_module/recommendation_replay_service.py",
+        "data_module/__init__.py",
+        "data_module/ml_historical_snapshot_provider.py",
+        "data_module/ml_pit_year_shard_exporter.py",
+        "data_module/ml_storage_capacity.py",
+        "data_module/portfolio_ml_direct_numeric_store.py",
+        "data_module/result_artifact_store.py",
+        "decision_module/__init__.py",
+        "decision_module/recommendation/contracts.py",
+        "decision_module/stock_screener.py",
+        "decision_module/strategies/__init__.py",
+        "decision_module/strategies/baseline_score_executor.py",
+        "decision_module/strategies/contracts.py",
+        "decision_module/strategies/registry.py",
+        "decision_module/strategy_configurator.py",
+        "ml_module/allocation_out_of_core_training_service.py",
+        "ml_module/feature_registry.py",
+        "ml_module/historical_contracts.py",
+        "ml_module/historical_feature_builder.py",
+        "ml_module/probability_calibration.py",
+        "ml_module/recommendation_calibration_training.py",
+        "ml_module/shadow_boundary_guard.py",
+        "scripts/check_ml_shadow_boundary.py",
+        "scripts/check_refactor_architecture_boundary.py",
+        "scripts/continue_ml_direct_ooc_after_store.py",
+        "ui_qt/views/recommendation/presenter.py"
+      ],
+      "source_import_parse_errors": []
+    },
+    "V-OLD-ARTIFACT-CLASSPATH": {
+      "owner": "R006/R026；historical ABI、controlled old artifact loader、manifest 與 Direct checkpoint custody。",
+      "test_paths": [
+        "tests/test_ml_direct_checkpoint_provenance_recovery.py",
+        "tests/test_ml_direct_computation_dependency_guard.py",
+        "tests/test_ml_direct_numeric_shared_reuse.py",
+        "tests/test_ml_historical_feature_builder.py",
+        "tests/test_ml_historical_feature_computation.py",
+        "tests/test_ml_historical_snapshot_provider.py",
+        "tests/test_ml_historical_training_service.py",
+        "tests/test_ml_model_artifact_loader.py",
+        "tests/test_ml_model_artifact_manifest.py",
+        "tests/test_ml_model_artifact_store.py",
+        "tests/test_ml_shadow_dependency_boundary.py",
+        "tests/test_ml_shadow_projection_boundary.py",
+        "tests/test_refactor_ml_compatibility_baseline.py"
+      ],
+      "missing_paths": [],
+      "direct_import_source_paths": [
+        "app_module/ml_shadow_projection_dtos.py",
+        "data_module/__init__.py",
+        "data_module/ml_historical_snapshot_provider.py",
+        "data_module/ml_pit_year_shard_exporter.py",
+        "data_module/ml_price_availability_contract.py",
+        "data_module/ml_storage_capacity.py",
+        "data_module/portfolio_ml_direct_numeric_store.py",
+        "data_module/portfolio_ml_out_of_core_store.py",
+        "ml_module/allocation_out_of_core_training_service.py",
+        "ml_module/feature_registry.py",
+        "ml_module/historical_contracts.py",
+        "ml_module/historical_feature_builder.py",
+        "ml_module/historical_training_service.py",
+        "ml_module/label_registry.py",
+        "ml_module/model_artifact_loader.py",
+        "ml_module/model_artifact_manifest.py",
+        "ml_module/model_artifact_store.py",
+        "ml_module/purged_walk_forward.py",
+        "ml_module/shadow_boundary_guard.py",
+        "scripts/continue_ml_direct_ooc_after_store.py"
+      ],
+      "source_import_parse_errors": []
+    },
+    "R026-NEW-TESTS": {
+      "owner": "R026；prepared runtime、snapshot custody、revision evidence、NoModel capability、post-calibration typed handoff 與 prospective row evidence。",
+      "test_paths": [
+        "tests/test_prepared_runtime_input.py",
+        "tests/test_ml_postcalibration_handoff.py",
+        "tests/test_r026_calibration_legacy_preparation_baseline.py",
+        "tests/test_r026_daily_price_receipt_link_characterization.py",
+        "tests/test_r026_daily_price_receipt_same_bytes.py",
+        "tests/test_r026_excluded_daily_price_atomic_replace_red.py",
+        "tests/test_r026_excluded_daily_price_namespace_red.py",
+        "tests/test_r026_historical_raw_snapshot_custody.py",
+        "tests/test_r026_invocation_model_capability.py",
+        "tests/test_r026_live_source_identity.py",
+        "tests/test_r026_market_revision_evidence.py",
+        "tests/test_r026_ml_preparation_facts.py",
+        "tests/test_r026_model_artifact_same_bytes_loader.py",
+        "tests/test_r026_model_resolution_facts.py",
+        "tests/test_r026_no_model_projection_capability.py",
+        "tests/test_r026_prepared_runtime_projection.py",
+        "tests/test_r026_prepared_runtime_service.py",
+        "tests/test_r026_session_revision_evidence.py",
+        "tests/test_r026_source_revision_evidence_aggregate.py",
+        "tests/test_r026_source_revision_evidence_contract.py",
+        "tests/test_r026_sqlite_read_lease.py"
+      ],
+      "missing_paths": [],
+      "direct_import_source_paths": [
+        "app_module/dtos/__init__.py",
+        "app_module/recommendation/__init__.py",
+        "app_module/recommendation/contracts.py",
+        "app_module/recommendation/execute.py",
+        "app_module/recommendation/historical_snapshot_custody.py",
+        "app_module/recommendation/live_source_identity.py",
+        "app_module/recommendation/ml_postcalibration_handoff.py",
+        "app_module/recommendation/ml_preparation_facts.py",
+        "app_module/recommendation/model_resolution_facts.py",
+        "app_module/recommendation/prepared_runtime_input.py",
+        "app_module/recommendation/prepared_runtime_preparation.py",
+        "app_module/recommendation/prepared_runtime_projector.py",
+        "app_module/recommendation_calibration_consumer.py",
+        "app_module/recommendation_service.py",
+        "data_module/__init__.py",
+        "data_module/contracts/__init__.py",
+        "data_module/contracts/source_revision.py",
+        "data_module/excluded_daily_price_revision.py",
+        "data_module/formal_market_revision.py",
+        "data_module/historical_session_revision.py",
+        "data_module/ml_daily_price_revision_gate.py",
+        "data_module/ml_historical_snapshot_provider.py",
+        "data_module/source_revision_evidence_collector.py",
+        "decision_module/recommendation/contracts.py",
+        "ml_module/feature_registry.py",
+        "ml_module/historical_contracts.py",
+        "ml_module/historical_feature_builder.py",
+        "ml_module/model_artifact_loader.py",
+        "ml_module/model_artifact_manifest.py",
+        "ml_module/prepared_input_contract.py",
+        "ml_module/prepared_source_contract.py",
+        "ml_module/recommendation_calibration_authority.py",
+        "ml_module/recommendation_inference_provenance.py",
+        "scripts/repair_excluded_daily_prices.py"
+      ],
+      "source_import_parse_errors": []
+    }
+  },
+  "tests": [
+    {
+      "path": "tests/test_advice_composer.py",
+      "bytes": 21220,
+      "sha256": "DB83AE9775F97F71A260546106F4CD88A063BB4B960515EB5EB1638BC080BA66",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_backtest/test_parallel_safety.py",
+      "bytes": 13253,
+      "sha256": "52B77C3E41B9B8A3D49EAB6848808DC943D1C574BF06FD4110053DFD645B4B8C",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_backtest_diagnostics_and_date_adjustment.py",
+      "bytes": 21364,
+      "sha256": "EBBAA5A1D4E3BE5D3538DA8D795ABFF708DB57CD197FB25053EE168B9AD1CC0B",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_backtest_factor_metadata.py",
+      "bytes": 2405,
+      "sha256": "A39CA7755C002EE2484AB34E946BE3247813F51BA553A636670C38F097D764AB",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_backtest_timeline_contract.py",
+      "bytes": 9353,
+      "sha256": "65925D53B1237CB4761E579940C61EA59640C1591F54C5962C4B3E29C538C127",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_backtest_view_presenter.py",
+      "bytes": 1784,
+      "sha256": "D0BD35A386D84B4CBA0BCB9D5BABF935D92627EDEC1C5C3F15519E65B9ADFB45",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_batch_backtest_research_run_save.py",
+      "bytes": 7412,
+      "sha256": "B8D2EF8F2F3C6828651B0AFCBC052501115BA45871F641EAFC0BFD5C8728A2D5",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_c1_execution_artifact_ab_interleave.py",
+      "bytes": 37249,
+      "sha256": "CA1475488ECA057DCA9FFC20C0F507FA29464627CD8D8DF2567F280A366B2ABB",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_c1_forward_consumer_readiness.py",
+      "bytes": 27276,
+      "sha256": "8728F57DA12EEC3D7ACE58C5902E826112D52979CE3A81AEB41882E2F93347F6",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_c1_invocation_capture.py",
+      "bytes": 31953,
+      "sha256": "CD1CC148EECC9425E3FEDB5B8A3448192DF074E334DF3D8C6962B960B1D19D57",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_c1_legacy_query_readiness.py",
+      "bytes": 27009,
+      "sha256": "6A04890DB0193E271F828B25D5E26FB52C6B3A5F8F8B1AC593EC35BB759CF2E9",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_c1_ml_abi_receipt_readiness.py",
+      "bytes": 37731,
+      "sha256": "F4568549E77FA0F6D0990F5235FCD368CCA235CD866B9ADBB195BAE0DEA4BE99",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_c1_replay_bridge_readiness.py",
+      "bytes": 18927,
+      "sha256": "3EFC2163B2EAA0F058EBD4A16DE80942F8648C08AC8919B8FD5B16E45CC98C13",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_c1_schema_compatibility.py",
+      "bytes": 7118,
+      "sha256": "D9B7E981D43505A75E965E3B1B34BBC584DF0E32559BDE59862FC1234BC48059",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_cross_sectional_factor_attribution.py",
+      "bytes": 3119,
+      "sha256": "C6D1C65FF3FB1F663FD6C6027413487734E32E37B47F7BF6CB9E58C1FEB3E1F0",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_cross_sectional_factor_pipeline.py",
+      "bytes": 4354,
+      "sha256": "6A32B31C62099AB60BB2F40EEBD11FA6B34679384F94BF3F435E7D768B7E65BD",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_cross_sectional_factor_repository.py",
+      "bytes": 3167,
+      "sha256": "EAEE5C1C69E83E5AF28DA2808CDE4E5E3174D9DAFB7A092AC06E1C82B167176A",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_daily_investment_journey.py",
+      "bytes": 33705,
+      "sha256": "2DF57549D6F3179C41BA6974A135D7353C478BFD2182695E8C675B1632872A64",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_data_market_contracts.py",
+      "bytes": 22243,
+      "sha256": "E98E905515C4B9BE6D4EFD420D44A16AD3ED6FFE1D128A68E850340D4F0C4E4B",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_decision_data_providers.py",
+      "bytes": 1547,
+      "sha256": "A7E2DE7007271A7FD2FFAD0613243E0F2A3AE734E76F90CAE9B29BB9498278EE",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_decision_desk_service.py",
+      "bytes": 32922,
+      "sha256": "56D33F8FF6BB1714FFD373FF5211710AD94764EB4C1E00568F30309E07496D9D",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_decision_outcome_journey.py",
+      "bytes": 41984,
+      "sha256": "6B30EB1DF55638586EF925E8C7E250613129780F5FBB21853749F8F2F315412E",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_decision_service_composition.py",
+      "bytes": 3708,
+      "sha256": "23C5F75E286FCDC5FCD4919D55E89DD407203B2296F0A7CAAAF9263AEB1A2103",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_decision_strategy_owner.py",
+      "bytes": 6625,
+      "sha256": "36034A6D57C94B015ECC0BD77BF0CC04A8D2A4B65C92767041102B8F95C3A26F",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_evidence_source_coverage_service.py",
+      "bytes": 7732,
+      "sha256": "F0A5406089D7788B5ED00DCB72571B268BB13A93FF9A7262574233143E7BF10C",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_factor_adapters.py",
+      "bytes": 4026,
+      "sha256": "41B5D4DFCA2714D5DD94C2328BDB1C84ACB96FEBCCBD63A968DD53D700901E8B",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_factor_contract.py",
+      "bytes": 14433,
+      "sha256": "860782B5AFF28BF2DCF25E3A3338A24E05DBE936F31F291D1087809514A367D4",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_factor_gate.py",
+      "bytes": 5086,
+      "sha256": "536315EC980388195DC386DCD6707A1AD69561A50CE21FFE75D483B12CE30AEE",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_factor_registry.py",
+      "bytes": 2599,
+      "sha256": "E01376B9B9112D3236FF9A144C2776071FD0C6DDD97F1B1E28A6AD96AF8FB876",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_factor_service_research_run.py",
+      "bytes": 3825,
+      "sha256": "DF850C1B8496F618CC778C738488170C308E39FC63E0970E9620C171F1F0D6B0",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_formal_market_data_repair.py",
+      "bytes": 14635,
+      "sha256": "FF7C0CAAA29D7FDDEC6328B94D119564953FEB42D819B78100941A031F917D3B",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_availability.py",
+      "bytes": 4314,
+      "sha256": "EFBDF4E6505CF5B3022A1A8C898FBD3203A1C301749D72EDA1EAB49135E730AA",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_availability_entrypoint.py",
+      "bytes": 6560,
+      "sha256": "7E21117B947AB9BED59AF06715DC5A53122653DB9F655FDA177EA16C46B2FEE0",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_availability_sources.py",
+      "bytes": 8097,
+      "sha256": "14C65D270A95D1ECB4CD3CDE90BA9413E7EA4DB93BF90891ED75E6EA57273432",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_data.py",
+      "bytes": 4815,
+      "sha256": "F39655C38E3390C99847B5D1A3726E8A5444F611979BAC032D115D956FBD6940",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_factor_adapters.py",
+      "bytes": 4927,
+      "sha256": "95EC9700C51927673EAC28DCCAB3296A8754158C2548B68D43447177E343A83C",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_factor_service.py",
+      "bytes": 7836,
+      "sha256": "C947ED1E4065C1AA195C2D7C6E7319858128BF4952A51B76ACE4D3E7C180FF95",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_sqlite_provider.py",
+      "bytes": 28150,
+      "sha256": "5D5CE0CDD20F04FD5D143DB69D415CCB40CC148C6849EC19E4B54B9DBC9107A4",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_statement_availability_entrypoint.py",
+      "bytes": 5603,
+      "sha256": "2FB31907C4728589ADFCE8CBFD33F5FF471B108F5EEAAD78118465316D52C8E0",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_statement_availability_sources.py",
+      "bytes": 8043,
+      "sha256": "08A1C25A5336D17CC31F08AAAF7BCED8AE10C88E2BDE73886D1614C2D32B59AE",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_statement_backfill.py",
+      "bytes": 3606,
+      "sha256": "098782553EE0FE1BB53566D134DFA8ADEDFBEAEDA01C95D735EE00195811AA96",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_statement_backfill_cli.py",
+      "bytes": 5127,
+      "sha256": "012D6297AA056729AE6F3EF587ED8E520E0C9D9E9545663BD071C1D6C1232AE1",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_fundamental_statement_data.py",
+      "bytes": 3549,
+      "sha256": "346EE2AEDC30D48B628FFD9560672B3736652B43FFDEB1761EB23D5631CD366B",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_historical_evidence_replay.py",
+      "bytes": 15368,
+      "sha256": "A957F87C52B8095130D2EA931901C350E4B8D62F7ED5F840683A24D59FDBCCE4",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_indicator_registry_dependency_boundary.py",
+      "bytes": 718,
+      "sha256": "4F8957662FF9BB0BD5E98CE8C40B9F06AEE149608F485D218462C0EE8D749E7F",
+      "bundles": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "tests/test_inspect_cross_sectional_factor_snapshot_cli.py",
+      "bytes": 2135,
+      "sha256": "846F791C496E64253229922D87D7BB94FAAE2CD2CA568A7DB7C3F3E4C44C4FFE",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_inspect_fundamental_factors_cli.py",
+      "bytes": 5897,
+      "sha256": "3D5C9EE5A9054CC072A3D36D420DE21922F35CC4AF424344B2FCB7AFFB5B7C5E",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_main_window_coordinator.py",
+      "bytes": 1211,
+      "sha256": "0C7FEB2CEEA68F6450E241DBF8C3670C5CC28C45FC0007E393D16E944808E600",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_market_regime_data_provider.py",
+      "bytes": 1596,
+      "sha256": "88B727019279041DDABAC9B3A3863D3509B23687A78DCA8D2388A93B9BD1A608",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_market_regime_detector_details.py",
+      "bytes": 974,
+      "sha256": "7B3E3CA6D9DB7035295E1165D1625DC2AC49EDD4F833FED96B72E131B9BF771D",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_market_regime_kernels.py",
+      "bytes": 792,
+      "sha256": "9724006AA81458FBE55785E9103825742DDDA6EF9190E416E1026C84B38A6913",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_ml_direct_checkpoint_provenance_recovery.py",
+      "bytes": 16122,
+      "sha256": "80C84B65EFBF7AEFBCA38ED2AB36C732729C7618E9C3439498CAB266E59942DA",
+      "bundles": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_direct_computation_dependency_guard.py",
+      "bytes": 12391,
+      "sha256": "4179CD26C0F268F5811A8C648028EED8B59618F20C8AD89FD6332D0C1F89D89A",
+      "bundles": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_direct_numeric_shared_reuse.py",
+      "bytes": 16972,
+      "sha256": "AB6416E072AD23DDC4D190BD3A84443B51F3F6A585722ED3E2BFDF8D7A0D8D75",
+      "bundles": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_historical_feature_builder.py",
+      "bytes": 3828,
+      "sha256": "E095D83BAA6CCE879F4C0FFDE2B720A323BF648D6A0F82804B3CB916E3EE20F5",
+      "bundles": [
+        "C2-BASE",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_historical_feature_computation.py",
+      "bytes": 8863,
+      "sha256": "2163575A3728BA8248F1328A9138B910512F6486E090C8D68D92378B0E4C58AA",
+      "bundles": [
+        "C2-BASE",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_historical_label_builder.py",
+      "bytes": 11241,
+      "sha256": "0046AF961CD9AE888B5B025322439432D57B32666EC2909DCA8D09DD5FECD699",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ml_historical_snapshot_provider.py",
+      "bytes": 6069,
+      "sha256": "689E21F39B4A2DC751522D98DC2B8DDE8AF603E562F98B81011E3CF533FB554E",
+      "bundles": [
+        "C2-BASE",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_historical_training_service.py",
+      "bytes": 4725,
+      "sha256": "FB9C17A55DECB74E5D5164DFE70154E4AB8888092E50402FF77D55D1C7B22E58",
+      "bundles": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_model_artifact_loader.py",
+      "bytes": 5937,
+      "sha256": "636F960520F22433DF76E03E979AD25C2A3FBD78D6D906B571AC979C3450FE4D",
+      "bundles": [
+        "C2-BASE",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_model_artifact_manifest.py",
+      "bytes": 6914,
+      "sha256": "C558CDCF3223F7DA72AF0374F3784E7FCCC9D08EAB42CD972A0327EE1DE2EF18",
+      "bundles": [
+        "C2-BASE",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_model_artifact_store.py",
+      "bytes": 2776,
+      "sha256": "C43552ED96665101A75314A1A2F38C4A8379E4A58D010B199F002CE0A1C06266",
+      "bundles": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_pit_year_shard_exporter.py",
+      "bytes": 38101,
+      "sha256": "4677D5A75813FB5A455F026C02723F1FBDED2FA1F6815B78780AD428A5B63E83",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ml_postcalibration_handoff.py",
+      "bytes": 31651,
+      "sha256": "DA8822BB2EA609883D7FB1EDFEE08DDB622A0D61F5D21EE38612A54522B9335C",
+      "bundles": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_ml_shadow_boundary_cli.py",
+      "bytes": 140,
+      "sha256": "92400C625829CB1CBF7DDE03B21FDAC3153523358661EB1B72667AB167E4AE07",
+      "bundles": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "tests/test_ml_shadow_dependency_boundary.py",
+      "bytes": 13205,
+      "sha256": "550C09EE88A75F86751F92B893823630C64D4066FE1CA707DB2D286BF71600CE",
+      "bundles": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_ml_shadow_projection_boundary.py",
+      "bytes": 2557,
+      "sha256": "02F74153161A24D69A9B431FDF1D6DDC249347DBACA329E232CAE2935B6DEB99",
+      "bundles": [
+        "C2-BASE",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_monthly_revenue_availability_history.py",
+      "bytes": 19347,
+      "sha256": "5985B3F2B8906BDFED62336CBA45E4641C31AA65E08CC483488B53A4F840038D",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_monthly_revenue_availability_history_cli.py",
+      "bytes": 10471,
+      "sha256": "C63C8331B558B3D8859E0B7A49DD8EF0B7372BD38456F78971B23C8065031CC4",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_monthly_revenue_availability_merge.py",
+      "bytes": 8755,
+      "sha256": "CE154EE33DE571051B5A8E00EC73731E5585171D5AAE4EEF23A6E495B6BC8468",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_monthly_revenue_backfill.py",
+      "bytes": 21978,
+      "sha256": "6B3094CF50917507D9D43731545FC28F51CAC796B7EC26C31AB68E850209F999",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_monthly_revenue_recovery.py",
+      "bytes": 19362,
+      "sha256": "1A1EB4F32D3BFDA8A20F424C8B8EBF5A0467E7F1D89ABD299A644BC3E193ACE2",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_monthly_revenue_snapshot_harvester.py",
+      "bytes": 4764,
+      "sha256": "F6B482CE84797A5D7EFCA3FDB3F97BE02A68E37D0F6A27D7B144D6497AC6D03E",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_official_market_daily.py",
+      "bytes": 8435,
+      "sha256": "8311D4062DDD4872059FB49255EC50D7FE2A19F97894AB622CA9CAAF4D90A0E6",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_optimizer_service.py",
+      "bytes": 3661,
+      "sha256": "0B4255115D8C9F8B04B07C92D62491DE30E4AFC7D61669959871F412D8473EB7",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_personalization_fit_cli.py",
+      "bytes": 1034,
+      "sha256": "51E1F2AD08E9F9F375787145C6AC9F87AD9825C0A5A42ECDE6FFB63256EE9BE8",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_personalization_fit_runner.py",
+      "bytes": 38624,
+      "sha256": "9292B58A2C6B60BA98B2F0541D6E94EF80DA5778BEF8B4FD753033C2A7F618C9",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_personalization_generation_cli.py",
+      "bytes": 46051,
+      "sha256": "B761BDB9E3B3880C7125B4881AED5F95B695CFA5067069C4A82392A783D7FC1F",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_personalization_projection.py",
+      "bytes": 29453,
+      "sha256": "7357513503C3A984CB1651293D80693E0B6E4381FC2A75EED77B9A2DA7DB0D06",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_personalization_read_service.py",
+      "bytes": 40779,
+      "sha256": "8EF1C7F8DA1ECA03E3E40AE06F71BFEC0CCBC60DD36E30C967E94FB9F485483C",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_personalization_save_integration.py",
+      "bytes": 41055,
+      "sha256": "39698EBAD6BA91E07FF3698839ED6B8125A35A3E179FD1BBC6956948738E1B2A",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_pit_industry_callers.py",
+      "bytes": 15690,
+      "sha256": "E99CF90C8B0D1C5221AE0F639AC5CD3A2164591D583ED0378AC65482D2C4BF92",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_pre_v2_readiness_service.py",
+      "bytes": 52468,
+      "sha256": "512C7FAC5F65E72021257244F298F52448AE787BFF68A9660229D555E3459402",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_prepared_ml_input_contract.py",
+      "bytes": 24727,
+      "sha256": "CBF892E0ABFF3583962205E7C3BC41F798D29E8D4087683D15BC3BFC1F142B9A",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_prepared_runtime_input.py",
+      "bytes": 38885,
+      "sha256": "8391E9C61604F6CE2F9CCDCD0885A931EC4998E4499F43C5E5A69D0662AD83BE",
+      "bundles": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r004_recommendation_persistence_characterization.py",
+      "bytes": 25055,
+      "sha256": "B8A45B36BC579CAE2342A9FA4C72AFCC3EA85BFE0A28DDE887058CB6D045139E",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r012_recommendation_artifact_persistence.py",
+      "bytes": 47116,
+      "sha256": "853F76EC888B28181915E1F7BB2E14AC4263CF1188A344372C0B96069B1D0968",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r016_legacy_query_projection.py",
+      "bytes": 48441,
+      "sha256": "4ED5F0E64402AF956B3B23A6C55F6F88E68EA5BBA969CFC7C3BE7B5ACCE29641",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r016_saved_result_query_consumers.py",
+      "bytes": 22903,
+      "sha256": "55435F0595D35F3DBA65C918C17200D009930E733EEE837A46F4BAB8DB14E759",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r019_reason_regime_parity.py",
+      "bytes": 27299,
+      "sha256": "6768FC03546B5DF6D8D9363C8780C1FF7CD72170022955919C2A5E7D081D0330",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_r019_scheduled_cutoff_provenance.py",
+      "bytes": 6412,
+      "sha256": "6099E63BF632C5F1A16CCBEF839DE1ED79D01E319A51F0014523BAE410C13EEF",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r019_score_regime_finalization.py",
+      "bytes": 1767,
+      "sha256": "473A2720AA708BFDAC215E67606BDA3E31EA0F33C68B499F86D7C90F035C0134",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_r020_blank_code_active_filter.py",
+      "bytes": 19571,
+      "sha256": "3A03597305F2688D37F849E2347CD703165DDB709572B92B07450D5CFC1F4E6E",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_c1a_fast_filter_legacy.py",
+      "bytes": 13394,
+      "sha256": "83313D3160C7CAF7F0635C3CF869A1BF0324751BADBCB5B13DB724DF3A671C4A",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_c1a_fast_filter_shadow.py",
+      "bytes": 13969,
+      "sha256": "DD5938EF8E3E45C250911B6E0A96017898497037415108090D589755F420D4EC",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_c1b_numeric_dtype_legacy.py",
+      "bytes": 8807,
+      "sha256": "F6954D4E19607304F4F8D5C4A4C9CAF923686A387A431D5171795B61A48739AF",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_concrete_portfolio_parity.py",
+      "bytes": 43061,
+      "sha256": "4EC41A9FC7A1851C284B35FD7B9EA53172619A1707BADDD469C34759571D53F8",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_cross_store_recovery.py",
+      "bytes": 19629,
+      "sha256": "BE801428A36893E6F18441A260021ADBD8E23517960B8C81A8249ABD016FC92B",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_history_preflight.py",
+      "bytes": 10523,
+      "sha256": "1BF8021BF473D7EDD05CD8D2CD05E2A0215FBA18CBCFD8591E84F89074D0ED87",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_numeric_runtime_differential.py",
+      "bytes": 25052,
+      "sha256": "B15C3BF8EB7371F02DDCCD4C1B2273E740CBE86B20FC16FEBC68F079D5911A94",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_portfolio_joint_matrix_composition.py",
+      "bytes": 11754,
+      "sha256": "1F2FC667E7A250F1E9285C29798814365359E01739F58E9AA12E3BFAA0C24386",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_portfolio_result_artifact.py",
+      "bytes": 18585,
+      "sha256": "C7975D1A39888B46011BC4B12B1148431816112A5781017D15DECF0E28D529CC",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_portfolio_result_readback_service.py",
+      "bytes": 20113,
+      "sha256": "1C5E68904A4956C9416EE99B2986EABD78C36752A9C7C4C193462832EA02D124",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_portfolio_result_registry_service.py",
+      "bytes": 23015,
+      "sha256": "CA18D12AF9F483C8302BF3C146D915B272BE42E79AED4A81C88AE9BE46B6D1C1",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_post_score_diagnostics_characterization.py",
+      "bytes": 13339,
+      "sha256": "0B7A9B7FF9E60044AD3D4FE2BE049F5F4F802123DB467041DA12A15CDD8A3988",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_post_score_diagnostics_observer.py",
+      "bytes": 6325,
+      "sha256": "AD3A8D22C31B710C36946B9D24A13876250F0EAE2F8CB6451A1CC5FB0B856CE0",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_post_score_legacy_policy_characterization.py",
+      "bytes": 15005,
+      "sha256": "C518631752A248B7962F86583FDAE945CCAA96E44878F0D47A66857E5256CBB0",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_post_score_legacy_semantic_response.py",
+      "bytes": 11035,
+      "sha256": "D3CF255BCCB099D8B6C31BDC6EF53526E8310D409CDF2F1DF55D2D86A689962F",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_post_score_native_numeric_projection.py",
+      "bytes": 2903,
+      "sha256": "62B1659145120E5DFB7C174FB78AD4167F22BDA8529F3CAF5D6843015237F0AE",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_post_score_threshold_metric_pairing.py",
+      "bytes": 15361,
+      "sha256": "DFBBE3347AD08CB677901594DC656AEFD0FB9B7A487C8E5A6C85BE3DCBEB78CB",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_post_score_unsupported_metric_legacy_characterization.py",
+      "bytes": 4028,
+      "sha256": "E2AD5E161B5B8CED0A3BF6F9AB9DBA386804A06DF8616AB30F3830BC0D03FEC1",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_process_crash_recovery.py",
+      "bytes": 26920,
+      "sha256": "AEE58FA99D089DDA40D368062299871333D4BD104C477BA1B1256611BFB3A998",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_provider_output_boundary_characterization.py",
+      "bytes": 9739,
+      "sha256": "3B444282F66453FCDB152EC89DAB4BED34AB5FA07417093BDBEE6D44144640DF",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_provider_scorer_handoff.py",
+      "bytes": 10892,
+      "sha256": "6655BBF8F5F3018C19D4EE8CB261F8D57D12DD9F38239B26524A924EA940E886",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_provider_staged_prefilter_adapter.py",
+      "bytes": 14577,
+      "sha256": "568E73E4C6DF26959F3A331C668DECF630A85EF4C3ADEA9AEC510D05896908C2",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_real_scorer_filter_stage.py",
+      "bytes": 50970,
+      "sha256": "92F4FEEA22EFD43CD6AB9922200F610A9CE4450C1BF1499F1C0E724E7943F6D7",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_replay_lineage_service.py",
+      "bytes": 11713,
+      "sha256": "777E3352CF1060040B540F9E1B9359BE86CAB2FB4983F8931974D5209CA33C53",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_replay_mixed_terminal_composition.py",
+      "bytes": 11909,
+      "sha256": "450C58E95EA614170408AC7380DABA27158B7B95D2426DE2EB27A7264C20DAEB",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_replay_parent_identity.py",
+      "bytes": 9771,
+      "sha256": "FB7272D7CAC7E4706518691C375FA6664B9DE3D71446F25FF3DF6E6E6EB704E6",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_replay_pipeline_composition.py",
+      "bytes": 13556,
+      "sha256": "23B15EFE05D383B11F7FEA1D0A65D07E9E3DAF95ACF5681B515AD746FEAF4C4E",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_replay_post_score_evaluator.py",
+      "bytes": 28229,
+      "sha256": "DD19BAF6DC9DD2C3017C164BCBCC0F2C44BADCB453B18C97EF89362C5281CD78",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_selection_cutoff_composition.py",
+      "bytes": 8498,
+      "sha256": "EA26BBB2616ECC7BBF2394010BA54234B1364325E96788BF0E9D893316089411",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_strategy_filter_normalization.py",
+      "bytes": 5817,
+      "sha256": "FF71B2D0C1B267728860B0EE6D787706C9FF3C04385D85BECF64323F29540E8F",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_typed_provider_child_handoff.py",
+      "bytes": 21596,
+      "sha256": "6672592231ABE0294CDA3CAA7AEC282EB5FA4F0D36A70F4F02C1D07BA8EE77A5",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r020_ui_replay_lineage_save.py",
+      "bytes": 29605,
+      "sha256": "BF37F1CCDC77613995D0512A12FCF9793C351FD26D7C206E26B306AC78A8A9E3",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_r022_regime_state_separation.py",
+      "bytes": 11963,
+      "sha256": "DF8522993FCB228F545505A7AC4D9E4C1FBBA2B8EC742CCB595A70CE9C0C9732",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_r023_fundamental_contract_characterization.py",
+      "bytes": 8628,
+      "sha256": "D4065AA10CF0A8E4213EE47F6C04BCE1DAD3B44C92A2838EFA5383AD40F00AE7",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_r023_fundamental_dependency_guard.py",
+      "bytes": 5384,
+      "sha256": "964DE717A5297F43B8B663C3566CFC6B06EEC0B3328DF810DB59D82A440C4C05",
+      "bundles": [
+        "V-BOUNDARY",
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_r024_fundamental_contract_characterization.py",
+      "bytes": 6341,
+      "sha256": "2FC594EE643F06F4B8EA951A4EF359231840B659FB0F88966199CD9CD07DBA81",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_r024_fundamental_dependency_guard.py",
+      "bytes": 1480,
+      "sha256": "AFF0966A9ADA30DDE6290E8E73046CEFF61BF5DFD002E2B653739E1989B6109B",
+      "bundles": [
+        "V-BOUNDARY",
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_r026_calibration_legacy_preparation_baseline.py",
+      "bytes": 50192,
+      "sha256": "66326C921F7882A7D82EC479CF012BE171577F99BA7FD07FDEA8C960EC40F2C5",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_daily_price_receipt_link_characterization.py",
+      "bytes": 10879,
+      "sha256": "FDFB631F2EC3589E3E9EA3705FF801F1DC726065A45795DB242A041C86F97E7F",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_daily_price_receipt_same_bytes.py",
+      "bytes": 14777,
+      "sha256": "F0397D336866096C20C4C9D0AF23FF11D4DDC7482A9401E94E2A5B307BDC3886",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_excluded_daily_price_atomic_replace_red.py",
+      "bytes": 18971,
+      "sha256": "8AE7E885AD491F64083B7EBEC831E7A7E328D2661C73E57E847FD9A7A476887C",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_excluded_daily_price_namespace_red.py",
+      "bytes": 14804,
+      "sha256": "5AA95EE057C1E3650AECB14A49D6DE027CCB97BF00FFC63248CEDECCD78CD9A9",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_historical_raw_snapshot_custody.py",
+      "bytes": 14563,
+      "sha256": "205647601F2B6B1A5ECB592884C740F2D3BAF48855AD0AE2021293CAEBF7471F",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_invocation_model_capability.py",
+      "bytes": 60070,
+      "sha256": "6AE9276D31A4ED8FD642830F6916A7BB4C2D9337AB559692E3C47AE632B65605",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_live_source_identity.py",
+      "bytes": 27516,
+      "sha256": "184D79C728C0E782DB0C2C2C1A57F757FD0121B6502C49D57FE32E9646F93582",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_market_revision_evidence.py",
+      "bytes": 16929,
+      "sha256": "38E8CE37B8CF511220CF1236A1FA0C3572A3A7BB863D2847A3A0302AF3D36185",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_ml_preparation_facts.py",
+      "bytes": 10306,
+      "sha256": "E8C8EEF258538683A5F22708FB8A6B2416FE994306093338BB88F64AF49E00BA",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_model_artifact_same_bytes_loader.py",
+      "bytes": 12757,
+      "sha256": "17DC26416471327F11675A620292F3619236BEC5F3DA0BC012E80A0186946CFB",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_model_resolution_facts.py",
+      "bytes": 12840,
+      "sha256": "1DF9A984E7C6ED06582068F3B7208F32798750456AD2CD2B9C7494D6DA152DE0",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_no_model_projection_capability.py",
+      "bytes": 13365,
+      "sha256": "7EB99393E824052CDAA5A067D0F5724A73687B88CDE320F5339BD28CA6C36579",
+      "bundles": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_prepared_runtime_projection.py",
+      "bytes": 2318,
+      "sha256": "DCD067CC657BD7FA0318E5B9DAFA8987CCA9D01FF83929BB1D6559BBDBCC0475",
+      "bundles": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_prepared_runtime_service.py",
+      "bytes": 37231,
+      "sha256": "1C563C497B3872F05EC8686749B467B4ECDB048A78EFBF48BC0C1DA542DF0371",
+      "bundles": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_session_revision_evidence.py",
+      "bytes": 15542,
+      "sha256": "81AB2EC91E46CD70ED998E07BA250C5036C1527620401E5AE58326AFE858DA76",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_source_revision_evidence_aggregate.py",
+      "bytes": 9011,
+      "sha256": "CD5C0E173C80B61E42927D878C848046887F46B4270E93EBB79204A3ACDD4420",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_source_revision_evidence_contract.py",
+      "bytes": 7329,
+      "sha256": "6FA8BC6E01672B1F6444EE957D3D05A910E654F6FCE21B3DCDACBA7E06AA013A",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r026_sqlite_read_lease.py",
+      "bytes": 5860,
+      "sha256": "1A83FC0D618031A1B002D34DF9661005A308766C249EB8EC13CA0BFB6306323D",
+      "bundles": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "tests/test_r030_architecture_guards.py",
+      "bytes": 2610,
+      "sha256": "89ACFC99AA50E06FB3101B5DA63C20FF00D31E1B310373D8716264C8F8580BC4",
+      "bundles": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "tests/test_r030_extensibility_acceptance.py",
+      "bytes": 32489,
+      "sha256": "3E4BECC1AFE58BB8931B8F7F76EF1A9687EC11E0D248F8535515C04FCF7E97DF",
+      "bundles": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_calibration_contract_guards.py",
+      "bytes": 51905,
+      "sha256": "97EE66C5793A99E9E2F779FC7539E11302DBBBFB4F795535072A04FDD3316CC3",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_calibration_source_contract.py",
+      "bytes": 16583,
+      "sha256": "2A9900610BEFEA540B59D5C1DE17165D383489E70B52FB4A2A7CC26EBAE0E6F5",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_capture_source_binding.py",
+      "bytes": 7622,
+      "sha256": "CC6822E8215A8F238C11DB9A46C2AEBC9431C13DB441B6941F20C5672D2C60BD",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_contracts.py",
+      "bytes": 88599,
+      "sha256": "4EF25BF243FEA3EB8B35D852188F552A6BF98E5B42A3B866806311026FBCFBA9",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_dto_roundtrip.py",
+      "bytes": 3838,
+      "sha256": "A6A672A2AF9A45265DE2EE9319AA4B260D6EDEAF67140E17027D6423AA9E7CD2",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_evaluator_replay_staged.py",
+      "bytes": 32284,
+      "sha256": "DE5CD8C9F9C7923AD70A74B5E3E6E2955B025AEE1628FF8F5DB06A523E35A403",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_evidence_importer.py",
+      "bytes": 7745,
+      "sha256": "A0116CA3FAE0F50E5F3F9E9D8BA5904162BFE34A66A17F099B5D11FD425F2A9A",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_exclusion_payload.py",
+      "bytes": 4274,
+      "sha256": "9EF11390C7AA636273FEBD22D59A9FA5306E42EFD9AF4B40E97E1AD7F84A23C8",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_execution_codec.py",
+      "bytes": 32275,
+      "sha256": "4C9F39B094B1ECB2AD4DF059B6E59C2DA8FB2F4912D22A52D5032F53077C2538",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_execution_coordinator.py",
+      "bytes": 4383,
+      "sha256": "DBD8307225AE42765E9958390C993CAD99A8DBD4BAD452B9C1D5D3A8209BB3AF",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_execution_state_characterization.py",
+      "bytes": 11695,
+      "sha256": "C55B588F7FA649F32A76B392B6077ED6F3123389C8A65CA881E7E9C10FE08312",
+      "bundles": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_execution_use_case.py",
+      "bytes": 26737,
+      "sha256": "5E423619EFD7DB021B33DCF62DF05E1419C3B8598177F881AF3EE5AFF80AB543",
+      "bundles": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_fundamental_filters.py",
+      "bytes": 16041,
+      "sha256": "F041F8A26AACDC34C51D63352C58F2DCECFAC8C2841EC64A0AD0DB8428BD2258",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_historical_replay.py",
+      "bytes": 34775,
+      "sha256": "1A35B38D6C7836FBE66E093FBBC494917EA16EF4C3B3E21EC4DAAE9EA99E22F3",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_input_preparation.py",
+      "bytes": 19475,
+      "sha256": "1B51FE8F60413F19AE9D6130635F6A367E34DA80A1A679C438ED733854469204",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_input_read_order_characterization.py",
+      "bytes": 6257,
+      "sha256": "F26A0F57194B5D08A582E3BD01F2723A6A65DB71BF55DBF0342565D0BC4D2309",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_market_data_provider.py",
+      "bytes": 825,
+      "sha256": "9C23E61A9E58D9A0B12AFB08420B221FAF52C7D8EF9C2CD81545A75E57AC730E",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_market_frame.py",
+      "bytes": 1283,
+      "sha256": "0049C97C42FB2A62D45701A286B12A9F4B884FEAA9FC058E2C286B06AEEB9675",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_percentile_ranker.py",
+      "bytes": 1072,
+      "sha256": "50984E2CC6736FB0196DC500CE94C4C20BFA8352255402D1206CB4B180761A4F",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_portfolio_backtest.py",
+      "bytes": 56470,
+      "sha256": "43D19B8408C4F8D867D09BC200FC34D9397036F12FCBC3269EADCA85A31A50A3",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_portfolio_banktaiwan_cost.py",
+      "bytes": 6877,
+      "sha256": "CAF6CA80587816511C53C553552C37D9DEEAF6BD8F80439026A6521F05F9C5B1",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_portfolio_view_charts.py",
+      "bytes": 1039,
+      "sha256": "65C3CB38124551D4C40F4BA2422CE2F7026A15FE5207BD35B4F38A5B4CB57227",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_ranking_pipeline.py",
+      "bytes": 1196,
+      "sha256": "8A4AD1EB4231FC80BB77D2EDF63C520A7F7689053DDEF660E1F47237FFA6C474",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_ranking_service.py",
+      "bytes": 10744,
+      "sha256": "C293AB038B340E254C431DDA8666F0D3C6D2C5364F345641E12149941C9F51CE",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_refactor_characterization.py",
+      "bytes": 26378,
+      "sha256": "4FA7E65811D79E7D1A74E2A3FFB8312388C5892603283491E63E15F335334C55",
+      "bundles": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_replay_characterization.py",
+      "bytes": 27434,
+      "sha256": "F572128AFC270E7C865EF6533B5DEBFA2B1608AEFADDD946E473E547F4D35A21",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_replay_numeric_projection.py",
+      "bytes": 12522,
+      "sha256": "1D9B8D2FABF811D7F92D31DE3566605F1002AD25F1E2B6FF66EF0B2A96317084",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_replay_prefilter.py",
+      "bytes": 35003,
+      "sha256": "02C525A180DE682B50F4D1029D1A6F35FB695272636B489D207AC2AA2156BA1D",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_run_support.py",
+      "bytes": 3869,
+      "sha256": "64FD9A4DD471127A0A3F74A7E186B9DC1ABEF05DC783197AE7F64D24DA698E60",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_service_calibration_integration.py",
+      "bytes": 79690,
+      "sha256": "9E7CE52BC4832BA0DD742693803729DDA158376775AD6B18DDF71CBCD323D6E2",
+      "bundles": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_training_lineage.py",
+      "bytes": 29915,
+      "sha256": "77D0D309D308570923B2AD899AA12400E8656D36FE8DFEE2CE7306C1EF0C4C37",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_recommendation_v1_7_negative_evidence.py",
+      "bytes": 8520,
+      "sha256": "C31D3AE1131A1E3114BF085B31643D8059AEC7EC7A5D1A968EC1A5F191E548C4",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_refactor_ml_compatibility_baseline.py",
+      "bytes": 11496,
+      "sha256": "EE182953773EBBF3E8E4D77632454BBA8EE45BD7F9F0124A4E2D2634E9372F0E",
+      "bundles": [
+        "C2-BASE",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "tests/test_research_run_legacy_adapter.py",
+      "bytes": 3852,
+      "sha256": "05F60DAE3EA65506A7E1D5FCB429AF23BBD86CA869ECA96B2DA8A50F1ECF729F",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_revenue_factor_pack.py",
+      "bytes": 3231,
+      "sha256": "5F4B45C597D8FCA1CC613C7CB16B4DA8F61D8A7C12E46AF0AE3904C0ED6CA63B",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_scheduled_data_update_runner.py",
+      "bytes": 19076,
+      "sha256": "BF03CB81BBD1F69CC2930BB2FF4A2DE3D0C41C7C5B0C8221CB1CEC710069981C",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_scheduled_evidence_status_service.py",
+      "bytes": 42481,
+      "sha256": "233A6F3E7C6C98574CEBB97D0A93190715FD2B4A0FE096607F5835E7C5232BFC",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_scheduled_recommendation_snapshot_wrapper.py",
+      "bytes": 38223,
+      "sha256": "15A87615D5753B782A26E2A8ACFF77DC05C536692302318C7EA7794B3E884DB1",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_statement_availability_cli.py",
+      "bytes": 1068,
+      "sha256": "E42ECED65567623FE7AF71F7D08F68334452E50B53919F27AA86325E38502D25",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_statement_factor_pack.py",
+      "bytes": 7148,
+      "sha256": "D18D9B34D7C747BCE089183E39DF38C9734FB8AF92D75486F7DAA296473C1319",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_statement_semantic_mapping.py",
+      "bytes": 8315,
+      "sha256": "F2E2376037080A1AB1582F4FD5BB759E6FD9B652946FC5A2FA039AAFB864DBC9",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_stock_screener_import_guard.py",
+      "bytes": 1842,
+      "sha256": "3A9437F6BCCEB6AA892916CCEF1DC67E45D1EB5B72613449B73C57CE62512C59",
+      "bundles": [
+        "V-BOUNDARY",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_stock_screener_provider.py",
+      "bytes": 9785,
+      "sha256": "1CC17F7815F1BCA222B145DECB04286B5B2A1054010C293949E9FF3B29F7A41F",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_stock_screener_sqlite_first.py",
+      "bytes": 5602,
+      "sha256": "99A750FF03738342886E12829833F9BCF3C5A50EAC74CA03FC5B5873E3FF636F",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_stock_screener_sqlite_reader.py",
+      "bytes": 6806,
+      "sha256": "199C484F90C0B98959A00A80AD6C483BEF9511D3481BB526532C5C07BA547500",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_strategy_lifecycle_repository.py",
+      "bytes": 7499,
+      "sha256": "6F68C5274346D1F2F92833086F81FDBA5D3DCC12D7F0E99170D54DFA50ECB188",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_strategy_lifecycle_service.py",
+      "bytes": 6228,
+      "sha256": "5E219AA0780D9330E23C902E48FA38B3D0F4CA4C40BBE5C1FEA316B639893C6B",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_strategy_params_persistence_roundtrip.py",
+      "bytes": 3341,
+      "sha256": "7997FAB79EC8B72663D6E320E28E4B75D5B2D4E9329F270D73C6E8BB4E144A7E",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_strategy_screening_support.py",
+      "bytes": 2895,
+      "sha256": "6D9F0AA3265CB54A24EB6680D7352424A71CEA11A58DFA2AD261B1DE4C7EE092",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_strategy_threshold_modes.py",
+      "bytes": 10287,
+      "sha256": "13A781CD8D39E6911F32326077B4153C9FBC41F98BC7CB20F3AB29F927F46E96",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_taiex_market_index_publication.py",
+      "bytes": 25965,
+      "sha256": "202F54082A5ACAB7B54B8EF8D83BA5549A73FD5B0CE58A9B6AE627235074F2F9",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_task_loop_02_contract.py",
+      "bytes": 8337,
+      "sha256": "B55BCF1AE0966C2E649BA3B9B2A581D113AB46A995AA8431F0F170AFDD3A8514",
+      "bundles": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_task_loop_03_contract.py",
+      "bytes": 16905,
+      "sha256": "6288C1F0F5CE56056E449272B13C18B57D3D83B2CB9D8D13125EF391965582C8",
+      "bundles": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_twse_daily_price_sqlite_publication.py",
+      "bytes": 27822,
+      "sha256": "FAF30E398227F6772DF646CBD27AC744A6E8973B92797AD957CB1545A29DF6A3",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ui_app_regime_result_dto.py",
+      "bytes": 4048,
+      "sha256": "6FEDC649C05A4639935DFFE37DD6BFD04A2595AEE827256C93381BA6CD7DDC5B",
+      "bundles": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_dashboard_view.py",
+      "bytes": 2876,
+      "sha256": "5C6994D47BE89AD180EF1130878A1804A67C3B59E86B0C3E9A4A6943E8DD842A",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_decision_desk_main_integration.py",
+      "bytes": 21840,
+      "sha256": "45812C9A4D10EDCF52409D623140BB512E7FD5934A6E6770471D38C477F98394",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_market_regime_view.py",
+      "bytes": 5123,
+      "sha256": "19638B25132F70EEBC50FC11920AB428A393133569A403CB90493E4DD08DBF10",
+      "bundles": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_portfolio_view.py",
+      "bytes": 38021,
+      "sha256": "95E6104FED145C3781A7FF6ED79721FA4957AF88489487BEAFBF41BF5DA22630",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_recommendation_execution.py",
+      "bytes": 17574,
+      "sha256": "F0D55C62EC2FADEAAD9DBC197DE01EF96120CB26AB86DF192C1D7D7B3F4821DA",
+      "bundles": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_recommendation_portfolio_results.py",
+      "bytes": 2906,
+      "sha256": "39257C2B201960ABE47CDF2C879CFD3716CA0A93522C325B13C29E4F1A7B3FCF",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_research_context_status.py",
+      "bytes": 12350,
+      "sha256": "355D07D1D79A75E046101589F1891943F0CF3CD680BED9749E014526FF2CFD64",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_research_lab_mode_driven_ui.py",
+      "bytes": 12729,
+      "sha256": "1500F588D0982375426F56CBA6B1ED104806A0C0CC637781486E65A201ED633F",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_research_run_save.py",
+      "bytes": 11236,
+      "sha256": "E06B166088595CB14A4063EF04ABD41C6E1CB554754191D7F68765E1C2EA1044",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_research_workflow.py",
+      "bytes": 35743,
+      "sha256": "338663183894D209B2B1D7E1DCF88D9C41DF70E14A2C635BC647E99CE3164B10",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_run_registry_compare.py",
+      "bytes": 11588,
+      "sha256": "CD6335782D049256305FE2E4AFA9BBF9E233C25F7BDC10874C2C976B07B107D2",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_strategy_list_contract.py",
+      "bytes": 961,
+      "sha256": "0E58693C417CB7F8985CEE35055FA4723B5D0DB5C65BFC4B68A1DC36F7E2B90E",
+      "bundles": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_update_view_workbench.py",
+      "bytes": 90676,
+      "sha256": "9A9A1BF0B874B2AE6F8B177AF0C0128C61B8131C66F7A0F3AD7512DA8CF01FB0",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_user_declared_holding_research.py",
+      "bytes": 11830,
+      "sha256": "6DC4AFE1E8450C5601977EFBE65B1AB8D877B37EF5BF6F1861E4514EA9A2EAC4",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_ui_qt_weak_market_views.py",
+      "bytes": 12900,
+      "sha256": "95B05936D31299DF0685D0B815A9D4046D6D7D57FBCFF5FF465D4D6FE9A5E361",
+      "bundles": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "tests/test_update_service_monthly_revenue_status.py",
+      "bytes": 16693,
+      "sha256": "CE1EC76F388AC07B2FBD979EF5E0F9EA3158208E52A2ED326D3E083AE4A4F7D9",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_user_declared_holding_research.py",
+      "bytes": 30380,
+      "sha256": "A75D5AE64F0BB262B979883026CE5613CF69E392EE50F0900C7DFA6960AC1A7C",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_v4_cross_day_evidence_contract.py",
+      "bytes": 16980,
+      "sha256": "CE2211B5459193F671E93D3CA5AC9BEA1EFF49F0A84B80AAF530D37D5ACE3665",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_valuation_data.py",
+      "bytes": 4100,
+      "sha256": "885C1F31CE4A793184276C2CF7EBB08C57E130222DAB182B735F12D354817568",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_valuation_factor_adapters.py",
+      "bytes": 3839,
+      "sha256": "BC1D8BB71C2888B7C4BBD38974770BE60F3EF944DEF9A2BA3957EE53CAC90F61",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_valuation_metrics_backfill.py",
+      "bytes": 6033,
+      "sha256": "B0AA7E81D40174F508291326D57B61F51370361212AB95887A5ECB51B55E5964",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_valuation_metrics_backfill_cli.py",
+      "bytes": 2927,
+      "sha256": "620B81DCAA27CE6D10998F9C60DB2507DD75AD33C3DBC1DBCF885C08168305E2",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_valuation_policy.py",
+      "bytes": 4651,
+      "sha256": "BE2385D2AE6575C6AB54F177FE0CA5127A5FCBE0E290CFC250FB9188E14DE261",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_valuation_source_policy.py",
+      "bytes": 943,
+      "sha256": "51932AA0715542389827E43F109EDFFB72B841A1D80B297521B0F706C2A59AA6",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_valuation_source_policy_cli.py",
+      "bytes": 483,
+      "sha256": "1094071D4ACC92E57697BA6E973D606F4115460D2F98426603ED357603D73099",
+      "bundles": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "tests/test_walkforward_service.py",
+      "bytes": 11364,
+      "sha256": "0B866775D27DC3C9F82C7C994B38D392142F2A20A5F09839E13A116F1FFF20EF",
+      "bundles": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "tests/test_watchlist_stock_analysis_navigation.py",
+      "bytes": 8572,
+      "sha256": "381A1C44C9AC52DB9E48DED1C6BA24FA44AF5C6525474A036329D58CDA0A7586",
+      "bundles": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "tests/test_workbench_read_only_boundary.py",
+      "bytes": 3206,
+      "sha256": "412FCD739EE7B29926D23A3267890421D4B8C951B3E00B8933E4A2C5D7004F2D",
+      "bundles": [
+        "V-BOUNDARY"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "path": "app_module/advice_composer.py",
+      "bytes": 36921,
+      "sha256": "10A3F7FB3537193F0814AFFDFEEC1511C9CC49223A0473B90C15786A52345687",
+      "owners": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/advice_dtos.py",
+      "bytes": 24913,
+      "sha256": "0C0ED557DE7025883F9653EC2DABBC2BFB919A9D5DBFFFEE3F4B5129645ABC97",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/advice_policy.py",
+      "bytes": 5735,
+      "sha256": "E9FB0510F204CB86305388905A94BDAE5384DDA797456FD56EFEF2DAB4EC9AAE",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/backtest_analyst_diagnostics.py",
+      "bytes": 17200,
+      "sha256": "497D7C003B7F1E4DF27B7F1E2229E3602827AC0F0021A6EED5D202311E91000D",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/backtest_repository.py",
+      "bytes": 16251,
+      "sha256": "B8D51A6F0801A518AAB0CE3871A47448FCFB19EA66184CEAB6BBB121DF5FD938",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/backtest_service.py",
+      "bytes": 43153,
+      "sha256": "E3530A0A98992F78CAB0F670718C9596D6661B605EC83AA85D641A7EB32F01C6",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/batch_backtest_service.py",
+      "bytes": 36198,
+      "sha256": "E27AB0C9462EA50DC2C346565C37C812407326C19FEDCF94615D594CABBD43CC",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/cross_sectional_factor_attribution.py",
+      "bytes": 3413,
+      "sha256": "80FC253620B179E2D354EB28453E9B1EC4E5717F0DA47475B88270C57CEDD402",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "app_module/cross_sectional_factor_dtos.py",
+      "bytes": 9650,
+      "sha256": "A9CBC5629CEF01158A0AF13771C5B36E7355EC14EDC287EFFA087B81D0867872",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "app_module/cross_sectional_factor_pipeline.py",
+      "bytes": 11233,
+      "sha256": "1D44574D398341A1C8D6185BB1A7D8CEA6859F490A593C3D865FCE6816161BD1",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "app_module/cross_sectional_factor_repository.py",
+      "bytes": 9407,
+      "sha256": "FFAB401C3DEC20D13DED9ECB28C4CBA940C2A7411C885221163DF0FCBC945F1C",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "app_module/daily_investment_journey.py",
+      "bytes": 111836,
+      "sha256": "6A58DE73F1F6888BCCEB8D2D089232B24794575D9866D9BAA6E465546AB8F1BB",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/daily_signal.py",
+      "bytes": 176,
+      "sha256": "240A0ED9C2AC5AB455F90275B63C89C6ECDC167F86E063A41A482CAC974FE884",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/decision_data_providers.py",
+      "bytes": 3547,
+      "sha256": "736E2E3EA0CA61892239CE258C3D18FBC2386D2CB5E529D7DAD5273B6FAFF252",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/decision_desk_dtos.py",
+      "bytes": 28900,
+      "sha256": "EA969F8B1BE9798778BEB5AB6DA5F180738CF7C4242799202066B3D1D6622F33",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/decision_desk_service.py",
+      "bytes": 34484,
+      "sha256": "EE52B8837601A065586DCFFDF933B6BA5AEA1CA26193F11167ED6C903C42C576",
+      "owners": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/decision_outcome_journey.py",
+      "bytes": 133974,
+      "sha256": "680824E580C8077E294A583C15BCEECD9531F1D81DF13DF2F9FEC1FCC3697F7A",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/decision_presentation.py",
+      "bytes": 73713,
+      "sha256": "9D25C7C9679F5DD2CDE2D9540794230DDD680E1738F7D9F34703702A8DAC515E",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/decision_service_composition.py",
+      "bytes": 6812,
+      "sha256": "2620D6FD67AA2F67D9A9EC141C4547963C9251BDD16D4976DF043C8F3DDE39FA",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/dtos/__init__.py",
+      "bytes": 9852,
+      "sha256": "FAF14BF53E005F82ED2A8B97697549C74FDA2D2CD695E97F934CBA5FC0BE365B",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-REGIME",
+        "V-SCREENER",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/evidence_event_dtos.py",
+      "bytes": 6336,
+      "sha256": "3B24155FD498F462613DB324A7023DD2FA1823E0B831D2D6567082A0C91452E6",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/evidence_event_importers.py",
+      "bytes": 49278,
+      "sha256": "4C4B5FF7BD77A97E30469C7614EBEDAC713560BD339C9F6B680EA0E277F21092",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/evidence_event_repository.py",
+      "bytes": 21091,
+      "sha256": "90D90CC1EA3E581C1163D9C7E129FC87C4E1C5E47BD170671CFB0B63581760CB",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/evidence_source_coverage_service.py",
+      "bytes": 14506,
+      "sha256": "9929ADBAC809F26B333DF3844DA73E3B182A7A2D499503DDBEA39BBE87A8EB8C",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/exceptions.py",
+      "bytes": 182,
+      "sha256": "476D0B299C2727D7DEB006D2A58A61E73932E79CF323D4999F8F1590238B41F0",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/factor_service.py",
+      "bytes": 3524,
+      "sha256": "AE40CAFEA572BC18E2C69D75EB120585CF43F17DFA2208F47E8218A6488CD049",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "app_module/forward_position_thesis_candidate_producer.py",
+      "bytes": 95070,
+      "sha256": "6A592E454DB1A2914D5D7A4926640901C185066B4E2D2A90894B4524BDC36F6F",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/fundamental_factor_service.py",
+      "bytes": 4534,
+      "sha256": "5CA05117ABD9CFEE278443299C39946AD780F0B1CDEF76A83B83BBC1AB088688",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "app_module/historical_evidence_replay.py",
+      "bytes": 17051,
+      "sha256": "5B6943E8827DB82C2F8D0DB626289507FE03358D8A8F045C99D23DBAA99EC223",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/industry_strength_service.py",
+      "bytes": 71584,
+      "sha256": "2BF3D9E9C6695AE2F52D0BA831F22554DC9F1911FC6F8F327A51235ECC7BEB4C",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/journal_service.py",
+      "bytes": 29948,
+      "sha256": "78CB99BD303132AA51393FC1CF349F952A0577325B5C2719F028C923BD836F94",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/market_breadth_service.py",
+      "bytes": 19335,
+      "sha256": "9BC381A59C2631C91F0EB771B6A6255D697D4D0B6CA49A52E29C234BD58DD350",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/ml_shadow_projection_dtos.py",
+      "bytes": 2379,
+      "sha256": "4C1908D2BCE4CF8DF5A76E164C3300CC331FEB267522E75F602292A7C0ADC1C3",
+      "owners": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "app_module/optimizer_service.py",
+      "bytes": 16912,
+      "sha256": "DEF355CBBB87B34FC796C3054C1B632B5CE0EFBFEB366B4CACDB3E30816822B0",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/personalization_action_recorder.py",
+      "bytes": 19089,
+      "sha256": "E4B010D764A3333C04DC69F61BCC4606C29CC286AD1F873306B9328878C1CA9F",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/personalization_contract.py",
+      "bytes": 73221,
+      "sha256": "3561D19DF940282B785BE40F83D13341E790C01149B42DC4A44199579132E0DF",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/personalization_fit_runner.py",
+      "bytes": 67218,
+      "sha256": "3B27EABECDAE29511A417B288B5C54DF4B0E0C7D05CE020CD0606649153B57D6",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/personalization_projection.py",
+      "bytes": 123321,
+      "sha256": "567A050CE9F4B73B4B9646EB2884EBE816E1492A25EB932CDF7C067B9F61CAC9",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/personalization_read_service.py",
+      "bytes": 107532,
+      "sha256": "BB3F441F4A62B05FBEF4339C921C78C4C1D3BCFB011FD2AB8D38C394C1B39219",
+      "owners": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/personalization_save_adapter.py",
+      "bytes": 49898,
+      "sha256": "70E178D8C9CE31DED814A5C29FE60326E78864F7EB1F3927FCB31425F0AA0434",
+      "owners": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/pre_v2_readiness_service.py",
+      "bytes": 36738,
+      "sha256": "F8DC6C575B8057136B0E95E3395E9A2B4FF4E2D430E2AF8C741EABFB23D4ADAD",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/preset_service.py",
+      "bytes": 9464,
+      "sha256": "9BEE1FC6DF825A4AF934BD621D49B46859A51278DCB8AFE09EAA7C238D1D2B58",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/promotion_reconciliation_service.py",
+      "bytes": 8146,
+      "sha256": "FFF2CAFBE8B87D2322954D50B28935E295C75F1F085F32FBE8463C4564E365C7",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/reason_tags.py",
+      "bytes": 168,
+      "sha256": "C8D3F1B405268271A57B84375A24BE5B9D08C910D87DD688423A0C5737E1D325",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/__init__.py",
+      "bytes": 823,
+      "sha256": "1BF187FF2A083E691C274B9FF2ACF24FC46F2E11286E09BF85E01B0EB15DEACA",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/body_result.py",
+      "bytes": 46425,
+      "sha256": "ADAC2F6C88A4A7545F829D5DFF4CFDBD8B364F6B1C017E86C34C37BCA8082C85",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/codec.py",
+      "bytes": 37337,
+      "sha256": "03867D2945417FC0C6302CD6655B523AB61A734FD00E3BEA27C6F41D24823212",
+      "owners": [
+        "C2-BASE",
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/composition.py",
+      "bytes": 1802,
+      "sha256": "9E4D5AEAB89E41295C814F0A2378C06C5B6C06839984C1ED2F3598849BAAFB16",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/contracts.py",
+      "bytes": 77124,
+      "sha256": "5E7726A200E839928FF35FBCF595686571070FA689A3C7094A6F1F46023C952F",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-BOUNDARY",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/execute.py",
+      "bytes": 56571,
+      "sha256": "401124F45A5E00302EF650F8BB501B48CA4474A81FA2C87AF0730095087E263F",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/historical_snapshot_custody.py",
+      "bytes": 18014,
+      "sha256": "FC00C47719847CEBC25B0DCA7AF25F2EC51A4AB49C182FFA5954FC244373EA51",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/input_preparation.py",
+      "bytes": 16162,
+      "sha256": "7A6069E114E0D36A2D9D23849A3A2BE1837C5ED8D3B3B5707B2F0520BE398AC3",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/live_source_identity.py",
+      "bytes": 9999,
+      "sha256": "3634E4E4FEE5D98B223CFA8598CBB47C14BB0009DDA9A747A48180AC31B2D2DE",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/ml_adapter.py",
+      "bytes": 2730,
+      "sha256": "34B90885A0607050A788240CF202548276BC95ACEE81DF2F35E639F13D77B156",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/ml_postcalibration_handoff.py",
+      "bytes": 15498,
+      "sha256": "22AF958D1978DCADFDE52A9110CB0FA3093D80138589856AD11AE9088F21C044",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/ml_preparation_facts.py",
+      "bytes": 22658,
+      "sha256": "06752E976C340CDEABD9DC89B2E655AD890A60B5EE03F0A99FFA4820CF517151",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/model_resolution_facts.py",
+      "bytes": 41550,
+      "sha256": "5898378B4EB6FE0038DDC750607B6DB183F7E48767A3255684A5973CE2040C59",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/persistence.py",
+      "bytes": 20068,
+      "sha256": "347965ED760184F4E76FE7DD2B7AD7E05B9DFA47E1A5D62DF50D1F7A29703721",
+      "owners": [
+        "C2-BASE",
+        "V-BOUNDARY",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/portfolio_result_reader.py",
+      "bytes": 16411,
+      "sha256": "812ED626377812F53650EBDEA0E587A036AC6BED80E060CF532B085E18ADFACB",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/ports.py",
+      "bytes": 1641,
+      "sha256": "BB16251D819FDBA3738EDB02A822974071F6C9E98C99E8B6D48AA86139ECEDCD",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/prepared_runtime_input.py",
+      "bytes": 29015,
+      "sha256": "3855FC9C42E3E2D3962999F1E20FBAD29FFEB1029716E72BF43DCFDFA09C53F6",
+      "owners": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/prepared_runtime_preparation.py",
+      "bytes": 13000,
+      "sha256": "C96F6D064A38370BAE4084B3B26EBE909438FA5E708A494F0B73492C93BAA01D",
+      "owners": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/prepared_runtime_projector.py",
+      "bytes": 10037,
+      "sha256": "D2E151403B838FB4D77DC918E72ACC7B7C95C972EAB79A9F76C32A17267B69AA",
+      "owners": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/queries.py",
+      "bytes": 68604,
+      "sha256": "9C2FAED30CE799D11F87D615206BE5DD9A6E0D934BEB5CEF32073097D985494E",
+      "owners": [
+        "C2-BASE",
+        "V-BOUNDARY",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/replay_lineage_service.py",
+      "bytes": 3710,
+      "sha256": "BC6339E83F1797FC0EFFB1CC07249BD5A33DD6A86A7B476BC572C1B45B597723",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/replay_numeric_projection.py",
+      "bytes": 20170,
+      "sha256": "A32AB4F23E0C16B3C768DB801BEF7B64793E7D81D25ADDA48FB74A88A9D49381",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation/save.py",
+      "bytes": 1456,
+      "sha256": "7C84ABD5EDFA3158BFD90E8C73B5143D28A3B814954D6FA4275C502269B4855B",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_calibration_consumer.py",
+      "bytes": 167471,
+      "sha256": "6D4747C588DAAB3890B6562A47F517EECB8E068646FEFA21A33A9A848D042DDE",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_dataframe_provider.py",
+      "bytes": 63102,
+      "sha256": "E30BCF375C1256877F79E15FC87B4DECFDA83F9DB0E36608BD11A79BE44412EB",
+      "owners": [
+        "C2-BASE",
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_market_data_provider.py",
+      "bytes": 6001,
+      "sha256": "DB73C7662BF1A2CBE4C7E0D9127A9252B6B5A2C3AA3B3C17687F0BF348612C6A",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_portfolio_backtest_service.py",
+      "bytes": 87617,
+      "sha256": "FB4C9DBFF55B5E96B0B5659AE985999F46728AE4781CBC7C377A77597DEE84BA",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_portfolio_dtos.py",
+      "bytes": 9773,
+      "sha256": "E36EA3E93E43173D2A2511D92265F700FB6540693B7FA325B5852D61F85017B5",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_portfolio_result_artifact.py",
+      "bytes": 36423,
+      "sha256": "559EAEFD1CAF3D4193D3499BCC6F64B66AF64733C93769F9DCB30DE97C5B4736",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_replay_service.py",
+      "bytes": 15013,
+      "sha256": "4B2897DB1CED80302AA0F1B706193C5FBE3E254CABEDFCD348008450A9A79903",
+      "owners": [
+        "C2-BASE",
+        "V-BOUNDARY",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_repository.py",
+      "bytes": 18023,
+      "sha256": "35672320FCABAB9C8C4D44DC57408887927329AF126EA0068BF1DA0032ABBD35",
+      "owners": [
+        "C2-BASE",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/recommendation_service.py",
+      "bytes": 144194,
+      "sha256": "5AEF66DC6993B5967AFAE17692C0AD342B7880E26813B6A681F50A153F9A0381",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/regime_history_store.py",
+      "bytes": 5619,
+      "sha256": "FBCDBF299D92AA9AEE1AD96DC4EC9BF5DB9977BCF8297D6C5F883F0D86EA5AE5",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "app_module/regime_service.py",
+      "bytes": 9291,
+      "sha256": "492F37365C3C95195367BF9C8E93F88A2C75551B30E7221F17B53A0FF5AA709F",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/relative_strength_liquidity_service.py",
+      "bytes": 12696,
+      "sha256": "6161066EB2D7F6444346DC8F58E07B58A09F43EF57E2F7E5264DF17B54174744",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/research_console_source_service.py",
+      "bytes": 26990,
+      "sha256": "44FF81D9A720DB6EA38779707F0DED5912DBC32CBD02EA5C92EA13B41F2A926B",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/research_run_comparison_service.py",
+      "bytes": 8372,
+      "sha256": "88BA06D418D538D0025443F45D491540FCC9F8142BA64CD6271265A167755D9B",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/research_run_dtos.py",
+      "bytes": 3976,
+      "sha256": "D4DFC3239C11BAE6A98904D0176EA6EE0E961861438EEF4773E2FBEE712C5AB8",
+      "owners": [
+        "V-FACTOR",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/research_run_repository.py",
+      "bytes": 32384,
+      "sha256": "8AA0454D124615B0CD783C83826A678A04CCD54BC47740571E825446729AE503",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/research_run_service.py",
+      "bytes": 67660,
+      "sha256": "DC47816C62D1249629B2CE6303608B52503E3735882EAD74A68C75AF7D7B00CF",
+      "owners": [
+        "C2-BASE",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/saved_recommendation_queries.py",
+      "bytes": 13979,
+      "sha256": "D59C0B71579929F628339C0BB673BC2C05302D06A0EE90E314BCF3A0581617F8",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/scheduled_evidence_status_service.py",
+      "bytes": 47887,
+      "sha256": "E821406F6D6765206C31F8559B2CEF606DE695DF64F568226EB5963135034AD4",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/screening_service.py",
+      "bytes": 18027,
+      "sha256": "B1B06B602AE0A50854D9D5EB9C8FF4449EB80C7517C59EDE0DEEB2095ACA9207",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/sector_rotation_service.py",
+      "bytes": 16664,
+      "sha256": "24FE1D1D237F2C1DAC0CD85AC79DC4D74242AF06617DABF66A3C8CFA7BB1677A",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "app_module/strategies/__init__.py",
+      "bytes": 401,
+      "sha256": "19909503FDD1F83FE0A9145E5F00C0DCC169935A1EEEEC533DD06C9E3E60CBC6",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/strategies/baseline_score_executor.py",
+      "bytes": 172,
+      "sha256": "4F2F75D801451DB814F096D73A1AFE3338183A3606F4EA6464CFF6A1E33471E5",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/strategy_executor_adapter.py",
+      "bytes": 186,
+      "sha256": "D7F10B627C38A398050BFCEF82A23EF3B51BDB88AA8D1C96A651F49E1E4EF81E",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/strategy_lifecycle_repository.py",
+      "bytes": 10750,
+      "sha256": "B0A7CA64C445F8D9EEE828AA83CF693B8CC6BC4929E20E74307FA4B7A848F1C7",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/strategy_lifecycle_service.py",
+      "bytes": 15791,
+      "sha256": "D59E1DA07E700EE218EB953296382A43D87F36C44B66EB49F9F225A88AFD6AC7",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/strategy_registry.py",
+      "bytes": 181,
+      "sha256": "B3F5E31A916708932E3289F0F83AE5830E2B3C11F4D78DAB9B619C638AC36505",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/strategy_spec.py",
+      "bytes": 307,
+      "sha256": "BA7C6775ADBE32845CF148676F94FB56D9B3207C1A382CA5E20E34B1D17BD08D",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/strategy_version_service.py",
+      "bytes": 12099,
+      "sha256": "5E631EFD84DF16CA3912D361C70216C81349847446CFABB571120F17B7FDA82E",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/update_service.py",
+      "bytes": 274618,
+      "sha256": "3816532F6052919854661FF0F4AA59A7D28DC69CC3651AC73B6E56770538F24F",
+      "owners": [
+        "C2-BASE",
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "app_module/user_declared_holding_research.py",
+      "bytes": 100873,
+      "sha256": "15D2AEED5B47CE614C290932AD91D50A74FB8C9B750E763DC31144F6334FE14E",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/walkforward_service.py",
+      "bytes": 11399,
+      "sha256": "08E9FF605D125F71DD5D1B70A2CB8B985A0BF6BE8B3010F41CF9FB1DE9099C4A",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "app_module/watchlist_analysis_service.py",
+      "bytes": 17201,
+      "sha256": "CC0C68EB9C22C7CABB11B0C930D167DFA88D6B8D6828E13CA791A194735D46A2",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "app_module/workbench_dtos.py",
+      "bytes": 34104,
+      "sha256": "18B75DF69FEEBFCC903A7B46FE564F159A554A98E104661FE3483D0B29E187C1",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/__init__.py",
+      "bytes": 1185,
+      "sha256": "D05D5275D2A4453FC4CF86B8F2D99FE611AEC98F610C58A8D63BA289A8825537",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-BOUNDARY",
+        "V-FACTOR",
+        "V-OLD-ARTIFACT-CLASSPATH",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/config.py",
+      "bytes": 17381,
+      "sha256": "D457A892248D87252A5D426C686E87CF8D460B0D4D74B0549DCE31B89170538B",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "data_module/contracts/__init__.py",
+      "bytes": 1749,
+      "sha256": "9886DA02AC35D27A5E458E65DE249E00D71ADA69FCEBB419A97AC29B937E0799",
+      "owners": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "data_module/contracts/fundamental.py",
+      "bytes": 5394,
+      "sha256": "4E377018A939BD97A45464E9593C0F5C7250F0AC4336164ADC84FB3C85B4EE01",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/contracts/market.py",
+      "bytes": 9377,
+      "sha256": "0DE0A4832E900A0250991B03F2A315A17459DD88A2C31AA6458A629EA853638A",
+      "owners": [
+        "C2-BASE",
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/contracts/source_revision.py",
+      "bytes": 7805,
+      "sha256": "0AB5255DBEC108BD36B2A3D99F2957B4367C767E762C41EF14566D70AA22FC3D",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/data_loader.py",
+      "bytes": 57612,
+      "sha256": "153E59ADAD0C7C9259AE5A8594549B257401EFAD26FB4E0FB9EAEE76F86FE959",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "data_module/db_manager.py",
+      "bytes": 28212,
+      "sha256": "0031D1385920667515B8DD34745B807ED97BC21F9089BD1DDE53E2CE3D1AB40E",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "data_module/excluded_daily_price_revision.py",
+      "bytes": 44678,
+      "sha256": "D5A4484194892A667AFA5A30C898BBD3ADB34259A36C6D2B51A88075ED1DA585",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "data_module/formal_market_revision.py",
+      "bytes": 15671,
+      "sha256": "526A2685AB9185753D154593C52382CDF6B6946494097BD6B7CF0717543E2FBA",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "data_module/formal_rule_source_producer.py",
+      "bytes": 89110,
+      "sha256": "565A6AE008EA6EA4D787F1A18F80D906CDBE860DE765504F5CB48A97ECA55275",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_availability.py",
+      "bytes": 14847,
+      "sha256": "BF34B04FE7DF6D6ED3DAC3B4510AB5FAC9C74B7E50ACEA1F0992D02C02E3A3D7",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_availability_entrypoint.py",
+      "bytes": 4974,
+      "sha256": "8FEC1F32610B9C0A6AAECFFAFF043207F959551020710BA18D23E42A0D5488E4",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_availability_sources.py",
+      "bytes": 19778,
+      "sha256": "748A1F22298242111A88F04D1D7D37A29ECC2C6E15207C765DB81D94C0FAB707",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_data.py",
+      "bytes": 7156,
+      "sha256": "61EC927396D7D61EB53E06472F24B4FB9B673023CF8B1AE647B37D344970C62B",
+      "owners": [
+        "V-FACTOR",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_schema.py",
+      "bytes": 6628,
+      "sha256": "B6B7B070D9DD91C2FADB9056E273662EDE6A15F16A0090BABE2243D4FDA4F900",
+      "owners": [
+        "V-FACTOR",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_sqlite_provider.py",
+      "bytes": 18565,
+      "sha256": "1AEAEAC4913A27C7FB3163339C53479A35E612A5EA503C3A089300872D7FA8F5",
+      "owners": [
+        "V-FACTOR",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_statement_availability_entrypoint.py",
+      "bytes": 4864,
+      "sha256": "B7771701493C7FBA4445F15A0D9687337C2E28AA6ED725836B1925747FB04549",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_statement_availability_sources.py",
+      "bytes": 17657,
+      "sha256": "661454A5FDB60806FC3ABB0468A2B55DFA46F749A7BABFE4F1035F7E7767F30B",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_statement_backfill.py",
+      "bytes": 9996,
+      "sha256": "0B9FFAA6D71EAD3150D272CDD8EDBA346942FB50AC6917B0BC48557A1F03F5EC",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/fundamental_statement_data.py",
+      "bytes": 4815,
+      "sha256": "7D862C7FD827062A034B875FBEE9906EDA9A2241271B798D7D39F24E5C80B7F1",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/historical_session_revision.py",
+      "bytes": 17554,
+      "sha256": "EFB50151445DAC7DE02D6448CBD33193D80A093CF3D524BADAC834C8058DF20D",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "data_module/ml_daily_price_revision_gate.py",
+      "bytes": 23385,
+      "sha256": "A535B11766259B9ED3DE8CD711E04458FF342C51FC9452848C5493E42C27CCFA",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "data_module/ml_historical_snapshot_provider.py",
+      "bytes": 30666,
+      "sha256": "1BE1E2F37AE49B9753D52ED5344AD7C1363F165E7E926B8E8616DBA4D00208D7",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/ml_pit_year_shard_exporter.py",
+      "bytes": 98570,
+      "sha256": "23A1027CC42F78484C740AEC4AE0C4B4C359EC20208003E5B2A5E2D792D66643",
+      "owners": [
+        "C2-BASE",
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "data_module/ml_price_availability_contract.py",
+      "bytes": 11019,
+      "sha256": "6D503E6C2D77A16B0A49EFDDDB3770971B774BE9D563D9668235A84E0BF6AF9B",
+      "owners": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "data_module/ml_storage_capacity.py",
+      "bytes": 82443,
+      "sha256": "60202F419C06015A1D283579FD8CE204F6F7218A2348F3D74F4EC3FABDC4BB15",
+      "owners": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "data_module/monthly_revenue_availability_history.py",
+      "bytes": 36724,
+      "sha256": "8D115041BBF6D5FE1DE747B56655F5749C265E3D058F6F9E2AF492A362D567D6",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/monthly_revenue_availability_merge.py",
+      "bytes": 16181,
+      "sha256": "8F202D7D26DB2DAB6123E42A722ED69319B152A74F338F1214BBF97CF87FD460",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/monthly_revenue_backfill.py",
+      "bytes": 33462,
+      "sha256": "B02FD37091A7A4C88C089943C893B6789CEF3A0E032AC996796E62CFA9F0B0B3",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/monthly_revenue_recovery.py",
+      "bytes": 27450,
+      "sha256": "229CA8CFAAC85DC5732791A6C9D0190A1C0EE06D3185DF9096D7FB159DA5AF48",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/monthly_revenue_snapshot_harvester.py",
+      "bytes": 10998,
+      "sha256": "618E6B0A72E243E0D5628EBA9B0F4F3B867958F9957D2A8BE0711BCA41FD81C3",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/official_market_daily.py",
+      "bytes": 11521,
+      "sha256": "F8C1C3BB6F52F60E5ACF0E70F409147BA2BD941005D085FE0DF0DB0FA59ACA0E",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "data_module/pit_sector_membership_reader.py",
+      "bytes": 157827,
+      "sha256": "DF3E3AA76D1766544DB396DE7962080F3952BBA011DB1E189C4CE861BB9EB4FF",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/portfolio_ml_direct_numeric_store.py",
+      "bytes": 240272,
+      "sha256": "017AE82CC6DD3466A6A1E3A17ECA1EDC88A94D114F03783ACB4C14F90CC41509",
+      "owners": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "data_module/portfolio_ml_out_of_core_store.py",
+      "bytes": 61094,
+      "sha256": "11AB46B71E81B0D72B6A39EC587454A9D332DC7360E53EB58D745C66AB09225A",
+      "owners": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "data_module/recommendation_input_providers.py",
+      "bytes": 10069,
+      "sha256": "AF54EF12F05E4EAECA9BCBDFE2C1B69CDBEC611DD836F9277A20F3069E5ADF2E",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/result_artifact_store.py",
+      "bytes": 47958,
+      "sha256": "5E002148D2BA0AF56AA275AAF497F45046CE456255D55453BE14F124D616EE64",
+      "owners": [
+        "C2-BASE",
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "data_module/source_revision_evidence_collector.py",
+      "bytes": 2099,
+      "sha256": "7386164D5BF878365E7C0F7B578A5D9D3004226872AC108C0504296BE9DC6C9F",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "data_module/stock_screener_reader.py",
+      "bytes": 13968,
+      "sha256": "D49D36E06960A3044937D2AFA6294148DE4C29670D8F8499673E288E9DE2585B",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "data_module/taiex_market_index_publication.py",
+      "bytes": 34986,
+      "sha256": "80ECF0BBB74FAE3FF277793BF623CFA54AA5D3A8EC4355743F75AD4B12DB8593",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "data_module/twse_daily_price_publication.py",
+      "bytes": 43330,
+      "sha256": "466CC7C1E22F37C2D83E516BA3F9D3E6A3C4BCA3B37DB72EF3363636F7F40EDD",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "data_module/valuation_data.py",
+      "bytes": 3063,
+      "sha256": "9DBD4B857B30690924462753FFE8624C640CCB5ED9879EA78B24756FEB5221DC",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "data_module/valuation_metrics_backfill.py",
+      "bytes": 9524,
+      "sha256": "9210D353B2A66474C853675F82C502727C89EBDEB246A1D03418CB0764F2F43A",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/__init__.py",
+      "bytes": 1705,
+      "sha256": "617CDBE9C95F04A0D5EBF06B44273C0BCA9873E2032FFEDC4BDD07D233EC9F39",
+      "owners": [
+        "V-BOUNDARY",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "decision_module/factors/__init__.py",
+      "bytes": 359,
+      "sha256": "EB6C1288F9BA2DB6ABFB8B1F0CF0818B2DB1C968AE26E374DD79752C537FA6D6",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/factor_adapters.py",
+      "bytes": 2847,
+      "sha256": "16EC059345FF0E124482CA0F30AE604381486A59195FED8333820BC54D90B91F",
+      "owners": [
+        "V-FACTOR",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/factors/factor_dtos.py",
+      "bytes": 6763,
+      "sha256": "CC13256F605F3259AB044C11A7572D07506076A7EAB0922637C9743A6D89DC71",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/factor_gate.py",
+      "bytes": 4930,
+      "sha256": "2E9801AB5DE965B2AE30559F57EE7205A37593DA135EBFBBCF616BCC09C90215",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/factor_registry.py",
+      "bytes": 2196,
+      "sha256": "9CC02266BCB7A7F03814127EBA8BA6420AAAAB8ED6088AD81B611E07EA269C64",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/fundamental_adapters.py",
+      "bytes": 10833,
+      "sha256": "E14845C258D7CC8261163CCF87DCDFDCC1EE66154B46E83E37292CA8727C6E2A",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/statement_factor_adapters.py",
+      "bytes": 22987,
+      "sha256": "59C24CCE49219A51E934A6385D225C0D4652DD1061B7B1ED9F9FAA71D4C39F90",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/statement_semantic_mapping.py",
+      "bytes": 9927,
+      "sha256": "700BF97B6BEA653C1FFD91D4DBFA98A312DB449C819BEAB2AA50EE55CEAA21BB",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/valuation_adapters.py",
+      "bytes": 2546,
+      "sha256": "BA4EBDEF86422CE92FE8513DC770E453158E80BD84D9D8111B63C4CEC4A46BD0",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/valuation_backfill_adapters.py",
+      "bytes": 5289,
+      "sha256": "1AB33BD995D0519586E0B1565BEBEF706ACB781FEE1BDE8E7226364DBA49A06C",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/valuation_policy.py",
+      "bytes": 5268,
+      "sha256": "2607147D2A3C2064FBF36569D875D6CF754FE59651B1294774FE3D69FCCCBD07",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/factors/valuation_source_policy.py",
+      "bytes": 2433,
+      "sha256": "19DC96EC4E93104B3026EB3EE65B7794712A6993E2FBAB1D72DF3FF68E97803B",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "decision_module/market_regime_detector.py",
+      "bytes": 29172,
+      "sha256": "21D1C232E98D4A5779327CF2224A517D9C543FB2DF833CDAD0A1E2522ADAEBE9",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "decision_module/market_regime_kernels.py",
+      "bytes": 902,
+      "sha256": "A762A816AFEBE7779318F222197463512B9640CCD1D46E3D30CD2BFC915FEB74",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "decision_module/market_regime_policy.py",
+      "bytes": 3981,
+      "sha256": "A43E7AF75951784F52C51383383F15A5470A59E380D2E73426855E2F7F6C11ED",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/reason_engine.py",
+      "bytes": 21098,
+      "sha256": "7034F2A49A5B39C0BA39B00696752626FA11A8DCB63AC89E00242C179CBB0206",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/reason_tags.py",
+      "bytes": 7981,
+      "sha256": "47F34FA17DD2B931CACE5A15D06B0A1A721C8384205952F62D0A30458BC1D940",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/recommendation/contracts.py",
+      "bytes": 19605,
+      "sha256": "82B3236D749538DE55892DDA087FE5018083348C60C9ED3597EB289E6C03A381",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-BOUNDARY",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "decision_module/recommendation/evaluate.py",
+      "bytes": 188297,
+      "sha256": "588569069C44C2B4AFE3608BB44EE98FDA2348416575C9A6E6CA441C6DDE9AA9",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "decision_module/recommendation/replay_prefilter.py",
+      "bytes": 61569,
+      "sha256": "B7B7AF5FA0359523FCADD4547A0C23D59A981F961AD8304ABD603C85BCB795FF",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "decision_module/scoring_engine.py",
+      "bytes": 45100,
+      "sha256": "528310B91BA730F62941F753FFAD9AB5DCF9D72ABC6A49B9CE75FCA7E41A3A8F",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/stock_screener.py",
+      "bytes": 64884,
+      "sha256": "48C58D292C5CD5182A5E9ECBB98205790742A61207C88BAD34E81F2F41EF6ED2",
+      "owners": [
+        "V-BOUNDARY",
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "decision_module/strategies/__init__.py",
+      "bytes": 844,
+      "sha256": "489F6D31C198909F08841D002859819AD14C61FB2910D64394A9861F90945B32",
+      "owners": [
+        "V-BOUNDARY",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/strategies/baseline_score_executor.py",
+      "bytes": 12254,
+      "sha256": "9DFB0951E222C99127E5DA0F4E8E372A1DE4EAAF3FEB42830EA8B78F77BE2918",
+      "owners": [
+        "V-BOUNDARY",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/strategies/contracts.py",
+      "bytes": 9482,
+      "sha256": "2041275069B7BB4FE569FA2F5F4451248249C85D8E8E9E11C4EA931D6C46DAB8",
+      "owners": [
+        "V-BOUNDARY",
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/strategies/momentum_aggressive_executor.py",
+      "bytes": 9795,
+      "sha256": "50DEFF22604D2FCC57EB29E4982F55EB7462ECC2AA756487D64D7AB21090652F",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/strategies/registry.py",
+      "bytes": 3684,
+      "sha256": "9F8E3249CE12C37532594D4D001EAD48CBD7BE169900934252AAA27E2803DEC9",
+      "owners": [
+        "V-BOUNDARY",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/strategies/stable_conservative_executor.py",
+      "bytes": 9883,
+      "sha256": "F502463A117EB003F401E1D4577CE5F6452431EE438B031171F103BC13754699",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/strategy_configurator.py",
+      "bytes": 22482,
+      "sha256": "3C11ED4402C4A39C65AD93FB8EE958658D0C82CE63B3B17B26BA1515E14F9F8B",
+      "owners": [
+        "V-BOUNDARY",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "decision_module/strategy_screening_support.py",
+      "bytes": 1280,
+      "sha256": "A3FBDC613798F947F24733CD8FBD6B1406EF49FCFB75F0BC54E109071B085F9E",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "ml_module/allocation_out_of_core_training_service.py",
+      "bytes": 202498,
+      "sha256": "A4C29F71F4DB5DD7E3257E8B1E34DDD4178CC23DADABF792B350A99800D6E542",
+      "owners": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/feature_registry.py",
+      "bytes": 4464,
+      "sha256": "C5014646AF431568CD38A8811BC32EDA128F55DD67B6A97D8455D5A168CCBB42",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/historical_contracts.py",
+      "bytes": 5885,
+      "sha256": "C97C2ABB2A993D9F56905A8F8CC203BC2B1E3F1C915B2B5563F348AAF8B80EC1",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/historical_feature_builder.py",
+      "bytes": 22674,
+      "sha256": "B4A5478B7BE2B628262146ABC4211A11CD6657A2E47F9E9200ACC15A6B2E92E9",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/historical_label_builder.py",
+      "bytes": 13427,
+      "sha256": "4464ED36F3C4F28F14F8B776AAD4A79163DDF0C7B3CAF64DDC9B5114534B9CB7",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "ml_module/historical_training_service.py",
+      "bytes": 9529,
+      "sha256": "AC9025DA0B4BFA0672CCBEDABA4BFD7D9F2D08E7F350D3ACA72C34EC05BA4A1D",
+      "owners": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/label_registry.py",
+      "bytes": 2356,
+      "sha256": "CC1034C0496FBF16FBCE05138A864C93C1E3A9B0FBE8343890D1B80B97843B21",
+      "owners": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/model_artifact_loader.py",
+      "bytes": 24035,
+      "sha256": "95D30503215B022888ED2D94E061DE27B4648F1C60A6C56D90F9B68DDB412F08",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/model_artifact_manifest.py",
+      "bytes": 14693,
+      "sha256": "B49CF5EE77DD222F4BC06B48713AF0EC905E20CD12A19BA164C75A32A4BB0036",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/model_artifact_store.py",
+      "bytes": 7120,
+      "sha256": "7F411A87F69E8A06278A3436E437E028797C80765CE9BA7A9E3B6086BA292B27",
+      "owners": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/prepared_input_contract.py",
+      "bytes": 20862,
+      "sha256": "E39EE8ACB37CEDBCABE5276FE85703B2FDBEB98C2DE9702B23184934D6513D03",
+      "owners": [
+        "C2-BASE",
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "ml_module/prepared_source_contract.py",
+      "bytes": 27746,
+      "sha256": "9568839F471AA341C7F7CEEB97BBC325FDF5D6B31D547582A07384AC59F1FACF",
+      "owners": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "ml_module/probability_calibration.py",
+      "bytes": 2699,
+      "sha256": "6AB7BCD2074E5588C7B03B6E93E219663727A4EFFA83457D3E17A375B788BB87",
+      "owners": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "ml_module/purged_walk_forward.py",
+      "bytes": 3895,
+      "sha256": "345EDACCDDFCC658D63BD1E0A69508594954EB9D72E2C48E1D9944C5E487FF4A",
+      "owners": [
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "ml_module/recommendation_calibration_authority.py",
+      "bytes": 103241,
+      "sha256": "306BB833B44161C856DB1BEC362F37C6396A3ADFAF2446C16E680BD554B6D17C",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/recommendation_calibration_training.py",
+      "bytes": 74127,
+      "sha256": "F394E427234A8A43D30BD7688D1AD41BAE4A2174A510FE2F5067E5A661941B61",
+      "owners": [
+        "V-BOUNDARY",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/recommendation_cost_scenario.py",
+      "bytes": 39408,
+      "sha256": "75295681BF02B19940AE575D7D8B6B67D103F4239AE045ACB6FD99C77B6BEB3D",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/recommendation_inference_provenance.py",
+      "bytes": 99970,
+      "sha256": "7C64A5710B512FC306878F22AAC3C92061779794E10052F833DED83BE09A8517",
+      "owners": [
+        "R026-NEW-TESTS",
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/recommendation_probability_transform.py",
+      "bytes": 3420,
+      "sha256": "C47BC0CCE9317F7B722C19DFF76BCE28A24A682E5C07632E67601B3767E259C3",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/recommendation_training_lineage.py",
+      "bytes": 42240,
+      "sha256": "A171E4011EDC64524131B5391F548E51E989EB41FC5361D68D077A3833E58359",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ml_module/shadow_boundary_guard.py",
+      "bytes": 14800,
+      "sha256": "48074B1F4F5A73737530A409F18E5BFCC91D6A70F2A0750F2813ADA5EA7B1D05",
+      "owners": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "scripts/apply_monthly_revenue_availability_candidate.py",
+      "bytes": 6119,
+      "sha256": "414EE250F0AEF1058C4AFF9E20403B3C0AA2575BA90A94218E2BEB759AEE509B",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "scripts/backfill_fundamental_statement_items.py",
+      "bytes": 4672,
+      "sha256": "5A589B3467152853D286F8E5AE02CCC2CF5B9C69C063A81FB74EA619870F170A",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "scripts/backfill_valuation_metrics.py",
+      "bytes": 3205,
+      "sha256": "2CADD070B0BC25008B4EF31D4FCDFDCD81F2FEE04E5763CCB36DDFF27D734938",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "scripts/batch_update_market_and_industry_index.py",
+      "bytes": 19825,
+      "sha256": "E705ADD97A491D730848072B735765F484C2FE42FF98FC1D8E8B67F7E9D8D07F",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "scripts/build_monthly_revenue_availability_history.py",
+      "bytes": 6241,
+      "sha256": "98F1829DEC1FC0A299CE5D40B2EE389A86FC463CE8908980B188A1EFEB2DA9A0",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "scripts/check_ml_shadow_boundary.py",
+      "bytes": 877,
+      "sha256": "3F521416A862C378114B294DA8183FD6D3DF1D50FB1A58403D3B7722052CE227",
+      "owners": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "scripts/check_refactor_architecture_boundary.py",
+      "bytes": 6612,
+      "sha256": "14807F8E9DBEF56932DF680A784D293360937CA26902410BDD4DF5433C0871F4",
+      "owners": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "scripts/continue_ml_direct_ooc_after_store.py",
+      "bytes": 49909,
+      "sha256": "1488892624FC82DA900BC791EE146A94F054C9518B43A3CFF883D890E9A53109",
+      "owners": [
+        "V-BOUNDARY",
+        "V-OLD-ARTIFACT-CLASSPATH"
+      ]
+    },
+    {
+      "path": "scripts/inspect_cross_sectional_factor_snapshot.py",
+      "bytes": 2362,
+      "sha256": "A4AB78B35BF440DAB0274A5051AB3673097DBB8ABC8085ED0DD5B7F39C841570",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "scripts/inspect_fundamental_factors.py",
+      "bytes": 6536,
+      "sha256": "241F1FD9D8E3E47BA05D8817100F66C452E427BA24C3A133C0133839E42A6FE2",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "scripts/inspect_valuation_source_policy.py",
+      "bytes": 625,
+      "sha256": "CA77F22156D3FE546DD9C8BF11A280DDC03704FCF5FB7800649F23D46D037C69",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "scripts/qa_validate_recommendation_tab.py",
+      "bytes": 43013,
+      "sha256": "7E0F2437B4AD8DC2E98CB3E981EEE792C1EC5994711BA1FF8D4FEEE84A0EF4D5",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "scripts/qa_validate_update_tab.py",
+      "bytes": 36601,
+      "sha256": "C5C102E7E249C61282C36F006D7209468EB84F3E741AD3EBBC0818670E3311F9",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "scripts/recommendation_execution_qa_support.py",
+      "bytes": 3822,
+      "sha256": "30026E606B0CBC7D1BAD57C73A508156899E056774F6766C2065C5A1DD2F7964",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "scripts/repair_excluded_daily_prices.py",
+      "bytes": 32026,
+      "sha256": "62A4284508EA8F699C4A59BD5495E06A8988A9E3D40886C999D11BA0085A5158",
+      "owners": [
+        "R026-NEW-TESTS"
+      ]
+    },
+    {
+      "path": "scripts/run_personalization_recommendation.py",
+      "bytes": 62070,
+      "sha256": "2563D8CFE9724C84D9B763E389AF96DA66195DE4663F81F35C0E93007BCF9A86",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "scripts/run_walk_forward_comparison.py",
+      "bytes": 27507,
+      "sha256": "AFCD75242FC4DDFBF761A1189E97E9F406047F2E671E1BEBE010CE10AEB2FEC8",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "scripts/scheduled/run_daily_data_update_quick.py",
+      "bytes": 44095,
+      "sha256": "2ECC3C601899C89919FD7772EE1DFC4FD146BC9DCDC2809F5B9096DF28A34EF7",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "scripts/scheduled/run_scheduled_recommendation_snapshot.py",
+      "bytes": 52622,
+      "sha256": "64206FFE31B08A409FBBC6972B4F506D78D2CA017F8BD8A9E0FA7F782C577DB6",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "scripts/validate_statement_availability.py",
+      "bytes": 1029,
+      "sha256": "AC42029EEF840AE19F0A35FCAEDA89615878BE84A0849C03B013F01827505F05",
+      "owners": [
+        "V-FACTOR"
+      ]
+    },
+    {
+      "path": "ui_qt/main.py",
+      "bytes": 67850,
+      "sha256": "93B7062B3A2998D135198261C57138344D9C190D73F687E49EEBAA9BD05E206E",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/main_window_coordinator.py",
+      "bytes": 1519,
+      "sha256": "7084334DDADB46F119537D11455EE89C8FA04684FEB5EB66423730E08985479D",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/models/pandas_table_model.py",
+      "bytes": 9011,
+      "sha256": "617ECC97FC4F387FA0F535D413A1EB64116820431C4080CC4202FBBF72DC8611",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "ui_qt/theme/__init__.py",
+      "bytes": 169,
+      "sha256": "4A3A1CA14F7D63184836F68FF89A3F24A5E046BC347EDA5CCB4EFC3910B763F9",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/views/backtest_view.py",
+      "bytes": 228462,
+      "sha256": "71D3C400A42049F93CD56AC0274B05016B2AFF103D44992536981A496122AEEC",
+      "owners": [
+        "C2-BASE",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "ui_qt/views/dashboard_view.py",
+      "bytes": 14176,
+      "sha256": "06906047D3AE56A5D8AC46EBFF66E9DB3B77D2A3C49CB281AFC3A69DB1623106",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/views/market_regime_view.py",
+      "bytes": 35460,
+      "sha256": "6A5645D63EB51FA3132E10D529E3727A4EE8BE9674DF4B7F2770F39FC794660B",
+      "owners": [
+        "V-REGIME",
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/views/portfolio_view.py",
+      "bytes": 182971,
+      "sha256": "0FFD4E1EA8C241D5A552AFE6612FAE9C84D68E369C26A68B05B7584817D2EB2A",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "ui_qt/views/recommendation/execution_coordinator.py",
+      "bytes": 4794,
+      "sha256": "E23ED3BF763DE4FF9618E7377083875881DFB64D2263640FCB2F0F0CB6B71B82",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ui_qt/views/recommendation/presenter.py",
+      "bytes": 30797,
+      "sha256": "51A73FC3C64785ACBEE1F203E6A3D74D260CB35B03A647833883A1F3B6BF6D5B",
+      "owners": [
+        "V-BOUNDARY"
+      ]
+    },
+    {
+      "path": "ui_qt/views/recommendation_view.py",
+      "bytes": 157877,
+      "sha256": "16BB7DDFBAED4B66BF4F76C0AFDBD0EB977F335FDC19A6424E2D652A81F8EFC1",
+      "owners": [
+        "V-REGIME",
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "ui_qt/views/research_lab/run_registry_compare_widget.py",
+      "bytes": 38349,
+      "sha256": "24854B480E7B7624012AC2374282ADEF0183A9A18442EFDF7B284C79858C4DA5",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "ui_qt/views/strong_industries_view.py",
+      "bytes": 18095,
+      "sha256": "B130F58E03D8C110EDF92942BAADB1FBA031DB047FE3FED4432F57344A41BEC1",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/views/strong_stocks_view.py",
+      "bytes": 17880,
+      "sha256": "CD6C0194288A9425E63DC7E63057138C3AE0CD3F824DCA67ECA9D5A9BA7A2905",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/views/watchlist_view.py",
+      "bytes": 86258,
+      "sha256": "6B200D88DB5FEA011BF67895E6A290F9510BA20E5B97905002AA2FF25440DE75",
+      "owners": [
+        "V-STRATEGY"
+      ]
+    },
+    {
+      "path": "ui_qt/views/weak_industries_view.py",
+      "bytes": 18643,
+      "sha256": "4F97676F2A0B9269EFD62C66C1917D9D3A1CDF36A5709E7934FC5BB5CF991423",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/views/weak_stocks_view.py",
+      "bytes": 17249,
+      "sha256": "9629E2D61772013C37BBEF881DC0EE47F33F031A9FC57D53357DC4A37D1CE34B",
+      "owners": [
+        "V-SCREENER"
+      ]
+    },
+    {
+      "path": "ui_qt/views/workbench_view.py",
+      "bytes": 181619,
+      "sha256": "03A440545B818763F3014952B6824FB316D4F0FA05613D1066F2738F487BAAB7",
+      "owners": [
+        "V-REGIME"
+      ]
+    },
+    {
+      "path": "ui_qt/widgets/user_declared_holding_research_widget.py",
+      "bytes": 36358,
+      "sha256": "4CF2332011CDC7A2366054B645530C88516DFBF9AA692B56C9642F96092B2806",
+      "owners": [
+        "C2-BASE"
+      ]
+    },
+    {
+      "path": "ui_qt/workers/task_worker.py",
+      "bytes": 12844,
+      "sha256": "66C73BBD5563995C7CDD3E09EB6C55123D82650F19A10A1229F84B1D4E9E33C4",
+      "owners": [
+        "V-REGIME"
+      ]
+    }
+  ],
+  "c2_base_drift": [
+    {
+      "kind": "test",
+      "path": "tests/test_c1_execution_artifact_ab_interleave.py",
+      "manifest_sha256": "4BDAF3F36A0E910CB7D92A902E8CE1291055F3962D962AAACF187B460755CDF5",
+      "current_sha256": "CA1475488ECA057DCA9FFC20C0F507FA29464627CD8D8DF2567F280A366B2ABB",
+      "manifest_bytes": 34582,
+      "current_bytes": 37249
+    },
+    {
+      "kind": "test",
+      "path": "tests/test_r020_process_crash_recovery.py",
+      "manifest_sha256": "07C2A71B44CB5A3462D0A800FE7EE9F793A6CFA19A487CE7846681352AF39C63",
+      "current_sha256": "AEE58FA99D089DDA40D368062299871333D4BD104C477BA1B1256611BFB3A998",
+      "manifest_bytes": 19004,
+      "current_bytes": 26920
+    },
+    {
+      "kind": "test",
+      "path": "tests/test_recommendation_execution_use_case.py",
+      "manifest_sha256": "43216095B335CF3907BC537F006F8C3AAEB51D1F4ADB68D1BD66E302F1648265",
+      "current_sha256": "5E423619EFD7DB021B33DCF62DF05E1419C3B8598177F881AF3EE5AFF80AB543",
+      "manifest_bytes": 26696,
+      "current_bytes": 26737
+    },
+    {
+      "kind": "test",
+      "path": "tests/test_recommendation_service_calibration_integration.py",
+      "manifest_sha256": "075B980B7BDC75AF9E25DAC239C1BB12167EAA10F61B25B1CDF896DF02EFA3F6",
+      "current_sha256": "9E7CE52BC4832BA0DD742693803729DDA158376775AD6B18DDF71CBCD323D6E2",
+      "manifest_bytes": 78493,
+      "current_bytes": 79690
+    },
+    {
+      "kind": "source",
+      "path": "app_module/recommendation/execute.py",
+      "manifest_sha256": "A2C7FE5529AA6CC5BC72E149B503BE196EA2D99E2AC8E325DF789A7B3A05FD46",
+      "current_sha256": "401124F45A5E00302EF650F8BB501B48CA4474A81FA2C87AF0730095087E263F",
+      "manifest_bytes": 63311,
+      "current_bytes": 56571
+    },
+    {
+      "kind": "source",
+      "path": "app_module/recommendation/ml_adapter.py",
+      "manifest_sha256": "61ED294BC577A9D68A1887DC73F357C5563F6D7D465F3FC5C97235D1DB300755",
+      "current_sha256": "34B90885A0607050A788240CF202548276BC95ACEE81DF2F35E639F13D77B156",
+      "manifest_bytes": 2018,
+      "current_bytes": 2730
+    },
+    {
+      "kind": "source",
+      "path": "app_module/recommendation_calibration_consumer.py",
+      "manifest_sha256": "1559D1399A36C88883D1CF19AE4F7B96BE962E3F99866015FBFEBE45E9740EF5",
+      "current_sha256": "6D4747C588DAAB3890B6562A47F517EECB8E068646FEFA21A33A9A848D042DDE",
+      "manifest_bytes": 146461,
+      "current_bytes": 167471
+    },
+    {
+      "kind": "source",
+      "path": "app_module/recommendation_service.py",
+      "manifest_sha256": "947BE55EA2F9A5B7B9325B6D544CD81AD97E9FDA39A9C6DC1F07932090DC8EF6",
+      "current_sha256": "5AEF66DC6993B5967AFAE17692C0AD342B7880E26813B6A681F50A153F9A0381",
+      "manifest_bytes": 128466,
+      "current_bytes": 144194
+    }
+  ],
+  "baseline_separation": {
+    "r006_historical_four_app_to_ml_imports_now_exactly_allowed": [
+      "app_module/personalization_projection.py -> ml_module.recommendation_inference_provenance:read_inference_projection_receipt",
+      "app_module/personalization_save_adapter.py -> ml_module.recommendation_inference_provenance:read_inference_projection_receipt",
+      "app_module/recommendation_calibration_consumer.py -> ml_module.recommendation_calibration_training:RECOMMENDATION_RETURN_BASIS",
+      "app_module/recommendation_calibration_consumer.py -> ml_module.recommendation_calibration_training:recommendation_label_contract_id"
+    ],
+    "current_shadow_guard_residual": {
+      "guard": "MLShadowBoundaryGuard.inspect()",
+      "inspected_files": 583,
+      "diagnostic_occurrences": 11,
+      "distinct_diagnostics": 10,
+      "source_report": "docs/06_qa/ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md"
+    },
+    "r030_synthetic_fixtures": "included in V-BOUNDARY as test_r030_architecture_guards.py and test_r030_extensibility_acceptance.py; bounded slice receipt is in R030_EXTENSIBILITY_FIXTURE_QA_20260925.md"
+  },
+  "limitations": [
+    "This is a current-working-copy planning snapshot, not a source freeze or test receipt.",
+    "C3/C4 union must wait for root stability notice.",
+    "Unknown production joblib/pickle class paths remain unloaded; only controlled fixtures are in scope.",
+    "No formal data, scheduler, full-market rebuild, promotion or interactive UI action is authorized by this draft."
+  ]
+}

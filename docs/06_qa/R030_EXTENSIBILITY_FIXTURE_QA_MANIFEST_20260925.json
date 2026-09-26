@@ -1,0 +1,133 @@
+{
+  "manifest_id": "R030_EXTENSIBILITY_FIXTURE_QA_20260925",
+  "status": "fixture-slice-evidence-only",
+  "created_date": "2026-09-25",
+  "test_sources": [
+    {
+      "path": "scripts/check_refactor_architecture_boundary.py",
+      "bytes": 6612,
+      "sha256": "14807F8E9DBEF56932DF680A784D293360937CA26902410BDD4DF5433C0871F4"
+    },
+    {
+      "path": "tests/test_r030_architecture_guards.py",
+      "bytes": 2610,
+      "sha256": "89ACFC99AA50E06FB3101B5DA63C20FF00D31E1B310373D8716264C8F8580BC4"
+    },
+    {
+      "path": "tests/test_r030_extensibility_acceptance.py",
+      "bytes": 32489,
+      "sha256": "3E4BECC1AFE58BB8931B8F7F76EF1A9687EC11E0D248F8535515C04FCF7E97DF"
+    }
+  ],
+  "fixture_sources": [
+    {
+      "path": "tests/fixtures/r030/business_last_state.py",
+      "bytes": 172,
+      "sha256": "0209CB196156891B8B41EAE64E2C4A6CD5F7CED9A0C46B4E08A82640EDFB39AF"
+    },
+    {
+      "path": "tests/fixtures/r030/confidence_extension_contract.json",
+      "bytes": 601,
+      "sha256": "0B8C2A22E1A7CE1B93F3F891AC2A0F654996CE8544A2C29F2910EFFC117BAC22"
+    },
+    {
+      "path": "tests/fixtures/r030/decision_imports_app.py",
+      "bytes": 143,
+      "sha256": "E7FA2A524852BB071DDDD3EEA37233FE5E6753ECA142A26BF16F459745C4299D"
+    },
+    {
+      "path": "tests/fixtures/r030/duplicate_row_map.py",
+      "bytes": 582,
+      "sha256": "594454AA084DF39B6848CCC87F5A20B382BB1D0E42AEC871D86885697B5FA8DA"
+    },
+    {
+      "path": "tests/fixtures/r030/historical_v1_fingerprint.json",
+      "bytes": 1341,
+      "sha256": "2CAF5838E3B568256B90F6DB3A117FE4EFB489B537F64AE28453CC142AAB6F75"
+    },
+    {
+      "path": "tests/fixtures/r030/new_technical_feature.json",
+      "bytes": 438,
+      "sha256": "D43D8C74E038831A504C2EB5461C254E5BF9D3D7218B2A4D7EF0C6214B6D0ECB"
+    },
+    {
+      "path": "tests/fixtures/r030/registry_bypass.py",
+      "bytes": 274,
+      "sha256": "9FCE3AABCDC1CF69E0668B7BBD04CF04968889B60522EDD02CF1652A6F67D811"
+    },
+    {
+      "path": "tests/fixtures/r030/unknown_codec_record.json",
+      "bytes": 57,
+      "sha256": "6C76783A81A0AE5A9DA61F1E10A997BE92737DA86409802AF5CB4BBEC70123BD"
+    },
+    {
+      "path": "tests/fixtures/recommendation_execution_rev1.json",
+      "bytes": 5033,
+      "sha256": "DBD3C2194EF53C2FEE3E41E772187D2453C52237328AA179833282E0CC76A52B",
+      "read_only_legacy_input": true
+    }
+  ],
+  "pytest": {
+    "command": "$qaRoot = Join-Path $env:TEMP 'r030_luna_final_20260925'; $env:TEMP = $qaRoot; $env:TMP = $qaRoot; $env:PROFILE = 'test'; $env:DATA_ROOT = Join-Path $qaRoot 'data'; $env:OUTPUT_ROOT = Join-Path $qaRoot 'output'; .\\.venv\\Scripts\\python.exe -m pytest tests\\test_r030_architecture_guards.py tests\\test_r030_extensibility_acceptance.py -q -rs -o addopts= -p no:cacheprovider --basetemp (Join-Path $qaRoot 'pytest-frozen') --tb=short 2>&1 | Tee-Object -FilePath (Join-Path $qaRoot 'r030_pytest.log'); if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+    "profile": "test",
+    "isolated_temp_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\r030_luna_final_20260925",
+    "data_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\r030_luna_final_20260925\\data",
+    "output_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\r030_luna_final_20260925\\output",
+    "basetemp": "C:\\Users\\archi\\AppData\\Local\\Temp\\r030_luna_final_20260925\\pytest-frozen",
+    "summary": "17 passed; 0 skipped",
+    "log_path": "C:\\Users\\archi\\AppData\\Local\\Temp\\r030_luna_final_20260925\\r030_pytest.log",
+    "log_bytes": 101,
+    "log_sha256": "83CD2B39FFF27CB7DEF86BED1A895AA11853F29E18543BCD4B13781B6516867D"
+  },
+  "static_checks": [
+    {
+      "command": ".\\.venv\\Scripts\\python.exe -m py_compile scripts\\check_refactor_architecture_boundary.py tests\\test_r030_architecture_guards.py tests\\test_r030_extensibility_acceptance.py",
+      "result": "exit 0"
+    },
+    {
+      "command": ".\\.venv\\Scripts\\python.exe -m mypy --follow-imports=silent tests\\test_r030_architecture_guards.py tests\\test_r030_extensibility_acceptance.py",
+      "result": "Success: no issues found in 2 source files"
+    },
+    {
+      "command": ".\\.venv\\Scripts\\python.exe scripts\\check_refactor_architecture_boundary.py",
+      "result": "R030 architecture boundary: clean"
+    },
+    {
+      "command": "git diff --check",
+      "result": "exit 0; Git emitted only LF-to-CRLF working-copy notices"
+    }
+  ],
+  "parallel_work_note": "一般 import-following mypy 同時讀到 R026 WIP app_module/recommendation/prepared_runtime_preparation.py:252-253 的兩個 union-attr errors。此為 cross 擁有的進行中 NoModel 接線，不屬於 R030；R030 自身以 --follow-imports=silent 檢查通過。",
+  "independent_adjacent_review": {
+    "reviewer": "root",
+    "date": "2026-09-25",
+    "test_paths": [
+      "tests/test_r030_architecture_guards.py",
+      "tests/test_r030_extensibility_acceptance.py",
+      "tests/test_recommendation_execution_codec.py",
+      "tests/test_ml_historical_feature_builder.py",
+      "tests/test_decision_strategy_owner.py"
+    ],
+    "frozen_inputs": "manifest 內 12 個 frozen source/fixture，加上 3 個相鄰測試；執行前後 SHA 清單相同",
+    "pre_readback": {
+      "path": "C:\\Users\\archi\\AppData\\Local\\Temp\\r30r_01c542\\pre.json",
+      "bytes": 3486,
+      "sha256": "9164C456DE1FB0ED21152602ED41FFD33555F0C4EA48DF2C85664C0A85DC5C02"
+    },
+    "post_readback": {
+      "path": "C:\\Users\\archi\\AppData\\Local\\Temp\\r30r_01c542\\post.json",
+      "bytes": 3486,
+      "sha256": "9164C456DE1FB0ED21152602ED41FFD33555F0C4EA48DF2C85664C0A85DC5C02"
+    },
+    "pytest": {
+      "profile": "test",
+      "synthetic_data_only": true,
+      "isolated_temp_root": "C:\\Users\\archi\\AppData\\Local\\Temp\\r30r_01c542",
+      "summary": "48 passed in 1.83s",
+      "log_path": "C:\\Users\\archi\\AppData\\Local\\Temp\\r30r_01c542\\pytest.log",
+      "log_bytes": 101,
+      "log_sha256": "73495DB39B1F91769C6364181C78A834A5D71070D601414A455B41C8060E877B"
+    },
+    "scope_limit": "此 frozen R030 slice 的相鄰獨立複核；不代表 C2、R029、C3/C4 或整體 refactor gate 通過。"
+  }
+}

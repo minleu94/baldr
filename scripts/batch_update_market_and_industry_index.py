@@ -184,7 +184,7 @@ def get_existing_dates(file_path: Path) -> set[str]:
 
 def batch_update_market_index(start_date: str, end_date: str = None, 
                               delay_min: float = 4.0, delay_max: float = 4.0,
-                              config=None):
+                              config=None, capture_manifests=None):
     """批量更新大盤指數數據
     
     Args:
@@ -246,7 +246,11 @@ def batch_update_market_index(start_date: str, end_date: str = None,
         
         try:
             # 使用主模組的 update_market_index 方法，並跳過逐日備份
-            success = loader.update_market_index(date, skip_backup=True)
+            success = loader.update_market_index(
+                date,
+                skip_backup=True,
+                capture_manifests=capture_manifests,
+            )
             
             if success:
                 logger.info(f"  ✓ {date} 更新成功")

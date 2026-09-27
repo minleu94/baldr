@@ -8,11 +8,11 @@
 
 - **[2026-09-22 最終目標架構](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)**
   - 唯一實作設計權威及五份 FINAL 分冊：資料流、擴充模型、ML 相容、不變條件、五區塊遷移
-  - 已逐項裁決紅隊意見；先前草案保留為歷史，尚未實作，不改目前狀態或產品 Gate
+  - 已逐項裁決紅隊意見；先前草案保留為歷史。設計契約與實作進度分開閱讀，目前進度以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。
 
 - **[2026-09-22 重構實作 DAG](target_architecture_2026_09_22/REFACTOR_IMPLEMENTATION_DAG.md)**
   - 31 個具依賴、驗收與回滾契約的任務；另含[任務規格索引](target_architecture_2026_09_22/REFACTOR_TASKS/README.md)、[執行波次](target_architecture_2026_09_22/REFACTOR_EXECUTION_ORDER.md)、[驗證矩陣](target_architecture_2026_09_22/REFACTOR_VALIDATION_MATRIX.md)與[風險登錄](target_architecture_2026_09_22/REFACTOR_RISK_REGISTER.md)
-  - 僅供後續 coding agent 分派；尚未開始 R001，也未修改 production code
+  - 保存任務的依賴、驗收與回滾契約；各任務結果見 [實作報告](target_architecture_2026_09_22/REFACTOR_REPORTS/)。R031 有限工程範圍已完成並保留具名限制，R027 仍為 `INCONCLUSIVE`、R028 仍為 `BLOCKED`；見 [R031 closeout](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。不代表整體重構或正式產品核准。
 
 - **`system_architecture.md`**
   - 系統的技術架構說明

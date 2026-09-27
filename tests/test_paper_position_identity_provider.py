@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -169,6 +170,49 @@ def _write_status(
     )
 
 
+def _write_non_trading_status(
+    path: Path,
+    *,
+    state_db: Path,
+    ledger_db: Path,
+    decision_date: str,
+    state_hash: str | None = None,
+) -> None:
+    resolved_state_hash = state_hash or (
+        "sha256:" + hashlib.sha256(state_db.read_bytes()).hexdigest()
+    )
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "paper-portfolio-daily-status.v1",
+                "isolated_scope_schema_version": "paper-portfolio-daily-isolated-scope.v1",
+                "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
+                "status": "skipped_non_trading_day",
+                "decision_at": f"{decision_date}T08:30:00+08:00",
+                "decision_date": decision_date,
+                "state_db": str(state_db.resolve()),
+                "snapshot_appended": False,
+                "trading_calendar_validated": True,
+                "trading_calendar_is_open": False,
+                "writes_market_db": False,
+                "auto_rebalance_allowed": False,
+                "changes_advice": False,
+                "broker_execution": False,
+                "isolated_scope": {
+                    "ledger_db": str(ledger_db.resolve()),
+                    "state_head": {"target_file_sha256": resolved_state_hash},
+                    "formal_credit": False,
+                    "writes_D_source": False,
+                    "writes_market_database": False,
+                    "broker_execution": False,
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _provider(
     state_db: Path,
     ledger_db: Path,
@@ -178,6 +222,85 @@ def _provider(
         state_db_path=state_db,
         ledger_db_path=ledger_db,
         coverage_status_path=status_path,
+    )
+
+
+def test_provider_reuses_hash_verified_snapshot_after_non_trading_skip(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "paper.sqlite"
+    ledger_db = tmp_path / "ledger.sqlite"
+    status_path = tmp_path / "status.json"
+    _make_state(
+        state_db,
+        [
+            ("paper-main-20260910", "2026-09-10", {"2330": 0}),
+            ("paper-main-20260911", "2026-09-11", {"2330": 1000}),
+        ],
+    )
+    _make_ledger(
+        ledger_db,
+        [
+            _ledger_row(
+                token="entry-2330",
+                event_date="2026-09-10",
+                stock_code="2330",
+                side="buy",
+                quantity=1000,
+            )
+        ],
+    )
+    _write_non_trading_status(
+        status_path,
+        state_db=state_db,
+        ledger_db=ledger_db,
+        decision_date="2026-09-12",
+    )
+
+    result = _provider(state_db, ledger_db, status_path).resolve(
+        snapshot_id="paper-main-20260911",
+        snapshot_date="2026-09-11",
+        observed_at=datetime(2026, 9, 12, 1, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.blockers == ()
+    assert result.provenance["coverage"]["status"] == "reused_non_trading_day"
+    assert result.identities["2330"]["status"] == "natural_entry_verified"
+    assert (
+        "paper_position_identity_coverage_reused_non_trading_day"
+        in result.warnings
+    )
+
+
+def test_provider_blocks_non_trading_skip_when_state_hash_changed(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "paper.sqlite"
+    ledger_db = tmp_path / "ledger.sqlite"
+    status_path = tmp_path / "status.json"
+    _make_state(
+        state_db,
+        [("paper-main-20260911", "2026-09-11", {"2330": 1000})],
+    )
+    _make_ledger(ledger_db, [])
+    _write_non_trading_status(
+        status_path,
+        state_db=state_db,
+        ledger_db=ledger_db,
+        decision_date="2026-09-12",
+        state_hash="sha256:" + ("0" * 64),
+    )
+
+    result = _provider(state_db, ledger_db, status_path).resolve(
+        snapshot_id="paper-main-20260911",
+        snapshot_date="2026-09-11",
+        observed_at=datetime(2026, 9, 12, 1, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.identities == {}
+    assert any(
+        "paper_position_identity_non_trading_state_hash_mismatch" in blocker
+        for blocker in result.blockers
     )
 
 

@@ -271,6 +271,22 @@ HMAC 或 consumer custody 時，狀態會保存相應 blocker。wrapper 的
 明確 formal paths 皆由正式 consumer readback 才回傳 0。這不會把等待中的輸入、歷史
 時間或 TEMP candidate 轉成 Formal credit。
 
+所有 Formal Rule／PIT preopen／PIT sidecar／Formal input 與 Paper session-open
+wrapper 都必須先用 `OfficialTradingCalendar` 的離線、hash-bound cache 判斷當日，
+再載入只對交易日有效的 runtime config。官方確認休市時寫
+`skipped_non_trading_day`、`blockers=[]` 並回傳 0；日曆 unknown 仍 fail closed。
+因此週末或國定休市日不會因上一交易日 config 已過期而被誤報成排程失敗，也不會
+啟動 PIT HTTP capture。Paper EOD 後的 runtime roll-forward 若已存在同一個下一開市日
+config，會完整重驗 immutable bytes、wrapper contract 與 activation day 後重用；不以
+新的 `generated_at` 重建相同日期，也不放寬 create-only mutation guard。
+
+Evidence 的 Paper position identity consumer 也明確支援這個休市日契約：當最新
+Paper status 是 `skipped_non_trading_day` 時，只能沿用最後一個交易日 snapshot，且必須
+同時證明沒有 append snapshot、官方日曆為休市、isolated ledger path 完全一致，以及
+status 內的 state-head SHA-256 與目前 Paper state DB bytes 完全一致。通過時記為
+`paper_position_identity_coverage_reused_non_trading_day`；state hash、路徑或安全邊界任何
+一項不符仍 fail closed，不會把 `stock_code` 猜成 position identity。
+
 每次 scheduled wrapper 也會在同一個 durable scheduler root 追加
 `attempts.jsonl`。每筆記錄保存實際 `python_executable`、entrypoint、wrapper command、
 working directory、arguments、producer status、blockers 與 exit code；不保存完整環境或
@@ -326,6 +342,12 @@ scope evidence。
 `--enable-technical-process-pool`；worker 上限、in-flight 與 retry 預設仍為
 `2 / 4 / 1`，每次 running／terminal status 會留存實際旗標。未設定時不會啟動
 technical process pool，也不會因 staging acceptance 自動改變排程行為。
+
+技術指標 publication custody 以 calculator 實際回報的最後交易日及 hash-bound
+`technical_computation.source_date_start/source_date_end` 為準，不以 scheduler 的自然日
+硬套來源窗口。排程在週末或休市日重驗 current technical rows 時，會綁定最近實際交易日
+的 TWSE／TPEx daily-price custody receipt；若 computation witness 沒有可驗證的實際日期，
+才退回該輪 requested start/end，仍維持 fail closed。
 
 ## Direct chain automatic bootstrap
 
@@ -772,6 +794,9 @@ are unchanged. Historical legacy `<result_id>.json` files are read-only and are 
 recreated by this scheduled task.
 
 The recommendation snapshot status includes `result_id`, `recommendations_count`, `screening_matrix_rows`, `why_not_payload_rows`, `liquidity_gate_payload_rows`, `writes_recommendation_result`, `writes_evidence_db`, `auto_trading`, and `lifecycle_action`.
+Canonical request 的 `as_of_date` 必須取自同一份 typed body context；只有 caller 明確
+指定時才可覆寫，body context 缺值時才退回 runtime config。這確保 persisted request、
+context 與 learning cohort preflight 使用同一資料日，不會把自然執行日誤當市場資料日。
 
 Recommendation calibration learning (shadow-only):
 
@@ -793,6 +818,12 @@ evidence、authority receipt 與 fail-closed pointer 寫入隔離的
 `RECOMMENDATION_LEARNING_OUTPUT_ROOT\recommendation_learning\`。它不繼承一般產品的
 `OUTPUT_ROOT` 作為 learning artifact root，也不寫 `recommendation`、`evidence_outcomes`、
 Portfolio、Formal、broker 或正式推薦權重。
+
+BankTaiwan shadow operational wrapper 使用與 Formal/Paper 相同的 repository
+`output/paper_execution_eod_replay/calendar_cache`（可由
+`FORMAL_DAILY_CALENDAR_CACHE_ROOT` 覆寫）判斷國定休市日。確認休市時不讀取同日
+recommendation snapshot，receipt 會標示 `snapshot.status=not_applicable` 並以
+`skipped_non_trading_day`／exit 0 結束；日曆證據 unknown 才保留 recoverable dependency。
 
 learning root 由 scheduler、runner、read-only calibration consumer 與 Workbench 共用同一個
 resolver。未指定 `RECOMMENDATION_LEARNING_OUTPUT_ROOT` 或 CLI `--output-root` 時，若

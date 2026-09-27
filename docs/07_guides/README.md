@@ -10,6 +10,8 @@
 - **[APPLICATION_MANUAL.md](APPLICATION_MANUAL.md)**
   - 目前 PySide6 UI 的完整操作手冊（SSOT）
   - 涵蓋 8 個頂層工作區、跨工作區流程、參數設定、結果判讀、安全限制與排錯
+- **[APPLICATION_MANUAL_SUPPLEMENTS.md](APPLICATION_MANUAL_SUPPLEMENTS.md)**
+  - 操作手冊附冊：保留日期化操作補充、進階研究 CLI、排程與受控維運；與主手冊共同維護，不另作目前狀態權威
 - **[QUICK_START.md](QUICK_START.md)**
   - 系統快速開始指南（三步啟動）
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**

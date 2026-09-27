@@ -8,6 +8,8 @@
 
 ## 📄 文檔列表
 
+- [操作手冊更新歷史（2026-09-27）](APPLICATION_MANUAL_CHANGELOG_2026_09_27.md)：原手冊的逐次更新記錄；操作步驟保留於主手冊與附冊。
+
 - [Roadmap Hub 整理前歷史（2026-09-27）](DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)：原 Hub 的日期化狀態、Next 與更新紀錄；現行導航已收斂至核心 Hub，不以本頁判斷目前進度。
 - [文檔索引整理前歷史（2026-09-27）](DOCUMENTATION_INDEX_HISTORY_2026_09_27.md)：保留舊索引的詳細分類與日期化摘要；目前閱讀入口以核心索引為準。
 - [專案快照整理前歷史（2026-09-27）](PROJECT_SNAPSHOT_HISTORY_2026_09_27.md)：保存 9/8–9/26 的逐輪觀測、驗證數字與限制；最新範圍及未解除邊界留在核心 Snapshot。

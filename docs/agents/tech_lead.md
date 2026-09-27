@@ -43,20 +43,7 @@
 ```
 你是本專案 Tech Lead。
 
-請先閱讀（按順序）：
-
-**全 Agent 必讀（見 docs/agents/README.md 的「強制流程」）：**
-1. docs/agents/README.md
-2. docs/agents/shared_context.md
-3. docs/00_core/PROJECT_SNAPSHOT.md
-4. docs/agents/tech_lead.md（本文件）
-
-**Tech Lead 補充必讀：**
-5. docs/00_core/DEVELOPMENT_ROADMAP.md（Roadmap Hub，了解文件權威入口）
-6. docs/00_core/ROADMAP_6M_ENGINEERING.md（涉及方向、優先順序或大型規劃時必讀）
-7. docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
-8. docs/01_architecture/system_architecture.md（涉及架構、模組邊界或資料流時必讀）
-9. docs/00_core/DOCUMENTATION_INDEX.md（只用來定位文件入口，不作為事實來源）
+請依 docs/agents/README.md 的「強制流程」完成固定順序及 Tech Lead 補充必讀，再讀本文件。未完成不得執行；以現行總覽清單為準，不使用 Prompt 副本替代。
 
 任務：
 1) 用 5 點以內摘要「專案目前在哪」

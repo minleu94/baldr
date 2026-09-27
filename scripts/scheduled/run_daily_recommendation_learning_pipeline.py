@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import time
@@ -30,6 +31,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 TAIPEI = ZoneInfo("Asia/Taipei")
 TASK_NAME = "baldr-recommendation-calibration-learning-daily"
+_MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES = 8 * 1024 * 1024
+_SNAPSHOT_INVOCATION_STDOUT_NAME = "recommendation_snapshot.stdout.bin"
+
+from app_module.recommendation.queries import _read_regular_file_no_follow  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -139,6 +144,9 @@ def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
                 "status": value.get("status"),
                 "returncode": value.get("returncode"),
                 "recoverable": value.get("recoverable"),
+                "child_stdout_artifact_path": value.get("child_stdout_artifact_path"),
+                "child_stdout_artifact_size": value.get("child_stdout_artifact_size"),
+                "child_stdout_sha256": value.get("child_stdout_sha256"),
             }
     return {
         "schema_version": "daily-recommendation-learning-terminal-receipt.v1",
@@ -413,6 +421,165 @@ def _tail(text: str, limit: int = 6000) -> str:
     return text[-limit:] if len(text) > limit else text
 
 
+def _snapshot_child_payload_from_stdout(
+    raw_stdout: bytes,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """從本次 snapshot child 的 stdout 取唯一、可驗證的 JSON 收據。"""
+
+    try:
+        stdout_text = raw_stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return None, "snapshot_child_stdout_not_utf8"
+
+    decoder = json.JSONDecoder()
+    position = 0
+    matches: list[dict[str, Any]] = []
+    while position < len(stdout_text):
+        start = stdout_text.find("{", position)
+        if start < 0:
+            break
+        try:
+            value, end = decoder.raw_decode(stdout_text, start)
+        except json.JSONDecodeError:
+            position = start + 1
+            continue
+        position = end
+        if (
+            isinstance(value, dict)
+            and value.get("task") == "baldr-recommendation-snapshot-daily"
+        ):
+            matches.append(value)
+
+    if len(matches) != 1:
+        return None, "snapshot_child_stdout_receipt_missing_or_ambiguous"
+
+    payload = matches[0]
+    if _iso_date(payload.get("decision_date")) is None:
+        return None, "snapshot_child_stdout_decision_date_invalid"
+    status = payload.get("status")
+    if type(status) is not str or not status.strip():
+        return None, "snapshot_child_stdout_status_missing"
+    if status in {"passed", "passed_with_warnings", "warning", "degraded"}:
+        result_id = payload.get("result_id")
+        cohort = payload.get("snapshot_cohort")
+        if type(result_id) is not str or not result_id.strip():
+            return None, "snapshot_child_stdout_result_id_missing"
+        if not isinstance(cohort, Mapping):
+            return None, "snapshot_child_stdout_typed_cohort_missing"
+        if cohort.get("schema_version") != "scheduled-recommendation-snapshot-cohort.v1":
+            return None, "snapshot_child_stdout_cohort_schema_unsupported"
+        if not _is_sha256_text(cohort.get("cohort_hash")):
+            return None, "snapshot_child_stdout_cohort_hash_invalid"
+        eligible_symbols = cohort.get("eligible_symbols")
+        if (
+            not isinstance(eligible_symbols, list)
+            or not eligible_symbols
+            or any(type(symbol) is not str or not symbol.strip() for symbol in eligible_symbols)
+        ):
+            return None, "snapshot_child_stdout_cohort_symbols_invalid"
+    return payload, None
+
+
+def _write_snapshot_invocation_stdout_artifact(
+    *,
+    path: Path,
+    allowed_runs_root: Path,
+    raw_stdout: bytes,
+) -> tuple[str, int, str]:
+    """將單次 child stdout 以限定路徑、大小與 create-only 語意保存。"""
+
+    if type(raw_stdout) is not bytes:
+        raise TypeError("snapshot child stdout 必須是原始 bytes")
+    if len(raw_stdout) > _MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES:
+        raise ValueError("snapshot child stdout 超過 invocation artifact 大小上限")
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
+
+    def directory_identity(candidate: Path) -> tuple[int, int, int, int]:
+        info = candidate.lstat()
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or getattr(info, "st_file_attributes", 0) & reparse_flag
+        ):
+            raise ValueError("snapshot stdout run/root component 必須是一般目錄")
+        return (
+            int(info.st_dev),
+            int(info.st_ino),
+            int(info.st_mode),
+            int(getattr(info, "st_file_attributes", 0)),
+        )
+
+    def file_identity(candidate: Path) -> tuple[int, int, int, int, int, int, int]:
+        info = candidate.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or getattr(info, "st_file_attributes", 0) & reparse_flag
+        ):
+            raise ValueError("snapshot stdout artifact 必須是一般檔案")
+        return (
+            int(info.st_dev),
+            int(info.st_ino),
+            int(info.st_mode),
+            int(info.st_size),
+            int(info.st_mtime_ns),
+            int(info.st_ctime_ns),
+            int(getattr(info, "st_file_attributes", 0)),
+        )
+
+    try:
+        canonical_runs_root = Path(allowed_runs_root).resolve(strict=True)
+        canonical_parent = path.parent.resolve(strict=True)
+        canonical_candidate = path.resolve(strict=False)
+    except OSError as exc:
+        raise ValueError("snapshot child stdout invocation root 無法驗證") from exc
+    if (
+        canonical_parent.parent != canonical_runs_root
+        or path.name != _SNAPSHOT_INVOCATION_STDOUT_NAME
+        or Path(os.path.abspath(path)) != canonical_candidate
+    ):
+        raise ValueError("snapshot child stdout artifact 超出本次 run root")
+
+    try:
+        root_before = directory_identity(canonical_runs_root)
+        parent_before = directory_identity(canonical_parent)
+        with path.open("xb") as stream:
+            stream.write(raw_stdout)
+            stream.flush()
+            os.fsync(stream.fileno())
+            opened = os.fstat(stream.fileno())
+        file_before = file_identity(canonical_candidate)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (opened.st_dev, opened.st_ino, opened.st_size)
+            != (file_before[0], file_before[1], file_before[3])
+            or file_before[3] != len(raw_stdout)
+        ):
+            raise ValueError("snapshot child stdout artifact write handle/path identity 不一致")
+        readback = _read_regular_file_no_follow(
+            canonical_candidate,
+            canonical_runs_root,
+            max_bytes=_MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES,
+        )
+        file_after = file_identity(canonical_candidate)
+        parent_after = directory_identity(canonical_parent)
+        root_after = directory_identity(canonical_runs_root)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ValueError("snapshot child stdout artifact create-only write/readback 失敗") from exc
+    if (
+        readback != raw_stdout
+        or file_after != file_before
+        or parent_after != parent_before
+        or root_after != root_before
+    ):
+        raise ValueError("snapshot child stdout artifact bytes 在 readback 時不一致")
+    return (
+        str(canonical_candidate),
+        len(readback),
+        "sha256:" + hashlib.sha256(readback).hexdigest(),
+    )
+
+
 def _run_child(
     *,
     name: str,
@@ -420,6 +587,8 @@ def _run_child(
     arguments: Sequence[str],
     environment: Mapping[str, str],
     log_handle: Any,
+    snapshot_stdout_artifact_path: Path | None = None,
+    snapshot_stdout_runs_root: Path | None = None,
     timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
     command = [sys.executable, str(ROOT / script), *arguments]
@@ -430,9 +599,7 @@ def _run_child(
             cwd=str(ROOT),
             env=dict(environment),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=False,
             check=False,
             timeout=timeout_seconds,
         )
@@ -462,9 +629,47 @@ def _run_child(
             "timeout_seconds": timeout_seconds,
             "recoverable": True,
         }
-    combined = ((completed.stdout or "") + (completed.stderr or "")).strip()
+    stdout_value = completed.stdout or b""
+    stderr_value = completed.stderr or b""
+    stdout_bytes = (
+        stdout_value.encode("utf-8") if isinstance(stdout_value, str) else stdout_value
+    )
+    stderr_bytes = (
+        stderr_value.encode("utf-8") if isinstance(stderr_value, str) else stderr_value
+    )
+    stdout_text = stdout_bytes.decode("utf-8", errors="replace")
+    stderr_text = stderr_bytes.decode("utf-8", errors="replace")
+    combined = (stdout_text + stderr_text).strip()
     log_handle.write(f"\n===== {name} =====\n{combined}\n")
-    child_status = _read_json(status_file)
+    snapshot_receipt_error: str | None = None
+    child_stdout_sha256: str | None = None
+    child_stdout_artifact_path: str | None = None
+    child_stdout_artifact_size: int | None = None
+    child_status_source = "latest_status"
+    if name == "recommendation_snapshot":
+        child_status, snapshot_receipt_error = _snapshot_child_payload_from_stdout(
+            stdout_bytes
+        )
+        if snapshot_stdout_artifact_path is None or snapshot_stdout_runs_root is None:
+            snapshot_receipt_error = "snapshot_child_stdout_artifact_path_missing"
+        else:
+            try:
+                (
+                    child_stdout_artifact_path,
+                    child_stdout_artifact_size,
+                    child_stdout_sha256,
+                ) = _write_snapshot_invocation_stdout_artifact(
+                    path=snapshot_stdout_artifact_path,
+                    allowed_runs_root=snapshot_stdout_runs_root,
+                    raw_stdout=stdout_bytes,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                snapshot_receipt_error = (
+                    f"snapshot_child_stdout_artifact_invalid:{type(exc).__name__}"
+                )
+        child_status_source = "invocation_stdout_json"
+    else:
+        child_status = _read_json(status_file)
     child_status_name = (
         str(child_status.get("status") or "")
         if isinstance(child_status, Mapping)
@@ -499,8 +704,15 @@ def _run_child(
                     or child_status.get("cli_recoverable") is True
                 )
     child_blockers = list(child_status.get("blockers") or []) if isinstance(child_status, Mapping) else []
+    if snapshot_receipt_error is not None:
+        child_blockers.append(snapshot_receipt_error)
     child_blockers.extend(nested_blockers)
-    if nested_blockers or completed.returncode != 0 or child_status_name in failed_child_statuses:
+    if (
+        nested_blockers
+        or snapshot_receipt_error is not None
+        or completed.returncode != 0
+        or child_status_name in failed_child_statuses
+    ):
         step_status = "failed"
     elif child_status_name in warning_child_statuses:
         step_status = child_status_name
@@ -520,6 +732,11 @@ def _run_child(
         "status": step_status,
         "status_path": str(status_file),
         "child_status": child_status,
+        "child_status_source": child_status_source,
+        "child_stdout_artifact_path": child_stdout_artifact_path,
+        "child_stdout_artifact_size": child_stdout_artifact_size,
+        "child_stdout_sha256": child_stdout_sha256,
+        "child_receipt_error": snapshot_receipt_error,
         "child_warnings": list(child_status.get("warnings") or [])
         if isinstance(child_status, Mapping)
         else [],
@@ -595,6 +812,15 @@ def _apply_coverage(payload: dict[str, Any], coverage: Mapping[str, Any] | None)
     payload["excluded_symbols"] = list(coverage.get("excluded_symbols") or [])
 
 
+def _is_sha256_text(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(char in "0123456789abcdef" for char in value[7:])
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.child_timeout_seconds <= 0 or args.pipeline_timeout_seconds <= 0:
@@ -613,6 +839,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     terminal_receipt_path = run_root / "runs" / run_id / "receipt.json"
     run_root.mkdir(parents=True, exist_ok=True)
+    snapshot_stdout_runs_root = run_root / "runs"
+    snapshot_stdout_runs_root.mkdir(parents=True, exist_ok=True)
+    invocation_dir = terminal_receipt_path.parent
+    invocation_dir.mkdir(parents=True, exist_ok=False)
+    snapshot_stdout_artifact_path = (
+        invocation_dir / _SNAPSHOT_INVOCATION_STDOUT_NAME
+    )
 
     environment = os.environ.copy()
     environment.update(
@@ -870,9 +1103,14 @@ def main(argv: list[str] | None = None) -> int:
                 ],
                 environment=environment,
                 log_handle=log_handle,
+                snapshot_stdout_artifact_path=snapshot_stdout_artifact_path,
+                snapshot_stdout_runs_root=snapshot_stdout_runs_root,
             )
             payload["steps"]["recommendation_snapshot"] = snapshot_step
-            snapshot_status = _read_json(_status_path(output_root, "recommendation_snapshot"))
+            # 僅使用這次 child invocation 回傳的 status；不從可被另一個
+            # 同日排程覆寫的 latest_status.json 重新挑選 snapshot identity。
+            snapshot_status = snapshot_step.get("child_status")
+            snapshot_status = snapshot_status if isinstance(snapshot_status, Mapping) else None
             coverage = _snapshot_coverage(snapshot_status)
             _apply_coverage(payload, coverage)
             snapshot_warnings = list(snapshot_status.get("warnings") or []) if isinstance(snapshot_status, Mapping) else []
@@ -881,10 +1119,40 @@ def main(argv: list[str] | None = None) -> int:
             if coverage and coverage.get("missing_symbols"):
                 payload["warnings"].append("recommendation_snapshot_missing_symbols")
             acceptable_snapshot_statuses = {"passed", "passed_with_warnings", "warning", "degraded"}
+            snapshot_result_id = (
+                snapshot_status.get("result_id")
+                if isinstance(snapshot_status, Mapping)
+                else None
+            )
+            snapshot_cohort_hash = (
+                coverage.get("cohort_hash")
+                if isinstance(coverage, Mapping)
+                else None
+            )
+            snapshot_invocation_output_sha256 = snapshot_step.get(
+                "child_stdout_sha256"
+            )
+            snapshot_invocation_output_path = snapshot_step.get(
+                "child_stdout_artifact_path"
+            )
+            snapshot_binding_ready = (
+                type(snapshot_result_id) is str
+                and bool(snapshot_result_id.strip())
+                and _is_sha256_text(snapshot_cohort_hash)
+                and _is_sha256_text(snapshot_invocation_output_sha256)
+                and type(snapshot_invocation_output_path) is str
+                and bool(snapshot_invocation_output_path.strip())
+                and (
+                    snapshot_status.get("decision_date") == decision_date
+                    if isinstance(snapshot_status, Mapping)
+                    else False
+                )
+            )
             if (
                 snapshot_step.get("status") not in acceptable_snapshot_statuses
                 or not isinstance(snapshot_status, Mapping)
                 or snapshot_status.get("status") not in acceptable_snapshot_statuses
+                or (not args.symbols and not snapshot_binding_ready)
             ):
                 payload["blockers"].append("same_day_recommendation_snapshot_unavailable")
                 payload["steps"]["recommendation_learning"] = {
@@ -925,6 +1193,18 @@ def main(argv: list[str] | None = None) -> int:
                         )
                 if args.symbols:
                     learning_arguments.extend(["--symbols", str(args.symbols)])
+                else:
+                    learning_arguments.extend(
+                        [
+                            "--snapshot-output-root", str(output_root),
+                            "--snapshot-result-id", str(snapshot_result_id),
+                            "--snapshot-cohort-hash", str(snapshot_cohort_hash),
+                            "--snapshot-invocation-output-sha256",
+                            str(snapshot_invocation_output_sha256),
+                            "--snapshot-invocation-output-path",
+                            str(snapshot_invocation_output_path),
+                        ]
+                    )
                 stage = "recommendation_learning"
                 learning_step = run_child_bounded(
                     name="recommendation_learning",

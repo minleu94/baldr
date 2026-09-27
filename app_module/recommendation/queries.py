@@ -232,7 +232,12 @@ def _windows_close_handle(handle: int) -> None:
         raise OSError(error, "CloseHandle failed for legacy read root")
 
 
-def _windows_read_regular_file_no_follow(path: Path, root: Path) -> bytes:
+def _windows_read_regular_file_no_follow(
+    path: Path,
+    root: Path,
+    *,
+    max_bytes: int | None = None,
+) -> bytes:
     """以固定且持有的 runs root/parents/file handles 讀取一般檔案。"""
 
     absolute_root = Path(os.path.abspath(root))
@@ -272,7 +277,12 @@ def _windows_read_regular_file_no_follow(path: Path, root: Path) -> bytes:
         descriptor = _windows_open_nofollow_handle(target, directory=False)
         with os.fdopen(descriptor, "rb") as handle:
             descriptor = None
-            return handle.read()
+            payload, _read_key = _read_stable_regular_file(
+                handle,
+                "legacy file",
+                max_bytes=max_bytes,
+            )
+            return payload
     except ExecutionArtifactIntegrityError:
         raise
     except Exception as exc:
@@ -339,7 +349,12 @@ def _posix_open_directory_chain_no_follow(root: Path) -> list[int]:
         raise
 
 
-def _posix_read_regular_file_no_follow(path: Path, root: Path) -> bytes:
+def _posix_read_regular_file_no_follow(
+    path: Path,
+    root: Path,
+    *,
+    max_bytes: int | None = None,
+) -> bytes:
     """從檔案系統根目錄逐層錨定 runs root 與其目標。"""
 
     if not path.is_absolute() or path.anchor != root.anchor:
@@ -383,7 +398,12 @@ def _posix_read_regular_file_no_follow(path: Path, root: Path) -> bytes:
             raise ExecutionArtifactIntegrityError("legacy payload 必須是一般檔案")
         with os.fdopen(descriptor, "rb") as handle:
             descriptor = None
-            return handle.read()
+            payload, _read_key = _read_stable_regular_file(
+                handle,
+                "legacy file",
+                max_bytes=max_bytes,
+            )
+            return payload
     except ExecutionArtifactIntegrityError:
         raise
     except Exception as exc:
@@ -397,10 +417,15 @@ def _posix_read_regular_file_no_follow(path: Path, root: Path) -> bytes:
             os.close(directory_fd)
 
 
-def _read_regular_file_no_follow(path: Path, root: Path) -> bytes:
+def _read_regular_file_no_follow(
+    path: Path,
+    root: Path,
+    *,
+    max_bytes: int | None = None,
+) -> bytes:
     if os.name == "nt":
-        return _windows_read_regular_file_no_follow(path, root)
-    return _posix_read_regular_file_no_follow(path, root)
+        return _windows_read_regular_file_no_follow(path, root, max_bytes=max_bytes)
+    return _posix_read_regular_file_no_follow(path, root, max_bytes=max_bytes)
 
 
 def _stat_stability_key(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
@@ -414,15 +439,31 @@ def _stat_stability_key(info: os.stat_result) -> tuple[int, int, int, int, int, 
     )
 
 
-def _read_stable_regular_file(handle: IO[bytes], label: str) -> tuple[bytes, tuple[int, int, int, int, int, int]]:
+def _read_stable_regular_file(
+    handle: IO[bytes],
+    label: str,
+    *,
+    max_bytes: int | None = None,
+) -> tuple[bytes, tuple[int, int, int, int, int, int]]:
     before = os.fstat(handle.fileno())
     if not stat.S_ISREG(before.st_mode):
         raise ExecutionArtifactIntegrityError(f"{label} 必須是一般檔案")
-    payload = handle.read()
+    if max_bytes is not None:
+        if type(max_bytes) is not int or max_bytes < 0:
+            raise ValueError("max_bytes 必須是非負整數或 None")
+        if before.st_size > max_bytes:
+            raise ExecutionArtifactIntegrityError(f"{label} 超過讀取大小上限")
+        payload = handle.read(max_bytes + 1)
+    else:
+        payload = handle.read()
     after = os.fstat(handle.fileno())
     before_key = _stat_stability_key(before)
     after_key = _stat_stability_key(after)
-    if before_key != after_key or len(payload) != before.st_size:
+    if (
+        before_key != after_key
+        or len(payload) != before.st_size
+        or (max_bytes is not None and len(payload) > max_bytes)
+    ):
         raise ExecutionArtifactIntegrityError(f"{label} 在單次讀取期間 bytes/stat 改變")
     return payload, after_key
 

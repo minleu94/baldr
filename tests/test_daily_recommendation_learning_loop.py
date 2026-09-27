@@ -969,28 +969,57 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
     assert "同一 decision date" in first_receipt["next_step"]
     assert not first_receipt_path.parents[1].joinpath("run_receipt.json").exists()
 
-    snapshot_path = (
-        scheduled_output_root
-        / "recommendation"
-        / "runs"
-        / "scheduled_rec_20260914_051004.json"
-    )
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_path.write_text(
-        json.dumps(
+    cohort_hash = "sha256:" + "a" * 64
+    snapshot_cohort = {
+        "requested_symbols": ["1101"],
+        "eligible_symbols": ["1101"],
+        "missing_symbols": [],
+        "degraded_symbols": [],
+        "excluded_symbols": [],
+        "cohort_hash": cohort_hash,
+    }
+
+    def resolve_same_run_snapshot(**kwargs):
+        assert kwargs["output_root"] == scheduled_output_root.resolve()
+        assert kwargs["decision_date"] == decision_day
+        assert kwargs["result_id"] == "snapshot-2026-09-14"
+        assert kwargs["expected_cohort_hash"] == cohort_hash
+        assert kwargs["expected_invocation_output_sha256"] == "sha256:" + "d" * 64
+        return (
+            ("1101",),
+            snapshot_cohort,
             {
-                "config": {"scheduled_snapshot": True, "decision_date": decision_day.isoformat()},
-                "recommendations": [{"證券代號": "1101"}],
+                "result_id": "snapshot-2026-09-14",
+                "raw_artifact_sha256": "sha256:" + "b" * 64,
+                "payload_hash": "sha256:" + "c" * 64,
+                "cohort_hash": cohort_hash,
+                "invocation_output_sha256": "sha256:" + "d" * 64,
+                "decision_date": decision_day.isoformat(),
+                "data_as_of_date": "2026-09-13",
+                "available_at": "2026-09-14T08:59:00+08:00",
             },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        daily_learning,
+        "_resolve_same_run_snapshot_input",
+        resolve_same_run_snapshot,
     )
 
     # The replay/training attempt can complete, but the same run's live
     # capture is blocked by the missing prospective source contract. That is
     # a recoverable dependency failure, not normal natural-maturity pending.
-    assert daily_learning.main(common_args) == 2
+    assert daily_learning.main(
+        common_args
+        + [
+            "--snapshot-result-id",
+            "snapshot-2026-09-14",
+            "--snapshot-cohort-hash",
+            cohort_hash,
+            "--snapshot-invocation-output-sha256",
+            "sha256:" + "d" * 64,
+        ]
+    ) == 2
     second_payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert second_payload["error"].startswith("live_capture_blocked:")
     assert second_payload["recoverable"] is True
@@ -1022,7 +1051,7 @@ def test_preflight_failure_classifies_transient_and_integrity_faults() -> None:
     assert _preflight_requires_emergency(ValueError("required table is missing: daily_prices")) is True
 
 
-def test_symbol_resolution_accepts_native_scheduled_snapshot_identifier(tmp_path: Path) -> None:
+def test_symbol_resolution_does_not_guess_legacy_latest_snapshot(tmp_path: Path) -> None:
     from scripts.scheduled.run_daily_recommendation_learning import _resolve_symbols
 
     runs_root = tmp_path / "recommendation" / "runs"
@@ -1044,14 +1073,12 @@ def test_symbol_resolution_accepts_native_scheduled_snapshot_identifier(tmp_path
         encoding="utf-8",
     )
 
-    symbols, source = _resolve_symbols(
-        output_root=tmp_path,
-        explicit_symbols=None,
-        decision_date=date(2026, 9, 13),
-    )
-
-    assert symbols == ("1528", "1569")
-    assert source == "scheduled_recommendation_snapshot:scheduled_rec_20260913_051004.json"
+    with pytest.raises(ValueError, match="same-run.*required"):
+        _resolve_symbols(
+            output_root=tmp_path,
+            explicit_symbols=None,
+            decision_date=date(2026, 9, 13),
+        )
 
 
 def test_scheduled_experiment_scope_is_stable_while_daily_capture_scope_tracks_cohort() -> None:
@@ -1764,6 +1791,9 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     import scripts.scheduled.run_daily_recommendation_learning as daily_learning
     import ml_module.recommendation_calibration_evidence as evidence_module
     import ml_module.recommendation_historical_replay as replay_module
+    from data_module.ml_historical_snapshot_provider import (
+        MLHistoricalSnapshotProvider as _ReadLeaseProvider,
+    )
     from data_module.recommendation_calibration_source_contract import (
         _hash_payload,
         write_source_contract,
@@ -1948,9 +1978,11 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     source_connection.commit()
     source_connection.close()
 
-    class _Provider:
+    class _Provider(_ReadLeaseProvider):
         def __init__(self, database_path: Path) -> None:
-            self.database_path = Path(database_path)
+            # 沿用正式唯讀 provider 的 read lease；只替換此 authority test
+            # 需要的資料查詢方法，避免測試替身繞過 observation boundary。
+            super().__init__(database_path)
             self.forward_calls: dict[tuple[str, str], int] = {}
 
         def list_trading_dates(self, *, start_date: str, end_date: str, symbols: tuple[str, ...]):

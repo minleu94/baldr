@@ -19,8 +19,9 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import sys
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +35,20 @@ from app_module.recommendation_learning_paths import (  # noqa: E402
     RecommendationLearningPathError,
     resolve_recommendation_learning_output_root,
 )
+from app_module.saved_recommendation_queries import (  # noqa: E402
+    build_recommendation_execution_queries,
+    execution_result_config,
+)
+from app_module.recommendation.contracts import (  # noqa: E402
+    ExecutionStatus,
+    SUPPORTED_EXECUTION_SCHEMA_REVISIONS,
+    SnapshotCohort,
+    SnapshotCohortCoverage,
+    SnapshotCohortCoverageStatus,
+    schema_version as RECOMMENDATION_EXECUTION_SCHEMA_VERSION,
+)
+from app_module.recommendation.persistence import ExecutionPersistenceError  # noqa: E402
+from app_module.recommendation.queries import _read_regular_file_no_follow  # noqa: E402
 from data_module.config import TWStockConfig  # noqa: E402
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider  # noqa: E402
 from data_module.natural_maturity_session_resolver import (  # noqa: E402
@@ -84,6 +99,8 @@ from ml_module.model_artifact_manifest import ModelArtifactManifest  # noqa: E40
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
+_MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES = 8 * 1024 * 1024
+_SNAPSHOT_INVOCATION_STDOUT_NAME = "recommendation_snapshot.stdout.bin"
 
 _HISTORICAL_REPLAY_SOURCE_BLOCKERS = frozenset(
     {
@@ -410,6 +427,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--snapshot-result-id",
+        default=None,
+        help="本次 scheduled snapshot child 回傳的 opaque result id；未指定 symbols 時必填。",
+    )
+    parser.add_argument(
+        "--snapshot-cohort-hash",
+        default=None,
+        help="本次 snapshot child 回傳的 snapshot_cohort SHA-256 binding；未指定 symbols 時必填。",
+    )
+    parser.add_argument(
+        "--snapshot-invocation-output-sha256",
+        default=None,
+        help="本次 snapshot child 原始 stdout 收據的 SHA-256；未指定 symbols 時必填。",
+    )
+    parser.add_argument(
+        "--snapshot-invocation-output-path",
+        default=None,
+        help="本次 pipeline run create-only 保存的 snapshot child 原始 stdout bytes 路徑。",
+    )
+    parser.add_argument(
         "--source-artifact-root",
         type=Path,
         default=None,
@@ -422,8 +459,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--symbols",
         default=None,
         help=(
-            "Comma-separated explicit symbols. If omitted, reuse the same-day "
-            "scheduled recommendation snapshot; no universe discovery is performed."
+            "Comma-separated explicit symbols for a controlled run. If omitted, "
+            "the caller must provide this invocation's snapshot result id and cohort hash."
         ),
     )
     parser.add_argument("--history-start-date", default="2014-01-01")
@@ -1337,6 +1374,7 @@ def main(argv: list[str] | None = None) -> int:
         args.source_artifact_root or config.output_root
     ).expanduser().resolve()
     snapshot_cohort: dict[str, Any] | None = None
+    snapshot_source_binding: dict[str, Any] | None = None
     run_scope: str | None = None
     capture_scope: str | None = None
     experiment_scope: str | None = None
@@ -1414,15 +1452,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     try:
-        symbols, symbol_source = _resolve_symbols(
-            output_root=scheduled_snapshot_output_root,
-            explicit_symbols=args.symbols,
-            decision_date=decision_day,
-        )
         if args.symbols is None:
-            snapshot_cohort = _load_snapshot_cohort(
-                output_root=scheduled_snapshot_output_root,
-                decision_date=decision_day,
+            symbols, snapshot_cohort, snapshot_source_binding = (
+                _resolve_same_run_snapshot_input(
+                    output_root=scheduled_snapshot_output_root,
+                    decision_date=decision_day,
+                    result_id=args.snapshot_result_id,
+                    expected_cohort_hash=args.snapshot_cohort_hash,
+                    expected_invocation_output_sha256=(
+                        args.snapshot_invocation_output_sha256
+                    ),
+                    invocation_output_path=args.snapshot_invocation_output_path,
+                )
+            )
+            symbol_source = (
+                "scheduled_recommendation_snapshot:"
+                f"{snapshot_source_binding['result_id']}:eligible"
             )
             effective_policy = RecommendationPromotionPolicy()
             experiment_scope = _scheduled_experiment_scope(
@@ -1445,6 +1490,11 @@ def main(argv: list[str] | None = None) -> int:
                 cost_scenario=cost_scenario,
             )
         else:
+            symbols, symbol_source = _resolve_symbols(
+                output_root=scheduled_snapshot_output_root,
+                explicit_symbols=args.symbols,
+                decision_date=decision_day,
+            )
             experiment_scope = _explicit_experiment_scope(
                 symbols,
                 fixed_round_trip_cost_bp=effective_fixed_cost,
@@ -1453,7 +1503,7 @@ def main(argv: list[str] | None = None) -> int:
                 feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
             )
             capture_scope = _capture_scope_token(None, symbols)
-    except ValueError as exc:
+    except (ValueError, ExecutionPersistenceError) as exc:
         runner = _build_runner(
             learning_output_root,
             effective_fixed_cost,
@@ -2136,6 +2186,7 @@ def main(argv: list[str] | None = None) -> int:
         cost_scenario=cost_scenario,
         natural_maturity_context=natural_maturity_context,
     )
+    payload["snapshot_source_binding"] = snapshot_source_binding
     payload["natural_evidence_supplied"] = automatic_evidence is not None
     payload["ignored_caller_inputs"] = ignored_inputs
     payload["training_sample_count"] = len(training_samples)
@@ -3329,103 +3380,333 @@ def _resolve_symbols(
         if symbols:
             return symbols, "caller_explicit_symbols"
         raise ValueError("--symbols must contain at least one explicit symbol")
-    snapshot = _find_same_day_snapshot(
-        output_root=output_root,
-        decision_date=decision_date,
-    )
-    if snapshot is None:
-        raise ValueError("--symbols missing and scheduled recommendation snapshot directory is unavailable")
-    path, payload = snapshot
-    config = payload.get("config")
-    config = config if isinstance(config, Mapping) else {}
-    snapshot_cohort = config.get("snapshot_cohort")
-    if isinstance(snapshot_cohort, Mapping):
-        cohort_symbols = snapshot_cohort.get("eligible_symbols")
-        symbols = tuple(
-            sorted(
-                {
-                    str(item).strip()
-                    for item in cohort_symbols
-                    if str(item).strip()
-                }
-            )
-            if isinstance(cohort_symbols, (list, tuple, set))
-            else ()
-        )
-        if symbols:
-            return symbols, f"scheduled_recommendation_snapshot:{path.name}:eligible"
-
-    recommendations = payload.get("recommendations")
-    if isinstance(recommendations, list):
-        symbols = tuple(
-            sorted(
-                {
-                    str(
-                        item.get("stock_code")
-                        or item.get("symbol")
-                        or item.get("code")
-                        or item.get("證券代號")
-                    )
-                    for item in recommendations
-                    if isinstance(item, Mapping)
-                    and str(
-                        item.get("stock_code")
-                        or item.get("symbol")
-                        or item.get("code")
-                        or item.get("證券代號")
-                        or ""
-                    ).strip()
-                }
-            )
-        )
-        if symbols:
-            return symbols, f"scheduled_recommendation_snapshot:{path.name}"
     raise ValueError(
-        "--symbols missing and no same-day scheduled recommendation snapshot supplied an explicit symbol cohort"
+        "--symbols missing; same-run --snapshot-result-id and --snapshot-cohort-hash are required"
     )
 
 
-def _find_same_day_snapshot(
+def _read_snapshot_invocation_stdout(
     *,
     output_root: Path,
-    decision_date: date,
-) -> tuple[Path, Mapping[str, Any]] | None:
-    runs_root = Path(output_root).resolve() / "recommendation" / "runs"
-    if not runs_root.is_dir():
-        return None
-    for path in sorted(runs_root.glob("*.json"), reverse=True):
+    invocation_output_path: str | None,
+    expected_sha256: str | None,
+) -> tuple[bytes, dict[str, Any], str]:
+    """只讀驗證 pipeline 本次 create-only stdout artifact 與其 invocation scope。"""
+
+    if type(invocation_output_path) is not str or not invocation_output_path.strip():
+        raise ValueError("本次 scheduled snapshot invocation stdout 路徑缺失")
+    if not _is_sha256_text(expected_sha256):
+        raise ValueError("本次 scheduled snapshot invocation stdout SHA-256 缺失或格式錯誤")
+
+    snapshot_root = Path(output_root).resolve()
+    allowed_runs_root = (
+        snapshot_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "runs"
+    )
+    supplied_path = Path(invocation_output_path)
+    if not supplied_path.is_absolute():
+        raise ValueError("本次 scheduled snapshot invocation stdout 路徑必須是絕對路徑")
+    try:
+        canonical_runs_root = allowed_runs_root.resolve(strict=True)
+        canonical_path = supplied_path.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("本次 scheduled snapshot invocation stdout artifact 不存在") from exc
+    lexical_path = Path(os.path.abspath(supplied_path))
+    if lexical_path != canonical_path:
+        raise ValueError("本次 scheduled snapshot invocation stdout 不可經過 symlink/reparse path")
+    if (
+        canonical_path.name != _SNAPSHOT_INVOCATION_STDOUT_NAME
+        or canonical_path.parent.parent != canonical_runs_root
+    ):
+        raise ValueError("本次 scheduled snapshot invocation stdout 超出允許的 run root")
+
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
+
+    def directory_identity(path: Path) -> tuple[int, int, int, int]:
+        info = path.lstat()
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or getattr(info, "st_file_attributes", 0) & reparse_flag
+        ):
+            raise ValueError("本次 stdout run/root component 必須是一般目錄")
+        return (
+            int(info.st_dev),
+            int(info.st_ino),
+            int(info.st_mode),
+            int(getattr(info, "st_file_attributes", 0)),
+        )
+
+    def file_identity(path: Path) -> tuple[int, int, int, int, int, int, int]:
+        info = path.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or getattr(info, "st_file_attributes", 0) & reparse_flag
+        ):
+            raise ValueError("本次 scheduled snapshot invocation stdout 必須是一般檔案")
+        if info.st_size < 0 or info.st_size > _MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES:
+            raise ValueError("本次 scheduled snapshot invocation stdout 超過大小上限")
+        return (
+            int(info.st_dev),
+            int(info.st_ino),
+            int(info.st_mode),
+            int(info.st_size),
+            int(info.st_mtime_ns),
+            int(info.st_ctime_ns),
+            int(getattr(info, "st_file_attributes", 0)),
+        )
+
+    try:
+        root_before = directory_identity(canonical_runs_root)
+        run_dir_before = directory_identity(canonical_path.parent)
+        file_before = file_identity(canonical_path)
+        raw_stdout = _read_regular_file_no_follow(
+            canonical_path,
+            canonical_runs_root,
+            max_bytes=_MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES,
+        )
+        file_after = file_identity(canonical_path)
+        run_dir_after = directory_identity(canonical_path.parent)
+        root_after = directory_identity(canonical_runs_root)
+    except ExecutionPersistenceError as exc:
+        raise ValueError("本次 scheduled snapshot invocation stdout no-follow read 失敗") from exc
+    except OSError as exc:
+        raise ValueError("本次 scheduled snapshot invocation stdout artifact 讀取失敗") from exc
+    if (
+        len(raw_stdout) != file_before[3]
+        or file_after != file_before
+        or run_dir_after != run_dir_before
+        or root_after != root_before
+    ):
+        raise ValueError("本次 scheduled snapshot invocation stdout/root 在讀取期間改變")
+    actual_sha256 = "sha256:" + hashlib.sha256(raw_stdout).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise ValueError("本次 scheduled snapshot invocation stdout SHA-256 不符")
+
+    try:
+        stdout_text = raw_stdout.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("本次 scheduled snapshot invocation stdout 不是 UTF-8") from exc
+    decoder = json.JSONDecoder()
+    position = 0
+    matches: list[dict[str, Any]] = []
+    while position < len(stdout_text):
+        start = stdout_text.find("{", position)
+        if start < 0:
+            break
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
+            value, end = decoder.raw_decode(stdout_text, start)
+        except json.JSONDecodeError:
+            position = start + 1
             continue
-        if not isinstance(payload, Mapping):
-            continue
-        config = payload.get("config")
-        if not isinstance(config, Mapping) or config.get("scheduled_snapshot") is not True:
-            continue
-        snapshot_date = str(config.get("decision_date") or payload.get("created_at") or "")[:10]
-        if snapshot_date == decision_date.isoformat():
-            return path, payload
-    return None
+        position = end
+        if (
+            isinstance(value, dict)
+            and value.get("task") == "baldr-recommendation-snapshot-daily"
+        ):
+            matches.append(value)
+    if len(matches) != 1:
+        raise ValueError("本次 scheduled snapshot invocation stdout 收據缺失或不唯一")
+    return raw_stdout, matches[0], actual_sha256
 
 
-def _load_snapshot_cohort(
+def _resolve_same_run_snapshot_input(
     *,
     output_root: Path,
     decision_date: date,
-) -> dict[str, Any] | None:
-    snapshot = _find_same_day_snapshot(
-        output_root=output_root,
-        decision_date=decision_date,
+    result_id: str | None,
+    expected_cohort_hash: str | None,
+    expected_invocation_output_sha256: str | None,
+    invocation_output_path: str | None,
+) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
+    """只讀解析 caller 明示的本次 snapshot identity，不以 latest 或 glob 猜選。"""
+
+    if type(result_id) is not str or not result_id.strip():
+        raise ValueError("本次 scheduled snapshot result_id 缺失")
+    if (
+        type(expected_cohort_hash) is not str
+        or len(expected_cohort_hash) != 71
+        or not expected_cohort_hash.startswith("sha256:")
+        or any(char not in "0123456789abcdef" for char in expected_cohort_hash[7:])
+    ):
+        raise ValueError("本次 scheduled snapshot cohort hash 格式錯誤")
+    _raw_stdout, invocation_payload, actual_invocation_sha256 = (
+        _read_snapshot_invocation_stdout(
+            output_root=output_root,
+            invocation_output_path=invocation_output_path,
+            expected_sha256=expected_invocation_output_sha256,
+        )
     )
-    if snapshot is None:
-        return None
-    _, payload = snapshot
-    config = payload.get("config")
-    if not isinstance(config, Mapping):
-        return None
-    cohort = config.get("snapshot_cohort")
-    return dict(cohort) if isinstance(cohort, Mapping) else None
+    invocation_cohort = invocation_payload.get("snapshot_cohort")
+    if (
+        invocation_payload.get("result_id") != result_id
+        or invocation_payload.get("decision_date") != decision_date.isoformat()
+        or not isinstance(invocation_cohort, Mapping)
+        or invocation_cohort.get("cohort_hash") != expected_cohort_hash
+    ):
+        raise ValueError("本次 snapshot stdout result/date/cohort hash identity 與 CLI binding 不符")
+
+    runs_dir = Path(output_root).resolve() / "recommendation" / "runs"
+    queries = build_recommendation_execution_queries(None, runs_dir=runs_dir)
+    # Query seam 會驗證 canonical index、payload hash 與 artifact 原始 bytes。
+    # 完整性錯誤直接向上傳遞，不 catch 後改讀 legacy file。
+    read_model = queries.get(result_id)
+    if read_model is None:
+        raise ValueError("本次 scheduled snapshot result_id 未讀到保存 artifact")
+    if read_model.result_id != result_id:
+        raise ValueError("saved snapshot result_id 與本次 child identity 不符")
+    if read_model.integrity_basis != "canonical_payload_and_index_verified":
+        raise ValueError("scheduled learning snapshot 必須是 canonical verified artifact")
+    if read_model.execution is None:
+        raise ValueError("legacy saved result 缺少可驗證的 scheduled typed context")
+    if read_model.schema_version != RECOMMENDATION_EXECUTION_SCHEMA_VERSION:
+        raise ValueError("saved snapshot execution schema_version 不支援")
+    if read_model.schema_revision not in SUPPORTED_EXECUTION_SCHEMA_REVISIONS:
+        raise ValueError("saved snapshot execution schema_revision 不支援")
+    if not _is_sha256_text(read_model.raw_artifact_sha256):
+        raise ValueError("saved snapshot raw artifact SHA-256 缺失或格式錯誤")
+    if not _is_sha256_text(read_model.payload_hash):
+        raise ValueError("saved snapshot payload hash 缺失或格式錯誤")
+
+    execution = read_model.execution
+    if execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
+        raise ValueError("saved scheduled snapshot execution 未完成或缺少 decision")
+    context = execution.context
+    result_config_snapshot = context.result_config_snapshot
+    if result_config_snapshot is None:
+        raise ValueError("saved scheduled snapshot 缺少 result config snapshot")
+    result_config = execution_result_config(execution)
+    if result_config.get("scheduled_snapshot") is not True:
+        raise ValueError("saved result config 不是 scheduled snapshot")
+    saved_decision_text = result_config.get("decision_date")
+    if saved_decision_text != decision_date.isoformat():
+        raise ValueError("saved snapshot decision_date 與本次 learning decision date 不符")
+    data_date_text = result_config.get("data_as_of_date")
+    if type(data_date_text) is not str:
+        raise ValueError("saved snapshot result config 缺少 data_as_of_date")
+    try:
+        data_date = date.fromisoformat(data_date_text)
+    except ValueError as exc:
+        raise ValueError("saved snapshot data_as_of_date 格式錯誤") from exc
+    if data_date.isoformat() != data_date_text:
+        raise ValueError("saved snapshot data_as_of_date 必須為 YYYY-MM-DD")
+    if execution.request.as_of_date != data_date or context.as_of_date != data_date:
+        raise ValueError("saved snapshot request/context data date 不一致")
+    if data_date > decision_date:
+        raise ValueError("saved snapshot data date 晚於 decision date")
+
+    decision_at = context.decision_at
+    if (
+        not isinstance(decision_at, datetime)
+        or decision_at.tzinfo is None
+        or decision_at.utcoffset() is None
+        or decision_at.astimezone(TAIPEI).date() != decision_date
+    ):
+        raise ValueError("saved snapshot decision_at 不足以證明本次 decision date")
+    available_at = context.available_at
+    if available_at is not None and (
+        not isinstance(available_at, datetime)
+        or available_at.tzinfo is None
+        or available_at.utcoffset() is None
+    ):
+        raise ValueError("saved snapshot available_at 若存在必須有時區")
+
+    cohort_payload = result_config.get("snapshot_cohort")
+    if not isinstance(cohort_payload, Mapping):
+        raise ValueError("saved result config 缺少 typed snapshot_cohort")
+    cohort = _snapshot_cohort_from_payload(cohort_payload)
+    if context.snapshot_cohort != cohort:
+        raise ValueError("saved result config 與 typed context snapshot_cohort 不一致")
+    if cohort.cohort_hash != expected_cohort_hash:
+        raise ValueError("saved snapshot cohort hash 與本次 child binding 不符")
+    if invocation_cohort != cohort_payload:
+        raise ValueError("本次 snapshot stdout cohort 與 canonical saved artifact 不一致")
+    if not cohort.eligible_symbols:
+        raise ValueError("本次 saved snapshot cohort 沒有 eligible symbols")
+    decision_symbols = tuple(
+        sorted(
+            str(item.stock_code).strip()
+            for item in execution.decision.items
+            if str(item.stock_code).strip()
+        )
+    )
+    if decision_symbols != cohort.eligible_symbols:
+        raise ValueError("saved snapshot decision rows 與 eligible cohort 不一致")
+
+    cohort_value = dict(cohort_payload)
+    binding: dict[str, Any] = {
+        "result_id": result_id,
+        "schema_version": read_model.schema_version,
+        "schema_revision": read_model.schema_revision,
+        "integrity_basis": read_model.integrity_basis,
+        "raw_artifact_sha256": read_model.raw_artifact_sha256,
+        "payload_hash": read_model.payload_hash,
+        "cohort_hash": cohort.cohort_hash,
+        "invocation_output_path": str(Path(cast(str, invocation_output_path)).resolve()),
+        "invocation_output_size": len(_raw_stdout),
+        "invocation_output_sha256": actual_invocation_sha256,
+        "decision_date": decision_date.isoformat(),
+        "data_as_of_date": data_date.isoformat(),
+        "decision_at": decision_at.isoformat(),
+        "available_at": available_at.isoformat() if available_at is not None else None,
+    }
+    return cohort.eligible_symbols, cohort_value, binding
+
+
+def _snapshot_cohort_from_payload(payload: Mapping[str, Any]) -> SnapshotCohort:
+    coverage_payload = payload.get("coverage_by_symbol")
+    if not isinstance(coverage_payload, Mapping):
+        raise ValueError("snapshot_cohort.coverage_by_symbol 必須是 object")
+    coverage: dict[str, SnapshotCohortCoverage] = {}
+    for symbol, row in coverage_payload.items():
+        if type(symbol) is not str or not isinstance(row, Mapping):
+            raise ValueError("snapshot_cohort.coverage_by_symbol 含無效列")
+        reasons = row.get("reason_codes", ())
+        warnings = row.get("warnings", ())
+        if not isinstance(reasons, (list, tuple)) or not isinstance(warnings, (list, tuple)):
+            raise ValueError("snapshot_cohort coverage reason/warning 必須是清單")
+        coverage[symbol] = SnapshotCohortCoverage(
+            status=row.get("status"),
+            quality=row.get("quality"),
+            stage=row.get("stage"),
+            reason_codes=tuple(reasons),
+            warnings=tuple(warnings),
+        )
+    try:
+        return SnapshotCohort(
+            cohort_hash=str(payload["cohort_hash"]),
+            requested_symbols=tuple(payload["requested_symbols"]),
+            eligible_symbols=tuple(payload["eligible_symbols"]),
+            missing_symbols=tuple(payload["missing_symbols"]),
+            degraded_symbols=tuple(payload["degraded_symbols"]),
+            excluded_symbols=tuple(payload["excluded_symbols"]),
+            requested_count=payload["requested_count"],
+            eligible_count=payload["eligible_count"],
+            missing_count=payload["missing_count"],
+            degraded_count=payload["degraded_count"],
+            excluded_count=payload["excluded_count"],
+            coverage_status=SnapshotCohortCoverageStatus(payload["coverage_status"]),
+            coverage_by_symbol=coverage,
+            eligible_definition=payload["eligible_definition"],
+            missing_definition=payload["missing_definition"],
+            degraded_definition=payload["degraded_definition"],
+            excluded_definition=payload["excluded_definition"],
+            schema_version=payload["schema_version"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("saved snapshot cohort contract 不完整或無效") from exc
+
+
+def _is_sha256_text(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(char in "0123456789abcdef" for char in value[7:])
+    )
 
 
 def _scheduled_run_scope(
@@ -4560,6 +4841,7 @@ def _update_latest_status(path_text: str, cli_payload: Mapping[str, Any]) -> Non
         "symbols",
         "symbol_source",
         "symbol_coverage",
+        "snapshot_source_binding",
         "run_scope",
         "capture_scope",
         "experiment_scope",

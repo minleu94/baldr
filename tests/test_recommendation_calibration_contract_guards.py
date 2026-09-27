@@ -274,18 +274,58 @@ def _fake_pipeline_child(calls: list[dict[str, Any]]):
             "blockers": [],
         }
         if name == "recommendation_snapshot":
+            child_status["result_id"] = "synthetic-snapshot-result"
+            child_status["decision_date"] = pipeline.datetime.now(pipeline.TAIPEI).date().isoformat()
             child_status["snapshot_cohort"] = {
+                "schema_version": "scheduled-recommendation-snapshot-cohort.v1",
                 "requested_symbols": ["1101"],
                 "eligible_symbols": ["1101"],
                 "missing_symbols": [],
                 "degraded_symbols": [],
                 "excluded_symbols": [],
+                "cohort_hash": "sha256:" + "a" * 64,
             }
         status_path.parent.mkdir(parents=True, exist_ok=True)
         status_path.write_text(
             json.dumps(child_status, ensure_ascii=False),
             encoding="utf-8",
         )
+        stdout_bytes = b""
+        artifact_metadata: dict[str, object] = {}
+        if name == "recommendation_snapshot":
+            # 模擬另一個同日 invocation 在 parent handoff 前覆寫 latest；
+            # pipeline 必須仍採用本次 _run_child 回傳的 child_status。
+            status_path.write_text(
+                json.dumps(
+                    {
+                        "status": "passed",
+                        "result_id": "stale-other-run-result",
+                        "decision_date": child_status["decision_date"],
+                        "snapshot_cohort": {
+                            "eligible_symbols": ["2330"],
+                            "cohort_hash": "sha256:" + "b" * 64,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stdout_bytes = json.dumps(child_status, ensure_ascii=False).encode("utf-8")
+            artifact_path = kwargs.get("snapshot_stdout_artifact_path")
+            runs_root = kwargs.get("snapshot_stdout_runs_root")
+            if artifact_path is not None and runs_root is not None:
+                artifact_path, artifact_size, artifact_hash = (
+                    pipeline._write_snapshot_invocation_stdout_artifact(
+                        path=artifact_path,
+                        allowed_runs_root=runs_root,
+                        raw_stdout=stdout_bytes,
+                    )
+                )
+                artifact_metadata = {
+                    "child_stdout_artifact_path": artifact_path,
+                    "child_stdout_artifact_size": artifact_size,
+                    "child_stdout_sha256": artifact_hash,
+                }
+                calls[-1].update(artifact_metadata)
         return {
             "name": name,
             "script": kwargs["script"],
@@ -294,6 +334,8 @@ def _fake_pipeline_child(calls: list[dict[str, Any]]):
             "status": "passed",
             "status_path": str(status_path),
             "child_status": child_status,
+            "child_status_source": "invocation_stdout_json",
+            **artifact_metadata,
             "child_warnings": [],
             "child_blockers": [],
             "stdout_stderr_tail": "",
@@ -302,6 +344,154 @@ def _fake_pipeline_child(calls: list[dict[str, Any]]):
         }
 
     return fake_run_child
+
+
+def _snapshot_child_stdout_payload(
+    *,
+    result_id: str = "snapshot-invocation-result",
+    cohort_hash: str = "sha256:" + "a" * 64,
+) -> bytes:
+    return json.dumps(
+        {
+            "task": "baldr-recommendation-snapshot-daily",
+            "status": "passed",
+            "decision_date": "2026-09-25",
+            "result_id": result_id,
+            "snapshot_cohort": {
+                "schema_version": "scheduled-recommendation-snapshot-cohort.v1",
+                "eligible_symbols": ["1101"],
+                "cohort_hash": cohort_hash,
+            },
+        },
+        ensure_ascii=True,
+        indent=2,
+    ).encode("utf-8")
+
+
+def test_snapshot_child_parser_uses_one_typed_stdout_object_and_rejects_ambiguity() -> None:
+    payload_bytes = _snapshot_child_stdout_payload()
+    payload, error = pipeline._snapshot_child_payload_from_stdout(
+        b"logger: starting {not-json}\n" + payload_bytes + b"\ntrailing diagnostic\n"
+    )
+    assert error is None
+    assert payload is not None
+    assert payload["result_id"] == "snapshot-invocation-result"
+
+    ambiguous, error = pipeline._snapshot_child_payload_from_stdout(
+        payload_bytes + b"\n" + payload_bytes
+    )
+    assert ambiguous is None
+    assert error == "snapshot_child_stdout_receipt_missing_or_ambiguous"
+
+    unsupported = _snapshot_child_stdout_payload().replace(
+        b"scheduled-recommendation-snapshot-cohort.v1",
+        b"unknown-cohort-schema.v1",
+    )
+    rejected, error = pipeline._snapshot_child_payload_from_stdout(unsupported)
+    assert rejected is None
+    assert error == "snapshot_child_stdout_cohort_schema_unsupported"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected_status", "expected_blocker"),
+    (
+        (_snapshot_child_stdout_payload(), "passed", None),
+        (b"malformed snapshot child output", "failed", "snapshot_child_stdout_receipt_missing_or_ambiguous"),
+    ),
+)
+def test_snapshot_child_run_uses_invocation_stdout_not_shared_latest_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: bytes,
+    expected_status: str,
+    expected_blocker: str | None,
+) -> None:
+    output_root = tmp_path / "output"
+    runs_root = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "runs"
+    )
+    invocation_dir = runs_root / "invocation"
+    invocation_dir.mkdir(parents=True)
+    stdout_artifact_path = invocation_dir / pipeline._SNAPSHOT_INVOCATION_STDOUT_NAME
+    stale_status_path = pipeline._status_path(output_root, "recommendation_snapshot")
+    stale_status_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_status_path.write_text(
+        json.dumps(
+            {
+                "task": "baldr-recommendation-snapshot-daily",
+                "status": "passed",
+                "decision_date": "2026-09-25",
+                "result_id": "stale-other-invocation",
+                "snapshot_cohort": {
+                    "schema_version": "scheduled-recommendation-snapshot-cohort.v1",
+                    "eligible_symbols": ["2330"],
+                    "cohort_hash": "sha256:" + "b" * 64,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def run(_command, **kwargs):
+        assert kwargs["text"] is False
+        return subprocess.CompletedProcess(_command, 0, stdout, b"")
+
+    monkeypatch.setattr(pipeline.subprocess, "run", run)
+    result = pipeline._run_child(
+        name="recommendation_snapshot",
+        script="scripts/scheduled/run_scheduled_recommendation_snapshot.py",
+        arguments=[],
+        environment={"RECOMMENDATION_LEARNING_OUTPUT_ROOT": str(output_root)},
+        log_handle=StringIO(),
+        timeout_seconds=1,
+        snapshot_stdout_artifact_path=stdout_artifact_path,
+        snapshot_stdout_runs_root=runs_root,
+    )
+
+    if expected_blocker is None:
+        assert result["status"] == expected_status
+        assert result["child_status_source"] == "invocation_stdout_json"
+        assert result["child_status"]["result_id"] == "snapshot-invocation-result"
+        assert result["child_status"]["snapshot_cohort"]["eligible_symbols"] == ["1101"]
+        assert result["child_stdout_sha256"] == "sha256:" + hashlib.sha256(stdout).hexdigest()
+        assert result["child_stdout_artifact_path"] == str(stdout_artifact_path.resolve())
+    else:
+        assert result["status"] == expected_status
+        assert result["child_status"] is None
+        assert expected_blocker in result["child_blockers"]
+
+
+def test_snapshot_child_run_fails_closed_without_invocation_stdout_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root = tmp_path / "output"
+
+    def run(command, **_kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            _snapshot_child_stdout_payload(),
+            b"",
+        )
+
+    monkeypatch.setattr(pipeline.subprocess, "run", run)
+    result = pipeline._run_child(
+        name="recommendation_snapshot",
+        script="scripts/scheduled/run_scheduled_recommendation_snapshot.py",
+        arguments=[],
+        environment={"RECOMMENDATION_LEARNING_OUTPUT_ROOT": str(output_root)},
+        log_handle=StringIO(),
+        timeout_seconds=1,
+    )
+
+    assert result["status"] == "failed"
+    assert result["child_status"]["result_id"] == "snapshot-invocation-result"
+    assert result["child_stdout_artifact_path"] is None
+    assert "snapshot_child_stdout_artifact_path_missing" in result["child_blockers"]
 
 
 def _availability_contract(*, event_available_at: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -734,6 +924,20 @@ def test_pipeline_main_uses_real_same_day_multiday_reuse_and_formal_technical_ch
             assert child_call["environment"]["RECOMMENDATION_LEARNING_OUTPUT_ROOT"] == str(
                 shadow_root
             )
+        learning_call = calls[-1]
+        learning_arguments = learning_call["arguments"]
+        assert learning_arguments[
+            learning_arguments.index("--snapshot-output-root") + 1
+        ] == str(shadow_root)
+        assert learning_arguments[
+            learning_arguments.index("--snapshot-result-id") + 1
+        ] == "synthetic-snapshot-result"
+        assert learning_arguments[
+            learning_arguments.index("--snapshot-cohort-hash") + 1
+        ] == "sha256:" + "a" * 64
+        assert learning_arguments[
+            learning_arguments.index("--snapshot-invocation-output-sha256") + 1
+        ] == calls[2]["child_stdout_sha256"]
         gc.collect()
 
 
@@ -812,13 +1016,31 @@ def test_pipeline_file_path_cli_inserts_repo_root_and_reaches_technical_reuse(
                 status_path = pipeline_globals["_status_path"](child_root, name)
                 child_status = {"status": "passed", "warnings": [], "blockers": []}
                 if name == "recommendation_snapshot":
+                    child_status["result_id"] = "synthetic-snapshot-result"
+                    child_status["decision_date"] = pipeline_globals["datetime"].now(
+                        pipeline_globals["TAIPEI"]
+                    ).date().isoformat()
                     child_status["snapshot_cohort"] = {
+                        "schema_version": "scheduled-recommendation-snapshot-cohort.v1",
                         "requested_symbols": ["1101"],
                         "eligible_symbols": ["1101"],
                         "missing_symbols": [],
                         "degraded_symbols": [],
                         "excluded_symbols": [],
+                        "cohort_hash": "sha256:" + "a" * 64,
                     }
+                    stdout_bytes = json.dumps(child_status, ensure_ascii=False).encode("utf-8")
+                    artifact_path, artifact_size, artifact_hash = (
+                        pipeline_globals["_write_snapshot_invocation_stdout_artifact"](
+                            path=kwargs["snapshot_stdout_artifact_path"],
+                            allowed_runs_root=kwargs["snapshot_stdout_runs_root"],
+                            raw_stdout=stdout_bytes,
+                        )
+                    )
+                else:
+                    artifact_path = None
+                    artifact_size = None
+                    artifact_hash = None
                 status_path.parent.mkdir(parents=True, exist_ok=True)
                 status_path.write_text(json.dumps(child_status), encoding="utf-8")
                 return {
@@ -829,6 +1051,10 @@ def test_pipeline_file_path_cli_inserts_repo_root_and_reaches_technical_reuse(
                     "status": "passed",
                     "status_path": str(status_path),
                     "child_status": child_status,
+                    "child_status_source": "invocation_stdout_json",
+                    "child_stdout_artifact_path": artifact_path,
+                    "child_stdout_artifact_size": artifact_size,
+                    "child_stdout_sha256": artifact_hash,
                     "child_warnings": [],
                     "child_blockers": [],
                     "stdout_stderr_tail": "",
@@ -921,6 +1147,8 @@ def test_pipeline_file_path_cli_executes_as_main_without_pytest_path(
             import runpy
             import subprocess
             import sys
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
 
             pipeline_path = Path(sys.argv[1]).resolve()
             data_root = Path(sys.argv[2]).resolve()
@@ -951,16 +1179,32 @@ def test_pipeline_file_path_cli_executes_as_main_without_pytest_path(
                     )
                     child_status = {"status": "passed", "warnings": [], "blockers": []}
                     if name == "recommendation_snapshot":
+                        child_status["result_id"] = "synthetic-snapshot-result"
+                        child_status["decision_date"] = datetime.now(
+                            ZoneInfo("Asia/Taipei")
+                        ).date().isoformat()
                         child_status["snapshot_cohort"] = {
+                            "schema_version": "scheduled-recommendation-snapshot-cohort.v1",
                             "requested_symbols": ["1101"],
                             "eligible_symbols": ["1101"],
                             "missing_symbols": [],
                             "degraded_symbols": [],
                             "excluded_symbols": [],
+                            "cohort_hash": "sha256:" + "a" * 64,
                         }
                     status_path.parent.mkdir(parents=True, exist_ok=True)
                     status_path.write_text(json.dumps(child_status), encoding="utf-8")
-                return subprocess.CompletedProcess(command, 0, "", "")
+                stdout = (
+                    json.dumps(
+                        {
+                            **child_status,
+                            **({"task": "baldr-recommendation-snapshot-daily"} if name == "recommendation_snapshot" else {}),
+                        }
+                    ).encode("utf-8")
+                    if name == "recommendation_snapshot"
+                    else b""
+                )
+                return subprocess.CompletedProcess(command, 0, stdout, b"")
 
             subprocess.run = fake_child
             sys.argv = [

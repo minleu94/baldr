@@ -2733,6 +2733,12 @@ class BacktestView(QWidget):
                         self.promote_btn.setToolTip("驗證狀態為 FAIL，需先修正樣本或資料問題後才能升級。")
                     logger.info("[BacktestView] Registry run 已保存: %s, promote_enabled=%s", run_id, can_promote)
             except Exception as e:
+                run_params = self.current_run_params or {}
+                logger.exception(
+                    "[BacktestView] Research Run 保存失敗 stock_code=%s strategy_id=%s",
+                    run_params.get("stock_code"),
+                    run_params.get("strategy_id"),
+                )
                 QMessageBox.critical(self, "錯誤", f"保存失敗: {str(e)}")
 
     def _promote_backtest_result(self):

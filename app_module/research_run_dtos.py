@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 import json
 from typing import Any
 
@@ -30,6 +31,22 @@ class EvidenceReviewProposalDTO:
 def canonical_json(value: Any) -> str:
     """產生穩定 JSON 字串，供 SQLite round-trip 與 hash 前置序列化使用。"""
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def normalize_research_run_json_value(value: Any) -> Any:
+    """把 metadata JSON 欄位中的 Decimal 葉節點轉成精確十進位字串。"""
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("Research Run JSON Decimal 必須是有限值")
+        return str(value)
+    if isinstance(value, dict):
+        return {
+            key: normalize_research_run_json_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [normalize_research_run_json_value(item) for item in value]
+    return value
 
 
 def parse_json_object(value: str | None) -> JsonObject:

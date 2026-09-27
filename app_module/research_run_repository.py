@@ -12,6 +12,7 @@ from typing import Any, Iterator
 from app_module.research_run_dtos import (
     ResearchRunMetadataDTO,
     canonical_json,
+    normalize_research_run_json_value,
     parse_json_list,
     parse_json_object,
 )
@@ -488,7 +489,10 @@ class ResearchRunRepository:
                     "finalize manifest 只能新增 portfolio result marker 與 descriptor"
                 )
             for key, value in current_manifest.items():
-                if finalized_manifest.get(key) != value:
+                finalized_value = normalize_research_run_json_value(
+                    finalized_manifest.get(key)
+                )
+                if finalized_value != value:
                     raise ResearchRunRepositoryError(
                         f"portfolio finalize 不得變更既有 manifest 欄位: {key}"
                     )
@@ -557,7 +561,9 @@ class ResearchRunRepository:
             raise ResearchRunRepositoryError(
                 "portfolio result state transition 缺少 identity-bound descriptor"
             )
-        manifest_json = canonical_json(expected_data_manifest)
+        manifest_json = canonical_json(
+            normalize_research_run_json_value(expected_data_manifest)
+        )
         self.ensure_schema()
         with self._write_connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -659,7 +665,9 @@ class ResearchRunRepository:
             raise ResearchRunRepositoryError(
                 "portfolio result failure transition source state 無效"
             )
-        manifest_json = canonical_json(expected_data_manifest)
+        manifest_json = canonical_json(
+            normalize_research_run_json_value(expected_data_manifest)
+        )
         self.ensure_schema()
         with self._write_connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -754,7 +762,9 @@ class ResearchRunRepository:
             name = field_info.name
             value = getattr(metadata, name)
             if name in self.JSON_FIELD_MAP:
-                row[self.JSON_FIELD_MAP[name]] = canonical_json(value)
+                row[self.JSON_FIELD_MAP[name]] = canonical_json(
+                    normalize_research_run_json_value(value)
+                )
             elif name == "is_archived":
                 row[name] = 1 if value else 0
             else:

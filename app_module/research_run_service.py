@@ -35,7 +35,11 @@ from app_module.recommendation_portfolio_result_artifact import (
     decode_portfolio_result_artifact,
     encode_portfolio_result_artifact,
 )
-from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json
+from app_module.research_run_dtos import (
+    ResearchRunMetadataDTO,
+    canonical_json,
+    normalize_research_run_json_value,
+)
 from app_module.research_run_repository import (
     ResearchRunConflictError,
     ResearchRunRepository,
@@ -113,8 +117,8 @@ class ResearchRunService:
         fail_at: str | None = None,
     ) -> ResearchRunMetadataDTO:
         metadata = deepcopy(metadata)
-        equity = equity.copy(deep=True)
-        trades = trades.copy(deep=True)
+        equity = self._parquet_frame_copy(equity)
+        trades = self._parquet_frame_copy(trades)
         metadata = self._metadata_with_factor_manifest(
             metadata,
             factor_records=factor_records,
@@ -737,6 +741,17 @@ class ResearchRunService:
         frame.to_parquet(buffer, index=False)
         self._write_bytes_create_only(path, buffer.getvalue())
 
+    @staticmethod
+    def _parquet_frame_copy(frame: pd.DataFrame) -> pd.DataFrame:
+        """複製表格，僅將 attrs 中有限 Decimal 轉成精確字串供 Parquet metadata 使用。"""
+
+        copied = frame.copy(deep=True)
+        normalized_attrs = normalize_research_run_json_value(copied.attrs)
+        if type(normalized_attrs) is not dict:
+            raise TypeError("DataFrame attrs 必須是 object")
+        copied.attrs = normalized_attrs
+        return copied
+
     def _assert_portfolio_paths_unclaimed(self, paths: dict[str, Path]) -> None:
         for key in (
             "equity_temp",
@@ -906,7 +921,7 @@ class ResearchRunService:
 
     @staticmethod
     def _immutable_metadata(metadata: ResearchRunMetadataDTO) -> dict[str, Any]:
-        value = asdict(metadata)
+        value = normalize_research_run_json_value(asdict(metadata))
         for field in ("equity_path", "equity_parquet_hash", "trades_path", "trades_parquet_hash",
                       "is_archived", "promoted_version_id", "promotion_reconciliation_status"):
             value.pop(field, None)

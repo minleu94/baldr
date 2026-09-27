@@ -363,6 +363,55 @@ def _technical_is_current(
     return False, ""
 
 
+def _annotate_currentity_recompute_outcome(
+    calculation: dict[str, Any],
+) -> dict[str, Any]:
+    """保留部分成功數量，並用可區分的代碼描述 currentity 重算結果。"""
+
+    success_count = int(calculation.get("success_count") or 0)
+    updated_stocks = calculation.get("updated_stocks")
+    updated = (
+        [str(item) for item in updated_stocks if str(item).strip()]
+        if isinstance(updated_stocks, list)
+        else []
+    )
+    failed_stocks_value = calculation.get("failed_stocks")
+    failed_stocks = (
+        [str(item) for item in failed_stocks_value if str(item).strip()]
+        if isinstance(failed_stocks_value, list)
+        else []
+    )
+    fail_count = max(
+        int(calculation.get("fail_count") or 0),
+        len(set(failed_stocks)),
+    )
+
+    if calculation.get("cancelled") is True:
+        error_code = "technical_currentity_recompute_cancelled"
+    elif success_count > 0 and updated and (fail_count > 0 or failed_stocks):
+        error_code = "technical_currentity_recompute_partial_failure"
+    elif success_count > 0 and updated and calculation.get("sqlite_write_failed") is True:
+        error_code = "technical_currentity_recompute_sqlite_write_failed"
+    elif success_count <= 0 or not updated:
+        error_code = "technical_currentity_recompute_produced_no_updates"
+    elif calculation.get("success") is not True:
+        error_code = "technical_currentity_recompute_failed"
+    else:
+        return calculation
+
+    calculation["success"] = False
+    calculation["technical_computation_error"] = error_code
+    details = [f"updated={success_count}"]
+    if fail_count:
+        details.append(f"failed={fail_count}")
+    if failed_stocks:
+        details.append(f"failed_stocks={','.join(failed_stocks)}")
+    message = str(calculation.get("message") or "").strip()
+    diagnostic = f"{error_code} ({', '.join(details)})"
+    calculation["message"] = f"{message}; {diagnostic}" if message else diagnostic
+    return calculation
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run scheduled baldr quick data update.")
     parser.add_argument("--data-root", required=True)
@@ -860,19 +909,7 @@ def main(argv: list[str] | None = None) -> int:
                     "bounded_currentity_recompute"
                 )
                 calculation["technical_recomputation_lookback_days"] = 120
-                if (
-                    calculation.get("success") is not True
-                    or int(calculation.get("success_count") or 0) <= 0
-                    or not calculation.get("updated_stocks")
-                ):
-                    calculation["success"] = False
-                    calculation["message"] = (
-                        str(calculation.get("message") or "")
-                        + "; technical_currentity_recompute_produced_no_updates"
-                    ).strip("; ")
-                    calculation["technical_computation_error"] = (
-                        "technical_currentity_recompute_produced_no_updates"
-                    )
+                calculation = _annotate_currentity_recompute_outcome(calculation)
             if calculation.get("success") is True:
                 if input_snapshot.get("verified") is True:
                     try:

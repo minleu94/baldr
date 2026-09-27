@@ -165,6 +165,46 @@ def test_technical_is_not_current_when_latest_date_coverage_lags() -> None:
     assert "1/2" in message
 
 
+def test_currentity_recompute_keeps_partial_counts_and_names_failed_stocks() -> None:
+    calculation = {
+        "success": False,
+        "message": "技術指標計算完成：成功處理數: 2199；失敗數: 1",
+        "success_count": 2199,
+        "updated_stocks": ["0050", "2330"],
+        "fail_count": 1,
+        "failed_stocks": ["910708"],
+        "sqlite_write_failed": False,
+    }
+
+    result = runner._annotate_currentity_recompute_outcome(calculation)
+
+    assert result["success"] is False
+    assert result["success_count"] == 2199
+    assert result["updated_stocks"] == ["0050", "2330"]
+    assert result["fail_count"] == 1
+    assert result["failed_stocks"] == ["910708"]
+    assert result["technical_computation_error"] == (
+        "technical_currentity_recompute_partial_failure"
+    )
+    assert "failed_stocks=910708" in result["message"]
+    assert "technical_currentity_recompute_produced_no_updates" not in result["message"]
+
+
+def test_currentity_recompute_keeps_no_update_diagnostic_when_output_is_empty() -> None:
+    result = runner._annotate_currentity_recompute_outcome({
+        "success": False,
+        "success_count": 0,
+        "updated_stocks": [],
+        "fail_count": 0,
+        "failed_stocks": [],
+        "sqlite_write_failed": False,
+    })
+
+    assert result["success"] is False
+    assert result["technical_computation_error"] == (
+        "technical_currentity_recompute_produced_no_updates"
+    )
+
 
 def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     tmp_path, monkeypatch

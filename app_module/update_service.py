@@ -4857,12 +4857,6 @@ class UpdateService :
                             stock_data [date_column ]=stock_data [date_column ].astype (str )
                         if stock_column in stock_data .columns :
                             stock_data [stock_column ]=stock_data [stock_column ].astype (str ).str .strip ()
-                            # 將欄位型態轉換以相容原有業務邏輯
-                        numeric_cols =['成交股數','成交筆數','成交金額','開盤價','最高價','最低價','收盤價','漲跌價差',
-                        '最後揭示買價','最後揭示買量','最後揭示賣價','最後揭示賣量','本益比']
-                        for col in numeric_cols :
-                            if col in stock_data .columns :
-                                stock_data [col ]=pd .to_numeric (stock_data [col ],errors ='coerce')
                     else :
                         logger .warning ("SQLite daily_prices 表為空，降級讀取 CSV...")
                         stock_data =pd .read_csv (self .config .stock_data_file ,dtype ={'證券代號':str },low_memory =False )
@@ -4873,13 +4867,28 @@ class UpdateService :
                 stock_data =pd .read_csv (self .config .stock_data_file ,dtype ={'證券代號':str },low_memory =False )
 
             revision_database = Path(getattr(self.config, 'db_file', Path(self.config.stock_data_file).parent.parent / 'sqlite/twstock.db'))
-            validate_excluded_price_frame(revision_database, stock_data)
             from data_module.formal_technical_raw_alias_repair import (
                 create_raw_alias_writer_context,
+                normalize_raw_alias_values_for_storage,
             )
 
             raw_alias_context = create_raw_alias_writer_context(revision_database)
             raw_alias_active = raw_alias_context is not None
+            if raw_alias_active:
+                # 僅在正式 alias marker 有效時，先用共用 Decimal parser 處理受保護欄位。
+                # 此段在 SQLite 讀取 fallback 區塊之外，格式錯誤會 fail closed，不改讀 CSV。
+                stock_data = normalize_raw_alias_values_for_storage(stock_data)
+
+            # 其餘行情欄位維持既有轉型規則；六個受保護 alias 已先完成精確解析。
+            numeric_cols = [
+                '成交股數', '成交筆數', '成交金額', '開盤價', '最高價', '最低價', '收盤價',
+                '漲跌價差', '最後揭示買價', '最後揭示買量', '最後揭示賣價', '最後揭示賣量', '本益比',
+            ]
+            for col in numeric_cols:
+                if col in stock_data.columns:
+                    stock_data[col] = pd.to_numeric(stock_data[col], errors='coerce')
+
+            validate_excluded_price_frame(revision_database, stock_data)
 
             stock_code_column =next (
             (col for col in ('證券代號','股票代號','證券代號','stock_id','stock_code')if col in stock_data .columns ),

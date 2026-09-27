@@ -4,19 +4,19 @@
 
 ## 權威入口
 
-| 主題 | 權威 |
-|---|---|
-| 目前狀態、本週優先事項與高風險區 | [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md) |
-| 產品方向、產品 Gate、Non-goals | [PRODUCT_ROADMAP_POST_REFACTOR](PRODUCT_ROADMAP_POST_REFACTOR.md) |
-| 六個月工程里程碑與驗收 | [ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md) |
-| Roadmap 導覽 | [DEVELOPMENT_ROADMAP](DEVELOPMENT_ROADMAP.md) |
-| V2.1–V4.0 長期成熟度 | [VERSION_ROADMAP_V2_1_TO_V4_0](VERSION_ROADMAP_V2_1_TO_V4_0.md) |
-| 舊工作移交 | [LEGACY_ROADMAP_CARRYOVER](LEGACY_ROADMAP_CARRYOVER.md) |
-| 外部參考與 V1.5–V2.0 版本形狀 | [EXTERNAL_REFERENCE_VERSION_BLUEPRINT](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md) |
-| 目前架構、模組邊界與資料流 | [system_architecture](../01_architecture/system_architecture.md) |
-| 目標架構 | [FINAL_TARGET_ARCHITECTURE](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
-| 使用者操作、安全與排錯 | [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) |
-| 文件覆蓋與生命週期 | [DOC_COVERAGE_MAP](DOC_COVERAGE_MAP.md)、[DOCUMENTATION_STRUCTURE](DOCUMENTATION_STRUCTURE.md) |
+| 主題                     | 權威                                                                                                          |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 目前狀態、本週優先事項與高風險區       | [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)                                                                     |
+| 產品方向、產品 Gate、Non-goals | [PRODUCT_ROADMAP_POST_REFACTOR](PRODUCT_ROADMAP_POST_REFACTOR.md)                                           |
+| 六個月工程里程碑與驗收            | [ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)                                                         |
+| Roadmap 導覽             | [DEVELOPMENT_ROADMAP](DEVELOPMENT_ROADMAP.md)                                                               |
+| V2.1–V4.0 長期成熟度        | [VERSION_ROADMAP_V2_1_TO_V4_0](VERSION_ROADMAP_V2_1_TO_V4_0.md)                                             |
+| 舊工作移交                  | [LEGACY_ROADMAP_CARRYOVER](LEGACY_ROADMAP_CARRYOVER.md)                                                     |
+| 外部參考與 V1.5–V2.0 版本形狀   | [EXTERNAL_REFERENCE_VERSION_BLUEPRINT](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md)                             |
+| 目前架構、模組邊界與資料流          | [system_architecture](../01_architecture/system_architecture.md)                                            |
+| 目標架構                   | [FINAL_TARGET_ARCHITECTURE](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
+| 使用者操作、安全與排錯            | [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)                                                    |
+| 文件覆蓋與生命週期              | [DOC_COVERAGE_MAP](DOC_COVERAGE_MAP.md)、[DOCUMENTATION_STRUCTURE](DOCUMENTATION_STRUCTURE.md)               |
 
 ## 其他正式入口
 

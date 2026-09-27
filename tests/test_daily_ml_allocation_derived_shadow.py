@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -17,7 +18,12 @@ from data_module.ml_storage_capacity import (
     release_heavy_chain_reservation,
 )
 from app_module.ml_allocation_shadow_evidence import (
+    _read_paper_preopen_coverage_receipt,
     load_t_minus_one_paper_ledger,
+)
+from app_module.paper_daily_status_contract import (
+    PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION,
+    PAPER_DAILY_STATUS_SCHEMA_VERSION,
 )
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
@@ -264,7 +270,10 @@ def _run_shadow_with_paper_state_change(
                 "writer": "scripts.run_paper_portfolio_daily.run",
             }
             receipt_document = {
-                "schema_version": "paper-portfolio-daily-isolated-scope.v1",
+                "schema_version": PAPER_DAILY_STATUS_SCHEMA_VERSION,
+                "isolated_scope_schema_version": (
+                    PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                ),
                 "status": "passed",
                 "portfolio_id": "paper-main",
                 "snapshot_id": "paper-main-20260731",
@@ -339,6 +348,55 @@ def _run_shadow_with_paper_state_change(
                         "repository_state_db": str(wrong_state.resolve()),
                     },
                 }
+            elif receipt_variant == "unowned_root_schema":
+                document_to_write = {
+                    **receipt_document,
+                    "schema_version": "paper-portfolio-daily-unowned.v1",
+                }
+            elif receipt_variant == "unowned_scope_schema":
+                document_to_write = {
+                    **receipt_document,
+                    "isolated_scope_schema_version": (
+                        "paper-portfolio-daily-unowned-scope.v1"
+                    ),
+                }
+            elif receipt_variant == "unowned_coverage_schema":
+                document_to_write = {
+                    **receipt_document,
+                    "preopen_coverage": {
+                        **coverage,
+                        "schema_version": "paper-preopen-coverage-unowned.v1",
+                    },
+                }
+            elif receipt_variant == "unsafe_credit":
+                document_to_write = {
+                    **receipt_document,
+                    "formal_credit": True,
+                }
+            elif receipt_variant in {
+                "bounded_legacy",
+                "unbounded_legacy",
+                "legacy_with_scope_schema",
+            }:
+                legacy_document = {
+                    **receipt_document,
+                    "schema_version": PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION,
+                }
+                legacy_document.pop("isolated_scope_schema_version", None)
+                if receipt_variant == "legacy_with_scope_schema":
+                    legacy_document["isolated_scope_schema_version"] = (
+                        PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                    )
+                if receipt_variant == "bounded_legacy":
+                    legacy_document.update(
+                        {
+                            "producer": (
+                                "scripts.scheduled.run_paper_portfolio_daily_isolated"
+                            ),
+                            "candidate_only": True,
+                        }
+                    )
+                document_to_write = legacy_document
             elif receipt_variant == "stale_same_day":
                 pass
             elif receipt_variant == "receipt_race":
@@ -349,10 +407,25 @@ def _run_shadow_with_paper_state_change(
                 json.dumps(document_to_write, sort_keys=True),
                 encoding="utf-8",
             )
+            receipt_fields = (
+                cast(dict[str, object], document_to_write)
+                if receipt_variant in {
+                    "bounded_legacy",
+                    "unbounded_legacy",
+                    "legacy_with_scope_schema",
+                    "unsafe_credit",
+                }
+                else receipt_document
+            )
             receipt = {
-                **receipt_document,
+                **receipt_fields,
                 "path": str(receipt_path.resolve()),
                 "file_hash": real_file_hash(receipt_path),
+                "schema_compatibility": (
+                    "bounded_legacy"
+                    if receipt_variant == "bounded_legacy"
+                    else "canonical"
+                ),
             }
             daily_status.update(
                 {
@@ -678,14 +751,17 @@ def test_integrity_projection_reports_formal_stat_and_release_hash_changes(
     assert legacy["unchanged"] is True
 
 
+@pytest.mark.parametrize("receipt_variant", ("valid", "bounded_legacy"))
 def test_outer_wrapper_accepts_only_receipted_preopen_state_writer_overlap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    receipt_variant: str,
 ) -> None:
     payload = _run_shadow_with_paper_state_change(
         tmp_path,
         monkeypatch,
         include_coordination_contract=True,
+        receipt_variant=receipt_variant,
     )
 
     assert payload["status"] == "completed"
@@ -838,6 +914,12 @@ def test_outer_wrapper_blocks_unaccounted_paper_state_writer_overlap(
         "stale",
         "stale_same_day",
         "scope",
+        "unowned_root_schema",
+        "unowned_scope_schema",
+        "unowned_coverage_schema",
+        "unbounded_legacy",
+        "legacy_with_scope_schema",
+        "unsafe_credit",
         "receipt_race",
     ),
 )
@@ -864,6 +946,123 @@ def test_outer_wrapper_blocks_invalid_preopen_receipt_variants(
         assert checks["receipt_scope_and_current_state_bound"] is False
     if receipt_variant == "receipt_race":
         assert checks["preopen_receipt_valid"] is False
+
+
+def test_frozen_canonical_preopen_receipt_preserves_exact_bytes_and_schema_layers(
+    tmp_path: Path,
+) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "paper_preopen_coverage_receipts"
+        / "canonical_20260922_latest_status.json"
+    )
+    fixture_bytes = fixture_path.read_bytes()
+    fixture_sha256 = hashlib.sha256(fixture_bytes).hexdigest().upper()
+    assert len(fixture_bytes) == 5416
+    assert fixture_sha256 == (
+        "8084250A3B2F738CD76E811A6636DB40DABD6A606F10F8FAFF1909FC54E5C795"
+    )
+
+    frozen_payload = json.loads(fixture_bytes.decode("utf-8"))
+    assert isinstance(frozen_payload, dict)
+    receipt_path = tmp_path / "frozen-paper-status.json"
+    receipt_path.write_bytes(fixture_bytes)
+    assert receipt_path.read_bytes() == fixture_bytes
+
+    receipt_snapshot = cast(
+        PaperPortfolioSnapshot,
+        SimpleNamespace(
+            portfolio_id=frozen_payload["portfolio_id"],
+            snapshot_id=frozen_payload["snapshot_id"],
+            decision_date=frozen_payload["decision_date"],
+        ),
+    )
+    state_snapshot = cast(
+        PaperPortfolioSnapshot,
+        SimpleNamespace(
+            portfolio_id=frozen_payload["portfolio_id"],
+            snapshot_id="paper-main-20260921",
+            decision_date="2026-09-21",
+        ),
+    )
+    state_db_path = Path(str(frozen_payload["state_db"]))
+    ledger_db_path = Path(str(frozen_payload["paper_ledger_db"]))
+    result = _read_paper_preopen_coverage_receipt(
+        state_db_path=state_db_path,
+        state_snapshot=state_snapshot,
+        available_snapshots=(receipt_snapshot,),
+        ledger_db_path=ledger_db_path,
+        decision_date=date.fromisoformat(
+            str(frozen_payload["decision_date"])
+        ),
+        configured_path=receipt_path,
+    )
+
+    assert result is not None
+    assert result["file_hash"] == "sha256:" + fixture_sha256.lower()
+    assert result["schema_version"] == PAPER_DAILY_STATUS_SCHEMA_VERSION
+    assert (
+        result["isolated_scope_schema_version"]
+        == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+    )
+    assert result["schema_compatibility"] == "canonical"
+    assert cast(dict[str, Any], result["preopen_coverage"])["schema_version"] == (
+        "paper-preopen-coverage.v1"
+    )
+    assert receipt_path.read_bytes() == fixture_bytes
+
+
+def test_reader_rejects_legacy_root_with_separate_scope_schema(
+    tmp_path: Path,
+) -> None:
+    """舊 root 相容路徑不得同時帶入另一個 scope schema。"""
+    fixture_path = (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "paper_preopen_coverage_receipts"
+        / "canonical_20260922_latest_status.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert isinstance(payload, dict)
+    payload["schema_version"] = PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+    payload["isolated_scope_schema_version"] = (
+        PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+    )
+    payload["producer"] = "scripts.scheduled.run_paper_portfolio_daily_isolated"
+    payload["candidate_only"] = True
+    receipt_path = tmp_path / "legacy-root-with-scope.json"
+    receipt_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    receipt_snapshot = cast(
+        PaperPortfolioSnapshot,
+        SimpleNamespace(
+            portfolio_id=payload["portfolio_id"],
+            snapshot_id=payload["snapshot_id"],
+            decision_date=payload["decision_date"],
+        ),
+    )
+    state_snapshot = cast(
+        PaperPortfolioSnapshot,
+        SimpleNamespace(
+            portfolio_id=payload["portfolio_id"],
+            snapshot_id="paper-main-20260921",
+            decision_date="2026-09-21",
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="paper preopen coverage receipt root schema is not governed",
+    ):
+        _read_paper_preopen_coverage_receipt(
+            state_db_path=Path(str(payload["state_db"])),
+            state_snapshot=state_snapshot,
+            available_snapshots=(receipt_snapshot,),
+            ledger_db_path=Path(str(payload["paper_ledger_db"])),
+            decision_date=date(2026, 9, 22),
+            configured_path=receipt_path,
+        )
 
 
 def test_select_natural_decision_rejects_invalid_clock_and_unknown_calendar() -> None:

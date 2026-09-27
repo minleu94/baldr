@@ -650,7 +650,6 @@ def test_collector_records_four_lanes_then_matures_all_four_horizons(
         )
         for item in outcomes[0]["downside_outcomes"]
     )
-
     observation = json.loads(
         Path(str(first["observation_path"])).read_text(encoding="utf-8")
     )
@@ -670,6 +669,163 @@ def test_collector_records_four_lanes_then_matures_all_four_horizons(
         assert lane["advice"]["broker_order_allowed"] is False
         assert all(row["why"] for row in lane["advice"]["rows"])
         assert all(row["why_not"] for row in lane["advice"]["rows"])
+
+
+def test_collector_captures_actual_append_clock_without_forward_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    market_db = tmp_path / "market.sqlite"
+    decision_date, strict_t_minus_one = _make_market_db(market_db)
+    paper_db = tmp_path / "paper.sqlite"
+    _make_paper_db(
+        paper_db,
+        snapshot_date=strict_t_minus_one - timedelta(days=1),
+    )
+    paper_trade_ledger_db = tmp_path / "paper-trade-ledger.sqlite"
+    _add_complete_zero_trade_coverage(
+        paper_db,
+        decision_date=decision_date,
+        ledger_db=paper_trade_ledger_db,
+    )
+    proposal_path = tmp_path / "proposal.json"
+    proposal_hash, replay_hash = _write_proposal(
+        proposal_path,
+        decision_date=decision_date,
+    )
+    proposal_file_hash = (
+        "sha256:" + hashlib.sha256(proposal_path.read_bytes()).hexdigest()
+    )
+    collector = MLAllocationShadowCollector(
+        market_database_path=market_db,
+        paper_state_db_path=paper_db,
+        paper_trade_ledger_db_path=paper_trade_ledger_db,
+        sidecar_database_path=tmp_path / "shadow.sqlite",
+        artifact_root=tmp_path / "artifacts",
+        official_market_event_pointer_path=_make_official_event_pointer(
+            tmp_path
+        ),
+        official_calendar=_calendar_for(
+            date(2026, 1, 26), date(2026, 1, 31)
+        ),
+    )
+    emitted_clocks = (
+        datetime(2026, 9, 25, 20, 30, tzinfo=timezone.utc),
+        datetime(2026, 9, 25, 20, 31, tzinfo=timezone.utc),
+        datetime(2026, 9, 25, 20, 32, tzinfo=timezone.utc),
+    )
+    clock_iter = iter(emitted_clocks)
+    monkeypatch.setattr(
+        evidence_module,
+        "_utc_now",
+        lambda: next(clock_iter),
+    )
+    fixed_hashes = {
+        "rule_policy_hash": f"sha256:{'9' * 64}",
+        "release_training_manifest_file_hash": f"sha256:{'a' * 64}",
+        "raw_publication_manifest_hash": f"sha256:{'b' * 64}",
+        "inference_universe_hash": f"sha256:{'c' * 64}",
+    }
+
+    first = collector.record_and_mature(
+        decision_date=decision_date,
+        strict_t_minus_one=strict_t_minus_one,
+        proposal_path=proposal_path,
+        proposal_hash=proposal_hash,
+        proposal_file_hash=proposal_file_hash,
+        replay_hash=replay_hash,
+        orchestration_run_hash=f"sha256:{'8' * 64}",
+        available_at_cutoff=emitted_clocks[0],
+        **fixed_hashes,
+    )
+    replay = collector.record_and_mature(
+        decision_date=decision_date,
+        strict_t_minus_one=strict_t_minus_one,
+        proposal_path=proposal_path,
+        proposal_hash=proposal_hash,
+        proposal_file_hash=proposal_file_hash,
+        replay_hash=replay_hash,
+        orchestration_run_hash=f"sha256:{'8' * 64}",
+        available_at_cutoff=emitted_clocks[1],
+        **fixed_hashes,
+    )
+    revised = collector.record_and_mature(
+        decision_date=decision_date,
+        strict_t_minus_one=strict_t_minus_one,
+        proposal_path=proposal_path,
+        proposal_hash=proposal_hash,
+        proposal_file_hash=proposal_file_hash,
+        replay_hash=replay_hash,
+        orchestration_run_hash=f"sha256:{'7' * 64}",
+        available_at_cutoff=emitted_clocks[2],
+        **fixed_hashes,
+    )
+
+    expected_first_clock = emitted_clocks[0].isoformat(
+        timespec="microseconds"
+    )
+    expected_revision_clock = emitted_clocks[2].isoformat(
+        timespec="microseconds"
+    )
+    assert first["observation_emitted_at"] == expected_first_clock
+    assert first["shadow_day_credit_allowed"] is False
+    assert replay["observation_idempotent"] is True
+    assert replay["observation_hash"] == first["observation_hash"]
+    assert replay["observation_emitted_at"] == expected_first_clock
+    assert revised["observation_idempotent"] is False
+    assert revised["observation_hash"] != first["observation_hash"]
+    assert revised["observation_emitted_at"] == expected_revision_clock
+
+    records = ShadowEvidenceRepository(
+        tmp_path / "shadow.sqlite"
+    ).observations()
+    assert len(records) == 2
+    assert [item["revision"] for item in records] == [1, 2]
+    assert [item["emitted_at"] for item in records] == [
+        expected_first_clock,
+        expected_revision_clock,
+    ]
+    assert all(
+        item["decision_at"] == f"{decision_date.isoformat()}T08:30:00+08:00"
+        for item in records
+    )
+    assert all(item["promotion_day_credit_allowed"] is False for item in records)
+
+
+def test_append_observation_does_not_backfill_legacy_immutable_clock(
+    tmp_path: Path,
+) -> None:
+    repository = ShadowEvidenceRepository(tmp_path / "shadow.sqlite")
+    decision_date = "2026-01-31"
+    custody_hash = f"sha256:{'d' * 64}"
+    legacy_payload: dict[str, object] = {
+        "decision_at": f"{decision_date}T08:30:00+08:00",
+        "research_only": True,
+        "promotion_day_credit_allowed": False,
+    }
+
+    original, was_idempotent = repository.append_observation(
+        decision_date=decision_date,
+        custody_hash=custody_hash,
+        payload=legacy_payload,
+    )
+    attempted_backfill, was_idempotent_after_replay = (
+        repository.append_observation(
+            decision_date=decision_date,
+            custody_hash=custody_hash,
+            payload={
+                **legacy_payload,
+                "emitted_at": "2026-09-25T20:30:00.000000+00:00",
+            },
+        )
+    )
+
+    assert was_idempotent is False
+    assert was_idempotent_after_replay is True
+    assert attempted_backfill == original
+    assert "emitted_at" not in attempted_backfill
+    assert len(repository.observations()) == 1
+    assert repository.observations()[0]["record_hash"] == original["record_hash"]
 
 
 def _make_transaction_backed_paper_state(

@@ -26,6 +26,11 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Iterable, Mapping, Sequence, cast
 
+from app_module.paper_daily_status_contract import (
+    PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION,
+    PAPER_DAILY_STATUS_SCHEMA_VERSION,
+    paper_daily_status_schema_supported,
+)
 from app_module.paper_portfolio_policy import PaperPortfolioPolicyConfig
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
@@ -1370,8 +1375,28 @@ def _read_paper_preopen_coverage_receipt(
     if not isinstance(payload_value, Mapping):
         raise ValueError("paper preopen coverage receipt must be an object")
     payload = {str(key): value for key, value in payload_value.items()}
-    if payload.get("schema_version") != "paper-portfolio-daily-isolated-scope.v1":
-        raise ValueError("paper preopen coverage receipt schema is not governed")
+    root_schema_version = payload.get("schema_version")
+    if root_schema_version == PAPER_DAILY_STATUS_SCHEMA_VERSION:
+        if (
+            payload.get("isolated_scope_schema_version")
+            != PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "paper preopen coverage receipt isolated scope schema is not governed"
+            )
+        schema_compatibility = "canonical"
+    elif (
+        root_schema_version == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+        and payload.get("isolated_scope_schema_version") is None
+        and paper_daily_status_schema_supported(payload)
+    ):
+        # 舊版 producer 曾把隔離 scope schema 放在 root；只接受既有
+        # contract helper 明確限定 producer 與 no-credit／隔離安全旗標的版本。
+        schema_compatibility = "bounded_legacy"
+    else:
+        raise ValueError(
+            "paper preopen coverage receipt root schema is not governed"
+        )
     if payload.get("status") != "passed":
         raise ValueError("paper preopen coverage receipt is not a completed pass")
     safe_flags = (
@@ -1501,7 +1526,11 @@ def _read_paper_preopen_coverage_receipt(
     return {
         "path": str(candidate),
         "file_hash": before_hash,
-        "schema_version": payload["schema_version"],
+        "schema_version": root_schema_version,
+        "isolated_scope_schema_version": payload.get(
+            "isolated_scope_schema_version"
+        ),
+        "schema_compatibility": schema_compatibility,
         "status": payload["status"],
         "snapshot_id": receipt_snapshot_id,
         "decision_date": receipt_decision_date,
@@ -3498,13 +3527,16 @@ class MLAllocationShadowCollector:
                 else None
             ),
         }
-        emitted_at: datetime | None = None
-        if natural_forward_deadline is not None:
-            emitted_at = _utc_now()
-            if emitted_at > natural_forward_deadline:
-                raise TimeoutError(
-                    "natural forward observation append deadline has passed"
-                )
+        # 觀測時鐘記錄實際 append 時點；不得用固定 decision 08:30 冒充。
+        # 有 forward deadline 時，沿用同一時鐘做逾期拒絕。
+        emitted_at = _utc_now()
+        if (
+            natural_forward_deadline is not None
+            and emitted_at > natural_forward_deadline
+        ):
+            raise TimeoutError(
+                "natural forward observation append deadline has passed"
+            )
         custody_hash = _payload_hash(custody_payload)
         observation_payload: dict[str, object] = {
             "decision_at": f"{decision_date.isoformat()}T08:30:00+08:00",

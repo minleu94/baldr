@@ -34,6 +34,11 @@ from app_module.allocation_release_adapter import (  # noqa: E402
     LoadedAllocationRelease,
     AllocationReleaseAdapter,
 )
+from app_module.paper_daily_status_contract import (  # noqa: E402
+    PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION,
+    PAPER_DAILY_STATUS_SCHEMA_VERSION,
+    paper_daily_status_schema_supported,
+)
 from data_module.ml_storage_capacity import (  # noqa: E402
     CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES,
     MLStorageCapacityBudget,
@@ -391,6 +396,7 @@ def _paper_state_coordination_evidence(
         actual_coverage_valid = False
         actual_write_contract_valid = False
         actual_scope_valid = False
+        actual_schema_valid = False
         state_head_current_hash_bound = False
         if isinstance(coverage_value, Mapping):
             coverage = {str(key): value for key, value in coverage_value.items()}
@@ -418,6 +424,23 @@ def _paper_state_coordination_evidence(
             except ValueError:
                 caller_decision_date = None
         if receipt_document is not None:
+            receipt_root_schema = receipt_document.get("schema_version")
+            receipt_scope_schema = receipt_document.get(
+                "isolated_scope_schema_version"
+            )
+            if receipt_root_schema == PAPER_DAILY_STATUS_SCHEMA_VERSION:
+                actual_schema_valid = (
+                    receipt_scope_schema
+                    == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                )
+            elif (
+                receipt_root_schema
+                == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+            ):
+                actual_schema_valid = (
+                    receipt_scope_schema is None
+                    and paper_daily_status_schema_supported(receipt_document)
+                )
             actual_coverage_value = receipt_document.get("preopen_coverage")
             actual_write_contract_value = receipt_document.get(
                 "paper_state_write_contract"
@@ -427,8 +450,11 @@ def _paper_state_coordination_evidence(
                 isinstance(actual_coverage_value, Mapping)
                 and isinstance(coverage_value, Mapping)
                 and dict(actual_coverage_value) == dict(coverage_value)
+                and actual_schema_valid
                 and receipt_document.get("schema_version")
                 == receipt.get("schema_version")
+                and receipt_document.get("isolated_scope_schema_version")
+                == receipt.get("isolated_scope_schema_version")
                 and receipt_document.get("status") == receipt.get("status")
                 and receipt_document.get("snapshot_id")
                 == receipt.get("snapshot_id")
@@ -508,9 +534,21 @@ def _paper_state_coordination_evidence(
             actual_scope_valid and state_head_current_hash_bound
         )
         checks["preopen_receipt_valid"] = (
-            receipt.get("schema_version")
-            == "paper-portfolio-daily-isolated-scope.v1"
-            and receipt.get("status") == "passed"
+            (
+                receipt.get("schema_version")
+                == PAPER_DAILY_STATUS_SCHEMA_VERSION
+                and receipt.get("isolated_scope_schema_version")
+                == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                and receipt.get("schema_compatibility") == "canonical"
+            )
+            or (
+                receipt.get("schema_version")
+                == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                and receipt.get("isolated_scope_schema_version") is None
+                and receipt.get("schema_compatibility") == "bounded_legacy"
+            )
+        ) and (
+            receipt.get("status") == "passed"
             and receipt.get("snapshot_relation")
             in {
                 "strict_t_minus_one",

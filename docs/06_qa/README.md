@@ -7,6 +7,20 @@
 
 本目錄包含所有 QA 相關的文檔。
 
+日期化的 QA 報告保存當次輸入、命令、結果與接受邊界；不同日期或不同範圍的報告即使主題相同，也不能當作重複檔案刪除。查目前狀態請讀 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，不要把歷史報告的「下一步」當成目前待辦。
+
+## 近期證據入口（依主題）
+
+| 要查的內容 | 證據入口 |
+| --- | --- |
+| 重構驗收範圍與保留限制 | [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)、[C4 mandatory gates](C4_FINAL_MANDATORY_STATIC_GATES_20260925.md) |
+| ML 邊界與 R026 後續驗證 | [R026 exact allowlist](ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md)、[source revision aggregate](R026_SOURCE_REVISION_EVIDENCE_AGGREGATE_20260925.md) |
+| 正式行情修復及候選模型品質 | [正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md)、[修復來源候選驗收](REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md) |
+| 個股研究與日常操作可讀性 | [V5 readability acceptance](V5_READABILITY_ACCEPTANCE_2026_09_21.md) |
+| 分支、工作副本與復原備份 | [本機分支整理](BRANCH_WORKTREE_CONSOLIDATION_20260927.md) |
+
+完整文件分類見 [文檔索引](../00_core/DOCUMENTATION_INDEX.md)；本頁只提供閱讀路徑，不重新維護各報告的驗收數字。
+
 ## 📄 文檔列表
 
 ### 推薦分析 Tab QA

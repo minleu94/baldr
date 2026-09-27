@@ -522,6 +522,32 @@ def daily_price_receipt_source_dates(paths: Iterable[Path | str]) -> list[str]:
     return _technical_receipt_source_dates(Path(path) for path in paths)
 
 
+def technical_custody_source_window(
+    technical_result: Mapping[str, Any],
+    *,
+    default_start: object,
+    default_end: object,
+) -> tuple[str | None, str | None]:
+    """Resolve the market-date window represented by a technical result.
+
+    Scheduled updates also run on closed days.  In that case their requested
+    natural date differs from the calculator's latest actual trading date, so
+    custody discovery must follow the computation witness/result rather than
+    the scheduler date.
+    """
+
+    evidence = technical_result.get("technical_computation")
+    if isinstance(evidence, Mapping):
+        evidence_start = _date_text(evidence.get("source_date_start"))
+        evidence_end = _date_text(evidence.get("source_date_end"))
+        if evidence_start and evidence_end:
+            return evidence_start, evidence_end
+    actual_end = _date_text(technical_result.get("end_date"))
+    if actual_end:
+        return actual_end, actual_end
+    return _date_text(default_start), _date_text(default_end)
+
+
 def build_technical_computation_evidence(
     *,
     source_db: str | Path,
@@ -757,6 +783,11 @@ def publish_technical_indicator_receipt(
         technical_result = {}
     if technical_step_status not in {"passed", "skipped"} or technical_result.get("success") is False:
         return {"status": "blocked", "reason": "technical_indicators_not_published_in_run"}
+    custody_start, custody_end = technical_custody_source_window(
+        technical_result,
+        default_start=update_status.get("start_date"),
+        default_end=update_status.get("end_date"),
+    )
     receipt_roots = tuple(
         dict.fromkeys(
             Path(root).expanduser().resolve()
@@ -768,8 +799,8 @@ def publish_technical_indicator_receipt(
         for path in discover_daily_price_receipt_paths(
             receipt_root,
             values=steps,
-            source_date_start=update_status.get("start_date"),
-            source_date_end=update_status.get("end_date"),
+            source_date_start=custody_start,
+            source_date_end=custody_end,
         ):
             if _path_is_within_any_root(path, receipt_roots):
                 receipt_paths.add(str(path))
@@ -2386,6 +2417,7 @@ __all__ = [
     "build_technical_computation_evidence",
     "capture_technical_input_snapshot",
     "daily_price_receipt_source_dates",
+    "technical_custody_source_window",
     "discover_daily_price_receipt_paths",
     "inspect_source_contract",
     "publish_technical_indicator_receipt",

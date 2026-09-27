@@ -16,7 +16,30 @@ from data_module.recommendation_calibration_source_contract import (
     capture_technical_input_snapshot,
     inspect_source_contract,
     publish_technical_indicator_receipt,
+    technical_custody_source_window,
 )
+
+
+def test_technical_custody_window_uses_actual_calculation_day_on_closed_day():
+    assert technical_custody_source_window(
+        {"end_date": "2026-09-24"},
+        default_start="2026-09-27",
+        default_end="2026-09-27",
+    ) == ("2026-09-24", "2026-09-24")
+
+
+def test_technical_custody_window_prefers_hash_bound_computation_window():
+    assert technical_custody_source_window(
+        {
+            "end_date": "2026-09-24",
+            "technical_computation": {
+                "source_date_start": "2026-09-23",
+                "source_date_end": "2026-09-24",
+            },
+        },
+        default_start="2026-09-27",
+        default_end="2026-09-27",
+    ) == ("2026-09-23", "2026-09-24")
 
 
 def _source_db(path, symbols=("1101", "2330")):
@@ -239,12 +262,6 @@ def _daily_capture(root, *, captured_at: datetime, symbols=("1101", "2330")):
 
 
 def _publish_technical(root, source_db, receipt):
-    algorithm_path = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "analysis_module"
-        / "technical_analysis"
-        / "technical_indicators.py"
-    )
     computation = build_technical_computation_evidence(
         source_db=source_db,
         calculation_result={"success": True, "updated_stocks": ["1101", "2330"]},
@@ -274,6 +291,52 @@ def _publish_technical(root, source_db, receipt):
             ],
         },
     )
+
+
+def test_closed_day_update_discovers_custody_from_actual_technical_end_date(tmp_path):
+    source_db = tmp_path / "source.db"
+    _source_db(source_db)
+    root = tmp_path / "output"
+    _daily_capture(
+        root,
+        captured_at=datetime(2026, 9, 14, 5, 0, tzinfo=timezone.utc),
+    )
+    computation = build_technical_computation_evidence(
+        source_db=source_db,
+        calculation_result={"success": True, "end_date": "2026-09-14"},
+        source_date_start="2026-09-14",
+        source_date_end="2026-09-14",
+        started_at="2026-09-15T05:00:00+00:00",
+        completed_at="2026-09-15T05:05:00+00:00",
+        input_snapshot=capture_technical_input_snapshot(source_db),
+    )
+
+    publication = publish_technical_indicator_receipt(
+        output_root=root,
+        source_db=source_db,
+        update_status={
+            "status": "passed",
+            "run_id": "closed-day-run",
+            "start_date": "2026-09-15",
+            "end_date": "2026-09-15",
+            "completed_at": "2026-09-15T05:05:00+00:00",
+            "steps": [
+                {
+                    "name": "calculate_technical_indicators",
+                    "status": "passed",
+                    "result": {
+                        "success": True,
+                        "end_date": "2026-09-14",
+                        "technical_computation": computation,
+                    },
+                }
+            ],
+        },
+    )
+
+    assert publication["status"] == "published"
+    assert publication["source_date_start"] == "2026-09-14"
+    assert publication["source_date_end"] == "2026-09-14"
 
 
 def test_partial_source_coverage_does_not_make_prospective_lane_ready(tmp_path):

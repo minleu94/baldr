@@ -205,10 +205,19 @@ def test_operational_task_blocks_overlap_and_skips_non_trading_day(
 
     non_trading_args = _fixture_args(tmp_path / "closed")
     _open_calendar(monkeypatch, is_trading_day=False)
+    monkeypatch.setattr(
+        operational,
+        "load_same_day_snapshot",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("closed day must not inspect snapshot")
+        ),
+    )
     code, payload = operational.run_once(non_trading_args, child_runner=_successful_child)
     assert code == 0
     assert payload["status"] == "skipped_non_trading_day"
     assert payload["child_invocation"] == "not_required_non_trading_day"
+    assert payload["snapshot"]["status"] == "not_applicable"
+    assert payload["snapshot"]["reason"] == "not_applicable_non_trading_day"
     assert payload["formal_order_allowed"] is False
 
 

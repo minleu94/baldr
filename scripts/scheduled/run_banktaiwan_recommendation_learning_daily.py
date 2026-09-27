@@ -45,6 +45,9 @@ DEFAULT_LANE_DIRNAME = "FA_Data_Shadow_BankTaiwan"
 DEFAULT_SOURCE_DIRNAME = "FA_Data_Shadow"
 DEFAULT_RESEARCH_ORDER_QUANTITY_SHARES = 1000
 DEFAULT_POLICY_ESTIMATE_DATE = "2026-01-01"
+DEFAULT_CALENDAR_CACHE_ROOT = (
+    ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
+)
 OPERATION_SCHEMA_VERSION = "banktaiwan-recommendation-learning-operational.v1"
 
 _REUSABLE_TERMINAL_STATUSES = frozenset(
@@ -93,6 +96,20 @@ class SnapshotSummary:
     file_sha256: str
     status_path: Path
     status_payload: Mapping[str, Any]
+
+
+def _official_calendar(source_db: Path) -> OfficialTradingCalendar:
+    configured = os.environ.get("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+    cache_root = (
+        Path(configured).expanduser().resolve()
+        if isinstance(configured, str) and configured.strip()
+        else DEFAULT_CALENDAR_CACHE_ROOT.resolve()
+    )
+    return OfficialTradingCalendar(
+        db_path=source_db,
+        calendar_cache_path=cache_root,
+        temporary_closure_path=cache_root,
+    )
 
 
 ChildRunner = Callable[
@@ -844,13 +861,21 @@ def _common_args(args: argparse.Namespace) -> tuple[OperationalPaths, date, Reco
 def _dry_run(args: argparse.Namespace) -> int:
     try:
         paths, decision_date, scenario = _common_args(args)
-        official_day, calendar_reason = OfficialTradingCalendar(
-            db_path=paths.source_db
+        official_day, calendar_reason = _official_calendar(
+            paths.source_db
         ).is_official_trading_day(decision_date, allow_online_probe=False)
-        snapshot, snapshot_reason = load_same_day_snapshot(
-            output_root=paths.snapshot_output_root,
-            decision_date=decision_date,
-        )
+        if official_day is True:
+            snapshot, snapshot_reason = load_same_day_snapshot(
+                output_root=paths.snapshot_output_root,
+                decision_date=decision_date,
+            )
+        else:
+            snapshot = None
+            snapshot_reason = (
+                "not_applicable_non_trading_day"
+                if official_day is False
+                else "not_checked_calendar_unresolved"
+            )
         planned = {
             "schema_version": OPERATION_SCHEMA_VERSION,
             "status": "dry_run",
@@ -878,7 +903,15 @@ def _dry_run(args: argparse.Namespace) -> int:
                 "reason": calendar_reason,
             },
             "snapshot": {
-                "status": "verified" if snapshot is not None else "blocked",
+                "status": (
+                    "verified"
+                    if snapshot is not None
+                    else "not_applicable"
+                    if official_day is False
+                    else "not_checked"
+                    if official_day is None
+                    else "blocked"
+                ),
                 "reason": snapshot_reason,
                 "path": str(snapshot.path) if snapshot is not None else None,
                 "file_sha256": snapshot.file_sha256 if snapshot is not None else None,
@@ -912,10 +945,29 @@ def _run_locked(
     args: argparse.Namespace,
     child_runner: ChildRunner | None,
 ) -> tuple[int, dict[str, Any]]:
-    snapshot, snapshot_reason = load_same_day_snapshot(
-        output_root=paths.snapshot_output_root,
-        decision_date=decision_date,
-    )
+    official_day: bool | None = None
+    calendar_reason = "not_checked"
+    if paths.source_db.is_file():
+        try:
+            official_day, calendar_reason = _official_calendar(
+                paths.source_db
+            ).is_official_trading_day(decision_date, allow_online_probe=False)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            official_day, calendar_reason = None, "official_calendar_read_failed"
+    else:
+        calendar_reason = "source_db_missing"
+    if official_day is True:
+        snapshot, snapshot_reason = load_same_day_snapshot(
+            output_root=paths.snapshot_output_root,
+            decision_date=decision_date,
+        )
+    else:
+        snapshot = None
+        snapshot_reason = (
+            "not_applicable_non_trading_day"
+            if official_day is False
+            else "not_checked_calendar_unresolved"
+        )
     fingerprint = build_input_fingerprint(
         paths=paths,
         decision_date=decision_date,
@@ -953,7 +1005,15 @@ def _run_locked(
                 "retryable_after_failure": True,
             },
             "snapshot": {
-                "status": "verified" if snapshot is not None else "blocked",
+                "status": (
+                    "verified"
+                    if snapshot is not None
+                    else "not_applicable"
+                    if official_day is False
+                    else "not_checked"
+                    if official_day is None
+                    else "blocked"
+                ),
                 "reason": snapshot_reason,
                 "path": str(snapshot.path) if snapshot is not None else None,
                 "file_sha256": snapshot.file_sha256 if snapshot is not None else None,
@@ -963,17 +1023,6 @@ def _run_locked(
             },
         }
     )
-    official_day: bool | None = None
-    calendar_reason = "not_checked"
-    if paths.source_db.is_file():
-        try:
-            official_day, calendar_reason = OfficialTradingCalendar(
-                db_path=paths.source_db
-            ).is_official_trading_day(decision_date, allow_online_probe=False)
-        except (OSError, RuntimeError, TypeError, ValueError):
-            official_day, calendar_reason = None, "official_calendar_read_failed"
-    else:
-        calendar_reason = "source_db_missing"
     base["calendar"] = {
         "timezone": "Asia/Taipei",
         "is_official_trading_day": official_day,

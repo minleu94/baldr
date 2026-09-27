@@ -654,6 +654,8 @@ def _build_request(
         as_of_date=_date_value(
             as_of_date
             if as_of_date is not None
+            else body_context.as_of_date
+            if body_context is not None
             else runtime_config.get("as_of_date")
         ),
         config_ref=config_ref,

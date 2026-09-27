@@ -481,6 +481,7 @@ def test_scheduled_recommendation_snapshot_saves_result_and_status(
     assert saved is not None
     assert saved.request.max_stocks == 25
     assert saved.request.top_n == 5
+    assert saved.request.as_of_date == saved.context.as_of_date
     assert saved.request.config_snapshot is not None
     caller_config = json.loads(saved.request.config_snapshot.raw_config_json)
     assert caller_config == run_scheduled_recommendation_snapshot._scheduled_default_config()

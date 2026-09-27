@@ -867,22 +867,8 @@ def main(argv: list[str] | None = None) -> int:
                 capture_technical_input_snapshot,
                 daily_price_receipt_source_dates,
                 discover_daily_price_receipt_paths,
+                technical_custody_source_window,
             )
-
-            receipt_path_set: set[Path] = set()
-            for receipt_root in authorized_technical_output_roots:
-                receipt_path_set.update(
-                    discover_daily_price_receipt_paths(
-                        receipt_root,
-                        values=steps,
-                        source_date_start=start_date,
-                        source_date_end=end_date,
-                    )
-                )
-            receipt_paths = sorted(receipt_path_set)
-            receipt_dates = daily_price_receipt_source_dates(receipt_paths)
-            evidence_start = receipt_dates[0] if receipt_dates else start_date
-            evidence_end = receipt_dates[-1] if receipt_dates else end_date
             started_at = datetime.now(timezone.utc)
             input_snapshot = capture_technical_input_snapshot(
                 config.db_file,
@@ -901,6 +887,25 @@ def main(argv: list[str] | None = None) -> int:
             )
             completed_at = datetime.now(timezone.utc)
             calculation = dict(calculation)
+            custody_start, custody_end = technical_custody_source_window(
+                calculation,
+                default_start=start_date,
+                default_end=end_date,
+            )
+            receipt_path_set: set[Path] = set()
+            for receipt_root in authorized_technical_output_roots:
+                receipt_path_set.update(
+                    discover_daily_price_receipt_paths(
+                        receipt_root,
+                        values=steps,
+                        source_date_start=custody_start,
+                        source_date_end=custody_end,
+                    )
+                )
+            receipt_paths = sorted(receipt_path_set)
+            receipt_dates = daily_price_receipt_source_dates(receipt_paths)
+            evidence_start = receipt_dates[0] if receipt_dates else custody_start
+            evidence_end = receipt_dates[-1] if receipt_dates else custody_end
             calculation["source_receipts"] = [
                 {"receipt_path": str(path)} for path in receipt_paths
             ]
@@ -912,23 +917,29 @@ def main(argv: list[str] | None = None) -> int:
                 calculation = _annotate_currentity_recompute_outcome(calculation)
             if calculation.get("success") is True:
                 if input_snapshot.get("verified") is True:
-                    try:
-                        calculation["technical_computation"] = (
-                            build_technical_computation_evidence(
-                                source_db=config.db_file,
-                                calculation_result=calculation,
-                                source_date_start=evidence_start,
-                                source_date_end=evidence_end,
-                                started_at=started_at,
-                                completed_at=completed_at,
-                                input_snapshot=input_snapshot,
-                            )
-                        )
-                    except Exception as exc:  # noqa: BLE001
+                    if evidence_start is None or evidence_end is None:
                         calculation["technical_computation_error"] = (
-                            f"{type(exc).__name__}:{exc}"
+                            "technical_custody_source_window_missing"
                         )
                         calculation["success"] = False
+                    else:
+                        try:
+                            calculation["technical_computation"] = (
+                                build_technical_computation_evidence(
+                                    source_db=config.db_file,
+                                    calculation_result=calculation,
+                                    source_date_start=evidence_start,
+                                    source_date_end=evidence_end,
+                                    started_at=started_at,
+                                    completed_at=completed_at,
+                                    input_snapshot=input_snapshot,
+                                )
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            calculation["technical_computation_error"] = (
+                                f"{type(exc).__name__}:{exc}"
+                            )
+                            calculation["success"] = False
                 else:
                     calculation["technical_computation_error"] = str(
                         input_snapshot.get("reason") or "technical_input_snapshot_unverified"

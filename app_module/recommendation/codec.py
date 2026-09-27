@@ -659,7 +659,7 @@ def encode_legacy_recommendation(value: object) -> dict[str, object]:
     artifact writer。
     """
 
-    from app_module.dtos import RecommendationDTO
+    from app_module.recommendation.legacy_dtos import RecommendationDTO
 
     if not isinstance(value, RecommendationDTO):
         raise TypeError("legacy export 僅接受 RecommendationDTO")
@@ -736,7 +736,7 @@ def decode_legacy_recommendation(
 ) -> Any:
     """唯讀解碼已知的 RecommendationDTO 中英文歷史欄位格式。"""
 
-    from app_module.dtos import RecommendationDTO
+    from app_module.recommendation.legacy_dtos import RecommendationDTO
 
     selected_type = RecommendationDTO if dto_type is None else dto_type
     if not isinstance(data, Mapping):
@@ -832,7 +832,7 @@ def decode_legacy_result(
         raise ExecutionCodecError("legacy artifact 頂層必須是 object")
     if "schema_version" in document or "schema_revision" in document:
         raise ExecutionCodecError("含 schema header 的 artifact 必須走 decode_execution")
-    from app_module.dtos import RecommendationResultDTO
+    from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 
     return RecommendationResultDTO.from_dict(cast(dict[str, Any], document))
 
@@ -850,7 +850,7 @@ def decode_artifact(
         return _decode_execution_document(document, raw_payload=raw_payload)
     if type(document) is not dict:
         raise ExecutionCodecError("legacy artifact 頂層必須是 object")
-    from app_module.dtos import RecommendationResultDTO
+    from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 
     return RecommendationResultDTO.from_dict(cast(dict[str, Any], document))
 

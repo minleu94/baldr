@@ -33,6 +33,11 @@ coverage.xml
 # 根目錄隔離測試的 pytest --basetemp 輸出。
 /.tmp_*/
 
+# 2026-09-27 R031 QA runner 的短 TEMP 隔離輸出（精確辨識，不擴及其他名稱）。
+/.tf_*/
+/.tc1/
+/.tc2/
+
 # 本機 Obsidian 工作區狀態與這份單次草稿白板。
 /.obsidian/
 /Untitled.canvas

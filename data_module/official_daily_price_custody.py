@@ -73,7 +73,9 @@ def _write_create_only(path: Path, value: bytes) -> None:
         if existing != value:
             raise OfficialDailyPriceCustodyError(f"immutable custody conflict: {path}")
         return
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
+    # Keep the scratch basename independent of the target name so long custody
+    # paths remain publishable on Windows installations without long-path support.
+    temporary = path.with_name(f".{os.getpid()}.{uuid4().hex}.tmp")
     try:
         with temporary.open("xb") as stream:
             stream.write(value)

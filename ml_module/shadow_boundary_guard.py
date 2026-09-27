@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,8 @@ PRODUCTION_ROOTS = (
     "backtest_module",
 )
 FORBIDDEN_ML_IMPORT_ROOTS = frozenset(PRODUCTION_ROOTS)
+ARTIFACT_CONTRACT_ROOT = "artifact_contracts"
+ARTIFACT_CONTRACT_ALLOWED_EXTERNAL_ROOTS = frozenset({"numpy"})
 ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = {
     "app_module/ml_allocation_inference_service.py": {
         "ml_module.allocation_contracts": frozenset(
@@ -334,7 +337,87 @@ class MLShadowBoundaryGuard:
                             violations.append(
                                 f"production_imports_ml_module:{path.relative_to(self.root)}:{imported}"
                             )
+        contract_root = self.root / ARTIFACT_CONTRACT_ROOT
+        for path in (
+            sorted(contract_root.rglob("*.py"))
+            if contract_root.exists()
+            else ()
+        ):
+            inspected += 1
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            violations.extend(self._inspect_artifact_contract_tree(path, tree))
         return MLShadowBoundaryReport(inspected, tuple(sorted(violations)))
+
+    def _inspect_artifact_contract_tree(
+        self,
+        path: Path,
+        tree: ast.AST,
+    ) -> tuple[str, ...]:
+        """Keep the shared serialized-type leaf independent and statically closed."""
+
+        violations: list[str] = []
+        relative = path.relative_to(self.root)
+        module_parts = list(relative.with_suffix("").parts)
+        package_parts = module_parts[:-1]
+
+        def check_absolute(module: str) -> None:
+            root_name = module.split(".", 1)[0]
+            if root_name == ARTIFACT_CONTRACT_ROOT:
+                return
+            if root_name in {
+                "builtins",
+                "importlib",
+                "pkgutil",
+                "pydoc",
+                "runpy",
+            }:
+                violations.append(
+                    f"artifact_contracts_dynamic_import:{relative}:{module}"
+                )
+                return
+            if (
+                root_name not in sys.stdlib_module_names
+                and root_name not in ARTIFACT_CONTRACT_ALLOWED_EXTERNAL_ROOTS
+            ):
+                violations.append(
+                    f"artifact_contracts_imports_non_neutral_dependency:{relative}:{module}"
+                )
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    check_absolute(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    ascend = node.level - 1
+                    base = package_parts[: max(0, len(package_parts) - ascend)]
+                    target_parts = base + (
+                        node.module.split(".") if node.module else []
+                    )
+                    target = ".".join(target_parts)
+                    if ascend >= len(package_parts) or not (
+                        target == ARTIFACT_CONTRACT_ROOT
+                        or target.startswith(f"{ARTIFACT_CONTRACT_ROOT}.")
+                    ):
+                        violations.append(
+                            f"artifact_contracts_relative_import_escape:{relative}:"
+                            f".{'.' * (node.level - 1)}{node.module or ''}"
+                        )
+                elif node.module:
+                    check_absolute(node.module)
+            elif isinstance(node, ast.Name) and node.id in {
+                "__import__",
+                "eval",
+                "exec",
+            }:
+                violations.append(
+                    f"artifact_contracts_dynamic_import:{relative}:{node.id}"
+                )
+            elif isinstance(node, ast.Attribute) and node.attr == "import_module":
+                violations.append(
+                    f"artifact_contracts_dynamic_import:{relative}:import_module"
+                )
+        return tuple(violations)
 
     def _inspect_ml_tree(self, path: Path, tree: ast.AST) -> tuple[str, ...]:
         violations: list[str] = []

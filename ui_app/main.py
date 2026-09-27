@@ -46,9 +46,11 @@ try:
     from decision_module.strategy_configurator import StrategyConfigurator
     from decision_module.reason_engine import ReasonEngine
     from app_module.regime_service import RegimeService
-    from decision_module.industry_mapper import IndustryMapper
     # 導入應用服務層
-    from app_module.decision_service_composition import build_stock_screener
+    from app_module.decision_service_composition import (
+        build_industry_mapper,
+        build_stock_screener,
+    )
     from app_module.recommendation.input_preparation import (
         build_default_recommendation_input_preparer,
     )
@@ -74,7 +76,7 @@ class TradingAnalysisApp:
         self.data_loader = DataLoader(self.config)
         # 保留原有實例以保持向後兼容（UI 層仍可直接使用）
         self.strategy_configurator = StrategyConfigurator()
-        self.industry_mapper = IndustryMapper(self.config)  # 先初始化，因為 StockScreener 需要它
+        self.industry_mapper = build_industry_mapper(self.config)  # 先初始化，因為 StockScreener 需要它
         self.stock_screener = build_stock_screener(self.config, self.industry_mapper)
         self.reason_engine = ReasonEngine()
         self.regime_service = RegimeService(

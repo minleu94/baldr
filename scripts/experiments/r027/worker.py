@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import contextmanager
 import hashlib
 import importlib
@@ -12,9 +13,13 @@ import os
 from pathlib import Path
 import sqlite3
 import sys
-import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterator
+
+from scripts.experiments.r027.observation_clock import R027ObservationClock
+from scripts.experiments.r027.logical_publication_phase_port import (
+    LogicalPublicationPhasePort,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -360,11 +365,269 @@ def _write_indicator_seed(path: Path, symbol: str, latest: str) -> None:
     ).to_csv(path, index=False, encoding="utf-8-sig")
 
 
+def _sqlite_path_snapshot(
+    path: Path,
+    *,
+    include_raw_bytes: bool = False,
+) -> dict[str, Any] | None:
+    """讀取隔離 SQLite 檔案的原始 hash、大小與檔案時間。"""
+
+    if not path.is_file():
+        return None
+    raw = path.read_bytes()
+    snapshot = {
+        "sha256": _sha256_bytes(raw),
+        "size_bytes": len(raw),
+        "mtime_ns": path.stat().st_mtime_ns,
+    }
+    if include_raw_bytes:
+        snapshot["raw_bytes_base64"] = base64.b64encode(raw).decode("ascii")
+    return snapshot
+
+
+def _sqlite_transient_path_snapshots(database_path: Path) -> dict[str, dict[str, Any]]:
+    """記錄 WAL/SHM 原始檔案摘要，不開啟或變更 SQLite 資料庫。"""
+
+    snapshots: dict[str, dict[str, Any]] = {}
+    for path in (
+        Path(str(database_path) + "-wal"),
+        Path(str(database_path) + "-shm"),
+    ):
+        snapshot = _sqlite_path_snapshot(path)
+        if snapshot is not None:
+            snapshots[path.name] = snapshot
+    return snapshots
+
+
+def _sqlite_scalar_evidence(value: Any) -> dict[str, Any]:
+    """以保留 SQLite 型別的方式序列化一個測試資料庫值。"""
+
+    if value is None:
+        return {"type": "null"}
+    if isinstance(value, bool):
+        return {"type": "integer", "value": int(value)}
+    if isinstance(value, int):
+        return {"type": "integer", "value": value}
+    if isinstance(value, float):
+        return {"type": "real", "hex": value.hex()}
+    if isinstance(value, bytes):
+        return {"type": "blob", "base64": base64.b64encode(value).decode("ascii")}
+    return {"type": "text", "value": str(value)}
+
+
+def _sqlite_table_snapshot(
+    connection: sqlite3.Connection,
+    table_name: str,
+    *,
+    key_columns: tuple[str, ...],
+) -> dict[str, Any]:
+    """從現有連線讀取一張表的 schema、排序列與業務鍵。"""
+
+    table_row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    if table_row is None or not table_row[0]:
+        raise RuntimeError(f"required logical SQLite table is missing: {table_name}")
+    quoted_table = '"' + table_name.replace('"', '""') + '"'
+    columns = [
+        {
+            "cid": int(row[0]),
+            "name": str(row[1]),
+            "declared_type": str(row[2]),
+            "not_null": int(row[3]),
+            "default": _sqlite_scalar_evidence(row[4]),
+            "primary_key_order": int(row[5]),
+        }
+        for row in connection.execute(
+            f"PRAGMA table_info({quoted_table})"
+        ).fetchall()
+    ]
+    column_names = [column["name"] for column in columns]
+    if any(name not in column_names for name in key_columns):
+        raise RuntimeError(
+            f"logical SQLite table lacks required key columns: {table_name}"
+        )
+    quoted_keys = [
+        '"' + name.replace('"', '""') + '"' for name in key_columns
+    ]
+    order_sql = ", ".join(quoted_keys)
+    raw_rows = connection.execute(
+        f"SELECT * FROM {quoted_table} ORDER BY {order_sql}"
+    ).fetchall()
+    key_positions = [column_names.index(name) for name in key_columns]
+    rows = [
+        [_sqlite_scalar_evidence(value) for value in row]
+        for row in raw_rows
+    ]
+    row_keys = [
+        [_sqlite_scalar_evidence(row[index]) for index in key_positions]
+        for row in raw_rows
+    ]
+    canonical_keys = [
+        json.dumps(key, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        for key in row_keys
+    ]
+    if len(set(canonical_keys)) != len(canonical_keys):
+        raise RuntimeError(f"logical SQLite table has duplicate keys: {table_name}")
+    return {
+        "table_name": table_name,
+        "schema_sql": str(table_row[0]),
+        "table_columns": columns,
+        "row_count": len(rows),
+        "rows": rows,
+        "rows_sha256": _canonical_hash(rows),
+        "row_keys": row_keys,
+        "row_keys_sha256": _canonical_hash(row_keys),
+        "key_columns": list(key_columns),
+    }
+
+
+def _logical_sqlite_snapshot_evidence(
+    database_path: Path,
+    workspace: Path,
+    *,
+    initial_fixture_identity: dict[str, Any],
+) -> dict[str, Any]:
+    """在兩個全新唯讀連線中驗證 SQLite 可見狀態與主檔原始 bytes。"""
+
+    resolved_database = database_path.resolve(strict=True)
+    resolved_workspace = workspace.resolve(strict=True)
+    relative_database = resolved_database.relative_to(resolved_workspace).as_posix()
+
+    def raw_main_database() -> dict[str, Any]:
+        raw = resolved_database.read_bytes()
+        return {
+            "sha256": _sha256_bytes(raw),
+            "size_bytes": len(raw),
+            "mtime_ns": resolved_database.stat().st_mtime_ns,
+            "raw_bytes_base64": base64.b64encode(raw).decode("ascii"),
+        }
+
+    main_before = raw_main_database()
+    transient_before = _sqlite_transient_path_snapshots(resolved_database)
+    readers: list[dict[str, Any]] = []
+    for reader_sequence in (1, 2):
+        connection = sqlite3.connect(
+            f"{resolved_database.as_uri()}?mode=ro",
+            uri=True,
+        )
+        query_only_enabled = False
+        database_entries: list[dict[str, Any]] = []
+        source_snapshot: dict[str, Any] | None = None
+        technical_snapshot: dict[str, Any] | None = None
+        try:
+            connection.execute("PRAGMA query_only = ON")
+            query_only_row = connection.execute("PRAGMA query_only").fetchone()
+            query_only_enabled = bool(
+                query_only_row and int(query_only_row[0]) == 1
+            )
+            if not query_only_enabled:
+                raise RuntimeError("logical SQLite reader is not query-only")
+
+            database_entries = [
+                {
+                    "sequence": int(row[0]),
+                    "name": str(row[1]),
+                    "workspace_relative_file": (
+                        Path(str(row[2]))
+                        .resolve(strict=True)
+                        .relative_to(resolved_workspace)
+                        .as_posix()
+                        if row[2]
+                        else None
+                    ),
+                }
+                for row in connection.execute("PRAGMA database_list").fetchall()
+            ]
+            main_entries = [row for row in database_entries if row["name"] == "main"]
+            if (
+                len(main_entries) != 1
+                or main_entries[0]["workspace_relative_file"] != relative_database
+            ):
+                raise RuntimeError("logical SQLite reader opened an unexpected main DB")
+
+            source_snapshot = _sqlite_table_snapshot(
+                connection,
+                "daily_prices",
+                key_columns=("證券代號", "日期"),
+            )
+            technical_snapshot = _sqlite_table_snapshot(
+                connection,
+                "technical_indicators",
+                key_columns=("證券代號", "日期"),
+            )
+        finally:
+            connection.close()
+
+        if source_snapshot is None or technical_snapshot is None:
+            raise RuntimeError("logical SQLite table evidence was not captured")
+        main_after_close = raw_main_database()
+        transient_after_close = _sqlite_transient_path_snapshots(resolved_database)
+        readers.append(
+            {
+                "sequence": reader_sequence,
+                "query_only_enabled": query_only_enabled,
+                "database_list": database_entries,
+                "connection_close_returned": True,
+                "daily_prices_source": source_snapshot,
+                "table_schema_sql": technical_snapshot["schema_sql"],
+                "table_columns": technical_snapshot["table_columns"],
+                "row_count": technical_snapshot["row_count"],
+                "rows": technical_snapshot["rows"],
+                "rows_sha256": technical_snapshot["rows_sha256"],
+                "row_keys": technical_snapshot["row_keys"],
+                "row_keys_sha256": technical_snapshot["row_keys_sha256"],
+                "initial_fixture_identity": initial_fixture_identity,
+                "main_database_after_reader_close": main_after_close,
+                "transient_files_after_reader_close": transient_after_close,
+            }
+        )
+
+    main_after = raw_main_database()
+    transient_after = _sqlite_transient_path_snapshots(resolved_database)
+    reader_states_match = all(
+        reader["table_schema_sql"] == readers[0]["table_schema_sql"]
+        and reader["table_columns"] == readers[0]["table_columns"]
+        and reader["rows_sha256"] == readers[0]["rows_sha256"]
+        and reader["row_keys_sha256"] == readers[0]["row_keys_sha256"]
+        and reader["daily_prices_source"] == readers[0]["daily_prices_source"]
+        and reader["initial_fixture_identity"]
+        == readers[0]["initial_fixture_identity"]
+        for reader in readers[1:]
+    )
+    main_database_raw_bytes_unchanged = (
+        main_before["sha256"] == main_after["sha256"]
+        and main_before["size_bytes"] == main_after["size_bytes"]
+        and main_before["raw_bytes_base64"] == main_after["raw_bytes_base64"]
+        and all(
+            reader["main_database_after_reader_close"]["raw_bytes_base64"]
+            == main_before["raw_bytes_base64"]
+            for reader in readers
+        )
+    )
+    return {
+        "schema": "r027-logical-sqlite-snapshot.v1",
+        "database_workspace_relative_path": relative_database,
+        "initial_fixture_identity": initial_fixture_identity,
+        "main_database_before_readers": main_before,
+        "fresh_readers": readers,
+        "main_database_after_readers": main_after,
+        "main_database_raw_bytes_unchanged_across_readers": (
+            main_database_raw_bytes_unchanged
+        ),
+        "reader_states_match_after_close_reopen": reader_states_match,
+        "transient_files_before_readers": transient_before,
+        "transient_files_after_readers": transient_after,
+    }
+
+
 def _snapshot_outputs(
     config: Any,
     workspace: Path,
     *,
     checkpoint: bool,
+    include_logical_time_raw_bytes: bool = False,
 ) -> dict[str, Any]:
     import numpy as np
     import pandas as pd
@@ -387,6 +650,7 @@ def _snapshot_outputs(
     technical = pd.DataFrame()
     wal_checkpoint_result: list[int] | None = None
     main_db_before_checkpoint: dict[str, Any] | None = None
+    sqlite_snapshot_reader_lifecycle: dict[str, Any] | None = None
     if database_path.is_file():
         raw_database_before_read = database_path.read_bytes()
         main_db_before_checkpoint = {
@@ -394,8 +658,67 @@ def _snapshot_outputs(
             "size_bytes": len(raw_database_before_read),
             "mtime_ns": database_path.stat().st_mtime_ns,
         }
-        connection = sqlite3.connect(database_path)
+        if include_logical_time_raw_bytes:
+            main_db_before_checkpoint["raw_bytes_base64"] = base64.b64encode(
+                raw_database_before_read
+            ).decode("ascii")
+        if checkpoint:
+            reader_mode = "read_write_checkpoint"
+            connection = sqlite3.connect(database_path)
+            query_only_enabled = False
+        else:
+            reader_mode = "read_only_uri_query_only"
+            connection = sqlite3.connect(
+                f"{database_path.resolve().as_uri()}?mode=ro",
+                uri=True,
+            )
+            query_only_enabled = False
+        database_list: list[dict[str, Any]] = []
         try:
+            if not checkpoint:
+                connection.execute("PRAGMA query_only = ON")
+                query_only_row = connection.execute("PRAGMA query_only").fetchone()
+                query_only_enabled = bool(
+                    query_only_row and int(query_only_row[0]) == 1
+                )
+                if not query_only_enabled:
+                    raise RuntimeError("SQLite snapshot reader is not query-only")
+            database_list = [
+                {
+                    "sequence": int(row[0]),
+                    "name": str(row[1]),
+                    "file": str(row[2]),
+                    "workspace_relative_file": (
+                        Path(str(row[2]))
+                        .resolve(strict=True)
+                        .relative_to(workspace.resolve())
+                        .as_posix()
+                        if row[2]
+                        else None
+                    ),
+                }
+                for row in connection.execute("PRAGMA database_list").fetchall()
+            ]
+            configured_database_real_path = database_path.resolve(strict=True)
+            main_database_entries = [
+                entry for entry in database_list if entry["name"] == "main"
+            ]
+            database_file_identity_validated = (
+                len(main_database_entries) == 1
+                and main_database_entries[0]["file"]
+                and os.path.samefile(
+                    main_database_entries[0]["file"],
+                    configured_database_real_path,
+                )
+                and main_database_entries[0]["workspace_relative_file"]
+                == configured_database_real_path.relative_to(
+                    workspace.resolve()
+                ).as_posix()
+            )
+            if not database_file_identity_validated:
+                raise RuntimeError(
+                    "SQLite snapshot reader main database does not match config.db_file"
+                )
             technical = pd.read_sql_query(
                 'SELECT * FROM technical_indicators '
                 'ORDER BY "證券代號", "日期"',
@@ -409,6 +732,63 @@ def _snapshot_outputs(
                     wal_checkpoint_result = [int(value) for value in checkpoint_row]
         finally:
             connection.close()
+        main_db_after_reader_close = _sqlite_path_snapshot(
+            database_path,
+            include_raw_bytes=include_logical_time_raw_bytes,
+        )
+        transient_files_after_reader_close = _sqlite_transient_path_snapshots(
+            database_path
+        )
+        same_transient_paths = set(sqlite_transient_files) == set(
+            transient_files_after_reader_close
+        )
+        transient_bytes_unchanged = same_transient_paths and all(
+            sqlite_transient_files[path].get("sha256")
+            == transient_files_after_reader_close[path].get("sha256")
+            and sqlite_transient_files[path].get("size_bytes")
+            == transient_files_after_reader_close[path].get("size_bytes")
+            for path in sqlite_transient_files
+        )
+        transient_mtimes_unchanged = same_transient_paths and all(
+            sqlite_transient_files[path].get("mtime_ns")
+            == transient_files_after_reader_close[path].get("mtime_ns")
+            for path in sqlite_transient_files
+        )
+        sqlite_snapshot_reader_lifecycle = {
+            "reader_mode": reader_mode,
+            "query_only_enabled": query_only_enabled,
+            "database_list": database_list,
+            "database_file_configured_path": str(
+                configured_database_real_path
+            ),
+            "database_file_workspace_relative": (
+                configured_database_real_path.relative_to(
+                    workspace.resolve()
+                ).as_posix()
+            ),
+            "database_file_identity_validated": database_file_identity_validated,
+            "reader_close_returned": True,
+            "main_db_before_reader": main_db_before_checkpoint,
+            "main_db_after_reader_close": main_db_after_reader_close,
+            "transient_files_before_reader": sqlite_transient_files,
+            "transient_files_after_reader_close": transient_files_after_reader_close,
+            "main_db_bytes_unchanged_across_reader_window": (
+                main_db_before_checkpoint.get("sha256")
+                == (main_db_after_reader_close or {}).get("sha256")
+                and main_db_before_checkpoint.get("size_bytes")
+                == (main_db_after_reader_close or {}).get("size_bytes")
+            ),
+            "main_db_mtime_unchanged_across_reader_window": (
+                main_db_before_checkpoint.get("mtime_ns")
+                == (main_db_after_reader_close or {}).get("mtime_ns")
+            ),
+            "transient_path_set_unchanged_across_reader_window": same_transient_paths,
+            "transient_bytes_unchanged_across_reader_window": transient_bytes_unchanged,
+            "transient_mtimes_unchanged_across_reader_window": transient_mtimes_unchanged,
+            "transient_raw_snapshots_unchanged_across_reader_window": (
+                sqlite_transient_files == transient_files_after_reader_close
+            ),
+        }
 
     candidates = list(config.technical_dir.rglob("*"))
     if config.all_stocks_data_file.exists():
@@ -472,6 +852,7 @@ def _snapshot_outputs(
         "sqlite_transient_files_before_checkpoint": sqlite_transient_files,
         "sqlite_main_db_before_checkpoint": main_db_before_checkpoint,
         "sqlite_wal_checkpoint_truncate_result": wal_checkpoint_result,
+        "sqlite_snapshot_reader_lifecycle": sqlite_snapshot_reader_lifecycle,
         "technical_rows": {
             "shape": [int(technical.shape[0]), int(technical.shape[1])],
             "columns": [str(value) for value in technical.columns],
@@ -492,10 +873,115 @@ def _snapshot_outputs(
     }
 
 
+def _mutate_temporary_sqlite_user_version(
+    database_path: Path,
+    workspace: Path,
+) -> dict[str, Any]:
+    """只在隔離資料庫改 SQLite header 的 user_version，驗真實 bytes gate。"""
+
+    resolved_database = database_path.resolve(strict=True)
+    resolved_workspace = workspace.resolve(strict=True)
+    if not _is_within(resolved_database, resolved_workspace):
+        raise RuntimeError("SQLite user_version control escaped its TEMP workspace")
+
+    before_bytes = resolved_database.read_bytes()
+    before_snapshot = {
+        "sha256": _sha256_bytes(before_bytes),
+        "size_bytes": len(before_bytes),
+        "mtime_ns": resolved_database.stat().st_mtime_ns,
+        "raw_bytes_base64": base64.b64encode(before_bytes).decode("ascii"),
+    }
+    connection = sqlite3.connect(resolved_database)
+    connection_closed = False
+    try:
+        before_main = connection.execute("PRAGMA database_list").fetchall()
+        main_files = [
+            Path(str(row[2])).resolve(strict=True)
+            for row in before_main
+            if str(row[1]) == "main" and row[2]
+        ]
+        if main_files != [resolved_database]:
+            raise RuntimeError("SQLite user_version control opened an unexpected DB")
+        before_tables = {
+            table: _sqlite_table_snapshot(
+                connection,
+                table,
+                key_columns=("證券代號", "日期"),
+            )
+            for table in ("daily_prices", "technical_indicators")
+        }
+        user_version_row = connection.execute("PRAGMA user_version").fetchone()
+        if user_version_row is None or type(user_version_row[0]) is not int:
+            raise RuntimeError("SQLite user_version control could not read old value")
+        old_user_version = user_version_row[0]
+        if old_user_version >= 2_147_483_647:
+            raise RuntimeError("SQLite user_version control cannot increment value")
+        mutated_user_version = old_user_version + 1
+        connection.execute(f"PRAGMA user_version = {mutated_user_version}")
+        connection.commit()
+        readback_row = connection.execute("PRAGMA user_version").fetchone()
+        if readback_row is None or type(readback_row[0]) is not int:
+            raise RuntimeError("SQLite user_version control could not read new value")
+        readback_user_version = readback_row[0]
+        after_tables = {
+            table: _sqlite_table_snapshot(
+                connection,
+                table,
+                key_columns=("證券代號", "日期"),
+            )
+            for table in ("daily_prices", "technical_indicators")
+        }
+    finally:
+        connection.close()
+        connection_closed = True
+
+    after_bytes = resolved_database.read_bytes()
+    after_snapshot = {
+        "sha256": _sha256_bytes(after_bytes),
+        "size_bytes": len(after_bytes),
+        "mtime_ns": resolved_database.stat().st_mtime_ns,
+        "raw_bytes_base64": base64.b64encode(after_bytes).decode("ascii"),
+    }
+    application_tables_unchanged = before_tables == after_tables
+    raw_bytes_changed = before_bytes != after_bytes
+    if not connection_closed or readback_user_version != mutated_user_version:
+        raise RuntimeError("SQLite user_version control did not commit/close correctly")
+    if not application_tables_unchanged:
+        raise RuntimeError("SQLite user_version control changed application rows/schema")
+    if not raw_bytes_changed or before_snapshot["sha256"] == after_snapshot["sha256"]:
+        raise RuntimeError("SQLite user_version control did not change main DB bytes")
+    return {
+        "schema": "r027-temp-sqlite-user-version-mutation.v1",
+        "operation": "PRAGMA user_version increment and commit",
+        "database_workspace_relative_path": resolved_database.relative_to(
+            resolved_workspace
+        ).as_posix(),
+        "connection_closed": connection_closed,
+        "old_user_version": old_user_version,
+        "mutated_user_version": mutated_user_version,
+        "readback_user_version": readback_user_version,
+        "before_main_database": before_snapshot,
+        "after_main_database": after_snapshot,
+        "raw_database_bytes_changed": raw_bytes_changed,
+        "application_tables_before": before_tables,
+        "application_tables_after": after_tables,
+        "application_tables_unchanged": application_tables_unchanged,
+    }
+
+
 def _run(args: argparse.Namespace) -> dict[str, Any]:
     workspace = Path(args.workspace).resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     _safe_temp_workspace(workspace)
+    if args.mutate_temp_sqlite_user_version and not (
+        args.logical_phase_port
+        and args.mode == "candidate"
+        and args.case == "clean"
+        and args.source_variant == "original"
+    ):
+        raise RuntimeError(
+            "SQLite user_version mutation is restricted to the logical clean candidate"
+        )
     sandbox_data = workspace / "data"
     sandbox_output = workspace / "output"
     os.environ["DATA_ROOT"] = str(sandbox_data)
@@ -550,14 +1036,18 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             )
 
     events: list[dict[str, Any]] = []
+    observation_clock = R027ObservationClock(
+        mode=args.observer_clock_mode,
+        case=args.case,
+    )
 
     def event(kind: str, **details: Any) -> None:
+        clock_stamp = observation_clock.stamp(kind)
         events.append(
             {
                 "seq": len(events),
                 "kind": kind,
-                "wall_time_utc": datetime.now(timezone.utc).isoformat(),
-                "monotonic_ns": time.perf_counter_ns(),
+                **clock_stamp,
                 **details,
             }
         )
@@ -679,14 +1169,35 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         target_stock: str | None = None,
     ) -> dict[str, Any]:
         event("calculation_call_start", phase=label)
+        logical_phase_port = (
+            LogicalPublicationPhasePort(
+                case=args.case,
+                mode=args.mode,
+                phase=label,
+                source_sha256=_sha256_bytes(
+                    (
+                        REPOSITORY_ROOT / "app_module" / "update_service.py"
+                        if args.mode == "baseline"
+                        else Path(args.candidate_module).resolve()
+                    ).read_bytes()
+                ),
+            )
+            if args.logical_phase_port
+            else None
+        )
         if args.mode == "baseline":
+            calculation_kwargs = {
+                "target_stock": target_stock,
+                "force_all": force_all,
+                "start_date": None,
+                "progress_callback": progress_callback,
+                "cancel_callback": cancel_callback,
+                "technical_process_pool": False,
+            }
+            if logical_phase_port is not None:
+                calculation_kwargs["publication_phase_port"] = logical_phase_port
             result = service.calculate_technical_indicators(
-                target_stock=target_stock,
-                force_all=force_all,
-                start_date=None,
-                progress_callback=progress_callback,
-                cancel_callback=cancel_callback,
-                technical_process_pool=False,
+                **calculation_kwargs,
             )
         else:
             candidate_path = Path(args.candidate_module).resolve()
@@ -699,30 +1210,56 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             candidate_module = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = candidate_module
             spec.loader.exec_module(candidate_module)
-            candidate = candidate_module.CandidateTechnicalIndicatorJob(service)
-            result = candidate.run(
-                target_stock=target_stock,
-                force_all=force_all,
-                start_date=None,
-                progress_callback=progress_callback,
-                cancel_callback=cancel_callback,
-                technical_process_pool=False,
+            ports = candidate_module.TechnicalIndicatorJobPorts(
+                config=config,
+                get_indicator_latest_date=service._get_indicator_latest_date,
+                run_process_pool=service._run_technical_indicator_process_pool,
             )
+            candidate = candidate_module.CandidateTechnicalIndicatorJob(ports)
+            calculation_kwargs = {
+                "target_stock": target_stock,
+                "force_all": force_all,
+                "start_date": None,
+                "progress_callback": progress_callback,
+                "cancel_callback": cancel_callback,
+                "technical_process_pool": False,
+            }
+            if logical_phase_port is not None:
+                calculation_kwargs["publication_phase_port"] = logical_phase_port
+            result = candidate.run(
+                **calculation_kwargs,
+            )
+        if logical_phase_port is not None:
+            logical_phase_port_receipts[label] = logical_phase_port.receipt()
         event("calculation_call_end", phase=label, success=bool(result.get("success")))
         return result
 
     phases: list[dict[str, Any]] = []
+    logical_phase_port_receipts: dict[str, dict[str, Any]] = {}
 
     def record_phase(label: str, result: dict[str, Any]) -> None:
+        outputs = _snapshot_outputs(
+            config,
+            workspace,
+            checkpoint=False,
+            include_logical_time_raw_bytes=args.logical_phase_port,
+        )
+        if args.logical_phase_port:
+            outputs["logical_sqlite_snapshot"] = _logical_sqlite_snapshot_evidence(
+                Path(config.db_file),
+                workspace,
+                initial_fixture_identity={
+                    "source_variant": args.source_variant,
+                    "canonical_rows_hash": source_hash,
+                    "row_count": len(rows),
+                    "symbols": ["1101", "2330"],
+                },
+            )
         phases.append(
             {
                 "label": label,
                 "result": result,
-                "outputs": _snapshot_outputs(
-                    config,
-                    workspace,
-                    checkpoint=False,
-                ),
+                "outputs": outputs,
                 "source_mutated": bool(cancel_state["source_mutated"]),
             }
         )
@@ -825,11 +1362,33 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
                     record_phase("clean_full_synthetic_publication", result)
 
     event("post_scenario_temp_checkpoint_start")
-    final_outputs = _snapshot_outputs(config, workspace, checkpoint=True)
+    logical_main_db_mutation = None
+    if args.mutate_temp_sqlite_user_version:
+        logical_main_db_mutation = _mutate_temporary_sqlite_user_version(
+            Path(config.db_file),
+            workspace,
+        )
+    final_outputs = _snapshot_outputs(
+        config,
+        workspace,
+        checkpoint=True,
+        include_logical_time_raw_bytes=args.logical_phase_port,
+    )
     event(
         "post_scenario_temp_checkpoint_end",
         publication_path_count=len(final_outputs.get("publication_paths", [])),
     )
+    if args.logical_phase_port:
+        final_outputs["logical_sqlite_snapshot"] = _logical_sqlite_snapshot_evidence(
+            Path(config.db_file),
+            workspace,
+            initial_fixture_identity={
+                "source_variant": args.source_variant,
+                "canonical_rows_hash": source_hash,
+                "row_count": len(rows),
+                "symbols": ["1101", "2330"],
+            },
+        )
     direct_after_payload = direct._direct_computation_dependency_payload()
     direct_after = _direct_snapshot(direct, direct_after_payload)
     code_after = _repo_source_inventory()
@@ -889,8 +1448,17 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         "final_outputs": final_outputs,
         "latest_publication_paths": final_outputs.get("publication_paths", []),
         "events": events,
+        "logical_phase_port_enabled": args.logical_phase_port,
+        "logical_publication_phase_ports": logical_phase_port_receipts,
+        "observation_clock": observation_clock.receipt(),
+        "observer_clock_mode": args.observer_clock_mode,
         "fixed_publication_clock_available": False,
         "canonical_publication_timestamp_field_present": False,
+        **(
+            {"logical_main_db_mutation": logical_main_db_mutation}
+            if args.logical_phase_port
+            else {}
+        ),
     }
 
 
@@ -900,6 +1468,13 @@ def main() -> int:
     parser.add_argument("--case", required=True)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--source-variant", choices=("original", "changed"), default="original")
+    parser.add_argument(
+        "--observer-clock-mode",
+        choices=("system", "deterministic"),
+        default="system",
+    )
+    parser.add_argument("--logical-phase-port", action="store_true")
+    parser.add_argument("--mutate-temp-sqlite-user-version", action="store_true")
     parser.add_argument("--candidate-module", default="")
     parser.add_argument("--receipt", required=True)
     args = parser.parse_args()

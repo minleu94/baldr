@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -210,6 +211,7 @@ def _execute_one(
     result_id: str,
     *,
     cancel: Any = None,
+    capture_sink: dict[str, Any] | None = None,
 ) -> Any:
     return execute_recommendation(
         service,
@@ -222,7 +224,16 @@ def _execute_one(
         universe=["AAA"],
         result_id=result_id,
         cancel=cancel,
+        capture_sink=capture_sink,
     )
+
+
+def _plain_contract_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _plain_contract_value(item) for key, item in value.items()}
+    if type(value) in (list, tuple):
+        return tuple(_plain_contract_value(item) for item in value)
+    return value
 
 
 def test_postcalibration_sink_is_single_publish_and_invocation_local() -> None:
@@ -817,10 +828,12 @@ def test_cancel_after_body_keeps_typed_receipt_before_cancel_event(
         cancel_checks += 1
         return cancel_checks > 1
 
+    capture: dict[str, Any] = {}
     execution = _execute_one(
         service,
         "typed-cancelled",
         cancel=cancel_after_body,
+        capture_sink=capture,
     )
 
     assert execution.status.value == "cancelled"
@@ -830,6 +843,28 @@ def test_cancel_after_body_keeps_typed_receipt_before_cancel_event(
     assert event_types.index("ml_projection_receipt_capture") < event_types.index(
         "recommendation_execution_cancelled"
     )
+    negative_evidence_event = next(
+        event
+        for event in execution.events
+        if event.event_type == "legacy_negative_evidence_capture"
+    )
+    assert negative_evidence_event.message == (
+        "Negative-evidence typed assessments 以外的原始 matrix 欄位保存在同次 invocation capture。"
+    )
+    compatibility_snapshot = capture["compatibility_snapshot"]
+    assert compatibility_snapshot is not None
+    legacy_state = compatibility_snapshot.materialize()
+    for event_field, state_field in (
+        ("screening_matrix", "last_screening_matrix"),
+        ("excluded_candidates", "last_excluded_candidates_json"),
+        ("why_not_payload", "last_why_not_payload_json"),
+        ("liquidity_gate_payload", "last_liquidity_gate_payload_json"),
+        ("exclusion_quality", "last_exclusion_quality"),
+        ("exclusion_warnings", "last_exclusion_warnings_json"),
+    ):
+        assert _plain_contract_value(negative_evidence_event.details[event_field]) == (
+            _plain_contract_value(_safe_contract_value(legacy_state[state_field]))
+        )
 
 
 def test_ab_interleaved_invocations_keep_separate_typed_receipts(

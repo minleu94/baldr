@@ -1,4 +1,4 @@
-"""Project a current-state R027 receipt into a compact, reviewable summary."""
+"""將目前 R027 receipt 摘要成精簡且可審查的報告。"""
 
 from __future__ import annotations
 
@@ -6,13 +6,22 @@ import argparse
 from collections import Counter
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
+import tempfile
 from typing import Any
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 UPDATE_SERVICE = REPOSITORY_ROOT / "app_module" / "update_service.py"
+CANDIDATE_TEMPLATE = (
+    REPOSITORY_ROOT
+    / "scripts"
+    / "experiments"
+    / "r027"
+    / "candidate_technical_indicator_job.py"
+)
 EXPECTED_CASES = (
     "clean",
     "same_input_rerun",
@@ -47,6 +56,16 @@ def current_head() -> str:
     ).strip()
 
 
+def is_within(path: Path, root: Path) -> bool:
+    """判斷解析後的路徑是否位於指定根目錄內。"""
+
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def source_identity(inventory: dict[str, dict[str, Any]]) -> dict[str, list[Any]]:
     return {
         path: [record.get("sha256"), record.get("source_code_fingerprint")]
@@ -56,6 +75,261 @@ def source_identity(inventory: dict[str, dict[str, Any]]) -> dict[str, list[Any]
 
 def source_fingerprint(inventory: dict[str, dict[str, Any]]) -> str:
     return canonical_hash(source_identity(inventory))
+
+
+def summarize_recorded_worker_processes(receipt: dict[str, Any]) -> dict[str, Any]:
+    """從 receipt 內實際記錄的 case/mode/PID/return code 計算 process 標記。"""
+
+    cases = receipt.get("cases")
+    workers = receipt.get("workers")
+    ordered_case_coverage = isinstance(cases, list) and tuple(cases) == EXPECTED_CASES
+    if not isinstance(workers, dict):
+        workers = {}
+
+    wrappers: list[tuple[str, str, dict[str, Any]]] = []
+    all_wrapper_receipt_identities_match = True
+    pair_shape_matches = set(workers) == set(EXPECTED_CASES) and len(workers) == len(
+        EXPECTED_CASES
+    )
+    for case in EXPECTED_CASES:
+        case_workers = workers.get(case)
+        if not isinstance(case_workers, dict):
+            pair_shape_matches = False
+            continue
+        if set(case_workers) != {"baseline", "candidate"} or len(case_workers) != 2:
+            pair_shape_matches = False
+        for mode in ("baseline", "candidate"):
+            wrapper = case_workers.get(mode)
+            if not isinstance(wrapper, dict):
+                pair_shape_matches = False
+                all_wrapper_receipt_identities_match = False
+                continue
+            wrappers.append((case, mode, wrapper))
+            if wrapper.get("mode") != mode:
+                pair_shape_matches = False
+                all_wrapper_receipt_identities_match = False
+            if wrapper.get("case") != case:
+                all_wrapper_receipt_identities_match = False
+            worker_receipt = wrapper.get("receipt")
+            if not isinstance(worker_receipt, dict):
+                all_wrapper_receipt_identities_match = False
+            else:
+                receipt_pid = worker_receipt.get("pid")
+                wrapper_pid = wrapper.get("pid")
+                receipt_pid_is_valid = (
+                    isinstance(receipt_pid, int)
+                    and not isinstance(receipt_pid, bool)
+                    and receipt_pid > 0
+                )
+                wrapper_pid_is_valid = (
+                    isinstance(wrapper_pid, int)
+                    and not isinstance(wrapper_pid, bool)
+                    and wrapper_pid > 0
+                )
+                if (
+                    worker_receipt.get("case") != case
+                    or worker_receipt.get("mode") != mode
+                    or not receipt_pid_is_valid
+                    or not wrapper_pid_is_valid
+                    or receipt_pid != wrapper_pid
+                ):
+                    all_wrapper_receipt_identities_match = False
+
+    pids = [wrapper.get("pid") for _, _, wrapper in wrappers]
+    positive_integer_pids = [
+        pid
+        for pid in pids
+        if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0
+    ]
+    all_pids_are_positive_integers = len(positive_integer_pids) == 16 and len(pids) == 16
+    receipt_pids = [
+        wrapper.get("receipt", {}).get("pid")
+        for _, _, wrapper in wrappers
+        if isinstance(wrapper.get("receipt"), dict)
+    ]
+    positive_integer_receipt_pids = [
+        pid
+        for pid in receipt_pids
+        if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0
+    ]
+    all_receipt_pids_are_positive_integers = (
+        len(positive_integer_receipt_pids) == 16 and len(receipt_pids) == 16
+    )
+    unique_pid_count = len(set(positive_integer_pids))
+    return_codes = [wrapper.get("return_code") for _, _, wrapper in wrappers]
+    all_return_codes_recorded = len(return_codes) == 16 and all(
+        isinstance(code, int) and not isinstance(code, bool) for code in return_codes
+    )
+    all_return_codes_zero = all_return_codes_recorded and all(
+        code == 0 for code in return_codes
+    )
+    all_wrappers_have_worker_receipt = len(wrappers) == 16 and all(
+        isinstance(wrapper.get("receipt"), dict)
+        for _, _, wrapper in wrappers
+    )
+    pair_set_complete = (
+        ordered_case_coverage
+        and pair_shape_matches
+        and all_wrapper_receipt_identities_match
+        and len(wrappers) == 16
+    )
+    return {
+        "expected_case_mode_pair_count": 16,
+        "recorded_case_mode_pair_count": len(wrappers),
+        "full_ordered_case_coverage": ordered_case_coverage,
+        "all_expected_case_mode_pairs_recorded": pair_set_complete,
+        "all_wrapper_and_receipt_identities_match": all_wrapper_receipt_identities_match,
+        "all_pids_are_positive_integers": all_pids_are_positive_integers,
+        "all_receipt_pids_are_positive_integers": all_receipt_pids_are_positive_integers,
+        "unique_recorded_pid_count": unique_pid_count,
+        "receipt_recorded_distinct_pid": (
+            pair_set_complete
+            and all_pids_are_positive_integers
+            and all_receipt_pids_are_positive_integers
+            and unique_pid_count == 16
+        ),
+        "all_return_codes_recorded": all_return_codes_recorded,
+        "all_worker_return_codes_zero": all_return_codes_zero,
+        "all_wrappers_have_worker_receipt": all_wrappers_have_worker_receipt,
+        "process_source_independently_attested": False,
+    }
+
+
+def require_complete_worker_process_records(summary: dict[str, Any]) -> None:
+    """拒絕無法證明完整16組case/mode receipt的投影輸入。"""
+
+    complete = (
+        summary.get("all_expected_case_mode_pairs_recorded") is True
+        and summary.get("all_wrapper_and_receipt_identities_match") is True
+        and summary.get("receipt_recorded_distinct_pid") is True
+        and summary.get("all_receipt_pids_are_positive_integers") is True
+        and summary.get("all_return_codes_recorded") is True
+        and summary.get("all_worker_return_codes_zero") is True
+        and summary.get("all_wrappers_have_worker_receipt") is True
+    )
+    if not complete:
+        raise RuntimeError(
+            "receipt lacks the exact 16 expected case/mode worker records, "
+            "matching wrapper/receipt case-mode-PID identity, "
+            "distinct positive recorded PIDs, successful return codes, or worker receipts"
+        )
+
+
+def summarize_root_placement(
+    receipt: dict[str, Any],
+    all_worker_wrappers: list[dict[str, Any]],
+    *,
+    os_temp_root: Path | None = None,
+    formal_data_root: Path | None = None,
+    formal_output_root: Path | None = None,
+) -> dict[str, Any]:
+    """依實際路徑關係計算 TEMP 與 isolated-root 摘要。"""
+
+    temp_root = (os_temp_root or Path(tempfile.gettempdir())).resolve()
+    raw_run_root = receipt.get("run_root")
+    run_root = Path(str(raw_run_root)).resolve() if raw_run_root else None
+    run_root_within_os_temp = run_root is not None and is_within(run_root, temp_root)
+    run_root_disjoint_from_repository = run_root is not None and not (
+        is_within(run_root, REPOSITORY_ROOT)
+        or is_within(REPOSITORY_ROOT, run_root)
+    )
+    configured_data_root = formal_data_root or Path(
+        os.environ.get("R027_FORMAL_DATA_ROOT")
+        or os.environ.get("DATA_ROOT")
+        or "D:/Min/Python/Project/FA_Data"
+    )
+    configured_output_root = formal_output_root or Path(
+        os.environ.get("R027_FORMAL_OUTPUT_ROOT")
+        or os.environ.get("OUTPUT_ROOT")
+        or str(configured_data_root / "output")
+    )
+    formal_roots = (configured_data_root.resolve(), configured_output_root.resolve())
+    run_root_disjoint_from_formal_roots = run_root is not None and all(
+        not is_within(run_root, formal_root)
+        and not is_within(formal_root, run_root)
+        for formal_root in formal_roots
+    )
+
+    workspace_paths: list[Path] = []
+    data_and_output_paths: list[Path] = []
+    all_paths_present = run_root is not None
+    all_roots_within_worker_workspace = bool(all_worker_wrappers)
+    all_workspaces_within_run_root = bool(all_worker_wrappers) and run_root is not None
+    for wrapper in all_worker_wrappers:
+        worker_receipt = wrapper.get("receipt")
+        if not isinstance(worker_receipt, dict):
+            all_paths_present = False
+            all_roots_within_worker_workspace = False
+            all_workspaces_within_run_root = False
+            continue
+        workspace_value = worker_receipt.get("workspace")
+        data_value = worker_receipt.get("resolved_data_root")
+        output_value = worker_receipt.get("resolved_output_root")
+        if not workspace_value or not data_value or not output_value:
+            all_paths_present = False
+            all_roots_within_worker_workspace = False
+            all_workspaces_within_run_root = False
+            continue
+        workspace = Path(str(workspace_value)).resolve()
+        data_root = Path(str(data_value)).resolve()
+        output_root = Path(str(output_value)).resolve()
+        workspace_paths.append(workspace)
+        data_and_output_paths.extend((data_root, output_root))
+        all_roots_within_worker_workspace = all_roots_within_worker_workspace and (
+            is_within(data_root, workspace) and is_within(output_root, workspace)
+        )
+        all_workspaces_within_run_root = all_workspaces_within_run_root and (
+            run_root is not None and is_within(workspace, run_root)
+        )
+
+    all_workspaces_pairwise_disjoint = len(workspace_paths) == 16 and all(
+        not is_within(left, right) and not is_within(right, left)
+        for index, left in enumerate(workspace_paths)
+        for right in workspace_paths[index + 1 :]
+    )
+
+    all_data_and_output_roots_temp = (
+        all_paths_present
+        and len(data_and_output_paths) == 32
+        and all(is_within(path, temp_root) for path in data_and_output_paths)
+    )
+    all_roots_isolated_under_run_root = (
+        all_paths_present
+        and len(workspace_paths) == 16
+        and all_workspaces_pairwise_disjoint
+        and len(data_and_output_paths) == 32
+        and all_roots_within_worker_workspace
+        and all_workspaces_within_run_root
+        and run_root_disjoint_from_repository
+        and run_root_disjoint_from_formal_roots
+    )
+    return {
+        "run_root": str(run_root) if run_root is not None else None,
+        "run_root_within_os_temp": run_root_within_os_temp,
+        "all_data_and_output_roots_temp": all_data_and_output_roots_temp,
+        "all_data_and_output_roots_isolated_under_run_root": all_roots_isolated_under_run_root,
+        "all_roots_within_worker_workspace": all_roots_within_worker_workspace,
+        "all_workspaces_within_run_root": all_workspaces_within_run_root,
+        "all_workspaces_pairwise_disjoint": all_workspaces_pairwise_disjoint,
+        "run_root_disjoint_from_repository": run_root_disjoint_from_repository,
+        "run_root_disjoint_from_formal_roots": run_root_disjoint_from_formal_roots,
+        "formal_data_root_used_for_comparison": str(configured_data_root.resolve()),
+        "formal_output_root_used_for_comparison": str(configured_output_root.resolve()),
+        "os_temp_root_used_for_comparison": str(temp_root),
+    }
+
+
+def require_isolated_worker_roots(summary: dict[str, Any]) -> None:
+    """拒絕非隔離的資料根路徑摘要，避免投影不安全 receipt。"""
+
+    if (
+        summary.get("all_data_and_output_roots_isolated_under_run_root") is not True
+        or summary.get("run_root_disjoint_from_formal_roots") is not True
+    ):
+        raise RuntimeError(
+            "worker data/output roots are not proven isolated under a run root "
+            "disjoint from repository and formal data/output roots"
+        )
 
 
 def worker_projection(wrapper: dict[str, Any]) -> dict[str, Any]:
@@ -69,12 +343,16 @@ def worker_projection(wrapper: dict[str, Any]) -> dict[str, Any]:
             "label": phase.get("label"),
             "success": (phase.get("result") or {}).get("success"),
             "source_mutated": phase.get("source_mutated"),
+            "sqlite_snapshot_reader_lifecycle": (phase.get("outputs") or {}).get(
+                "sqlite_snapshot_reader_lifecycle"
+            ),
         }
         for phase in receipt.get("phases", [])
     ]
     event_counts = Counter(
         event.get("kind") for event in receipt.get("events", [])
     )
+    observation_clock = receipt.get("observation_clock") or {}
     return {
         "mode_recorded": wrapper.get("mode"),
         "pid_recorded": wrapper.get("pid"),
@@ -110,6 +388,22 @@ def worker_projection(wrapper: dict[str, Any]) -> dict[str, Any]:
         "direct_checkpoint_fixtures": receipt.get("direct_checkpoint_fixtures"),
         "phase_outcomes": phase_outcomes,
         "event_counts": dict(sorted(event_counts.items())),
+        "observation_clock": {
+            key: observation_clock.get(key)
+            for key in (
+                "schema",
+                "mode",
+                "case",
+                "schedule",
+                "schedule_sha256",
+                "call_count",
+                "call_sequence",
+                "call_sequence_sha256",
+                "raw_os_observation_count",
+                "raw_os_observations",
+                "all_raw_os_observations_present",
+            )
+        },
         "final_publication": {
             "publication_paths": receipt.get("final_outputs", {}).get(
                 "publication_paths"
@@ -124,6 +418,9 @@ def worker_projection(wrapper: dict[str, Any]) -> dict[str, Any]:
             "technical_rows": receipt.get("final_outputs", {}).get(
                 "technical_rows"
             ),
+            "sqlite_snapshot_reader_lifecycle": receipt.get("final_outputs", {}).get(
+                "sqlite_snapshot_reader_lifecycle"
+            ),
         },
         "update_service_source_sha256_at_worker_end": receipt.get(
             "update_service_method_source_sha256"
@@ -135,13 +432,17 @@ def timing_categories(differences: list[dict[str, Any]]) -> dict[str, int]:
     counts: Counter[str] = Counter()
     for difference in differences:
         path = difference.get("path", "")
-        if path.startswith("$.timings.events["):
+        if path.startswith("$.timings.events[") or path.startswith(
+            "$.timings.observer_clock"
+        ):
             category = "event_clock"
         elif (
             path.startswith("$.timings.final_sqlite_transient_files_before_checkpoint")
             and path.endswith(".sha256")
         ):
             category = "sqlite_transient_snapshot"
+        elif ".sqlite_snapshot_reader_lifecycle." in path:
+            category = "sqlite_snapshot_reader_lifecycle"
         else:
             category = "file_mtime_and_publication_snapshot"
         counts[category] += 1
@@ -162,24 +463,39 @@ def project(receipt_path: Path, expected_head: str) -> dict[str, Any]:
         raise RuntimeError(
             "UpdateService source bytes differ from candidate extraction; refusing stale projection"
         )
-    if receipt.get("run_root") is None:
-        raise RuntimeError("receipt has no TEMP run root")
+    candidate_sha = sha256_bytes(CANDIDATE_TEMPLATE.read_bytes())
+    if extraction.get("candidate_sha256") != candidate_sha:
+        raise RuntimeError(
+            "R027 candidate module bytes differ from frozen extraction; refusing stale projection"
+        )
+    if extraction.get("port_names") != [
+        "config",
+        "get_indicator_latest_date",
+        "run_process_pool",
+    ]:
+        raise RuntimeError("R027 candidate port set is incomplete or unexpected")
     if receipt.get("formal_data_touched") or receipt.get(
         "production_source_write_performed"
     ):
         raise RuntimeError("receipt violates R027 isolation boundary")
-    if tuple(receipt.get("cases", ())) != EXPECTED_CASES:
-        raise RuntimeError("receipt does not contain the full ordered R027 case set")
 
-    direct_reference = receipt["workers"]["clean"]["baseline"]["receipt"][
+    worker_process_summary = summarize_recorded_worker_processes(receipt)
+    require_complete_worker_process_records(worker_process_summary)
+    workers = receipt.get("workers")
+    if not isinstance(workers, dict):
+        raise RuntimeError("receipt has no worker mapping")
+    all_worker_wrappers = [
+        workers[case][mode]
+        for case in EXPECTED_CASES
+        for mode in ("baseline", "candidate")
+    ]
+    root_placement_summary = summarize_root_placement(receipt, all_worker_wrappers)
+    require_isolated_worker_roots(root_placement_summary)
+
+    direct_reference = workers["clean"]["baseline"]["receipt"][
         "direct_identity_before"
     ]
     direct_files = direct_reference.get("files", [])
-    all_worker_wrappers = [
-        worker
-        for case in EXPECTED_CASES
-        for worker in receipt["workers"][case].values()
-    ]
     if len(all_worker_wrappers) != 16:
         raise RuntimeError("expected exactly 16 isolated workers")
     if any(worker.get("return_code") != 0 for worker in all_worker_wrappers):
@@ -201,8 +517,8 @@ def project(receipt_path: Path, expected_head: str) -> dict[str, Any]:
     projected_cases: dict[str, Any] = {}
     for case in EXPECTED_CASES:
         comparison = receipt["comparisons"][case]
-        baseline_wrapper = receipt["workers"][case]["baseline"]
-        candidate_wrapper = receipt["workers"][case]["candidate"]
+        baseline_wrapper = workers[case]["baseline"]
+        candidate_wrapper = workers[case]["candidate"]
         timing = comparison.get("timing_differences", [])
         semantic = comparison.get("semantic_differences", [])
         baseline = worker_projection(baseline_wrapper)
@@ -240,12 +556,16 @@ def project(receipt_path: Path, expected_head: str) -> dict[str, Any]:
         "generated_by": "scripts/experiments/r027/project_receipt.py; Python stdlib JSON projection from the full TEMP receipt; no production data reads/writes",
         "run": {
             "run_name": receipt.get("run_name"),
-            "run_root_temp": receipt.get("run_root"),
+            "run_root": root_placement_summary["run_root"],
+            "run_root_within_os_temp": root_placement_summary[
+                "run_root_within_os_temp"
+            ],
             "repository_root": receipt.get("repository_root"),
             "head": head,
             "update_service_source_sha256": source_sha,
             "python_executable": receipt.get("python_executable"),
             "candidate_extraction": extraction,
+            "observer_clock_mode": receipt.get("observer_clock_mode", "system"),
             "full_receipt": {
                 "path": str(receipt_path.resolve()),
                 "size_bytes": len(raw_bytes),
@@ -259,14 +579,20 @@ def project(receipt_path: Path, expected_head: str) -> dict[str, Any]:
                 mode: sum(worker.get("mode") == mode for worker in all_worker_wrappers)
                 for mode in ("baseline", "candidate")
             },
-            "unique_pid_count": len(
-                {worker.get("pid") for worker in all_worker_wrappers}
-            ),
+            "unique_pid_count": worker_process_summary[
+                "unique_recorded_pid_count"
+            ],
             "worker_return_codes": sorted(
                 {worker.get("return_code") for worker in all_worker_wrappers}
             ),
-            "fresh_process_per_mode_per_case": True,
-            "all_data_and_output_roots_temp": True,
+            "worker_process_evidence": worker_process_summary,
+            "all_data_and_output_roots_temp": root_placement_summary[
+                "all_data_and_output_roots_temp"
+            ],
+            "all_data_and_output_roots_isolated_under_run_root": root_placement_summary[
+                "all_data_and_output_roots_isolated_under_run_root"
+            ],
+            "root_placement": root_placement_summary,
             "formal_data_touched": receipt.get("formal_data_touched"),
             "production_source_write_performed": receipt.get(
                 "production_source_write_performed"
@@ -313,6 +639,7 @@ def project(receipt_path: Path, expected_head: str) -> dict[str, Any]:
             ),
         },
         "cases": projected_cases,
+        "same_path_repeat_controls": receipt.get("same_path_repeat_controls", {}),
         "negative_controls": {
             "all_detected": negative_controls.get("all_detected"),
             "controls": negative_controls.get("controls"),

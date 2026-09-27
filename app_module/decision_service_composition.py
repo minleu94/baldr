@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+
+import pandas as pd
 
 from app_module.decision_data_providers import (
+    industry_companies_provider,
     industry_screen_fallback_provider,
     industry_index_frame_provider,
+    legacy_industry_index_provider,
     market_index_frame_provider,
     recent_industry_screen_provider,
     recent_stock_screen_provider,
@@ -48,6 +52,37 @@ def build_stock_screener(
     )
 
 
+def build_industry_mapper(
+    config: Any,
+    *,
+    companies_provider: Callable[[], pd.DataFrame | None] | None = None,
+    industry_index_provider: Callable[[], pd.DataFrame | None] | None = None,
+    constructor: Any = None,
+) -> Any:
+    """建立舊 app fallback 所需 mapper，並明確注入 data-owned readers。
+
+    未指定 index provider 時保留 IndustryMapper 原本獨立 fallback 的
+    SQLite／CSV 優先順序、None、空表與錯誤處理語意。
+    """
+    if constructor is None:
+        from decision_module.industry_mapper import IndustryMapper
+
+        constructor = IndustryMapper
+    return constructor(
+        config,
+        industry_index_provider=(
+            industry_index_provider
+            if industry_index_provider is not None
+            else legacy_industry_index_provider(config)
+        ),
+        companies_provider=(
+            companies_provider
+            if companies_provider is not None
+            else industry_companies_provider(config)
+        ),
+    )
+
+
 def _default_dependencies() -> dict[str, Any]:
     from app_module.recommendation_service import RecommendationService
     from app_module.regime_service import RegimeService
@@ -70,6 +105,7 @@ def build_decision_service_composition(
     *,
     config: Any,
     dependencies: Mapping[str, Any] | None = None,
+    companies_provider: Callable[[], pd.DataFrame | None] | None = None,
     industry_index_provider: MarketFrameProvider | None = None,
     market_index_provider: MarketFrameProvider | None = None,
     pit_membership_reader: PITSectorMembershipReader | None = None,
@@ -81,13 +117,20 @@ def build_decision_service_composition(
         if industry_index_provider is not None
         else industry_index_frame_provider(config)
     )
+    companies_data_provider = (
+        companies_provider
+        if companies_provider is not None
+        else industry_companies_provider(config)
+    )
     market_provider = (
         market_index_provider
         if market_index_provider is not None
         else market_index_frame_provider(config)
     )
     mapper = constructors["IndustryMapper"](
-        config, industry_index_provider=industry_provider
+        config,
+        industry_index_provider=industry_provider,
+        companies_provider=companies_data_provider,
     )
     active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
     stock_screener = build_stock_screener(

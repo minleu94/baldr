@@ -5,7 +5,7 @@ from typing import Protocol
 
 import pandas as pd
 
-from app_module.dtos import RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 
 
 class MarketFrameProvider(Protocol):

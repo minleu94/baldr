@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime
 import hashlib
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 from data_module.ml_restatement_current_inputs import (
+    PreparedRestatedCurrentInputs,
     _IDENTITY_FIELDS,
     _payload_hash,
     prepare_restated_current_inputs,
 )
 from data_module.ml_restatement_research_dataset import expected_feature_contract
+from ml_module.restated_research_input_contract import RestatedResearchInputBinding
 
 
 _DAY = date(2026, 9, 23)
@@ -92,6 +96,29 @@ def test_current_prepare_preserves_zero_missing_and_only_requested_symbols(tmp_p
     assert row.decision_at == _CAPTURE.isoformat(timespec="microseconds")
     assert prepared.feature_asof_date == "2026-09-22"
     assert prepared.receipt()["historical_pit"] is False
+
+
+def test_prepared_inputs_require_a_binding_instance_but_keep_subclass_compatibility(
+    tmp_path: Path,
+) -> None:
+    manifest, digest = _fixture_dataset(tmp_path / "data")
+    prepared = prepare_restated_current_inputs(
+        manifest_path=manifest,
+        expected_manifest_file_hash=digest,
+        symbols=("1256",),
+        captured_at=_CAPTURE,
+    )
+
+    class CompatibleBinding(RestatedResearchInputBinding):
+        pass
+
+    compatible_binding = CompatibleBinding(**vars(prepared.binding))
+    compatible = replace(prepared, binding=compatible_binding)
+    assert isinstance(compatible, PreparedRestatedCurrentInputs)
+    assert compatible.binding is compatible_binding
+
+    with pytest.raises(TypeError, match="require a RestatedResearchInputBinding"):
+        replace(prepared, binding=cast(Any, object()))
 
 
 @pytest.mark.parametrize("failure", ["manifest_hash", "partition_hash", "missing_symbol", "wrong_day", "future_revision", "mask"])

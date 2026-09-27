@@ -15,6 +15,8 @@ R024_DATA_MODULES = (
     "data_module/valuation_metrics_backfill.py",
     "data_module/contracts/valuation.py",
     "data_module/fundamental_sqlite_provider.py",
+    "data_module/company_registry.py",
+    "data_module/tpex_daily_price_backfill.py",
 )
 
 

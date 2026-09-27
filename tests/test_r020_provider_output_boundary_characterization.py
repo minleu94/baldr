@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import numpy as np
@@ -159,6 +160,56 @@ def test_provider_score_presence_truthiness_and_post_scorer_skip_boundary():
         "SCORER-ERROR",
         "SURVIVOR",
     ]
+
+
+def test_provider_projects_numpy_and_decimal_scores_to_legacy_float_rows():
+    codes = ("NUMPY-FLOAT", "DECIMAL")
+    provider, scorer, _ = _provider(
+        {
+            "NUMPY-FLOAT": {
+                "FinalScore": np.float64(91.5),
+                "IndicatorScore": np.float64(31.25),
+                "PatternScore": Decimal("8.25"),
+                "VolumeScore": np.float64(3.125),
+                "BrokerFlowScore": Decimal("1.50"),
+                "RevenueScore": np.float64(0),
+            },
+            "DECIMAL": {
+                "FinalScore": Decimal("70.0100"),
+                "IndicatorScore": Decimal("20.500"),
+                "PatternScore": np.float64(12.25),
+                "VolumeScore": Decimal("4.2500"),
+                "BrokerFlowScore": np.float64(2.5),
+                "RevenueScore": Decimal("1.2500"),
+            },
+        }
+    )
+
+    rows = provider(_history(codes), {}, top_n=2)
+
+    assert scorer.calls == list(codes)
+    assert [row["stock_code"] for row in rows] == ["NUMPY-FLOAT", "DECIMAL"]
+    assert [row["total_score"] for row in rows] == [91.5, 70.01]
+    assert all(type(row["total_score"]) is float for row in rows)
+    assert rows[0]["factor_scores"] == {
+        "technical": 31.25,
+        "pattern": 8.25,
+        "volume": 3.125,
+        "broker_flow": 1.5,
+        "revenue": 0.0,
+    }
+    assert rows[1]["factor_scores"] == {
+        "technical": 20.5,
+        "pattern": 12.25,
+        "volume": 4.25,
+        "broker_flow": 2.5,
+        "revenue": 1.25,
+    }
+    assert all(
+        type(value) is float
+        for row in rows
+        for value in row["factor_scores"].values()
+    )
 
 
 def test_provider_uses_python_descending_sort_for_nan_and_infinities():

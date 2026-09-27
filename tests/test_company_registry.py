@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 
 from data_module.company_registry import (
+    CompanyRegistryDiagnostic,
     build_company_registry_rows,
     write_company_registry_csv,
 )
@@ -82,7 +83,54 @@ def test_build_company_registry_rows_reports_unknown_industry_code() -> None:
     )
 
     assert result.rows == ()
-    assert result.diagnostics[0].code == "company_registry.unknown_industry_code"
+    diagnostic = result.diagnostics[0]
+    assert isinstance(diagnostic, CompanyRegistryDiagnostic)
+    payload = diagnostic.to_dict()
+    assert tuple(payload) == ("code", "factor_name", "stock_code", "message")
+    assert payload == {
+        "code": "company_registry.unknown_industry_code",
+        "factor_name": "company_registry",
+        "stock_code": "9999",
+        "message": "unknown official industry code: ZZ",
+    }
+
+
+def test_build_company_registry_rows_preserves_diagnostic_order() -> None:
+    result = build_company_registry_rows(
+        twse_rows=[
+            {"公司簡稱": "不完整", "產業別": "01"},
+            {"公司代號": "9999", "公司簡稱": "未知", "產業別": "ZZ"},
+        ],
+        tpex_rows=[],
+        emerging_rows=[],
+        download_time="2026-06-16 12:00:00",
+    )
+
+    assert result.rows == ()
+    assert all(isinstance(item, CompanyRegistryDiagnostic) for item in result.diagnostics)
+    assert [item.code for item in result.diagnostics] == [
+        "company_registry.invalid_row",
+        "company_registry.unknown_industry_code",
+    ]
+    payloads = [item.to_dict() for item in result.diagnostics]
+    assert all(
+        tuple(payload) == ("code", "factor_name", "stock_code", "message")
+        for payload in payloads
+    )
+    assert payloads == [
+        {
+            "code": "company_registry.invalid_row",
+            "factor_name": "company_registry",
+            "stock_code": "",
+            "message": "official company registry row is missing stock code, name, or industry code",
+        },
+        {
+            "code": "company_registry.unknown_industry_code",
+            "factor_name": "company_registry",
+            "stock_code": "9999",
+            "message": "unknown official industry code: ZZ",
+        },
+    ]
 
 
 def test_write_company_registry_csv_preserves_expected_schema(tmp_path) -> None:

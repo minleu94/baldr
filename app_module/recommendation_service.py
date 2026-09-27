@@ -32,7 +32,7 @@ if not hasattr(pd, 'isna'):
 from decision_module.strategy_configurator import StrategyConfigurator
 from decision_module.reason_engine import ReasonEngine
 from decision_module.industry_mapper import IndustryMapper
-from app_module.dtos import RecommendationDTO
+from app_module.recommendation.legacy_dtos import RecommendationDTO
 from app_module.regime_service import RegimeService
 from decision_module.strategies.contracts import StrategySpec
 from app_module.preset_service import PresetService
@@ -326,7 +326,11 @@ class RecommendationService:
         self.strategy_configurator = StrategyConfigurator()
         self.reason_engine = ReasonEngine()
         if industry_mapper is None:
-            self.industry_mapper = IndustryMapper(config)
+            from app_module.decision_service_composition import build_industry_mapper
+
+            self.industry_mapper = build_industry_mapper(
+                config, constructor=IndustryMapper
+            )
         else:
             self.industry_mapper = industry_mapper
         if input_preparer is None:

@@ -575,10 +575,14 @@ class DBManager:
     def execute_query(self, sql: str, params: tuple = ()) -> pd.DataFrame:
         """執行 SELECT 查詢並直接返回 Pandas DataFrame"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                # SELECT 唯讀查詢不需 WAL 上下文事務，直接讀取
-                df = pd.read_sql_query(sql, conn, params=params)
-                return df
+            conn = sqlite3.connect(self.db_path)
+            try:
+                with conn:
+                    # SELECT 唯讀查詢不需 WAL 上下文事務，直接讀取
+                    df = pd.read_sql_query(sql, conn, params=params)
+                    return df
+            finally:
+                conn.close()
         except Exception as e:
             self.logger.error(f"執行查詢失敗: {sql}, 錯誤: {str(e)}")
             raise e

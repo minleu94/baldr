@@ -94,3 +94,18 @@ Result: **24 passed**. Broad static check:
 ```
 
 Result: **680 source files checked, no issues found**. R021 scoped mypy checked 5 changed source files with no issues; `py_compile` on changed Python modules/tests and `git diff --check` also passed. Root and the independent reviewer subsequently accepted the bounded R021 scope; the Wave 7–14 release status remains governed by the existing C1/Wave 6 checkpoint.
+
+## 2026-09-27 IndustryMapper follow-up decision and review
+
+The user accepted an explicit data-provider contract for the remaining `IndustryMapper` I/O. This is a new follow-up decision, not a retroactive claim that the original R021 slice moved every industry read. Preserve the public module/class path and mapping outputs, but migrate every known in-repository constructor caller to receive company and industry-index frames from data-owned providers created by app composition. `IndustryMapper` must not keep an implicit `config`-derived reader: when required providers are missing it should fail clearly and direct callers to app composition. Data providers must preserve the observed company/index source precedence, date parsing, columns/order, logging/error behavior, and `None` versus valid-empty versus read-failure outcomes. QA CLIs and tests must exercise these cases without formal data writes.
+
+The existing H5 fresh `-m`/direct-main path currently registers its loader through the v3→scripts→app import chain; there is no demonstrated current fresh-entry loader failure. The user also accepted making app-owned loader initialization an explicit precondition: supported app CLI behavior must continue to initialize automatically, while an unbootstrapped bare ML entry must fail closed before training or output/filesystem work. The complete loader/verifier, source-revision gate, exact output type, public class identity and serialization paths remain protected. The IndustryMapper candidate has 13 changed paths and a 4-path focused pytest route covering 14 distinct hash inputs; its freeze manifest is `output/qa/refactor_completion_20260927/industry_mapper_slice_freeze_20260927.json` (SHA-256 `566c0fce31ce063b57c0f53a069e0d6a308b5cce19007fd56026e7d8ae48e602`). The focused route is 18P/0F/0S, 0.84 seconds. Independent source review found no functional blocker. Both mapper tests and affected paths are included in R031 attempt6, which root accepted. H5 remains bounded to app CLI `--help` bootstrap and target-free synthetic parity; this does not establish full training/release or formal artifact load/predict.
+
+
+## 2026-09-27 當前 bounded review 狀態
+
+IndustryMapper candidate manifest `industry_mapper_slice_freeze_20260927.json` 凍結13個changed paths及4個focused pytest paths（14 distinct inputs），focused 18P/0F/0S、0.84秒；獨立source review未發現功能阻礙。兩個 mapper test paths與受影響sources已納入R031 attempt6並通過；此結果不外推為domain-wide no-I/O。H5 bounded source/API slice已獨立review接受，9 suites／105P；驗證限app CLI `--help` bootstrap與target-free synthetic parity，不宣稱formal artifact load、完整training/release或未知artifact load/predict。attempt5仍僅是較早凍結source snapshot的歷史結果。
+
+## 2026-09-27 current route preparation
+
+IndustryMapper provider follow-up維持獨立bounded範圍：13 changed paths、4 focused routes／14 distinct inputs、18P/0F/0S，source review未見功能阻礙；company與industry-index依賴由app composition建立並注入，known in-repo callers已切換，domain缺依賴時fail-closed。兩個mapper tests與本輪affected source/test fingerprints已納入attempt6的288-path current relevant route，並由root接受自然exit 0的結果。此不改寫原R021 scope或mapping contract，也不宣稱全域no-I/O。

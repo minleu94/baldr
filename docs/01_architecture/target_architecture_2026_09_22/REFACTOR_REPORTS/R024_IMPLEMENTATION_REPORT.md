@@ -6,6 +6,10 @@
 
 R024 已把季度財報與估值來源記錄、可得性 facts、source diagnostics 留在 `data_module`；statement mapping、factor quality、估值百分位／缺值／正值政策移到 `decision_module.factors`。statement/valuation 的 SQLite schema、CLI v1 欄位、PIT cutoff、既有診斷文字及品質 wire literal 維持原樣。Root 已完成獨立 scope gate 並接受此 bounded engineering scope；不代表 Wave 7 或 Wave 9 已釋出。
 
+### 2026-09-27 current implementation correction
+
+Root 對最後 5-path diff 作獨立 review，並以 9-suite route 驗證 **67P/0F/0S**；五個凍結 source hashes 均相符。`data_module` 的 literal `decision_module` imports 已在限定的 `*.py` 搜尋中降至 0（FactorQuality 剩餘字串是 docstring，非 import）。此結果支持 R024 的 reverse-edge bounded scope，不代表 domain-wide I/O 已抽離：`IndustryMapper` 仍從 `config.meta_data_dir/companies.csv` 載入公司，industry index 保留 DB/SQLite/CSV fallback，而 recommendation composition 尚未注入 company records。此 follow-up 歸 R021/domain I/O scope，不改原 `FactorDiagnostic` classpath、FactorService 或 R024 acceptance 範圍。
+
 ### Gate readback（2026-09-23）
 
 - Root 以 fresh TEMP、`PROFILE=test` 獨立重跑完整 20-module R024 route，`107 passed`；並檢視本報告及涵蓋任意 `decision_module` import（含 function-local import）的擴充 AST guard，裁決 R024 `ACCEPTED_SCOPE`。

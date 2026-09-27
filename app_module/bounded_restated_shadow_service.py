@@ -16,7 +16,6 @@ from app_module.ml_allocation_inference_service import (
 )
 from data_module.ml_restatement_current_inputs import prepare_restated_current_inputs
 from data_module.ml_restatement_research_dataset import expected_feature_contract, sha256_file
-from ml_module.restated_research_input_contract import require_compatible_market_sources
 
 
 def _read_bound(path: Path, expected_hash: str) -> dict[str, Any]:
@@ -198,7 +197,9 @@ def run_bounded_restated_current_heads(
     )
     if prepared.binding.ordered_features != tuple(zip(names, scales)):
         raise ValueError("current inputs differ from the bounded training feature contract")
-    require_compatible_market_sources(artifact.source_manifest_hashes, prepared.binding.source_manifest_hashes)
+    prepared.binding.require_compatible_training_sources(
+        artifact.source_manifest_hashes
+    )
     registry_bridge = _validate_registry_bridge(manifest, prepared.binding.feature_registry_hash)
     expected_families = {name: pack.pack_id for pack in artifact.feature_packs for name in pack.feature_ids}
     if any(feature.family_id != expected_families[feature.feature_id]

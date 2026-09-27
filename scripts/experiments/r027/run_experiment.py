@@ -1,4 +1,4 @@
-"""R027 independent-process comparator and temporary candidate extraction."""
+"""R027 獨立程序比較器與暫存候選抽取工具。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,15 @@ from typing import Any
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 WORKER_PATH = Path(__file__).with_name("worker.py")
+CANDIDATE_TEMPLATE_PATH = Path(__file__).with_name(
+    "candidate_technical_indicator_job.py"
+)
 METHOD_NAME = "calculate_technical_indicators"
+CANDIDATE_PORTS = {
+    "config": "self._ports.config",
+    "_get_indicator_latest_date": "self._ports.get_indicator_latest_date",
+    "_run_technical_indicator_process_pool": "self._ports.run_process_pool",
+}
 CASES = (
     "clean",
     "same_input_rerun",
@@ -30,6 +38,35 @@ CASES = (
     "failure_recovery",
     "publication_failure_recovery",
 )
+
+
+def strict_gate_verdict(
+    selected_cases: tuple[str, ...] | list[str],
+    comparisons: dict[str, dict[str, Any]],
+    negative_controls: dict[str, Any],
+) -> str:
+    """只有完整且有序的 case set 才能形成 R027 overall PASS。"""
+
+    full_ordered_case_coverage = tuple(selected_cases) == CASES
+    full_ordered_comparison_coverage = tuple(comparisons) == CASES
+    exact_semantic_failures = {
+        case: result
+        for case, result in comparisons.items()
+        if result.get("status") in {"semantic_difference", "worker_error"}
+    }
+    if exact_semantic_failures or not negative_controls.get("all_detected"):
+        return "FAIL"
+    if not full_ordered_case_coverage or not full_ordered_comparison_coverage:
+        return "INCONCLUSIVE"
+    if any(
+        result.get("status") != "exact_match"
+        or result.get("semantic_differences") != []
+        or result.get("timing_differences") != []
+        or result.get("all_exact_differences_including_process_clock") != []
+        for result in comparisons.values()
+    ):
+        return "INCONCLUSIVE"
+    return "PASS"
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -71,9 +108,13 @@ def assert_isolated_root(root: Path) -> None:
 
 
 def extract_candidate_method(destination: Path) -> dict[str, Any]:
+    """驗證明確 ports 候選與 production 方法只差已核准的接線替換。"""
+
     source_path = REPOSITORY_ROOT / "app_module" / "update_service.py"
     source_bytes_before = source_path.read_bytes()
     source_text = source_bytes_before.decode("utf-8")
+    candidate_bytes = CANDIDATE_TEMPLATE_PATH.read_bytes()
+    candidate_text = candidate_bytes.decode("utf-8")
     tree = ast.parse(source_text, filename=str(source_path))
     target: ast.FunctionDef | None = None
     for node in tree.body:
@@ -93,38 +134,128 @@ def extract_candidate_method(destination: Path) -> dict[str, Any]:
     if target is None:
         raise RuntimeError(f"UpdateService.{METHOD_NAME} was not found")
 
-    method_source = ast.get_source_segment(source_text, target)
-    if not method_source:
+    source_method = ast.get_source_segment(source_text, target)
+    if not source_method:
         raise RuntimeError("AST source segment extraction returned no method source")
-    method_source = re.sub(
-        r"^\s*def\s+calculate_technical_indicators\s*\(",
-        "def run(",
-        method_source,
+    source_lines = source_text.splitlines(keepends=True)
+    line_offsets = [0]
+    for line in source_lines:
+        line_offsets.append(line_offsets[-1] + len(line))
+
+    def absolute_position(line_number: int, byte_column: int) -> int:
+        line = source_lines[line_number - 1]
+        char_column = len(line.encode("utf-8")[:byte_column].decode("utf-8"))
+        return line_offsets[line_number - 1] + char_column
+
+    member_counts = {name: 0 for name in CANDIDATE_PORTS}
+    edits: list[tuple[int, int, str]] = []
+    logger_name_references = 0
+    for child in ast.walk(target):
+        if (
+            isinstance(child, ast.Attribute)
+            and isinstance(child.value, ast.Name)
+            and child.value.id == "self"
+        ):
+            replacement = CANDIDATE_PORTS.get(child.attr)
+            if replacement is None:
+                raise RuntimeError(
+                    f"unexpected UpdateService self member {child.attr!r} "
+                    f"at line {child.lineno}"
+                )
+            edits.append(
+                (
+                    absolute_position(child.lineno, child.col_offset),
+                    absolute_position(child.end_lineno, child.end_col_offset),
+                    replacement,
+                )
+            )
+            member_counts[child.attr] += 1
+        elif isinstance(child, ast.Name) and child.id == "__name__":
+            # 保留舊 logger namespace，不改候選模組的 import 身分。
+            edits.append(
+                (
+                    absolute_position(child.lineno, child.col_offset),
+                    absolute_position(child.end_lineno, child.end_col_offset),
+                    '"app_module.update_service"',
+                )
+            )
+            logger_name_references += 1
+    if any(count == 0 for count in member_counts.values()):
+        raise RuntimeError(
+            f"candidate ports do not cover all source members: {member_counts}"
+        )
+    if logger_name_references != 1:
+        raise RuntimeError(
+            f"expected one source logger namespace reference, got {logger_name_references}"
+        )
+
+    transformed_source = source_text
+    for start, end, replacement in sorted(edits, reverse=True):
+        transformed_source = (
+            transformed_source[:start] + replacement + transformed_source[end:]
+        )
+    transformed_tree = ast.parse(transformed_source, filename=str(source_path))
+    transformed_owner = next(
+        node
+        for node in transformed_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "UpdateService"
+    )
+    transformed_method = next(
+        member
+        for member in transformed_owner.body
+        if isinstance(member, ast.FunctionDef) and member.name == METHOD_NAME
+    )
+    transformed_method_source = ast.get_source_segment(
+        transformed_source, transformed_method
+    )
+    if not transformed_method_source:
+        raise RuntimeError("transformed source method could not be read")
+    transformed_method_source, name_replacements = re.subn(
+        r"(?m)^(\s*def\s+)calculate_technical_indicators(?=\s*\()",
+        r"\1run",
+        transformed_method_source,
         count=1,
     )
-    if method_source == ast.get_source_segment(source_text, target):
+    if name_replacements != 1:
         raise RuntimeError("could not rename extracted method to candidate.run")
-    indented_method = "\n".join(
-        ("    " + line if line else "") for line in method_source.splitlines()
+
+    candidate_tree = ast.parse(candidate_text, filename=str(CANDIDATE_TEMPLATE_PATH))
+    candidate_class = next(
+        node
+        for node in candidate_tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "CandidateTechnicalIndicatorJob"
     )
-    candidate_source = (
-        '"""Temporary exact-source extraction for the R027 candidate process."""\n'
-        "import app_module.update_service as _update_service_module\n"
-        "globals().update({\n"
-        "    key: value\n"
-        "    for key, value in vars(_update_service_module).items()\n"
-        '    if not key.startswith("__")\n'
-        "})\n\n"
-        "class CandidateTechnicalIndicatorJob:\n"
-        "    def __init__(self, service):\n"
-        "        self._service = service\n"
-        "        self.config = service.config\n\n"
-        "    def __getattr__(self, name):\n"
-        "        return getattr(self._service, name)\n\n"
-        f"{indented_method}\n"
-    )
+    candidate_methods = [
+        member
+        for member in candidate_class.body
+        if isinstance(member, ast.FunctionDef) and member.name == "run"
+    ]
+    if len(candidate_methods) != 1:
+        raise RuntimeError("candidate template must contain exactly one run method")
+    expected_method = ast.parse(transformed_method_source).body[0]
+    if ast.dump(candidate_methods[0], include_attributes=False) != ast.dump(
+        expected_method, include_attributes=False
+    ):
+        raise RuntimeError(
+            "candidate run body differs from UpdateService outside explicit port rewrites"
+        )
+    if any(
+        isinstance(member, ast.FunctionDef) and member.name == "__getattr__"
+        for member in candidate_class.body
+    ):
+        raise RuntimeError("candidate must not forward unknown attributes to UpdateService")
+    if any(
+        isinstance(child, ast.Attribute)
+        and isinstance(child.value, ast.Name)
+        and child.value.id == "self"
+        and child.attr != "_ports"
+        for child in ast.walk(candidate_methods[0])
+    ):
+        raise RuntimeError("candidate run body still has implicit service members")
+
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(candidate_source, encoding="utf-8", newline="\n")
+    destination.write_bytes(candidate_bytes)
     if source_path.read_bytes() != source_bytes_before:
         raise RuntimeError("production UpdateService source changed during extraction")
     return {
@@ -132,12 +263,23 @@ def extract_candidate_method(destination: Path) -> dict[str, Any]:
         "source_sha256": sha256_bytes(source_bytes_before),
         "source_line_start": target.lineno,
         "source_line_end": target.end_lineno,
-        "method_source_sha256": sha256_bytes(method_source.encode("utf-8")),
+        "source_method_sha256": sha256_bytes(source_method.encode("utf-8")),
+        "candidate_method_sha256": sha256_bytes(
+            transformed_method_source.encode("utf-8")
+        ),
+        "port_names": ["config", "get_indicator_latest_date", "run_process_pool"],
+        "source_self_member_counts": member_counts,
+        "logger_name_references_preserved": logger_name_references,
+        "candidate_template_path": CANDIDATE_TEMPLATE_PATH.relative_to(
+            REPOSITORY_ROOT
+        ).as_posix(),
         "candidate_path": str(destination.resolve()),
         "candidate_sha256": sha256_bytes(destination.read_bytes()),
-        "extraction": "AST source extraction + method rename; no production write",
+        "extraction": (
+            "isolated app-job body verified against current UpdateService source; "
+            "three explicit ports replace service members; no production write"
+        ),
     }
-
 
 def worker_environment(workspace: Path) -> dict[str, str]:
     env = dict(os.environ)
@@ -170,6 +312,8 @@ def launch_worker(
     case: str,
     mode: str,
     source_variant: str,
+    observer_clock_mode: str,
+    logical_phase_port: bool = False,
 ) -> dict[str, Any]:
     workspace = root / "workers" / case / mode
     receipt = root / "receipts" / case / f"{mode}.json"
@@ -189,9 +333,13 @@ def launch_worker(
         str(workspace),
         "--source-variant",
         source_variant,
+        "--observer-clock-mode",
+        observer_clock_mode,
         "--receipt",
         str(receipt),
     ]
+    if logical_phase_port:
+        command.append("--logical-phase-port")
     if mode == "candidate":
         command.extend(("--candidate-module", str(candidate_module)))
     completed = subprocess.run(
@@ -264,6 +412,9 @@ def flatten_comparable(receipt: dict[str, Any]) -> dict[str, Any]:
                 "sqlite_wal_checkpoint_truncate_result": outputs.get(
                     "sqlite_wal_checkpoint_truncate_result"
                 ),
+                "sqlite_snapshot_reader_lifecycle": _comparable_sqlite_snapshot_reader_lifecycle(
+                    outputs.get("sqlite_snapshot_reader_lifecycle")
+                ),
             }
         )
         semantic_phases.append(
@@ -293,6 +444,7 @@ def flatten_comparable(receipt: dict[str, Any]) -> dict[str, Any]:
     ]
     final_outputs = receipt.get("final_outputs") or {}
     final_output_files = final_outputs.get("files") or {}
+    observation_clock = receipt.get("observation_clock") or {}
     return {
         "input": receipt.get("input"),
         "source_inventory_before": receipt.get("source_inventory_before"),
@@ -351,6 +503,22 @@ def flatten_comparable(receipt: dict[str, Any]) -> dict[str, Any]:
         "events": events,
         "timings": {
             "events": timings,
+            "observer_clock": {
+                key: observation_clock.get(key)
+                for key in (
+                    "schema",
+                    "mode",
+                    "case",
+                    "schedule",
+                    "schedule_sha256",
+                    "call_count",
+                    "call_sequence",
+                    "call_sequence_sha256",
+                    "raw_os_observation_count",
+                    "raw_os_observations",
+                    "all_raw_os_observations_present",
+                )
+            },
             "publication_file_mtimes": publication_mtimes,
             "final_publication_file_mtimes": {
                 path: details.get("mtime_ns")
@@ -364,6 +532,9 @@ def flatten_comparable(receipt: dict[str, Any]) -> dict[str, Any]:
             ),
             "final_sqlite_wal_checkpoint_truncate_result": final_outputs.get(
                 "sqlite_wal_checkpoint_truncate_result"
+            ),
+            "final_sqlite_snapshot_reader_lifecycle": _comparable_sqlite_snapshot_reader_lifecycle(
+                final_outputs.get("sqlite_snapshot_reader_lifecycle")
             ),
         },
         "fixed_publication_clock_available": receipt.get(
@@ -488,6 +659,145 @@ def compare_workers(
     }
 
 
+def _comparable_sqlite_snapshot_reader_lifecycle(
+    lifecycle: Any,
+) -> Any:
+    """以workspace相對路徑比較讀取器身分，原始絕對路徑仍留在receipt。"""
+
+    if not isinstance(lifecycle, dict):
+        return lifecycle
+    comparable = copy.deepcopy(lifecycle)
+    comparable.pop("database_file_configured_path", None)
+    database_list = comparable.get("database_list")
+    if isinstance(database_list, list):
+        normalized_databases = []
+        for entry in database_list:
+            if not isinstance(entry, dict):
+                normalized_databases.append(entry)
+                continue
+            normalized_entry = {
+                key: value
+                for key, value in entry.items()
+                if key not in {"file", "workspace_relative_file"}
+            }
+            normalized_entry["file"] = entry.get("workspace_relative_file")
+            normalized_databases.append(normalized_entry)
+        comparable["database_list"] = normalized_databases
+    return comparable
+
+
+def same_path_repeat_control(worker_result: dict[str, Any]) -> dict[str, Any] | None:
+    """摘要同一 worker、同一路徑重複發布的負向對照。"""
+
+    receipt = worker_result.get("receipt") or {}
+    if receipt.get("case") != "same_input_rerun":
+        return None
+    phases = receipt.get("phases") or []
+    first = next(
+        (phase for phase in phases if phase.get("label") == "same_input_first_publication"),
+        None,
+    )
+    repeated = next(
+        (phase for phase in phases if phase.get("label") == "same_input_repeat_publication"),
+        None,
+    )
+    if first is None or repeated is None:
+        return {
+            "status": "incomplete",
+            "reason": "same_input_rerun lacks one of its expected phases",
+        }
+    first_outputs = first.get("outputs") or {}
+    repeated_outputs = repeated.get("outputs") or {}
+    first_files = first_outputs.get("files") or {}
+    repeated_files = repeated_outputs.get("files") or {}
+    first_paths = set(first_files)
+    repeated_paths = set(repeated_files)
+    paths = sorted(first_paths & repeated_paths)
+    file_records = []
+    for path in paths:
+        before = first_files[path]
+        after = repeated_files[path]
+        file_records.append(
+            {
+                "relative_path": path,
+                "same_relative_path": True,
+                "first_sha256": before.get("sha256"),
+                "repeat_sha256": after.get("sha256"),
+                "same_bytes": (
+                    before.get("sha256") == after.get("sha256")
+                    and before.get("size_bytes") == after.get("size_bytes")
+                ),
+                "first_mtime_ns": before.get("mtime_ns"),
+                "repeat_mtime_ns": after.get("mtime_ns"),
+                "same_real_mtime": before.get("mtime_ns") == after.get("mtime_ns"),
+            }
+        )
+    first_transient = first_outputs.get("sqlite_transient_files_before_checkpoint") or {}
+    repeated_transient = (
+        repeated_outputs.get("sqlite_transient_files_before_checkpoint") or {}
+    )
+    first_database = first_outputs.get("sqlite_main_db_before_checkpoint")
+    repeated_database = repeated_outputs.get("sqlite_main_db_before_checkpoint")
+    return {
+        "status": "measured",
+        "mode": worker_result.get("mode"),
+        "pid": receipt.get("pid"),
+        "same_worker_process": True,
+        "same_workspace": receipt.get("workspace"),
+        "same_physical_paths": (
+            bool(first_paths)
+            and bool(repeated_paths)
+            and first_paths == repeated_paths
+        ),
+        "phase_labels": [first.get("label"), repeated.get("label")],
+        "same_relative_paths": paths,
+        "first_relative_paths": sorted(first_paths),
+        "repeat_relative_paths": sorted(repeated_paths),
+        "first_only_paths": sorted(first_paths - repeated_paths),
+        "repeat_only_paths": sorted(repeated_paths - first_paths),
+        "same_path_set": bool(first_paths)
+        and bool(repeated_paths)
+        and first_paths == repeated_paths,
+        "same_bytes_for_every_common_path": bool(paths)
+        and all(item["same_bytes"] for item in file_records),
+        "real_mtime_changed_paths": [
+            item["relative_path"]
+            for item in file_records
+            if not item["same_real_mtime"]
+        ],
+        "files": file_records,
+        "sqlite_main_db_before_checkpoint": {
+            "first": first_database,
+            "repeat": repeated_database,
+            "same_sha256": (
+                first_database.get("sha256") == repeated_database.get("sha256")
+                if first_database and repeated_database
+                else None
+            ),
+            "same_size_bytes": (
+                first_database.get("size_bytes")
+                == repeated_database.get("size_bytes")
+                if first_database and repeated_database
+                else None
+            ),
+            "same_mtime_ns": (
+                first_database.get("mtime_ns") == repeated_database.get("mtime_ns")
+                if first_database and repeated_database
+                else None
+            ),
+        },
+        "sqlite_transient_snapshot_paths_first": sorted(first_transient),
+        "sqlite_transient_snapshot_paths_repeat": sorted(repeated_transient),
+        "sqlite_transient_snapshots": {
+            path: {
+                "first": first_transient.get(path),
+                "repeat": repeated_transient.get(path),
+            }
+            for path in sorted(set(first_transient) | set(repeated_transient))
+        },
+    }
+
+
 def validate_negative_controls(reference_receipt: dict[str, Any]) -> dict[str, Any]:
     common = flatten_comparable(reference_receipt)
     publication_paths = common.get("final_publication", {}).get(
@@ -525,6 +835,29 @@ def validate_negative_controls(reference_receipt: dict[str, Any]) -> dict[str, A
         "same_identity_resume_accepted"
     ] = False
     mutations["resume"] = resume_mutation
+
+    observer_clock = common.get("timings", {}).get("observer_clock") or {}
+    if observer_clock.get("call_count") is not None:
+        extra_clock_mutation = copy.deepcopy(common)
+        extra_clock = extra_clock_mutation["timings"]["observer_clock"]
+        extra_clock["call_count"] += 1
+        extra_clock["call_sequence"].append(
+            {
+                "sequence": extra_clock["call_count"] - 1,
+                "kind": "negative_control_extra_clock_call",
+            }
+        )
+        extra_clock["call_sequence_sha256"] = canonical_hash(
+            extra_clock["call_sequence"]
+        )
+        mutations["extra_clock_call"] = extra_clock_mutation
+
+    if common.get("phases"):
+        phase_mutation = copy.deepcopy(common)
+        phase_mutation["phases"][0]["label"] = (
+            "negative_control_different_publication_phase"
+        )
+        mutations["publication_phase"] = phase_mutation
 
     for name, mutated in mutations.items():
         diff = collect_exact_differences(common, mutated)
@@ -564,6 +897,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 case=case,
                 mode=mode,
                 source_variant=source_variant,
+                observer_clock_mode=args.observer_clock_mode,
+                logical_phase_port=getattr(args, "logical_phase_port", False),
             )
         worker_results[case] = case_results
         comparisons[case] = compare_workers(
@@ -571,24 +906,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             case_results["candidate"],
         )
 
+    negative_control_case = (
+        "clean" if "clean" in worker_results else selected_cases[0]
+    )
     negatives = validate_negative_controls(
-        worker_results["clean"]["baseline"]["receipt"]
+        worker_results[negative_control_case]["baseline"]["receipt"]
     )
-    exact_semantic_failures = {
-        case: result
-        for case, result in comparisons.items()
-        if result.get("status") in {"semantic_difference", "worker_error"}
-    }
-    clocks_incomparable = any(
-        result.get("status") == "incomparable_clock"
-        for result in comparisons.values()
-    )
-    if exact_semantic_failures or not negatives["all_detected"]:
-        verdict = "FAIL"
-    elif clocks_incomparable:
-        verdict = "INCONCLUSIVE"
-    else:
-        verdict = "PASS"
+    full_ordered_case_coverage = tuple(selected_cases) == CASES
+    verdict = strict_gate_verdict(selected_cases, comparisons, negatives)
     return {
         "schema": "r027-isolation-experiment-receipt.v1",
         "run_root": str(root.resolve()),
@@ -596,13 +921,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "repository_root": str(REPOSITORY_ROOT),
         "python_executable": sys.executable,
         "cases": list(selected_cases),
+        "full_ordered_case_coverage": full_ordered_case_coverage,
         "candidate_extraction": extraction,
+        "observer_clock_mode": args.observer_clock_mode,
+        "same_path_repeat_controls": {
+            case: {
+                mode: same_path_repeat_control(worker)
+                for mode, worker in case_workers.items()
+            }
+            for case, case_workers in worker_results.items()
+            if case == "same_input_rerun"
+        },
         "workers": worker_results,
         "comparisons": comparisons,
         "negative_controls": negatives,
         "strict_verdict": verdict,
         "blocker_required": verdict != "PASS",
-        "r028_unlocked": verdict == "PASS",
+        "r028_unlocked": verdict == "PASS" and full_ordered_case_coverage,
         "formal_data_touched": False,
         "production_source_write_performed": False,
         "interpretation": (
@@ -615,6 +950,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", choices=("all", *CASES), default="clean")
     parser.add_argument("--source-variant", choices=("original", "changed"), default="original")
+    parser.add_argument(
+        "--observer-clock-mode",
+        choices=("system", "deterministic"),
+        default="system",
+    )
     parser.add_argument("--temp-parent", default=tempfile.gettempdir())
     parser.add_argument("--run-name", default="r027-" + next(tempfile._get_candidate_names()))
     parser.add_argument("--receipt", default="")

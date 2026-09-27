@@ -10,12 +10,14 @@ if TYPE_CHECKING:
     from app_module.backtest_service import BacktestService
     from app_module.dtos import (
         BacktestReportDTO,
-        RecommendationDTO,
-        RecommendationResultDTO,
         RegimeResultDTO,
     )
     from app_module.journal_service import JournalService
     from app_module.portfolio_service import PortfolioService
+    from app_module.recommendation.legacy_dtos import (
+        RecommendationDTO,
+        RecommendationResultDTO,
+    )
     from app_module.recommendation_service import RecommendationService
     from app_module.regime_service import RegimeService
     from app_module.screening_service import ScreeningService
@@ -43,8 +45,8 @@ _EXPORTS = {
     "BacktestService": ("app_module.backtest_service", "BacktestService"),
     "PortfolioService": ("app_module.portfolio_service", "PortfolioService"),
     "JournalService": ("app_module.journal_service", "JournalService"),
-    "RecommendationDTO": ("app_module.dtos", "RecommendationDTO"),
-    "RecommendationResultDTO": ("app_module.dtos", "RecommendationResultDTO"),
+    "RecommendationDTO": ("app_module.recommendation.legacy_dtos", "RecommendationDTO"),
+    "RecommendationResultDTO": ("app_module.recommendation.legacy_dtos", "RecommendationResultDTO"),
     "RegimeResultDTO": ("app_module.dtos", "RegimeResultDTO"),
     "BacktestReportDTO": ("app_module.dtos", "BacktestReportDTO"),
 }

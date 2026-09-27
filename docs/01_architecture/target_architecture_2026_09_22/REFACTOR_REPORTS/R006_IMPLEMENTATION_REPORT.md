@@ -93,3 +93,13 @@ QA inventory 已將 R001 記錄的 7 個 manifests 精確歸回 `portfolio_ml_di
 
 - **本輪 ARCHITECTURE_BLOCKER：** 無。
 - **本輪未決事項：** 正式 fold-index binary 的每列 tuple 尚未讀回或測試驗證，狀態維持 `source-declared`。
+
+## 2026-09-27 unknown artifact retention 狀態補充
+
+依 R006 原文，未知來源反序列化明列 OUT OF SCOPE；acceptance 要求 class paths/source IDs及 unknown 狀態清楚、唯讀 bytes不變，objective 要求每個 unknown 有保留策略。新 root symbolic probe 對兩個 legacy pickle 僅做 opcode stack/memo 解析（各81,620 ops、10個 external refs、unresolved=0），未 import globals、未執行 reducer、未 load/predict；前後 SHA 相同。OOC 僅對10個精確selected run paths驗bytes/hash；單一 head 在 bounded zlib/pickle-prefix scan 到269 opcodes後因 ndarray raw block停止，狀態仍 `PARTIAL`，未驗 class path或 prediction。兩個 legacy pickle 與 selected OOC head 的 unknown／partial scope與retention均列於 [R006 unknown artifact addendum](../../../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。
+
+此更新只裁定 R006 inventory/retention 原 acceptance 範圍；不改寫本報告歷史 73P/1F、21P focused run或未知正式模型狀態。RK-19仍追蹤 formal unknown binaries/class paths 的unsupported compatibility risk；沒有任意 pickle load、prediction或完整83k recursive inventory通過聲明。
+
+## 2026-09-27 scoped disposition crosslink
+
+R006 scoped inventory與unknown-retention依原任務範圍已達；原規格將未知來源反序列化列為OUT OF SCOPE，並要求未知項狀態與保留策略明確。正式未知binary仍未load/predict，維持RK-19 unsupported compatibility risk；這不構成本R006 inventory task的未完成工程。細節與bounded raw evidence見 [R006 unknown artifact retention addendum](../../../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。本狀態不改寫歷史73P/1F或21P focused receipts。

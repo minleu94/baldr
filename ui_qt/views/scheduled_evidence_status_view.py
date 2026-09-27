@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
@@ -98,8 +98,8 @@ class ScheduledEvidenceStatusView(QWidget):
             self._worker = worker
             worker.finished.connect(self._on_status_loaded)
             worker.error.connect(self._on_status_error)
-            worker.finished.connect(lambda _result: self._release_worker())
-            worker.error.connect(lambda _message: self._release_worker())
+            worker.finished.connect(self._release_worker_after_finished)
+            worker.error.connect(self._release_worker_after_error)
             worker.start()
             return
         try:
@@ -224,6 +224,14 @@ class ScheduledEvidenceStatusView(QWidget):
             "請聚焦 Retry；尚無 last-known-good 可保留。"
         )
         self.refresh_button.setFocus(Qt.OtherFocusReason)
+
+    @Slot(object)
+    def _release_worker_after_finished(self, _result: object) -> None:
+        self._release_worker()
+
+    @Slot(str)
+    def _release_worker_after_error(self, _message: str) -> None:
+        self._release_worker()
 
     def _release_worker(self) -> None:
         self.refresh_button.setEnabled(True)

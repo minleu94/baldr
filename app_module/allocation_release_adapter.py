@@ -35,7 +35,7 @@ from ml_module.allocation_release_contract import (
     payload_hash,
 )
 from ml_module.allocation_contracts import PortfolioMLDatasetRow
-from ml_module.restated_research_input_contract import RestatedResearchInputBinding
+from artifact_contracts.restated_research_contract import RestatedResearchInputBinding
 from ml_module.allocation_release_loader import register_release_loader
 from data_module.ml_daily_price_revision_gate import (
     assert_model_artifact_source_revision_safe,
@@ -365,7 +365,10 @@ def load_allocation_release(
 
 
 # 由 application boundary 提供實作，ML producer 只看中立 loader contract。
-register_release_loader(load_allocation_release)
+register_release_loader(
+    load_allocation_release,
+    output_type=LoadedAllocationRelease,
+)
 
 
 def _validate_artifact_lineage(

@@ -793,7 +793,7 @@ class SavedRecommendationConditionContextProvider:
         except (OSError, sqlite3.Error):
             return []
         result_type: Any
-        from app_module.dtos import RecommendationResultDTO
+        from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 
         result_type = RecommendationResultDTO
         candidates: list[tuple[Any, Any, datetime]] = []

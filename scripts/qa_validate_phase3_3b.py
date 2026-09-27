@@ -22,6 +22,7 @@ sys.path.insert(0, str(project_root))
 
 from data_module.config import TWStockConfig
 from app_module.screening_service import ScreeningService
+from app_module.decision_service_composition import build_industry_mapper
 from app_module.regime_service import RegimeService
 from app_module.recommendation_service import RecommendationService
 from app_module.recommendation.input_preparation import (
@@ -40,7 +41,6 @@ from app_module.backtest_repository import BacktestRunRepository
 from app_module.strategy_version_service import StrategyVersionService
 from app_module.preset_service import PresetService
 from app_module.broker_branch_update_service import BrokerBranchUpdateService
-from decision_module.industry_mapper import IndustryMapper
 
 # 確保策略已註冊
 import decision_module.strategies
@@ -107,7 +107,7 @@ class Phase33BValidator:
         self.results: List[ValidationResult] = []
         
         # 初始化服務
-        shared_industry_mapper = IndustryMapper(self.config)
+        shared_industry_mapper = build_industry_mapper(self.config)
         self.screening_service = ScreeningService(self.config, industry_mapper=shared_industry_mapper)
         self.regime_service = RegimeService(self.config)
         self.recommendation_service = RecommendationService(

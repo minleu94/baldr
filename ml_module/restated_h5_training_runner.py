@@ -58,6 +58,12 @@ from ml_module.allocation_release_contract import (
     feature_order_hash,
     payload_hash,
 )
+from ml_module.allocation_release_loader import (
+    VerifiedAllocationRelease,
+    ensure_verified_allocation_release_loader_registered,
+    load_verified_allocation_release,
+    require_verified_allocation_release,
+)
 from ml_module.allocation_training_service import (
     CLASSIFICATION_EXPERT_HEADS,
     EXPERT_HEAD_IDS,
@@ -799,6 +805,7 @@ def train_and_publish(
         raise ValueError("batch_size must be within 1..65536")
     if logistic_iterations <= 0 or logistic_iterations > 100:
         raise ValueError("logistic_iterations must be within 1..100")
+    ensure_verified_allocation_release_loader_registered()
     output_root = output_root.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     from threadpoolctl import threadpool_info, threadpool_limits
@@ -1282,9 +1289,7 @@ def train_and_publish(
         _write_json(release_stage / "training_manifest.json", training_payload)
         _write_json(release_stage / "evaluation_metrics.json", metrics_payload)
         _write_json(release_stage / "release_manifest.json", release.to_dict())
-        from app_module.allocation_release_adapter import AllocationReleaseAdapter
-
-        staged_loaded = AllocationReleaseAdapter().load(
+        staged_loaded = load_verified_allocation_release(
             release_stage,
             expected_release_identity_hash=release.release_identity_hash,
         )
@@ -1298,7 +1303,7 @@ def train_and_publish(
             _write_json(release_stage / "latest_inference_smoke.json", staged_smoke)
         run_root.parent.mkdir(parents=True, exist_ok=True)
         os.replace(release_stage, run_root)
-        final_loaded = AllocationReleaseAdapter().load(
+        final_loaded = load_verified_allocation_release(
             run_root,
             expected_release_identity_hash=release.release_identity_hash,
         )
@@ -2016,10 +2021,9 @@ def _verified_cash_only_target_summary(training_hash: str) -> dict[str, Any]:
 def _run_current_inference_smoke(
     *,
     data: ResearchArrays,
-    loaded: Any,
+    loaded: VerifiedAllocationRelease,
     observed_as_of: datetime,
 ) -> dict[str, Any]:
-    from app_module.allocation_release_adapter import LoadedAllocationRelease
     from ml_module.allocation_contracts import (
         CausalPortfolioState,
         AllocationWeightContract,
@@ -2028,8 +2032,7 @@ def _run_current_inference_smoke(
         post_freeze_shadow_decision_scope,
     )
 
-    if not isinstance(loaded, LoadedAllocationRelease):
-        raise TypeError("current smoke requires the verified AllocationReleaseAdapter output")
+    loaded = require_verified_allocation_release(loaded)
     if observed_as_of.tzinfo is None or observed_as_of.utcoffset() is None:
         raise ValueError("current inference smoke clock must be timezone-aware")
     now = observed_as_of.astimezone(TAIPEI)

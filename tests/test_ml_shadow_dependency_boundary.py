@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 from ml_module.shadow_boundary_guard import MLShadowBoundaryGuard
@@ -11,6 +12,19 @@ def test_repository_respects_ml_shadow_dependency_boundary() -> None:
 
     assert report.violations == ()
     assert report.shadow_only is True
+
+
+def test_repaired_input_contract_has_no_app_script_or_data_provider_imports() -> None:
+    path = ROOT / "ml_module" / "allocation_repaired_input_contract.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imported_roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_roots.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            imported_roots.add(node.module.split(".", 1)[0])
+
+    assert imported_roots.isdisjoint({"app_module", "data_module", "scripts"})
 
 
 def test_guard_detects_production_import_of_ml_module(tmp_path: Path) -> None:
@@ -383,3 +397,99 @@ def test_new_provenance_edges_remain_source_scoped_and_symbol_exact(
         assert any(
             item.endswith(diagnostic_suffix) for item in report.violations
         ), relative_path
+
+
+def test_artifact_contract_root_rejects_cross_boundary_and_dynamic_imports(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        (
+            "from ml_module.allocation_contracts import PortfolioMLDatasetRow\n",
+            "artifact_contracts_imports_non_neutral_dependency",
+        ),
+        (
+            "import app_module.application_ports\n",
+            "artifact_contracts_imports_non_neutral_dependency",
+        ),
+        (
+            "from ..ml_module.allocation_contracts import PortfolioMLDatasetRow\n",
+            "artifact_contracts_relative_import_escape",
+        ),
+        (
+            "from ..artifact_contracts import allocation_model_types\n",
+            "artifact_contracts_relative_import_escape",
+        ),
+        (
+            "from importlib import import_module\n",
+            "artifact_contracts_dynamic_import",
+        ),
+        (
+            "import pkgutil\n"
+            "pkgutil.resolve_name('ml_module.allocation_contracts.PortfolioMLDatasetRow')\n",
+            "artifact_contracts_dynamic_import",
+        ),
+        (
+            "from pkgutil import get_loader\n"
+            "get_loader('ml_module.allocation_contracts')\n",
+            "artifact_contracts_dynamic_import",
+        ),
+        (
+            "import pydoc\n"
+            "pydoc.locate('ml_module.allocation_contracts.PortfolioMLDatasetRow')\n",
+            "artifact_contracts_dynamic_import",
+        ),
+        (
+            "from pydoc import importfile\n"
+            "importfile('ml_module/allocation_contracts.py')\n",
+            "artifact_contracts_dynamic_import",
+        ),
+        (
+            "def load(name):\n    return __import__(name)\n",
+            "artifact_contracts_dynamic_import",
+        ),
+        (
+            "eval(\"__import__('ml_module')\")\n",
+            "artifact_contracts_dynamic_import",
+        ),
+        (
+            "exec(\"import ml_module\")\n",
+            "artifact_contracts_dynamic_import",
+        ),
+    )
+    for index, (source, diagnostic) in enumerate(cases):
+        case_root = tmp_path / str(index)
+        path = case_root / "artifact_contracts" / "allocation_model_types.py"
+        path.parent.mkdir(parents=True)
+        path.write_text(source, encoding="utf-8")
+
+        report = MLShadowBoundaryGuard(case_root).inspect()
+
+        assert any(item.startswith(diagnostic) for item in report.violations), source
+
+
+def test_artifact_contract_root_allows_standard_library_numpy_and_internal_imports(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "artifact_contracts"
+    (package / "sub").mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "leaf.py").write_text(
+        "from dataclasses import dataclass\n"
+        "import numpy as np\n"
+        "@dataclass(frozen=True)\n"
+        "class Leaf:\n    value: int\n",
+        encoding="utf-8",
+    )
+    (package / "consumer.py").write_text(
+        "from .leaf import Leaf\n",
+        encoding="utf-8",
+    )
+    (package / "sub" / "__init__.py").write_text("", encoding="utf-8")
+    (package / "sub" / "consumer.py").write_text(
+        "from ..leaf import Leaf\n",
+        encoding="utf-8",
+    )
+
+    report = MLShadowBoundaryGuard(tmp_path).inspect()
+
+    assert report.violations == ()

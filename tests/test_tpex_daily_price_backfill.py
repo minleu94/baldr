@@ -5,6 +5,7 @@ import pytest
 import data_module.tpex_daily_price_backfill as backfill_module
 
 from data_module.tpex_daily_price_backfill import (
+    TpexDailyPriceDiagnostic,
     _insert_daily_price_rows,
     apply_tpex_daily_price_backfill,
     build_tpex_daily_price_plan,
@@ -104,7 +105,68 @@ def test_normalize_tpex_daily_price_rows_reports_invalid_price():
     )
 
     assert result.rows == ()
-    assert result.diagnostics[0].code == "tpex_daily_price.invalid_price"
+    diagnostic = result.diagnostics[0]
+    assert isinstance(diagnostic, TpexDailyPriceDiagnostic)
+    payload = diagnostic.to_dict()
+    assert tuple(payload) == ("code", "factor_name", "stock_code", "message")
+    assert payload == {
+        "code": "tpex_daily_price.invalid_price",
+        "factor_name": "market_data.tpex_daily_price",
+        "stock_code": "3207",
+        "message": "TPEX daily price row has missing or non-positive close price",
+    }
+
+
+def test_normalize_tpex_daily_price_rows_reports_invalid_stock_code() -> None:
+    result = normalize_tpex_daily_price_rows(
+        [
+            {
+                "Date": "1150616",
+                "SecuritiesCompanyCode": "00720B",
+                "CompanyName": "債券",
+                "Close": "100.00",
+            }
+        ],
+        fallback_date="2026-06-16",
+    )
+
+    assert result.rows == ()
+    diagnostic = result.diagnostics[0]
+    assert isinstance(diagnostic, TpexDailyPriceDiagnostic)
+    payload = diagnostic.to_dict()
+    assert tuple(payload) == ("code", "factor_name", "stock_code", "message")
+    assert payload == {
+        "code": "tpex_daily_price.invalid_stock_code",
+        "factor_name": "market_data.tpex_daily_price",
+        "stock_code": "00720B",
+        "message": "TPEX daily price row is missing a four-digit stock code",
+    }
+
+
+def test_normalize_tpex_daily_price_rows_preserves_diagnostic_order() -> None:
+    result = normalize_tpex_daily_price_rows(
+        [
+            {
+                "Date": "1150616",
+                "SecuritiesCompanyCode": "00720B",
+                "CompanyName": "債券",
+                "Close": "100.00",
+            },
+            {
+                "Date": "1150616",
+                "SecuritiesCompanyCode": "3207",
+                "CompanyName": "耀勝",
+                "Close": "--",
+            },
+        ],
+        fallback_date="2026-06-16",
+    )
+
+    assert result.rows == ()
+    assert [item.code for item in result.diagnostics] == [
+        "tpex_daily_price.invalid_stock_code",
+        "tpex_daily_price.invalid_price",
+    ]
 
 
 def test_build_tpex_daily_price_plan_skips_existing_rows(tmp_path):

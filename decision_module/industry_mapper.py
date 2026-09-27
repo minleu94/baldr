@@ -15,14 +15,33 @@ class IndustryMapper:
     def __init__(
         self,
         config,
-        industry_index_provider: Optional[Callable[[], pd.DataFrame]] = None,
+        industry_index_provider: Optional[Callable[[], Optional[pd.DataFrame]]] = None,
+        *,
+        companies_provider: Optional[Callable[[], Optional[pd.DataFrame]]] = None,
     ):
-        """初始化產業映射器
+        """初始化產業映射器；資料讀取由 application 明確注入。
         
         Args:
             config: TWStockConfig 實例
+            companies_provider: 讀取 companies frame 的明確 provider。
+            industry_index_provider: 讀取產業指數 frame 的明確 provider。
         """
+        if companies_provider is None or industry_index_provider is None:
+            missing = []
+            if companies_provider is None:
+                missing.append("companies_provider")
+            if industry_index_provider is None:
+                missing.append("industry_index_provider")
+            raise ValueError(
+                "IndustryMapper requires explicit "
+                + " and ".join(missing)
+                + "; use app_module.decision_service_composition.build_industry_mapper"
+            )
+        if not callable(companies_provider) or not callable(industry_index_provider):
+            raise TypeError("IndustryMapper data providers must be callable")
+
         self.config = config
+        self.companies_provider = companies_provider
         self.industry_index_provider = industry_index_provider
         self.companies_df = None
         self.industry_index_df = None
@@ -38,83 +57,23 @@ class IndustryMapper:
         self._build_latest_industry_performance_cache()
     
     def _load_companies(self):
-        """載入 companies.csv"""
-        companies_file = self.config.meta_data_dir / 'companies.csv'
-        if companies_file.exists():
-            try:
-                self.companies_df = pd.read_csv(companies_file, encoding='utf-8-sig')
-                # 使用 logging 而不是 print，避免編碼問題
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info(f"成功載入 companies.csv，共 {len(self.companies_df)} 筆")
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"載入 companies.csv 失敗: {e}")
-        else:
-            print(f"找不到 companies.csv: {companies_file}")
+        """消費 application 注入的公司資料，不執行檔案 I/O。"""
+        assert self.companies_provider is not None
+        frame = self.companies_provider()
+        self.companies_df = None if frame is None else frame.copy()
     
     def _load_industry_index(self):
-        """載入 industry_index 數據"""
-        if self.industry_index_provider is not None:
-            self.industry_index_df = self.industry_index_provider().copy()
+        """消費 application 注入的產業指數，不執行 DB／檔案 I/O。"""
+        assert self.industry_index_provider is not None
+        frame = self.industry_index_provider()
+        if frame is not None:
+            self.industry_index_df = frame.copy()
             if '日期' in self.industry_index_df.columns:
                 self.industry_index_df['日期'] = normalize_market_dates(
                     self.industry_index_df['日期']
                 )
-            return
-
-        # 優先嘗試從 SQLite 資料庫載入
-        if getattr(self.config, 'use_sqlite', False):
-            try:
-                from data_module.db_manager import DBManager
-                db = DBManager(self.config)
-                sql_df = db.execute_query("SELECT * FROM industry_indices ORDER BY 日期 ASC;")
-                if not sql_df.empty:
-                    self.industry_index_df = sql_df
-                    # 轉換日期格式 (SQLite 儲存為 YYYYMMDD 整數或字串，需要轉換為與原本 CSV 載入相同的 Timestamp 對象)
-                    self.industry_index_df['日期'] = pd.to_datetime(
-                        self.industry_index_df['日期'].astype(str),
-                        format='%Y%m%d',
-                        errors='coerce'
-                    )
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(f"成功從 SQLite 載入 industry_indices，共 {len(self.industry_index_df)} 筆")
-                    return
-            except Exception as sql_err:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"從 SQLite 載入 industry_indices 失敗: {sql_err}，將降級讀取 CSV")
-
-        # Fallback 到 CSV 讀取
-        industry_file = self.config.industry_index_file
-        if not industry_file.exists():
-            # 嘗試其他路徑
-            alt_path = self.config.meta_data_dir / 'industry_index.csv'
-            if alt_path.exists():
-                industry_file = alt_path
-        
-        if industry_file.exists():
-            try:
-                self.industry_index_df = pd.read_csv(industry_file, encoding='utf-8-sig')
-                # 轉換日期格式
-                if '日期' in self.industry_index_df.columns:
-                    self.industry_index_df['日期'] = pd.to_datetime(
-                        self.industry_index_df['日期'], 
-                        errors='coerce'
-                    )
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info(f"成功載入 industry_index.csv，共 {len(self.industry_index_df)} 筆")
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"載入 industry_index.csv 失敗: {e}")
         else:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"找不到 industry_index.csv: {industry_file}")
+            self.industry_index_df = None
     
     def _build_mappings(self):
         """建立股票到產業的映射關係"""

@@ -12,6 +12,14 @@ from app_module.recommendation.persistence import RecommendationExecutionPersist
 from app_module.recommendation.contracts import ExecutionStatus
 from app_module.recommendation.queries import RecommendationExecutionQueries
 from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.recommendation.negative_evidence_projection import (
+    LEGACY_NEGATIVE_EVIDENCE_EVENT_TYPE,
+    NegativeEvidenceProjectionError,
+    assert_legacy_event_matches_projection,
+    count_legacy_assessment_outcomes,
+    legacy_history_event_projection,
+    project_canonical_negative_evidence,
+)
 from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
 from data_module.result_artifact_store import ResultArtifactStore
 
@@ -179,28 +187,36 @@ def saved_recommendation_capture_projection(
         result["recommendations_count"] = (
             len(execution.decision.items) if execution.decision is not None else None
         )
-        event = next(
-            (
+        decision = execution.decision
+        typed_outcome_count = count_legacy_assessment_outcomes(decision)
+        if typed_outcome_count:
+            if decision is None:
+                raise NegativeEvidenceProjectionError(
+                    "typed negative-evidence outcomes 缺少 DecisionBatch"
+                )
+            projection = project_canonical_negative_evidence(decision)
+            events = tuple(
                 item
                 for item in execution.events
-                if item.event_type == "legacy_negative_evidence_capture"
-            ),
-            None,
-        )
-        details: Mapping[str, object] = (
-            event.details
-            if event is not None and event.details is not None
-            else {}
-        )
-        for target, source in (
-            ("screening_matrix_json", "screening_matrix"),
-            ("excluded_candidates_json", "excluded_candidates"),
-            ("why_not_payload_json", "why_not_payload"),
-            ("liquidity_gate_payload_json", "liquidity_gate_payload"),
-            ("exclusion_quality", "exclusion_quality"),
-            ("exclusion_warnings_json", "exclusion_warnings"),
-        ):
-            result[target] = details.get(source)
+                if item.event_type == LEGACY_NEGATIVE_EVIDENCE_EVENT_TYPE
+            )
+            if len(events) > 1:
+                raise NegativeEvidenceProjectionError(
+                    "legacy negative-evidence event 重複"
+                )
+            if events:
+                assert_legacy_event_matches_projection(
+                    events[0].details,
+                    projection,
+                )
+            result.update(projection.as_saved_capture_projection())
+        else:
+            result.update(
+                legacy_history_event_projection(
+                    execution.events,
+                    schema_revision=read_model.schema_revision,
+                )
+            )
         return result
 
     legacy = read_model.legacy_result

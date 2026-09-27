@@ -80,7 +80,7 @@ def run_checks(root: Path) -> dict[str, object]:
     from app_module.decision_desk_dtos import DecisionDeskQuality, MarketRegimeSummary
     from app_module.decision_desk_service import DecisionDeskSnapshotBuilder, PortfolioLedgerDeskProvider, SavedRecommendationDeskProvider
     from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
-    from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+    from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
     from app_module.portfolio_service import PortfolioService
     from app_module.recommendation_repository import RecommendationRepository
     from app_module.watchlist_service import WatchlistService

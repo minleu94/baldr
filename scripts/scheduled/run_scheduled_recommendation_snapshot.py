@@ -26,6 +26,7 @@ from app_module.recommendation.contracts import (
     ExecutionStatus,
     IndexStatus,
     RecommendationConfigSnapshot,
+    RecommendationExecution,
     RecommendationResultConfigSnapshot,
     RecommendationRunEvidenceIdentity,
     SnapshotCohort,
@@ -39,6 +40,9 @@ from app_module.recommendation.execute import (
 from app_module.recommendation.body_result import (
     snapshot_cohort_from_body_result,
     snapshot_cohort_payload_from_body_result,
+)
+from app_module.recommendation.negative_evidence_projection import (
+    project_canonical_negative_evidence,
 )
 from app_module.recommendation_service import RecommendationService
 from app_module.regime_service import RegimeService
@@ -194,26 +198,17 @@ def _snapshot_cohort_from_payload(payload: Mapping[str, Any]) -> SnapshotCohort:
     )
 
 
-def _execution_capture_summary(execution: Any) -> dict[str, Any]:
-    """讀取 execution 已封存的同次 legacy evidence 摘要。"""
+def _execution_capture_summary(
+    execution: RecommendationExecution,
+) -> dict[str, Any]:
+    """從已保存 execution 的 typed assessments 投影排程用負面證據。"""
 
-    event = next(
-        (
-            item
-            for item in execution.events
-            if item.event_type == "legacy_negative_evidence_capture"
-        ),
-        None,
-    )
-    details = event.details if event is not None else {}
-    return {
-        "screening_matrix": tuple(details.get("screening_matrix", ())),
-        "excluded_candidates": tuple(details.get("excluded_candidates", ())),
-        "why_not_payload": tuple(details.get("why_not_payload", ())),
-        "liquidity_gate_payload": tuple(details.get("liquidity_gate_payload", ())),
-        "exclusion_quality": str(details.get("exclusion_quality", "unknown")),
-        "exclusion_warnings": tuple(details.get("exclusion_warnings", ())),
-    }
+    if execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
+        raise ValueError("scheduled execution 缺少 completed DecisionBatch")
+    return project_canonical_negative_evidence(
+        execution.decision,
+        allow_empty=True,
+    ).as_scheduled_summary()
 
 
 def _required_identity_text(value: object, field_name: str) -> str:

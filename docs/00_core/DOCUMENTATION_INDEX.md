@@ -18,6 +18,11 @@
 | 使用者操作、安全與排錯 | [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) |
 | 文件覆蓋與生命週期 | [DOC_COVERAGE_MAP](DOC_COVERAGE_MAP.md)、[DOCUMENTATION_STRUCTURE](DOCUMENTATION_STRUCTURE.md) |
 
+## 其他正式入口
+
+- 理想目標架構與 Current → Target 演進：[target_system_architecture.md](../01_architecture/target_system_architecture.md)
+- Formal input readiness 最新查核：[FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md](../06_qa/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md)
+
 ## 領域目錄
 
 - [架構文件](../01_architecture/README.md)：現況架構、target 導覽與系統設計。31 個 refactor task specs 是執行契約，不表示完成；實際狀態以 Snapshot 與 QA receipts 為準。

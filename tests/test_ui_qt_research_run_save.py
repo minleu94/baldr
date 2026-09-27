@@ -42,6 +42,22 @@ def backtest_view(qt_app, tmp_path):
     return view
 
 
+@pytest.fixture
+def close_fixed_basket_test_view(qt_app, backtest_view):
+    # 在 fixture setup 期間載入既有 helper，讓此測試明確擁有 view 的安全清理。
+    from ui_qt.main import _drain_qt_deferred_deletes
+    import shiboken6
+
+    yield
+
+    worker = getattr(backtest_view, "worker", None)
+    if worker is not None:
+        assert worker.isRunning() is False
+    assert backtest_view.close()
+    _drain_qt_deferred_deletes(qt_app, (backtest_view,))
+    assert not shiboken6.isValid(backtest_view)
+
+
 def _backtest_report():
     return BacktestReportDTO(
         total_return=0.12,
@@ -250,6 +266,7 @@ def test_recommendation_replay_updates_current_run_id_only_after_save(backtest_v
     assert backtest_view.current_recommendation_registry_run_id == run_id
 
 
+@pytest.mark.usefixtures("close_fixed_basket_test_view")
 def test_fixed_basket_execution_forwards_research_mode_to_batch_service(backtest_view):
     backtest_view.batch_backtest_service = MagicMock()
     backtest_view.research_lab_mode_combo.setCurrentIndex(
@@ -264,6 +281,7 @@ def test_fixed_basket_execution_forwards_research_mode_to_batch_service(backtest
 
     with patch("ui_qt.views.backtest_view.TaskWorker") as task_worker_cls:
         worker = MagicMock()
+        worker.isRunning.return_value = False
         task_worker_cls.return_value = worker
 
         backtest_view._execute_batch_backtest(

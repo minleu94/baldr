@@ -21,6 +21,7 @@ sys.path.insert(0, str(project_root))
 
 from data_module.config import TWStockConfig
 from app_module.screening_service import ScreeningService
+from app_module.decision_service_composition import build_industry_mapper
 from app_module.regime_service import RegimeService
 from app_module.recommendation_service import RecommendationService
 from app_module.recommendation.input_preparation import (
@@ -36,7 +37,6 @@ from app_module.preset_service import PresetService
 from decision_module.strategies.registry import StrategyRegistry
 from app_module.dtos import BacktestReportDTO
 # from ui_app.industry_mapper import IndustryMapper
-from decision_module.industry_mapper import IndustryMapper
 
 # 確保策略已註冊
 import decision_module.strategies  # 這會觸發策略註冊
@@ -98,7 +98,7 @@ def validate_market_watch(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
+        industry_mapper = build_industry_mapper(config)
         screening_service = ScreeningService(config, industry_mapper)
         
         # A1: 強勢個股（本日）
@@ -254,7 +254,7 @@ def validate_recommendation(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
+        industry_mapper = build_industry_mapper(config)
         regime_service = RegimeService(config)
         recommendation_service = RecommendationService(
             config,

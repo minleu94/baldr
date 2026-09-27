@@ -10,7 +10,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, Mapping, Optional
 
-from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.recommendation.contracts import (
     ExecutionStatus,
     IndexStatus,

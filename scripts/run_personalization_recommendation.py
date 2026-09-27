@@ -18,7 +18,6 @@ from types import SimpleNamespace
 from typing import Any, Mapping, cast
 from zoneinfo import ZoneInfo
 
-from app_module.dtos import RecommendationDTO
 from app_module.journal_service import JournalService
 from app_module.personalization_contract import (
     PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION,

@@ -111,6 +111,18 @@ def _fake_recommendation_body_result(
             "stage": "recommendation_selection",
             "reason_codes": ["recommendation_selected"],
             "quality": "observed",
+            "threshold_name": "",
+            "observed_value": "",
+            "required_value": "",
+            "total_score": "80.0000",
+            "score_bp": 8000,
+            "score_percentile_bp": None,
+            "eligible_universe_size": 2,
+            "threshold_mode": "fixed",
+            "warnings": [],
+            "industry": "Semiconductor",
+            "as_of_date": "2026-09-21",
+            "data_fingerprint": "fixture-data-fingerprint",
         },
         {
             "stock_code": "2317",
@@ -119,6 +131,18 @@ def _fake_recommendation_body_result(
             "stage": "top_n_gate",
             "reason_codes": ["recommendation_outside_top_n"],
             "quality": "observed",
+            "threshold_name": "top_n",
+            "observed_value": "2",
+            "required_value": str(top_n),
+            "total_score": "",
+            "score_bp": None,
+            "score_percentile_bp": None,
+            "eligible_universe_size": 2,
+            "threshold_mode": "fixed",
+            "warnings": [],
+            "industry": "",
+            "as_of_date": "2026-09-21",
+            "data_fingerprint": "fixture-data-fingerprint",
         },
     ]
     self.last_why_not_payload_json = [
@@ -173,10 +197,11 @@ def _fake_recommendation_body_result(
         stock_code="2330",
         eligible=True,
         filter_outcomes={
-            "legacy:final_selection": FilterOutcome(
-                filter_id="legacy:final_selection",
+            "legacy:recommendation_selection": FilterOutcome(
+                filter_id="legacy:recommendation_selection",
                 passed=True,
                 reason="recommendation_selected",
+                evidence=self.last_screening_matrix[0],
             )
         },
         reasons=("recommendation_selected",),
@@ -189,6 +214,7 @@ def _fake_recommendation_body_result(
                 filter_id="legacy:top_n_gate",
                 passed=False,
                 reason="recommendation_outside_top_n",
+                evidence=self.last_screening_matrix[1],
             )
         },
         negative_evidence=(

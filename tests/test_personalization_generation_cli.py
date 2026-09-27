@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import datetime, timezone
 from decimal import Decimal
 import json
 from pathlib import Path
@@ -160,6 +161,8 @@ def _publish_test_calibration_handoff(
     producer: Any,
     receipt: RecommendationInferenceProjectionReceipt,
     receipt_path: Path,
+    *,
+    receipt_created_at: str = "2025-02-10T09:01:00.000000+00:00",
 ) -> None:
     """依本 fixture 實際寫入及精確讀回的 receipt 發布 typed facts。"""
 
@@ -178,7 +181,6 @@ def _publish_test_calibration_handoff(
     ).encode("utf-8")
     assert persisted_bytes == expected_bytes
     assert json.loads(persisted_bytes) == receipt.to_dict()
-    receipt_created_at = "2025-02-10T09:01:00.000000+00:00"
     sink.publish(
         RecommendationPostCalibrationHandoffV1(
             consumer_configured=(
@@ -627,6 +629,202 @@ def _args(output_root: Path, data_root: Path, config_path: Path) -> list[str]:
     ]
 
 
+def _install_real_cli_recommendation_service(
+    monkeypatch: Any,
+    module: Any,
+) -> dict[str, int]:
+    """以正式 service、隔離來源與固定 scorer 執行 CLI 測試。"""
+
+    import pandas as pd
+
+    from app_module.recommendation.input_preparation import (
+        build_default_recommendation_input_preparer,
+    )
+    from app_module.recommendation_service import (
+        RecommendationService as RealRecommendationService,
+    )
+
+    cutoff = pd.Timestamp("2025-02-10")
+    dates = pd.bdate_range(end=cutoff, periods=25)
+    frame = pd.DataFrame(
+        [
+            {
+                "日期": current_date,
+                "available_date": current_date,
+                "證券代號": STOCK_CODE,
+                "證券名稱": "台積電",
+                "收盤價": Decimal("100.00"),
+                "成交股數": 1_000,
+            }
+            for current_date in dates
+        ],
+        columns=(
+            "日期",
+            "available_date",
+            "證券代號",
+            "證券名稱",
+            "收盤價",
+            "成交股數",
+        ),
+    )
+
+    class FixedMarketProvider:
+        def __call__(self) -> Any:
+            return frame.copy(deep=True)
+
+    class FixedIndustryProvider:
+        def filter_stocks_by_industry(
+            self, stock_codes: Any, _industry: str
+        ) -> list[str]:
+            return [str(code) for code in stock_codes]
+
+        def get_all_industries(self) -> list[str]:
+            return []
+
+        def get_stock_industries(self, _stock_code: str) -> list[str]:
+            return []
+
+        def get_industry_performance(
+            self, _industry: str, *, date: str
+        ) -> dict[str, object]:
+            return {}
+
+    class FixedRegimeService:
+        def detect_regime(self) -> Any:
+            return SimpleNamespace(regime="Trend", confidence=0.5, details={})
+
+        def get_strategy_config(self, _regime: str) -> dict[str, object]:
+            return {}
+
+    provider = FixedMarketProvider()
+    calls = {"service_constructions": 0, "scorer_calls": 0}
+
+    def build_preparer(config: Any, **_kwargs: Any) -> Any:
+        return build_default_recommendation_input_preparer(
+            config,
+            market_data_provider=provider,
+        )
+
+    def service_factory(
+        config: Any,
+        *,
+        input_preparer: Any,
+        regime_service: Any = None,
+        **_kwargs: Any,
+    ) -> Any:
+        if input_preparer.market_data_provider is not provider:
+            raise AssertionError("測試 source provider 必須由同一 preparer 傳入")
+        service = RealRecommendationService(
+            config,
+            industry_mapper=FixedIndustryProvider(),
+            market_data_provider=provider,
+            calibration_consumer=object(),
+            input_preparer=input_preparer,
+            regime_service=regime_service or FixedRegimeService(),
+        )
+
+        def score_stock(
+            stock_frame: Any,
+            _runtime_config: dict[str, object],
+        ) -> Any:
+            calls["scorer_calls"] += 1
+            source_dates = pd.to_datetime(stock_frame["日期"])
+            available_dates = pd.to_datetime(stock_frame["available_date"])
+            if source_dates.max() > cutoff or available_dates.max() > cutoff:
+                raise AssertionError("scorer 收到決策 cutoff 之後的行情資料")
+            return pd.DataFrame(
+                [
+                    {
+                        "FinalScore": Decimal("80.00"),
+                        "TotalScore": Decimal("80.00"),
+                        "IndicatorScore": Decimal("20.00"),
+                        "PatternScore": Decimal("30.00"),
+                        "VolumeScore": Decimal("70.0100"),
+                        "收盤價": Decimal("100.00"),
+                    }
+                ]
+            )
+
+        service.strategy_configurator.generate_recommendations = score_stock
+        calls["service_constructions"] += 1
+        return service
+
+    def publish_fixture_calibration(
+        service: Any,
+        recommendations: list[Any],
+        *,
+        decision_date: str,
+        **_kwargs: Any,
+    ) -> None:
+        if decision_date != "2025-02-10":
+            raise AssertionError("fixture receipt must match the producer decision date")
+        receipt = _receipt()
+        receipt_path = _persist_test_receipt(service.config.output_root, receipt)
+        clocks = dict(service._personalization_execution_clocks)
+        if not clocks:
+            raise AssertionError("正式 producer 未提供本次執行時鐘")
+        receipt_created_at = datetime.now(timezone.utc).isoformat(
+            timespec="microseconds"
+        )
+        clocks["calibration_projection_receipt_created_at"] = receipt_created_at
+        service._personalization_execution_clocks.update(clocks)
+        service.last_run_context.update(clocks)
+        receipt_row = dict(receipt.payload["projections"][0])
+        service.last_run_context.update(
+            {
+                "calibration_projection_status": "active_candidate",
+                "calibration_projection_receipt_status": "persisted",
+                "calibration_projection_source": "test_verified_receipt_fixture",
+                "calibration_projection_rows": {STOCK_CODE: receipt_row},
+                "calibration_projection_receipt": {
+                    "path": str(receipt_path),
+                    "receipt_hash": receipt.receipt_hash,
+                    "result_id": RESULT_ID,
+                    "receipt_created_at": receipt_created_at,
+                },
+                "calibration_projection_receipt_created_at": receipt_created_at,
+            }
+        )
+        _publish_test_calibration_handoff(
+            service,
+            receipt,
+            receipt_path,
+            receipt_created_at=receipt_created_at,
+        )
+        # 沿用既有 linked-prediction receipt fixture；候選評估與排序仍由正式服務負責。
+        for recommendation in recommendations:
+            recommendation.calibrated_probability_bp = int(
+                receipt_row["calibrated_probability_bp"]
+            )
+            recommendation.calibrated_probability_status = "available"
+            recommendation.calibration_status = "active_candidate"
+            recommendation.calibration_model_version = str(
+                receipt_row["model_version"]
+            )
+            recommendation.calibration_dataset_version = str(
+                receipt_row["dataset_version"]
+            )
+            recommendation.calibration_horizon = str(receipt_row["horizon"])
+
+    monkeypatch.setattr(
+        module,
+        "build_default_recommendation_input_preparer",
+        build_preparer,
+    )
+    monkeypatch.setattr(
+        module,
+        "RegimeService",
+        lambda _config, **_kwargs: FixedRegimeService(),
+    )
+    monkeypatch.setattr(module, "RecommendationService", service_factory)
+    monkeypatch.setattr(
+        RealRecommendationService,
+        "_apply_recommendation_calibration",
+        publish_fixture_calibration,
+    )
+    return calls
+
+
 def test_generation_cli_explicit_scope_save_ack_and_retry_use_custom_journal(
     tmp_path: Path,
     monkeypatch: Any,
@@ -634,12 +832,23 @@ def test_generation_cli_explicit_scope_save_ack_and_retry_use_custom_journal(
 ) -> None:
     import scripts.run_personalization_recommendation as module
 
-    monkeypatch.setattr(module, "RecommendationService", _FakeRecommendationProducer)
-    _FakeRecommendationProducer.calls = 0
+    producer_calls = _install_real_cli_recommendation_service(monkeypatch, module)
     output_root = tmp_path / "output"
     data_root = tmp_path / "data"
     config_path = tmp_path / "strategy.json"
-    config_path.write_text(json.dumps({"filters": {}}), encoding="utf-8")
+    config_path.write_text(
+        json.dumps(
+            {
+                "filters": {},
+                "cost_model_id": "cost_generation_cli",
+                "benchmark_id": "TAIEX",
+                "industry_benchmark_id": "industry_index",
+                "horizon_days": 20,
+                "return_basis": RETURN_BASIS,
+            }
+        ),
+        encoding="utf-8",
+    )
     custom_journal = tmp_path / "custom" / "journal.jsonl"
     args = _args(output_root, data_root, config_path)
     args.extend(["--journal-path", str(custom_journal), "--evidence-db", str(tmp_path / "evidence.sqlite")])
@@ -662,6 +871,18 @@ def test_generation_cli_explicit_scope_save_ack_and_retry_use_custom_journal(
     assert result_bytes is not None
     saved = composition.queries.get(RESULT_ID)
     assert saved is not None and saved.execution is not None
+    assert saved.execution.decision is not None
+    assert tuple(
+        assessment.stock_code
+        for assessment in saved.execution.decision.assessments
+    ) == (STOCK_CODE,)
+    assessment = saved.execution.decision.assessments[0]
+    legacy_filter_ids = tuple(
+        filter_id
+        for filter_id in (assessment.filter_outcomes or {})
+        if filter_id.startswith("legacy:")
+    )
+    assert len(legacy_filter_ids) == 1
     assert saved.execution.events[-1].event_type == "personalization_delivery_capture"
     from app_module.personalization_read_service import PersonalizationReadService
     from app_module.personalization_save_adapter import PersonalizationRecommendationSaveAdapter
@@ -760,7 +981,8 @@ def test_generation_cli_explicit_scope_save_ack_and_retry_use_custom_journal(
             journal_path=custom_journal,
         ).list_decision_revisions()
     ) == 1
-    assert _FakeRecommendationProducer.calls == 1
+    assert producer_calls["service_constructions"] == 1
+    assert producer_calls["scorer_calls"] == 1
     assert composition.store.read_artifact(RESULT_ID) == result_bytes
     assert custom_journal.read_bytes() == journal_bytes
 
@@ -789,7 +1011,8 @@ def test_generation_cli_explicit_scope_save_ack_and_retry_use_custom_journal(
     assert recovery_payload["immutable_result_reused"] is True
     assert recovery_payload["delivery_status"] == "already_delivered"
     assert recovery_payload["payload_hash"] == saved.payload_hash
-    assert _FakeRecommendationProducer.calls == 1
+    assert producer_calls["service_constructions"] == 1
+    assert producer_calls["scorer_calls"] == 1
     assert composition.store.read_artifact(RESULT_ID) == result_bytes
     assert composition.queries.get(RESULT_ID) == saved
     assert custom_journal.read_bytes() == journal_bytes
@@ -801,7 +1024,8 @@ def test_generation_cli_explicit_scope_save_ack_and_retry_use_custom_journal(
     assert changed_payload["ok"] is False
     assert any("canonical_personal_request_limits_conflict" in item for item in changed_payload["diagnostics"])
     assert changed_payload["write_attempted"] is False
-    assert _FakeRecommendationProducer.calls == 1
+    assert producer_calls["service_constructions"] == 1
+    assert producer_calls["scorer_calls"] == 1
     assert composition.store.read_artifact(RESULT_ID) == result_bytes
     assert custom_journal.read_bytes() == journal_bytes
 
@@ -1039,12 +1263,23 @@ def test_generation_cli_ack_stream_cas_conflict_retries_without_reexecution(
 ) -> None:
     import scripts.run_personalization_recommendation as module
 
-    monkeypatch.setattr(module, "RecommendationService", _FakeRecommendationProducer)
-    _FakeRecommendationProducer.calls = 0
+    producer_calls = _install_real_cli_recommendation_service(monkeypatch, module)
     output_root = tmp_path / "output"
     data_root = tmp_path / "data"
     config_path = tmp_path / "strategy.json"
-    config_path.write_text(json.dumps({"filters": {}}), encoding="utf-8")
+    config_path.write_text(
+        json.dumps(
+            {
+                "filters": {},
+                "cost_model_id": "cost_generation_cli",
+                "benchmark_id": "TAIEX",
+                "industry_benchmark_id": "industry_index",
+                "horizon_days": 20,
+                "return_basis": RETURN_BASIS,
+            }
+        ),
+        encoding="utf-8",
+    )
     custom_journal = tmp_path / "custom" / "journal.jsonl"
     args = _args(output_root, data_root, config_path)
     args.extend(
@@ -1069,7 +1304,8 @@ def test_generation_cli_ack_stream_cas_conflict_retries_without_reexecution(
     assert first_payload["ok"] is False
     assert first_payload["write_attempted"] is True
     assert any("delivery ACK append failed:RuntimeError" in item for item in first_payload["diagnostics"]), first_payload
-    assert _FakeRecommendationProducer.calls == 1
+    assert producer_calls["service_constructions"] == 1
+    assert producer_calls["scorer_calls"] == 1
 
     from scripts.run_personalization_recommendation import _OutputPathConfig
     from app_module.recommendation.composition import build_recommendation_composition
@@ -1089,7 +1325,8 @@ def test_generation_cli_ack_stream_cas_conflict_retries_without_reexecution(
     assert retry_code == 0, retry_payload
     assert retry_payload["delivery_status"] == "delivered"
     assert retry_payload["write_status"] == "existing_capture_reused_and_delivered_or_idempotent"
-    assert _FakeRecommendationProducer.calls == 1
+    assert producer_calls["service_constructions"] == 1
+    assert producer_calls["scorer_calls"] == 1
     assert composition.store.read_artifact(RESULT_ID) == artifact_bytes
     journal = real_writer(output_root / "_test", custom_journal)
     ack_rows = journal.list_personalization_delivery_acks(
@@ -1158,10 +1395,21 @@ def test_generation_cli_separates_natural_latest_cutoff_from_historical_research
 ) -> None:
     import scripts.run_personalization_recommendation as module
 
-    monkeypatch.setattr(module, "RecommendationService", _FakeRecommendationProducer)
-    _FakeRecommendationProducer.calls = 0
+    producer_calls = _install_real_cli_recommendation_service(monkeypatch, module)
     config_path = tmp_path / "strategy.json"
-    config_path.write_text(json.dumps({"filters": {}}), encoding="utf-8")
+    config_path.write_text(
+        json.dumps(
+            {
+                "filters": {},
+                "cost_model_id": "cost_generation_cli",
+                "benchmark_id": "TAIEX",
+                "industry_benchmark_id": "industry_index",
+                "horizon_days": 20,
+                "return_basis": RETURN_BASIS,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     natural_output = tmp_path / "natural-output"
     natural_journal = tmp_path / "natural-journal.jsonl"
@@ -1214,4 +1462,5 @@ def test_generation_cli_separates_natural_latest_cutoff_from_historical_research
     )
     assert historical_payload["cutoff_selection"] == "explicit_historical_cutoff"
     assert historical_payload["cutoff_policy"] == "explicit_historical_research"
-    assert _FakeRecommendationProducer.calls == 2
+    assert producer_calls["service_constructions"] == 2
+    assert producer_calls["scorer_calls"] == 2

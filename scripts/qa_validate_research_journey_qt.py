@@ -1,12 +1,14 @@
 """以真實 MainWindow production wiring 驗證跨頁研究旅程。
 
 這個 runner 只把本次測試的 ``DATA_ROOT``／``OUTPUT_ROOT`` 指到隔離目錄，
-再經由實際 Qt signal、callback、既有 repository 與 append-only journal
-走完：推薦結果 → 個股研究 → 納入／略過／筆記／下次檢視 → 觀察清單 →
+再經由 RecommendationService、sealed execution、RecommendationView 正式保存／
+canonical 查回、實際 Qt signal 與 append-only journal 走完：推薦結果 → 個股研究 →
+納入／略過／筆記／下次檢視 → 觀察清單 →
 同一推薦結果的同一股票 → Workbench → 同程序 MainWindow 關閉後重建與
 磁碟讀回。
 
-fixture 是保存於隔離 output 的 synthetic recommendation result；不宣稱
+fixture 使用隔離的 synthetic market frame 與固定 Decimal scorer，並由真實
+RecommendationService 產生及保存推薦 execution；不宣稱
 正式行情、券商資料、Evidence 或實際交易已驗證。Qt 使用 offscreen，因此
 畫面證據是實際 widget 的中文畫面截圖，不等同 Windows 前景焦點或螢幕閱讀器
 驗證。
@@ -15,7 +17,6 @@ fixture 是保存於隔離 output 的 synthetic recommendation result；不宣�
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
 from datetime import datetime
 from decimal import Decimal
 import faulthandler
@@ -361,15 +362,20 @@ def _run_journey(
     faulthandler.dump_traceback_later(10.0, repeat=True)
 
     from PySide6.QtCore import QDateTime
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication, QMessageBox, QInputDialog
 
-    from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+    from app_module.recommendation.contracts import ExecutionStatus
     from app_module.dtos.decision_continuity_dtos import (
         ACTION_NOTE,
         DecisionIdentity,
     )
+    from app_module.saved_recommendation_queries import (
+        build_recommendation_execution_queries,
+    )
     from ui_qt.main import MainWindow, apply_app_theme
-    from ui_qt.models.pandas_table_model import PandasTableModel
+    from ui_qt.views.recommendation.execution_coordinator import (
+        RecommendationExecutionRequest,
+    )
     import ui_qt.widgets.decision_continuity_controls as continuity_controls_module
 
     app = QApplication.instance()
@@ -379,6 +385,23 @@ def _run_journey(
 
     dialog_patches = _install_non_blocking_message_boxes(QMessageBox)
     note_dialog_original = continuity_controls_module.QInputDialog.getMultiLineText
+    save_dialog_original = QInputDialog.getText
+    save_labels = iter(
+        (
+            "跨頁旅程推薦 A",
+            "跨頁旅程推薦 B",
+            "跨頁旅程推薦 A",
+        )
+    )
+
+    def next_save_label(*args: Any, **kwargs: Any) -> tuple[str, bool]:
+        del args, kwargs
+        try:
+            return next(save_labels), True
+        except StopIteration as exc:
+            raise AssertionError("Journey runner 出現未預期的保存名稱對話框") from exc
+
+    setattr(QInputDialog, "getText", staticmethod(next_save_label))
     setattr(
         continuity_controls_module.QInputDialog,
         "getMultiLineText",
@@ -404,10 +427,6 @@ def _run_journey(
         mark_step("mainwindow_shown")
 
         _assert(window.watchlist_service is not None, "MainWindow 未建立 watchlist service")
-        _assert(
-            window.recommendation_view.recommendation_repository is not None,
-            "MainWindow 未建立 recommendation repository",
-        )
 
         # The normal app starts in legacy JSON mode in this fresh fixture.  Use
         # the real visible upgrade button so all subsequent watchlist writes go
@@ -429,42 +448,28 @@ def _run_journey(
         _assert(storage_status.is_repository, "觀察清單未切換至 canonical SQLite writer")
         mark_step("watchlist_upgraded_to_canonical_repository")
 
-        result_a = _build_result(
-            result_id="journey-result-a",
-            result_name="跨頁旅程推薦 A",
-            decision_date="2026-09-10",
-            data_date="2026-09-10",
-            source_id="provider-snapshot-a",
-            source_snapshot_id="market-snapshot-a",
-            source_snapshot_hash="sha256:journey-market-a",
-            recommendations=(
-                _build_recommendation("2330", "台積電", "88.0"),
-                _build_recommendation("2317", "鴻海", "77.0"),
-            ),
-        )
-        result_b = _build_result(
-            result_id="journey-result-b",
-            result_name="跨頁旅程推薦 B",
-            decision_date="2026-09-11",
-            data_date="2026-09-11",
-            source_id="provider-snapshot-b",
-            source_snapshot_id="market-snapshot-b",
-            source_snapshot_hash="sha256:journey-market-b",
-            recommendations=(_build_recommendation("2330", "台積電", "66.0"),),
-        )
         recommendation_view = window.recommendation_view
-        recommendation_repository = recommendation_view.recommendation_repository
-        _assert(recommendation_repository is not None, "推薦 repository 不可用")
-        recommendation_repository.save_result(result_a, result_name=result_a.result_name)
-        recommendation_repository.save_result(result_b, result_name=result_b.result_name)
-        mark_step("recommendation_results_persisted")
-
-        # Feed a saved result through the real worker-finished callback.  The
-        # callback creates the production PandasTableModel and exposes the real
-        # signal-backed buttons; no detached fake view is used.
-        _show_recommendation_result(recommendation_view, result_a, app)
         window._select_main_workspace("recommendation")
         app.processEvents()
+        result_a = _execute_and_save_recommendation(
+            recommendation_view,
+            window.config,
+            app,
+            result_id="journey-result-a",
+            decision_date="2026-09-10",
+            result_name="跨頁旅程推薦 A",
+            top_n=2,
+            execution_status_completed=ExecutionStatus.COMPLETED,
+            execution_request_type=RecommendationExecutionRequest,
+            query_builder=build_recommendation_execution_queries,
+        )
+        snapshot_a = _typed_universe_snapshot(result_a)
+        mark_step(
+            "recommendation_a_service_execution_saved_and_read_back",
+            result_id=result_a.result_id,
+            source_snapshot_id=snapshot_a.universe_snapshot_id,
+            source_snapshot_hash=snapshot_a.universe_snapshot_hash,
+        )
         _select_recommendation_row(recommendation_view, "2330")
         _assert(
             recommendation_view.stock_research_btn.isEnabled(),
@@ -483,7 +488,25 @@ def _run_journey(
         app.processEvents()
         mark_step("result_a_2317_added_to_watchlist")
 
-        _show_recommendation_result(recommendation_view, result_b, app)
+        result_b = _execute_and_save_recommendation(
+            recommendation_view,
+            window.config,
+            app,
+            result_id="journey-result-b",
+            decision_date="2026-09-11",
+            result_name="跨頁旅程推薦 B",
+            top_n=1,
+            execution_status_completed=ExecutionStatus.COMPLETED,
+            execution_request_type=RecommendationExecutionRequest,
+            query_builder=build_recommendation_execution_queries,
+        )
+        snapshot_b = _typed_universe_snapshot(result_b)
+        mark_step(
+            "recommendation_b_service_execution_saved_and_read_back",
+            result_id=result_b.result_id,
+            source_snapshot_id=snapshot_b.universe_snapshot_id,
+            source_snapshot_hash=snapshot_b.universe_snapshot_hash,
+        )
         _select_recommendation_row(recommendation_view, "2330")
         recommendation_view.add_to_watchlist_btn.click()
         app.processEvents()
@@ -507,7 +530,17 @@ def _run_journey(
 
         # Return to result A and open research via the real recommendation
         # button -> MainWindow stockResearchRequested connection.
-        _show_recommendation_result(recommendation_view, result_a, app)
+        # 重新顯示 A 時仍走 typed finished callback 與正式保存按鈕；同一
+        # sealed execution 的 create-only 保存會驗證既有 canonical bytes/readback。
+        _apply_and_save_execution(
+            recommendation_view,
+            window.config,
+            app,
+            result_a,
+            result_name="跨頁旅程推薦 A",
+            execution_status_completed=ExecutionStatus.COMPLETED,
+            query_builder=build_recommendation_execution_queries,
+        )
         _select_recommendation_row(recommendation_view, "2330")
         recommendation_view.stock_research_btn.click()
         first_dialog = _wait_for_dialog(window, app)
@@ -519,8 +552,12 @@ def _run_journey(
         _assert(first_context.result_id == result_a.result_id, "推薦下鑽遺失 result_id")
         _assert(first_context.stock_code == "2330", "推薦下鑽遺失 stock_code")
         _assert(
-            first_context.source_snapshot_id == "market-snapshot-a",
+            first_context.source_snapshot_id == snapshot_a.universe_snapshot_id,
             "推薦下鑽遺失 source_snapshot_id",
+        )
+        _assert(
+            first_context.source_snapshot_hash == snapshot_a.universe_snapshot_hash,
+            "推薦下鑽遺失 typed universe source_snapshot_hash",
         )
         controller = window.decision_continuity_controller
         first_identity = controller.identity_from_context(first_context)
@@ -637,6 +674,11 @@ def _run_journey(
         second_context = _current_context(window)
         _assert(second_context is not None and second_context.result_id == result_a.result_id, "觀察清單下鑽錯誤 result_id")
         _assert(second_context.stock_code == "2330", "觀察清單下鑽錯誤 stock_code")
+        _assert(
+            second_context.source_snapshot_id == snapshot_a.universe_snapshot_id
+            and second_context.source_snapshot_hash == snapshot_a.universe_snapshot_hash,
+            "觀察清單下鑽未保留 result A typed universe identity",
+        )
         _assert(second_controls.state is not None and second_controls.state.decision_status == "accepted", "同推薦同股未讀回 accepted")
         _assert(second_controls.state.active_note_count == 1, "同推薦同股未讀回 note")
         _assert(second_controls.state.next_review_at == "2026-09-20T10:30:00+08:00", "同推薦同股未讀回 reminder")
@@ -652,6 +694,11 @@ def _run_journey(
         third_context = _current_context(window)
         _assert(third_context is not None and third_context.result_id == result_b.result_id, "同股不同 result 串錯來源")
         _assert(third_context.stock_code == "2330", "同股不同 result 串錯股票")
+        _assert(
+            third_context.source_snapshot_id == snapshot_b.universe_snapshot_id
+            and third_context.source_snapshot_hash == snapshot_b.universe_snapshot_hash,
+            "同股不同 result 未保留 result B typed universe identity",
+        )
         _assert(third_controls.state is not None and third_controls.state.decision_status == "unrecorded", "同股不同 result 錯誤繼承 decision")
         _assert(third_controls.state.active_note_count == 0, "同股不同 result 錯誤繼承 note")
         _assert(third_controls.state.next_review_at == "", "同股不同 result 錯誤繼承 reminder")
@@ -667,6 +714,11 @@ def _run_journey(
         fourth_context = _current_context(window)
         _assert(fourth_context is not None and fourth_context.result_id == result_a.result_id, "同 result 不同股串錯 result")
         _assert(fourth_context.stock_code == "2317", "同 result 不同股串錯 stock_code")
+        _assert(
+            fourth_context.source_snapshot_id == snapshot_a.universe_snapshot_id
+            and fourth_context.source_snapshot_hash == snapshot_a.universe_snapshot_hash,
+            "同 result 不同股未保留 result A typed universe identity",
+        )
         fourth_controls.skip_button.click()
         app.processEvents()
         _assert(fourth_controls.state is not None and fourth_controls.state.decision_status == "skipped", "略過 action 未保存")
@@ -728,6 +780,11 @@ def _run_journey(
         _assert(restarted_context is not None, "重啟後研究 context 不存在")
         _assert(restarted_context.result_id == result_a.result_id, "重啟後 result_id 不一致")
         _assert(restarted_context.stock_code == "2330", "重啟後 stock_code 不一致")
+        _assert(
+            restarted_context.source_snapshot_id == snapshot_a.universe_snapshot_id
+            and restarted_context.source_snapshot_hash == snapshot_a.universe_snapshot_hash,
+            "重啟後未保留 result A typed universe identity",
+        )
         _assert(restarted_controls.state is not None and restarted_controls.state.decision_status == "accepted", "重啟後未讀回 accepted")
         _assert(restarted_controls.state.active_note_count == 1, "重啟後未讀回 note")
         _assert(restarted_controls.state.next_review_at == "2026-09-20T10:30:00+08:00", "重啟後未讀回 reminder")
@@ -757,6 +814,8 @@ def _run_journey(
         return {
             "scope": {
                 "component": [
+                    "RecommendationService synthetic source provider and fixed Decimal scorer",
+                    "RecommendationExecutionRequest, sealed execution, real UI save, and strict canonical query readback",
                     "RecommendationView production callback and stockResearchRequested signal",
                     "WatchlistService canonical WatchlistRepository writer",
                     "ResearchSessionStore typed context",
@@ -774,9 +833,31 @@ def _run_journey(
                     "StockResearch -> Workbench",
                 ],
                 "real_data": (
-                    "synthetic RecommendationResultDTO persisted through the existing "
-                    "RecommendationRepository in an isolated output; no formal market, "
-                    "broker, Evidence, or live trading data"
+                    "21-business-day synthetic market frames are cutoff at each request's "
+                    "as-of date and scored by fixed Decimal facts through the real "
+                    "RecommendationService. Typed universe snapshot identity is produced "
+                    "by that execution and persisted through canonical UI save/readback; "
+                    "no formal market, broker, Evidence, or live trading data is used."
+                ),
+            },
+            "recommendation_execution": {
+                "result_a": {
+                    "result_id": result_a.result_id,
+                    "selected_stock_codes": [item.stock_code for item in result_a.items],
+                    "universe_snapshot_id": snapshot_a.universe_snapshot_id,
+                    "universe_snapshot_hash": snapshot_a.universe_snapshot_hash,
+                    "request_cutoff": "2026-09-10",
+                },
+                "result_b": {
+                    "result_id": result_b.result_id,
+                    "selected_stock_codes": [item.stock_code for item in result_b.items],
+                    "universe_snapshot_id": snapshot_b.universe_snapshot_id,
+                    "universe_snapshot_hash": snapshot_b.universe_snapshot_hash,
+                    "request_cutoff": "2026-09-11",
+                    "input_universe_codes": ["2317", "2330"],
+                },
+                "snapshot_hash_semantics": (
+                    "canonical typed universe snapshot spec hash; not a digest of raw market rows"
                 ),
             },
             "candidate_keys": [list(item) for item in sorted(candidate_keys)],
@@ -808,6 +889,7 @@ def _run_journey(
             "screenshots": screenshots,
         }
     finally:
+        print("[research-journey] teardown: dialogs:start", flush=True)
         if controller is not None and original_apply is not None:
             # The local wrapper is harmless in a short-lived QA process, but
             # restore it before closing so MainWindow teardown sees the real
@@ -818,26 +900,40 @@ def _run_journey(
                 pass
         if fourth_dialog is not None:
             _close_dialog(fourth_dialog, app)
+            print("[research-journey] teardown: dialog_fourth:done", flush=True)
         if third_dialog is not None:
             _close_dialog(third_dialog, app)
+            print("[research-journey] teardown: dialog_third:done", flush=True)
         if second_dialog is not None:
             _close_dialog(second_dialog, app)
+            print("[research-journey] teardown: dialog_second:done", flush=True)
         if first_dialog is not None:
             _close_dialog(first_dialog, app)
+            print("[research-journey] teardown: dialog_first:done", flush=True)
         if restarted_window is not None:
             _close_main_window(restarted_window, app)
+            print("[research-journey] teardown: restarted_window:done", flush=True)
         if window is not None:
             _close_main_window(window, app)
+            print("[research-journey] teardown: initial_window:done", flush=True)
         setattr(
             continuity_controls_module.QInputDialog,
             "getMultiLineText",
             note_dialog_original,
         )
+        setattr(QInputDialog, "getText", save_dialog_original)
+        print("[research-journey] teardown: dialog_patches_restore:start", flush=True)
         dialog_patches()
+        print("[research-journey] teardown: dialog_patches_restore:done", flush=True)
+        print("[research-journey] teardown: process_events:start", flush=True)
         app.processEvents()
+        print("[research-journey] teardown: process_events:done", flush=True)
         app.quit()
+        print("[research-journey] teardown: app_quit:done", flush=True)
         faulthandler.cancel_dump_traceback_later()
+        print("[research-journey] teardown: faulthandler_cancelled", flush=True)
         close_crash_diagnostics()
+        print("[research-journey] teardown: crash_diagnostics_closed", flush=True)
 
 
 def _run_mainwindow_shutdown_lifecycle(output_dir: Path) -> dict[str, Any]:
@@ -1474,97 +1570,255 @@ def _run_task_worker_lifecycle(output_dir: Path) -> dict[str, Any]:
         close_crash_diagnostics()
 
 
-def _build_recommendation(stock_code: str, stock_name: str, score: str) -> Any:
-    from app_module.dtos import RecommendationDTO
+_RESEARCH_JOURNEY_SCORE_FACTS: dict[
+    str, dict[str, tuple[Decimal, Decimal, Decimal, Decimal]]
+] = {
+    "journey-result-a": {
+        "2330": (Decimal("88.00"), Decimal("28.00"), Decimal("30.00"), Decimal("30.00")),
+        "2317": (Decimal("77.00"), Decimal("17.00"), Decimal("30.00"), Decimal("30.00")),
+    },
+    "journey-result-b": {
+        "2330": (Decimal("66.00"), Decimal("16.00"), Decimal("25.00"), Decimal("25.00")),
+        "2317": (Decimal("55.00"), Decimal("15.00"), Decimal("20.00"), Decimal("20.00")),
+    },
+}
 
-    score_value = float(score)
-    return RecommendationDTO(
-        stock_code=stock_code,
-        stock_name=stock_name,
-        close_price=Decimal("100.00"),
-        price_change=1.5,
-        total_score=score_value,
-        indicator_score=score_value * 0.5,
-        pattern_score=score_value * 0.3,
-        volume_score=score_value * 0.2,
-        recommendation_reasons="保存於同一推薦結果的 synthetic candidate",
-        industry="電子",
-        regime_match=True,
-        eligible_universe_date="2026-09-10",
+
+class _ResearchJourneyRecommendationMarketFrameProvider:
+    """提供截止各次 request 日期的隔離雙股票市場 frame。"""
+
+    def __init__(self, as_of_date: str) -> None:
+        self.as_of_date = as_of_date
+
+    def __call__(self) -> Any:
+        import pandas as pd
+
+        trading_days = pd.bdate_range(end=pd.Timestamp(self.as_of_date), periods=21)
+        rows: list[dict[str, Any]] = []
+        for instrument_index, (stock_code, stock_name) in enumerate(
+            (("2330", "台積電"), ("2317", "鴻海"))
+        ):
+            for day_index, day in enumerate(trading_days):
+                rows.append(
+                    {
+                        "日期": day,
+                        "available_date": day,
+                        "證券代號": stock_code,
+                        "證券名稱": stock_name,
+                        "收盤價": Decimal("1000.00")
+                        + Decimal(instrument_index)
+                        + Decimal(day_index),
+                        "成交股數": 1_000_000 + instrument_index + day_index,
+                        "漲幅%": Decimal("1.20"),
+                        "成交量變化率%": Decimal("5.00"),
+                    }
+                )
+        return pd.DataFrame(rows)
+
+
+def _score_research_journey_candidate(stock_df: Any, config: dict[str, Any]) -> Any:
+    """以固定 Decimal 輸出隔離 scorer facts，不在 fixture 執行裸 float 計算。"""
+
+    import pandas as pd
+
+    result_id = str(config.get("result_id") or "")
+    stock_code = str(stock_df.iloc[-1]["證券代號"])
+    try:
+        total_score, indicator_score, pattern_score, volume_score = (
+            _RESEARCH_JOURNEY_SCORE_FACTS[result_id][stock_code]
+        )
+    except KeyError as exc:
+        raise AssertionError(
+            f"推薦 scorer 收到未列入 Journey fixture 的 identity：{result_id}/{stock_code}"
+        ) from exc
+    return pd.DataFrame(
+        {
+            "FinalScore": [total_score],
+            "TotalScore": [total_score],
+            "收盤價": [Decimal("1000.00")],
+            "成交股數": [1_000_000],
+            "IndicatorScore": [indicator_score],
+            "PatternScore": [pattern_score],
+            "VolumeScore": [volume_score],
+        }
     )
 
 
-def _build_result(
+def _typed_universe_snapshot(execution: Any) -> Any:
+    identity = execution.context.universe_identity
+    snapshot = identity.snapshot if identity is not None else None
+    _assert(snapshot is not None, "sealed execution 缺少 typed universe snapshot")
+    _assert(
+        bool(snapshot.universe_snapshot_id and snapshot.universe_snapshot_hash),
+        "typed universe snapshot 缺少 canonical identity/hash",
+    )
+    return snapshot
+
+
+def _execute_and_save_recommendation(
+    view: Any,
+    config: Any,
+    app: Any,
     *,
     result_id: str,
-    result_name: str,
     decision_date: str,
-    data_date: str,
-    source_id: str,
-    source_snapshot_id: str,
-    source_snapshot_hash: str,
-    recommendations: tuple[Any, ...],
+    result_name: str,
+    top_n: int,
+    execution_status_completed: Any,
+    execution_request_type: Any,
+    query_builder: Any,
 ) -> Any:
-    from app_module.dtos import RecommendationResultDTO
+    """走真 RecommendationService、sealed request、UI 保存與 canonical 查回。"""
 
-    run_context = {
-        "as_of_date": decision_date,
-        "data_date": data_date,
-        "source_kind": "recommendation",
-        "source_id": source_id,
-        "source_snapshot_id": source_snapshot_id,
-        "source_snapshot_hash": source_snapshot_hash,
-        "profile_id": "momentum",
-        "profile_version": "1.0.0",
-        "strategy_config": {"fixture": "research_journey_qt"},
-    }
-    config = {
+    from pathlib import Path
+
+    service = view.recommendation_service
+    provider = _ResearchJourneyRecommendationMarketFrameProvider(decision_date)
+    service.market_data_provider = provider
+    service.industry_mapper.get_stock_industries = lambda _stock_code: []
+    service.strategy_configurator.generate_recommendations = (
+        _score_research_journey_candidate
+    )
+    request_config = {
+        "result_id": result_id,
         "as_of_date": decision_date,
         "decision_date": decision_date,
-        "data_date": data_date,
-        "source_id": source_id,
-        "source_snapshot_id": source_snapshot_id,
-        "source_snapshot_hash": source_snapshot_hash,
-        "profile_id": "momentum",
-        "profile_version": "1.0.0",
-        "strategy_config": {"fixture": "research_journey_qt"},
+        "data_date": decision_date,
+        "source_id": type(provider).__name__,
+        "source_kind": "synthetic_research_fixture",
+        "profile_id": "research-journey-fixture",
+        "profile_version": "fixture-v1",
+        "strategy_version_id": "research-journey-strategy-v1",
+        "strategy_config_id": "research-journey-config-v1",
+        "regime": "Trend",
+        "recommendation_ranking": {"threshold_mode": "fixed"},
     }
-    return RecommendationResultDTO(
-        result_id=result_id,
-        result_name=result_name,
-        config=config,
-        recommendations=list(recommendations),
-        regime="Trend",
-        created_at=f"{decision_date}T09:00:00+08:00",
-        notes="isolated production-wiring QA fixture",
-        run_context=run_context,
+    request = execution_request_type(request_config, max_stocks=2, top_n=top_n)
+    execution = request.execute(service)
+    _assert(
+        execution.status is execution_status_completed,
+        f"RecommendationService 未產生 completed execution：{execution.status.value}",
+    )
+    expected_scores = _RESEARCH_JOURNEY_SCORE_FACTS[result_id]
+    expected_codes = (
+        ("2330", "2317") if top_n == 2 else ("2330",)
+    )
+    _assert(
+        tuple(item.stock_code for item in execution.items) == expected_codes,
+        f"真 Service 的 rank/top-N 與受控 scorer 不符："
+        f"{tuple(item.stock_code for item in execution.items)}",
+    )
+    for item in execution.items:
+        expected_score = expected_scores[item.stock_code][0]
+        _assert(
+            type(item.rule_score) is Decimal and item.rule_score == expected_score,
+            f"{result_id}/{item.stock_code} rule_score 未保留固定 Decimal scorer fact",
+        )
+
+    snapshot = _typed_universe_snapshot(execution)
+    snapshot_spec = json.loads(snapshot.universe_snapshot_spec_json)
+    _assert(
+        snapshot_spec["selected_codes"] == ["2317", "2330"]
+        and snapshot_spec["selected_count"] == 2,
+        "typed input-universe 必須保留兩股，即使 B 的 top-N 只選一股",
+    )
+    _assert(
+        snapshot_spec["decision_date"] == decision_date
+        and snapshot_spec["source_provider_id"] == type(provider).__name__,
+        "typed universe snapshot 必須與本次 provider/request 截止日一致",
+    )
+    _assert(
+        snapshot.universe_snapshot_source_provider_id == type(provider).__name__,
+        "typed universe snapshot source provider 與實際 provider 不一致",
     )
 
+    _apply_and_save_execution(
+        view,
+        config,
+        app,
+        execution,
+        result_name=result_name,
+        execution_status_completed=execution_status_completed,
+        query_builder=query_builder,
+    )
+    # 新 query 物件從同一隔離 config 讀取已保存 execution，不復用 DTO 或 UI latest state。
+    read_model = query_builder(config).get(result_id)
+    _assert(read_model is not None, f"canonical query 未讀回 {result_id}")
+    _assert(
+        read_model.execution == execution
+        and read_model.integrity_basis == "canonical_payload_and_index_verified",
+        f"canonical readback 與本次 sealed execution 不一致：{result_id}",
+    )
+    legacy_result_path = (
+        Path(config.output_root)
+        / "recommendation"
+        / "runs"
+        / f"{result_id}.json"
+    )
+    _assert(
+        not legacy_result_path.exists(),
+        f"canonical writer 不應另寫 legacy JSON：{legacy_result_path}",
+    )
+    return execution
 
-def _show_recommendation_result(view: Any, result: Any, app: Any) -> None:
-    view.current_config = deepcopy(result.config)
-    view.current_recommendations = list(result.recommendations)
-    view.current_result_id = result.result_id
-    view.current_result_name = result.result_name
-    view.current_result_created_at = result.created_at or ""
-    view.current_profile = "momentum"
-    view.current_regime = result.regime
-    view.recommendation_service.last_run_context = deepcopy(result.run_context)
-    # This is the actual ProgressTaskWorker.finished callback used by the
-    # production view; it builds the result model and connects the UI signals.
-    view._on_recommendation_finished(list(result.recommendations))
-    # The finished callback intentionally clears current_result_id for a new
-    # unsaved run; this fixture represents an already saved result, so restore
-    # the saved identity for the subsequent exact drilldown.
-    view.current_result_id = result.result_id
-    view.current_result_name = result.result_name
-    view.current_result_created_at = result.created_at or ""
-    view.recommendation_service.last_run_context = deepcopy(result.run_context)
-    view._update_research_context_banner()
+
+def _apply_and_save_execution(
+    view: Any,
+    config: Any,
+    app: Any,
+    execution: Any,
+    *,
+    result_name: str,
+    execution_status_completed: Any,
+    query_builder: Any,
+) -> None:
+    """以正式 typed callback 與保存控制項建立或確認 canonical readback。"""
+
+    view._on_recommendation_finished(execution)
     app.processEvents()
+    _assert(
+        view.current_execution is execution
+        and execution.status is execution_status_completed,
+        "RecommendationView 未套用同一個 completed sealed execution",
+    )
+    _assert(not view.current_result_id, "未保存 execution 不應預先帶有 result_id")
+    _assert(view.save_result_btn.isVisible(), "completed execution 未顯示正式保存入口")
+    view.results_table.selectRow(0)
+    app.processEvents()
+    view.save_result_btn.click()
+    app.processEvents()
+
+    receipt = view.current_save_receipt
+    _assert(receipt is not None, "正式保存按鈕未建立 SaveReceipt")
+    _assert(
+        receipt.result_id == execution.result_id
+        and getattr(receipt.index_status, "value", None) == "indexed",
+        "正式保存未取得同一 execution 的 INDEXED receipt",
+    )
+    _assert(
+        view.current_result_id == execution.result_id
+        and view._verified_saved_result_id() == execution.result_id,
+        "推薦頁 result_id 必須來自 verified canonical UI save readback",
+    )
+    saved = query_builder(config).get(execution.result_id)
+    _assert(saved is not None, "保存後新的 canonical query 未讀回 execution")
+    _assert(
+        saved.execution == execution
+        and saved.result_id == execution.result_id
+        and saved.integrity_basis == "canonical_payload_and_index_verified"
+        and saved.label == result_name
+        and saved.payload_hash == receipt.payload_hash
+        and saved.artifact_location == receipt.artifact_location
+        and saved.persisted_at == receipt.persisted_at,
+        "UI save receipt 與新的 canonical query readback 不一致",
+    )
 
 
 def _select_recommendation_row(view: Any, stock_code: str) -> None:
+    _assert(
+        view._verified_saved_result_id() == view.current_result_id,
+        "推薦列定位前必須持有同一 verified canonical saved identity",
+    )
     _assert(view.select_stock(stock_code, view.current_result_id), f"推薦頁無法選取 {stock_code}")
     _assert(
         view.results_table.selectionModel().selectedRows(),

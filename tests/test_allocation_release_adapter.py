@@ -9,7 +9,10 @@ import joblib
 import pytest
 from typing import Any, cast
 
-from app_module.allocation_release_adapter import AllocationReleaseAdapter
+from app_module.allocation_release_adapter import (
+    AllocationReleaseAdapter,
+    LoadedAllocationRelease,
+)
 from data_module.ml_daily_price_revision_gate import (
     KNOWN_MODEL_SOURCE_REVISION_QUARANTINES,
 )
@@ -23,6 +26,7 @@ from ml_module.allocation_release_contract import (
     canonical_json,
     feature_order_hash,
 )
+from ml_module.allocation_release_loader import load_verified_allocation_release
 from tests.test_ml_allocation_inference_service import (
     _inference_rows,
     _research_rows,
@@ -188,6 +192,23 @@ def test_release_adapter_binds_artifact_components_and_replays_rows(
     assert result.proposal.production_blend_alpha_bp == 0
     assert parity.matched
     assert parity.row_count == 2
+
+
+def test_verified_readback_keeps_the_adapter_class_path_and_identity(
+    tmp_path: Path,
+    training_result,
+) -> None:
+    manifest = _write_release(tmp_path, training_result)
+
+    loaded = load_verified_allocation_release(
+        tmp_path / "release",
+        expected_release_identity_hash=manifest.release_identity_hash,
+    )
+
+    assert type(loaded) is LoadedAllocationRelease
+    assert type(loaded).__module__ == "app_module.allocation_release_adapter"
+    assert loaded.manifest.release_identity_hash == manifest.release_identity_hash
+    assert loaded.release_id == manifest.release_id
 
 
 def test_release_adapter_research_shadow_entrypoint_preserves_safety_flags(

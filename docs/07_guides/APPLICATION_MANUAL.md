@@ -506,6 +506,8 @@ raw 模式只接受 HTTPS `www.tpex.org.tw/www/zh-tw/afterTrading/otc`、product
 
 背景 worker 的結果 signal 可能早於原生 Qt thread return 抵達 UI；系統會保留 worker 參考直到 native `QThread.finished()`，且把過早的 `deleteLater()` 延後到 thread 停止後，避免 queued UI cleanup 釋放仍在執行的 Qt thread。若按下更新頁的取消按鈕，這個生命週期保護會繼續等待自然收尾；取消完成前不要切換成「更新成功」的人工判讀。
 
+針對研究工作台與Evidence review這兩個已修頁面，頁面被釋放後，延遲更新與排程狀態回呼不再存取該頁面的畫面。
+
 這個保護不會把未完成更新標成成功，也不會刪除 raw CSV、SQLite 或既有報告。若工作長時間沒有自然結束，應先保留 log／status 後依對應資料源的排錯流程處理，不要以強制結束程序取代資料一致性檢查。
 
 桌面 App 直接啟動時會在載入 Qt 前啟用持久化 crash diagnostics，檔案固定為 `DATA_ROOT/logs/ui_qt_crash.log`。`SESSION_START` 後若沒有對應的 `SESSION_END`，或結尾為 `clean_shutdown=false`，代表程序未走完無例外的正常關閉；Python 主執行緒、背景執行緒與已被啟動邊界攔下的例外會保存 traceback，native fatal fault 則由 `faulthandler` 保存所有執行緒堆疊。每個 session 也會記錄 executable、argv0、cwd、parent PID 與 DATA_ROOT（不記錄完整環境或秘密），方便把 WER 對回實際 entrypoint。Windows 事件檢視器的 `RADAR_PRE_LEAK_64` 是記憶體壓力／疑似洩漏預警，不可單獨當成實際 crash；需與這份 log、WER Application Error 或 dump 一起判讀。
@@ -2939,6 +2941,8 @@ Registry 比較只使用已保存的 metadata、equity curve 與 benchmark_resul
 - 回測交易明細右鍵記錄交易。
 
 這些入口會保存推薦結果、回測 run 或策略版本來源。它們仍是手動記錄，不會送出券商委託。
+
+從持倉列開啟原推薦研究時，系統只會在已保存的推薦結果 ID、股票代號、決策／資料日期與來源資料相符時，將研究頁連回該保存結果。若保存結果不存在、該股票不在結果中，或日期／來源資訊缺漏或衝突，研究頁不會沿用另一筆最新推薦；請回到「推薦分析」確認正確的已保存 ID、股票與來源資料後再開啟。此連結用來確認持倉的推薦來源；如歷史摘要或機率與原推薦不一致，請以推薦分析中的原保存結果核實。
 
 相容 API `PortfolioService.get_benchmark_comparison()` 在尚未提供比較期間、現金／資金流帳與固定 benchmark constituents 時會回傳 `status=not_computable` 與 `None`，不再用數值 0 冒充已完成的超額報酬比較。正式的成本後 Portfolio／Equal Weight 比較要走 Paper Portfolio 的期間化 ledger 與 weekly report。
 

@@ -45,6 +45,7 @@ from app_module.recommendation.queries import (
     RecommendationExecutionQueries,
     RecommendationExecutionReadModel,
 )
+from app_module.portfolio_source_adapter import stable_snapshot_hash
 from data_module.result_artifact_store import ResultArtifactStore
 from data_module.portfolio_ledger_repository import (
     PortfolioLedgerEvent,
@@ -66,6 +67,24 @@ _TIMELINE_ORDER = {
 }
 
 FrozenPayload = Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class _VerifiedCanonicalRecommendationRoot:
+    """同次 verified query 提供給 trade summary 比對的唯讀事實。"""
+
+    result_id: str
+    integrity_basis: str
+    payload_hash: str
+    artifact_location: str
+    candidates: tuple[tuple[str, int], ...]
+    as_of_date: str | None
+    universe_snapshot_id: str | None
+    universe_snapshot_hash: str | None
+    trade_snapshot_id: str
+    trade_snapshot_hash: str
+    data_snapshot_ids: tuple[str, ...]
+    source_refs: tuple[tuple[str, str | int, str | None], ...]
 
 
 class JourneyLinkStatus(str, Enum):
@@ -735,6 +754,7 @@ class JsonRecommendationReadAdapter:
     def read_result(self, result_id: str) -> Mapping[str, Any] | None:
         self._read_state.result_id = result_id
         self._read_state.path = None
+        self._read_state.verified_canonical_root = None
         read_model = self._queries.get(result_id)
         if read_model is not None:
             if read_model.result_id != result_id:
@@ -744,6 +764,9 @@ class JsonRecommendationReadAdapter:
             if read_model.execution is not None:
                 payload = self._canonical_execution_payload(read_model)
                 self._remember_path(result_id, read_model.artifact_location)
+                self._read_state.verified_canonical_root = (
+                    self._verified_canonical_root(read_model)
+                )
                 return payload
             if read_model.legacy_result is None:
                 raise ExecutionArtifactIntegrityError(
@@ -791,6 +814,116 @@ class JsonRecommendationReadAdapter:
             )
         self._read_state.result_id = result_id
         self._read_state.path = artifact_location
+
+    def _verified_canonical_root_for_current_read(
+        self,
+        result_id: str,
+    ) -> _VerifiedCanonicalRecommendationRoot | None:
+        """只回傳本執行緒、同一 requested id 剛完成 query 的信任 facts。"""
+
+        if getattr(self._read_state, "result_id", None) != result_id:
+            return None
+        root = getattr(self._read_state, "verified_canonical_root", None)
+        if type(root) is not _VerifiedCanonicalRecommendationRoot:
+            return None
+        return root
+
+    @staticmethod
+    def _verified_canonical_root(
+        read_model: RecommendationExecutionReadModel,
+    ) -> _VerifiedCanonicalRecommendationRoot | None:
+        execution = read_model.execution
+        if (
+            type(execution) is not RecommendationExecution
+            or read_model.integrity_basis != "canonical_payload_and_index_verified"
+            or execution.status is not ExecutionStatus.COMPLETED
+            or execution.decision is None
+            or execution.result_id != read_model.result_id
+            or type(read_model.payload_hash) is not str
+            or not read_model.payload_hash
+            or type(read_model.artifact_location) is not str
+            or not read_model.artifact_location
+        ):
+            return None
+
+        candidates: list[tuple[str, int]] = []
+        seen_codes: set[str] = set()
+        seen_ranks: set[int] = set()
+        for item in execution.items:
+            if (
+                type(item.stock_code) is not str
+                or not item.stock_code.strip()
+                or type(item.rank) is not int
+                or item.rank < 0
+                or item.stock_code in seen_codes
+                or item.rank in seen_ranks
+            ):
+                return None
+            seen_codes.add(item.stock_code)
+            seen_ranks.add(item.rank)
+            candidates.append((item.stock_code, item.rank))
+
+        context = execution.context
+        universe_identity = context.universe_identity
+        universe_snapshot = (
+            universe_identity.snapshot if universe_identity is not None else None
+        )
+        universe_snapshot_id = (
+            universe_snapshot.universe_snapshot_id
+            if universe_snapshot is not None
+            else None
+        )
+        universe_snapshot_hash = (
+            universe_snapshot.universe_snapshot_hash
+            if universe_snapshot is not None
+            else None
+        )
+        if universe_snapshot_id is not None and type(universe_snapshot_id) is not str:
+            return None
+        if universe_snapshot_hash is not None and type(universe_snapshot_hash) is not str:
+            return None
+
+        if universe_snapshot is not None:
+            trade_snapshot_id = universe_snapshot.universe_snapshot_id or ""
+            trade_snapshot_hash = universe_snapshot.universe_snapshot_hash or ""
+        elif context.universe_snapshot_ref is not None:
+            trade_snapshot_id = context.universe_snapshot_ref.reference_id
+            trade_snapshot_hash = ""
+        elif len(context.data_snapshot_refs) == 1:
+            trade_snapshot_id = context.data_snapshot_refs[0].reference_id
+            trade_snapshot_hash = ""
+        else:
+            trade_snapshot_id = ""
+            trade_snapshot_hash = ""
+
+        source_refs = tuple(
+            (item.source_id, item.revision, item.snapshot_id)
+            for item in context.source_refs
+        )
+        data_snapshot_ids = tuple(
+            item.reference_id for item in context.data_snapshot_refs
+        )
+        if any(type(item) is not str for item in data_snapshot_ids):
+            return None
+
+        return _VerifiedCanonicalRecommendationRoot(
+            result_id=execution.result_id,
+            integrity_basis=read_model.integrity_basis,
+            payload_hash=read_model.payload_hash,
+            artifact_location=read_model.artifact_location,
+            candidates=tuple(candidates),
+            as_of_date=(
+                context.as_of_date.isoformat()
+                if context.as_of_date is not None
+                else None
+            ),
+            universe_snapshot_id=universe_snapshot_id,
+            universe_snapshot_hash=universe_snapshot_hash,
+            trade_snapshot_id=trade_snapshot_id,
+            trade_snapshot_hash=trade_snapshot_hash,
+            data_snapshot_ids=data_snapshot_ids,
+            source_refs=source_refs,
+        )
 
     @staticmethod
     def _snapshot_mapping(raw_json: str, field_name: str) -> dict[str, Any]:
@@ -1300,8 +1433,15 @@ class DecisionOutcomeJourneyService:
             )
 
         raw_result: Mapping[str, Any] | None = None
+        verified_canonical_root: _VerifiedCanonicalRecommendationRoot | None = None
         try:
             raw_result = self.recommendation_reader.read_result(requested_id)
+            if isinstance(self.recommendation_reader, JsonRecommendationReadAdapter):
+                verified_canonical_root = (
+                    self.recommendation_reader._verified_canonical_root_for_current_read(
+                        requested_id
+                    )
+                )
         except Exception as exc:
             _diag(
                 diagnostics,
@@ -1365,6 +1505,7 @@ class DecisionOutcomeJourneyService:
                 result_record,
                 boundary,
                 diagnostics,
+                verified_canonical_root=verified_canonical_root,
             )
             journal_records, journal_counts = self._read_journal(
                 result_record,
@@ -2174,6 +2315,8 @@ class DecisionOutcomeJourneyService:
         result: RecommendationResultRecord,
         boundary: str | None,
         diagnostics: list[JourneyDiagnostic],
+        *,
+        verified_canonical_root: _VerifiedCanonicalRecommendationRoot | None,
     ) -> tuple[list[PortfolioTradeRecord], tuple[int, int, int, int, int]]:
         if self.portfolio_trade_reader is None:
             return [], (0, 0, 0, 0, 0)
@@ -2192,7 +2335,12 @@ class DecisionOutcomeJourneyService:
         records: list[PortfolioTradeRecord] = []
         for item in raw_rows:
             try:
-                record = _normalize_portfolio_trade(item, result, diagnostics)
+                record = _normalize_portfolio_trade(
+                    item,
+                    result,
+                    diagnostics,
+                    verified_canonical_root=verified_canonical_root,
+                )
             except Exception as exc:
                 _diag(
                     diagnostics,
@@ -2732,6 +2880,8 @@ def _normalize_portfolio_trade(
     payload: Mapping[str, Any],
     result: RecommendationResultRecord,
     diagnostics: list[JourneyDiagnostic],
+    *,
+    verified_canonical_root: _VerifiedCanonicalRecommendationRoot | None = None,
 ) -> PortfolioTradeRecord:
     record_id = _required_text(
         _first_value(payload, "trade_id", "id"),
@@ -2739,15 +2889,52 @@ def _normalize_portfolio_trade(
     )
     source_id = _optional_text(payload.get("source_id"))
     snapshot_hash = _optional_text(payload.get("source_snapshot_hash"))
-    link_status = _identity_link_status(
-        result.result_id,
-        (
-            ("source_id", source_id),
-            ("source_snapshot_hash", snapshot_hash),
-        ),
-        expected_snapshot_hash=result.source_identity.source_snapshot_hash,
-        conflict_when_other=True,
-    )
+    source_summary = payload.get("source_summary")
+    summary = source_summary if isinstance(source_summary, Mapping) else {}
+    if _claims_canonical_portfolio_summary(summary):
+        if source_id != result.result_id:
+            summary_result_id = _optional_text(summary.get("result_id"))
+            link_status = (
+                JourneyLinkStatus.CONFLICT
+                if summary_result_id == result.result_id
+                else JourneyLinkStatus.UNLINKED
+            )
+        elif verified_canonical_root is None:
+            link_status = JourneyLinkStatus.CONFLICT
+            _diag(
+                diagnostics,
+                "portfolio_trade_canonical_root_unverified",
+                "trade 宣告 canonical recommendation summary，但本次 Journey 沒有相符的 verified query root",
+                "portfolio_trade",
+                record_id,
+                severity="error",
+            )
+        elif _canonical_portfolio_summary_matches_root(
+            payload,
+            summary,
+            verified_canonical_root,
+        ):
+            link_status = JourneyLinkStatus.LINKED
+        else:
+            link_status = JourneyLinkStatus.CONFLICT
+            _diag(
+                diagnostics,
+                "portfolio_trade_canonical_summary_conflict",
+                "canonical trade summary 與 verified recommendation root、候選或 checksum 不一致",
+                "portfolio_trade",
+                record_id,
+                severity="error",
+            )
+    else:
+        link_status = _identity_link_status(
+            result.result_id,
+            (
+                ("source_id", source_id),
+                ("source_snapshot_hash", snapshot_hash),
+            ),
+            expected_snapshot_hash=result.source_identity.source_snapshot_hash,
+            conflict_when_other=True,
+        )
     quantity = _optional_int(payload.get("quantity"))
     price = _optional_decimal(
         payload.get("price"),
@@ -2783,6 +2970,114 @@ def _normalize_portfolio_trade(
         link_status=link_status,
         broker_fill_proven=False,
         original_payload=_freeze(payload),
+    )
+
+
+def _claims_canonical_portfolio_summary(summary: Mapping[str, Any]) -> bool:
+    """辨識既有 canonical writer 欄位；其他舊 summary 留在原 identity 路徑。"""
+
+    if "integrity_basis" in summary:
+        return True
+    canonical_signature = {
+        "artifact_location",
+        "payload_hash",
+        "candidate_identity",
+    }
+    return bool(canonical_signature.intersection(summary)) or {
+        "data_snapshot_ids",
+        "source_refs",
+    }.issubset(summary)
+
+
+def _canonical_portfolio_summary_matches_root(
+    trade: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    root: _VerifiedCanonicalRecommendationRoot,
+) -> bool:
+    """只確認 lineage 身分與 provenance；不把 opaque display 欄位當內容簽章。"""
+
+    if (
+        root.integrity_basis != "canonical_payload_and_index_verified"
+        or _optional_text(trade.get("source_type")) != "recommendation_result"
+        or _optional_text(trade.get("source_id")) != root.result_id
+        or _optional_text(summary.get("result_id")) != root.result_id
+        or summary.get("integrity_basis") != root.integrity_basis
+        or summary.get("payload_hash") != root.payload_hash
+        or summary.get("artifact_location") != root.artifact_location
+        or summary.get("source_snapshot_id") != root.trade_snapshot_id
+        or summary.get("source_snapshot_hash") != root.trade_snapshot_hash
+        or summary.get("decision_date") != root.as_of_date
+        or _optional_text(trade.get("stock_code")) is None
+        or _optional_text(summary.get("stock_code"))
+        != _optional_text(trade.get("stock_code"))
+    ):
+        return False
+
+    code = _optional_text(trade.get("stock_code"))
+    matches = tuple(item for item in root.candidates if item[0] == code)
+    if len(matches) != 1:
+        return False
+    candidate_identity = summary.get("candidate_identity")
+    if not isinstance(candidate_identity, Mapping):
+        return False
+    if (
+        set(candidate_identity) != {"stock_code", "rank"}
+        or type(candidate_identity.get("stock_code")) is not str
+        or type(candidate_identity.get("rank")) is not int
+        or candidate_identity.get("stock_code") != code
+        or candidate_identity.get("rank") != matches[0][1]
+    ):
+        return False
+
+    if (
+        root.universe_snapshot_id is not None
+        and summary.get("source_snapshot_id") != root.universe_snapshot_id
+    ):
+        return False
+    if (
+        root.universe_snapshot_hash is not None
+        and summary.get("source_snapshot_hash") != root.universe_snapshot_hash
+    ):
+        return False
+
+    raw_data_snapshot_ids = summary.get("data_snapshot_ids")
+    if (
+        not isinstance(raw_data_snapshot_ids, list)
+        or any(type(item) is not str for item in raw_data_snapshot_ids)
+        or tuple(raw_data_snapshot_ids) != root.data_snapshot_ids
+    ):
+        return False
+
+    raw_source_refs = summary.get("source_refs")
+    if not isinstance(raw_source_refs, list) or len(raw_source_refs) != len(root.source_refs):
+        return False
+    source_refs: list[tuple[str, str | int, str | None]] = []
+    for item in raw_source_refs:
+        if (
+            not isinstance(item, Mapping)
+            or set(item) != {"source_id", "revision", "snapshot_id"}
+            or type(item.get("source_id")) is not str
+            or type(item.get("revision")) not in (str, int)
+            or (item.get("snapshot_id") is not None and type(item.get("snapshot_id")) is not str)
+        ):
+            return False
+        source_refs.append(
+            (
+                cast(str, item["source_id"]),
+                cast(str | int, item["revision"]),
+                cast(str | None, item["snapshot_id"]),
+            )
+        )
+    if tuple(source_refs) != root.source_refs:
+        return False
+
+    try:
+        expected_summary_hash = stable_snapshot_hash(summary)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        type(trade.get("source_snapshot_hash")) is str
+        and trade.get("source_snapshot_hash") == expected_summary_hash
     )
 
 

@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app_module.decision_service_composition import build_decision_service_composition
+from app_module.decision_service_composition import (
+    build_decision_service_composition,
+    build_industry_mapper,
+)
 
 
 def test_decision_service_composition_injects_shared_mapper_and_data_ports() -> None:
@@ -19,18 +22,22 @@ def test_decision_service_composition_injects_shared_mapper_and_data_ports() -> 
     dependencies["IndustryMapper"].return_value = mapper = object()
     dependencies["MarketRegimeDetector"].return_value = regime_detector = object()
     dependencies["StockScreener"].return_value = stock_screener = object()
-    industry_provider = object()
+    industry_provider = lambda: None
+    companies_provider = lambda: None
     market_provider = object()
 
     composition = build_decision_service_composition(
         config=SimpleNamespace(),
         dependencies=dependencies,
+        companies_provider=companies_provider,
         industry_index_provider=industry_provider,
         market_index_provider=market_provider,
     )
 
     dependencies["IndustryMapper"].assert_called_once_with(
-        composition.config, industry_index_provider=industry_provider
+        composition.config,
+        industry_index_provider=industry_provider,
+        companies_provider=companies_provider,
     )
     dependencies["ScreeningService"].assert_called_once_with(
         composition.config, industry_mapper=mapper, stock_screener=stock_screener
@@ -85,9 +92,30 @@ def test_normal_composition_injects_read_only_recommendation_calibration_consume
     config = SimpleNamespace()
     build_decision_service_composition(
         config=config,
-        industry_index_provider=object(),
+        industry_index_provider=lambda: None,
         market_index_provider=object(),
     )
 
     kwargs = dependencies["RecommendationService"].call_args.kwargs
     assert kwargs["calibration_consumer"] is consumer
+
+
+def test_legacy_mapper_composition_injects_explicit_company_and_index_providers() -> None:
+    constructor = MagicMock(return_value="mapper")
+    config = SimpleNamespace()
+    company_frame_provider = lambda: None
+    index_frame_provider = lambda: None
+
+    result = build_industry_mapper(
+        config,
+        constructor=constructor,
+        companies_provider=company_frame_provider,
+        industry_index_provider=index_frame_provider,
+    )
+
+    assert result == "mapper"
+    constructor.assert_called_once_with(
+        config,
+        industry_index_provider=index_frame_provider,
+        companies_provider=company_frame_provider,
+    )

@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QLabel, QMainWindow
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtTest import QTest
 import pytest
 
 from ui_qt.views.backtest_view import BacktestView, RESEARCH_LAB_MODES
@@ -288,3 +289,50 @@ def test_research_lab_optimization_param_labels_are_compact(qt_app):
     assert labels
     assert all(label.minimumWidth() == 104 for label in labels)
     assert all(label.maximumWidth() == 104 for label in labels)
+
+
+def test_optimization_timer_runs_once_while_backtest_view_is_alive(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    calls = []
+    original_update = view._update_optimization_params_form
+
+    def observe_update():
+        calls.append("updated")
+        original_update()
+
+    view._update_optimization_params_form = observe_update
+    QTest.qWait(140)
+
+    assert calls == ["updated"]
+
+    view.setAttribute(Qt.WA_DeleteOnClose, True)
+    assert view.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def test_optimization_timer_is_discarded_when_backtest_view_is_deleted(qt_app, monkeypatch):
+    qt_exceptions = []
+    monkeypatch.setattr(
+        sys,
+        "excepthook",
+        lambda exception_type, exception, traceback: qt_exceptions.append(
+            (exception_type, exception, traceback)
+        ),
+    )
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    calls = []
+    original_update = view._update_optimization_params_form
+
+    def observe_update():
+        calls.append("updated")
+        original_update()
+
+    view._update_optimization_params_form = observe_update
+    view.setAttribute(Qt.WA_DeleteOnClose, True)
+    assert view.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+    QTest.qWait(140)
+
+    assert qt_exceptions == []
+    assert calls == []

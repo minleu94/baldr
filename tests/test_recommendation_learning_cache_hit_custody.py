@@ -86,6 +86,10 @@ def _seed_actual_technical_db(
 
     config = TWStockConfig(data_root=data_root, output_root=output_root, profile="prod")
     db = DBManager(config)
+    # 隔離 update_market 後，scheduled runner 仍會執行真實 TAIEX CSV publisher。
+    # 這份僅含標頭的 fixture 讓該來源步驟正常 no-op，不虛構市場資料列。
+    config.market_index_file.parent.mkdir(parents=True, exist_ok=True)
+    config.market_index_file.write_text("日期,收盤指數\n", encoding="utf-8")
     end_day = date.fromisoformat(source_date)
     history = [end_day - timedelta(days=34 - offset) for offset in range(35)]
     rows: list[dict[str, object]] = []
@@ -232,6 +236,10 @@ def test_three_consecutive_cache_hits_retain_real_computation_receipts(
     monkeypatch,
 ) -> None:
     """Each 05:45 cache hit must remain capture-verifiable across three days."""
+
+    # seed 以 prod 寫入隔離的合成根目錄；runner 必須使用相同 profile。
+    # profile=test 會替兩個根目錄加上 `_test`，使真實 TAIEX publisher 找不到 fixture CSV。
+    monkeypatch.setenv("PROFILE", "prod")
 
     shadow_root = _short_tmp_root / "FA_Data_Shadow"
 

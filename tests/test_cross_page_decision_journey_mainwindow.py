@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 import hashlib
@@ -39,9 +40,18 @@ from app_module.evidence_event_dtos import (
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.journal_service import JournalService
 from app_module.portfolio_service import PortfolioService
+from app_module.portfolio_source_adapter import stable_snapshot_hash
 from app_module.recommendation_repository import RecommendationRepository
+from app_module.recommendation.contracts import ExecutionStatus
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    saved_recommendation_capture_projection,
+)
 from data_module.config import TWStockConfig
 from ui_qt.main import MainWindow, _drain_qt_deferred_deletes
+from ui_qt.views.recommendation.execution_coordinator import (
+    RecommendationExecutionRequest,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +93,19 @@ def _config(tmp_path: Path) -> TWStockConfig:
         data_root=tmp_path / "data",
         output_root=tmp_path / "output",
     )
+
+
+def _canonical_test_hash(value: object) -> str:
+    """以測試輸入重算保存的 canonical JSON SHA-256。"""
+
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _recommendation(
@@ -313,23 +336,26 @@ def _industry_frame() -> pd.DataFrame:
 def _recommendation_market_frame() -> pd.DataFrame:
     """Minimal historical frame for the real RecommendationService producer."""
 
-    return pd.DataFrame(
-        [
-            {
-                "日期": day,
-                "available_date": day,
-                "證券代號": "2330",
-                "證券名稱": "台積電",
-                "收盤價": 1000.0 + index,
-                "成交股數": 1_000_000 + index,
-                "漲幅%": 1.2,
-                "成交量變化率%": 5.0,
-            }
-            for index, day in enumerate(
-                pd.date_range("2026-08-22", periods=20, freq="D")
+    rows = []
+    for instrument_index, (stock_code, stock_name) in enumerate(
+        (("2330", "台積電"), ("2317", "鴻海"))
+    ):
+        for day_index, day in enumerate(
+            pd.date_range("2026-08-22", periods=20, freq="D")
+        ):
+            rows.append(
+                {
+                    "日期": day,
+                    "available_date": day,
+                    "證券代號": stock_code,
+                    "證券名稱": stock_name,
+                    "收盤價": 1000.0 + instrument_index + day_index,
+                    "成交股數": 1_000_000 + instrument_index + day_index,
+                    "漲幅%": 1.2,
+                    "成交量變化率%": 5.0,
+                }
             )
-        ]
-    )
+    return pd.DataFrame(rows)
 
 
 class _CrossPageRecommendationMarketFrameProvider:
@@ -365,9 +391,19 @@ def _context(window: MainWindow):
     return snapshot.stock_context
 
 
-def _saved_file_paths(config: TWStockConfig, result_id: str) -> tuple[Path, ...]:
+def _saved_file_paths(
+    config: TWStockConfig,
+    result_id: str,
+    artifact_location: str,
+) -> tuple[Path, ...]:
+    runs_dir = Path(config.output_root) / "recommendation" / "runs"
     return (
-        Path(config.output_root) / "recommendation" / "runs" / f"{result_id}.json",
+        runs_dir / "execution_artifacts" / artifact_location,
+        runs_dir / "recommendation_runs.db",
+        runs_dir / "recommendation_runs.db-wal",
+        runs_dir / "recommendation_runs.db-shm",
+        runs_dir / "recommendation_runs.db-journal",
+        runs_dir / f"{result_id}.json",
         Path(config.output_root) / "watchlist" / "default.json",
         Path(config.output_root) / "portfolio" / "trades.jsonl",
     )
@@ -423,6 +459,11 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *_args, **_kwargs: None))
     monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *_args, **_kwargs: None))
 
+    def reject_blocking_message_box(_dialog: QMessageBox) -> int:
+        pytest.fail("跨頁 Journey 不應進入阻塞式 QMessageBox.exec")
+
+    monkeypatch.setattr(QMessageBox, "exec", reject_blocking_message_box)
+
     window = MainWindow()
     window.resize(1366, 768)
     window.show()
@@ -472,8 +513,6 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             # source-id conflict from two truthful layers of the same run.
             "source_id": "_CrossPageRecommendationMarketFrameProvider",
             "source_kind": "synthetic_research_fixture",
-            "source_snapshot_id": "snap-r3",
-            "source_snapshot_hash": "hash-r3",
             "profile_id": "cross-page-fixture",
             "profile_version": "fixture-v1",
             "strategy_version_id": "cross-page-strategy-v1",
@@ -484,43 +523,112 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         recommendation_service = recommendation_view.recommendation_service
         recommendation_service.market_data_provider = _CrossPageRecommendationMarketFrameProvider()
         recommendation_service.industry_mapper.get_stock_industries = lambda _code: []
-        recommendation_service.strategy_configurator.generate_recommendations = (
-            lambda _stock_df, _config: pd.DataFrame(
+        def score_candidate(stock_df: pd.DataFrame, _config: dict) -> pd.DataFrame:
+            score = 91.0 if str(stock_df.iloc[-1]["證券代號"]) == "2330" else 70.0
+            return pd.DataFrame(
                 {
-                    "FinalScore": [91.0],
-                    "TotalScore": [91.0],
+                    "FinalScore": [score],
+                    "TotalScore": [score],
                     "收盤價": [Decimal("1000")],
                     "成交股數": [1_000_000],
-                    "IndicatorScore": [31.0],
+                    "IndicatorScore": [score - 60.0],
                     "PatternScore": [30.0],
                     "VolumeScore": [30.0],
                 }
             )
+
+        recommendation_service.strategy_configurator.generate_recommendations = (
+            score_candidate
         )
-        produced_recommendations = recommendation_service.run_recommendation(
+        execution_request = RecommendationExecutionRequest(
             dict(producer_context),
-            max_stocks=1,
+            max_stocks=2,
             top_n=1,
-            as_of_date=DECISION_DATE,
-            universe=["2330"],
         )
-        assert len(produced_recommendations) == 1
-        assert str(recommendation_service.last_run_context["result_id"]).startswith("rec_")
-        recommendation_view.current_config = dict(producer_context)
-        recommendation_view.current_regime = "Trend"
-        recommendation_view._on_recommendation_finished(produced_recommendations)
+        execution = execution_request.execute(recommendation_service)
+        assert execution.status is ExecutionStatus.COMPLETED
+        assert len(execution.items) == 1
+        assert execution.items[0].stock_code == "2330"
+        assert execution.result_id.startswith("rec_")
+        universe_identity = execution.context.universe_identity
+        assert universe_identity is not None
+        universe_snapshot = universe_identity.snapshot
+        assert universe_snapshot is not None
+        universe_snapshot_spec = json.loads(
+            universe_snapshot.universe_snapshot_spec_json
+        )
+        assert universe_snapshot_spec["selected_codes"] == ["2317", "2330"]
+        assert universe_snapshot_spec["selected_count"] == 2
+        assert universe_snapshot_spec["decision_date"] == DECISION_DATE
+        assert universe_snapshot_spec["source_provider_id"] == (
+            "_CrossPageRecommendationMarketFrameProvider"
+        )
+        assert universe_snapshot.universe_snapshot_source_provider_id == (
+            "_CrossPageRecommendationMarketFrameProvider"
+        )
+        assert universe_snapshot.universe_snapshot_selected_codes_hash == (
+            _canonical_test_hash({"selected_codes": ["2317", "2330"]})
+        )
+        assert universe_snapshot.universe_snapshot_hash == _canonical_test_hash(
+            universe_snapshot_spec
+        )
+        assert universe_snapshot.universe_snapshot_id == (
+            "recommendation-universe-snapshot-v1:"
+            + universe_snapshot.universe_snapshot_hash.removeprefix("sha256:")
+        )
+        request_config = json.loads(
+            execution.request.config_snapshot.raw_config_json
+        )
+        assert request_config["source_id"] == (
+            universe_snapshot.universe_snapshot_source_provider_id
+        )
+        assert "source_snapshot_id" not in request_config
+        assert "source_snapshot_hash" not in request_config
+        canonical_snapshot_id = universe_snapshot.universe_snapshot_id
+        canonical_snapshot_hash = universe_snapshot.universe_snapshot_hash
+        recommendation_view._on_recommendation_finished(execution)
         assert recommendation_view.save_result_btn.isVisible()
         recommendation_view.results_table.selectRow(0)
         recommendation_view.save_result_btn.click()
         saved_id = str(recommendation_view.current_result_id).strip()
         assert saved_id
-        saved_result_path = output_root / "recommendation" / "runs" / f"{saved_id}.json"
-        assert saved_result_path.is_file()
-        saved_payload = json.loads(saved_result_path.read_text(encoding="utf-8"))
-        assert saved_payload["result_id"] == saved_id
-        assert saved_payload["run_context"]["result_id"] == saved_id
-        assert saved_payload["config"]["source_snapshot_hash"] == "hash-r3"
-        assert saved_payload["recommendations"][0].get("證券代號") == "2330"
+        saved_queries = build_recommendation_execution_queries(config)
+        saved_read_model = saved_queries.get(saved_id)
+        assert saved_read_model is not None
+        assert saved_read_model.execution == execution
+        assert saved_read_model.execution.status is ExecutionStatus.COMPLETED
+        assert saved_read_model.result_id == saved_id
+        assert saved_read_model.integrity_basis == "canonical_payload_and_index_verified"
+        saved_projection = saved_recommendation_capture_projection(saved_read_model)
+        assert saved_projection["result_id"] == saved_id
+        assert saved_projection["recommendations_count"] == 1
+        assert [item.stock_code for item in saved_read_model.execution.items] == ["2330"]
+        from scripts.qa_cross_page_mainwindow_readback import _canonical_identity_facts
+
+        assert _canonical_identity_facts(saved_read_model.execution)[
+            "universe_snapshot_id"
+        ] == canonical_snapshot_id
+        tampered_selected_item = replace(
+            saved_read_model.execution.items[0],
+            stock_code="9999",
+        )
+        assert saved_read_model.execution.decision is not None
+        tampered_execution = replace(
+            saved_read_model.execution,
+            decision=replace(
+                saved_read_model.execution.decision,
+                items=(tampered_selected_item,),
+            ),
+        )
+        with pytest.raises(ValueError, match="input universe or execution items"):
+            _canonical_identity_facts(tampered_execution)
+        legacy_r3_path = (
+            Path(config.output_root)
+            / "recommendation"
+            / "runs"
+            / f"{saved_id}.json"
+        )
+        assert not legacy_r3_path.exists()
 
         # The real RecommendationView add button writes a typed Watchlist
         # candidate; no stock/date/latest fallback is involved.
@@ -558,32 +666,111 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
         assert watchlist_view.stocks_table.currentIndex().row() == r2_row
 
-        # Add one synthetic recommendation-backed position through the fixture
-        # store, then traverse the real PortfolioView button route.
+        # 經真實 RecommendationView 導入流程與 canonical source adapter
+        # 建立一筆隔離持倉，驗證摘要 checksum 與內層 universe snapshot 的分工。
         portfolio_service = window.portfolio_service
-        portfolio_service.record_trade(
-            stock_code="2330",
-            stock_name="台積電",
-            side="buy",
-            quantity=100,
-            price=1000,
-            trade_date=DECISION_DATE,
-            trade_id="cross-page-trade-r3",
-            source_type="recommendation_result",
-            source_id=saved_id,
-            source_snapshot_hash="hash-r3",
-            source_summary={
-                "result_id": saved_id,
-                "stock_code": "2330",
-                "decision_date": DECISION_DATE,
-                "source_snapshot_id": "snap-r3",
-                "source_snapshot_hash": "hash-r3",
-                "fixture_boundary": "synthetic_research_only",
-            },
+
+        class _SelectRecommendationPortfolioAction:
+            """只控制 Qt 選單選項；保留實際推薦 handler 與 source adapter。"""
+
+            def __init__(self, *_args, **_kwargs):
+                self.actions: list[tuple[str, object]] = []
+
+            def addAction(self, label: str) -> object:
+                action = object()
+                self.actions.append((label, action))
+                return action
+
+            def exec(self, *_args, **_kwargs) -> object | None:
+                return next(
+                    (
+                        action
+                        for label, action in self.actions
+                        if label == "記錄到持倉管理（保留推薦來源）..."
+                    ),
+                    None,
+                )
+
+        trade_dialog_data = {
+            "stock_code": "2330",
+            "stock_name": "台積電",
+            "side": "buy",
+            "quantity": 100,
+            "price": 1000.0,
+            "trade_date": DECISION_DATE,
+            "fees": 0.0,
+            "taxes": 0.0,
+            "notes": "隔離跨頁測試",
+        }
+        monkeypatch.setattr(
+            "ui_qt.views.recommendation_view.QMenu",
+            _SelectRecommendationPortfolioAction,
         )
+        monkeypatch.setattr(
+            "ui_qt.views.portfolio_view.AddTradeDialog.exec",
+            lambda _dialog: 1,
+        )
+        monkeypatch.setattr(
+            "ui_qt.views.portfolio_view.AddTradeDialog.get_trade_data",
+            lambda _dialog: trade_dialog_data,
+        )
+        recommendation_view.results_table.selectRow(0)
+        recommendation_view._show_results_table_context_menu(None)
+        recorded_trades = portfolio_service.list_trades()
+        assert len(recorded_trades) == 1
+        recommendation_trade = recorded_trades[0]
+        assert recommendation_trade.source_id == saved_id
+        assert recommendation_trade.source_type == "recommendation_result"
+        assert recommendation_trade.source_snapshot_hash == stable_snapshot_hash(
+            recommendation_trade.source_summary
+        )
+        assert (
+            recommendation_trade.source_summary["source_snapshot_id"]
+            == canonical_snapshot_id
+        )
+        assert (
+            recommendation_trade.source_summary["source_snapshot_hash"]
+            == canonical_snapshot_hash
+        )
+        assert recommendation_trade.source_snapshot_hash != canonical_snapshot_hash
+
         portfolio_view = window.portfolio_view
         window.left_navigation.button_for_key("portfolio").click()
         _wait_portfolio_ready(window)
+        saved_positions = [
+            item
+            for item in portfolio_service.list_positions()
+            if item.source_type == "recommendation_result"
+            and item.source_id == saved_id
+            and item.stock_code == "2330"
+        ]
+        assert len(saved_positions) == 1
+        saved_position = saved_positions[0]
+        assert portfolio_view._validated_recommendation_result_id(
+            saved_position,
+            "2330",
+        ) == saved_id
+        for field_name, changed_value in (
+            ("total_score", "999999"),
+            ("close_price", "999999"),
+            (
+                "recommendation_reasons",
+                str(saved_position.source_summary["recommendation_reasons"])
+                + "；未經保存的理由",
+            ),
+        ):
+            edited_summary = dict(saved_position.source_summary)
+            assert field_name in edited_summary
+            edited_summary[field_name] = changed_value
+            edited_position = replace(
+                saved_position,
+                source_snapshot_hash=stable_snapshot_hash(edited_summary),
+                source_summary=edited_summary,
+            )
+            assert portfolio_view._validated_recommendation_result_id(
+                edited_position,
+                "2330",
+            ) == ""
         assert portfolio_view.select_stock("2330", saved_id) is True
         portfolio_view.btn_stock_research.click()
         _wait_report_ready(window)
@@ -591,8 +778,8 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert portfolio_context.result_id == saved_id
         assert portfolio_context.stock_code == "2330"
         assert portfolio_context.decision_date == DECISION_DATE
-        assert portfolio_context.source_snapshot_id == "snap-r3"
-        assert portfolio_context.source_snapshot_hash == "hash-r3"
+        assert portfolio_context.source_snapshot_id == canonical_snapshot_id
+        assert portfolio_context.source_snapshot_hash == canonical_snapshot_hash
         assert portfolio_context.source_workspace == "portfolio"
         window.stock_research_workspace.report_view.return_button.click()
         _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
@@ -603,16 +790,20 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         _seed_evidence(
             config,
             saved_id,
-            source_snapshot_id="snap-r3",
-            source_snapshot_hash="hash-r3",
+            source_snapshot_id=canonical_snapshot_id,
+            source_snapshot_hash=canonical_snapshot_hash,
         )
         next_review = _seed_continuity(
             config,
             saved_id,
-            snapshot_id="snap-r3",
-            snapshot_hash="hash-r3",
+            snapshot_id=canonical_snapshot_id,
+            snapshot_hash=canonical_snapshot_hash,
         )
-        read_only_paths = _saved_file_paths(config, saved_id)
+        read_only_paths = _saved_file_paths(
+            config,
+            saved_id,
+            saved_read_model.artifact_location,
+        )
         before_read_only = _hash_paths(read_only_paths)
         workbench_view = window.workbench_view
         window.left_navigation.button_for_key("workbench").click()
@@ -647,8 +838,8 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         workbench_context = _context(window)
         assert workbench_context.result_id == saved_id
         assert workbench_context.stock_code == "2330"
-        assert workbench_context.source_snapshot_id == "snap-r3"
-        assert workbench_context.source_snapshot_hash == "hash-r3"
+        assert workbench_context.source_snapshot_id == canonical_snapshot_id
+        assert workbench_context.source_snapshot_hash == canonical_snapshot_hash
         assert workbench_context.source_workspace == "workbench"
         dialog = window.stock_research_workspace
         assert dialog.journey_view is not None
@@ -673,7 +864,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
                 "yyyy-MM-dd HH:mm:ss",
             )
         )
-        journal_path = output_root / "portfolio" / "journal_entries.jsonl"
+        journal_path = Path(config.output_root) / "portfolio" / "journal_entries.jsonl"
         journal_before_review = journal_path.read_bytes()
         controls.review_button.click()
         assert controls.state is not None
@@ -731,6 +922,21 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert readback_payload["persisted_readback"] is True
         assert readback_payload["persisted_identity_consistent"] is True
         assert readback_payload["main_window_recreated"] is True
+        canonical_projection = readback_payload["canonical_saved_projection"]
+        assert canonical_projection["integrity_basis"] == "canonical_payload_and_index_verified"
+        assert canonical_projection["execution_status"] == "completed"
+        assert canonical_projection["result_id"] == saved_id
+        assert canonical_projection["selected_stock_code"] == "2330"
+        assert canonical_projection["execution_selected_stock_codes"] == ["2330"]
+        assert canonical_projection["execution_selected_count"] == 1
+        assert canonical_projection["universe_selected_codes"] == ["2317", "2330"]
+        assert canonical_projection["universe_selected_count"] == 2
+        assert canonical_projection["request_source_snapshot_id"] == ""
+        assert canonical_projection["request_source_snapshot_hash"] == ""
+        assert canonical_projection["universe_snapshot_id"] == canonical_snapshot_id
+        assert canonical_projection["universe_snapshot_hash"] == canonical_snapshot_hash
+        assert canonical_projection["capture"]["result_id"] == saved_id
+        assert canonical_projection["capture"]["recommendations_count"] == 1
         assert readback_payload["report_loaded"] is True
         assert readback_payload["journey_loaded"] is True
         assert readback_payload["research_workers_finished"] is True
@@ -745,54 +951,79 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             "stock_code": "2330",
             "decision_date": DECISION_DATE,
             "data_date": DATA_DATE,
-            "source_snapshot_id": "snap-r3",
-            "source_snapshot_hash": "hash-r3",
+            "source_snapshot_id": canonical_snapshot_id,
+            "source_snapshot_hash": canonical_snapshot_hash,
+            "universe_snapshot_id": canonical_snapshot_id,
+            "universe_snapshot_hash": canonical_snapshot_hash,
+            "recommendation_source_snapshot_id": "",
+            "recommendation_source_snapshot_hash": "",
         }
         assert persisted_identity["watchlist"] == {
             "result_id": saved_id,
             "stock_code": "2330",
             "decision_date": DECISION_DATE,
-            "source_snapshot_id": "snap-r3",
-            "source_snapshot_hash": "hash-r3",
+            "source_snapshot_id": canonical_snapshot_id,
+            "source_snapshot_hash": canonical_snapshot_hash,
         }
         assert persisted_identity["portfolio_trade"] == {
             "result_id": saved_id,
             "stock_code": "2330",
             "decision_date": DECISION_DATE,
-            "source_snapshot_id": "snap-r3",
-            "source_snapshot_hash": "hash-r3",
+            "source_snapshot_id": canonical_snapshot_id,
+            "source_snapshot_hash": canonical_snapshot_hash,
+            "summary_checksum": recommendation_trade.source_snapshot_hash,
+            "summary_checksum_verified": True,
         }
         assert persisted_identity["continuity"] == {
             "result_id": saved_id,
             "stock_code": "2330",
             "decision_date": DECISION_DATE,
-            "source_snapshot_id": "snap-r3",
-            "source_snapshot_hash": "hash-r3",
+            "source_snapshot_id": canonical_snapshot_id,
+            "source_snapshot_hash": canonical_snapshot_hash,
             "next_review_at": second_review.isoformat(),
         }
         assert persisted_identity["candidate_key"] == f"{saved_id}:2330"
+        assert persisted_identity["recommendation_source_snapshot"] == {
+            "source_snapshot_id": "",
+            "source_snapshot_hash": "",
+        }
+        assert persisted_identity["universe_snapshot"] == {
+            "universe_snapshot_id": canonical_snapshot_id,
+            "universe_snapshot_hash": canonical_snapshot_hash,
+        }
         assert readback_payload["rendered_identity"]["report_context"] == {
             "result_id": saved_id,
             "stock_code": "2330",
             "decision_date": DECISION_DATE,
             "data_date": DATA_DATE,
-            "source_snapshot_id": "snap-r3",
-            "source_snapshot_hash": "hash-r3",
+            "source_snapshot_id": canonical_snapshot_id,
+            "source_snapshot_hash": canonical_snapshot_hash,
         }
         assert readback_payload["rendered_identity"]["journey_context"] == {
             "result_id": saved_id,
             "stock_code": "2330",
             "decision_date": DECISION_DATE,
             "data_date": DATA_DATE,
-            "source_snapshot_id": "snap-r3",
-            "source_snapshot_hash": "hash-r3",
+            "source_snapshot_id": canonical_snapshot_id,
+            "source_snapshot_hash": canonical_snapshot_hash,
         }
         assert readback_payload["rendered_identity"]["journey"]["candidate_found"] is True
+        assert readback_payload["rendered_identity"]["journey"]["portfolio_trade_count"] == 1
+        assert readback_payload["rendered_identity"]["journey"]["portfolio_trade_link_statuses"] == [
+            "JourneyLinkStatus.LINKED"
+        ]
+        assert readback_payload["rendered_identity"]["journey"]["source_snapshot_id"] == ""
+        assert readback_payload["rendered_identity"]["journey"]["source_snapshot_hash"] == ""
+        assert readback_payload["rendered_identity"]["journey"]["universe_snapshot_id"] == canonical_snapshot_id
+        assert readback_payload["rendered_identity"]["journey"]["universe_snapshot_hash"] == canonical_snapshot_hash
         assert readback_payload["rendered_identity"]["journey"]["candidate_key"] == [
             saved_id,
             "2330",
         ]
-        assert readback_payload["rendered_identity"]["journey"]["source_snapshot_hash"] == "hash-r3"
+        assert (
+            readback_payload["rendered_identity"]["journey"]["result_link_status"]
+            == "JourneyLinkStatus.LINKED"
+        )
         assert readback_payload["rendered_identity"]["journey_controls"] == {
             "candidate_key": [saved_id, "2330"],
             "identity_status": "linked",
@@ -817,8 +1048,12 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
                         "stock_code": "2330",
                         "decision_date": DECISION_DATE,
                         "data_date": DATA_DATE,
-                        "source_snapshot_id": "snap-r3",
-                        "source_snapshot_hash": "hash-r3",
+                        "source_snapshot_id": canonical_snapshot_id,
+                        "source_snapshot_hash": canonical_snapshot_hash,
+                    },
+                    "recommendation_source_snapshot": {
+                        "status": "not_claimed_by_synthetic_provider",
+                        "source_provider_id": "_CrossPageRecommendationMarketFrameProvider",
                     },
                     "stages": [
                         "market_industry",
@@ -1198,6 +1433,21 @@ def test_portfolio_bilingual_saved_stock_alias_conflict_fails_closed(
 
     # Existing Chinese-only persisted rows remain compatible.
     assert view._validated_recommendation_result_id(position, "2330") == "R1"
+
+    # Legacy row 不得為未經 canonical query 驗證的 canonical summary claim 背書。
+    position.source_summary = {
+        "result_id": "R1",
+        "stock_code": "2330",
+        "integrity_basis": "canonical_payload_and_index_verified",
+        "payload_hash": "sha256:" + "1" * 64,
+        "artifact_location": "unverified-canonical-artifact.json",
+        "candidate_identity": {"stock_code": "2330", "rank": 1},
+    }
+    assert view._validated_recommendation_result_id(position, "2330") == ""
+    position.source_summary = {
+        "result_id": "R1",
+        "stock_code": "2330",
+    }
 
     # A legacy/alternate English-only row remains compatible as well.
     row.pop("證券代號", None)

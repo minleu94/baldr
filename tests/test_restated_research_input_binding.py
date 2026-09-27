@@ -1,13 +1,33 @@
 from __future__ import annotations
 
-from dataclasses import replace
+import base64
+from dataclasses import asdict, replace
+import hashlib
+import inspect
+from pathlib import Path
+import subprocess
+import sys
+from typing import Sequence, get_type_hints
 
 import pytest
 
-from ml_module.allocation_contracts import post_freeze_shadow_decision_scope
+from artifact_contracts.restated_research_contract import (
+    OFFICIAL_MARKET_CONTRACT_HASH as SHARED_OFFICIAL_MARKET_CONTRACT_HASH,
+    RESTATED_RESEARCH_PROFILE as SHARED_RESTATED_RESEARCH_PROFILE,
+    RestatedResearchInputBinding as SharedRestatedResearchInputBinding,
+    _hash as shared_hash,
+    hash_canonical_research_row_payloads,
+    require_compatible_market_sources as shared_require_compatible_market_sources,
+)
+from ml_module.allocation_contracts import (
+    PortfolioMLDatasetRow,
+    post_freeze_shadow_decision_scope,
+)
 from ml_module.restated_research_input_contract import (
+    OFFICIAL_MARKET_CONTRACT_HASH,
     RESTATED_RESEARCH_PROFILE,
     RestatedResearchInputBinding,
+    require_compatible_market_sources,
     research_rows_hash,
 )
 from tests.test_ml_allocation_inference_service import _research_rows, _service
@@ -103,3 +123,243 @@ def test_direct_research_inference_enforces_official_market_compatibility(traini
         binding, source_manifest_hashes=sources, prepared_rows_hash=research_rows_hash(rows),
     )
     assert _infer(service, rows, binding).production_action_allowed is False
+
+
+@pytest.mark.parametrize(
+    ("training_sources", "current_sources", "must_reject"),
+    [
+        (
+            (("source.other", "sha256:" + "1" * 64),),
+            (("source.current", "sha256:" + "2" * 64),),
+            False,
+        ),
+        (
+            (("official.twse_market", "sha256:" + "1" * 64),),
+            (
+                ("official.twse_market", "sha256:" + "2" * 64),
+                ("contract.official_twse_market", OFFICIAL_MARKET_CONTRACT_HASH),
+            ),
+            False,
+        ),
+        (
+            (("official.twse_market", "sha256:" + "1" * 64),),
+            (("official.twse_market", "sha256:" + "2" * 64),),
+            True,
+        ),
+        (
+            (("official.twse_market", "sha256:" + "1" * 64),),
+            (
+                ("official.twse_market", "sha256:" + "2" * 64),
+                ("contract.official_twse_market", "sha256:" + "3" * 64),
+            ),
+            True,
+        ),
+    ],
+)
+def test_binding_compatibility_method_matches_legacy_helper(
+    training_sources: tuple[tuple[str, str], ...],
+    current_sources: tuple[tuple[str, str], ...],
+    must_reject: bool,
+) -> None:
+    _rows, original_binding = _prepared()
+    binding = replace(original_binding, source_manifest_hashes=current_sources)
+
+    if must_reject:
+        with pytest.raises(ValueError, match="official-market") as legacy_error:
+            require_compatible_market_sources(training_sources, current_sources)
+        with pytest.raises(ValueError, match="official-market") as binding_error:
+            binding.require_compatible_training_sources(training_sources)
+        assert str(binding_error.value) == str(legacy_error.value)
+        return
+
+    require_compatible_market_sources(training_sources, current_sources)
+    binding.require_compatible_training_sources(training_sources)
+
+
+def test_shared_owner_preserves_legacy_identity_metadata_and_row_hash_vector() -> None:
+    from ml_module.restated_research_input_contract import _hash
+
+    assert RestatedResearchInputBinding is SharedRestatedResearchInputBinding
+    assert _hash is shared_hash
+    assert require_compatible_market_sources is shared_require_compatible_market_sources
+    assert RESTATED_RESEARCH_PROFILE == SHARED_RESTATED_RESEARCH_PROFILE
+    assert OFFICIAL_MARKET_CONTRACT_HASH == SHARED_OFFICIAL_MARKET_CONTRACT_HASH
+    assert RestatedResearchInputBinding.__module__ == (
+        "ml_module.restated_research_input_contract"
+    )
+    assert RestatedResearchInputBinding.__qualname__ == "RestatedResearchInputBinding"
+    assert str(inspect.signature(research_rows_hash)) == (
+        "(rows: 'Sequence[PortfolioMLDatasetRow]') -> 'str'"
+    )
+    assert research_rows_hash.__module__ == "ml_module.restated_research_input_contract"
+    assert research_rows_hash.__qualname__ == "research_rows_hash"
+    assert get_type_hints(research_rows_hash) == {
+        "rows": Sequence[PortfolioMLDatasetRow],
+        "return": str,
+    }
+
+    expected_methods = {
+        "__init__": "RestatedResearchInputBinding.__init__",
+        "__repr__": "RestatedResearchInputBinding.__repr__",
+        "__eq__": "RestatedResearchInputBinding.__eq__",
+        "__hash__": "RestatedResearchInputBinding.__hash__",
+        "__setattr__": "RestatedResearchInputBinding.__setattr__",
+        "__delattr__": "RestatedResearchInputBinding.__delattr__",
+        "__post_init__": "RestatedResearchInputBinding.__post_init__",
+        "require_compatible_training_sources": (
+            "RestatedResearchInputBinding.require_compatible_training_sources"
+        ),
+        "to_dict": "RestatedResearchInputBinding.to_dict",
+    }
+    for name, expected_qualname in expected_methods.items():
+        method = getattr(RestatedResearchInputBinding, name)
+        assert method.__module__ == "ml_module.restated_research_input_contract"
+        assert method.__qualname__ == expected_qualname
+    repr_function = RestatedResearchInputBinding.__repr__
+    assert repr_function.__wrapped__.__module__ == (
+        "ml_module.restated_research_input_contract"
+    )
+    assert repr_function.__wrapped__.__qualname__ == "__create_fn__.<locals>.__repr__"
+    assert RestatedResearchInputBinding.binding_hash.fget.__module__ == (
+        "ml_module.restated_research_input_contract"
+    )
+    assert RestatedResearchInputBinding.binding_hash.fget.__qualname__ == (
+        "RestatedResearchInputBinding.binding_hash"
+    )
+
+    rows = _research_rows()
+    expected_rows_hash = (
+        "sha256:0d602ceef141814b3a4ef4830ce4c2a0c188bbecd83d996c3c52233d64c319c0"
+    )
+    assert research_rows_hash(rows) == expected_rows_hash
+    assert research_rows_hash(tuple(reversed(rows))) == expected_rows_hash
+    canonical_payloads = [
+        asdict(row)
+        for row in sorted(rows, key=lambda row: row.symbol)
+    ]
+    assert hash_canonical_research_row_payloads(canonical_payloads) == expected_rows_hash
+
+
+def test_old_qualified_binding_pickle_and_joblib_bytes_load_in_fresh_processes(
+    tmp_path: Path,
+) -> None:
+    # These bytes were captured before the owner move from a synthetic test
+    # binding. They are not formal model or production artifacts.
+    protocol4_base64 = (
+        "gASV7AIAAAAAAACMKm1sX21vZHVsZS5yZXN0YXRlZF9yZXNlYXJjaF9pbnB1dF9jb250cmFjdJSMHFJlc3RhdGVkUmVzZWFyY2hJ"
+        "bnB1dEJpbmRpbmeUk5QpgZR9lCiMCmRhdGFzZXRfaWSUjB1hYmktY3VzdG9keS1yZXN0YXRlZC1pbnB1dC12MZSMFWRhdGFzZXRf"
+        "aWRlbnRpdHlfaGFzaJSMR3NoYTI1NjphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh"
+        "YWFhYWFhYWFhYWFhlIwaZGF0YXNldF9tYW5pZmVzdF9maWxlX2hhc2iUjEdzaGEyNTY6YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi"
+        "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYpSMFWZlYXR1cmVfcmVnaXN0cnlfaGFzaJSMR3NoYTI1Njph"
+        "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhlIwWc291cmNlX21h"
+        "bmlmZXN0X2hhc2hlc5SMDGRhaWx5X3ByaWNlc5SMR3NoYTI1NjpiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi"
+        "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJilIaUhZSMEG9yZGVyZWRfZmVhdHVyZXOUjA1yZXR1cm5fMjBkX2JwlEsBhpSMDnZv"
+        "bHVtZV9yYW5rX2JwlEsBhpSGlIwScHJlcGFyZWRfcm93c19oYXNolIxHc2hhMjU2OjBkNjAyY2VlZjE0MTgxNGIzYTRlZjQ4MzBj"
+        "ZTRjMmEwYzE4OGJiZWNkODNkOTk2YzNjNTIyMzNkNjRjMzE5YzCUjAtjYXB0dXJlZF9hdJSMGTIwMjctMDEtMDRUMTg6MDA6MDAr"
+        "MDg6MDCUdWIu"
+    )
+    protocol5_base64 = (
+        "gAWV7AIAAAAAAACMKm1sX21vZHVsZS5yZXN0YXRlZF9yZXNlYXJjaF9pbnB1dF9jb250cmFjdJSMHFJlc3RhdGVkUmVzZWFyY2hJ"
+        "bnB1dEJpbmRpbmeUk5QpgZR9lCiMCmRhdGFzZXRfaWSUjB1hYmktY3VzdG9keS1yZXN0YXRlZC1pbnB1dC12MZSMFWRhdGFzZXRf"
+        "aWRlbnRpdHlfaGFzaJSMR3NoYTI1NjphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh"
+        "YWFhYWFhYWFhYWFhlIwaZGF0YXNldF9tYW5pZmVzdF9maWxlX2hhc2iUjEdzaGEyNTY6YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi"
+        "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYpSMFWZlYXR1cmVfcmVnaXN0cnlfaGFzaJSMR3NoYTI1Njph"
+        "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhlIwWc291cmNlX21h"
+        "bmlmZXN0X2hhc2hlc5SMDGRhaWx5X3ByaWNlc5SMR3NoYTI1NjpiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi"
+        "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJilIaUhZSMEG9yZGVyZWRfZmVhdHVyZXOUjA1yZXR1cm5fMjBkX2JwlEsBhpSMDnZv"
+        "bHVtZV9yYW5rX2JwlEsBhpSGlIwScHJlcGFyZWRfcm93c19oYXNolIxHc2hhMjU2OjBkNjAyY2VlZjE0MTgxNGIzYTRlZjQ4MzBj"
+        "ZTRjMmEwYzE4OGJiZWNkODNkOTk2YzNjNTIyMzNkNjRjMzE5YzCUjAtjYXB0dXJlZF9hdJSMGTIwMjctMDEtMDRUMTg6MDA6MDAr"
+        "MDg6MDCUdWIu"
+    )
+    protocol4 = base64.b64decode(protocol4_base64)
+    protocol5 = base64.b64decode(protocol5_base64)
+    assert hashlib.sha256(protocol4).hexdigest() == (
+        "fd0fa50847cdf63dba118ea600e958073ae963bbe9d56e31e22a6825355a6309"
+    )
+    assert hashlib.sha256(protocol5).hexdigest() == (
+        "1fd9c46bc4986810624ebaa9c684dabf0cb301ca7eaa065515a724b63ec0130d"
+    )
+    (tmp_path / "binding.protocol4.pickle").write_bytes(protocol4)
+    (tmp_path / "binding.protocol5.pickle").write_bytes(protocol5)
+
+    child = r"""
+from __future__ import annotations
+
+from io import BytesIO
+import inspect
+import joblib
+import pickle
+import sys
+from pathlib import Path
+from typing import Sequence, get_type_hints
+
+from ml_module.allocation_contracts import PortfolioMLDatasetRow
+
+if sys.argv[2] == "shared-first":
+    from artifact_contracts.restated_research_contract import (
+        OFFICIAL_MARKET_CONTRACT_HASH as SharedOfficial,
+        RESTATED_RESEARCH_PROFILE as SharedProfile,
+        RestatedResearchInputBinding as SharedBinding,
+    )
+    from ml_module.restated_research_input_contract import (
+        OFFICIAL_MARKET_CONTRACT_HASH,
+        RESTATED_RESEARCH_PROFILE,
+        RestatedResearchInputBinding,
+        research_rows_hash,
+    )
+else:
+    from ml_module.restated_research_input_contract import (
+        OFFICIAL_MARKET_CONTRACT_HASH,
+        RESTATED_RESEARCH_PROFILE,
+        RestatedResearchInputBinding,
+        research_rows_hash,
+    )
+    from artifact_contracts.restated_research_contract import (
+        OFFICIAL_MARKET_CONTRACT_HASH as SharedOfficial,
+        RESTATED_RESEARCH_PROFILE as SharedProfile,
+        RestatedResearchInputBinding as SharedBinding,
+    )
+
+assert RestatedResearchInputBinding is SharedBinding
+assert OFFICIAL_MARKET_CONTRACT_HASH == SharedOfficial
+assert RESTATED_RESEARCH_PROFILE == SharedProfile
+assert RestatedResearchInputBinding.__module__ == (
+    "ml_module.restated_research_input_contract"
+)
+assert research_rows_hash.__module__ == "ml_module.restated_research_input_contract"
+assert str(inspect.signature(research_rows_hash)) == (
+    "(rows: 'Sequence[PortfolioMLDatasetRow]') -> 'str'"
+)
+assert get_type_hints(research_rows_hash) == {
+    "rows": Sequence[PortfolioMLDatasetRow],
+    "return": str,
+}
+
+fixture_root = Path(sys.argv[1])
+payload4 = (fixture_root / "binding.protocol4.pickle").read_bytes()
+payload5 = (fixture_root / "binding.protocol5.pickle").read_bytes()
+assert type(pickle.loads(payload4)) is RestatedResearchInputBinding
+assert type(pickle.loads(payload5)) is RestatedResearchInputBinding
+value = joblib.load(BytesIO(payload5))
+assert type(value) is RestatedResearchInputBinding
+assert value.binding_hash == (
+    "sha256:bd23f0c7ef3a9837176264b6da85bbb25a63094c400e2cda00be58f04d705b4c"
+)
+assert len(value.to_dict()) == 14
+assert pickle.dumps(value, protocol=4) == payload4
+assert pickle.dumps(value, protocol=5) == payload5
+stream = BytesIO()
+joblib.dump(value, stream, compress=0, protocol=5)
+assert stream.getvalue() == payload5
+"""
+    repo_root = Path(__file__).resolve().parents[1]
+    for order in ("shared-first", "legacy-first"):
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(tmp_path), order],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr

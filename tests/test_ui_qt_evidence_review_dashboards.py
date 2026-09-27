@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import shiboken6
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDateEdit, QTabWidget
+import pytest
 
 from app_module.decision_quality_dashboard_dtos import (
     DecisionQualityDashboardCards,
@@ -174,6 +180,29 @@ class _AlwaysFailScheduledStatus:
         raise RuntimeError()
 
 
+class _GatedScheduledStatus:
+    def __init__(self, result, *, error: str | None = None) -> None:
+        self.result = result
+        self.error = error
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def load_latest(self):
+        self.started.set()
+        if not self.release.wait(timeout=5):
+            raise TimeoutError("test did not release scheduled status worker")
+        if self.error is not None:
+            raise RuntimeError(self.error)
+        return self.result
+
+
+def _wait_for_qt_callbacks(application: QApplication) -> None:
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        application.processEvents()
+        QTest.qWait(5)
+
+
 def test_signal_decay_table_model_formats_bp_without_changing_raw_value() -> None:
     app()
     from app_module.signal_decay_dashboard_dtos import SignalDecayDashboardRow
@@ -274,6 +303,107 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
     assert "production evidence/trading write risk: false" in view.detail_panel.toPlainText()
     assert "risk_prompt_source_quality:portfolio_alerts:estimated=4" in view.detail_panel.toPlainText()
     assert "Run Metadata" in view.detail_panel.toPlainText()
+
+
+@pytest.mark.parametrize(
+    "error",
+    (None, "controlled scheduled status error"),
+    ids=("success", "error"),
+)
+def test_scheduled_status_worker_release_while_view_is_alive(monkeypatch, error) -> None:
+    application = app()
+    qt_exceptions = []
+    monkeypatch.setattr(
+        sys,
+        "excepthook",
+        lambda exception_type, exception, traceback: qt_exceptions.append(
+            (exception_type, exception, traceback)
+        ),
+    )
+
+    service = _GatedScheduledStatus(FakeScheduledStatus().result, error=error)
+    view = ScheduledEvidenceStatusView(
+        service,
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    view.refresh_status()
+    worker = view._worker
+    assert worker is not None
+    assert service.started.wait(timeout=2)
+    service.release.set()
+    assert worker.wait(5000)
+    _wait_for_qt_callbacks(application)
+
+    assert view._worker is None
+    assert view.refresh_button.isEnabled()
+    if error is None:
+        assert "20260707" in view.freshness_label.text()
+    else:
+        assert "狀態未知" in view.boundary_label.text()
+    assert qt_exceptions == []
+
+    worker.deleteLater()
+    view.setAttribute(Qt.WA_DeleteOnClose, True)
+    assert view.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+@pytest.mark.parametrize(
+    "error",
+    (None, "controlled scheduled status error"),
+    ids=("success", "error"),
+)
+@pytest.mark.parametrize(
+    "delete_before_result",
+    (True, False),
+    ids=("view-deleted-first", "result-queued-first"),
+)
+def test_scheduled_status_worker_callbacks_disconnect_when_view_is_deleted(
+    monkeypatch,
+    error,
+    delete_before_result,
+) -> None:
+    application = app()
+    qt_exceptions = []
+    monkeypatch.setattr(
+        sys,
+        "excepthook",
+        lambda exception_type, exception, traceback: qt_exceptions.append(
+            (exception_type, exception, traceback)
+        ),
+    )
+
+    service = _GatedScheduledStatus(FakeScheduledStatus().result, error=error)
+    view = ScheduledEvidenceStatusView(
+        service,
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    view.refresh_status()
+    worker = view._worker
+    assert worker is not None
+    assert service.started.wait(timeout=2)
+
+    if not delete_before_result:
+        service.release.set()
+        assert worker.wait(5000)
+        assert view._worker is worker
+        assert not view.refresh_button.isEnabled()
+
+    view.setAttribute(Qt.WA_DeleteOnClose, True)
+    assert view.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert not shiboken6.isValid(view)
+
+    if delete_before_result:
+        service.release.set()
+    assert worker.wait(5000)
+    _wait_for_qt_callbacks(application)
+
+    assert qt_exceptions == []
+    worker.deleteLater()
+    QCoreApplication.sendPostedEvents(worker, QEvent.DeferredDelete)
 
 
 def test_scheduled_evidence_status_view_prioritizes_manual_observed_summary_over_raw_report() -> None:

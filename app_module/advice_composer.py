@@ -16,7 +16,7 @@ from app_module.advice_dtos import (
     RecommendationAdviceDTO,
 )
 from app_module.advice_policy import AdvicePolicy
-from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
 from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.saved_recommendation_queries import (

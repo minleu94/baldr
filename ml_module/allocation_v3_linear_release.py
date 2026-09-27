@@ -49,6 +49,10 @@ from data_module.ml_storage_capacity import (
     preflight_capacity,
     release_heavy_chain_reservation,
 )
+from artifact_contracts.allocation_model_types import (
+    _ConstantProbabilityModel,
+    _ConstantRegressionModel,
+)
 from ml_module.allocation_out_of_core_training_service import (
     _NumericStore,
     _current_rss_bytes,
@@ -77,7 +81,7 @@ from ml_module.allocation_training_service import (
 )
 from ml_module.allocation_out_of_core_training_service import TARGET_FIELDS
 from ml_module.ooc_cross_fitted_calibration import _fit_isotonic_mapping_bp
-from scripts.build_ml_allocation_post_freeze_feature_repair import (
+from ml_module.allocation_repaired_input_contract import (
     load_repaired_input,
 )
 
@@ -1860,23 +1864,6 @@ def _linear_classification_model(
     return model
 
 
-class _ConstantProbabilityModel:
-    """可序列化且明確標記 classifier 的單一 class fallback。"""
-
-    classifier = True
-
-    def __init__(self, probability_class: int) -> None:
-        if probability_class not in {0, 1}:
-            raise ValueError("probability class must be 0 or 1")
-        self.probability_class = probability_class
-
-    def predict_proba(self, matrix: NDArray[Any]) -> NDArray[np.float64]:
-        count = len(matrix)
-        result = np.zeros((count, 2), dtype=np.float64)
-        result[:, self.probability_class] = 1.0
-        return result
-
-
 def _quantize_probability(values: NDArray[Any]) -> np.ndarray:
     result = np.empty(len(values), dtype=np.int64)
     for index, value in enumerate(values):
@@ -2092,18 +2079,6 @@ def _build_neutral_meta_models(
         },
     }
     return meta, target_summary
-
-
-class _ConstantRegressionModel:
-    """只供 schema-compatible neutral Meta；不代表已識別的配置器。"""
-
-    classifier = False
-
-    def __init__(self, value: int) -> None:
-        self.value = int(value)
-
-    def predict(self, matrix: NDArray[Any]) -> NDArray[np.float64]:
-        return np.full(len(matrix), self.value, dtype=np.float64)
 
 
 def _artifact_payload(

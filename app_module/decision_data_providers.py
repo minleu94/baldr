@@ -8,6 +8,8 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 
+from data_module.industry_mapper_data_provider import IndustryMapperDataProvider
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,18 +59,21 @@ def market_index_frame_provider(config: Any) -> SqliteFirstFrameProvider:
     )
 
 
-def industry_index_frame_provider(config: Any) -> SqliteFirstFrameProvider:
-    def candidates(current: Any) -> tuple[Path, ...]:
-        return (
-            current.industry_index_file,
-            current.meta_data_dir / "industry_index.csv",
-        )
+def industry_index_frame_provider(config: Any) -> Callable[[], pd.DataFrame]:
+    """建立 data-owned 產業指數 reader 的 app callable。"""
+    return IndustryMapperDataProvider(config).load_industry_index_frame
 
-    return SqliteFirstFrameProvider(
-        config,
-        table="industry_indices",
-        csv_paths=candidates,
-    )
+
+def industry_companies_provider(config: Any) -> Callable[[], pd.DataFrame | None]:
+    """建立 data-owned companies.csv reader 的 app callable。"""
+    return IndustryMapperDataProvider(config).load_companies
+
+
+def legacy_industry_index_provider(
+    config: Any,
+) -> Callable[[], pd.DataFrame | None]:
+    """建立保留舊 fallback None／讀取錯誤語意的 data callable。"""
+    return IndustryMapperDataProvider(config).load_legacy_industry_index
 
 
 def recent_stock_screen_provider(config: Any) -> Callable[[str, int], Any]:

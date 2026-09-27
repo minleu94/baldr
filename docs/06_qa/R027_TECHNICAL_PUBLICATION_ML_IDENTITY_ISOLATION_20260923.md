@@ -1,13 +1,45 @@
 # R027 technical publication／ML identity 隔離實驗報告
 
+## 2026-09-27 新 logical-time revision 最終狀態
+
+使用者接受的 revision B 已完成 full8 gate與獨立 source/runtime review。結果及 exact scope/hash 記於 [R027 logical-time acceptance revision addendum](R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md)。本報告下方 9/23 與 post-Qt strict receipts保持歷史原貌：原 strict仍為 `INCONCLUSIVE`，不回填新版本 PASS。Root其後正式接受scoped R028 production migration；R031 attempt6 current relevant regression及mandatory checks已由root接受；目前為提交前snapshot，staged review與commit結果以Git history及root最後交付為準。R028結果見 [implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)。
+
 - 日期：2026-09-23
 - 裁定：`INCONCLUSIVE`
-- Evidence 狀態：R023 source freeze 後已以新 run 重建 current-source receipt；`run.head` 僅為 projection-time metadata，full receipt 不證明 worker-time commit。
+- Evidence 狀態：latest completed old-strict result與raw receipt見下方2026-09-27 checkpoint；該次source graph早於新revision owner edits；保留原始9/23、848-difference與各版receipt，不覆寫。
 - 架構阻擋：`AB-ML-01`（OPEN）
 - 暫時機制：`TMP-ML-02` 保持 ACTIVE
-- 後續：`R028` 保持 BLOCKED；不得解鎖或把本報告解讀為搬移核准。
+- 後續（原strict裁定）：9/23時R028保持BLOCKED。本報告上方2026-09-27 current status記錄versioned revision full8 PASS與R028 scoped migration其後均已接受；這些bounded裁定不是整體重構完成判定。
 
-## 裁定摘要
+## 2026-09-27 使用者接受的新驗收版本（full8 PASS；原strict仍INCONCLUSIVE）
+
+使用者已明確接受新logical-time acceptance revision（proposal B）；root full8及boundary獨立review均PASS。Summary SHA e39f7d2e5ccb3e2a6b8d30be3d595ad2b06a6837ab9a56f9e3689bc221b58980、raw SHA 5e1f162cc569c49797d0f9fc9fc72b6d7f4fba41734afcec627a6d9684f372c0。Root最初decision核准R028實作開始；其後另有正式R028 acceptance，記於下方current addendum。這是與原strict gate分開的版本化驗收，不回溯變更原strict。原9/23 oracle、848差異、raw receipts與原INCONCLUSIVE verdict均保留；latest 9a19 receipt仍是原strict gate的8/8 INCONCLUSIVE、947 differences。
+
+新revision須精確比較source-owned logical phase-call/token count/order、event／publication phase與publication point；真正使用production method中的phase port，不接受observer stamping。此token只表示來源呼叫順序及次數；原產品沒有canonical publication timestamp，production不消費token作artifact時間欄位，也不新增schema。raw wall/perf、mtime、WAL／SHM與reader evidence全數保留，但只依新revision不要求跨process physical values逐值相同。每個原snapshot phase的main DB raw bytes／SHA／size仍exact，且逐phase核對committed visibility、完整rows/schema/key/source identity及fresh reopen readback；commit/rollback、failure、cancel、retry/recovery不得遺失、重複或形成半套狀態。其餘原exact output、Direct15與負控仍保留。baseline與candidate各自收集、不可共用新helper作兩邊oracle；clock negatives須實際改production call site/phase並被拒絕。詳見ignored QA驗收追蹤 `output/qa/refactor_completion_20260927/USER_ACCEPTED_IMPLEMENTATION_TRACK_20260927.md`。Stage 1的clean-case interim evidence列於下方；不是新revision gate PASS。
+
+### 2026-09-27 phase-port／原SQLite快照 bytes interim review
+
+`phase_port_stage1_freeze_v2.json`（SHA-256 `e37cf120589b44e4d1a07aac5f741518f0d829a4c6b067b355ddb85c0cf57f9b`）凍結6個owner source/test inputs及3個read-only dependency hashes；source review核對所有hash與目前working tree一致。既有 `record_phase` 在原 `sqlite_main_db_before_checkpoint` read保存可選raw bytes、原query-only reader close後再讀raw bytes；clean baseline與candidate各return code 0，11個source-issued phase calls/token sequence一致，該phase原snapshot前／reader close後的main DB raw bytes、SHA、size逐項相同。每個worker另以兩個fresh `mode=ro`／`query_only` connections close/reopen讀回80 rows與schema/key/source identity，reader間結果相同且DB bytes未變；final checkpoint前、後讀值分開保存且兩側一致。Focused既有R027 candidate test file為13P/0F/0E、0.878秒，py_compile通過；舊strict comparator仍為`incomparable_clock`／`INCONCLUSIVE`。
+
+此為clean-case interim evidence，root接受其有限證據範圍；不是新revision PASS或R028解鎖。尚無新版gate、production call-site負控、failure/cancel/recovery expected-outcome matrix、全8 cases或完整route；目前receipt沒有驗證新revision的跨worker failure recovery。原strict evidence／raw fields與oracle保持未改。
+
+## 2026-09-27 latest completed old-strict source-graph checkpoint
+
+Latest completed old-strict post-Qt lifecycle runtime full8 receipt `r027_post_qt_lifecycle_root_all_20260927.json`（SHA-256 `9a19c3ac9cc28d6c07ecda6506e1f4f35b30a7ffa4cf74cb915f531e414f5ef7`；summary `DF4533DBA4F72523E047DFBD458CED725114DFC35F17203F221E96100921992F`；scope `BED829EC6706671E98CE938C08DCA7674E5639E1A6BDE56D22512943332F0AB1`）。此run在兩個Qt callback runtime修補後完成，runner自然exit 1代表strict R027 gate未通過，projector exit 0；8/8 `INCONCLUSIVE`／`incomparable_clock`、0 semantic、947 strict differences、R028 unlock=false。各case counts依序為clean81、same-input143、partial67、unchanged79、cancel/resume117、source-change153、failure/recovery137、publication-failure/recovery170。16 workers／16 unique positive PID／rc0、完整ordered case-mode與wrapper/receipt identity、pairwise-isolated roots均成立；6/6 negative controls detected。1,233 selected paths前後相同、changed=[]、HEAD unchanged；Direct15與5 pinned fixtures另有全數hash-match custody。舊855／1,058、bb68與更早版本保留各自歷史，不覆寫。
+
+本輪947個strict differences分類為738 event-clock、143 file-mtime/publication snapshot、64 SQLite snapshot-reader lifecycle及2 SQLite transient snapshot SHA。這兩個transient差異只在`publication_failure_recovery`，精確為`$.timings.final_sqlite_transient_files_before_checkpoint.twstock.db-shm.sha256`與`...twstock.db-wal.sha256`；其他raw OS／publication mtime／WAL／SHM／reader fields仍strict對照。21個`sqlite_main_db`差異均為`mtime_ns`，此namespace沒有SHA／size差異。1,233 selected paths之worker loaded-source inventory為1,488→1,492；所有pre-existing source hashes/fingerprints穩定，另列3個late-loaded repository modules，不與selected scope混同。9/23凍結oracle bytes實核為17,045,681 bytes、SHA-256 `4fe75c19e16e7bd241108638813f5ba5d89235cdc884dff224f337a8c9847616`，路徑為`C:/Users/archi/AppData/Local/Temp/r027-r023-freeze-all-20260923-dd1c0d4c58404dfa8d94a6275de96f2a/r027_comparison.json`；repo舊summary引用的另一歷史位置缺失並標stale。這不證明所有physical bytes相等或差異根因。raw receipts與strict comparator不變。
+
+DBManager.execute_query的unclosed connection是另個已bounded accepted resource fix：未修時25/25 API query返回後仍觀察到OS handle，明確close control為0；修後7/7 handle observations為0，真connection success/error/row/dtype checks及相鄰route共92P。此修正保留原connect defaults、with-connection commit/rollback與materialized query result semantics；它不是R027 947 differences的單一因果證明。原strict仍INCONCLUSIVE，AB-ML-01仍OPEN；versioned revision full8已PASS，R028 scoped migration其後亦已由root接受；attempt6 current 288-path relevant regression及mandatory checks已由root接受；此處保留為提交前snapshot。
+
+## 使用者決策前的具體技術方案（歷史提案；B已接受，未實作）
+
+以下A／B為使用者裁決前的技術方案紀錄。使用者後接受B並另立versioned gate；方案A未採用，不作為目前R028阻擋理由。原strict comparator、848 frozen oracle、raw receipts、negative controls、Direct15與5 pinned paths均不變。方案A當時建議維持UpdateService owner、將conditional R028搬移視為不適用，並在使用者接受整體完成條件變更後結束該conditional work；這不代表R027 PASS。
+
+方案B只能在使用者明確接受新的versioned acceptance revision後採用，不能稱原R027 PASS。將固定logical publication clock、呼叫數、事件順序、phase與publication point作精確比較；額外clock call或publication phase改變仍失敗。raw wall/perf clock、真實mtime與WAL/SHM/reader snapshots原樣保留於receipt，標為獨立OS/lifecycle observations。新revision仍精確要求case/mode覆蓋、publication paths與輸出bytes/hash/size、CSV row/key/order/schema/dtypes、numeric/mask bytes、Direct15與允許的serialized identity evidence相等；SQLite以獨立reopen reader確認committed visibility、rows/schema、rollback/commit邊界、失敗／取消／重試後恢復與readback一致。main DB raw bytes/hash/size繼續exact；若任何WAL/SHM或mtime由gate轉為diagnostic而非equality field，須逐欄列明並由使用者接受此完成條件改變。此方案不放寬資料／模型語意，也不排除可修lifecycle defect；current evidence不自動批准採用。
+
+## 原始 2026-09-23 實驗結果（歷史 baseline）
+
+以下內容保存原始candidate relocation、848-difference oracle與原實驗限制；不替代上方post-REC-05／ML2 current-source full8結果。
 
 8 個合成情境均由舊路徑與候選路徑的獨立子程序完成。每案語意欄位差異為 0；固定輸入下的 publication path、最終輸出檔案 SHA／大小、列與 numeric/mask bytes、warmup、Direct 15-path identity、runtime integrity、resume 正反例及事件順序均相等。4/4 negative controls 均被 comparator 偵測。
 
@@ -15,7 +47,7 @@ R023 freeze 後的新 full TEMP receipt 記錄 candidate extraction source SHA `
 
 仍不能判 `PASS`：子程序各自使用真實 wall／monotonic clock，且 publication 檔案有各自的 `mtime_ns`。8 案共有 **848 個 exact timing／snapshot 差異**，沒有共用可注入的固定 clock，也沒有 canonical publication timestamp 欄位。依 R027 無容差、全等才可 PASS 的要求，不能把兩條 process 的 timestamp 以容差視為一致。候選也只是由原方法 AST 抽出的 relocation copy，未實作一條獨立、實際不同的 orchestration。因此本證據不能支持正式搬移。
 
-## 範圍與隔離
+## 範圍與隔離（原始實驗歷史細節）
 
 - 只新增本實驗 harness、合成 fixture、機讀證據摘要與本報告；未修改 `app_module/update_service.py`、Direct/OOC source／registry／15 frozen paths、模型、正式資料、scheduler、checkpoint 或 artifact。
 - 16 個 worker（每個 case 的 baseline／candidate 各一個）為獨立子程序，各自使用 `PROFILE=test`、隔離的 TEMP data/output root；未觸及正式資料。每個 worker 合成輸入為 1101、2330 兩檔、各 40 個交易日，來源 hash 為 `sha256:a74becf8f3491474b1db9a14471414967fe55758c5b7b85ee219baccb86ca29b`。來源含缺值與零值；source-change case 只在 TEMP DB 加入兩列合成資料。
@@ -152,3 +184,7 @@ R027 (2026-09-23; source SHA `df1d04445f23ff07f2eb45eab7b024b819ba511928b8cc2d25
 ## 更新／完成邊界
 
 `py_compile` 對三個 harness/projection scripts 通過。projector 會 fail closed：投影時 current repository HEAD 與 `--expected-head` 不同，或當前 production source SHA 與 receipt candidate extraction source SHA 不同時拒絕輸出。這項檢查證明投影時 repo/source 符合指定值，不回溯證明 worker-time HEAD。報告不把未執行的真實 ML inference、正式來源競爭、模型 artifact／checkpoint 讀取或固定 clock parity 宣稱為通過。沒有 stage 或 commit；repo 中其他既有工作樹變更未納入本任務。
+
+## 2026-09-27 R028 scoped migration accepted
+
+Root正式接受R028 scoped production migration，decision SHA `cc375897612e705e6c6c268a0ef63aa38c4f998d214a32fdd74d038567f792db`，full8 raw SHA `1a3b496973c7053c7d25612754a733cb505765667afa478be453efd2c5a19d82`。20 workers自然exit0，8 cases／8 controls PASS，3,312 source-scope files stable，Direct15／pinned5、HEAD/status stable；source與runtime獨立review無blocker。Production owner為`TechnicalIndicatorJob`，UpdateService facade lazy-delegate，既有process-pool port維持父程序單一寫入邊界。TMP-ML-02原conditional migration scope已滿足；R031 attempt6 288-path relevant regression及mandatory checks已由root接受；staged review／commit結果以Git history與root最後交付為準。原strict 9a19仍INCONCLUSIVE／947 differences，848 frozen oracle與所有strict raw receipts保持不變。詳見 [R028 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)。

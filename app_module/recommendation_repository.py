@@ -13,7 +13,7 @@ from datetime import datetime
 from dataclasses import dataclass, asdict
 import numpy as np
 
-from app_module.dtos import RecommendationResultDTO, RecommendationDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO, RecommendationDTO
 
 
 def _make_json_serializable(obj: Any) -> Any:

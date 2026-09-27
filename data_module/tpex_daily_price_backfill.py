@@ -14,13 +14,28 @@ from data_module.backup_retention import (
     create_sqlite_retained_backup,
     restore_sqlite_backup,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
+
+
+@dataclass(frozen=True)
+class TpexDailyPriceDiagnostic:
+    code: str
+    factor_name: str
+    stock_code: str
+    message: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "code": self.code,
+            "factor_name": self.factor_name,
+            "stock_code": self.stock_code,
+            "message": self.message,
+        }
 
 
 @dataclass(frozen=True)
 class TpexDailyPriceNormalizeResult:
     rows: tuple[dict[str, object], ...]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[TpexDailyPriceDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "rows", tuple(self.rows))
@@ -30,7 +45,7 @@ class TpexDailyPriceNormalizeResult:
 @dataclass(frozen=True)
 class TpexDailyPriceBackfillPlan:
     rows: tuple[dict[str, object], ...]
-    diagnostics: tuple[FactorDiagnostic, ...]
+    diagnostics: tuple[TpexDailyPriceDiagnostic, ...]
     existing_count: int
     insert_count: int
     db_file: Path
@@ -74,7 +89,7 @@ def normalize_tpex_daily_price_rows(
     strict: bool = True,
 ) -> TpexDailyPriceNormalizeResult:
     rows: list[dict[str, object]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[TpexDailyPriceDiagnostic] = []
     for source_row in source_rows:
         stock_code = _first(source_row, "SecuritiesCompanyCode", "Code")
         stock_name = _first(source_row, "CompanyName", "CompanyAbbreviation", "Name")
@@ -84,7 +99,7 @@ def normalize_tpex_daily_price_rows(
         if not re.fullmatch(r"\d{4}", stock_code):
             if strict:
                 diagnostics.append(
-                    FactorDiagnostic(
+                    TpexDailyPriceDiagnostic(
                         code="tpex_daily_price.invalid_stock_code",
                         factor_name="market_data.tpex_daily_price",
                         stock_code=stock_code,
@@ -95,7 +110,7 @@ def normalize_tpex_daily_price_rows(
         if close is None or Decimal(close) <= 0:
             if strict:
                 diagnostics.append(
-                    FactorDiagnostic(
+                    TpexDailyPriceDiagnostic(
                         code="tpex_daily_price.invalid_price",
                         factor_name="market_data.tpex_daily_price",
                         stock_code=stock_code,

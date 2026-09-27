@@ -16,7 +16,7 @@ import re
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from app_module.dtos import RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 from app_module.personalization_contract import (
     PERSONALIZATION_DELIVERY_ACK_SCHEMA_VERSION,
     PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION,

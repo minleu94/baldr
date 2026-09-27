@@ -15,7 +15,7 @@ import stat
 from types import MappingProxyType
 from typing import IO, Literal, Mapping, Protocol, cast
 
-from app_module.dtos import RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 from app_module.recommendation.codec import (
     ExecutionCodecError,
     ExecutionReadEnvelope,

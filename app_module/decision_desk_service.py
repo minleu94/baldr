@@ -18,7 +18,7 @@ from app_module.decision_desk_dtos import (
     DecisionDeskRiskPromptSummary,
     RecommendationDeskSummary,
 )
-from app_module.dtos import RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 from app_module.recommendation.contracts import QualityStatus, RecommendationExecution
 from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.saved_recommendation_queries import (

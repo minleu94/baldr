@@ -2,7 +2,34 @@
 
 > 本文件只維護目前分類摘要；逐檔清單以 `qa/full_app_healthcheck/test_inventory.py` 為準。歷史執行紀錄不可當作本次通過證據。
 
-## 2026-09-17 machine refresh
+## 2026-09-27 machine refresh
+
+本次以 `scripts/audit_test_inventory.py --skip-pytest-collection` 盤點目前 filesystem 與 registry；未執行 pytest collection，因此不宣稱本次測項數。R028 新增 job/facade 契約測試後的稽核回條為 `output/qa/refactor_completion_20260927/r028_inventory_audit_20260927.json`；此前 1044 檔盤點收據仍保留於 `output/qa/refactor_completion_20260927/docs_inventory_repair_20260927/test_inventory_audit_post_patch_20260927.json`。
+
+Current filesystem Python files: `1045`
+Current registry entries: `1045`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 155 |
+| `governance-doc-tooling` | 167 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 154 |
+| `service-oracle-portfolio-decision-runtime` | 131 |
+| `service-oracle-recommendation` | 147 |
+| `service-oracle-research-backtest` | 100 |
+| `slow-e2e-or-environment` | 4 |
+| `ui-healthcheck-candidate-bridge` | 47 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 82 |
+
+- 本次快速盤點 filesystem／registry 均為 `1045`，missing `0`、stale `0`、collection errors `0`；pytest collection 未執行，collected count 為 unknown。前次文件摘要與索引更新的 audit `overall_status=passed`、documentation count drift `0`、formal entry reference errors `0` 收據保留為此前 1044 檔基線。
+- 前次 1044 檔 refresh 前的 audit 曾檢出舊文件計數 `852` 與兩個缺漏的正式入口；當時只修正當期摘要與索引連結，保留舊 machine snapshot 作歷史紀錄。本次 R028 登錄只新增一個 `governance-doc-tooling` 測試路徑。
+
+## 2026-09-17 historical machine snapshot
 
 本次 machine refresh 同步 ABC bounded registry；前次 2026-09-15 摘要保留於更新記錄。
 

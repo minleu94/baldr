@@ -34,16 +34,18 @@ sys.path.insert(0, str(project_root))
 
 from data_module.config import TWStockConfig
 from app_module.recommendation_service import RecommendationService
+from app_module.decision_service_composition import build_industry_mapper
 from app_module.recommendation.input_preparation import (
     build_default_recommendation_input_preparer,
 )
 from app_module.recommendation.execute import project_legacy_recommendations
+from app_module.recommendation.negative_evidence_projection import (
+    project_canonical_negative_evidence,
+)
 from app_module.regime_service import RegimeService
-from app_module.dtos import RecommendationDTO
+from app_module.recommendation.legacy_dtos import RecommendationDTO
 from scripts.recommendation_execution_qa_support import execute_and_readback
-# from ui_app.industry_mapper import IndustryMapper
 # from ui_app.strategy_configurator import StrategyConfigurator
-from decision_module.industry_mapper import IndustryMapper
 from decision_module.strategy_configurator import StrategyConfigurator
 
 # 確保策略已註冊
@@ -305,7 +307,7 @@ def validate_service_layer(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
+        industry_mapper = build_industry_mapper(config)
         regime_service = RegimeService(config)
         recommendation_service = RecommendationService(
             config,
@@ -559,7 +561,7 @@ def validate_ui_service_contract(result: ValidationResult):
         # 實際上 UI 使用 to_dict()，所以應該檢查 to_dict() 的輸出欄位
         
         # 驗證所有 EXPECTED_DTO_FIELDS 都存在於 DTO.to_dict() 中
-        from app_module.dtos import RecommendationDTO
+        from app_module.recommendation.legacy_dtos import RecommendationDTO
         
         # 創建一個測試 DTO 來檢查 to_dict() 輸出
         test_dto = RecommendationDTO(
@@ -613,7 +615,7 @@ def validate_filtering_logic(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
+        industry_mapper = build_industry_mapper(config)
         regime_service = RegimeService(config)
         recommendation_service = RecommendationService(
             config,
@@ -898,11 +900,12 @@ def validate_isolated_recommendation_loop(root: Path, result: ValidationResult) 
     source_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
     mapper = SimpleNamespace(get_stock_industries=lambda code: [])
     market_data_provider = lambda: history
+    regime_detector = SimpleNamespace()
     service = RecommendationService(
         config,
         industry_mapper=mapper,
         market_data_provider=market_data_provider,
-        regime_detector=SimpleNamespace(),
+        regime_service=RegimeService(config, regime_detector=regime_detector),
         input_preparer=build_default_recommendation_input_preparer(
             config, market_data_provider=market_data_provider
         ),
@@ -924,9 +927,27 @@ def validate_isolated_recommendation_loop(root: Path, result: ValidationResult) 
         raise AssertionError("離線真實評分必須產生 Decimal 推薦結果")
     validate_dto_structure(recommendations[0], result)
     validate_score_ranges(recommendations[0], result)
-    first_legacy_state = first_capture["compatibility_snapshot"].materialize()
-    context = deepcopy(first_legacy_state["last_run_context"])
-    why_not = deepcopy(first_legacy_state["last_why_not_payload_json"])
+    first_saved_execution = first_readback.execution
+    if first_saved_execution is None or first_saved_execution.decision is None:
+        raise AssertionError("saved execution 必須包含 typed DecisionBatch")
+    first_negative_evidence = project_canonical_negative_evidence(
+        first_saved_execution.decision,
+        allow_empty=True,
+    )
+    first_screening_matrix = first_negative_evidence.screening_matrix
+    context = {
+        "eligible_universe_size": (
+            first_saved_execution.decision.items[0].eligible_universe_size
+            if first_saved_execution.decision.items
+            else None
+        ),
+        "data_fingerprint": (
+            first_screening_matrix[0]["data_fingerprint"]
+            if first_screening_matrix
+            else None
+        ),
+    }
+    why_not = first_negative_evidence.why_not_payload
     if context["eligible_universe_size"] != 2 or not why_not or "recommendation_outside_top_n" not in why_not[0]["reason_codes"]:
         raise AssertionError("母體必須在 top_n 前計算且保留落選理由")
     result.add_pass("Eligible_Universe_Why_Not", {"universe": 2, "selected": 1})
@@ -945,9 +966,27 @@ def validate_isolated_recommendation_loop(root: Path, result: ValidationResult) 
     )
     assert second_readback.execution is not None
     repeated = project_legacy_recommendations(second_readback.execution, second_capture)
-    second_legacy_state = second_capture["compatibility_snapshot"].materialize()
-    repeated_context = second_legacy_state["last_run_context"]
-    repeated_why_not = second_legacy_state["last_why_not_payload_json"]
+    second_saved_execution = second_readback.execution
+    if second_saved_execution is None or second_saved_execution.decision is None:
+        raise AssertionError("repeated saved execution 必須包含 typed DecisionBatch")
+    second_negative_evidence = project_canonical_negative_evidence(
+        second_saved_execution.decision,
+        allow_empty=True,
+    )
+    second_screening_matrix = second_negative_evidence.screening_matrix
+    repeated_context = {
+        "eligible_universe_size": (
+            second_saved_execution.decision.items[0].eligible_universe_size
+            if second_saved_execution.decision.items
+            else None
+        ),
+        "data_fingerprint": (
+            second_screening_matrix[0]["data_fingerprint"]
+            if second_screening_matrix
+            else None
+        ),
+    }
+    repeated_why_not = second_negative_evidence.why_not_payload
     if (
         [item.to_dict() for item in recommendations] != [item.to_dict() for item in repeated]
         or repeated_context.get("data_fingerprint") != context.get("data_fingerprint")

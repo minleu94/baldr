@@ -4,7 +4,8 @@
 """
 
 import logging
-from datetime import datetime
+from collections.abc import Mapping, Sequence
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,8 +27,25 @@ from PySide6.QtGui import QFont, QColor, QPalette, QBrush
 from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.portfolio_service import PortfolioService
 from app_module.dtos.portfolio_dtos import PortfolioDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
+from app_module.portfolio_source_adapter import (
+    build_recommendation_execution_trade_source,
+    build_recommendation_trade_source,
+    stable_snapshot_hash,
+)
 from app_module.journal_service import JournalService
 from app_module.recommendation_service import RecommendationService
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    IndexStatus,
+    RecommendationExecution,
+    SaveReceipt,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    execution_result_config,
+)
 from app_module.broker_flow_service import BrokerFlowService
 from app_module.portfolio_condition_monitor import (
     PortfolioConditionMonitor,
@@ -99,7 +117,7 @@ def _first_error_line(message: object) -> str:
     return "未提供錯誤訊息"
 
 
-def _saved_recommendation_stock_aliases(row: dict[str, Any]) -> tuple[str, str]:
+def _saved_recommendation_stock_aliases(row: Mapping[str, Any]) -> tuple[str, str]:
     """回傳正規化後的英文／中文股票代號別名。"""
 
     english_code = str(row.get("stock_code") or "").strip()
@@ -107,7 +125,7 @@ def _saved_recommendation_stock_aliases(row: dict[str, Any]) -> tuple[str, str]:
     return english_code, chinese_code
 
 
-def _saved_recommendation_stock_code(row: dict[str, Any]) -> str | None:
+def _saved_recommendation_stock_code(row: Mapping[str, Any]) -> str | None:
     """解析雙語別名；同列矛盾時不猜測。"""
 
     english_code, chinese_code = _saved_recommendation_stock_aliases(row)
@@ -117,7 +135,7 @@ def _saved_recommendation_stock_code(row: dict[str, Any]) -> str | None:
 
 
 def _saved_recommendation_alias_conflicts_for_code(
-    row: dict[str, Any],
+    row: Mapping[str, Any],
     stock_code: str,
 ) -> bool:
     """判斷矛盾別名列是否宣稱目前要求的股票代號。
@@ -133,6 +151,467 @@ def _saved_recommendation_alias_conflicts_for_code(
         and english_code != chinese_code
         and stock_code in {english_code, chinese_code}
     )
+
+
+def _payload_rows(value: object) -> tuple[Mapping[str, Any], ...]:
+    """讀取舊 payload 的 list 或唯讀 tuple；忽略非 row 值以維持舊語意。"""
+
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    return tuple(item for item in value if isinstance(item, Mapping))
+
+
+def _fact_text(value: object) -> str | None:
+    if type(value) is date:
+        return value.isoformat()
+    if type(value) is str:
+        return value.strip()
+    if value is None:
+        return ""
+    return None
+
+
+def _consistent_fact(values: Sequence[object]) -> str | None:
+    normalized: set[str] = set()
+    for value in values:
+        fact = _fact_text(value)
+        if fact is None:
+            return None
+        if fact:
+            normalized.add(fact)
+    if len(normalized) > 1:
+        return None
+    return next(iter(normalized), "")
+
+
+def _canonical_recommendation_identity_facts(
+    execution: RecommendationExecution,
+    stock_code: str,
+) -> dict[str, str] | None:
+    """從已驗證 execution 讀取保存設定與 typed context 身份。"""
+
+    try:
+        result_config = execution_result_config(execution)
+        request = execution.request
+        request_snapshot = request.config_snapshot
+        if request_snapshot is None:
+            request_config: dict[str, object] = {}
+        else:
+            decoded_request = json.loads(request_snapshot.raw_config_json)
+            if not isinstance(decoded_request, Mapping):
+                return None
+            request_config = dict(decoded_request)
+        context_date = execution.context.as_of_date
+        request_date = request.as_of_date
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+    as_of_date = _consistent_fact(
+        (
+            result_config.get("as_of_date"),
+            request_config.get("as_of_date"),
+            context_date,
+            request_date,
+        )
+    )
+    if as_of_date is None:
+        return None
+    decision_date = _consistent_fact(
+        (
+            result_config.get("decision_date"),
+            request_config.get("decision_date"),
+        )
+    )
+    if decision_date is None:
+        return None
+    if not decision_date:
+        decision_date = as_of_date
+
+    identity: dict[str, str] = {
+        "result_id": execution.result_id,
+        "stock_code": stock_code,
+        "as_of_date": as_of_date,
+        "decision_date": decision_date,
+    }
+    data_date = _consistent_fact(
+        (result_config.get("data_date"), request_config.get("data_date"))
+    )
+    if data_date is None:
+        return None
+    if not data_date:
+        data_date = _consistent_fact(
+            (
+                result_config.get("data_as_of_date"),
+                request_config.get("data_as_of_date"),
+            )
+        )
+        if data_date is None:
+            return None
+    identity["data_date"] = data_date
+    request_source_facts: dict[str, str] = {}
+    for field_name in ("source_snapshot_id", "source_snapshot_hash"):
+        value = _consistent_fact(
+            (result_config.get(field_name), request_config.get(field_name))
+        )
+        if value is None:
+            return None
+        request_source_facts[field_name] = value
+
+    # request config 的 source snapshot 是呼叫者來源 facts；Portfolio writer
+    # 的 source snapshot 則依序採 execution universe、universe ref 或唯一資料 ref。
+    # 兩個領域各自保留，不把 caller snapshot 當成 trade summary 的 universe 身分。
+    writer_source_snapshot_id = ""
+    writer_source_snapshot_hash = ""
+    universe_identity = execution.context.universe_identity
+    universe_snapshot = (
+        universe_identity.snapshot if universe_identity is not None else None
+    )
+    if universe_snapshot is not None:
+        snapshot_id = universe_snapshot.universe_snapshot_id
+        snapshot_hash = universe_snapshot.universe_snapshot_hash
+        if type(snapshot_id) is not str or type(snapshot_hash) is not str:
+            return None
+        writer_source_snapshot_id = snapshot_id
+        writer_source_snapshot_hash = snapshot_hash
+    elif execution.context.universe_snapshot_ref is not None:
+        writer_source_snapshot_id = (
+            execution.context.universe_snapshot_ref.reference_id
+        )
+    elif len(execution.context.data_snapshot_refs) == 1:
+        writer_source_snapshot_id = execution.context.data_snapshot_refs[0].reference_id
+    identity["source_snapshot_id"] = writer_source_snapshot_id
+    identity["source_snapshot_hash"] = writer_source_snapshot_hash
+    identity["request_source_snapshot_id"] = request_source_facts[
+        "source_snapshot_id"
+    ]
+    identity["request_source_snapshot_hash"] = request_source_facts[
+        "source_snapshot_hash"
+    ]
+    return identity
+
+
+def _summary_matches_saved_identity(
+    summary: Mapping[str, Any],
+    identity: Mapping[str, str],
+) -> bool:
+    """只在保存 facts 存在時核對 lineage；不替舊結果補造欄位。"""
+
+    for field_name in (
+        "result_id",
+        "stock_code",
+        "decision_date",
+        "data_date",
+        "source_snapshot_id",
+        "source_snapshot_hash",
+    ):
+        value = _fact_text(summary.get(field_name))
+        if value is None:
+            return False
+        expected = identity.get(field_name, "")
+        if value and (not expected or value != expected):
+            return False
+    return True
+
+
+def _position_snapshot_matches_saved_identity(
+    position: object | None,
+    identity: Mapping[str, str],
+) -> bool:
+    position_hash = _fact_text(getattr(position, "source_snapshot_hash", None))
+    saved_hash = identity.get("source_snapshot_hash", "")
+    return not (
+        position_hash is None
+        or (position_hash and (not saved_hash or position_hash != saved_hash))
+    )
+
+
+def _portfolio_source_numeric_value(value: Decimal | int | None) -> str | int | None:
+    """依 Portfolio source writer 的既有 JSON wire 表示正規化候選數值。"""
+
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("candidate source 數值必須有限")
+        return format(value, "f")
+    return value
+
+
+def _candidate_reason_list(reason_text: str | None) -> list[str]:
+    text = str(reason_text or "").strip()
+    if not text:
+        return []
+    for separator in ("；", ";", "、", "\n"):
+        text = text.replace(separator, "|")
+    return [part.strip() for part in text.split("|") if part.strip()]
+
+
+def _json_wire_values_match(value: object, expected: object) -> bool:
+    """遞迴核對 JSON 值與型別，避免 bool 被當成整數接受。"""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(value, Mapping) or set(value) != set(expected):
+            return False
+        return all(
+            _json_wire_values_match(value[key], expected[key]) for key in expected
+        )
+    if isinstance(expected, list):
+        return (
+            type(value) is list
+            and len(value) == len(expected)
+            and all(
+                _json_wire_values_match(actual, wanted)
+                for actual, wanted in zip(value, expected)
+            )
+        )
+    if type(value) is not type(expected):
+        return False
+    return value == expected
+
+
+_CANONICAL_PORTFOLIO_PROJECTION_FIELDS = (
+    "ranking_score_bp",
+    "calibrated_probability_bp",
+    "calibrated_probability_status",
+    "after_cost_profit_probability_bp",
+    "after_cost_profit_probability_status",
+    "evidence_confidence",
+    "sample_size",
+    "cost_basis_bp",
+    "calibration_model_version",
+    "calibration_dataset_version",
+    "calibration_horizon",
+    "calibration_status",
+    "calibration_source",
+    "calibration_source_trace",
+    "calibration_warnings",
+    "calibration_probability_transform_id",
+    "calibration_probability_baseline_id",
+    "calibration_probability_baseline_kind",
+    "calibration_probability_baseline_probability_bp",
+    "calibration_raw_probability_bp",
+    "calibration_raw_after_cost_probability_bp",
+    "calibration_provenance",
+)
+
+
+def _save_receipt_from_verified_read_model(
+    read_model: RecommendationExecutionReadModel,
+) -> SaveReceipt | None:
+    """以 canonical 查回 facts 重建核對用 receipt，不宣稱另一次保存。"""
+
+    if (
+        read_model.integrity_basis != "canonical_payload_and_index_verified"
+        or type(read_model.payload_hash) is not str
+        or not read_model.payload_hash
+        or type(read_model.artifact_location) is not str
+        or not read_model.artifact_location
+        or read_model.persisted_at is None
+        or type(read_model.schema_version) is not str
+        or type(read_model.schema_revision) is not int
+    ):
+        return None
+    try:
+        return SaveReceipt(
+            result_id=read_model.result_id,
+            payload_hash=read_model.payload_hash,
+            artifact_location=read_model.artifact_location,
+            persisted_at=read_model.persisted_at,
+            index_status=IndexStatus.INDEXED,
+            schema_version=read_model.schema_version,
+            schema_revision=read_model.schema_revision,
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _canonical_trade_summary_matches_execution(
+    position: object | None,
+    summary: Mapping[str, Any],
+    execution: RecommendationExecution,
+    read_model: RecommendationExecutionReadModel,
+    stock_code: str,
+) -> bool:
+    """核對 canonical adapter summary 對應同一個已驗證 execution。"""
+
+    if (
+        read_model.execution != execution
+        or read_model.result_id != execution.result_id
+        or read_model.integrity_basis != "canonical_payload_and_index_verified"
+        or type(read_model.payload_hash) is not str
+        or not read_model.payload_hash
+        or type(read_model.artifact_location) is not str
+        or not read_model.artifact_location
+        or summary.get("integrity_basis") != read_model.integrity_basis
+        or summary.get("result_id") != execution.result_id
+        or summary.get("payload_hash") != read_model.payload_hash
+        or summary.get("artifact_location") != read_model.artifact_location
+        or summary.get("decision_date")
+        != (
+            execution.context.as_of_date.isoformat()
+            if execution.context.as_of_date is not None
+            else None
+        )
+        or summary.get("stock_code") != stock_code
+        or _fact_text(getattr(position, "source_snapshot_hash", None))
+        != stable_snapshot_hash(summary)
+    ):
+        return False
+
+    matches = tuple(item for item in execution.items if item.stock_code == stock_code)
+    if len(matches) != 1:
+        return False
+    candidate_identity = summary.get("candidate_identity")
+    if not isinstance(candidate_identity, Mapping) or (
+        set(candidate_identity) != {"stock_code", "rank"}
+        or candidate_identity.get("stock_code") != stock_code
+        or type(candidate_identity.get("rank")) is not int
+        or candidate_identity.get("rank") != matches[0].rank
+    ):
+        return False
+    candidate = matches[0]
+    expected_candidate_fields: dict[str, object] = {
+        "stock_code": candidate.stock_code,
+        "stock_name": candidate.stock_name or "",
+        "close_price": _portfolio_source_numeric_value(candidate.close_price),
+        "price_change": _portfolio_source_numeric_value(candidate.price_change),
+        "total_score": _portfolio_source_numeric_value(candidate.rule_score),
+        "indicator_score": _portfolio_source_numeric_value(candidate.indicator_score),
+        "pattern_score": _portfolio_source_numeric_value(candidate.pattern_score),
+        "volume_score": _portfolio_source_numeric_value(candidate.volume_score),
+        "recommendation_reasons": candidate.reason_text or "",
+        "reasons": list(candidate.reasons) or _candidate_reason_list(candidate.reason_text),
+        "industry": candidate.industry or "",
+        "regime_match": candidate.regime_match,
+        "ranking_percentile_bp": candidate.score_percentile_bp,
+        "ranking_method": candidate.ranking_method,
+        "threshold_mode": candidate.threshold_mode,
+    }
+    if any(
+        field_name not in summary
+        or not _json_wire_values_match(summary[field_name], expected)
+        for field_name, expected in expected_candidate_fields.items()
+    ):
+        return False
+
+    receipt = _save_receipt_from_verified_read_model(read_model)
+    if receipt is None:
+        return False
+    try:
+        writer_projection = build_recommendation_execution_trade_source(
+            execution,
+            read_model,
+            receipt,
+            matches[0],
+        ).source_summary
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if any(
+        field_name not in summary
+        or field_name not in writer_projection
+        or not _json_wire_values_match(
+            summary[field_name],
+            writer_projection[field_name],
+        )
+        for field_name in _CANONICAL_PORTFOLIO_PROJECTION_FIELDS
+    ):
+        return False
+
+    context = execution.context
+    universe_identity = context.universe_identity
+    universe_snapshot = (
+        universe_identity.snapshot if universe_identity is not None else None
+    )
+    if universe_snapshot is not None:
+        expected_snapshot_id = universe_snapshot.universe_snapshot_id or ""
+        expected_snapshot_hash = universe_snapshot.universe_snapshot_hash or ""
+    elif context.universe_snapshot_ref is not None:
+        expected_snapshot_id = context.universe_snapshot_ref.reference_id
+        expected_snapshot_hash = ""
+    elif len(context.data_snapshot_refs) == 1:
+        expected_snapshot_id = context.data_snapshot_refs[0].reference_id
+        expected_snapshot_hash = ""
+    else:
+        expected_snapshot_id = ""
+        expected_snapshot_hash = ""
+    if (
+        summary.get("source_snapshot_id") != expected_snapshot_id
+        or summary.get("source_snapshot_hash") != expected_snapshot_hash
+    ):
+        return False
+    if universe_snapshot is not None and (
+        summary.get("source_snapshot_id") != (universe_snapshot.universe_snapshot_id or "")
+        or summary.get("source_snapshot_hash")
+        != (universe_snapshot.universe_snapshot_hash or "")
+    ):
+        return False
+
+    expected_data_snapshot_ids = [
+        item.reference_id for item in context.data_snapshot_refs
+    ]
+    if summary.get("data_snapshot_ids") != expected_data_snapshot_ids:
+        return False
+    expected_source_refs = [
+        {
+            "source_id": item.source_id,
+            "revision": item.revision,
+            "snapshot_id": item.snapshot_id,
+        }
+        for item in context.source_refs
+    ]
+    return _json_wire_values_match(summary.get("source_refs"), expected_source_refs)
+
+
+def _known_legacy_trade_summary_matches(
+    position: object | None,
+    summary: Mapping[str, Any],
+    legacy_result: Any,
+    stock_code: str,
+) -> bool:
+    """只接受可由 query DTO 與既有 legacy writer 精確重建的摘要。"""
+
+    recommendations = getattr(legacy_result, "recommendations", None)
+    if legacy_result is None or not isinstance(recommendations, (list, tuple)):
+        return False
+    matches = tuple(
+        item
+        for item in recommendations
+        if getattr(item, "stock_code", None) == stock_code
+    )
+    if len(matches) != 1:
+        return False
+    expected = build_recommendation_trade_source(legacy_result, matches[0])
+    try:
+        actual_summary_hash = stable_snapshot_hash(summary)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        summary.get("result_id") == expected.source_id
+        and summary.get("stock_code") == stock_code
+        and actual_summary_hash == expected.source_snapshot_hash
+        and _fact_text(getattr(position, "source_snapshot_hash", None))
+        == expected.source_snapshot_hash
+    )
+
+
+def _claims_canonical_trade_summary(summary: Mapping[str, Any]) -> bool:
+    if "integrity_basis" in summary:
+        return True
+    canonical_signature = {
+        "artifact_location",
+        "payload_hash",
+        "candidate_identity",
+    }
+    return bool(canonical_signature.intersection(summary)) or {
+        "data_snapshot_ids",
+        "source_refs",
+    }.issubset(summary)
+
+
+def _mutable_json_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _mutable_json_value(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [_mutable_json_value(item) for item in value]
+    return value
 
 
 def _paper_status_text(value: Any) -> str:
@@ -2951,8 +3430,8 @@ class PortfolioView(QWidget):
 
         ``PositionDTO.source_id`` 是泛用 lineage 欄位，可能指向回測、人工
         持倉或其他 provider；不可只依字串形狀或同股／同日巧合升格為
-        continuity candidate identity。此處直接讀取保存的推薦 JSON，保持
-        導航動作唯讀。
+        continuity candidate identity。新保存結果必須通過 canonical query
+        的 integrity 與 typed execution 檢查；舊 DTO 只走明確的唯讀相容讀取。
         """
 
         source_type = str(getattr(position, "source_type", "") or "").strip()
@@ -2965,48 +3444,154 @@ class PortfolioView(QWidget):
             return ""
 
         source_summary = getattr(position, "source_summary", {})
-        if not isinstance(source_summary, dict):
+        if not isinstance(source_summary, Mapping):
             source_summary = {}
-        summary_result_id = str(source_summary.get("result_id", "") or "").strip()
-        summary_stock_code = str(source_summary.get("stock_code", "") or "").strip()
-        if summary_result_id and summary_result_id != source_id:
-            return ""
-        if summary_stock_code and summary_stock_code != code:
-            return ""
 
         config = getattr(self.portfolio_service, "config", None)
-        output_root = getattr(config, "output_root", None)
-        if output_root is None:
-            return ""
-        saved_result_path = Path(output_root) / "recommendation" / "runs" / f"{source_id}.json"
-        if not saved_result_path.is_file():
+        if config is None:
             return ""
         try:
-            payload = json.loads(saved_result_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+            queries = build_recommendation_execution_queries(config)
+            read_model = queries.get(source_id)
+        except Exception:
+            # Canonical identity／integrity 無法判定時，不允許舊路徑救援。
             return ""
-        if not isinstance(payload, dict):
+
+        if read_model is not None and read_model.execution is not None:
+            execution = read_model.execution
+            if (
+                read_model.result_id != source_id
+                or execution.result_id != source_id
+                or execution.status is not ExecutionStatus.COMPLETED
+                or read_model.integrity_basis
+                != "canonical_payload_and_index_verified"
+                or execution.decision is None
+            ):
+                return ""
+            matches = tuple(item for item in execution.items if item.stock_code == code)
+            if len(matches) != 1:
+                return ""
+            identity = _canonical_recommendation_identity_facts(execution, code)
+            if identity is None:
+                return ""
+            summary_identity = dict(identity)
+            # Portfolio source summary 的 decision_date 寫入 Context.as_of_date；
+            # request/result config 的 decision_date 是另一個獨立保存日期。
+            summary_identity["decision_date"] = identity["as_of_date"]
+            if not _summary_matches_saved_identity(source_summary, summary_identity):
+                return ""
+            if _claims_canonical_trade_summary(source_summary):
+                if not _canonical_trade_summary_matches_execution(
+                    position,
+                    source_summary,
+                    execution,
+                    read_model,
+                    code,
+                ):
+                    return ""
+            elif not _position_snapshot_matches_saved_identity(position, identity):
+                return ""
+            return source_id
+
+        # canonical query 若回傳了未知 read model，不能把它當成 legacy。
+        if read_model is not None and read_model.legacy_result is None:
             return ""
-        if str(payload.get("result_id", "") or "").strip() != source_id:
+        try:
+            legacy = queries.get_legacy_original_payload(
+                source_id,
+                allow_unindexed_legacy=True,
+            )
+        except Exception:
+            # canonical identity claim 或完整性錯誤一律維持拒絕。
             return ""
-        recommendations = payload.get("recommendations")
-        if not isinstance(recommendations, list):
+        if legacy is None or not isinstance(legacy.payload, Mapping):
             return ""
+        payload = legacy.payload
+        saved_result_id = payload.get("result_id")
+        if type(saved_result_id) is not str or saved_result_id.strip() != source_id:
+            return ""
+        recommendations = _payload_rows(payload.get("recommendations"))
         if any(
-            isinstance(row, dict)
-            and _saved_recommendation_alias_conflicts_for_code(row, code)
+            _saved_recommendation_alias_conflicts_for_code(row, code)
             for row in recommendations
         ):
             # 有效列不可遮蔽另一列對同一要求股票的雙語別名矛盾。
             return ""
-        matches = [
+        matches = tuple(
             row
             for row in recommendations
-            if isinstance(row, dict)
-            and _saved_recommendation_stock_code(row) == code
-        ]
+            if _saved_recommendation_stock_code(row) == code
+        )
         # 重複列會讓 source-to-candidate 對應不明確，只允許單一精確保存列升格。
         if len(matches) != 1:
+            return ""
+
+        legacy_result = (
+            read_model.legacy_result if read_model is not None else None
+        )
+        if legacy_result is None:
+            try:
+                mutable_payload = _mutable_json_value(payload)
+                if not isinstance(mutable_payload, dict):
+                    return ""
+                legacy_result = RecommendationResultDTO.from_dict(mutable_payload)
+            except (TypeError, ValueError, KeyError):
+                legacy_result = None
+        if legacy_result is not None and _known_legacy_trade_summary_matches(
+            position,
+            source_summary,
+            legacy_result,
+            code,
+        ):
+            return source_id
+        if _claims_canonical_trade_summary(source_summary):
+            # 未由 canonical query 驗證的 canonical claim 不可借 legacy row 升格。
+            return ""
+
+        result_config = payload.get("config")
+        run_context = payload.get("run_context")
+        if not isinstance(result_config, Mapping):
+            result_config = {}
+        if not isinstance(run_context, Mapping):
+            run_context = {}
+        as_of_date = _consistent_fact(
+            (result_config.get("as_of_date"), run_context.get("as_of_date"))
+        )
+        decision_date = _consistent_fact(
+            (
+                result_config.get("decision_date"),
+                run_context.get("decision_date"),
+            )
+        )
+        data_date = _consistent_fact(
+            (result_config.get("data_date"), run_context.get("data_date"))
+        )
+        if data_date == "":
+            data_date = _consistent_fact(
+                (
+                    result_config.get("data_as_of_date"),
+                    run_context.get("data_as_of_date"),
+                )
+            )
+        if None in (as_of_date, decision_date, data_date):
+            return ""
+        identity = {
+            "result_id": source_id,
+            "stock_code": code,
+            "as_of_date": as_of_date,
+            "decision_date": decision_date or as_of_date,
+            "data_date": data_date,
+        }
+        for field_name in ("source_snapshot_id", "source_snapshot_hash"):
+            value = _consistent_fact(
+                (result_config.get(field_name), run_context.get(field_name))
+            )
+            if value is None:
+                return ""
+            identity[field_name] = value
+        if not _summary_matches_saved_identity(source_summary, identity):
+            return ""
+        if not _position_snapshot_matches_saved_identity(position, identity):
             return ""
         return source_id
 
@@ -3053,7 +3638,7 @@ class PortfolioView(QWidget):
         presentation = self._presentation_for_position(position, code)
         # 按鈕通常應有單一選取列；選取不存在或不明確時，不靜默代入同股第一列。
         position_source_summary = getattr(position, "source_summary", {}) if position is not None else {}
-        if not isinstance(position_source_summary, dict):
+        if not isinstance(position_source_summary, Mapping):
             position_source_summary = {}
         validated_result_id = self._validated_recommendation_result_id(position, code)
         identity_status = "linked" if validated_result_id else "unlinked"
@@ -3067,7 +3652,9 @@ class PortfolioView(QWidget):
                 identity_status=identity_status,
                 source_snapshot_id=str(position_source_summary.get("source_snapshot_id", "") or ""),
                 source_snapshot_hash=str(
-                    getattr(position, "source_snapshot_hash", "")
+                    position_source_summary.get("source_snapshot_hash", "")
+                    if _claims_canonical_trade_summary(position_source_summary)
+                    else getattr(position, "source_snapshot_hash", "")
                     or position_source_summary.get("source_snapshot_hash", "")
                     or ""
                 ),

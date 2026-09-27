@@ -2,6 +2,8 @@
 
 import ast
 from pathlib import Path
+import subprocess
+import sys
 
 import pandas as pd
 import pytest
@@ -122,6 +124,140 @@ def test_legacy_app_paths_are_aliases_to_the_single_decision_owner():
     assert StrategyRegistry.get_strategy_meta("baseline_score_threshold")["strategy_id"] == (
         "baseline_score_threshold"
     )
+
+
+def test_legacy_strategy_facades_keep_fresh_process_identity_wire_and_pickle(tmp_path: Path):
+    """隔離合成舊 qualified path，確認薄 façade 解碼，不宣稱存在歷史 pickle。"""
+    pickle_path = tmp_path / "strategy_spec_from_legacy_facade.pkl"
+    writer_code = r"""
+import pickle
+import sys
+from pathlib import Path
+from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec as CanonicalStrategySpec
+
+assert StrategySpec is CanonicalStrategySpec
+params = {"threshold_mode": "quantile", "buy_quantile_bp": 8000}
+spec = StrategySpec(
+    strategy_id="momentum_aggressive_v1",
+    strategy_version="1.0.0",
+    default_params=params,
+    config={"params": params},
+)
+original_module = StrategySpec.__module__
+StrategySpec.__module__ = "app_module.strategy_spec"
+try:
+    raw = pickle.dumps(spec, protocol=4)
+finally:
+    StrategySpec.__module__ = original_module
+assert b"app_module.strategy_spec" in raw
+Path(sys.argv[1]).write_bytes(raw)
+"""
+    writer = subprocess.run(
+        [sys.executable, "-c", writer_code, str(pickle_path)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert writer.returncode == 0, writer.stdout + writer.stderr
+
+    code = r"""
+import pickle
+import sys
+from pathlib import Path
+
+from app_module.daily_signal import DailySignalFrame as LegacyDailySignalFrame
+from app_module.reason_tags import ReasonTagGenerator as LegacyReasonTagGenerator
+from app_module.strategies import (
+    BaselineScoreExecutor as LegacyBaselineScoreExecutor,
+    MomentumAggressiveExecutor as LegacyMomentumAggressiveExecutor,
+    StableConservativeExecutor as LegacyStableConservativeExecutor,
+    StrategyRegistry as LegacyPackageStrategyRegistry,
+)
+from app_module.strategies.baseline_score_executor import (
+    BaselineScoreExecutor as LegacyBaselineModuleExecutor,
+)
+from app_module.strategies.momentum_aggressive_executor import (
+    MomentumAggressiveExecutor as LegacyMomentumModuleExecutor,
+)
+from app_module.strategies.stable_conservative_executor import (
+    StableConservativeExecutor as LegacyStableModuleExecutor,
+)
+from app_module.strategy_executor_adapter import (
+    SimpleStrategyExecutor as LegacySimpleStrategyExecutor,
+)
+from app_module.strategy_registry import StrategyRegistry as LegacyStrategyRegistry
+from app_module.strategy_spec import (
+    StrategyExecutor as LegacyStrategyExecutor,
+    StrategyMeta as LegacyStrategyMeta,
+    StrategySpec as LegacyStrategySpec,
+    create_daily_signal_frame as legacy_create_daily_signal_frame,
+)
+from decision_module.reason_tags import ReasonTagGenerator
+from decision_module.strategies.baseline_score_executor import BaselineScoreExecutor
+from decision_module.strategies.contracts import (
+    DailySignalFrame,
+    StrategyExecutor,
+    StrategyMeta,
+    StrategySpec,
+    create_daily_signal_frame,
+)
+from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
+from decision_module.strategies.registry import StrategyRegistry
+from decision_module.strategies.simple_strategy_executor import SimpleStrategyExecutor
+from decision_module.strategies.stable_conservative_executor import StableConservativeExecutor
+
+identity_pairs = (
+    (LegacyDailySignalFrame, DailySignalFrame, "decision_module.strategies.contracts", "DailySignalFrame"),
+    (LegacyReasonTagGenerator, ReasonTagGenerator, "decision_module.reason_tags", "ReasonTagGenerator"),
+    (LegacyBaselineScoreExecutor, BaselineScoreExecutor, "decision_module.strategies.baseline_score_executor", "BaselineScoreExecutor"),
+    (LegacyBaselineModuleExecutor, BaselineScoreExecutor, "decision_module.strategies.baseline_score_executor", "BaselineScoreExecutor"),
+    (LegacyMomentumAggressiveExecutor, MomentumAggressiveExecutor, "decision_module.strategies.momentum_aggressive_executor", "MomentumAggressiveExecutor"),
+    (LegacyMomentumModuleExecutor, MomentumAggressiveExecutor, "decision_module.strategies.momentum_aggressive_executor", "MomentumAggressiveExecutor"),
+    (LegacyStableConservativeExecutor, StableConservativeExecutor, "decision_module.strategies.stable_conservative_executor", "StableConservativeExecutor"),
+    (LegacyStableModuleExecutor, StableConservativeExecutor, "decision_module.strategies.stable_conservative_executor", "StableConservativeExecutor"),
+    (LegacySimpleStrategyExecutor, SimpleStrategyExecutor, "decision_module.strategies.simple_strategy_executor", "SimpleStrategyExecutor"),
+    (LegacyPackageStrategyRegistry, StrategyRegistry, "decision_module.strategies.registry", "StrategyRegistry"),
+    (LegacyStrategyRegistry, StrategyRegistry, "decision_module.strategies.registry", "StrategyRegistry"),
+    (LegacyStrategyExecutor, StrategyExecutor, "decision_module.strategies.contracts", "StrategyExecutor"),
+    (LegacyStrategyMeta, StrategyMeta, "decision_module.strategies.contracts", "StrategyMeta"),
+    (LegacyStrategySpec, StrategySpec, "decision_module.strategies.contracts", "StrategySpec"),
+    (legacy_create_daily_signal_frame, create_daily_signal_frame, "decision_module.strategies.contracts", "create_daily_signal_frame"),
+)
+for legacy_object, canonical_object, expected_module, expected_qualname in identity_pairs:
+    assert legacy_object is canonical_object
+    assert legacy_object.__module__ == expected_module
+    assert legacy_object.__qualname__ == expected_qualname
+
+expected_wire = {
+    "strategy_id": "momentum_aggressive_v1",
+    "strategy_version": "1.0.0",
+    "data_version": None,
+    "name": "",
+    "description": "",
+    "regime": [],
+    "risk_level": "medium",
+    "target_type": "stock",
+    "default_params": {"threshold_mode": "quantile", "buy_quantile_bp": 8000},
+    "config": {"params": {"threshold_mode": "quantile", "buy_quantile_bp": 8000}},
+}
+restored_from_wire = LegacyStrategySpec.from_dict(expected_wire)
+assert restored_from_wire.to_dict() == expected_wire
+assert list(restored_from_wire.to_dict()) == list(expected_wire)
+
+loaded = pickle.loads(Path(sys.argv[1]).read_bytes())
+assert type(loaded) is LegacyStrategySpec is StrategySpec
+assert loaded.to_dict() == expected_wire
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(pickle_path)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 def test_strategy_executor_contract_and_decision_import_direction():

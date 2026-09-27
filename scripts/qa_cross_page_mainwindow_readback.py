@@ -1,14 +1,16 @@
-"""Independent MainWindow readback/render probe for a saved decision journey."""
+"""以全新 MainWindow 查回並呈現已保存決策旅程的獨立探針。"""
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import date, datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, cast
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -21,7 +23,15 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from app_module.continuity_review_projection import ContinuityReviewProjectionService
+from app_module.portfolio_source_adapter import stable_snapshot_hash
+from app_module.recommendation.contracts import ExecutionStatus, RecommendationExecution
 from app_module.research_session import ResearchStockContextDTO
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    execution_result_config,
+    saved_recommendation_capture_projection,
+)
+from data_module.config import TWStockConfig
 from ui_qt.main import (
     MainWindow,
     _configure_console_streams,
@@ -42,51 +52,179 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _text(mapping: object, key: str) -> str:
-    if not isinstance(mapping, dict):
+    if not isinstance(mapping, Mapping):
         return ""
     return str(mapping.get(key) or "").strip()
 
 
-def _mapping(value: object) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
-def _saved_recommendation_stock_code(row: object) -> str | None:
-    """解析保存推薦列的雙語代號；同列矛盾時不猜測。"""
-
-    if not isinstance(row, dict):
-        return None
-    english_code = _text(row, "stock_code")
-    chinese_code = _text(row, "證券代號")
-    if english_code and chinese_code and english_code != chinese_code:
-        return None
-    return english_code or chinese_code or None
+def _identity_text(value: object, field_name: str) -> str:
+    if value is None:
+        return ""
+    if type(value) is date:
+        return value.isoformat()
+    if type(value) is str:
+        return value.strip()
+    raise ValueError(f"保存的 {field_name} 型別無法作身份核對")
 
 
-def _exact_saved_recommendation(
-    recommendations: object,
-    stock_code: str,
-) -> dict[str, Any] | None:
-    """只接受單一精確保存列，並拒絕要求股票的 alias 矛盾。"""
+def _consistent_identity_fact(field_name: str, *values: object) -> str:
+    normalized = tuple(
+        text for text in (_identity_text(value, field_name) for value in values) if text
+    )
+    if len(set(normalized)) > 1:
+        raise ValueError(f"保存的 {field_name} facts 彼此矛盾")
+    return normalized[0] if normalized else ""
 
-    if not isinstance(recommendations, list) or not stock_code:
-        return None
-    matches: list[dict[str, Any]] = []
-    for row in recommendations:
-        if not isinstance(row, dict):
-            continue
-        english_code = _text(row, "stock_code")
-        chinese_code = _text(row, "證券代號")
-        if (
-            english_code
-            and chinese_code
-            and english_code != chinese_code
-            and stock_code in {english_code, chinese_code}
-        ):
-            return None
-        if _saved_recommendation_stock_code(row) == stock_code:
-            matches.append(row)
-    return matches[0] if len(matches) == 1 else None
+
+def _canonical_json_hash(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _request_config(execution: RecommendationExecution) -> Mapping[str, Any]:
+    snapshot = execution.request.config_snapshot
+    if snapshot is None:
+        return {}
+    raw_config_json = snapshot.raw_config_json
+    if type(raw_config_json) is not str:
+        raise ValueError("保存的 Request.config_snapshot 缺少 JSON 文字")
+    document = json.loads(raw_config_json)
+    if not isinstance(document, Mapping):
+        raise ValueError("保存的 Request.config_snapshot 不是 JSON object")
+    return document
+
+
+def _canonical_identity_facts(
+    execution: RecommendationExecution,
+) -> dict[str, str]:
+    result_config = execution_result_config(execution)
+    request_config = _request_config(execution)
+    request = execution.request
+    context = execution.context
+    result_id = execution.result_id
+    universe_identity = context.universe_identity
+    universe_snapshot = (
+        universe_identity.snapshot if universe_identity is not None else None
+    )
+    if universe_snapshot is None:
+        raise ValueError("saved execution lacks typed universe snapshot identity")
+    raw_snapshot_spec = universe_snapshot.universe_snapshot_spec_json
+    if type(raw_snapshot_spec) is not str:
+        raise ValueError("saved universe snapshot 缺少 spec JSON 文字")
+    snapshot_spec = json.loads(raw_snapshot_spec)
+    if not isinstance(snapshot_spec, Mapping):
+        raise ValueError("saved universe snapshot spec 必須是 JSON object")
+    raw_universe_codes = snapshot_spec.get("selected_codes")
+    if type(raw_universe_codes) is not list or any(
+        type(code) is not str for code in raw_universe_codes
+    ):
+        raise ValueError("saved universe snapshot selected_codes 必須是字串清單")
+    universe_codes = cast(list[str], raw_universe_codes)
+    universe_code_set = set(universe_codes)
+    item_codes = tuple(item.stock_code for item in execution.items)
+    if (
+        universe_codes != sorted(universe_code_set)
+        or type(snapshot_spec.get("selected_count")) is not int
+        or snapshot_spec.get("selected_count") != len(universe_codes)
+        or snapshot_spec.get("selected_codes_hash")
+        != _canonical_json_hash({"selected_codes": universe_codes})
+        or len(set(item_codes)) != len(item_codes)
+        or any(code not in universe_code_set for code in item_codes)
+        or snapshot_spec.get("decision_date")
+        != _identity_text(context.as_of_date, "context.as_of_date")
+        or snapshot_spec.get("source_provider_id")
+        != universe_snapshot.universe_snapshot_source_provider_id
+        or universe_snapshot.universe_snapshot_selected_codes_hash
+        != _canonical_json_hash({"selected_codes": universe_codes})
+        or universe_snapshot.universe_snapshot_hash
+        != _canonical_json_hash(snapshot_spec)
+        or universe_snapshot.universe_snapshot_id
+        != "recommendation-universe-snapshot-v1:"
+        + _canonical_json_hash(snapshot_spec).removeprefix("sha256:")
+    ):
+        raise ValueError(
+            "saved universe snapshot facts do not match its input universe or execution items"
+        )
+    provider_id = _consistent_identity_fact(
+        "source_provider_id",
+        request_config.get("source_id"),
+        universe_snapshot.universe_snapshot_source_provider_id,
+    )
+    if not provider_id:
+        raise ValueError("request source provider identity is absent")
+    decision_date = _consistent_identity_fact(
+        "decision_date",
+        result_config.get("decision_date"),
+        request_config.get("decision_date"),
+    )
+    as_of_date = _consistent_identity_fact(
+        "as_of_date",
+        result_config.get("as_of_date"),
+        request_config.get("as_of_date"),
+        context.as_of_date,
+        request.as_of_date,
+    )
+    if not decision_date:
+        decision_date = as_of_date
+    data_date = _consistent_identity_fact(
+        "data_date",
+        result_config.get("data_date"),
+        request_config.get("data_date"),
+    )
+    if not data_date:
+        data_date = _consistent_identity_fact(
+            "data_as_of_date",
+            result_config.get("data_as_of_date"),
+            request_config.get("data_as_of_date"),
+        )
+    return {
+        "result_id": result_id,
+        "decision_date": decision_date,
+        "data_date": data_date,
+        "source_snapshot_id": universe_snapshot.universe_snapshot_id or "",
+        "source_snapshot_hash": universe_snapshot.universe_snapshot_hash or "",
+        "universe_snapshot_id": universe_snapshot.universe_snapshot_id or "",
+        "universe_snapshot_hash": universe_snapshot.universe_snapshot_hash or "",
+        "request_source_snapshot_id": _consistent_identity_fact(
+            "source_snapshot_id",
+            result_config.get("source_snapshot_id"),
+            request_config.get("source_snapshot_id"),
+        ),
+        "request_source_snapshot_hash": _consistent_identity_fact(
+            "source_snapshot_hash",
+            result_config.get("source_snapshot_hash"),
+            request_config.get("source_snapshot_hash"),
+        ),
+    }
+
+
+def _plain(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _plain(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_plain(item) for item in value]
+    if type(value) is date:
+        return value.isoformat()
+    if type(value) is datetime:
+        return value.isoformat()
+    return value
+
+
+def _receipt_int(receipt: Mapping[str, object], field_name: str) -> int:
+    value = receipt.get(field_name)
+    if type(value) is not int:
+        raise ValueError(f"QA receipt {field_name} 必須是整數")
+    return value
 
 
 def _not_visible(widget: object) -> bool:
@@ -110,11 +248,12 @@ class _ProbeMainWindow(MainWindow):
 
 def main() -> int:
     args = _parse_args()
-    data_root = Path(args.data_root).expanduser().resolve()
-    output_root = Path(args.output_root).expanduser().resolve()
+    base_data_root = Path(args.data_root).expanduser().resolve()
+    base_output_root = Path(args.output_root).expanduser().resolve()
     receipt_path = Path(args.receipt).expanduser().resolve()
-    os.environ["DATA_ROOT"] = str(data_root)
-    os.environ["OUTPUT_ROOT"] = str(output_root)
+    # MainWindow 會依 PROFILE 再解析一次路徑，所以環境變數保留呼叫者提供的 base。
+    os.environ["DATA_ROOT"] = str(base_data_root)
+    os.environ["OUTPUT_ROOT"] = str(base_output_root)
 
     receipt: dict[str, object] = {
         "pid": os.getpid(),
@@ -136,10 +275,28 @@ def main() -> int:
     window: _ProbeMainWindow | None = None
 
     try:
-        result_path = output_root / "recommendation" / "runs" / f"{args.result_id}.json"
+        config = TWStockConfig(
+            data_root=base_data_root,
+            output_root=base_output_root,
+        )
+        # 唯讀讀取路徑使用 config 實際解析後的 roots，與 MainWindow 同 profile。
+        data_root = Path(config.data_root).expanduser().resolve()
+        output_root = Path(config.output_root).expanduser().resolve()
+        read_model = build_recommendation_execution_queries(config).get(args.result_id)
+        if (
+            read_model is None
+            or read_model.result_id != args.result_id
+            or read_model.integrity_basis != "canonical_payload_and_index_verified"
+            or read_model.execution is None
+            or read_model.execution.result_id != args.result_id
+            or read_model.execution.status is not ExecutionStatus.COMPLETED
+            or read_model.execution.decision is None
+        ):
+            raise ValueError("saved recommendation lacks verified canonical execution")
+        execution = read_model.execution
+
         watchlist_path = output_root / "watchlist" / "default.json"
         trades_path = output_root / "portfolio" / "trades.jsonl"
-        result = json.loads(result_path.read_text(encoding="utf-8"))
         watchlist = json.loads(watchlist_path.read_text(encoding="utf-8"))
         trades = [
             json.loads(line)
@@ -166,32 +323,57 @@ def main() -> int:
             if item.candidate_key == (args.result_id, "2330")
         )
 
-        config = _mapping(result.get("config"))
-        run_context = _mapping(result.get("run_context"))
-        recommendations = result.get("recommendations")
-        recommendation = _exact_saved_recommendation(
-            recommendations,
-            watch_stock_code,
+        recommendations = tuple(
+            item for item in execution.items if item.stock_code == watch_stock_code
         )
-        if recommendation is None:
+        if len(recommendations) != 1:
             raise ValueError(
-                "saved recommendation lacks one exact, non-conflicting row "
+                "canonical execution lacks one exact selected item "
                 f"for stock_code={watch_stock_code!r}"
             )
-        result_id = _text(result, "result_id")
-        result_stock_code = _saved_recommendation_stock_code(recommendation) or ""
-        result_decision_date = _text(config, "as_of_date") or _text(
-            run_context, "as_of_date"
+        recommendation = recommendations[0]
+        identity = _canonical_identity_facts(execution)
+        result_id = execution.result_id
+        result_stock_code = recommendation.stock_code
+        result_decision_date = identity["decision_date"]
+        result_data_date = identity["data_date"]
+        result_snapshot_id = identity["source_snapshot_id"]
+        result_snapshot_hash = identity["source_snapshot_hash"]
+        request_config = _request_config(execution)
+        capture_projection = saved_recommendation_capture_projection(read_model)
+        universe_identity = execution.context.universe_identity
+        universe_snapshot = (
+            universe_identity.snapshot if universe_identity is not None else None
         )
-        result_data_date = _text(config, "data_date") or _text(
-            run_context, "data_date"
-        )
-        result_snapshot_id = _text(config, "source_snapshot_id") or _text(
-            run_context, "source_snapshot_id"
-        )
-        result_snapshot_hash = _text(config, "source_snapshot_hash") or _text(
-            run_context, "source_snapshot_hash"
-        )
+        if universe_snapshot is None:
+            raise ValueError("saved execution lacks typed universe snapshot identity")
+        raw_universe_spec = universe_snapshot.universe_snapshot_spec_json
+        if type(raw_universe_spec) is not str:
+            raise ValueError("saved universe snapshot 缺少 spec JSON 文字")
+        universe_snapshot_spec = json.loads(raw_universe_spec)
+        if not isinstance(universe_snapshot_spec, Mapping):
+            raise ValueError("saved universe snapshot spec 必須是 JSON object")
+        receipt["canonical_saved_projection"] = {
+            "integrity_basis": read_model.integrity_basis,
+            "execution_status": execution.status.value,
+            "result_id": read_model.result_id,
+            "selected_stock_code": recommendation.stock_code,
+            "execution_selected_stock_codes": [
+                item.stock_code for item in execution.items
+            ],
+            "execution_selected_count": len(execution.items),
+            "universe_selected_codes": universe_snapshot_spec["selected_codes"],
+            "universe_selected_count": universe_snapshot_spec["selected_count"],
+            "request_source_snapshot_id": identity[
+                "request_source_snapshot_id"
+            ],
+            "request_source_snapshot_hash": identity[
+                "request_source_snapshot_hash"
+            ],
+            "universe_snapshot_id": identity["universe_snapshot_id"],
+            "universe_snapshot_hash": identity["universe_snapshot_hash"],
+            "capture": _plain(capture_projection),
+        }
         trade_summary = _mapping(trade.get("source_summary"))
         expected_identity = {
             "result_id": args.result_id,
@@ -200,10 +382,20 @@ def main() -> int:
             "data_date": result_data_date,
             "source_snapshot_id": result_snapshot_id,
             "source_snapshot_hash": result_snapshot_hash,
+            "universe_snapshot_id": identity["universe_snapshot_id"],
+            "universe_snapshot_hash": identity["universe_snapshot_hash"],
+            "recommendation_source_snapshot_id": identity[
+                "request_source_snapshot_id"
+            ],
+            "recommendation_source_snapshot_hash": identity[
+                "request_source_snapshot_hash"
+            ],
         }
         context = ResearchStockContextDTO(
             stock_code=_text(watch_identity, "stock_code") or result_stock_code,
-            stock_name=_text(watch_item, "stock_name") or _text(recommendation, "證券名稱"),
+            stock_name=(
+                _text(watch_item, "stock_name") or recommendation.stock_name or ""
+            ),
             decision_date=(
                 _text(watch_identity, "decision_date")
                 or result_decision_date
@@ -219,8 +411,8 @@ def main() -> int:
                 _text(watch_identity, "source_snapshot_hash")
                 or result_snapshot_hash
             ),
-            source_id=_text(watch_item, "source_id") or _text(config, "source_id"),
-            source_kind=_text(config, "source_kind") or "persisted_recommendation",
+            source_id=_text(watch_item, "source_id") or _text(request_config, "source_id"),
+            source_kind=_text(request_config, "source_kind") or "persisted_recommendation",
             source_workspace="watchlist",
         )
         watch_readback = {
@@ -239,8 +431,12 @@ def main() -> int:
             "decision_date": _text(trade_summary, "decision_date")
             or _text(trade, "trade_date"),
             "source_snapshot_id": _text(trade_summary, "source_snapshot_id"),
-            "source_snapshot_hash": _text(trade, "source_snapshot_hash")
-            or _text(trade_summary, "source_snapshot_hash"),
+            "source_snapshot_hash": _text(trade_summary, "source_snapshot_hash"),
+            "summary_checksum": _text(trade, "source_snapshot_hash"),
+            "summary_checksum_verified": (
+                _text(trade, "source_snapshot_hash")
+                == stable_snapshot_hash(trade_summary)
+            ),
         }
         continuity_readback = {
             "result_id": continuity_item.result_id,
@@ -263,13 +459,14 @@ def main() -> int:
                 "source_snapshot_id": expected_identity["source_snapshot_id"],
                 "source_snapshot_hash": expected_identity["source_snapshot_hash"],
             }
-            and trade_readback == {
-                "result_id": expected_identity["result_id"],
-                "stock_code": expected_identity["stock_code"],
-                "decision_date": expected_identity["decision_date"],
-                "source_snapshot_id": expected_identity["source_snapshot_id"],
-                "source_snapshot_hash": expected_identity["source_snapshot_hash"],
-            }
+            and trade_readback["result_id"] == expected_identity["result_id"]
+            and trade_readback["stock_code"] == expected_identity["stock_code"]
+            and trade_readback["decision_date"] == expected_identity["decision_date"]
+            and trade_readback["source_snapshot_id"]
+            == expected_identity["source_snapshot_id"]
+            and trade_readback["source_snapshot_hash"]
+            == expected_identity["source_snapshot_hash"]
+            and trade_readback["summary_checksum_verified"] is True
             and continuity_readback["result_id"] == expected_identity["result_id"]
             and continuity_readback["stock_code"] == expected_identity["stock_code"]
             and continuity_readback["decision_date"] == expected_identity["decision_date"]
@@ -290,6 +487,18 @@ def main() -> int:
             "portfolio_trade": trade_readback,
             "continuity": continuity_readback,
             "candidate_key": continuity_item.candidate_key_text,
+            "recommendation_source_snapshot": {
+                "source_snapshot_id": identity[
+                    "request_source_snapshot_id"
+                ],
+                "source_snapshot_hash": identity[
+                    "request_source_snapshot_hash"
+                ],
+            },
+            "universe_snapshot": {
+                "universe_snapshot_id": identity["universe_snapshot_id"],
+                "universe_snapshot_hash": identity["universe_snapshot_hash"],
+            },
         }
 
         app = QApplication.instance() or QApplication(sys.argv)
@@ -321,8 +530,8 @@ def main() -> int:
             if close_started or not report_loaded or not journey_loaded:
                 return
             close_started = True
-            receipt["idle_close_requests"] = int(
-                receipt["idle_close_requests"]
+            receipt["idle_close_requests"] = _receipt_int(
+                receipt, "idle_close_requests"
             ) + 1
             window.close()
             QTimer.singleShot(0, finish_after_close)
@@ -408,6 +617,12 @@ def main() -> int:
                 for item in getattr(journey, "outcome_maturity", ())
                 if getattr(item, "candidate_key", None) == candidate_key
             )
+            linked_trades = tuple(
+                item
+                for item in getattr(journey, "portfolio_trades", ())
+                if getattr(item, "source_id", None) == context.result_id
+                and getattr(item, "stock_code", None) == context.stock_code
+            )
             controls = journey_view.continuity_controls
             controls_identity = getattr(controls, "identity", None)
             controls_state = getattr(controls, "state", None)
@@ -416,13 +631,36 @@ def main() -> int:
                 rendered = {}
                 receipt["rendered_identity"] = rendered
             rendered["journey"] = {
+                "status": str(getattr(journey, "status", "")),
                 "result_id": getattr(result_record, "result_id", ""),
+                "result_link_status": str(
+                    getattr(result_record, "link_status", "")
+                ),
                 "candidate_key": list(getattr(candidate, "candidate_key", ()) or ()),
                 "candidate_found": candidate is not None,
+                "portfolio_trade_count": len(linked_trades),
+                "portfolio_trade_link_statuses": [
+                    str(getattr(item, "link_status", ""))
+                    for item in linked_trades
+                ],
                 "decision_date": getattr(result_record, "decision_date", ""),
-                "source_snapshot_id": getattr(source_identity, "source_snapshot_id", ""),
+                "source_snapshot_id": getattr(
+                    source_identity, "source_snapshot_id", None
+                )
+                or "",
                 "source_snapshot_hash": getattr(
-                    source_identity, "source_snapshot_hash", ""
+                    source_identity, "source_snapshot_hash", None
+                )
+                or "",
+                "universe_snapshot_id": getattr(
+                    source_identity,
+                    "universe_snapshot_id",
+                    "",
+                ),
+                "universe_snapshot_hash": getattr(
+                    source_identity,
+                    "universe_snapshot_hash",
+                    "",
                 ),
                 "maturity_rows": [
                     {
@@ -431,6 +669,14 @@ def main() -> int:
                         "outcome_status": getattr(item, "outcome_status", ""),
                     }
                     for item in maturity
+                ],
+                "diagnostics": [
+                    {
+                        "code": getattr(item, "code", ""),
+                        "detail": getattr(item, "detail", ""),
+                        "severity": getattr(item, "severity", ""),
+                    }
+                    for item in getattr(journey, "diagnostics", ())
                 ],
                 "status_text": journey_view.status_label.text(),
             }
@@ -454,13 +700,21 @@ def main() -> int:
                 and getattr(result_record, "result_id", "") == context.result_id
                 and candidate is not None
                 and getattr(candidate, "candidate_key", None) == candidate_key
+                and len(linked_trades) == 1
+                and getattr(
+                    getattr(linked_trades[0], "link_status", None), "value", None
+                ) == "linked"
                 and source_identity is not None
                 and getattr(source_identity, "decision_date", "")
                 == expected_identity["decision_date"]
-                and getattr(source_identity, "source_snapshot_id", "")
-                == expected_identity["source_snapshot_id"]
-                and getattr(source_identity, "source_snapshot_hash", "")
-                == expected_identity["source_snapshot_hash"]
+                and (getattr(source_identity, "source_snapshot_id", None) or "")
+                == expected_identity["recommendation_source_snapshot_id"]
+                and (getattr(source_identity, "source_snapshot_hash", None) or "")
+                == expected_identity["recommendation_source_snapshot_hash"]
+                and getattr(source_identity, "universe_snapshot_id", "")
+                == expected_identity["universe_snapshot_id"]
+                and getattr(source_identity, "universe_snapshot_hash", "")
+                == expected_identity["universe_snapshot_hash"]
                 and controls is not None
                 and controls_identity is not None
                 and controls_identity.candidate_key == candidate_key
@@ -552,9 +806,13 @@ def main() -> int:
             and journey_identity.get("decision_date")
             == expected_identity["decision_date"]
             and journey_identity.get("source_snapshot_id")
-            == expected_identity["source_snapshot_id"]
+            == expected_identity["recommendation_source_snapshot_id"]
             and journey_identity.get("source_snapshot_hash")
-            == expected_identity["source_snapshot_hash"]
+            == expected_identity["recommendation_source_snapshot_hash"]
+            and journey_identity.get("universe_snapshot_id")
+            == expected_identity["universe_snapshot_id"]
+            and journey_identity.get("universe_snapshot_hash")
+            == expected_identity["universe_snapshot_hash"]
             and controls_identity.get("candidate_key")
             == [expected_identity["result_id"], expected_identity["stock_code"]]
             and controls_identity.get("identity_status") == "linked"
@@ -589,10 +847,10 @@ def main() -> int:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
         if window is not None:
-            app = QApplication.instance()
-            if app is not None:
+            cleanup_app = QApplication.instance()
+            if isinstance(cleanup_app, QApplication):
                 try:
-                    _drain_qt_deferred_deletes(app, (window,))
+                    _drain_qt_deferred_deletes(cleanup_app, (window,))
                 except (RuntimeError, TypeError):
                     pass
             receipt["main_window_close_event_count"] = window.close_event_count
@@ -602,7 +860,7 @@ def main() -> int:
             json.dumps(receipt, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-    return int(receipt["process_exit_code"])
+    return _receipt_int(receipt, "process_exit_code")
 
 
 if __name__ == "__main__":

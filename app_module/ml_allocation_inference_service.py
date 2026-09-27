@@ -12,7 +12,7 @@ registry 或 broker，也不能授權非零 alpha。
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, time
 from decimal import Decimal, ROUND_HALF_EVEN
 import hashlib
@@ -38,10 +38,10 @@ from app_module.portfolio_allocation_dtos import (
 )
 from financial_module.portfolio_turnover import canonical_turnover_bp
 from ml_module.allocation_contracts import PITFeatureValue, PortfolioMLDatasetRow
-from ml_module.restated_research_input_contract import (
+from artifact_contracts.restated_research_contract import (
     RESTATED_RESEARCH_PROFILE,
     RestatedResearchInputBinding,
-    research_rows_hash,
+    hash_canonical_research_row_payloads,
 )
 from ml_module.allocation_rank_contract import (
     DEFAULT_RANK_CONTRACT,
@@ -585,10 +585,8 @@ class MLAllocationInferenceService:
                 raise ValueError("distinct input binding requires a restated research release")
             if research_input_binding.feature_registry_hash != self._artifact.feature_registry_hash:
                 raise ValueError("research input feature registry differs from training")
-            from ml_module.restated_research_input_contract import require_compatible_market_sources
-
-            require_compatible_market_sources(
-                self._artifact.source_manifest_hashes, research_input_binding.source_manifest_hashes,
+            research_input_binding.require_compatible_training_sources(
+                self._artifact.source_manifest_hashes,
             )
             if tuple(name for name, _ in research_input_binding.ordered_features) != tuple(
                 feature_id for pack in self._artifact.feature_packs for feature_id in pack.feature_ids
@@ -596,7 +594,9 @@ class MLAllocationInferenceService:
                 raise ValueError("research input feature order differs from training")
             if _parse_available_at(research_input_binding.captured_at, field_name="captured_at") != decision_at:
                 raise ValueError("research input capture clock differs from inference")
-            if research_rows_hash(canonical) != research_input_binding.prepared_rows_hash:
+            if hash_canonical_research_row_payloads(
+                [asdict(row) for row in canonical]
+            ) != research_input_binding.prepared_rows_hash:
                 raise ValueError("prepared research rows changed after binding")
             for row in canonical:
                 if tuple((feature.feature_id, feature.scale) for feature in row.features) != research_input_binding.ordered_features:
@@ -1673,7 +1673,7 @@ def _validate_meta_fit_lineage(
     # Import lazily to keep the common inference parser's dependency surface
     # unchanged.  Exact types prevent an arbitrary predictor from opting into
     # this no-training exception by copying a few target-summary flags.
-    from ml_module.allocation_v3_linear_release import (
+    from artifact_contracts.allocation_model_types import (
         _ConstantProbabilityModel,
         _ConstantRegressionModel,
     )

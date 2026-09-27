@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import pickle
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import date, datetime, time
 from io import BytesIO
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import joblib
+import numpy as np
 import pytest
 
 import app_module.ml_allocation_inference_service as inference_module
@@ -442,3 +447,201 @@ def test_identical_inputs_have_identical_proposal_and_replay_hash(
     assert first.proposal_hash == second.proposal_hash
     assert first.replay_hash == second.replay_hash
     assert first.audit_json == second.audit_json
+
+
+def test_constant_model_types_preserve_legacy_pickle_and_joblib_abi(
+    tmp_path: Path,
+) -> None:
+    from artifact_contracts.allocation_model_types import (
+        _ConstantProbabilityModel as SharedConstantProbabilityModel,
+        _ConstantRegressionModel as SharedConstantRegressionModel,
+    )
+    from ml_module.allocation_v3_linear_release import (
+        _ConstantProbabilityModel,
+        _ConstantRegressionModel,
+    )
+
+    assert _ConstantProbabilityModel is SharedConstantProbabilityModel
+    assert _ConstantRegressionModel is SharedConstantRegressionModel
+    for model_type, method_name in (
+        (_ConstantProbabilityModel, "predict_proba"),
+        (_ConstantRegressionModel, "predict"),
+    ):
+        assert model_type.__module__ == "ml_module.allocation_v3_linear_release"
+        assert model_type.__qualname__ == model_type.__name__
+        assert (
+            model_type.__init__.__module__
+            == "ml_module.allocation_v3_linear_release"
+        )
+        assert model_type.__init__.__qualname__ == (
+            f"{model_type.__qualname__}.__init__"
+        )
+        method = getattr(model_type, method_name)
+        assert method.__module__ == "ml_module.allocation_v3_linear_release"
+        assert method.__qualname__ == f"{model_type.__qualname__}.{method_name}"
+
+    legacy_hex = {
+        "probability.protocol4.pickle": "80049565000000000000008c266d6c5f6d6f64756c652e616c6c6f636174696f6e5f76335f6c696e6561725f72656c65617365948c195f436f6e7374616e7450726f626162696c6974794d6f64656c9493942981947d948c1170726f626162696c6974795f636c617373944b0173622e",
+        "probability.protocol5.pickle": "80059565000000000000008c266d6c5f6d6f64756c652e616c6c6f636174696f6e5f76335f6c696e6561725f72656c65617365948c195f436f6e7374616e7450726f626162696c6974794d6f64656c9493942981947d948c1170726f626162696c6974795f636c617373944b0173622e",
+        "probability.joblib": "80059565000000000000008c266d6c5f6d6f64756c652e616c6c6f636174696f6e5f76335f6c696e6561725f72656c65617365948c195f436f6e7374616e7450726f626162696c6974794d6f64656c9493942981947d948c1170726f626162696c6974795f636c617373944b0173622e",
+        "regression.protocol4.pickle": "80049559000000000000008c266d6c5f6d6f64756c652e616c6c6f636174696f6e5f76335f6c696e6561725f72656c65617365948c185f436f6e7374616e7452656772657373696f6e4d6f64656c9493942981947d948c0576616c7565944d102773622e",
+        "regression.protocol5.pickle": "80059559000000000000008c266d6c5f6d6f64756c652e616c6c6f636174696f6e5f76335f6c696e6561725f72656c65617365948c185f436f6e7374616e7452656772657373696f6e4d6f64656c9493942981947d948c0576616c7565944d102773622e",
+        "regression.joblib": "80059559000000000000008c266d6c5f6d6f64756c652e616c6c6f636174696f6e5f76335f6c696e6561725f72656c65617365948c185f436f6e7374616e7452656772657373696f6e4d6f64656c9493942981947d948c0576616c7565944d102773622e",
+    }
+    fixture_root = tmp_path / "legacy_constant_model_bytes"
+    fixture_root.mkdir()
+    for filename, encoded in legacy_hex.items():
+        (fixture_root / filename).write_bytes(bytes.fromhex(encoded))
+
+    child = r"""
+import inspect
+import joblib
+import pickle
+import sys
+from pathlib import Path
+from typing import get_type_hints
+
+import numpy as np
+
+fixture_root = Path(sys.argv[1])
+if sys.argv[2] == "shared-first":
+    from artifact_contracts.allocation_model_types import (
+        _ConstantProbabilityModel as SharedProbability,
+        _ConstantRegressionModel as SharedRegression,
+    )
+    from ml_module.allocation_v3_linear_release import (
+        _ConstantProbabilityModel as LegacyProbability,
+        _ConstantRegressionModel as LegacyRegression,
+    )
+else:
+    from ml_module.allocation_v3_linear_release import (
+        _ConstantProbabilityModel as LegacyProbability,
+        _ConstantRegressionModel as LegacyRegression,
+    )
+    from artifact_contracts.allocation_model_types import (
+        _ConstantProbabilityModel as SharedProbability,
+        _ConstantRegressionModel as SharedRegression,
+    )
+
+assert SharedProbability is LegacyProbability
+assert SharedRegression is LegacyRegression
+matrix = np.asarray([[0.0, 1.0], [2.0, 3.0]], dtype=np.float64)
+for filename in sorted(path.name for path in fixture_root.iterdir()):
+    path = fixture_root / filename
+    value = (
+        joblib.load(path)
+        if filename.endswith(".joblib")
+        else pickle.loads(path.read_bytes())
+    )
+    if filename.startswith("probability"):
+        assert type(value) is SharedProbability
+        assert value.probability_class == 1
+        prediction = value.predict_proba(matrix)
+        assert prediction.dtype == np.dtype("float64")
+        assert prediction.shape == (2, 2)
+        assert prediction.tolist() == [[0.0, 1.0], [0.0, 1.0]]
+        method = SharedProbability.predict_proba
+        assert str(get_type_hints(method)["matrix"]) == (
+            "numpy.ndarray[tuple[typing.Any, ...], numpy.dtype[typing.Any]]"
+        )
+        assert str(inspect.signature(SharedProbability.__init__)) == (
+            "(self, probability_class: 'int') -> 'None'"
+        )
+        assert get_type_hints(SharedProbability.__init__)["probability_class"] is int
+        assert str(get_type_hints(method)["return"]) == (
+            "numpy.ndarray[tuple[typing.Any, ...], numpy.dtype[numpy.float64]]"
+        )
+    else:
+        assert type(value) is SharedRegression
+        assert value.value == 10000
+        prediction = value.predict(matrix)
+        assert prediction.dtype == np.dtype("float64")
+        assert prediction.shape == (2,)
+        assert prediction.tolist() == [10000.0, 10000.0]
+        method = SharedRegression.predict
+        assert str(get_type_hints(method)["matrix"]) == (
+            "numpy.ndarray[tuple[typing.Any, ...], numpy.dtype[typing.Any]]"
+        )
+        assert str(inspect.signature(SharedRegression.__init__)) == (
+            "(self, value: 'int') -> 'None'"
+        )
+        assert get_type_hints(SharedRegression.__init__)["value"] is int
+        assert str(get_type_hints(method)["return"]) == (
+            "numpy.ndarray[tuple[typing.Any, ...], numpy.dtype[numpy.float64]]"
+        )
+"""
+    repo_root = Path(__file__).resolve().parents[1]
+    for order in ("shared-first", "legacy-first"):
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(fixture_root), order],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_constant_model_exact_type_gate_and_constructor_semantics_are_unchanged() -> None:
+    from artifact_contracts.allocation_model_types import (
+        _ConstantProbabilityModel,
+        _ConstantRegressionModel,
+    )
+
+    assert _ConstantProbabilityModel(True).probability_class is True
+    with pytest.raises(IndexError):
+        _ConstantProbabilityModel(1.0).predict_proba(np.zeros((1, 2)))
+    assert _ConstantRegressionModel("7").value == 7
+    assert _ConstantRegressionModel(7.8).value == 7
+
+    target_summary = {
+        "training_skipped": True,
+        "model_learned_allocation": False,
+        "status": "verified_original_targets_constant_cash_only; neutral_meta_policy",
+        "neutral_meta_policy": (
+            "fixed cash-only schema adapter; allocation heads remain research signals only"
+        ),
+        "target_values": {
+            "target_weight_bp": 0,
+            "delta_weight_bp": 0,
+            "risk_contribution_bp": 0,
+            "risky_budget_bp": 0,
+            "cash_bp": 10_000,
+            "rebalance": 0,
+        },
+    }
+    numeric = {
+        "target_weight_bp": _ConstantRegressionModel(0),
+        "delta_weight_bp": _ConstantRegressionModel(0),
+        "risk_contribution_bp": _ConstantRegressionModel(0),
+        "risky_budget_bp": _ConstantRegressionModel(0),
+        "cash_bp": _ConstantRegressionModel(10_000),
+    }
+    inference_module._validate_meta_fit_lineage(
+        meta_models={
+            "fit_row_ids": (),
+            "numeric": numeric,
+            "rebalance": _ConstantProbabilityModel(0),
+        },
+        target_summary=target_summary,
+        training_profile="sealed_restated_linear_shadow_v1",
+    )
+
+    class LookalikeConstantRegressionModel:
+        classifier = False
+
+        def __init__(self, value: int) -> None:
+            self.value = value
+
+    numeric["cash_bp"] = LookalikeConstantRegressionModel(10_000)
+    with pytest.raises(ValueError, match="exact audited cash-only constants"):
+        inference_module._validate_meta_fit_lineage(
+            meta_models={
+                "fit_row_ids": (),
+                "numeric": numeric,
+                "rebalance": _ConstantProbabilityModel(0),
+            },
+            target_summary=target_summary,
+            training_profile="sealed_restated_linear_shadow_v1",
+        )

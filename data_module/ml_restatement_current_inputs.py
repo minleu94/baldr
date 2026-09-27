@@ -172,6 +172,12 @@ class PreparedRestatedCurrentInputs:
     dataset_manifest_path: str
     feature_asof_date: str
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.binding, RestatedResearchInputBinding):
+            raise TypeError(
+                "prepared restated inputs require a RestatedResearchInputBinding"
+            )
+
     def receipt(self) -> dict[str, object]:
         return {
             **self.binding.to_dict(),

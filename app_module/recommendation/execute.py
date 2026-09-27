@@ -15,13 +15,16 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
-from app_module.dtos import RecommendationDTO
+from app_module.recommendation.legacy_dtos import RecommendationDTO
 from app_module.recommendation.body_result import (
     LegacyRecommendationSnapshot,
     RecommendationBodyContextFacts,
     RecommendationBodyResult,
     snapshot_cohort_from_body_result,
     snapshot_cohort_payload_from_body_result,
+)
+from app_module.recommendation.negative_evidence_projection import (
+    project_canonical_negative_evidence,
 )
 from app_module.recommendation.legacy_compatibility import (
     LEGACY_COMPATIBILITY_FIELDS,
@@ -394,6 +397,10 @@ def execute_recommendation(
             raise ValueError(
                 "postprocess capture 缺少同次 available_at 或 decision_at"
             )
+        negative_evidence = project_canonical_negative_evidence(
+            body_result.decision,
+            allow_empty=True,
+        )
         postprocess_input = RecommendationPostprocessInput(
             result_id=result_id_from_context,
             request=request,
@@ -401,9 +408,7 @@ def execute_recommendation(
             recommendations=tuple(
                 deepcopy(cast_recommendations(capture["legacy_recommendations"]))
             ),
-            screening_matrix=tuple(
-                compatibility_snapshot.materialize()["last_screening_matrix"]
-            ),
+            screening_matrix=negative_evidence.screening_matrix,
             context=invocation_context,
             body_result=body_result,
         )
@@ -1023,6 +1028,8 @@ def _build_execution(
         compatibility_snapshot,
         capture,
         post_calibration_handoff,
+        status=status,
+        body_result=body_result,
     )
     if invocation_context is not None:
         events = (
@@ -1089,6 +1096,9 @@ def _capture_events(
     compatibility_snapshot: LegacyCompatibilitySnapshot | None,
     capture: Mapping[str, Any],
     post_calibration_handoff: RecommendationPostCalibrationHandoffV1,
+    *,
+    status: ExecutionStatus,
+    body_result: RecommendationBodyResult | None,
 ) -> tuple[ExecutionEvent, ...]:
     events: list[ExecutionEvent] = []
     legacy_state = (
@@ -1119,30 +1129,48 @@ def _capture_events(
                 },
             )
         )
-    matrix = legacy_state.get("last_screening_matrix", ())
+    if status is ExecutionStatus.COMPLETED:
+        if type(body_result) is not RecommendationBodyResult:
+            raise ValueError("completed execution 缺少 typed BodyResult negative evidence")
+        projection = project_canonical_negative_evidence(
+            body_result.decision,
+            allow_empty=True,
+        )
+        matrix = projection.screening_matrix
+        event_details = projection.as_event_details()
+    else:
+        # 失敗或取消時沿用原本的部分相容事件，不以 typed 投影取代。
+        matrix = legacy_state.get("last_screening_matrix", ())
+        event_details = {
+            "screening_matrix": _safe_contract_value(matrix),
+            "excluded_candidates": _safe_contract_value(
+                legacy_state.get("last_excluded_candidates_json", ())
+            ),
+            "why_not_payload": _safe_contract_value(
+                legacy_state.get("last_why_not_payload_json", ())
+            ),
+            "liquidity_gate_payload": _safe_contract_value(
+                legacy_state.get("last_liquidity_gate_payload_json", ())
+            ),
+            "exclusion_quality": str(
+                legacy_state.get("last_exclusion_quality", "unknown")
+            ),
+            "exclusion_warnings": _string_tuple(
+                legacy_state.get("last_exclusion_warnings_json", ())
+            ),
+        }
     if matrix:
+        message = (
+            "封存 legacy:<stage> assessment 的 v1 screening projection，"
+            "供舊 reader 延續讀取。"
+            if status is ExecutionStatus.COMPLETED
+            else "Negative-evidence typed assessments 以外的原始 matrix 欄位保存在同次 invocation capture。"
+        )
         events.append(
             ExecutionEvent(
                 event_type="legacy_negative_evidence_capture",
-                message="Negative-evidence typed assessments 以外的原始 matrix 欄位保存在同次 invocation capture。",
-                details={
-                    "screening_matrix": _safe_contract_value(matrix),
-                    "excluded_candidates": _safe_contract_value(
-                        legacy_state.get("last_excluded_candidates_json", ())
-                    ),
-                    "why_not_payload": _safe_contract_value(
-                        legacy_state.get("last_why_not_payload_json", ())
-                    ),
-                    "liquidity_gate_payload": _safe_contract_value(
-                        legacy_state.get("last_liquidity_gate_payload_json", ())
-                    ),
-                    "exclusion_quality": str(
-                        legacy_state.get("last_exclusion_quality", "unknown")
-                    ),
-                    "exclusion_warnings": _string_tuple(
-                        legacy_state.get("last_exclusion_warnings_json", ())
-                    ),
-                },
+                message=message,
+                details=event_details,
             )
         )
     receipt_event = post_calibration_handoff.receipt_event

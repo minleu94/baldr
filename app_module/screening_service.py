@@ -35,7 +35,11 @@ class ScreeningService:
         """
         self.config = config
         if industry_mapper is None:
-            self.industry_mapper = IndustryMapper(config)
+            from app_module.decision_service_composition import build_industry_mapper
+
+            self.industry_mapper = build_industry_mapper(
+                config, constructor=IndustryMapper
+            )
         else:
             self.industry_mapper = industry_mapper
         if stock_screener is None:

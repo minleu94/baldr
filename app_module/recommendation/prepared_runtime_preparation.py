@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app_module.dtos import RecommendationDTO
+from app_module.recommendation.legacy_dtos import RecommendationDTO
 from app_module.recommendation.historical_snapshot_custody import (
     HistoricalRawSnapshotQueryScopeV1,
     build_historical_raw_snapshot_custody_facts_v1,

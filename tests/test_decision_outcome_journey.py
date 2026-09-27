@@ -8,9 +8,12 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
+import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 from typing import Any, Mapping, Sequence
 
 import pytest
@@ -28,9 +31,21 @@ from app_module.decision_outcome_journey import (
 )
 from app_module.recommendation.codec import decode_execution_envelope
 from app_module.recommendation.persistence import RecommendationExecutionPersistence
-from app_module.recommendation.contracts import ExecutionStatus, RecommendationExecution
+from app_module.recommendation.contracts import (
+    RecommendationConfigSnapshot,
+    ExecutionStatus,
+    RecommendationExecution,
+    ReferenceKind,
+    VersionReference,
+)
+from app_module.portfolio_source_adapter import (
+    build_recommendation_execution_trade_source,
+    stable_snapshot_hash,
+)
+from data_module.contracts.market import SourceRef
 from data_module.result_artifact_store import ResultArtifactStore
 from data_module.portfolio_ledger_repository import PortfolioLedgerEvent, PortfolioLedgerRepository
+from data_module.config import TWStockConfig
 
 
 RESULT_ID = "synthetic-result-001"
@@ -920,6 +935,515 @@ def test_journey_reads_canonical_query_projection_and_uses_verified_artifact_loc
         for contribution in source_candidate.factor_contributions
     ]
     json.dumps(journey.to_dict(), allow_nan=False)
+
+
+def test_canonical_portfolio_summary_links_only_to_verified_query_facts(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "canonical-trade-output"
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "c1_consumer_readiness"
+        / "r016_execution_rev2.json"
+    )
+    execution = decode_execution_envelope(fixture.read_bytes()).execution
+    execution = replace(
+        execution,
+        context=replace(
+            execution.context,
+            source_refs=(
+                SourceRef(
+                    source_id="verified-source-for-int-revision",
+                    revision=7,
+                    snapshot_id="source-snapshot-int-revision",
+                ),
+                SourceRef(
+                    source_id="verified-source-for-bool-int-wire-check",
+                    revision=1,
+                    snapshot_id="source-snapshot-bool-int-wire-check",
+                ),
+            ),
+            data_snapshot_refs=(
+                VersionReference(
+                    kind=ReferenceKind.DATA_SNAPSHOT,
+                    reference_id="data-snapshot-int-revision",
+                    version="market-frame-v3",
+                ),
+            ),
+        ),
+    )
+    runs_dir = output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    receipt = RecommendationExecutionPersistence(store).save(
+        execution,
+        label="合成 canonical trade journey",
+        now=lambda: datetime(2026, 9, 24, tzinfo=timezone.utc),
+    )
+    adapter = JsonRecommendationReadAdapter(output_root)
+    verified_read_model = adapter._queries.get(execution.result_id)
+    assert verified_read_model is not None
+    assert verified_read_model.execution == execution
+    assert verified_read_model.ml_read_status != "verified"
+    selected = execution.items[0]
+    source = build_recommendation_execution_trade_source(
+        execution,
+        verified_read_model,
+        receipt,
+        selected,
+    )
+    base_trade = {
+        "trade_id": "canonical-trade-verified-root",
+        "portfolio_id": "default",
+        "trade_date": execution.context.as_of_date.isoformat(),
+        "stock_code": selected.stock_code,
+        "side": "buy",
+        "quantity": 10,
+        "price": "100.00",
+        "fees": "0",
+        "taxes": "0",
+        "source_type": source.source_type,
+        "source_id": source.source_id,
+        "source_snapshot_hash": source.source_snapshot_hash,
+        "source_summary": source.source_summary,
+    }
+    service = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+        portfolio_trade_reader=MemoryTrades((base_trade,)),
+    )
+
+    journey = service.build(execution.result_id)
+
+    assert len(journey.portfolio_trades) == 1
+    assert journey.portfolio_trades[0].link_status is JourneyLinkStatus.LINKED, journey.diagnostics
+    assert journey.portfolio_trades[0].source_snapshot_hash == source.source_snapshot_hash
+    assert base_trade["source_snapshot_hash"] == stable_snapshot_hash(
+        base_trade["source_summary"]
+    )
+    assert source.source_summary["candidate_identity"] == {
+        "stock_code": selected.stock_code,
+        "rank": selected.rank,
+    }
+    assert source.source_summary["source_refs"][0]["revision"] == 7
+    assert source.source_summary["source_refs"][1]["revision"] == 1
+    assert source.source_summary["data_snapshot_ids"] == ["data-snapshot-int-revision"]
+    assert source.source_summary["calibrated_probability_bp"] is None
+    assert source.source_summary["calibrated_probability_status"] == "unavailable"
+    assert source.source_summary["after_cost_profit_probability_bp"] is None
+    assert source.source_summary["after_cost_profit_probability_status"] == "unavailable"
+    assert source.source_summary["calibration_status"] == "unavailable"
+    assert source.source_summary["calibration_provenance"] == {
+        "training_provenance": {},
+        "inference_provenance": {},
+        "provenance_compatibility": {},
+        "provenance_status": "unavailable",
+    }
+
+    from ui_qt.views.portfolio_view import _canonical_trade_summary_matches_execution
+
+    exact_wire_position = SimpleNamespace(
+        source_snapshot_hash=source.source_snapshot_hash,
+    )
+    assert selected.regime_match is True
+    assert _canonical_trade_summary_matches_execution(
+        exact_wire_position,
+        source.source_summary,
+        execution,
+        verified_read_model,
+        selected.stock_code,
+    ) is True
+    for mutate_wire_type in (
+        lambda summary: summary.__setitem__("regime_match", 1),
+        lambda summary: summary["source_refs"][1].__setitem__("revision", True),
+    ):
+        changed_summary = json.loads(json.dumps(source.source_summary))
+        mutate_wire_type(changed_summary)
+        changed_position = SimpleNamespace(
+            source_snapshot_hash=stable_snapshot_hash(changed_summary),
+        )
+        assert _canonical_trade_summary_matches_execution(
+            changed_position,
+            changed_summary,
+            execution,
+            verified_read_model,
+            selected.stock_code,
+        ) is False
+
+    for mutate_unavailable_projection in (
+        lambda summary: summary.__setitem__("calibrated_probability_bp", 9_900),
+        lambda summary: summary.__setitem__("after_cost_profit_probability_bp", 9_800),
+        lambda summary: summary.__setitem__("calibrated_probability_status", "verified"),
+        lambda summary: summary.__setitem__("calibration_status", "active_candidate"),
+        lambda summary: summary["calibration_provenance"].__setitem__(
+            "provenance_status", "verified"
+        ),
+    ):
+        changed_summary = json.loads(json.dumps(source.source_summary))
+        mutate_unavailable_projection(changed_summary)
+        changed_position = SimpleNamespace(
+            source_snapshot_hash=stable_snapshot_hash(changed_summary),
+        )
+        assert _canonical_trade_summary_matches_execution(
+            changed_position,
+            changed_summary,
+            execution,
+            verified_read_model,
+            selected.stock_code,
+        ) is False
+
+    # Journey 的 LINKED 表示 lineage 身分可對接，不宣稱 opaque candidate
+    # display 欄位有獨立內容簽章；PortfolioView 另以 typed candidate 核對顯示值。
+    display_edit = json.loads(json.dumps(source.source_summary))
+    display_edit["total_score"] = "999999"
+    display_edit_trade = {
+        **base_trade,
+        "source_snapshot_hash": stable_snapshot_hash(display_edit),
+        "source_summary": display_edit,
+    }
+    display_edit_journey = DecisionOutcomeJourneyService(
+        recommendation_reader=JsonRecommendationReadAdapter(output_root),
+        evidence_reader=MemoryEvidence(()),
+        portfolio_trade_reader=MemoryTrades((display_edit_trade,)),
+    ).build(execution.result_id)
+    assert display_edit_journey.portfolio_trades[0].link_status is JourneyLinkStatus.LINKED
+    assert (
+        display_edit_journey.portfolio_trades[0].original_payload["source_summary"][
+            "total_score"
+        ]
+        == "999999"
+    )
+
+    mutations = {
+        "payload_hash": lambda summary: summary.__setitem__(
+            "payload_hash", "sha256:" + "0" * 64
+        ),
+        "artifact_location": lambda summary: summary.__setitem__(
+            "artifact_location", "forged-artifact.json"
+        ),
+        "summary_stock": lambda summary: summary.__setitem__(
+            "stock_code", "9999"
+        ),
+        "universe_snapshot": lambda summary: summary.__setitem__(
+            "source_snapshot_hash", "sha256:" + "1" * 64
+        ),
+        "candidate_rank": lambda summary: summary["candidate_identity"].__setitem__(
+            "rank", selected.rank + 1
+        ),
+        "data_snapshot": lambda summary: summary["data_snapshot_ids"].__setitem__(
+            0, "different-data-snapshot"
+        ),
+        "source_ref_revision": lambda summary: summary["source_refs"][0].__setitem__(
+            "revision", 8
+        ),
+    }
+    for mutation in mutations.values():
+        changed_summary = json.loads(json.dumps(source.source_summary))
+        mutation(changed_summary)
+        changed_trade = {
+            **base_trade,
+            "source_snapshot_hash": stable_snapshot_hash(changed_summary),
+            "source_summary": changed_summary,
+        }
+        rejected = DecisionOutcomeJourneyService(
+            recommendation_reader=JsonRecommendationReadAdapter(output_root),
+            evidence_reader=MemoryEvidence(()),
+            portfolio_trade_reader=MemoryTrades((changed_trade,)),
+        ).build(execution.result_id)
+        assert len(rejected.portfolio_trades) == 1
+        assert rejected.portfolio_trades[0].link_status is JourneyLinkStatus.CONFLICT
+
+    bad_checksum = {
+        **base_trade,
+        "source_snapshot_hash": "0" * 64,
+    }
+    rejected_checksum = DecisionOutcomeJourneyService(
+        recommendation_reader=JsonRecommendationReadAdapter(output_root),
+        evidence_reader=MemoryEvidence(()),
+        portfolio_trade_reader=MemoryTrades((bad_checksum,)),
+    ).build(execution.result_id)
+    assert rejected_checksum.portfolio_trades[0].link_status is JourneyLinkStatus.CONFLICT
+
+    mismatched_stock = {**base_trade, "stock_code": "9999"}
+    rejected_stock = DecisionOutcomeJourneyService(
+        recommendation_reader=JsonRecommendationReadAdapter(output_root),
+        evidence_reader=MemoryEvidence(()),
+        portfolio_trade_reader=MemoryTrades((mismatched_stock,)),
+    ).build(execution.result_id)
+    assert rejected_stock.portfolio_trades[0].link_status is JourneyLinkStatus.CONFLICT
+
+
+def test_portfolio_projection_matches_verified_saved_ml_receipt(
+    tmp_path: Path,
+) -> None:
+    helper_path = Path(__file__).with_name("test_c1_legacy_query_readiness.py")
+    spec = importlib.util.spec_from_file_location(
+        "r029_portfolio_verified_ml_query_helpers",
+        helper_path,
+    )
+    assert spec is not None and spec.loader is not None
+    helper_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper_module)
+
+    execution, _ = helper_module._ml_ready_execution(tmp_path)
+    _, persistence, queries = helper_module._stack(tmp_path / "verified-ml-output")
+    receipt = persistence.save(execution, label="synthetic verified ML Portfolio source")
+    read_model = queries.get(execution.result_id)
+
+    assert read_model is not None
+    assert read_model.execution == execution
+    assert read_model.ml_read_status == "verified"
+    selected = next(item for item in execution.items if item.stock_code == "2330")
+    source = build_recommendation_execution_trade_source(
+        execution,
+        read_model,
+        receipt,
+        selected,
+    )
+    assert source.source_summary["ranking_score_bp"] == 7_200
+    assert source.source_summary["calibration_model_version"] == "candidate-provenance-1"
+    assert source.source_summary["calibration_status"] == "active_candidate"
+    assert source.source_summary["calibration_provenance"]["provenance_status"] == "unavailable"
+
+    from ui_qt.views.portfolio_view import _canonical_trade_summary_matches_execution
+
+    position = SimpleNamespace(source_snapshot_hash=source.source_snapshot_hash)
+    assert _canonical_trade_summary_matches_execution(
+        position,
+        source.source_summary,
+        execution,
+        read_model,
+        selected.stock_code,
+    ) is True
+
+    projection_mutations = (
+        lambda summary: summary.__setitem__("calibrated_probability_bp", 9_900),
+        lambda summary: summary.__setitem__("after_cost_profit_probability_bp", 9_800),
+        lambda summary: summary.__setitem__("calibrated_probability_status", "forged"),
+        lambda summary: summary.__setitem__("calibration_status", "forged"),
+        lambda summary: summary["calibration_provenance"]["training_provenance"].__setitem__(
+            "candidate_id", "forged-candidate"
+        ),
+    )
+    for mutate_projection in projection_mutations:
+        changed_summary = json.loads(json.dumps(source.source_summary))
+        mutate_projection(changed_summary)
+        changed_position = SimpleNamespace(
+            source_snapshot_hash=stable_snapshot_hash(changed_summary),
+        )
+        assert _canonical_trade_summary_matches_execution(
+            changed_position,
+            changed_summary,
+            execution,
+            read_model,
+            selected.stock_code,
+        ) is False
+
+
+def test_portfolio_adapter_snapshot_ref_precedes_distinct_request_source_facts(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "portfolio-fallback-output"
+    config = TWStockConfig(data_root=tmp_path / "data", output_root=output_root)
+    resolved_output_root = Path(config.output_root)
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "c1_consumer_readiness"
+        / "r016_execution_rev2.json"
+    )
+    execution = decode_execution_envelope(fixture.read_bytes()).execution
+    caller_config = {
+        "source_snapshot_id": "caller-source-snapshot",
+        "source_snapshot_hash": "caller-source-hash",
+    }
+    raw_caller_config = json.dumps(
+        caller_config,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    request_snapshot = RecommendationConfigSnapshot(
+        raw_config_json=raw_caller_config,
+        raw_json_sha256="sha256:" + hashlib.sha256(
+            raw_caller_config.encode("utf-8")
+        ).hexdigest(),
+    )
+    execution = replace(
+        execution,
+        request=replace(execution.request, config_snapshot=request_snapshot),
+        context=replace(
+            execution.context,
+            universe_snapshot_ref=VersionReference(
+                kind=ReferenceKind.UNIVERSE_SNAPSHOT,
+                reference_id="context-universe-snapshot",
+            ),
+        ),
+    )
+    runs_dir = resolved_output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    receipt = RecommendationExecutionPersistence(store).save(
+        execution,
+        label="canonical adapter snapshot-ref fallback",
+        now=lambda: datetime(2026, 9, 24, tzinfo=timezone.utc),
+    )
+    read_model = JsonRecommendationReadAdapter(resolved_output_root)._queries.get(
+        execution.result_id
+    )
+    assert read_model is not None
+    assert read_model.execution == execution
+    selected = execution.items[0]
+    source = build_recommendation_execution_trade_source(
+        execution,
+        read_model,
+        receipt,
+        selected,
+    )
+    assert source.source_summary["source_snapshot_id"] == "context-universe-snapshot"
+    assert source.source_summary["source_snapshot_hash"] == ""
+
+    from ui_qt.views.portfolio_view import PortfolioView
+
+    view = PortfolioView.__new__(PortfolioView)
+    view.portfolio_service = SimpleNamespace(config=config)
+    position = SimpleNamespace(
+        source_type="recommendation_result",
+        source_id=execution.result_id,
+        source_snapshot_hash=source.source_snapshot_hash,
+        source_summary=source.source_summary,
+    )
+    assert view._validated_recommendation_result_id(
+        position,
+        selected.stock_code,
+    ) == execution.result_id
+
+
+def test_canonical_shaped_trade_without_same_build_verified_root_is_conflict() -> None:
+    summary = {
+        "result_id": RESULT_ID,
+        "stock_code": STOCK_CODE,
+        "integrity_basis": "canonical_payload_and_index_verified",
+        "payload_hash": "sha256:" + "1" * 64,
+        "artifact_location": "opaque-artifact.json",
+        "candidate_identity": {"stock_code": STOCK_CODE, "rank": 1},
+        "data_snapshot_ids": [],
+        "source_refs": [],
+    }
+    journey = _service(
+        events=[_event()],
+        trades=[
+            {
+                "trade_id": "canonical-shaped-without-root",
+                "stock_code": STOCK_CODE,
+                "source_id": RESULT_ID,
+                "source_type": "recommendation_result",
+                "source_snapshot_hash": stable_snapshot_hash(summary),
+                "source_summary": summary,
+                "trade_date": "2026-01-03",
+                "quantity": 1,
+                "price": "1.00",
+            }
+        ],
+    ).build(RESULT_ID)
+
+    assert len(journey.portfolio_trades) == 1
+    assert journey.portfolio_trades[0].link_status is JourneyLinkStatus.CONFLICT
+    assert any(
+        item.code == "portfolio_trade_canonical_root_unverified"
+        for item in journey.diagnostics
+    )
+
+
+def test_canonical_query_root_rejects_duplicate_candidate_ranks(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "duplicate-rank-output"
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "c1_consumer_readiness"
+        / "r016_execution_rev2.json"
+    )
+    execution = decode_execution_envelope(fixture.read_bytes()).execution
+    selected = execution.items[0]
+    assert execution.decision is not None
+    duplicate = replace(selected, stock_code="9999")
+    execution = replace(
+        execution,
+        decision=replace(
+            execution.decision,
+            items=(*execution.items, duplicate),
+        ),
+    )
+    runs_dir = output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    receipt = RecommendationExecutionPersistence(store).save(
+        execution,
+        label="合成 duplicate-rank negative control",
+        now=lambda: datetime(2026, 9, 24, tzinfo=timezone.utc),
+    )
+    adapter = JsonRecommendationReadAdapter(output_root)
+    read_model = adapter._queries.get(execution.result_id)
+    assert read_model is not None
+    assert read_model.execution == execution
+    source = build_recommendation_execution_trade_source(
+        execution,
+        read_model,
+        receipt,
+        selected,
+    )
+    trade = {
+        "trade_id": "duplicate-rank-canonical-trade",
+        "stock_code": selected.stock_code,
+        "trade_date": execution.context.as_of_date.isoformat(),
+        "source_type": source.source_type,
+        "source_id": source.source_id,
+        "source_snapshot_hash": source.source_snapshot_hash,
+        "source_summary": source.source_summary,
+        "quantity": 1,
+        "price": "1.00",
+    }
+
+    journey = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+        portfolio_trade_reader=MemoryTrades((trade,)),
+    ).build(execution.result_id)
+
+    assert journey.recommendation_result.link_status is JourneyLinkStatus.LINKED
+    assert len(journey.portfolio_trades) == 1
+    assert journey.portfolio_trades[0].link_status is JourneyLinkStatus.CONFLICT
+    assert any(
+        item.code == "portfolio_trade_canonical_root_unverified"
+        for item in journey.diagnostics
+    )
+
+
+def test_query_get_missing_database_is_read_only_and_does_not_custody(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "absent-output-root"
+    runs_dir = output_root / "recommendation" / "runs"
+    database_path = runs_dir / "recommendation_runs.db"
+    adapter = JsonRecommendationReadAdapter(output_root)
+
+    assert not output_root.exists()
+    assert adapter._queries.get("missing-result") is None
+    assert adapter.read_result("missing-result") is None
+    with pytest.raises(FileNotFoundError):
+        adapter.path_for("missing-result")
+    assert not output_root.exists()
+    assert not runs_dir.exists()
+    assert not database_path.exists()
 
 
 def test_journey_rejects_canonical_read_model_without_canonical_integrity_basis(

@@ -8,8 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from decision_module.factors.factor_dtos import FactorDiagnostic
-
 
 COMPANY_REGISTRY_COLUMNS = (
     "industry_category",
@@ -62,6 +60,22 @@ INDUSTRY_CODE_TO_CATEGORY = {
 
 
 @dataclass(frozen=True)
+class CompanyRegistryDiagnostic:
+    code: str
+    factor_name: str
+    stock_code: str
+    message: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "code": self.code,
+            "factor_name": self.factor_name,
+            "stock_code": self.stock_code,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
 class CompanyRegistryRow:
     industry_category: str
     stock_id: str
@@ -84,7 +98,7 @@ class CompanyRegistryRow:
 @dataclass(frozen=True)
 class CompanyRegistryBuildResult:
     rows: tuple[CompanyRegistryRow, ...]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[CompanyRegistryDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "rows", tuple(self.rows))
@@ -115,7 +129,7 @@ def build_company_registry_rows(
 ) -> CompanyRegistryBuildResult:
     download_time = download_time or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     rows: list[CompanyRegistryRow] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[CompanyRegistryDiagnostic] = []
 
     for market, source_rows in (
         ("twse", twse_rows),
@@ -128,7 +142,7 @@ def build_company_registry_rows(
                 market=market,
                 download_time=download_time,
             )
-            if isinstance(record, FactorDiagnostic):
+            if isinstance(record, CompanyRegistryDiagnostic):
                 diagnostics.append(record)
             else:
                 rows.append(record)
@@ -159,14 +173,14 @@ def _normalize_company_row(
     *,
     market: str,
     download_time: str,
-) -> CompanyRegistryRow | FactorDiagnostic:
+) -> CompanyRegistryRow | CompanyRegistryDiagnostic:
     stock_code = _first(source_row, "公司代號", "SecuritiesCompanyCode")
     stock_name = _first(source_row, "公司簡稱", "CompanyAbbreviation", "公司名稱", "CompanyName")
     industry_code = _first(source_row, "產業別", "SecuritiesIndustryCode")
     source_date = _first(source_row, "出表日期", "Date")
 
     if not stock_code or not stock_name or not industry_code:
-        return FactorDiagnostic(
+        return CompanyRegistryDiagnostic(
             code="company_registry.invalid_row",
             factor_name="company_registry",
             stock_code=stock_code,
@@ -175,7 +189,7 @@ def _normalize_company_row(
 
     industry_category = INDUSTRY_CODE_TO_CATEGORY.get(industry_code)
     if industry_category is None:
-        return FactorDiagnostic(
+        return CompanyRegistryDiagnostic(
             code="company_registry.unknown_industry_code",
             factor_name="company_registry",
             stock_code=stock_code,

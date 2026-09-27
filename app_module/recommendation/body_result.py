@@ -11,7 +11,7 @@ from typing import Any, Mapping, cast
 
 import numpy as np
 
-from app_module.dtos import RecommendationDTO
+from app_module.recommendation.legacy_dtos import RecommendationDTO
 from app_module.recommendation.contracts import (
     RecommendationRunEvidenceIdentity,
     SnapshotCohort,

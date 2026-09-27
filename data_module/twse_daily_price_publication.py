@@ -176,7 +176,9 @@ def _create_only(path: Path, data: bytes, *, root: Path) -> None:
             raise DailyPriceEvidenceError("immutable evidence conflict")
         return
 
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
+    # Keep the scratch basename independent of the target name so long evidence
+    # paths remain publishable on Windows installations without long-path support.
+    temporary = path.with_name(f".{os.getpid()}.{uuid4().hex}.tmp")
     try:
         with temporary.open("xb") as stream:
             stream.write(data)

@@ -18,6 +18,7 @@
 | 正式行情修復及候選模型品質 | [正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md)、[修復來源候選驗收](REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md) |
 | 個股研究與日常操作可讀性 | [V5 readability acceptance](V5_READABILITY_ACCEPTANCE_2026_09_21.md) |
 | 分支、工作副本與復原備份 | [本機分支整理](BRANCH_WORKTREE_CONSOLIDATION_20260927.md) |
+| 文檔重複的取捨與保留理由 | [文檔整理審查](DOCUMENTATION_CONSOLIDATION_20260927.md) |
 
 完整文件分類見 [文檔索引](../00_core/DOCUMENTATION_INDEX.md)；本頁只提供閱讀路徑，不重新維護各報告的驗收數字。
 

@@ -75,11 +75,21 @@ def _fixture(
     omit_aggregate_key: bool = False,
     include_extended_symbol: bool = False,
     include_second_extended_symbol: bool = False,
+    alias_override_for_2330: tuple[object, ...] | None = None,
 ) -> tuple[Path, Path, Path, dict[str, str]]:
     canonical_rows = _canonical_rows(
         include_extended_symbol=include_extended_symbol,
         include_second_extended_symbol=include_second_extended_symbol,
     )
+    if alias_override_for_2330 is not None:
+        if len(alias_override_for_2330) != len(repair.ALIASES):
+            raise ValueError("測試 alias override 必須包含六個值")
+        canonical_rows = [
+            (row[0], row[1], *alias_override_for_2330)
+            if row[0] == "20260520" and row[1] == "2330"
+            else row
+            for row in canonical_rows
+        ]
     root = tmp_path / "formal-root"
     db_dir = root / "sqlite"
     technical_dir = root / "technical_analysis"
@@ -865,6 +875,128 @@ def test_update_service_calculation_rejects_stale_source_before_any_csv_publicat
     assert result["success"] is False
     assert (indicator_path.read_bytes() if indicator_path.exists() else None) == indicator_before
     assert (aggregate_path.read_bytes() if aggregate_path.exists() else None) == aggregate_before
+
+
+@pytest.mark.parametrize(
+    ("bid_value", "expected_success", "expected_error"),
+    [
+        (None, True, None),
+        ("2,150.01", False, "舊來源會覆寫"),
+        ("inf", False, "不是有效數值"),
+    ],
+)
+def test_update_service_sqlite_parses_alias_before_approved_guard_without_csv_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bid_value: str,
+    expected_success: bool,
+    expected_error: str | None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app_module.update_service import UpdateService
+    from data_module.config import TWStockConfig
+    from data_module.db_manager import DBManager
+
+    root, technical_receipt, raw_alias_receipt, _ = _fixture(
+        tmp_path,
+        alias_override_for_2330=("2,150.00", 30, "2,270.00", 32, 19.2, 5.0),
+    )
+    database_path = _apply_raw_alias_marker(root, technical_receipt, raw_alias_receipt)
+    with sqlite3.connect(database_path) as connection:
+        stored_aliases = connection.execute(
+            'SELECT "最後揭示買價","最後揭示賣價" FROM daily_prices '
+            'WHERE "日期"=? AND "證券代號"=?',
+            ("20260520", "2330"),
+        ).fetchone()
+    assert stored_aliases == ("2,150.00", "2,270.00")
+    config = TWStockConfig(
+        data_root=root,
+        output_root=tmp_path / "artifacts",
+        profile="raw_alias_guard",
+    )
+    config.db_file = database_path
+    config.use_sqlite = True
+    config.min_data_days = 1
+    config.stock_data_file.parent.mkdir(parents=True, exist_ok=True)
+    fallback_frame = pd.DataFrame([{
+        "日期": "20260520",
+        "證券代號": "2330",
+        "開盤價": "1490",
+        "最高價": "1510",
+        "最低價": "1480",
+        "收盤價": "1500",
+        "成交股數": "1000",
+        "最後揭示買價": "2,150.00",
+        "最後揭示買量": "30",
+        "最後揭示賣價": "2,270.00",
+        "最後揭示賣量": "32",
+        "本益比": "19.2",
+        "漲跌價差": "5.0",
+    }])
+    fallback_frame.to_csv(config.stock_data_file, index=False, encoding="utf-8-sig")
+
+    execute_query = DBManager.execute_query
+
+    def _query_with_grouped_sqlite_aliases(self, sql: str, params: tuple = ()):
+        frame = execute_query(self, sql, params)
+        if sql.strip().startswith("SELECT * FROM daily_prices"):
+            frame = frame.copy()
+            if bid_value is not None:
+                frame["最後揭示買價"] = frame["最後揭示買價"].astype(object)
+                target = (frame["日期"].astype(str) == "20260520") & (
+                    frame["證券代號"].astype(str).str.strip() == "2330"
+                )
+                frame.loc[target, "最後揭示買價"] = bid_value
+        return frame
+
+    monkeypatch.setattr(DBManager, "execute_query", _query_with_grouped_sqlite_aliases)
+
+    read_csv = pd.read_csv
+    fallback_reads: list[Path] = []
+
+    def _track_csv_fallback(path, *args, **kwargs):
+        if Path(path).resolve() == config.stock_data_file.resolve():
+            fallback_reads.append(Path(path))
+        return read_csv(path, *args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_csv", _track_csv_fallback)
+
+    observed: list[tuple[object, ...]] = []
+
+    class _CaptureCalculator:
+        def __init__(self, _logger=None) -> None:
+            pass
+
+        def calculate_all_indicators(self, frame, _stock_id):
+            observed.append(tuple(frame.iloc[0][name] for name in repair.ALIASES))
+            return frame.assign(RSI=55.0)
+
+        def calculate_and_store_indicators(self, _frame, _stock_id, **kwargs):
+            return kwargs["precomputed_result"]
+
+    monkeypatch.setattr(
+        "analysis_module.technical_analysis.technical_indicators.TechnicalIndicatorCalculator",
+        _CaptureCalculator,
+    )
+    result = UpdateService(config).calculate_technical_indicators(
+        target_stock="2330",
+        force_all=True,
+        technical_process_pool=False,
+    )
+
+    assert result["success"] is expected_success
+    assert fallback_reads == []
+    if expected_success:
+        assert observed == [(2150.0, 30, 2270.0, 32, 19.2, 5.0)]
+    else:
+        assert observed == []
+        assert expected_error is not None
+        if expected_error == "舊來源會覆寫":
+            assert result["fail_count"] == 1
+            assert result["failed_stocks"] == ["2330"]
+            assert expected_error in caplog.text
+        else:
+            assert expected_error in result["message"]
 
 
 

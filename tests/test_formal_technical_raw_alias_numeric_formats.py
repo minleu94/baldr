@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import sqlite3
 
+import pandas as pd
 import pytest
 
 from data_module import formal_technical_raw_alias_repair as repair
@@ -114,6 +115,34 @@ def test_numeric_spool_converts_official_missing_and_grouped_text_to_typed_value
 def test_real_column_spool_rejects_decimal_precision_lost_by_float_storage():
     with pytest.raises(repair.RawAliasRepairError, match="無法在 SQLite REAL 中精確往返"):
         repair._numeric_storage_value("1,234.567890123456789", "最後揭示買價")
+
+
+def test_raw_alias_storage_normalizer_preserves_grouped_negative_and_missing_values():
+    frame = pd.DataFrame({
+        "最後揭示買價": ["2,150.00", "", "-1,234.500", "2,150.125", None],
+        "最後揭示買量": ["1,000", "", "-2", "3", None],
+    })
+
+    normalized = repair.normalize_raw_alias_values_for_storage(frame)
+
+    prices = normalized["最後揭示買價"].tolist()
+    volumes = normalized["最後揭示買量"].tolist()
+    assert prices[0] == 2150.0
+    assert pd.isna(prices[1])
+    assert prices[2:4] == [-1234.5, 2150.125]
+    assert pd.isna(prices[4])
+    assert volumes[0] == 1000
+    assert pd.isna(volumes[1])
+    assert volumes[2:4] == [-2, 3]
+    assert pd.isna(volumes[4])
+
+
+@pytest.mark.parametrize("value", ["NaN", "inf", "1,234.567890123456789"])
+def test_raw_alias_storage_normalizer_rejects_non_finite_and_inexact_values(value):
+    frame = pd.DataFrame({"最後揭示買價": [value]})
+
+    with pytest.raises(repair.RawAliasRepairError):
+        repair.normalize_raw_alias_values_for_storage(frame)
 
 
 def _write_alias_csv(path, *, short_row):

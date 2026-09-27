@@ -4,6 +4,8 @@
 
 本目錄包含系統的架構設計和技術文檔。
 
+重構文件較多時，先讀 [目標架構與重構契約入口](target_architecture_2026_09_22/README.md)，區分 FINAL 設計、任務規格、歷史草案及驗收紀錄。
+
 ## 📄 文檔列表
 
 - **[2026-09-22 最終目標架構](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)**

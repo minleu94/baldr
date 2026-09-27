@@ -136,6 +136,13 @@
 4. Snapshot / 6M Roadmap / V2.1-V4.0 Roadmap / Roadmap Hub / Architecture / Index 狀態是否一致。
 5. 是否有明顯過期的「待開始 / 進行中」描述。
 
+### 避免重複內容重新累積
+
+- README、索引與 Roadmap Hub 只維護閱讀路徑和文件職責；動態驗收數字、完成度與阻塞狀態連到 Snapshot 或原始 QA 證據，不複製整段現況。
+- 同主題的設計契約、操作手冊與日期化驗收報告有不同用途；依職責判斷取捨，不能只靠檔名相似或共同關鍵字刪除。不可變收據、固定雜湊與回滾證據須保留。
+- 文檔盤點分開統計正式 `docs/` 與 `output/` 工作副本、QA raw output、Graphify 產物；工作副本中的同名文件不是新的文檔權威。
+- Obsidian 圖譜可用 Search 的 `path:` 篩選正式文檔與根目錄入口，避免納入 `output/` 和 `graphify-out/`。本機圖譜設定屬 `.obsidian/`，不提交；篩選只調整閱讀範圍，不代表已完成文檔內容整理。
+
 ## 六、更新記錄
 
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。

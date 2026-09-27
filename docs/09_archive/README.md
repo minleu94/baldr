@@ -8,6 +8,9 @@
 
 ## 📄 文檔列表
 
+- [Roadmap Hub 整理前歷史（2026-09-27）](DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)：原 Hub 的日期化狀態、Next 與更新紀錄；現行導航已收斂至核心 Hub，不以本頁判斷目前進度。
+- [文檔索引整理前歷史（2026-09-27）](DOCUMENTATION_INDEX_HISTORY_2026_09_27.md)：保留舊索引的詳細分類與日期化摘要；目前閱讀入口以核心索引為準。
+
 - [PROJECT_SNAPSHOT歷史封存](PROJECT_SNAPSHOT_HISTORY_2026_09_08.md)：2026-09-08整理前的完整快照與時間順序；僅作追溯。
 
 - **`DOCUMENTATION_UPDATE_SUMMARY.md`**

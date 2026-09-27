@@ -48,6 +48,9 @@ from data_module.formal_pit_sector_publisher import (  # noqa: E402
 from data_module.pit_prospective_denominator import (  # noqa: E402
     validate_prospective_pit_denominator,
 )
+from data_module.formal_schedule_gate import (  # noqa: E402
+    formal_schedule_day_state,
+)
 
 
 _DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
@@ -1248,6 +1251,61 @@ def run_from_environment(
 ) -> tuple[dict[str, object], int]:
     observed = datetime.now(timezone.utc)
     observed_at = observed.isoformat()
+    status_path = status_root / "latest_status.json"
+    attempt_log_path = status_root / "attempts.jsonl"
+    calendar_state, calendar_reason = formal_schedule_day_state(
+        observed=observed,
+        market_db=_env_path("FORMAL_DAILY_MARKET_DB")
+        or _data_root() / "sqlite" / "twstock.db",
+        calendar_cache_root=_env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+        or _default_official_calendar_cache_root(),
+    )
+    if calendar_state is not True:
+        status_text = (
+            "skipped_non_trading_day"
+            if calendar_state is False
+            else "blocked"
+        )
+        exit_code = 0 if calendar_state is False else 2
+        status = {
+            **_common_status(
+                observed_at=observed_at,
+                publication_root=publication_root,
+            ),
+            "status": status_text,
+            "reason": calendar_reason,
+            "blockers": []
+            if calendar_state is False
+            else [f"official_calendar_unresolved:{calendar_reason}"],
+            "calendar": {
+                "date": observed.astimezone(TAIPEI).date().isoformat(),
+                "is_official_trading_day": calendar_state,
+                "reason": calendar_reason,
+            },
+            "status_path": str(status_path),
+            "attempt_log_path": str(attempt_log_path),
+            "formal_runtime_config": {
+                "status": "not_required_non_trading_day"
+                if calendar_state is False
+                else "not_loaded_calendar_unresolved",
+            },
+            "exit_code": exit_code,
+        }
+        _write_status(status_path, status)
+        _append_attempt_log(
+            attempt_log_path,
+            {
+                "schema_version": _SCHEDULED_ATTEMPT_LOG_SCHEMA_VERSION,
+                "observed_at": observed_at,
+                "wrapper_started_at": observed_at,
+                "status_path": str(status_path),
+                "attempt_log_path": str(attempt_log_path),
+                "status": status_text,
+                "exit_code": exit_code,
+                "blockers": status["blockers"],
+            },
+        )
+        return status, exit_code
     runtime_config: dict[str, object] | None = None
     runtime_config_error: str | None = None
     try:
@@ -1260,8 +1318,6 @@ def run_from_environment(
     source_paths: dict[str, Path] = {}
     missing: list[str] = list(_REQUIRED_SOURCE_ENV)
     discovery_reason: str | None = "not_attempted"
-    status_path = status_root / "latest_status.json"
-    attempt_log_path = status_root / "attempts.jsonl"
     runtime = _runtime_projection()
     runtime["formal_runtime_config"] = (
         runtime_config

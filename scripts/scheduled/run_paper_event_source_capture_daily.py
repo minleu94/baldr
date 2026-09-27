@@ -244,8 +244,15 @@ def run_capture(
         raise ValueError("now 必須帶時區")
     observed = observed_value.astimezone(timezone.utc)
     status_path = status_root.expanduser().resolve() / "latest_status.json"
+    calendar_value = calendar or OfficialTradingCalendar(
+        db_path=market_db,
+        calendar_cache_path=CALENDAR_CACHE_ROOT,
+        temporary_closure_path=CALENDAR_CACHE_ROOT,
+    )
+    local = observed.astimezone(TAIPEI)
+    calendar_status, calendar_reason = _calendar_state(calendar_value, local.date())
     runtime_error: str | None = None
-    if load_runtime:
+    if load_runtime and calendar_status == "open":
         try:
             runtime_config = load_optional_formal_runtime_config(
                 role="paper_eod_wrapper",
@@ -271,6 +278,29 @@ def run_capture(
         "retryable_failures": "official_transient_get_or_empty_response_only",
         "terminal_failures": "identity/hash/path/schema/capture-custody violations",
     }
+    base["taipei_now"] = local.isoformat()
+    base["calendar"] = {
+        "date": local.date().isoformat(),
+        "status": calendar_status,
+        "reason": calendar_reason,
+    }
+    if calendar_status == "unknown":
+        payload = {
+            **base,
+            "status": "blocked",
+            "blockers": ["official_calendar_evidence_unknown:" + calendar_reason],
+        }
+        _write_status(status_path, payload)
+        return payload, 2
+    if calendar_status == "closed":
+        payload = {
+            **base,
+            "status": "skipped_non_trading_day",
+            "reason": calendar_reason,
+            "blockers": [],
+        }
+        _write_status(status_path, payload)
+        return payload, 0
     if runtime_error is not None:
         payload = {
             **base,
@@ -314,13 +344,6 @@ def run_capture(
         }
         _write_status(status_path, payload)
         return payload, 2
-    calendar_value = calendar or OfficialTradingCalendar(
-        db_path=market_db,
-        calendar_cache_path=CALENDAR_CACHE_ROOT,
-        temporary_closure_path=CALENDAR_CACHE_ROOT,
-    )
-    local = observed.astimezone(TAIPEI)
-    base["taipei_now"] = local.isoformat()
     window_time = local.timetz().replace(tzinfo=None)
     if not SESSION_OPEN <= window_time < SESSION_CLOSE:
         payload = {
@@ -333,31 +356,6 @@ def run_capture(
         }
         _write_status(status_path, payload)
         return payload, 2
-
-    calendar_status, calendar_reason = _calendar_state(calendar_value, local.date())
-    base["calendar"] = {
-        "date": local.date().isoformat(),
-        "status": calendar_status,
-        "reason": calendar_reason,
-    }
-    if calendar_status == "unknown":
-        payload = {
-            **base,
-            "status": "blocked",
-            "blockers": [
-                "official_calendar_evidence_unknown:" + calendar_reason
-            ],
-        }
-        _write_status(status_path, payload)
-        return payload, 2
-    if calendar_status == "closed":
-        payload = {
-            **base,
-            "status": "skipped_non_trading_day",
-            "blockers": [calendar_reason],
-        }
-        _write_status(status_path, payload)
-        return payload, 0
 
     try:
         selected, selection_reason = resolve_pending_recommendation(

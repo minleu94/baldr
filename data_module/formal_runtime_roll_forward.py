@@ -29,6 +29,7 @@ from data_module.formal_runtime_config import (
     FORMAL_RUNTIME_CONFIG_ENV,
     RUNTIME_CONFIG_ROOT_ENV,
     RUNTIME_ROLLING_SCHEMA_VERSION,
+    load_formal_runtime_config,
     load_runtime_environment_binding,
 )
 from data_module.prospective_formal_clock import (
@@ -1560,6 +1561,69 @@ def _write_status(path: Path, payload: Mapping[str, object]) -> None:
     os.replace(temporary, path)
 
 
+def _load_reusable_runtime_config(
+    output_path: Path,
+    *,
+    activation_day: date,
+    observed: datetime,
+) -> tuple[dict[str, object], str]:
+    """Validate and read an existing immutable config for the selected day."""
+
+    raw = output_path.read_bytes()
+    parsed = json.loads(raw.decode("utf-8"))
+    if not isinstance(parsed, Mapping):
+        raise FormalRuntimeRollForwardError(
+            "runtime_config_existing_payload_invalid"
+        )
+    wrappers = parsed.get("wrapper_contract")
+    role_contract = (
+        wrappers.get("paper_eod_wrapper")
+        if isinstance(wrappers, Mapping)
+        else None
+    )
+    environment = (
+        role_contract.get("environment")
+        if isinstance(role_contract, Mapping)
+        else None
+    )
+    if not isinstance(environment, Mapping):
+        raise FormalRuntimeRollForwardError(
+            "runtime_config_existing_environment_contract_missing"
+        )
+    previous: dict[str, str | None] = {}
+    try:
+        # The candidate is not the active binding yet.  Validate its wrapper
+        # contract against its own declared allowlisted process boundary, then
+        # restore the caller's binding exactly.
+        for key, value in environment.items():
+            name = str(key)
+            if not isinstance(value, str) or value.startswith("omitted;"):
+                continue
+            previous[name] = os.environ.get(name)
+            os.environ[name] = value
+        projection = load_formal_runtime_config(
+            output_path,
+            role="paper_eod_wrapper",
+            observed=observed,
+        )
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    if projection.get("activation_trading_day") != activation_day.isoformat():
+        raise FormalRuntimeRollForwardError(
+            "runtime_config_existing_activation_day_mismatch"
+        )
+    verified_raw = output_path.read_bytes()
+    if verified_raw != raw:
+        raise FormalRuntimeRollForwardError(
+            "runtime_config_existing_changed_during_validation"
+        )
+    return dict(parsed), _bytes_hash(raw)
+
+
 def run_from_environment(*, emit: bool = True) -> tuple[dict[str, object], int]:
     """使用目前 process clock 建立下一自然日設定；不接受日期參數。"""
 
@@ -1609,28 +1673,39 @@ def run_from_environment(*, emit: bool = True) -> tuple[dict[str, object], int]:
             observed=observed,
         )
         output_path = output_root / f"{activation_day.isoformat()}.json"
-        config = build_rolling_runtime_config(
-            observed=observed,
-            activation_trading_day=activation_day,
-            calendar_bundle=calendar_bundle,
-            calendar_environment_bundle=calendar_anchor,
-            calendar_resolution=calendar_resolution,
-            portfolio_clock_manifest=Path(portfolio_value),
-            output_path=output_path,
-            publication_root=paths["publication_root"],
-            market_db=paths["market_db"],
-            rule_baseline_root=paths["rule_baseline_root"],
-            calendar_cache_root=paths["calendar_cache_root"],
-            rule_source_root=paths["rule_source_root"],
-            pit_archive_root=paths["pit_archive_root"],
-            paper_snapshot_db=paths["paper_snapshot_db"],
-            paper_fill_db=paths["paper_fill_db"],
-            paper_receipt_root=paths["paper_receipt_root"],
-        )
-        write_status, file_hash = write_immutable_rolling_runtime_config(
-            output_path,
-            config,
-        )
+        if output_path.is_file():
+            # 同一個下一開市日可能連續跨越週末或國定休市日。該日期的
+            # immutable config 一旦建立，就應驗證並重用；若重新 build，
+            # generated_at 與來源檔案時間會讓合法重入被誤判為 bytes mismatch。
+            config, file_hash = _load_reusable_runtime_config(
+                output_path,
+                activation_day=activation_day,
+                observed=observed,
+            )
+            write_status = "reused"
+        else:
+            config = build_rolling_runtime_config(
+                observed=observed,
+                activation_trading_day=activation_day,
+                calendar_bundle=calendar_bundle,
+                calendar_environment_bundle=calendar_anchor,
+                calendar_resolution=calendar_resolution,
+                portfolio_clock_manifest=Path(portfolio_value),
+                output_path=output_path,
+                publication_root=paths["publication_root"],
+                market_db=paths["market_db"],
+                rule_baseline_root=paths["rule_baseline_root"],
+                calendar_cache_root=paths["calendar_cache_root"],
+                rule_source_root=paths["rule_source_root"],
+                pit_archive_root=paths["pit_archive_root"],
+                paper_snapshot_db=paths["paper_snapshot_db"],
+                paper_fill_db=paths["paper_fill_db"],
+                paper_receipt_root=paths["paper_receipt_root"],
+            )
+            write_status, file_hash = write_immutable_rolling_runtime_config(
+                output_path,
+                config,
+            )
         status = {
             **base,
             "status": "runtime_config_created" if write_status == "created" else "runtime_config_reused",

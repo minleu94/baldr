@@ -46,6 +46,9 @@ from data_module.prospective_formal_clock import canonical_json  # noqa: E402
 from scripts.capture_pit_prospective_denominator import (  # noqa: E402
     capture_live_denominator,
 )
+from data_module.formal_schedule_gate import (  # noqa: E402
+    formal_schedule_day_state,
+)
 
 
 TASK_NAME = "baldr-pit-sector-membership-preopen-capture-daily"
@@ -648,15 +651,24 @@ def run_capture(
     injected_clock = now is not None
     observed = now or datetime.now(timezone.utc)
     status_path = status_root / "latest_status.json"
+    calendar_state, calendar_reason = formal_schedule_day_state(
+        observed=observed,
+        market_db=_env_path("FORMAL_DAILY_MARKET_DB"),
+        calendar_cache_root=(
+            _env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+            or ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
+        ),
+    )
     runtime_config: dict[str, object] | None = None
     runtime_config_error: str | None = None
-    try:
-        runtime_config = load_optional_formal_runtime_config(
-            role="pit_preopen_wrapper",
-            observed=observed,
-        )
-    except FormalRuntimeConfigError as error:
-        runtime_config_error = str(error)
+    if calendar_state is True:
+        try:
+            runtime_config = load_optional_formal_runtime_config(
+                role="pit_preopen_wrapper",
+                observed=observed,
+            )
+        except FormalRuntimeConfigError as error:
+            runtime_config_error = str(error)
     base: dict[str, object] = {
         "schema_version": "pit-preopen-capture-scheduled-status.v1",
         "task": TASK_NAME,
@@ -678,6 +690,11 @@ def run_capture(
         "training_started": False,
         "broker_execution": False,
         "historical_backfill_claimed": False,
+        "calendar": {
+            "date": observed.astimezone(TAIPEI).date().isoformat(),
+            "is_official_trading_day": calendar_state,
+            "reason": calendar_reason,
+        },
         "formal_runtime_config": (
             runtime_config
             if runtime_config is not None
@@ -688,6 +705,23 @@ def run_capture(
             }
         ),
     }
+    if calendar_state is False:
+        payload = {
+            **base,
+            "status": "skipped_non_trading_day",
+            "reason": calendar_reason,
+            "blockers": [],
+        }
+        _write_status(status_path, payload)
+        return payload, 0
+    if calendar_state is None:
+        payload = {
+            **base,
+            "status": "blocked",
+            "blockers": [f"official_calendar_unresolved:{calendar_reason}"],
+        }
+        _write_status(status_path, payload)
+        return payload, 2
     if runtime_config_error is not None:
         payload = {
             **base,

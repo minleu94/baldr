@@ -29,6 +29,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.formal_schedule_gate import formal_schedule_day_state
 from data_module.formal_runtime_config import (
     FORMAL_RUNTIME_CONFIG_ENV,
     FormalRuntimeConfigError,
@@ -1922,13 +1923,6 @@ def run_from_environment() -> tuple[dict[str, object], int]:
     observed_utc, observed_taipei = _normalise_observed(None)
     runtime_config: dict[str, object] | None = None
     runtime_config_error: str | None = None
-    try:
-        runtime_config = load_optional_formal_runtime_config(
-            role="rule_source_wrapper",
-            observed=observed_utc,
-        )
-    except FormalRuntimeConfigError as error:
-        runtime_config_error = str(error)
     output_root = Path(
         os.environ.get(
             "FORMAL_DAILY_RULE_SOURCE_ROOT",
@@ -1953,6 +1947,19 @@ def run_from_environment() -> tuple[dict[str, object], int]:
             str(repo_root / "output" / "paper_execution_eod_replay" / "calendar_cache"),
         )
     )
+    calendar_state, calendar_reason = formal_schedule_day_state(
+        observed=observed_utc,
+        market_db=market_db,
+        calendar_cache_root=calendar_root,
+    )
+    if calendar_state is True:
+        try:
+            runtime_config = load_optional_formal_runtime_config(
+                role="rule_source_wrapper",
+                observed=observed_utc,
+            )
+        except FormalRuntimeConfigError as error:
+            runtime_config_error = str(error)
     status_path = _status_path(output_root.expanduser().resolve())
     base: dict[str, object] = {
         "schema_version": MACHINE_RULE_SOURCE_PRODUCER_SCHEMA_VERSION,
@@ -1975,6 +1982,11 @@ def run_from_environment() -> tuple[dict[str, object], int]:
         "writes_market_database": False,
         "writes_formal_controlled_paths": False,
         "historical_backfill_claimed": False,
+        "calendar": {
+            "date": observed_taipei.date().isoformat(),
+            "is_official_trading_day": calendar_state,
+            "reason": calendar_reason,
+        },
         "runtime_config": runtime_config
         if runtime_config is not None
         else {
@@ -1983,6 +1995,23 @@ def run_from_environment() -> tuple[dict[str, object], int]:
             "error": runtime_config_error,
         },
     }
+    if calendar_state is not True:
+        exit_code = 0 if calendar_state is False else 2
+        status = {
+            **base,
+            "status": "skipped_non_trading_day"
+            if calendar_state is False
+            else "blocked",
+            "reason": calendar_reason,
+            "blockers": []
+            if calendar_state is False
+            else [f"official_calendar_unresolved:{calendar_reason}"],
+            "exit_code": exit_code,
+            "status_path": str(status_path),
+        }
+        _write_status(status_path, status)
+        print(canonical_json(status))
+        return status, exit_code
     try:
         if runtime_config_error is not None:
             raise FormalRuntimeConfigError(runtime_config_error)

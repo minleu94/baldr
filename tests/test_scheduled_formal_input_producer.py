@@ -29,6 +29,45 @@ WRAPPER = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _official_open_schedule_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing producer tests exercise open-day behavior with a stable clock."""
+
+    monkeypatch.setattr(
+        runner,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (True, "fixture_official_open"),
+    )
+
+
+def test_non_trading_day_skips_before_runtime_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        runner,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (False, "fixture_official_closed"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "load_optional_formal_runtime_config",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("closed day must not load runtime config")
+        ),
+    )
+    publication_root = tmp_path / "publication"
+
+    status, exit_code = runner.run_from_environment(
+        publication_root=publication_root,
+        status_root=publication_root / "scheduler",
+    )
+
+    assert exit_code == 0
+    assert status["status"] == "skipped_non_trading_day"
+    assert status["blockers"] == []
+
+
 def test_scheduled_formal_wrapper_uses_durable_publication_and_no_clock_override() -> None:
     text = WRAPPER.read_text(encoding="utf-8").lower()
 

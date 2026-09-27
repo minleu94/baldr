@@ -174,6 +174,11 @@ def _patch_policy_and_calendar_only(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         producer,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (True, "test_verified_open"),
+    )
+    monkeypatch.setattr(
+        producer,
         "_load_owner_acceptance",
         lambda _path, _clock: (
             {

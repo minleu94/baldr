@@ -169,6 +169,11 @@ def test_formal_runner_consumes_exact_predecessor_paths_without_latest_scan(
         "load_optional_formal_runtime_config",
         lambda *, role, observed: projection,
     )
+    monkeypatch.setattr(
+        runner,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (True, "test_verified_open"),
+    )
     market_db = tmp_path / "market.sqlite"
     market_db.write_bytes(b"market fixture")
     monkeypatch.setenv("FORMAL_DAILY_MARKET_DB", str(market_db))

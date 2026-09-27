@@ -30,6 +30,13 @@ coverage.xml
 .superpowers/
 **/.tmp.driveupload/
 
+# 根目錄隔離測試的 pytest --basetemp 輸出。
+/.tmp_*/
+
+# 本機 Obsidian 工作區狀態與這份單次草稿白板。
+/.obsidian/
+/Untitled.canvas
+
 # Agent 本機任務狀態（不提交）
 docs/agents/shared_state/active_task.yaml
 docs/agents/shared_state/handoff_log.md

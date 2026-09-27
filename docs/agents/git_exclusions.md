@@ -9,6 +9,8 @@
 - `.superpowers/`：Superpowers plugin 的本機工作狀態。
 - `/meta_data/`：repo 根目錄下的背景任務狀態與 runtime log；正式資料根目錄 `{DATA_ROOT}/meta_data/` 不在 repo 內，不受此規則影響。
 - `**/.tmp.driveupload/`：文件或工具在任意工作目錄建立的雲端上傳暫存目錄。
+- `/.tmp_*/`：repo 根目錄下以 `.tmp_` 開頭的隔離測試／pytest `--basetemp` 輸出；只排除根目錄此命名模式，不涵蓋其他目錄中的同名資料。
+- `/.obsidian/`、`/Untitled.canvas`：本機 Obsidian 設定與目前這份根目錄草稿白板；不使用全域 `*.canvas` 規則，以免排除其他可能屬於專案的白板。
 - `docs/agents/shared_state/active_task.yaml`：Agent 本機任務交接狀態；各工作階段可自行更新，不應提交。
 - `docs/agents/shared_state/handoff_log.md`：本機跨 Agent 交接紀錄；可能包含進行中工作資訊，不應提交。
 - `.pytest_cache/`、`.coverage`、`htmlcov/`、`.tox/`、`.cache/`：測試與 coverage 輸出。

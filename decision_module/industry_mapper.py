@@ -134,15 +134,24 @@ class IndustryMapper:
         
         # 建立產業類別標準化映射
         # companies.csv 中的產業類別 -> industry_index.csv 中的指數名稱
-        if self.industry_index_df is not None:
-            index_names = set(self.industry_index_df['指數名稱'].unique())
-            
-            # 提取產業類別（去除「類指數」、「類報酬指數」等後綴）
-            for index_name in index_names:
-                if pd.notna(index_name):
-                    # 去除後綴
-                    normalized = str(index_name).replace('類指數', '').replace('類報酬指數', '').replace('類', '')
-                    self.industry_normalization[normalized] = index_name
+        industry_index_df = self.industry_index_df
+        if (
+            industry_index_df is None
+            or industry_index_df.empty
+            or '指數名稱' not in industry_index_df.columns
+        ):
+            # 缺少產業指數資料時仍保留 companies.csv 的股票產業分類；
+            # 不從缺欄或空表推造指數名稱。
+            return
+
+        index_names = set(industry_index_df['指數名稱'].unique())
+
+        # 提取產業類別（去除「類指數」、「類報酬指數」等後綴）
+        for index_name in index_names:
+            if pd.notna(index_name):
+                # 去除後綴
+                normalized = str(index_name).replace('類指數', '').replace('類報酬指數', '').replace('類', '')
+                self.industry_normalization[normalized] = index_name
 
     def _build_latest_industry_performance_cache(self):
         """預先快取每個產業指數最新表現，避免個股篩選時逐檔掃 DataFrame。"""

@@ -80,6 +80,9 @@ Thumbs.db
 temp/
 tmp/
 
+# Repo-root local QA scratch from isolated capture/full-stack/replay probes.
+/.t/
+
 # Demo 目錄（測試用，不提交）
 demo_*/
 demo_*/*/

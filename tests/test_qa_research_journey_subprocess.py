@@ -486,6 +486,77 @@ def test_personal_ui_launch_summary_reads_nested_tree_pin_and_compares_same_shap
     }
 
 
+def test_native_capture_compares_every_pixel_and_rejects_unsampled_mismatch(
+    tmp_path,
+):
+    from PySide6.QtGui import QColor, QImage
+
+    from scripts import qa_native_personal_research_acceptance as native_runner
+
+    image = QImage(160, 100, QImage.Format.Format_RGBA8888)
+    image.fill(QColor(30, 40, 50, 255))
+    changed = QImage(image)
+    # 這個小區域不在舊版 25×17 稀疏取樣格上。
+    changed.setPixelColor(3, 3, QColor(255, 0, 0, 255))
+
+    class Pixmap:
+        def __init__(self, value):
+            self._image = value
+
+        def isNull(self):
+            return False
+
+        def width(self):
+            return self._image.width()
+
+        def height(self):
+            return self._image.height()
+
+        def toImage(self):
+            return self._image
+
+    comparison = native_runner._compare_pixmap_to_widget(
+        Pixmap(image), Pixmap(changed)
+    )
+    assert comparison["matches"] is False
+    assert comparison["reason"] == "full_image_pixels_differ"
+    assert comparison["pixel_count"] == 16_000
+    assert comparison["pixels_over_8_levels"] == 1
+    assert comparison["acceptance"]["comparison_scope"] == "every_pixel_every_rgb_channel"
+
+    class Handle:
+        def isExposed(self):
+            return True
+
+    class Screen:
+        def grabWindow(self, _window_id):
+            return Pixmap(image)
+
+    class Window:
+        def isVisible(self):
+            return True
+
+        def windowHandle(self):
+            return Handle()
+
+        def screen(self):
+            return Screen()
+
+        def winId(self):
+            return 123
+
+        def grab(self):
+            return Pixmap(changed)
+
+        def windowTitle(self):
+            return "synthetic capture comparison"
+
+    destination = tmp_path / "must-not-be-written.png"
+    with pytest.raises(native_runner.ScreenCaptureMismatch):
+        native_runner._capture_window(Window(), "mismatch", destination)
+    assert not destination.exists()
+
+
 def test_personal_ui_prepare_cli_rejects_wrong_snapshot_or_receipt_before_copy(
     tmp_path, monkeypatch, capsys
 ):

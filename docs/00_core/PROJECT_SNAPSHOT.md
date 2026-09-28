@@ -2,6 +2,12 @@
 
 **工程驗收已通過；本文件是提交前snapshot，staged review與commit結果以Git history及root最後交付為準。** R031 attempt6的288-path relevant regression及mandatory checks已由root接受。 R027使用者接受的logical-time revision B與R028 scoped migration各自通過獨立gate；原R027 strict仍INCONCLUSIVE，舊oracle、strict receipts與R028 legacy comparator diagnostic FAIL均保留。IndustryMapper明示providers、H5 app初始化前置條件及其受影響路徑已納入current route並通過。attempt6不代表正式資料、native UI、scheduler、未知artifact或model promotion驗收。
 
+## 2026-09-28 m10 個人模型 Qt widget 驗收更新
+
+較早 checkpoint 所稱「native／個人模型 UI 尚未驗」是當時狀態，現由隔離 m10 旅程更新：使用者明示來源時間的研究候選已經真 MainWindow Qt widget 操作，完成 V2 保存、推薦、canonical result/readback、capture v3、cold restart、停用、fresh-source revision rollback 與最終 `rule_only`。這是 Qt widget 自動化證據，不是 OS 前景視窗或桌面截圖證據。Outcome 對同一 capture 的 Stage C 結果為 `completed_with_pending`，mature 0、pending 19；來源／成本尚不完整，沒有 outcome artifact、publication、global evidence 或 promotion。模型仍是 user-declared research-only，`official_historical_pit_verified=false`；沒有官方 PIT 或成熟績效證明，WP5 仍未整體完成。
+
+細節及 SHA 請見 [m10 Qt widget 個人模型驗收報告](../06_qa/PERSONAL_MODEL_QT_WIDGET_ACCEPTANCE_M10_20260928.md)。
+
 ## 2026-09-27 audit／bounded slices current checkpoint
 
 ### 個人日常產品與個人模型安全狀態（2026-09-27）

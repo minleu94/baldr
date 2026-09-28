@@ -1799,6 +1799,7 @@ Evidence 的 close-to-close outcome 是事後診斷，不是 v2 執行 PnL；成
   - 推薦結果來源判讀與排錯：入口在「證據覆盤 → 排程狀態」。舊 `rec_YYYYMMDD_*.json` 與 `scheduled_rec_YYYYMMDD_*.json` 檔名只用來發現候選 ID；實際 bytes、payload `result_id` 與 `run_context.as_of_date` 都由唯讀 Recommendation Execution query 驗證後，才計入人工或排程觀測日。損毀、連結檔、ID／日期不符、unsafe ID 或 query integrity 錯誤會留診斷且不算觀測，不要手動修檔或複製成第二份 JSON。當排程 latest status 缺失時，只有同日、完成且決策可用的已驗證 legacy manual 結果，或 `execution.request.config_snapshot.manual_qt_snapshot=true` 且日期一致的 canonical Qt execution，才可顯示為 `manual_observed`；舊結果按 `rec_YYYYMMDD_*.json` ID 日期和已驗證 `run_context.as_of_date` 判別。canonical scheduled inventory 需有已保存 `scheduled_snapshot=true`，其決策日期還要與可用的 request／context as-of 日期相同；沒有來源標記或日期矛盾時會顯示 unavailable／ambiguous，不推測為人工或排程。單一 legacy namespace 保留既有檔名排序；legacy 與 canonical 同日候選只有在全部保存時鐘含時區且可轉 UTC 比較時才選較新，naive／未知時間會明示 ambiguous。舊檔沒有可信歷史 digest 時，畫面只取得此次 read-time hash，不能證明檔案過去未被替換。排錯時先查看狀態診斷中的 result ID、日期與 query failure；觀測日缺少時確認結果是否已保存、是否同日及是否具來源標記，不用重新執行推薦或 ML 補值。
   這個分頁只使用 dashboard service、已保存 read model 與 scheduled output status 檔，不重算推薦、不重算策略、不讀 UI state、不寫 evidence，也不建立或修改排程；樣本不足或資料降級時只能作資料品質檢查，不可作訊號有效性判斷。
   - 覆盤歷史：只讀取已保存 weekly review；若 history DB／table 不存在，畫面會顯示 `evidence_operations_history_db_missing`／`...table_missing` 診斷與 CLI 建立指引，絕不因刷新畫面建立空 schema。
+  - 研究落差、訊號衰退與決策品質子頁以 dashboard 專用 SQLite 唯讀連線查看既有歷史，不會建立資料庫、資料表或索引。若資料庫或對應 evidence table 不存在，畫面會顯示明確診斷並以空狀態呈現；重新整理不會修復或初始化來源。需要新增 evidence 時，請使用各自明確的 dry-run／保存流程，不要把 dashboard 刷新當成寫入操作。
 - 批次結果：排行榜與整體統計，雙擊股票可載入明細；排行榜的 MDD 以回撤幅度絕對值排序，較小回撤優先。摘要會分開顯示總標的數、有效回測、失敗／無交易、coverage（有效回測／總標的），以及「獲利標的／有效回測」；後者是標的層級比例，不是交易筆勝率。排行榜的 `WinRate%` 只有在單檔交易明細有值時才代表交易筆勝率。CAGR／MDD 中位數會標出各自有效樣本數，不把缺值或失敗標的混入母體。這些欄位只用來理解本批次覆蓋率與結果分布，不代表正式策略判斷、交易建議或持倉調整。
 - 推薦回放：摘要分為概況、交易假設與可信度、風險與情境指標、Monte Carlo 情境；V1.2 result details 會補充 `rolling_risk_metrics`、`microstructure_preflight` 與 `relative_attribution`，用來判讀 rolling risk、可選台股微結構風險與 benchmark / industry / concept 背景；下方以分頁呈現組合價值 / 回撤圖、期間持倉、股票貢獻與交易紀錄。
 
@@ -1990,28 +1991,28 @@ Stage C 先以 canonical query 嚴格讀回 capture 對應的已保存 recommend
 | `error`（CLI exit code 2） | 參數、路徑、讀回或發布失敗。保存完整 stderr/stdout 與路徑，確認輸出未被改寫，再依 create-only 契約另行處理；不要刪檔或覆蓋舊 receipt。 |
 | `completed`（CLI exit code 0） | 只表示本次明列 capture 的輸出已完成並返回 receipt。它不代表模型獲准、表現有效、自然 scheduler 完成、實際成交或 global learning/promotion。 |
 
-本附記的 scoped QA 證據分開記錄：WP3 frozen focused 51P、Stage B／C route 31P／1S、Workbench UI 84P、Update QA 25P／4S。它們不是同一條全端 route，也不相加作整體 PASS；source/PIT gate 最終測試 inventory／hash 與 root 最終 relevant regression 收據仍待補。尚未完成可見 native post-fix 操作、真實可准入 candidate 或自然 scheduler 驗收。Stage C 測試、個人候選來源與個人政策不得折抵 global training、global evidence 或 promotion 條件。
+較早 scoped QA 檢查點的 WP3／Stage B／C／Workbench／Update QA 數字各自只對當時範圍有效；最終 relevant route 另見交付 QA 文件。當時「尚未完成可見 native 操作」已由 2026-09-28 m10 Qt widget journey 更新，詳見 9.9.1d；m10 不是 OS desktop screenshot，也沒有完成 WP1 自然 scheduler、官方 PIT 或成熟績效。Stage C 測試、個人候選來源與個人政策不得折抵 global training、global evidence 或 promotion 條件。
 
 ### 9.9.1d 使用者明示來源時間信任的個人研究模式（V2，2026-09-27）
 
-本節補充更新 9.9.1c 的來源信任說明：使用者已明確選擇可信任自己指定的 SQLite 資料庫，系統因此提供 V2 個人研究限定流程。這是「使用者聲明的來源時間信任」，不是官方歷史發布時間、獨立歷史 PIT 或資料來源簽章。安全預設仍是 `rule_only`；兩個 `legacy_unproven` 舊候選仍不可啟用。2026-09-28 已在隔離 QA snapshot 上完成一個新候選的真實後端推薦／保存／capture 驗收，但該候選只屬 user-declared research-only，不能稱為 official PIT 或 formal promotion candidate；當前個人設定最後已回到 `rule_only`，詳見本節末的驗收附記。
+本節補充更新 9.9.1c 的來源信任說明：使用者已明確選擇可信任自己指定的 SQLite 資料庫，系統因此提供 V2 個人研究限定流程。這是「使用者聲明的來源時間信任」，不是官方歷史發布時間、獨立歷史 PIT 或資料來源簽章。安全預設仍是 `rule_only`。原有兩個 `legacy_unproven` 候選未補造 lineage；兩者雖曾通過安全 loader 載入檢查，仍缺訓練 lineage／來源時間契約，且績效未獨立驗證，不可因此啟用。2026-09-28 隔離後端已用新候選完成推薦、保存／讀回與 capture 驗收；候選只屬 user-declared research-only，不能稱為 official PIT 或 formal promotion candidate。當前個人設定最後已回到 `rule_only`。Qt widget 模型旅程已於 2026-09-28 m10 完成限定範圍驗收；不是 OS foreground／desktop screenshot。Stage C 對同次 capture 仍為 19 pending、0 matured，沒有成熟績效。
 
 操作入口在「推薦分析」頁的「個人推薦模式」區塊：
 
-1. 按「讀取候選清冊」，選取要檢查的候選。清冊只列可檢查的候選；缺少完整 lineage／來源證據的 `legacy_unproven` 項目不能藉由手動挑選或重雜湊升格。
-2. 在「個人研究來源 SQLite（明確選擇）」輸入絕對檔案路徑，或按「選擇 DB…」。畫面不會從 `DATA_ROOT` 推定來源或代表使用者同意。依目前驗收路線，請選用由使用者確認的正式 `D:` 資料庫以唯讀 SQLite backup 建立的穩定、隔離 QA snapshot；推薦訓練與 V2 policy 都必須綁同一 snapshot。正式 `D:` 僅作唯讀來源，不要把它當模型 runtime 綁定路徑，也不要由本功能寫入。按「檢查指定來源與候選」只執行唯讀來源檢查與有界 replay，不會寫入來源 SQLite 或保存信任。
+1. 按「讀取候選清冊」，在已設定的 learning root 中選取 `rec-cal-3f8b2c276ef316e28de3806d`。UI 以 `RECOMMENDATION_LEARNING_OUTPUT_ROOT` 指定 learning 輸出根目錄；該環境變數須是絕對路徑，並指向**包含 `recommendation_learning` 子目錄的 output root**，不是該子目錄本身。未設定時，resolver 依 `DATA_ROOT` 使用同層的預設 `FA_Data_Shadow`。清冊只列可檢查的候選；缺少完整 lineage／來源證據的 `legacy_unproven` 項目不能藉由手動挑選或重雜湊升格。隔離 QA 候選只會出現在該 QA run 明確指定的 learning root；一般 UI 預設 root 沒有列出它時，先核對啟動設定，不要複製候選或改寫 pointer。
+2. 在「個人研究來源 SQLite（明確選擇）」輸入目前隔離 run 的 SQLite 絕對路徑，或按「選擇 DB…」。V2 來源綁定要與推薦服務本次實際使用的工作資料庫相同，並核對路徑、檔案身分及訓練切片；使用隔離 QA working copy 時，要綁該 working copy，而不是其父來源或其他 snapshot。正式 `D:` 只可作為建立隔離來源的唯讀原始來源，不要讓 UI 或本功能寫入正式庫。畫面不會從 `DATA_ROOT` 推定來源或代表使用者同意。按「檢查指定來源與候選」只執行唯讀來源檢查與有界 replay，不會寫入來源 SQLite 或保存信任。
 3. 檢查預覽所列資料庫絕對路徑、檔案身分、來源切片 SHA-256、資料集、決策日期、股票、樣本數與候選完整 pins。資料庫大小只供診斷；不能用它代替來源身分或切片驗證。來源切片綁定模型實際訓練窗內的資料列、可讀的 `available_at`、可重建的來源契約及成本等訓練輸入。本次僅在 `coverage.source_contract.technical`、`source_disclosures.source_contract.technical`、`source_disclosures.technical.source_contract` 三處 technical contract 投影中排除 `content_digest`、`content_row_count`、`coverage_end`、`evidence_hash` 四個全庫彙總欄；另不把 replay 結果最外層的 `dataset_id`、`dataset_hash`、`source_fingerprint` 三個由全庫 source fingerprints 衍生的識別欄納入此來源切片比對。上述例外以外，其他來源與欄位仍依原契約比較；候選已保存 manifest/pins 與逐筆樣本仍獨立核對。這不改原 replay manifest 或 global oracle。若 technical publication 或 corporate-action adjustment contract 缺失／未驗證，gate evidence 仍是 `unknown`／`false`；使用者信任指定資料庫不會把它升格為官方 PIT。來源日期只接受 `YYYY-MM-DD` 或 `YYYYMMDD`；完整 ISO 日期時間必須帶時區，並先換算為台北日期，再與決策日作日粒度比較。缺時區的 naive 日期時間及其他延伸日期格式會拒絕候選。此日期粒度不證明同日盤中可得時間；無效或晚於決策日的 `available_at` 會拒絕候選。若已知非單位公司行動落在 label window，候選也會被拒絕。`available_at` 不會改稱官方發布時間。
-4. 確認候選與指定資料庫確實是你要採信的來源後，選擇「個人校準機率（需選擇已驗證候選）」，勾選「我明確信任以上指定 SQLite 的資料時間來源，僅供個人研究，不代表官方歷史 PIT。」再按「信任此來源並保存個人研究模式」。V2 設定會用 CAS 保存並讀回 revision/hash；接著系統以同一明示資料庫重新檢查。只有重新檢查成功後，當前畫面才可在呼叫時要求 personal calibrated mode；consumer 仍會在載入模型前獨立重驗來源與候選。
-5. 按「執行推薦分析」完成分析後，按「保存結果」並等 canonical save/readback 成功，才會在結果表看到已驗證的模型投影。主要欄位是 `calibrated_probability_bp`、`calibrated_probability_status`、`after_cost_profit_probability_bp`、`after_cost_profit_probability_status`、`calibration_model_version`、`calibration_horizon`、`calibration_source` 與 `calibration_warnings`。`_bp` 以 10,000 = 100% 表示；例如 6,400 bp = 64%。模型只提供校準機率、成本後機率及其證據，不改規則 `rule_score`、入選股票、top-N 或原推薦排序。`unavailable`、`unknown`、fallback 或空值不是 0，也不能當作模型已影響該股票；請一併檢查狀態、horizon、來源與警告。這些欄位只在 canonical 保存讀回的模型投影通過驗證後顯示，未保存或讀回驗證失敗時不得自行推定模型效果。
-6. 關閉並重開程式後，已保存路徑可顯示作為提示，但不代表本次啟動已重新驗證。先按「檢查指定來源與候選」完成新一輪檢查，通過後才能執行個人校準機率。若路徑、檔案身分、訓練切片或候選 pins 不一致，系統 fail closed 並保留 `rule_only`。
-7. 要停用個人校準時，選擇規則模式並按「停用校準並保存規則模式」。V2 會建立新 CAS revision 並清除候選與來源信任；此操作只影響本機個人政策，不改全域 active pointer、training、promotion、learning credit 或自動下單。
-8. 回退 V2 的校準設定時，按「讀取歷史版本」並選擇要回復的已保存版本。若所選版本是 V2 個人校準，先重新選取其候選、輸入同一來源 SQLite 並按「檢查指定來源與候選」；只有新鮮 proposal 與封存 trust 完全相符時，才可按「回退到所選版本」並在確認視窗同意。回退會建立新 revision，不回寫歷史政策或推薦結果；儲存的舊 trust 本身不是目前來源仍可信的證明。V1 設定仍可讀取，但 V1 calibrated policy 不會因此取得 V2 來源信任。
+4. 確認候選與指定資料庫確實是你要採信的來源後，選擇「個人校準機率（需選擇已驗證候選）」，勾選「我明確信任以上指定 SQLite 的資料時間來源，僅供個人研究，不代表官方歷史 PIT。」再按確認按鈕。按鈕會依所選模式顯示「信任此來源並保存個人研究模式」或規則模式的相應文字。V2 設定會用 CAS 保存並讀回 revision/hash；接著系統以同一明示資料庫重新檢查。只有重新檢查成功後，當前畫面才可在呼叫時要求 personal calibrated mode；consumer 仍會在載入模型前獨立重驗來源與候選。
+5. 按「執行推薦分析」完成分析，先確認本次實際模式；接著按「保存結果」，等 canonical save/readback 成功後，再檢查逐列機率與狀態。保存前的結果表尚未接上已驗證 read model 的逐列 projection，不能據此判斷模型是否提供機率。每次模型執行都必須對本次 MainWindow 實際使用的 working DB 重新核對來源路徑、檔案身分與來源切片；舊政策或前一階段的 source proof 不能代替本次重驗。只有保存讀回核對同一 `result_id`、政策快照、模型 receipt 與投影後，結果表才會顯示已驗證的模型欄位。主要欄位是 `calibrated_probability_bp`、`calibrated_probability_status`、`after_cost_profit_probability_bp`、`after_cost_profit_probability_status`、`calibration_model_version`、`calibration_horizon`、`calibration_source` 與 `calibration_warnings`。`_bp` 以 10,000 = 100% 表示；例如 6,000 bp = 60%。模型只提供校準機率與來源證據，不改規則 `rule_score`、入選股票、top-N 或原推薦排序。只有實際模式為 `personal_calibrated_probability` 且列狀態有效、機率值有來源時，才能說模型影響了該列的機率呈現；`unavailable`、`unknown`、fallback 或空值不是 0，也不能當成模型已影響該股票。canonical 保存讀回通過後，系統會依當次模式建立個人模型 capture 並讀回驗證；若需重試，只對目前已驗證的同一結果按「建立／重試個人模型擷取」，不會重跑推薦或重新推論。capture 失敗不會倒置已保存結果。
+6. 關閉並重開程式後，已保存路徑可顯示作為提示，但不代表本次啟動已重新驗證。先核對 UI 實際 `TWStockConfig.db_file`，再按「檢查指定來源與候選」取得綁定該 working DB 的新預覽；保存政策後、開始下一次模型呼叫前仍須確認路徑、檔案身分及來源切片與本次 runtime 一致。若初始化或其他階段改變 working DB，原預覽即不得沿用，需重做來源檢查；若任何核對不一致，系統 fail closed 並保留 `rule_only`。
+7. 要停用個人校準時，選擇「規則排序（個人紀錄）」。原本啟用校準時，確認按鈕會顯示「停用校準並保存規則模式」；按下後 V2 會建立新 CAS revision 並清除候選與來源信任。若原本已是規則模式，按鈕文案為「確認並保存規則模式」。此操作只影響本機個人政策，不改全域 active pointer、training、promotion、learning credit 或自動下單。
+8. 回退 V2 的校準設定時，按「讀取歷史版本」並選擇要回復的已保存版本。若所選版本是 V2 個人校準，確認（必要時重新選取）其候選、輸入同一來源 SQLite 並按「檢查指定來源與候選」；只有新鮮 proposal 與封存 trust 完全相符時，才可按「回退到所選版本」並在確認視窗同意。回退會建立新 revision，不回寫歷史政策或推薦結果；儲存的舊 trust 本身不是目前來源仍可信的證明。V1 設定仍可讀取，但 V1 calibrated policy 不會因此取得 V2 來源信任。
 
 若更新的是隔離 snapshot，V2 來源驗證不會只因一般資料庫彙總值變化便自動失效：訓練窗以外的更新只有在同一檔案身分仍成立、且實際訓練切片（含資料列、可讀時間欄、來源契約及成本）完全相同時，才不改變該切片比對結果。缺少獨立 publication／adjustment 證據時，狀態仍為未知，不會以使用者聲明補成官方時間證明；訓練窗內可見的未來 `available_at` 或已知非單位公司行動仍會阻擋。若檔案被替換，或訓練切片內資料／時間／來源契約／成本改變，驗證會拒絕；請由已確認的正式唯讀來源另建穩定 snapshot，再重新驗證候選並明確確認。不得自行改 manifest、hash、時間或政策 JSON 讓檢查通過。即使符合使用者的來源聲明，仍只屬研究限定，並非官方 historical PIT。
 
 | 狀態／症狀 | 判讀與處理 |
 |---|---|
-| 候選清冊沒有可用候選，或只列 `legacy_unproven` | 尚無可通過准入的模型；維持 `rule_only`。不可把舊候選的缺失 lineage 手動補成可信證據。 |
+| 候選清冊沒有列出 `rec-cal-3f8b2c276ef316e28de3806d`，或只列 `legacy_unproven` | 核對隔離 run 的 learning root 是否正確；不要複製／修改候選或 lineage。舊 `legacy_unproven` 候選仍因缺訓練 lineage／來源時間契約而不可啟用，維持 `rule_only`。 |
 | 來源檢查按鈕／信任勾選框不可用 | 尚未明確選取候選與絕對 SQLite 路徑，或預覽已因路徑／候選改變而清除；重新選擇並檢查。 |
 | 顯示 V1 或未重新驗證的 V2 | 舊設定可讀，但不代表目前來源有效；同一候選與資料庫需重新檢查，並在需要時明確保存 V2。 |
 | CAS revision/hash 衝突或保存後讀回失敗 | 不要覆寫政策檔；重新載入目前設定、核對來源及候選後再操作。保存若已完成但畫面未確認，先讀回設定，不要猜測結果。 |
@@ -2022,9 +2023,44 @@ Stage C 先以 canonical query 嚴格讀回 capture 對應的已保存 recommend
 
 此隔離候選使用 8 檔（2308、2317、2327、2330、2344、2408、2454、3037），history start 2024-10-24、replay end 2026-06-26；512 筆 replay samples 中採用 64 個決策日（2025-11-28 至 2026-05-28），label horizon 為 20 sessions。特徵只取決策前可得的前一交易日資料；來源 `available_at` 的訓練檢查是日粒度 user-declared 信任，不代表同日盤中可得或 official publication。候選以 50 bp fixed round-trip cost scenario訓練，`training_as_of=2026-05-25`、`training_cutoff=2026-06-26`；共 336 筆 cutoff-eligible rows，其中 OOF 校準 176 筆、未碰測試 holdout 16 筆，其餘屬訓練折。完整候選 root 與 candidate／freeze／manifest／artifact／dataset pins 見[隔離 E2E 收據](../../output/qa/pc-e2e-v1/backend_e2e_acceptance_20260928.json)。
 
-Capture 的 20-session 自然 outcome 尚未成熟：三列均 pending、成熟 0 列，獨立 resolver 指出缺 `2026-09-28` 的 TAIEX baseline observation，沒有建立 outcome、global natural evidence 或 promotion credit。Annual calendar cache 的臨時休市 coverage 為 `not_covered`。個人政策曾依序啟用、停用為 rule-only、經新鮮 source recheck 回退候選，再以新 revision 設為最終 rule-only；global active pointer 未變。完整後端收據及各階段 hash 見[個人模型隔離後端 E2E 收據](../../output/qa/pc-e2e-v1/backend_e2e_acceptance_20260928.json)（SHA-256 `5da799f8994eed9623c28e938593b4075256c83e9505408469d3118b585ee080`），結果成熟度診斷見 `resolver_diagnostic_receipt.json`。
+較早 backend-only capture 的 3 列均 pending、成熟 0 列；其 resolver 指出缺 `2026-09-28` 的 TAIEX baseline observation，沒有建立 outcome、global natural evidence 或 promotion credit。這不是後續 m10 capture 的列數或狀態。m10 對其獨立 capture 的最新 Stage C 結果見下文：19 pending、0 matured。Annual calendar cache 的臨時休市 coverage 為 `not_covered`。較早個人政策曾依序啟用、停用為 rule-only、經新鮮 source recheck 回退候選，再以新 revision 設為最終 rule-only；global active pointer 未變。完整後端收據及各階段 hash 見[個人模型隔離後端 E2E 收據](../../output/qa/pc-e2e-v1/backend_e2e_acceptance_20260928.json)（SHA-256 `5da799f8994eed9623c28e938593b4075256c83e9505408469d3118b585ee080`），結果成熟度診斷見 `resolver_diagnostic_receipt.json`。
 
-隔離 UI launcher 已準備，但本次沒有完成原生視窗點按；因此不宣稱 native 個人模型啟用、停用或版本回退已通過。後端 API 驗收也不代表使用者已在畫面選擇該 QA 候選。Stage C 的逐筆 outcome CLI 仍依 9.9.1c 的明確 capture 路徑與 `evaluation-at` 使用；V2 來源信任不會提前成熟 outcome 或替代來源與日曆檢查。20-session maturity 的 resolver 明細見[隔離 QA 診斷收據](../../output/qa/pc-e2e-v1/eval-005-stageb-v2-20260928-03/resolver_diagnostic_receipt.json)。
+2026-09-28 m10 已通過隔離 Qt widget journey：V2 candidate recheck、模型推薦、canonical result save/readback、capture v3 readback、cold restart、停用、fresh proposal revision rollback、final rule-only。精確 pins 見 [m10 驗收報告](../06_qa/PERSONAL_MODEL_QT_WIDGET_ACCEPTANCE_M10_20260928.md)。畫面證據是 `QWidget.grab()` widget render，不是 OS foreground／desktop screenshot。預設仍為 `rule_only`；user-declared source time 只限個人研究，不是官方 historical PIT。Stage C 對 m10 capture 為 `completed_with_pending`、19 pending／0 matured、reason `personal_outcome_source_or_cost_incomplete`，outcome artifact null、published 0、global／promotion false。逐筆 CLI 仍依 9.9.1c 的 explicit capture path 與 `evaluation-at` 使用；它不會提前成熟 outcome 或替代官方來源／日曆檢查。
+
+正式資料根目錄預設為 `D:\Min\Python\Project\FA_Data`（可由 `DATA_ROOT` 覆寫），正式 SQLite 為 `D:\Min\Python\Project\FA_Data\sqlite\twstock.db`。該正式庫只可依授權作建立 snapshot 的唯讀來源；m10 UI 程序沒有開啟正式庫。實際 runtime/source trust 綁定的是隔離工作副本 `m10\data\_test\sqlite\twstock.db`，不是父 snapshot，也不是正式庫。
+
+若要親自操作畫面，先依下方自動旅程範例設定路徑並完成 `prepare`（只執行到準備隔離 run 為止），再以該全新 `$run`、`$learning`、`$policy` 啟動 MainWindow：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\qa_personal_research_ui.py launch `
+  --run-root $run `
+  --learning-output-root $learning `
+  --policy-config-path $policy
+```
+
+在「推薦分析」頁讀取候選清冊，選取指定候選；輸入同一 run 的 runtime SQLite 後按「檢查指定來源與候選」，核對路徑、檔案身分、slice SHA 與研究限定，再明確勾選來源信任並保存 V2。執行推薦後按「保存結果」，確認 canonical readback 後檢視逐列機率，再建立／讀回 capture。要停用時保存 `rule_only`；要回退時讀取歷史版本、重新取得與封存 trust 相符的 fresh source proposal，再確認回退，最後再保存 `rule_only`。若要以已審查的自動 Qt widget 控制重現整段流程，才使用下方 `preflight`／`accept` 命令；它不是人手操作或 OS-level 桌面證據。m10 的已完成收據供查核，不要重用 m10 root；自行操作必須重新 `prepare` 全新隔離 root。
+
+隔離 journey 的實際命令（每次使用全新且不存在的 run ID；不得重用完成、失敗或中斷的 root）：
+
+```powershell
+$repo = 'C:\Projects\PythonProjects\technical_analysis'
+$runId = 'native_qt_wp4_model_<unique>'
+$run = Join-Path $repo "output\qa\personal_daily_product_20261006\personal_research_ui\$runId"
+$snapshot = Join-Path $repo 'output\qa\personal_daily_product_20261006\real_source_validation_runs\formal_source_snapshot_v2\twstock.db'
+$snapshotReceipt = Join-Path (Split-Path $snapshot) 'snapshot_receipt.json'
+$learning = Join-Path $repo 'output\qa\pc-fit-v7'
+$policy = Join-Path $run 'app_config\personal_use_policy.json'
+.\.venv\Scripts\python.exe scripts\qa_personal_research_ui.py prepare `
+  --run-root $run `
+  --source-snapshot $snapshot `
+  --snapshot-receipt $snapshotReceipt `
+  --learning-output-root $learning `
+  --policy-config-path $policy
+.\.venv\Scripts\python.exe scripts\qa_native_personal_model_acceptance.py preflight --run-id $runId
+.\.venv\Scripts\python.exe scripts\qa_native_personal_model_acceptance.py accept --run-id $runId --confirm-qt-model-run
+```
+
+成功旅程會在「推薦分析」內逐步檢查明示 DB source、V2 trust、推薦、保存讀回、capture、冷啟、停用與 rollback；每一個 source proof 以該 run 真正的 `TWStockConfig.db_file` 為準。準備器複製已 pin 的 QA snapshot，learning root `output/qa/pc-fit-v7` 保持唯讀。若任何 phase 失敗或逾時，保留原 receipt 與 run tree、停止後續動作並改用新 run ID；不得清理或覆寫失敗 root。
 
 ### 9.9.2 Historical Evidence Replay（歷史排程重放）
 

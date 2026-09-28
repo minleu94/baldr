@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import pytest
 
 from app_module.recommendation.personal_use_policy import (
@@ -52,7 +53,9 @@ from app_module.personalization_contract import (
     read_personal_use_policy_snapshot_event,
 )
 from app_module.recommendation.codec import decode_execution, encode_execution
+from app_module.recommendation.composition import build_recommendation_composition
 from app_module.recommendation.execute import _capture_events
+from app_module.recommendation.execute import execute_recommendation
 from app_module.recommendation.ml_postcalibration_handoff import (
     CalibrationProjectionStatusV1,
     CalibrationReceiptEventFactsV1,
@@ -60,10 +63,18 @@ from app_module.recommendation.ml_postcalibration_handoff import (
     RecommendationPostCalibrationHandoffV1,
     encode_candidate_identity_event_json_v1,
 )
-from recommendation_test_support import build_recommendation_test_service
+from recommendation_test_support import (
+    build_recommendation_test_preparer,
+    build_recommendation_test_service,
+)
 from data_module.company_registry import (
     COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR,
     COMPANY_REGISTRY_SOURCE_CONTRACT_SCHEMA_VERSION,
+)
+from data_module.industry_mapper_data_provider import (
+    INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR,
+    IndustryMapperDataProvider,
+    industry_index_source_observation_hash_matches,
 )
 from ml_module.recommendation_cost_scenario import build_legacy_cost_scenario
 
@@ -152,6 +163,40 @@ def _service(tmp_path: Path) -> RecommendationService:
         market_data_provider=provider,
         regime_detector=MagicMock(),
     )
+
+
+def _rehash_snapshot(snapshot: dict[str, object]) -> None:
+    snapshot.pop("snapshot_sha256", None)
+    snapshot["snapshot_sha256"] = _sha256(
+        json.dumps(
+            snapshot,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    )
+
+
+def _rehash_industry_observation(observation: dict[str, object]) -> None:
+    observation.pop("observation_sha256", None)
+    observation["observation_sha256"] = _sha256(
+        json.dumps(
+            observation,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    )
+
+
+class _IndustryMarketFrameProvider:
+    def __init__(self, frame: pd.DataFrame) -> None:
+        self._frame = frame
+
+    def __call__(self) -> pd.DataFrame:
+        return self._frame.copy(deep=True)
 
 
 def test_cold_start_policy_is_explicit_rule_only_without_writing(tmp_path: Path) -> None:
@@ -1023,7 +1068,30 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
     companies_frame = SimpleNamespace(
         attrs={COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR: source_contract}
     )
-    service.industry_mapper = SimpleNamespace(companies_df=companies_frame)
+    index_path = tmp_path / "industry_index.csv"
+    index_path.write_text(
+        "日期,指數名稱,收盤指數,漲跌,漲跌點數,漲跌百分比\n"
+        "2026-09-24,半導體類指數,100,+,1,1\n",
+        encoding="utf-8-sig",
+    )
+    index_frame = IndustryMapperDataProvider(
+        SimpleNamespace(
+            meta_data_dir=tmp_path,
+            industry_index_file=index_path,
+            use_sqlite=False,
+        )
+    ).load_industry_index_frame()
+    original_index_observation = json.loads(
+        json.dumps(
+            index_frame.attrs[INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR],
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+    service.industry_mapper = SimpleNamespace(
+        companies_df=companies_frame,
+        industry_index_df=index_frame,
+    )
     service.last_run_context = {
         "result_id": "current-mapper-result",
         "as_of_date": "2026-09-24",
@@ -1033,6 +1101,9 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
     source_contract["warnings"].append("mutated-after-capture")
     service._record_current_industry_mapping_use(
         "current_industry_index_performance_for_reason"
+    )
+    index_frame.attrs[INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR]["warnings"].append(
+        "mutated-after-capture"
     )
     service._finalize_current_industry_mapping_snapshot()
 
@@ -1063,12 +1134,46 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
     assert snapshot["pit_eligible"] is False
     assert snapshot["company_registry_source_status"] == "captured"
     assert snapshot["industry_index_source_status"] == "unknown"
+
+    def thaw_safe_value(value):
+        if hasattr(value, "items"):
+            return {key: thaw_safe_value(item) for key, item in value.items()}
+        if isinstance(value, tuple):
+            return [thaw_safe_value(item) for item in value]
+        if isinstance(value, list):
+            return [thaw_safe_value(item) for item in value]
+        return value
+
+    finalized_context_snapshot = thaw_safe_value(
+        service.last_run_context["industry_mapping_source_snapshot"]
+    )
+    assert thaw_safe_value(snapshot) == finalized_context_snapshot
+    saved_index_observation = thaw_safe_value(
+        snapshot["industry_index_source_observation"]
+    )
+    assert saved_index_observation == original_index_observation
+    assert saved_index_observation["source_id"] == "csv.industry_index"
+    assert saved_index_observation["available_at"] is None
+    assert saved_index_observation["published_at"] is None
+    assert saved_index_observation["pit_eligible"] is False
+    assert snapshot["industry_index_source_observation_sha256"] == (
+        saved_index_observation["observation_sha256"]
+    )
+    assert snapshot["industry_index_source_time_status"] == "unknown"
+    assert snapshot["industry_index_source_available_at"] is None
+    assert snapshot["industry_index_source_published_at"] is None
+    assert industry_index_source_observation_hash_matches(
+        saved_index_observation
+    )
     assert snapshot["usage"] == (
         "current_filter_selection",
         "current_industry_index_performance_for_reason",
     )
     assert snapshot["company_registry_source_contract"]["warnings"] == ()
     assert "industry_index_source_contract_unavailable_for_current_use" in snapshot[
+        "warnings"
+    ]
+    assert "industry_index_source_capture_time_unknown_for_current_use" in snapshot[
         "warnings"
     ]
     assert snapshot["snapshot_sha256"].startswith("sha256:")
@@ -1104,6 +1209,105 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
             ),
         )
 
+    # Outer snapshot hashes are self-hashes.  Recomputing one after changing
+    # the inner observation must not make contradictory echoes publishable.
+    tampered_echo_context = json.loads(json.dumps(service.last_run_context))
+    tampered_echo_snapshot = tampered_echo_context["industry_mapping_source_snapshot"]
+    tampered_echo_snapshot["industry_index_source_observation_sha256"] = _sha256(
+        b"different inner observation"
+    )
+    _rehash_snapshot(tampered_echo_snapshot)
+    with pytest.raises(ValueError, match="industry mapping source snapshot binding"):
+        _capture_events(
+            SimpleNamespace(
+                materialize=lambda: {"last_run_context": tampered_echo_context}
+            ),
+            {},
+            RecommendationPostCalibrationHandoffV1(
+                consumer_configured=False, attempted=False
+            ),
+            status=ExecutionStatus.CANCELLED,
+            body_result=None,
+            result_id="current-mapper-result",
+            context_as_of_date=date(2026, 9, 24),
+            context_decision_at=datetime.fromisoformat(
+                "2026-09-27T18:00:00+00:00"
+            ),
+        )
+
+    tampered_time_context = json.loads(json.dumps(service.last_run_context))
+    tampered_time_snapshot = tampered_time_context[
+        "industry_mapping_source_snapshot"
+    ]
+    tampered_observation = tampered_time_snapshot[
+        "industry_index_source_observation"
+    ]
+    assert isinstance(tampered_observation, dict)
+    tampered_observation["published_at"] = "2026-09-24T00:00:00Z"
+    _rehash_industry_observation(tampered_observation)
+    tampered_time_snapshot["industry_index_source_observation_sha256"] = (
+        tampered_observation["observation_sha256"]
+    )
+    _rehash_snapshot(tampered_time_snapshot)
+    with pytest.raises(ValueError, match="industry mapping source snapshot binding"):
+        _capture_events(
+            SimpleNamespace(
+                materialize=lambda: {"last_run_context": tampered_time_context}
+            ),
+            {},
+            RecommendationPostCalibrationHandoffV1(
+                consumer_configured=False, attempted=False
+            ),
+            status=ExecutionStatus.CANCELLED,
+            body_result=None,
+            result_id="current-mapper-result",
+            context_as_of_date=date(2026, 9, 24),
+            context_decision_at=datetime.fromisoformat(
+                "2026-09-27T18:00:00+00:00"
+            ),
+        )
+
+    legacy_context = json.loads(json.dumps(service.last_run_context))
+    legacy_snapshot = legacy_context["industry_mapping_source_snapshot"]
+    for field_name in (
+        "industry_index_source_observation",
+        "industry_index_source_observation_sha256",
+        "industry_index_source_time_status",
+        "industry_index_source_available_at",
+        "industry_index_source_published_at",
+    ):
+        legacy_snapshot.pop(field_name)
+    legacy_snapshot["warnings"] = [
+        warning
+        for warning in legacy_snapshot["warnings"]
+        if warning != "industry_index_source_capture_time_unknown_for_current_use"
+    ]
+    _rehash_snapshot(legacy_snapshot)
+    legacy_events = _capture_events(
+        SimpleNamespace(materialize=lambda: {"last_run_context": legacy_context}),
+        {},
+        RecommendationPostCalibrationHandoffV1(
+            consumer_configured=False, attempted=False
+        ),
+        status=ExecutionStatus.CANCELLED,
+        body_result=None,
+        result_id="current-mapper-result",
+        context_as_of_date=date(2026, 9, 24),
+        context_decision_at=datetime.fromisoformat(
+            "2026-09-27T18:00:00+00:00"
+        ),
+    )
+    legacy_event = next(
+        event
+        for event in legacy_events
+        if event.event_type == "company_registry_source_snapshot"
+    )
+    legacy_event_snapshot = legacy_event.details["snapshot"]
+    assert legacy_event_snapshot["schema_version"] == (
+        "recommendation-company-registry-source-snapshot.v1"
+    )
+    assert "industry_index_source_observation" not in legacy_event_snapshot
+
 
 def test_missing_current_mapper_source_contract_stays_unknown(
     tmp_path: Path,
@@ -1123,6 +1327,161 @@ def test_missing_current_mapper_source_contract_stays_unknown(
     assert snapshot["company_registry_source_status"] == "unknown"
     assert snapshot["company_registry_source_contract"] is None
     assert "company_registry_source_contract_missing" in snapshot["warnings"]
+
+
+def test_current_industry_observation_survives_canonical_save_and_fresh_query(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        {
+            "日期": date(2026, 9, 1) + timedelta(days=offset),
+            "available_date": date(2026, 9, 1) + timedelta(days=offset),
+            "證券代號": "2330",
+            "證券名稱": "台積電",
+            "收盤價": Decimal("100.00"),
+            "成交股數": 1_000,
+        }
+        for offset in range(20)
+    ]
+    market_provider = _IndustryMarketFrameProvider(pd.DataFrame(rows))
+    output_root = tmp_path / "canonical-output"
+    config = SimpleNamespace(
+        data_root=tmp_path / "isolated-data",
+        output_root=output_root,
+        db_file=tmp_path / "missing-source.db",
+        default_start_date="2020-01-01",
+        use_sqlite=False,
+        pit_market_scope="twse_listed",
+    )
+
+    index_path = tmp_path / "industry_index.csv"
+    index_path.write_text(
+        "日期,指數名稱,收盤指數,漲跌,漲跌點數,漲跌百分比\n"
+        "2026-09-24,半導體類指數,100,+,1,1\n",
+        encoding="utf-8-sig",
+    )
+    index_frame = IndustryMapperDataProvider(
+        SimpleNamespace(
+            meta_data_dir=tmp_path,
+            industry_index_file=index_path,
+            use_sqlite=False,
+        )
+    ).load_industry_index_frame()
+    mapper = SimpleNamespace(
+        companies_df=SimpleNamespace(attrs={}),
+        industry_index_df=index_frame,
+        filter_stocks_by_industry=lambda codes, _industry: list(codes),
+        get_stock_industries=lambda _code: ["半導體"],
+        get_industry_performance=lambda _industry, date=None: None,
+    )
+    service = RecommendationService(
+        config,
+        industry_mapper=mapper,
+        market_data_provider=market_provider,
+        regime_detector=MagicMock(),
+        calibration_consumer=None,
+        input_preparer=build_recommendation_test_preparer(
+            config, market_data_provider=market_provider
+        ),
+    )
+    service.reason_engine = MagicMock()
+    service.reason_engine.generate_reasons.return_value = []
+    service.reason_engine.format_reason_text.return_value = ""
+
+    def generate(stock_frame: pd.DataFrame, _config: dict[str, object]) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "FinalScore": [Decimal("88.50")],
+                "TotalScore": [Decimal("88.50")],
+                "收盤價": [stock_frame.iloc[-1]["收盤價"]],
+            }
+        )
+
+    service.strategy_configurator.generate_recommendations = generate
+    execution = execute_recommendation(
+        service,
+        {
+            "profile_id": "wp2-industry-observation",
+            "profile_version": "1",
+            "recommendation_ranking": {"threshold_mode": "fixed"},
+            "filters": {"industry": "半導體"},
+        },
+        max_stocks=1,
+        top_n=1,
+        result_id="wp2-industry-observation-canonical",
+    )
+    assert execution.status is ExecutionStatus.COMPLETED
+    assert execution.decision is not None
+    source_event = next(
+        event
+        for event in execution.events
+        if event.event_type == "company_registry_source_snapshot"
+    )
+    snapshot = source_event.details["snapshot"]
+    assert "current_industry_index_performance_for_reason" in snapshot["usage"]
+    observation = snapshot["industry_index_source_observation"]
+    assert observation["pit_eligible"] is False
+    assert observation["available_at"] is None
+    assert observation["published_at"] is None
+    assert snapshot["industry_index_source_observation_sha256"] == (
+        observation["observation_sha256"]
+    )
+
+    composition_config = SimpleNamespace(
+        resolve_output_path=lambda subfolder: output_root / subfolder
+    )
+    writer = build_recommendation_composition(composition_config)
+    save_receipt = writer.save_service.save_execution(execution)
+    assert save_receipt.result_id == execution.result_id
+    fresh_queries = build_recommendation_composition(composition_config).queries
+    readback = fresh_queries.get(execution.result_id)
+    assert readback is not None
+    assert readback.integrity_basis == "canonical_payload_and_index_verified"
+    assert readback.execution == execution
+    readback_event = next(
+        event
+        for event in readback.execution.events
+        if event.event_type == "company_registry_source_snapshot"
+    )
+    assert readback_event.details["snapshot"] == snapshot
+
+
+def test_current_industry_index_rowset_mismatch_is_not_attached(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    index_path = tmp_path / "industry_index.csv"
+    index_path.write_text(
+        "日期,指數名稱,收盤指數\n2026-09-24,半導體類指數,100\n",
+        encoding="utf-8-sig",
+    )
+    index_frame = IndustryMapperDataProvider(
+        SimpleNamespace(
+            meta_data_dir=tmp_path,
+            industry_index_file=index_path,
+            use_sqlite=False,
+        )
+    ).load_industry_index_frame()
+    index_frame.loc[0, "收盤指數"] = 101
+    service.industry_mapper = SimpleNamespace(
+        companies_df=SimpleNamespace(attrs={}),
+        industry_index_df=index_frame,
+    )
+    service.last_run_context = {
+        "result_id": "mutated-current-index-result",
+        "as_of_date": "2026-09-24",
+        "decision_at": "2026-09-27T18:00:00.000000Z",
+    }
+
+    service._record_current_industry_mapping_use(
+        "current_industry_index_performance_for_reason"
+    )
+
+    snapshot = service.last_run_context["industry_mapping_source_snapshot"]
+    assert snapshot["industry_index_source_status"] == "unknown"
+    assert snapshot["industry_index_source_observation"] is None
+    assert "industry_index_source_observation_mismatch_for_current_use" in snapshot[
+        "warnings"
+    ]
+    assert snapshot["industry_index_source_available_at"] is None
 
 
 def test_current_mapper_event_preserves_missing_decision_clock_as_unknown(

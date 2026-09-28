@@ -1096,6 +1096,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_ui_qt_v5_research_views.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ui_qt_v5_workbench_guided.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ui_qt_personal_recommendation_choice.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_qa_native_personal_model_acceptance.py": "ui-healthcheck-candidate-bridge",
     # apply/recovery/publication writer（維持寫入風險隔離）
     "tests/test_daily_price_revision_write_guard.py": "write-risk-dry-run-required",
     "tests/test_excluded_daily_price_revision.py": "write-risk-dry-run-required",

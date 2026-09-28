@@ -2,6 +2,30 @@
 
 > 本文件只維護目前分類摘要；逐檔清單以 `qa/full_app_healthcheck/test_inventory.py` 為準。歷史執行紀錄不可當作本次通過證據。
 
+## 2026-09-28 machine refresh
+
+本次補登 `tests/test_qa_native_personal_model_acceptance.py`，分類為 `ui-healthcheck-candidate-bridge`；此 UI 自動化候選不會因此成為 healthcheck direct bridge。已更新 machine summary 計數；完整 pytest collection 未執行。
+
+Current filesystem Python files: `1056`
+Current registry entries: `1056`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 155 |
+| `governance-doc-tooling` | 167 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 155 |
+| `service-oracle-portfolio-decision-runtime` | 131 |
+| `service-oracle-recommendation` | 155 |
+| `service-oracle-research-backtest` | 100 |
+| `slow-e2e-or-environment` | 4 |
+| `ui-healthcheck-candidate-bridge` | 49 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 82 |
+
 ## 2026-09-27 machine refresh
 
 本次以 `scripts/audit_test_inventory.py --skip-pytest-collection` 盤點目前 filesystem 與 registry；未執行 pytest collection，因此不宣稱本次測項數。相較前一版 1045 筆登錄，本次補入 9 個新個人化推薦測試（8 個服務測試、1 個 UI candidate bridge）及先前漏登的既有 `tests/test_phase3c_candidate_repair.py`。R028 單一 job/facade 登錄與此前 1044 檔盤點收據均保留為歷史檢查點，分別見 `output/qa/refactor_completion_20260927/r028_inventory_audit_20260927.json` 與 `output/qa/refactor_completion_20260927/docs_inventory_repair_20260927/test_inventory_audit_post_patch_20260927.json`。

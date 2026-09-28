@@ -7,8 +7,14 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from decimal import Decimal, ROUND_HALF_UP
 
+from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from data_module.config import TWStockConfig
 from app_module.broker_flow_service import BrokerFlowService
+
+
+_SQLITE_IMMUTABLE_READ_WARNING = (
+    "⚠️ SQLite 使用 immutable 唯讀快照，可能只包含較舊的已提交資料。"
+)
 
 
 class PortfolioChipService:
@@ -64,8 +70,8 @@ class PortfolioChipService:
 
     def _get_chip_summary_from_sqlite(self, stock_code: str, period_days: int) -> Dict[str, Any]:
         """從 SQLite 載入籌碼數據"""
-        from data_module.db_manager import DBManager
-        db = DBManager(self.config)
+        db = ReadOnlySQLiteManager(self.config.db_file)
+        immutable_snapshot_used = False
 
         try:
             # 1. 取得最近的交易日期列表
@@ -73,8 +79,14 @@ class PortfolioChipService:
                 "SELECT DISTINCT 日期 FROM broker_flows WHERE 證券代號 = ? ORDER BY 日期 DESC LIMIT ?;",
                 (stock_code, period_days)
             )
+            immutable_snapshot_used = (
+                db.last_read_mode == "immutable_fallback"
+            )
             if dates_df.empty:
-                return self._empty_summary(stock_code, period_days)
+                summary = self._empty_summary(stock_code, period_days)
+                if immutable_snapshot_used:
+                    self._mark_immutable_read_degraded(summary)
+                return summary
 
             dates = dates_df['日期'].dropna().tolist()
             placeholders = ",".join("?" for _ in dates)
@@ -90,12 +102,32 @@ class PortfolioChipService:
             """
             params = (stock_code, *dates)
             flows_df = db.execute_query(query, params)
-            return self._aggregate_flow_dataframe(flows_df, stock_code, period_days, dates)
+            immutable_snapshot_used = immutable_snapshot_used or (
+                db.last_read_mode == "immutable_fallback"
+            )
+            summary = self._aggregate_flow_dataframe(
+                flows_df,
+                stock_code,
+                period_days,
+                dates,
+                source_snapshot_is_immutable=immutable_snapshot_used,
+            )
+            if immutable_snapshot_used:
+                self._mark_immutable_read_degraded(summary)
+            return summary
 
         except Exception as e:
             self.logger.error("從 SQLite 獲取個股 %s 籌碼數據失敗: %s", stock_code, e)
             # 嘗試降級到 CSV
             return self._get_chip_summary_from_csv(stock_code, period_days)
+
+    def _mark_immutable_read_degraded(self, summary: Dict[str, Any]) -> None:
+        """讓呼叫端看見 SQLite immutable fallback 可能較舊。"""
+
+        self.logger.warning(_SQLITE_IMMUTABLE_READ_WARNING)
+        risk_reasons = summary.get("risk_reasons")
+        if isinstance(risk_reasons, list) and _SQLITE_IMMUTABLE_READ_WARNING not in risk_reasons:
+            risk_reasons.append(_SQLITE_IMMUTABLE_READ_WARNING)
 
     def _get_chip_summary_from_csv(self, stock_code: str, period_days: int) -> Dict[str, Any]:
         """從 CSV 降級載入籌碼數據"""
@@ -167,7 +199,9 @@ class PortfolioChipService:
         df: pd.DataFrame,
         stock_code: str,
         period_days: int,
-        dates: List[str]
+        dates: List[str],
+        *,
+        source_snapshot_is_immutable: bool = False,
     ) -> Dict[str, Any]:
         """聚合籌碼 DataFrame，計算集中度、連續天數與評估風險"""
         if df.empty:
@@ -175,21 +209,33 @@ class PortfolioChipService:
 
         # 取得日期價格 Map
         price_map: Dict[str, Decimal] = {}
-        if getattr(self.config, 'use_sqlite', False) and dates:
+        immutable_price_snapshot_used = False
+        if (
+            getattr(self.config, 'use_sqlite', False)
+            and dates
+            and not source_snapshot_is_immutable
+        ):
             try:
-                from data_module.db_manager import DBManager
-                db = DBManager(self.config)
+                db = ReadOnlySQLiteManager(self.config.db_file)
                 placeholders = ",".join("?" for _ in dates)
                 query = f"SELECT 日期, 收盤價 FROM daily_prices WHERE 證券代號 = ? AND 日期 IN ({placeholders});"
                 price_df = db.execute_query(query, (stock_code, *dates))
-                for _, row in price_df.iterrows():
-                    d_val = str(row['日期']).strip()
-                    try:
-                        price = Decimal(str(row['收盤價']))
-                        if price.is_finite() and price > 0:
-                            price_map[d_val] = price
-                    except Exception:
-                        continue
+                immutable_price_snapshot_used = (
+                    db.last_read_mode == "immutable_fallback"
+                )
+                if immutable_price_snapshot_used:
+                    self.logger.warning(
+                        "SQLite 價格補查使用 immutable 快照；保留缺值，不以較舊價格估算股數。"
+                    )
+                else:
+                    for _, row in price_df.iterrows():
+                        d_val = str(row['日期']).strip()
+                        try:
+                            price = Decimal(str(row['收盤價']))
+                            if price.is_finite() and price > 0:
+                                price_map[d_val] = price
+                        except Exception:
+                            continue
             except Exception as e:
                 self.logger.warning("查詢收盤價對照失敗: %s", e)
 
@@ -349,6 +395,8 @@ class PortfolioChipService:
 
         if has_estimated_lots:
             risk_reasons.append("⚠️ 此期間包含歷史金額與股價折算之估計股數資料。")
+        if immutable_price_snapshot_used:
+            risk_reasons.append(_SQLITE_IMMUTABLE_READ_WARNING)
         if unavailable_event_count > 0:
             coverage_pct = int(lots_coverage_ratio * 100)
             risk_reasons.append(f"⚠️ 股數資料覆蓋率 {coverage_pct}%，不可用事件已排除。")

@@ -8,9 +8,35 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 
+from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from data_module.industry_mapper_data_provider import IndustryMapperDataProvider
 
 logger = logging.getLogger(__name__)
+
+
+class _DecisionProviderImmutableFallbackError(RuntimeError):
+    """指出 decision 資料只能從可能過期的 immutable SQLite 視圖讀取。"""
+
+
+class _DecisionProviderSQLiteReader:
+    """拒絕將 immutable fallback 快照當成一般 decision 資料。"""
+
+    def __init__(self, db_path: str | Path) -> None:
+        self._reader = ReadOnlySQLiteManager(db_path)
+
+    def execute_query(self, query: str) -> pd.DataFrame:
+        frame = self._reader.execute_query(query)
+        if self._reader.last_read_mode == "immutable_fallback":
+            raise _DecisionProviderImmutableFallbackError(
+                "SQLite immutable fallback 可能讀到過期快照；改用既有 CSV/空資料降級"
+            )
+        return frame
+
+
+def _read_only_sqlite_factory(config: Any) -> _DecisionProviderSQLiteReader:
+    """建立短生命週期 reader，並拒絕 immutable fallback 快照。"""
+
+    return _DecisionProviderSQLiteReader(config.db_file)
 
 
 class SqliteFirstFrameProvider:
@@ -34,9 +60,7 @@ class SqliteFirstFrameProvider:
             try:
                 factory = self.db_factory
                 if factory is None:
-                    from data_module.db_manager import DBManager
-
-                    factory = DBManager
+                    factory = _read_only_sqlite_factory
                 frame = factory(self.config).execute_query(
                     f"SELECT * FROM {self.table} ORDER BY 日期 ASC;"
                 )
@@ -61,7 +85,10 @@ def market_index_frame_provider(config: Any) -> SqliteFirstFrameProvider:
 
 def industry_index_frame_provider(config: Any) -> Callable[[], pd.DataFrame]:
     """建立 data-owned 產業指數 reader 的 app callable。"""
-    return IndustryMapperDataProvider(config).load_industry_index_frame
+    return IndustryMapperDataProvider(
+        config,
+        db_factory=_read_only_sqlite_factory,
+    ).load_industry_index_frame
 
 
 def industry_companies_provider(config: Any) -> Callable[[], pd.DataFrame | None]:

@@ -27,9 +27,10 @@ _SQLITE_READ_BIND_CHUNK_SIZE = 900
 class EvidenceEventRepository:
     """SQLite repository for append-only evidence events and forward outcomes."""
 
-    def __init__(self, config: Any, *, db_path: str | Path | None = None) -> None:
+    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
+        self.read_only = bool(read_only)
         self._schema_ready = False
 
     def _read_rows(self, table: str, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
@@ -43,6 +44,8 @@ class EvidenceEventRepository:
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
     def ensure_schema(self) -> None:
+        if self.read_only:
+            raise RuntimeError("dashboard evidence repository is read-only")
         if self._schema_ready:
             return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

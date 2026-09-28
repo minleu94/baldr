@@ -4,7 +4,8 @@ from collections import Counter
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 from uuid import uuid4
 
 from app_module.decision_quality_dtos import (
@@ -19,14 +20,17 @@ from app_module.research_run_dtos import canonical_json
 class DecisionQualityRepository:
     """Append-only/idempotent storage for process review evidence."""
 
-    def __init__(self, config: Any, *, db_path: str | Path | None = None) -> None:
+    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.ensure_schema()
+        self.read_only = bool(read_only)
+        if not self.read_only:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.ensure_schema()
 
     def ensure_schema(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        self._require_writable()
+        with self._connection() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS decision_quality_reviews (
@@ -122,13 +126,14 @@ class DecisionQualityRepository:
         *,
         items: list[DecisionQualityItem] | tuple[DecisionQualityItem, ...] = (),
     ) -> DecisionQualityReview:
+        self._require_writable()
         existing = self.get_review_by_hash(review.review_hash)
         if existing is not None:
             return existing
         row = self._review_to_row(review)
         columns = list(row.keys())
         placeholders = ", ".join("?" for _ in columns)
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.execute(
                 f"INSERT INTO decision_quality_reviews ({', '.join(columns)}) VALUES ({placeholders})",
                 tuple(row[column] for column in columns),
@@ -175,7 +180,7 @@ class DecisionQualityRepository:
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY review_period_start ASC, review_id ASC"
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, tuple(params)).fetchall()
         return [self._row_to_review(dict(row)) for row in rows]
@@ -193,7 +198,7 @@ class DecisionQualityRepository:
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY created_at ASC, item_id ASC"
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, tuple(params)).fetchall()
         return [self._row_to_item(dict(row)) for row in rows]
@@ -226,6 +231,7 @@ class DecisionQualityRepository:
         owner: str = "",
         metadata_json: dict[str, Any] | None = None,
     ) -> DecisionQualityActionItem:
+        self._require_writable()
         action = DecisionQualityActionItem(
             action_item_id=f"dqa_{uuid4().hex}",
             review_id=review_id,
@@ -237,7 +243,7 @@ class DecisionQualityRepository:
         row = self._action_to_row(action)
         columns = list(row.keys())
         placeholders = ", ".join("?" for _ in columns)
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.execute(
                 f"INSERT INTO decision_quality_action_items ({', '.join(columns)}) VALUES ({placeholders})",
                 tuple(row[column] for column in columns),
@@ -248,7 +254,7 @@ class DecisionQualityRepository:
         return saved
 
     def get_action_item(self, action_item_id: str) -> DecisionQualityActionItem | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT * FROM decision_quality_action_items WHERE action_item_id = ?",
@@ -263,13 +269,13 @@ class DecisionQualityRepository:
             sql += " WHERE review_id = ?"
             params = (review_id,)
         sql += " ORDER BY created_at ASC, action_item_id ASC"
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_action(dict(row)) for row in rows]
 
     def list_item_status_history(self, item_id: str) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
@@ -295,10 +301,36 @@ class DecisionQualityRepository:
         )
 
     def _fetch_review(self, where: str, params: tuple[Any, ...]) -> DecisionQualityReview | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(f"SELECT * FROM decision_quality_reviews WHERE {where}", params).fetchone()
         return self._row_to_review(dict(row)) if row is not None else None
+
+    def _require_writable(self) -> None:
+        if self.read_only:
+            raise RuntimeError("dashboard repository is read-only")
+
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        if self.read_only:
+            if not self.db_path.is_file():
+                raise FileNotFoundError(f"找不到 SQLite 資料庫：{self.db_path}")
+            connection = sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
+            try:
+                connection.execute("PRAGMA query_only=ON")
+                yield connection
+            finally:
+                connection.close()
+            return
+        connection = sqlite3.connect(self.db_path)
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _mark_item_status(
         self,
@@ -309,10 +341,11 @@ class DecisionQualityRepository:
         reason_code: str,
         note: str,
     ) -> DecisionQualityItem:
+        self._require_writable()
         current = {item.item_id: item for item in self.list_items()}.get(item_id)
         if current is None:
             raise KeyError(f"decision quality item not found: {item_id}")
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.execute("UPDATE decision_quality_items SET status = ? WHERE item_id = ?", (new_status, item_id))
             conn.execute(
                 """

@@ -68,6 +68,9 @@ from decision_module.recommendation.contracts import (
     RecommendationItem,
     UniverseReference,
 )
+from data_module.industry_mapper_data_provider import (
+    industry_index_source_observation_hash_matches,
+)
 from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
 from ml_module.recommendation_cost_scenario import (
     RecommendationCostScenario,
@@ -1342,6 +1345,70 @@ def _capture_events(
                 "current_fallback_display_reason",
                 "current_industry_index_performance_for_reason",
             }
+            current_industry_index_used = (
+                isinstance(usages, list)
+                and "current_industry_index_performance_for_reason" in usages
+            )
+            observation_fields = (
+                "industry_index_source_observation",
+                "industry_index_source_observation_sha256",
+                "industry_index_source_time_status",
+                "industry_index_source_available_at",
+                "industry_index_source_published_at",
+            )
+            has_observation_fields = any(
+                field_name in snapshot for field_name in observation_fields
+            )
+            industry_index_observation_binding_valid = True
+            if current_industry_index_used and has_observation_fields:
+                failure_warnings = {
+                    "industry_index_source_observation_missing_for_current_use",
+                    "industry_index_source_observation_mismatch_for_current_use",
+                    "industry_index_source_observation_not_json_snapshot",
+                }
+                warnings_set = (
+                    set(source_warnings)
+                    if isinstance(source_warnings, list)
+                    and all(type(item) is str for item in source_warnings)
+                    else set()
+                )
+                industry_observation = snapshot.get(
+                    "industry_index_source_observation"
+                )
+                industry_observation_sha256 = snapshot.get(
+                    "industry_index_source_observation_sha256"
+                )
+                industry_index_observation_binding_valid = (
+                    all(field_name in snapshot for field_name in observation_fields)
+                    and snapshot.get("industry_index_source_status") == "unknown"
+                    and snapshot.get("industry_index_source_time_status") == "unknown"
+                    and snapshot.get("industry_index_source_available_at") is None
+                    and snapshot.get("industry_index_source_published_at") is None
+                    and "industry_index_source_capture_time_unknown_for_current_use"
+                    in warnings_set
+                )
+                if industry_index_observation_binding_valid:
+                    if industry_observation is None:
+                        industry_index_observation_binding_valid = (
+                            industry_observation_sha256 is None
+                            and bool(warnings_set & failure_warnings)
+                        )
+                    elif isinstance(industry_observation, Mapping):
+                        try:
+                            detached_observation = dict(industry_observation)
+                        except (TypeError, ValueError):
+                            industry_index_observation_binding_valid = False
+                        else:
+                            industry_index_observation_binding_valid = (
+                                not bool(warnings_set & failure_warnings)
+                                and industry_index_source_observation_hash_matches(
+                                    detached_observation
+                                )
+                                and industry_observation_sha256
+                                == detached_observation.get("observation_sha256")
+                            )
+                    else:
+                        industry_index_observation_binding_valid = False
             if (
                 declared_snapshot_hash != expected_snapshot_hash
                 or snapshot_schema_version
@@ -1414,6 +1481,7 @@ def _capture_events(
                     and "industry_index_source_contract_unavailable_for_current_use"
                     not in source_warnings
                 )
+                or not industry_index_observation_binding_valid
             ):
                 raise ValueError("industry mapping source snapshot binding 無效")
             if (

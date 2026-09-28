@@ -185,6 +185,10 @@ from data_module.company_registry import (
     COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR,
     COMPANY_REGISTRY_SOURCE_CONTRACT_SCHEMA_VERSION,
 )
+from data_module.industry_mapper_data_provider import (
+    INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR,
+    industry_index_source_observation_hash_matches,
+)
 from app_module.recommendation.input_preparation import (
     RecommendationInputPreparer,
     RecommendationInputSession,
@@ -717,6 +721,61 @@ class RecommendationService:
             warning = "industry_index_source_contract_unavailable_for_current_use"
             if warning not in snapshot_warnings:
                 snapshot_warnings.append(warning)
+            if "industry_index_source_observation" not in snapshot:
+                observation: dict[str, Any] | None = None
+                index_frame = getattr(self.industry_mapper, "industry_index_df", None)
+                frame_attrs = getattr(index_frame, "attrs", None)
+                raw_observation: Any = None
+                if isinstance(frame_attrs, Mapping):
+                    raw_observation = frame_attrs.get(
+                        INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR
+                    )
+                if isinstance(raw_observation, Mapping):
+                    try:
+                        detached = json.loads(
+                            json.dumps(
+                                dict(raw_observation),
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                allow_nan=False,
+                            )
+                        )
+                    except (TypeError, ValueError):
+                        snapshot_warnings.append(
+                            "industry_index_source_observation_not_json_snapshot"
+                        )
+                    else:
+                        if (
+                            isinstance(index_frame, pd.DataFrame)
+                            and industry_index_source_observation_hash_matches(
+                                detached, frame=index_frame
+                            )
+                        ):
+                            observation = detached
+                        else:
+                            snapshot_warnings.append(
+                                "industry_index_source_observation_mismatch_for_current_use"
+                            )
+                else:
+                    snapshot_warnings.append(
+                        "industry_index_source_observation_missing_for_current_use"
+                    )
+                snapshot["industry_index_source_observation"] = observation
+                snapshot["industry_index_source_observation_sha256"] = (
+                    observation.get("observation_sha256")
+                    if observation is not None
+                    else None
+                )
+                # This is the reader's observation clock only.  No source
+                # publication/availability timestamp is inferred from it.
+                snapshot["industry_index_source_time_status"] = "unknown"
+                snapshot["industry_index_source_available_at"] = None
+                snapshot["industry_index_source_published_at"] = None
+                source_time_warning = (
+                    "industry_index_source_capture_time_unknown_for_current_use"
+                )
+                if source_time_warning not in snapshot_warnings:
+                    snapshot_warnings.append(source_time_warning)
         self._refresh_current_industry_mapping_snapshot_hash(snapshot)
 
     def _finalize_current_industry_mapping_snapshot(self) -> None:

@@ -51,15 +51,24 @@ SOURCE_TRACE_TYPES = {
 class DecisionQualityService:
     """Read-only process review service over saved portfolio and evidence records."""
 
-    def __init__(self, config: TWStockConfig, *, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        config: TWStockConfig,
+        *,
+        db_path: str | Path | None = None,
+        read_only: bool = False,
+    ) -> None:
         self.config = config
+        self.read_only = bool(read_only)
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
-        self.repository = DecisionQualityRepository(config, db_path=self.db_path)
-        self.evidence_repository = EvidenceEventRepository(config, db_path=self.db_path)
-        self.live_gap_repository = LiveResearchGapRepository(config, db_path=self.db_path)
-        self.signal_decay_repository = SignalDecayRepository(config, db_path=self.db_path)
-        self.portfolio_service = PortfolioService(config)
-        self.journal_service = JournalService(config)
+        self.repository = DecisionQualityRepository(config, db_path=self.db_path, read_only=read_only)
+        self.evidence_repository = EvidenceEventRepository(
+            config, db_path=self.db_path, read_only=read_only
+        )
+        self.live_gap_repository = LiveResearchGapRepository(config, db_path=self.db_path, read_only=read_only)
+        self.signal_decay_repository = SignalDecayRepository(config, db_path=self.db_path, read_only=read_only)
+        self.portfolio_service = None if self.read_only else PortfolioService(config)
+        self.journal_service = None if self.read_only else JournalService(config)
 
     def build_review(
         self,
@@ -71,19 +80,23 @@ class DecisionQualityService:
         symbol: str | None = None,
         min_sample_size: int = 10,
     ) -> tuple[DecisionQualityReview, list[DecisionQualityItem]]:
+        if self.read_only or self.portfolio_service is None or self.journal_service is None:
+            raise RuntimeError("dashboard decision-quality service is read-only")
+        portfolio_service = self.portfolio_service
+        journal_service = self.journal_service
         trades = [
             trade
-            for trade in self.portfolio_service.list_trades(portfolio_id)
+            for trade in portfolio_service.list_trades(portfolio_id)
             if self._in_period(trade.trade_date, start_date, end_date) and self._matches_symbol(trade.stock_code, symbol)
         ]
         positions = [
             position
-            for position in self.portfolio_service.list_positions(portfolio_id)
+            for position in portfolio_service.list_positions(portfolio_id)
             if self._matches_symbol(position.stock_code, symbol)
         ]
         journals = [
             entry
-            for entry in self.journal_service.list_journal_entries(portfolio_id=portfolio_id)
+            for entry in journal_service.list_journal_entries(portfolio_id=portfolio_id)
             if self._matches_symbol(entry.stock_code, symbol)
         ]
         events = [

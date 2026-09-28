@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 from app_module.live_research_gap_dashboard_dtos import (
@@ -11,6 +12,8 @@ from app_module.live_research_gap_dashboard_dtos import (
     LiveResearchGapDashboardRow,
 )
 from app_module.live_research_gap_service import LiveResearchGapService
+from app_module.live_research_gap_repository import LiveResearchGapRepository
+from app_module.evidence_event_repository import EvidenceEventRepository
 
 
 LIVE_RESEARCH_GAP_LIMITATIONS = (
@@ -27,16 +30,31 @@ class LiveResearchGapDashboardService:
         self.backend = backend
 
     def load_dashboard(self, request: LiveResearchGapDashboardRequest) -> LiveResearchGapDashboardResult:
-        rows = tuple(
-            _row_from_observation(row)
-            for row in self.backend.list_gap_observations(
-                observation_date=_blank_to_none(request.observation_date),
-                symbol=_blank_to_none(request.symbol),
-                source_type=_blank_to_none(request.source_type),
-                strategy_version_id=_blank_to_none(request.strategy_version_id),
+        try:
+            rows = tuple(
+                _row_from_observation(row)
+                for row in self.backend.list_gap_observations(
+                    observation_date=_blank_to_none(request.observation_date),
+                    symbol=_blank_to_none(request.symbol),
+                    source_type=_blank_to_none(request.source_type),
+                    strategy_version_id=_blank_to_none(request.strategy_version_id),
+                )
+                if _observation_matches(row, request)
             )
-            if _observation_matches(row, request)
-        )
+        except (FileNotFoundError, sqlite3.OperationalError) as exc:
+            diagnostic = _readonly_source_diagnostic(exc)
+            if diagnostic is None:
+                raise
+            return LiveResearchGapDashboardResult(
+                request=request,
+                cards=_build_cards(()),
+                rows=(),
+                empty_state_message=(
+                    "SQLite 證據資料庫或資料表目前不可用；本頁以唯讀方式檢查，不會建立資料庫或初始化 schema。"
+                ),
+                limitations=LIVE_RESEARCH_GAP_LIMITATIONS,
+                diagnostics=(diagnostic,),
+            )
         return LiveResearchGapDashboardResult(
             request=request,
             cards=_build_cards(rows),
@@ -53,7 +71,24 @@ def create_live_research_gap_dashboard_service(
     *,
     db_path: str | Path | None = None,
 ) -> LiveResearchGapDashboardService:
-    return LiveResearchGapDashboardService(LiveResearchGapService(config))
+    source_path = Path(db_path) if db_path is not None else Path(config.db_file)
+    repository = LiveResearchGapRepository(config, db_path=source_path, read_only=True)
+    evidence_repository = EvidenceEventRepository(config, db_path=source_path, read_only=True)
+    return LiveResearchGapDashboardService(
+        LiveResearchGapService(
+            config,
+            repository=repository,
+            evidence_repository=evidence_repository,
+        )
+    )
+
+
+def _readonly_source_diagnostic(error: BaseException) -> str | None:
+    if isinstance(error, FileNotFoundError):
+        return "sqlite_database_missing"
+    if isinstance(error, sqlite3.OperationalError) and "no such table" in str(error).casefold():
+        return "sqlite_evidence_table_missing"
+    return None
 
 
 def _row_from_observation(row: Any) -> LiveResearchGapDashboardRow:

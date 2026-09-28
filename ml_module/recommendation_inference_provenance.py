@@ -12,10 +12,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import date, datetime
+import ctypes
 import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import tempfile
 from typing import Any, Mapping, Sequence, cast
 
@@ -1129,16 +1131,41 @@ def read_inference_projection_receipt(
     expected_stock_code: str | None = None,
     expected_cost_scenario_hash: str | None = None,
     source_contract_evidence: VerifiedSourceContractEvidenceV1 | None = None,
+    max_receipt_bytes: int | None = None,
 ) -> RecommendationInferenceProjectionReceipt:
     """Read, hash-check, and identity-check one immutable projection receipt."""
 
-    receipt_path = Path(path).expanduser().resolve()
-    if receipt_path.is_symlink() or not receipt_path.is_file():
-        raise RecommendationProvenanceError("projection receipt is missing or symlinked")
-    try:
-        payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise RecommendationProvenanceError("projection receipt is unreadable") from exc
+    if max_receipt_bytes is None:
+        # Keep the existing default route byte-for-byte and behaviorally stable.
+        receipt_path = Path(path).expanduser().resolve()
+        if receipt_path.is_symlink() or not receipt_path.is_file():
+            raise RecommendationProvenanceError("projection receipt is missing or symlinked")
+        try:
+            payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise RecommendationProvenanceError("projection receipt is unreadable") from exc
+    else:
+        if (
+            isinstance(max_receipt_bytes, bool)
+            or not isinstance(max_receipt_bytes, int)
+            or max_receipt_bytes <= 0
+        ):
+            raise ValueError("max_receipt_bytes must be a positive integer or None")
+        # 不先 resolve：有限讀取必須在任何 symlink／reparse component 被
+        # 跟隨之前拒絕它們，並在同一個受控檔案 handle 上檢查大小與內容。
+        receipt_path = Path(os.path.abspath(Path(path).expanduser()))
+        try:
+            raw_payload = _read_bounded_regular_file_no_follow(
+                receipt_path,
+                max_bytes=max_receipt_bytes,
+            )
+            payload = json.loads(raw_payload.decode("utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            if isinstance(exc, RecommendationProvenanceError):
+                raise
+            raise RecommendationProvenanceError(
+                "projection receipt bounded read failed"
+            ) from exc
     if not isinstance(payload, Mapping):
         raise RecommendationProvenanceError("projection receipt must be an object")
     supplied_hash = str(payload.get("receipt_hash") or "")
@@ -1176,6 +1203,279 @@ def read_inference_projection_receipt(
         receipt_hash=supplied_hash,
         receipt_path=str(receipt_path),
     )
+
+
+def _read_bounded_regular_file_no_follow(path: Path, *, max_bytes: int) -> bytes:
+    """以 no-follow handle 讀取單一有限大小 receipt，並確認讀取期間穩定。"""
+
+    if not path.is_absolute() or not path.anchor:
+        raise RecommendationProvenanceError("bounded receipt path must be absolute")
+    if any(part in {".", ".."} for part in path.parts[1:]):
+        raise RecommendationProvenanceError("bounded receipt path is not normalized")
+    if os.name == "nt":
+        opener = _open_windows_receipt_no_follow
+    else:
+        opener = _open_posix_receipt_no_follow
+
+    first_descriptor, first_directories = opener(path)
+    try:
+        raw_payload, before, after = _read_receipt_descriptor(
+            first_descriptor,
+            max_bytes=max_bytes,
+        )
+    finally:
+        os.close(first_descriptor)
+        for directory_handle in reversed(first_directories):
+            _close_receipt_directory_handle(directory_handle)
+
+    # 重新由原路徑開啟一次，確認讀完後該路徑仍指向同一個普通檔案。
+    second_descriptor, second_directories = opener(path)
+    try:
+        current = os.fstat(second_descriptor)
+    finally:
+        os.close(second_descriptor)
+        for directory_handle in reversed(second_directories):
+            _close_receipt_directory_handle(directory_handle)
+    _same_receipt_file_version(before, after)
+    _same_receipt_file_version(before, current)
+    if len(raw_payload) != before.st_size:
+        raise RecommendationProvenanceError("projection receipt changed during bounded read")
+    return raw_payload
+
+
+def _read_receipt_descriptor(
+    descriptor: int,
+    *,
+    max_bytes: int,
+) -> tuple[bytes, os.stat_result, os.stat_result]:
+    before = os.fstat(descriptor)
+    if not stat.S_ISREG(before.st_mode):
+        raise RecommendationProvenanceError("projection receipt must be a regular file")
+    if before.st_size > max_bytes:
+        raise RecommendationProvenanceError("projection receipt exceeds byte limit")
+    with os.fdopen(descriptor, "rb", closefd=False) as stream:
+        raw_payload = stream.read(max_bytes + 1)
+    after = os.fstat(descriptor)
+    if len(raw_payload) > max_bytes:
+        raise RecommendationProvenanceError("projection receipt exceeds byte limit")
+    _same_receipt_file_version(before, after)
+    return raw_payload, before, after
+
+
+def _same_receipt_file_version(
+    first: os.stat_result,
+    second: os.stat_result,
+) -> None:
+    first_key = (
+        first.st_dev,
+        first.st_ino,
+        first.st_mode,
+        first.st_size,
+        first.st_mtime_ns,
+        first.st_ctime_ns,
+    )
+    second_key = (
+        second.st_dev,
+        second.st_ino,
+        second.st_mode,
+        second.st_size,
+        second.st_mtime_ns,
+        second.st_ctime_ns,
+    )
+    if first_key != second_key:
+        raise RecommendationProvenanceError("projection receipt changed during bounded read")
+
+
+def _open_posix_receipt_no_follow(path: Path) -> tuple[int, list[int]]:
+    supports_dir_fd = os.open in getattr(os, "supports_dir_fd", set())
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if not supports_dir_fd or not nofollow or not directory_flag or path.anchor != "/":
+        raise RecommendationProvenanceError(
+            "POSIX bounded receipt read requires dir_fd and O_NOFOLLOW support"
+        )
+    components = path.parts[1:]
+    if not components:
+        raise RecommendationProvenanceError("projection receipt path names a directory root")
+    directory_flags = (
+        os.O_RDONLY
+        | directory_flag
+        | nofollow
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    file_flags = os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0)
+    directories: list[int] = []
+    descriptor: int | None = None
+    try:
+        root_descriptor = os.open(path.anchor, directory_flags)
+        directories.append(root_descriptor)
+        for component in components[:-1]:
+            child = os.open(
+                component,
+                directory_flags,
+                dir_fd=directories[-1],
+            )
+            if not stat.S_ISDIR(os.fstat(child).st_mode):
+                os.close(child)
+                raise RecommendationProvenanceError(
+                    "projection receipt path component must be a directory"
+                )
+            directories.append(child)
+        descriptor = os.open(
+            components[-1],
+            file_flags,
+            dir_fd=directories[-1],
+        )
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise RecommendationProvenanceError("projection receipt must be a regular file")
+        result = descriptor
+        descriptor = None
+        return result, directories
+    except Exception:
+        if descriptor is not None:
+            os.close(descriptor)
+        for directory_handle in reversed(directories):
+            os.close(directory_handle)
+        raise
+
+
+def _open_windows_receipt_no_follow(path: Path) -> tuple[int, list[int]]:
+    win_dll = getattr(ctypes, "WinDLL", None)
+    if not callable(win_dll):
+        raise RecommendationProvenanceError("Windows no-follow file API is unavailable")
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = win_dll("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    get_info = kernel32.GetFileInformationByHandleEx
+    get_info.argtypes = (wintypes.HANDLE, wintypes.INT, wintypes.LPVOID, wintypes.DWORD)
+    get_info.restype = wintypes.BOOL
+    get_file_type = kernel32.GetFileType
+    get_file_type.argtypes = (wintypes.HANDLE,)
+    get_file_type.restype = wintypes.DWORD
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+
+    class _FileAttributeTagInfo(ctypes.Structure):
+        _fields_ = (("attributes", wintypes.DWORD), ("reparse_tag", wintypes.DWORD))
+
+    file_read_attributes = 0x00000080
+    generic_read = 0x80000000
+    share_read_write = 0x00000001 | 0x00000002
+    open_existing = 3
+    open_reparse_point = 0x00200000
+    backup_semantics = 0x02000000
+    sequential_scan = 0x08000000
+    info_class_file_attribute_tag = 9
+    file_attribute_directory = 0x00000010
+    file_attribute_device = 0x00000040
+    file_attribute_reparse_point = 0x00000400
+    file_type_disk = 0x0001
+    invalid_handle = ctypes.c_void_p(-1).value
+
+    def open_component(component_path: Path, *, directory: bool) -> tuple[Any, int]:
+        flags = open_reparse_point | (
+            backup_semantics if directory else sequential_scan
+        )
+        handle = create_file(
+            str(component_path),
+            file_read_attributes if directory else generic_read,
+            share_read_write,
+            None,
+            open_existing,
+            flags,
+            None,
+        )
+        handle_value = (
+            handle if isinstance(handle, int) else getattr(handle, "value", None)
+        )
+        if handle_value is None or handle_value == invalid_handle or handle_value == -1:
+            error = ctypes.get_last_error()
+            raise OSError(error, f"CreateFileW failed for {component_path}")
+        if get_file_type(handle) != file_type_disk:
+            close_handle(handle)
+            raise RecommendationProvenanceError("projection receipt path is not a disk file")
+        info = _FileAttributeTagInfo()
+        if not get_info(
+            handle,
+            info_class_file_attribute_tag,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        ):
+            error = ctypes.get_last_error()
+            close_handle(handle)
+            raise OSError(error, f"GetFileInformationByHandleEx failed for {component_path}")
+        if info.attributes & (file_attribute_device | file_attribute_reparse_point):
+            close_handle(handle)
+            raise RecommendationProvenanceError(
+                "projection receipt path contains a device or reparse point"
+            )
+        if bool(info.attributes & file_attribute_directory) is not directory:
+            close_handle(handle)
+            raise RecommendationProvenanceError("projection receipt path type mismatch")
+        return handle, int(handle_value)
+
+    anchor = Path(path.anchor)
+    try:
+        relative = path.relative_to(anchor)
+    except ValueError as exc:
+        raise RecommendationProvenanceError("projection receipt escaped its path root") from exc
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise RecommendationProvenanceError("projection receipt path is not normalized")
+
+    directories: list[int] = []
+    final_handle: Any | None = None
+    try:
+        root_handle, root_value = open_component(anchor, directory=True)
+        directories.append(root_value)
+        current = anchor
+        for component in relative.parts[:-1]:
+            current = current / component
+            _directory_handle, directory_value = open_component(current, directory=True)
+            directories.append(directory_value)
+        final_path = current / relative.parts[-1]
+        final_handle, final_value = open_component(final_path, directory=False)
+        descriptor = msvcrt.open_osfhandle(
+            final_value,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0),
+        )
+        final_handle = None
+        return descriptor, directories
+    except Exception:
+        if final_handle is not None:
+            close_handle(final_handle)
+        for directory_handle in reversed(directories):
+            close_handle(directory_handle)
+        raise
+
+
+def _close_receipt_directory_handle(handle: int) -> None:
+    if os.name != "nt":
+        os.close(handle)
+        return
+    from ctypes import wintypes
+
+    win_dll = getattr(ctypes, "WinDLL", None)
+    if not callable(win_dll):
+        raise RecommendationProvenanceError("Windows CloseHandle API is unavailable")
+    close_handle = win_dll("kernel32", use_last_error=True).CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    if not close_handle(wintypes.HANDLE(handle)):
+        error = ctypes.get_last_error()
+        raise OSError(error, "CloseHandle failed for receipt parent directory")
 
 
 def find_inference_projection_receipts(

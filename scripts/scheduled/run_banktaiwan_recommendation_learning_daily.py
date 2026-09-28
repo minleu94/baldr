@@ -49,6 +49,7 @@ DEFAULT_CALENDAR_CACHE_ROOT = (
     ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
 )
 OPERATION_SCHEMA_VERSION = "banktaiwan-recommendation-learning-operational.v1"
+_MAX_SNAPSHOT_STATUS_BYTES = 8 * 1024 * 1024
 
 _REUSABLE_TERMINAL_STATUSES = frozenset(
     {
@@ -87,7 +88,7 @@ class OperationalPaths:
 
 @dataclass(frozen=True)
 class SnapshotSummary:
-    """已驗證同日 scheduled recommendation snapshot 的唯讀摘要。"""
+    """已驗證同次 canonical snapshot 與 pipeline invocation 的唯讀摘要。"""
 
     path: Path
     payload: Mapping[str, Any]
@@ -96,6 +97,23 @@ class SnapshotSummary:
     file_sha256: str
     status_path: Path
     status_payload: Mapping[str, Any]
+    pipeline_run_id: str
+    pipeline_status_path: Path
+    pipeline_status_payload: Mapping[str, Any]
+    result_id: str
+    payload_hash: str
+    canonical_artifact_sha256: str
+    schema_version: str
+    schema_revision: int
+    integrity_basis: str
+    decision_date: str
+    data_as_of_date: str
+    decision_at: str
+    available_at: str | None
+    cohort_hash: str
+    invocation_output_path: Path
+    invocation_output_sha256: str
+    invocation_output_size: int
 
 
 def _official_calendar(source_db: Path) -> OfficialTradingCalendar:
@@ -124,6 +142,41 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _read_bounded_snapshot_status(
+    path: Path,
+    *,
+    root: Path,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """只從錨定輸出根讀取小型、穩定且非連結的狀態 JSON。"""
+
+    from app_module.recommendation.queries import (
+        ExecutionArtifactIntegrityError,
+        _read_regular_file_no_follow,
+    )
+
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None, "missing_or_invalid"
+    except OSError:
+        return None, "unreadable_or_unsafe"
+    try:
+        raw = _read_regular_file_no_follow(
+            path,
+            root,
+            max_bytes=_MAX_SNAPSHOT_STATUS_BYTES,
+        )
+    except (ExecutionArtifactIntegrityError, OSError):
+        return None, "unreadable_or_unsafe"
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return None, "missing_or_invalid"
+    if not isinstance(payload, dict):
+        return None, "missing_or_invalid"
+    return payload, None
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -167,10 +220,6 @@ def _subprocess_text(value: object) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return str(value or "")
-
-
-def _date_from_text(value: object) -> str:
-    return str(value or "")[:10]
 
 
 def _default_data_root() -> Path:
@@ -252,104 +301,225 @@ def resolve_operational_paths(
     )
 
 
-def _symbol_values(payload: Mapping[str, Any]) -> tuple[tuple[str, ...], dict[str, Any]]:
-    config_value = payload.get("config")
-    config = config_value if isinstance(config_value, Mapping) else {}
-    cohort_value = config.get("snapshot_cohort")
-    cohort = dict(cohort_value) if isinstance(cohort_value, Mapping) else {}
-    eligible = cohort.get("eligible_symbols")
-    symbols = (
-        tuple(
-            sorted(
-                {
-                    str(item).strip()
-                    for item in eligible
-                    if str(item).strip()
-                }
-            )
-        )
-        if isinstance(eligible, (list, tuple, set))
-        else ()
-    )
-    if not symbols:
-        recommendations = payload.get("recommendations")
-        if isinstance(recommendations, list):
-            symbols = tuple(
-                sorted(
-                    {
-                        str(
-                            item.get("stock_code")
-                            or item.get("symbol")
-                            or item.get("code")
-                            or item.get("證券代號")
-                            or ""
-                        ).strip()
-                        for item in recommendations
-                        if isinstance(item, Mapping)
-                        and str(
-                            item.get("stock_code")
-                            or item.get("symbol")
-                            or item.get("code")
-                            or item.get("證券代號")
-                            or ""
-                        ).strip()
-                    }
-                )
-            )
-    return symbols, cohort
-
-
 def load_same_day_snapshot(
     *,
     output_root: str | Path,
     decision_date: date,
 ) -> tuple[SnapshotSummary | None, str | None]:
-    """以既有 scheduled snapshot read API 形狀讀取同日 immutable input。"""
+    """以兩個 latest-status 指標精確讀取同次 canonical snapshot。"""
 
     root = Path(output_root).expanduser().resolve()
-    runs_root = root / "recommendation" / "runs"
     status_path = root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
-    status_payload = _read_json(status_path)
+    status_payload, status_read_error = _read_bounded_snapshot_status(
+        status_path,
+        root=root,
+    )
     if status_payload is None:
-        return None, "recommendation_snapshot_status_missing_or_invalid"
+        suffix = status_read_error or "missing_or_invalid"
+        return None, f"recommendation_snapshot_status_{suffix}"
     acceptable_statuses = {"passed", "passed_with_warnings", "warning", "degraded"}
-    if str(status_payload.get("status") or "") not in acceptable_statuses:
+    if status_payload.get("task") != "baldr-recommendation-snapshot-daily":
+        return None, "recommendation_snapshot_status_task_mismatch"
+    if type(status_payload.get("status")) is not str or status_payload.get(
+        "status"
+    ) not in acceptable_statuses:
         return None, "recommendation_snapshot_status_not_eligible"
-    if not runs_root.is_dir():
-        return None, "recommendation_snapshot_runs_root_missing"
     expected_date = decision_date.isoformat()
-    for path in sorted(runs_root.glob("*.json"), reverse=True):
-        payload = _read_json(path)
-        if payload is None:
-            continue
-        config_value = payload.get("config")
-        config = config_value if isinstance(config_value, Mapping) else {}
-        if config.get("scheduled_snapshot") is not True:
-            continue
-        snapshot_date = _date_from_text(
-            config.get("decision_date") or payload.get("created_at")
+    if status_payload.get("decision_date") != expected_date:
+        return None, "recommendation_snapshot_status_decision_date_mismatch"
+    if not _same_resolved_path(status_payload.get("output_root"), root):
+        return None, "recommendation_snapshot_status_output_root_mismatch"
+    result_id = status_payload.get("result_id")
+    if type(result_id) is not str or not result_id or result_id.strip() != result_id:
+        return None, "recommendation_snapshot_status_result_id_missing_or_invalid"
+    status_cohort_value = status_payload.get("snapshot_cohort")
+    if not isinstance(status_cohort_value, Mapping):
+        return None, "recommendation_snapshot_status_cohort_missing_or_invalid"
+    status_cohort = dict(status_cohort_value)
+    cohort_hash = status_cohort.get("cohort_hash")
+    if not isinstance(cohort_hash, str) or not _is_sha256_text(cohort_hash):
+        return None, "recommendation_snapshot_status_cohort_hash_missing_or_invalid"
+
+    pipeline_status_path = (
+        root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_status.json"
+    )
+    pipeline_status_payload, pipeline_status_read_error = (
+        _read_bounded_snapshot_status(pipeline_status_path, root=root)
+    )
+    if pipeline_status_payload is None:
+        suffix = pipeline_status_read_error or "missing_or_invalid"
+        return None, f"recommendation_pipeline_status_{suffix}"
+    if pipeline_status_payload.get("task") != "baldr-recommendation-calibration-learning-daily":
+        return None, "recommendation_pipeline_status_task_mismatch"
+    if pipeline_status_payload.get("decision_date") != expected_date:
+        return None, "recommendation_pipeline_status_decision_date_mismatch"
+    if not _same_resolved_path(pipeline_status_payload.get("output_root"), root):
+        return None, "recommendation_pipeline_status_output_root_mismatch"
+    pipeline_run_id = pipeline_status_payload.get("run_id")
+    if (
+        type(pipeline_run_id) is not str
+        or not pipeline_run_id
+        or pipeline_run_id in {".", ".."}
+        or Path(pipeline_run_id).name != pipeline_run_id
+        or any(separator in pipeline_run_id for separator in ("/", "\\"))
+    ):
+        return None, "recommendation_pipeline_run_id_missing_or_invalid"
+    steps_value = pipeline_status_payload.get("steps")
+    steps = steps_value if isinstance(steps_value, Mapping) else {}
+    snapshot_step_value = steps.get("recommendation_snapshot")
+    if not isinstance(snapshot_step_value, Mapping):
+        return None, "recommendation_pipeline_snapshot_step_missing_or_invalid"
+    snapshot_step = snapshot_step_value
+    if (
+        type(snapshot_step.get("status")) is not str
+        or snapshot_step.get("status") not in acceptable_statuses
+        or type(snapshot_step.get("returncode")) is not int
+        or snapshot_step.get("returncode") != 0
+        or snapshot_step.get("child_receipt_error") is not None
+    ):
+        return None, "recommendation_pipeline_snapshot_step_not_successful"
+    invocation_payload_value = snapshot_step.get("child_status")
+    if not isinstance(invocation_payload_value, Mapping):
+        return None, "recommendation_pipeline_snapshot_child_status_missing_or_invalid"
+    invocation_payload = dict(invocation_payload_value)
+    if (
+        type(invocation_payload.get("status")) is not str
+        or invocation_payload.get("status") not in acceptable_statuses
+        or invocation_payload.get("decision_date") != expected_date
+        or not _same_resolved_path(invocation_payload.get("output_root"), root)
+        or invocation_payload.get("result_id") != result_id
+        or invocation_payload.get("snapshot_cohort") != status_cohort
+    ):
+        return None, "recommendation_pipeline_snapshot_identity_mismatch"
+
+    invocation_output_path_value = snapshot_step.get("child_stdout_artifact_path")
+    invocation_output_sha256 = snapshot_step.get("child_stdout_sha256")
+    invocation_output_size = snapshot_step.get("child_stdout_artifact_size")
+    if (
+        type(invocation_output_path_value) is not str
+        or not invocation_output_path_value.strip()
+        or not isinstance(invocation_output_sha256, str)
+        or not _is_sha256_text(invocation_output_sha256)
+        or type(invocation_output_size) is not int
+        or invocation_output_size <= 0
+    ):
+        return None, "recommendation_pipeline_snapshot_stdout_binding_missing_or_invalid"
+    invocation_output_path = Path(invocation_output_path_value).expanduser()
+    expected_invocation_output_path = (
+        root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "runs"
+        / pipeline_run_id
+        / "recommendation_snapshot.stdout.bin"
+    )
+    if not _same_resolved_path(invocation_output_path_value, expected_invocation_output_path):
+        return None, "recommendation_pipeline_snapshot_stdout_path_mismatch"
+
+    try:
+        # 重用 learning CLI 的嚴格同次綁定，讓原始 stdout、canonical index、
+        # artifact bytes、typed execution、cohort 與日期沿用同一套 fail-closed 契約。
+        from scripts.scheduled.run_daily_recommendation_learning import (
+            _resolve_same_run_snapshot_input,
         )
-        if snapshot_date != expected_date:
-            continue
-        symbols, cohort = _symbol_values(payload)
-        if not symbols:
-            return None, "recommendation_snapshot_explicit_cohort_empty"
-        file_hash = _hash_file(path)
-        if file_hash is None:
-            return None, "recommendation_snapshot_file_unreadable"
-        return (
-            SnapshotSummary(
-                path=path.resolve(),
-                payload=payload,
-                symbols=symbols,
-                cohort=cohort,
-                file_sha256=file_hash,
-                status_path=status_path.resolve(),
-                status_payload=status_payload,
-            ),
-            None,
+
+        symbols, canonical_cohort, binding = _resolve_same_run_snapshot_input(
+            output_root=root,
+            decision_date=decision_date,
+            result_id=result_id,
+            expected_cohort_hash=cohort_hash,
+            expected_invocation_output_sha256=invocation_output_sha256,
+            invocation_output_path=str(invocation_output_path),
         )
-    return None, "same_day_scheduled_recommendation_snapshot_missing"
+    except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
+        return None, f"recommendation_snapshot_canonical_readback_failed:{type(exc).__name__}:{exc}"
+
+    if (
+        canonical_cohort != status_cohort
+        or binding.get("result_id") != result_id
+        or binding.get("cohort_hash") != cohort_hash
+        or binding.get("invocation_output_size") != invocation_output_size
+        or binding.get("invocation_output_sha256") != invocation_output_sha256
+    ):
+        return None, "recommendation_snapshot_status_canonical_binding_mismatch"
+    raw_artifact_sha256 = binding.get("raw_artifact_sha256")
+    payload_hash = binding.get("payload_hash")
+    schema_version = binding.get("schema_version")
+    schema_revision = binding.get("schema_revision")
+    integrity_basis = binding.get("integrity_basis")
+    data_as_of_date = binding.get("data_as_of_date")
+    decision_at = binding.get("decision_at")
+    available_at = binding.get("available_at")
+    if (
+        not isinstance(raw_artifact_sha256, str)
+        or not _is_sha256_text(raw_artifact_sha256)
+        or not isinstance(payload_hash, str)
+        or not _is_sha256_text(payload_hash)
+        or type(schema_version) is not str
+        or type(schema_revision) is not int
+        or integrity_basis != "canonical_payload_and_index_verified"
+        or type(data_as_of_date) is not str
+        or type(decision_at) is not str
+        or (available_at is not None and type(available_at) is not str)
+    ):
+        return None, "recommendation_snapshot_canonical_binding_incomplete"
+    try:
+        actual_size = invocation_output_path.stat().st_size
+    except OSError:
+        return None, "recommendation_pipeline_snapshot_stdout_unreadable"
+    if actual_size != invocation_output_size:
+        return None, "recommendation_pipeline_snapshot_stdout_size_mismatch"
+
+    return (
+        SnapshotSummary(
+            path=invocation_output_path.resolve(),
+            payload=invocation_payload,
+            symbols=symbols,
+            cohort=canonical_cohort,
+            file_sha256=invocation_output_sha256,
+            status_path=status_path.resolve(),
+            status_payload=status_payload,
+            pipeline_run_id=pipeline_run_id,
+            pipeline_status_path=pipeline_status_path.resolve(),
+            pipeline_status_payload=pipeline_status_payload,
+            result_id=result_id,
+            payload_hash=payload_hash,
+            canonical_artifact_sha256=raw_artifact_sha256,
+            schema_version=schema_version,
+            schema_revision=schema_revision,
+            integrity_basis=integrity_basis,
+            decision_date=expected_date,
+            data_as_of_date=data_as_of_date,
+            decision_at=decision_at,
+            available_at=available_at,
+            cohort_hash=cohort_hash,
+            invocation_output_path=invocation_output_path.resolve(),
+            invocation_output_sha256=invocation_output_sha256,
+            invocation_output_size=invocation_output_size,
+        ),
+        None,
+    )
+
+
+def _is_sha256_text(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(char in "0123456789abcdef" for char in value[7:])
+    )
+
+
+def _same_resolved_path(value: object, expected: Path) -> bool:
+    if type(value) is not str or not value.strip():
+        return False
+    try:
+        return Path(value).expanduser().resolve() == expected.expanduser().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
 
 
 def _file_marker(path: Path, *, hash_small_file: bool = True) -> dict[str, Any]:
@@ -398,15 +568,30 @@ def build_input_fingerprint(
 
     return _hash_payload(
         {
-            "schema_version": "banktaiwan-operational-input-fingerprint.v1",
+            "schema_version": "banktaiwan-operational-input-fingerprint.v2",
             "decision_date": decision_date.isoformat(),
             "decision_timezone": "Asia/Taipei",
             "snapshot": (
                 {
+                    "result_id": snapshot.result_id,
                     "path": str(snapshot.path),
-                    "file_sha256": snapshot.file_sha256,
+                    "canonical_artifact_sha256": snapshot.canonical_artifact_sha256,
+                    "payload_hash": snapshot.payload_hash,
+                    "schema_version": snapshot.schema_version,
+                    "schema_revision": snapshot.schema_revision,
+                    "integrity_basis": snapshot.integrity_basis,
+                    "decision_date": snapshot.decision_date,
+                    "data_as_of_date": snapshot.data_as_of_date,
+                    "decision_at": snapshot.decision_at,
+                    "available_at": snapshot.available_at,
                     "symbols": list(snapshot.symbols),
                     "cohort": dict(snapshot.cohort),
+                    "cohort_hash": snapshot.cohort_hash,
+                    "pipeline_run_id": snapshot.pipeline_run_id,
+                    "pipeline_status_path": str(snapshot.pipeline_status_path),
+                    "invocation_output_path": str(snapshot.invocation_output_path),
+                    "invocation_output_sha256": snapshot.invocation_output_sha256,
+                    "invocation_output_size": snapshot.invocation_output_size,
                 }
                 if snapshot is not None
                 else None
@@ -655,8 +840,9 @@ def _child_command(
     decision_date: date,
     scenario: RecommendationCostScenario,
     args: argparse.Namespace,
+    snapshot: SnapshotSummary,
 ) -> list[str]:
-    return [
+    command = [
         sys.executable,
         str(ROOT / "scripts" / "scheduled" / "run_daily_recommendation_learning.py"),
         "--data-root",
@@ -693,6 +879,19 @@ def _child_command(
         str(scenario.instrument_type),
         "--capture-current",
     ]
+    command.extend(
+        [
+            "--snapshot-result-id",
+            snapshot.result_id,
+            "--snapshot-cohort-hash",
+            snapshot.cohort_hash,
+            "--snapshot-invocation-output-sha256",
+            snapshot.invocation_output_sha256,
+            "--snapshot-invocation-output-path",
+            str(snapshot.invocation_output_path),
+        ]
+    )
+    return command
 
 
 def _run_child_subprocess(
@@ -700,12 +899,14 @@ def _run_child_subprocess(
     decision_date: date,
     scenario: RecommendationCostScenario,
     args: argparse.Namespace,
+    snapshot: SnapshotSummary,
 ) -> Mapping[str, Any]:
     command = _child_command(
         paths=paths,
         decision_date=decision_date,
         scenario=scenario,
         args=args,
+        snapshot=snapshot,
     )
     environment = os.environ.copy()
     environment.update(
@@ -915,7 +1116,22 @@ def _dry_run(args: argparse.Namespace) -> int:
                 "reason": snapshot_reason,
                 "path": str(snapshot.path) if snapshot is not None else None,
                 "file_sha256": snapshot.file_sha256 if snapshot is not None else None,
+                "canonical_artifact_sha256": (
+                    snapshot.canonical_artifact_sha256 if snapshot is not None else None
+                ),
                 "symbols": list(snapshot.symbols) if snapshot is not None else [],
+                "result_id": snapshot.result_id if snapshot is not None else None,
+                "payload_hash": snapshot.payload_hash if snapshot is not None else None,
+                "schema_version": snapshot.schema_version if snapshot is not None else None,
+                "schema_revision": snapshot.schema_revision if snapshot is not None else None,
+                "integrity_basis": snapshot.integrity_basis if snapshot is not None else None,
+                "cohort_hash": snapshot.cohort_hash if snapshot is not None else None,
+                "invocation_output_path": (
+                    str(snapshot.invocation_output_path) if snapshot is not None else None
+                ),
+                "invocation_output_sha256": (
+                    snapshot.invocation_output_sha256 if snapshot is not None else None
+                ),
             },
             "child_invocation": "not_run",
             "formal_order_allowed": False,
@@ -1017,9 +1233,35 @@ def _run_locked(
                 "reason": snapshot_reason,
                 "path": str(snapshot.path) if snapshot is not None else None,
                 "file_sha256": snapshot.file_sha256 if snapshot is not None else None,
+                "canonical_artifact_sha256": (
+                    snapshot.canonical_artifact_sha256 if snapshot is not None else None
+                ),
                 "status_path": str(snapshot.status_path) if snapshot is not None else str(paths.snapshot_output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"),
                 "symbols": list(snapshot.symbols) if snapshot is not None else [],
                 "cohort": dict(snapshot.cohort) if snapshot is not None else {},
+                "result_id": snapshot.result_id if snapshot is not None else None,
+                "payload_hash": snapshot.payload_hash if snapshot is not None else None,
+                "schema_version": snapshot.schema_version if snapshot is not None else None,
+                "schema_revision": snapshot.schema_revision if snapshot is not None else None,
+                "integrity_basis": snapshot.integrity_basis if snapshot is not None else None,
+                "decision_date": snapshot.decision_date if snapshot is not None else None,
+                "data_as_of_date": snapshot.data_as_of_date if snapshot is not None else None,
+                "decision_at": snapshot.decision_at if snapshot is not None else None,
+                "available_at": snapshot.available_at if snapshot is not None else None,
+                "cohort_hash": snapshot.cohort_hash if snapshot is not None else None,
+                "pipeline_run_id": snapshot.pipeline_run_id if snapshot is not None else None,
+                "pipeline_status_path": (
+                    str(snapshot.pipeline_status_path) if snapshot is not None else None
+                ),
+                "invocation_output_path": (
+                    str(snapshot.invocation_output_path) if snapshot is not None else None
+                ),
+                "invocation_output_sha256": (
+                    snapshot.invocation_output_sha256 if snapshot is not None else None
+                ),
+                "invocation_output_size": (
+                    snapshot.invocation_output_size if snapshot is not None else None
+                ),
             },
         }
     )
@@ -1090,7 +1332,7 @@ def _run_locked(
     child_result = (
         dict(child_runner(paths, decision_date, scenario, args))
         if child_runner is not None
-        else dict(_run_child_subprocess(paths, decision_date, scenario, args))
+        else dict(_run_child_subprocess(paths, decision_date, scenario, args, snapshot))
     )
     status, reason, recoverable = _child_classification(child_result)
     child_payload = child_result.get("child_payload")

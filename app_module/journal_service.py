@@ -20,6 +20,7 @@ from app_module.dtos.decision_continuity_dtos import (
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
 from app_module.personalization_contract import (
     PERSONALIZATION_DELIVERY_ACK_SCHEMA_VERSION,
+    PersonalRecommendationChoice,
     canonical_aware_datetime,
 )
 from app_module.portfolio_store import PortfolioJsonlStore, project_journal_records
@@ -447,6 +448,8 @@ class JournalService:
         revision_of: str = "",
         recorded_at: str | None = None,
         personalization_action: Mapping[str, Any] | None = None,
+        personal_recommendation_choice: Mapping[str, Any] | None = None,
+        expected_history_token: str | None = None,
     ) -> DecisionContinuityRevision:
         if action not in DECISION_CONTINUITY_ACTIONS:
             raise ValueError(f"unsupported decision continuity action: {action}")
@@ -459,6 +462,27 @@ class JournalService:
             raise ValueError("decision action requires stock_code")
         if action == ACTION_NOTE and not (body.strip() or note.strip()):
             raise ValueError("decision note body is required")
+        personal_choice: PersonalRecommendationChoice | None = None
+        if personal_recommendation_choice is not None:
+            if action != ACTION_NOTE:
+                raise ValueError("personal recommendation choice must use ACTION_NOTE")
+            if personalization_action is not None:
+                raise ValueError("personal choice cannot be combined with legacy action envelope")
+            if not isinstance(personal_recommendation_choice, Mapping):
+                raise ValueError("personal_recommendation_choice must be an object")
+            personal_choice = PersonalRecommendationChoice.from_mapping(
+                personal_recommendation_choice
+            )
+            if not expected_history_token:
+                raise ValueError("personal recommendation choice requires journal CAS token")
+            if (
+                personal_choice.result_id != identity.result_id
+                or personal_choice.stock_code != identity.stock_code
+                or personal_choice.decision_date != identity.decision_date
+                or personal_choice.source_snapshot_id != identity.source_snapshot_id
+                or personal_choice.source_snapshot_hash != identity.source_snapshot_hash
+            ):
+                raise ValueError("personal recommendation choice conflicts with decision identity")
 
         is_journal = action == ACTION_NOTE
         supplied_entity_id = str(entity_id or journal_id or "").strip()
@@ -485,6 +509,8 @@ class JournalService:
         if not resolved_entity_id:
             raise ValueError("decision action entity_id is required")
         resolved_revision_id = supplied_revision_id or self._revision_id(None)
+        if personal_choice is not None and personal_choice.request_id != resolved_revision_id:
+            raise ValueError("personal choice request_id must match journal revision_id")
         resolved_event_id = str(
             continuity_event_id
             or (prior_revision.continuity_event_id if prior_revision is not None else "")
@@ -531,6 +557,8 @@ class JournalService:
             # read adapters can validate the envelope without rewriting the
             # continuity record.
             payload["personalization_action"] = dict(personalization_action)
+        if personal_choice is not None:
+            payload["personal_recommendation_choice"] = personal_choice.to_dict()
         revision = DecisionContinuityRevision(
             revision_id=resolved_revision_id,
             continuity_event_id=resolved_event_id,
@@ -567,7 +595,10 @@ class JournalService:
             if not self._same_revision_request(prior, raw):
                 raise RuntimeError("journal_revision_event_conflict")
             return prior_revision
-        self.store.append_journal_revision(raw)
+        self.store.append_journal_revision(
+            raw,
+            expected_history_token=expected_history_token,
+        )
         return revision
 
     def record_research_action(self, *args: Any, **kwargs: Any) -> DecisionContinuityRevision:

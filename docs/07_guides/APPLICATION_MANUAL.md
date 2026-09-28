@@ -1096,7 +1096,9 @@ receipt 或推薦列 provenance 的 identity 不一致，會拒絕保存並提�
 2. 畫面先用唯一推薦 execution ID 寫入 canonical artifact，再查回該 ID 驗證 execution、payload hash、artifact、保存時間與本次名稱／備註；只有驗證通過才顯示保存完成並建立自動選股清單。
 3. 若 artifact 已發布但索引尚未完成，畫面會提示索引待重試；再次按「保存結果」會沿用首次名稱／備註，並以相同 result ID 呼叫保存服務修復索引。若保存已回條但 readback 失敗，重試會先查回同一 result ID，不重複寫 artifact。這些未驗證狀態都不建立選股清單。
 4. 已完成保存的 execution 再按「保存結果」只顯示已保存資訊，不會重寫結果或重複建立自動選股清單。選取其他股票時， Portfolio 來源摘要仍需與目前 verified result、execution item 及保存回條一致。
-5. 一般 Qt 手動推薦沒有個人化 scope／request identity，因此此保存流程不建立個人化送達 ACK；保存成功不等於已送達、採納、接受或交易。若 execution 帶有個人化 scope，畫面會明確提示 ACK 目前不可由 Qt 保存流程提供，後續送達紀錄由 R015 負責。
+5. 若同次保存的個人模式快照已驗證為 `personal_calibrated_probability`，canonical readback 成功後會在背景建立個人模型擷取並重新讀回核對，檔案保存在本機 `OUTPUT_ROOT/personal_prediction`。這是保存同次已驗證推薦與模型來源的封存，不會重跑推薦。
+6. 若當次實際採 `rule_only`，畫面會說明本次沒有個人模型擷取；若舊結果沒有當次政策快照，模式會標為未知，不會套用目前設定補寫歷史。個人模型擷取失敗不影響已保存推薦，也不會重建自動選股清單；可對目前核實的結果或輸入完整 ID 讀取的已保存結果按「建立／重試個人模型擷取」。相同內容的重試會讀回既有擷取；若保存內容不一致，系統拒絕覆寫。
+7. 一般 Qt 手動推薦沒有個人化 scope／request identity，因此此保存流程不建立個人化送達 ACK；保存成功不等於已送達、採納、接受或交易。若 execution 帶有個人化 scope，畫面會明確提示 ACK 目前不可由 Qt 保存流程提供，後續送達紀錄由 R015 負責。
 
 操作限制與排錯：
 
@@ -1130,6 +1132,8 @@ ML 的模型訓練位於 `ml_module/allocation_training_service.py`，凍結模�
 畫面入口為「決策工作台 → Evidence／Research Console」：Development Pipeline 查看 Dataset、Rule Baseline、ML Challenger 與產物；Safety Boundary 查看正式 ML、alpha 與 Rule-only 狀態；Evidence／Source Gates 查看缺件。Runtime 與數據更新的排程狀態可協助判讀工作執行，但排程成功不等於模型獲准使用。
 
 2026-09-06（美西）本次唯讀檢查：目前 process 的 `RESEARCH_CONSOLE_PROJECTION` 指向 2026-07-14 產生的開發投影，scope 為 historical research seen development data，alpha=0、四項 apply flags=false。實際呼叫 ResearchConsoleSourceService.inspect() 回報 degraded／projection_stale。預設正式 output 的舊 scheduled readiness 日期為 2026-08-14；另以台北 2026-09-07 00:00 作查詢 cutoff 重跑正式 input 唯讀檢查，結果仍為 0/3、waiting_for_formal_inputs，三項配置的 prospective input 尚未正式發布：非現金因果帳本、正式 Rule 快照歷史與 PIT 產業成分。新報告僅寫入 repo 的 `output/watchlist_analysis/ml_readiness_current.json`，沒有啟動訓練或修改正式產物。需要最新 ML 畫面時應由既有受控流程產出新 sanitized projection，再更新明確設定；不能只修改 generated_at 或解除 alpha 掩蓋過期。
+
+2026-09-27 較早檢查點的個人模型狀態：當時來源/PIT admission 尚未取得獨立官方歷史可得時間證明，也尚無使用者指定來源信任；兩個 `legacy_unproven` 舊候選不可啟用，個人模式保持 `rule_only`。其後使用者已明確選擇 V2 指定 SQLite 的個人研究信任流程，詳見 9.9.1d；該聲明仍不是官方歷史 PIT／publication availability 證明。WP2 company-registry sidecar 的 `available_at` 是本次 HTTP response capture 完成時間，不是官方公告／publication 時間。個人結果操作詳見下方「個人推薦模型擷取與自然結果」。
 
 ### 7.1 候選池操作
 
@@ -1949,6 +1953,71 @@ sample、personal delivery、human action 或 promotion。共用 annual cache re
 格式／長度限制、canonical bounded guard 與跨年等價 regression 已由核心合併 suite 驗證；不得
 改用 ISO fixture 繞過 compact source 的驗證。annual-64 refresh discovery regression 另以
 `12 passed`、compile／mypy clean 驗證，詳見 [Maturity calendar refresh wiring QA](../06_qa/MATURITY_CALENDAR_REFRESH_WIRING_2026_09_18.md)。
+
+### 9.9.1c 個人推薦模型擷取與自然結果（2026-09-27）
+
+**目前安全預設仍是 `rule_only`。** 個人來源/PIT admission 尚無獨立官方歷史可得時間證明；inventory 中兩個 `legacy_unproven` 候選仍不可啟用。使用者已明確選擇 V2 指定 SQLite 來源時間信任，操作方式與研究限定見 9.9.1d；此聲明不等同外部 authority 或官方 historical PIT 證明。不要回填舊候選 lineage 或改動 global active pointer。Outcome CLI 即使可執行，也不會自行准入模型或建立模型預測。
+
+若未來已有明確准入、在當次保存結果中實際採 `personal_calibrated_probability` 的模型，操作順序如下：
+
+1. 在「推薦分析」以明確政策完成推薦，按「保存結果」並等 canonical save/readback 成功。保存結果的 `result_id`、當次 policy snapshot 與 source/candidate identity 必須吻合；不可從同股、日期或 latest 推回缺失身份。
+2. 僅由該次已保存結果建立並讀回 Stage A 個人 prediction capture；UI 使用本機 `OUTPUT_ROOT\personal_prediction` 作為 capture root，檔案位於其 `captures` 子目錄。Capture 封存當次輸出，不重新推論。若結果是 `rule_only`、舊結果缺 policy event、canonical readback 失敗，capture 不會建立；修復來源問題後再對同一明確結果重試，不要手造 capture/receipt。
+3. 取得官方 annual trading calendar 與明確 market SQLite source 後，逐一指定需要評估的 capture，手動執行下列 Stage C CLI。所有路徑都要是使用者明確選定的絕對路徑；canonical recommendation root、capture root、market DB、calendar 與 isolated output 必須分開。`<...>` 是佔位符，不能原樣貼上；`evaluation-at` 必須換成真正執行時的 aware ISO 時間，不可用歷史時間回填。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_personal_recommendation_outcomes.py `
+  --canonical-recommendation-output-root "<CANONICAL_OUTPUT_ROOT>" `
+  --capture-path "<PERSONAL_CAPTURE_ROOT>\captures\<EXPLICIT_CAPTURE_FILE>.json" `
+  --personal-capture-root "<PERSONAL_CAPTURE_ROOT>" `
+  --market-source-db "<READ_ONLY_MARKET_DB>" `
+  --calendar-cache-path "<OFFICIAL_ANNUAL_CALENDAR_CACHE>" `
+  --temporary-closure-cache-path "<OPTIONAL_OFFICIAL_CLOSURE_CACHE>" `
+  --evaluation-at "<ACTUAL_AWARE_ISO_DATETIME_WITH_OFFSET>" `
+  --isolated-output-root "<SEPARATE_PERSONAL_OUTPUT_ROOT>"
+```
+
+`--capture-path` 可重複，最多 500 個；每個都要是 `personal_capture_root\captures` 下明確指定的 JSON 檔。CLI 不掃描 latest、不接受 glob。若沒有可驗證的 temporary-closure cache，可省略該參數；輸出會保留 `annual_plan_only` 限制，不能把年曆計畫當臨時休市公告已核實。`--market-source-db` 必須是可唯讀使用且與輸出隔離的明確來源；正式 DB 的使用需要另行授權，本手冊範例不構成正式資料讀寫或 scheduler 執行授權。CLI 的所有輸出寫入 `--isolated-output-root\personal_natural_outcomes`，採 create-only；不要刪除既有 receipt 來重跑。
+
+Stage C 先以 canonical query 嚴格讀回 capture 對應的已保存 recommendation，再用官方 session resolver 檢查完整 20 個交易 session。成熟 endpoint 的標籤明確為 `start_date=decision_date` 到 `end_date=verified endpoint` 的 close-to-close 事後結果，`is_execution_pnl=false`：它不是可成交價格、持倉損益或下單紀錄。Outcome v2 只以 `active_model` rows 計算模型預測／分數；`rule_only_fallback` rows 保留在 delivered cohort 與 coverage，但沒有模型機率，不可算作模型預測。after-cost 是依完整可得的估算手續費／稅費輸入計算的估算標籤，不是實際成交成本；若成本或流動性輸入缺失，after-cost 維持 pending／unknown，不以零成本補值。個人結果不建立 global natural evidence 或 promotion credit。
+
+排錯時先看 CLI JSON 的 `status`、`capture_statuses`、`summary_path` 和各 outcome hash：
+
+| 狀態／症狀 | 判讀與處理 |
+|---|---|
+| UI 顯示 `rule_only`／capture 按鈕不可用 | 本次結果沒有個人模型預測。當前來源准入未通過時是預期安全狀態；不要改指標、補 lineage 或重用 `legacy_unproven` artifact。 |
+| `pending`／`completed_with_pending` | 20 個官方 session、endpoint close 或 outcome 必要來源證據尚未齊全。保留原 capture，待資料成熟後再以同一 explicit path 評估；不要以曆日或 weekday 補 session。若 gross 結果已成熟但估算成本／流動性輸入不足，則只把 outcome 內的 after-cost 欄位保留為 pending／unknown，不代表 gross maturity 也失敗。 |
+| `unknown`／`completed_with_unknown`（CLI exit code 2） | 身份、來源、日期、calendar 或必要證據無法核對。讀完整 `message`／`capture_statuses`，修正確切輸入路徑或等待官方證據；不要改 capture/hash 使其通過。 |
+| `error`（CLI exit code 2） | 參數、路徑、讀回或發布失敗。保存完整 stderr/stdout 與路徑，確認輸出未被改寫，再依 create-only 契約另行處理；不要刪檔或覆蓋舊 receipt。 |
+| `completed`（CLI exit code 0） | 只表示本次明列 capture 的輸出已完成並返回 receipt。它不代表模型獲准、表現有效、自然 scheduler 完成、實際成交或 global learning/promotion。 |
+
+本附記的 scoped QA 證據分開記錄：WP3 frozen focused 51P、Stage B／C route 31P／1S、Workbench UI 84P、Update QA 25P／4S。它們不是同一條全端 route，也不相加作整體 PASS；source/PIT gate 最終測試 inventory／hash 與 root 最終 relevant regression 收據仍待補。尚未完成可見 native post-fix 操作、真實可准入 candidate 或自然 scheduler 驗收。Stage C 測試、個人候選來源與個人政策不得折抵 global training、global evidence 或 promotion 條件。
+
+### 9.9.1d 使用者明示來源時間信任的個人研究模式（V2，2026-09-27）
+
+本節補充更新 9.9.1c 的來源信任說明：使用者已明確選擇可信任自己指定的 SQLite 資料庫，系統因此提供 V2 個人研究限定流程。這是「使用者聲明的來源時間信任」，不是官方歷史發布時間、獨立歷史 PIT 或資料來源簽章。安全預設仍是 `rule_only`；目前兩個 `legacy_unproven` 舊候選仍不可啟用，亦沒有可宣稱為真實 PIT 合格的模型。
+
+操作入口在「推薦分析」頁的「個人推薦模式」區塊：
+
+1. 按「讀取候選清冊」，選取要檢查的候選。清冊只列可檢查的候選；缺少完整 lineage／來源證據的 `legacy_unproven` 項目不能藉由手動挑選或重雜湊升格。
+2. 在「個人研究來源 SQLite（明確選擇）」輸入絕對檔案路徑，或按「選擇 DB…」。畫面不會從 `DATA_ROOT` 推定來源或代表使用者同意。按「檢查指定來源與候選」只執行唯讀來源檢查與有界 replay，不會寫入該 SQLite 或保存信任。
+3. 檢查預覽所列資料庫絕對路徑、檔案身分、來源切片 SHA-256、資料集、決策日期、股票、樣本數與候選完整 pins。資料庫大小只供診斷；不能用它代替來源身分或切片驗證。來源切片綁定模型實際訓練窗內的資料列、`available_at`、來源契約及成本等訓練輸入。本次僅在 `coverage.source_contract.technical`、`source_disclosures.source_contract.technical`、`source_disclosures.technical.source_contract` 三處 technical contract 投影中排除 `content_digest`、`content_row_count`、`coverage_end`、`evidence_hash` 四個全庫彙總欄；另不把 replay 結果最外層的 `dataset_id`、`dataset_hash`、`source_fingerprint` 三個由全庫 source fingerprints 衍生的識別欄納入此來源切片比對。上述例外以外，其他來源與欄位仍依原契約比較；候選已保存 manifest/pins 與逐筆樣本仍獨立核對。這不改原 replay manifest 或 global oracle。`available_at` 不會改稱官方發布時間。
+4. 確認候選與指定資料庫確實是你要採信的來源後，選擇「個人校準機率（需選擇已驗證候選）」，勾選「我明確信任以上指定 SQLite 的資料時間來源，僅供個人研究，不代表官方歷史 PIT。」再按「信任此來源並保存個人研究模式」。V2 設定會用 CAS 保存並讀回 revision/hash；接著系統以同一明示資料庫重新檢查。只有重新檢查成功後，當前畫面才可在呼叫時要求 personal calibrated mode；consumer 仍會在載入模型前獨立重驗來源與候選。
+5. 關閉並重開程式後，已保存路徑可顯示作為提示，但不代表本次啟動已重新驗證。先按「檢查指定來源與候選」完成新一輪檢查，通過後才能執行個人校準機率。若路徑、檔案身分、訓練切片或候選 pins 不一致，系統 fail closed 並保留 `rule_only`。
+6. 要停用個人校準時，選擇規則模式並按「停用校準並保存規則模式」。V2 會建立新 CAS revision 並清除候選與來源信任；此操作只影響本機個人政策，不改全域 active pointer、training、promotion、learning credit 或自動下單。
+7. 回退 V2 的校準設定時，必須先對封存版本的候選與同一來源資料庫重新做新鮮檢查；只有與該封存 trust 完全相符的 proposal 才能建立新 revision。舊版記錄本身不是目前來源仍可信的證明。V1 設定仍可讀取，但 V1 calibrated policy 不會因此取得 V2 來源信任。
+
+若選擇日常更新中的 SQLite，V2 來源驗證不會只因一般資料庫彙總值變化便自動失效：訓練窗以外的更新只有在同一檔案身分仍成立、且實際訓練切片（含資料列、available time、來源契約及成本）完全相同時，才不改變該切片比對結果。若檔案被替換，或訓練切片內資料／時間／來源契約／成本改變，驗證會拒絕；請使用保留的唯讀訓練快照，或建立並重新驗證新候選，再明確確認。不得自行改 manifest、hash、時間或政策 JSON 讓檢查通過。即使符合使用者的來源聲明，仍只屬研究限定，並非官方 historical PIT。
+
+| 狀態／症狀 | 判讀與處理 |
+|---|---|
+| 候選清冊沒有可用候選，或只列 `legacy_unproven` | 尚無可通過准入的模型；維持 `rule_only`。不可把舊候選的缺失 lineage 手動補成可信證據。 |
+| 來源檢查按鈕／信任勾選框不可用 | 尚未明確選取候選與絕對 SQLite 路徑，或預覽已因路徑／候選改變而清除；重新選擇並檢查。 |
+| 顯示 V1 或未重新驗證的 V2 | 舊設定可讀，但不代表目前來源有效；同一候選與資料庫需重新檢查，並在需要時明確保存 V2。 |
+| CAS revision/hash 衝突或保存後讀回失敗 | 不要覆寫政策檔；重新載入目前設定、核對來源及候選後再操作。保存若已完成但畫面未確認，先讀回設定，不要猜測結果。 |
+| `source_time_binding_mismatch`、來源切片 SHA 或候選 pins 不符 | 檔案身分或實際訓練切片有差異；停止個人校準。回到原唯讀訓練來源，或依法重新產生候選，再做新的來源檢查與明示確認。 |
+| 顯示 `official_historical_pit_verified=false` | 這是預期狀態，表示使用者聲明不等於獨立官方 PIT；不得據此作 global promotion 或正式績效宣稱。 |
+
+此 UI 流程目前只有隔離測試證據，不是可見 native Windows 操作、正式來源訓練、真實合格 candidate 或自然 scheduler 的驗收。Stage C 的逐筆 outcome CLI 仍依 9.9.1c 的明確 capture 路徑與 `evaluation-at` 使用；V2 來源信任不會建立 capture、提前成熟 outcome 或替代其來源與日曆檢查。
 
 ### 9.9.2 Historical Evidence Replay（歷史排程重放）
 

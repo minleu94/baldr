@@ -7,18 +7,129 @@ from __future__ import annotations
 
 import pandas as pd
 import numpy as np
-from typing import Callable, List, Dict, Any, Mapping, Optional, Sequence, TYPE_CHECKING, cast
+from typing import Callable, List, Dict, Any, Mapping, Optional, Sequence, TYPE_CHECKING, TypeGuard, cast
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from copy import deepcopy
+from copy import copy, deepcopy
 import hashlib
 import json
 from threading import RLock
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 _STANDARD_DATETIME = datetime
+
+
+def _is_company_registry_source_sha256(value: Any) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
+
+
+def _company_registry_source_contract_hash_matches(
+    contract: Mapping[str, Any],
+) -> bool:
+    """用 company registry 既有 canonical JSON 規則核對封存雜湊。"""
+
+    declared = contract.get("source_contract_sha256")
+    if not _is_company_registry_source_sha256(declared):
+        return False
+    body = dict(contract)
+    body.pop("source_contract_sha256", None)
+    try:
+        canonical = json.dumps(
+            body,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return False
+    return declared == "sha256:" + hashlib.sha256(canonical).hexdigest()
+
+
+def _withdraw_personal_calibration_fields(
+    recommendations: Sequence[RecommendationDTO],
+) -> None:
+    """在個人模式未適用時移除所有模型衍生數值，保留規則排名。"""
+
+    for recommendation in recommendations:
+        recommendation.ranking_score_bp = None
+        recommendation.calibrated_probability_bp = None
+        recommendation.calibrated_probability_status = "unavailable"
+        recommendation.after_cost_profit_probability_bp = None
+        recommendation.after_cost_profit_probability_status = "unavailable"
+        recommendation.evidence_confidence = ""
+        recommendation.sample_size = None
+        recommendation.cost_basis_bp = None
+        recommendation.calibration_model_version = ""
+        recommendation.calibration_dataset_version = ""
+        recommendation.calibration_horizon = ""
+        recommendation.calibration_status = "rule_only"
+        recommendation.calibration_source = "personal_use_policy"
+        recommendation.calibration_warnings = ["personal_rule_only_effective"]
+        recommendation.calibration_source_trace = []
+        recommendation.calibration_probability_transform_id = ""
+        recommendation.calibration_probability_baseline_id = ""
+        recommendation.calibration_probability_baseline_kind = ""
+        recommendation.calibration_probability_baseline_probability_bp = None
+        recommendation.calibration_raw_probability_bp = None
+        recommendation.calibration_raw_after_cost_probability_bp = None
+        recommendation.calibration_provenance = {}
+
+
+def _is_explicit_personal_rule_only_projection(value: Any) -> bool:
+    """辨認無模型機率的明確 rule-only fallback 投影。"""
+
+    to_dict = getattr(value, "to_dict", None)
+    if not callable(to_dict):
+        return False
+    try:
+        row = to_dict()
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(row, Mapping):
+        return False
+    if (
+        row.get("status") != "rule_only"
+        or row.get("ranking_method") != "rule_only"
+        or row.get("calibrated_probability_status") != "unavailable"
+        or row.get("after_cost_profit_probability_status") != "unavailable"
+        or row.get("probability_baseline_kind") != "unavailable"
+        or row.get("provenance_status") != "unavailable"
+        or bool(str(row.get("model_version") or "").strip())
+        or bool(str(row.get("dataset_version") or "").strip())
+    ):
+        return False
+    if any(
+        row.get(field_name) is not None
+        for field_name in (
+            "calibrated_probability_bp",
+            "after_cost_profit_probability_bp",
+            "probability_baseline_probability_bp",
+            "population_probability_bp",
+            "raw_calibrated_probability_bp",
+            "raw_after_cost_profit_probability_bp",
+        )
+    ):
+        return False
+    warnings = row.get("warnings")
+    compatibility = row.get("provenance_compatibility")
+    reason = compatibility.get("reason") if isinstance(compatibility, Mapping) else None
+    return (
+        type(warnings) is list
+        and bool(warnings)
+        and all(type(item) is str and item.strip() for item in warnings)
+        and isinstance(compatibility, Mapping)
+        and compatibility.get("status") == "blocked"
+        and type(reason) is str
+        and bool(reason.strip())
+    )
 
 # 確保 pd.isna 可用（pandas 兼容性）
 if not hasattr(pd, 'isna'):
@@ -60,6 +171,19 @@ from app_module.recommendation_calibration_consumer import (
     RecommendationCalibrationConsumer,
     RecommendationCalibrationProjection,
     build_default_recommendation_calibration_consumer,
+)
+from ml_module.recommendation_cost_scenario import RecommendationCostScenario
+from app_module.recommendation.personal_use_policy import (
+    PERSONAL_CALIBRATED_PROBABILITY_MODE,
+    RULE_ONLY_MODE,
+    PersonalCalibrationCandidateV1,
+    RecommendationPersonalUsePolicyV1,
+    RecommendationPersonalUsePolicyV2,
+    load_personal_use_policy_snapshot,
+)
+from data_module.company_registry import (
+    COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR,
+    COMPANY_REGISTRY_SOURCE_CONTRACT_SCHEMA_VERSION,
 )
 from app_module.recommendation.input_preparation import (
     RecommendationInputPreparer,
@@ -302,6 +426,16 @@ def _recommendation_evidence_identity(
     )
 
 
+def _is_personal_use_policy(
+    value: object,
+) -> TypeGuard[RecommendationPersonalUsePolicyV1 | RecommendationPersonalUsePolicyV2]:
+    """只接受已知、不可替代的政策 DTO 類別。"""
+
+    return type(value) is RecommendationPersonalUsePolicyV1 or type(
+        value
+    ) is RecommendationPersonalUsePolicyV2
+
+
 class RecommendationService:
     """推薦服務類"""
 
@@ -367,6 +501,9 @@ class RecommendationService:
             if calibration_consumer is not None
             else build_default_recommendation_calibration_consumer(config)
         )
+        self._personal_use_policy: (
+            RecommendationPersonalUsePolicyV1 | RecommendationPersonalUsePolicyV2 | None
+        ) = None
         self.pit_membership_reader = pit_membership_reader
         self.last_calibration_projections: Dict[str, Any] = {}
         self.last_screening_matrix: List[Dict[str, Any]] = []
@@ -378,6 +515,82 @@ class RecommendationService:
         self.last_run_context: Dict[str, Any] = {}
         self._personalization_execution_clocks: Dict[str, str] = {}
         self._r011_last_state_lock = RLock()
+        self._r011_invocation_capture: dict[str, object] | None = None
+        self._r026_post_calibration_handoff_sink: (
+            RecommendationPostCalibrationHandoffSinkV1 | None
+        ) = None
+
+    def with_personal_use_policy(
+        self,
+        policy: RecommendationPersonalUsePolicyV1 | RecommendationPersonalUsePolicyV2,
+    ) -> "RecommendationService":
+        """回傳綁定單次明示個人設定的新服務快照。
+
+        個人設定不修改 global shadow pointer。每次呼叫都重讀設定檔，確認其
+        revision/hash 仍與呼叫端持有的不可變快照相同，再建立全新的 calibration
+        consumer；run context、投影、時鐘與 handoff 能力也不沿用原服務的可變狀態。
+        """
+
+        if not _is_personal_use_policy(policy):
+            raise TypeError("policy 必須是已知 V1 或 V2 personal-use policy")
+        verified_policy: RecommendationPersonalUsePolicyV1 | RecommendationPersonalUsePolicyV2
+        if type(policy) is RecommendationPersonalUsePolicyV1 and policy.storage_path is None:
+            expected_default = RecommendationPersonalUsePolicyV1.default_rule_only(
+                policy.scope_id
+            )
+            if policy.to_dict() != expected_default.to_dict():
+                raise ValueError("未持久化個人設定只允許固定 rule-only baseline")
+            verified_policy = expected_default
+        else:
+            if policy.storage_path is None:
+                raise ValueError("V2 個人設定必須由保存 bytes 驗證")
+            verified_policy = load_personal_use_policy_snapshot(policy.storage_path)
+            if verified_policy.to_dict() != policy.to_dict():
+                raise ValueError("個人設定已變更，請重新讀取並確認最新 revision")
+            verified_policy.validate_snapshot()
+
+        invocation_service = copy(self)
+        invocation_service._personal_use_policy = verified_policy
+        invocation_service.last_calibration_projections = {}
+        invocation_service.last_screening_matrix = []
+        invocation_service.last_excluded_candidates_json = []
+        invocation_service.last_why_not_payload_json = []
+        invocation_service.last_liquidity_gate_payload_json = []
+        invocation_service.last_exclusion_quality = "observed"
+        invocation_service.last_exclusion_warnings_json = []
+        invocation_service.last_run_context = {}
+        invocation_service._personalization_execution_clocks = {}
+        invocation_service._r011_last_state_lock = RLock()
+        invocation_service._r011_invocation_capture = None
+        invocation_service._r026_post_calibration_handoff_sink = None
+
+        if verified_policy.mode == RULE_ONLY_MODE:
+            invocation_service.calibration_consumer = None
+        elif (
+            verified_policy.mode == PERSONAL_CALIBRATED_PROBABILITY_MODE
+            and verified_policy.storage_path is not None
+        ):
+            base_consumer = self.calibration_consumer
+            if base_consumer is None:
+                base_consumer = build_default_recommendation_calibration_consumer(
+                    self.config
+                )
+            if type(base_consumer) is RecommendationCalibrationConsumer:
+                invocation_service.calibration_consumer = RecommendationCalibrationConsumer(
+                    pointer_path=verified_policy.storage_path,
+                    feature_schema=base_consumer.feature_schema,
+                    feature_registry_hash=base_consumer.feature_registry_hash,
+                    data_root=base_consumer._loader._data_root,
+                    expected_model_family=base_consumer.expected_model_family,
+                    personal_use_policy=verified_policy,
+                    personal_use_policy_bytes=verified_policy.storage_bytes,
+                )
+            else:
+                # Custom test adapters are not personal artifact authorities.
+                invocation_service.calibration_consumer = None
+        else:
+            raise ValueError("個人設定版本或模式不支援")
+        return invocation_service
 
     def _reset_negative_evidence_buffers(self) -> None:
         self.last_screening_matrix = []
@@ -388,6 +601,165 @@ class RecommendationService:
         self.last_exclusion_warnings_json = []
         self.last_run_context = {}
         self.last_calibration_projections = {}
+
+    def _record_current_industry_mapping_use(self, usage: str) -> None:
+        """封存本次 current-only 公司分類來源與實際用途。"""
+
+        if type(usage) is not str or not usage:
+            raise ValueError("current mapper usage 必須是非空字串")
+        snapshot = self.last_run_context.get("industry_mapping_source_snapshot")
+        if snapshot is None:
+            warnings: list[str] = []
+            source_contract: dict[str, Any] | None = None
+            raw_contract: Any = None
+            companies_frame = getattr(self.industry_mapper, "companies_df", None)
+            frame_attrs = getattr(companies_frame, "attrs", None)
+            if isinstance(frame_attrs, Mapping):
+                raw_contract = frame_attrs.get(COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR)
+            if isinstance(raw_contract, Mapping):
+                try:
+                    detached = json.loads(
+                        json.dumps(
+                            dict(raw_contract),
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            allow_nan=False,
+                        )
+                    )
+                except (TypeError, ValueError):
+                    warnings.append(
+                        "company_registry_source_contract_not_json_snapshot"
+                    )
+                else:
+                    source_contract = detached
+                    contract_scope_is_current = (
+                        detached.get("schema_version")
+                        == COMPANY_REGISTRY_SOURCE_CONTRACT_SCHEMA_VERSION
+                        and detached.get("scope") == "current_classification_only"
+                        and detached.get("pit_eligible") is False
+                        and detached.get("status") in {"captured", "unknown"}
+                    )
+                    if not contract_scope_is_current:
+                        warnings.append(
+                            "company_registry_source_contract_scope_unrecognized"
+                        )
+                    raw_warnings = detached.get("warnings")
+                    if isinstance(raw_warnings, list) and all(
+                        type(item) is str for item in raw_warnings
+                    ):
+                        warnings.extend(raw_warnings)
+                    if detached.get("status") != "captured":
+                        warnings.append("company_registry_source_status_unknown")
+                    if (
+                        detached.get("source_contract_sha256") is not None
+                        and not _company_registry_source_contract_hash_matches(detached)
+                    ):
+                        warnings.append(
+                            "company_registry_source_contract_hash_mismatch"
+                        )
+            else:
+                warnings.append("company_registry_source_contract_missing")
+
+            captured = (
+                source_contract is not None
+                and source_contract.get("schema_version")
+                == COMPANY_REGISTRY_SOURCE_CONTRACT_SCHEMA_VERSION
+                and source_contract.get("scope") == "current_classification_only"
+                and source_contract.get("pit_eligible") is False
+                and source_contract.get("status") == "captured"
+                and _company_registry_source_contract_hash_matches(source_contract)
+            )
+            snapshot = {
+                "result_id": str(self.last_run_context.get("result_id") or ""),
+                "decision_at": None,
+                "scope": "current_classification_only",
+                "pit_eligible": False,
+                "company_registry_source_status": "captured" if captured else "unknown",
+                "industry_index_source_status": "not_observed",
+                "usage": [],
+                "company_registry_source_contract": source_contract,
+                "company_registry_source_contract_sha256": (
+                    source_contract.get("source_contract_sha256")
+                    if source_contract is not None
+                    else None
+                ),
+                "warnings": list(dict.fromkeys(warnings)),
+                **(
+                    {
+                        "schema_version": "recommendation-company-registry-source-snapshot.v2",
+                        "decision_date": self.last_run_context.get("as_of_date"),
+                        "data_as_of_date": self.last_run_context.get("data_date") or None,
+                        "source_id": self.last_run_context.get("source_id"),
+                        "market_data_fingerprint": self.last_run_context.get(
+                            "market_data_fingerprint"
+                        ),
+                    }
+                    if self.last_run_context.get("personal_live_clock_schema")
+                    == "recommendation-personal-live-clock.v1"
+                    else {
+                        "schema_version": "recommendation-company-registry-source-snapshot.v1",
+                        "data_as_of_date": self.last_run_context.get("as_of_date"),
+                    }
+                ),
+            }
+            self.last_run_context["industry_mapping_source_snapshot"] = snapshot
+
+        usages = snapshot.get("usage")
+        if not isinstance(usages, list):
+            raise TypeError("industry mapping source usage 必須是 list")
+        if usage not in usages:
+            usages.append(usage)
+        if usage == "current_industry_index_performance_for_reason":
+            snapshot["industry_index_source_status"] = "unknown"
+            snapshot_warnings = snapshot.get("warnings")
+            if not isinstance(snapshot_warnings, list):
+                raise TypeError("industry mapping source warnings 必須是 list")
+            warning = "industry_index_source_contract_unavailable_for_current_use"
+            if warning not in snapshot_warnings:
+                snapshot_warnings.append(warning)
+        self._refresh_current_industry_mapping_snapshot_hash(snapshot)
+
+    def _finalize_current_industry_mapping_snapshot(self) -> None:
+        """將 current mapping 快照綁到最後發布的同次執行時鐘與結果。"""
+
+        snapshot = self.last_run_context.get("industry_mapping_source_snapshot")
+        if not isinstance(snapshot, dict):
+            return
+        snapshot["result_id"] = str(self.last_run_context.get("result_id") or "")
+        if snapshot.get("schema_version") == "recommendation-company-registry-source-snapshot.v2":
+            snapshot["decision_date"] = self.last_run_context.get("as_of_date")
+            snapshot["data_as_of_date"] = (
+                self.last_run_context.get("data_date") or None
+            )
+            snapshot["source_id"] = self.last_run_context.get("source_id")
+            snapshot["market_data_fingerprint"] = self.last_run_context.get(
+                "market_data_fingerprint"
+            )
+        else:
+            snapshot["data_as_of_date"] = self.last_run_context.get("as_of_date")
+        snapshot["decision_at"] = self.last_run_context.get("decision_at") or None
+        if snapshot["decision_at"] is None:
+            warnings = snapshot.get("warnings")
+            if not isinstance(warnings, list):
+                raise TypeError("industry mapping source warnings 必須是 list")
+            warning = "recommendation_decision_clock_unavailable_for_current_mapper_use"
+            if warning not in warnings:
+                warnings.append(warning)
+        self._refresh_current_industry_mapping_snapshot_hash(snapshot)
+
+    @staticmethod
+    def _refresh_current_industry_mapping_snapshot_hash(
+        snapshot: dict[str, Any],
+    ) -> None:
+        snapshot.pop("snapshot_sha256", None)
+        canonical = json.dumps(
+            snapshot,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        snapshot["snapshot_sha256"] = "sha256:" + hashlib.sha256(canonical).hexdigest()
 
     def _apply_recommendation_calibration(
         self,
@@ -408,11 +780,11 @@ class RecommendationService:
         """
 
         consumer = self.calibration_consumer
-        invocation_capture = getattr(self, "_r011_invocation_capture", None)
-        post_calibration_sink = getattr(
-            self, "_r026_post_calibration_handoff_sink", None
-        )
+        invocation_capture = self._r011_invocation_capture
+        post_calibration_sink = self._r026_post_calibration_handoff_sink
         receipt_event_facts: list[CalibrationReceiptEventFactsV1] = []
+        active_cost_scenario: RecommendationCostScenario | None = None
+        active_identity_for_snapshot: dict[str, Any] = {}
 
         def publish_post_calibration_handoff(
             *,
@@ -436,9 +808,40 @@ class RecommendationService:
                 )
             )
 
+        personal_policy = getattr(self, "_personal_use_policy", None)
+        if _is_personal_use_policy(personal_policy):
+            # 不讓重用的 service 狀態把前一個 invocation 的來源快照帶入本次結果。
+            self.last_run_context.pop("personal_probability_baseline_inputs", None)
+            self.last_run_context["personal_use_policy"] = personal_policy.to_dict()
+            self.last_run_context["personal_use_requested_mode"] = personal_policy.mode
+            self.last_run_context["personal_use_effective_mode"] = RULE_ONLY_MODE
+            policy_clock_valid = personal_policy.applicable_at(
+                str(self.last_run_context.get("decision_at") or "")
+            )
+            if personal_policy.mode == RULE_ONLY_MODE or not policy_clock_valid:
+                _withdraw_personal_calibration_fields(recommendations)
+                self.last_calibration_projections = {}
+                self.last_run_context["calibration_projection_status"] = "rule_only"
+                if not policy_clock_valid:
+                    self.last_run_context.setdefault("warnings", []).append(
+                        "personal_use_policy_not_confirmed_by_decision_clock_fail_closed"
+                    )
+                publish_post_calibration_handoff(
+                    consumer_configured=consumer is not None,
+                    attempted=False,
+                )
+                return None
+
         if isinstance(invocation_capture, dict):
             invocation_capture["calibration_consumer_configured"] = consumer is not None
         if consumer is None:
+            if _is_personal_use_policy(personal_policy):
+                _withdraw_personal_calibration_fields(recommendations)
+                self.last_calibration_projections = {}
+                self.last_run_context["calibration_projection_status"] = "unavailable"
+                self.last_run_context.setdefault("warnings", []).append(
+                    "personal_calibration_consumer_unavailable_fail_closed"
+                )
             publish_post_calibration_handoff(
                 consumer_configured=False,
                 attempted=False,
@@ -578,6 +981,7 @@ class RecommendationService:
                     if isinstance(active_identity_value, Mapping)
                     else {}
                 )
+                active_identity_for_snapshot = dict(active_identity)
                 if (
                     type(consumer) is RecommendationCalibrationConsumer
                     and selected_items is not None
@@ -628,9 +1032,14 @@ class RecommendationService:
                                     prepared_runtime_capability is not None
                                 )
                 active_cost_provider = getattr(consumer, "active_cost_scenario", None)
-                active_cost_scenario = (
+                resolved_active_cost_scenario = (
                     active_cost_provider(decision_date=decision_date)
                     if callable(active_cost_provider)
+                    else None
+                )
+                active_cost_scenario = (
+                    resolved_active_cost_scenario
+                    if type(resolved_active_cost_scenario) is RecommendationCostScenario
                     else None
                 )
                 active_cost_hash = active_identity.get("cost_scenario_hash")
@@ -766,6 +1175,17 @@ class RecommendationService:
                     projections = dict(
                         project_prepared_ml_runtime_input_v1(runtime_input)
                     )
+                elif _is_personal_use_policy(personal_policy):
+                    # 個人採用必須經過 fresh same-bytes invocation capability。
+                    # capability 缺失時不退回會重載 mutable candidate 的 legacy path。
+                    projections = {
+                        symbol: RecommendationCalibrationProjection.unavailable(
+                            stock_code=symbol,
+                            warning="personal_invocation_model_capability_unavailable_fail_closed",
+                            ranking_percentile_bp=percentiles.get(symbol),
+                        )
+                        for symbol in feature_values
+                    }
                 else:
                     projections = consumer.project_many(
                         feature_values_by_symbol=feature_values,
@@ -1099,6 +1519,290 @@ class RecommendationService:
                         "projection_receipt_required": True,
                     }
                 )
+        if _is_personal_use_policy(personal_policy):
+            delivered_codes = tuple(
+                recommendation.stock_code for recommendation in recommendations
+            )
+            selected_codes = (
+                tuple(item.stock_code for item in selected_items)
+                if selected_items is not None
+                else delivered_codes
+            )
+            delivery_matches_selection = delivered_codes == selected_codes
+            candidate = personal_policy.candidate
+            candidate_id = (
+                candidate.candidate_id
+                if type(candidate) is PersonalCalibrationCandidateV1
+                else None
+            )
+
+            def is_active_projection(code: str) -> bool:
+                projection = projections.get(code)
+                probability = (
+                    getattr(projection, "calibrated_probability_bp", None)
+                    if projection is not None
+                    else None
+                )
+                return (
+                    projection is not None
+                    and projection.status == "active_candidate"
+                    and projection.calibrated_probability_status == "active_effective"
+                    and type(probability) is int
+                    and 0 <= probability <= 10_000
+                    and projection.model_version == candidate_id
+                )
+
+            active_codes = tuple(
+                code for code in delivered_codes if is_active_projection(code)
+            )
+            fallback_codes = tuple(
+                code
+                for code in delivered_codes
+                if code in projections
+                and _is_explicit_personal_rule_only_projection(projections[code])
+            )
+            delivery_is_classified = (
+                delivery_matches_selection
+                and len(set(delivered_codes)) == len(delivered_codes)
+                and len(set(active_codes)) == len(active_codes)
+                and len(set(fallback_codes)) == len(fallback_codes)
+                and not (set(active_codes) & set(fallback_codes))
+                and set(active_codes) | set(fallback_codes) == set(delivered_codes)
+            )
+            effective_model = bool(active_codes) and delivery_matches_selection
+            mixed_delivery = (
+                delivery_is_classified and bool(active_codes) and bool(fallback_codes)
+            )
+            all_delivered_active = (
+                delivery_is_classified
+                and bool(active_codes)
+                and len(active_codes) == len(delivered_codes)
+            )
+            self.last_run_context["personal_use_effective_mode"] = (
+                PERSONAL_CALIBRATED_PROBABILITY_MODE
+                if effective_model
+                else RULE_ONLY_MODE
+            )
+            # 只有真實個人模型投影已連到成功寫入、讀回及候選 identity 驗證的
+            # receipt 時，才封存送入同次 projector 的固定基準來源。這裡不把
+            # rule score 或模型 projection 誤標為 rule-model probability。
+            if (
+                effective_model
+                and receipt_path is not None
+                and receipt_event_facts
+                and self.last_run_context["personal_use_effective_mode"]
+                == PERSONAL_CALIBRATED_PROBABILITY_MODE
+            ):
+                receipt_facts = receipt_event_facts[-1]
+                projected_codes = receipt_facts.projected_stock_codes
+                code_set = set(projected_codes)
+                after_cost_ids = dict(after_cost_rule_baseline_ids)
+                after_cost_values = dict(after_cost_rule_probability)
+                after_cost_supplied = bool(after_cost_ids) or bool(after_cost_values)
+                after_cost_valid = (
+                    not after_cost_supplied
+                    or (
+                        set(after_cost_ids) == set(after_cost_values) == code_set
+                        and len(set(after_cost_ids.values())) == 1
+                        and all(
+                            type(code) is str
+                            and code
+                            and type(after_cost_ids[code]) is str
+                            and bool(after_cost_ids[code])
+                            and type(after_cost_values[code]) is int
+                            and 0 <= after_cost_values[code] <= 10_000
+                            for code in after_cost_values
+                        )
+                    )
+                )
+                if (
+                    receipt_facts.persisted
+                    and receipt_facts.readback_verified
+                    and receipt_facts.identity_verified
+                    and not receipt_facts.error
+                    and receipt_facts.result_id
+                    == str(self.last_run_context.get("result_id") or "")
+                    and receipt_facts.decision_date == decision_date
+                    and set(rule_probability) == code_set
+                    and all(
+                        type(code) is str
+                        and bool(code)
+                        and type(probability) is int
+                        and probability == 5_000
+                        for code, probability in rule_probability.items()
+                    )
+                    and len(projected_codes) == len(code_set)
+                    and bool(code_set)
+                    and type(receipt_facts.receipt_hash) is str
+                    and type(receipt_facts.projection_rows_sha256) is str
+                    and type(receipt_facts.cost_scenario_hash) is str
+                    and after_cost_valid
+                ):
+                    after_cost_map: dict[str, int | None] = {
+                        code: after_cost_values.get(code) for code in projected_codes
+                    }
+                    after_cost_id = (
+                        next(iter(after_cost_ids.values()))
+                        if after_cost_ids
+                        else None
+                    )
+                    if len(set(after_cost_ids.values())) > 1:
+                        after_cost_valid = False
+                    scenario_payload: dict[str, Any] | None = None
+                    active_lineage = active_identity_for_snapshot.get(
+                        "probability_lineage"
+                    )
+                    active_lineage_entries = (
+                        [
+                            entry
+                            for entry in active_lineage
+                            if isinstance(entry, Mapping)
+                            and entry.get("kind") == "active_model"
+                            and entry.get("candidate_id") == candidate_id
+                        ]
+                        if isinstance(active_lineage, (list, tuple))
+                        else []
+                    )
+                    active_lineage_scenario = (
+                        active_lineage_entries[0].get("cost_scenario")
+                        if len(active_lineage_entries) == 1
+                        else None
+                    )
+                    scenario_valid = (
+                        type(active_cost_scenario) is RecommendationCostScenario
+                        and len(active_lineage_entries) == 1
+                        and active_cost_scenario.scenario_hash
+                        == receipt_facts.cost_scenario_hash
+                        and active_lineage_entries[0].get("cost_scenario_hash")
+                        == active_cost_scenario.scenario_hash
+                        and active_lineage_entries[0].get("cost_scenario_id")
+                        == active_cost_scenario.scenario_id
+                        and active_lineage_entries[0].get("cost_scenario_version")
+                        == active_cost_scenario.scenario_version
+                        and isinstance(active_lineage_scenario, Mapping)
+                    )
+                    if (
+                        scenario_valid
+                        and active_cost_scenario is not None
+                        and isinstance(active_lineage_scenario, Mapping)
+                    ):
+                        scenario_payload = active_cost_scenario.to_dict(include_hash=True)
+                        scenario_valid = (
+                            scenario_payload.get("scenario_hash")
+                            == receipt_facts.cost_scenario_hash
+                            and dict(active_lineage_scenario) == scenario_payload
+                        )
+                    for code in projected_codes:
+                        projection = projections.get(code)
+                        if projection is None or projection.stock_code != code:
+                            scenario_valid = False
+                            continue
+                        if code in active_codes and active_cost_scenario is not None:
+                            scenario_valid = scenario_valid and (
+                                projection.cost_scenario_id
+                                == active_cost_scenario.scenario_id
+                                and projection.cost_scenario_version
+                                == active_cost_scenario.scenario_version
+                                and projection.cost_scenario_hash
+                                == active_cost_scenario.scenario_hash
+                                and type(projection.cost_basis) is str
+                                and bool(projection.cost_basis)
+                                and projection.cost_basis_bp
+                                == (
+                                    None
+                                    if active_cost_scenario.is_estimated
+                                    else active_cost_scenario.fixed_round_trip_cost_bp
+                                )
+                            )
+                        elif code in fallback_codes and active_cost_scenario is not None:
+                            # 缺少該列 feature 的明確 rule-only fallback 沒有模型成本列；
+                            # 若它帶成本 identity，仍須與同次 lease 一致。
+                            projection_hash = projection.cost_scenario_hash
+                            scenario_valid = scenario_valid and (
+                                projection_hash is None
+                                or projection_hash == active_cost_scenario.scenario_hash
+                            )
+                    active_set = set(active_codes)
+                    active_after_cost_ids = {
+                        code: after_cost_ids[code]
+                        for code in active_codes
+                        if code in after_cost_ids
+                    }
+                    active_after_cost_values = {
+                        code: after_cost_values[code]
+                        for code in active_codes
+                        if code in after_cost_values
+                    }
+                    active_after_cost_available = (
+                        after_cost_supplied
+                        and after_cost_valid
+                        and set(active_after_cost_ids) == active_set
+                        and set(active_after_cost_values) == active_set
+                        and len(set(active_after_cost_ids.values())) == 1
+                        and all(
+                            type(value) is int and 0 <= value <= 10_000
+                            for value in active_after_cost_values.values()
+                        )
+                    )
+                    active_after_cost_id = (
+                        next(iter(active_after_cost_ids.values()))
+                        if active_after_cost_available
+                        else None
+                    )
+                    projected_universe_matches = (
+                        set(projected_codes) == set(delivered_codes)
+                        and len(projected_codes) == len(delivered_codes)
+                    )
+                    if (
+                        after_cost_valid
+                        and scenario_valid
+                        and scenario_payload is not None
+                        and (all_delivered_active or mixed_delivery)
+                        and projected_universe_matches
+                    ):
+                        self.last_run_context[
+                            "personal_probability_baseline_inputs"
+                        ] = {
+                            "schema_version": "recommendation-personal-probability-baseline-inputs.v3",
+                            "result_id": str(self.last_run_context.get("result_id") or ""),
+                            "decision_at": str(
+                                self.last_run_context.get("decision_at") or ""
+                            ),
+                            "decision_date": decision_date,
+                            "projected_stock_codes": list(projected_codes),
+                            "delivered_stock_codes": list(delivered_codes),
+                            "model_active_stock_codes": list(active_codes),
+                            "rule_only_fallback_stock_codes": list(fallback_codes),
+                            "delivered_count": len(delivered_codes),
+                            "model_active_count": len(active_codes),
+                            "fallback_count": len(fallback_codes),
+                            "model_coverage_bp": (
+                                len(active_codes) * 10_000 // len(delivered_codes)
+                            ),
+                            "upside_baseline_kind": "fixed_null_benchmark_50pct",
+                            "upside_baseline_id": NULL_BENCHMARK_BASELINE_ID,
+                            "upside_probability_bp_by_symbol": {
+                                code: rule_probability[code] for code in active_codes
+                            },
+                            "after_cost_baseline_status": (
+                                "available" if active_after_cost_available else "unavailable"
+                            ),
+                            "after_cost_baseline_id": active_after_cost_id,
+                            "after_cost_probability_bp_by_symbol": (
+                                active_after_cost_values
+                                if active_after_cost_available
+                                else {code: None for code in active_codes}
+                            ),
+                            "cost_scenario": scenario_payload,
+                        }
+                    elif not (all_delivered_active or mixed_delivery) or not scenario_valid:
+                        self.last_run_context.setdefault("warnings", []).append(
+                            "personal_probability_baseline_snapshot_unavailable_fail_closed"
+                        )
+                else:
+                    self.last_run_context.setdefault("warnings", []).append(
+                        "personal_probability_baseline_snapshot_unavailable_fail_closed"
+                    )
         handoff_receipt_status = (
             CalibrationReceiptStatusV1.PERSISTED
             if receipt_path is not None
@@ -1640,12 +2344,35 @@ class RecommendationService:
         temporal_mode = cutoff_resolution.temporal_mode
         cutoff_selection = cutoff_resolution.cutoff_selection
         cutoff_policy = cutoff_resolution.cutoff_policy
+        personal_live_clock = (
+            self._personal_use_policy is not None
+            and cutoff is None
+            and as_of_date is None
+            and not historical_research
+            and not select_latest_available_cutoff
+        )
         strategy_identity = build_strategy_config_identity(
             config,
             max_stocks=max_stocks,
             top_n=top_n,
         )
         run_started_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        personal_decision_clock: datetime | None = None
+        personal_decision_date: str | None = None
+        market_source_frame: pd.DataFrame | None = None
+        if personal_live_clock:
+            # 先完成一次 live source read，再凍結整次執行共用的 aware 決策時鐘；
+            # 後續日期篩選、評估、consumer 與 receipt 都沿用這個決策日。
+            load_market_frame = getattr(input_session, "load_market_frame", None)
+            if not callable(load_market_frame):
+                raise TypeError(
+                    "personal natural/live input session 必須提供 load_market_frame(cutoff=None)"
+                )
+            market_source_frame = load_market_frame(cutoff=None)
+            personal_decision_clock = datetime.now(timezone.utc)
+            personal_decision_date = personal_decision_clock.astimezone(
+                ZoneInfo("Asia/Taipei")
+            ).date().isoformat()
 
         # ✅ 記錄輸入參數
         logger.info(
@@ -1656,20 +2383,44 @@ class RecommendationService:
             f"技術指標啟用={config.get('technical', {}).get('momentum', {}).get('enabled', False) or config.get('technical', {}).get('trend', {}).get('enabled', False)}"
         )
 
-        prepared_market = input_session.prepare_market(
-            cutoff=cutoff,
-            universe=universe,
-        )
+        if personal_live_clock:
+            # 新的決策日／同次來源 frame 只屬明示個人即時模式；舊注入
+            # input-session 仍沿用原本的兩參數呼叫契約。
+            prepared_market = input_session.prepare_market(
+                cutoff=cutoff,
+                universe=universe,
+                decision_date=personal_decision_date,
+                source_frame=market_source_frame,
+            )
+        else:
+            prepared_market = input_session.prepare_market(
+                cutoff=cutoff,
+                universe=universe,
+            )
         df = prepared_market.frame
         stock_col = prepared_market.stock_column
         decision_cutoff = prepared_market.decision_cutoff
-        source_available_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        source_available_at = (
+            personal_decision_clock.isoformat(timespec="microseconds")
+            if personal_decision_clock is not None
+            else datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        )
+        # 個人 live invocation 的決策時鐘在資料讀取後已凍結；即使資料為空或
+        # 篩選後沒有候選，也必須封存同一時鐘。非個人路徑仍沿用成功路徑
+        # 原本較晚設定 decision_at 的行為。
+        decision_clock = (
+            personal_decision_clock.isoformat(timespec="microseconds")
+            if personal_decision_clock is not None
+            else ""
+        )
         self._personalization_execution_clocks = {
             "run_started_at": run_started_at,
             "available_at": source_available_at,
             "captured_at": source_available_at,
             "personalization_scope_declared_at": run_started_at,
         }
+        if personal_decision_clock is not None:
+            self._personalization_execution_clocks["decision_at"] = decision_clock
         resolved_result_id = str(result_id or config.get("result_id") or "").strip()
         if not resolved_result_id:
             # Allocate the run identity before calibration receipt publication.
@@ -1702,6 +2453,26 @@ class RecommendationService:
             "horizon_anchor": "immutable_projection_receipt",
             **strategy_identity,
         })
+        if personal_decision_clock is not None:
+            personal_policy = self._personal_use_policy
+            self.last_run_context.update(
+                {
+                    "decision_date": decision_cutoff,
+                    "decision_at": decision_clock,
+                    "personal_live_clock_schema": "recommendation-personal-live-clock.v1",
+                    "market_data_date": prepared_market.data_date or None,
+                }
+            )
+            if _is_personal_use_policy(personal_policy):
+                # 在任何空資料／零候選 early return 前，先封存此 invocation
+                # 的已驗證政策；後續 calibration 可再更新實際 effective mode。
+                self.last_run_context.update(
+                    {
+                        "personal_use_policy": personal_policy.to_dict(),
+                        "personal_use_requested_mode": personal_policy.mode,
+                        "personal_use_effective_mode": RULE_ONLY_MODE,
+                    }
+                )
         self.last_run_context["result_id"] = resolved_result_id
         declared_identity = {
             "strategy_version_id": config.get("strategy_version_id") or config.get("strategy_version"),
@@ -1747,7 +2518,6 @@ class RecommendationService:
         candidate_facts: list[CandidateRowFacts] = []
         legacy_matrix_codes: list[str] = []
         staged_evaluator = RecommendationEvaluator()
-        decision_clock = ""
         universe_identity: dict[str, Any] | None = None
 
         def remember_candidate(
@@ -1830,6 +2600,7 @@ class RecommendationService:
             eligible_universe_size: int,
             legacy_recommendations: list[RecommendationDTO],
         ) -> RecommendationBodyResult:
+            self._finalize_current_industry_mapping_snapshot()
             self.last_run_context["eligible_universe_size"] = eligible_universe_size
             fingerprint = hashlib.sha256(
                 json.dumps(
@@ -2014,6 +2785,7 @@ class RecommendationService:
             # 只在沒有明確 cutoff 的互動研究路徑使用 current mapper；
             # cutoff 路徑永不回退到 companies.csv。
             # 先從所有股票中篩選出屬於指定產業的股票
+            self._record_current_industry_mapping_use("current_filter_selection")
             current_filtered_stocks = self.industry_mapper.filter_stocks_by_industry(
                 [str(s) for s in all_stocks],
                 industry_filter
@@ -2021,6 +2793,9 @@ class RecommendationService:
 
             if len(current_filtered_stocks) == 0:
                 # 提供更詳細的錯誤信息，幫助調試
+                self._record_current_industry_mapping_use(
+                    "current_filter_empty_industries_diagnostic"
+                )
                 all_industries = self.industry_mapper.get_all_industries()
                 similar_industries = [ind for ind in all_industries
                                      if industry_filter in ind or ind in industry_filter]
@@ -2032,6 +2807,9 @@ class RecommendationService:
                 # 嘗試檢查是否有部分匹配的股票
                 test_stocks = list(all_stocks)[:10]
                 for test_stock in test_stocks:
+                    self._record_current_industry_mapping_use(
+                        "current_filter_example_industry_diagnostic"
+                    )
                     test_industries = self.industry_mapper.get_stock_industries(str(test_stock))
                     if test_industries:
                         error_msg += f"\n範例：股票 {test_stock} 屬於：{', '.join(test_industries[:3])}"
@@ -2436,6 +3214,10 @@ class RecommendationService:
 
                         if request.kind is SourceFactKind.INDUSTRY_CONTEXT:
                             prepare_output_row()
+                            if not cutoff:
+                                self._record_current_industry_mapping_use(
+                                    "current_industry_context_display_reason"
+                                )
                             stock_industries = self.industry_mapper.get_stock_industries(
                                 request.stock_code
                             )
@@ -2454,6 +3236,10 @@ class RecommendationService:
                             )
                             if stock_industries:
                                 for industry in stock_industries[:1]:
+                                    if not cutoff:
+                                        self._record_current_industry_mapping_use(
+                                            "current_industry_index_performance_for_reason"
+                                        )
                                     industry_perf = (
                                         self.industry_mapper.get_industry_performance(
                                             industry,
@@ -2528,11 +3314,15 @@ class RecommendationService:
                         industry_display = str(industry_readback["display"])
                         reasons = industry_readback["reasons"]
                     else:
-                        stock_industries = (
-                            []
-                            if cutoff
-                            else self.industry_mapper.get_stock_industries(stock_code)
-                        )
+                        if cutoff:
+                            stock_industries = []
+                        else:
+                            self._record_current_industry_mapping_use(
+                                "current_fallback_display_reason"
+                            )
+                            stock_industries = self.industry_mapper.get_stock_industries(
+                                stock_code
+                            )
                         industry_display = ', '.join(stock_industries[:2]) if stock_industries else '未知'
                         if len(stock_industries) > 2:
                             industry_display += '...'
@@ -2543,6 +3333,10 @@ class RecommendationService:
                         # 無可用 decision date 的 legacy fallback；有效日期都由 staged request 讀取。
                         if stock_industries:
                             for industry in stock_industries[:1]:
+                                if not cutoff:
+                                    self._record_current_industry_mapping_use(
+                                        "current_industry_index_performance_for_reason"
+                                    )
                                 industry_perf = self.industry_mapper.get_industry_performance(
                                     industry, date=decision_date_text
                                 )
@@ -2873,7 +3667,11 @@ class RecommendationService:
             rec.ranking_method = item.ranking_method
             rec.score_percentile_bp = item.score_percentile_bp
 
-        decision_clock = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        decision_clock = (
+            personal_decision_clock.isoformat(timespec="microseconds")
+            if personal_decision_clock is not None
+            else datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        )
         self._personalization_execution_clocks["decision_at"] = decision_clock
         # Persist the actual producer decision clock even when an optional
         # calibration receipt is unavailable.  Downstream forward-custody

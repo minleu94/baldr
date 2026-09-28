@@ -40,9 +40,16 @@ from app_module.personalization_contract import (
     PERSONALIZATION_DELIVERY_STATUSES,
     PERSONALIZATION_OUTCOME_STATUSES,
     PERSONALIZATION_OUTCOME_TIERS,
+    PersonalRecommendationChoice,
     PersonalizationEvaluationRow,
     canonical_payload_hash,
     parse_aware_datetime,
+    read_personal_use_policy_snapshot_event,
+)
+from app_module.dtos.decision_continuity_dtos import (
+    DecisionContinuityRevision,
+    DecisionIdentity,
+    IDENTITY_STATUS_LINKED,
 )
 from app_module.personalization_projection import (
     PersonalizationProjectionError,
@@ -1356,6 +1363,99 @@ class PersonalizationReadReport:
         )
 
 
+@dataclass(frozen=True)
+class PersonalRecommendationChoiceReadEntry:
+    """一筆已綁定 canonical execution 的個人選擇與既有結果狀態。"""
+
+    choice: PersonalRecommendationChoice
+    revision_id: str
+    continuity_event_id: str
+    created_at: str
+    outcome_link_status: str = "not_requested"
+    outcome_status: str = "not_applicable"
+    outcomes: tuple[Mapping[str, Any], ...] = ()
+    delivery_scope_id: str | None = None
+    source_snapshot_identity_available: bool = False
+    diagnostics: tuple[str, ...] = ()
+    read_only: bool = True
+    writes_allowed: bool = False
+    formal_order_allowed: bool = False
+    auto_action_allowed: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.read_only or self.writes_allowed or self.formal_order_allowed or self.auto_action_allowed:
+            raise ValueError("personal recommendation choice readback must remain read-only")
+        if self.outcome_link_status not in {
+            "not_requested",
+            "partial_same_decision",
+            "unavailable",
+            "identity_conflict",
+        }:
+            raise ValueError("unsupported personal choice outcome link status")
+        object.__setattr__(self, "outcomes", tuple(dict(row) for row in self.outcomes))
+        object.__setattr__(self, "diagnostics", tuple(str(item) for item in self.diagnostics))
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe(
+            {
+                "choice": self.choice.to_dict(),
+                "revision_id": self.revision_id,
+                "continuity_event_id": self.continuity_event_id,
+                "created_at": self.created_at,
+                "outcome_link_status": self.outcome_link_status,
+                "outcome_status": self.outcome_status,
+                "outcomes": list(self.outcomes),
+                "delivery_scope_id": self.delivery_scope_id,
+                "source_snapshot_identity_available": self.source_snapshot_identity_available,
+                "diagnostics": list(self.diagnostics),
+                "read_only": self.read_only,
+                "writes_allowed": self.writes_allowed,
+                "formal_order_allowed": self.formal_order_allowed,
+                "auto_action_allowed": self.auto_action_allowed,
+            }
+        )
+
+
+@dataclass(frozen=True)
+class PersonalRecommendationChoiceReadReport:
+    """同一保存推薦的 append-only 個人選擇讀回。"""
+
+    result_id: str
+    stock_code: str
+    decision_date: str
+    choices: tuple[PersonalRecommendationChoiceReadEntry, ...]
+    source_completeness_status: str
+    diagnostics: tuple[str, ...] = ()
+    read_only: bool = True
+    writes_allowed: bool = False
+    formal_order_allowed: bool = False
+    auto_action_allowed: bool = False
+    schema_version: str = "personal-recommendation-choice-readback.v1"
+
+    def __post_init__(self) -> None:
+        if not self.read_only or self.writes_allowed or self.formal_order_allowed or self.auto_action_allowed:
+            raise ValueError("personal choice report must remain read-only")
+        if self.source_completeness_status not in {"verified", "incomplete"}:
+            raise ValueError("unsupported personal choice source completeness status")
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe(
+            {
+                "schema_version": self.schema_version,
+                "result_id": self.result_id,
+                "stock_code": self.stock_code,
+                "decision_date": self.decision_date,
+                "choices": [entry.to_dict() for entry in self.choices],
+                "source_completeness_status": self.source_completeness_status,
+                "diagnostics": list(self.diagnostics),
+                "read_only": self.read_only,
+                "writes_allowed": self.writes_allowed,
+                "formal_order_allowed": self.formal_order_allowed,
+                "auto_action_allowed": self.auto_action_allowed,
+            }
+        )
+
+
 class PersonalizationReadService:
     """Compose existing sources into one bounded scope/as-of read operation."""
 
@@ -1448,6 +1548,320 @@ class PersonalizationReadService:
         if read_model.integrity_basis != "canonical_payload_and_index_verified":
             raise ValueError("canonical recommendation exact readback is not verified")
         return read_model
+
+    def read_personal_recommendation_choices(
+        self,
+        result_id: str,
+        stock_code: str,
+        *,
+        delivery_scope_id: str | None = None,
+        evaluated_as_of: str | None = None,
+    ) -> PersonalRecommendationChoiceReadReport:
+        """精確讀回同一 canonical recommendation identity 的個人選擇。
+
+        outcome 只有在 caller 明示 delivery scope 與 as-of 日期時才查詢；
+        個人 policy scope 不會被拿來猜 delivery scope。既有 outcome 最多以
+        result/stock/date 標成部分連結，因為目前 outcome projection 沒有完整
+        source snapshot identity 時，這個 reader 不會替它補值。
+        """
+
+        resolved_result = _safe_result_id(result_id)
+        resolved_stock = _text(stock_code)
+        if not resolved_result or not resolved_stock:
+            raise ValueError("result_id 與 stock_code 必須是精確 identity")
+        if (delivery_scope_id is None) != (evaluated_as_of is None):
+            raise ValueError("delivery_scope_id 與 evaluated_as_of 必須同時明示")
+        resolved_delivery_scope = _text(delivery_scope_id)
+        if delivery_scope_id is not None and not resolved_delivery_scope:
+            raise ValueError("delivery_scope_id 不可為空")
+
+        read_model = self.read_canonical_execution_exact(resolved_result)
+        if read_model is None or read_model.execution is None:
+            raise ValueError("個人選擇只支援已驗證的 canonical execution")
+        if read_model.integrity_basis != "canonical_payload_and_index_verified":
+            raise ValueError("個人選擇來源不是已驗證 canonical payload/index")
+        execution = read_model.execution
+        matching_items = tuple(
+            item
+            for item in execution.items
+            if _text(getattr(item, "stock_code", "")) == resolved_stock
+        )
+        if len(matching_items) != 1:
+            raise ValueError("所選股票未唯一存在於 canonical recommendation")
+        context = execution.context
+        as_of_date = getattr(context, "as_of_date", None)
+        as_of_date_isoformat = getattr(as_of_date, "isoformat", None)
+        if not callable(as_of_date_isoformat):
+            raise ValueError("canonical execution 缺少明確 decision date")
+        decision_date = as_of_date_isoformat()
+        universe = getattr(context, "universe_identity", None)
+        snapshot = getattr(universe, "snapshot", None)
+        source_snapshot_id = _text(getattr(snapshot, "universe_snapshot_id", ""))
+        source_snapshot_hash = _text(getattr(snapshot, "universe_snapshot_hash", ""))
+        if not source_snapshot_id or not source_snapshot_hash:
+            raise ValueError("canonical execution 缺少 source snapshot identity")
+        policy_event = read_personal_use_policy_snapshot_event(
+            execution,
+            expected_result_id=resolved_result,
+        )
+        decision_clock = parse_aware_datetime(
+            policy_event["decision_at"], "personal policy event decision_at"
+        )
+
+        self.journal_source.reset()
+        self.journal_source.set_scope(None)
+        self.journal_source.scan_integrity()
+        raw_rows = self.journal_source.list_action_rows(resolved_result, resolved_stock)
+        diagnostics: list[str] = list(self.journal_source.diagnostics)
+        if self.journal_source.completeness_status != "verified":
+            diagnostics.append("personal_choice_journal_incomplete")
+            return PersonalRecommendationChoiceReadReport(
+                result_id=resolved_result,
+                stock_code=resolved_stock,
+                decision_date=decision_date,
+                choices=(),
+                source_completeness_status="incomplete",
+                diagnostics=tuple(dict.fromkeys(diagnostics)),
+            )
+
+        entries: list[PersonalRecommendationChoiceReadEntry] = []
+        seen_request_ids: set[str] = set()
+        expected_policy = policy_event["policy_snapshot"]
+        # 與 writer 共用同一 saved receipt／selected-row 驗證；event 的
+        # effective_mode 是整次 execution 狀態，choice 的 mode 則是所選股票狀態。
+        from app_module.personalization_action_recorder import (
+            PersonalizationDecisionRecorder,
+            validate_personal_recommendation_choice_binding,
+        )
+
+        expected_choice_identity = DecisionIdentity(
+            result_id=resolved_result,
+            stock_code=resolved_stock,
+            source_snapshot_id=source_snapshot_id,
+            source_snapshot_hash=source_snapshot_hash,
+            decision_date=decision_date,
+            identity_status=IDENTITY_STATUS_LINKED,
+        )
+
+        for raw_row in raw_rows:
+            payload = raw_row.get("payload")
+            if not isinstance(payload, Mapping) or "personal_recommendation_choice" not in payload:
+                continue
+            try:
+                revision = DecisionContinuityRevision.from_mapping(raw_row)
+                choice_value = payload.get("personal_recommendation_choice")
+                if not isinstance(choice_value, Mapping):
+                    raise ValueError("personal choice payload is not an object")
+                choice = PersonalRecommendationChoice.from_mapping(choice_value)
+                validate_personal_recommendation_choice_binding(
+                    raw_row,
+                    revision,
+                    choice,
+                    expected_identity=expected_choice_identity,
+                )
+                if (
+                    choice.result_id != resolved_result
+                    or choice.stock_code != resolved_stock
+                    or choice.decision_date != decision_date
+                    or choice.source_snapshot_id != source_snapshot_id
+                    or choice.source_snapshot_hash != source_snapshot_hash
+                    or choice.canonical_payload_hash != read_model.payload_hash
+                    or choice.raw_artifact_sha256 != read_model.raw_artifact_sha256
+                ):
+                    raise ValueError("personal choice canonical recommendation identity conflicts")
+                if choice.request_id in seen_request_ids:
+                    raise ValueError("personal choice request id is duplicated")
+                seen_request_ids.add(choice.request_id)
+                if _json_safe(choice.policy_snapshot) != _json_safe(expected_policy):
+                    raise ValueError("personal choice policy snapshot differs from its saved execution")
+                if choice.requested_mode != policy_event["requested_mode"]:
+                    raise ValueError("personal choice requested mode differs from its saved execution")
+                expected_model_evidence = (
+                    PersonalizationDecisionRecorder.validate_selected_stock_model_evidence(
+                        read_model=read_model,
+                        execution=execution,
+                        stock_code=resolved_stock,
+                        decision_date=decision_date,
+                        policy_snapshot=expected_policy,
+                        requested_mode=policy_event["requested_mode"],
+                        event_effective_mode=policy_event["effective_mode"],
+                    )
+                )
+                expected_selected_mode = (
+                    "personal_calibrated_probability"
+                    if expected_model_evidence is not None
+                    else "rule_only"
+                )
+                if choice.effective_mode != expected_selected_mode:
+                    raise ValueError("personal choice selected-stock mode differs from its saved projection")
+                if choice.model_evidence != expected_model_evidence:
+                    raise ValueError("personal choice model evidence differs from its saved receipt row")
+                action_clock = parse_aware_datetime(choice.action_at, "personal choice action_at")
+                recorded_clock = parse_aware_datetime(
+                    choice.recorded_at, "personal choice recorded_at"
+                )
+                if action_clock < decision_clock or recorded_clock < decision_clock:
+                    raise ValueError("personal choice clock precedes canonical decision")
+                created_at = revision.created_at
+                if parse_aware_datetime(
+                    created_at, "personal choice revision created_at"
+                ) != recorded_clock:
+                    raise ValueError("personal choice Journal clock conflicts with its payload")
+            except (TypeError, ValueError, KeyError) as exc:
+                diagnostics.append(
+                    f"personal_choice_row_invalid:{type(exc).__name__}"
+                )
+                return PersonalRecommendationChoiceReadReport(
+                    result_id=resolved_result,
+                    stock_code=resolved_stock,
+                    decision_date=decision_date,
+                    choices=(),
+                    source_completeness_status="incomplete",
+                    diagnostics=tuple(dict.fromkeys(diagnostics)),
+                )
+            entries.append(
+                PersonalRecommendationChoiceReadEntry(
+                    choice=choice,
+                    revision_id=revision.revision_id,
+                    continuity_event_id=revision.continuity_event_id,
+                    created_at=revision.created_at,
+                )
+            )
+
+        if delivery_scope_id is not None and evaluated_as_of is not None:
+            outcome_report = self.inspect_scope(
+                scope_id=resolved_delivery_scope,
+                evaluated_as_of=evaluated_as_of,
+                result_id=resolved_result,
+                stock_code=resolved_stock,
+            )
+            diagnostics.extend(outcome_report.diagnostics)
+            if (
+                outcome_report.source_consistency_status != "verified"
+                or outcome_report.source_completeness_status != "verified"
+            ):
+                entries = [
+                    PersonalRecommendationChoiceReadEntry(
+                        choice=entry.choice,
+                        revision_id=entry.revision_id,
+                        continuity_event_id=entry.continuity_event_id,
+                        created_at=entry.created_at,
+                        outcome_link_status="unavailable",
+                        delivery_scope_id=resolved_delivery_scope,
+                        source_snapshot_identity_available=False,
+                        diagnostics=("outcome_source_not_verified",),
+                    )
+                    for entry in entries
+                ]
+            else:
+                matching_projection_rows = [
+                    row
+                    for row in outcome_report.projections
+                    if _text(row.get("result_id")) == resolved_result
+                    and _text(row.get("stock_code")) == resolved_stock
+                    and isinstance(row.get("projection"), Mapping)
+                    and _text(row["projection"].get("decision_date")) == decision_date
+                ]
+                if len(matching_projection_rows) != 1:
+                    status = "identity_conflict" if matching_projection_rows else "unavailable"
+                    entries = [
+                        PersonalRecommendationChoiceReadEntry(
+                            choice=entry.choice,
+                            revision_id=entry.revision_id,
+                            continuity_event_id=entry.continuity_event_id,
+                            created_at=entry.created_at,
+                            outcome_link_status=status,
+                            delivery_scope_id=resolved_delivery_scope,
+                            source_snapshot_identity_available=False,
+                            diagnostics=("outcome_same_decision_projection_missing_or_ambiguous",),
+                        )
+                        for entry in entries
+                    ]
+                else:
+                    projection = matching_projection_rows[0]["projection"]
+                    prediction = projection.get("prediction")
+                    prediction = prediction if isinstance(prediction, Mapping) else {}
+                    evidence = projection.get("evidence")
+                    evidence = evidence if isinstance(evidence, Mapping) else {}
+                    entries = [
+                        self._choice_entry_with_outcome(
+                            entry,
+                            projection=projection,
+                            prediction=prediction,
+                            evidence=evidence,
+                            delivery_scope_id=resolved_delivery_scope,
+                        )
+                        for entry in entries
+                    ]
+
+        return PersonalRecommendationChoiceReadReport(
+            result_id=resolved_result,
+            stock_code=resolved_stock,
+            decision_date=decision_date,
+            choices=tuple(entries),
+            source_completeness_status="verified",
+            diagnostics=tuple(dict.fromkeys(diagnostics)),
+        )
+
+    @staticmethod
+    def _choice_entry_with_outcome(
+        entry: PersonalRecommendationChoiceReadEntry,
+        *,
+        projection: Mapping[str, Any],
+        prediction: Mapping[str, Any],
+        evidence: Mapping[str, Any],
+        delivery_scope_id: str,
+    ) -> PersonalRecommendationChoiceReadEntry:
+        choice = entry.choice
+        if (
+            _text(projection.get("result_id")) != choice.result_id
+            or _text(projection.get("stock_code")) != choice.stock_code
+            or _text(projection.get("decision_date")) != choice.decision_date
+        ):
+            return PersonalRecommendationChoiceReadEntry(
+                choice=choice,
+                revision_id=entry.revision_id,
+                continuity_event_id=entry.continuity_event_id,
+                created_at=entry.created_at,
+                outcome_link_status="identity_conflict",
+                delivery_scope_id=delivery_scope_id,
+                diagnostics=("outcome_identity_conflicts_with_personal_choice",),
+            )
+        receipt_hash = _text(prediction.get("prediction_receipt_hash"))
+        if not receipt_hash:
+            receipt_hash = _text(evidence.get("prediction_receipt_hash"))
+        if choice.model_evidence is not None and receipt_hash and (
+            receipt_hash != choice.model_evidence.receipt_hash
+        ):
+            return PersonalRecommendationChoiceReadEntry(
+                choice=choice,
+                revision_id=entry.revision_id,
+                continuity_event_id=entry.continuity_event_id,
+                created_at=entry.created_at,
+                outcome_link_status="identity_conflict",
+                delivery_scope_id=delivery_scope_id,
+                diagnostics=("outcome_model_receipt_differs_from_saved_choice",),
+            )
+        outcome_rows = projection.get("outcomes")
+        rows = (
+            tuple(row for row in outcome_rows if isinstance(row, Mapping))
+            if isinstance(outcome_rows, (list, tuple))
+            else ()
+        )
+        return PersonalRecommendationChoiceReadEntry(
+            choice=choice,
+            revision_id=entry.revision_id,
+            continuity_event_id=entry.continuity_event_id,
+            created_at=entry.created_at,
+            outcome_link_status="partial_same_decision",
+            outcome_status=_text(projection.get("outcome_status")) or "not_applicable",
+            outcomes=rows,
+            delivery_scope_id=delivery_scope_id,
+            source_snapshot_identity_available=False,
+            diagnostics=(
+                "以同一結果、股票與決策日期部分連結；未取得 outcome source snapshot identity。",
+            ),
+        )
 
     def inspect_scope(
         self,
@@ -2493,6 +2907,8 @@ __all__ = [
     "DEFAULT_MAX_RESULTS",
     "PersonalizationReadReport",
     "PersonalizationReadService",
+    "PersonalRecommendationChoiceReadEntry",
+    "PersonalRecommendationChoiceReadReport",
     "PersonalizationSourceFingerprint",
     "ReadOnlyEvidenceSource",
     "ReadOnlyJournalRevisionSource",

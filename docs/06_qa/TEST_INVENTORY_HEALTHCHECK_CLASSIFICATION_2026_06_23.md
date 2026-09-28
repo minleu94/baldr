@@ -4,10 +4,10 @@
 
 ## 2026-09-27 machine refresh
 
-本次以 `scripts/audit_test_inventory.py --skip-pytest-collection` 盤點目前 filesystem 與 registry；未執行 pytest collection，因此不宣稱本次測項數。R028 新增 job/facade 契約測試後的稽核回條為 `output/qa/refactor_completion_20260927/r028_inventory_audit_20260927.json`；此前 1044 檔盤點收據仍保留於 `output/qa/refactor_completion_20260927/docs_inventory_repair_20260927/test_inventory_audit_post_patch_20260927.json`。
+本次以 `scripts/audit_test_inventory.py --skip-pytest-collection` 盤點目前 filesystem 與 registry；未執行 pytest collection，因此不宣稱本次測項數。相較前一版 1045 筆登錄，本次補入 9 個新個人化推薦測試（8 個服務測試、1 個 UI candidate bridge）及先前漏登的既有 `tests/test_phase3c_candidate_repair.py`。R028 單一 job/facade 登錄與此前 1044 檔盤點收據均保留為歷史檢查點，分別見 `output/qa/refactor_completion_20260927/r028_inventory_audit_20260927.json` 與 `output/qa/refactor_completion_20260927/docs_inventory_repair_20260927/test_inventory_audit_post_patch_20260927.json`。
 
-Current filesystem Python files: `1045`
-Current registry entries: `1045`
+Current filesystem Python files: `1055`
+Current registry entries: `1055`
 Current collected test cases: 未執行
 
 | 分類 | 數量 |
@@ -17,17 +17,18 @@ Current collected test cases: 未執行
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
-| `service-oracle-data-market` | 154 |
+| `service-oracle-data-market` | 155 |
 | `service-oracle-portfolio-decision-runtime` | 131 |
-| `service-oracle-recommendation` | 147 |
+| `service-oracle-recommendation` | 155 |
 | `service-oracle-research-backtest` | 100 |
 | `slow-e2e-or-environment` | 4 |
-| `ui-healthcheck-candidate-bridge` | 47 |
+| `ui-healthcheck-candidate-bridge` | 48 |
 | `ui-healthcheck-direct-bridge` | 12 |
 | `write-risk-dry-run-required` | 82 |
 
-- 本次快速盤點 filesystem／registry 均為 `1045`，missing `0`、stale `0`、collection errors `0`；pytest collection 未執行，collected count 為 unknown。前次文件摘要與索引更新的 audit `overall_status=passed`、documentation count drift `0`、formal entry reference errors `0` 收據保留為此前 1044 檔基線。
-- 前次 1044 檔 refresh 前的 audit 曾檢出舊文件計數 `852` 與兩個缺漏的正式入口；當時只修正當期摘要與索引連結，保留舊 machine snapshot 作歷史紀錄。本次 R028 登錄只新增一個 `governance-doc-tooling` 測試路徑。
+- 本次快速盤點 filesystem／registry 均為 `1055`，missing `0`、stale `0`、collection errors `0`；pytest collection 未執行，collected count 為 unknown。前次文件摘要與索引更新的 audit `overall_status=passed`、documentation count drift `0`、formal entry reference errors `0` 收據保留為此前 1044 檔基線。
+- 前次 1044 檔 refresh 前的 audit 曾檢出舊文件計數 `852` 與兩個缺漏的正式入口；當時只修正當期摘要與索引連結，保留舊 machine snapshot 作歷史紀錄。再前一版 R028 登錄只新增一個 `governance-doc-tooling` 測試路徑；本段當前增量另列於下一項。
+- 本次分類增量為 `service-oracle-data-market` 1、`service-oracle-recommendation` 8、`ui-healthcheck-candidate-bridge` 1；未將服務或 UI 測試改列 governance CLI，也未擴大 direct bridge。
 
 ## 2026-09-17 historical machine snapshot
 

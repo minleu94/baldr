@@ -560,10 +560,15 @@ def test_default_config_uses_external_shared_shadow_root_and_loader_reads_candid
 
     monkeypatch.delenv("OUTPUT_ROOT", raising=False)
     monkeypatch.delenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", raising=False)
-    config = TWStockConfig(data_root=tmp_path / "formal-data")
+    config = TWStockConfig(
+        data_root=tmp_path / "formal-data",
+        output_root=tmp_path / "product-output",
+    )
     paths = resolve_recommendation_learning_paths(data_root=config.data_root)
 
-    assert paths.output_root == (tmp_path / "FA_Data_Shadow").resolve()
+    assert paths.output_root == (
+        config.data_root.resolve().parent / "FA_Data_Shadow"
+    ).resolve()
     assert config.data_root.resolve() not in paths.output_root.parents
     assert paths.output_root != config.output_root.resolve()
 
@@ -592,6 +597,21 @@ def test_default_config_uses_external_shared_shadow_root_and_loader_reads_candid
     assert loaded.status == "shadow_model_ready"
     assert candidate_root.is_relative_to(paths.learning_root)
 
+    receipt = json.loads(Path(result.receipt_path).read_text(encoding="utf-8"))
+    candidate = json.loads((candidate_root / "candidate.json").read_text(encoding="utf-8"))
+    frozen_at = datetime.fromisoformat(str(candidate["candidate_frozen_at"]))
+    available_at = datetime.fromisoformat(str(receipt["candidate_available_at"]))
+    assert frozen_at.tzinfo is not None and frozen_at.utcoffset() == timedelta(0)
+    assert available_at.tzinfo is not None and available_at.utcoffset() == timedelta(0)
+    assert frozen_at <= available_at
+    assert receipt["candidate_id"] == candidate["candidate_id"]
+    assert receipt["candidate_manifest_hash"] == candidate["manifest_hash"]
+    assert receipt["candidate_artifact_hash"] == candidate["artifact_hash"]
+    assert receipt["training_lineage_manifest_hash"] == candidate[
+        "training_lineage_manifest_hash"
+    ]
+    assert "candidate_available_at" not in candidate
+
     consumer = build_default_recommendation_calibration_consumer(config)
     assert consumer is not None
     assert consumer.pointer_path == paths.active_pointer_path
@@ -617,10 +637,13 @@ def test_recommendation_learning_root_rejects_formal_data_root_descendant(tmp_pa
 
 def test_daily_cli_reports_invalid_learning_root_without_starting_replay(
     tmp_path: Path,
+    monkeypatch,
     capsys,
 ) -> None:
     from scripts.scheduled.run_daily_recommendation_learning import main
 
+    # 僅以隔離的臨時根目錄驗證正式 profile 的 DATA_ROOT 子目錄拒絕規則。
+    monkeypatch.setenv("PROFILE", "prod")
     formal_root = tmp_path / "formal-data"
     assert main(
         [
@@ -1939,6 +1962,20 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     )
     taipei = ZoneInfo("Asia/Taipei")
     clock = {"day": date(2026, 6, 1)}
+
+    class _SyntheticTrainingClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            current = datetime.combine(clock["day"], datetime.min.time())
+            return current.replace(tzinfo=tz)
+
+    # 此測試把多個歷史日期壓縮在單一程序；只在此模擬路徑替 trainer 與
+    # learning receipt 使用同一個逐日時鐘。正式 runner 不注入或回填此時鐘。
+    import ml_module.recommendation_calibration_learning_runner as learning_runner_module
+    import ml_module.recommendation_calibration_training as training_module
+
+    monkeypatch.setattr(training_module, "datetime", _SyntheticTrainingClock)
+    monkeypatch.setattr(learning_runner_module, "datetime", _SyntheticTrainingClock)
 
     def _clock_now() -> datetime:
         current = clock["day"]

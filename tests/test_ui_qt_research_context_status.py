@@ -220,7 +220,7 @@ def test_recommendation_drilldown_emits_saved_context_without_recompute() -> Non
     context = emitted[0]
     assert context.stock_code == "2330"
     assert context.decision_date == "2026-09-05"
-    assert context.data_date == "2026-09-04"
+    assert context.data_date == ""
     assert context.result_id == "result-1"
     assert context.profile_id == "momentum"
     assert context.source_id == "result-1"

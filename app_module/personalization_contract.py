@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 import hashlib
 import json
+from pathlib import Path
+import re
+from types import MappingProxyType
 from typing import Any, Mapping
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -20,6 +23,17 @@ PERSONALIZATION_DELIVERY_SCOPE_SCHEMA_VERSION = "personalization-delivery-scope.
 PERSONALIZATION_DELIVERY_CAPTURE_SCHEMA_VERSION = "personalization-delivery-capture.v1"
 PERSONALIZATION_DELIVERY_ACK_SCHEMA_VERSION = "personalization-delivery-ack.v1"
 PERSONALIZATION_ACTION_SCHEMA_VERSION = "personalization-action.v1"
+PERSONAL_RECOMMENDATION_CHOICE_SCHEMA_VERSION = "personal-recommendation-choice.v1"
+PERSONAL_RECOMMENDATION_MODEL_EVIDENCE_SCHEMA_VERSION = (
+    "personal-recommendation-model-evidence.v1"
+)
+PERSONAL_USE_POLICY_SNAPSHOT_EVENT_TYPE = "personal_use_policy_snapshot"
+PERSONAL_USE_POLICY_SNAPSHOT_EVENT_SCHEMA_VERSION = (
+    "recommendation-personal-use-policy-snapshot.v1"
+)
+PERSONAL_USE_POLICY_SNAPSHOT_EVENT_SCHEMA_VERSION_V2 = (
+    "recommendation-personal-use-policy-snapshot.v2"
+)
 PERSONALIZATION_EVALUATION_ROW_SCHEMA_VERSION = "personalization-evaluation-row.v1"
 PERSONALIZATION_DECISION_EVIDENCE_SCHEMA_VERSION = "personalization-decision-evidence.v1"
 PERSONALIZATION_COHORT_CONTRACT_SCHEMA_VERSION = "personalization-cohort-contract.v1"
@@ -119,6 +133,195 @@ def parse_aware_datetime(value: object, field_name: str) -> datetime:
 
 def canonical_aware_datetime(value: object, field_name: str) -> str:
     return parse_aware_datetime(value, field_name).isoformat(timespec="microseconds")
+
+
+def read_personal_use_policy_snapshot_event(
+    execution: Any,
+    *,
+    expected_result_id: str | None = None,
+) -> dict[str, Any]:
+    """Validate the invocation-owned policy event from one canonical execution.
+
+    Historical results without this event are intentionally not backfilled from
+    the current local preference.  The returned value is a detached JSON-shaped
+    copy of the exact saved event details.
+    """
+
+    result_id = _text(getattr(execution, "result_id", ""))
+    if not result_id or (expected_result_id and result_id != expected_result_id):
+        raise ValueError("canonical execution result identity mismatch")
+    events = getattr(execution, "events", ())
+    matches = [
+        event
+        for event in events
+        if _text(getattr(event, "event_type", ""))
+        == PERSONAL_USE_POLICY_SNAPSHOT_EVENT_TYPE
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            "saved result has no unique personal policy snapshot; "
+            "請先以個人模式重新產生並保存推薦，再記錄個人選擇。"
+        )
+    event = matches[0]
+    details = getattr(event, "details", None)
+    base_details = {
+        "schema_version",
+        "result_id",
+        "decision_at",
+        "policy_snapshot",
+        "requested_mode",
+        "effective_mode",
+    }
+    if not isinstance(details, Mapping):
+        raise ValueError("saved personal policy event fields are incomplete or unknown")
+    details_schema = details.get("schema_version")
+    if details_schema == PERSONAL_USE_POLICY_SNAPSHOT_EVENT_SCHEMA_VERSION:
+        if set(details) != base_details:
+            raise ValueError("saved V1 personal policy event fields are incomplete or unknown")
+    elif details_schema == PERSONAL_USE_POLICY_SNAPSHOT_EVENT_SCHEMA_VERSION_V2:
+        source_marker_fields = {
+            "source_time_basis",
+            "research_only",
+            "official_historical_pit_verified",
+        }
+        if set(details) not in (base_details, base_details | source_marker_fields):
+            raise ValueError("saved V2 personal policy event fields are incomplete or unknown")
+    else:
+        raise ValueError("saved personal policy event schema is unsupported")
+    if details.get("result_id") != result_id:
+        raise ValueError("saved personal policy event result identity mismatch")
+
+    context = getattr(execution, "context", None)
+    context_decision_at = getattr(context, "decision_at", None)
+    if type(context_decision_at) is not datetime:
+        raise ValueError("canonical execution decision_at is missing")
+    try:
+        event_decision_at = canonical_aware_datetime(
+            details.get("decision_at"), "personal policy event decision_at"
+        )
+        context_decision_at_text = canonical_aware_datetime(
+            context_decision_at, "canonical execution decision_at"
+        )
+        occurred_at = canonical_aware_datetime(
+            getattr(event, "occurred_at", None), "personal policy event occurred_at"
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("saved personal policy event clock is invalid") from exc
+    if event_decision_at != context_decision_at_text or occurred_at != event_decision_at:
+        raise ValueError("saved personal policy event clock conflicts with execution")
+
+    policy_value = details.get("policy_snapshot")
+    if not isinstance(policy_value, Mapping):
+        raise ValueError("saved personal policy snapshot must be an object")
+    policy = {str(key): _thaw_choice_value(value) for key, value in policy_value.items()}
+    from app_module.recommendation.personal_use_policy import (
+        validate_personal_use_policy_snapshot,
+    )
+
+    policy = validate_personal_use_policy_snapshot(policy)
+    policy_is_v2 = policy.get("schema_version") == "recommendation-personal-use-policy.v2"
+    source_time_trust = policy.get("source_time_trust") if policy_is_v2 else None
+    expected_v2_markers = {
+        "source_time_basis": "user_declared_source_time",
+        "research_only": True,
+        "official_historical_pit_verified": False,
+    }
+    if policy_is_v2:
+        has_markers = set(details) == base_details | set(expected_v2_markers)
+        if source_time_trust is None:
+            if has_markers:
+                raise ValueError("V2 rule-only event must not claim source-time trust")
+        else:
+            if not has_markers or any(
+                type(details.get(key)) is not type(value)
+                or details.get(key) != value
+                for key, value in expected_v2_markers.items()
+            ):
+                raise ValueError("V2 personal source-time event markers are inconsistent")
+            if (
+                source_time_trust.get("basis") != details.get("source_time_basis")
+                or source_time_trust.get("research_only") is not details.get("research_only")
+                or source_time_trust.get("official_historical_pit_verified")
+                is not details.get("official_historical_pit_verified")
+            ):
+                raise ValueError("V2 event markers differ from its saved source-time trust")
+    elif set(details) != base_details:
+        raise ValueError("V1 personal policy event has unexpected fields")
+    decision_at = parse_aware_datetime(
+        event_decision_at, "personal policy event decision_at"
+    )
+    if type(policy.get("revision")) is not int:
+        raise ValueError("saved personal policy revision is invalid")
+    if policy["revision"] > 0:
+        confirmed_at = policy.get("confirmed_at")
+        if type(confirmed_at) is not str:
+            raise ValueError("saved personal policy confirmation time is missing")
+        if parse_aware_datetime(confirmed_at, "personal policy confirmed_at") > decision_at:
+            raise ValueError("saved personal policy was confirmed after the recommendation")
+    requested_mode = details.get("requested_mode")
+    effective_mode = details.get("effective_mode")
+    allowed_modes = {"rule_only", "personal_calibrated_probability"}
+    if (
+        type(requested_mode) is not str
+        or requested_mode not in allowed_modes
+        or requested_mode != policy.get("mode")
+        or type(effective_mode) is not str
+        or effective_mode not in allowed_modes
+        or (requested_mode == "rule_only" and effective_mode != "rule_only")
+        or (
+            effective_mode == "personal_calibrated_probability"
+            and requested_mode != "personal_calibrated_probability"
+        )
+    ):
+        raise ValueError("saved personal policy event modes are inconsistent")
+    return {
+        "schema_version": details_schema,
+        "result_id": result_id,
+        "decision_at": event_decision_at,
+        "policy_snapshot": policy,
+        "requested_mode": requested_mode,
+        "effective_mode": effective_mode,
+        **(
+            {key: details[key] for key in expected_v2_markers}
+            if policy_is_v2 and source_time_trust is not None
+            else {}
+        ),
+    }
+
+
+def _freeze_choice_value(value: Any, field_name: str) -> Any:
+    """Freeze the bounded JSON data supported by the personal-choice DTO."""
+
+    if isinstance(value, Mapping):
+        frozen: dict[str, Any] = {}
+        for key, item in value.items():
+            if type(key) is not str or not key.strip():
+                raise ValueError(f"{field_name} keys must be non-empty strings")
+            frozen[key] = _freeze_choice_value(item, f"{field_name}.{key}")
+        return MappingProxyType(frozen)
+    if isinstance(value, (list, tuple)):
+        return tuple(
+            _freeze_choice_value(item, f"{field_name}[{index}]")
+            for index, item in enumerate(value)
+        )
+    if value is None or type(value) in (str, int, bool):
+        return value
+    raise TypeError(f"{field_name} contains unsupported JSON value {type(value).__name__}")
+
+
+def _thaw_choice_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_choice_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_choice_value(item) for item in value]
+    return value
+
+
+def _require_choice_hash(value: object, field_name: str) -> str:
+    text = _text(value)
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", text) is None:
+        raise ValueError(f"{field_name} must be sha256:<64 lowercase hex>")
+    return text
 
 
 def _iso_date(value: object, field_name: str) -> str:
@@ -1223,6 +1426,429 @@ class PersonalizationActionEnvelope:
 
 
 @dataclass(frozen=True)
+class PersonalRecommendationOverrideReason:
+    """個人推翻原建議時必須保存的結構化理由。"""
+
+    code: str
+    detail: str
+
+    def __post_init__(self) -> None:
+        if not _text(self.code) or not _text(self.detail):
+            raise ValueError("override reason requires non-empty code and detail")
+        object.__setattr__(self, "code", _text(self.code))
+        object.__setattr__(self, "detail", _text(self.detail))
+
+    def to_dict(self) -> dict[str, str]:
+        return {"code": self.code, "detail": self.detail}
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any]
+    ) -> "PersonalRecommendationOverrideReason":
+        if not isinstance(value, Mapping) or set(value) != {"code", "detail"}:
+            raise ValueError("override reason fields are invalid")
+        if type(value["code"]) is not str or type(value["detail"]) is not str:
+            raise ValueError("override reason fields must be strings")
+        return cls(code=value["code"], detail=value["detail"])
+
+
+@dataclass(frozen=True)
+class PersonalRecommendationModelEvidence:
+    """只記錄已由 canonical read model 驗證的所選股票模型投影。"""
+
+    candidate_id: str
+    candidate_root: str
+    candidate_json_sha256: str
+    candidate_manifest_hash: str
+    candidate_artifact_hash: str
+    candidate_freeze_hash: str
+    dataset_hash: str
+    receipt_reference: str
+    receipt_hash: str
+    projection_reference: str
+    projection_rows_sha256: str
+    stock_code: str
+    decision_date: str
+    model_version: str
+    ranking_score_bp: int | None
+    calibrated_probability_bp: int
+    calibrated_probability_status: str
+    cost_scenario_hash: str | None = None
+    schema_version: str = PERSONAL_RECOMMENDATION_MODEL_EVIDENCE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        for name in (
+            "candidate_id",
+            "candidate_root",
+            "receipt_reference",
+            "projection_reference",
+            "stock_code",
+            "model_version",
+        ):
+            if not _text(getattr(self, name)):
+                raise ValueError(f"model evidence {name} is required")
+        if not Path(self.candidate_root).is_absolute():
+            raise ValueError("model evidence candidate_root must be absolute")
+        for name in (
+            "candidate_json_sha256",
+            "candidate_manifest_hash",
+            "candidate_artifact_hash",
+            "candidate_freeze_hash",
+            "dataset_hash",
+        ):
+            _require_choice_hash(getattr(self, name), name)
+        _require_choice_hash(self.receipt_hash, "receipt_hash")
+        _require_choice_hash(self.projection_rows_sha256, "projection_rows_sha256")
+        if self.projection_reference != self.projection_rows_sha256:
+            raise ValueError("projection reference must bind the saved projection rows")
+        if self.model_version != self.candidate_id:
+            raise ValueError("model version must match the selected candidate")
+        if self.schema_version != PERSONAL_RECOMMENDATION_MODEL_EVIDENCE_SCHEMA_VERSION:
+            raise ValueError("unsupported personal model evidence schema")
+        normalized_day = _iso_date(self.decision_date, "decision_date")
+        if normalized_day != self.decision_date:
+            raise ValueError("decision_date must be a canonical ISO date")
+        if (
+            isinstance(self.ranking_score_bp, bool)
+            or (
+                self.ranking_score_bp is not None
+                and type(self.ranking_score_bp) is not int
+            )
+        ):
+            raise ValueError("ranking_score_bp must be an integer or None")
+        if (
+            isinstance(self.calibrated_probability_bp, bool)
+            or type(self.calibrated_probability_bp) is not int
+            or not 0 <= self.calibrated_probability_bp <= 10_000
+        ):
+            raise ValueError("calibrated_probability_bp must be 0..10000 basis points")
+        if self.calibrated_probability_status != "active_effective":
+            raise ValueError("personal model evidence requires an effective saved projection")
+        if self.cost_scenario_hash is not None:
+            _require_choice_hash(self.cost_scenario_hash, "cost_scenario_hash")
+        for name in (
+            "candidate_id",
+            "candidate_root",
+            "candidate_json_sha256",
+            "candidate_manifest_hash",
+            "candidate_artifact_hash",
+            "candidate_freeze_hash",
+            "dataset_hash",
+            "receipt_reference",
+            "projection_reference",
+            "stock_code",
+            "model_version",
+            "calibrated_probability_status",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name)))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "candidate_id": self.candidate_id,
+            "candidate_root": self.candidate_root,
+            "candidate_json_sha256": self.candidate_json_sha256,
+            "candidate_manifest_hash": self.candidate_manifest_hash,
+            "candidate_artifact_hash": self.candidate_artifact_hash,
+            "candidate_freeze_hash": self.candidate_freeze_hash,
+            "dataset_hash": self.dataset_hash,
+            "receipt_reference": self.receipt_reference,
+            "receipt_hash": self.receipt_hash,
+            "projection_reference": self.projection_reference,
+            "projection_rows_sha256": self.projection_rows_sha256,
+            "stock_code": self.stock_code,
+            "decision_date": self.decision_date,
+            "model_version": self.model_version,
+            "ranking_score_bp": self.ranking_score_bp,
+            "calibrated_probability_bp": self.calibrated_probability_bp,
+            "calibrated_probability_status": self.calibrated_probability_status,
+            "cost_scenario_hash": self.cost_scenario_hash,
+        }
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any]
+    ) -> "PersonalRecommendationModelEvidence":
+        fields = {
+            "schema_version",
+            "candidate_id",
+            "candidate_root",
+            "candidate_json_sha256",
+            "candidate_manifest_hash",
+            "candidate_artifact_hash",
+            "candidate_freeze_hash",
+            "dataset_hash",
+            "receipt_reference",
+            "receipt_hash",
+            "projection_reference",
+            "projection_rows_sha256",
+            "stock_code",
+            "decision_date",
+            "model_version",
+            "ranking_score_bp",
+            "calibrated_probability_bp",
+            "calibrated_probability_status",
+            "cost_scenario_hash",
+        }
+        if not isinstance(value, Mapping) or set(value) != fields:
+            raise ValueError("personal model evidence fields are invalid")
+        text_fields = fields - {
+            "ranking_score_bp",
+            "calibrated_probability_bp",
+            "cost_scenario_hash",
+        }
+        if any(type(value[name]) is not str for name in text_fields):
+            raise ValueError("personal model evidence text fields must be strings")
+        if value["cost_scenario_hash"] is not None and type(
+            value["cost_scenario_hash"]
+        ) is not str:
+            raise ValueError("cost_scenario_hash must be a string or None")
+        return cls(**dict(value))
+
+
+@dataclass(frozen=True)
+class PersonalRecommendationChoice:
+    """對一筆已保存推薦的明確個人採用、拒絕或推翻事件。"""
+
+    result_id: str
+    stock_code: str
+    decision_date: str
+    source_snapshot_id: str
+    source_snapshot_hash: str
+    canonical_payload_hash: str
+    raw_artifact_sha256: str
+    choice: str
+    requested_mode: str
+    effective_mode: str
+    action_at: str
+    recorded_at: str
+    request_id: str
+    policy_snapshot: Mapping[str, Any] | None = None
+    override_reason: PersonalRecommendationOverrideReason | None = None
+    model_evidence: PersonalRecommendationModelEvidence | None = None
+    schema_version: str = PERSONAL_RECOMMENDATION_CHOICE_SCHEMA_VERSION
+    choice_hash: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        for name in ("result_id", "stock_code", "request_id"):
+            if not _text(getattr(self, name)):
+                raise ValueError(f"{name} is required")
+        if self.choice not in {"adopt", "reject", "override"}:
+            raise ValueError("choice must be adopt, reject, or override")
+        if self.requested_mode not in {"rule_only", "personal_calibrated_probability"}:
+            raise ValueError("requested_mode is invalid")
+        if self.effective_mode not in {"rule_only", "personal_calibrated_probability"}:
+            raise ValueError("effective_mode is invalid")
+        _require_choice_hash(self.canonical_payload_hash, "canonical_payload_hash")
+        _require_choice_hash(self.raw_artifact_sha256, "raw_artifact_sha256")
+        if not _text(self.source_snapshot_id):
+            raise ValueError("source_snapshot_id is required")
+        _require_choice_hash(self.source_snapshot_hash, "source_snapshot_hash")
+        normalized_day = _iso_date(self.decision_date, "decision_date")
+        if normalized_day != self.decision_date:
+            raise ValueError("decision_date must be a canonical ISO date")
+        action_at = parse_aware_datetime(self.action_at, "action_at")
+        recorded_at = parse_aware_datetime(self.recorded_at, "recorded_at")
+        if recorded_at < action_at:
+            raise ValueError("recorded_at must not precede action_at")
+        if self.schema_version != PERSONAL_RECOMMENDATION_CHOICE_SCHEMA_VERSION:
+            raise ValueError("unsupported personal recommendation choice schema")
+        if (self.choice == "override") != (self.override_reason is not None):
+            raise ValueError("override requires a structured reason; other choices forbid it")
+        if self.override_reason is not None and type(
+            self.override_reason
+        ) is not PersonalRecommendationOverrideReason:
+            raise TypeError("override_reason must be PersonalRecommendationOverrideReason")
+        if (self.effective_mode == "personal_calibrated_probability") != (
+            self.model_evidence is not None
+        ):
+            raise ValueError("effective personal model mode requires selected-stock evidence")
+        if self.model_evidence is not None:
+            if type(self.model_evidence) is not PersonalRecommendationModelEvidence:
+                raise TypeError("model_evidence must be PersonalRecommendationModelEvidence")
+            if (
+                self.model_evidence.stock_code != self.stock_code
+                or self.model_evidence.decision_date != self.decision_date
+            ):
+                raise ValueError("model evidence must match selected stock and saved decision date")
+        frozen_policy: Mapping[str, Any] | None = None
+        if self.policy_snapshot is None:
+            raise ValueError("new personal recommendation choice requires a policy snapshot")
+        if self.policy_snapshot is not None:
+            frozen = _freeze_choice_value(self.policy_snapshot, "policy_snapshot")
+            if not isinstance(frozen, Mapping):
+                raise TypeError("policy_snapshot must be an object")
+            required = {
+                "schema_version",
+                "policy_version",
+                "revision",
+                "scope_id",
+                "mode",
+                "policy_sha256",
+            }
+            if not required.issubset(frozen):
+                raise ValueError("policy_snapshot identity is incomplete")
+            if type(frozen["policy_version"]) is not int or type(frozen["revision"]) is not int:
+                raise ValueError("policy_snapshot version/revision must be integers")
+            if frozen["revision"] < 0:
+                raise ValueError("policy_snapshot revision must be non-negative")
+            schema_version = frozen["schema_version"]
+            policy_version = frozen["policy_version"]
+            if (schema_version, policy_version) not in {
+                ("recommendation-personal-use-policy.v1", 1),
+                ("recommendation-personal-use-policy.v2", 2),
+            }:
+                raise ValueError("policy_snapshot schema version is unsupported")
+            if not _text(frozen["scope_id"]):
+                raise ValueError("policy_snapshot version/scope is invalid")
+            if frozen["mode"] not in {"rule_only", "personal_calibrated_probability"}:
+                raise ValueError("policy_snapshot mode is invalid")
+            if frozen["mode"] != self.requested_mode:
+                raise ValueError("requested_mode must match saved policy snapshot")
+            _require_choice_hash(frozen["policy_sha256"], "policy_snapshot.policy_sha256")
+            from app_module.recommendation.personal_use_policy import (
+                validate_personal_use_policy_snapshot,
+            )
+
+            try:
+                validated_policy = validate_personal_use_policy_snapshot(
+                    _thaw_choice_value(frozen)
+                )
+            except (TypeError, ValueError) as exc:
+                raise ValueError("policy_snapshot does not match its versioned schema/hash") from exc
+            if validated_policy != _thaw_choice_value(frozen):
+                raise ValueError("policy_snapshot is not a canonical saved identity")
+            if self.model_evidence is not None:
+                candidate = frozen.get("candidate")
+                if not isinstance(candidate, Mapping):
+                    raise ValueError("model evidence requires a pinned policy candidate")
+                for name in (
+                    "candidate_id",
+                    "candidate_root",
+                    "candidate_json_sha256",
+                    "candidate_manifest_hash",
+                    "candidate_artifact_hash",
+                    "candidate_freeze_hash",
+                    "dataset_hash",
+                ):
+                    if candidate.get(name) != getattr(self.model_evidence, name):
+                        raise ValueError(
+                            f"model evidence {name} differs from the saved policy pin"
+                        )
+            frozen_policy = frozen
+        if self.effective_mode == "personal_calibrated_probability":
+            if self.requested_mode != "personal_calibrated_probability":
+                raise ValueError("effective personal model mode conflicts with requested mode")
+        object.__setattr__(self, "result_id", _text(self.result_id))
+        object.__setattr__(self, "stock_code", _text(self.stock_code))
+        object.__setattr__(self, "source_snapshot_id", _text(self.source_snapshot_id))
+        object.__setattr__(self, "request_id", _text(self.request_id))
+        object.__setattr__(self, "action_at", action_at.isoformat(timespec="microseconds"))
+        object.__setattr__(self, "recorded_at", recorded_at.isoformat(timespec="microseconds"))
+        object.__setattr__(self, "policy_snapshot", frozen_policy)
+        object.__setattr__(self, "choice_hash", canonical_payload_hash(self._hash_payload()))
+
+    def _hash_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "result_id": self.result_id,
+            "stock_code": self.stock_code,
+            "decision_date": self.decision_date,
+            "source_snapshot_id": self.source_snapshot_id,
+            "source_snapshot_hash": self.source_snapshot_hash,
+            "canonical_payload_hash": self.canonical_payload_hash,
+            "raw_artifact_sha256": self.raw_artifact_sha256,
+            "choice": self.choice,
+            "requested_mode": self.requested_mode,
+            "effective_mode": self.effective_mode,
+            "policy_snapshot": (
+                _thaw_choice_value(self.policy_snapshot)
+                if self.policy_snapshot is not None
+                else None
+            ),
+            "override_reason": (
+                self.override_reason.to_dict() if self.override_reason is not None else None
+            ),
+            "model_evidence": (
+                self.model_evidence.to_dict() if self.model_evidence is not None else None
+            ),
+            "action_at": self.action_at,
+            "recorded_at": self.recorded_at,
+            "request_id": self.request_id,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._hash_payload(), "choice_hash": self.choice_hash}
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "PersonalRecommendationChoice":
+        fields = {
+            "schema_version",
+            "result_id",
+            "stock_code",
+            "decision_date",
+            "source_snapshot_id",
+            "source_snapshot_hash",
+            "canonical_payload_hash",
+            "raw_artifact_sha256",
+            "choice",
+            "requested_mode",
+            "effective_mode",
+            "policy_snapshot",
+            "override_reason",
+            "model_evidence",
+            "action_at",
+            "recorded_at",
+            "request_id",
+            "choice_hash",
+        }
+        if not isinstance(value, Mapping) or set(value) != fields:
+            raise ValueError("personal recommendation choice fields are invalid")
+        text_fields = fields - {"policy_snapshot", "override_reason", "model_evidence"}
+        if any(type(value[name]) is not str for name in text_fields):
+            raise ValueError("personal recommendation choice text fields must be strings")
+        reason_value = value["override_reason"]
+        if reason_value is not None:
+            if not isinstance(reason_value, Mapping):
+                raise ValueError("override_reason must be an object or None")
+            reason = PersonalRecommendationOverrideReason.from_mapping(reason_value)
+        else:
+            reason = None
+        model_value = value["model_evidence"]
+        if model_value is not None:
+            if not isinstance(model_value, Mapping):
+                raise ValueError("model_evidence must be an object or None")
+            model_evidence = PersonalRecommendationModelEvidence.from_mapping(model_value)
+        else:
+            model_evidence = None
+        policy_value = value["policy_snapshot"]
+        if policy_value is not None and not isinstance(policy_value, Mapping):
+            raise ValueError("policy_snapshot must be an object or None")
+        choice = cls(
+            result_id=value["result_id"],
+            stock_code=value["stock_code"],
+            decision_date=value["decision_date"],
+            source_snapshot_id=value["source_snapshot_id"],
+            source_snapshot_hash=value["source_snapshot_hash"],
+            canonical_payload_hash=value["canonical_payload_hash"],
+            raw_artifact_sha256=value["raw_artifact_sha256"],
+            choice=value["choice"],
+            requested_mode=value["requested_mode"],
+            effective_mode=value["effective_mode"],
+            action_at=value["action_at"],
+            recorded_at=value["recorded_at"],
+            request_id=value["request_id"],
+            policy_snapshot=policy_value,
+            override_reason=reason,
+            model_evidence=model_evidence,
+            schema_version=value["schema_version"],
+        )
+        if value["choice_hash"] != choice.choice_hash:
+            raise ValueError("personal recommendation choice hash mismatch")
+        return choice
+
+
+@dataclass(frozen=True)
 class PersonalizationEvaluationRow:
     """固定 fit/evaluation contract 的一筆 matured prediction row。"""
 
@@ -1648,14 +2274,22 @@ __all__ = [
     "PERSONALIZATION_PREDICTION_RECEIPT_SCHEMA_VERSION",
     "PERSONALIZATION_TEMPORAL_CONTRACT",
     "PERSONALIZATION_TEMPORAL_MODES",
+    "PERSONAL_RECOMMENDATION_CHOICE_SCHEMA_VERSION",
+    "PERSONAL_RECOMMENDATION_MODEL_EVIDENCE_SCHEMA_VERSION",
+    "PERSONAL_USE_POLICY_SNAPSHOT_EVENT_SCHEMA_VERSION",
+    "PERSONAL_USE_POLICY_SNAPSHOT_EVENT_TYPE",
     "PersonalizationActionEnvelope",
     "PersonalizationDecisionEvidence",
     "PersonalizationDeliveryCapture",
     "PersonalizationDeliveryScope",
     "PersonalizationEvaluationRow",
+    "PersonalRecommendationChoice",
+    "PersonalRecommendationModelEvidence",
+    "PersonalRecommendationOverrideReason",
     "canonical_aware_datetime",
     "canonical_payload_hash",
     "inspect_personalization_temporal_context",
     "parse_aware_datetime",
+    "read_personal_use_policy_snapshot_event",
     "validate_forward_outcome_chronology",
 ]

@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import logging
+import io
 from pathlib import Path
 from typing import Any, Callable
 
 import pandas as pd
 
+from data_module.company_registry import (
+    COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR,
+    load_company_registry_source_contract,
+)
 from data_module.db_manager import DBManager
 
 
@@ -35,7 +40,18 @@ class IndustryMapperDataProvider:
             print(f"找不到 companies.csv: {companies_file}")
             return None
         try:
-            frame = pd.read_csv(companies_file, encoding="utf-8-sig")
+            csv_bytes = companies_file.read_bytes()
+            frame = pd.read_csv(io.BytesIO(csv_bytes), encoding="utf-8-sig")
+            source_contract = load_company_registry_source_contract(
+                companies_file,
+                csv_bytes=csv_bytes,
+            )
+            frame.attrs[COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR] = source_contract
+            if source_contract["status"] != "captured":
+                logger.warning(
+                    "companies.csv 來源契約未知，僅供現況分類：%s",
+                    source_contract["warnings"],
+                )
             logger.info("成功載入 companies.csv，共 %s 筆", len(frame))
             return frame
         except Exception as exc:  # noqa: BLE001 - 保留原相容讀取邊界

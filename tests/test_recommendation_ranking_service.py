@@ -249,7 +249,8 @@ def test_recommendation_service_quantile_mode_universe_too_small_raises_exceptio
                     "recommendation_min_universe_size": 5,
                     "recommendation_ranking_method": "nearest_rank",
                 }
-            }
+            },
+            as_of_date="2026-05-20",
         )
     assert exc_info.value.actual_size == 4
     assert exc_info.value.minimum_size == 5

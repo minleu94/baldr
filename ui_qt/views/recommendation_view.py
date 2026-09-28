@@ -7,22 +7,30 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel,
     QPushButton, QTableView, QGroupBox, QProgressBar,
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
-    QComboBox, QMessageBox, QSplitter, QScrollArea,
+    QComboBox, QLineEdit, QMessageBox, QSplitter, QScrollArea,
     QMenu, QDialog, QInputDialog, QToolButton
 )
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 import pandas as pd
 from copy import deepcopy
+import hashlib
+import os
+import re
+import stat
 import time
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import List, Dict, Any, Mapping, Optional
+from datetime import date, datetime, timezone
 from pathlib import Path
 import json
+from uuid import uuid4
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.workers.task_worker import ProgressTaskWorker, TaskWorker
 from app_module.recommendation_service import RecommendationService
+from app_module.decision_outcome_journey import (
+    validated_company_source_v2_facts,
+)
 from app_module.regime_service import RegimeService
 from app_module.watchlist_service import WatchlistService
 from app_module.universe_service import UniverseService
@@ -74,6 +82,312 @@ from ui_qt.views.recommendation.execution_coordinator import (
 )
 from app_module.journal_service import JournalService
 from app_module.research_session import ResearchStockContextDTO
+from ui_qt.widgets.decision_continuity_controls import (
+    PersonalRecommendationChoiceControlsWidget,
+)
+
+
+_PERSONAL_POLICY_ARCHIVE_PATTERN = re.compile(
+    r"^rev-(?P<revision>[0-9]{8})-(?P<sha256>[0-9a-f]{64})\.json$"
+)
+_PERSONAL_POLICY_HISTORY_MAX_ENTRIES = 200
+_PERSONAL_POLICY_HISTORY_MAX_REVISIONS = 100
+_PERSONAL_POLICY_HISTORY_MAX_FILE_BYTES = 1024 * 1024
+_PERSONAL_SOURCE_TIME_BASIS = "user_declared_source_time"
+
+
+def _dto_mapping(value: object) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    to_dict = getattr(value, "to_dict", None)
+    if not callable(to_dict):
+        return {}
+    try:
+        payload = to_dict()
+    except Exception:
+        return {}
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _personal_policy_payload(policy: object) -> dict[str, Any]:
+    return _dto_mapping(policy)
+
+
+def _personal_policy_schema(policy: object) -> str:
+    schema = getattr(policy, "schema_version", None)
+    if type(schema) is str:
+        return schema
+    return str(_personal_policy_payload(policy).get("schema_version", ""))
+
+
+def _personal_source_time_trust(policy: object) -> Mapping[str, Any] | None:
+    trust = getattr(policy, "source_time_trust", None)
+    if isinstance(trust, Mapping):
+        return trust
+    payload_trust = _dto_mapping(trust)
+    if payload_trust:
+        return payload_trust
+    payload_trust = _personal_policy_payload(policy).get("source_time_trust")
+    return payload_trust if isinstance(payload_trust, Mapping) else None
+
+
+def _candidate_entry_has_source_time_binding(entry: object) -> bool:
+    return (
+        getattr(entry, "source_time_basis", None) == _PERSONAL_SOURCE_TIME_BASIS
+        and getattr(entry, "research_only", None) is True
+        and getattr(entry, "official_historical_pit_verified", None) is False
+    )
+
+
+def _candidate_pins(value: object) -> dict[str, Any]:
+    return _dto_mapping(value)
+
+
+def _personal_source_proposal_matches_trust(
+    proposal: object,
+    trust: Mapping[str, Any],
+) -> bool:
+    proposal_payload = _dto_mapping(proposal)
+    source_path = proposal_payload.get("source_database_path")
+    trusted_path = trust.get("source_database_path")
+    proposal_candidate = _candidate_pins(proposal_payload.get("candidate"))
+    trusted_candidate = _candidate_pins(trust.get("candidate"))
+    scope = _dto_mapping(trust.get("replay_scope"))
+    if not scope:
+        return False
+    proposal_identity = _dto_mapping(proposal_payload.get("file_identity"))
+    if not isinstance(proposal_identity, Mapping):
+        return False
+    proposal_scope_value = _dto_mapping(proposal_payload.get("replay_scope"))
+    proposal_scope = {
+        "dataset_ids": proposal_scope_value.get("dataset_ids"),
+        "decision_dates": proposal_scope_value.get("decision_dates"),
+        "symbols": proposal_scope_value.get("symbols"),
+        "sample_count": proposal_scope_value.get("sample_count"),
+    }
+    scope_matches = True
+    for key, value in proposal_scope.items():
+        trusted_value = scope.get(key)
+        if key == "sample_count":
+            scope_matches = scope_matches and type(value) is int and type(
+                trusted_value
+            ) is int and value == trusted_value
+        elif isinstance(value, (tuple, list)) and isinstance(
+            trusted_value, (tuple, list)
+        ):
+            scope_matches = scope_matches and tuple(value) == tuple(trusted_value)
+        else:
+            scope_matches = False
+    try:
+        same_path = (
+            type(source_path) is str
+            and type(trusted_path) is str
+            and Path(source_path).resolve(strict=True)
+            == Path(trusted_path).resolve(strict=True)
+        )
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return (
+        same_path
+        and dict(proposal_identity)
+        == _dto_mapping(trust.get("file_identity"))
+        and proposal_payload.get("source_slice_sha256")
+        == trust.get("source_slice_sha256")
+        and proposal_candidate
+        and proposal_candidate == trusted_candidate
+        and scope_matches
+    )
+
+
+def _has_reparse_attribute(file_stat: os.stat_result) -> bool:
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    attributes = getattr(file_stat, "st_file_attributes", 0)
+    return bool(reparse_flag and attributes & reparse_flag)
+
+
+def _load_personal_policy_history(
+    policy_path: Path,
+    *,
+    current_revision: int,
+    cancel_callback=None,
+) -> dict[str, Any]:
+    """Bounded read-only scan of the policy module's known revision archive."""
+
+    from app_module.recommendation.personal_use_policy import (
+        load_personal_use_policy_snapshot,
+    )
+
+    archive_dir = policy_path.with_name(f"{policy_path.name}.revisions")
+    policies = []
+    issues: list[str] = []
+    scanned_entries = 0
+    truncated = False
+    unrecognized_entries = 0
+    try:
+        archive_stat = archive_dir.lstat()
+    except FileNotFoundError:
+        if current_revision > 1:
+            issues.append("目前設定版本大於 1，但找不到已知歷史版本目錄。")
+        return {
+            "policies": (),
+            "scanned_entries": 0,
+            "truncated": False,
+            "issues": tuple(issues),
+        }
+    except OSError as exc:
+        return {
+            "policies": (),
+            "scanned_entries": 0,
+            "truncated": False,
+            "issues": (f"無法檢查歷史版本目錄：{type(exc).__name__}: {exc}",),
+        }
+
+    if (
+        not stat.S_ISDIR(archive_stat.st_mode)
+        or stat.S_ISLNK(archive_stat.st_mode)
+        or _has_reparse_attribute(archive_stat)
+    ):
+        return {
+            "policies": (),
+            "scanned_entries": 0,
+            "truncated": False,
+            "issues": ("歷史版本路徑不是安全的普通目錄，已停止讀取。",),
+        }
+
+    try:
+        resolved_archive = archive_dir.resolve(strict=True)
+        candidates: list[tuple[re.Match[str], Path]] = []
+        with os.scandir(archive_dir) as iterator:
+            for item in iterator:
+                if cancel_callback is not None and cancel_callback():
+                    return {
+                        "policies": (),
+                        "scanned_entries": scanned_entries,
+                        "truncated": False,
+                        "issues": tuple(issues),
+                        "cancelled": True,
+                    }
+                if scanned_entries >= _PERSONAL_POLICY_HISTORY_MAX_ENTRIES:
+                    truncated = True
+                    break
+                scanned_entries += 1
+                match = _PERSONAL_POLICY_ARCHIVE_PATTERN.fullmatch(item.name)
+                if match is not None:
+                    candidates.append((match, Path(item.path)))
+                else:
+                    unrecognized_entries += 1
+    except OSError as exc:
+        return {
+            "policies": tuple(policies),
+            "scanned_entries": scanned_entries,
+            "truncated": truncated,
+            "issues": (f"無法列出歷史版本：{type(exc).__name__}: {exc}",),
+        }
+
+    if unrecognized_entries:
+        issues.append(
+            f"有 {unrecognized_entries} 個封存目錄項目的檔名不符合版本格式，未作為政策讀取。"
+        )
+
+    candidates.sort(
+        key=lambda item: (int(item[0].group("revision")), item[1].name),
+        reverse=True,
+    )
+    for position, (match, candidate_path) in enumerate(candidates):
+        if cancel_callback is not None and cancel_callback():
+            return {
+                "policies": (),
+                "scanned_entries": scanned_entries,
+                "truncated": False,
+                "issues": tuple(issues),
+                "cancelled": True,
+            }
+        if len(policies) >= _PERSONAL_POLICY_HISTORY_MAX_REVISIONS:
+            truncated = True
+            break
+        try:
+            before = candidate_path.lstat()
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or stat.S_ISLNK(before.st_mode)
+                or _has_reparse_attribute(before)
+            ):
+                issues.append(f"{candidate_path.name} 不是安全的普通檔案，已略過。")
+                continue
+            if before.st_size > _PERSONAL_POLICY_HISTORY_MAX_FILE_BYTES:
+                issues.append(f"{candidate_path.name} 超過 1 MiB，已略過。")
+                continue
+            resolved_candidate = candidate_path.resolve(strict=True)
+            if resolved_candidate.parent != resolved_archive:
+                issues.append(f"{candidate_path.name} 不在已知封存目錄內，已略過。")
+                continue
+            policy = load_personal_use_policy_snapshot(candidate_path)
+            after = candidate_path.lstat()
+            stable_identity = (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+            ) == (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+            )
+            if (
+                not stable_identity
+                or not stat.S_ISREG(after.st_mode)
+                or stat.S_ISLNK(after.st_mode)
+                or _has_reparse_attribute(after)
+                or after.st_size > _PERSONAL_POLICY_HISTORY_MAX_FILE_BYTES
+                or candidate_path.resolve(strict=True).parent != resolved_archive
+            ):
+                issues.append(f"{candidate_path.name} 在讀取期間路徑或內容改變，已略過。")
+                continue
+            filename_revision = int(match.group("revision"))
+            filename_sha256 = "sha256:" + match.group("sha256")
+            if (
+                policy.revision != filename_revision
+                or policy.policy_sha256 != filename_sha256
+                or policy.revision >= current_revision
+            ):
+                issues.append(f"{candidate_path.name} 的版本或保存雜湊不符，已略過。")
+                continue
+            policies.append(policy)
+        except Exception as exc:  # corrupt/unreadable archive entries remain visible
+            issues.append(
+                f"{candidate_path.name} 無法驗證：{type(exc).__name__}: {exc}"
+            )
+        if position + 1 < len(candidates) and len(policies) >= _PERSONAL_POLICY_HISTORY_MAX_REVISIONS:
+            truncated = True
+            break
+
+    policies.sort(key=lambda policy: policy.revision, reverse=True)
+    if current_revision > 1 and not policies and not issues and not truncated:
+        issues.append("沒有找到可驗證的較早版本；請檢查封存目錄是否缺少歷史檔案。")
+    try:
+        final_archive_stat = archive_dir.lstat()
+        if (
+            final_archive_stat.st_dev != archive_stat.st_dev
+            or final_archive_stat.st_ino != archive_stat.st_ino
+            or final_archive_stat.st_mtime_ns != archive_stat.st_mtime_ns
+            or not stat.S_ISDIR(final_archive_stat.st_mode)
+            or stat.S_ISLNK(final_archive_stat.st_mode)
+            or _has_reparse_attribute(final_archive_stat)
+        ):
+            policies.clear()
+            issues.append("歷史版本目錄在讀取期間改變；請重新整理後再選擇。")
+    except OSError as exc:
+        policies.clear()
+        issues.append(
+            f"無法確認歷史版本目錄在讀取期間保持穩定：{type(exc).__name__}: {exc}"
+        )
+    return {
+        "policies": tuple(policies),
+        "scanned_entries": scanned_entries,
+        "truncated": truncated,
+        "issues": tuple(issues),
+    }
 
 
 def build_recommendation_portfolio_backtest_config(
@@ -163,6 +477,7 @@ class RecommendationView(QWidget):
         parent=None,
         profile_service: Optional[RecommendationProfileService] = None,
         journal_service: Optional[JournalService] = None,
+        personal_policy_path: str | Path | None = None,
     ):
         """初始化推薦視圖
 
@@ -180,6 +495,26 @@ class RecommendationView(QWidget):
         self.watchlist_service = watchlist_service
         self.journal_service = journal_service
         self.config = config
+        self.personal_policy_path = (
+            self._resolve_personal_policy_path(personal_policy_path)
+        )
+        self._personal_use_policy = None
+        self._personal_policy_load_error = ""
+        self._personal_policy_one_shot_rule_confirmed = False
+        self._personal_choice_retry: dict[str, Any] | None = None
+        self._personal_candidate_snapshot = None
+        self._personal_candidate_entry = None
+        self._personal_candidate = None
+        self._personal_candidate_worker = None
+        self._personal_candidate_worker_generation = 0
+        self._personal_source_time_proposal = None
+        self._personal_source_time_verified_entry = None
+        self._personal_source_time_verified_policy_identity: tuple[int, str] | None = None
+        self._personal_source_database_saved_path = ""
+        self._personal_policy_history_worker = None
+        self._personal_policy_history_generation = 0
+        self._personal_policy_history_snapshot: dict[str, Any] | None = None
+        self._load_personal_policy_for_display()
         self.recommendation_composition = None
 
         # 保存只在使用者明確點擊後建立 R014 composition；Qt 不持有 legacy writer。
@@ -195,9 +530,20 @@ class RecommendationView(QWidget):
         # 數據模型
         self.recommendations_model: Optional[PandasTableModel] = None
         self.current_result_id: str = ""
+        self._loaded_saved_result_identity: tuple[str, ...] | None = None
+        self._result_table_actions_connected = False
 
         # Worker
         self.worker: Optional[ProgressTaskWorker] = None
+        self._saved_result_load_worker: TaskWorker | None = None
+        self._saved_result_load_generation = 0
+        self._saved_result_load_requested_id = ""
+        self._personal_prediction_capture_worker: TaskWorker | None = None
+        self._personal_prediction_capture_generation = 0
+        self._personal_prediction_capture_status_result_id = ""
+        self._personal_prediction_capture_status_text = ""
+        self._personal_prediction_capture_eligible = False
+        self._personal_prediction_capture_receipt = None
         from app_module.report_export_service import ReportExportService
         self.report_export_service = ReportExportService()
         self._report_export_workers = []
@@ -247,8 +593,1466 @@ class RecommendationView(QWidget):
 
         self._setup_ui()
         self._load_current_regime()
+        if getattr(self._personal_use_policy, "revision", 0) > 1:
+            self._refresh_personal_policy_history()
         # 初始化策略傾向提示
         self._update_strategy_tendency()
+
+    @staticmethod
+    def _resolve_personal_policy_path(
+        value: str | Path | None,
+    ) -> Path | None:
+        if value is None:
+            return None
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise ValueError("personal_policy_path 必須是明示的絕對路徑")
+        return path.resolve()
+
+    def _load_personal_policy_for_display(self) -> None:
+        from app_module.recommendation.personal_use_policy import (
+            RecommendationPersonalUsePolicyV1,
+            load_personal_use_policy_snapshot,
+        )
+
+        scope_id = "technical_analysis_local"
+        self._personal_source_database_saved_path = ""
+        if self.personal_policy_path is None or not self.personal_policy_path.exists():
+            self._personal_use_policy = RecommendationPersonalUsePolicyV1.default_rule_only(
+                scope_id
+            )
+            self._personal_policy_load_error = ""
+            return
+        try:
+            self._personal_use_policy = load_personal_use_policy_snapshot(
+                self.personal_policy_path
+            )
+            trust = _personal_source_time_trust(self._personal_use_policy)
+            source_path = trust.get("source_database_path") if trust is not None else None
+            self._personal_source_database_saved_path = (
+                source_path
+                if type(source_path) is str and Path(source_path).is_absolute()
+                else ""
+            )
+            self._personal_policy_load_error = ""
+        except Exception as exc:  # malformed local settings must never enable model output
+            self._personal_use_policy = RecommendationPersonalUsePolicyV1.default_rule_only(
+                scope_id
+            )
+            self._personal_policy_load_error = (
+                f"個人設定讀取失敗：{type(exc).__name__}: {exc}"
+            )
+
+    def _selected_personal_source_database_path(self) -> str:
+        raw = self.personal_source_database_input.text().strip()
+        if not raw:
+            raise ValueError("請明確輸入或選擇來源 SQLite 檔案的絕對路徑")
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            raise ValueError("來源 SQLite 路徑必須是明確的絕對路徑")
+        if not path.exists():
+            raise ValueError("指定的來源 SQLite 檔案不存在")
+        return str(path)
+
+    def _browse_personal_source_database(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        selected, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "選擇個人研究來源 SQLite",
+            "",
+            "SQLite 資料庫 (*.db *.sqlite *.sqlite3);;所有檔案 (*)",
+        )
+        if selected:
+            self.personal_source_database_input.setText(selected)
+            self._clear_personal_source_time_preview()
+
+    def _personal_source_proposal_matches_selection(self, proposal: object) -> bool:
+        if proposal is None or not hasattr(self, "personal_candidate_combo"):
+            return False
+        selected_root = self.personal_candidate_combo.currentData()
+        candidate = getattr(proposal, "candidate", None)
+        proposal_root = getattr(candidate, "candidate_root", None)
+        proposal_database = getattr(proposal, "source_database_path", None)
+        if not selected_root or type(proposal_root) is not str or type(proposal_database) is not str:
+            return False
+        try:
+            return (
+                Path(proposal_root).resolve(strict=True)
+                == Path(str(selected_root)).resolve(strict=True)
+                and Path(proposal_database).resolve(strict=True)
+                == Path(self._selected_personal_source_database_path()).resolve(strict=True)
+            )
+        except (OSError, RuntimeError, ValueError):
+            return False
+
+    def _clear_personal_source_time_preview(self, *_args) -> None:
+        self._personal_source_time_proposal = None
+        self._personal_source_time_verified_entry = None
+        self._personal_source_time_verified_policy_identity = None
+        self._personal_candidate = None
+        self._personal_candidate_entry = None
+        checkbox = getattr(self, "personal_source_time_trust_checkbox", None)
+        if checkbox is not None:
+            checkbox.setChecked(False)
+        self._sync_personal_policy_controls()
+
+    def _sync_personal_policy_controls(self) -> None:
+        combo = getattr(self, "personal_policy_mode_combo", None)
+        status = getattr(self, "personal_policy_status_label", None)
+        confirm = getattr(self, "personal_policy_confirm_button", None)
+        trust_confirmation = getattr(self, "personal_source_time_trust_checkbox", None)
+        if combo is None or status is None:
+            return
+        policy = self._personal_use_policy
+        mode = getattr(policy, "mode", "rule_only")
+        proposal = self._personal_source_time_proposal
+        proposal_matches = self._personal_source_proposal_matches_selection(proposal)
+        source_verified = self._personal_policy_source_is_verified(policy)
+        if self._personal_policy_load_error:
+            text = (
+                "個人設定檔無法驗證；推薦目前會暫停。"
+                + self._personal_policy_load_error
+                + "。可明確選擇只對下一次分析使用未持久化規則模式；原設定檔會保留不動。"
+            )
+        elif getattr(policy, "revision", 0) == 0:
+            text = (
+                "尚未保存個人設定；本次使用未持久化的規則模式。"
+                "只有按下「確認並保存設定」才會寫入本機設定。"
+            )
+        else:
+            text = (
+                f"已確認個人模式：{mode}｜版本 {policy.revision}｜"
+                f"範圍 {policy.scope_id}。每次分析會保存同次設定快照。"
+            )
+            candidate = getattr(policy, "candidate", None)
+            if candidate is not None:
+                text += f"｜候選 {candidate.candidate_id}"
+            if mode == "personal_calibrated_probability":
+                text += "候選身分仍會由每次執行的 consumer 再驗證。"
+            trust = _personal_source_time_trust(policy)
+            if trust is not None:
+                saved_source_path = trust.get("source_database_path")
+                text += (
+                    "此候選使用個人明示信任的來源時間綁定；這是研究限定，"
+                    "不代表官方歷史 PIT 驗證。"
+                )
+                if type(saved_source_path) is str:
+                    text += f"來源 DB：{saved_source_path}。"
+        if proposal_matches:
+            text += (
+                "已檢查指定 SQLite 的來源時間綁定；此預覽尚未保存信任，"
+                "且不代表官方歷史 PIT。"
+            )
+        if self.personal_policy_path is None:
+            text += "目前未注入本機設定路徑，不能保存模式設定。"
+        status.setText(text)
+        one_shot = getattr(self, "personal_policy_one_shot_button", None)
+        if one_shot is not None:
+            one_shot.setVisible(bool(self._personal_policy_load_error))
+            one_shot.setEnabled(
+                bool(self._personal_policy_load_error)
+                and not self._personal_policy_one_shot_rule_confirmed
+            )
+        source_check = getattr(self, "personal_source_time_check_button", None)
+        if source_check is not None:
+            source_check.setEnabled(
+                bool(getattr(self, "personal_candidate_combo", None))
+                and bool(self.personal_candidate_combo.currentData())
+                and not (
+                    self._personal_candidate_worker is not None
+                    and self._personal_candidate_worker.isRunning()
+                )
+            )
+        if confirm is not None:
+            selected_mode = combo.currentData()
+            if selected_mode == "rule_only":
+                confirm.setText(
+                    "停用校準並保存規則模式"
+                    if mode != "rule_only"
+                    else "確認並保存規則模式"
+                )
+            elif selected_mode == "personal_calibrated_probability":
+                confirm.setText("信任此來源並保存個人研究模式")
+            model_item = combo.model().item(combo.findData("personal_calibrated_probability"))
+            if model_item is not None:
+                model_item.setEnabled(source_verified or proposal_matches)
+            trust_confirmation_enabled = bool(proposal_matches)
+            if trust_confirmation is not None:
+                trust_confirmation.setEnabled(trust_confirmation_enabled)
+            confirm.setEnabled(
+                self.personal_policy_path is not None
+                and not self._personal_policy_load_error
+                and (
+                    combo.currentData() == "rule_only"
+                    or (
+                        combo.currentData() == "personal_calibrated_probability"
+                        and proposal_matches
+                        and trust_confirmation is not None
+                        and trust_confirmation.isChecked()
+                    )
+                )
+            )
+
+    def _confirm_rule_only_for_next_run(self) -> None:
+        """明確允許一次性安全降級，不覆寫無法驗證的設定檔。"""
+
+        if not self._personal_policy_load_error:
+            return
+        self._personal_policy_one_shot_rule_confirmed = True
+        self._sync_personal_policy_controls()
+        self.personal_policy_status_label.setText(
+            "已確認僅下一次分析使用未持久化的 rule_only；原設定檔未修改。"
+            "分析完成後若仍無法讀取，需再次明確確認。"
+        )
+
+    def _confirm_personal_use_policy(self) -> None:
+        from app_module.recommendation.personal_use_policy import (
+            RecommendationPersonalUseSelectionV2,
+            RecommendationPersonalUseSelectionV1,
+            load_personal_use_policy_snapshot,
+            save_personal_use_policy_v2,
+            save_personal_use_policy,
+        )
+
+        path = self.personal_policy_path
+        if path is None:
+            QMessageBox.information(
+                self,
+                "尚未設定本機偏好路徑",
+                "目前只能使用未持久化的規則模式。請由主視窗注入本機設定路徑後再保存。",
+            )
+            return
+        mode = self.personal_policy_mode_combo.currentData()
+        current = self._personal_use_policy
+        expected_revision = int(getattr(current, "revision", 0))
+        is_v2 = _personal_policy_schema(current) == "recommendation-personal-use-policy.v2"
+        if mode == "personal_calibrated_probability":
+            proposal = self._personal_source_time_proposal
+            if (
+                proposal is None
+                or not self._personal_source_proposal_matches_selection(proposal)
+                or not self.personal_source_time_trust_checkbox.isChecked()
+            ):
+                QMessageBox.information(
+                    self,
+                    "尚未確認指定來源",
+                    "請選取候選、明確輸入來源 SQLite 路徑，檢查來源時間綁定，"
+                    "再勾選信任聲明後保存。這不代表官方歷史 PIT 驗證。",
+                )
+                return
+            selection = RecommendationPersonalUseSelectionV2(
+                scope_id=str(getattr(current, "scope_id", "technical_analysis_local")),
+                mode=str(mode),
+                source_time_binding=proposal,
+            )
+            try:
+                saved = save_personal_use_policy_v2(
+                    path,
+                    selection,
+                    expected_revision=expected_revision,
+                )
+                readback = load_personal_use_policy_snapshot(path)
+                if (
+                    getattr(readback, "revision", None) != saved.revision
+                    or getattr(readback, "policy_sha256", None) != saved.policy_sha256
+                ):
+                    raise ValueError("V2 政策保存後讀回的 revision/hash 不一致")
+                self._personal_use_policy = readback
+                self._personal_source_database_saved_path = str(
+                    getattr(proposal, "source_database_path")
+                )
+                self._personal_source_time_proposal = None
+                self.personal_source_time_trust_checkbox.setChecked(False)
+                self._personal_candidate = None
+                self._personal_source_time_verified_entry = None
+                self._personal_source_time_verified_policy_identity = None
+                self._personal_policy_load_error = ""
+                self.personal_policy_status_label.setText(
+                    "V2 個人研究設定已以 CAS 保存。現在重新讀取政策 bytes，"
+                    "並以相同明示 SQLite 路徑重驗來源；完成前不會啟用個人校準機率。"
+                    "此設定不代表官方歷史 PIT 驗證。"
+                )
+                self._sync_personal_policy_controls()
+                self._start_saved_personal_source_time_revalidation(
+                    source_database_path=self._personal_source_database_saved_path,
+                    candidate_root=str(getattr(proposal.candidate, "candidate_root")),
+                )
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "個人研究設定讀回未完成",
+                    "沒有啟用個人校準模式。若 CAS 寫入已完成，請重新載入設定並重新檢查來源；"
+                    f"\n{type(exc).__name__}: {exc}",
+                )
+            return
+        elif mode != "rule_only":
+            return
+        try:
+            if is_v2:
+                self._personal_use_policy = save_personal_use_policy_v2(
+                    path,
+                    RecommendationPersonalUseSelectionV2(
+                        scope_id=str(getattr(current, "scope_id", "technical_analysis_local")),
+                        mode="rule_only",
+                    ),
+                    expected_revision=expected_revision,
+                )
+                self._personal_source_database_saved_path = ""
+                self._personal_source_time_proposal = None
+                self._personal_source_time_verified_entry = None
+                self._personal_candidate = None
+                self._personal_source_time_verified_policy_identity = None
+                self.personal_source_database_input.clear()
+            else:
+                self._personal_use_policy = save_personal_use_policy(
+                    path,
+                    RecommendationPersonalUseSelectionV1(
+                        scope_id=str(getattr(current, "scope_id", "technical_analysis_local")),
+                        mode="rule_only",
+                    ),
+                    expected_revision=expected_revision,
+                )
+            self._personal_policy_load_error = ""
+            self._sync_personal_policy_controls()
+            self.personal_policy_status_label.setText(
+                "校準模式已停用；下一次推薦使用已保存的規則模式（rule_only）個人紀錄。"
+                "若原設定是 V2，該 CAS revision 也清除了個人來源信任與候選綁定；"
+                "不會改變全域模型設定。"
+            )
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "個人設定未保存",
+                f"本機設定沒有被覆寫；請重新載入並確認目前版本。\n{exc}",
+            )
+
+    def _personal_policy_for_invocation(self):
+        from app_module.recommendation.personal_use_policy import (
+            RecommendationPersonalUsePolicyV1,
+            load_personal_use_policy_snapshot,
+        )
+
+        selected_mode = self.personal_policy_mode_combo.currentData()
+        if self._personal_policy_load_error:
+            if not self._personal_policy_one_shot_rule_confirmed:
+                raise ValueError(
+                    "個人設定檔無法驗證；請明確確認本次一次性 rule_only 後再執行。"
+                )
+            self._personal_use_policy = RecommendationPersonalUsePolicyV1.default_rule_only(
+                "technical_analysis_local"
+            )
+            self._sync_personal_policy_controls()
+            return self._personal_use_policy
+        if self.personal_policy_path is None or not self.personal_policy_path.exists():
+            policy = RecommendationPersonalUsePolicyV1.default_rule_only(
+                "technical_analysis_local"
+            )
+        else:
+            policy = load_personal_use_policy_snapshot(self.personal_policy_path)
+        if policy.mode != selected_mode:
+            raise ValueError("所選模式尚未確認保存；請先按「確認並保存設定」。")
+        if selected_mode == "personal_calibrated_probability":
+            if not self._personal_policy_source_is_verified(policy):
+                raise ValueError(
+                    "V1 或未重新驗證的 V2 不會啟用個人校準；請明確檢查已保存政策的來源 DB。"
+                )
+        self._personal_use_policy = policy
+        self._personal_policy_load_error = ""
+        self._sync_personal_policy_controls()
+        return policy
+
+    def _personal_policy_source_is_verified(self, policy: object) -> bool:
+        if (
+            _personal_policy_schema(policy)
+            != "recommendation-personal-use-policy.v2"
+        ):
+            return False
+        candidate = getattr(policy, "candidate", None)
+        trust = _personal_source_time_trust(policy)
+        expected_identity = self._personal_source_time_verified_policy_identity
+        if (
+            candidate is None
+            or self._personal_candidate is None
+            or _candidate_pins(candidate) != _candidate_pins(self._personal_candidate)
+            or expected_identity
+            != (
+                getattr(policy, "revision", None),
+                getattr(policy, "policy_sha256", None),
+            )
+            or not _candidate_entry_has_source_time_binding(
+                self._personal_source_time_verified_entry
+            )
+            or trust is None
+        ):
+            return False
+        try:
+            return Path(str(trust.get("source_database_path", ""))).resolve(
+                strict=True
+            ) == Path(self._selected_personal_source_database_path()).resolve(
+                strict=True
+            )
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            return False
+
+    def _inspect_personal_source_time_binding(self) -> None:
+        from app_module.recommendation.personal_use_policy import (
+            load_personal_use_policy_snapshot,
+        )
+
+        candidate_root = self.personal_candidate_combo.currentData()
+        if not candidate_root:
+            self.personal_source_time_status_label.setText(
+                "請先從候選清冊選取一個候選；目前沒有模型候選被信任。"
+            )
+            return
+        worker = self._personal_candidate_worker
+        if worker is not None and worker.isRunning():
+            worker.cancel(cooperative=True, wait=False)
+            self.personal_source_time_status_label.setText(
+                "正在取消前一項候選檢查；未完成結果不會作為來源信任。"
+            )
+            return
+        try:
+            source_database_path = self._selected_personal_source_database_path()
+            if self.personal_policy_path is None or not self.personal_policy_path.exists():
+                saved_policy = None
+            else:
+                saved_policy = load_personal_use_policy_snapshot(
+                    self.personal_policy_path
+                )
+            saved_candidate = getattr(saved_policy, "candidate", None)
+            trust = (
+                _personal_source_time_trust(saved_policy)
+                if saved_policy is not None
+                else None
+            )
+            verify_saved_binding = (
+                saved_policy is not None
+                and _personal_policy_schema(saved_policy)
+                == "recommendation-personal-use-policy.v2"
+                and getattr(saved_policy, "mode", None)
+                == "personal_calibrated_probability"
+                and saved_candidate is not None
+                and Path(saved_candidate.candidate_root).resolve(strict=True)
+                == Path(str(candidate_root)).resolve(strict=True)
+                and trust is not None
+                and type(trust.get("source_database_path")) is str
+                and Path(str(trust.get("source_database_path"))).resolve(strict=True)
+                == Path(source_database_path).resolve(strict=True)
+            )
+            roots = self._personal_candidate_inventory_roots()
+        except Exception as exc:
+            self.personal_source_time_status_label.setText(
+                f"無法檢查指定來源：{type(exc).__name__}: {exc}"
+            )
+            return
+
+        self._personal_source_time_proposal = None
+        self._personal_source_time_verified_entry = None
+        self._personal_source_time_verified_policy_identity = None
+        self._personal_candidate = None
+        self.personal_source_time_trust_checkbox.setChecked(False)
+        self._sync_personal_policy_controls()
+        self.personal_source_time_check_button.setEnabled(False)
+        self.personal_source_time_status_label.setText(
+            "正在唯讀驗證明示 SQLite 來源與候選 lineage…"
+        )
+        self._personal_candidate_worker_generation += 1
+        generation = self._personal_candidate_worker_generation
+
+        def task(progress_callback=None, cancellation_callback=None):
+            from app_module.recommendation.personal_candidate_inventory import (
+                inspect_personal_calibration_candidate,
+                inspect_personal_source_time_binding,
+            )
+
+            def report(progress):
+                total = progress.total
+                percentage = (
+                    0
+                    if total is None or total <= 0
+                    else min(99, int(progress.completed * 100 / total))
+                )
+                progress_callback(
+                    "重驗已保存來源綁定" if verify_saved_binding else "檢查指定來源時間",
+                    percentage,
+                )
+
+            if verify_saved_binding:
+                assert saved_policy is not None
+                result = inspect_personal_calibration_candidate(
+                    candidate_root=str(candidate_root),
+                    source_database_path=source_database_path,
+                    personal_use_policy=saved_policy,
+                    **roots,
+                    progress_callback=report,
+                    cancellation_requested=cancellation_callback,
+                )
+                return {
+                    "kind": "verified",
+                    "candidate_root": str(candidate_root),
+                    "source_database_path": source_database_path,
+                    "policy_revision": saved_policy.revision,
+                    "policy_sha256": saved_policy.policy_sha256,
+                    "result": result,
+                }
+            proposal = inspect_personal_source_time_binding(
+                candidate_root=str(candidate_root),
+                source_database_path=source_database_path,
+                **roots,
+                progress_callback=report,
+                cancellation_requested=cancellation_callback,
+            )
+            return {
+                "kind": "proposal",
+                "candidate_root": str(candidate_root),
+                "source_database_path": source_database_path,
+                "result": proposal,
+            }
+
+        worker = ProgressTaskWorker(task)
+        self._personal_candidate_worker = worker
+        worker.progress.connect(self._on_personal_candidate_inventory_progress)
+        worker.finished.connect(
+            lambda result, token=generation: self._on_personal_source_time_binding_checked(
+                token, result
+            )
+        )
+        worker.error.connect(
+            lambda message, token=generation: self._on_personal_source_time_binding_error(
+                token, message
+            )
+        )
+        worker.cancelled.connect(
+            lambda token=generation: self._on_personal_source_time_binding_cancelled(
+                token
+            )
+        )
+        worker.start()
+
+    def _start_saved_personal_source_time_revalidation(
+        self,
+        *,
+        source_database_path: str,
+        candidate_root: str,
+    ) -> None:
+        from app_module.recommendation.personal_use_policy import (
+            load_personal_use_policy_snapshot,
+        )
+        from app_module.recommendation.personal_candidate_inventory import (
+            inspect_personal_calibration_candidate,
+        )
+
+        if self.personal_policy_path is None:
+            return
+        try:
+            policy = load_personal_use_policy_snapshot(self.personal_policy_path)
+            if (
+                _personal_policy_schema(policy)
+                != "recommendation-personal-use-policy.v2"
+                or getattr(policy, "mode", None)
+                != "personal_calibrated_probability"
+            ):
+                raise ValueError("讀回政策不是已保存的 V2 個人校準模式")
+            roots = self._personal_candidate_inventory_roots()
+        except Exception as exc:
+            self.personal_source_time_status_label.setText(
+                f"設定讀回後無法重驗來源：{type(exc).__name__}: {exc}"
+            )
+            return
+
+        self._personal_candidate = None
+        self._personal_source_time_verified_entry = None
+        self.personal_source_time_check_button.setEnabled(False)
+        self.personal_source_time_status_label.setText(
+            "V2 已保存；正在從已保存的政策 bytes 重新驗證來源 DB 與候選。"
+        )
+        self._personal_candidate_worker_generation += 1
+        generation = self._personal_candidate_worker_generation
+
+        def task(progress_callback=None, cancellation_callback=None):
+            def report(progress):
+                total = progress.total
+                percentage = (
+                    0
+                    if total is None or total <= 0
+                    else min(99, int(progress.completed * 100 / total))
+                )
+                progress_callback("保存後重新驗證", percentage)
+
+            entry = inspect_personal_calibration_candidate(
+                candidate_root=candidate_root,
+                source_database_path=source_database_path,
+                personal_use_policy=policy,
+                **roots,
+                progress_callback=report,
+                cancellation_requested=cancellation_callback,
+            )
+            return {
+                "kind": "verified",
+                "candidate_root": candidate_root,
+                "source_database_path": source_database_path,
+                "policy_revision": policy.revision,
+                "policy_sha256": policy.policy_sha256,
+                "result": entry,
+            }
+
+        worker = ProgressTaskWorker(task)
+        self._personal_candidate_worker = worker
+        worker.progress.connect(self._on_personal_candidate_inventory_progress)
+        worker.finished.connect(
+            lambda result, token=generation: self._on_personal_source_time_binding_checked(
+                token, result
+            )
+        )
+        worker.error.connect(
+            lambda message, token=generation: self._on_personal_source_time_binding_error(
+                token, message
+            )
+        )
+        worker.cancelled.connect(
+            lambda token=generation: self._on_personal_source_time_binding_cancelled(
+                token
+            )
+        )
+        worker.start()
+
+    def _on_personal_source_time_binding_checked(
+        self,
+        generation: int,
+        result: dict[str, Any],
+    ) -> None:
+        if generation != self._personal_candidate_worker_generation:
+            return
+        self._personal_candidate_worker = None
+        self.personal_source_time_check_button.setEnabled(True)
+        try:
+            same_candidate = (
+                Path(str(result.get("candidate_root"))).resolve(strict=True)
+                == Path(str(self.personal_candidate_combo.currentData())).resolve(
+                    strict=True
+                )
+            )
+            same_database = (
+                Path(str(result.get("source_database_path"))).resolve(strict=True)
+                == Path(self._safe_current_personal_source_database_path()).resolve(
+                    strict=True
+                )
+            )
+        except (OSError, RuntimeError, ValueError):
+            same_candidate = False
+            same_database = False
+        if not same_candidate or not same_database:
+            self._clear_personal_source_time_preview()
+            self.personal_source_time_status_label.setText(
+                "檢查期間候選或來源路徑已變更；結果已丟棄，請重新檢查。"
+            )
+            return
+        kind = result.get("kind")
+        entry = result.get("result")
+        if kind == "proposal":
+            self._personal_source_time_proposal = entry
+            self._personal_source_time_verified_entry = None
+            self._personal_candidate = None
+            self.personal_source_time_trust_checkbox.setChecked(False)
+            proposal = _dto_mapping(entry)
+            candidate = _candidate_pins(proposal.get("candidate"))
+            scope = _dto_mapping(proposal.get("replay_scope"))
+            symbols = scope.get("symbols", ())
+            dates = scope.get("decision_dates", ())
+            dataset_ids = scope.get("dataset_ids", ())
+            identity = _dto_mapping(proposal.get("file_identity"))
+
+            def display_values(value: object) -> str:
+                if not isinstance(value, (tuple, list)):
+                    return "格式無效"
+                return ",".join(str(item) for item in value)
+
+            candidate_summary = "；".join(
+                f"{key}={candidate.get(key, '未知')}"
+                for key in (
+                    "candidate_id",
+                    "candidate_root",
+                    "candidate_json_sha256",
+                    "candidate_manifest_hash",
+                    "candidate_artifact_hash",
+                    "candidate_freeze_hash",
+                    "dataset_hash",
+                )
+            )
+            scope_summary = (
+                f"datasets={display_values(dataset_ids)}；"
+                f"decision_dates={display_values(dates)}；"
+                f"symbols={display_values(symbols)}；"
+                f"samples={scope.get('sample_count', '未知')}"
+            )
+            self.personal_source_time_status_label.setText(
+                "來源時間預覽（尚未授予信任）\n"
+                f"source_database_path={proposal.get('source_database_path', '未知')}\n"
+                f"file_identity={identity.get('device', '?')}/{identity.get('inode', '?')}；"
+                f"size_bytes={proposal.get('source_database_size_bytes', '未知')}（僅診斷）\n"
+                f"source_slice_sha256={proposal.get('source_slice_sha256', '未知')}\n"
+                f"{scope_summary}\n候選 pins：{candidate_summary}\n"
+                f"basis={proposal.get('basis', '未知')}；"
+                f"research_only={proposal.get('research_only')}；"
+                f"official_historical_pit_verified="
+                f"{proposal.get('official_historical_pit_verified')}。\n"
+                "請核對指定 DB、資料範圍與候選 pins；勾選明確信任聲明後才會保存。"
+            )
+        elif kind == "verified":
+            from app_module.recommendation.personal_use_policy import (
+                load_personal_use_policy_snapshot,
+            )
+
+            current = None
+            try:
+                if self.personal_policy_path is None:
+                    raise ValueError("未設定個人政策保存路徑")
+                current = load_personal_use_policy_snapshot(self.personal_policy_path)
+                same_policy = (
+                    current.revision == result.get("policy_revision")
+                    and current.policy_sha256 == result.get("policy_sha256")
+                )
+            except Exception:
+                same_policy = False
+            candidate = getattr(entry, "candidate", None)
+            trust = (
+                _personal_source_time_trust(current)
+                if current is not None
+                else None
+            )
+            candidate_root_matches = False
+            trust_path_matches = False
+            if candidate is not None:
+                try:
+                    candidate_root_matches = (
+                        Path(candidate.candidate_root).resolve(strict=True)
+                        == Path(str(result.get("candidate_root"))).resolve(strict=True)
+                    )
+                    trust_path_matches = (
+                        trust is not None
+                        and type(trust.get("source_database_path")) is str
+                        and Path(str(trust.get("source_database_path"))).resolve(
+                            strict=True
+                        )
+                        == Path(str(result.get("source_database_path"))).resolve(
+                            strict=True
+                        )
+                    )
+                except (AttributeError, OSError, RuntimeError, ValueError):
+                    candidate_root_matches = False
+                    trust_path_matches = False
+            valid_entry = (
+                same_policy
+                and current is not None
+                and _personal_policy_schema(current)
+                == "recommendation-personal-use-policy.v2"
+                and getattr(current, "mode", None)
+                == "personal_calibrated_probability"
+                and getattr(entry, "status", None)
+                == "metadata_pinned_pending_runtime_validation"
+                and candidate is not None
+                and _candidate_pins(candidate)
+                == _candidate_pins(getattr(current, "candidate", None))
+                and trust is not None
+                and _candidate_pins(trust.get("candidate"))
+                == _candidate_pins(candidate)
+                and trust.get("basis") == _PERSONAL_SOURCE_TIME_BASIS
+                and trust.get("research_only") is True
+                and trust.get("official_historical_pit_verified") is False
+                and trust_path_matches
+                and _candidate_entry_has_source_time_binding(entry)
+                and candidate_root_matches
+            )
+            if valid_entry:
+                self._personal_source_time_proposal = None
+                self._personal_source_time_verified_entry = entry
+                self._personal_source_time_verified_policy_identity = (
+                    int(result.get("policy_revision")),
+                    str(result.get("policy_sha256")),
+                )
+                self._personal_candidate_entry = entry
+                self._personal_candidate = candidate
+                self.personal_source_time_trust_checkbox.setChecked(False)
+                self.personal_source_time_status_label.setText(
+                    f"已從政策 revision {result.get('policy_revision')} 與指定 SQLite 重新驗證候選。"
+                    "此為個人研究來源，不是官方歷史 PIT；執行時 consumer 仍會再次驗證。"
+                )
+            else:
+                self._personal_source_time_proposal = None
+                self._personal_source_time_verified_entry = entry
+                self._personal_source_time_verified_policy_identity = None
+                self._personal_candidate_entry = entry
+                self._personal_candidate = None
+                self.personal_source_time_status_label.setText(
+                    "已保存的來源綁定或政策 revision 無法重新驗證；個人校準未啟用。"
+                    f"狀態：{getattr(entry, 'status', 'unknown')}／"
+                    f"{getattr(entry, 'reason_code', 'source_time_binding_mismatch')}。"
+                )
+        else:
+            self.personal_source_time_status_label.setText(
+                "來源檢查回傳未知結果；沒有啟用個人校準。"
+            )
+        self._sync_personal_policy_controls()
+
+    def _safe_current_personal_source_database_path(self) -> str:
+        try:
+            return self._selected_personal_source_database_path()
+        except Exception:
+            return ""
+
+    def _on_personal_source_time_binding_error(
+        self,
+        generation: int,
+        message: str,
+    ) -> None:
+        if generation != self._personal_candidate_worker_generation:
+            return
+        self._personal_candidate_worker = None
+        self.personal_source_time_check_button.setEnabled(True)
+        self._clear_personal_source_time_preview()
+        self.personal_source_time_status_label.setText(
+            "指定來源檢查失敗；沒有授予信任或啟用候選。"
+            f" ({message.splitlines()[0] if message else '未知錯誤'})"
+        )
+
+    def _on_personal_source_time_binding_cancelled(self, generation: int) -> None:
+        if generation != self._personal_candidate_worker_generation:
+            return
+        self._personal_candidate_worker = None
+        self.personal_source_time_check_button.setEnabled(True)
+        self._clear_personal_source_time_preview()
+        self.personal_source_time_status_label.setText(
+            "來源檢查已取消；未完成結果不會用於個人設定。"
+        )
+
+    def _complete_personal_policy_one_shot(self) -> None:
+        if not self._personal_policy_one_shot_rule_confirmed:
+            return
+        self._personal_policy_one_shot_rule_confirmed = False
+        self._sync_personal_policy_controls()
+
+    def _refresh_personal_policy_history(self) -> None:
+        """在背景讀取已知封存 revisions；UI 不解析政策 JSON。"""
+
+        combo = getattr(self, "personal_policy_history_combo", None)
+        status = getattr(self, "personal_policy_history_status_label", None)
+        refresh = getattr(self, "personal_policy_history_refresh_button", None)
+        rollback = getattr(self, "personal_policy_rollback_button", None)
+        if combo is None or status is None or refresh is None or rollback is None:
+            return
+        path = self.personal_policy_path
+        if path is None:
+            combo.clear()
+            combo.setEnabled(False)
+            refresh.setEnabled(False)
+            rollback.setEnabled(False)
+            status.setText("尚未注入本機政策路徑，無法讀取歷史版本。")
+            return
+
+        current_worker = self._personal_policy_history_worker
+        if current_worker is not None and current_worker.isRunning():
+            current_worker.cancel(cooperative=True, wait=False)
+            status.setText("正在取消歷史版本讀取；請稍後重新整理。")
+            return
+
+        from app_module.recommendation.personal_use_policy import (
+            load_personal_use_policy_snapshot,
+        )
+
+        try:
+            current = load_personal_use_policy_snapshot(path) if path.exists() else None
+        except Exception as exc:
+            combo.clear()
+            combo.setEnabled(False)
+            rollback.setEnabled(False)
+            status.setText(
+                "目前政策無法驗證，因此不會提供回退操作。"
+                f" ({type(exc).__name__}: {exc})"
+            )
+            refresh.setEnabled(True)
+            return
+        current_revision = current.revision if current is not None else 0
+        if current is not None:
+            self._personal_use_policy = current
+        elif not path.exists():
+            from app_module.recommendation.personal_use_policy import (
+                RecommendationPersonalUsePolicyV1,
+            )
+
+            self._personal_use_policy = RecommendationPersonalUsePolicyV1.default_rule_only(
+                "technical_analysis_local"
+            )
+        self._personal_policy_history_generation += 1
+        generation = self._personal_policy_history_generation
+        combo.clear()
+        combo.setEnabled(False)
+        rollback.setEnabled(False)
+        refresh.setEnabled(True)
+        refresh.setText("取消歷史讀取")
+        status.setText("正在安全檢查已封存政策版本…")
+
+        def scan_task(cancellation_callback=None):
+            return _load_personal_policy_history(
+                path,
+                current_revision=current_revision,
+                cancel_callback=cancellation_callback,
+            )
+
+        worker = TaskWorker(scan_task)
+        self._personal_policy_history_worker = worker
+        worker.finished.connect(
+            lambda result, token=generation: self._on_personal_policy_history_loaded(
+                token, result
+            )
+        )
+        worker.error.connect(
+            lambda message, token=generation: self._on_personal_policy_history_error(
+                token, message
+            )
+        )
+        worker.cancelled.connect(
+            lambda token=generation: self._on_personal_policy_history_cancelled(token)
+        )
+        worker.start()
+
+    def _on_personal_policy_history_loaded(
+        self,
+        generation: int,
+        result: dict[str, Any],
+    ) -> None:
+        if generation != self._personal_policy_history_generation:
+            return
+        self._personal_policy_history_worker = None
+        self._personal_policy_history_snapshot = result
+        combo = self.personal_policy_history_combo
+        combo.blockSignals(True)
+        combo.clear()
+        for policy in result.get("policies", ()):
+            mode_label = (
+                "規則模式"
+                if policy.mode == "rule_only"
+                else "個人校準機率"
+            )
+            candidate = getattr(policy, "candidate", None)
+            candidate_id = _candidate_pins(candidate).get("candidate_id", "無候選")
+            label = (
+                f"版本 {policy.revision}｜確認 {policy.confirmed_at or '時間未知'}｜"
+                f"{mode_label}｜候選 {candidate_id}"
+            )
+            combo.addItem(label, policy)
+        combo.blockSignals(False)
+        combo.setEnabled(combo.count() > 0)
+        self.personal_policy_history_refresh_button.setText("重新整理歷史版本")
+        issues = tuple(result.get("issues", ()))
+        pieces = [
+            f"檢查 {result.get('scanned_entries', 0)} 個封存項目，"
+            f"驗證 {combo.count()} 個較早版本。"
+        ]
+        if result.get("truncated"):
+            pieces.append(
+                "清冊達到 200 項或 100 版本上限，顯示結果可能不完整；請先整理封存資料後重試。"
+            )
+        if issues:
+            pieces.append("有封存項目無法確認：" + "；".join(issues[:4]))
+            if len(issues) > 4:
+                pieces.append(f"另有 {len(issues) - 4} 項未列出。")
+        if combo.count() == 0 and not issues and not result.get("truncated"):
+            pieces.append("目前沒有可驗證的較早版本。")
+        self.personal_policy_history_status_label.setText(" ".join(pieces))
+        self.personal_policy_rollback_button.setEnabled(combo.count() > 0)
+
+    def _on_personal_policy_history_error(
+        self,
+        generation: int,
+        message: str,
+    ) -> None:
+        if generation != self._personal_policy_history_generation:
+            return
+        self._personal_policy_history_worker = None
+        self.personal_policy_history_refresh_button.setText("重新整理歷史版本")
+        self.personal_policy_history_combo.clear()
+        self.personal_policy_history_combo.setEnabled(False)
+        self.personal_policy_rollback_button.setEnabled(False)
+        self.personal_policy_history_status_label.setText(
+            "歷史版本讀取失敗，沒有使用部分結果。請檢查封存目錄後重試。"
+            f" ({message.splitlines()[0] if message else '未知錯誤'})"
+        )
+
+    def _on_personal_policy_history_cancelled(self, generation: int) -> None:
+        if generation != self._personal_policy_history_generation:
+            return
+        self._personal_policy_history_worker = None
+        self.personal_policy_history_refresh_button.setText("重新整理歷史版本")
+        self.personal_policy_history_status_label.setText(
+            "歷史版本讀取已取消；未完成的清冊不會用於回退。"
+        )
+
+    def _rollback_to_selected_personal_policy(self) -> None:
+        from app_module.recommendation.personal_use_policy import (
+            PersonalUsePolicyConflict,
+            load_personal_use_policy_snapshot,
+            rollback_personal_use_policy,
+            rollback_personal_use_policy_v2,
+        )
+
+        path = self.personal_policy_path
+        target = self.personal_policy_history_combo.currentData()
+        if path is None or target is None:
+            return
+        try:
+            current = load_personal_use_policy_snapshot(path)
+        except Exception as exc:
+            self._load_personal_policy_for_display()
+            self._sync_personal_policy_controls()
+            self._refresh_personal_policy_history()
+            QMessageBox.warning(
+                self,
+                "目前設定無法驗證",
+                f"未執行回退，原設定沒有被覆寫。請先修復或備份設定檔。\n{exc}",
+            )
+            return
+        cached = self._personal_use_policy
+        if (
+            cached is not None
+            and (
+                current.revision != cached.revision
+                or current.policy_sha256 != cached.policy_sha256
+            )
+        ):
+            self._personal_use_policy = current
+            self._personal_policy_load_error = ""
+            self._sync_personal_policy_controls()
+            self._refresh_personal_policy_history()
+            QMessageBox.information(
+                self,
+                "設定版本已更新",
+                "本機設定已由其他操作更新；已重新讀取目前版本，請重新選擇並確認歷史版本。",
+            )
+            return
+        if target.revision >= current.revision:
+            self._refresh_personal_policy_history()
+            QMessageBox.information(
+                self,
+                "歷史版本已過期",
+                "所選版本不再早於目前版本；清冊已重新整理，請重新選擇。",
+            )
+            return
+        target_schema = _personal_policy_schema(target)
+        source_time_proposal = self._personal_source_time_proposal
+        if (
+            target_schema == "recommendation-personal-use-policy.v2"
+            and target.mode == "personal_calibrated_probability"
+        ):
+            target_trust = _personal_source_time_trust(target)
+            if (
+                target_trust is None
+                or source_time_proposal is None
+                or not _personal_source_proposal_matches_trust(
+                    source_time_proposal,
+                    target_trust,
+                )
+            ):
+                self.personal_policy_history_status_label.setText(
+                    "V2 回退需要先選取該封存候選，輸入來源 SQLite，重新檢查並取得新鮮來源預覽；"
+                    "歷史 trust 本身不能直接啟用。"
+                )
+                return
+        mode_label = "規則模式" if target.mode == "rule_only" else "個人校準機率"
+        candidate = getattr(target, "candidate", None)
+        candidate_pins = _candidate_pins(candidate)
+        candidate_note = (
+            f"候選：{candidate_pins.get('candidate_id', '未知')}"
+            if candidate is not None
+            else "不使用校準候選"
+        )
+        answer = QMessageBox.question(
+            self,
+            "確認回退個人模式",
+            f"將版本 {target.revision}（{target.confirmed_at}，{mode_label}，{candidate_note}）"
+            "的選擇保存為新的政策版本。這不會回寫舊推薦，也不會改變全域模型指標。\n\n要繼續嗎？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if target_schema == "recommendation-personal-use-policy.v2":
+                policy = rollback_personal_use_policy_v2(
+                    path,
+                    target_revision=target.revision,
+                    target_policy_sha256=target.policy_sha256,
+                    expected_revision=current.revision,
+                    source_time_binding=(
+                        source_time_proposal
+                        if target.mode == "personal_calibrated_probability"
+                        else None
+                    ),
+                )
+            else:
+                policy = rollback_personal_use_policy(
+                    path,
+                    target_revision=target.revision,
+                    target_policy_sha256=target.policy_sha256,
+                    expected_revision=current.revision,
+                )
+        except PersonalUsePolicyConflict as exc:
+            try:
+                self._personal_use_policy = load_personal_use_policy_snapshot(path)
+                self._personal_policy_load_error = ""
+                self._sync_personal_policy_controls()
+            except Exception:
+                self._load_personal_policy_for_display()
+                self._sync_personal_policy_controls()
+            self._refresh_personal_policy_history()
+            QMessageBox.information(
+                self,
+                "設定版本已變更",
+                "回退期間設定版本已更新，沒有套用舊選擇。已重新讀取目前政策；"
+                f"請重新整理並確認。\n{exc}",
+            )
+            return
+        except Exception as exc:
+            self.personal_policy_history_status_label.setText(
+                f"回退未完成，請檢查封存版本並重新整理。 ({type(exc).__name__}: {exc})"
+            )
+            return
+        self._personal_use_policy = policy
+        self._personal_policy_load_error = ""
+        self._personal_candidate = None
+        self._personal_source_time_verified_entry = None
+        self._personal_source_time_proposal = None
+        self.personal_source_time_trust_checkbox.setChecked(False)
+        trust = _personal_source_time_trust(policy)
+        trusted_source_path = (
+            trust.get("source_database_path") if trust is not None else None
+        )
+        self._personal_source_database_saved_path = (
+            trusted_source_path
+            if type(trusted_source_path) is str
+            and Path(trusted_source_path).is_absolute()
+            else ""
+        )
+        self.personal_source_database_input.setText(
+            self._personal_source_database_saved_path
+        )
+        mode_index = self.personal_policy_mode_combo.findData(policy.mode)
+        if mode_index >= 0:
+            model_index = self.personal_policy_mode_combo.findData(
+                "personal_calibrated_probability"
+            )
+            model_item = self.personal_policy_mode_combo.model().item(model_index)
+            if model_item is not None and policy.mode == "personal_calibrated_probability":
+                model_item.setEnabled(True)
+            self.personal_policy_mode_combo.blockSignals(True)
+            self.personal_policy_mode_combo.setCurrentIndex(mode_index)
+            self.personal_policy_mode_combo.blockSignals(False)
+        self._sync_personal_policy_controls()
+        self.personal_policy_status_label.setText(
+            f"已將舊版本選擇保存為新版本 {policy.revision}；"
+            "舊版本保留不動，僅影響之後啟動的推薦分析。"
+        )
+        if (
+            target_schema == "recommendation-personal-use-policy.v2"
+            and getattr(policy, "mode", None) == "personal_calibrated_probability"
+        ):
+            source_database_path = str(
+                getattr(source_time_proposal, "source_database_path")
+            )
+            candidate = getattr(policy, "candidate", None)
+            if candidate is not None:
+                self._personal_source_database_saved_path = source_database_path
+                self.personal_source_database_input.setText(source_database_path)
+                self._start_saved_personal_source_time_revalidation(
+                    source_database_path=source_database_path,
+                    candidate_root=candidate.candidate_root,
+                )
+        self._refresh_personal_policy_history()
+
+    def _personal_candidate_inventory_roots(self) -> dict[str, str | None]:
+        if self.config is None:
+            raise RuntimeError("候選清冊需要明示的資料與輸出 root")
+        return {
+            "data_root": str(self.config.data_root),
+            # Recommendation learning has its own shadow-root resolver. The
+            # product OUTPUT_ROOT is deliberately not an inventory override.
+            "explicit_output_root": None,
+        }
+
+    def _load_personal_candidate_inventory(self) -> None:
+        worker = self._personal_candidate_worker
+        if worker is not None and worker.isRunning():
+            worker.cancel(cooperative=True, wait=False)
+            self.personal_candidate_status_label.setText(
+                "正在取消候選清冊讀取；未完成的摘要不會用於設定。"
+            )
+            return
+        try:
+            from app_module.recommendation.personal_candidate_inventory import (
+                list_personal_calibration_candidates,
+            )
+
+            roots = self._personal_candidate_inventory_roots()
+        except Exception as exc:
+            self.personal_candidate_status_label.setText(
+                f"候選清冊目前不可用：{type(exc).__name__}: {exc}"
+            )
+            return
+
+        self._personal_candidate = None
+        self._personal_candidate_entry = None
+        self._sync_personal_policy_controls()
+        self.personal_candidate_combo.clear()
+        self.personal_candidate_combo.setEnabled(False)
+        self.personal_candidate_refresh_button.setText("取消清冊讀取")
+        self.personal_candidate_refresh_button.setEnabled(True)
+        self.personal_candidate_status_label.setText("正在唯讀掃描候選摘要…")
+        self._personal_candidate_worker_generation += 1
+        generation = self._personal_candidate_worker_generation
+
+        def inventory_task(progress_callback=None, cancellation_callback=None):
+            def report(progress):
+                total = progress.total
+                percentage = (
+                    0
+                    if total is None or total <= 0
+                    else min(99, int(progress.completed * 100 / total))
+                )
+                stage_labels = {
+                    "list_run_root": "掃描候選訓練批次",
+                    "read_candidate_summary": "讀取候選摘要",
+                }
+                label = stage_labels.get(progress.stage, "讀取候選清冊")
+                progress_callback(label, percentage)
+
+            return list_personal_calibration_candidates(
+                **roots,
+                progress_callback=report,
+                cancellation_requested=cancellation_callback,
+            )
+
+        worker = ProgressTaskWorker(inventory_task)
+        self._personal_candidate_worker = worker
+        worker.progress.connect(self._on_personal_candidate_inventory_progress)
+        worker.finished.connect(
+            lambda snapshot, token=generation: self._on_personal_candidate_inventory_loaded(
+                token, snapshot
+            )
+        )
+        worker.error.connect(
+            lambda message, token=generation: self._on_personal_candidate_inventory_error(
+                token, message
+            )
+        )
+        worker.cancelled.connect(
+            lambda token=generation: self._on_personal_candidate_inventory_cancelled(
+                token
+            )
+        )
+        worker.start()
+
+    def _on_personal_candidate_inventory_progress(
+        self,
+        message: str,
+        percentage: int,
+    ) -> None:
+        label = getattr(self, "personal_candidate_status_label", None)
+        if label is not None:
+            label.setText(f"{message}… {percentage}%")
+
+    def _on_personal_candidate_inventory_loaded(self, generation: int, snapshot) -> None:
+        if generation != self._personal_candidate_worker_generation:
+            return
+        self._personal_candidate_worker = None
+        self._personal_candidate_snapshot = snapshot
+        combo = self.personal_candidate_combo
+        combo.blockSignals(True)
+        combo.clear()
+        for entry in snapshot.entries:
+            label = entry.display_label or entry.candidate_id or Path(entry.candidate_root).name
+            combo.addItem(
+                f"{label}｜{entry.status}｜{entry.reason_code}",
+                entry.candidate_root,
+            )
+            combo.setItemData(
+                combo.count() - 1,
+                entry.next_step,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        # QComboBox 會在第一個 addItem 後自動選中 index 0。先清除這個
+        # 隱含選取，讓單一候選也能由使用者明確選取並觸發完整 inspect。
+        combo.setCurrentIndex(-1)
+        combo.blockSignals(False)
+        self.personal_candidate_refresh_button.setText("重新整理候選清冊")
+        combo.setEnabled(bool(snapshot.entries))
+
+        selected_index = -1
+        saved_candidate = getattr(self._personal_use_policy, "candidate", None)
+        if saved_candidate is not None:
+            for index in range(combo.count()):
+                root = combo.itemData(index)
+                if root and Path(str(root)).resolve() == Path(saved_candidate.candidate_root).resolve():
+                    selected_index = index
+                    break
+        if selected_index >= 0:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(selected_index)
+            combo.blockSignals(False)
+            self._inspect_selected_personal_candidate()
+            return
+
+        summary = snapshot.next_step
+        if not snapshot.entries:
+            summary = f"候選清冊目前沒有可列出的候選。{summary}"
+        if snapshot.warnings:
+            summary = f"候選清冊警示：{'、'.join(snapshot.warnings)}。{summary}"
+        if snapshot.entries:
+            summary = (
+                f"唯讀清冊讀回 {snapshot.candidates_scanned} 個摘要；選取一項後才會完整檢查 pins。"
+                + (f" {summary}" if summary else "")
+            )
+        self.personal_candidate_status_label.setText(summary)
+
+    def _on_personal_candidate_inventory_error(self, generation: int, message: str) -> None:
+        if generation != self._personal_candidate_worker_generation:
+            return
+        self._personal_candidate_worker = None
+        self.personal_candidate_combo.setEnabled(
+            self.personal_candidate_combo.count() > 0
+        )
+        self.personal_candidate_refresh_button.setText("重新整理候選清冊")
+        self.personal_candidate_status_label.setText(
+            "候選清冊讀取失敗；沒有使用部分結果。請檢查學習資料目錄後重試。"
+            f" ({message.splitlines()[0] if message else '未知錯誤'})"
+        )
+
+    def _on_personal_candidate_inventory_cancelled(self, generation: int) -> None:
+        if generation != self._personal_candidate_worker_generation:
+            return
+        self._personal_candidate_worker = None
+        self.personal_candidate_combo.setEnabled(
+            self.personal_candidate_combo.count() > 0
+        )
+        self.personal_candidate_refresh_button.setText("重新整理候選清冊")
+        self.personal_candidate_status_label.setText(
+            "候選清冊讀取已取消；請完整重讀後再選取候選。"
+        )
+
+    def _inspect_selected_personal_candidate(self) -> None:
+        root = self.personal_candidate_combo.currentData()
+        if (
+            self._personal_source_time_proposal is not None
+            or self._personal_source_time_verified_entry is not None
+            or self._personal_source_time_verified_policy_identity is not None
+        ):
+            self._clear_personal_source_time_preview()
+        if not root:
+            self._personal_candidate = None
+            self._personal_candidate_entry = None
+            self._sync_personal_policy_controls()
+            return
+        worker = self._personal_candidate_worker
+        if worker is not None and worker.isRunning():
+            worker.cancel(cooperative=True, wait=False)
+            return
+        try:
+            from app_module.recommendation.personal_candidate_inventory import (
+                inspect_personal_calibration_candidate,
+            )
+
+            roots = self._personal_candidate_inventory_roots()
+        except Exception as exc:
+            self.personal_candidate_status_label.setText(
+                f"無法檢查所選候選：{type(exc).__name__}: {exc}"
+            )
+            return
+
+        self._personal_candidate = None
+        self._personal_candidate_entry = None
+        self._sync_personal_policy_controls()
+        self.personal_candidate_refresh_button.setText("取消候選檢查")
+        self.personal_candidate_combo.setEnabled(False)
+        self.personal_candidate_status_label.setText(
+            "正在完整讀取候選 metadata、artifact hash 與 training lineage；不載入模型。"
+        )
+        self._personal_candidate_worker_generation += 1
+        generation = self._personal_candidate_worker_generation
+
+        def inspect_task(progress_callback=None, cancellation_callback=None):
+            def report(progress):
+                total = progress.total
+                percentage = (
+                    0
+                    if total is None or total <= 0
+                    else min(99, int(progress.completed * 100 / total))
+                )
+                stage_labels = {
+                    "hash_artifact": "計算候選 artifact hash",
+                    "validate_training_lineage": "驗證訓練 lineage",
+                }
+                progress_callback(
+                    stage_labels.get(progress.stage, "檢查候選 identity"),
+                    percentage,
+                )
+
+            return inspect_personal_calibration_candidate(
+                candidate_root=str(root),
+                **roots,
+                progress_callback=report,
+                cancellation_requested=cancellation_callback,
+            )
+
+        worker = ProgressTaskWorker(inspect_task)
+        self._personal_candidate_worker = worker
+        worker.progress.connect(self._on_personal_candidate_inventory_progress)
+        worker.finished.connect(
+            lambda entry, token=generation: self._on_personal_candidate_inspected(
+                token, entry
+            )
+        )
+        worker.error.connect(
+            lambda message, token=generation: self._on_personal_candidate_inventory_error(
+                token, message
+            )
+        )
+        worker.cancelled.connect(
+            lambda token=generation: self._on_personal_candidate_inventory_cancelled(
+                token
+            )
+        )
+        worker.start()
+
+    def _on_personal_candidate_inspected(self, generation: int, entry) -> None:
+        if generation != self._personal_candidate_worker_generation:
+            return
+        self._personal_candidate_worker = None
+        self.personal_candidate_combo.setEnabled(
+            self.personal_candidate_combo.count() > 0
+        )
+        self._personal_candidate_entry = entry
+        candidate = getattr(entry, "candidate", None)
+        if (
+            entry.status == "metadata_pinned_pending_runtime_validation"
+            and candidate is not None
+            and _candidate_entry_has_source_time_binding(entry)
+            and Path(candidate.candidate_root).resolve()
+            == Path(str(self.personal_candidate_combo.currentData())).resolve()
+        ):
+            self._personal_candidate = candidate
+            message = (
+                f"候選 {candidate.candidate_id} 的 metadata pins 已讀回；"
+                "consumer 仍會在推論時重新驗證，這不代表模型已載入或適合所有股票。"
+                f" {entry.next_step}"
+            )
+        else:
+            self._personal_candidate = None
+            message = (
+                f"候選不可用：{entry.status}／{entry.reason_code}。{entry.next_step}"
+            )
+        self.personal_candidate_refresh_button.setText("重新整理候選清冊")
+        self.personal_candidate_status_label.setText(message)
+        self._sync_personal_policy_controls()
 
     def _create_profile_service(
         self,
@@ -1131,6 +2935,26 @@ class RecommendationView(QWidget):
         self.research_context_label.setVisible(False)
         layout.addWidget(self.research_context_label)
 
+        saved_result_row = QHBoxLayout()
+        saved_result_row.addWidget(QLabel("讀取已保存結果"))
+        self.saved_result_id_input = QLineEdit()
+        self.saved_result_id_input.setObjectName("savedRecommendationResultId")
+        self.saved_result_id_input.setPlaceholderText("輸入完整結果 ID；只讀取這一筆")
+        self.saved_result_id_input.setAccessibleName("讀取單筆已保存推薦結果 ID")
+        self.saved_result_id_input.setClearButtonEnabled(True)
+        saved_result_row.addWidget(self.saved_result_id_input, 1)
+        self.load_saved_result_button = QPushButton("讀取")
+        self.load_saved_result_button.setObjectName("loadSavedRecommendationResult")
+        self.load_saved_result_button.setToolTip(
+            "以完整結果 ID 背景讀取一筆已保存的 canonical 結果；不列出全部歷史、不重新執行推薦。"
+        )
+        self.load_saved_result_button.setEnabled(self.config is not None)
+        self.load_saved_result_button.clicked.connect(
+            self._load_saved_recommendation_result
+        )
+        saved_result_row.addWidget(self.load_saved_result_button)
+        layout.addLayout(saved_result_row)
+
         # 標題和控制欄
         title_layout = QHBoxLayout()
         self.result_title_layout = title_layout
@@ -1219,6 +3043,222 @@ class RecommendationView(QWidget):
         )
         layout.addWidget(self.result_status_label)
 
+        personal_capture_row = QHBoxLayout()
+        self.personal_prediction_capture_status_label = QLabel(
+            "個人模型擷取：保存並驗證推薦結果後，依當次模式判斷是否建立。"
+        )
+        self.personal_prediction_capture_status_label.setObjectName(
+            "personalPredictionCaptureStatus"
+        )
+        self.personal_prediction_capture_status_label.setWordWrap(True)
+        self.personal_prediction_capture_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.personal_prediction_capture_status_label.setAccessibleName(
+            "個人模型擷取狀態"
+        )
+        personal_capture_row.addWidget(
+            self.personal_prediction_capture_status_label, 1
+        )
+        self.personal_prediction_capture_retry_button = QPushButton(
+            "建立／重試個人模型擷取"
+        )
+        self.personal_prediction_capture_retry_button.setObjectName(
+            "personalPredictionCaptureRetry"
+        )
+        self.personal_prediction_capture_retry_button.setToolTip(
+            "只使用目前已保存並驗證的結果；不重新執行推薦或套用今日模式。"
+        )
+        self.personal_prediction_capture_retry_button.setEnabled(False)
+        self.personal_prediction_capture_retry_button.clicked.connect(
+            self._retry_personal_prediction_capture
+        )
+        personal_capture_row.addWidget(
+            self.personal_prediction_capture_retry_button
+        )
+        layout.addLayout(personal_capture_row)
+
+        personal_policy_group = QGroupBox("個人推薦模式")
+        personal_policy_group.setObjectName("personalRecommendationPolicyControls")
+        personal_policy_layout = QVBoxLayout(personal_policy_group)
+        personal_policy_layout.setContentsMargins(8, 6, 8, 6)
+        personal_policy_row = QHBoxLayout()
+        self.personal_policy_mode_combo = QComboBox()
+        self.personal_policy_mode_combo.setObjectName("personalRecommendationMode")
+        self.personal_policy_mode_combo.addItem("規則排序（個人紀錄）", "rule_only")
+        self.personal_policy_mode_combo.addItem(
+            "個人校準機率（需選擇已驗證候選）",
+            "personal_calibrated_probability",
+        )
+        initial_mode_index = self.personal_policy_mode_combo.findData(
+            getattr(self._personal_use_policy, "mode", "rule_only")
+        )
+        if initial_mode_index >= 0:
+            self.personal_policy_mode_combo.setCurrentIndex(initial_mode_index)
+        # 候選只由 app-level bounded inventory 提供；UI 不解析候選 JSON。
+        model_item = self.personal_policy_mode_combo.model().item(1)
+        if model_item is not None:
+            model_item.setEnabled(
+                getattr(self._personal_use_policy, "mode", "")
+                == "personal_calibrated_probability"
+            )
+        personal_policy_row.addWidget(self.personal_policy_mode_combo)
+        self.personal_policy_confirm_button = QPushButton("確認並保存設定")
+        self.personal_policy_confirm_button.setObjectName("personalRecommendationPolicyConfirm")
+        self.personal_policy_confirm_button.clicked.connect(
+            self._confirm_personal_use_policy
+        )
+        personal_policy_row.addWidget(self.personal_policy_confirm_button)
+        self.personal_policy_one_shot_button = QPushButton("本次以規則模式執行")
+        self.personal_policy_one_shot_button.setObjectName(
+            "personalRecommendationOneShotRuleOnly"
+        )
+        self.personal_policy_one_shot_button.clicked.connect(
+            self._confirm_rule_only_for_next_run
+        )
+        self.personal_policy_one_shot_button.setVisible(False)
+        personal_policy_row.addWidget(self.personal_policy_one_shot_button)
+        personal_policy_layout.addLayout(personal_policy_row)
+        self.personal_policy_status_label = QLabel("")
+        self.personal_policy_status_label.setObjectName("personalRecommendationPolicyStatus")
+        self.personal_policy_status_label.setWordWrap(True)
+        self.personal_policy_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.personal_policy_mode_combo.currentIndexChanged.connect(
+            lambda *_args: self._sync_personal_policy_controls()
+        )
+        personal_policy_layout.addWidget(self.personal_policy_status_label)
+        self._sync_personal_policy_controls()
+
+        history_row = QHBoxLayout()
+        history_row.addWidget(QLabel("已保存版本"))
+        self.personal_policy_history_combo = QComboBox()
+        self.personal_policy_history_combo.setObjectName(
+            "personalRecommendationPolicyHistory"
+        )
+        self.personal_policy_history_combo.setEnabled(False)
+        history_row.addWidget(self.personal_policy_history_combo, 1)
+        self.personal_policy_history_refresh_button = QPushButton("讀取歷史版本")
+        self.personal_policy_history_refresh_button.setObjectName(
+            "personalRecommendationPolicyHistoryRefresh"
+        )
+        self.personal_policy_history_refresh_button.setEnabled(
+            self.personal_policy_path is not None
+        )
+        self.personal_policy_history_refresh_button.clicked.connect(
+            self._refresh_personal_policy_history
+        )
+        history_row.addWidget(self.personal_policy_history_refresh_button)
+        self.personal_policy_rollback_button = QPushButton("回退到所選版本")
+        self.personal_policy_rollback_button.setObjectName(
+            "personalRecommendationPolicyRollback"
+        )
+        self.personal_policy_rollback_button.setEnabled(False)
+        self.personal_policy_rollback_button.clicked.connect(
+            self._rollback_to_selected_personal_policy
+        )
+        history_row.addWidget(self.personal_policy_rollback_button)
+        personal_policy_layout.addLayout(history_row)
+        self.personal_policy_history_status_label = QLabel(
+            "歷史設定只會由已知封存目錄逐筆驗證；回退會建立新版本。"
+        )
+        self.personal_policy_history_status_label.setObjectName(
+            "personalRecommendationPolicyHistoryStatus"
+        )
+        self.personal_policy_history_status_label.setWordWrap(True)
+        self.personal_policy_history_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        personal_policy_layout.addWidget(self.personal_policy_history_status_label)
+
+        source_path_row = QHBoxLayout()
+        source_path_row.addWidget(QLabel("個人研究來源 SQLite（明確選擇）"))
+        self.personal_source_database_input = QLineEdit(
+            self._personal_source_database_saved_path
+        )
+        self.personal_source_database_input.setObjectName(
+            "personalRecommendationSourceDatabasePath"
+        )
+        self.personal_source_database_input.setPlaceholderText(
+            "輸入或選擇 SQLite 絕對路徑；不會從 DATA_ROOT 自動推定同意"
+        )
+        self.personal_source_database_input.setClearButtonEnabled(True)
+        source_path_row.addWidget(self.personal_source_database_input, 1)
+        self.personal_source_database_browse_button = QPushButton("選擇 DB…")
+        self.personal_source_database_browse_button.setObjectName(
+            "personalRecommendationSourceDatabaseBrowse"
+        )
+        self.personal_source_database_browse_button.clicked.connect(
+            self._browse_personal_source_database
+        )
+        source_path_row.addWidget(self.personal_source_database_browse_button)
+        personal_policy_layout.addLayout(source_path_row)
+        self.personal_source_time_check_button = QPushButton("檢查指定來源與候選")
+        self.personal_source_time_check_button.setObjectName(
+            "personalRecommendationSourceTimeCheck"
+        )
+        self.personal_source_time_check_button.clicked.connect(
+            self._inspect_personal_source_time_binding
+        )
+        personal_policy_layout.addWidget(self.personal_source_time_check_button)
+        self.personal_source_time_trust_checkbox = QCheckBox(
+            "我明確信任以上指定 SQLite 的資料時間來源，僅供個人研究，不代表官方歷史 PIT。"
+        )
+        self.personal_source_time_trust_checkbox.setObjectName(
+            "personalRecommendationSourceTimeTrust"
+        )
+        self.personal_source_time_trust_checkbox.setEnabled(False)
+        self.personal_source_time_trust_checkbox.toggled.connect(
+            lambda *_args: self._sync_personal_policy_controls()
+        )
+        personal_policy_layout.addWidget(self.personal_source_time_trust_checkbox)
+        self.personal_source_time_status_label = QLabel(
+            "預設不信任任何資料庫來源，個人校準保持停用；請明確檢查來源後再另行確認。"
+        )
+        self.personal_source_time_status_label.setObjectName(
+            "personalRecommendationSourceTimeStatus"
+        )
+        self.personal_source_time_status_label.setWordWrap(True)
+        self.personal_source_time_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        personal_policy_layout.addWidget(self.personal_source_time_status_label)
+        self.personal_source_database_input.textChanged.connect(
+            self._clear_personal_source_time_preview
+        )
+
+        self.personal_candidate_combo = QComboBox()
+        self.personal_candidate_combo.setObjectName("personalRecommendationCandidate")
+        self.personal_candidate_combo.setEnabled(False)
+        self.personal_candidate_combo.currentIndexChanged.connect(
+            self._inspect_selected_personal_candidate
+        )
+        candidate_row = QHBoxLayout()
+        candidate_row.addWidget(QLabel("校準候選"))
+        candidate_row.addWidget(self.personal_candidate_combo, 1)
+        self.personal_candidate_refresh_button = QPushButton("讀取候選清冊")
+        self.personal_candidate_refresh_button.setObjectName(
+            "personalRecommendationCandidateRefresh"
+        )
+        self.personal_candidate_refresh_button.clicked.connect(
+            self._load_personal_candidate_inventory
+        )
+        candidate_row.addWidget(self.personal_candidate_refresh_button)
+        personal_policy_layout.addLayout(candidate_row)
+        self.personal_candidate_status_label = QLabel(
+            "候選只會從明示資料/輸出 root 的唯讀清冊載入。"
+            "選取後會重算 artifact/lineage pins；不會反序列化模型。"
+        )
+        self.personal_candidate_status_label.setObjectName(
+            "personalRecommendationCandidateStatus"
+        )
+        self.personal_candidate_status_label.setWordWrap(True)
+        self.personal_candidate_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        personal_policy_layout.addWidget(self.personal_candidate_status_label)
+        self._sync_personal_policy_controls()
+        layout.addWidget(personal_policy_group)
+
         # 使用分割器來控制表格和詳情的比例
         result_splitter = QSplitter(Qt.Vertical)
 
@@ -1240,6 +3280,17 @@ class RecommendationView(QWidget):
         # 詳細信息（推薦理由）
         detail_group = QGroupBox("推薦理由詳情")
         detail_layout = QVBoxLayout()
+        self.company_source_snapshot_label = QLabel(
+            "分類來源：尚未有本次推薦的封存來源快照。"
+        )
+        self.company_source_snapshot_label.setObjectName(
+            "recommendationCompanySourceSnapshot"
+        )
+        self.company_source_snapshot_label.setWordWrap(True)
+        self.company_source_snapshot_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        detail_layout.addWidget(self.company_source_snapshot_label)
         self.detail_text = QTextEdit()
         self.detail_text.setReadOnly(True)
         self.detail_text.setPlaceholderText("選取推薦結果後，這裡會顯示分數拆解、策略傾向與風險提示。")
@@ -1251,6 +3302,17 @@ class RecommendationView(QWidget):
         result_splitter.setSizes([700, 300])
 
         layout.addWidget(result_splitter)
+
+        self.personal_choice_controls = PersonalRecommendationChoiceControlsWidget(
+            parent=panel
+        )
+        self.personal_choice_controls.choiceRequested.connect(
+            self._request_personal_recommendation_choice
+        )
+        self.personal_choice_controls.retryRequested.connect(
+            self._retry_personal_recommendation_choice
+        )
+        layout.addWidget(self.personal_choice_controls)
 
         # 注意：表格選擇事件將在設置模型後連接（在 _on_recommendation_finished 中）
 
@@ -2074,6 +4136,18 @@ class RecommendationView(QWidget):
 
     def _execute_recommendation(self):
         """執行推薦分析"""
+        saved_result_worker = getattr(self, "_saved_result_load_worker", None)
+        if saved_result_worker is not None:
+            try:
+                saved_result_loading = saved_result_worker.isRunning()
+            except RuntimeError:
+                saved_result_loading = False
+            if saved_result_loading or saved_result_worker is not None:
+                self.result_status_label.setText(
+                    "已保存結果仍在讀取；完成或取消後再開始新的推薦分析。"
+                )
+                return
+
         # 收集配置
         config = self._collect_config()
         config = deepcopy(config)
@@ -2088,6 +4162,26 @@ class RecommendationView(QWidget):
         validation_error = request.validation_error()
         if validation_error:
             QMessageBox.warning(self, "配置錯誤", validation_error)
+            return
+
+        # 失效任何仍在 Qt event queue 中、但已完成 native thread 的舊讀取訊號。
+        self._saved_result_load_generation = getattr(
+            self, "_saved_result_load_generation", 0
+        ) + 1
+
+        try:
+            policy_snapshot = self._personal_policy_for_invocation()
+            invocation_service = self.recommendation_service.with_personal_use_policy(
+                policy_snapshot
+            )
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "個人模式尚未就緒",
+                "本次推薦未啟動，個人設定或候選身分無法重新驗證。"
+                "請檢查本機設定與候選狀態後重試。\n"
+                f"{exc}",
+            )
             return
 
         # 禁用執行按鈕
@@ -2125,7 +4219,7 @@ class RecommendationView(QWidget):
         def recommendation_task(progress_callback=None, cancel_callback=None):
             """推薦分析任務（支持詳細進度與合作式取消）。"""
             return request.execute(
-                self.recommendation_service,
+                invocation_service,
                 progress_callback,
                 cancellation_callback=cancel_callback,
                 detailed_progress=True,
@@ -2303,6 +4397,7 @@ class RecommendationView(QWidget):
         if not self._signal_generation_is_current(generation):
             return
 
+        self._complete_personal_policy_one_shot()
         self._finish_execution_status("已取消")
         self.execute_btn.setEnabled(True)
         self.execute_btn.setText("執行推薦分析")
@@ -2329,6 +4424,7 @@ class RecommendationView(QWidget):
 
         if not self._signal_generation_is_current(generation):
             return
+        self._complete_personal_policy_one_shot()
         if type(execution) is not RecommendationExecution:
             self._on_recommendation_error(
                 "推薦 worker 未回傳 RecommendationExecution。", generation=generation
@@ -2364,12 +4460,15 @@ class RecommendationView(QWidget):
 
         previous_stock_code = self._selected_stock_code()
         self.current_execution = execution
+        self._update_company_source_snapshot_display(execution)
         self.current_read_model = None
         self.current_save_receipt = None
+        self._loaded_saved_result_identity = None
         self._pending_save_receipt = None
         self._pending_save_metadata = None
         # 只有 verified canonical readback 才能進入持久化來源欄位。
         self.current_result_id = ""
+        self._refresh_personal_prediction_capture_controls()
         self.current_config = self._execution_config(execution)
         self.current_profile = (
             execution.request.profile_ref.reference_id
@@ -2430,16 +4529,7 @@ class RecommendationView(QWidget):
                     self.results_table.selectRow(row_number)
                     break
 
-        # 連接表格選擇事件（在設置模型後）
-        selection_model = self.results_table.selectionModel()
-        if selection_model:
-            selection_model.selectionChanged.connect(self._on_selection_changed)
-
-        # 連接雙擊事件
-        self.results_table.doubleClicked.connect(self._on_row_double_clicked)
-
-        # 連接單擊事件（確保單擊也能觸發）
-        self.results_table.clicked.connect(self._on_row_clicked)
+        self._connect_result_table_interactions()
 
         # 調整列寬
         self.results_table.resizeColumnsToContents()
@@ -2466,6 +4556,7 @@ class RecommendationView(QWidget):
         self.research_actions_toggle.setVisible(True)
         self.research_actions_toggle.setChecked(False)
         self.research_actions_widget.setVisible(False)
+        self._refresh_personal_choice_controls()
 
     def _on_recommendation_error(
         self,
@@ -2475,6 +4566,7 @@ class RecommendationView(QWidget):
         """推薦分析出錯"""
         if not self._signal_generation_is_current(generation):
             return
+        self._complete_personal_policy_one_shot()
         finish_status = getattr(self, "_finish_execution_status", None)
         if callable(finish_status):
             finish_status("失敗")
@@ -2712,6 +4804,314 @@ class RecommendationView(QWidget):
             return context.data_snapshot_refs[0].reference_id, ""
         return "", ""
 
+    def _update_company_source_snapshot_display(
+        self,
+        execution: RecommendationExecution | None,
+    ) -> None:
+        """依 sealed event 版本呈現當時的分類來源與行情日期。"""
+
+        label = getattr(self, "company_source_snapshot_label", None)
+        if label is None:
+            return
+        if execution is None:
+            label.setText("分類來源：目前沒有推薦結果。")
+            return
+        matching_events = [
+            event
+            for event in execution.events
+            if event.event_type == "company_registry_source_snapshot"
+        ]
+        if len(matching_events) != 1:
+            label.setText(
+                "分類來源：本次結果沒有唯一且封存的來源快照；"
+                "不會以目前名冊或產業資料補填歷史結果。"
+            )
+            return
+        event = matching_events[0]
+        details = event.details
+        if (
+            not isinstance(details, Mapping)
+            or details.get("schema_version")
+            != "recommendation-company-registry-source-snapshot-event.v1"
+            or details.get("result_id") != execution.result_id
+        ):
+            label.setText(
+                "分類來源：保存事件與本次結果身分不符，來源無法核對；"
+                "不會改讀目前資料補值。"
+            )
+            return
+        snapshot = details.get("snapshot")
+
+        if not isinstance(snapshot, Mapping):
+            label.setText(
+                "分類來源：封存快照格式或結果身分無法核對；"
+                "不會以目前資料補填歷史結果。"
+            )
+            return
+
+        def plain_json(value: Any) -> Any:
+            if isinstance(value, Mapping):
+                if any(type(key) is not str for key in value):
+                    raise TypeError("snapshot JSON keys must be strings")
+                return {key: plain_json(item) for key, item in value.items()}
+            if isinstance(value, (tuple, list)):
+                return [plain_json(item) for item in value]
+            if value is None or type(value) in (str, bool, int, float):
+                return value
+            raise TypeError("snapshot contains a non-JSON value")
+
+        try:
+            declared_snapshot_hash = snapshot.get("snapshot_sha256")
+            unsigned_snapshot = {
+                key: value
+                for key, value in snapshot.items()
+                if key != "snapshot_sha256"
+            }
+            canonical_snapshot = json.dumps(
+                plain_json(unsigned_snapshot),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            snapshot_hash_matches = declared_snapshot_hash == (
+                "sha256:" + hashlib.sha256(canonical_snapshot).hexdigest()
+            )
+        except (TypeError, ValueError, UnicodeEncodeError):
+            snapshot_hash_matches = False
+
+        snapshot_schema = snapshot.get("schema_version")
+        if (
+            snapshot.get("result_id") != execution.result_id
+            or snapshot.get("scope") != "current_classification_only"
+            or snapshot.get("pit_eligible") is not False
+            or not snapshot_hash_matches
+            or snapshot_schema
+            not in (
+                "recommendation-company-registry-source-snapshot.v1",
+                "recommendation-company-registry-source-snapshot.v2",
+            )
+        ):
+            label.setText(
+                "分類來源：封存快照格式、雜湊或結果身分無法核對；"
+                "不會以目前資料補填歷史結果。"
+            )
+            return
+
+        data_date_value = snapshot.get("data_as_of_date")
+        if snapshot_schema == "recommendation-company-registry-source-snapshot.v1":
+            # v1 stores the original Context date, not a verified market-data date.
+            if data_date_value is not None and type(data_date_value) is not str:
+                label.setText(
+                    "分類來源：歷史快照日期格式無法核對；不會改讀目前資料補值。"
+                )
+                return
+            date_line = (
+                f"當時分析日期 {data_date_value or '未知'}（v1；不代表行情資料日）；"
+            )
+            v2_source_facts: tuple[str, ...] = ()
+        else:
+            context = getattr(execution, "context", None)
+            context_date = getattr(context, "as_of_date", None)
+            context_decision_at = getattr(context, "decision_at", None)
+
+            def strict_iso_date(raw_value: Any) -> date | None:
+                if type(raw_value) is not str:
+                    return None
+                try:
+                    parsed = date.fromisoformat(raw_value)
+                except ValueError:
+                    return None
+                return parsed if parsed.isoformat() == raw_value else None
+
+            def aware_datetime(raw_value: Any) -> datetime | None:
+                parsed: datetime | None
+                if isinstance(raw_value, datetime):
+                    parsed = raw_value
+                elif type(raw_value) is str:
+                    try:
+                        parsed = datetime.fromisoformat(
+                            raw_value[:-1] + "+00:00"
+                            if raw_value.endswith("Z")
+                            else raw_value
+                        )
+                    except ValueError:
+                        return None
+                else:
+                    return None
+                if parsed.tzinfo is None or parsed.utcoffset() is None:
+                    return None
+                return parsed.astimezone(timezone.utc)
+
+            decision_date_value = snapshot.get("decision_date")
+            decision_date = strict_iso_date(decision_date_value)
+            data_date = (
+                strict_iso_date(data_date_value)
+                if data_date_value is not None
+                else None
+            )
+            decision_at = aware_datetime(context_decision_at)
+            event_decision_at = aware_datetime(details.get("decision_at"))
+            snapshot_decision_at = aware_datetime(snapshot.get("decision_at"))
+            occurrence_at = aware_datetime(getattr(event, "occurred_at", None))
+            source_id = snapshot.get("source_id")
+            market_fingerprint = snapshot.get("market_data_fingerprint")
+            legacy_event = next(
+                (
+                    candidate_event
+                    for candidate_event in execution.events
+                    if candidate_event.event_type == "legacy_invocation_context"
+                ),
+                None,
+            )
+            legacy_details = getattr(legacy_event, "details", None)
+            context_refs = getattr(context, "data_snapshot_refs", ())
+            reference_hashes = {
+                str(getattr(reference, "reference_id", "")).removeprefix(
+                    "sha256:"
+                )
+                for reference in context_refs
+            }
+            legacy_fingerprint = (
+                legacy_details.get("market_data_fingerprint")
+                if isinstance(legacy_details, Mapping)
+                else None
+            )
+            legacy_source_id = (
+                legacy_details.get("source_id")
+                if isinstance(legacy_details, Mapping)
+                else None
+            )
+            valid_fingerprint = (
+                type(market_fingerprint) is str
+                and re.fullmatch(r"[0-9a-f]{64}", market_fingerprint) is not None
+            )
+            valid_dates = (
+                type(context_date) is date
+                and decision_date == context_date
+                and (
+                    data_date_value is None
+                    or (
+                        data_date is not None
+                        and decision_date is not None
+                        and data_date <= decision_date
+                    )
+                )
+            )
+            valid_clock = (
+                decision_at is not None
+                and event_decision_at == decision_at
+                and snapshot_decision_at == decision_at
+                and occurrence_at == decision_at
+            )
+            valid_source_identity = (
+                type(source_id) is str
+                and bool(source_id.strip())
+                and source_id == legacy_source_id
+                and valid_fingerprint
+                and market_fingerprint == legacy_fingerprint
+                and market_fingerprint in reference_hashes
+            )
+            if not (valid_dates and valid_clock and valid_source_identity):
+                label.setText(
+                    "分類來源：個人即時來源快照與保存時的決策日、時鐘或行情來源身分不符；"
+                    "不會改讀目前資料補值。"
+                )
+                return
+            date_line = (
+                f"決策日 {decision_date.isoformat()}；"
+                f"行情資料日 {data_date.isoformat() if data_date else '未知'}；"
+            )
+            v2_source_facts = (
+                f"行情來源 ID：{source_id}",
+                f"行情資料指紋：sha256:{market_fingerprint}",
+            )
+
+        company_status = snapshot.get("company_registry_source_status")
+        index_status = snapshot.get("industry_index_source_status")
+        source_contract_hash = snapshot.get(
+            "company_registry_source_contract_sha256"
+        )
+        source_contract = snapshot.get("company_registry_source_contract")
+        contract_generated_at = (
+            source_contract.get("generated_at")
+            if isinstance(source_contract, Mapping)
+            else None
+        )
+        artifact = (
+            source_contract.get("artifact")
+            if isinstance(source_contract, Mapping)
+            else None
+        )
+        artifact_hash = artifact.get("sha256") if isinstance(artifact, Mapping) else None
+        source_rows = (
+            source_contract.get("sources", ())
+            if isinstance(source_contract, Mapping)
+            else ()
+        )
+        if not isinstance(source_rows, (list, tuple)):
+            source_rows = ()
+        market_labels = {"twse": "上市", "tpex": "上櫃", "emerging": "興櫃"}
+        market_facts = []
+        for source in source_rows:
+            if not isinstance(source, Mapping):
+                continue
+            market = str(source.get("market") or "未知市場")
+            market_label = market_labels.get(market, market)
+            source_state = str(source.get("status") or "狀態未知")
+            available_at = source.get("available_at")
+            market_facts.append(
+                f"{market_label}來源 {source_state}／可得時間 "
+                f"{available_at if available_at else '未知'}"
+            )
+        usage_values = snapshot.get("usage", ())
+        usage_values = (
+            tuple(item for item in usage_values if type(item) is str)
+            if isinstance(usage_values, (list, tuple))
+            else ()
+        )
+        source_status_label = (
+            "已封存來源契約"
+            if company_status == "captured"
+            else "來源契約未知或未能核驗"
+        )
+        index_status_label = {
+            "not_observed": "本次未觀察產業指數來源",
+            "unknown": "產業指數來源未知",
+        }.get(str(index_status), "產業指數來源狀態未知")
+        lines = [
+            f"分類來源：{source_status_label}；{date_line}"
+            "僅代表 current_classification_only，PIT eligible=false。",
+            f"公司來源契約 SHA-256：{source_contract_hash or '未知'}；"
+            f"名冊 artifact SHA-256：{artifact_hash or '未知'}；"
+            f"契約產生時間：{contract_generated_at or '未知'}。",
+            f"{index_status_label}。",
+        ]
+        lines.extend(v2_source_facts)
+        if market_facts:
+            lines.append("市場來源：" + "；".join(market_facts) + "。")
+        warnings = snapshot.get("warnings", ())
+        if isinstance(warnings, (list, tuple)) and warnings:
+            lines.append("來源提示：" + "；".join(str(item) for item in warnings) + "。")
+        next_steps = []
+        if company_status != "captured":
+            next_steps.append(
+                "先核對本次公司名冊來源契約／擷取狀態，再重新產生推薦。"
+            )
+        if index_status == "unknown" or (
+            "current_industry_index_performance_for_reason" in usage_values
+            and index_status != "captured"
+        ):
+            next_steps.append(
+                "產業指數來源尚未核實；依賴該理由前請先檢查來源並重新執行。"
+            )
+        if not next_steps:
+            next_steps.append(
+                "如需歷史成分判讀，請使用具有歷史可得時間的成分資料；本快照不代表 PIT 成分。"
+            )
+        lines.append("下一步：" + " ".join(next_steps))
+        label.setText("\n".join(lines))
+
     def _find_unique_current_recommendation(
         self,
         stock_code: str,
@@ -2773,6 +5173,540 @@ class RecommendationView(QWidget):
             raise RuntimeError("推薦保存設定未初始化")
         self.recommendation_composition = build_recommendation_composition(self.config)
         return self.recommendation_composition
+
+    @staticmethod
+    def _canonical_loaded_result_identity(
+        read_model: RecommendationExecutionReadModel | None,
+        requested_result_id: str,
+    ) -> tuple[str, ...]:
+        """Validate and bind one canonical saved readback without creating a save receipt."""
+
+        if type(read_model) is not RecommendationExecutionReadModel:
+            raise ValueError("查詢沒有回傳 canonical recommendation read model。")
+        execution = read_model.execution
+        if (
+            read_model.integrity_basis != "canonical_payload_and_index_verified"
+            or read_model.legacy_result is not None
+            or type(execution) is not RecommendationExecution
+            or execution.status is not ExecutionStatus.COMPLETED
+            or execution.decision is None
+        ):
+            raise ValueError("此結果不是完整驗證的 canonical saved execution。")
+        if (
+            read_model.result_id != requested_result_id
+            or execution.result_id != requested_result_id
+        ):
+            raise ValueError("查詢結果 ID 與輸入 ID 不一致。")
+        if (
+            read_model.schema_version != RecommendationExecution.schema_version
+            or read_model.schema_revision != RecommendationExecution.schema_revision
+        ):
+            raise ValueError("保存結果 schema 版本不符合目前 canonical reader。")
+        payload_hash = read_model.payload_hash
+        raw_hash = read_model.raw_artifact_sha256
+        artifact_location = read_model.artifact_location
+        persisted_at = read_model.persisted_at
+        if (
+            type(payload_hash) is not str
+            or re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", payload_hash) is None
+            or type(raw_hash) is not str
+            or re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", raw_hash) is None
+            or type(artifact_location) is not str
+            or not artifact_location.strip()
+            or type(persisted_at) is not datetime
+            or persisted_at.tzinfo is None
+            or persisted_at.utcoffset() is None
+        ):
+            raise ValueError("保存結果缺少完整的 payload、artifact 或時間身份。")
+        return (
+            read_model.integrity_basis,
+            read_model.schema_version,
+            str(read_model.schema_revision),
+            requested_result_id,
+            payload_hash,
+            raw_hash,
+            artifact_location,
+            persisted_at.isoformat(timespec="microseconds"),
+        )
+
+    def _load_saved_recommendation_result(self) -> None:
+        """Read one explicitly named canonical saved result on a background worker."""
+
+        requested_result_id = self.saved_result_id_input.text().strip()
+        if not requested_result_id:
+            self.result_status_label.setText("請輸入完整結果 ID；此入口不會列出全部歷史。")
+            return
+        if self.config is None:
+            self.result_status_label.setText("目前未設定推薦保存位置，無法讀取已保存結果。")
+            return
+        current_worker = getattr(self, "worker", None)
+        try:
+            run_is_active = current_worker is not None and current_worker.isRunning()
+        except RuntimeError:
+            run_is_active = False
+        if run_is_active or getattr(self, "_execution_state", "") == "執行中":
+            self.result_status_label.setText(
+                "推薦分析正在執行；完成或取消後再讀取已保存結果。"
+            )
+            return
+        if getattr(self, "_saved_result_load_worker", None) is not None:
+            self.result_status_label.setText("另一筆已保存結果仍在讀取，請稍候。")
+            return
+
+        try:
+            composition = self._get_recommendation_composition()
+        except Exception as exc:
+            self.result_status_label.setText(
+                f"無法建立單筆 canonical reader：{type(exc).__name__}: {exc}"
+            )
+            return
+
+        self._saved_result_load_generation = getattr(
+            self, "_saved_result_load_generation", 0
+        ) + 1
+        generation = self._saved_result_load_generation
+        # A queued run completion from a prior native worker must not overwrite this readback.
+        self._execution_generation = getattr(self, "_execution_generation", 0) + 1
+        self.load_saved_result_button.setEnabled(False)
+        self.execute_btn.setEnabled(False)
+        self.result_status_label.setText(
+            f"正在讀取單筆已保存結果 {requested_result_id}；目前畫面保留不變。"
+        )
+
+        def read_one_result(cancel_callback=None):
+            if callable(cancel_callback) and cancel_callback():
+                return None
+            # Deliberately use get(result_id), never list() or a latest-result fallback.
+            return composition.queries.get(requested_result_id)
+
+        worker = TaskWorker(read_one_result)
+        worker.saved_result_generation = generation
+        self._saved_result_load_worker = worker
+
+        def apply_loaded_result(read_model) -> None:
+            self._on_saved_result_load_finished(
+                read_model, requested_result_id, generation
+            )
+
+        def show_load_error(message: str) -> None:
+            self._on_saved_result_load_error(
+                message, requested_result_id, generation
+            )
+
+        def show_load_cancelled() -> None:
+            self._on_saved_result_load_cancelled(requested_result_id, generation)
+
+        worker.finished.connect(apply_loaded_result)
+        worker.error.connect(show_load_error)
+        worker.cancelled.connect(show_load_cancelled)
+        worker.native_thread_finished.connect(
+            lambda current_worker=worker: self._release_saved_result_load_worker(
+                current_worker
+            )
+        )
+        worker.start()
+
+    def _on_saved_result_load_finished(
+        self,
+        read_model: RecommendationExecutionReadModel | None,
+        requested_result_id: str,
+        generation: int,
+    ) -> None:
+        if generation != getattr(self, "_saved_result_load_generation", None):
+            return
+        try:
+            identity = self._canonical_loaded_result_identity(
+                read_model, requested_result_id
+            )
+        except Exception as exc:
+            self._on_saved_result_load_error(
+                f"{type(exc).__name__}: {exc}", requested_result_id, generation
+            )
+            return
+        assert read_model is not None and read_model.execution is not None
+        execution = read_model.execution
+        self.current_execution = execution
+        self.current_read_model = read_model
+        # A readback is not a write receipt. Trade/source actions keep requiring
+        # the original save-call receipt and remain unavailable on this screen.
+        self.current_save_receipt = None
+        self._loaded_saved_result_identity = identity
+        self._pending_save_receipt = None
+        self._pending_save_metadata = None
+        self.current_result_id = read_model.result_id
+        self.current_config = self._execution_config(execution)
+        self.current_profile = (
+            execution.request.profile_ref.reference_id
+            if execution.request.profile_ref is not None
+            else str(self.current_config.get("profile_id") or "") or None
+        )
+        self.current_regime = (
+            execution.decision.regime
+            if execution.decision is not None and execution.decision.regime is not None
+            else self.current_config.get("regime")
+        )
+        self._update_company_source_snapshot_display(execution)
+        self._update_research_context_banner()
+        rows = self._current_table_rows()
+        self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
+        self.results_table.setModel(self.recommendations_model)
+        self._connect_result_table_interactions()
+        self.saved_result_id_input.setText(requested_result_id)
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
+        self.save_result_btn.setVisible(False)
+        self.add_to_watchlist_btn.setVisible(False)
+        self.send_to_backtest_btn.setVisible(False)
+        self.send_profile_to_portfolio_backtest_btn.setVisible(False)
+        self.export_report_btn.setVisible(False)
+        self.research_actions_toggle.setVisible(False)
+        self.research_actions_toggle.setChecked(False)
+        self.research_actions_widget.setVisible(False)
+        self.stock_research_btn.setVisible(bool(rows))
+        self.stock_research_btn.setEnabled(False)
+        if rows:
+            self.result_status_label.setText(
+                f"已讀取並驗證單筆 canonical 保存結果 {requested_result_id}（{len(rows)} 檔）。"
+                "這是保存當時的建議；資料與模式以當時紀錄為準。"
+            )
+        else:
+            self.result_status_label.setText(
+                f"已讀取 canonical 保存結果 {requested_result_id}；原結果沒有推薦列。"
+            )
+        self._update_detail_text()
+        self._refresh_personal_choice_controls()
+        self._refresh_personal_prediction_capture_controls()
+
+    def _on_saved_result_load_error(
+        self,
+        message: str,
+        requested_result_id: str,
+        generation: int,
+    ) -> None:
+        if generation != getattr(self, "_saved_result_load_generation", None):
+            return
+        short_message = str(message).splitlines()[0][:300]
+        self.result_status_label.setText(
+            f"讀取結果 {requested_result_id} 失敗；原畫面保留。原因：{short_message}"
+        )
+
+    def _on_saved_result_load_cancelled(
+        self,
+        requested_result_id: str,
+        generation: int,
+    ) -> None:
+        if generation != getattr(self, "_saved_result_load_generation", None):
+            return
+        self.result_status_label.setText(
+            f"已取消讀取 {requested_result_id}；原畫面保留。"
+        )
+
+    def _release_saved_result_load_worker(self, worker: TaskWorker) -> None:
+        if getattr(self, "_saved_result_load_worker", None) is worker:
+            self._saved_result_load_worker = None
+            button = getattr(self, "load_saved_result_button", None)
+            if button is not None:
+                button.setEnabled(self.config is not None)
+            run_worker = getattr(self, "worker", None)
+            try:
+                run_active = run_worker is not None and run_worker.isRunning()
+            except RuntimeError:
+                run_active = False
+            execute_button = getattr(self, "execute_btn", None)
+            if execute_button is not None and not run_active:
+                execute_button.setEnabled(True)
+        worker.deleteLater()
+
+    def _personal_prediction_capture_mode(
+        self, result_id: str
+    ) -> tuple[str, str]:
+        """依同一保存 execution 的政策事件判讀擷取資格，不回補歷史設定。"""
+
+        read_model = self.current_read_model
+        execution = getattr(read_model, "execution", None)
+        if read_model is None or execution is None:
+            return "unknown", "已保存結果缺少可核對的 execution；不會建立個人模型擷取。"
+        try:
+            from app_module.personalization_contract import (
+                read_personal_use_policy_snapshot_event,
+            )
+
+            event = read_personal_use_policy_snapshot_event(
+                execution,
+                expected_result_id=result_id,
+            )
+        except Exception:
+            return (
+                "unknown",
+                "保存結果沒有可驗證的當次個人模式快照；不會套用目前設定或回補歷史。",
+            )
+        requested_mode = event.get("requested_mode")
+        effective_mode = event.get("effective_mode")
+        if effective_mode == "rule_only":
+            return "rule_only", "本次實際採規則模式，未建立個人模型擷取。"
+        if (
+            requested_mode == "personal_calibrated_probability"
+            and effective_mode == "personal_calibrated_probability"
+        ):
+            return (
+                "personal_calibrated_probability",
+                "此結果已核對為個人校準模式；可建立或重試個人模型擷取。",
+            )
+        return (
+            "unknown",
+            "保存結果的當次模式無法核對；不會套用目前設定或回補歷史。",
+        )
+
+    def _refresh_personal_prediction_capture_controls(self) -> None:
+        label = getattr(self, "personal_prediction_capture_status_label", None)
+        button = getattr(self, "personal_prediction_capture_retry_button", None)
+        if label is None or button is None:
+            return
+        result_id = self._verified_saved_result_id()
+        if not result_id:
+            self._personal_prediction_capture_status_result_id = ""
+            self._personal_prediction_capture_status_text = (
+                "個人模型擷取：請先保存並驗證一筆推薦結果。"
+            )
+            self._personal_prediction_capture_eligible = False
+            label.setText(self._personal_prediction_capture_status_text)
+            button.setEnabled(False)
+            return
+
+        if self._personal_prediction_capture_status_result_id != result_id:
+            mode, message = self._personal_prediction_capture_mode(result_id)
+            self._personal_prediction_capture_status_result_id = result_id
+            self._personal_prediction_capture_status_text = (
+                f"結果 {result_id}｜{message}"
+            )
+            self._personal_prediction_capture_eligible = (
+                mode == "personal_calibrated_probability"
+            )
+            self._personal_prediction_capture_receipt = None
+
+        worker = self._personal_prediction_capture_worker
+        worker_busy = worker is not None
+        if worker_busy:
+            worker_result_id = getattr(worker, "personal_capture_result_id", "")
+            if worker_result_id != result_id:
+                label.setText(
+                    f"{self._personal_prediction_capture_status_text}"
+                    "另一筆結果的擷取仍在背景處理。"
+                )
+            else:
+                label.setText(self._personal_prediction_capture_status_text)
+        else:
+            label.setText(self._personal_prediction_capture_status_text)
+        button.setEnabled(
+            self._personal_prediction_capture_eligible and not worker_busy
+        )
+
+    def _retry_personal_prediction_capture(self) -> None:
+        self._start_personal_prediction_capture()
+
+    def _start_personal_prediction_capture(
+        self,
+        *,
+        expected_result_id: str | None = None,
+    ) -> None:
+        result_id = self._verified_saved_result_id()
+        if not result_id or (
+            expected_result_id is not None and result_id != expected_result_id
+        ):
+            self._refresh_personal_prediction_capture_controls()
+            return
+        self._refresh_personal_prediction_capture_controls()
+        if not self._personal_prediction_capture_eligible:
+            return
+        if self.config is None:
+            self._set_personal_prediction_capture_failure(
+                result_id, "未設定個人擷取的本機輸出位置。"
+            )
+            return
+        if self._personal_prediction_capture_worker is not None:
+            return
+        try:
+            composition = self._get_recommendation_composition()
+            personal_root = (
+                Path(self.config.output_root).expanduser().resolve()
+                / "personal_prediction"
+            )
+            if not personal_root.is_absolute():
+                raise ValueError("個人擷取位置必須是明示的絕對路徑")
+        except Exception as exc:
+            self._set_personal_prediction_capture_failure(
+                result_id, f"無法準備個人擷取：{type(exc).__name__}: {exc}"
+            )
+            return
+
+        self._personal_prediction_capture_generation += 1
+        generation = self._personal_prediction_capture_generation
+        self._personal_prediction_capture_status_text = (
+            f"結果 {result_id} 已保存並驗證；正在建立個人模型擷取並讀回核對。"
+        )
+        self.personal_prediction_capture_status_label.setText(
+            self._personal_prediction_capture_status_text
+        )
+        self.personal_prediction_capture_retry_button.setEnabled(False)
+
+        def capture_and_readback(cancel_callback=None):
+            if callable(cancel_callback) and cancel_callback():
+                return None
+            from app_module.recommendation.personal_prediction_capture import (
+                capture_personal_saved_result,
+                read_personal_prediction_capture,
+            )
+
+            receipt = capture_personal_saved_result(
+                result_id,
+                composition.queries,
+                personal_root,
+            )
+            readback = read_personal_prediction_capture(
+                receipt.path,
+                composition.queries,
+                personal_root,
+                expected_result_id=result_id,
+            )
+            return receipt, readback
+
+        try:
+            worker = TaskWorker(capture_and_readback)
+            worker.personal_capture_result_id = result_id
+            worker.personal_capture_generation = generation
+            self._personal_prediction_capture_worker = worker
+            worker.finished.connect(
+                lambda result, current_worker=worker, current_generation=generation:
+                self._on_personal_prediction_capture_finished(
+                    result, current_worker, current_generation
+                )
+            )
+            worker.error.connect(
+                lambda message, current_worker=worker, current_generation=generation:
+                self._on_personal_prediction_capture_error(
+                    message, current_worker, current_generation
+                )
+            )
+            worker.cancelled.connect(
+                lambda current_worker=worker, current_generation=generation:
+                self._on_personal_prediction_capture_cancelled(
+                    current_worker, current_generation
+                )
+            )
+            worker.native_thread_finished.connect(
+                lambda current_worker=worker:
+                self._release_personal_prediction_capture_worker(current_worker)
+            )
+            worker.start()
+        except Exception as exc:
+            self._personal_prediction_capture_worker = None
+            self._set_personal_prediction_capture_failure(
+                result_id, f"無法啟動擷取工作：{type(exc).__name__}: {exc}"
+            )
+
+    def _set_personal_prediction_capture_failure(
+        self, result_id: str, message: str
+    ) -> None:
+        if self._verified_saved_result_id() != result_id:
+            return
+        self._personal_prediction_capture_status_result_id = result_id
+        self._personal_prediction_capture_status_text = (
+            f"結果 {result_id} 已保存；個人模型擷取未完成。{message}"
+            "推薦結果不受影響，可重試擷取。"
+        )
+        label = getattr(self, "personal_prediction_capture_status_label", None)
+        if label is not None:
+            label.setText(self._personal_prediction_capture_status_text)
+        button = getattr(self, "personal_prediction_capture_retry_button", None)
+        if button is not None:
+            button.setEnabled(self._personal_prediction_capture_eligible)
+
+    def _on_personal_prediction_capture_finished(
+        self,
+        result: Any,
+        worker: TaskWorker,
+        generation: int,
+    ) -> None:
+        if (
+            generation != self._personal_prediction_capture_generation
+            or worker is not self._personal_prediction_capture_worker
+        ):
+            return
+        result_id = getattr(worker, "personal_capture_result_id", "")
+        if not result_id or self._verified_saved_result_id() != result_id:
+            return
+        try:
+            if not isinstance(result, tuple) or len(result) != 2:
+                raise ValueError("個人擷取工作沒有回傳已讀回的內容")
+            receipt, readback = result
+            if (
+                getattr(receipt, "result_id", None) != result_id
+                or not isinstance(readback, Mapping)
+                or readback.get("result_id") != result_id
+            ):
+                raise ValueError("個人擷取讀回的結果身份不符")
+        except Exception as exc:
+            self._set_personal_prediction_capture_failure(
+                result_id, f"讀回核對失敗：{type(exc).__name__}: {exc}。"
+            )
+            return
+        self._personal_prediction_capture_receipt = receipt
+        state = "既有擷取已重新核對" if receipt.idempotent else "擷取已建立並核對"
+        self._personal_prediction_capture_status_result_id = result_id
+        self._personal_prediction_capture_status_text = (
+            f"結果 {result_id}｜{state}；原推薦仍以保存內容為準。"
+        )
+        self.personal_prediction_capture_status_label.setText(
+            self._personal_prediction_capture_status_text
+        )
+
+    def _on_personal_prediction_capture_error(
+        self,
+        message: str,
+        worker: TaskWorker,
+        generation: int,
+    ) -> None:
+        if (
+            generation != self._personal_prediction_capture_generation
+            or worker is not self._personal_prediction_capture_worker
+        ):
+            return
+        result_id = getattr(worker, "personal_capture_result_id", "")
+        short_message = str(message).splitlines()[0][:240]
+        self._set_personal_prediction_capture_failure(result_id, short_message)
+
+    def _on_personal_prediction_capture_cancelled(
+        self,
+        worker: TaskWorker,
+        generation: int,
+    ) -> None:
+        if (
+            generation != self._personal_prediction_capture_generation
+            or worker is not self._personal_prediction_capture_worker
+        ):
+            return
+        result_id = getattr(worker, "personal_capture_result_id", "")
+        self._set_personal_prediction_capture_failure(
+            result_id,
+            "擷取工作已安全取消；若內容已發布，下次重試會重新核對。",
+        )
+
+    def _release_personal_prediction_capture_worker(
+        self, worker: TaskWorker
+    ) -> None:
+        if self._personal_prediction_capture_worker is worker:
+            self._personal_prediction_capture_worker = None
+            self._refresh_personal_prediction_capture_controls()
+        worker.deleteLater()
+
+    def _connect_result_table_interactions(self) -> None:
+        selection_model = self.results_table.selectionModel()
+        if selection_model is not None:
+            selection_model.selectionChanged.connect(self._on_selection_changed)
+        if not getattr(self, "_result_table_actions_connected", False):
+            self.results_table.doubleClicked.connect(self._on_row_double_clicked)
+            self.results_table.clicked.connect(self._on_row_clicked)
+            self._result_table_actions_connected = True
 
     def _save_recommendation_result(self):
         """以同一 sealed execution 保存，並以 canonical query 驗證 readback。"""
@@ -2854,22 +5788,27 @@ class RecommendationView(QWidget):
             # 只有 canonical save 與 verified readback 都成功後才套用保存身份。
             self.current_read_model = read_model
             self.current_save_receipt = receipt
+            self._loaded_saved_result_identity = None
             self.current_result_id = read_model.result_id
+            self._update_company_source_snapshot_display(read_model.execution)
             self._pending_save_receipt = None
             self._pending_save_metadata = None
             selected_code = self._selected_stock_code()
             rows = self._current_table_rows()
             self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
             self.results_table.setModel(self.recommendations_model)
-            selection_model = self.results_table.selectionModel()
-            if selection_model:
-                selection_model.selectionChanged.connect(self._on_selection_changed)
+            self._connect_result_table_interactions()
             if selected_code:
                 for row_number, row in enumerate(rows):
                     if str(row.get("證券代號", "")).strip() == selected_code:
                         self.results_table.selectRow(row_number)
                         break
             self._update_detail_text()
+            self._refresh_personal_choice_controls()
+            self._refresh_personal_prediction_capture_controls()
+            self._start_personal_prediction_capture(
+                expected_result_id=read_model.result_id
+            )
 
             watchlist_id = None
             watchlist_error = ""
@@ -2930,16 +5869,216 @@ class RecommendationView(QWidget):
         """表格選擇改變（單擊時觸發）"""
         self._update_detail_text()
         self._update_stock_research_button()
+        self._refresh_personal_choice_controls()
 
     def _on_row_clicked(self, index):
         """表格行單擊事件"""
         self._update_detail_text()
         self._update_stock_research_button()
+        self._refresh_personal_choice_controls()
 
     def _on_row_double_clicked(self, index):
         """表格行雙擊事件"""
         self._update_detail_text()
         self._emit_stock_research_context(index)
+
+    def _personalization_read_service(self):
+        from app_module.personalization_read_service import PersonalizationReadService
+
+        if self.config is None or self.journal_service is None:
+            raise RuntimeError("個人選擇需要明示 output_root 與 JournalService")
+        return PersonalizationReadService.from_paths(
+            output_root=Path(self.config.output_root),
+            journal_path=self.journal_service.store.journal_file,
+        )
+
+    def _refresh_personal_choice_controls(self) -> None:
+        controls = getattr(self, "personal_choice_controls", None)
+        if controls is None:
+            return
+        pending = self._personal_choice_retry
+        if pending is not None:
+            controls.show_retry(
+                "上一筆選擇的寫入／讀回尚未確認。請重試同一個 request；"
+                f"結果 {pending['result_id']}，股票 {pending['stock_code']}。"
+            )
+            return
+        result_id = self._verified_saved_result_id()
+        stock_code = self._selected_stock_code()
+        if not result_id or not stock_code:
+            controls.clear_retry()
+            controls.set_context_available(
+                False,
+                "先保存並驗證推薦結果，再選取一檔股票記錄個人決定。",
+            )
+            return
+        if self.journal_service is None:
+            controls.set_context_available(
+                False,
+                "個人選擇需要 JournalService；目前此視圖未注入寫入 owner。",
+            )
+            return
+        try:
+            read_service = self._personalization_read_service()
+            read_model = read_service.read_canonical_execution_exact(result_id)
+            if read_model is None or read_model.execution is None:
+                raise ValueError("canonical recommendation exact readback 不可用")
+            from app_module.personalization_contract import (
+                read_personal_use_policy_snapshot_event,
+            )
+
+            read_personal_use_policy_snapshot_event(
+                read_model.execution,
+                expected_result_id=result_id,
+            )
+            if not self.journal_service.store.journal_file.is_file():
+                # 已保存推薦含本次政策事件，而顯式 Journal writer 指向此路徑；
+                # 新檔代表尚無歷史選擇，不需要由唯讀 reader 建立空檔。
+                status = (
+                    f"已驗證 {result_id}／{stock_code}；目前尚無 Journal 選擇紀錄。"
+                    "可保存個人採用、拒絕或推翻決定；這不代表交易或績效。"
+                )
+            else:
+                report = read_service.read_personal_recommendation_choices(
+                    result_id, stock_code
+                )
+                if report.source_completeness_status != "verified":
+                    raise ValueError("Journal 歷史不完整，不能安全追加個人選擇")
+                latest_entry = report.choices[-1] if report.choices else None
+                if latest_entry is None:
+                    status = (
+                        f"已驗證 {result_id}／{stock_code}；尚無此股票的個人選擇。"
+                        "保存後可在個股研究的「決策 → 結果」查看後續證據；"
+                        "成熟檢討仍須等待資料可得，個人選擇本身不是績效結果。"
+                    )
+                else:
+                    latest = latest_entry.choice
+                    choice_text = {
+                        "adopt": "個人採用",
+                        "reject": "個人拒絕",
+                        "override": "推翻原建議",
+                    }.get(latest.choice, latest.choice)
+                    outcome_link_status = getattr(
+                        latest_entry, "outcome_link_status", "not_requested"
+                    )
+                    if outcome_link_status == "not_requested":
+                        outcome_note = (
+                            "尚未查詢後續檢討；可在個股研究的「決策 → 結果」查看同一股票的後續證據。"
+                            "此個人決定不代表已核實績效。"
+                        )
+                    elif outcome_link_status == "partial_same_decision":
+                        outcome_note = (
+                            "已有同一結果、股票與決策日期的部分連結，但來源身分未完整核實；"
+                            "請在個股研究的「決策 → 結果」檢視，勿視為已核實績效。"
+                        )
+                    elif outcome_link_status == "identity_conflict":
+                        outcome_note = (
+                            "後續結果與此推薦身分衝突；請回推薦分析核對原保存結果，勿視為本決定的績效。"
+                        )
+                    else:
+                        outcome_note = (
+                            "後續檢討目前無法核驗；請在個股研究的「決策 → 結果」查看可用資料。"
+                        )
+                    status = (
+                        f"最近一次個人決定：{choice_text}｜結果 {result_id}／股票 {stock_code}｜"
+                        f"{latest.action_at}。這是研究紀錄，不是交易；{outcome_note}"
+                    )
+            controls.clear_retry()
+            controls.set_context_available(True, status)
+        except Exception as exc:
+            controls.set_context_available(
+                False,
+                "個人決定暫不可用：保存身份、同次政策或 Journal 讀回無法核驗。"
+                f"請先重新保存推薦或檢查資料來源。({type(exc).__name__}: {exc})",
+            )
+
+    def _request_personal_recommendation_choice(self, choice: str) -> None:
+        if choice not in {"adopt", "reject", "override"}:
+            return
+        result_id = self._verified_saved_result_id()
+        stock_code = self._selected_stock_code()
+        if not result_id or not stock_code:
+            self._refresh_personal_choice_controls()
+            return
+        override_reason = None
+        if choice == "override":
+            detail, accepted = QInputDialog.getMultiLineText(
+                self,
+                "記錄個人推翻原因",
+                "請說明你不同意原推薦的具體理由：",
+            )
+            if not accepted or not detail.strip():
+                return
+            from app_module.personalization_contract import (
+                PersonalRecommendationOverrideReason,
+            )
+
+            override_reason = PersonalRecommendationOverrideReason(
+                code="personal_reassessment",
+                detail=detail.strip(),
+            )
+        self._personal_choice_retry = {
+            "result_id": result_id,
+            "stock_code": stock_code,
+            "choice": choice,
+            "override_reason": override_reason,
+            "request_id": f"personal-choice-{uuid4().hex}",
+        }
+        self._submit_personal_recommendation_choice()
+
+    def _retry_personal_recommendation_choice(self) -> None:
+        if self._personal_choice_retry is not None:
+            self._submit_personal_recommendation_choice()
+
+    def _submit_personal_recommendation_choice(self) -> None:
+        pending = self._personal_choice_retry
+        if pending is None:
+            return
+        controls = self.personal_choice_controls
+        controls.set_context_available(False, "正在保存並重新讀回個人決定…")
+        try:
+            if self.journal_service is None:
+                raise RuntimeError("JournalService 未初始化")
+            read_service = self._personalization_read_service()
+            from app_module.personalization_action_recorder import (
+                PersonalizationDecisionRecorder,
+            )
+
+            recorder = PersonalizationDecisionRecorder(
+                self.journal_service,
+                canonical_execution_reader=read_service.read_canonical_execution_exact,
+            )
+            saved = recorder.record_personal_recommendation_choice(
+                result_id=pending["result_id"],
+                stock_code=pending["stock_code"],
+                choice=pending["choice"],
+                request_id=pending["request_id"],
+                override_reason=pending["override_reason"],
+                actor="local-user",
+            )
+            fresh_read_service = self._personalization_read_service()
+            report = fresh_read_service.read_personal_recommendation_choices(
+                pending["result_id"], pending["stock_code"]
+            )
+            matches = [
+                entry
+                for entry in report.choices
+                if entry.revision_id == pending["request_id"]
+            ]
+            if (
+                report.source_completeness_status != "verified"
+                or len(matches) != 1
+                or matches[0].choice != saved.choice
+            ):
+                raise RuntimeError("個人決定已送出，但 fresh Journal/read service 無法確認同一筆內容")
+            self._personal_choice_retry = None
+            self.personal_choice_controls.clear_retry()
+            self._refresh_personal_choice_controls()
+        except Exception as exc:
+            controls.show_retry(
+                "個人決定尚未完成 fresh readback；可用同一 request 安全重試。"
+                f"({type(exc).__name__}: {exc})"
+            )
 
     def _open_selected_stock_research(self) -> None:
         """從選取列傳送單股上下文；不觸發新的推薦分析。"""
@@ -3003,11 +6142,21 @@ class RecommendationView(QWidget):
             if execution is not None
             else ("", "")
         )
-        fallback_data_date = (
-            recommendation.eligible_universe_date.isoformat()
-            if recommendation is not None and recommendation.eligible_universe_date is not None
-            else ""
+        has_v2_market_event, market_facts = (
+            validated_company_source_v2_facts(execution)
+            if execution is not None
+            else (False, None)
         )
+        if has_v2_market_event:
+            # 有 v2 event 時只用同次封存且核對成功的行情日期；未知或無效不退回決策日。
+            data_date = (
+                market_facts["data_as_of_date"]
+                if market_facts is not None
+                else None
+            )
+        else:
+            # v1／舊結果沒有可核對的市場資料日；候選名冊日期和設定值不作替代。
+            data_date = None
         decision_date = (
             context.as_of_date.isoformat()
             if context is not None and context.as_of_date is not None
@@ -3017,7 +6166,7 @@ class RecommendationView(QWidget):
             stock_code=stock_code,
             stock_name=stock_name,
             decision_date=decision_date,
-            data_date=fallback_data_date or str(config.get("data_date") or ""),
+            data_date=data_date or "",
             result_id=result_id,
             source_snapshot_id=source_snapshot_id,
             source_snapshot_hash=source_snapshot_hash,
@@ -3052,13 +6201,25 @@ class RecommendationView(QWidget):
             return "未提供"
 
         selected = str(stock_code or "").strip() or "尚未選取"
-        data_date = (
-            recommendation.eligible_universe_date.isoformat()
-            if recommendation is not None and recommendation.eligible_universe_date is not None
-            else _config_value("data_date", "data_as_of_date")
+        has_v2_market_event, market_facts = (
+            validated_company_source_v2_facts(execution)
+            if execution is not None
+            else (False, None)
         )
-        if data_date == "未提供" and recommendation is not None:
-            data_date = "未提供"
+        if has_v2_market_event:
+            data_date = (
+                str(market_facts["data_as_of_date"] or "")
+                if market_facts is not None
+                else ""
+            )
+            market_date_note = (
+                "封存行情來源無法核對"
+                if market_facts is None
+                else ("未提供封存行情資料日" if not data_date else "")
+            )
+        else:
+            data_date = ""
+            market_date_note = "未保存可核對的行情資料日"
         start_date = _config_value("start_date", "range_start", "period_start")
         end_date = _config_value("end_date", "range_end", "period_end")
         interval = (
@@ -3083,8 +6244,8 @@ class RecommendationView(QWidget):
         )
         summary_label = getattr(self, "research_context_summary_label", None)
         if summary_label is not None:
-            if data_date == "未提供":
-                data_summary = "價格／指標更新日期：未提供"
+            if market_date_note:
+                data_summary = f"價格／指標資料日：{market_date_note}"
             else:
                 data_summary = f"價格／指標更新至：{data_date}"
             recommendations = self._current_items()
@@ -3101,7 +6262,7 @@ class RecommendationView(QWidget):
             "研究上下文\n"
             f"標的：{selected}｜區間：{interval}\n"
             f"決策基準日：{decision_date}｜"
-            f"資料日期：{data_date}\n"
+            f"資料日期：{data_date or market_date_note or '未提供'}\n"
             f"Profile：{profile_label}｜來源：{source}｜結果：{result_id}\n"
             "信心／Regime 只作判讀證據，不等於勝率或風險預算；Profile policy 仍由既有服務決定。"
         )
@@ -3117,6 +6278,21 @@ class RecommendationView(QWidget):
         read_model = self.current_read_model
         receipt = self.current_save_receipt
         execution = self.current_execution
+        if read_model is not None and receipt is None:
+            try:
+                loaded_identity = self._canonical_loaded_result_identity(
+                    read_model, read_model.result_id
+                )
+            except Exception:
+                return ""
+            if (
+                execution is not None
+                and read_model.execution == execution
+                and loaded_identity
+                == getattr(self, "_loaded_saved_result_identity", None)
+            ):
+                return read_model.result_id
+            return ""
         if (
             read_model is None
             or receipt is None
@@ -3147,6 +6323,7 @@ class RecommendationView(QWidget):
                 self.results_table.selectRow(row_number)
                 self._update_detail_text()
                 self._update_stock_research_button()
+                self._refresh_personal_choice_controls()
                 return True
         return False
 
@@ -3478,7 +6655,24 @@ class RecommendationView(QWidget):
         QMessageBox.information(self, "取消", "匯出已被取消")
 
     def request_cooperative_shutdown(self) -> bool:
-        workers = [self.worker, *self._report_export_workers]
+        saved_result_worker = getattr(self, "_saved_result_load_worker", None)
+        if saved_result_worker is not None:
+            self._saved_result_load_generation = getattr(
+                self, "_saved_result_load_generation", 0
+            ) + 1
+        capture_worker = getattr(
+            self, "_personal_prediction_capture_worker", None
+        )
+        if capture_worker is not None:
+            self._personal_prediction_capture_generation += 1
+        workers = [
+            self.worker,
+            *self._report_export_workers,
+            self._personal_candidate_worker,
+            self._personal_policy_history_worker,
+            saved_result_worker,
+            capture_worker,
+        ]
         for worker in workers:
             if worker is not None and worker.isRunning():
                 if worker is self.worker:

@@ -21,6 +21,9 @@ import pytest
 from app_module.decision_outcome_journey import (
     DecisionOutcomeJourneyService,
     JsonRecommendationReadAdapter,
+    RecommendationCandidateRecord,
+    RecommendationResultRecord,
+    RecommendationSourceIdentity,
     JourneyLinkStatus,
     JourneyStatus,
     JourneyTimelineItem,
@@ -28,11 +31,22 @@ from app_module.decision_outcome_journey import (
     PortfolioLedgerRepositoryReadAdapter,
     project_outcome_maturity,
     _sort_time,
+    _normalize_journal_entry,
 )
+from app_module.dtos.decision_continuity_dtos import (
+    DecisionContinuityRevision,
+    DecisionIdentity,
+)
+from app_module.portfolio_store import project_journal_records
+from app_module.personalization_contract import PersonalRecommendationChoice
 from app_module.recommendation.codec import decode_execution_envelope
 from app_module.recommendation.persistence import RecommendationExecutionPersistence
+from app_module.recommendation.personal_use_policy import (
+    RecommendationPersonalUsePolicyV1,
+)
 from app_module.recommendation.contracts import (
     RecommendationConfigSnapshot,
+    ExecutionEvent,
     ExecutionStatus,
     RecommendationExecution,
     ReferenceKind,
@@ -354,6 +368,279 @@ def _service(
         journal_reader=MemoryJournal(journals),
         portfolio_ledger_reader=MemoryLedger(ledger),
         portfolio_trade_reader=(None if trades is None else MemoryTrades(trades)),
+    )
+
+
+_RUN01_RESULT_ID = "rec_21ab7be231bc4969b3f99d0043a242e0"
+_RUN01_STOCK_CODE = "SYN002"
+_RUN01_UNIVERSE_ID = (
+    "recommendation-universe-snapshot-v1:"
+    "3af95e50ba9ffd160e3d9d6b493ad7084f94afcbc8f6081eaa5c93f475b524ce"
+)
+_RUN01_UNIVERSE_HASH = (
+    "sha256:3af95e50ba9ffd160e3d9d6b493ad7084f94afcbc8f6081eaa5c93f475b524ce"
+)
+_RUN01_PAYLOAD_HASH = (
+    "sha256:9201e7df3e5931f3d274095203927acde57523b90397626ced1fc557240c5812"
+)
+_RUN01_RAW_ARTIFACT_HASH = (
+    "sha256:6c87ab275daf980ed3e9d38b58244bbc9ee681735b6923f2f1d4c61eb45305bf"
+)
+
+
+def _run01_personal_choice(**changes: Any) -> PersonalRecommendationChoice:
+    values: dict[str, Any] = {
+        "result_id": _RUN01_RESULT_ID,
+        "stock_code": _RUN01_STOCK_CODE,
+        "decision_date": "2026-09-28",
+        "source_snapshot_id": _RUN01_UNIVERSE_ID,
+        "source_snapshot_hash": _RUN01_UNIVERSE_HASH,
+        "canonical_payload_hash": _RUN01_PAYLOAD_HASH,
+        "raw_artifact_sha256": _RUN01_RAW_ARTIFACT_HASH,
+        "choice": "adopt",
+        "requested_mode": "rule_only",
+        "effective_mode": "rule_only",
+        "action_at": "2026-09-27T21:53:28.905464+00:00",
+        "recorded_at": "2026-09-27T21:53:28.905464+00:00",
+        "request_id": "personal-choice-442dba95d0824f27863f0521ef35729d",
+        "policy_snapshot": RecommendationPersonalUsePolicyV1.default_rule_only(
+            "technical_analysis_local"
+        ).to_dict(),
+    }
+    values.update(changes)
+    return PersonalRecommendationChoice(**values)
+
+
+def _run01_journal_row(
+    choice: PersonalRecommendationChoice,
+    *,
+    include_typed_choice: bool = True,
+) -> dict[str, Any]:
+    identity = DecisionIdentity(
+        result_id=choice.result_id,
+        stock_code=choice.stock_code,
+        source_snapshot_id=choice.source_snapshot_id,
+        source_snapshot_hash=choice.source_snapshot_hash,
+        decision_date=choice.decision_date,
+        identity_status="linked",
+    ).to_dict()
+    payload: dict[str, Any] = {
+        "body": f"個人推薦選擇：{choice.choice}",
+        "created_at": choice.recorded_at,
+        "linked_id": _RUN01_RESULT_ID,
+        "linked_type": "recommendation_result",
+        "source_snapshot_id": choice.source_snapshot_id,
+        "source_snapshot_hash": choice.source_snapshot_hash,
+        "personal_recommendation_choice": choice.to_dict(),
+    }
+    if not include_typed_choice:
+        payload.pop("personal_recommendation_choice")
+    return {
+        "journal_id": "decision-candidate:run01:SYN002:personal-choice",
+        "entity_type": "journal",
+        "action": "note",
+        "linked_id": _RUN01_RESULT_ID,
+        "linked_type": "recommendation_result",
+        "source_id": _RUN01_RESULT_ID,
+        "source_snapshot_id": choice.source_snapshot_id,
+        "source_snapshot_hash": choice.source_snapshot_hash,
+        "result_id": choice.result_id,
+        "stock_code": choice.stock_code,
+        "decision_date": choice.decision_date,
+        "identity_status": "linked",
+        "decision_identity": identity,
+        "payload": payload,
+    }
+
+
+def _run01_projected_flat_personal_choice_row(
+    choice: PersonalRecommendationChoice,
+    **changes: Any,
+) -> dict[str, Any]:
+    nested = _run01_journal_row(choice)
+    revision = DecisionContinuityRevision(
+        revision_id="run01-projected-personal-choice",
+        continuity_event_id="run01-projected-personal-choice",
+        action="note",
+        entity_type="journal",
+        entity_id=nested["journal_id"],
+        decision_identity=DecisionIdentity.from_mapping(nested),
+        created_at=choice.recorded_at,
+        payload=nested["payload"],
+    )
+    raw_record = revision.to_dict()
+    # JournalService 寫入列會在 continuity revision 外層保留舊 journal schema 與來源分類。
+    raw_record["schema_version"] = "4.1"
+    raw_record["source_type"] = "personal_recommendation_choice"
+    raw_record["body"] = nested["payload"]["body"]
+    for key in (
+        "journal_id",
+        "linked_id",
+        "linked_type",
+        "source_id",
+        "source_snapshot_id",
+        "source_snapshot_hash",
+        "stock_code",
+    ):
+        raw_record[key] = nested[key]
+    projected = project_journal_records([raw_record])
+    assert len(projected) == 1
+    row = projected[0]
+    assert "entity_type" not in row
+    assert "payload" not in row
+    row.update(changes)
+    return row
+
+
+def _run01_canonical_projection() -> dict[str, Any]:
+    result = _result(stock_code=_RUN01_STOCK_CODE)
+    result["result_id"] = _RUN01_RESULT_ID
+    config = dict(result["config"])
+    config.pop("source_snapshot_hash", None)
+    config.update(
+        {
+            "decision_date": "2026-09-28",
+            "universe_snapshot_id": _RUN01_UNIVERSE_ID,
+            "universe_snapshot_hash": _RUN01_UNIVERSE_HASH,
+        }
+    )
+    run_context = dict(result["run_context"])
+    run_context.pop("source_snapshot_hash", None)
+    run_context.update(
+        {
+            "as_of_date": "2026-09-28",
+            "universe_snapshot_id": _RUN01_UNIVERSE_ID,
+            "universe_snapshot_hash": _RUN01_UNIVERSE_HASH,
+        }
+    )
+    result["config"] = config
+    result["run_context"] = run_context
+    result["canonical_payload_hash"] = _RUN01_PAYLOAD_HASH
+    result["raw_artifact_sha256"] = _RUN01_RAW_ARTIFACT_HASH
+    return result
+
+
+def _run01_result_record() -> RecommendationResultRecord:
+    return RecommendationResultRecord(
+        result_id=_RUN01_RESULT_ID,
+        decision_date="2026-09-28",
+        created_at="2026-09-27T21:51:46.559791+00:00",
+        source_identity=RecommendationSourceIdentity(
+            result_id=_RUN01_RESULT_ID,
+            decision_date="2026-09-28",
+            source_provider_id=None,
+            source_snapshot_id=None,
+            source_snapshot_hash=None,
+            universe_snapshot_id=_RUN01_UNIVERSE_ID,
+            universe_snapshot_hash=_RUN01_UNIVERSE_HASH,
+        ),
+        candidates=(
+            RecommendationCandidateRecord(
+                candidate_key=(_RUN01_RESULT_ID, _RUN01_STOCK_CODE),
+                stock_code=_RUN01_STOCK_CODE,
+                stock_name="合成標的",
+                recommendation_rank=1,
+            ),
+        ),
+        original_payload={
+            "canonical_payload_hash": _RUN01_PAYLOAD_HASH,
+            "raw_artifact_sha256": _RUN01_RAW_ARTIFACT_HASH,
+        },
+        canonical_integrity_verified=True,
+        canonical_payload_hash=_RUN01_PAYLOAD_HASH,
+        raw_artifact_sha256=_RUN01_RAW_ARTIFACT_HASH,
+    )
+
+
+def test_run01_typed_personal_choice_links_universe_without_fabricating_outcomes() -> None:
+    choice = _run01_personal_choice()
+    entry = _normalize_journal_entry(
+        _run01_journal_row(choice), _run01_result_record(), set()
+    )
+
+    assert entry.link_status is JourneyLinkStatus.LINKED
+    assert entry.decision_identity is not None
+    assert entry.decision_identity.source_snapshot_hash == (
+        _RUN01_UNIVERSE_HASH
+    )
+
+
+def test_run01_projected_flat_personal_choice_links_exact_canonical_universe() -> None:
+    choice = _run01_personal_choice()
+    row = _run01_projected_flat_personal_choice_row(choice)
+
+    assert "entity_type" not in row
+    assert "payload" not in row
+    assert row["record_type"] == "journal_entry"
+    assert row["schema_version"] == "4.1"
+    assert row["source_type"] == "personal_recommendation_choice"
+    entry = _normalize_journal_entry(row, _run01_result_record(), set())
+
+    assert entry.link_status is JourneyLinkStatus.LINKED
+    assert entry.decision_identity is not None
+    assert entry.decision_identity.source_snapshot_id == _RUN01_UNIVERSE_ID
+    assert entry.decision_identity.source_snapshot_hash == _RUN01_UNIVERSE_HASH
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"record_type": "other_record"},
+        {"schema_version": "4.0"},
+        {"source_type": "ordinary_note"},
+        {"action": "update"},
+    ],
+)
+def test_run01_projected_flat_choice_requires_exact_journal_discriminator(
+    changes: Mapping[str, Any],
+) -> None:
+    row = _run01_projected_flat_personal_choice_row(
+        _run01_personal_choice(), **changes
+    )
+
+    entry = _normalize_journal_entry(row, _run01_result_record(), set())
+
+    assert entry.link_status is JourneyLinkStatus.CONFLICT
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"result_id": "another-result"},
+        {"stock_code": "SYN001"},
+        {"decision_date": "2026-09-27"},
+        {"source_snapshot_id": "recommendation-universe-snapshot-v1:other"},
+        {"source_snapshot_hash": "sha256:" + "a" * 64},
+        {"canonical_payload_hash": "sha256:" + "b" * 64},
+        {"raw_artifact_sha256": "sha256:" + "c" * 64},
+    ],
+)
+def test_run01_typed_personal_choice_identity_mismatch_stays_conflicted(
+    changes: Mapping[str, Any],
+) -> None:
+    choice = _run01_personal_choice(**changes)
+    entry = _normalize_journal_entry(
+        _run01_journal_row(choice), _run01_result_record(), set()
+    )
+    assert entry.link_status is JourneyLinkStatus.CONFLICT
+
+
+def test_run01_generic_journal_cannot_use_universe_snapshot_as_source_identity() -> None:
+    choice = _run01_personal_choice()
+    row = _run01_journal_row(choice, include_typed_choice=False)
+    entry = _normalize_journal_entry(row, _run01_result_record(), set())
+    assert entry.link_status is JourneyLinkStatus.CONFLICT
+
+
+def test_run01_missing_evidence_event_remains_unknown_without_outcomes() -> None:
+    journey = _service(result=_run01_canonical_projection()).build(_RUN01_RESULT_ID)
+
+    assert journey.evidence_events == ()
+    assert len(journey.outcome_maturity) == len(OUTCOME_WINDOWS)
+    assert all(item.status is JourneyLinkStatus.UNKNOWN for item in journey.outcome_maturity)
+    assert all(
+        item.reason == "evidence_event_key_missing"
+        for item in journey.outcome_maturity
     )
 
 
@@ -935,6 +1222,103 @@ def test_journey_reads_canonical_query_projection_and_uses_verified_artifact_loc
         for contribution in source_candidate.factor_contributions
     ]
     json.dumps(journey.to_dict(), allow_nan=False)
+
+
+def test_canonical_journey_keeps_market_source_and_universe_identities_separate(
+    tmp_path: Path,
+) -> None:
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "c1_consumer_readiness"
+        / "r016_execution_rev2.json"
+    )
+    execution = decode_execution_envelope(fixture.read_bytes()).execution
+    assert execution.context.as_of_date is not None
+    decision_at = datetime(2026, 9, 22, 8, 0, tzinfo=timezone.utc)
+    fingerprint = "a" * 64
+    context = replace(
+        execution.context,
+        decision_at=decision_at,
+        data_snapshot_refs=(
+            VersionReference(
+                kind=ReferenceKind.DATA_SNAPSHOT,
+                reference_id=fingerprint,
+                version="sealed-market-provider:2026-09-21",
+            ),
+        ),
+    )
+    snapshot_without_hash = {
+        "schema_version": "recommendation-company-registry-source-snapshot.v2",
+        "result_id": execution.result_id,
+        "decision_date": execution.context.as_of_date.isoformat(),
+        "data_as_of_date": (execution.context.as_of_date.replace(day=21)).isoformat(),
+        "decision_at": decision_at.isoformat(),
+        "source_id": "sealed-market-provider",
+        "market_data_fingerprint": fingerprint,
+        "scope": "current_classification_only",
+        "pit_eligible": False,
+        "company_registry_source_status": "unknown",
+        "industry_index_source_status": "unknown",
+    }
+    snapshot = {
+        **snapshot_without_hash,
+        "snapshot_sha256": "sha256:" + stable_snapshot_hash(snapshot_without_hash),
+    }
+    events = (
+        ExecutionEvent(
+            event_type="legacy_invocation_context",
+            message="測試用封存市場來源",
+            occurred_at=decision_at,
+            details={
+                "source_id": "sealed-market-provider",
+                "market_data_fingerprint": fingerprint,
+            },
+        ),
+        ExecutionEvent(
+            event_type="company_registry_source_snapshot",
+            message="測試用封存分類來源快照",
+            occurred_at=decision_at,
+            details={
+                "schema_version": "recommendation-company-registry-source-snapshot-event.v1",
+                "result_id": execution.result_id,
+                "decision_at": decision_at.isoformat(),
+                "snapshot": snapshot,
+            },
+        ),
+    )
+    execution = replace(execution, context=context, events=events)
+    output_root = tmp_path / "canonical-v2-output"
+    runs_dir = output_root / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    RecommendationExecutionPersistence(store).save(
+        execution,
+        label="canonical v2 source identity fixture",
+        now=lambda: decision_at,
+    )
+    adapter = JsonRecommendationReadAdapter(output_root)
+
+    journey = DecisionOutcomeJourneyService(
+        recommendation_reader=adapter,
+        evidence_reader=MemoryEvidence(()),
+    ).build(execution.result_id)
+
+    assert journey.recommendation_result.link_status is JourneyLinkStatus.LINKED, (
+        journey.to_dict()
+    )
+    identity = journey.recommendation_result.source_identity
+    assert identity.source_provider_id == "daily-prices"
+    assert identity.source_snapshot_id == "snapshot-A"
+    assert identity.universe_snapshot_id is None
+    assert identity.market_data_as_of_date == "2026-09-21"
+    assert identity.market_data_source_id == "sealed-market-provider"
+    assert identity.market_data_fingerprint == fingerprint
+    assert journey.recommendation_result.canonical_integrity_verified is True
+    assert journey.recommendation_result.canonical_payload_hash is not None
+    assert all(item.status is JourneyLinkStatus.UNKNOWN for item in journey.outcome_maturity)
 
 
 def test_canonical_portfolio_summary_links_only_to_verified_query_facts(

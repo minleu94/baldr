@@ -1,10 +1,18 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from datetime import datetime, timezone
+import hashlib
 
 import pandas as pd
 import pytest
 
 from decision_module.industry_mapper import IndustryMapper
+from data_module.company_registry import (
+    COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR,
+    build_company_registry_source_contract,
+    company_registry_source_contract_path,
+    write_company_registry_source_contract,
+)
 from data_module.industry_mapper_data_provider import IndustryMapperDataProvider
 
 
@@ -182,6 +190,49 @@ def test_company_reader_preserves_missing_and_read_error_as_none(tmp_path, monke
     _write_companies(tmp_path)
     monkeypatch.setattr(pd, "read_csv", MagicMock(side_effect=OSError("bad csv")))
     assert reader.load_companies() is None
+
+
+def test_company_reader_attaches_only_csv_bound_source_contract(tmp_path) -> None:
+    _write_companies(tmp_path)
+    companies_file = tmp_path / "companies.csv"
+    csv_bytes = companies_file.read_bytes()
+    sources = [
+        {
+            "market": market,
+            "source_id": f"official:{market}:registry",
+            "endpoint": None,
+            "requested_url": None,
+            "format": "local_json",
+            "response_bytes": 0,
+            "response_sha256": f"sha256:{hashlib.sha256(b'').hexdigest()}",
+            "available_at": None,
+            "status": "unknown",
+            "source_date": None,
+            "publication_date": None,
+        }
+        for market in ("twse", "tpex", "emerging")
+    ]
+    contract = build_company_registry_source_contract(
+        csv_bytes=csv_bytes,
+        sources=sources,
+        generated_at=datetime(2026, 9, 27, 19, 0, tzinfo=timezone.utc),
+        artifact_name=companies_file.name,
+    )
+    write_company_registry_source_contract(companies_file, contract)
+
+    reader = IndustryMapperDataProvider(_config(tmp_path), db_factory=lambda _: None)
+    matched = reader.load_companies()
+    assert matched is not None
+    assert matched.attrs[COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR] == contract
+    assert "company_registry_source_manifest_mismatch" not in contract["warnings"]
+
+    companies_file.write_bytes(csv_bytes + b"\n")
+    replaced = reader.load_companies()
+    assert replaced is not None
+    source_contract = replaced.attrs[COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR]
+    assert source_contract["status"] == "unknown"
+    assert source_contract["warnings"] == ["company_registry_source_manifest_mismatch"]
+    assert replaced["stock_id"].astype(str).tolist() == ["2330"]
 
 
 def test_main_index_reader_prefers_nonempty_sqlite_and_falls_back_to_primary_csv(

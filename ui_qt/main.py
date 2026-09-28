@@ -51,7 +51,7 @@ from PySide6.QtWidgets import (
 )
 from typing import Dict, Any
 from collections.abc import Mapping
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QStandardPaths, Qt
 from PySide6.QtGui import QFont, QIcon
 
 from data_module.config import TWStockConfig
@@ -189,6 +189,26 @@ def _drain_qt_deferred_deletes(
     app.processEvents()
 
 
+def _resolve_personal_policy_config_path(
+    explicit_path: str | Path | None,
+) -> Path | None:
+    """使用明示 QA 路徑，或 QApplication 的本機 AppConfigLocation。"""
+
+    if explicit_path is not None:
+        requested_path = Path(explicit_path).expanduser()
+        if not requested_path.is_absolute():
+            raise ValueError("policy_config_path 必須是明示的絕對路徑")
+        return requested_path.resolve()
+    if QCoreApplication.instance() is None:
+        return None
+    location = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppConfigLocation
+    )
+    if not location:
+        return None
+    return (Path(location) / "personal_use_policy.json").resolve()
+
+
 class MainWindow(QMainWindow):
     """主窗口"""
 
@@ -237,7 +257,7 @@ class MainWindow(QMainWindow):
             )
         return composition.builder
 
-    def __init__(self):
+    def __init__(self, *, policy_config_path: str | Path | None = None):
         super().__init__()
         self.setWindowTitle("baldr")
         self.setGeometry(100, 100, 1400, 800)
@@ -250,6 +270,9 @@ class MainWindow(QMainWindow):
         self._shutdown_close_timer = QTimer(self)
         self._shutdown_close_timer.setInterval(100)
         self._shutdown_close_timer.timeout.connect(self._poll_shutdown_close)
+        self.personal_policy_config_path = _resolve_personal_policy_config_path(
+            policy_config_path
+        )
 
         # 設置窗口 icon
         icon_path = Path(__file__).parent / "app_icon.png"
@@ -747,6 +770,7 @@ class MainWindow(QMainWindow):
                 config=self.config,
                 universe_service=self.universe_service,
                 journal_service=self.journal_service,
+                personal_policy_path=self.personal_policy_config_path,
                 parent=self,
             )
             # 連接一鍵送回測信號（Phase 3.3）
@@ -1391,6 +1415,8 @@ def main():
     try:
         print("[Main] 正在創建 QApplication...")
         app = QApplication(sys.argv)
+        app.setOrganizationName("TechnicalAnalysis")
+        app.setApplicationName("TechnicalAnalysis")
         print("[Main] QApplication 創建成功")
 
         # 設置應用程序 icon（必須在創建窗口之前設置）

@@ -7,6 +7,7 @@ from copy import copy, deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+import hashlib
 import json
 from types import TracebackType
 from typing import Any, cast
@@ -57,12 +58,22 @@ from app_module.recommendation.ml_postcalibration_handoff import (
     ml_availability_from_handoff_v1,
     verified_receipt_references_v1,
 )
+from app_module.recommendation.personal_use_policy import (
+    PERSONAL_CALIBRATED_PROBABILITY_MODE,
+    RULE_ONLY_MODE,
+    validate_personal_use_policy_snapshot,
+)
 from decision_module.recommendation.contracts import (
     DecisionBatch,
     RecommendationItem,
     UniverseReference,
 )
 from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
+from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenario,
+    RecommendationCostScenarioError,
+    cost_scenario_from_metadata,
+)
 
 
 _LEGACY_STATE_FIELDS = LEGACY_COMPATIBILITY_FIELDS
@@ -977,11 +988,45 @@ def _build_execution(
             "recommendation_count": canonical_recommendation_count,
         },
     )
+    market_data_snapshot_refs: tuple[VersionReference, ...] = ()
+    if body_context is not None:
+        legacy_context_value = body_context.legacy_context.thaw()
+        if isinstance(legacy_context_value, Mapping) and legacy_context_value.get(
+            "personal_live_clock_schema"
+        ) == "recommendation-personal-live-clock.v1":
+            source_id = legacy_context_value.get("source_id")
+            market_fingerprint = legacy_context_value.get("market_data_fingerprint")
+            market_data_date = legacy_context_value.get("data_date")
+            if (
+                type(source_id) is not str
+                or not source_id.strip()
+                or type(market_fingerprint) is not str
+                or len(market_fingerprint) != 64
+                or any(character not in "0123456789abcdef" for character in market_fingerprint)
+                or type(market_data_date) is not str
+            ):
+                raise ValueError("personal live market source identity is incomplete")
+            if market_data_date:
+                try:
+                    parsed_market_date = date.fromisoformat(market_data_date)
+                except ValueError as exc:
+                    raise ValueError("personal live market data_date is invalid") from exc
+                if parsed_market_date.isoformat() != market_data_date:
+                    raise ValueError("personal live market data_date is not canonical")
+                if actual_date is None or parsed_market_date > actual_date:
+                    raise ValueError("personal live market data_date is after decision date")
+            market_data_snapshot_refs = (
+                VersionReference(
+                    kind=ReferenceKind.DATA_SNAPSHOT,
+                    reference_id=market_fingerprint,
+                    version=f"{source_id}:{market_data_date or 'undated'}",
+                ),
+            )
     context = Context(
         as_of_date=actual_date,
         decision_at=decision_at,
         source_refs=(),
-        data_snapshot_refs=(),
+        data_snapshot_refs=market_data_snapshot_refs,
         config_ref=request.config_ref,
         profile_ref=request.profile_ref,
         strategy_ref=request.strategy_ref,
@@ -1032,6 +1077,9 @@ def _build_execution(
         post_calibration_handoff,
         status=status,
         body_result=body_result,
+        result_id=result_id,
+        context_as_of_date=actual_date,
+        context_decision_at=decision_at,
     )
     if invocation_context is not None:
         events = (
@@ -1101,6 +1149,9 @@ def _capture_events(
     *,
     status: ExecutionStatus,
     body_result: RecommendationBodyResult | None,
+    result_id: str,
+    context_as_of_date: date | None,
+    context_decision_at: datetime | None,
 ) -> tuple[ExecutionEvent, ...]:
     events: list[ExecutionEvent] = []
     legacy_state = (
@@ -1131,6 +1182,262 @@ def _capture_events(
                 },
             )
         )
+    personal_policy_snapshot = legacy_context.get("personal_use_policy")
+    if personal_policy_snapshot is not None:
+        if not isinstance(personal_policy_snapshot, Mapping):
+            raise TypeError("personal_use_policy 必須是同次 invocation 的完整 object")
+        try:
+            validated_policy_snapshot = validate_personal_use_policy_snapshot(
+                personal_policy_snapshot
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("personal policy event 的設定快照無效") from exc
+        requested_mode = legacy_context.get("personal_use_requested_mode")
+        effective_mode = legacy_context.get("personal_use_effective_mode")
+        if (
+            dict(personal_policy_snapshot) != validated_policy_snapshot
+            or requested_mode != validated_policy_snapshot["mode"]
+            or requested_mode
+            not in {RULE_ONLY_MODE, PERSONAL_CALIBRATED_PROBABILITY_MODE}
+            or effective_mode
+            not in {RULE_ONLY_MODE, PERSONAL_CALIBRATED_PROBABILITY_MODE}
+            or (
+                requested_mode == RULE_ONLY_MODE
+                and effective_mode != RULE_ONLY_MODE
+            )
+        ):
+            raise ValueError("personal policy event 的模式與驗證快照不一致")
+        decision_at = _datetime_value(legacy_context.get("decision_at"))
+        if (
+            decision_at is None
+            or type(result_id) is not str
+            or not result_id.strip()
+            or decision_at != context_decision_at
+            or str(legacy_context.get("result_id") or "") != result_id
+        ):
+            raise ValueError("personal policy event 缺少 aware decision_at")
+        if validated_policy_snapshot["revision"] > 0:
+            confirmed_at = _datetime_value(
+                validated_policy_snapshot.get("confirmed_at")
+            )
+            if confirmed_at is None or confirmed_at > decision_at:
+                raise ValueError("personal policy event 確認時間晚於決策時間")
+        events.append(
+            ExecutionEvent(
+                event_type="personal_use_policy_snapshot",
+                message="封存本次 recommendation invocation 實際使用的個人政策快照與模式。",
+                occurred_at=decision_at,
+                details={
+                    "schema_version": (
+                        "recommendation-personal-use-policy-snapshot.v2"
+                        if validated_policy_snapshot.get("schema_version")
+                        == "recommendation-personal-use-policy.v2"
+                        else "recommendation-personal-use-policy-snapshot.v1"
+                    ),
+                    "result_id": result_id,
+                    "decision_at": decision_at,
+                    "policy_snapshot": _safe_contract_value(
+                        validated_policy_snapshot,
+                        field_path="personal_use_policy",
+                    ),
+                    "requested_mode": legacy_context[
+                        "personal_use_requested_mode"
+                    ],
+                    "effective_mode": legacy_context[
+                        "personal_use_effective_mode"
+                    ],
+                    **(
+                        {
+                            "source_time_basis": "user_declared_source_time",
+                            "research_only": True,
+                            "official_historical_pit_verified": False,
+                        }
+                        if validated_policy_snapshot.get("schema_version")
+                        == "recommendation-personal-use-policy.v2"
+                        and validated_policy_snapshot.get("source_time_trust")
+                        is not None
+                        else {}
+                    ),
+                },
+            )
+        )
+    industry_source_snapshot = legacy_context.get(
+        "industry_mapping_source_snapshot"
+    )
+    if industry_source_snapshot is not None:
+        if not isinstance(industry_source_snapshot, Mapping):
+            raise TypeError("industry_mapping_source_snapshot 必須是 object")
+        snapshot = dict(industry_source_snapshot)
+        declared_snapshot_hash = snapshot.pop("snapshot_sha256", None)
+        try:
+            snapshot_bytes = json.dumps(
+                snapshot,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("industry mapping source snapshot 不是 canonical JSON") from exc
+        expected_snapshot_hash = "sha256:" + hashlib.sha256(snapshot_bytes).hexdigest()
+        snapshot_decision_at = snapshot.get("decision_at")
+        legacy_decision_at = legacy_context.get("decision_at")
+        decision_at = _datetime_value(snapshot_decision_at)
+        if snapshot_decision_at is not None and decision_at is None:
+            raise ValueError("industry mapping source snapshot decision_at 無效")
+        # 未產生決策結果的路徑可以保留無時鐘的來源事件，但不可補造時間。
+        if decision_at is not None or snapshot_decision_at is None:
+            usages = snapshot.get("usage")
+            source_contract = snapshot.get("company_registry_source_contract")
+            source_warnings = snapshot.get("warnings")
+            source_contract_hash_matches = (
+                _company_registry_contract_hash_matches(source_contract)
+                if isinstance(source_contract, Mapping)
+                else None
+            )
+            snapshot_schema_version = snapshot.get("schema_version")
+            if snapshot_schema_version == "recommendation-company-registry-source-snapshot.v1":
+                source_date_binding_valid = snapshot.get("data_as_of_date") == (
+                    context_as_of_date.isoformat()
+                    if context_as_of_date is not None
+                    else None
+                )
+            elif snapshot_schema_version == "recommendation-company-registry-source-snapshot.v2":
+                market_data_date = legacy_context.get("data_date")
+                expected_market_data_date = market_data_date or None
+                market_date_binding_valid = type(market_data_date) is str
+                if market_date_binding_valid and expected_market_data_date is not None:
+                    try:
+                        parsed_market_date = date.fromisoformat(expected_market_data_date)
+                    except ValueError:
+                        market_date_binding_valid = False
+                    else:
+                        market_date_binding_valid = (
+                            parsed_market_date.isoformat() == expected_market_data_date
+                            and context_as_of_date is not None
+                            and parsed_market_date <= context_as_of_date
+                        )
+                source_date_binding_valid = (
+                    legacy_context.get("personal_live_clock_schema")
+                    == "recommendation-personal-live-clock.v1"
+                    and snapshot.get("decision_date")
+                    == (
+                        context_as_of_date.isoformat()
+                        if context_as_of_date is not None
+                        else None
+                    )
+                    and snapshot.get("data_as_of_date") == expected_market_data_date
+                    and snapshot.get("source_id") == legacy_context.get("source_id")
+                    and snapshot.get("market_data_fingerprint")
+                    == legacy_context.get("market_data_fingerprint")
+                    and market_date_binding_valid
+                )
+            else:
+                source_date_binding_valid = False
+            valid_usages = {
+                "current_filter_selection",
+                "current_filter_empty_industries_diagnostic",
+                "current_filter_example_industry_diagnostic",
+                "current_industry_context_display_reason",
+                "current_fallback_display_reason",
+                "current_industry_index_performance_for_reason",
+            }
+            if (
+                declared_snapshot_hash != expected_snapshot_hash
+                or snapshot_schema_version
+                not in (
+                    "recommendation-company-registry-source-snapshot.v1",
+                    "recommendation-company-registry-source-snapshot.v2",
+                )
+                or snapshot.get("scope") != "current_classification_only"
+                or snapshot.get("pit_eligible") is not False
+                or type(result_id) is not str
+                or not result_id.strip()
+                or snapshot.get("result_id")
+                != result_id
+                or snapshot_decision_at != legacy_decision_at
+                or not source_date_binding_valid
+                or snapshot.get("company_registry_source_status")
+                not in {"captured", "unknown"}
+                or snapshot.get("industry_index_source_status")
+                not in {"not_observed", "unknown"}
+                or not isinstance(usages, list)
+                or not usages
+                or any(type(item) is not str or item not in valid_usages for item in usages)
+                or len(set(usages)) != len(usages)
+                or type(source_warnings) is not list
+                or any(type(item) is not str for item in source_warnings)
+                or (
+                    source_contract is not None
+                    and not isinstance(source_contract, Mapping)
+                )
+                or (
+                    isinstance(source_contract, Mapping)
+                    and source_contract.get("source_contract_sha256") is not None
+                    and not source_contract_hash_matches
+                    and (
+                        snapshot.get("company_registry_source_status") != "unknown"
+                        or "company_registry_source_contract_hash_mismatch"
+                        not in source_warnings
+                    )
+                )
+                or (
+                    snapshot.get("company_registry_source_status") == "captured"
+                    and (
+                        not isinstance(source_contract, Mapping)
+                        or source_contract.get("schema_version")
+                        != "company-registry-source-contract.v1"
+                        or source_contract.get("scope")
+                        != "current_classification_only"
+                        or source_contract.get("pit_eligible") is not False
+                        or source_contract.get("status") != "captured"
+                        or not source_contract_hash_matches
+                        or snapshot.get("company_registry_source_contract_sha256")
+                        != source_contract.get("source_contract_sha256")
+                    )
+                )
+                or (
+                    snapshot.get("company_registry_source_status") == "unknown"
+                    and snapshot.get("company_registry_source_contract_sha256")
+                    != (
+                        source_contract.get("source_contract_sha256")
+                        if isinstance(source_contract, Mapping)
+                        else None
+                    )
+                )
+                or (
+                    "current_industry_index_performance_for_reason" in usages
+                    and snapshot.get("industry_index_source_status") != "unknown"
+                )
+                or (
+                    "current_industry_index_performance_for_reason" in usages
+                    and "industry_index_source_contract_unavailable_for_current_use"
+                    not in source_warnings
+                )
+            ):
+                raise ValueError("industry mapping source snapshot binding 無效")
+            if (
+                _datetime_value(legacy_decision_at) != decision_at
+                or context_decision_at != decision_at
+                or str(legacy_context.get("result_id") or "") != result_id
+            ):
+                raise ValueError("industry mapping source snapshot decision_at 不一致")
+            events.append(
+                ExecutionEvent(
+                    event_type="company_registry_source_snapshot",
+                    message="封存本次 current-only 公司產業分類來源與實際 mapper 用途。",
+                    occurred_at=decision_at,
+                    details={
+                        "schema_version": "recommendation-company-registry-source-snapshot-event.v1",
+                        "result_id": result_id,
+                        "decision_at": decision_at,
+                        "snapshot": _safe_contract_value(
+                            {**snapshot, "snapshot_sha256": declared_snapshot_hash},
+                            field_path="industry_mapping_source_snapshot",
+                        ),
+                    },
+                )
+            )
     if status is ExecutionStatus.COMPLETED:
         if type(body_result) is not RecommendationBodyResult:
             raise ValueError("completed execution 缺少 typed BodyResult negative evidence")
@@ -1177,13 +1484,410 @@ def _capture_events(
         )
     receipt_event = post_calibration_handoff.receipt_event
     if receipt_event is not None:
+        receipt_event_details = receipt_event.event_details()
         events.append(
             ExecutionEvent(
                 event_type="ml_projection_receipt_capture",
                 message="封存本次 receipt 寫入、readback 與候選 identity 檢查結果。",
-                details=receipt_event.event_details(),
+                details=receipt_event_details,
             )
         )
+        baseline_inputs = legacy_context.get("personal_probability_baseline_inputs")
+        if baseline_inputs is not None:
+            if not isinstance(baseline_inputs, Mapping):
+                raise TypeError("personal probability baseline inputs 必須是同次 object")
+            try:
+                baseline_input = _safe_contract_value(
+                    baseline_inputs,
+                    field_path="personal_probability_baseline_inputs",
+                )
+            except (TypeError, ValueError) as exc:
+                raise ValueError("personal probability baseline inputs 無法封存") from exc
+            baseline_schema = baseline_input.get("schema_version")
+            is_v3_baseline = (
+                baseline_schema
+                == "recommendation-personal-probability-baseline-inputs.v3"
+            )
+            input_fields = (
+                {
+                    "schema_version",
+                    "result_id",
+                    "decision_at",
+                    "decision_date",
+                    "projected_stock_codes",
+                    "delivered_stock_codes",
+                    "model_active_stock_codes",
+                    "rule_only_fallback_stock_codes",
+                    "delivered_count",
+                    "model_active_count",
+                    "fallback_count",
+                    "model_coverage_bp",
+                    "upside_baseline_kind",
+                    "upside_baseline_id",
+                    "upside_probability_bp_by_symbol",
+                    "after_cost_baseline_status",
+                    "after_cost_baseline_id",
+                    "after_cost_probability_bp_by_symbol",
+                    "cost_scenario",
+                }
+                if is_v3_baseline
+                else {
+                    "schema_version",
+                    "result_id",
+                    "decision_at",
+                    "decision_date",
+                    "upside_baseline_kind",
+                    "upside_baseline_id",
+                    "upside_probability_bp_by_symbol",
+                    "after_cost_baseline_status",
+                    "after_cost_baseline_id",
+                    "after_cost_probability_bp_by_symbol",
+                }
+            )
+            decision_at = _datetime_value(legacy_context.get("decision_at"))
+            effective_mode = legacy_context.get("personal_use_effective_mode")
+            requested_mode = legacy_context.get("personal_use_requested_mode")
+            policy_mode = (
+                validated_policy_snapshot.get("mode")
+                if isinstance(personal_policy_snapshot, Mapping)
+                else None
+            )
+            projected_codes = receipt_event_details.get("projected_stock_codes")
+            if isinstance(projected_codes, tuple):
+                projected_codes = list(projected_codes)
+            normalized_projected_codes = (
+                cast(list[str], projected_codes)
+                if type(projected_codes) is list
+                else []
+            )
+            projection_rows = legacy_context.get("calibration_projection_rows")
+            baseline_decision_at = _datetime_value(
+                baseline_input.get("decision_at")
+            )
+            canonical_decision_at = (
+                decision_at.astimezone(ZoneInfo("UTC"))
+                .isoformat(timespec="microseconds")
+                .replace("+00:00", "Z")
+                if decision_at is not None
+                else None
+            )
+            projected_codes_valid = (
+                bool(normalized_projected_codes)
+                and all(
+                    type(code) is str and bool(code)
+                    for code in normalized_projected_codes
+                )
+                and len(set(normalized_projected_codes))
+                == len(normalized_projected_codes)
+            )
+            code_set = (
+                set(normalized_projected_codes) if projected_codes_valid else set()
+            )
+            active_codes_value = baseline_input.get("model_active_stock_codes")
+            fallback_codes_value = baseline_input.get("rule_only_fallback_stock_codes")
+            delivered_codes_value = baseline_input.get("delivered_stock_codes")
+            active_codes = (
+                list(cast(Sequence[str], active_codes_value))
+                if isinstance(active_codes_value, (list, tuple))
+                else []
+            )
+            fallback_codes = (
+                list(cast(Sequence[str], fallback_codes_value))
+                if isinstance(fallback_codes_value, (list, tuple))
+                else []
+            )
+            delivered_codes = (
+                list(cast(Sequence[str], delivered_codes_value))
+                if isinstance(delivered_codes_value, (list, tuple))
+                else []
+            )
+            baseline_projected_value = baseline_input.get("projected_stock_codes")
+            baseline_projected_codes = (
+                list(cast(Sequence[str], baseline_projected_value))
+                if isinstance(baseline_projected_value, (list, tuple))
+                else []
+            )
+            baseline_codes = set(active_codes) if is_v3_baseline else code_set
+            partition_valid = (
+                not is_v3_baseline
+                or (
+                    bool(active_codes)
+                    and isinstance(active_codes_value, (list, tuple))
+                    and isinstance(fallback_codes_value, (list, tuple))
+                    and isinstance(delivered_codes_value, (list, tuple))
+                    and delivered_codes == normalized_projected_codes
+                    and baseline_projected_codes == normalized_projected_codes
+                    and set(active_codes).isdisjoint(fallback_codes)
+                    and set(active_codes) | set(fallback_codes) == set(delivered_codes)
+                    and all(type(code) is str and bool(code) for code in delivered_codes)
+                    and len(set(active_codes)) == len(active_codes)
+                    and len(set(fallback_codes)) == len(fallback_codes)
+                    and len(set(delivered_codes)) == len(delivered_codes)
+                    and baseline_input.get("delivered_count") == len(delivered_codes)
+                    and baseline_input.get("model_active_count") == len(active_codes)
+                    and baseline_input.get("fallback_count") == len(fallback_codes)
+                    and type(baseline_input.get("model_coverage_bp")) is int
+                    and baseline_input.get("model_coverage_bp")
+                    == len(active_codes) * 10_000 // len(delivered_codes)
+                )
+            )
+            upside_values = baseline_input.get("upside_probability_bp_by_symbol")
+            after_cost_values = baseline_input.get(
+                "after_cost_probability_bp_by_symbol"
+            )
+            scenario_value = baseline_input.get("cost_scenario")
+            scenario_metadata = (
+                scenario_value if isinstance(scenario_value, Mapping) else {}
+            )
+            receipt_hash = receipt_event_details.get("receipt_hash")
+            projection_hash = receipt_event_details.get("projection_rows_sha256")
+            cost_hash = receipt_event_details.get("cost_scenario_hash")
+            after_cost_status = baseline_input.get("after_cost_baseline_status")
+            scenario: RecommendationCostScenario | None = None
+            scenario_valid = not is_v3_baseline
+            scenario_projection_fields: dict[str, Any] = {}
+            if is_v3_baseline:
+                try:
+                    parsed_scenario = cost_scenario_from_metadata(
+                        {
+                            "cost_scenario": scenario_value,
+                            "cost_scenario_hash": cost_hash,
+                        }
+                    )
+                    scenario_payload = parsed_scenario.to_dict(include_hash=True)
+                    scenario = parsed_scenario
+                    scenario_valid = (
+                        isinstance(scenario_value, Mapping)
+                        and scenario_payload == dict(scenario_value)
+                        and parsed_scenario.scenario_hash == cost_hash
+                        and parsed_scenario.scenario_id
+                        == receipt_event_details.get("cost_scenario_id")
+                        and parsed_scenario.scenario_version
+                        == next(
+                            (
+                                projection_rows[code].get("cost_scenario_version")
+                                for code in active_codes
+                                if isinstance(projection_rows, Mapping)
+                                and isinstance(projection_rows.get(code), Mapping)
+                            ),
+                            None,
+                        )
+                    )
+                    scenario_projection_fields = {
+                        "cost_scenario_id": parsed_scenario.scenario_id,
+                        "cost_scenario_version": parsed_scenario.scenario_version,
+                        "cost_scenario_hash": parsed_scenario.scenario_hash,
+                        "cost_basis_bp": parsed_scenario.fixed_round_trip_cost_bp,
+                        "cost_policy_id": parsed_scenario.policy_id,
+                        "cost_policy_version": parsed_scenario.policy_version,
+                        "policy_estimate_date": parsed_scenario.policy_estimate_date,
+                        "research_order_amount_twd": scenario_payload[
+                            "research_order_amount_twd"
+                        ],
+                        "research_order_quantity_shares": (
+                            parsed_scenario.research_order_quantity_shares
+                        ),
+                        "lot_type": parsed_scenario.lot_type,
+                        "instrument_type": parsed_scenario.instrument_type,
+                    }
+                except (KeyError, TypeError, ValueError, RecommendationCostScenarioError):
+                    scenario_valid = False
+            upside_map_valid = (
+                isinstance(upside_values, Mapping)
+                and set(upside_values) == baseline_codes
+                and all(
+                    type(value) is int and value == 5_000
+                    for value in upside_values.values()
+                )
+            )
+            after_cost_map_valid = (
+                isinstance(after_cost_values, Mapping)
+                and set(after_cost_values) == baseline_codes
+                and all(
+                    value is None
+                    or (type(value) is int and 0 <= value <= 10_000)
+                    for value in after_cost_values.values()
+                )
+            )
+            if after_cost_map_valid and isinstance(after_cost_values, Mapping):
+                after_cost_values_all = tuple(after_cost_values.values())
+            else:
+                after_cost_values_all = ()
+            after_cost_identity_valid = (
+                after_cost_status == "available"
+                and type(baseline_input.get("after_cost_baseline_id")) is str
+                and bool(baseline_input.get("after_cost_baseline_id"))
+                and bool(after_cost_values_all)
+                and all(value is not None for value in after_cost_values_all)
+            ) or (
+                after_cost_status == "unavailable"
+                and baseline_input.get("after_cost_baseline_id") is None
+                and bool(after_cost_values_all)
+                and all(value is None for value in after_cost_values_all)
+            )
+            if is_v3_baseline:
+                projection_has_active_model = (
+                    isinstance(projection_rows, Mapping)
+                    and set(projection_rows) == code_set
+                    and all(
+                        isinstance(projection_rows.get(code), Mapping)
+                        and projection_rows[code].get("status") == "active_candidate"
+                        and projection_rows[code].get("calibrated_probability_status")
+                        == "active_effective"
+                        and type(projection_rows[code].get("calibrated_probability_bp")) is int
+                        and 0 <= projection_rows[code]["calibrated_probability_bp"] <= 10_000
+                        and projection_rows[code].get("model_version")
+                        == receipt_event_details.get("candidate_id")
+                        and scenario is not None
+                        and type(projection_rows[code].get("cost_basis")) is str
+                        and bool(projection_rows[code].get("cost_basis"))
+                        and all(
+                            projection_rows[code].get(field) == expected
+                            for field, expected in scenario_projection_fields.items()
+                        )
+                        for code in active_codes
+                    )
+                    and all(
+                        isinstance(projection_rows.get(code), Mapping)
+                        and projection_rows[code].get("status") == "rule_only"
+                        and projection_rows[code].get("calibrated_probability_status")
+                        == "unavailable"
+                        and projection_rows[code].get("calibrated_probability_bp") is None
+                        and projection_rows[code].get("after_cost_profit_probability_bp") is None
+                        and not str(projection_rows[code].get("model_version") or "").strip()
+                        for code in fallback_codes
+                    )
+                )
+            else:
+                projection_has_active_model = (
+                    isinstance(projection_rows, Mapping)
+                    and set(projection_rows) == code_set
+                    and any(
+                        isinstance(projection_rows.get(code), Mapping)
+                        and projection_rows[code].get("status") == "active_candidate"
+                        and type(projection_rows[code].get("calibrated_probability_bp")) is int
+                        and 0 <= projection_rows[code]["calibrated_probability_bp"] <= 10_000
+                        for code in code_set
+                    )
+                )
+            baseline_checks = {
+                "input_fields": set(baseline_input) == input_fields,
+                "input_schema": baseline_schema
+                in {
+                    "recommendation-personal-probability-baseline-inputs.v1",
+                    "recommendation-personal-probability-baseline-inputs.v3",
+                },
+                "result_id": baseline_input.get("result_id") == result_id,
+                "decision_date": baseline_input.get("decision_date")
+                == (context_as_of_date.isoformat() if context_as_of_date else None),
+                "decision_at": decision_at is not None
+                and baseline_decision_at == decision_at,
+                "context_clock": decision_at == context_decision_at,
+                "personal_mode": requested_mode == PERSONAL_CALIBRATED_PROBABILITY_MODE
+                and effective_mode == PERSONAL_CALIBRATED_PROBABILITY_MODE
+                and policy_mode == PERSONAL_CALIBRATED_PROBABILITY_MODE,
+                "fixed_null_benchmark": baseline_input.get("upside_baseline_kind")
+                == "fixed_null_benchmark_50pct"
+                and baseline_input.get("upside_baseline_id")
+                == "null_benchmark_50pct_v1",
+                "projected_codes": projected_codes_valid,
+                "partition": partition_valid,
+                "upside_values": upside_map_valid,
+                "after_cost_values": after_cost_map_valid,
+                "after_cost_identity": after_cost_identity_valid,
+                "receipt_hashes": _is_sha256_contract_value(receipt_hash)
+                and _is_sha256_contract_value(projection_hash)
+                and _is_sha256_contract_value(cost_hash),
+                "receipt_verified": receipt_event_details.get("persisted") is True
+                and receipt_event_details.get("readback_verified") is True
+                and receipt_event_details.get("identity_verified") is True
+                and receipt_event_details.get("receipt_body_hash_verified") is True
+                and receipt_event_details.get("error") == ""
+                and receipt_event_details.get("result_id") == result_id
+                and receipt_event_details.get("decision_date")
+                == baseline_input.get("decision_date"),
+                "active_projection": projection_has_active_model,
+                "cost_scenario": scenario_valid,
+            }
+            failed_baseline_checks = tuple(
+                name for name, passed in baseline_checks.items() if not passed
+            )
+            if failed_baseline_checks:
+                raise ValueError(
+                    "personal probability baseline 與同次 receipt/projection 不一致: "
+                    + ",".join(failed_baseline_checks)
+                )
+            snapshot_body = {
+                "schema_version": (
+                    "recommendation-personal-probability-baseline-snapshot.v2"
+                    if is_v3_baseline
+                    else "recommendation-personal-probability-baseline-snapshot.v1"
+                ),
+                "result_id": result_id,
+                "decision_at": canonical_decision_at,
+                "decision_date": baseline_input["decision_date"],
+                "receipt_hash": receipt_hash,
+                "projection_rows_sha256": projection_hash,
+                "cost_scenario_hash": cost_hash,
+                "projected_stock_codes": list(normalized_projected_codes),
+                "upside_baseline_kind": baseline_input["upside_baseline_kind"],
+                "upside_baseline_id": baseline_input["upside_baseline_id"],
+                "upside_probability_bp_by_symbol": dict(upside_values),
+                "after_cost_baseline_status": baseline_input[
+                    "after_cost_baseline_status"
+                ],
+                "after_cost_baseline_id": baseline_input[
+                    "after_cost_baseline_id"
+                ],
+                "after_cost_probability_bp_by_symbol": dict(after_cost_values),
+            }
+            if is_v3_baseline:
+                snapshot_body.update(
+                    {
+                        "delivered_stock_codes": list(delivered_codes),
+                        "model_active_stock_codes": list(active_codes),
+                        "rule_only_fallback_stock_codes": list(fallback_codes),
+                        "delivered_count": baseline_input["delivered_count"],
+                        "model_active_count": baseline_input["model_active_count"],
+                        "fallback_count": baseline_input["fallback_count"],
+                        "model_coverage_bp": baseline_input["model_coverage_bp"],
+                        "cost_scenario": dict(scenario_metadata),
+                    }
+                )
+            baseline_bytes = json.dumps(
+                snapshot_body,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            snapshot = {
+                **snapshot_body,
+                "snapshot_sha256": "sha256:" + hashlib.sha256(baseline_bytes).hexdigest(),
+            }
+            events.append(
+                ExecutionEvent(
+                    event_type="personal_probability_baseline_snapshot",
+                    message=(
+                        "封存同次 projector 輸入的固定上漲基準及可用 after-cost 基準；"
+                        "基準值不由 receipt projection rows 回推。"
+                    ),
+                    occurred_at=decision_at,
+                    details={
+                        "schema_version": (
+                            "recommendation-personal-probability-baseline-event.v2"
+                            if is_v3_baseline
+                            else "recommendation-personal-probability-baseline-event.v1"
+                        ),
+                        "result_id": result_id,
+                        "decision_at": canonical_decision_at,
+                        "snapshot": _safe_contract_value(
+                            snapshot,
+                            field_path="personal_probability_baseline_snapshot",
+                        ),
+                    },
+                )
+            )
     error = capture.get("error")
     if error is not None:
         events.append(
@@ -1215,6 +1919,33 @@ def _capture_events(
             )
         )
     return tuple(events)
+
+
+def _company_registry_contract_hash_matches(
+    contract: Mapping[str, Any],
+) -> bool:
+    """以 company registry 使用的 canonical JSON bytes 核對來源契約 hash。"""
+
+    declared = contract.get("source_contract_sha256")
+    if (
+        type(declared) is not str
+        or len(declared) != 71
+        or not declared.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in declared[7:])
+    ):
+        return False
+    body = dict(contract)
+    body.pop("source_contract_sha256", None)
+    try:
+        canonical = json.dumps(
+            body,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return False
+    return declared == "sha256:" + hashlib.sha256(canonical).hexdigest()
 
 
 def _universe_reference(
@@ -1286,6 +2017,15 @@ def _datetime_value(value: object) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo is not None and parsed.utcoffset() is not None else None
+
+
+def _is_sha256_contract_value(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
 
 
 def _contract_numeric(value: object) -> Decimal | int | None:

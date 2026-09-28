@@ -1136,6 +1136,8 @@ def _freeze_json(value: object) -> object:
 
 def _read_ml_projections(
     execution: RecommendationExecution,
+    *,
+    max_receipt_bytes: int | None = None,
 ) -> tuple[
     Literal["not_requested", "unknown", "verified", "unavailable"],
     tuple[Mapping[str, object], ...],
@@ -1168,15 +1170,29 @@ def _read_ml_projections(
             if receipt_reference.kind is not ReferenceKind.ML_RECEIPT:
                 raise ExecutionArtifactIntegrityError("ML receipt reference kind mismatch")
             receipt_path = Path(receipt_reference.reference_id).expanduser()
-            resolved_reference = str(receipt_path.resolve())
-            receipt = read_inference_projection_receipt(
-                receipt_path,
-                expected_receipt_hash=binding.receipt_hash,
-                expected_decision_date=binding.decision_date.isoformat(),
-                expected_candidate_id=binding.model_candidate_id,
-                expected_result_id=execution.result_id,
-                expected_cost_scenario_hash=binding.cost_scenario_hash,
-            )
+            if max_receipt_bytes is None:
+                resolved_reference = str(receipt_path.resolve())
+                receipt = read_inference_projection_receipt(
+                    receipt_path,
+                    expected_receipt_hash=binding.receipt_hash,
+                    expected_decision_date=binding.decision_date.isoformat(),
+                    expected_candidate_id=binding.model_candidate_id,
+                    expected_result_id=execution.result_id,
+                    expected_cost_scenario_hash=binding.cost_scenario_hash,
+                )
+            else:
+                # 有限讀取路徑保留原始詞法路徑，讓 receipt reader 能在
+                # resolve 之前拒絕 symlink／reparse path。
+                resolved_reference = str(Path(os.path.abspath(receipt_path)))
+                receipt = read_inference_projection_receipt(
+                    receipt_path,
+                    expected_receipt_hash=binding.receipt_hash,
+                    expected_decision_date=binding.decision_date.isoformat(),
+                    expected_candidate_id=binding.model_candidate_id,
+                    expected_result_id=execution.result_id,
+                    expected_cost_scenario_hash=binding.cost_scenario_hash,
+                    max_receipt_bytes=max_receipt_bytes,
+                )
             if receipt.receipt_path != resolved_reference:
                 raise ExecutionArtifactIntegrityError("ML receipt path reference mismatch")
             body = receipt.payload
@@ -1268,9 +1284,19 @@ class RecommendationExecutionQueries:
         self,
         record: ArtifactIndexRecord,
         envelope: ExecutionReadEnvelope,
+        *,
+        max_receipt_bytes: int | None = None,
     ) -> RecommendationExecutionReadModel:
         metadata = record.metadata
-        ml_status, projections, diagnostics = _read_ml_projections(envelope.execution)
+        if max_receipt_bytes is None:
+            ml_status, projections, diagnostics = _read_ml_projections(
+                envelope.execution
+            )
+        else:
+            ml_status, projections, diagnostics = _read_ml_projections(
+                envelope.execution,
+                max_receipt_bytes=max_receipt_bytes,
+            )
         return RecommendationExecutionReadModel(
             execution=envelope.execution,
             label=metadata.label,
@@ -1661,7 +1687,12 @@ class RecommendationExecutionQueries:
                 "canonical artifact 存在但 index 缺失；拒絕 fallback 到 legacy"
             )
 
-    def get(self, result_id: str) -> RecommendationExecutionReadModel | None:
+    def get(
+        self,
+        result_id: str,
+        *,
+        max_receipt_bytes: int | None = None,
+    ) -> RecommendationExecutionReadModel | None:
         try:
             record, envelope = self._persistence.read_verified_envelope(result_id)
         except KeyError:
@@ -1675,7 +1706,13 @@ class RecommendationExecutionQueries:
                 raise ExecutionArtifactIntegrityError(
                     "同一 result_id 同時出現在 canonical index 與 legacy runs"
                 )
-            return self._canonical_read_model(record, envelope)
+            if max_receipt_bytes is None:
+                return self._canonical_read_model(record, envelope)
+            return self._canonical_read_model(
+                record,
+                envelope,
+                max_receipt_bytes=max_receipt_bytes,
+            )
         self._assert_no_unindexed_canonical_artifact(result_id)
         if self._legacy_reader is None:
             return None

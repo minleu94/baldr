@@ -209,6 +209,7 @@ def _build_main_window(*, regime_service=None, portfolio_service=None, config=No
 
     QMainWindow.__init__(main_window)
     main_window.config = config or object()
+    main_window.personal_policy_config_path = None
     main_window.screening_service = object()
     main_window.regime_service = regime_service or object()
     main_window.recommendation_service = object()
@@ -244,6 +245,7 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     target_window = _build_main_window()
     target_window._setup_ui()
 
+    assert _DummyRecommendationView.instances[-1].kwargs["personal_policy_path"] is None
     assert "每日決策" not in _get_nav_labels(target_window)
     assert isinstance(target_window.decision_desk_view, _RecordedDecisionDeskView)
     assert (

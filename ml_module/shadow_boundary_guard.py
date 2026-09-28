@@ -232,9 +232,63 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
             {"read_inference_projection_receipt"}
         ),
     },
+    "app_module/personalization_action_recorder.py": {
+        "ml_module.recommendation_inference_provenance": frozenset(
+            {"read_inference_projection_receipt"}
+        ),
+    },
     "app_module/recommendation/queries.py": {
         "ml_module.recommendation_inference_provenance": frozenset(
             {"read_inference_projection_receipt"}
+        ),
+    },
+    # Cost scenarios are immutable Decimal-backed contracts.  These callers
+    # use the typed scenario and metadata parser only; they do not call replay
+    # estimators or any file/database writer from the ML package.
+    "app_module/recommendation/execute.py": {
+        "ml_module.recommendation_cost_scenario": frozenset(
+            {
+                "RecommendationCostScenario",
+                "RecommendationCostScenarioError",
+                "cost_scenario_from_metadata",
+            }
+        ),
+    },
+    # Personal inventory verifies bounded candidate files before calling the
+    # explicitly injected read-only replay service's build().  It does not
+    # persist replay results or invoke training/promotion writers.
+    "app_module/recommendation/personal_candidate_inventory.py": {
+        "ml_module.model_artifact_manifest": frozenset({"ModelArtifactManifest"}),
+        "ml_module.recommendation_calibration_training": frozenset(
+            {"candidate_freeze_hash"}
+        ),
+        "ml_module.recommendation_historical_replay": frozenset(
+            {
+                "RecommendationHistoricalReplayConfig",
+                "RecommendationHistoricalReplayService",
+            }
+        ),
+        "ml_module.recommendation_training_lineage": frozenset(
+            {"read_recommendation_training_lineage"}
+        ),
+    },
+    # This app adapter calls only the personal projection method and owns its
+    # separate create-only output root.  It never calls global evidence scan,
+    # persistence, or promotion APIs on the ML service.
+    "app_module/recommendation/personal_natural_outcome_daily.py": {
+        "ml_module.recommendation_calibration_evidence": frozenset(
+            {"verify_natural_maturity_session_proof"}
+        ),
+        "ml_module.recommendation_natural_outcome_service": frozenset(
+            {
+                "PersonalNaturalOutcomeProjection",
+                "RecommendationNaturalOutcomeService",
+            }
+        ),
+    },
+    "app_module/recommendation/personal_prediction_capture.py": {
+        "ml_module.recommendation_cost_scenario": frozenset(
+            {"RecommendationCostScenarioError", "cost_scenario_from_metadata"}
         ),
     },
     "app_module/recommendation_learning_evidence_projection_service.py": {
@@ -267,6 +321,9 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
     "app_module/recommendation_service.py": {
         "ml_module.feature_registry": frozenset({"CORE_LONG_HISTORY_FEATURE_REGISTRY"}),
         "ml_module.historical_feature_builder": frozenset({"HistoricalFeatureBuilder"}),
+        "ml_module.recommendation_cost_scenario": frozenset(
+            {"RecommendationCostScenario"}
+        ),
         "ml_module.recommendation_probability_transform": frozenset(
             {"NULL_BENCHMARK_BASELINE_ID", "PROBABILITY_TRANSFORM_ID"}
         ),

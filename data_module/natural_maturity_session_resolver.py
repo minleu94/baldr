@@ -445,6 +445,19 @@ class NaturalMaturitySessionResolver:
             endpoint=endpoint,
         )
 
+    def resolve_personal_prediction_horizon(
+        self,
+        capture_date: str,
+        evaluation_at: datetime,
+    ) -> SessionResolution:
+        """以固定 20 個官方交易日解析個人捕獲的成熟端點。"""
+
+        return self.resolve(
+            capture_date=capture_date,
+            evaluation_at=evaluation_at,
+            horizon_sessions=20,
+        )
+
     def _reset_resolution_cache(self) -> None:
         """清除上一個 evaluation 的 cache 驗證結果。"""
 

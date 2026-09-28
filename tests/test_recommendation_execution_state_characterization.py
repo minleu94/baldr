@@ -23,6 +23,9 @@ from app_module.recommendation.contracts import (
     ReferenceKind,
     VersionReference,
 )
+from app_module.recommendation.personal_use_policy import (
+    RecommendationPersonalUsePolicyV1,
+)
 from decision_module.recommendation.contracts import RecommendationItem
 from ui_qt.views.recommendation import execution_coordinator
 from ui_qt.views.recommendation.execution_coordinator import (
@@ -181,6 +184,10 @@ def test_new_request_keeps_last_good_result_and_selection_while_worker_starts(
 ):
     execution = _execution("rec-last-good")
     table_model = object()
+    policy = RecommendationPersonalUsePolicyV1.default_rule_only("state-test")
+    invocation_service = object()
+    service = MagicMock()
+    service.with_personal_use_policy.return_value = invocation_service
     starts: list[tuple[object, object, str]] = []
     view = SimpleNamespace()
 
@@ -208,8 +215,9 @@ def test_new_request_keeps_last_good_result_and_selection_while_worker_starts(
         "ui_qt.views.recommendation_view.ProgressTaskWorker", ControlledWorker
     )
     view._collect_config = lambda: _config(run_id="replacement")
+    view._personal_policy_for_invocation = lambda: policy
     view.is_beginner_mode = False
-    view.recommendation_service = object()
+    view.recommendation_service = service
     view.current_execution = execution
     view.current_read_model = None
     view.current_result_id = ""
@@ -230,6 +238,7 @@ def test_new_request_keeps_last_good_result_and_selection_while_worker_starts(
     assert starts[0][0] is execution
     assert starts[0][1] is table_model
     assert "rec-last-good" in starts[0][2]
+    service.with_personal_use_policy.assert_called_once_with(policy)
 
 
 def test_cancelled_and_stale_generation_callbacks_do_not_replace_last_good():
@@ -240,6 +249,7 @@ def test_cancelled_and_stale_generation_callbacks_do_not_replace_last_good():
         current_execution=last_good,
         recommendations_model="last-good-model",
         _signal_generation_is_current=lambda generation=None: generation == 4,
+        _complete_personal_policy_one_shot=lambda: None,
     )
     RecommendationView._on_recommendation_finished(
         stale_view, _execution("rec-stale"), generation=3
@@ -260,6 +270,7 @@ def test_cancelled_and_stale_generation_callbacks_do_not_replace_last_good():
         research_actions_widget=MagicMock(),
         recommendations_model="last-good-model",
         _signal_generation_is_current=lambda generation=None: generation == 4,
+        _complete_personal_policy_one_shot=lambda: None,
     )
     view._current_items = lambda: last_good.items
     view._on_recommendation_cancelled = lambda generation=None: (

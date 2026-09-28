@@ -13,8 +13,11 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
+import math
+import os
 from pathlib import Path
 import sqlite3
+import stat
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
@@ -38,10 +41,15 @@ from ml_module.recommendation_calibration_training import (
     recommendation_label_registry_hash,
 )
 from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenario,
     RecommendationCostScenarioError,
     cost_scenario_from_metadata,
     estimate_round_trip_cost,
     verify_estimated_cost_observation,
+)
+from ml_module.recommendation_inference_provenance import (
+    RecommendationProvenanceError,
+    read_inference_projection_receipt,
 )
 
 
@@ -71,6 +79,54 @@ class RecommendationNaturalOutcomeResult:
         }
 
 
+@dataclass(frozen=True)
+class PersonalNaturalOutcomeProjection:
+    """一次個人捕獲的唯讀成熟投影；不建立 promotion／global evidence。"""
+
+    status: str
+    reason: str
+    capture_id: str
+    result_id: str
+    policy_sha256: str
+    candidate_id: str
+    receipt_hash: str
+    cost_scenario_hash: str
+    evaluation_at: str
+    evaluation_date: str
+    endpoint_date: str | None
+    matured_sample_count: int
+    pending_sample_count: int
+    outcomes: tuple[Mapping[str, Any], ...] = ()
+    metrics: Mapping[str, int | None] | None = None
+    diagnostics: tuple[str, ...] = ()
+    after_cost_status: str = "unknown"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": "recommendation-personal-natural-outcome-projection.v1",
+            "status": self.status,
+            "reason": self.reason,
+            "capture_id": self.capture_id,
+            "result_id": self.result_id,
+            "policy_sha256": self.policy_sha256,
+            "candidate_id": self.candidate_id,
+            "receipt_hash": self.receipt_hash,
+            "cost_scenario_hash": self.cost_scenario_hash,
+            "evaluation_at": self.evaluation_at,
+            "evaluation_date": self.evaluation_date,
+            "horizon_sessions": 20,
+            "endpoint_date": self.endpoint_date,
+            "matured_sample_count": self.matured_sample_count,
+            "pending_sample_count": self.pending_sample_count,
+            "outcomes": [dict(item) for item in self.outcomes],
+            "metrics": dict(self.metrics) if self.metrics is not None else None,
+            "after_cost_status": self.after_cost_status,
+            "diagnostics": list(self.diagnostics),
+            "global_natural_evidence_created": False,
+            "promotion_credit_created": False,
+        }
+
+
 class RecommendationNaturalOutcomeService:
     """Mature scheduled captures from the current readable market source."""
 
@@ -95,6 +151,361 @@ class RecommendationNaturalOutcomeService:
             self.evaluation_at: datetime | None = evaluation_at.astimezone(timezone.utc)
         else:
             self.evaluation_at = None
+
+    def project_personal_prediction_outcomes(
+        self,
+        capture_payload: Mapping[str, Any],
+        *,
+        evaluation_at: datetime,
+        max_rows: int = 500,
+    ) -> PersonalNaturalOutcomeProjection:
+        """依明確注入的個人捕獲與原始 receipt，唯讀計算成熟 outcome。"""
+
+        verified_capture, _receipt_payload, scenario = _verify_personal_capture_mapping(
+            capture_payload,
+            max_rows=max_rows,
+        )
+        baseline_snapshot = verified_capture.get("probability_baseline_snapshot")
+        evaluation = _parse_aware_datetime(evaluation_at, "evaluation_at")
+        evaluation_date = evaluation.astimezone(ZoneInfo("Asia/Taipei")).date()
+        capture_id = str(verified_capture["capture_id"])
+        result_id = str(verified_capture["result_id"])
+        policy_event = verified_capture["policy_event"]
+        policy_snapshot = policy_event["policy_snapshot"]
+        receipt_binding = verified_capture["receipt_binding"]
+        policy_sha256 = str(policy_snapshot["policy_sha256"])
+        candidate_id = str(receipt_binding["candidate_id"])
+        receipt_hash = str(receipt_binding["receipt_hash"])
+        cost_hash = str(receipt_binding["cost_scenario_hash"])
+        evaluation_text = _utc_text(evaluation)
+        personal_v3_unbound_liquidity = (
+            verified_capture.get("schema_version") == _PERSONAL_CAPTURE_SCHEMA_V3
+        )
+        model_active_codes = (
+            tuple(
+                str(code)
+                for code in baseline_snapshot["model_active_stock_codes"]
+            )
+            if verified_capture.get("schema_version") == _PERSONAL_CAPTURE_SCHEMA_V3
+            and isinstance(baseline_snapshot, Mapping)
+            else tuple(
+                str(row["stock_code"])
+                for row in verified_capture["delivered_rows"]
+            )
+        )
+        delivered_universe_count = len(verified_capture["delivered_rows"])
+        fallback_count = delivered_universe_count - len(model_active_codes)
+        evaluation_rows = tuple(
+            row
+            for row in verified_capture["delivered_rows"]
+            if str(row["stock_code"]) in set(model_active_codes)
+        )
+
+        def pending(
+            reason: str,
+            diagnostics: tuple[str, ...] = (),
+            *,
+            pending_count: int | None = None,
+        ) -> PersonalNaturalOutcomeProjection:
+            row_count = len(evaluation_rows)
+            return PersonalNaturalOutcomeProjection(
+                status="pending",
+                reason=reason,
+                capture_id=capture_id,
+                result_id=result_id,
+                policy_sha256=policy_sha256,
+                candidate_id=candidate_id,
+                receipt_hash=receipt_hash,
+                cost_scenario_hash=cost_hash,
+                evaluation_at=evaluation_text,
+                evaluation_date=evaluation_date.isoformat(),
+                endpoint_date=None,
+                matured_sample_count=0,
+                pending_sample_count=(row_count if pending_count is None else pending_count),
+                diagnostics=diagnostics,
+            )
+
+        if evaluation > datetime.now(timezone.utc):
+            return pending("personal_outcome_evaluation_clock_is_future")
+        try:
+            capture_written_at = _parse_aware_datetime(
+                verified_capture["capture_written_at"], "capture_written_at"
+            )
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("personal capture timestamp is invalid") from None
+        if capture_written_at > evaluation:
+            return pending("personal_outcome_capture_not_yet_available")
+        if scenario is None:
+            return pending(
+                "personal_outcome_cost_scenario_details_missing",
+                ("cost_scenario_hash_verified_but_parameters_unavailable",),
+            )
+
+        decision_date = str(receipt_binding["decision_date"])
+        normalized_payload: dict[str, Any] = {
+            "capture_as_of_date": decision_date,
+            "cost_scenario": scenario.to_dict(include_hash=True),
+            "cost_scenario_hash": scenario.scenario_hash,
+            "rows": [
+                {
+                    "row_id": f"{capture_id}:{row['stock_code']}",
+                    "symbol": str(row["stock_code"]),
+                }
+                for row in evaluation_rows
+            ],
+        }
+        try:
+            matured, pending_rows, diagnostics = self._outcomes_for_capture(
+                normalized_payload,
+                evaluation_day=evaluation_date,
+                max_rows=max_rows,
+                evaluation_at=evaluation,
+                require_verified_session_proof=True,
+                personal_v3_unbound_liquidity=personal_v3_unbound_liquidity,
+            )
+        except (OSError, RuntimeError, sqlite3.Error, TypeError, ValueError) as exc:
+            return pending(
+                "personal_outcome_source_unavailable",
+                (f"natural_outcome_read_failed:{type(exc).__name__}",),
+            )
+
+        row_by_id = {
+            f"{capture_id}:{row['stock_code']}": row
+            for row in evaluation_rows
+        }
+        outcome_rows: list[Mapping[str, Any]] = []
+        probabilities: list[int] = []
+        labels: list[int] = []
+        fixed_null_probabilities: list[int] = []
+        fixed_null_labels: list[int] = []
+        after_cost_probabilities: list[int] = []
+        after_cost_labels: list[int] = []
+        after_cost_baseline_probabilities: list[int] = []
+        after_cost_baseline_labels: list[int] = []
+        unresolved_cost = 0
+        for outcome in matured:
+            delivered = row_by_id.get(outcome.capture_row_id)
+            if delivered is None:
+                return pending("personal_outcome_row_binding_mismatch")
+            projection = delivered["projection"]
+            probability = projection["calibrated_probability_bp"]
+            if scenario.is_estimated and not _estimated_personal_cost_is_complete(
+                outcome, scenario
+            ):
+                unresolved_cost += 1
+                continue
+            if not scenario.is_estimated and outcome.estimated_round_trip_cost_bp is None:
+                unresolved_cost += 1
+                continue
+            probabilities.append(probability)
+            label = int(outcome.stock_return_bp > 0)
+            labels.append(label)
+            fixed_null_probability: int | None = None
+            after_cost_baseline_probability: int | None = None
+            if baseline_snapshot is not None:
+                fixed_null_probability = baseline_snapshot[
+                    "upside_probability_bp_by_symbol"
+                ][delivered["stock_code"]]
+                if type(fixed_null_probability) is not int:
+                    raise ValueError("verified fixed null benchmark probability is invalid")
+                fixed_null_probabilities.append(fixed_null_probability)
+                fixed_null_labels.append(label)
+            after_cost = _personal_after_cost_fields(outcome, scenario)
+            after_cost_probability = projection.get("after_cost_profit_probability_bp")
+            if after_cost_probability is not None:
+                _validate_personal_probability(
+                    after_cost_probability,
+                    "after_cost_profit_probability_bp",
+                )
+                if after_cost["after_cost_profit_label"] is not None:
+                    after_cost_probabilities.append(after_cost_probability)
+                    after_cost_labels.append(int(after_cost["after_cost_profit_label"]))
+            if baseline_snapshot is not None:
+                after_cost_baseline_probability = baseline_snapshot[
+                    "after_cost_probability_bp_by_symbol"
+                ][delivered["stock_code"]]
+                if (
+                    after_cost_baseline_probability is not None
+                    and after_cost["after_cost_profit_label"] is not None
+                ):
+                    after_cost_baseline_probabilities.append(
+                        after_cost_baseline_probability
+                    )
+                    after_cost_baseline_labels.append(
+                        int(after_cost["after_cost_profit_label"])
+                    )
+            proof = outcome.session_proof
+            proof_hash = (
+                str(proof.get("proof_hash"))
+                if isinstance(proof, Mapping) and proof.get("proof_hash")
+                else None
+            )
+            outcome_rows.append(
+                {
+                    "stock_code": delivered["stock_code"],
+                    "rank": delivered["rank"],
+                    "calibrated_probability_bp": probability,
+                    "label_kind": "stock_close_return_positive.v1",
+                    "label": label,
+                    "stock_return_bp": outcome.stock_return_bp,
+                    "benchmark_return_bp": outcome.benchmark_return_bp,
+                    "label_end_date": outcome.label_end_date,
+                    "label_available_date": outcome.label_available_date,
+                    "cost_scenario_hash": outcome.cost_scenario_hash,
+                    "cost_basis": outcome.cost_basis,
+                    "cost_estimate_status": outcome.cost_estimate_status,
+                    "estimated_round_trip_cost_bp": outcome.estimated_round_trip_cost_bp,
+                    "estimated_round_trip_cost_twd": outcome.estimated_round_trip_cost_twd,
+                    "estimated_buy_cost_twd": outcome.estimated_buy_cost_twd,
+                    "estimated_sell_cost_twd": outcome.estimated_sell_cost_twd,
+                    "gross_buy_amount_twd": outcome.gross_buy_amount_twd,
+                    "gross_sell_amount_twd": outcome.gross_sell_amount_twd,
+                    "net_profit_twd": outcome.net_profit_twd,
+                    "observed_liquidity_cost_bp": outcome.observed_liquidity_cost_bp,
+                    "observed_liquidity_cost_source": outcome.observed_liquidity_cost_source,
+                    "after_cost_profit_probability_bp": after_cost_probability,
+                    **after_cost,
+                    "session_proof_hash": proof_hash,
+                    **(
+                        {
+                            "upside_baseline_kind": baseline_snapshot[
+                                "upside_baseline_kind"
+                            ],
+                            "upside_baseline_id": baseline_snapshot[
+                                "upside_baseline_id"
+                            ],
+                            "upside_baseline_probability_bp": fixed_null_probability,
+                            "after_cost_baseline_status": baseline_snapshot[
+                                "after_cost_baseline_status"
+                            ],
+                            "after_cost_baseline_id": baseline_snapshot[
+                                "after_cost_baseline_id"
+                            ],
+                            "after_cost_baseline_probability_bp": after_cost_baseline_probability,
+                        }
+                        if baseline_snapshot is not None
+                        else {}
+                    ),
+                }
+            )
+
+        total_pending = max(pending_rows, len(evaluation_rows) - len(outcome_rows))
+        combined_diagnostics = list(diagnostics)
+        if verified_capture.get("schema_version") == _PERSONAL_CAPTURE_SCHEMA_V3:
+            combined_diagnostics.append(
+                f"personal_model_coverage:{len(model_active_codes)}/{delivered_universe_count}"
+            )
+            if fallback_count:
+                combined_diagnostics.append(
+                    f"personal_rule_only_fallback_excluded_from_model_outcomes:{fallback_count}"
+                )
+        if unresolved_cost:
+            total_pending = max(total_pending, unresolved_cost)
+            combined_diagnostics.append("personal_outcome_cost_estimate_unavailable")
+        if total_pending or len(outcome_rows) != len(evaluation_rows):
+            return PersonalNaturalOutcomeProjection(
+                status="pending",
+                reason="personal_outcome_source_or_cost_incomplete",
+                capture_id=capture_id,
+                result_id=result_id,
+                policy_sha256=policy_sha256,
+                candidate_id=candidate_id,
+                receipt_hash=receipt_hash,
+                cost_scenario_hash=cost_hash,
+                evaluation_at=evaluation_text,
+                evaluation_date=evaluation_date.isoformat(),
+                endpoint_date=(outcome_rows[-1]["label_end_date"] if outcome_rows else None),
+                matured_sample_count=len(outcome_rows),
+                pending_sample_count=total_pending,
+                outcomes=tuple(outcome_rows),
+                diagnostics=tuple(combined_diagnostics),
+            )
+
+        endpoint_dates = {str(item["label_end_date"]) for item in outcome_rows}
+        if len(endpoint_dates) != 1:
+            return pending("personal_outcome_endpoint_date_mismatch")
+        after_cost_status = _personal_after_cost_status(outcome_rows)
+        metrics: dict[str, int | None] = {
+            "sample_count": len(outcome_rows),
+            "brier_bp": _brier_bp(probabilities, labels),
+            "calibration_gap_bp": _calibration_gap_bp(probabilities, labels),
+            "after_cost_sample_count": len(after_cost_labels),
+            "after_cost_brier_bp": (
+                _brier_bp(after_cost_probabilities, after_cost_labels)
+                if after_cost_labels
+                else None
+            ),
+            "after_cost_calibration_gap_bp": (
+                _calibration_gap_bp(after_cost_probabilities, after_cost_labels)
+                if after_cost_labels
+                else None
+            ),
+        }
+        if verified_capture.get("schema_version") == _PERSONAL_CAPTURE_SCHEMA_V3:
+            metrics.update(
+                {
+                    "delivered_universe_count": delivered_universe_count,
+                    "model_active_count": len(model_active_codes),
+                    "rule_only_fallback_count": fallback_count,
+                    "model_coverage_bp": (
+                        len(model_active_codes) * 10_000 // delivered_universe_count
+                    ),
+                }
+            )
+        if baseline_snapshot is not None:
+            metrics.update(
+                {
+                    "fixed_null_benchmark_sample_count": len(fixed_null_labels),
+                    "fixed_null_benchmark_brier_bp": (
+                        _brier_bp(fixed_null_probabilities, fixed_null_labels)
+                        if fixed_null_labels
+                        else None
+                    ),
+                    "fixed_null_benchmark_calibration_gap_bp": (
+                        _calibration_gap_bp(fixed_null_probabilities, fixed_null_labels)
+                        if fixed_null_labels
+                        else None
+                    ),
+                    "after_cost_baseline_sample_count": len(
+                        after_cost_baseline_labels
+                    ),
+                    "after_cost_baseline_brier_bp": (
+                        _brier_bp(
+                            after_cost_baseline_probabilities,
+                            after_cost_baseline_labels,
+                        )
+                        if after_cost_baseline_labels
+                        else None
+                    ),
+                    "after_cost_baseline_calibration_gap_bp": (
+                        _calibration_gap_bp(
+                            after_cost_baseline_probabilities,
+                            after_cost_baseline_labels,
+                        )
+                        if after_cost_baseline_labels
+                        else None
+                    ),
+                }
+            )
+        return PersonalNaturalOutcomeProjection(
+            status="matured",
+            reason="personal_capture_official_20_session_outcomes_verified",
+            capture_id=capture_id,
+            result_id=result_id,
+            policy_sha256=policy_sha256,
+            candidate_id=candidate_id,
+            receipt_hash=receipt_hash,
+            cost_scenario_hash=cost_hash,
+            evaluation_at=evaluation_text,
+            evaluation_date=evaluation_date.isoformat(),
+            endpoint_date=next(iter(endpoint_dates)),
+            matured_sample_count=len(outcome_rows),
+            pending_sample_count=0,
+            outcomes=tuple(outcome_rows),
+            metrics=metrics,
+            diagnostics=tuple(combined_diagnostics),
+            after_cost_status=after_cost_status,
+        )
 
     def build_evidence(
         self,
@@ -773,6 +1184,9 @@ class RecommendationNaturalOutcomeService:
         *,
         evaluation_day: date,
         max_rows: int,
+        evaluation_at: datetime | None = None,
+        require_verified_session_proof: bool = False,
+        personal_v3_unbound_liquidity: bool = False,
     ) -> tuple[list[MaturedRecommendationOutcome], int, tuple[str, ...]]:
         capture_day = _date(str(payload["capture_as_of_date"]))
         if evaluation_day < capture_day:
@@ -797,17 +1211,41 @@ class RecommendationNaturalOutcomeService:
         session_resolution, session_reason = self._resolve_maturity_sessions(
             capture_day,
             evaluation_day,
+            evaluation_at=evaluation_at,
+            require_verified_session_proof=require_verified_session_proof,
         )
         if session_resolution is None:
             return [], len(rows), (session_reason,)
         endpoint_date, session_proof = session_resolution
         if _date(endpoint_date) > evaluation_day:
             return [], len(rows), ("natural_maturity_endpoint_after_evaluation",)
+        if require_verified_session_proof:
+            resolved_evaluation_at = evaluation_at or self.evaluation_at
+            provider_path = getattr(self.provider, "database_path", None)
+            if resolved_evaluation_at is None or provider_path is None:
+                return [], len(rows), ("natural_maturity_proof_binding_unavailable",)
+            try:
+                verified_proof = verify_natural_maturity_session_proof(
+                    session_proof,
+                    capture_date=capture_day.isoformat(),
+                    label_end_date=endpoint_date,
+                    evaluation_at=resolved_evaluation_at,
+                    expected_db_path=provider_path,
+                )
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                return [], len(rows), (
+                    f"natural_maturity_session_proof_invalid:{type(exc).__name__}",
+                )
+            session_proof = dict(verified_proof)
         if not self._source_database_snapshot_matches(session_proof):
             return [], len(rows), ("natural_maturity_source_database_snapshot_mismatch",)
         forward = self.provider.load_forward_price_window(
             start_date=capture_day.isoformat(),
-            end_date=evaluation_day.isoformat(),
+            end_date=(
+                endpoint_date
+                if require_verified_session_proof
+                else evaluation_day.isoformat()
+            ),
             symbols=symbols,
         )
         if not self._source_database_snapshot_matches(session_proof):
@@ -857,11 +1295,19 @@ class RecommendationNaturalOutcomeService:
                 )
                 pending += 1
                 continue
-            observed_liquidity_cost, liquidity_source = self._lookup_liquidity_cost(
-                symbol=symbol,
-                decision_date=capture_day,
-                label_end_date=_date(end_row.trading_date),
-            )
+            if personal_v3_unbound_liquidity:
+                # 個人 v3 必須只使用同次捕獲綁定的成本情境；舊 EvidenceOutcome
+                # 僅以同股/日期/視窗相符，不足以證明屬於此捕獲，故不可併入成本。
+                observed_liquidity_cost, liquidity_source = None, None
+                diagnostics.append(
+                    f"personal_v3_unbound_liquidity_evidence_not_used:{symbol}:{capture_day.isoformat()}"
+                )
+            else:
+                observed_liquidity_cost, liquidity_source = self._lookup_liquidity_cost(
+                    symbol=symbol,
+                    decision_date=capture_day,
+                    label_end_date=_date(end_row.trading_date),
+                )
             if observed_liquidity_cost is None:
                 diagnostics.append(
                     f"observed_liquidity_missing_diagnostic_only:{symbol}:{capture_day.isoformat()}"
@@ -989,27 +1435,42 @@ class RecommendationNaturalOutcomeService:
         self,
         capture_day: date,
         evaluation_day: date | None = None,
+        *,
+        evaluation_at: datetime | None = None,
+        require_verified_session_proof: bool = False,
     ) -> tuple[tuple[str, Mapping[str, Any]] | None, str]:
         """在定價前解析並保管官方交易日 horizon。"""
 
         if self.session_resolver is None:
             return None, "natural_maturity_session_resolver_missing"
-        if self.evaluation_at is None:
+        resolved_evaluation_at = evaluation_at or self.evaluation_at
+        if resolved_evaluation_at is None:
             return None, "natural_maturity_evaluation_at_missing"
         if evaluation_day is None:
-            evaluation_day = self.evaluation_at.astimezone(
+            evaluation_day = resolved_evaluation_at.astimezone(
                 ZoneInfo("Asia/Taipei")
             ).date()
-        if self.evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date() != evaluation_day:
+        if resolved_evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date() != evaluation_day:
             return None, "natural_maturity_evaluation_clock_mismatch"
-        if self.evaluation_at > datetime.now(timezone.utc):
+        if resolved_evaluation_at > datetime.now(timezone.utc):
             return None, "natural_maturity_evaluation_at_future"
         try:
-            resolution = self.session_resolver.resolve(
-                capture_date=capture_day.isoformat(),
-                evaluation_at=self.evaluation_at,
-                horizon_sessions=20,
+            personal_resolver = getattr(
+                self.session_resolver,
+                "resolve_personal_prediction_horizon",
+                None,
             )
+            if require_verified_session_proof and callable(personal_resolver):
+                resolution = personal_resolver(
+                    capture_date=capture_day.isoformat(),
+                    evaluation_at=resolved_evaluation_at,
+                )
+            else:
+                resolution = self.session_resolver.resolve(
+                    capture_date=capture_day.isoformat(),
+                    evaluation_at=resolved_evaluation_at,
+                    horizon_sessions=20,
+                )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             return None, f"natural_maturity_session_resolution_failed:{type(exc).__name__}"
         status = str(getattr(resolution, "status", "") or "")
@@ -1302,6 +1763,1107 @@ def verify_active_model_evidence_payload(
             raise ValueError("active model evidence after-cost calibration gap mismatch")
 
 
+_PERSONAL_CAPTURE_SCHEMA_V1 = "recommendation-personal-prediction-capture.v1"
+_PERSONAL_CAPTURE_SCHEMA_V2 = "recommendation-personal-prediction-capture.v2"
+_PERSONAL_CAPTURE_SCHEMA_V3 = "recommendation-personal-prediction-capture.v3"
+_PERSONAL_CAPTURE_ORIGIN = "personal_saved_result"
+_PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V1 = (
+    "recommendation-personal-probability-baseline-snapshot.v1"
+)
+_PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V2 = (
+    "recommendation-personal-probability-baseline-snapshot.v2"
+)
+_PERSONAL_FIXED_NULL_BENCHMARK_KIND = "fixed_null_benchmark_50pct"
+_PERSONAL_FIXED_NULL_BENCHMARK_ID = "null_benchmark_50pct_v1"
+_PERSONAL_POLICY_SCHEMA_V1 = "recommendation-personal-use-policy.v1"
+_PERSONAL_MODE = "personal_calibrated_probability"
+_PERSONAL_RECEIPT_MAX_BYTES = 32 * 1024 * 1024
+_PERSONAL_CANDIDATE_JSON_MAX_BYTES = 1_048_576
+_PERSONAL_ROW_LIMIT = 500
+_PERSONAL_SHA256_PREFIX = "sha256:"
+_PERSONAL_SCOPE_CHARACTERS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+)
+
+
+def _verify_personal_capture_mapping(
+    value: Mapping[str, Any],
+    *,
+    max_rows: int,
+) -> tuple[dict[str, Any], dict[str, Any], Any | None]:
+    """重驗個人捕獲、policy、receipt 與交付投影，不掃描任何目錄。"""
+
+    if isinstance(max_rows, bool) or type(max_rows) is not int or not 1 <= max_rows <= _PERSONAL_ROW_LIMIT:
+        raise ValueError("personal outcome row limit is invalid")
+    payload = _personal_json_mapping(value, "personal capture")
+    base_capture_fields = {
+        "schema_version",
+        "capture_origin",
+        "capture_id",
+        "result_id",
+        "canonical",
+        "decision_at",
+        "persisted_at",
+        "policy_event",
+        "receipt_binding",
+        "delivered_rows",
+        "capture_written_at",
+        "payload_sha256",
+    }
+    capture_schema = payload.get("schema_version")
+    expected_capture_fields = set(base_capture_fields)
+    if capture_schema in {_PERSONAL_CAPTURE_SCHEMA_V2, _PERSONAL_CAPTURE_SCHEMA_V3}:
+        expected_capture_fields.add("probability_baseline_snapshot")
+    if set(payload) != expected_capture_fields:
+        raise ValueError("personal capture fields are invalid")
+    if (
+        capture_schema
+        not in {
+            _PERSONAL_CAPTURE_SCHEMA_V1,
+            _PERSONAL_CAPTURE_SCHEMA_V2,
+            _PERSONAL_CAPTURE_SCHEMA_V3,
+        }
+        or payload.get("capture_origin") != _PERSONAL_CAPTURE_ORIGIN
+        or type(payload.get("result_id")) is not str
+        or not str(payload["result_id"]).strip()
+    ):
+        raise ValueError("personal capture schema/origin/result identity is invalid")
+    payload_hash = payload.get("payload_sha256")
+    if not _is_personal_sha256(payload_hash):
+        raise ValueError("personal capture self-hash format is invalid")
+    body_without_hash = {key: item for key, item in payload.items() if key != "payload_sha256"}
+    if _personal_payload_hash(body_without_hash) != payload_hash:
+        raise ValueError("personal capture self-hash mismatch")
+    expected_capture_id = _personal_capture_id(payload)
+    if payload.get("capture_id") != expected_capture_id:
+        raise ValueError("personal capture identity mismatch")
+
+    canonical = payload.get("canonical")
+    if not isinstance(canonical, Mapping) or set(canonical) != {
+        "payload_hash",
+        "raw_artifact_sha256",
+        "schema_version",
+        "schema_revision",
+        "integrity_basis",
+    }:
+        raise ValueError("personal capture canonical identity is invalid")
+    if (
+        not _is_personal_sha256(canonical.get("payload_hash"))
+        or not _is_personal_sha256(canonical.get("raw_artifact_sha256"))
+        or type(canonical.get("schema_version")) is not str
+        or type(canonical.get("schema_revision")) is not int
+        or canonical.get("schema_revision", 0) < 0
+        or canonical.get("integrity_basis") != "canonical_payload_and_index_verified"
+    ):
+        raise ValueError("personal capture canonical identity is incomplete")
+
+    policy_event = payload.get("policy_event")
+    expected_policy_event_fields = {
+        "schema_version",
+        "result_id",
+        "decision_at",
+        "policy_snapshot",
+        "requested_mode",
+        "effective_mode",
+    }
+    if (
+        not isinstance(policy_event, Mapping)
+        or set(policy_event) != expected_policy_event_fields
+        or policy_event.get("schema_version") != "recommendation-personal-use-policy-snapshot.v1"
+        or policy_event.get("result_id") != payload.get("result_id")
+        or policy_event.get("requested_mode") != _PERSONAL_MODE
+        or policy_event.get("effective_mode") != _PERSONAL_MODE
+    ):
+        raise ValueError("personal policy event is invalid")
+    policy_snapshot = _verify_personal_policy_snapshot(policy_event.get("policy_snapshot"))
+    if policy_snapshot["mode"] != _PERSONAL_MODE:
+        raise ValueError("personal capture policy is not in calibrated probability mode")
+
+    decision_at = _parse_aware_datetime(payload.get("decision_at"), "decision_at")
+    event_decision_at = _parse_aware_datetime(policy_event.get("decision_at"), "policy decision_at")
+    if event_decision_at != decision_at:
+        raise ValueError("personal policy event decision clock mismatch")
+    confirmed_at = _parse_aware_datetime(policy_snapshot["confirmed_at"], "policy confirmed_at")
+    if confirmed_at > decision_at:
+        raise ValueError("personal policy was confirmed after the decision")
+    persisted_at = _parse_aware_datetime(payload.get("persisted_at"), "persisted_at")
+    capture_written_at = _parse_aware_datetime(
+        payload.get("capture_written_at"), "capture_written_at"
+    )
+    if not decision_at <= persisted_at <= capture_written_at:
+        raise ValueError("personal capture decision/persistence clock order is invalid")
+
+    receipt_binding = payload.get("receipt_binding")
+    expected_receipt_fields = {
+        "path",
+        "learning_root",
+        "receipt_hash",
+        "receipt_created_at",
+        "decision_date",
+        "candidate_id",
+        "candidate_identity",
+        "cost_scenario_hash",
+        "projected_stock_codes",
+        "projection_rows_sha256",
+        "inference_source_hash",
+        "inference_pit_hash",
+        "feature_rows_sha256",
+    }
+    if not isinstance(receipt_binding, Mapping) or set(receipt_binding) != expected_receipt_fields:
+        raise ValueError("personal capture receipt binding fields are invalid")
+    for field_name in (
+        "receipt_hash",
+        "cost_scenario_hash",
+        "projection_rows_sha256",
+        "inference_source_hash",
+        "inference_pit_hash",
+        "feature_rows_sha256",
+    ):
+        if not _is_personal_sha256(receipt_binding.get(field_name)):
+            raise ValueError(f"personal capture receipt {field_name} is invalid")
+    receipt_created_at = _parse_aware_datetime(
+        receipt_binding.get("receipt_created_at"), "receipt_created_at"
+    )
+    if not decision_at <= receipt_created_at <= persisted_at:
+        raise ValueError("personal capture receipt chronology is invalid")
+    decision_date_value = receipt_binding.get("decision_date")
+    if type(decision_date_value) is not str:
+        raise ValueError("personal capture decision date is invalid")
+    decision_date = _date(decision_date_value)
+    if decision_date.isoformat() != decision_date_value:
+        raise ValueError("personal capture decision date is not canonical")
+    if decision_date != decision_at.astimezone(ZoneInfo("Asia/Taipei")).date():
+        raise ValueError("personal capture decision date does not match decision clock")
+    baseline_snapshot: dict[str, Any] | None = None
+    if capture_schema in {_PERSONAL_CAPTURE_SCHEMA_V2, _PERSONAL_CAPTURE_SCHEMA_V3}:
+        baseline_snapshot = _verify_personal_probability_baseline_snapshot(
+            payload.get("probability_baseline_snapshot"),
+            result_id=str(payload["result_id"]),
+            decision_at=_utc_text(decision_at),
+            decision_date=decision_date.isoformat(),
+            receipt_binding=receipt_binding,
+            delivered_rows=payload.get("delivered_rows"),
+        )
+        expected_baseline_schema = (
+            _PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V2
+            if capture_schema == _PERSONAL_CAPTURE_SCHEMA_V3
+            else _PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V1
+        )
+        if baseline_snapshot.get("schema_version") != expected_baseline_schema:
+            raise ValueError("personal capture and baseline snapshot versions differ")
+    if type(receipt_binding.get("candidate_id")) is not str or not receipt_binding["candidate_id"]:
+        raise ValueError("personal capture candidate id is invalid")
+
+    candidate = policy_snapshot.get("candidate")
+    candidate_identity = receipt_binding.get("candidate_identity")
+    if not isinstance(candidate, Mapping) or not isinstance(candidate_identity, Mapping):
+        raise ValueError("personal capture candidate pins are missing")
+    if set(candidate_identity) != {
+        "candidate_id",
+        "candidate_root",
+        "candidate_manifest_hash",
+        "candidate_artifact_hash",
+        "candidate_freeze_hash",
+        "dataset_hash",
+    }:
+        raise ValueError("personal capture receipt candidate identity fields are invalid")
+    for field_name in (
+        "candidate_id",
+        "candidate_root",
+        "candidate_manifest_hash",
+        "candidate_artifact_hash",
+        "candidate_freeze_hash",
+        "dataset_hash",
+    ):
+        expected = candidate.get(field_name)
+        actual = candidate_identity.get(field_name)
+        if type(expected) is not str or type(actual) is not str:
+            raise ValueError(f"personal capture candidate pin {field_name} is missing")
+        if field_name == "candidate_root":
+            if _normalized_absolute_path(expected) != _normalized_absolute_path(actual):
+                raise ValueError("personal capture candidate root mismatch")
+        elif expected != actual:
+            raise ValueError(f"personal capture candidate pin {field_name} mismatch")
+    if receipt_binding.get("candidate_id") != candidate.get("candidate_id"):
+        raise ValueError("personal capture receipt candidate id mismatch")
+
+    delivered_rows = payload.get("delivered_rows")
+    projected_codes = receipt_binding.get("projected_stock_codes")
+    if (
+        type(delivered_rows) is not list
+        or not delivered_rows
+        or len(delivered_rows) > max_rows
+        or type(projected_codes) is not list
+        or not projected_codes
+        or len(projected_codes) > max_rows
+    ):
+        raise ValueError("personal capture delivered/projection row count is invalid")
+    delivered_codes: list[str] = []
+    baseline_active_codes = (
+        tuple(str(code) for code in baseline_snapshot["model_active_stock_codes"])
+        if capture_schema == _PERSONAL_CAPTURE_SCHEMA_V3
+        and baseline_snapshot is not None
+        else ()
+    )
+    baseline_fallback_codes = (
+        tuple(str(code) for code in baseline_snapshot["rule_only_fallback_stock_codes"])
+        if capture_schema == _PERSONAL_CAPTURE_SCHEMA_V3
+        and baseline_snapshot is not None
+        else ()
+    )
+    for row in delivered_rows:
+        if not isinstance(row, Mapping) or set(row) != {
+            "stock_code",
+            "rank",
+            "rule_score",
+            "projection",
+        }:
+            raise ValueError("personal capture delivered row fields are invalid")
+        stock_code = row.get("stock_code")
+        rank = row.get("rank")
+        if type(stock_code) is not str or not stock_code.strip():
+            raise ValueError("personal capture stock code is invalid")
+        if rank is not None and (
+            isinstance(rank, bool) or type(rank) is not int or rank < 0
+        ):
+            raise ValueError("personal capture rank is invalid")
+        try:
+            score = Decimal(str(row.get("rule_score")))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("personal capture rule score is invalid") from exc
+        if not score.is_finite():
+            raise ValueError("personal capture rule score is non-finite")
+        projection = row.get("projection")
+        if not isinstance(projection, Mapping) or projection.get("stock_code") != stock_code:
+            raise ValueError("personal capture projection stock identity mismatch")
+        if capture_schema == _PERSONAL_CAPTURE_SCHEMA_V3:
+            if stock_code in baseline_active_codes:
+                probability = projection.get("calibrated_probability_bp")
+                if (
+                    isinstance(probability, bool)
+                    or type(probability) is not int
+                    or not 0 <= probability <= 10_000
+                    or projection.get("calibrated_probability_status") != "active_effective"
+                    or projection.get("status") != "active_candidate"
+                    or projection.get("model_version") != candidate.get("candidate_id")
+                ):
+                    raise ValueError("personal capture calibrated probability is invalid")
+                after_cost_probability = projection.get("after_cost_profit_probability_bp")
+                if after_cost_probability is not None:
+                    _validate_personal_probability(
+                        after_cost_probability,
+                        "after_cost_profit_probability_bp",
+                    )
+            elif stock_code in baseline_fallback_codes:
+                if (
+                    projection.get("status") != "rule_only"
+                    or projection.get("calibrated_probability_status") != "unavailable"
+                    or projection.get("calibrated_probability_bp") is not None
+                    or projection.get("after_cost_profit_probability_bp") is not None
+                    or bool(str(projection.get("model_version") or "").strip())
+                ):
+                    raise ValueError("personal fallback row contains model output")
+            else:
+                raise ValueError("personal capture delivered row is outside its v3 partition")
+        else:
+            probability = projection.get("calibrated_probability_bp")
+            if (
+                isinstance(probability, bool)
+                or type(probability) is not int
+                or not 0 <= probability <= 10_000
+                or projection.get("calibrated_probability_status") != "active_effective"
+                or projection.get("status") != "active_candidate"
+                or projection.get("model_version") != candidate.get("candidate_id")
+            ):
+                raise ValueError("personal capture calibrated probability is invalid")
+            after_cost_probability = projection.get("after_cost_profit_probability_bp")
+            if after_cost_probability is not None:
+                _validate_personal_probability(
+                    after_cost_probability,
+                    "after_cost_profit_probability_bp",
+                )
+        delivered_codes.append(stock_code)
+    if (
+        len(set(delivered_codes)) != len(delivered_codes)
+        or any(type(code) is not str or not code for code in projected_codes)
+        or len(set(projected_codes)) != len(projected_codes)
+        or not set(delivered_codes).issubset(set(projected_codes))
+    ):
+        raise ValueError("personal capture delivered/projection stock identity is invalid")
+
+    receipt_path = _personal_absolute_path(receipt_binding.get("path"), "receipt path")
+    learning_root = _personal_absolute_path(
+        receipt_binding.get("learning_root"), "learning_root"
+    )
+    if (
+        len(receipt_path.parents) < 4
+        or _normalized_absolute_path(receipt_path.parents[3])
+        != _normalized_absolute_path(learning_root)
+        or receipt_path.parent.parent.parent.name != "inference_projection"
+        or receipt_path.parent.parent.name != decision_date.isoformat()
+        or receipt_path.parent.name != str(candidate["candidate_id"])
+        or receipt_path.name != f"{receipt_binding['receipt_hash'][7:]}.json"
+    ):
+        raise ValueError("personal capture receipt path is outside its pinned layout")
+
+    candidate_package_root = _personal_absolute_path(
+        candidate.get("candidate_root"), "candidate_root"
+    )
+    candidate_json_path = candidate_package_root / "candidate.json"
+    candidate_manifest_path = candidate_package_root / "manifest.json"
+    try:
+        candidate_raw = _read_bounded_personal_candidate_json(
+            candidate_package_root,
+            candidate_json_path,
+            candidate_manifest_path,
+            max_bytes=_PERSONAL_CANDIDATE_JSON_MAX_BYTES,
+        )
+    except (OSError, ValueError) as exc:
+        if isinstance(exc, ValueError):
+            raise
+        raise ValueError("personal candidate metadata is unavailable") from exc
+    if _file_hash(candidate_raw) != candidate.get("candidate_json_sha256"):
+        raise ValueError("personal candidate JSON pin mismatch")
+
+    try:
+        receipt = read_inference_projection_receipt(
+            receipt_path,
+            expected_receipt_hash=str(receipt_binding["receipt_hash"]),
+            expected_decision_date=decision_date.isoformat(),
+            expected_candidate_id=str(candidate["candidate_id"]),
+            expected_result_id=str(payload["result_id"]),
+            expected_cost_scenario_hash=str(receipt_binding["cost_scenario_hash"]),
+            max_receipt_bytes=_PERSONAL_RECEIPT_MAX_BYTES,
+        )
+    except (OSError, RecommendationProvenanceError, TypeError, ValueError) as exc:
+        raise ValueError(f"personal inference receipt is invalid: {type(exc).__name__}") from exc
+    receipt_payload = dict(receipt.payload)
+    if (
+        receipt_payload.get("projection_rows_sha256")
+        != receipt_binding.get("projection_rows_sha256")
+        or receipt_payload.get("cost_scenario_hash")
+        != receipt_binding.get("cost_scenario_hash")
+        or receipt_payload.get("inference_provenance", {}).get("inference_source_hash")
+        != receipt_binding.get("inference_source_hash")
+        or receipt_payload.get("inference_provenance", {}).get("inference_pit_hash")
+        != receipt_binding.get("inference_pit_hash")
+        or receipt_payload.get("inference_provenance", {}).get("feature_rows_sha256")
+        != receipt_binding.get("feature_rows_sha256")
+    ):
+        raise ValueError("personal capture receipt provenance binding mismatch")
+
+    receipt_rows = receipt_payload.get("projections")
+    if not isinstance(receipt_rows, list) or len(receipt_rows) > max_rows:
+        raise ValueError("personal inference receipt projection rows are invalid")
+    receipt_codes = [str(row.get("stock_code") or "") for row in receipt_rows if isinstance(row, Mapping)]
+    if (
+        len(receipt_codes) != len(receipt_rows)
+        or len(set(receipt_codes)) != len(receipt_codes)
+        or receipt_codes != projected_codes
+    ):
+        raise ValueError("personal receipt projected stock list mismatch")
+    receipt_row_by_code = {
+        str(row["stock_code"]): dict(row)
+        for row in receipt_rows
+        if isinstance(row, Mapping)
+    }
+    for row in delivered_rows:
+        if dict(row["projection"]) != receipt_row_by_code.get(str(row["stock_code"])):
+            raise ValueError("personal delivered row differs from verified receipt projection")
+
+    scenario: Any | None = None
+    if capture_schema == _PERSONAL_CAPTURE_SCHEMA_V3:
+        if baseline_snapshot is None:
+            raise ValueError("personal v3 capture has no verified baseline snapshot")
+        try:
+            scenario = cost_scenario_from_metadata(
+                {
+                    "cost_scenario": baseline_snapshot["cost_scenario"],
+                    "cost_scenario_hash": receipt_binding["cost_scenario_hash"],
+                }
+            )
+        except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+            raise ValueError("personal v3 cost scenario is invalid") from exc
+        for row in delivered_rows:
+            projection = row["projection"]
+            if row["stock_code"] in baseline_active_codes:
+                if not _personal_projection_matches_cost_scenario(projection, scenario):
+                    raise ValueError("personal v3 projection cost scenario mismatch")
+            else:
+                projection_hash = projection.get("cost_scenario_hash")
+                if projection_hash is not None and projection_hash != scenario.scenario_hash:
+                    raise ValueError("personal v3 fallback cost scenario mismatch")
+    else:
+        cost_details_missing = False
+        for row in delivered_rows:
+            projection = row["projection"]
+            if not isinstance(projection.get("cost_scenario"), Mapping):
+                cost_details_missing = True
+                continue
+            try:
+                row_scenario = cost_scenario_from_metadata(projection)
+            except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+                raise ValueError("personal capture cost scenario is invalid") from exc
+            if (
+                row_scenario.scenario_hash != receipt_binding.get("cost_scenario_hash")
+                or projection.get("cost_scenario_hash") != row_scenario.scenario_hash
+                or projection["cost_scenario"].get("scenario_hash") != row_scenario.scenario_hash
+            ):
+                raise ValueError("personal capture cost scenario does not match receipt")
+            if scenario is None:
+                scenario = row_scenario
+            elif scenario.to_dict(include_hash=True) != row_scenario.to_dict(include_hash=True):
+                raise ValueError("personal capture cost scenario differs across rows")
+        if cost_details_missing:
+            scenario = None
+    return payload, receipt_payload, scenario
+
+
+def _verify_personal_probability_baseline_snapshot(
+    value: object,
+    *,
+    result_id: str,
+    decision_at: str,
+    decision_date: str,
+    receipt_binding: Mapping[str, Any],
+    delivered_rows: object | None = None,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("personal probability baseline snapshot must be an object")
+    snapshot = _personal_json_mapping(value, "personal probability baseline snapshot")
+    common_fields = {
+        "schema_version",
+        "result_id",
+        "decision_at",
+        "decision_date",
+        "receipt_hash",
+        "projection_rows_sha256",
+        "cost_scenario_hash",
+        "projected_stock_codes",
+        "upside_baseline_kind",
+        "upside_baseline_id",
+        "upside_probability_bp_by_symbol",
+        "after_cost_baseline_status",
+        "after_cost_baseline_id",
+        "after_cost_probability_bp_by_symbol",
+        "snapshot_sha256",
+    }
+    schema_version = snapshot.get("schema_version")
+    expected_fields = set(common_fields)
+    if schema_version == _PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V2:
+        expected_fields.update(
+            {
+                "delivered_stock_codes",
+                "model_active_stock_codes",
+                "rule_only_fallback_stock_codes",
+                "delivered_count",
+                "model_active_count",
+                "fallback_count",
+                "model_coverage_bp",
+                "cost_scenario",
+            }
+        )
+    if set(snapshot) != expected_fields:
+        raise ValueError("personal probability baseline snapshot fields are invalid")
+    if (
+        schema_version
+        not in {
+            _PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V1,
+            _PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V2,
+        }
+        or snapshot.get("result_id") != result_id
+        or snapshot.get("decision_at") != decision_at
+        or snapshot.get("decision_date") != decision_date
+        or _utc_text(_parse_aware_datetime(snapshot.get("decision_at"), "baseline decision_at"))
+        != decision_at
+    ):
+        raise ValueError("personal probability baseline result/clock binding mismatch")
+    for field_name in (
+        "receipt_hash",
+        "projection_rows_sha256",
+        "cost_scenario_hash",
+    ):
+        if not _is_personal_sha256(snapshot.get(field_name)):
+            raise ValueError(f"personal probability baseline {field_name} is invalid")
+    if (
+        snapshot.get("receipt_hash") != receipt_binding.get("receipt_hash")
+        or snapshot.get("projection_rows_sha256")
+        != receipt_binding.get("projection_rows_sha256")
+        or snapshot.get("cost_scenario_hash")
+        != receipt_binding.get("cost_scenario_hash")
+    ):
+        raise ValueError("personal probability baseline receipt binding mismatch")
+    codes = snapshot.get("projected_stock_codes")
+    receipt_codes = receipt_binding.get("projected_stock_codes")
+    if (
+        type(codes) is not list
+        or not codes
+        or len(codes) > _PERSONAL_ROW_LIMIT
+        or any(type(code) is not str or not code.strip() for code in codes)
+        or len(set(codes)) != len(codes)
+        or type(receipt_codes) is not list
+        or codes != receipt_codes
+    ):
+        raise ValueError("personal probability baseline projected stock set mismatch")
+    active_codes = codes
+    fallback_codes: list[str] = []
+    if schema_version == _PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V2:
+        delivered_codes = snapshot.get("delivered_stock_codes")
+        active_value = snapshot.get("model_active_stock_codes")
+        fallback_value = snapshot.get("rule_only_fallback_stock_codes")
+        if (
+            type(delivered_codes) is not list
+            or type(active_value) is not list
+            or type(fallback_value) is not list
+            or delivered_codes != codes
+            or not active_value
+            or any(type(code) is not str or not code.strip() for code in delivered_codes)
+            or any(type(code) is not str or not code.strip() for code in active_value)
+            or any(type(code) is not str or not code.strip() for code in fallback_value)
+            or len(set(delivered_codes)) != len(delivered_codes)
+            or len(set(active_value)) != len(active_value)
+            or len(set(fallback_value)) != len(fallback_value)
+            or not set(active_value).isdisjoint(fallback_value)
+            or set(active_value) | set(fallback_value) != set(delivered_codes)
+            or type(snapshot.get("delivered_count")) is not int
+            or snapshot.get("delivered_count") != len(delivered_codes)
+            or type(snapshot.get("model_active_count")) is not int
+            or snapshot.get("model_active_count") != len(active_value)
+            or type(snapshot.get("fallback_count")) is not int
+            or snapshot.get("fallback_count") != len(fallback_value)
+            or type(snapshot.get("model_coverage_bp")) is not int
+            or snapshot.get("model_coverage_bp")
+            != len(active_value) * 10_000 // len(delivered_codes)
+        ):
+            raise ValueError("personal baseline active/fallback partition is invalid")
+        active_codes = active_value
+        fallback_codes = fallback_value
+        if delivered_rows is None or type(delivered_rows) is not list:
+            raise ValueError("personal baseline requires canonical delivered rows")
+        delivered_by_code: dict[str, Mapping[str, Any]] = {}
+        for row in delivered_rows:
+            if not isinstance(row, Mapping):
+                raise ValueError("personal baseline delivered row is invalid")
+            code = row.get("stock_code")
+            if type(code) is not str or code in delivered_by_code:
+                raise ValueError("personal baseline delivered stock identity is invalid")
+            delivered_by_code[code] = row
+        if set(delivered_by_code) != set(delivered_codes):
+            raise ValueError("personal baseline delivered rows differ from its partition")
+        for code in active_codes:
+            row = delivered_by_code[code]
+            projection = row.get("projection")
+            if (
+                not isinstance(projection, Mapping)
+                or projection.get("status") != "active_candidate"
+                or projection.get("calibrated_probability_status") != "active_effective"
+                or projection.get("model_version") != receipt_binding.get("candidate_id")
+            ):
+                raise ValueError("personal baseline active row does not match its receipt")
+        for code in fallback_codes:
+            projection = delivered_by_code[code].get("projection")
+            if (
+                not isinstance(projection, Mapping)
+                or projection.get("status") != "rule_only"
+                or projection.get("calibrated_probability_status") != "unavailable"
+                or projection.get("calibrated_probability_bp") is not None
+                or projection.get("after_cost_profit_probability_bp") is not None
+                or bool(str(projection.get("model_version") or "").strip())
+            ):
+                raise ValueError("personal baseline fallback row contains model output")
+        scenario_value = snapshot.get("cost_scenario")
+        try:
+            scenario = cost_scenario_from_metadata(
+                {
+                    "cost_scenario": scenario_value,
+                    "cost_scenario_hash": snapshot.get("cost_scenario_hash"),
+                }
+            )
+        except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+            raise ValueError("personal baseline cost scenario is invalid") from exc
+        if (
+            not isinstance(scenario_value, Mapping)
+            or scenario.to_dict(include_hash=True) != dict(scenario_value)
+            or scenario.scenario_hash != snapshot.get("cost_scenario_hash")
+            or scenario.scenario_hash != receipt_binding.get("cost_scenario_hash")
+        ):
+            raise ValueError("personal baseline cost scenario/receipt mismatch")
+        for code in active_codes:
+            projection = delivered_by_code[code]["projection"]
+            if not _personal_projection_matches_cost_scenario(projection, scenario):
+                raise ValueError("personal baseline projection cost scenario mismatch")
+        for code in fallback_codes:
+            projection = delivered_by_code[code]["projection"]
+            projection_hash = projection.get("cost_scenario_hash")
+            if projection_hash is not None and projection_hash != scenario.scenario_hash:
+                raise ValueError("personal fallback cost scenario conflicts with receipt")
+    if (
+        snapshot.get("upside_baseline_kind") != _PERSONAL_FIXED_NULL_BENCHMARK_KIND
+        or snapshot.get("upside_baseline_id") != _PERSONAL_FIXED_NULL_BENCHMARK_ID
+    ):
+        raise ValueError("personal upside baseline is not the fixed 50 percent null benchmark")
+    upside = snapshot.get("upside_probability_bp_by_symbol")
+    after_cost = snapshot.get("after_cost_probability_bp_by_symbol")
+    if (
+        not isinstance(upside, Mapping)
+        or set(upside) != set(active_codes)
+        or any(type(probability) is not int or probability != 5_000 for probability in upside.values())
+        or not isinstance(after_cost, Mapping)
+        or set(after_cost) != set(active_codes)
+    ):
+        raise ValueError("personal probability baseline probability maps are invalid")
+    after_cost_status = snapshot.get("after_cost_baseline_status")
+    after_cost_id = snapshot.get("after_cost_baseline_id")
+    if after_cost_status == "available":
+        if type(after_cost_id) is not str or not after_cost_id.strip():
+            raise ValueError("available after-cost baseline is missing its identity")
+        if any(
+            isinstance(probability, bool)
+            or type(probability) is not int
+            or not 0 <= probability <= 10_000
+            for probability in after_cost.values()
+        ):
+            raise ValueError("available after-cost baseline probabilities are invalid")
+    elif after_cost_status == "unavailable":
+        if after_cost_id is not None or any(
+            probability is not None for probability in after_cost.values()
+        ):
+            raise ValueError("unavailable after-cost baseline must remain null")
+    else:
+        raise ValueError("personal after-cost baseline availability is invalid")
+    declared_hash = snapshot.get("snapshot_sha256")
+    if not _is_personal_sha256(declared_hash):
+        raise ValueError("personal probability baseline snapshot hash format is invalid")
+    body = {key: item for key, item in snapshot.items() if key != "snapshot_sha256"}
+    if _personal_payload_hash(body) != declared_hash:
+        raise ValueError("personal probability baseline snapshot hash mismatch")
+    return snapshot
+
+
+def _personal_projection_matches_cost_scenario(
+    projection: Mapping[str, Any], scenario: RecommendationCostScenario
+) -> bool:
+    """比對 projection 的明確成本欄位，不把顯示文案當作成本類別。"""
+
+    scenario_payload = scenario.to_dict(include_hash=True)
+    expected_fields: dict[str, Any] = {
+        "cost_scenario_id": scenario.scenario_id,
+        "cost_scenario_version": scenario.scenario_version,
+        "cost_scenario_hash": scenario.scenario_hash,
+        "cost_basis_bp": scenario.fixed_round_trip_cost_bp,
+        "cost_policy_id": scenario.policy_id,
+        "cost_policy_version": scenario.policy_version,
+        "policy_estimate_date": scenario.policy_estimate_date,
+        "research_order_amount_twd": scenario_payload["research_order_amount_twd"],
+        "research_order_quantity_shares": scenario.research_order_quantity_shares,
+        "lot_type": scenario.lot_type,
+        "instrument_type": scenario.instrument_type,
+    }
+    return (
+        type(projection.get("cost_basis")) is str
+        and bool(projection.get("cost_basis"))
+        and all(
+            projection.get(field) == expected
+            for field, expected in expected_fields.items()
+        )
+    )
+
+
+def _verify_personal_policy_snapshot(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("personal policy snapshot must be an object")
+    policy = _personal_json_mapping(value, "personal policy snapshot")
+    required = {
+        "schema_version",
+        "policy_version",
+        "revision",
+        "scope_id",
+        "mode",
+        "confirmed_at",
+        "candidate",
+        "policy_sha256",
+    }
+    rollback_keys = {"rollback_of_revision", "rollback_of_policy_sha256"}
+    if set(policy) - rollback_keys != required or (set(policy) & rollback_keys) not in (
+        set(),
+        rollback_keys,
+    ):
+        raise ValueError("personal policy snapshot fields are invalid")
+    if (
+        policy.get("schema_version") != _PERSONAL_POLICY_SCHEMA_V1
+        or type(policy.get("policy_version")) is not int
+        or policy.get("policy_version") != 1
+        or type(policy.get("revision")) is not int
+        or policy["revision"] < 1
+    ):
+        raise ValueError("personal policy version or revision is invalid")
+    scope = policy.get("scope_id")
+    mode = policy.get("mode")
+    if (
+        type(scope) is not str
+        or not scope
+        or any(character not in _PERSONAL_SCOPE_CHARACTERS for character in scope)
+        or type(mode) is not str
+        or mode not in {"rule_only", _PERSONAL_MODE}
+    ):
+        raise ValueError("personal policy scope or mode is invalid")
+    confirmed_at = policy.get("confirmed_at")
+    if type(confirmed_at) is not str:
+        raise ValueError("personal policy confirmation time is missing")
+    parsed_confirmed_at = _parse_aware_datetime(confirmed_at, "confirmed_at")
+    parsed_original = datetime.fromisoformat(confirmed_at.replace("Z", "+00:00"))
+    if parsed_original.utcoffset() != timezone.utc.utcoffset(parsed_original):
+        raise ValueError("personal policy confirmation time must be UTC")
+    candidate = policy.get("candidate")
+    if mode == _PERSONAL_MODE:
+        if not isinstance(candidate, Mapping) or set(candidate) != {
+            "candidate_id",
+            "candidate_root",
+            "candidate_json_sha256",
+            "candidate_manifest_hash",
+            "candidate_artifact_hash",
+            "candidate_freeze_hash",
+            "dataset_hash",
+        }:
+            raise ValueError("personal calibrated policy candidate pins are invalid")
+        if any(type(candidate.get(key)) is not str for key in candidate):
+            raise ValueError("personal calibrated policy candidate pin types are invalid")
+        if not str(candidate.get("candidate_id") or "").strip():
+            raise ValueError("personal policy candidate id is missing")
+        _personal_absolute_path(candidate.get("candidate_root"), "candidate_root")
+        for key in (
+            "candidate_json_sha256",
+            "candidate_manifest_hash",
+            "candidate_artifact_hash",
+            "candidate_freeze_hash",
+            "dataset_hash",
+        ):
+            if not _is_personal_sha256(candidate.get(key)):
+                raise ValueError(f"personal policy candidate {key} is invalid")
+    elif candidate is not None:
+        if not isinstance(candidate, Mapping):
+            raise ValueError("personal rule-only policy candidate is invalid")
+    rollback_revision = policy.get("rollback_of_revision")
+    rollback_hash = policy.get("rollback_of_policy_sha256")
+    if (rollback_revision is None) != (rollback_hash is None):
+        raise ValueError("personal policy rollback fields are incomplete")
+    if rollback_revision is not None and (
+        type(rollback_revision) is not int
+        or rollback_revision < 1
+        or rollback_revision >= policy["revision"]
+        or not _is_personal_sha256(rollback_hash)
+    ):
+        raise ValueError("personal policy rollback provenance is invalid")
+    declared_hash = policy.get("policy_sha256")
+    if not _is_personal_sha256(declared_hash):
+        raise ValueError("personal policy hash format is invalid")
+    actual_hash = _personal_payload_hash(
+        {key: item for key, item in policy.items() if key != "policy_sha256"}
+    )
+    if declared_hash != actual_hash:
+        raise ValueError("personal policy hash mismatch")
+    return policy
+
+
+def _personal_json_mapping(value: Mapping[str, Any], field_name: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field_name} must be an object")
+
+    def copy_value(item: Any, nested_name: str) -> Any:
+        if isinstance(item, Mapping):
+            result: dict[str, Any] = {}
+            for key, nested in item.items():
+                if type(key) is not str or not key:
+                    raise ValueError(f"{nested_name} has a non-text JSON key")
+                result[key] = copy_value(nested, f"{nested_name}.{key}")
+            return result
+        if isinstance(item, (tuple, list)):
+            return [copy_value(nested, f"{nested_name}[]") for nested in item]
+        if type(item) is float:
+            if not math.isfinite(item):
+                raise ValueError(f"{nested_name} must be finite")
+            return item
+        if item is None or type(item) in (str, int, bool):
+            return item
+        raise ValueError(f"{nested_name} contains unsupported JSON value {type(item).__name__}")
+
+    copied = copy_value(value, field_name)
+    if type(copied) is not dict:
+        raise ValueError(f"{field_name} must be a JSON object")
+    return copied
+
+
+def _personal_payload_hash(value: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        dict(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    return _PERSONAL_SHA256_PREFIX + hashlib.sha256(encoded).hexdigest()
+
+
+def _personal_capture_id(value: Mapping[str, Any]) -> str:
+    canonical = value.get("canonical")
+    policy_event = value.get("policy_event")
+    receipt = value.get("receipt_binding")
+    if (
+        not isinstance(canonical, Mapping)
+        or not isinstance(policy_event, Mapping)
+        or not isinstance(receipt, Mapping)
+    ):
+        raise ValueError("personal capture identity components are missing")
+    policy_snapshot = policy_event.get("policy_snapshot")
+    if not isinstance(policy_snapshot, Mapping):
+        raise ValueError("personal capture policy identity is missing")
+    identity = {
+        "result_id": value.get("result_id"),
+        "payload_hash": canonical.get("payload_hash"),
+        "receipt_hash": receipt.get("receipt_hash"),
+        "policy_sha256": policy_snapshot.get("policy_sha256"),
+    }
+    capture_schema = value.get("schema_version", _PERSONAL_CAPTURE_SCHEMA_V1)
+    if capture_schema in {_PERSONAL_CAPTURE_SCHEMA_V2, _PERSONAL_CAPTURE_SCHEMA_V3}:
+        baseline_snapshot = value.get("probability_baseline_snapshot")
+        if not isinstance(baseline_snapshot, Mapping):
+            raise ValueError("personal v2 capture baseline identity is missing")
+        identity.update(
+            {
+                "capture_schema_version": capture_schema,
+                "probability_baseline_snapshot_sha256": baseline_snapshot.get(
+                    "snapshot_sha256"
+                ),
+            }
+        )
+    elif capture_schema != _PERSONAL_CAPTURE_SCHEMA_V1:
+        raise ValueError("personal capture schema version is unsupported")
+    return _personal_payload_hash(identity)
+
+
+def _is_personal_sha256(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 71
+        and value.startswith(_PERSONAL_SHA256_PREFIX)
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
+
+
+def _parse_aware_datetime(value: object, field_name: str) -> datetime:
+    if type(value) is datetime:
+        parsed = value
+    elif type(value) is str:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"{field_name} must be an ISO timestamp") from exc
+    else:
+        raise ValueError(f"{field_name} must be an aware timestamp")
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field_name} must include a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _utc_text(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def _personal_absolute_path(value: object, field_name: str) -> Path:
+    if type(value) is not str or not value.strip():
+        raise ValueError(f"{field_name} must be an absolute path")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise ValueError(f"{field_name} must be an absolute path")
+    return Path(os.path.abspath(path))
+
+
+def _normalized_absolute_path(value: str | Path) -> str:
+    return os.path.normcase(os.path.normpath(str(value)))
+
+
+def _read_bounded_personal_candidate_json(
+    candidate_root: Path,
+    candidate_json_path: Path,
+    candidate_manifest_path: Path,
+    *,
+    max_bytes: int,
+) -> bytes:
+    """以 no-follow handle 讀取候選 JSON，並在解析前限制讀取大小。"""
+
+    if isinstance(max_bytes, bool) or type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError("personal candidate metadata byte limit is invalid")
+    if (
+        not candidate_root.is_absolute()
+        or candidate_json_path.parent != candidate_root
+        or candidate_json_path.name != "candidate.json"
+        or candidate_manifest_path.parent != candidate_root
+        or candidate_manifest_path.name != "manifest.json"
+    ):
+        raise ValueError("personal candidate metadata path layout is invalid")
+    before_chain = _personal_candidate_path_chain(candidate_json_path)
+    initial_file = candidate_json_path.lstat()
+    if initial_file.st_size <= 0 or initial_file.st_size > max_bytes:
+        raise ValueError("personal candidate metadata exceeds the bounded read limit")
+
+    try:
+        descriptor = _open_nofollow_candidate_json(candidate_json_path)
+    except OSError as exc:
+        raise ValueError("personal candidate metadata cannot be opened without following links") from exc
+    with os.fdopen(descriptor, "rb", closefd=True) as stream:
+        opened_file = os.fstat(stream.fileno())
+        if not _personal_regular_file_stat(opened_file):
+            raise ValueError("personal candidate metadata handle is not a regular file")
+        if _personal_candidate_stat_key(opened_file, is_file=True) != before_chain[-1][1]:
+            raise ValueError("personal candidate metadata changed between check and open")
+        if opened_file.st_size <= 0 or opened_file.st_size > max_bytes:
+            raise ValueError("personal candidate metadata exceeds the bounded read limit")
+
+        content = bytearray()
+        while len(content) <= max_bytes:
+            remaining = max_bytes + 1 - len(content)
+            chunk = os.read(stream.fileno(), min(64 * 1024, remaining))
+            if not chunk:
+                break
+            content.extend(chunk)
+        if len(content) > max_bytes:
+            raise ValueError("personal candidate metadata exceeds the bounded read limit")
+
+        finished_file = os.fstat(stream.fileno())
+        if _personal_candidate_stat_key(finished_file, is_file=True) != _personal_candidate_stat_key(
+            opened_file, is_file=True
+        ):
+            raise ValueError("personal candidate metadata changed while being read")
+        if len(content) != finished_file.st_size:
+            raise ValueError("personal candidate metadata size changed while being read")
+        after_chain = _personal_candidate_path_chain(candidate_json_path)
+        if after_chain != before_chain:
+            raise ValueError("personal candidate metadata path changed while being read")
+        return bytes(content)
+
+
+def _personal_candidate_path_chain(path: Path) -> tuple[tuple[str, tuple[int, ...]], ...]:
+    """Capture no-follow identities for the parent chain and candidate file."""
+
+    if _path_has_link_or_reparse(path):
+        raise ValueError("personal candidate metadata path is linked or reparse-backed")
+    current = Path(path.anchor)
+    entries: list[tuple[str, tuple[int, ...]]] = []
+    parts = path.parts[1:]
+    for index, part in enumerate(parts):
+        current = current / part
+        metadata = current.lstat()
+        is_file = index == len(parts) - 1
+        if is_file:
+            if not _personal_regular_file_stat(metadata):
+                raise ValueError("personal candidate metadata is not a regular file")
+        elif not stat.S_ISDIR(metadata.st_mode) or _personal_stat_is_reparse(metadata):
+            raise ValueError("personal candidate metadata parent is not a plain directory")
+        entries.append((str(current), _personal_candidate_stat_key(metadata, is_file=is_file)))
+    if not entries:
+        raise ValueError("personal candidate metadata path is empty")
+    return tuple(entries)
+
+
+def _personal_candidate_stat_key(metadata: os.stat_result, *, is_file: bool) -> tuple[int, ...]:
+    attributes = int(getattr(metadata, "st_file_attributes", 0))
+    base = (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        attributes,
+    )
+    if metadata.st_ino == 0:
+        raise ValueError("personal candidate metadata filesystem identity is unavailable")
+    if not is_file:
+        return base
+    return (
+        *base,
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+        int(metadata.st_ctime_ns),
+    )
+
+
+def _personal_stat_is_reparse(metadata: os.stat_result) -> bool:
+    return os.name == "nt" and bool(
+        int(getattr(metadata, "st_file_attributes", 0)) & 0x400
+    )
+
+
+def _personal_regular_file_stat(metadata: os.stat_result) -> bool:
+    return stat.S_ISREG(metadata.st_mode) and not _personal_stat_is_reparse(metadata)
+
+
+def _open_nofollow_candidate_json(path: Path) -> int:
+    """Return a read-only file descriptor opened without following a final link."""
+
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = (
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        )
+        create_file.restype = wintypes.HANDLE
+        handle = create_file(
+            str(path),
+            0x80000000,  # GENERIC_READ
+            0x00000001,  # FILE_SHARE_READ; deny concurrent writes/deletes
+            None,
+            3,  # OPEN_EXISTING
+            0x00200000 | 0x08000000,  # OPEN_REPARSE_POINT | SEQUENTIAL_SCAN
+            None,
+        )
+        handle_value = handle if isinstance(handle, int) else getattr(handle, "value", None)
+        if handle_value is None or handle_value == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return msvcrt.open_osfhandle(
+                int(handle_value),
+                os.O_RDONLY | getattr(os, "O_BINARY", 0),
+            )
+        except BaseException:
+            kernel32.CloseHandle(handle)
+            raise
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("platform does not provide a no-follow file open")
+    flags = os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    return os.open(path, flags)
+
+
+def _path_has_link_or_reparse(path: Path) -> bool:
+    if not path.is_absolute():
+        return True
+    current = Path(path.anchor)
+    for component in path.parts[1:]:
+        current = current / component
+        try:
+            metadata = current.lstat()
+        except OSError:
+            return True
+        if stat.S_ISLNK(metadata.st_mode):
+            return True
+        if os.name == "nt" and bool(
+            getattr(metadata, "st_file_attributes", 0) & 0x400
+        ):
+            return True
+    return False
+
+
+def _file_hash(value: bytes) -> str:
+    return _PERSONAL_SHA256_PREFIX + hashlib.sha256(value).hexdigest()
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -1330,6 +2892,104 @@ def _decimal_or_none(value: Any) -> Decimal | None:
     except (InvalidOperation, TypeError, ValueError):
         return None
     return parsed if parsed.is_finite() else None
+
+
+def _validate_personal_probability(value: object, field_name: str) -> None:
+    if isinstance(value, bool) or type(value) is not int or not 0 <= value <= 10_000:
+        raise ValueError(f"personal outcome {field_name} is invalid")
+
+
+def _estimated_personal_cost_is_complete(
+    outcome: MaturedRecommendationOutcome,
+    scenario: RecommendationCostScenario,
+) -> bool:
+    """Apply the existing estimated fees/tax boundary without inventing liquidity."""
+
+    if (
+        outcome.cost_estimate_status != "estimated"
+        or outcome.estimated_round_trip_cost_bp is None
+        or outcome.cost_scenario_hash != scenario.scenario_hash
+    ):
+        return False
+    gross_buy = _decimal_or_none(outcome.gross_buy_amount_twd)
+    gross_sell = _decimal_or_none(outcome.gross_sell_amount_twd)
+    buy_cost = _decimal_or_none(outcome.estimated_buy_cost_twd)
+    sell_cost = _decimal_or_none(outcome.estimated_sell_cost_twd)
+    round_trip = _decimal_or_none(outcome.estimated_round_trip_cost_twd)
+    net_profit = _decimal_or_none(outcome.net_profit_twd)
+    if any(value is None for value in (gross_buy, gross_sell, buy_cost, sell_cost, round_trip, net_profit)):
+        return False
+    assert gross_buy is not None
+    assert gross_sell is not None
+    assert buy_cost is not None
+    assert sell_cost is not None
+    assert round_trip is not None
+    assert net_profit is not None
+    if gross_buy <= 0 or gross_sell <= 0 or buy_cost < 0 or sell_cost < 0:
+        return False
+    if round_trip != buy_cost + sell_cost:
+        raise ValueError("personal estimated round-trip cost does not match side costs")
+    if net_profit != gross_sell - gross_buy - buy_cost - sell_cost:
+        raise ValueError("personal estimated exact net profit does not match cost components")
+    return True
+
+
+def _personal_after_cost_fields(
+    outcome: MaturedRecommendationOutcome,
+    scenario: RecommendationCostScenario,
+) -> dict[str, int | str | None]:
+    """Return after-cost label and only the metrics supported by this cost lane."""
+
+    if scenario.is_estimated:
+        net_profit = _decimal_or_none(outcome.net_profit_twd)
+        if net_profit is None or not _estimated_personal_cost_is_complete(outcome, scenario):
+            return {
+                "after_cost_profit_label": None,
+                "after_cost_profit_bp": None,
+                "after_cost_profit_twd": None,
+                "after_cost_status": "unknown_estimated_cost_inputs",
+            }
+        return {
+            "after_cost_profit_label": int(net_profit > 0),
+            "after_cost_profit_bp": None,
+            "after_cost_profit_twd": str(net_profit),
+            "after_cost_status": "estimated_fees_tax_only",
+        }
+
+    fixed_cost_bp = scenario.fixed_round_trip_cost_bp
+    liquidity_cost_bp = outcome.observed_liquidity_cost_bp
+    liquidity_source = outcome.observed_liquidity_cost_source
+    if (
+        isinstance(fixed_cost_bp, bool)
+        or type(fixed_cost_bp) is not int
+        or fixed_cost_bp < 0
+        or isinstance(liquidity_cost_bp, bool)
+        or type(liquidity_cost_bp) is not int
+        or liquidity_cost_bp < 0
+        or type(liquidity_source) is not str
+        or not liquidity_source.strip()
+    ):
+        return {
+            "after_cost_profit_label": None,
+            "after_cost_profit_bp": None,
+            "after_cost_profit_twd": None,
+            "after_cost_status": "unknown_missing_liquidity_cost",
+        }
+    profit_bp = outcome.stock_return_bp - fixed_cost_bp - liquidity_cost_bp
+    return {
+        "after_cost_profit_label": int(profit_bp > 0),
+        "after_cost_profit_bp": profit_bp,
+        "after_cost_profit_twd": None,
+        "after_cost_status": "fixed_plus_observed_liquidity",
+    }
+
+
+def _personal_after_cost_status(rows: list[Mapping[str, Any]]) -> str:
+    if any(row.get("after_cost_profit_label") is None for row in rows):
+        return "pending_cost_or_liquidity_evidence"
+    if any(row.get("after_cost_profit_probability_bp") is None for row in rows):
+        return "label_matured_probability_unavailable"
+    return "matured_with_after_cost_probability"
 
 
 def _return_bp(start: Any, end: Any) -> int:

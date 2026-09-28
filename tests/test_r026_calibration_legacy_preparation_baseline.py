@@ -24,6 +24,10 @@ from data_module.ml_historical_snapshot_provider import (
 )
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.historical_feature_builder import HistoricalFeatureBuilder
+from ml_module.recommendation_cost_scenario import (
+    RecommendationCostScenario,
+    build_legacy_cost_scenario,
+)
 from ml_module.recommendation_inference_provenance import RecommendationProvenanceError
 from recommendation_test_support import build_recommendation_test_service
 
@@ -129,24 +133,23 @@ class _RecordingConsumer:
         self.calls = calls
         self.pointer_path: Path | None = None
         self.resolved_identity: dict[str, str] | None = None
-        self.resolved_cost_scenario: SimpleNamespace | None = None
+        self.resolved_cost_scenario: RecommendationCostScenario = (
+            build_legacy_cost_scenario(50)
+        )
 
     def active_identity(self, *, decision_date: str) -> dict[str, str]:
         self.calls.append(("active_identity", decision_date))
         self.resolved_identity = {
             "candidate_id": "synthetic-candidate-2024-01-22",
             "pointer_version": "synthetic-pointer-v1",
-            "cost_scenario_hash": "a" * 64,
+            "cost_scenario_hash": self.resolved_cost_scenario.scenario_hash,
         }
         return dict(self.resolved_identity)
 
-    def active_cost_scenario(self, *, decision_date: str) -> SimpleNamespace:
+    def active_cost_scenario(
+        self, *, decision_date: str
+    ) -> RecommendationCostScenario:
         self.calls.append(("active_cost_scenario", decision_date))
-        self.resolved_cost_scenario = SimpleNamespace(
-            scenario_hash="b" * 64,
-            scenario_id="synthetic-cost-v1",
-            scenario_version="1",
-        )
         return self.resolved_cost_scenario
 
     def active_after_cost_baseline(self, *, decision_date: str) -> tuple[str, int]:
@@ -358,7 +361,9 @@ def test_legacy_preparation_freezes_t1_features_hashes_identity_and_call_order(
         "sha256:9bc0e5bd47f18995e4ce8fd0dbed2a829442ccc23ddcb2c49e64e8043ce1d572"
     )
     assert provenance["source_fingerprint"] == snapshot.source_fingerprint
-    assert provenance["cost_scenario_hash"] == "b" * 64
+    assert provenance["cost_scenario_hash"] == (
+        "sha256:1e50e15cf30f3bd25f1a142f264d9755fed486fee234c9c794d5534122906d5e"
+    )
     expected_schema = tuple(
         (
             feature_id,
@@ -409,11 +414,13 @@ def test_legacy_preparation_freezes_t1_features_hashes_identity_and_call_order(
     assert consumer.resolved_identity == {
         "candidate_id": "synthetic-candidate-2024-01-22",
         "pointer_version": "synthetic-pointer-v1",
-        "cost_scenario_hash": "a" * 64,
+        "cost_scenario_hash": (
+            "sha256:1e50e15cf30f3bd25f1a142f264d9755fed486fee234c9c794d5534122906d5e"
+        ),
     }
     assert consumer.resolved_cost_scenario is not None
-    assert consumer.resolved_cost_scenario.scenario_id == "synthetic-cost-v1"
-    assert consumer.resolved_cost_scenario.scenario_version == "1"
+    assert consumer.resolved_cost_scenario.scenario_id == "legacy-fixed-round-trip-bp"
+    assert consumer.resolved_cost_scenario.scenario_version == "legacy-fixed-round-trip-bp-v1"
     assert calls[-1][3]["candidate_id"] == "synthetic-candidate-2024-01-22"
     assert tuple(item.stock_code for item in recommendations) == ("BBB", "AAA")
     assert service.last_calibration_projections.keys() == {"BBB", "AAA"}

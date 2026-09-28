@@ -1153,6 +1153,8 @@ def _apply_operations_and_verify(
             (stock_code, decision_date),
         ).fetchone()
         if operation["operation"] == "UPDATE":
+            if not isinstance(before, Mapping):
+                raise CandidateRepairError(f"UPDATE preimage 不符: {key}")
             if existing is None or dict(zip(TABLE_COLUMNS, existing)) != dict(before):
                 raise CandidateRepairError(f"UPDATE preimage 不符: {key}")
             assignments = ",".join(

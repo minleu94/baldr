@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -24,6 +25,9 @@ from app_module.recommendation.contracts import (
 )
 from app_module.recommendation.execute import execute_recommendation
 from app_module.recommendation.body_result import RecommendationBodyResult
+from app_module.recommendation.negative_evidence_projection import (
+    project_canonical_negative_evidence,
+)
 from app_module.recommendation_service import RecommendationService
 from decision_module.recommendation.contracts import DecisionBatch
 from recommendation_test_support import build_recommendation_test_preparer
@@ -154,6 +158,19 @@ def _track_body_results(monkeypatch: pytest.MonkeyPatch):
     return observed
 
 
+def _json_normalize_immutable_projection(value: object) -> object:
+    """只把事件凍結容器轉為 JSON 對照形狀，不改值或欄位。"""
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_normalize_immutable_projection(item)
+            for key, item in value.items()
+        }
+    if type(value) in (list, tuple):
+        return [_json_normalize_immutable_projection(item) for item in value]
+    return value
+
+
 def test_completed_execution_hands_off_same_body_decision_not_legacy_matrix(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -209,7 +226,14 @@ def test_completed_execution_hands_off_same_body_decision_not_legacy_matrix(
         for event in execution.events
         if event.event_type == "legacy_negative_evidence_capture"
     )
-    assert "matrix-only-negative-control" in matrix_event.details[
+    expected_event_details = project_canonical_negative_evidence(
+        body_result.decision,
+        allow_empty=True,
+    ).as_event_details()
+    assert _json_normalize_immutable_projection(matrix_event.details) == (
+        expected_event_details
+    )
+    assert "matrix-only-negative-control" not in matrix_event.details[
         "screening_matrix"
     ][0]["reason_codes"]
     # This is the negative control: the old matrix-derived assessment changes,
@@ -472,6 +496,7 @@ def test_completed_context_quality_and_ml_fields_ignore_conflicting_legacy_captu
     )
 
     original_execution_builder = execute_module._build_execution
+    poisoned_legacy_handoff_flags: dict[str, bool] = {}
 
     def poison_execution_legacy_capture(**kwargs: Any):
         capture = kwargs["capture"]
@@ -512,6 +537,14 @@ def test_completed_context_quality_and_ml_fields_ignore_conflicting_legacy_captu
         # Exercise the configured/attempted branch without a real consumer or source.
         capture["calibration_consumer_configured"] = True
         capture["calibration_attempted"] = True
+        poisoned_legacy_handoff_flags.update(
+            {
+                "calibration_consumer_configured": capture[
+                    "calibration_consumer_configured"
+                ],
+                "calibration_attempted": capture["calibration_attempted"],
+            }
+        )
         return original_execution_builder(**kwargs)
 
     monkeypatch.setattr(
@@ -575,8 +608,18 @@ def test_completed_context_quality_and_ml_fields_ignore_conflicting_legacy_captu
         body_result.decision.items
     )
     assert "legacy-only-quality-warning" not in execution.quality.warnings
-    assert execution.ml_availability.status is MLAvailabilityStatus.UNKNOWN
+    assert poisoned_legacy_handoff_flags == {
+        "calibration_consumer_configured": True,
+        "calibration_attempted": True,
+    }
+    assert execution.ml_availability.status is MLAvailabilityStatus.NOT_REQUESTED
     assert execution.ml_availability.reason is None
+    assert execution.ml_receipt_refs == ()
+    assert execution.ml_projection_refs == ()
+    assert all(
+        event.event_type != "ml_projection_receipt_capture"
+        for event in execution.events
+    )
 
     legacy_context_event = next(
         event

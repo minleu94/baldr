@@ -9,15 +9,16 @@ import ``app_module``。scheduled entrypoint 直接依賴本模組的 canonical 
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 from typing import Any, Mapping, Sequence
 
-from ml_module.model_artifact_manifest import FeatureSchema
+from ml_module.model_artifact_manifest import FeatureSchema, ModelArtifactManifest
 from ml_module.recommendation_calibration_authority import (
     RecommendationCalibrationPromotionAuthority,
 )
@@ -26,6 +27,7 @@ from ml_module.recommendation_calibration_training import (
     RecommendationCalibrationTrainingConfig,
     RecommendationCalibrationTrainingResult,
     RecommendationCalibrationTrainingService,
+    candidate_freeze_hash,
     sample_payload,
 )
 from ml_module.recommendation_cost_scenario import (
@@ -36,16 +38,45 @@ from ml_module.recommendation_cost_scenario import (
 from ml_module.recommendation_training_lineage import (
     RECOMMENDATION_TRAINING_CONTEXT_HISTORICAL_RESEARCH,
     RecommendationTrainingLineageError,
+    _replay_manifest_lineage,
+    _source_contract_payload,
+    _source_group_lineage,
     build_recommendation_training_lineage,
     persist_recommendation_training_lineage,
     recommendation_training_dataset_hash,
     resolve_recommendation_training_context,
     read_recommendation_training_lineage,
+    training_lineage_path,
 )
 
 
 DEFAULT_DATA_ROOT = Path("D:/Min/Python/Project/FA_Data")
 RECOMMENDATION_LEARNING_OUTPUT_ROOT_ENV = "RECOMMENDATION_LEARNING_OUTPUT_ROOT"
+_RUN_INPUT_IDENTITY_SCHEMA = "recommendation-learning-run-input-identity.v1"
+_CANDIDATE_RUN_BINDING_SCHEMA = "recommendation-learning-candidate-run-binding.v1"
+_FROZEN_CANDIDATE_PACKAGE_IDENTITY_SCHEMA = "recommendation-learning-frozen-candidate-package.v1"
+_WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_SOURCE_ROLE_ALIASES = {
+    "replay": "replay",
+    "historical_replay": "replay",
+    "bootstrap": "bootstrap_replay",
+    "bootstrap_replay": "bootstrap_replay",
+    "natural": "natural",
+    "natural_forward": "natural",
+}
+
+
+class _SameRunInputConflict(ValueError):
+    """同一 run ID 的輸入或已保存套件不一致；必須改用新 scope。"""
+
+
+@dataclass(frozen=True)
+class _VerifiedCandidatePackage:
+    root: Path
+    metadata: dict[str, Any]
+    manifest: ModelArtifactManifest
+    lineage_hash: str
+    lineage_path: str
 
 
 @dataclass(frozen=True)
@@ -141,58 +172,169 @@ class DailyRecommendationLearningRunner:
         )
         dataset_hash = _dataset_hash(eligible_samples)
 
+        run_input_identity: dict[str, Any] | None = None
+        frozen_run_input_identity: dict[str, Any] | None = None
+        recovered_candidate: _VerifiedCandidatePackage | None = None
+        run_input_identity_path = run_dir / "run_input_identity.json"
+        if not emergency_rollback:
+            if frozen_candidate_root is None:
+                run_input_identity = _build_run_input_identity(
+                    run_id=run_id,
+                    decision_date=day,
+                    run_scope=scope,
+                    training_as_of=training_cutoff,
+                    samples=eligible_samples,
+                    feature_names=self.feature_names,
+                    feature_schema=self.feature_schema,
+                    feature_registry_hash=self.feature_registry_hash,
+                    training_config=self.training_config,
+                    cost_scenario=self.cost_scenario,
+                    dataset_quality=dataset_quality,
+                    lineage_sources=lineage_sources,
+                )
+            elif receipt_path.is_file() or run_input_identity_path.exists():
+                frozen_run_input_identity = _build_frozen_run_input_identity(
+                    run_id=run_id,
+                    decision_date=day,
+                    run_scope=scope,
+                    training_as_of=training_cutoff,
+                    dataset_hash=dataset_hash,
+                    dataset_quality=dataset_quality,
+                    cost_scenario=self.cost_scenario,
+                    frozen_candidate_root=Path(frozen_candidate_root),
+                    fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
+                )
+            if run_input_identity is not None and run_input_identity_path.exists():
+                _load_or_create_run_input_identity(
+                    run_input_identity_path,
+                    run_input_identity,
+                    allow_create=False,
+                )
+            if frozen_run_input_identity is not None:
+                _load_or_create_run_input_identity(
+                    run_input_identity_path,
+                    frozen_run_input_identity,
+                    allow_create=False,
+                )
+            if run_input_identity is not None:
+                existing_candidate_directories = _candidate_directories(run_dir)
+                if existing_candidate_directories and not run_input_identity_path.exists():
+                    raise _SameRunInputConflict(
+                        "same_run_candidate_package_has_no_training_input_identity_use_new_run_scope"
+                    )
+                if len(existing_candidate_directories) > 1:
+                    raise _SameRunInputConflict(
+                        "same_run_has_multiple_candidate_packages_use_new_run_scope"
+                    )
+                if existing_candidate_directories:
+                    recovered_candidate = _verify_candidate_run_package(
+                        existing_candidate_directories[0],
+                        expected_identity=run_input_identity,
+                        expected_candidates_root=run_dir / "candidates",
+                        expected_learning_root=self.root,
+                        require_run_binding=True,
+                    )
+
         if receipt_path.is_file() and not emergency_rollback:
             existing = _read_mapping(receipt_path)
             if existing.get("status") == "completed" and existing.get("finalized") is True:
+                candidate_id = _optional_text(existing.get("candidate_id"))
+                candidate_root: Path | None = None
+                candidate_metadata: dict[str, Any] | None = None
+                if candidate_id:
+                    if frozen_candidate_root is None:
+                        if run_input_identity is None or recovered_candidate is None:
+                            raise _SameRunInputConflict(
+                                "legacy_completed_run_lacks_verifiable_candidate_package_use_new_run_scope"
+                            )
+                        candidate_root = recovered_candidate.root
+                        candidate_metadata = recovered_candidate.metadata
+                        _verify_completed_receipt_binding(
+                            existing,
+                            candidate_root=candidate_root,
+                            candidate_metadata=candidate_metadata,
+                            decision_date=day,
+                            run_scope=scope,
+                            dataset_hash=dataset_hash,
+                            training_as_of=training_cutoff,
+                            cost_scenario=self.cost_scenario,
+                        )
+                    else:
+                        candidate_root = Path(str(existing.get("candidate_root") or "")).resolve()
+                        if candidate_root != Path(frozen_candidate_root).resolve():
+                            raise _SameRunInputConflict(
+                                "same_run_frozen_candidate_root_changed_use_new_run_scope"
+                            )
+                        try:
+                            candidate_metadata = _read_mapping(candidate_root / "candidate.json")
+                        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+                            raise _SameRunInputConflict(
+                                "same_run_frozen_candidate_unreadable_use_new_run_scope"
+                            ) from exc
+                        if frozen_run_input_identity is None:
+                            raise _SameRunInputConflict(
+                                "same_run_frozen_candidate_identity_unavailable_use_new_run_scope"
+                            )
+                        _verify_completed_frozen_receipt_binding(
+                            existing,
+                            identity=frozen_run_input_identity,
+                            candidate_metadata=candidate_metadata,
+                        )
+                else:
+                    _verify_completed_no_candidate_receipt(
+                        existing,
+                        run_id=run_id,
+                        decision_date=day,
+                        run_scope=scope,
+                        dataset_hash=dataset_hash,
+                        cost_scenario=self.cost_scenario,
+                    )
+
                 if (
                     natural_evidence is not None
                     and existing.get("decision") == "retain_current"
-                    and existing.get("candidate_root")
-                    and existing.get("candidate_id")
+                    and candidate_root is not None
+                    and candidate_metadata is not None
                 ):
-                    candidate_root = Path(str(existing["candidate_root"])).resolve()
-                    candidate_path = candidate_root / "candidate.json"
-                    if candidate_path.is_file():
-                        candidate_metadata = _read_mapping(candidate_path)
-                        if callable(natural_evidence):
-                            raise ValueError(
-                                "same-day evidence retry requires a materialized receipt reference"
-                            )
-                        retry_decision = self.authority.evaluate_and_apply(
-                            decision_date=day,
-                            candidate_id=str(existing["candidate_id"]),
-                            candidate_root=candidate_root,
-                            candidate_metadata=candidate_metadata,
-                            natural_evidence=natural_evidence,
-                            data_status=data_dependency_status,
-                            drift_status=drift_status,
+                    if callable(natural_evidence):
+                        raise ValueError(
+                            "same-day evidence retry requires a materialized receipt reference"
                         )
-                        retry_path = run_dir / (
-                            f"run_receipt-retry-{_evidence_id(natural_evidence)}.json"
-                        )
-                        retry_receipt = {
-                            **existing,
-                            "receipt_path": str(retry_path),
-                            "reason": "same_day_natural_evidence_retry",
-                            "natural_matured_sample_count": _evidence_count(natural_evidence),
-                            "decision": retry_decision.decision,
-                            "decision_reason": retry_decision.reason,
-                            "decision_receipt": retry_decision.to_dict(),
-                            "steps": {
-                                **dict(existing.get("steps", {})),
-                                "same_date_same_cost_comparison": (
-                                    "recomputed_from_materialized_natural_receipt"
-                                ),
-                                "promotion_gate": "completed",
-                            },
-                        }
-                        _write_json_once(retry_path, retry_receipt)
-                        _write_json(latest_path, retry_receipt)
-                        return _result_from_receipt(
-                            retry_receipt,
-                            idempotent=False,
-                            latest_status_path=latest_path,
-                        )
+                    retry_decision = self.authority.evaluate_and_apply(
+                        decision_date=day,
+                        candidate_id=str(existing["candidate_id"]),
+                        candidate_root=candidate_root,
+                        candidate_metadata=candidate_metadata,
+                        natural_evidence=natural_evidence,
+                        data_status=data_dependency_status,
+                        drift_status=drift_status,
+                    )
+                    retry_path = run_dir / (
+                        f"run_receipt-retry-{_evidence_id(natural_evidence)}.json"
+                    )
+                    retry_receipt = {
+                        **existing,
+                        "receipt_path": str(retry_path),
+                        "reason": "same_day_natural_evidence_retry",
+                        "natural_matured_sample_count": _evidence_count(natural_evidence),
+                        "decision": retry_decision.decision,
+                        "decision_reason": retry_decision.reason,
+                        "decision_receipt": retry_decision.to_dict(),
+                        "steps": {
+                            **dict(existing.get("steps", {})),
+                            "same_date_same_cost_comparison": (
+                                "recomputed_from_materialized_natural_receipt"
+                            ),
+                            "promotion_gate": "completed",
+                        },
+                    }
+                    _write_json_once(retry_path, retry_receipt)
+                    _write_json(latest_path, retry_receipt)
+                    return _result_from_receipt(
+                        retry_receipt,
+                        idempotent=False,
+                        latest_status_path=latest_path,
+                    )
                 return _result_from_receipt(existing, idempotent=True, latest_status_path=latest_path)
 
         if emergency_rollback:
@@ -311,7 +453,29 @@ class DailyRecommendationLearningRunner:
                 training_lineage_status="failed",
             )
 
-        frozen_root = Path(frozen_candidate_root).resolve() if frozen_candidate_root is not None else None
+        frozen_input_root = (
+            Path(frozen_candidate_root) if frozen_candidate_root is not None else None
+        )
+        if frozen_input_root is not None and (
+            not _is_plain_directory(frozen_input_root)
+            or not _path_has_no_reparse_components(frozen_input_root)
+        ):
+            return self._write_skip(
+                day=day,
+                run_id=run_id,
+                run_dir=run_dir,
+                run_scope=scope,
+                reason="frozen_challenger_root_not_regular_directory",
+                status="failed_candidate",
+                dataset_hash=dataset_hash,
+                decision="retain_current",
+                decision_reason="frozen_challenger_root_not_regular_directory_fail_closed",
+                natural_matured_sample_count=_evidence_count(natural_evidence),
+                data_dependency_status=data_dependency_status,
+                outcome_dependency_status=outcome_dependency_status,
+                drift_status=drift_status,
+            )
+        frozen_root = frozen_input_root.resolve() if frozen_input_root is not None else None
         frozen_metadata: dict[str, Any] | None = None
         if frozen_root is not None:
             try:
@@ -351,12 +515,31 @@ class DailyRecommendationLearningRunner:
                 drift_status=drift_status,
             )
 
+        if frozen_root is None:
+            if run_input_identity is None:
+                raise RuntimeError("訓練 run 缺少輸入 identity")
+            _load_or_create_run_input_identity(
+                run_input_identity_path,
+                run_input_identity,
+                allow_create=True,
+            )
+
         dataset_id = f"recommendation-dataset-{dataset_hash[7:23]}"
         result: RecommendationCalibrationTrainingResult | None = None
         lineage_hash: str | None = None
         lineage_path: str | None = None
         lineage_status = "not_available"
-        if frozen_root is None:
+        candidate_available_at: str | None = None
+        if frozen_root is None and recovered_candidate is not None:
+            candidate_root = recovered_candidate.root
+            candidate_metadata = recovered_candidate.metadata
+            lineage_hash = recovered_candidate.lineage_hash
+            lineage_path = recovered_candidate.lineage_path
+            lineage_status = "verified"
+            candidate_available_at = _available_at_after_freeze(
+                recovered_candidate.manifest.created_at
+            )
+        elif frozen_root is None:
             try:
                 result = self.training_service.fit(
                     dataset_id=dataset_id,
@@ -369,7 +552,6 @@ class DailyRecommendationLearningRunner:
                     fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
                     cost_scenario=self.cost_scenario,
                     dataset_quality=dataset_quality,
-                    created_at=f"{day}T00:00:00+00:00",
                     config=self.training_config,
                 )
                 lineage = build_recommendation_training_lineage(
@@ -424,6 +606,36 @@ class DailyRecommendationLearningRunner:
                     }
                 )
                 _persist_candidate_package(result, candidate_root, candidate_payload)
+                _verify_persisted_candidate_package(
+                    result=result,
+                    candidate_root=candidate_root,
+                    candidate_payload=candidate_payload,
+                    lineage=lineage,
+                    lineage_path=persisted_lineage_path,
+                )
+                if run_input_identity is None:
+                    raise RuntimeError("訓練 run 缺少輸入 identity")
+                binding = _candidate_binding_payload(
+                    identity_hash=str(run_input_identity.get("identity_hash") or ""),
+                    candidate_metadata=candidate_payload,
+                )
+                _write_json_once(candidate_root / "run_input_binding.json", binding)
+                _verify_candidate_run_package(
+                    candidate_root,
+                    expected_identity=run_input_identity,
+                    expected_candidates_root=run_dir / "candidates",
+                    expected_learning_root=self.root,
+                    require_run_binding=True,
+                )
+                frozen_at = datetime.fromisoformat(result.manifest.created_at)
+                available_at = datetime.now(timezone.utc)
+                if (
+                    frozen_at.tzinfo is None
+                    or frozen_at.utcoffset() != timedelta(0)
+                    or available_at < frozen_at
+                ):
+                    raise RuntimeError("候選凍結時間不是有效 UTC 或晚於可用時鐘")
+                candidate_available_at = available_at.isoformat(timespec="microseconds")
                 candidate_metadata = candidate_payload
             except (OSError, RuntimeError, TypeError, ValueError, RecommendationTrainingLineageError) as exc:
                 reason = (
@@ -464,6 +676,22 @@ class DailyRecommendationLearningRunner:
                 lineage_hash, lineage_path, lineage_status = _frozen_candidate_lineage(
                     candidate_root,
                     candidate_metadata,
+                )
+                frozen_run_input_identity = _build_frozen_run_input_identity(
+                    run_id=run_id,
+                    decision_date=day,
+                    run_scope=scope,
+                    training_as_of=training_cutoff,
+                    dataset_hash=dataset_hash,
+                    dataset_quality=dataset_quality,
+                    cost_scenario=self.cost_scenario,
+                    frozen_candidate_root=frozen_root,
+                    fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
+                )
+                _load_or_create_run_input_identity(
+                    run_input_identity_path,
+                    frozen_run_input_identity,
+                    allow_create=True,
                 )
             except (OSError, UnicodeError, TypeError, ValueError, RecommendationTrainingLineageError) as exc:
                 return self._write_skip(
@@ -587,6 +815,8 @@ class DailyRecommendationLearningRunner:
             "formal_order_allowed": False,
             "shadow_only": True,
         }
+        if candidate_available_at is not None:
+            receipt["candidate_available_at"] = candidate_available_at
         _write_json_once(receipt_path, receipt)
         _write_json(latest_path, receipt)
         return _result_from_receipt(receipt, idempotent=False, latest_status_path=latest_path)
@@ -686,6 +916,930 @@ def _persist_candidate_package(
     (root / result.manifest.artifact_filename).write_bytes(result.artifact_bytes)
     _write_json_once(root / "manifest.json", result.manifest.to_dict())
     _write_json_once(root / "candidate.json", candidate_payload)
+
+
+def _verify_persisted_candidate_package(
+    *,
+    result: RecommendationCalibrationTrainingResult,
+    candidate_root: Path,
+    candidate_payload: Mapping[str, Any],
+    lineage: Any,
+    lineage_path: Path,
+) -> None:
+    """讀回並核對候選 bytes，成功後才允許記錄可用時間。"""
+
+    root = candidate_root.resolve()
+    artifact_path = root / result.manifest.artifact_filename
+    manifest_path = root / "manifest.json"
+    candidate_path = root / "candidate.json"
+    for path in (artifact_path, manifest_path, candidate_path):
+        if not path.is_file():
+            raise RuntimeError(f"候選套件讀回缺少一般檔案: {path}")
+
+    artifact_bytes = artifact_path.read_bytes()
+    artifact_hash = "sha256:" + hashlib.sha256(artifact_bytes).hexdigest()
+    if artifact_bytes != result.artifact_bytes or artifact_hash != result.artifact_hash:
+        raise RuntimeError("候選模型 bytes/hash 讀回不一致")
+
+    manifest_payload = _read_mapping(manifest_path)
+    expected_manifest = result.manifest.to_dict()
+    if _canonical_json(manifest_payload) != _canonical_json(expected_manifest):
+        raise RuntimeError("候選 manifest schema/內容讀回不一致")
+
+    persisted_candidate = _read_mapping(candidate_path)
+    if _canonical_json(persisted_candidate) != _canonical_json(candidate_payload):
+        raise RuntimeError("候選 metadata schema/內容讀回不一致")
+    if persisted_candidate.get("candidate_frozen_at") != result.manifest.created_at:
+        raise RuntimeError("候選凍結時間與訓練 manifest 不一致")
+
+    lineage_hash = str(getattr(lineage, "manifest_hash", ""))
+    lineage_readback = read_recommendation_training_lineage(
+        lineage_path,
+        expected_manifest_hash=lineage_hash,
+        expected_dataset_hash=result.dataset_hash,
+        expected_candidate_id=result.candidate_id,
+    )
+    if lineage_readback.to_dict() != lineage.to_dict():
+        raise RuntimeError("候選 lineage schema/內容讀回不一致")
+    if (
+        persisted_candidate.get("training_lineage_manifest_hash") != lineage_hash
+        or persisted_candidate.get("training_lineage_manifest_path")
+        != str(lineage_path)
+    ):
+        raise RuntimeError("候選 metadata 與 lineage 讀回綁定不一致")
+
+
+def _canonical_json(payload: Mapping[str, Any]) -> str:
+    return json.dumps(
+        dict(payload),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _build_run_input_identity(
+    *,
+    run_id: str,
+    decision_date: str,
+    run_scope: str | None,
+    training_as_of: str,
+    samples: Sequence[RecommendationCalibrationSample],
+    feature_names: tuple[str, ...],
+    feature_schema: FeatureSchema,
+    feature_registry_hash: str,
+    training_config: RecommendationCalibrationTrainingConfig,
+    cost_scenario: RecommendationCostScenario,
+    dataset_quality: Mapping[str, Any] | None,
+    lineage_sources: Mapping[str, Sequence[RecommendationCalibrationSample]] | None,
+) -> dict[str, Any]:
+    """建立只含訓練輸入與來源 lineage 的穩定 run identity。"""
+
+    quality = dataset_quality if isinstance(dataset_quality, Mapping) else {}
+    try:
+        training_semantics, decision_time_eligible = resolve_recommendation_training_context(
+            decision_date=decision_date,
+            training_as_of=training_as_of,
+            dataset_quality=quality,
+        )
+        training_context: dict[str, Any] = {
+            "status": "valid",
+            "semantics": training_semantics,
+            "decision_time_eligible": decision_time_eligible,
+        }
+    except RecommendationTrainingLineageError as exc:
+        training_context = {
+            "status": "invalid",
+            "reason": _compact_exception_text(exc),
+            "research_only": quality.get("research_only"),
+            "training_semantics": quality.get("training_semantics"),
+            "decision_time_eligible": quality.get("decision_time_eligible"),
+        }
+
+    ordered_samples = tuple(
+        sorted(samples, key=lambda row: (row.decision_date, row.symbol, row.row_id))
+    )
+    try:
+        group_payload, dedup_payload, source_role_ids = _source_group_lineage(
+            ordered_samples,
+            lineage_sources,
+        )
+        source_groups: Any = {
+            "groups": group_payload,
+            "deduplication": dedup_payload,
+            "source_role_row_ids": source_role_ids,
+        }
+    except (TypeError, ValueError, RecommendationTrainingLineageError) as exc:
+        source_groups = {
+            "invalid": type(exc).__name__,
+            "reason": _compact_exception_text(exc),
+        }
+    try:
+        replay_manifests: Any = _replay_manifest_lineage(quality)
+    except (OSError, TypeError, ValueError, RecommendationTrainingLineageError) as exc:
+        replay_manifests = {
+            "invalid": type(exc).__name__,
+            "reason": _compact_exception_text(exc),
+        }
+
+    # 這些欄位只描述候選／自然證據門檻，不改變 fit 輸入；訓練語意已由
+    # training_context 記錄，樣本選擇則由資料與來源 lineage 記錄。
+    quality_keys = ("training_data_eligible",)
+    stable_quality: dict[str, Any] = {
+        key: _stable_json_value(quality[key])
+        for key in quality_keys
+        if key in quality
+    }
+    bootstrap = quality.get("historical_bootstrap")
+    if isinstance(bootstrap, Mapping):
+        stable_quality["historical_bootstrap"] = {
+            key: _stable_json_value(bootstrap[key])
+            for key in ("selection_method", "row_ids")
+            if key in bootstrap
+        }
+    try:
+        source_contract: Any = _source_contract_payload(quality)
+    except (TypeError, ValueError, RecommendationTrainingLineageError) as exc:
+        source_contract = {
+            "invalid": type(exc).__name__,
+            "reason": _compact_exception_text(exc),
+        }
+
+    body: dict[str, Any] = {
+        "run_id": run_id,
+        "decision_date": decision_date,
+        "run_scope": run_scope,
+        "training_as_of": training_as_of,
+        "training_context": training_context,
+        "dataset_id": f"recommendation-dataset-{_dataset_hash(samples)[7:23]}",
+        "dataset_hash": _dataset_hash(samples),
+        "merged_samples_payload_hash": _hash_json_payload(
+            [sample_payload(row) for row in ordered_samples]
+        ),
+        "merged_sample_ids": [row.row_id for row in ordered_samples],
+        "feature_names": list(feature_names),
+        "feature_schema": [list(item) for item in feature_schema],
+        "feature_registry_hash": feature_registry_hash,
+        "training_config": asdict(training_config),
+        "cost_scenario": cost_scenario.to_dict(),
+        "source_groups": source_groups,
+        "source_contract": source_contract,
+        "replay_manifests": replay_manifests,
+        "training_quality": stable_quality,
+    }
+    return {
+        "schema_version": _RUN_INPUT_IDENTITY_SCHEMA,
+        "identity": body,
+        "identity_hash": _hash_json_payload(body),
+    }
+
+
+def _build_frozen_run_input_identity(
+    *,
+    run_id: str,
+    decision_date: str,
+    run_scope: str | None,
+    training_as_of: str,
+    dataset_hash: str,
+    dataset_quality: Mapping[str, Any] | None,
+    cost_scenario: RecommendationCostScenario,
+    frozen_candidate_root: Path,
+    fixed_round_trip_cost_bp: int | None,
+) -> dict[str, Any]:
+    """為不重訓的凍結候選評估建立獨立的同 run 輸入身份。"""
+
+    root = frozen_candidate_root.resolve()
+    if (
+        not _is_plain_directory(frozen_candidate_root)
+        or not _path_has_no_reparse_components(frozen_candidate_root)
+        or not _is_plain_directory(root)
+    ):
+        raise _SameRunInputConflict(
+            "same_run_frozen_candidate_root_is_not_regular_use_new_run_scope"
+        )
+    try:
+        files = _candidate_package_file_inventory(root)
+        metadata = _read_mapping(root / "candidate.json")
+        _validate_frozen_candidate(metadata, cost_scenario, fixed_round_trip_cost_bp)
+        lineage_hash, lineage_path, lineage_status = _frozen_candidate_lineage(root, metadata)
+    except (OSError, UnicodeError, TypeError, ValueError, KeyError, RecommendationTrainingLineageError) as exc:
+        raise _SameRunInputConflict(
+            "same_run_frozen_candidate_package_invalid_use_new_run_scope"
+        ) from exc
+
+    quality = dataset_quality if isinstance(dataset_quality, Mapping) else {}
+    try:
+        semantics, decision_time_eligible = resolve_recommendation_training_context(
+            decision_date=decision_date,
+            training_as_of=training_as_of,
+            dataset_quality=quality,
+        )
+        training_context: dict[str, Any] = {
+            "status": "valid",
+            "semantics": semantics,
+            "decision_time_eligible": decision_time_eligible,
+        }
+    except RecommendationTrainingLineageError as exc:
+        training_context = {"status": "invalid", "reason": _compact_exception_text(exc)}
+
+    lineage_file_hash = None
+    if lineage_path is not None:
+        resolved_lineage_path = Path(lineage_path).resolve()
+        if not _is_plain_file(resolved_lineage_path) or not _path_has_no_reparse_components(
+            resolved_lineage_path
+        ):
+            raise _SameRunInputConflict(
+                "same_run_frozen_candidate_lineage_path_is_not_regular_use_new_run_scope"
+            )
+        lineage_file_hash = _sha256_path(resolved_lineage_path)
+
+    body = {
+        "mode": "frozen_candidate_evaluation",
+        "run_id": run_id,
+        "decision_date": decision_date,
+        "run_scope": run_scope,
+        "training_as_of": training_as_of,
+        "dataset_hash": dataset_hash,
+        "training_context": training_context,
+        "cost_scenario": cost_scenario.to_dict(),
+        "candidate_root": str(root),
+        "candidate_id": metadata.get("candidate_id"),
+        "candidate_dataset_hash": metadata.get("dataset_hash"),
+        "candidate_manifest_hash": metadata.get("manifest_hash"),
+        "candidate_artifact_hash": metadata.get("artifact_hash"),
+        "candidate_freeze_hash": metadata.get("candidate_freeze_hash"),
+        "candidate_package_files": files,
+        "training_lineage_manifest_hash": lineage_hash,
+        "training_lineage_manifest_path": lineage_path,
+        "training_lineage_file_hash": lineage_file_hash,
+        "training_lineage_status": lineage_status,
+    }
+    return {
+        "schema_version": _RUN_INPUT_IDENTITY_SCHEMA,
+        "identity": body,
+        "identity_hash": _hash_json_payload(body),
+    }
+
+
+def _stable_json_value(value: Any) -> Any:
+    """轉為 lineage 可保存的 JSON 值；無法序列化時保留明確錯誤身份。"""
+
+    try:
+        return json.loads(json.dumps(value, ensure_ascii=False, allow_nan=False))
+    except (TypeError, ValueError):
+        return {"invalid_json_value_type": type(value).__name__}
+
+
+def _hash_json_payload(payload: Any) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _read_run_input_identity(path: Path) -> dict[str, Any]:
+    try:
+        payload = _read_mapping(path)
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise _SameRunInputConflict(
+            "same_run_input_identity_unreadable_use_new_run_scope"
+        ) from exc
+    identity = payload.get("identity")
+    if (
+        payload.get("schema_version") != _RUN_INPUT_IDENTITY_SCHEMA
+        or not isinstance(identity, Mapping)
+        or payload.get("identity_hash") != _hash_json_payload(identity)
+    ):
+        raise _SameRunInputConflict(
+            "same_run_input_identity_invalid_use_new_run_scope"
+        )
+    return payload
+
+
+def _load_or_create_run_input_identity(
+    path: Path,
+    expected: Mapping[str, Any],
+    *,
+    allow_create: bool,
+) -> dict[str, Any]:
+    if path.exists():
+        actual = _read_run_input_identity(path)
+        if _canonical_json(actual) != _canonical_json(expected):
+            raise _SameRunInputConflict(
+                "same_run_input_conflict_data_config_cost_or_source_lineage_changed_use_new_run_scope"
+            )
+        return actual
+    if not allow_create:
+        raise _SameRunInputConflict(
+            "same_run_input_identity_missing_for_existing_candidate_use_new_run_scope"
+        )
+    try:
+        _write_json_once(path, expected)
+        actual = _read_run_input_identity(path)
+    except _SameRunInputConflict:
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise _SameRunInputConflict(
+            "same_run_input_identity_could_not_be_persisted_use_new_run_scope"
+        ) from exc
+    if _canonical_json(actual) != _canonical_json(expected):
+        raise _SameRunInputConflict(
+            "same_run_input_identity_write_conflict_use_new_run_scope"
+        )
+    return actual
+
+
+def _candidate_directories(run_dir: Path) -> tuple[Path, ...]:
+    candidates_root = run_dir / "candidates"
+    try:
+        candidates_root.lstat()
+    except FileNotFoundError:
+        return ()
+    except OSError as exc:
+        raise _SameRunInputConflict(
+            "same_run_candidate_root_cannot_be_inspected_use_new_run_scope"
+        ) from exc
+    if not _is_plain_directory(candidates_root) or not _path_has_no_reparse_components(
+        candidates_root
+    ):
+        raise _SameRunInputConflict(
+            "same_run_candidate_root_is_not_a_regular_directory_use_new_run_scope"
+        )
+    resolved_candidates_root = candidates_root.resolve()
+    try:
+        entries = tuple(sorted(candidates_root.iterdir(), key=lambda item: item.name))
+    except OSError as exc:
+        raise _SameRunInputConflict(
+            "same_run_candidate_root_cannot_be_listed_use_new_run_scope"
+        ) from exc
+    for item in entries:
+        if (
+            not _is_plain_directory(item)
+            or not _path_has_no_reparse_components(item)
+            or item.resolve().parent != resolved_candidates_root
+        ):
+            raise _SameRunInputConflict(
+                "same_run_candidate_root_contains_unrecognized_entry_use_new_run_scope"
+            )
+    return entries
+
+
+def _candidate_package_file_inventory(root: Path) -> list[dict[str, Any]]:
+    """對凍結套件做不載入模型的普通檔案盤點與內容雜湊。"""
+
+    if not _is_plain_directory(root) or not _path_has_no_reparse_components(root):
+        raise ValueError("candidate package root is not a plain directory")
+    pending = [root]
+    files: list[dict[str, Any]] = []
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as iterator:
+            entries = sorted(iterator, key=lambda item: item.name)
+        for entry in entries:
+            path = Path(entry.path)
+            details = path.lstat()
+            if _is_reparse_point(path):
+                raise ValueError("candidate package contains a reparse point")
+            if stat.S_ISDIR(details.st_mode):
+                pending.append(path)
+                continue
+            if not stat.S_ISREG(details.st_mode):
+                raise ValueError("candidate package contains a non-regular file")
+            files.append(
+                {
+                    "path": path.relative_to(root).as_posix(),
+                    "size_bytes": int(details.st_size),
+                    "sha256": _sha256_path(path),
+                }
+            )
+    files.sort(key=lambda item: str(item["path"]))
+    if not any(item["path"] == "candidate.json" for item in files):
+        raise ValueError("candidate package metadata is missing")
+    return files
+
+
+def _path_has_no_reparse_components(path: Path) -> bool:
+    absolute = Path(os.path.abspath(path))
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        try:
+            details = current.lstat()
+        except OSError:
+            return False
+        if stat.S_ISLNK(details.st_mode) or _is_reparse_point(current):
+            return False
+    return True
+
+
+def _candidate_binding_payload(
+    *,
+    identity_hash: str,
+    candidate_metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    body = {
+        "schema_version": _CANDIDATE_RUN_BINDING_SCHEMA,
+        "run_input_identity_hash": identity_hash,
+        "candidate_id": candidate_metadata.get("candidate_id"),
+        "dataset_hash": candidate_metadata.get("dataset_hash"),
+        "manifest_hash": candidate_metadata.get("manifest_hash"),
+        "artifact_hash": candidate_metadata.get("artifact_hash"),
+        "candidate_freeze_hash": candidate_metadata.get("candidate_freeze_hash"),
+        "training_lineage_manifest_hash": candidate_metadata.get(
+            "training_lineage_manifest_hash"
+        ),
+        "training_lineage_manifest_path": candidate_metadata.get(
+            "training_lineage_manifest_path"
+        ),
+    }
+    return {
+        **body,
+        "binding_hash": _candidate_run_binding_hash(body, candidate_metadata),
+    }
+
+
+def _candidate_run_binding_hash(
+    binding_body: Mapping[str, Any],
+    candidate_metadata: Mapping[str, Any],
+) -> str:
+    """將完整候選 metadata 綁到既有 binding checksum。"""
+
+    return _hash_json_payload(
+        {
+            "binding": dict(binding_body),
+            "candidate_metadata": dict(candidate_metadata),
+        }
+    )
+
+
+def _verify_candidate_run_package(
+    candidate_root: Path,
+    *,
+    expected_identity: Mapping[str, Any],
+    expected_candidates_root: Path,
+    expected_learning_root: Path,
+    require_run_binding: bool,
+) -> _VerifiedCandidatePackage:
+    root = candidate_root.resolve()
+    candidates_root = expected_candidates_root.resolve()
+    if (
+        not _is_plain_directory(candidate_root)
+        or not _path_has_no_reparse_components(candidate_root)
+        or not _is_plain_directory(expected_candidates_root)
+        or not _path_has_no_reparse_components(expected_candidates_root)
+        or root.parent != candidates_root
+        or not _is_plain_directory(root)
+    ):
+        raise _SameRunInputConflict(
+            "same_run_candidate_package_missing_or_not_directory_use_new_run_scope"
+        )
+    candidate_path = root / "candidate.json"
+    manifest_path = root / "manifest.json"
+    if not _is_plain_file(candidate_path) or not _is_plain_file(manifest_path):
+        raise _SameRunInputConflict(
+            "same_run_candidate_package_metadata_is_not_regular_file_use_new_run_scope"
+        )
+    try:
+        metadata = _read_mapping(candidate_path)
+        manifest_payload = _read_mapping(manifest_path)
+        manifest = ModelArtifactManifest.from_dict(manifest_payload)
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        raise _SameRunInputConflict(
+            "same_run_candidate_metadata_or_manifest_invalid_use_new_run_scope"
+        ) from exc
+    if _canonical_json(manifest.to_dict()) != _canonical_json(manifest_payload):
+        raise _SameRunInputConflict(
+            "same_run_candidate_manifest_has_unrecognized_fields_use_new_run_scope"
+        )
+
+    artifact_filename = manifest.artifact_filename
+    if Path(artifact_filename).name != artifact_filename or artifact_filename in {"", ".", ".."}:
+        raise _SameRunInputConflict(
+            "same_run_candidate_artifact_path_invalid_use_new_run_scope"
+        )
+    artifact_path = root / artifact_filename
+    if not _is_plain_file(artifact_path):
+        raise _SameRunInputConflict(
+            "same_run_candidate_artifact_missing_or_not_regular_use_new_run_scope"
+        )
+    artifact_hash = _sha256_path(artifact_path)
+    if artifact_hash != manifest.artifact_hash:
+        raise _SameRunInputConflict(
+            "same_run_candidate_artifact_hash_mismatch_use_new_run_scope"
+        )
+
+    identity = expected_identity.get("identity")
+    if not isinstance(identity, Mapping):
+        raise _SameRunInputConflict("same_run_input_identity_invalid_use_new_run_scope")
+    candidate_id = str(metadata.get("candidate_id") or "")
+    if not candidate_id or root.name != candidate_id:
+        raise _SameRunInputConflict(
+            "same_run_candidate_directory_identity_mismatch_use_new_run_scope"
+        )
+    if (
+        metadata.get("schema_version") != "recommendation-calibration-candidate.v1"
+        or metadata.get("candidate_id") != manifest.model_id
+        or metadata.get("model_id") != manifest.model_id
+        or metadata.get("dataset_id") != identity.get("dataset_id")
+        or metadata.get("dataset_hash") != identity.get("dataset_hash")
+        or manifest.dataset_id != identity.get("dataset_id")
+        or metadata.get("feature_names") != identity.get("feature_names")
+        or metadata.get("feature_schema") != identity.get("feature_schema")
+        or manifest.feature_schema != tuple(tuple(item) for item in identity.get("feature_schema", ()))
+        or metadata.get("feature_registry_hash") != identity.get("feature_registry_hash")
+        or manifest.feature_registry_hash != identity.get("feature_registry_hash")
+        or metadata.get("training_cutoff") != identity.get("training_as_of")
+        or metadata.get("horizon_trading_days")
+        != identity.get("training_config", {}).get("horizon_trading_days")
+        or metadata.get("cost_scenario") != identity.get("cost_scenario")
+        or metadata.get("manifest_hash") != manifest.manifest_hash
+        or metadata.get("artifact_hash") != manifest.artifact_hash
+        or metadata.get("candidate_frozen_at") != manifest.created_at
+        or metadata.get("training_semantics")
+        != identity.get("training_context", {}).get("semantics")
+        or metadata.get("decision_time_eligible")
+        != identity.get("training_context", {}).get("decision_time_eligible")
+        or metadata.get("model_family")
+        != RecommendationCalibrationTrainingService.MODEL_FAMILY
+    ):
+        raise _SameRunInputConflict(
+            "same_run_candidate_identity_or_training_contract_mismatch_use_new_run_scope"
+        )
+    if manifest.training_as_of != metadata.get("training_as_of"):
+        raise _SameRunInputConflict(
+            "same_run_candidate_training_cutoff_mismatch_use_new_run_scope"
+        )
+    expected_hyperparameters_hash = _hash_json_payload(
+        {
+            "model_family": RecommendationCalibrationTrainingService.MODEL_FAMILY,
+            "random_state": identity.get("training_config", {}).get("random_state"),
+            "calibration_method": "isotonic_oof",
+            "target_definitions": metadata.get("target_definitions"),
+        }
+    )
+    if manifest.hyperparameters_hash != expected_hyperparameters_hash:
+        raise _SameRunInputConflict(
+            "same_run_candidate_training_parameter_hash_mismatch_use_new_run_scope"
+        )
+    evaluation_value: object = metadata.get("evaluation")
+    evaluation: Mapping[str, Any] = (
+        evaluation_value if isinstance(evaluation_value, Mapping) else {}
+    )
+    if metadata.get("candidate_freeze_hash") != candidate_freeze_hash(
+        candidate_id=candidate_id,
+        dataset_hash=str(metadata.get("dataset_hash") or ""),
+        manifest_hash=manifest.manifest_hash,
+        artifact_hash=artifact_hash,
+        evaluation=evaluation,
+    ):
+        raise _SameRunInputConflict(
+            "same_run_candidate_freeze_hash_mismatch_use_new_run_scope"
+        )
+
+    lineage_hash = _optional_text(metadata.get("training_lineage_manifest_hash"))
+    lineage_path_text = _optional_text(metadata.get("training_lineage_manifest_path"))
+    if not lineage_hash or not lineage_path_text:
+        raise _SameRunInputConflict(
+            "same_run_candidate_lineage_missing_or_legacy_unproven_use_new_run_scope"
+        )
+    supplied_lineage_path = Path(lineage_path_text)
+    lineage_path = supplied_lineage_path.resolve()
+    expected_lineage_directory = (
+        Path(expected_learning_root).resolve()
+        / "training_lineage"
+        / str(identity.get("decision_date") or "")
+        / lineage_hash.split(":", 1)[-1]
+    )
+    if (
+        lineage_path.parent != expected_lineage_directory
+        or lineage_path.name != "lineage.json"
+        or not _path_has_no_reparse_components(supplied_lineage_path)
+        or not _plain_path_chain(
+            Path(expected_learning_root).resolve(),
+            lineage_path,
+            final_file=True,
+        )
+    ):
+        raise _SameRunInputConflict(
+            "same_run_candidate_lineage_path_outside_deterministic_store_use_new_run_scope"
+        )
+    try:
+        lineage = read_recommendation_training_lineage(
+            lineage_path,
+            expected_manifest_hash=lineage_hash,
+            expected_dataset_hash=str(identity.get("dataset_hash") or ""),
+            expected_candidate_id=candidate_id,
+        )
+    except (OSError, UnicodeError, TypeError, ValueError, RecommendationTrainingLineageError) as exc:
+        raise _SameRunInputConflict(
+            "same_run_candidate_lineage_invalid_use_new_run_scope"
+        ) from exc
+    if training_lineage_path(expected_learning_root, lineage) != lineage_path:
+        raise _SameRunInputConflict(
+            "same_run_candidate_lineage_not_at_deterministic_writer_path_use_new_run_scope"
+        )
+    lineage_payload = lineage.payload
+    quality_payload = lineage_payload.get("dataset_quality")
+    quality_payload = quality_payload if isinstance(quality_payload, Mapping) else {}
+    lineage_training_context = lineage_payload.get("training_context")
+    if (
+        lineage_payload.get("run_id") != identity.get("run_id")
+        or lineage_payload.get("run_scope") != identity.get("run_scope")
+        or lineage_payload.get("decision_date") != identity.get("decision_date")
+        or lineage_payload.get("training_as_of") != identity.get("training_as_of")
+        or lineage_payload.get("dataset_id") != identity.get("dataset_id")
+        or lineage_payload.get("dataset_hash") != identity.get("dataset_hash")
+        or lineage_payload.get("merged_samples_payload_hash")
+        != identity.get("merged_samples_payload_hash")
+        or lineage_payload.get("merged_sample_ids") != identity.get("merged_sample_ids")
+        or lineage_payload.get("feature_schema") != identity.get("feature_schema")
+        or lineage_payload.get("feature_registry_hash") != identity.get("feature_registry_hash")
+        or lineage_payload.get("cost_scenario") != identity.get("cost_scenario")
+        or lineage_payload.get("source_groups") != identity.get("source_groups", {}).get("groups")
+        or lineage_payload.get("deduplication")
+        != identity.get("source_groups", {}).get("deduplication")
+        or lineage_payload.get("source_role_row_ids")
+        != identity.get("source_groups", {}).get("source_role_row_ids")
+        or lineage_payload.get("source_contract") != identity.get("source_contract")
+        or lineage_payload.get("replay_manifests") != identity.get("replay_manifests")
+        or _training_quality_projection(quality_payload)
+        != identity.get("training_quality")
+        or not isinstance(lineage_training_context, Mapping)
+        or lineage_training_context.get("semantics")
+        != identity.get("training_context", {}).get("semantics")
+        or lineage_training_context.get("decision_time_eligible")
+        != identity.get("training_context", {}).get("decision_time_eligible")
+        or lineage_payload.get("candidate_manifest_hash") != manifest.manifest_hash
+        or lineage_payload.get("candidate_artifact_hash") != artifact_hash
+        or metadata.get("training_source_hash") != lineage_payload.get("training_source_hash")
+        or metadata.get("training_pit_hash") != lineage_payload.get("training_pit_hash")
+        or metadata.get("feature_transform_contract")
+        != lineage_payload.get("feature_transform_contract")
+    ):
+        raise _SameRunInputConflict(
+            "same_run_candidate_lineage_does_not_match_current_training_inputs_use_new_run_scope"
+        )
+
+    if require_run_binding:
+        binding_path = root / "run_input_binding.json"
+        if not _is_plain_file(binding_path):
+            raise _SameRunInputConflict(
+                "same_run_candidate_binding_is_not_regular_use_new_run_scope"
+            )
+        try:
+            binding = _read_mapping(binding_path)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            raise _SameRunInputConflict(
+                "same_run_candidate_binding_missing_or_unreadable_use_new_run_scope"
+            ) from exc
+        binding_body = dict(binding)
+        supplied_binding_hash = binding_body.pop("binding_hash", None)
+        if (
+            binding_body.get("schema_version") != _CANDIDATE_RUN_BINDING_SCHEMA
+            or supplied_binding_hash != _candidate_run_binding_hash(binding_body, metadata)
+            or binding_body.get("run_input_identity_hash")
+            != expected_identity.get("identity_hash")
+            or binding_body.get("candidate_id") != candidate_id
+            or binding_body.get("dataset_hash") != metadata.get("dataset_hash")
+            or binding_body.get("manifest_hash") != manifest.manifest_hash
+            or binding_body.get("artifact_hash") != artifact_hash
+            or binding_body.get("candidate_freeze_hash") != metadata.get("candidate_freeze_hash")
+            or binding_body.get("training_lineage_manifest_hash") != lineage_hash
+            or binding_body.get("training_lineage_manifest_path") != str(lineage_path)
+        ):
+            raise _SameRunInputConflict(
+                "same_run_candidate_binding_mismatch_use_new_run_scope"
+            )
+    return _VerifiedCandidatePackage(
+        root=root,
+        metadata=metadata,
+        manifest=manifest,
+        lineage_hash=lineage_hash,
+        lineage_path=str(lineage_path),
+    )
+
+
+def _training_quality_projection(quality: Mapping[str, Any]) -> dict[str, Any]:
+    keys = ("training_data_eligible",)
+    output = {
+        key: _stable_json_value(quality[key])
+        for key in keys
+        if key in quality
+    }
+    bootstrap = quality.get("historical_bootstrap")
+    if isinstance(bootstrap, Mapping):
+        output["historical_bootstrap"] = {
+            key: _stable_json_value(bootstrap[key])
+            for key in ("selection_method", "row_ids")
+            if key in bootstrap
+        }
+    return output
+
+
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return "sha256:" + digest.hexdigest()
+
+
+def _is_reparse_point(path: Path) -> bool:
+    try:
+        details = path.lstat()
+    except OSError:
+        return False
+    return bool(
+        int(getattr(details, "st_file_attributes", 0))
+        & _WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def _is_plain_directory(path: Path) -> bool:
+    try:
+        details = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISDIR(details.st_mode) and not _is_reparse_point(path)
+
+
+def _is_plain_file(path: Path) -> bool:
+    try:
+        details = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISREG(details.st_mode) and not _is_reparse_point(path)
+
+
+def _plain_path_chain(root: Path, path: Path, *, final_file: bool) -> bool:
+    """拒絕沿 lineage store 的 reparse 點讀取未核准路徑。"""
+
+    resolved_root = root.resolve()
+    resolved_path = path.resolve()
+    if resolved_root != resolved_path and resolved_root not in resolved_path.parents:
+        return False
+    relative = resolved_path.relative_to(resolved_root)
+    current = resolved_root
+    if not _is_plain_directory(current) or not _path_has_no_reparse_components(current):
+        return False
+    parts = relative.parts
+    for index, part in enumerate(parts):
+        current = current / part
+        is_final = index == len(parts) - 1
+        if is_final and final_file:
+            if not _is_plain_file(current):
+                return False
+        elif not _is_plain_directory(current):
+            return False
+    return bool(parts) and final_file
+
+
+def _verify_completed_frozen_receipt_binding(
+    receipt: Mapping[str, Any],
+    *,
+    identity: Mapping[str, Any],
+    candidate_metadata: Mapping[str, Any],
+) -> None:
+    body = identity.get("identity")
+    if not isinstance(body, Mapping):
+        raise _SameRunInputConflict(
+            "same_run_frozen_candidate_identity_invalid_use_new_run_scope"
+        )
+    expected_lineage_path = body.get("training_lineage_manifest_path")
+    checks = (
+        receipt.get("run_id") == body.get("run_id"),
+        receipt.get("decision_date") == body.get("decision_date"),
+        receipt.get("run_scope") == body.get("run_scope"),
+        receipt.get("dataset_hash") == body.get("dataset_hash"),
+        receipt.get("training_as_of") == body.get("training_as_of"),
+        receipt.get("training_semantics")
+        == (body.get("training_context") or {}).get("semantics"),
+        receipt.get("cost_scenario_hash")
+        == (body.get("cost_scenario") or {}).get("scenario_hash"),
+        str(Path(str(receipt.get("candidate_root") or "")).resolve())
+        == body.get("candidate_root"),
+        receipt.get("candidate_id") == body.get("candidate_id"),
+        receipt.get("candidate_dataset_hash") == body.get("candidate_dataset_hash"),
+        receipt.get("candidate_manifest_hash") == body.get("candidate_manifest_hash"),
+        receipt.get("candidate_artifact_hash") == body.get("candidate_artifact_hash"),
+        receipt.get("candidate_freeze_hash") == body.get("candidate_freeze_hash"),
+        receipt.get("training_lineage_manifest_hash")
+        == body.get("training_lineage_manifest_hash"),
+        receipt.get("training_lineage_manifest_path") == expected_lineage_path,
+        receipt.get("training_lineage_status") == body.get("training_lineage_status"),
+        candidate_metadata.get("candidate_id") == body.get("candidate_id"),
+    )
+    if not all(checks):
+        raise _SameRunInputConflict(
+            "same_run_frozen_completed_receipt_does_not_match_package_use_new_run_scope"
+        )
+
+
+def _verify_completed_receipt_binding(
+    receipt: Mapping[str, Any],
+    *,
+    candidate_root: Path,
+    candidate_metadata: Mapping[str, Any],
+    decision_date: str,
+    run_scope: str | None,
+    dataset_hash: str,
+    training_as_of: str,
+    cost_scenario: RecommendationCostScenario,
+) -> None:
+    expected_candidate_root = str(candidate_root.resolve())
+    if (
+        receipt.get("run_id")
+        != f"daily-recommendation-learning:{decision_date}"
+        + (f":{run_scope}" if run_scope else "")
+        or receipt.get("decision_date") != decision_date
+        or receipt.get("run_scope") != run_scope
+        or receipt.get("dataset_hash") != dataset_hash
+        or receipt.get("training_as_of") != training_as_of
+        or receipt.get("cost_scenario_hash") != cost_scenario.scenario_hash
+        or str(Path(str(receipt.get("candidate_root") or "")).resolve())
+        != expected_candidate_root
+        or receipt.get("candidate_id") != candidate_metadata.get("candidate_id")
+        or receipt.get("candidate_manifest_hash") != candidate_metadata.get("manifest_hash")
+        or receipt.get("candidate_artifact_hash") != candidate_metadata.get("artifact_hash")
+        or receipt.get("candidate_freeze_hash")
+        != candidate_metadata.get("candidate_freeze_hash")
+        or receipt.get("candidate_dataset_hash") != dataset_hash
+        or receipt.get("training_lineage_manifest_hash")
+        != candidate_metadata.get("training_lineage_manifest_hash")
+        or receipt.get("training_lineage_manifest_path")
+        != candidate_metadata.get("training_lineage_manifest_path")
+        or receipt.get("training_lineage_status") != "verified"
+    ):
+        raise _SameRunInputConflict(
+            "same_run_completed_receipt_does_not_match_verified_candidate_use_new_run_scope"
+        )
+    available_text = _optional_text(receipt.get("candidate_available_at"))
+    try:
+        available_at = datetime.fromisoformat(available_text or "")
+        frozen_at = datetime.fromisoformat(str(candidate_metadata.get("candidate_frozen_at") or ""))
+    except ValueError as exc:
+        raise _SameRunInputConflict(
+            "same_run_completed_receipt_has_invalid_candidate_clock_use_new_run_scope"
+        ) from exc
+    now = datetime.now(timezone.utc)
+    if (
+        available_at.tzinfo is None
+        or available_at.utcoffset() != timedelta(0)
+        or frozen_at.tzinfo is None
+        or frozen_at.utcoffset() != timedelta(0)
+        or available_at < frozen_at
+        or available_at > now
+    ):
+        raise _SameRunInputConflict(
+            "same_run_completed_receipt_candidate_clock_is_not_verified_utc_use_new_run_scope"
+        )
+
+
+def _verify_completed_no_candidate_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    run_id: str,
+    decision_date: str,
+    run_scope: str | None,
+    dataset_hash: str,
+    cost_scenario: RecommendationCostScenario,
+) -> None:
+    if (
+        receipt.get("run_id") != run_id
+        or receipt.get("decision_date") != decision_date
+        or receipt.get("run_scope") != run_scope
+        or receipt.get("dataset_hash") != dataset_hash
+        or receipt.get("cost_scenario_hash") != cost_scenario.scenario_hash
+        or receipt.get("candidate_id") is not None
+        or receipt.get("candidate_root") is not None
+    ):
+        raise _SameRunInputConflict(
+            "same_run_no_candidate_receipt_input_changed_use_new_run_scope"
+        )
+
+
+def _available_at_after_freeze(created_at: str) -> str:
+    try:
+        frozen_at = datetime.fromisoformat(created_at)
+    except ValueError as exc:
+        raise _SameRunInputConflict(
+            "same_run_candidate_freeze_clock_invalid_use_new_run_scope"
+        ) from exc
+    available_at = datetime.now(timezone.utc)
+    if (
+        frozen_at.tzinfo is None
+        or frozen_at.utcoffset() != timedelta(0)
+        or available_at < frozen_at
+    ):
+        raise _SameRunInputConflict(
+            "same_run_candidate_freeze_is_after_current_clock_investigate_clock_or_use_new_scope"
+        )
+    return available_at.isoformat(timespec="microseconds")
 
 
 def _validate_frozen_candidate(

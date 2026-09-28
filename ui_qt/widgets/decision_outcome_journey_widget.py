@@ -436,17 +436,23 @@ class DecisionOutcomeJourneyWidget(QWidget):
         name = f" {context.stock_name}" if context.stock_name else ""
         self.identity_label.setText(f"{context.stock_code}{name}")
         source = context.source_label or context.source_id or "未標示"
+        is_recommendation = context.source_workspace == "recommendation"
+        snapshot_title = "Universe snapshot" if is_recommendation else "來源 snapshot"
+        snapshot_id_name = "universe_snapshot_id" if is_recommendation else "source_snapshot_id"
+        snapshot_hash_name = "universe_snapshot_hash" if is_recommendation else "source_snapshot_hash"
+        source_id_name = "推薦結果 ID" if is_recommendation else "source_id"
         self.context_label.setText(
             f"來源：{source}｜工作區：{context.source_workspace or '未標示'}｜"
             f"決策日：{context.decision_date or '未知'}｜資料日：{context.data_date or '未知'}｜"
-            f"來源 snapshot：{context.source_snapshot_id or context.source_snapshot_hash or '未知'}｜"
+            f"{snapshot_title}：{context.source_snapshot_id or context.source_snapshot_hash or '未知'}｜"
             "期限：5／10／20／60 個交易日"
         )
         self.technical_identity_label.setText(
             f"result_id：{context.result_id or '未知'}\n"
             f"candidate_key：{context.result_id or '未知'}:{context.stock_code}\n"
-            f"source_snapshot_id：{context.source_snapshot_id or '未知'}｜"
-            f"source_snapshot_hash：{context.source_snapshot_hash or '未知'}\n"
+            f"{source_id_name}：{context.source_id or '未知'}\n"
+            f"{snapshot_id_name}：{context.source_snapshot_id or '未知'}｜"
+            f"{snapshot_hash_name}：{context.source_snapshot_hash or '未知'}\n"
             f"identity_status：{context.identity_status or 'implicit'}\n"
             "完整來源 identity 會在載入後顯示。"
         )
@@ -841,11 +847,19 @@ class DecisionOutcomeJourneyWidget(QWidget):
             item.outcome_status == "insufficient_future_data" for item in maturity
         )
         identity = journey.recommendation_result.source_identity
+        market_fingerprint = (
+            f"sha256:{identity.market_data_fingerprint}"
+            if identity.market_data_fingerprint
+            else "未知"
+        )
         self.technical_identity_label.setText(
             f"result_id：{result_id}\n"
             f"candidate_key：{_candidate_text(candidate_key)}\n"
             f"來源 provider：{identity.source_provider_id or '未知'}\n"
-            f"source snapshot：{identity.source_snapshot_id or identity.source_snapshot_hash or '未知'}\n"
+            f"決策日：{identity.decision_date or '未知'}｜行情資料日：{identity.market_data_as_of_date or '未知'}\n"
+            f"行情來源：{identity.market_data_source_id or '未知'}｜行情指紋：{market_fingerprint}\n"
+            f"來源 snapshot：{identity.source_snapshot_id or identity.source_snapshot_hash or '未知'}\n"
+            f"Universe snapshot：{identity.universe_snapshot_id or identity.universe_snapshot_hash or '未知'}\n"
             f"策略版本：{identity.strategy_version_id or '未知'}｜設定：{identity.strategy_config_id or '未知'}"
         )
         quality = _journey_quality(journey.status, maturity)

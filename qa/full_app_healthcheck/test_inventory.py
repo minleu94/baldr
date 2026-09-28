@@ -74,6 +74,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_official_market_event_prior_lineage.py": "service-oracle-data-market",
     "tests/test_ml_direct_chain_maintenance.py": "governance-doc-tooling",
     "tests/test_phase3c_backfill_runner.py": "service-oracle-data-market",
+    "tests/test_phase3c_candidate_repair.py": "service-oracle-data-market",
     "tests/test_tdcc_shareholding_historical_boundary.py": "service-oracle-data-market",
     "tests/test_apply_tdcc_shareholding_candidate.py": "write-risk-dry-run-required",
     "tests/test_ui_update_view_candidate_status.py": "ui-healthcheck-candidate-bridge",
@@ -1058,6 +1059,15 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_recommendation_input_read_order_characterization.py": "service-oracle-recommendation",
     "tests/test_recommendation_natural_outcomes_cli.py": "service-oracle-recommendation",
     "tests/test_recommendation_refactor_characterization.py": "service-oracle-recommendation",
+    # 個人化推薦的服務、來源、保存與自然結果契約；僅由 pytest 執行。
+    "tests/test_personal_candidate_inventory.py": "service-oracle-recommendation",
+    "tests/test_personal_model_full_stack_integration.py": "service-oracle-recommendation",
+    "tests/test_personal_recommendation_choice.py": "service-oracle-recommendation",
+    "tests/test_personal_recommendation_outcome_daily.py": "service-oracle-recommendation",
+    "tests/test_recommendation_personal_live_clock.py": "service-oracle-recommendation",
+    "tests/test_recommendation_personal_natural_outcomes.py": "service-oracle-recommendation",
+    "tests/test_recommendation_personal_prediction_capture.py": "service-oracle-recommendation",
+    "tests/test_recommendation_personal_use_policy.py": "service-oracle-recommendation",
     # 研究、回測與模型訓練行為測試
     "tests/test_backtest_analyst_diagnostics.py": "service-oracle-research-backtest",
     "tests/test_backtest_optimization_stability.py": "service-oracle-research-backtest",
@@ -1085,6 +1095,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_ui_qt_v5_guided_readability.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ui_qt_v5_research_views.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ui_qt_v5_workbench_guided.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_ui_qt_personal_recommendation_choice.py": "ui-healthcheck-candidate-bridge",
     # apply/recovery/publication writer（維持寫入風險隔離）
     "tests/test_daily_price_revision_write_guard.py": "write-risk-dry-run-required",
     "tests/test_excluded_daily_price_revision.py": "write-risk-dry-run-required",

@@ -297,6 +297,50 @@ def test_valid_context_renders_candidate_maturity_and_separates_personal_records
     widget.close()
 
 
+def test_recommendation_journey_labels_universe_and_market_facts_separately() -> None:
+    journey = _journey()
+    identity = replace(
+        journey.recommendation_result.source_identity,
+        source_snapshot_id=None,
+        source_snapshot_hash=None,
+        universe_snapshot_id="universe-snapshot-01",
+        universe_snapshot_hash="sha256:" + "a" * 64,
+        market_data_as_of_date="2026-09-25",
+        market_data_source_id="market-provider-01",
+        market_data_fingerprint="b" * 64,
+    )
+    journey = replace(
+        journey,
+        recommendation_result=replace(
+            journey.recommendation_result,
+            source_identity=identity,
+        ),
+    )
+    context = replace(
+        _context(),
+        decision_date="2026-09-28",
+        data_date="2026-09-25",
+        source_snapshot_id="universe-snapshot-01",
+        source_snapshot_hash="sha256:" + "a" * 64,
+        source_workspace="recommendation",
+    )
+    widget = DecisionOutcomeJourneyWidget(
+        JourneyServiceStub({"result-1": journey}), context
+    )
+    widget.show()
+    _wait_for(lambda: widget.journey is not None)
+
+    assert "Universe snapshot：universe-snapshot-01" in widget.context_label.text()
+    assert "決策日：2026-09-28｜資料日：2026-09-25" in widget.context_label.text()
+    identity_text = widget.technical_identity_label.text()
+    assert "行情資料日：2026-09-25" in identity_text
+    assert "行情來源：market-provider-01" in identity_text
+    assert "行情指紋：sha256:" + "b" * 64 in identity_text
+    assert "來源 snapshot：未知" in identity_text
+    assert "Universe snapshot：universe-snapshot-01" in identity_text
+    widget.close()
+
+
 def test_horizon_conflict_takes_precedence_over_pending_status() -> None:
     base = _journey()
     mixed_maturity = tuple(

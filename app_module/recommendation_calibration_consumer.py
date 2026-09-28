@@ -34,6 +34,14 @@ from sklearn.preprocessing import StandardScaler
 from app_module.recommendation_learning_paths import (
     resolve_recommendation_learning_paths,
 )
+from app_module.recommendation.personal_use_policy import (
+    PERSONAL_CALIBRATED_PROBABILITY_MODE,
+    PERSONAL_PROBABILITY_CHANGE_CAP_BP,
+    PERSONAL_USE_POLICY_SCHEMA_V1,
+    PersonalCalibrationCandidateV1,
+    RecommendationPersonalUsePolicyV2,
+    RecommendationPersonalUsePolicyV1,
+)
 from app_module.recommendation.model_resolution_facts import (
     CapabilityLoadedArtifactLineageEvidenceV1,
     CapabilityLoadedArtifactLineageNodeV1,
@@ -63,6 +71,8 @@ from ml_module.recommendation_cost_scenario import (
     RecommendationCostScenarioError,
     cost_scenario_from_metadata,
 )
+
+
 from ml_module.probability_calibration import FittedShadowProbabilityCalibrator
 from ml_module.recommendation_calibration_authority import RecommendationPromotionPolicy
 from ml_module.recommendation_probability_transform import (
@@ -87,6 +97,7 @@ from ml_module.recommendation_inference_provenance import (
 from ml_module.prepared_source_contract import VerifiedSourceContractEvidenceV1
 
 
+_PERSONAL_USE_POLICY_SCHEMA_V2 = "recommendation-personal-use-policy.v2"
 _MODEL_GRAPH_SCHEMA_VERSION = "r026-known-model-graph.v1"
 _SUPPORTED_MODEL_GRAPH_RUNTIME_PROFILES: frozenset[tuple[Any, ...]] = frozenset(
     {
@@ -486,11 +497,36 @@ class RecommendationCalibrationConsumer:
         feature_registry_hash: str,
         data_root: str | Path | None = None,
         expected_model_family: str = "recommendation_absolute_calibration_v1",
+        personal_use_policy: Any | None = None,
+        personal_use_policy_bytes: bytes | None = None,
     ) -> None:
         self.pointer_path = Path(pointer_path).resolve()
         self.feature_schema = feature_schema
         self.feature_registry_hash = feature_registry_hash
         self.expected_model_family = expected_model_family
+        if personal_use_policy is not None:
+            validate_snapshot = getattr(personal_use_policy, "validate_snapshot", None)
+            if not callable(validate_snapshot):
+                raise ValueError("personal consumer 需要可重驗 snapshot 的 policy")
+            personal_use_policy = validate_snapshot()
+        self._personal_use_policy_bytes = (
+            personal_use_policy_bytes
+            if personal_use_policy_bytes is not None
+            else (
+                personal_use_policy.storage_bytes
+                if personal_use_policy is not None
+                else None
+            )
+        )
+        if personal_use_policy is not None:
+            if (
+                type(self._personal_use_policy_bytes) is not bytes
+                or personal_use_policy.storage_path is None
+                or self._personal_use_policy_bytes != personal_use_policy.storage_bytes
+            ):
+                raise ValueError("personal consumer 必須綁定已保存 policy bytes")
+        self._personal_use_policy = personal_use_policy
+        self._personal_selection_active = False
         self._loader = SafeShadowModelArtifactLoader(data_root=data_root)
         self._loaded_pointer: Mapping[str, Any] | None = None
         self._model: Any | None = None
@@ -535,6 +571,33 @@ class RecommendationCalibrationConsumer:
             CapabilityLoadedArtifactLineageEvidenceV1 | None
         ) = None
 
+    def _current_pointer_stat(self) -> tuple[int, int] | None:
+        if self._personal_use_policy is not None:
+            raw = self._personal_use_policy_bytes
+            if type(raw) is not bytes:
+                return None
+            digest_tail = self._personal_use_policy.policy_sha256[7:23]
+            return len(raw), int(digest_tail, 16)
+        return _path_stat(self.pointer_path)
+
+    def _personal_policy_storage_is_current(self) -> bool:
+        policy = self._personal_use_policy
+        expected_bytes = self._personal_use_policy_bytes
+        if policy is None:
+            return True
+        path = policy.storage_path
+        if (
+            path is None
+            or type(expected_bytes) is not bytes
+            or path.resolve() != self.pointer_path
+            or path.is_symlink()
+        ):
+            return False
+        try:
+            return path.read_bytes() == expected_bytes
+        except OSError:
+            return False
+
     def resolve_invocation_projection_capability(
         self,
         *,
@@ -577,7 +640,13 @@ class RecommendationCalibrationConsumer:
         resolved: RecommendationCalibrationConsumer | None = None
         try:
             expected_hash = _hash_payload(expected_identity)
-            pointer_bytes_before = self.pointer_path.read_bytes()
+            pointer_bytes_before = (
+                self._personal_use_policy_bytes
+                if self._personal_use_policy is not None
+                else self.pointer_path.read_bytes()
+            )
+            if type(pointer_bytes_before) is not bytes:
+                return None
             parsed_pointer_before = json.loads(pointer_bytes_before.decode("utf-8"))
             if not isinstance(parsed_pointer_before, Mapping):
                 return None
@@ -588,6 +657,8 @@ class RecommendationCalibrationConsumer:
                 feature_registry_hash=self.feature_registry_hash,
                 data_root=self._loader._data_root,
                 expected_model_family=self.expected_model_family,
+                personal_use_policy=self._personal_use_policy,
+                personal_use_policy_bytes=self._personal_use_policy_bytes,
             )
             # Preserve only the loader implementation/configuration.  The newly
             # deserialized model and every lineage model remain private to this
@@ -602,7 +673,11 @@ class RecommendationCalibrationConsumer:
             resolved._captured_pointer_bytes_for_reload = pointer_bytes_before
             if resolved.reload(decision_date=current_day) != "active":
                 return None
-            pointer_bytes_after = self.pointer_path.read_bytes()
+            pointer_bytes_after = (
+                self._personal_use_policy_bytes
+                if self._personal_use_policy is not None
+                else self.pointer_path.read_bytes()
+            )
             if pointer_bytes_after != pointer_bytes_before:
                 return None
             if (
@@ -610,13 +685,19 @@ class RecommendationCalibrationConsumer:
                 != _sha256_bytes(pointer_bytes_before)
             ):
                 return None
-            if resolved._loaded_pointer != parsed_pointer_before:
+            if resolved._personal_use_policy is None:
+                if resolved._loaded_pointer != parsed_pointer_before:
+                    return None
+            elif (
+                resolved._personal_use_policy.to_dict() != parsed_pointer_before
+                or resolved._loaded_pointer is None
+            ):
                 return None
             resolved_identity = resolved.active_identity(decision_date=current_day)
             if resolved_identity is None or _hash_payload(resolved_identity) != expected_hash:
                 return None
             capture = resolved._model_resolution_capture_inputs
-            if capture is None or capture.pointer != parsed_pointer_before:
+            if capture is None or capture.pointer != resolved._loaded_pointer:
                 return None
             model_resolution_evidence = capture_model_resolution_evidence_v1(
                 pointer=capture.pointer,
@@ -746,17 +827,22 @@ class RecommendationCalibrationConsumer:
 
         resolved: RecommendationCalibrationConsumer | None = None
         try:
-            pointer_raw_bytes = (
-                self.pointer_path.read_bytes()
-                if self.pointer_path.is_file()
-                else None
-            )
+            if self._personal_use_policy is not None:
+                pointer_raw_bytes = self._personal_use_policy_bytes
+            else:
+                pointer_raw_bytes = (
+                    self.pointer_path.read_bytes()
+                    if self.pointer_path.is_file()
+                    else None
+                )
             resolved = RecommendationCalibrationConsumer(
                 pointer_path=self.pointer_path,
                 feature_schema=self.feature_schema,
                 feature_registry_hash=self.feature_registry_hash,
                 data_root=self._loader._data_root,
                 expected_model_family=self.expected_model_family,
+                personal_use_policy=self._personal_use_policy,
+                personal_use_policy_bytes=self._personal_use_policy_bytes,
             )
             resolved._loader = SafeShadowModelArtifactLoader(
                 data_root=self._loader._data_root,
@@ -768,7 +854,10 @@ class RecommendationCalibrationConsumer:
             )
             if reload_status != "rule_only" or resolved._model is not None:
                 return None
-            if pointer_raw_bytes is None:
+            if self._personal_use_policy is not None:
+                if pointer_raw_bytes != self._personal_use_policy_bytes:
+                    return None
+            elif pointer_raw_bytes is None:
                 if self.pointer_path.is_file():
                     return None
             else:
@@ -842,6 +931,7 @@ class RecommendationCalibrationConsumer:
         self._cost_scenario = None
         self._pointer_stat = None
         self._loaded_decision_date = None
+        self._personal_selection_active = False
         self._model_resolution_capture_inputs = None
         self._model_resolution_captured_pointer_bytes_sha256 = None
         self._model_resolution_active_artifact_sha256 = None
@@ -852,8 +942,15 @@ class RecommendationCalibrationConsumer:
         self._model_resolution_manifest_lineage = None
         self._model_resolution_captured_manifest_paths_and_bytes.clear()
         self._model_resolution_loaded_artifact_lineage = None
+        if not self._personal_policy_storage_is_current():
+            self._blocker = "personal_use_policy_changed_since_load"
+            return "rule_only"
         if _captured_pointer_bytes is _POINTER_BYTES_UNSET:
-            if not self.pointer_path.is_file():
+            if self._personal_use_policy is not None:
+                if type(self._personal_use_policy_bytes) is not bytes:
+                    self._blocker = "personal_use_policy_snapshot_missing"
+                    return "rule_only"
+            elif not self.pointer_path.is_file():
                 return "rule_only"
         elif _captured_pointer_bytes is None:
             return "rule_only"
@@ -867,6 +964,15 @@ class RecommendationCalibrationConsumer:
             )
             if _captured_pointer_bytes is not _POINTER_BYTES_UNSET:
                 pointer_text = cast(bytes, _captured_pointer_bytes).decode("utf-8")
+            elif self._personal_use_policy is not None:
+                if type(self._personal_use_policy_bytes) is not bytes:
+                    self._blocker = "personal_use_policy_snapshot_missing"
+                    return "rule_only"
+                if self._capture_model_resolution_evidence:
+                    self._model_resolution_captured_pointer_bytes_sha256 = (
+                        _sha256_bytes(self._personal_use_policy_bytes)
+                    )
+                pointer_text = self._personal_use_policy_bytes.decode("utf-8")
             elif captured_pointer_bytes is None:
                 pointer_text = self.pointer_path.read_text(encoding="utf-8")
             else:
@@ -878,7 +984,94 @@ class RecommendationCalibrationConsumer:
         except (OSError, json.JSONDecodeError):
             self._blocker = "active_pointer_invalid_json"
             return "rule_only"
-        if not isinstance(pointer, Mapping) or pointer.get("schema_version") not in {
+        if not isinstance(pointer, Mapping):
+            self._blocker = "active_pointer_schema_invalid"
+            return "rule_only"
+        personal_candidate_payload: Mapping[str, Any] | None = None
+        personal_candidate_bytes: bytes | None = None
+        candidate_path: Path | None = None
+        personal_source_time_policy: Any | None = None
+        pointer_schema = pointer.get("schema_version")
+        if pointer_schema in {
+            PERSONAL_USE_POLICY_SCHEMA_V1,
+            _PERSONAL_USE_POLICY_SCHEMA_V2,
+        }:
+            personal_policy = self._personal_use_policy
+            policy_schema = (
+                personal_policy.to_dict().get("schema_version")
+                if personal_policy is not None
+                else None
+            )
+            if (
+                personal_policy is None
+                or policy_schema != pointer_schema
+                or (
+                    pointer_schema == _PERSONAL_USE_POLICY_SCHEMA_V2
+                    and (
+                        type(personal_policy) is not RecommendationPersonalUsePolicyV2
+                        or personal_policy.version != 2
+                    )
+                )
+            ):
+                self._blocker = "personal_use_policy_not_bound_to_consumer"
+                return "rule_only"
+            personal_policy_path = personal_policy.storage_path
+            if personal_policy_path is None:
+                self._blocker = "personal_use_policy_storage_path_missing"
+                return "rule_only"
+            if (
+                personal_policy.to_dict() != pointer
+                or personal_policy_path.resolve() != self.pointer_path
+            ):
+                self._blocker = "personal_use_policy_not_bound_to_consumer"
+                return "rule_only"
+            if personal_policy.mode != PERSONAL_CALIBRATED_PROBABILITY_MODE:
+                self._loaded_pointer = dict(pointer)
+                self._pointer_stat = self._current_pointer_stat()
+                self._loaded_decision_date = _date_text_or_none(decision_date)
+                self._blocker = "personal_use_policy_rule_only"
+                return "rule_only"
+            candidate_ref = personal_policy.candidate
+            if candidate_ref is None:
+                self._blocker = "personal_use_policy_candidate_missing"
+                return "rule_only"
+            source_time_trust = getattr(personal_policy, "source_time_trust", None)
+            if pointer_schema == PERSONAL_USE_POLICY_SCHEMA_V1:
+                # V1 沒有獨立保存的 user-declared source binding，不能從環境預設推定信任。
+                self._blocker = "independent_source_time_authority_missing"
+                return "rule_only"
+            if not _personal_v2_source_trust_precheck(personal_policy):
+                self._blocker = "personal_source_time_binding_missing_or_invalid"
+                return "rule_only"
+            personal_source_time_policy = personal_policy
+            candidate_root = Path(candidate_ref.candidate_root)
+            candidate_path = candidate_root / "candidate.json"
+            try:
+                if candidate_root.is_symlink() or candidate_path.is_symlink():
+                    raise OSError("candidate identity path is a symlink")
+                personal_candidate_bytes = candidate_path.read_bytes()
+                if _sha256_bytes(personal_candidate_bytes) != candidate_ref.candidate_json_sha256:
+                    raise ValueError("candidate JSON raw bytes changed")
+                personal_candidate_payload = _read_json_object_bytes(
+                    personal_candidate_bytes, candidate_path
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+                self._blocker = "personal_use_policy_candidate_bytes_mismatch"
+                return "rule_only"
+            if not _personal_candidate_reference_matches(
+                candidate_ref, personal_candidate_payload
+            ):
+                self._blocker = "personal_use_policy_candidate_identity_mismatch"
+                return "rule_only"
+            try:
+                pointer = _personal_candidate_pointer(
+                    personal_policy, personal_candidate_payload
+                )
+            except (TypeError, ValueError):
+                self._blocker = "personal_use_policy_candidate_effective_date_invalid"
+                return "rule_only"
+            self._personal_selection_active = True
+        elif pointer.get("schema_version") not in {
             "recommendation-calibration-active-pointer.v1",
             "recommendation-calibration-active-pointer.v2",
         }:
@@ -887,7 +1080,7 @@ class RecommendationCalibrationConsumer:
         pointer_status = str(pointer.get("status") or "")
         if pointer_status == "rule_only":
             self._loaded_pointer = pointer
-            self._pointer_stat = _path_stat(self.pointer_path)
+            self._pointer_stat = self._current_pointer_stat()
             self._loaded_decision_date = _date_text_or_none(decision_date)
             self._blocker = str(pointer.get("rollback_reason") or "rule_only_pointer")
             return "rule_only"
@@ -929,9 +1122,11 @@ class RecommendationCalibrationConsumer:
         if declared_cost_hash and declared_cost_hash != expected_cost_hash:
             self._blocker = "active_pointer_cost_contract_mismatch"
             return "rule_only"
-        candidate_json_bytes: bytes | None = None
+        candidate_json_bytes: bytes | None = personal_candidate_bytes
         try:
-            if self._capture_model_resolution_evidence:
+            if personal_candidate_payload is not None:
+                candidate_payload = personal_candidate_payload
+            elif self._capture_model_resolution_evidence:
                 candidate_json_bytes = (candidate_root / "candidate.json").read_bytes()
                 candidate_payload = _read_json_object_bytes(
                     candidate_json_bytes, candidate_root / "candidate.json"
@@ -979,7 +1174,39 @@ class RecommendationCalibrationConsumer:
             expected_feature_schema=self.feature_schema,
             installed_library_versions=_library_versions(),
         )
+        personal_training_provenance: Mapping[str, Any] | None = None
+        if self._personal_selection_active:
+            personal_training_provenance, training_error = (
+                _load_candidate_training_provenance(
+                    candidate_root=candidate_root,
+                    candidate_payload=candidate_payload,
+                    decision_date=current_day,
+                    require_personal_source_time=True,
+                    data_root=self._loader._data_root,
+                    personal_use_policy=personal_source_time_policy,
+                )
+            )
+            if training_error is not None:
+                self._blocker = training_error
+                return "rule_only"
+            if not self._personal_policy_storage_is_current():
+                self._blocker = "personal_use_policy_changed_since_load"
+                return "rule_only"
+            if (
+                personal_training_provenance is None
+                or personal_training_provenance.get("status") != "verified"
+                or not candidate_payload.get("training_lineage_manifest_hash")
+                or not candidate_payload.get("training_lineage_manifest_path")
+                or personal_training_provenance.get("training_semantics")
+                != "decision_time"
+                or personal_training_provenance.get("decision_time_eligible") is not True
+            ):
+                self._blocker = "personal_candidate_training_lineage_unverified_fail_closed"
+                return "rule_only"
         same_bytes_result = None
+        if not self._personal_policy_storage_is_current():
+            self._blocker = "personal_use_policy_changed_since_load"
+            return "rule_only"
         if self._capture_model_resolution_evidence:
             same_bytes_result = self._loader.load_same_bytes_with_manifest_v1(
                 candidate_root, expectation=expectation
@@ -987,6 +1214,9 @@ class RecommendationCalibrationConsumer:
             loaded = same_bytes_result.artifact_result.artifact_result
         else:
             loaded = self._loader.load(candidate_root, expectation=expectation)
+        if not self._personal_policy_storage_is_current():
+            self._blocker = "personal_use_policy_changed_during_load"
+            return "rule_only"
         if loaded.status != "shadow_model_ready" or loaded.model is None:
             self._blocker = loaded.blockers[0] if loaded.blockers else "candidate_load_failed"
             return "rule_only"
@@ -1014,28 +1244,65 @@ class RecommendationCalibrationConsumer:
         ):
             self._blocker = "active_pointer_candidate_hash_mismatch"
             return "rule_only"
-        if pointer.get("policy_hash") != RecommendationPromotionPolicy().policy_hash:
+        if self._personal_selection_active:
+            if (
+                type(pointer.get("maximum_probability_change_bp")) is not int
+                or pointer.get("maximum_probability_change_bp")
+                != PERSONAL_PROBABILITY_CHANGE_CAP_BP
+            ):
+                self._blocker = "personal_probability_change_cap_invalid"
+                return "rule_only"
+        elif pointer.get("policy_hash") != RecommendationPromotionPolicy().policy_hash:
             self._blocker = "active_pointer_policy_hash_mismatch"
             return "rule_only"
-        if int(pointer.get("maximum_probability_change_bp", -1)) != RecommendationPromotionPolicy().maximum_probability_change_bp:
+        elif int(pointer.get("maximum_probability_change_bp", -1)) != RecommendationPromotionPolicy().maximum_probability_change_bp:
             self._blocker = "active_pointer_cap_mismatch"
             return "rule_only"
-        receipt_error = _pointer_receipt_error(pointer)
-        if receipt_error is not None:
-            self._blocker = receipt_error
-            return "rule_only"
+        if not self._personal_selection_active:
+            receipt_error = _pointer_receipt_error(pointer)
+            if receipt_error is not None:
+                self._blocker = receipt_error
+                return "rule_only"
         training_as_of = _date_text_or_none(str(getattr(loaded.model, "training_as_of", "")))
         if training_as_of is None or training_as_of > current_day:
             self._blocker = "candidate_training_cutoff_after_decision"
             return "rule_only"
-        training_provenance, training_error = _load_candidate_training_provenance(
-            candidate_root=candidate_root,
-            candidate_payload=candidate_payload,
-            decision_date=current_day,
-        )
-        if training_error is not None:
-            self._blocker = training_error
+        if self._personal_selection_active:
+            training_provenance = personal_training_provenance
+            if training_provenance is None:
+                self._blocker = "personal_candidate_training_lineage_unverified_fail_closed"
+                return "rule_only"
+        else:
+            training_provenance, training_error = _load_candidate_training_provenance(
+                candidate_root=candidate_root,
+                candidate_payload=candidate_payload,
+                decision_date=current_day,
+                require_personal_source_time=False,
+                data_root=self._loader._data_root,
+            )
+            if training_error is not None:
+                self._blocker = training_error
+                return "rule_only"
+        if self._personal_selection_active and (
+            training_provenance.get("status") != "verified"
+            or not candidate_payload.get("training_lineage_manifest_hash")
+            or not candidate_payload.get("training_lineage_manifest_path")
+            or training_provenance.get("training_semantics") != "decision_time"
+            or training_provenance.get("decision_time_eligible") is not True
+        ):
+            self._blocker = "personal_candidate_training_lineage_unverified_fail_closed"
             return "rule_only"
+        if self._personal_selection_active:
+            if candidate_path is None:
+                self._blocker = "personal_use_policy_candidate_missing"
+                return "rule_only"
+            try:
+                if candidate_path.read_bytes() != personal_candidate_bytes:
+                    self._blocker = "personal_candidate_bytes_changed_during_load"
+                    return "rule_only"
+            except OSError:
+                self._blocker = "personal_candidate_bytes_changed_during_load"
+                return "rule_only"
         if self._capture_model_resolution_evidence:
             if (
                 same_bytes_result is None
@@ -1071,7 +1338,7 @@ class RecommendationCalibrationConsumer:
             self._baseline_identity = lineage[-2]
             self._baseline_model = self._lineage_models[-2][1] if len(self._lineage_models) > 1 else None
         self._blocker = ""
-        self._pointer_stat = _path_stat(self.pointer_path)
+        self._pointer_stat = self._current_pointer_stat()
         self._loaded_decision_date = current_day
         if self._capture_model_resolution_evidence:
             if loaded.manifest is None or self._model_resolution_runtime_profile is None:
@@ -1154,7 +1421,7 @@ class RecommendationCalibrationConsumer:
         if (
             self._model is None
             or self._loaded_pointer is None
-            or self._pointer_stat != _path_stat(self.pointer_path)
+            or self._pointer_stat != self._current_pointer_stat()
             or self._loaded_decision_date != current_day
         ):
             self.reload(decision_date=current_day)
@@ -1177,7 +1444,7 @@ class RecommendationCalibrationConsumer:
         if (
             self._model is None
             or self._loaded_pointer is None
-            or self._pointer_stat != _path_stat(self.pointer_path)
+            or self._pointer_stat != self._current_pointer_stat()
             or self._loaded_decision_date != current_day
         ):
             self.reload(decision_date=current_day)
@@ -1227,7 +1494,7 @@ class RecommendationCalibrationConsumer:
         elif (
             self._model is None
             or self._loaded_pointer is None
-            or self._pointer_stat != _path_stat(self.pointer_path)
+            or self._pointer_stat != self._current_pointer_stat()
             or self._loaded_decision_date != current_day
         ):
             self.reload(decision_date=current_day)
@@ -1691,7 +1958,7 @@ class RecommendationCalibrationConsumer:
         elif (
             self._model is None
             or self._loaded_pointer is None
-            or self._pointer_stat != _path_stat(self.pointer_path)
+            or self._pointer_stat != self._current_pointer_stat()
             or self._loaded_decision_date != current_day
         ):
             self.reload(decision_date=current_day)
@@ -2999,6 +3266,9 @@ def _load_candidate_training_provenance(
     candidate_root: Path,
     candidate_payload: Mapping[str, Any],
     decision_date: str,
+    require_personal_source_time: bool = False,
+    data_root: str | Path | None = None,
+    personal_use_policy: Any | None = None,
 ) -> tuple[Mapping[str, Any], str | None]:
     hash_declared = "training_lineage_manifest_hash" in candidate_payload
     path_declared = "training_lineage_manifest_path" in candidate_payload
@@ -3037,6 +3307,58 @@ def _load_candidate_training_provenance(
             raise RecommendationTrainingLineageError(
                 "training lineage decision date is after inference decision"
             )
+        source_time_evidence: dict[str, Any] = {}
+        if require_personal_source_time:
+            from app_module.recommendation.personal_candidate_inventory import (
+                learning_root_for_personal_candidate,
+                verify_personal_training_source_time_proof,
+                _saved_v2_source_binding_matches,
+            )
+
+            trust = getattr(personal_use_policy, "source_time_trust", None)
+            if (
+                personal_use_policy is None
+                or type(personal_use_policy) is not RecommendationPersonalUsePolicyV2
+                or personal_use_policy.version != 2
+                or personal_use_policy.to_dict().get("schema_version")
+                != _PERSONAL_USE_POLICY_SCHEMA_V2
+                or trust is None
+            ):
+                source_time_error = verify_personal_training_source_time_proof(
+                    lineage_payload=lineage.payload,
+                    learning_root=learning_root_for_personal_candidate(candidate_root),
+                    data_root=data_root,
+                )
+                if source_time_error is not None:
+                    return _legacy_training_provenance(
+                        "personal_historical_source_proof_unavailable"
+                    ), "candidate_training_source_time_unverified_fail_closed"
+                return _legacy_training_provenance(
+                    "personal_source_time_binding_missing"
+                ), "personal_source_time_binding_missing_or_invalid"
+            source_time_error = verify_personal_training_source_time_proof(
+                lineage_payload=lineage.payload,
+                learning_root=learning_root_for_personal_candidate(candidate_root),
+                data_root=data_root,
+                source_database_path=trust.source_database_path,
+                evidence_out=source_time_evidence,
+            )
+            if source_time_error is not None:
+                return _legacy_training_provenance(
+                    "personal_historical_source_proof_unavailable"
+                ), "candidate_training_source_time_unverified_fail_closed"
+            candidate_reference = getattr(personal_use_policy, "candidate", None)
+            if (
+                type(candidate_reference) is not PersonalCalibrationCandidateV1
+                or not _saved_v2_source_binding_matches(
+                    personal_use_policy,
+                    candidate_ref=candidate_reference,
+                    proof_evidence=source_time_evidence,
+                )
+            ):
+                return _legacy_training_provenance(
+                    "personal_source_time_binding_mismatch"
+                ), "personal_source_time_binding_mismatch"
         provenance = build_training_provenance(
             lineage_payload=lineage.payload,
             manifest_hash=lineage.manifest_hash,
@@ -3051,6 +3373,20 @@ def _load_candidate_training_provenance(
                     raise RecommendationProvenanceError(
                         f"candidate training {key} does not match lineage"
                     )
+        if require_personal_source_time and personal_use_policy is not None:
+            trust = personal_use_policy.source_time_trust
+            enriched_provenance = dict(provenance)
+            enriched_provenance.update(
+                {
+                    "source_time_basis": "user_declared_source_time",
+                    "source_time_confirmed_at": trust.confirmed_at,
+                    "source_time_source_database_path": trust.source_database_path,
+                    "source_time_slice_sha256": trust.source_slice_sha256,
+                    "source_time_research_only": True,
+                    "official_historical_pit_verified": False,
+                }
+            )
+            provenance = enriched_provenance
         return provenance, None
     except (
         OSError,
@@ -3361,6 +3697,110 @@ def _pointer_identity(pointer: Mapping[str, Any]) -> dict[str, Any]:
         if key in pointer:
             identity[key] = pointer[key]
     return identity
+
+
+def _personal_candidate_reference_matches(
+    candidate_ref: Any,
+    candidate_payload: Mapping[str, Any],
+) -> bool:
+    """比對個人設定 pin 與候選 JSON 中的不可變 artifact identity。"""
+
+    return all(
+        getattr(candidate_ref, ref_field, None) == candidate_payload.get(payload_field)
+        for ref_field, payload_field in (
+            ("candidate_id", "candidate_id"),
+            ("candidate_manifest_hash", "manifest_hash"),
+            ("candidate_artifact_hash", "artifact_hash"),
+            ("candidate_freeze_hash", "candidate_freeze_hash"),
+            ("dataset_hash", "dataset_hash"),
+        )
+    )
+
+
+def _personal_candidate_pointer(
+    policy: Any,
+    candidate_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """將已 pin 的個人選擇映射為共用硬驗證器使用的唯讀欄位。"""
+
+    candidate_ref = policy.candidate
+    if candidate_ref is None:
+        raise ValueError("personal candidate reference is missing")
+    effective_date = _date_text_or_none(
+        str(candidate_payload.get("candidate_frozen_at") or "")
+    ) or _date_text_or_none(str(candidate_payload.get("training_as_of") or ""))
+    if effective_date is None:
+        raise ValueError("personal candidate effective date is missing")
+    pointer = dict(candidate_payload)
+    policy_schema = policy.to_dict().get("schema_version")
+    if type(policy_schema) is not str or not policy_schema:
+        raise ValueError("personal policy schema is missing")
+    pointer.update(
+        {
+            "schema_version": policy_schema,
+            "status": "active",
+            "pointer_version": policy.revision,
+            "candidate_root": candidate_ref.candidate_root,
+            "candidate_manifest_hash": candidate_ref.candidate_manifest_hash,
+            "candidate_artifact_hash": candidate_ref.candidate_artifact_hash,
+            "candidate_freeze_hash": candidate_ref.candidate_freeze_hash,
+            "dataset_hash": candidate_ref.dataset_hash,
+            "effective_date": effective_date,
+            "maximum_probability_change_bp": PERSONAL_PROBABILITY_CHANGE_CAP_BP,
+            "personal_use_policy_sha256": policy.policy_sha256,
+            "personal_use_policy_revision": policy.revision,
+            "personal_use_scope_id": policy.scope_id,
+            "personal_use_mode": policy.mode,
+            "personal_candidate_json_sha256": candidate_ref.candidate_json_sha256,
+        }
+    )
+    return pointer
+
+
+def _personal_v2_source_trust_precheck(policy: Any) -> bool:
+    """在讀候選 metadata 前檢查已確認的 V2 綁定形狀。"""
+
+    if (
+        type(policy) is not RecommendationPersonalUsePolicyV2
+        or getattr(policy, "version", None) != 2
+    ):
+        return False
+    try:
+        if policy.to_dict().get("schema_version") != _PERSONAL_USE_POLICY_SCHEMA_V2:
+            return False
+    except (AttributeError, TypeError, ValueError):
+        return False
+    trust = getattr(policy, "source_time_trust", None)
+    candidate = getattr(policy, "candidate", None)
+    if trust is None or candidate is None:
+        return False
+    try:
+        source_path = Path(trust.source_database_path)
+        file_identity = trust.file_identity
+        replay_scope = trust.replay_scope
+        trust_candidate = trust.candidate
+        return (
+            source_path.is_absolute()
+            and str(source_path) == trust.source_database_path
+            and trust.schema_version == "personal-user-declared-source-time-trust.v1"
+            and trust.basis == "user_declared_source_time"
+            and trust.confirmed_at == policy.confirmed_at
+            and type(file_identity.device) is int
+            and file_identity.device >= 0
+            and type(file_identity.inode) is int
+            and file_identity.inode > 0
+            and _is_prefixed_sha256(trust.source_slice_sha256)
+            and type(replay_scope.sample_count) is int
+            and replay_scope.sample_count > 0
+            and bool(replay_scope.dataset_ids)
+            and bool(replay_scope.decision_dates)
+            and bool(replay_scope.symbols)
+            and trust_candidate.to_dict() == candidate.to_dict()
+            and trust.research_only is True
+            and trust.official_historical_pit_verified is False
+        )
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
 
 
 def _normalize_candidate_root(value: Any, relative_to: Path) -> str | None:

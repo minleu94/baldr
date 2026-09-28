@@ -36,6 +36,7 @@ from app_module.dtos.decision_continuity_dtos import (
     IDENTITY_STATUS_CONFLICT,
     DecisionIdentity,
 )
+from app_module.personalization_contract import PersonalRecommendationChoice
 from app_module.recommendation.contracts import ExecutionStatus, RecommendationExecution
 from app_module.recommendation.persistence import (
     ExecutionArtifactIntegrityError,
@@ -76,6 +77,7 @@ class _VerifiedCanonicalRecommendationRoot:
     result_id: str
     integrity_basis: str
     payload_hash: str
+    raw_artifact_sha256: str
     artifact_location: str
     candidates: tuple[tuple[str, int], ...]
     as_of_date: str | None
@@ -85,6 +87,9 @@ class _VerifiedCanonicalRecommendationRoot:
     trade_snapshot_hash: str
     data_snapshot_ids: tuple[str, ...]
     source_refs: tuple[tuple[str, str | int, str | None], ...]
+    market_data_as_of_date: str | None
+    market_data_source_id: str | None
+    market_data_fingerprint: str | None
 
 
 class JourneyLinkStatus(str, Enum):
@@ -105,6 +110,171 @@ class JourneyStatus(str, Enum):
     PARTIAL = "partial"
     UNKNOWN = "unknown"
     CONFLICT = "conflict"
+
+
+def validated_company_source_v2_facts(
+    execution: RecommendationExecution,
+) -> tuple[bool, Mapping[str, Any] | None]:
+    """讀取同次 execution 已封存且可核對的 v2 分類／行情來源事實。
+
+    第一個回傳值表示保存的 event 中是否出現 v2 snapshot；若出現但證據
+    不完整，第二個值為 None，呼叫端不得退回決策日期冒充行情日期。
+    """
+
+    events = tuple(getattr(execution, "events", ()) or ())
+    company_events = tuple(
+        event
+        for event in events
+        if getattr(event, "event_type", None)
+        == "company_registry_source_snapshot"
+    )
+    if len(company_events) != 1:
+        has_v2 = any(
+            isinstance(getattr(event, "details", None), Mapping)
+            and isinstance(
+                getattr(event, "details", {}).get("snapshot"), Mapping
+            )
+            and getattr(event, "details", {})["snapshot"].get("schema_version")
+            == "recommendation-company-registry-source-snapshot.v2"
+            for event in company_events
+        )
+        return has_v2, None
+
+    event = company_events[0]
+    details = getattr(event, "details", None)
+    if not isinstance(details, Mapping):
+        return False, None
+    snapshot = details.get("snapshot")
+    has_v2 = (
+        isinstance(snapshot, Mapping)
+        and snapshot.get("schema_version")
+        == "recommendation-company-registry-source-snapshot.v2"
+    )
+    if not has_v2 or not isinstance(snapshot, Mapping):
+        return False, None
+
+    result_id = getattr(execution, "result_id", None)
+    context = getattr(execution, "context", None)
+    context_date = getattr(context, "as_of_date", None)
+    context_decision_at = getattr(context, "decision_at", None)
+    if (
+        type(result_id) is not str
+        or not result_id
+        or details.get("schema_version")
+        != "recommendation-company-registry-source-snapshot-event.v1"
+        or details.get("result_id") != result_id
+        or snapshot.get("result_id") != result_id
+        or snapshot.get("scope") != "current_classification_only"
+        or snapshot.get("pit_eligible") is not False
+        or type(context_date) is not date
+    ):
+        return True, None
+
+    def strict_iso_date(raw_value: Any) -> date | None:
+        if type(raw_value) is not str:
+            return None
+        try:
+            parsed = date.fromisoformat(raw_value)
+        except ValueError:
+            return None
+        return parsed if parsed.isoformat() == raw_value else None
+
+    def aware_datetime(raw_value: Any) -> datetime | None:
+        parsed: datetime | None
+        if isinstance(raw_value, datetime):
+            parsed = raw_value
+        elif type(raw_value) is str:
+            try:
+                parsed = datetime.fromisoformat(
+                    raw_value[:-1] + "+00:00" if raw_value.endswith("Z") else raw_value
+                )
+            except ValueError:
+                return None
+        else:
+            return None
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    decision_date_value = snapshot.get("decision_date")
+    decision_date = strict_iso_date(decision_date_value)
+    data_date_value = snapshot.get("data_as_of_date")
+    data_date = strict_iso_date(data_date_value) if data_date_value is not None else None
+    context_decision = aware_datetime(context_decision_at)
+    event_decision = aware_datetime(details.get("decision_at"))
+    snapshot_decision = aware_datetime(snapshot.get("decision_at"))
+    occurrence = aware_datetime(getattr(event, "occurred_at", None))
+    source_id = snapshot.get("source_id")
+    fingerprint = snapshot.get("market_data_fingerprint")
+    legacy_events = tuple(
+        candidate
+        for candidate in events
+        if getattr(candidate, "event_type", None) == "legacy_invocation_context"
+    )
+    legacy_details = (
+        getattr(legacy_events[0], "details", None)
+        if len(legacy_events) == 1
+        else None
+    )
+    context_refs = getattr(context, "data_snapshot_refs", ())
+    reference_hashes = {
+        str(getattr(reference, "reference_id", "")).removeprefix("sha256:")
+        for reference in context_refs
+    }
+    valid_fingerprint = (
+        type(fingerprint) is str
+        and len(fingerprint) == 64
+        and fingerprint == fingerprint.lower()
+        and all(character in "0123456789abcdef" for character in fingerprint)
+    )
+    valid_clock = (
+        context_decision is not None
+        and event_decision == context_decision
+        and snapshot_decision == context_decision
+        and occurrence == context_decision
+    )
+    valid_source = (
+        type(source_id) is str
+        and bool(source_id.strip())
+        and isinstance(legacy_details, Mapping)
+        and legacy_details.get("source_id") == source_id
+        and legacy_details.get("market_data_fingerprint") == fingerprint
+        and valid_fingerprint
+        and fingerprint in reference_hashes
+    )
+    valid_dates = (
+        decision_date == context_date
+        and (
+            data_date_value is None
+            or (
+                data_date is not None
+                and decision_date is not None
+                and data_date <= decision_date
+            )
+        )
+    )
+
+    try:
+        plain_snapshot = _thaw(snapshot)
+        unsigned_snapshot = {
+            key: value
+            for key, value in plain_snapshot.items()
+            if key != "snapshot_sha256"
+        }
+        snapshot_hash_matches = snapshot.get("snapshot_sha256") == (
+            "sha256:" + stable_snapshot_hash(unsigned_snapshot)
+        )
+    except (TypeError, ValueError, AttributeError):
+        snapshot_hash_matches = False
+
+    if not (valid_clock and valid_source and valid_dates and snapshot_hash_matches):
+        return True, None
+    return True, {
+        "decision_date": decision_date.isoformat() if decision_date else None,
+        "data_as_of_date": data_date.isoformat() if data_date else None,
+        "source_id": source_id,
+        "market_data_fingerprint": fingerprint,
+    }
 
 
 @dataclass(frozen=True)
@@ -155,6 +325,9 @@ class RecommendationSourceIdentity:
     universe_snapshot_id: str | None = None
     universe_snapshot_hash: str | None = None
     return_basis: str | None = None
+    market_data_as_of_date: str | None = None
+    market_data_source_id: str | None = None
+    market_data_fingerprint: str | None = None
 
     @property
     def result_key(self) -> tuple[str]:
@@ -177,6 +350,9 @@ class RecommendationSourceIdentity:
             "universe_snapshot_id": self.universe_snapshot_id,
             "universe_snapshot_hash": self.universe_snapshot_hash,
             "return_basis": self.return_basis,
+            "market_data_as_of_date": self.market_data_as_of_date,
+            "market_data_source_id": self.market_data_source_id,
+            "market_data_fingerprint": self.market_data_fingerprint,
         }
 
 
@@ -221,6 +397,9 @@ class RecommendationResultRecord:
     link_status: JourneyLinkStatus = JourneyLinkStatus.LINKED
     result_path: str | None = None
     original_payload: FrozenPayload = field(default_factory=lambda: MappingProxyType({}))
+    canonical_integrity_verified: bool = field(default=False, repr=False, compare=False)
+    canonical_payload_hash: str | None = field(default=None, repr=False, compare=False)
+    raw_artifact_sha256: str | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -900,6 +1079,8 @@ class JsonRecommendationReadAdapter:
             (item.source_id, item.revision, item.snapshot_id)
             for item in context.source_refs
         )
+        has_market_v2, market_facts = validated_company_source_v2_facts(execution)
+        del has_market_v2
         data_snapshot_ids = tuple(
             item.reference_id for item in context.data_snapshot_refs
         )
@@ -910,6 +1091,7 @@ class JsonRecommendationReadAdapter:
             result_id=execution.result_id,
             integrity_basis=read_model.integrity_basis,
             payload_hash=read_model.payload_hash,
+            raw_artifact_sha256=read_model.raw_artifact_sha256,
             artifact_location=read_model.artifact_location,
             candidates=tuple(candidates),
             as_of_date=(
@@ -923,6 +1105,21 @@ class JsonRecommendationReadAdapter:
             trade_snapshot_hash=trade_snapshot_hash,
             data_snapshot_ids=data_snapshot_ids,
             source_refs=source_refs,
+            market_data_as_of_date=(
+                cast(str | None, market_facts.get("data_as_of_date"))
+                if market_facts is not None
+                else None
+            ),
+            market_data_source_id=(
+                cast(str | None, market_facts.get("source_id"))
+                if market_facts is not None
+                else None
+            ),
+            market_data_fingerprint=(
+                cast(str | None, market_facts.get("market_data_fingerprint"))
+                if market_facts is not None
+                else None
+            ),
         )
 
     @staticmethod
@@ -1218,6 +1415,19 @@ class JsonRecommendationReadAdapter:
                 payload["source_snapshot_id"] = next(iter(source_snapshots))
         if execution.decision is not None and execution.decision.regime is not None:
             payload["regime"] = execution.decision.regime
+        if read_model.payload_hash is not None:
+            payload["canonical_payload_hash"] = read_model.payload_hash
+        if read_model.raw_artifact_sha256:
+            payload["raw_artifact_sha256"] = read_model.raw_artifact_sha256
+        has_market_v2, market_facts = validated_company_source_v2_facts(execution)
+        if has_market_v2 and market_facts is not None:
+            run_context["market_data_as_of_date"] = market_facts[
+                "data_as_of_date"
+            ]
+            run_context["market_data_source_id"] = market_facts["source_id"]
+            run_context["market_data_fingerprint"] = market_facts[
+                "market_data_fingerprint"
+            ]
         return cast(
             Mapping[str, Any],
             cls._canonical_projection_json_value(payload, "journey_payload"),
@@ -1459,6 +1669,25 @@ class DecisionOutcomeJourneyService:
             result_path=result_path,
             diagnostics=diagnostics,
         )
+        if verified_canonical_root is not None:
+            result_record = replace(
+                result_record,
+                canonical_integrity_verified=True,
+                canonical_payload_hash=verified_canonical_root.payload_hash,
+                raw_artifact_sha256=verified_canonical_root.raw_artifact_sha256,
+                source_identity=replace(
+                    result_record.source_identity,
+                    market_data_as_of_date=(
+                        verified_canonical_root.market_data_as_of_date
+                    ),
+                    market_data_source_id=(
+                        verified_canonical_root.market_data_source_id
+                    ),
+                    market_data_fingerprint=(
+                        verified_canonical_root.market_data_fingerprint
+                    ),
+                ),
+            )
 
         candidate_map = {
             item.stock_code: item
@@ -2763,6 +2992,41 @@ def _normalize_journal_entry(
                 direct = JourneyLinkStatus.CONFLICT
             elif direct == JourneyLinkStatus.UNLINKED:
                 direct = JourneyLinkStatus.LINKED
+    journal_payload = _mapping(payload.get("payload"))
+    has_nested_personal_choice = "personal_recommendation_choice" in journal_payload
+    has_flat_personal_choice = "personal_recommendation_choice" in payload
+    if has_nested_personal_choice and has_flat_personal_choice:
+        # 同一列同時以兩種位置提供 typed choice 時，來源有歧義，拒絕連結。
+        direct = JourneyLinkStatus.CONFLICT
+    elif has_nested_personal_choice:
+        direct = (
+            JourneyLinkStatus.LINKED
+            if _personal_choice_matches_canonical_universe(
+                payload,
+                journal_payload,
+                result,
+                typed_decision_identity,
+                relationship_target_id=relationship_target_id,
+                thesis_id=thesis_id,
+            )
+            else JourneyLinkStatus.CONFLICT
+        )
+    elif has_flat_personal_choice:
+        # portfolio_store.project_journal_records 會把正式 journal revision
+        # 投影成頂層 journal_entry；只接受其明確的 schema/source discriminator。
+        direct = (
+            JourneyLinkStatus.LINKED
+            if _personal_choice_matches_canonical_universe(
+                payload,
+                payload,
+                result,
+                typed_decision_identity,
+                relationship_target_id=relationship_target_id,
+                thesis_id=thesis_id,
+                flat_projected=True,
+            )
+            else JourneyLinkStatus.CONFLICT
+        )
     return JournalEntryRecord(
         journal_id=_required_text(
             _first_value(payload, "journal_id", "entry_id", "id"),
@@ -2781,6 +3045,99 @@ def _normalize_journal_entry(
         link_status=direct,
         original_payload=_freeze(payload),
         decision_identity=typed_decision_identity,
+    )
+
+
+def _personal_choice_matches_canonical_universe(
+    journal_row: Mapping[str, Any],
+    journal_payload: Mapping[str, Any],
+    result: RecommendationResultRecord,
+    typed_identity: DecisionIdentity | None,
+    *,
+    relationship_target_id: str | None,
+    thesis_id: str | None,
+    flat_projected: bool = False,
+) -> bool:
+    """只連結完整核對過的個人選擇與 canonical universe snapshot。"""
+
+    raw_choice = journal_payload.get("personal_recommendation_choice")
+    if not isinstance(raw_choice, Mapping):
+        return False
+    try:
+        choice = PersonalRecommendationChoice.from_mapping(raw_choice)
+    except (TypeError, ValueError):
+        return False
+
+    snapshot_id = result.source_identity.universe_snapshot_id
+    snapshot_hash = result.source_identity.universe_snapshot_hash
+    matching_candidates = tuple(
+        candidate
+        for candidate in result.candidates
+        if candidate.stock_code == choice.stock_code
+        and candidate.link_status is JourneyLinkStatus.LINKED
+    )
+    raw_decision_identity = journal_row.get("decision_identity")
+    decision_identity_schema = (
+        raw_decision_identity.get("schema_version")
+        if isinstance(raw_decision_identity, Mapping)
+        else None
+    )
+    nested_result_id = journal_payload.get("linked_id")
+    typed_source_shape = (
+        journal_row.get("record_type") == "journal_entry"
+        and journal_row.get("schema_version") == "4.1"
+        and journal_row.get("source_type") == "personal_recommendation_choice"
+        and "entity_type" not in journal_row
+        and "payload" not in journal_row
+        if flat_projected
+        else journal_row.get("entity_type") == "journal"
+    )
+
+    return all(
+        (
+            result.canonical_integrity_verified,
+            type(result.canonical_payload_hash) is str,
+            choice.canonical_payload_hash == result.canonical_payload_hash,
+            type(result.raw_artifact_sha256) is str,
+            choice.raw_artifact_sha256 == result.raw_artifact_sha256,
+            choice.result_id == result.result_id,
+            choice.decision_date == result.decision_date,
+            len(matching_candidates) == 1,
+            bool(snapshot_id),
+            bool(snapshot_hash),
+            choice.source_snapshot_id == snapshot_id,
+            choice.source_snapshot_hash == snapshot_hash,
+            typed_source_shape,
+            journal_row.get("action") == "note",
+            journal_row.get("linked_type") == "recommendation_result",
+            journal_row.get("linked_id") == result.result_id,
+            journal_row.get("source_id") == result.result_id,
+            journal_row.get("result_id") == choice.result_id,
+            journal_row.get("stock_code") == choice.stock_code,
+            journal_row.get("decision_date") == choice.decision_date,
+            journal_row.get("identity_status") == "linked",
+            journal_row.get("source_snapshot_id") == choice.source_snapshot_id,
+            journal_row.get("source_snapshot_hash") == choice.source_snapshot_hash,
+            journal_payload.get("linked_type") == "recommendation_result",
+            nested_result_id == result.result_id,
+            journal_payload.get("source_snapshot_id") == choice.source_snapshot_id,
+            journal_payload.get("source_snapshot_hash") == choice.source_snapshot_hash,
+            journal_payload.get("created_at") == choice.recorded_at,
+            decision_identity_schema == "decision-identity.v1",
+            typed_identity is not None and typed_identity.is_linked,
+            typed_identity is not None
+            and typed_identity.result_id == choice.result_id,
+            typed_identity is not None
+            and typed_identity.stock_code == choice.stock_code,
+            typed_identity is not None
+            and typed_identity.decision_date == choice.decision_date,
+            typed_identity is not None
+            and typed_identity.source_snapshot_id == choice.source_snapshot_id,
+            typed_identity is not None
+            and typed_identity.source_snapshot_hash == choice.source_snapshot_hash,
+            relationship_target_id is None,
+            thesis_id is None,
+        )
     )
 
 

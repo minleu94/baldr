@@ -115,18 +115,27 @@ class RecommendationInputSession:
         *,
         cutoff: str | None,
         universe: Sequence[str] | None = None,
+        decision_date: str | None = None,
+        source_frame: pd.DataFrame | None = None,
     ) -> PreparedRecommendationMarket:
-        source_frame = load_recommendation_market_frame(
+        if source_frame is None:
+            source_frame = self.load_market_frame(cutoff=cutoff)
+        return prepare_recommendation_market(
+            source_frame=source_frame,
+            cutoff=cutoff,
+            decision_date=decision_date,
+            market_data_provider=self.market_data_provider,
+            universe=universe,
+        )
+
+    def load_market_frame(self, *, cutoff: str | None) -> pd.DataFrame:
+        """讀取一次來源行情；呼叫者可在讀取完成後凍結決策時鐘再準備。"""
+
+        return load_recommendation_market_frame(
             config=self.config,
             market_data_provider=self.market_data_provider,
             historical_market_provider=self.historical_market_provider,
             cutoff=cutoff,
-        )
-        return prepare_recommendation_market(
-            source_frame=source_frame,
-            cutoff=cutoff,
-            market_data_provider=self.market_data_provider,
-            universe=universe,
         )
 
     def read_pit_membership(
@@ -352,8 +361,9 @@ def prepare_recommendation_market(
     cutoff: str | None,
     market_data_provider: object,
     universe: Sequence[str] | None = None,
+    decision_date: str | None = None,
 ) -> PreparedRecommendationMarket:
-    """套用舊有 date/available_date/universe 與 market fingerprint 規則。"""
+    """依明示 cutoff/決策日篩選，同時保留來源 frame 的真實資料日。"""
 
     frame, stock_column = normalize_market_frame(source_frame)
     if frame.empty:
@@ -365,7 +375,7 @@ def prepare_recommendation_market(
         return PreparedRecommendationMarket(
             frame=frame,
             stock_column=stock_column,
-            decision_cutoff=cutoff or "",
+            decision_cutoff=cutoff or decision_date or "",
             source_id=type(market_data_provider).__name__,
             market_data_fingerprint=fingerprint,
             data_date="",
@@ -373,7 +383,7 @@ def prepare_recommendation_market(
     if not frame.empty:
         frame["日期"] = parse_stock_dates(frame["日期"])
         frame = frame[frame["日期"].notna()].copy()
-    decision_cutoff = cutoff or (
+    decision_cutoff = cutoff or decision_date or (
         frame["日期"].max().strftime("%Y-%m-%d") if not frame.empty else ""
     )
     if decision_cutoff:

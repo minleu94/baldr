@@ -249,6 +249,128 @@ def test_guard_allows_only_reviewed_r026_app_to_ml_edges(tmp_path: Path) -> None
     assert report.violations == ()
 
 
+def test_guard_allows_exact_personal_recommendation_read_only_edges(
+    tmp_path: Path,
+) -> None:
+    imports_by_path = {
+        "app_module/personalization_action_recorder.py": (
+            "from ml_module.recommendation_inference_provenance import "
+            "read_inference_projection_receipt\n"
+        ),
+        "app_module/recommendation/execute.py": (
+            "from ml_module.recommendation_cost_scenario import "
+            "RecommendationCostScenario, RecommendationCostScenarioError, "
+            "cost_scenario_from_metadata\n"
+        ),
+        "app_module/recommendation/personal_candidate_inventory.py": (
+            "from ml_module.model_artifact_manifest import ModelArtifactManifest\n"
+            "from ml_module.recommendation_calibration_training import candidate_freeze_hash\n"
+            "from ml_module.recommendation_historical_replay import "
+            "RecommendationHistoricalReplayConfig, RecommendationHistoricalReplayService\n"
+            "from ml_module.recommendation_training_lineage import "
+            "read_recommendation_training_lineage\n"
+        ),
+        "app_module/recommendation/personal_natural_outcome_daily.py": (
+            "from ml_module.recommendation_calibration_evidence import "
+            "verify_natural_maturity_session_proof\n"
+            "from ml_module.recommendation_natural_outcome_service import "
+            "PersonalNaturalOutcomeProjection, RecommendationNaturalOutcomeService\n"
+        ),
+        "app_module/recommendation/personal_prediction_capture.py": (
+            "from ml_module.recommendation_cost_scenario import "
+            "RecommendationCostScenarioError, cost_scenario_from_metadata\n"
+        ),
+        "app_module/recommendation_service.py": (
+            "from ml_module.recommendation_cost_scenario import RecommendationCostScenario\n"
+        ),
+    }
+    for relative_path, source in imports_by_path.items():
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+
+    report = MLShadowBoundaryGuard(tmp_path).inspect()
+
+    assert report.violations == ()
+
+
+def test_personal_inventory_and_outcome_call_only_read_only_ml_methods() -> None:
+    inventory_path = ROOT / "app_module" / "recommendation" / "personal_candidate_inventory.py"
+    outcome_path = ROOT / "app_module" / "recommendation" / "personal_natural_outcome_daily.py"
+    inventory_tree = ast.parse(inventory_path.read_text(encoding="utf-8"))
+    outcome_tree = ast.parse(outcome_path.read_text(encoding="utf-8"))
+    inventory_calls = {
+        node.func.attr
+        for node in ast.walk(inventory_tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    outcome_calls = {
+        node.func.attr
+        for node in ast.walk(outcome_tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+
+    assert "build" in inventory_calls
+    assert "persist" not in inventory_calls
+    assert "project_personal_prediction_outcomes" in outcome_calls
+    assert "build_evidence" not in outcome_calls
+    assert "scan_and_build_evidence" not in outcome_calls
+    assert "scan_and_build_active_model_evidence" not in outcome_calls
+
+
+def test_guard_still_rejects_unreviewed_personal_ml_symbols(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        (
+            "app_module/personalization_action_recorder.py",
+            "ml_module.recommendation_inference_provenance",
+            "persist_inference_projection_receipt",
+        ),
+        (
+            "app_module/recommendation/execute.py",
+            "ml_module.recommendation_cost_scenario",
+            "estimate_round_trip_cost",
+        ),
+        (
+            "app_module/recommendation/personal_candidate_inventory.py",
+            "ml_module.recommendation_historical_replay",
+            "RecommendationCalibrationTrainingService",
+        ),
+        (
+            "app_module/recommendation/personal_candidate_inventory.py",
+            "ml_module.recommendation_training_lineage",
+            "persist_recommendation_training_lineage",
+        ),
+        (
+            "app_module/recommendation/personal_natural_outcome_daily.py",
+            "ml_module.recommendation_natural_outcome_service",
+            "verify_active_model_evidence_payload",
+        ),
+        (
+            "app_module/recommendation/personal_prediction_capture.py",
+            "ml_module.recommendation_cost_scenario",
+            "estimate_round_trip_cost",
+        ),
+        (
+            "app_module/recommendation_service.py",
+            "ml_module.recommendation_cost_scenario",
+            "build_banktaiwan_cost_scenario",
+        ),
+    )
+    for index, (relative_path, module, symbol) in enumerate(cases):
+        case_root = tmp_path / str(index)
+        path = case_root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"from {module} import {symbol}\n", encoding="utf-8")
+
+        report = MLShadowBoundaryGuard(case_root).inspect()
+
+        assert any(
+            item.endswith(f"{module}:{symbol}") for item in report.violations
+        ), relative_path
+
+
 def test_guard_rejects_unlisted_symbol_from_each_reviewed_r026_leaf(
     tmp_path: Path,
 ) -> None:

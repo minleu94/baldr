@@ -4,6 +4,28 @@
 
 ## 2026-09-27 audit／bounded slices current checkpoint
 
+### 個人日常產品與個人模型安全狀態（2026-09-27）
+
+個人模型安全預設保持 `rule_only`：inventory 中兩個舊候選都是 `legacy_unproven`，不可啟用。使用者已明確選擇 V2 指定 SQLite 來源時間信任的個人研究流程；這不是外部 authority 回覆，也不構成獨立官方歷史 PIT／publication-availability 證明。現況仍沒有已證明可合法准入的真實 PIT candidate。company-registry sidecar 的 `available_at` 是 HTTP response capture 完成時間，不是官方 publication time；該 bounded provenance 不能替 industry-index、上市櫃或興櫃 coverage 背書。
+
+本輪可引用的 scoped evidence：WP1 Bank snapshot identity/bounded reader 17P／2S（symlink 權限 skips）；WP2 company-registry slice scoped accepted；WP3／WP4 個人 UI/policy/source slices scoped；Stage B／C 31P／1S；Workbench 84P、Update QA 25P／4S。這些不是自然 scheduler、native post-fix UI、真實合格模型或完整 daily→capture→outcome 驗收。StageC outcome.v2 的 model metric 僅含 active rows；fallback 留在 delivered-cohort coverage，不當作模型預測。其標籤是決策日收盤至官方 20-session endpoint 收盤的事後 close-to-close 結果，不是 execution PnL；after-cost 為估算成本，所需成本／流動性資料不全時維持 pending／unknown。
+
+source/PIT admission 最終測試數及 hash 尚未凍結，狀態為「待最終整合收據」；root 將追加最終 relevant regression 與 mandatory check 結果。不得從目前切片推定正式 source trust、自然成熟或個人模型可用。
+
+### 2026-09-28 最終 relevant regression 更新
+
+前段「待最終整合收據」記錄的是 2026-09-27 狀態；root 現已完成 302-path relevant route，收據 [`run_receipt.json`](../../output/qa/personal_daily_product_20261006/final_root_route_20260927/run_20260928T061833_712310Z/run_receipt.json)，SHA-256 `3a830dd73a2a8a88903c42211149fb4f1a298b9aeea9e4e606bfdf43fe1aee62`，`overall_candidate_pass=true`。302 個測試檔分為 298 repo-short-TEMP 與 4 OS-TEMP，兩組互斥且聯集完整；合計 3,218 passed／9 skipped／36 warnings。Workbench 84P、Update QA 25P／0F／4S、mypy 737 files、332 個 Python compile paths 與 `git diff --check` 均 exit 0；HEAD `e5d75f7cbd3312dac391f52b5c2206d0c745bbc4`、工作樹狀態及 route scope hashes 前後一致。細節見 [個人日常產品交付 QA](../06_qa/PERSONAL_DAILY_PRODUCT_DELIVERY_20261006.md)。
+
+這是隔離的 relevant regression 與靜態／工作台檢查，不是正式資料操作、可見 native post-fix UI、自然 scheduler 或真實合格 PIT candidate 的驗收；預設仍為 `rule_only`，兩個 `legacy_unproven` 候選仍不可啟用，WP0–WP5 不因此宣告整體完成。先前 failed／interrupted route 收據照原狀保留。
+
+### 2026-09-27 個人 V2 使用者明示來源信任更新
+
+本段補充本 checkpoint 較早寫下的「沒有使用者來源信任回覆」狀態：使用者已明確選擇「信任我指定的資料庫」，UI 因此提供 V2 `user_declared_source_time` 個人研究設定。這不是外部 authority 回覆，也不把使用者指定 SQLite、replay 一致或內部 hash 轉成官方歷史 PIT 證明。預設仍為 `rule_only`；inventory 的兩個 `legacy_unproven` 候選不可啟用，現況沒有已證明的真實 PIT candidate。
+
+V2 預覽與執行重驗綁定候選 pins、檔案身分及實際訓練切片（訓練窗資料列、`available_at`、來源契約、成本與 scope）。本次僅在 `coverage.source_contract.technical`、`source_disclosures.source_contract.technical`、`source_disclosures.technical.source_contract` 三處 technical contract 投影中排除 `content_digest`、`content_row_count`、`coverage_end`、`evidence_hash` 四個全庫彙總欄；另不把 replay 結果最外層的 `dataset_id`、`dataset_hash`、`source_fingerprint` 三個由全庫 source fingerprints 衍生的識別欄納入此來源切片比對。上述例外以外，其他來源與欄位仍依原契約比較；候選已保存 manifest/pins 與逐筆樣本仍獨立核對。這項 V2 個人來源切片比對不改原 replay manifest 或 global oracle。訓練窗後的更新在同一檔案身分且該切片完全不變時可保留驗證，檔案替換或訓練切片改變仍 fail closed。使用者須明確指定來源、檢查預覽、確認並保存；重啟後需重新驗證。V2 僅供個人研究，不影響 global pointer／promotion，也不代表官方 PIT 或模型有效性。
+
+本次 UI owner focused route 為 `tests/test_ui_qt_personal_recommendation_choice.py` 28P；`recommendation_view.py` targeted mypy 0 issues、兩個 changed Python 檔 compile 通過。Workbench route 為 84P，Update QA 為 25P／4S；這些是各自 bounded 結果，不等於 native visible 驗收或最終整合 route。V2 UI source freeze／獨立 review與 root final relevant regression 收據尚待完成；真實候選、native post-fix操作及自然 scheduler仍未證。
+
 R024 root 已完成 5-path diff review，9-suite regression 為 67P/0F/0S；`company_registry.py` 與 TPEX backfill 現各自擁有四欄 data diagnostic record/to_dict，移除 data→decision `FactorDiagnostic` imports。原 decision `FactorDiagnostic` classpath、FactorService 與序列化不變；新 data record不再通過 `isinstance(FactorDiagnostic)`，這是有意的 nominal identity移轉。Root 的 registry route 7P只驗route/metadata，不代表新增inventory 122 tests全跑完。R021原bounded scope不變；使用者另已接受IndustryMapper follow-up：data-owned company／industry-index providers由app composition明確建立注入，domain不再暗讀CSV／DB，已知in-repo callers已遷移。Boundary凍結13個changed paths；4個focused route paths共14 distinct inputs（含未修改的 `tests/test_decision_data_providers.py`），manifest SHA-256 `566c0fce31ce063b57c0f53a069e0d6a308b5cce19007fd56026e7d8ae48e602`；focused 18P/0F/0S、0.84秒。attempt6 288-path current route已包含兩個 mapper tests及其影響路徑並自然通過；此結果不外推為domain-wide no-I/O。
 
 REC-02 的 negative-evidence consumer/projection bounded slice已接受（86P/0F/0S；recommendation-tab QA 7P/0F/0S；canonical query及journey callers亦有獨立readback證據）。completed business path由typed DecisionBatch產生current v1 projection；其v1 event僅作wire相容及一致性核對，failed/cancelled partial row/context僅為diagnostics。source search無production RecommendationService.run_recommendation() caller，也無service/body/execute外的app/UI/script last_* business consumer；R016 saved_recommendation_queries.select_latest_saved_recommendation是合法canonical readonly adapter，並非REC-02 Service list/latest-state surface。Root依R029原criteria裁定兩個in-repo業務consumer exit已達，REC-02 status為ACCEPTED_WITH_RETAINED_PERMANENT_COMPATIBILITY：保留公開run_recommendation/list/latest輸出、v1 projection、failed/cancelled diagnostics及rev1/2歷史decoder作必要具名compat；owner為app recommendation compatibility。這不代表所有last_* writer已刪、外部support已終止或存在第二canonical engine。Portfolio navigation-source identity P2另以六-suite54P/0F/1S exit0 bounded接受（1 skip為opt-in official scheduled Qt smoke）；只驗source navigation identity／22個projection欄位，不簽章整個Portfolio顯示內容。Manual §10.2已同步。
@@ -141,6 +163,10 @@ revision evidence，因此 freshness 合理維持 fundamental degraded。Evidenc
 自然 outcome maturity；仍不授權 formal credit、production Evidence 寫入或自動交易。
 05:30 read-only heartbeat prompt 已同步上述 candidate／formal／Position Health 判讀與 timestamp log
 pointer；排程時間、target thread 與「不重跑、不修復、不寫檔」邊界未變。
+
+## 2026-09-28 個人日常系統最終 relevant regression v2
+
+EOF 空白清理後，root 對精確提交候選版本完成 302-path regression：3,218 passed／9 skipped／36 warnings（298 個 repo-short-TEMP 測試及 4 個 OS-TEMP 測試）；Workbench 84 passed、Update QA 25 passed／4 skipped、mypy 737 files、compile 332 paths 與 `git diff --check` 均通過。最終收據 [`run_receipt.json`](../../output/qa/personal_daily_product_20261006/final_root_route_20260927/run_20260928T064551_034316Z/run_receipt.json) SHA-256=`0ae3ec09a5f2a61c57bd28bc395bd2b3da4979146c7d00add348e396b791888b`；前一版收據仍保留為歷史。這是隔離 regression 證據，不解除 native post-fix、真實合格 PIT candidate、正式資料或自然 scheduler 尚未驗證的限制，也不表示 WP0–WP5 全面完成。
 
 ## 持續保留的接受邊界
 

@@ -425,3 +425,77 @@ class DecisionContinuityControlsWidget(QWidget):
 
 
 __all__ = ["DecisionContinuityControlsWidget"]
+
+
+class PersonalRecommendationChoiceControlsWidget(QWidget):
+    """對已保存推薦記錄個人選擇；不代表 Advice 採用或交易。"""
+
+    choiceRequested = Signal(str)
+    retryRequested = Signal()
+
+    def __init__(self, *, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._setup_personal_choice_ui()
+        self.set_context_available(
+            False,
+            "先保存並驗證推薦結果，再選取一檔股票記錄個人決定。",
+        )
+
+    def _setup_personal_choice_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(6)
+
+        group = QGroupBox("個人決定（研究紀錄，不下單）")
+        group.setObjectName("personalRecommendationChoiceControls")
+        layout = QVBoxLayout(group)
+        self.status_label = QLabel("尚未選取已保存推薦。")
+        self.status_label.setObjectName("personalRecommendationChoiceStatus")
+        self.status_label.setWordWrap(True)
+        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.status_label)
+
+        actions = QHBoxLayout()
+        self.adopt_button = QPushButton("個人採用")
+        self.adopt_button.setObjectName("personalRecommendationAdopt")
+        self.adopt_button.setToolTip("記錄你對此已保存推薦的個人採用決定；不會送出委託。")
+        self.adopt_button.clicked.connect(lambda: self.choiceRequested.emit("adopt"))
+        actions.addWidget(self.adopt_button)
+
+        self.reject_button = QPushButton("個人拒絕")
+        self.reject_button.setObjectName("personalRecommendationReject")
+        self.reject_button.setToolTip("記錄你對此已保存推薦的個人拒絕決定；不會改寫推薦結果。")
+        self.reject_button.clicked.connect(lambda: self.choiceRequested.emit("reject"))
+        actions.addWidget(self.reject_button)
+
+        self.override_button = QPushButton("推翻並記原因")
+        self.override_button.setObjectName("personalRecommendationOverride")
+        self.override_button.setToolTip("以結構化原因記錄與推薦不同的個人決定；不會送出委託。")
+        self.override_button.clicked.connect(lambda: self.choiceRequested.emit("override"))
+        actions.addWidget(self.override_button)
+
+        self.retry_button = QPushButton("重試讀回")
+        self.retry_button.setObjectName("personalRecommendationChoiceRetry")
+        self.retry_button.clicked.connect(self.retryRequested.emit)
+        self.retry_button.setVisible(False)
+        actions.addWidget(self.retry_button)
+        layout.addLayout(actions)
+        root.addWidget(group)
+
+    def set_context_available(self, available: bool, message: str) -> None:
+        self.status_label.setText(message)
+        self.adopt_button.setEnabled(available)
+        self.reject_button.setEnabled(available)
+        self.override_button.setEnabled(available)
+
+    def show_retry(self, message: str) -> None:
+        self.set_context_available(False, message)
+        self.retry_button.setVisible(True)
+        self.retry_button.setEnabled(True)
+
+    def clear_retry(self) -> None:
+        self.retry_button.setVisible(False)
+        self.retry_button.setEnabled(False)
+
+
+__all__.append("PersonalRecommendationChoiceControlsWidget")

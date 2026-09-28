@@ -465,6 +465,12 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         "getText",
         staticmethod(lambda *_args, **_kwargs: ("UI saved R3", True)),
     )
+    override_reason = "研究後發現原判斷條件已改變。"
+    monkeypatch.setattr(
+        QInputDialog,
+        "getMultiLineText",
+        staticmethod(lambda *_args, **_kwargs: (override_reason, True)),
+    )
     monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *_args, **_kwargs: None))
     warning_messages: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -573,8 +579,16 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             max_stocks=2,
             top_n=1,
         )
-        execution = execution_request.execute(recommendation_service)
+        invocation_policy = recommendation_view._personal_policy_for_invocation()
+        invocation_service = recommendation_service.with_personal_use_policy(
+            invocation_policy
+        )
+        execution = execution_request.execute(invocation_service)
         assert execution.status is ExecutionStatus.COMPLETED
+        assert any(
+            event.event_type == "personal_use_policy_snapshot"
+            for event in execution.events
+        )
         assert len(execution.items) == 1
         assert execution.items[0].stock_code == "2330"
         assert execution.result_id.startswith("rec_")
@@ -639,6 +653,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert saved_id, critical_messages[-1] if critical_messages else recommendation_view.result_status_label.text()
         assert recommendation_view._verified_saved_result_id() == saved_id
         assert recommendation_view.add_to_watchlist_btn.isEnabled()
+        assert "尚未執行評估" in recommendation_view.personal_model_assessment_status_label.text()
         saved_queries = build_recommendation_execution_queries(config)
         saved_read_model = saved_queries.get(saved_id)
         assert saved_read_model is not None
@@ -701,6 +716,50 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert [
             item.decision_identity.to_dict() for item in unchanged_watchlist.items
         ].count(saved_watchlist_identity.to_dict()) == 1
+
+        # 沿用 RecommendationView 唯一的 typed choice／Journal writer；三種
+        # 決定都綁在這一筆已保存 result 與 exact candidate identity 上。
+        choice_controls = recommendation_view.personal_choice_controls
+        assert choice_controls.adopt_button.isEnabled(), choice_controls.status_label.text()
+        choice_controls.adopt_button.click()
+        choice_controls.reject_button.click()
+        choice_controls.override_button.click()
+        choice_report = recommendation_view._personalization_read_service().read_personal_recommendation_choices(
+            saved_id,
+            "2330",
+        )
+        assert choice_report.source_completeness_status == "verified"
+        assert [entry.choice.choice for entry in choice_report.choices] == [
+            "adopt",
+            "reject",
+            "override",
+        ]
+        assert all(
+            entry.choice.result_id == saved_id
+            and entry.choice.stock_code == "2330"
+            and entry.choice.decision_date == DECISION_DATE
+            and entry.choice.source_snapshot_id == canonical_snapshot_id
+            and entry.choice.source_snapshot_hash == canonical_snapshot_hash
+            for entry in choice_report.choices
+        )
+        assert choice_report.choices[-1].choice.override_reason is not None
+        assert choice_report.choices[-1].choice.override_reason.detail == override_reason
+
+        # The saved result's research evidence is the same exact identity
+        # carried through Watchlist, Portfolio and the read-only Journey.
+        _seed_evidence(
+            config,
+            saved_id,
+            source_snapshot_id=canonical_snapshot_id,
+            source_snapshot_hash=canonical_snapshot_hash,
+        )
+        next_review = _seed_continuity(
+            config,
+            saved_id,
+            snapshot_id=canonical_snapshot_id,
+            snapshot_hash=canonical_snapshot_hash,
+        )
+
         watchlist_view = window.watchlist_view
         window.left_navigation.button_for_key("watchlist").click()
         _wait_for(lambda: watchlist_view.stocks_model is not None)
@@ -733,6 +792,47 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         window.stock_research_workspace.report_view.return_button.click()
         _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
         assert watchlist_view.stocks_table.currentIndex().row() == r2_row
+
+        assert watchlist_view.select_stock("2330", saved_id) is True
+        saved_watchlist_row = watchlist_view.stocks_table.currentIndex().row()
+        journey_watchlist_identity = watchlist_view._row_decision_identity(
+            watch_rows.iloc[saved_watchlist_row],
+            "2330",
+        )
+        assert journey_watchlist_identity.result_id == saved_id
+        assert journey_watchlist_identity.source_snapshot_id == canonical_snapshot_id
+        assert journey_watchlist_identity.source_snapshot_hash == canonical_snapshot_hash
+        watchlist_view.stock_research_btn.click()
+        _wait_report_ready(window)
+        saved_watch_context = _context(window)
+        assert saved_watch_context.result_id == saved_id
+        assert saved_watch_context.stock_code == "2330"
+        assert saved_watch_context.source_snapshot_id == canonical_snapshot_id
+        assert saved_watch_context.source_snapshot_hash == canonical_snapshot_hash
+        assert saved_watch_context.source_workspace == "watchlist"
+        saved_watch_dialog = window.stock_research_workspace
+        assert saved_watch_dialog is not None and saved_watch_dialog.journey_view is not None
+        _wait_for(lambda: saved_watch_dialog.journey_view.journey is not None)
+        saved_watch_journey = saved_watch_dialog.journey_view
+        saved_watch_choice_model = saved_watch_journey.personal_choice_table.model()
+        assert saved_watch_choice_model.rowCount() == 3
+        saved_watch_choice_rows = tuple(
+            tuple(
+                str(saved_watch_choice_model.index(row, column).data())
+                for column in range(saved_watch_choice_model.columnCount())
+            )
+            for row in range(saved_watch_choice_model.rowCount())
+        )
+        assert {row[0] for row in saved_watch_choice_rows} == {f"{saved_id}:2330"}
+        assert {row[1] for row in saved_watch_choice_rows} == {
+            "個人採用",
+            "個人拒絕",
+            "推翻原建議",
+        }
+        assert "尚待結果成熟" in saved_watch_journey.status_label.text()
+        window.stock_research_workspace.report_view.return_button.click()
+        _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
+        assert watchlist_view.stocks_table.currentIndex().row() == saved_watchlist_row
 
         # 經真實 RecommendationView 導入流程與 canonical source adapter
         # 建立一筆隔離持倉，驗證摘要 checksum 與內層 universe snapshot 的分工。
@@ -855,18 +955,6 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
 
         # After the result has been saved, append its Evidence and initial
         # continuity head, then refresh the actual Workbench through its button.
-        _seed_evidence(
-            config,
-            saved_id,
-            source_snapshot_id=canonical_snapshot_id,
-            source_snapshot_hash=canonical_snapshot_hash,
-        )
-        next_review = _seed_continuity(
-            config,
-            saved_id,
-            snapshot_id=canonical_snapshot_id,
-            snapshot_hash=canonical_snapshot_hash,
-        )
         read_only_paths = _saved_file_paths(
             config,
             saved_id,
@@ -918,6 +1006,24 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert controls.identity.candidate_key == (saved_id, "2330")
         assert controls.state is not None
         assert controls.state.next_review_at == next_review
+        personal_choice_model = dialog.journey_view.personal_choice_table.model()
+        assert personal_choice_model.rowCount() == 3
+        personal_choice_rows = tuple(
+            tuple(
+                str(personal_choice_model.index(row, column).data())
+                for column in range(personal_choice_model.columnCount())
+            )
+            for row in range(personal_choice_model.rowCount())
+        )
+        assert {row[0] for row in personal_choice_rows} == {f"{saved_id}:2330"}
+        assert {row[1] for row in personal_choice_rows} == {
+            "個人採用",
+            "個人拒絕",
+            "推翻原建議",
+        }
+        override_row = next(row for row in personal_choice_rows if row[1] == "推翻原建議")
+        assert override_row[2] == override_reason
+        assert {row[4] for row in personal_choice_rows} == {"已連結"}
 
         # Report/Journey/Workbench/Portfolio reads must not mutate the saved
         # result, watchlist, or portfolio fixture.
@@ -1096,9 +1202,51 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             "candidate_key": [saved_id, "2330"],
             "identity_status": "linked",
             "next_review_at": second_review.isoformat(),
-            "status_text": f"研究狀態：已納入研究｜筆記：0 筆｜下次檢視：{second_review.isoformat()}｜歷史：3 筆",
+            "status_text": f"研究狀態：已納入研究｜Journal 紀錄：3 筆｜下次檢視：{second_review.isoformat()}｜歷史：6 筆",
             "accept_enabled": True,
         }
+
+        # 關閉原 MainWindow 後重新建立一個全新 MainWindow，從既有 Journal
+        # 只讀讀回三種決定與覆寫理由；後續 outcome 仍按真實資料標示待成熟。
+        cold_context = window._coerce_stock_research_context(
+            {
+                "stock_code": "2330",
+                "stock_name": "台積電",
+                "result_id": saved_id,
+                "source_id": saved_id,
+                "decision_date": DECISION_DATE,
+                "data_date": DATA_DATE,
+                "identity_status": "linked",
+                "source_snapshot_id": canonical_snapshot_id,
+                "source_snapshot_hash": canonical_snapshot_hash,
+                "source_workspace": "recommendation",
+            }
+        )
+        window._select_main_workspace("workbench")
+        _wait_for(lambda: _qt_widget_not_visible(window.stock_research_workspace))
+        window.close()
+        _wait_for(lambda: _qt_widget_not_visible(window))
+        _drain_qt_deferred_deletes(app, (window,))
+
+        cold_window = MainWindow()
+        cold_window.show()
+        cold_window._open_stock_research_context(cold_context)
+        _wait_report_ready(cold_window)
+        cold_dialog = cold_window.stock_research_workspace
+        assert cold_dialog is not None and cold_dialog.journey_view is not None
+        _wait_for(lambda: cold_dialog.journey_view.journey is not None)
+        cold_journey_view = cold_dialog.journey_view
+        cold_choice_model = cold_journey_view.personal_choice_table.model()
+        assert cold_choice_model.rowCount() == 3
+        cold_choice_rows = tuple(
+            tuple(
+                str(cold_choice_model.index(row, column).data())
+                for column in range(cold_choice_model.columnCount())
+            )
+            for row in range(cold_choice_model.rowCount())
+        )
+        assert cold_choice_rows == personal_choice_rows
+        assert "尚待結果成熟" in cold_journey_view.status_label.text()
 
         manifest_path = tmp_path / "cross_page_decision_journey_manifest.json"
         manifest_path.write_text(
@@ -1135,6 +1283,8 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
                     ],
                     "read_only_hashes_before_review": before_read_only,
                     "readback": readback_payload,
+                    "personal_choice_rows": [list(row) for row in personal_choice_rows],
+                    "cold_mainwindow_choice_rows": [list(row) for row in cold_choice_rows],
                     "readback_process": {
                         "return_code": readback.returncode,
                         "stdout_path": str(readback_stdout_path),
@@ -1148,6 +1298,24 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         )
         assert manifest_path.is_file()
     finally:
+        cold_window = locals().get("cold_window")
+        if cold_window is not None:
+            dialog = cold_window.stock_research_workspace
+            if dialog is not None:
+                try:
+                    cold_window._select_main_workspace("workbench")
+                except RuntimeError:
+                    dialog = None
+                if dialog is not None:
+                    _wait_for(lambda: _qt_widget_not_visible(dialog), timeout_ms=12_000)
+            try:
+                cold_window_visible = cold_window.isVisible()
+            except RuntimeError:
+                cold_window_visible = False
+            if cold_window_visible:
+                cold_window.close()
+                _wait_for(lambda: _qt_widget_not_visible(cold_window), timeout_ms=12_000)
+            _drain_qt_deferred_deletes(app, (cold_window,))
         dialog = window.stock_research_workspace
         if dialog is not None:
             try:

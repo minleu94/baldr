@@ -917,190 +917,126 @@ class DataLoader:
                 self.logger.info("已恢復備份文件")
             return None
 
-    def update_industry_index(self, date: str, skip_backup: bool = False) -> bool:
-        """更新產業指數資料
-        
-        Args:
-            date: 日期字串，格式為 YYYY-MM-DD
-            skip_backup: 是否跳過備份（批量更新時設為 True）
-        Returns:
-            bool: 更新是否成功
-        """
+    def update_industry_index(
+        self,
+        date: str,
+        skip_backup: bool = False,
+        *,
+        capture_manifests: Optional[List[Path]] = None,
+    ) -> bool:
+        """Capture and atomically project one TWSE industry-index response."""
+        from .twse_industry_index_capture import (
+            TwseIndustryIndexCaptureError,
+            assess_industry_name_completeness,
+            atomic_write_csv_projection,
+            parse_twse_industry_rows,
+            persist_twse_industry_capture,
+        )
+
         try:
-            self.logger.info(f"正在更新 {date} 的產業指數資料")
-            
-            # 轉換日期格式
-            date_obj = datetime.strptime(date, '%Y-%m-%d')
-            formatted_date = date_obj.strftime('%Y%m%d')
-            
-            # 從證交所API獲取數據
+            self.logger.info("正在更新 %s 的 TWSE 產業指數資料", date)
+            requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+            normalized_date = requested_date.isoformat()
+            formatted_date = requested_date.strftime("%Y%m%d")
             url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
-            params = {
-                "date": formatted_date,
-                "type": "IND",
-                "response": "json"
-            }
-            
+            params = {"date": formatted_date, "type": "IND", "response": "json"}
             response = self._make_request(url, params)
             if response is None:
-                self.logger.error(f"無法獲取 {date} 的產業指數數據")
+                self.logger.error("無法取得 %s 的 TWSE 產業指數 response", normalized_date)
                 return False
-                
-            # 解析JSON響應
+
+            # Accessing .content completes the body read before this local UTC clock is captured.
+            raw_response = response.content
+            captured_at = datetime.now(timezone.utc)
+            if not isinstance(raw_response, bytes) or not raw_response:
+                self.logger.error("TWSE response body 為空或不是 bytes：%s", normalized_date)
+                return False
+
+            status_code = int(getattr(response, "status_code", 200))
+            rows: list[dict[str, str | None]] = []
+            parse_status = "accepted"
+            parse_reason: str | None = None
+            response_date_status = "verified"
+            completeness_status = "degraded"
+            completeness_reason: str | None = "parse_not_completed"
+            selected_titles: list[str] = []
             try:
-                data = response.json()
-            except Exception as e:
-                self.logger.error(f"解析JSON響應時發生錯誤: {str(e)}")
-                return False
-                
-            # 檢查響應狀態
-            if data.get("stat") != "OK" or "tables" not in data or not data["tables"]:
-                self.logger.warning(f"API返回無效數據: {data.get('stat', '未知狀態')}")
-                return False
-                
-            # 處理數據
-            try:
-                index_data = []
-                
-                # 尋找包含產業類指數的表格（參考 fix_industry_index.py 的邏輯）
-                for table in data["tables"]:
-                    table_title = table.get('title', '')
-                    # 使用 rows 而不是 data（參考 fix_industry_index.py）
-                    rows = table.get('rows', table.get('data', []))
-                    
-                    if '價格指數' in table_title or '報酬指數' in table_title or '類股指數' in table_title:
-                        for row in rows:
-                            if len(row) < 5:  # 確保至少有5個欄位
-                                continue
-                                
-                            try:
-                                # 處理指數名稱
-                                name = str(row[0]).strip()
-                                # 只處理包含「類」的指數
-                                if '類' not in name:
-                                    continue
-                                
-                                # 處理數值（參考 fix_industry_index.py 的邏輯）
-                                try:
-                                    close_price = float(str(row[1]).replace(',', '')) if row[1] != '--' else None
-                                except:
-                                    close_price = None
-                                
-                                # 處理漲跌符號（可能包含 HTML）
-                                change = str(row[2]) if len(row) > 2 else '+'
-                                change = change.replace('<p style =\'color:red\'>+</p>', '+')
-                                change = change.replace('<p style =\'color:green\'>-</p>', '-')
-                                change = change.replace('+', '+').replace('-', '-')
-                                # 提取符號
-                                if '+' in change or (isinstance(change, str) and change.strip() == '+'):
-                                    change_direction = '+'
-                                elif '-' in change or (isinstance(change, str) and change.strip() == '-'):
-                                    change_direction = '-'
-                                else:
-                                    change_direction = '+'  # 預設
-                                
-                                # 處理漲跌點數
-                                try:
-                                    change_price = float(str(row[3]).replace(',', '')) if len(row) > 3 and row[3] != '--' else 0.0
-                                except:
-                                    change_price = 0.0
-                                
-                                # 處理漲跌百分比
-                                try:
-                                    change_percent = float(str(row[4]).replace(',', '')) if len(row) > 4 and row[4] != '--' else None
-                                except:
-                                    change_percent = None
-                                
-                                # 創建字典（匹配現有文件格式）
-                                # 現有文件欄位：['指數名稱', '收盤指數', '漲跌', '漲跌點數', '漲跌百分比', '日期']
-                                data_dict = {
-                                    '指數名稱': name,
-                                    '收盤指數': close_price,
-                                    '漲跌': change_direction,
-                                    '漲跌點數': abs(change_price) if change_price else 0.0,
-                                    '漲跌百分比': change_percent,
-                                    '日期': date
-                                }
-                                
-                                index_data.append(data_dict)
-                            except Exception as e:
-                                self.logger.warning(f"處理產業指數行時發生錯誤: {str(e)}, Row: {row}")
-                                continue
-                
-                if not index_data:
-                    self.logger.warning(f"未找到 {date} 的有效產業指數數據")
-                    return False
-                
-                # 創建DataFrame
-                result_df = pd.DataFrame(index_data)
-                
-                # 檢查現有數據
-                if self.config.industry_index_file.exists():
-                    existing_df = pd.read_csv(self.config.industry_index_file, encoding='utf-8-sig')
-                    
-                    # 只用請求日前最近一個有效交易日的指數集合比對。
-                    # 全歷史集合會把已停用或改名的舊指數誤判成今日缺漏，
-                    # 造成每日固定的 false-positive warning。
-                    new_indices = {
-                        str(value).strip()
-                        for value in result_df['指數名稱'].dropna().unique()
-                        if str(value).strip()
-                    }
-                    existing_dates = pd.to_datetime(existing_df['日期'], errors='coerce')
-                    requested_date = pd.to_datetime(date, errors='coerce')
-                    reference_dates = existing_dates[existing_dates <= requested_date]
-                    reference_date = reference_dates.max() if not reference_dates.empty else existing_dates.max()
-                    existing_indices = {
-                        str(value).strip()
-                        for value in existing_df.loc[
-                            existing_dates == reference_date,
-                            '指數名稱',
-                        ].dropna().unique()
-                        if str(value).strip()
-                    }
-                    
-                    # 如果新數據缺少某些指數，記錄警告但不刪除（保留舊數據）
-                    missing_indices = existing_indices - new_indices
-                    if missing_indices:
-                        self.logger.warning(f"新數據缺少 {len(missing_indices)} 個指數的數據，將保留這些指數的舊數據")
-                        # 保留缺失指數的當天數據
-                        existing_date_keys = existing_dates.dt.strftime('%Y-%m-%d')
-                        missing_data = existing_df[
-                            (existing_date_keys == date)
-                            & (existing_df['指數名稱'].isin(missing_indices))
-                        ]
-                        if len(missing_data) > 0:
-                            result_df = pd.concat([result_df, missing_data], ignore_index=True)
-                    
-                    # 創建備份
-                    if not skip_backup:
-                        self.config.create_backup(self.config.industry_index_file)
-                    
-                    # 從現有數據中刪除當天的數據（只刪除新數據中存在的指數）
-                    indices_to_update = set(result_df['指數名稱'].unique())
-                    existing_df = existing_df[
-                        ~((existing_df['日期'] == date) & (existing_df['指數名稱'].isin(indices_to_update)))
-                    ]
-                    
-                    # 合併數據
-                    result_df = pd.concat([existing_df, result_df], ignore_index=True)
+                payload = json.loads(raw_response.decode("utf-8-sig"))
+                if status_code != 200:
+                    raise TwseIndustryIndexCaptureError(f"HTTP status {status_code}")
+                rows = parse_twse_industry_rows(payload, normalized_date)
+                if isinstance(payload, dict) and isinstance(payload.get("tables"), list):
+                    selected_titles = sorted({
+                        str(table.get("title", ""))
+                        for table in payload["tables"]
+                        if isinstance(table, dict)
+                        and any(
+                            token in str(table.get("title", ""))
+                            for token in ("價格指數", "報酬指數", "類股指數")
+                        )
+                    })
+                completeness_status, completeness_reason = assess_industry_name_completeness(
+                    self.config.industry_index_file,
+                    normalized_date,
+                    rows,
+                )
+            except (UnicodeError, json.JSONDecodeError, TwseIndustryIndexCaptureError) as exc:
+                parse_status = "rejected"
+                parse_reason = str(exc)
+                if "日期證據" in parse_reason:
+                    response_date_status = "date_unverified"
+                elif "日期與請求日期不一致" in parse_reason:
+                    response_date_status = "mismatch"
                 else:
-                    # 如果文件不存在，直接保存新數據
-                    result_df.to_csv(self.config.industry_index_file, index=False, encoding='utf-8-sig')
-                    self.logger.info(f"成功創建產業指數數據文件，日期: {date}，共 {len(result_df)} 筆記錄")
-                    return True
-                
-                # 保存數據
-                result_df.to_csv(self.config.industry_index_file, index=False, encoding='utf-8-sig')
-                self.logger.info(f"成功更新產業指數數據，日期: {date}，共 {len(result_df)} 筆記錄")
-                return True
-                
-            except Exception as e:
-                self.logger.error(f"處理產業指數數據時發生錯誤: {str(e)}")
+                    response_date_status = "not_checked"
+
+            capture = persist_twse_industry_capture(
+                output_root=self.config.output_root,
+                source_date=normalized_date,
+                requested_url=url,
+                final_url=getattr(response, "url", None),
+                request_parameters=params,
+                http_status=status_code,
+                response_headers=getattr(response, "headers", None),
+                raw_response=raw_response,
+                captured_at=captured_at,
+                parse_status=parse_status,
+                parse_reason=parse_reason,
+                response_date_status=response_date_status,
+                completeness_status=completeness_status,
+                completeness_reason=completeness_reason,
+                selected_table_titles=selected_titles,
+                rows=rows,
+            )
+            if parse_status != "accepted":
+                self.logger.error("TWSE 產業 response 已留存，但解析失敗：%s", parse_reason)
                 return False
-                
-        except Exception as e:
-            self.logger.error(f"更新產業指數數據時發生未處理的錯誤: {str(e)}")
+            if completeness_status != "accepted":
+                self.logger.warning(
+                    "TWSE 產業 response 已留存為 degraded，等待人工確認：%s (%s)",
+                    normalized_date,
+                    completeness_reason,
+                )
+                return False
+
+            _, csv_digest = atomic_write_csv_projection(
+                self.config.industry_index_file,
+                normalized_date,
+                rows,
+                skip_backup=skip_backup,
+                config=self.config,
+            )
+            if capture_manifests is not None:
+                capture_manifests.append(Path(str(capture["path"])))
+            self.logger.info(
+                "已原子更新 %s TWSE 產業六欄投影（rows=%s, csv_sha256=%s）",
+                normalized_date,
+                len(rows),
+                csv_digest,
+            )
+            return True
+        except Exception as exc:
+            self.logger.error("更新 TWSE 產業指數失敗並保留可還原狀態：%s", exc, exc_info=True)
             return False
 
     def update_market_index(

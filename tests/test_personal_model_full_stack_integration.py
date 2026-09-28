@@ -321,7 +321,9 @@ def _write_user_declared_replay_source(
                 日期 TEXT NOT NULL, 證券代號 TEXT NOT NULL,
                 RSI TEXT, MACD TEXT, ADX TEXT, available_at TEXT NOT NULL
             );
-            CREATE TABLE market_indices (日期 TEXT NOT NULL, 收盤指數 TEXT, 收盤價 TEXT);
+            CREATE TABLE market_indices (
+                日期 TEXT NOT NULL, 收盤指數 TEXT, 收盤價 TEXT, 指數名稱 TEXT
+            );
             CREATE TABLE industry_indices (日期 TEXT NOT NULL, 指數名稱 TEXT, 收盤指數 TEXT);
             CREATE TABLE corporate_action_adjustments (
                 symbol TEXT NOT NULL, event_date TEXT NOT NULL, available_at TEXT NOT NULL,
@@ -343,9 +345,14 @@ def _write_user_declared_replay_source(
             # 固定三日合成週期使 purged OOF 視窗同時包含兩類；
             # 此資料只驗工程路徑，不代表任何市場效果。
             base_close = (100, 102, 101)[offset % 3]
+            index_name = (
+                "TAIEX"
+                if current.weekday() < 5 and (current.month, current.day) != (1, 1)
+                else "TRAINING_CONTEXT"
+            )
             connection.execute(
-                "INSERT INTO market_indices VALUES (?, ?, ?)",
-                (compact_day, str(10_000 + offset), str(10_000 + offset)),
+                "INSERT INTO market_indices VALUES (?, ?, ?, ?)",
+                (compact_day, str(10_000 + offset), str(10_000 + offset), index_name),
             )
             for symbol_index, symbol in enumerate(symbols):
                 close = Decimal(base_close + symbol_index * 25)
@@ -447,6 +454,121 @@ def _write_user_declared_replay_source(
         connection.commit()
     finally:
         connection.close()
+
+
+def _prepare_mature_outcome_source_rows(
+    database_path: Path, *, decision_day: date, endpoint_day: date, symbol: str
+) -> None:
+    """在隔離來源加入已到期的測試行情列，不代表官方市場表現。"""
+
+    sessions: list[date] = []
+    current = decision_day + timedelta(days=1)
+    while len(sessions) < 20:
+        if current.weekday() < 5 and (current.month, current.day) != (1, 1):
+            sessions.append(current)
+        current += timedelta(days=1)
+    if sessions[-1] != endpoint_day:
+        raise AssertionError("合成成熟測試的 endpoint 必須是第 20 個 weekday session")
+
+    with sqlite3.connect(database_path) as connection:
+        columns = {
+            str(row[1]) for row in connection.execute('PRAGMA table_info("daily_prices")')
+        }
+        if not {"日期", "證券代號", "成交股數", "成交金額", "開盤價", "最高價", "最低價", "收盤價"}.issubset(columns):
+            raise AssertionError("測試來源 daily_prices schema 不符合固定 fixture")
+        market_columns = {
+            str(row[1])
+            for row in connection.execute('PRAGMA table_info("market_indices")')
+        }
+        if "指數名稱" not in market_columns:
+            raise AssertionError("測試來源缺少 TAIEX index identity 欄")
+
+        # 測試用的歷史特徵 market rows 仍保留；只有 resolver 可辨識的 TAIEX
+        # 子集使用工作日名稱，避免把週末的訓練背景列誤當官方 session。
+        for raw_day, in connection.execute('SELECT "日期" FROM market_indices').fetchall():
+            raw_text = str(raw_day)
+            parsed_day = (
+                date(int(raw_text[:4]), int(raw_text[4:6]), int(raw_text[6:8]))
+                if len(raw_text) == 8
+                else date.fromisoformat(raw_text[:10])
+            )
+            index_name = (
+                "TAIEX"
+                if parsed_day.weekday() < 5
+                and (parsed_day.month, parsed_day.day) != (1, 1)
+                else "TRAINING_CONTEXT"
+            )
+            connection.execute(
+                'UPDATE market_indices SET "指數名稱"=? WHERE "日期"=?',
+                (index_name, raw_day),
+            )
+
+        connection.execute(
+            'CREATE INDEX IF NOT EXISTS ix_test_daily_prices_symbol_date '
+            'ON daily_prices ("證券代號", "日期")'
+        )
+        start_text = decision_day.strftime("%Y%m%d")
+        endpoint_text = endpoint_day.strftime("%Y%m%d")
+        for endpoint_text_value, close in ((start_text, "100"), (endpoint_text, "120")):
+            existing = connection.execute(
+                'SELECT COUNT(*) FROM daily_prices WHERE "證券代號"=? AND "日期"=?',
+                (symbol, endpoint_text_value),
+            ).fetchone()
+            if existing != (0,):
+                raise AssertionError("成熟測試 endpoint 不可覆蓋既有來源列")
+            connection.execute(
+                "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    endpoint_text_value,
+                    symbol,
+                    100_000,
+                    10_000_000,
+                    close,
+                    close,
+                    close,
+                    close,
+                ),
+            )
+
+        existing_index_dates = {
+            str(row[0])
+            for row in connection.execute('SELECT "日期" FROM market_indices')
+        }
+        for index, session in enumerate(sessions, start=1):
+            session_text = session.strftime("%Y%m%d")
+            if session_text in existing_index_dates:
+                raise AssertionError("測試市場來源已含未來 session 列")
+            close = str(20_000 + index)
+            connection.execute(
+                "INSERT INTO market_indices VALUES (?, ?, ?, ?)",
+                (session_text, close, close, "TAIEX"),
+            )
+
+
+def _sqlite_source_storage_state(database_path: Path) -> dict[str, Any]:
+    """固定測試 DB 與 WAL/SHM 的讀前後 bytes/stat。"""
+
+    metadata = database_path.stat()
+    state: dict[str, Any] = {
+        "database_sha256": _sha256(database_path.read_bytes()),
+        "database_size_bytes": metadata.st_size,
+        "database_mtime_ns": metadata.st_mtime_ns,
+        "database_device": metadata.st_dev,
+        "database_inode": metadata.st_ino,
+    }
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(database_path) + suffix)
+        if sidecar.exists():
+            sidecar_bytes = sidecar.read_bytes()
+            sidecar_metadata = sidecar.stat()
+            state[suffix] = {
+                "sha256": _sha256(sidecar_bytes),
+                "size_bytes": sidecar_metadata.st_size,
+                "mtime_ns": sidecar_metadata.st_mtime_ns,
+            }
+        else:
+            state[suffix] = None
+    return state
 
 
 def test_personal_full_stack(
@@ -798,7 +920,10 @@ def test_personal_daily_public_path_keeps_canonical_capture_pending_without_forw
     from app_module.recommendation.personal_natural_outcome_daily import (
         run_personal_natural_outcome_daily,
     )
-    from tests.test_recommendation_personal_natural_outcomes import _write_natural_source
+    from tests.test_recommendation_personal_natural_outcomes import (
+        _next_twenty_weekdays,
+        _write_natural_source,
+    )
     from tests.test_recommendation_personal_prediction_capture import _build_case
 
     root = tmp_path / "pending-daily-case"
@@ -996,7 +1121,7 @@ def test_user_declared_v2_candidate_reaches_personal_service_and_capture(
         default_start_date=source_start.isoformat(),
         output_root=recommendation_output_root,
         data_root=data_root,
-        use_sqlite=False,
+        use_sqlite=True,
         pit_market_scope="twse_listed",
     )
     global_pointer = tmp_path / "global-pointer-must-not-be-used.json"
@@ -1029,9 +1154,11 @@ def test_user_declared_v2_candidate_reaches_personal_service_and_capture(
         },
         max_stocks=1,
         top_n=1,
+        as_of_date=decision_day,
+        universe=[_SYMBOL],
         result_id=result_id,
     )
-    assert execution.status.value == "completed"
+    assert execution.status.value == "completed", execution.failure_reason
     assert execution.decision is not None
     assert tuple(item.stock_code for item in execution.decision.items) == (_SYMBOL,)
     assert execution.context.decision_at is not None
@@ -1105,6 +1232,89 @@ def test_user_declared_v2_candidate_reaches_personal_service_and_capture(
         execution.ml_projection_refs[0].reference_id
     )
     assert not global_pointer.exists()
+
+    # Stage C remains the existing writer/schema.  The app read service derives
+    # an exact, read-only assessment projection from its explicit summary path.
+    from app_module.personalization_read_service import (
+        PersonalizationReadService,
+        _stage_c_payload_hash,
+    )
+    from app_module.recommendation.personal_natural_outcome_daily import (
+        run_personal_natural_outcome_daily,
+    )
+    from tests.test_recommendation_personal_natural_outcomes import _write_natural_source
+
+    _outcome_provider, outcome_resolver, _outcome_sessions = _write_natural_source(
+        tmp_path / "assessment-calendar-fixture",
+        capture_day=decision_day,
+        include_stock_endpoints=False,
+    )
+    assessment_daily = run_personal_natural_outcome_daily(
+        canonical_recommendation_output_root=recommendation_output_root,
+        capture_paths=(capture.path,),
+        personal_capture_root=capture_root,
+        market_source_db=source_database,
+        calendar_cache_path=outcome_resolver.calendar_cache_path,
+        evaluation_at=datetime.now(timezone.utc),
+        isolated_output_root=tmp_path / "assessment-daily-output",
+    )
+    assert assessment_daily.capture_statuses == ("pending",)
+    assessment = PersonalizationReadService.from_paths(
+        output_root=recommendation_output_root
+    ).read_personal_model_assessment(
+        result_id,
+        capture.path,
+        capture_root,
+        assessment_daily.summary_path,
+    )
+    assert assessment.assessment_status == "insufficient_data"
+    assert assessment.recommendation == "insufficient_data"
+    assert assessment.evidence_status == "pending"
+    assert assessment.matured_sample_count == 0
+    assert assessment.pending_sample_count == 1
+    assert assessment.metrics["model_brier_bp"] is None
+    assert assessment.metrics["fixed_null_benchmark_brier_bp"] is None
+    assert assessment.after_cost["status"] == "unavailable"
+    assert assessment.after_cost["model_brier_bp"] is None
+    assert assessment.scope["upside_baseline"] == {
+        "kind": "fixed_null_benchmark_50pct",
+        "id": "null_benchmark_50pct_v1",
+        "probability_bp": 5_000,
+    }
+    assert assessment.scope["return_basis"] == "close_to_close_event_date"
+    assert assessment.scope["is_execution_pnl"] is False
+    assert assessment.auto_switch is False
+
+    # A recomputed outer self-hash cannot associate a summary with another
+    # capture.  Keep the original create-only summary intact.
+    summary_body = json.loads(assessment_daily.summary_path.read_text(encoding="utf-8"))
+    summary_body["captures"][0]["capture_id"] = "sha256:" + ("0" * 64)
+    summary_body.pop("payload_sha256")
+    summary_body["payload_sha256"] = _stage_c_payload_hash(summary_body)
+    forged_summary = (
+        assessment_daily.summary_path.parent
+        / f"{summary_body['payload_sha256'][7:]}.json"
+    )
+    forged_summary.write_text(
+        json.dumps(
+            summary_body,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="exactly one matching capture"):
+        PersonalizationReadService.from_paths(
+            output_root=recommendation_output_root
+        ).read_personal_model_assessment(
+            result_id,
+            capture.path,
+            capture_root,
+            forged_summary,
+        )
 
     def run_fallback_and_readback(
         suffix: str, *, expected_warning: str
@@ -1272,3 +1482,444 @@ def test_user_declared_v2_candidate_reaches_personal_service_and_capture(
         "artifact-hash-mismatch",
         expected_warning="artifact_hash_mismatch",
     )
+
+
+def test_matured_assessment_readback_rechecks_contract_rows_and_prices(
+    tmp_path: Path,
+) -> None:
+    """只驗 matured readback contract；不代表真實 V2 採用或自然成效。"""
+
+    from dataclasses import replace as dataclass_replace
+
+    from app_module.personalization_read_service import (
+        PersonalizationReadService,
+        _stage_c_payload_hash,
+    )
+    from app_module.recommendation.contracts import ExecutionEvent
+    from app_module.recommendation.personal_use_policy import (
+        PERSONAL_USE_POLICY_SCHEMA_V2,
+        PERSONAL_USE_POLICY_VERSION_V2,
+        PersonalSourceFileIdentityV1,
+        PersonalSourceReplayScopeV1,
+        PersonalSourceTimeTrustV1,
+        validate_personal_use_policy_snapshot,
+        _policy_hash,
+    )
+    from app_module.recommendation.personal_prediction_capture import (
+        PERSONAL_PROBABILITY_BASELINE_EVENT_SCHEMA_V2,
+        PERSONAL_PROBABILITY_BASELINE_SNAPSHOT_SCHEMA_V2,
+        _canonical_utc,
+        capture_personal_saved_result,
+        read_personal_prediction_capture,
+        _canonical_json_bytes,
+    )
+    from app_module.recommendation.personal_use_policy import PersonalCalibrationCandidateV1
+    from app_module.recommendation.personal_natural_outcome_daily import (
+        run_personal_natural_outcome_daily,
+    )
+    from ml_module.recommendation_cost_scenario import build_legacy_cost_scenario
+    from ml_module.recommendation_inference_provenance import (
+        build_inference_projection_receipt,
+        persist_inference_projection_receipt,
+        read_inference_projection_receipt,
+    )
+    from tests.test_c1_ml_abi_receipt_readiness import _query_stack
+    from tests.test_recommendation_personal_natural_outcomes import (
+        _complete_cost_personal_capture,
+        _write_natural_source,
+    )
+
+    seed_root = tmp_path / "seed-fixture"
+    capture_seed = _complete_cost_personal_capture(seed_root)
+    result_id = str(capture_seed["result_id"])
+    source_database_provider, session_resolver, _sessions = _write_natural_source(
+        tmp_path / "mature-market-source",
+        capture_day=date.fromisoformat(capture_seed["receipt_binding"]["decision_date"]),
+        include_liquidity_costs=True,
+    )
+    source_database = source_database_provider.database_path.resolve(strict=True)
+    with sqlite3.connect(source_database) as connection:
+        connection.execute(
+            'CREATE INDEX ix_assessment_symbol_date '
+            'ON daily_prices ("證券代號", "日期")'
+        )
+
+    seed_persistence, seed_queries = _query_stack(seed_root / "canonical")
+    del seed_persistence
+    seed_read_model = seed_queries.get(result_id)
+    assert seed_read_model is not None and seed_read_model.execution is not None
+    execution = seed_read_model.execution
+    assert seed_read_model.ml_read_status == "verified"
+
+    decision_at_event = next(
+        event
+        for event in execution.events
+        if event.event_type == "personal_use_policy_snapshot"
+    )
+    old_policy = dict(decision_at_event.details["policy_snapshot"])
+    candidate = PersonalCalibrationCandidateV1(**dict(old_policy["candidate"]))
+    source_metadata = source_database.stat()
+    source_trust = PersonalSourceTimeTrustV1(
+        source_database_path=str(source_database),
+        file_identity=PersonalSourceFileIdentityV1(
+            device=int(source_metadata.st_dev),
+            inode=int(source_metadata.st_ino),
+        ),
+        source_database_size_bytes=int(source_metadata.st_size),
+        source_slice_sha256=_sha256(source_database.read_bytes()),
+        candidate=candidate,
+        replay_scope=PersonalSourceReplayScopeV1(
+            dataset_ids=("synthetic-readback-source",),
+            decision_dates=("2025-04-29",),
+            symbols=("1101", "2330"),
+            sample_count=2,
+        ),
+        confirmed_at=str(old_policy["confirmed_at"]),
+    )
+    policy_body = {
+        key: value
+        for key, value in old_policy.items()
+        if key not in {"schema_version", "policy_version", "policy_sha256"}
+    }
+    policy_body.update(
+        {
+            "schema_version": PERSONAL_USE_POLICY_SCHEMA_V2,
+            "policy_version": PERSONAL_USE_POLICY_VERSION_V2,
+            "candidate": candidate.to_dict(),
+            "source_time_trust": source_trust.to_dict(),
+        }
+    )
+    policy_snapshot = validate_personal_use_policy_snapshot(
+        {**policy_body, "policy_sha256": _policy_hash(policy_body)}
+    )
+    updated_policy_details = {
+        **dict(decision_at_event.details),
+        "schema_version": "recommendation-personal-use-policy-snapshot.v2",
+        "policy_snapshot": policy_snapshot,
+        "source_time_basis": "user_declared_source_time",
+        "research_only": True,
+        "official_historical_pit_verified": False,
+    }
+    receipt_event = next(
+        event
+        for event in execution.events
+        if event.event_type == "ml_projection_receipt_capture"
+    )
+    receipt_details = dict(receipt_event.details)
+    scenario = build_legacy_cost_scenario(50)
+    assert receipt_details["cost_scenario_hash"] == scenario.scenario_hash
+    original_receipt = read_inference_projection_receipt(
+        receipt_details["path"],
+        expected_receipt_hash=str(receipt_details["receipt_hash"]),
+        expected_decision_date=str(receipt_details["decision_date"]),
+        expected_candidate_id=str(receipt_details["candidate_id"]),
+        expected_result_id=result_id,
+        expected_cost_scenario_hash=scenario.scenario_hash,
+    )
+    original_payload = dict(original_receipt.payload)
+    scenario_payload = scenario.to_dict(include_hash=True)
+    enriched_projections: list[dict[str, Any]] = []
+    for raw_projection in original_payload["projections"]:
+        projection = dict(raw_projection)
+        projection.update(
+            {
+                "cost_scenario_id": scenario.scenario_id,
+                "cost_scenario_version": scenario.scenario_version,
+                "cost_scenario_hash": scenario.scenario_hash,
+                "cost_basis": scenario.cost_basis,
+                "cost_basis_bp": scenario.fixed_round_trip_cost_bp,
+                "cost_policy_id": scenario.policy_id,
+                "cost_policy_version": scenario.policy_version,
+                "policy_estimate_date": scenario.policy_estimate_date,
+                "research_order_amount_twd": scenario_payload[
+                    "research_order_amount_twd"
+                ],
+                "research_order_quantity_shares": scenario.research_order_quantity_shares,
+                "lot_type": scenario.lot_type,
+                "instrument_type": scenario.instrument_type,
+                "cost_scenario": scenario_payload,
+            }
+        )
+        enriched_projections.append(projection)
+    enriched_receipt = build_inference_projection_receipt(
+        decision_date=str(original_payload["decision_date"]),
+        result_id=result_id,
+        candidate_identity=dict(original_payload["candidate_identity"]),
+        training_provenance=dict(original_payload["training_provenance"]),
+        inference_provenance=dict(original_payload["inference_provenance"]),
+        compatibility=dict(original_payload["provenance_compatibility"]),
+        projections=enriched_projections,
+        selection_contract=dict(original_payload["selection_contract"]),
+    )
+    learning_root = Path(str(capture_seed["receipt_binding"]["learning_root"]))
+    enriched_receipt_path = persist_inference_projection_receipt(
+        learning_root, enriched_receipt
+    ).resolve(strict=True)
+    enriched_receipt_payload = dict(enriched_receipt.payload)
+    projected_codes = [
+        str(row["stock_code"]) for row in enriched_receipt_payload["projections"]
+    ]
+    receipt_details.update(
+        {
+            "path": str(enriched_receipt_path),
+            "receipt_hash": enriched_receipt.receipt_hash,
+            "candidate_identity": dict(original_payload["candidate_identity"]),
+            "cost_scenario_hash": scenario.scenario_hash,
+            "projected_stock_codes": projected_codes,
+            "projection_rows_sha256": str(
+                enriched_receipt_payload["projection_rows_sha256"]
+            ),
+        }
+    )
+    updated_receipt_event = dataclass_replace(receipt_event, details=receipt_details)
+    old_binding = execution.ml_receipt_refs[0]
+    updated_binding = dataclass_replace(
+        old_binding,
+        receipt_ref=dataclass_replace(
+            old_binding.receipt_ref,
+            reference_id=str(enriched_receipt_path),
+        ),
+        receipt_hash=enriched_receipt.receipt_hash,
+        projected_stock_codes=tuple(projected_codes),
+        cost_scenario_hash=scenario.scenario_hash,
+    )
+    updated_projection_ref = dataclass_replace(
+        execution.ml_projection_refs[0],
+        reference_id=str(enriched_receipt_payload["projection_rows_sha256"]),
+    )
+    updated_events = [
+        dataclass_replace(event, details=updated_policy_details)
+        if event is decision_at_event
+        else updated_receipt_event
+        if event is receipt_event
+        else event
+        for event in execution.events
+    ]
+    delivered_codes = [str(item.stock_code) for item in execution.decision.items]
+    active_codes = projected_codes
+    assert set(delivered_codes) == set(active_codes)
+    canonical_decision_at = _canonical_utc(
+        decision_at_event.details["decision_at"], "decision_at"
+    )
+    baseline_decision_at = datetime.fromisoformat(
+        canonical_decision_at.replace("Z", "+00:00")
+    )
+    baseline_body: dict[str, Any] = {
+        "schema_version": PERSONAL_PROBABILITY_BASELINE_SNAPSHOT_SCHEMA_V2,
+        "result_id": result_id,
+        "decision_at": canonical_decision_at,
+        "decision_date": capture_seed["receipt_binding"]["decision_date"],
+        "receipt_hash": receipt_details["receipt_hash"],
+        "projection_rows_sha256": receipt_details["projection_rows_sha256"],
+        "cost_scenario_hash": receipt_details["cost_scenario_hash"],
+        "projected_stock_codes": active_codes,
+        "upside_baseline_kind": "fixed_null_benchmark_50pct",
+        "upside_baseline_id": "null_benchmark_50pct_v1",
+        "upside_probability_bp_by_symbol": {
+            code: 5_000 for code in active_codes
+        },
+        "after_cost_baseline_status": "unavailable",
+        "after_cost_baseline_id": None,
+        "after_cost_probability_bp_by_symbol": {
+            code: None for code in active_codes
+        },
+        "delivered_stock_codes": delivered_codes,
+        "model_active_stock_codes": active_codes,
+        "rule_only_fallback_stock_codes": [],
+        "delivered_count": len(delivered_codes),
+        "model_active_count": len(active_codes),
+        "fallback_count": 0,
+        "model_coverage_bp": 10_000,
+        "cost_scenario": scenario.to_dict(include_hash=True),
+    }
+    baseline_body["snapshot_sha256"] = _sha256(
+        _canonical_json_bytes(baseline_body)
+    )
+    updated_events.append(
+        ExecutionEvent(
+            event_type="personal_probability_baseline_snapshot",
+            message="隔離 matured readback 契約測試基準",
+            occurred_at=baseline_decision_at,
+            details={
+                "schema_version": PERSONAL_PROBABILITY_BASELINE_EVENT_SCHEMA_V2,
+                "result_id": result_id,
+                "decision_at": canonical_decision_at,
+                "snapshot": baseline_body,
+            },
+        )
+    )
+    v2_execution = dataclass_replace(
+        execution,
+        events=tuple(updated_events),
+        ml_receipt_refs=(updated_binding,),
+        ml_projection_refs=(updated_projection_ref,),
+    )
+
+    canonical_root = tmp_path / "mature-canonical"
+    persistence, queries = _query_stack(canonical_root)
+    assert queries.get(result_id) is None
+    persistence.save(v2_execution, now=lambda: datetime.now(timezone.utc))
+    persisted = queries.get(result_id)
+    assert persisted is not None and persisted.execution == v2_execution
+    assert persisted.integrity_basis == "canonical_payload_and_index_verified"
+    persisted_baseline = next(
+        event
+        for event in persisted.execution.events
+        if event.event_type == "personal_probability_baseline_snapshot"
+    )
+    assert persisted_baseline.details["schema_version"] == (
+        PERSONAL_PROBABILITY_BASELINE_EVENT_SCHEMA_V2
+    )
+    assert persisted_baseline.details["result_id"] == result_id
+    assert persisted_baseline.details["decision_at"] == canonical_decision_at
+    assert persisted_baseline.occurred_at == baseline_decision_at
+
+    capture_root = tmp_path / "mature-captures"
+    captured = capture_personal_saved_result(result_id, queries, capture_root)
+    capture = read_personal_prediction_capture(
+        captured.path,
+        queries,
+        capture_root,
+        expected_result_id=result_id,
+    )
+    assert capture["schema_version"] == "recommendation-personal-prediction-capture.v3"
+    assert capture["policy_event"]["research_only"] is True
+    assert capture["policy_event"]["official_historical_pit_verified"] is False
+
+    storage_before = _sqlite_source_storage_state(source_database)
+    daily = run_personal_natural_outcome_daily(
+        canonical_recommendation_output_root=canonical_root,
+        capture_paths=(captured.path,),
+        personal_capture_root=capture_root,
+        market_source_db=source_database,
+        calendar_cache_path=session_resolver.calendar_cache_path,
+        evaluation_at=datetime.now(timezone.utc),
+        isolated_output_root=tmp_path / "mature-assessment-output",
+    )
+    assert daily.capture_statuses == ("matured",)
+    assert _sqlite_source_storage_state(source_database) == storage_before
+
+    reader = PersonalizationReadService.from_paths(output_root=canonical_root)
+    assessment = reader.read_personal_model_assessment(
+        result_id,
+        captured.path,
+        capture_root,
+        daily.summary_path,
+    )
+    assert assessment.evidence_status == "matured"
+    assert assessment.matured_sample_count == len(active_codes)
+    assert assessment.pending_sample_count == 0
+    assert assessment.metrics["sample_count"] == len(active_codes)
+    assert assessment.metrics["model_brier_bp"] is not None
+    assert assessment.identity["verified_market_price_rows_sha256"].startswith(
+        "sha256:"
+    )
+    assert assessment.after_cost["status"] == "unassessed"
+    assert assessment.after_cost["model_brier_bp"] is None
+    assert assessment.after_cost["fixed_null_benchmark_brier_bp"] is None
+    assert _sqlite_source_storage_state(source_database) == storage_before
+
+    def publish_rehashed_outcome_and_summary(
+        outcome_body: dict[str, Any], *, tag: str
+    ) -> Path:
+        outcome_body.pop("payload_sha256", None)
+        outcome_digest = _stage_c_payload_hash(outcome_body)
+        outcome_body["payload_sha256"] = outcome_digest
+        tampered_root = tmp_path / f"tampered-{tag}" / "personal_natural_outcomes"
+        outcome_directory = tampered_root / "outcomes"
+        summary_directory = tampered_root / "runs"
+        outcome_directory.mkdir(parents=True)
+        summary_directory.mkdir(parents=True)
+        # Stage C names outcomes by capture/evaluation identity, not by payload hash.
+        outcome_path = outcome_directory / daily.outcome_paths[0].name
+        assert not outcome_path.exists()
+        outcome_path.write_text(
+            json.dumps(
+                outcome_body,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        summary_body = json.loads(daily.summary_path.read_text(encoding="utf-8"))
+        summary_body["captures"][0]["outcome_artifact"] = {
+            "path": str(outcome_path),
+            "payload_sha256": outcome_digest,
+        }
+        summary_body.pop("payload_sha256", None)
+        summary_digest = _stage_c_payload_hash(summary_body)
+        summary_body["payload_sha256"] = summary_digest
+        summary_path = summary_directory / f"{summary_digest[7:]}.json"
+        assert not summary_path.exists(), tag
+        summary_path.write_text(
+            json.dumps(
+                summary_body,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return summary_path
+
+    original_outcome = json.loads(daily.outcome_paths[0].read_text(encoding="utf-8"))
+    forged_return = json.loads(json.dumps(original_outcome))
+    forged_row = forged_return["projection"]["outcomes"][0]
+    code = str(forged_row["stock_code"])
+    # Coordinated、內部 label 相符但與 DB 價格相反的重算仍須被拒絕。
+    forged_row["stock_return_bp"] = -1_000 if code == "1101" else 1_000
+    forged_row["label"] = int(forged_row["stock_return_bp"] > 0)
+    forged_return_summary = publish_rehashed_outcome_and_summary(
+        forged_return, tag="coordinated-return-tamper"
+    )
+    with pytest.raises(ValueError, match="differs from exact read-only source prices"):
+        reader.read_personal_model_assessment(
+            result_id, captured.path, capture_root, forged_return_summary
+        )
+
+    forged_label_kind = json.loads(json.dumps(original_outcome))
+    forged_label_kind["projection"]["outcomes"][0]["label_kind"] = (
+        "stock_close_return_negative.v1"
+    )
+    forged_label_summary = publish_rehashed_outcome_and_summary(
+        forged_label_kind, tag="label-kind-tamper"
+    )
+    with pytest.raises(ValueError, match="outcome row does not match"):
+        reader.read_personal_model_assessment(
+            result_id, captured.path, capture_root, forged_label_summary
+        )
+
+    forged_label_relation = json.loads(json.dumps(original_outcome))
+    relation_row = forged_label_relation["projection"]["outcomes"][0]
+    relation_row["label"] = 1 - int(relation_row["label"])
+    forged_relation_summary = publish_rehashed_outcome_and_summary(
+        forged_label_relation, tag="label-return-relation-tamper"
+    )
+    with pytest.raises(ValueError, match="outcome row does not match"):
+        reader.read_personal_model_assessment(
+            result_id, captured.path, capture_root, forged_relation_summary
+        )
+
+    forged_after_cost = json.loads(json.dumps(original_outcome))
+    forged_after_cost["projection"]["after_cost_status"] = (
+        "matured_with_after_cost_probability"
+    )
+    forged_after_cost_summary = publish_rehashed_outcome_and_summary(
+        forged_after_cost, tag="after-cost-status-tamper"
+    )
+    after_cost_readback = reader.read_personal_model_assessment(
+        result_id, captured.path, capture_root, forged_after_cost_summary
+    )
+    assert after_cost_readback.after_cost["status"] == "unassessed"
+    assert (
+        after_cost_readback.after_cost["reported_projection_status"]
+        == "matured_with_after_cost_probability"
+    )
+    assert after_cost_readback.after_cost["model_brier_bp"] is None
+    assert after_cost_readback.after_cost["sample_count"] is None
+    assert _sqlite_source_storage_state(source_database) == storage_before

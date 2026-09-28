@@ -73,7 +73,7 @@ def test_controls_save_accept_review_note_and_reopen_exact_state(tmp_path: Path)
     assert "2026-09-20T10:30:00+08:00" in widget.status_label.text()
 
     widget._submit(ACTION_NOTE, note="確認營收與風險")
-    assert "筆記：1 筆" in widget.status_label.text()
+    assert "Journal 紀錄：1 筆" in widget.status_label.text()
     assert widget.history_list.count() == 3
     widget.close()
 

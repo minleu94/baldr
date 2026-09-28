@@ -6,8 +6,10 @@
 import subprocess
 import os
 import sys
+import sqlite3
+import hashlib
 from pathlib import Path
-from typing import Dict ,Any ,Optional ,List ,Callable
+from typing import Dict ,Any ,Optional ,List ,Callable, Sequence
 from datetime import date, datetime ,timedelta
 
 import app_module.update_data_normalization as update_data_normalization
@@ -465,6 +467,14 @@ class UpdateService :
         self .scripts_dir =self .project_root /'scripts'
         # 最近一次 daily_data 來源選擇的唯讀診斷；不把 mtime 當成 custody 證據。
         self._last_daily_source_selection: Dict[str, Any] = {}
+        self._pending_industry_capture_manifests: List[Path] = []
+        self._pending_industry_csv_before: Optional[bytes] = None
+        self._pending_industry_csv_after_sha256: Optional[str] = None
+        self._industry_update_block_legacy_sync = False
+        self._industry_update_succeeded_without_capture = False
+        self._pending_industry_batch_partial = False
+        self._pending_industry_failed_dates: List[str] = []
+        self._pending_industry_unknown_legacy_dates: List[str] = []
         self .status_manifest_file =self .config .meta_data_dir /'data_status_manifest.json'
         self .monthly_revenue_source_version ="mops-static-snapshot-monthly-revenue-2026-06-16"
         configured_snapshot_candidate = (
@@ -765,7 +775,43 @@ class UpdateService :
             'source':source ,
             'synced_records':0 ,
             }
+        if (
+            source in {'industry', 'industry_index'}
+            and self._industry_update_block_legacy_sync
+            and not self._pending_industry_capture_manifests
+        ):
+            return {
+                'success': self._industry_update_succeeded_without_capture,
+                'skipped': self._industry_update_succeeded_without_capture,
+                'message': (
+                    '產業更新沒有新 capture；略過整份 CSV 同步'
+                    if self._industry_update_succeeded_without_capture
+                    else '產業來源更新未通過；拒絕以既有整份 CSV 自動同步 SQLite'
+                ),
+                'source': source,
+                'synced_records': 0,
+            }
         if not getattr (self .config ,'use_sqlite',False ):
+            if source in {'industry', 'industry_index'} and self._pending_industry_capture_manifests:
+                scoped_result = self.sync_industry_index_captures_to_sqlite(
+                    list(self._pending_industry_capture_manifests),
+                    batch_partial=self._pending_industry_batch_partial,
+                    failed_dates=self._pending_industry_failed_dates,
+                    unknown_legacy_dates=self._pending_industry_unknown_legacy_dates,
+                )
+                self._pending_industry_capture_manifests = []
+                self._pending_industry_csv_before = None
+                self._pending_industry_csv_after_sha256 = None
+                self._industry_update_block_legacy_sync = (
+                    not bool(scoped_result.get('success'))
+                    or self._pending_industry_batch_partial
+                    or bool(scoped_result.get('partial'))
+                )
+                self._pending_industry_batch_partial = False
+                self._pending_industry_failed_dates = []
+                self._pending_industry_unknown_legacy_dates = []
+                self._industry_update_succeeded_without_capture = False
+                return scoped_result
             return {
             'success':True ,
             'message':'SQLite 未啟用，略過同步',
@@ -794,6 +840,28 @@ class UpdateService :
                 'source':source ,
                 'synced_records':0 ,
                 }
+
+            if normalized == 'industry_index' and self._pending_industry_capture_manifests:
+                capture_paths = list(self._pending_industry_capture_manifests)
+                scoped_result = self.sync_industry_index_captures_to_sqlite(
+                    capture_paths,
+                    batch_partial=self._pending_industry_batch_partial,
+                    failed_dates=self._pending_industry_failed_dates,
+                    unknown_legacy_dates=self._pending_industry_unknown_legacy_dates,
+                )
+                self._pending_industry_capture_manifests = []
+                self._pending_industry_csv_before = None
+                self._pending_industry_csv_after_sha256 = None
+                self._industry_update_block_legacy_sync = (
+                    not bool(scoped_result.get('success'))
+                    or self._pending_industry_batch_partial
+                    or bool(scoped_result.get('partial'))
+                )
+                self._pending_industry_batch_partial = False
+                self._pending_industry_failed_dates = []
+                self._pending_industry_unknown_legacy_dates = []
+                self._industry_update_succeeded_without_capture = False
+                return scoped_result
 
             if normalized =='daily_price_files':
                 df =self ._load_daily_price_files_for_sqlite (start_date ,end_date )
@@ -917,6 +985,268 @@ class UpdateService :
             'source':source ,
             'synced_records':0 ,
             }
+
+    def sync_industry_index_captures_to_sqlite(
+        self,
+        capture_manifests: Sequence[str | Path],
+        *,
+        batch_partial: bool = False,
+        failed_dates: Sequence[str] = (),
+        unknown_legacy_dates: Sequence[str] = (),
+    ) -> Dict[str, Any]:
+        """Sync only dates bound to verified TWSE industry captures."""
+        import logging
+
+        from data_module.twse_industry_index_capture import (
+            CSV_COLUMNS,
+            TwseIndustryIndexCaptureError,
+            canonical_rowset,
+            create_industry_projection_commit_manifest,
+            restore_csv_before_image,
+            verify_capture_receipt,
+            verify_csv_date_projection,
+        )
+
+        logger = logging.getLogger(__name__)
+        csv_path = Path(self.config.industry_index_file)
+        before_csv = self._pending_industry_csv_before
+        expected_csv_sha256 = self._pending_industry_csv_after_sha256
+        captures: List[Dict[str, Any]] = []
+        database_path = Path(self.config.db_file)
+        table_name = "industry_indices"
+        columns_sql = ", ".join(f'"{column}"' for column in CSV_COLUMNS)
+        committed = False
+        before_rows: List[Dict[str, Any]] = []
+        expected_rows: List[Dict[str, Any]] = []
+        expected_canonical: List[List[str | None]] = []
+        schema_signature: tuple[tuple[Any, ...], ...] = ()
+
+        def outcome(success: bool, message: str, *, partial: bool = False, rows: int = 0) -> Dict[str, Any]:
+            return {
+                "success": success,
+                "partial": partial,
+                "message": message,
+                "source": "industry_index",
+                "table": table_name,
+                "synced_records": rows if success else 0,
+                "capture_count": len(captures),
+                "batch_partial": batch_partial,
+                "failed_dates": sorted(set(failed_dates)),
+                "unknown_legacy_dates": sorted(set(unknown_legacy_dates)),
+                "partial": partial or batch_partial,
+            }
+
+        def date_clause(dates: List[str]) -> tuple[str, List[str]]:
+            compact = [value.replace("-", "") for value in dates]
+            expression = "REPLACE(REPLACE(CAST(\"日期\" AS TEXT), '-', ''), '/', '')"
+            return f"{expression} IN ({','.join('?' for _ in compact)})", compact
+
+        def read_target(connection: sqlite3.Connection, dates: List[str]) -> List[Dict[str, Any]]:
+            clause, parameters = date_clause(dates)
+            result = connection.execute(
+                f"SELECT {columns_sql} FROM {table_name} WHERE {clause}",
+                parameters,
+            ).fetchall()
+            return [dict(row) for row in result]
+
+        def schema_for(connection: sqlite3.Connection) -> tuple[tuple[Any, ...], ...]:
+            rows = connection.execute(f'PRAGMA table_info("{table_name}")').fetchall()
+            return tuple(
+                (row["cid"], row["name"], row["type"], row["notnull"], row["dflt_value"], row["pk"])
+                for row in rows
+            )
+
+        def compensate_database() -> bool:
+            if not committed or not database_path.is_file():
+                return True
+            dates = sorted({str(item["source_date"]) for item in captures})
+            try:
+                with sqlite3.connect(database_path, timeout=30) as connection:
+                    connection.row_factory = sqlite3.Row
+                    connection.execute("BEGIN IMMEDIATE")
+                    if schema_for(connection) != schema_signature:
+                        connection.rollback()
+                        return False
+                    current = read_target(connection, dates)
+                    if canonical_rowset(current) != expected_canonical:
+                        connection.rollback()
+                        return False
+                    clause, parameters = date_clause(dates)
+                    connection.execute(f"DELETE FROM {table_name} WHERE {clause}", parameters)
+                    if before_rows:
+                        placeholders = ", ".join("?" for _ in CSV_COLUMNS)
+                        connection.executemany(
+                            f"INSERT INTO {table_name} ({columns_sql}) VALUES ({placeholders})",
+                            [tuple(row.get(column) for column in CSV_COLUMNS) for row in before_rows],
+                        )
+                    restored = read_target(connection, dates)
+                    if canonical_rowset(restored) != canonical_rowset(before_rows):
+                        connection.rollback()
+                        return False
+                    connection.commit()
+                return True
+            except Exception:
+                logger.exception("TWSE industry SQLite before-image compensation failed")
+                return False
+
+        def compensate_csv() -> bool:
+            if expected_csv_sha256 is None:
+                return True
+            try:
+                restore_csv_before_image(
+                    csv_path,
+                    before_csv,
+                    expected_current_sha256=expected_csv_sha256,
+                )
+                return True
+            except Exception:
+                logger.exception("TWSE industry CSV before-image compensation failed")
+                return False
+
+        try:
+            if not getattr(self.config, "use_sqlite", False):
+                raise TwseIndustryIndexCaptureError(
+                    "SQLite 未啟用；拒絕標記完整並回復本次 CSV projection"
+                )
+            if not capture_manifests:
+                return outcome(False, "沒有 TWSE capture receipt，拒絕執行日期範圍替換")
+            for manifest in capture_manifests:
+                captures.append(verify_capture_receipt(manifest, self.config.output_root))
+            dates = sorted({str(item["source_date"]) for item in captures})
+            if len(dates) != len(captures):
+                raise TwseIndustryIndexCaptureError("一個批次包含重複 source_date capture")
+            expected_rows = [
+                {column: row[index] for index, column in enumerate(CSV_COLUMNS)}
+                for item in captures
+                for row in item["rows"]
+            ]
+            expected_canonical = canonical_rowset(expected_rows)
+            row_keys = [(row["日期"], row["指數名稱"]) for row in expected_rows]
+            if len(row_keys) != len(set(row_keys)):
+                raise TwseIndustryIndexCaptureError("capture rowset 含重複日期/指數名稱鍵")
+            csv_rows, csv_sha256 = verify_csv_date_projection(csv_path, captures)
+            if canonical_rowset(csv_rows) != expected_canonical:
+                raise TwseIndustryIndexCaptureError("CSV six-column projection 與 captures 不符")
+            if expected_csv_sha256 is not None and csv_sha256 != expected_csv_sha256:
+                raise TwseIndustryIndexCaptureError("CSV 在更新與 SQLite 同步之間被其他 writer 修改")
+            if not database_path.is_file():
+                raise TwseIndustryIndexCaptureError("SQLite DB 不存在；不建立新 DB 或 schema")
+
+            with sqlite3.connect(database_path, timeout=30) as connection:
+                connection.row_factory = sqlite3.Row
+                schema_signature = schema_for(connection)
+                schema_columns = [row[1] for row in schema_signature]
+                if not all(column in schema_columns for column in CSV_COLUMNS):
+                    raise TwseIndustryIndexCaptureError("industry_indices schema 缺少既有六欄；不執行 DDL")
+                connection.execute("BEGIN IMMEDIATE")
+                before_rows = read_target(connection, dates)
+                before_keys = [(str(row.get("日期", "")).replace("-", "").replace("/", ""), str(row.get("指數名稱", "")).strip()) for row in before_rows]
+                if len(before_keys) != len(set(before_keys)):
+                    connection.rollback()
+                    raise TwseIndustryIndexCaptureError(
+                        "industry_indices transaction 前 scoped (日期, 指數名稱) 鍵重複"
+                    )
+                clause, parameters = date_clause(dates)
+                connection.execute(f"DELETE FROM {table_name} WHERE {clause}", parameters)
+                insert_rows = [
+                    tuple(
+                        row[column].replace("-", "") if column == "日期" and row[column] else row[column]
+                        for column in CSV_COLUMNS
+                    )
+                    for row in expected_rows
+                ]
+                placeholders = ", ".join("?" for _ in CSV_COLUMNS)
+                connection.executemany(
+                    f"INSERT INTO {table_name} ({columns_sql}) VALUES ({placeholders})",
+                    insert_rows,
+                )
+                in_transaction_rows = read_target(connection, dates)
+                transaction_keys = [
+                    (str(row.get("日期", "")).replace("-", "").replace("/", ""), str(row.get("指數名稱", "")).strip())
+                    for row in in_transaction_rows
+                ]
+                if len(transaction_keys) != len(set(transaction_keys)):
+                    connection.rollback()
+                    raise TwseIndustryIndexCaptureError(
+                        "industry_indices transaction 後 scoped (日期, 指數名稱) 鍵重複"
+                    )
+                if canonical_rowset(in_transaction_rows) != expected_canonical:
+                    connection.rollback()
+                    raise TwseIndustryIndexCaptureError("industry_indices transaction 內 rowset readback 不符")
+                connection.commit()
+                committed = True
+
+            # Read through a new connection after COMMIT; the marker is created only after this succeeds.
+            with sqlite3.connect(database_path, timeout=30) as readback_connection:
+                readback_connection.row_factory = sqlite3.Row
+                if schema_for(readback_connection) != schema_signature:
+                    raise TwseIndustryIndexCaptureError("SQLite schema 在同步期間改變")
+                sqlite_rows = read_target(readback_connection, dates)
+            readback_keys = [
+                (str(row.get("日期", "")).replace("-", "").replace("/", ""), str(row.get("指數名稱", "")).strip())
+                for row in sqlite_rows
+            ]
+            if len(readback_keys) != len(set(readback_keys)):
+                raise TwseIndustryIndexCaptureError(
+                    "獨立 SQLite readback scoped (日期, 指數名稱) 鍵重複"
+                )
+            if canonical_rowset(sqlite_rows) != expected_canonical:
+                raise TwseIndustryIndexCaptureError("獨立 SQLite readback rowset 不符")
+            # The CSV may be changed by another process while SQLite is being
+            # committed/read back. Re-read exact bytes and the scoped rowset
+            # immediately before the marker. This narrows the race window but
+            # does not replace a cross-process writer lock.
+            final_csv_rows, final_csv_sha256 = verify_csv_date_projection(
+                csv_path, captures,
+            )
+            if canonical_rowset(final_csv_rows) != expected_canonical:
+                raise TwseIndustryIndexCaptureError(
+                    "CSV marker 前日期範圍 readback 與 capture rowset 不符"
+                )
+            if (
+                expected_csv_sha256 is None
+                or final_csv_sha256 != expected_csv_sha256
+                or final_csv_sha256 != csv_sha256
+            ):
+                raise TwseIndustryIndexCaptureError(
+                    "CSV 在 SQLite commit 後至 marker 前被其他 writer 修改"
+                )
+            marker = create_industry_projection_commit_manifest(
+                output_root=self.config.output_root,
+                captures=captures,
+                csv_path=csv_path,
+                csv_sha256=final_csv_sha256,
+                database_path=database_path,
+                sqlite_rows=sqlite_rows,
+                batch_partial=batch_partial,
+                failed_dates=failed_dates,
+                unknown_legacy_dates=unknown_legacy_dates,
+            )
+            return {
+                **outcome(
+                    True,
+                    (
+                        "TWSE industry captured-date sync and exact readback complete; "
+                        "batch has failed dates and is partial"
+                        if batch_partial
+                        else "TWSE industry date-scoped SQLite sync and exact readback complete"
+                    ),
+                    rows=len(expected_rows),
+                ),
+                "projection_commit_marker": str(marker),
+                "dates": dates,
+            }
+        except Exception as exc:
+            database_restored = compensate_database()
+            csv_restored = compensate_csv()
+            partial = not database_restored or not csv_restored
+            message = f"TWSE industry scoped sync failed: {exc}"
+            if partial:
+                message += "; before-image compensation could not be proven, status=partial"
+            else:
+                message += "; CSV/SQLite before-images restored or unchanged"
+            logger.error(message, exc_info=True)
+            return outcome(False, message, partial=partial)
 
     def _create_tpex_daily_price_source (self )->Any :
         from data_module .tpex_daily_price_source import TpexDailyPriceSource
@@ -2602,7 +2932,6 @@ class UpdateService :
         import re
 
         logger =logging .getLogger (__name__ )
-
         # ✅ 記錄輸入參數
         logger .info (
         f"[UpdateService] 開始更新大盤指數數據: "
@@ -2773,6 +3102,16 @@ class UpdateService :
         import re
 
         logger =logging .getLogger (__name__ )
+        # Block legacy whole-CSV synchronization before any industry update
+        # work; only a verified capture projection may clear this guard.
+        self._industry_update_block_legacy_sync = True
+        self._industry_update_succeeded_without_capture = False
+        self._pending_industry_batch_partial = False
+        self._pending_industry_failed_dates = []
+        self._pending_industry_unknown_legacy_dates = []
+        self._pending_industry_capture_manifests = []
+        self._pending_industry_csv_before = None
+        self._pending_industry_csv_after_sha256 = None
 
         # ✅ 記錄輸入參數
         logger .info (
@@ -2828,61 +3167,184 @@ class UpdateService :
                 'failed_dates':[]
                 }
 
-                # 執行更新函數
+            # 執行更新函數
             logger .info (f"[UpdateService] 開始執行產業指數更新函數")
+            capture_manifests: List[Path] = []
+            batch_outcome: Dict[str, Any] = {}
+            before_csv: bytes | None = None
             try :
             # ✅ 傳遞 config 給更新函數（如果它支持的話）
                 import inspect
                 update_func =update_module .batch_update_industry_index
                 sig =inspect .signature (update_func )
                 params =list (sig .parameters .keys ())
+                csv_path = Path(self.config.industry_index_file)
+                before_csv = csv_path.read_bytes() if csv_path.is_file() else None
 
-                if 'config'in params :
-                    logger .debug (f"[UpdateService] 更新函數支持 config 參數，傳遞配置")
-                    result =update_func (start_date =start_date ,end_date =end_date ,config =self .config )
-                else :
-                    logger .debug (f"[UpdateService] 更新函數不支持 config 參數，使用默認參數")
-                    result =update_func (start_date =start_date ,end_date =end_date )
+                update_kwargs: Dict[str, Any] = {
+                    'start_date': start_date,
+                    'end_date': end_date,
+                }
+                if 'config' in params:
+                    logger.debug("更新函數支持 config 參數，傳遞配置")
+                    update_kwargs['config'] = self.config
+                if 'capture_manifests' in params:
+                    update_kwargs['capture_manifests'] = capture_manifests
+                if 'batch_outcome' in params:
+                    update_kwargs['batch_outcome'] = batch_outcome
+                result = update_func(**update_kwargs)
+                if capture_manifests:
+                    self._pending_industry_capture_manifests = list(capture_manifests)
+                    self._pending_industry_csv_before = before_csv
+                    if csv_path.is_file():
+                        self._pending_industry_csv_after_sha256 = hashlib.sha256(
+                            csv_path.read_bytes()
+                        ).hexdigest()
                 logger .info (f"[UpdateService] 產業指數更新函數執行完成")
 
-                # 解析結果（函數可能沒有返回值）
-                if result is None :
-                    return {
-                    'success':True ,
-                    'message':'產業指數更新完成',
-                    'updated_dates':[],
-                    'failed_dates':[]
-                    }
-                elif isinstance (result ,dict ):
-                    return {
-                    'success':result .get ('success',True ),
-                    'message':result .get ('message','更新完成'),
-                    'updated_dates':result .get ('updated_dates',[]),
-                    'failed_dates':result .get ('failed_dates',[])
-                    }
-                elif isinstance (result ,bool ):
-                    return {
-                    'success':result ,
-                    'message':'產業指數更新完成' if result else '產業指數更新失敗（批次更新回傳失敗）',
-                    'updated_dates':[],
-                    'failed_dates':[] if result else [start_date]
-                    }
-                else :
-                    return {
-                    'success':False ,
-                    'message':f'產業指數更新失敗（批次回傳型別無法辨識: {type(result).__name__}）',
-                    'updated_dates':[],
-                    'failed_dates':[start_date]
-                    }
+                # Keep successful captures date-scoped while preserving the
+                # batch failure signal if any requested dates were rejected.
+                if isinstance(result, dict):
+                    result_success = bool(result.get('success', True))
+                    updated_dates = list(result.get('updated_dates', []))
+                    recovered_dates = list(result.get('recovered_dates', []))
+                    failed_dates = list(result.get('failed_dates', []))
+                    result_message = str(result.get('message', '更新完成'))
+                elif result is None:
+                    result_success = True
+                    updated_dates = []
+                    recovered_dates = []
+                    failed_dates = []
+                    result_message = '產業指數更新完成'
+                elif isinstance(result, bool):
+                    result_success = result
+                    updated_dates = []
+                    recovered_dates = []
+                    failed_dates = [] if result else [start_date]
+                    result_message = (
+                        '產業指數更新完成'
+                        if result
+                        else '產業指數更新失敗（批次更新回傳失敗）'
+                    )
+                else:
+                    result_success = False
+                    updated_dates = []
+                    recovered_dates = []
+                    failed_dates = [start_date]
+                    result_message = (
+                        f'產業指數更新失敗（批次回傳型別無法辨識: {type(result).__name__}）'
+                    )
+
+                if batch_outcome:
+                    result_success = result_success and bool(
+                        batch_outcome.get('success', result_success)
+                    )
+                    updated_dates = list(batch_outcome.get('updated_dates', updated_dates))
+                    recovered_dates = list(batch_outcome.get('recovered_dates', recovered_dates))
+                    failed_dates = list(batch_outcome.get('failed_dates', failed_dates))
+                    source_status = batch_outcome.get('source_status')
+                    verified_skipped_dates = list(batch_outcome.get('verified_skipped_dates', []))
+                    unverified_legacy_dates = list(batch_outcome.get('unverified_legacy_dates', []))
+                else:
+                    source_status = None
+                    recovered_dates = []
+                    verified_skipped_dates = []
+                    unverified_legacy_dates = []
+                if not result_success and not failed_dates:
+                    if not unverified_legacy_dates:
+                        failed_dates = [start_date]
+                failed_dates = sorted(set(str(value) for value in failed_dates))
+                unverified_legacy_dates = sorted(set(str(value) for value in unverified_legacy_dates))
+                if unverified_legacy_dates and not capture_manifests:
+                    result_success = False
+                    result_message = (
+                        '保留既有 legacy CSV 日期為 unknown；本次沒有新的 TWSE capture 或更新證據'
+                    )
+                self._pending_industry_unknown_legacy_dates = unverified_legacy_dates
+                self._pending_industry_failed_dates = failed_dates
+                self._pending_industry_batch_partial = bool(
+                    capture_manifests
+                    and (failed_dates or not result_success or unverified_legacy_dates)
+                )
+                self._industry_update_succeeded_without_capture = bool(
+                    result_success and not failed_dates and not capture_manifests
+                )
+                result_message = (
+                    f'{result_message}；已有 capture 僅涵蓋成功日期，整批狀態為 partial'
+                    if self._pending_industry_batch_partial
+                    else result_message
+                )
+                return {
+                    'success': result_success and not failed_dates,
+                    'partial': self._pending_industry_batch_partial,
+                    'message': result_message,
+                    'updated_dates': updated_dates,
+                    'recovered_dates': recovered_dates,
+                    'failed_dates': failed_dates,
+                    'verified_skipped_dates': verified_skipped_dates,
+                    'unverified_legacy_dates': unverified_legacy_dates,
+                    'source_status': source_status,
+                    'capture_manifests':[str(path) for path in capture_manifests],
+                }
             except Exception as e :
                 error_msg =f"執行產業指數更新函數時發生錯誤: {str(e)}"
                 logger .error (f"[UpdateService] {error_msg}")
                 logger .error (traceback .format_exc ())
+                captured_dates: List[str] = []
+                if capture_manifests:
+                    self._pending_industry_capture_manifests = list(capture_manifests)
+                    self._pending_industry_csv_before = before_csv
+                    csv_path = Path(self.config.industry_index_file)
+                    if csv_path.is_file():
+                        self._pending_industry_csv_after_sha256 = hashlib.sha256(
+                            csv_path.read_bytes()
+                        ).hexdigest()
+                    self._pending_industry_batch_partial = True
+                try:
+                    from data_module.twse_industry_index_capture import verify_capture_receipt
+                except Exception:
+                    logger.exception(
+                        "無法驗證 batch exception 前已保存的 TWSE capture receipts"
+                    )
+                else:
+                    for manifest in capture_manifests:
+                        try:
+                            receipt = verify_capture_receipt(
+                                manifest, self.config.output_root,
+                            )
+                            captured_dates.append(str(receipt["source_date"]))
+                        except Exception:
+                            logger.exception(
+                                "跳過無法驗證的 exception 前 capture date: %s",
+                                manifest,
+                            )
+
+                failure_code = (
+                    "batch_exception_after_capture"
+                    if capture_manifests
+                    else "batch_exception_without_capture"
+                )
+                partial_reason = (
+                    f"{failure_code}; exact failed date unknown within requested range "
+                    f"{start_date}..{end_date}"
+                )
+                self._pending_industry_failed_dates = []
+                self._pending_industry_unknown_legacy_dates = []
+                self._industry_update_succeeded_without_capture = False
                 return {
                 'success':False ,
-                'message':error_msg ,
-                'updated_dates':[],
-                'failed_dates':[]
+                'partial':bool(capture_manifests),
+                'message':f'{error_msg}；{partial_reason}' ,
+                'updated_dates':sorted(set(captured_dates)),
+                'failed_dates':[],
+                'capture_manifests':[str(path) for path in capture_manifests],
+                'failure_date_unknown':True,
+                'failure_date_range':{
+                    'start_date':start_date,
+                    'end_date':end_date,
+                },
+                'partial_reason':partial_reason,
+                'failure_reason_code':failure_code,
                 }
 
         except Exception as e :

@@ -9,8 +9,9 @@ import os
 from pathlib import Path
 import sys
 import time
+from types import MappingProxyType
 from types import SimpleNamespace
-from typing import Mapping
+from typing import Any, Mapping
 
 import pytest
 
@@ -34,7 +35,15 @@ from app_module.decision_outcome_journey import (
     RecommendationSourceIdentity,
 )
 from app_module.decision_continuity_controller import DecisionContinuityController
+from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 from app_module.journal_service import JournalService
+from app_module.personalization_contract import (
+    PersonalRecommendationChoice,
+    PersonalRecommendationOverrideReason,
+)
+from app_module.recommendation.personal_use_policy import (
+    RecommendationPersonalUsePolicyV1,
+)
 from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_dtos import StockResearchReportDTO
 from ui_qt.theme import build_global_stylesheet
@@ -240,6 +249,104 @@ def _context(stock_code: str = "2330", result_id: str = "result-1") -> ResearchS
     )
 
 
+def _choice_history_fixture(
+    *,
+    choice: str,
+    action_at: str,
+    result_id: str = "result-1",
+    stock_code: str = "2330",
+    snapshot_id: str = "universe-snapshot-1",
+    snapshot_hash: str = "sha256:" + "f" * 64,
+    canonical_hash: str = "sha256:" + "d" * 64,
+    artifact_hash: str = "sha256:" + "e" * 64,
+    link_status: JourneyLinkStatus = JourneyLinkStatus.LINKED,
+    journal_id: str | None = None,
+) -> JournalEntryRecord:
+    override_reason = (
+        PersonalRecommendationOverrideReason(
+            code="new_information",
+            detail="研究後發現原判斷條件已改變。",
+        )
+        if choice == "override"
+        else None
+    )
+    typed_choice = PersonalRecommendationChoice(
+        result_id=result_id,
+        stock_code=stock_code,
+        decision_date="2026-09-14",
+        source_snapshot_id=snapshot_id,
+        source_snapshot_hash=snapshot_hash,
+        canonical_payload_hash=canonical_hash,
+        raw_artifact_sha256=artifact_hash,
+        choice=choice,
+        requested_mode="rule_only",
+        effective_mode="rule_only",
+        action_at=action_at,
+        recorded_at=action_at,
+        request_id=f"choice-{choice}-{action_at}",
+        policy_snapshot=RecommendationPersonalUsePolicyV1.default_rule_only(
+            "local-profile"
+        ).to_dict(),
+        override_reason=override_reason,
+    )
+    payload = _freeze_test_payload(
+        {"personal_recommendation_choice": typed_choice.to_dict()}
+    )
+    return JournalEntryRecord(
+        journal_id=journal_id or f"journal-{choice}-{action_at}",
+        linked_type="recommendation_result",
+        linked_id="result-1",
+        thesis_id=None,
+        source_type="personal_recommendation_choice",
+        source_id="result-1",
+        source_snapshot_hash=snapshot_hash,
+        created_at=action_at,
+        updated_at=None,
+        relationship_type=None,
+        relationship_target_id=None,
+        link_status=link_status,
+        original_payload=payload,
+        decision_identity=DecisionIdentity(
+            result_id=result_id,
+            stock_code=stock_code,
+            source_snapshot_id=snapshot_id,
+            source_snapshot_hash=snapshot_hash,
+            decision_date="2026-09-14",
+            identity_status="linked",
+        ),
+    )
+
+
+def _freeze_test_payload(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _freeze_test_payload(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_test_payload(item) for item in value)
+    return value
+
+
+def _journey_with_choice_history(
+    entries: tuple[JournalEntryRecord, ...],
+) -> DecisionOutcomeJourney:
+    base = _journey()
+    snapshot_hash = "sha256:" + "f" * 64
+    identity = replace(
+        base.recommendation_result.source_identity,
+        universe_snapshot_id="universe-snapshot-1",
+        universe_snapshot_hash=snapshot_hash,
+    )
+    result = replace(
+        base.recommendation_result,
+        source_identity=identity,
+        canonical_integrity_verified=True,
+        canonical_payload_hash="sha256:" + "d" * 64,
+        raw_artifact_sha256="sha256:" + "e" * 64,
+    )
+    return replace(base, recommendation_result=result, journal_entries=entries)
+
+
 def test_missing_result_id_is_explicitly_unlinked_without_service_call() -> None:
     service = JourneyServiceStub({"result-1": _journey()})
     widget = DecisionOutcomeJourneyWidget(
@@ -294,6 +401,109 @@ def test_valid_context_renders_candidate_maturity_and_separates_personal_records
     assert not widget.technical_details.isVisible()
     assert "前瞻報酬" in widget.safety_label.text()
     assert "與研究結果分開" in widget.portfolio_table.parent().title()
+    widget.close()
+
+
+def test_personal_choice_history_is_read_only_ordered_and_keeps_pending_visible() -> None:
+    context = replace(
+        _context(),
+        identity_status="linked",
+        source_snapshot_id="universe-snapshot-1",
+        source_snapshot_hash="sha256:" + "f" * 64,
+    )
+    entries = (
+        _choice_history_fixture(
+            choice="override",
+            action_at="2026-09-14T10:02:00+00:00",
+        ),
+        _choice_history_fixture(
+            choice="adopt",
+            action_at="2026-09-14T10:00:00+00:00",
+        ),
+        _choice_history_fixture(
+            choice="reject",
+            action_at="2026-09-14T10:01:00+00:00",
+        ),
+    )
+    journey = _journey_with_choice_history(entries)
+    widget = DecisionOutcomeJourneyWidget(
+        JourneyServiceStub({"result-1": journey}),
+        context,
+    )
+    widget.show()
+    _wait_for(lambda: widget.journey is not None)
+
+    model = widget.personal_choice_table.model()
+    assert model.rowCount() == 3
+    assert [model.index(row, 1).data() for row in range(3)] == [
+        "個人採用",
+        "個人拒絕",
+        "推翻原建議",
+    ]
+    action_times = [model.index(row, 3).data() for row in range(3)]
+    assert action_times == sorted(action_times)
+    assert model.index(2, 2).data() == "研究後發現原判斷條件已改變。"
+    assert all(model.index(row, 0).data() == "result-1:2330" for row in range(3))
+    assert all(model.index(row, 4).data() == "已連結" for row in range(3))
+    assert "尚待結果成熟" in widget.status_label.text()
+    assert all(
+        widget.maturity_table.model().index(row, 2).data()
+        == "待成熟（未有足夠未來資料）"
+        for row in range(widget.maturity_table.model().rowCount())
+    )
+    widget.close()
+
+
+def test_personal_choice_history_hides_other_result_artifact_snapshot_and_conflict() -> None:
+    context = replace(
+        _context(),
+        identity_status="linked",
+        source_snapshot_id="universe-snapshot-1",
+        source_snapshot_hash="sha256:" + "f" * 64,
+    )
+    entries = (
+        _choice_history_fixture(
+            choice="adopt",
+            action_at="2026-09-14T10:00:00+00:00",
+            result_id="result-other",
+            journal_id="journal-other-result",
+        ),
+        _choice_history_fixture(
+            choice="reject",
+            action_at="2026-09-14T10:01:00+00:00",
+            snapshot_id="universe-snapshot-other",
+            snapshot_hash="sha256:" + "a" * 64,
+            journal_id="journal-other-snapshot",
+        ),
+        _choice_history_fixture(
+            choice="override",
+            action_at="2026-09-14T10:02:00+00:00",
+            artifact_hash="sha256:" + "c" * 64,
+            journal_id="journal-other-artifact",
+        ),
+        _choice_history_fixture(
+            choice="adopt",
+            action_at="2026-09-14T10:03:00+00:00",
+            link_status=JourneyLinkStatus.CONFLICT,
+            journal_id="journal-conflict",
+        ),
+    )
+    journey = _journey_with_choice_history(entries)
+    widget = DecisionOutcomeJourneyWidget(
+        JourneyServiceStub({"result-1": journey}),
+        context,
+    )
+    widget.show()
+    _wait_for(lambda: widget.journey is not None)
+
+    assert widget.personal_choice_table.model().rowCount() == 0
+    assert "尚待結果成熟" in widget.status_label.text()
+    assert widget.maturity_table.model().rowCount() == 4
+    assert all(
+        widget.maturity_table.model().index(row, 2).data()
+        == "待成熟（未有足夠未來資料）"
+        for row in range(widget.maturity_table.model().rowCount())
+    )
     widget.close()
 
 

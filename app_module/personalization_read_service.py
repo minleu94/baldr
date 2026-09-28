@@ -18,12 +18,15 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from contextlib import closing
 from dataclasses import asdict, dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN
 from enum import Enum
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
+import stat
 from types import SimpleNamespace
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -56,12 +59,29 @@ from app_module.personalization_projection import (
     PersonalizationProjectionResult,
     PersonalizationProjectionService,
 )
-from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.recommendation.queries import (
+    RecommendationExecutionReadModel,
+    _read_regular_file_no_follow,
+)
+from app_module.recommendation.personal_prediction_capture import (
+    PERSONAL_FIXED_NULL_BENCHMARK_KIND,
+    PERSONAL_PROBABILITY_BASELINE_SNAPSHOT_SCHEMA_V2,
+    PERSONAL_PREDICTION_CAPTURE_SCHEMA_V3,
+    read_personal_prediction_capture,
+)
+from app_module.recommendation.personal_use_policy import (
+    PERSONAL_USE_POLICY_SCHEMA_V2,
+)
 from app_module.saved_recommendation_queries import build_recommendation_execution_queries
+from app_module.recommendation.persistence import ExecutionArtifactIntegrityError
 from data_module.result_artifact_store import ResultArtifactStore
+from ml_module.recommendation_calibration_evidence import (
+    verify_natural_maturity_session_proof,
+)
 
 
 PERSONALIZATION_READ_REPORT_SCHEMA_VERSION = "personalization-read-report.v1"
+PERSONAL_MODEL_ASSESSMENT_SCHEMA_VERSION = "personal-model-assessment.v1"
 _MARKET_TIMEZONE = ZoneInfo("Asia/Taipei")
 DEFAULT_MAX_RESULTS = 100
 DEFAULT_MAX_CANDIDATES_PER_RESULT = 100
@@ -69,6 +89,8 @@ DEFAULT_MAX_EVIDENCE_EVENTS = 500
 DEFAULT_MAX_JOURNAL_ROWS = 50_000
 DEFAULT_MAX_RECEIPT_FILES = 5_000
 _SQLITE_READ_BIND_CHUNK_SIZE = 900
+_MAX_PERSONAL_ASSESSMENT_JSON_BYTES = 16 * 1024 * 1024
+_MAX_PERSONAL_OUTCOME_ROWS = 500
 
 
 def _text(value: object) -> str:
@@ -107,6 +129,372 @@ def _safe_result_id(value: object) -> str:
     if Path(text).name != text or "/" in text or "\\" in text:
         return ""
     return text
+
+
+def _assessment_absolute_path(value: object, field_name: str) -> Path:
+    if not isinstance(value, (str, Path)) or not str(value).strip():
+        raise ValueError(f"{field_name} 必須是明確絕對路徑")
+    path = Path(value).expanduser()
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"{field_name} 必須是正規絕對路徑")
+    return Path(os.path.abspath(path))
+
+
+def _assessment_normalized_path(value: object) -> str:
+    path = _assessment_absolute_path(value, "source path")
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def _assessment_unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("JSON object 含重複 key")
+        result[key] = value
+    return result
+
+
+def _assessment_reject_json_constant(value: str) -> None:
+    raise ValueError(f"JSON 含非法常數 {value}")
+
+
+def _read_personal_assessment_json(
+    path: Path,
+    *,
+    max_bytes: int,
+    label: str,
+) -> tuple[dict[str, Any], str]:
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError("personal assessment JSON byte cap 必須是正整數")
+    try:
+        raw = _read_regular_file_no_follow(
+            path,
+            Path(path.anchor),
+            max_bytes=max_bytes,
+        )
+    except (ExecutionArtifactIntegrityError, OSError, ValueError) as exc:
+        raise ValueError(f"{label} 無法安全、有界且穩定讀取") from exc
+    if len(raw) > max_bytes:
+        raise ValueError(f"{label} 超過讀取大小上限")
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_assessment_unique_pairs,
+            parse_constant=_assessment_reject_json_constant,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"{label} 不是有效 strict JSON") from exc
+    if type(value) is not dict:
+        raise ValueError(f"{label} 根節點必須是 JSON object")
+    return value, "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _stage_c_payload_hash(value: Mapping[str, Any]) -> str:
+    body = {key: item for key, item in value.items() if key != "payload_sha256"}
+    try:
+        encoded = (
+            json.dumps(
+                body,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Stage C payload 不是可正規化 JSON") from exc
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _verify_personal_outcome_hashed_json(
+    value: Mapping[str, Any], *, expected_schema: str
+) -> str:
+    declared = value.get("payload_sha256")
+    if (
+        value.get("schema_version") != expected_schema
+        or type(declared) is not str
+        or len(declared) != 71
+        or not declared.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in declared[7:])
+    ):
+        raise ValueError("Stage C payload schema/hash 格式無效")
+    actual = _stage_c_payload_hash(value)
+    if declared != actual:
+        raise ValueError("Stage C payload 自雜湊不符")
+    return actual
+
+
+def _assessment_nonnegative_int(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or type(value) is not int or value < 0:
+        raise ValueError(f"{field_name} 必須是非負整數")
+    return value
+
+
+def _verify_personal_outcome_source_prices(
+    *,
+    source_database_path: object,
+    expected_source_stat: Mapping[str, Any],
+    start_date: str,
+    end_date: str,
+    expected_returns_bp: Mapping[str, int],
+) -> str:
+    """以同一個 user-declared SQLite 來源重驗成熟 close-to-close 標籤。
+
+    查詢只讀兩個明確日期，每個 symbol 最多取三列以偵測重複；若來源沒有
+    可搜尋的 symbol/date 索引、來源已變更或任何列不能唯一綁定，就拒絕成熟讀回。
+    此檢查是指定來源內的一致性驗證，不表示官方 PIT 或 publication-time 已證實。
+    """
+
+    if not isinstance(expected_source_stat, Mapping) or set(expected_source_stat) != {
+        "size",
+        "mtime_ns",
+        "device",
+        "inode",
+    }:
+        raise ValueError("Stage C market source stat 欄位無效")
+    expected_stat: dict[str, int] = {}
+    for key in ("size", "mtime_ns", "device", "inode"):
+        value = expected_source_stat.get(key)
+        if isinstance(value, bool) or type(value) is not int or value < 0:
+            raise ValueError("Stage C market source stat 值無效")
+        expected_stat[key] = value
+
+    source_path = _assessment_absolute_path(source_database_path, "market source DB")
+    _assessment_require_plain_file(source_path)
+    _assessment_require_no_sqlite_sidecars(source_path)
+    if _assessment_source_file_stat(source_path) != expected_stat:
+        raise ValueError("Stage C market source changed since its evaluation snapshot")
+
+    start = _iso_date(start_date, "outcome return start date")
+    end = _iso_date(end_date, "outcome return end date")
+    if end <= start:
+        raise ValueError("Stage C market source return window is invalid")
+    symbols = tuple(sorted(expected_returns_bp))
+    if not symbols or len(symbols) > _MAX_PERSONAL_OUTCOME_ROWS:
+        raise ValueError("Stage C market source row count exceeds the readback bound")
+    if any(type(symbol) is not str or not symbol or len(symbol) > 32 for symbol in symbols):
+        raise ValueError("Stage C market source symbol identity is invalid")
+    if any(
+        isinstance(value, bool) or type(value) is not int
+        for value in expected_returns_bp.values()
+    ):
+        raise ValueError("Stage C stock return labels must use integer basis points")
+
+    uri = source_path.resolve(strict=True).as_uri() + "?mode=ro"
+    try:
+        connection = sqlite3.connect(uri, uri=True, timeout=5.0)
+    except (OSError, sqlite3.Error) as exc:
+        raise ValueError("Stage C market source cannot be opened read-only") from exc
+    observed_rows: dict[tuple[str, str], tuple[str, Decimal]] = {}
+    row_fingerprint: list[dict[str, str]] = []
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        if connection.execute("PRAGMA query_only").fetchone() != (1,):
+            raise ValueError("Stage C market source query-only mode is unavailable")
+        connection.execute("BEGIN")
+        data_version_before_row = connection.execute("PRAGMA data_version").fetchone()
+        if (
+            data_version_before_row is None
+            or len(data_version_before_row) != 1
+            or isinstance(data_version_before_row[0], bool)
+            or type(data_version_before_row[0]) is not int
+        ):
+            raise ValueError("Stage C market source data version is unavailable")
+        table_row = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_prices'"
+        ).fetchone()
+        if table_row is None:
+            raise ValueError("Stage C market source daily_prices table is missing")
+        columns = {
+            str(row[1])
+            for row in connection.execute('PRAGMA table_info("daily_prices")')
+        }
+        if not {"日期", "證券代號", "收盤價"}.issubset(columns):
+            raise ValueError("Stage C market source daily_prices schema is incomplete")
+
+        compact_dates = (date.fromisoformat(start).strftime("%Y%m%d"), date.fromisoformat(end).strftime("%Y%m%d"))
+        query_plan = connection.execute(
+            'EXPLAIN QUERY PLAN SELECT "證券代號", "日期", "收盤價" '
+            'FROM daily_prices WHERE "證券代號"=? AND "日期" IN (?, ?) LIMIT 3',
+            (symbols[0], *compact_dates),
+        ).fetchall()
+        if not any("SEARCH" in str(row[3]).upper() for row in query_plan):
+            raise ValueError("Stage C market source price lookup is not indexed")
+
+        per_symbol_query = (
+            'SELECT substr(CAST("證券代號" AS TEXT), 1, 33), '
+            'length(CAST("證券代號" AS TEXT)), '
+            'substr(CAST("日期" AS TEXT), 1, 11), length(CAST("日期" AS TEXT)), '
+            'CASE WHEN length(CAST("收盤價" AS TEXT)) <= 128 '
+            'THEN CAST("收盤價" AS TEXT) ELSE NULL END, '
+            'length(CAST("收盤價" AS TEXT)) '
+            'FROM daily_prices WHERE "證券代號"=? AND "日期" IN (?, ?) '
+            'ORDER BY "日期" LIMIT 3'
+        )
+        for symbol in symbols:
+            rows = connection.execute(
+                per_symbol_query,
+                (symbol, *compact_dates),
+            ).fetchall()
+            for row in rows:
+                raw_symbol, symbol_length, raw_day, day_length, close_text, close_length = row
+                if (
+                    type(symbol_length) is not int
+                    or symbol_length > 32
+                    or type(day_length) is not int
+                    or day_length > 10
+                    or type(close_length) is not int
+                    or not 0 < close_length <= 128
+                    or type(raw_symbol) is not str
+                    or raw_symbol != symbol
+                    or type(raw_day) is not str
+                    or type(close_text) is not str
+                ):
+                    raise ValueError("Stage C market source price row is malformed")
+                normalized_day = _iso_date(raw_day, "source price date")
+                if normalized_day not in {start, end}:
+                    raise ValueError("Stage C market source returned an unexpected price date")
+                try:
+                    close = Decimal(close_text.replace(",", "").strip())
+                except (InvalidOperation, ValueError) as exc:
+                    raise ValueError("Stage C market source close price is invalid") from exc
+                if not close.is_finite() or close <= 0:
+                    raise ValueError("Stage C market source close price is not positive")
+                row_key = (symbol, normalized_day)
+                if row_key in observed_rows:
+                    raise ValueError("Stage C market source price row is duplicated")
+                observed_rows[row_key] = (close_text, close)
+                row_fingerprint.append(
+                    {
+                        "stock_code": symbol,
+                        "date": normalized_day,
+                        "close_text": close_text,
+                    }
+                )
+        expected_keys = {
+            (symbol, endpoint)
+            for symbol in symbols
+            for endpoint in (start, end)
+        }
+        if set(observed_rows) != expected_keys:
+            raise ValueError("Stage C market source price rows are missing or duplicated")
+        for symbol in symbols:
+            start_close = observed_rows[(symbol, start)][1]
+            end_close = observed_rows[(symbol, end)][1]
+            actual_return_bp = int(
+                (
+                    (end_close / start_close - Decimal(1))
+                    * Decimal(10_000)
+                ).quantize(Decimal(1), rounding=ROUND_HALF_EVEN)
+            )
+            if actual_return_bp != expected_returns_bp[symbol]:
+                raise ValueError(
+                    "Stage C stock_return_bp differs from exact read-only source prices"
+                )
+        connection.commit()
+        data_version_after_row = connection.execute("PRAGMA data_version").fetchone()
+        if data_version_after_row != data_version_before_row:
+            raise ValueError("Stage C market source changed during price verification")
+    except sqlite3.Error as exc:
+        raise ValueError("Stage C market source price verification failed") from exc
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+    _assessment_require_plain_file(source_path)
+    _assessment_require_no_sqlite_sidecars(source_path)
+    if _assessment_source_file_stat(source_path) != expected_stat:
+        raise ValueError("Stage C market source changed during price verification")
+    encoded_rows = json.dumps(
+        sorted(row_fingerprint, key=lambda row: (row["stock_code"], row["date"])),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded_rows).hexdigest()
+
+
+def _assessment_require_plain_file(path: Path) -> None:
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current = current / part
+        try:
+            metadata = current.lstat()
+        except OSError as exc:
+            raise ValueError("Stage C market source path is unavailable") from exc
+        if stat.S_ISLNK(metadata.st_mode) or bool(
+            getattr(metadata, "st_file_attributes", 0) & 0x400
+        ):
+            raise ValueError("Stage C market source path contains a link or reparse point")
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError("Stage C market source path is not a regular file")
+
+
+def _assessment_require_no_sqlite_sidecars(path: Path) -> None:
+    """只接受已 checkpoint 的單檔來源，因 Stage C summary 未 pin WAL bytes。"""
+
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(path) + suffix)
+        try:
+            metadata = sidecar.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ValueError("Stage C market source sidecar 無法核對") from exc
+        if stat.S_ISLNK(metadata.st_mode) or bool(
+            getattr(metadata, "st_file_attributes", 0) & 0x400
+        ) or not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("Stage C market source sidecar 不是一般檔案")
+        raise ValueError("Stage C market source has unpinned SQLite sidecars")
+
+
+def _assessment_source_file_stat(path: Path) -> dict[str, int]:
+    metadata = path.stat()
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError("Stage C market source is not a regular file")
+    return {
+        "size": int(metadata.st_size),
+        "mtime_ns": int(metadata.st_mtime_ns),
+        "device": int(metadata.st_dev),
+        "inode": int(metadata.st_ino),
+    }
+
+
+def _assessment_brier_bp(probabilities: Sequence[int], labels: Sequence[int]) -> int:
+    if not probabilities or len(probabilities) != len(labels):
+        raise ValueError("assessment Brier input lengths are invalid")
+    if any(
+        isinstance(probability, bool)
+        or type(probability) is not int
+        or not 0 <= probability <= 10_000
+        for probability in probabilities
+    ):
+        raise ValueError("assessment probabilities must be integer basis points")
+    if any(isinstance(label, bool) or type(label) is not int or label not in (0, 1) for label in labels):
+        raise ValueError("assessment labels must be binary integers")
+    return sum(
+        (probability - label * 10_000) ** 2
+        for probability, label in zip(probabilities, labels)
+    ) // (len(labels) * 10_000)
+
+
+def _assessment_calibration_gap_bp(
+    probabilities: Sequence[int], labels: Sequence[int]
+) -> int:
+    if not probabilities or len(probabilities) != len(labels):
+        raise ValueError("assessment calibration input lengths are invalid")
+    return abs(
+        sum(probabilities) // len(probabilities)
+        - sum(labels) * 10_000 // len(labels)
+    )
+
+
+def _assessment_payload_hash(value: Mapping[str, Any]) -> str:
+    return canonical_payload_hash(value)
 
 
 def _iso_date(value: object, field_name: str) -> str:
@@ -1456,6 +1844,98 @@ class PersonalRecommendationChoiceReadReport:
         )
 
 
+@dataclass(frozen=True)
+class PersonalModelAssessmentV1:
+    """同一 saved recommendation/capture 的唯讀個人模型評估投影。
+
+    此 v1 只呈現 Stage C 已封存的單次 capture 狀態與 scope；單筆結果不
+    產生繼續使用、停用或替換模型的效果建議，也不觸發任何自動切換。
+    """
+
+    result_id: str
+    capture_id: str
+    assessment_status: str
+    evidence_status: str
+    recommendation: str
+    reason: str
+    identity: Mapping[str, Any]
+    scope: Mapping[str, Any]
+    matured_sample_count: int
+    pending_sample_count: int | None
+    metrics: Mapping[str, int | None]
+    after_cost: Mapping[str, Any]
+    missing_evidence: tuple[str, ...]
+    next_steps: tuple[str, ...]
+    diagnostics: tuple[str, ...] = ()
+    read_only: bool = True
+    writes_allowed: bool = False
+    auto_switch: bool = False
+    schema_version: str = PERSONAL_MODEL_ASSESSMENT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if (
+            not self.read_only
+            or self.writes_allowed
+            or self.auto_switch
+            or self.recommendation != "insufficient_data"
+            or self.assessment_status != "insufficient_data"
+        ):
+            raise ValueError("personal model assessment v1 must remain advisory/read-only")
+        if self.evidence_status not in {"pending", "unknown", "matured"}:
+            raise ValueError("unsupported personal model evidence status")
+        if (
+            isinstance(self.matured_sample_count, bool)
+            or not isinstance(self.matured_sample_count, int)
+            or self.matured_sample_count < 0
+            or (
+                self.pending_sample_count is not None
+                and (
+                    isinstance(self.pending_sample_count, bool)
+                    or not isinstance(self.pending_sample_count, int)
+                    or self.pending_sample_count < 0
+                )
+            )
+            or (self.evidence_status != "unknown" and self.pending_sample_count is None)
+        ):
+            raise ValueError("personal model sample counts must be non-negative integers")
+        object.__setattr__(self, "identity", dict(self.identity))
+        object.__setattr__(self, "scope", dict(self.scope))
+        object.__setattr__(self, "metrics", dict(self.metrics))
+        object.__setattr__(self, "after_cost", dict(self.after_cost))
+        object.__setattr__(self, "missing_evidence", tuple(self.missing_evidence))
+        object.__setattr__(self, "next_steps", tuple(self.next_steps))
+        object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
+
+    def to_dict(self) -> dict[str, Any]:
+        body = _json_safe(
+            {
+                "schema_version": self.schema_version,
+                "result_id": self.result_id,
+                "capture_id": self.capture_id,
+                "assessment_status": self.assessment_status,
+                "evidence_status": self.evidence_status,
+                "recommendation": self.recommendation,
+                "reason": self.reason,
+                "identity": dict(self.identity),
+                "scope": dict(self.scope),
+                "matured_sample_count": self.matured_sample_count,
+                "pending_sample_count": self.pending_sample_count,
+                "metrics": dict(self.metrics),
+                "after_cost": dict(self.after_cost),
+                "missing_evidence": list(self.missing_evidence),
+                "next_steps": list(self.next_steps),
+                "diagnostics": list(self.diagnostics),
+                "read_only": self.read_only,
+                "writes_allowed": self.writes_allowed,
+                "auto_switch": self.auto_switch,
+            }
+        )
+        if not isinstance(body, dict):
+            raise ValueError("personal model assessment did not serialize to an object")
+        body["assessment_sha256"] = _assessment_payload_hash(body)
+        return body
+
+
 class PersonalizationReadService:
     """Compose existing sources into one bounded scope/as-of read operation."""
 
@@ -1548,6 +2028,705 @@ class PersonalizationReadService:
         if read_model.integrity_basis != "canonical_payload_and_index_verified":
             raise ValueError("canonical recommendation exact readback is not verified")
         return read_model
+
+    def read_personal_model_assessment(
+        self,
+        result_id: str,
+        capture_path: str | Path,
+        personal_capture_root: str | Path,
+        daily_summary_path: str | Path,
+    ) -> PersonalModelAssessmentV1:
+        """讀回同一 canonical result、personal capture 與 Stage C 摘要。
+
+        Stage C 目前沒有 result→summary 索引；呼叫者必須提供明確 summary
+        檔案，不會掃描 latest/glob。所有輸入只讀、有限長度，並要求 canonical
+        execution、V2 source-time policy、capture 與 summary 的 identity 完全相符。
+        """
+
+        resolved_result = _safe_result_id(result_id)
+        if not resolved_result:
+            raise ValueError("result_id 必須是精確 filename-like identity")
+        if self.execution_queries is None:
+            raise ValueError("personal model assessment 缺少 canonical execution queries")
+
+        first_read = self.read_canonical_execution_exact(resolved_result)
+        if first_read is None or first_read.execution is None:
+            raise ValueError("personal model assessment 需要已保存的 canonical execution")
+
+        personal_root = _assessment_absolute_path(
+            personal_capture_root, "personal_capture_root"
+        )
+        capture_file = _assessment_absolute_path(capture_path, "capture_path")
+        capture = read_personal_prediction_capture(
+            capture_file,
+            self.execution_queries,
+            personal_root,
+            expected_result_id=resolved_result,
+        )
+        second_read = self.read_canonical_execution_exact(resolved_result)
+        if second_read is None or second_read.execution is None:
+            raise ValueError("canonical execution 在 assessment 讀取期間消失")
+        canonical = capture.get("canonical")
+        if (
+            not isinstance(canonical, Mapping)
+            or canonical.get("payload_hash") != first_read.payload_hash
+            or canonical.get("raw_artifact_sha256") != first_read.raw_artifact_sha256
+            or first_read.payload_hash != second_read.payload_hash
+            or first_read.raw_artifact_sha256 != second_read.raw_artifact_sha256
+        ):
+            raise ValueError("canonical execution 在 assessment 讀取期間改變")
+
+        policy_event = capture.get("policy_event")
+        policy_snapshot = (
+            policy_event.get("policy_snapshot")
+            if isinstance(policy_event, Mapping)
+            else None
+        )
+        if (
+            not isinstance(policy_event, Mapping)
+            or policy_event.get("schema_version")
+            != "recommendation-personal-use-policy-snapshot.v2"
+            or policy_event.get("result_id") != resolved_result
+            or policy_event.get("effective_mode") != "personal_calibrated_probability"
+            or not isinstance(policy_snapshot, Mapping)
+            or policy_snapshot.get("schema_version") != PERSONAL_USE_POLICY_SCHEMA_V2
+        ):
+            raise ValueError("assessment 僅支援已讀回的個人 V2 模型政策")
+        source_trust = policy_snapshot.get("source_time_trust")
+        candidate = policy_snapshot.get("candidate")
+        if not isinstance(source_trust, Mapping) or not source_trust:
+            raise ValueError("個人 V2 policy 缺少 source-time trust")
+        if not isinstance(candidate, Mapping) or not candidate:
+            raise ValueError("個人 V2 policy 缺少完整 candidate pins")
+        if (
+            policy_event.get("source_time_basis") != "user_declared_source_time"
+            or policy_event.get("research_only") is not True
+            or policy_event.get("official_historical_pit_verified") is not False
+            or source_trust.get("basis") != "user_declared_source_time"
+            or source_trust.get("research_only") is not True
+            or source_trust.get("official_historical_pit_verified") is not False
+            or source_trust.get("candidate") != dict(candidate)
+        ):
+            raise ValueError("個人來源信任標記與 candidate pins 不一致")
+
+        baseline = capture.get("probability_baseline_snapshot")
+        if (
+            not isinstance(baseline, Mapping)
+            or baseline.get("schema_version")
+            != PERSONAL_PROBABILITY_BASELINE_SNAPSHOT_SCHEMA_V2
+            or capture.get("schema_version") != PERSONAL_PREDICTION_CAPTURE_SCHEMA_V3
+            or baseline.get("upside_baseline_kind")
+            != PERSONAL_FIXED_NULL_BENCHMARK_KIND
+            or baseline.get("upside_baseline_id") != "null_benchmark_50pct_v1"
+            or baseline.get("upside_probability_bp_by_symbol")
+            != {
+                str(code): 5_000
+                for code in baseline.get("projected_stock_codes", [])
+            }
+        ):
+            raise ValueError("assessment capture 沒有 exact fixed 50% null baseline")
+        delivered_rows = capture.get("delivered_rows")
+        if not isinstance(delivered_rows, list) or not delivered_rows:
+            raise ValueError("assessment capture delivered rows 缺失")
+        active_codes = baseline.get("model_active_stock_codes")
+        fallback_codes = baseline.get("rule_only_fallback_stock_codes")
+        if (
+            not isinstance(active_codes, list)
+            or not isinstance(fallback_codes, list)
+            or not active_codes
+            or any(type(code) is not str or not code for code in active_codes)
+            or any(type(code) is not str or not code for code in fallback_codes)
+            or len(set(active_codes)) != len(active_codes)
+            or len(set(fallback_codes)) != len(fallback_codes)
+            or not set(active_codes).isdisjoint(fallback_codes)
+            or set(active_codes) | set(fallback_codes)
+            != {
+                str(row.get("stock_code"))
+                for row in delivered_rows
+                if isinstance(row, Mapping)
+            }
+            or any(not isinstance(row, Mapping) for row in delivered_rows)
+            or len(active_codes) + len(fallback_codes) != len(delivered_rows)
+            or baseline.get("delivered_count") != len(delivered_rows)
+            or baseline.get("model_active_count") != len(active_codes)
+            or baseline.get("fallback_count") != len(fallback_codes)
+            or baseline.get("model_coverage_bp")
+            != len(active_codes) * 10_000 // len(delivered_rows)
+        ):
+            raise ValueError("assessment capture active/fallback partition is inconsistent")
+
+        summary_file = _assessment_absolute_path(
+            daily_summary_path, "daily_summary_path"
+        )
+        summary, summary_raw_sha256 = _read_personal_assessment_json(
+            summary_file,
+            max_bytes=_MAX_PERSONAL_ASSESSMENT_JSON_BYTES,
+            label="Stage C daily summary",
+        )
+        summary_hash = _verify_personal_outcome_hashed_json(
+            summary, expected_schema="personal-recommendation-natural-outcome-daily.v1"
+        )
+        if (
+            summary_file.parent.name != "runs"
+            or summary_file.parent.parent.name != "personal_natural_outcomes"
+            or summary_file.stem != summary_hash.removeprefix("sha256:")
+        ):
+            raise ValueError("Stage C summary filename does not match its payload hash")
+        summary_sources = summary.get("sources")
+        if not isinstance(summary_sources, Mapping):
+            raise ValueError("Stage C summary source identities are missing")
+        expected_canonical_root = (
+            self.canonical_runs_dir.parent.parent
+            if self.canonical_runs_dir is not None
+            else None
+        )
+        if (
+            expected_canonical_root is None
+            or _assessment_normalized_path(
+                summary_sources.get("canonical_recommendation_output_root")
+            )
+            != _assessment_normalized_path(expected_canonical_root)
+            or _assessment_normalized_path(
+                summary_sources.get("personal_capture_root")
+            )
+            != _assessment_normalized_path(personal_root)
+            or _assessment_normalized_path(summary_sources.get("market_source_db"))
+            != _assessment_normalized_path(source_trust.get("source_database_path"))
+        ):
+            raise ValueError("Stage C summary roots differ from canonical/capture source trust")
+
+        captures = summary.get("captures")
+        if (
+            not isinstance(captures, list)
+            or not 1 <= len(captures) <= 500
+            or type(summary.get("selected_capture_count")) is not int
+            or summary.get("selected_capture_count") != len(captures)
+            or summary.get("global_natural_evidence_created") is not False
+            or summary.get("promotion_credit_created") is not False
+        ):
+            raise ValueError("Stage C summary cohort/credit fields are invalid")
+        matching_rows = [
+            row
+            for row in captures
+            if isinstance(row, Mapping)
+            and row.get("capture_id") == capture.get("capture_id")
+            and row.get("result_id") == resolved_result
+        ]
+        if len(matching_rows) != 1:
+            raise ValueError("Stage C summary must contain exactly one matching capture")
+        summary_row = matching_rows[0]
+        if (
+            _assessment_normalized_path(summary_row.get("capture_path"))
+            != _assessment_normalized_path(capture_file)
+        ):
+            raise ValueError("Stage C summary capture path differs from the exact capture")
+
+        decision_at = _text(capture.get("decision_at"))
+        decision_date = _text(baseline.get("decision_date"))
+        context = first_read.execution.context
+        context_date = getattr(context, "as_of_date", None)
+        context_date_iso = getattr(context_date, "isoformat", None)
+        context_decision_at = getattr(context, "decision_at", None)
+        if (
+            not callable(context_date_iso)
+            or context_date_iso() != decision_date
+            or not isinstance(context_decision_at, datetime)
+            or parse_aware_datetime(context_decision_at, "canonical decision_at")
+            != parse_aware_datetime(decision_at, "capture decision_at")
+        ):
+            raise ValueError("canonical decision date/clock differs from personal capture")
+        receipt_binding = capture.get("receipt_binding")
+        if not isinstance(receipt_binding, Mapping):
+            raise ValueError("assessment capture receipt binding is missing")
+        if (
+            policy_event.get("decision_at") != decision_at
+            or receipt_binding.get("decision_date") != decision_date
+            or receipt_binding.get("candidate_id") != candidate.get("candidate_id")
+            or receipt_binding.get("receipt_hash") is None
+            or receipt_binding.get("cost_scenario_hash")
+            != baseline.get("cost_scenario_hash")
+            or receipt_binding.get("projection_rows_sha256")
+            != baseline.get("projection_rows_sha256")
+        ):
+            raise ValueError("assessment capture policy/receipt/baseline identity mismatch")
+        evaluation_at = _text(summary.get("evaluation_at"))
+        parsed_evaluation_at = parse_aware_datetime(evaluation_at, "Stage C evaluation_at")
+        if parsed_evaluation_at < parse_aware_datetime(
+            _text(capture.get("capture_written_at")), "capture_written_at"
+        ):
+            raise ValueError("Stage C evaluation clock precedes the saved capture")
+
+        row_status = summary_row.get("status")
+        if row_status not in {"pending", "unknown", "matured"}:
+            raise ValueError("Stage C capture status is unsupported")
+        matured_count = _assessment_nonnegative_int(
+            summary_row.get("matured_sample_count"), "matured_sample_count"
+        )
+        pending_raw = summary_row.get("pending_sample_count")
+        if pending_raw is None and row_status == "unknown":
+            pending_count: int | None = None
+        else:
+            pending_count = _assessment_nonnegative_int(
+                pending_raw, "pending_sample_count"
+            )
+        if row_status == "pending" and (
+            matured_count != 0
+            or pending_count != len(active_codes)
+            or summary_row.get("projection_status") != "pending"
+        ):
+            raise ValueError("Stage C pending sample count differs from captured active rows")
+        reason = _text(summary_row.get("reason")) or "personal_outcome_reason_missing"
+        metrics: dict[str, int | None] = {
+            "model_brier_bp": None,
+            "model_calibration_gap_bp": None,
+            "fixed_null_benchmark_brier_bp": None,
+            "fixed_null_benchmark_calibration_gap_bp": None,
+            "model_minus_fixed_null_brier_bp": None,
+            "sample_count": None,
+        }
+        after_cost: dict[str, Any] = {
+            "status": "unavailable",
+            "model_brier_bp": None,
+            "fixed_null_benchmark_brier_bp": None,
+            "sample_count": None,
+        }
+        verified_market_price_rows_sha256: str | None = None
+        missing: list[str] = []
+        next_steps: list[str] = []
+        diagnostics: list[str] = []
+        evidence_status = str(row_status)
+        source_before = summary_sources.get("market_source_db_before")
+        source_after = summary_sources.get("market_source_db_after")
+        trust_file_identity = source_trust.get("file_identity")
+        if not isinstance(source_before, Mapping) or not isinstance(source_after, Mapping):
+            evidence_status = "unknown"
+            reason = "market_source_stat_missing"
+            diagnostics.append("stage_c_market_source_stat_missing")
+            missing.append(reason)
+            next_steps.append("確認 Stage C 行情來源 before/after 身分收據，再以相同 capture 重跑評估。")
+        elif dict(source_before) != dict(source_after):
+            evidence_status = "unknown"
+            reason = "market_source_changed_during_batch"
+            diagnostics.append("stage_c_market_source_changed_during_batch")
+            missing.append(reason)
+            next_steps.append("隔離來源變動的本次評估；確認資料庫穩定後再以真實 evaluation clock 重跑。")
+        elif (
+            not isinstance(trust_file_identity, Mapping)
+            or isinstance(trust_file_identity.get("device"), bool)
+            or type(trust_file_identity.get("device")) is not int
+            or isinstance(trust_file_identity.get("inode"), bool)
+            or type(trust_file_identity.get("inode")) is not int
+            or source_before.get("device") != trust_file_identity.get("device")
+            or source_before.get("inode") != trust_file_identity.get("inode")
+        ):
+            evidence_status = "unknown"
+            reason = "market_source_file_identity_differs_from_policy"
+            diagnostics.append("stage_c_market_source_policy_identity_mismatch")
+            missing.append(reason)
+            next_steps.append("用目前明示信任的隔離來源重新檢查政策，再重跑個人評估。")
+
+        outcome_ref = summary_row.get("outcome_artifact")
+        outcome_payload: Mapping[str, Any] | None = None
+        outcome_raw_hash: str | None = None
+        if row_status == "matured":
+            if evidence_status != "matured":
+                raise ValueError("Stage C matured result has an unverified source identity")
+            if not isinstance(source_before, Mapping):
+                raise ValueError("Stage C matured result has no bound source stat")
+            if (
+                matured_count != len(active_codes)
+                or pending_count != 0
+                or not isinstance(outcome_ref, Mapping)
+            ):
+                raise ValueError("Stage C matured status has inconsistent counts/artifact")
+            (
+                outcome_payload,
+                outcome_raw_hash,
+                verified_metrics,
+                verified_after_cost,
+                verified_market_price_rows_sha256,
+            ) = (
+                self._read_personal_model_outcome_artifact(
+                    outcome_ref,
+                    summary_file=summary_file,
+                    capture=capture,
+                    policy_snapshot=policy_snapshot,
+                    baseline=baseline,
+                    source_trust=source_trust,
+                    evaluation_at=parsed_evaluation_at,
+                    expected_source_stat=source_before,
+                )
+            )
+            metrics.update(verified_metrics)
+            after_cost.update(verified_after_cost)
+            if matured_count != verified_metrics["sample_count"]:
+                raise ValueError("Stage C summary matured count differs from verified outcome rows")
+        else:
+            if outcome_ref is not None or matured_count != 0:
+                raise ValueError("Stage C pending/unknown capture unexpectedly has an outcome")
+            if row_status == "pending" and (
+                pending_count is None or pending_count <= 0
+            ):
+                raise ValueError("Stage C pending capture has no pending samples")
+            if row_status == "pending":
+                missing.append(reason)
+                next_steps.append(
+                    "檢查同一 capture 的官方 20-session、行情來源及成本診斷；證據補齊後以真實 evaluation clock 重跑 Stage C。"
+                )
+            else:
+                missing.append(reason)
+                next_steps.append(
+                    "先修復或重新驗證 Stage C 的來源／日曆證據，再對同一 canonical capture 重跑；不要回填時鐘或把未知成本當零。"
+                )
+
+        delivered_codes = [str(row["stock_code"]) for row in delivered_rows]
+        identity = {
+            "canonical_payload_hash": first_read.payload_hash,
+            "canonical_raw_artifact_sha256": first_read.raw_artifact_sha256,
+            "capture_payload_sha256": capture.get("payload_sha256"),
+            "policy_sha256": policy_snapshot.get("policy_sha256"),
+            "policy_revision": policy_snapshot.get("revision"),
+            "policy_version": policy_snapshot.get("policy_version"),
+            "candidate_pins": dict(candidate),
+            "source_time_trust": dict(source_trust),
+            "market_source_file_identity": (
+                dict(source_before) if isinstance(source_before, Mapping) else None
+            ),
+            "verified_market_price_rows_sha256": verified_market_price_rows_sha256,
+            "receipt_hash": receipt_binding.get("receipt_hash"),
+            "projection_rows_sha256": receipt_binding.get("projection_rows_sha256"),
+            "cost_scenario_hash": receipt_binding.get("cost_scenario_hash"),
+            "baseline_snapshot_sha256": baseline.get("snapshot_sha256"),
+            "capture_id": capture.get("capture_id"),
+            "decision_at": decision_at,
+            "result_id": resolved_result,
+            "daily_summary_payload_sha256": summary_hash,
+            "daily_summary_raw_sha256": summary_raw_sha256,
+            "evaluation_at": evaluation_at,
+            "outcome_payload_sha256": (
+                outcome_ref.get("payload_sha256")
+                if isinstance(outcome_ref, Mapping)
+                else None
+            ),
+            "outcome_raw_sha256": outcome_raw_hash,
+        }
+        scope = {
+            "decision_date": decision_date,
+            "return_basis": "close_to_close_event_date",
+            "return_start_date": decision_date,
+            "return_end_date": (
+                outcome_payload.get("return_semantics", {}).get("end_date")
+                if isinstance(outcome_payload, Mapping)
+                and isinstance(outcome_payload.get("return_semantics"), Mapping)
+                else None
+            ),
+            "is_execution_pnl": False,
+            "horizon_sessions": 20,
+            "cost_scenario_hash": receipt_binding.get("cost_scenario_hash"),
+            "delivered_stock_codes": delivered_codes,
+            "delivered_count": len(delivered_codes),
+            "model_active_stock_codes": list(active_codes),
+            "model_active_count": len(active_codes),
+            "rule_only_fallback_stock_codes": list(fallback_codes),
+            "fallback_count": len(fallback_codes),
+            "model_coverage_bp": baseline.get("model_coverage_bp"),
+            "upside_baseline": {
+                "kind": PERSONAL_FIXED_NULL_BENCHMARK_KIND,
+                "id": "null_benchmark_50pct_v1",
+                "probability_bp": 5_000,
+            },
+            "population_or_rule_model_baseline": None,
+        }
+        if not missing and evidence_status == "matured":
+            missing.append(
+                "多個成熟決策日的同 scope 個人結果與明確 versioned advisory policy 尚未建立"
+            )
+            next_steps.append(
+                "累積更多同候選、同 source lane、同 20-session horizon、同 cost scenario 的成熟 capture，再由明確版本化的 advisory 規則解讀；此單筆結果不產生效果建議。"
+            )
+
+        return PersonalModelAssessmentV1(
+            result_id=resolved_result,
+            capture_id=str(capture["capture_id"]),
+            assessment_status="insufficient_data",
+            evidence_status=evidence_status,
+            recommendation="insufficient_data",
+            reason=reason,
+            identity=identity,
+            scope=scope,
+            matured_sample_count=matured_count,
+            pending_sample_count=pending_count,
+            metrics=metrics,
+            after_cost=after_cost,
+            missing_evidence=tuple(missing),
+            next_steps=tuple(next_steps),
+            diagnostics=tuple(diagnostics),
+        )
+
+    def _read_personal_model_outcome_artifact(
+        self,
+        outcome_ref: Mapping[str, Any],
+        *,
+        summary_file: Path,
+        capture: Mapping[str, Any],
+        policy_snapshot: Mapping[str, Any],
+        baseline: Mapping[str, Any],
+        source_trust: Mapping[str, Any],
+        evaluation_at: datetime,
+        expected_source_stat: Mapping[str, Any],
+    ) -> tuple[
+        Mapping[str, Any],
+        str,
+        dict[str, int | None],
+        dict[str, Any],
+        str,
+    ]:
+        if set(outcome_ref) != {"path", "payload_sha256"}:
+            raise ValueError("Stage C outcome reference fields are invalid")
+        outcome_path = _assessment_absolute_path(outcome_ref.get("path"), "outcome path")
+        output_root = summary_file.parent.parent
+        expected_outcome_dir = output_root / "outcomes"
+        if outcome_path.parent != expected_outcome_dir or outcome_path.suffix.lower() != ".json":
+            raise ValueError("Stage C outcome path is outside its summary output root")
+        outcome, raw_hash = _read_personal_assessment_json(
+            outcome_path,
+            max_bytes=_MAX_PERSONAL_ASSESSMENT_JSON_BYTES,
+            label="Stage C personal outcome",
+        )
+        outcome_hash = _verify_personal_outcome_hashed_json(
+            outcome, expected_schema="personal-recommendation-natural-outcome.v2"
+        )
+        outcome_projection = outcome.get("projection")
+        outcome_evaluation_at = (
+            outcome_projection.get("evaluation_at")
+            if isinstance(outcome_projection, Mapping)
+            else None
+        )
+        outcome_capture_id = capture.get("capture_id")
+        if (
+            type(outcome_capture_id) is not str
+            or not outcome_capture_id
+            or type(outcome_evaluation_at) is not str
+            or not outcome_evaluation_at
+        ):
+            raise ValueError("Stage C outcome capture/evaluation identity is missing")
+        outcome_file_identity: dict[str, Any] = {
+            "capture_id": outcome_capture_id,
+            "evaluation_at": outcome_evaluation_at,
+        }
+        if capture.get("schema_version") == "recommendation-personal-prediction-capture.v3":
+            outcome_file_identity["outcome_schema_version"] = "personal-recommendation-natural-outcome.v2"
+        expected_outcome_stem = _stage_c_payload_hash(outcome_file_identity).removeprefix(
+            "sha256:"
+        )
+        if (
+            outcome_hash != outcome_ref.get("payload_sha256")
+            or outcome_path.stem != expected_outcome_stem
+        ):
+            raise ValueError("Stage C outcome bytes/hash/path identity mismatch")
+        if (
+            outcome.get("lane") != "personal_only"
+            or outcome.get("global_natural_evidence_created") is not False
+            or outcome.get("promotion_credit_created") is not False
+        ):
+            raise ValueError("Stage C outcome lane/credit flags are invalid")
+        binding = outcome.get("capture_binding")
+        baseline_snapshot = capture.get("probability_baseline_snapshot")
+        receipt_binding = capture.get("receipt_binding")
+        if (
+            not isinstance(binding, Mapping)
+            or not isinstance(baseline_snapshot, Mapping)
+            or not isinstance(receipt_binding, Mapping)
+        ):
+            raise ValueError("Stage C outcome/capture bindings are missing")
+        expected_binding = {
+            "capture_id": capture.get("capture_id"),
+            "result_id": capture.get("result_id"),
+            "policy_sha256": policy_snapshot.get("policy_sha256"),
+            "candidate_id": policy_snapshot.get("candidate", {}).get("candidate_id")
+            if isinstance(policy_snapshot.get("candidate"), Mapping)
+            else None,
+            "receipt_hash": receipt_binding.get("receipt_hash"),
+            "projection_rows_sha256": receipt_binding.get("projection_rows_sha256"),
+            "cost_scenario_hash": receipt_binding.get("cost_scenario_hash"),
+            "decision_at": capture.get("decision_at"),
+            "probability_baseline_snapshot_sha256": baseline_snapshot.get("snapshot_sha256"),
+            "decision_date": baseline_snapshot.get("decision_date"),
+        }
+        if dict(binding) != expected_binding:
+            raise ValueError("Stage C outcome capture binding differs from verified capture")
+        source = outcome.get("source")
+        session_proof = source.get("session_proof") if isinstance(source, Mapping) else None
+        if not isinstance(source, Mapping) or not isinstance(session_proof, Mapping):
+            raise ValueError("Stage C outcome close-to-close/session scope is invalid")
+        return_semantics = outcome.get("return_semantics")
+        if (
+            not isinstance(return_semantics, Mapping)
+            or set(return_semantics)
+            != {"basis", "start_date", "end_date", "is_execution_pnl"}
+            or return_semantics.get("basis") != "close_to_close_event_date"
+            or return_semantics.get("start_date") != baseline_snapshot.get("decision_date")
+            or type(return_semantics.get("end_date")) is not str
+            or return_semantics.get("is_execution_pnl") is not False
+        ):
+            raise ValueError("Stage C outcome close-to-close date semantics are invalid")
+        if (
+            _assessment_normalized_path(source.get("market_source_db"))
+            != _assessment_normalized_path(source_trust.get("source_database_path"))
+        ):
+            raise ValueError("Stage C outcome source DB differs from V2 source trust")
+        if (
+            session_proof.get("status") != "ready"
+            or session_proof.get("horizon_sessions") != 20
+            or session_proof.get("capture_date") != baseline_snapshot.get("decision_date")
+            or session_proof.get("endpoint_date")
+            != outcome.get("return_semantics", {}).get("end_date")
+        ):
+            raise ValueError("Stage C outcome has incomplete official 20-session proof")
+        verified_session_proof = verify_natural_maturity_session_proof(
+            session_proof,
+            capture_date=str(baseline_snapshot.get("decision_date")),
+            label_end_date=str(return_semantics.get("end_date")),
+            evaluation_at=evaluation_at,
+            expected_db_path=str(source_trust.get("source_database_path", "")),
+        )
+        if dict(verified_session_proof) != dict(session_proof):
+            raise ValueError("Stage C session proof differs from independent verification")
+
+        projection = outcome.get("projection")
+        outcomes = projection.get("outcomes") if isinstance(projection, Mapping) else None
+        metrics_value = projection.get("metrics") if isinstance(projection, Mapping) else None
+        model_scope = outcome.get("model_scope")
+        if (
+            not isinstance(projection, Mapping)
+            or projection.get("status") != "matured"
+            or not isinstance(outcomes, list)
+            or not outcomes
+            or not isinstance(metrics_value, Mapping)
+            or not isinstance(model_scope, Mapping)
+        ):
+            raise ValueError("Stage C matured outcome projection is incomplete")
+        active_codes = baseline.get("model_active_stock_codes")
+        fallback_codes = baseline.get("rule_only_fallback_stock_codes")
+        if (
+            not isinstance(active_codes, list)
+            or not isinstance(fallback_codes, list)
+            or model_scope.get("model_active_stock_codes") != active_codes
+            or model_scope.get("rule_only_fallback_stock_codes") != fallback_codes
+            or model_scope.get("model_active_count") != len(active_codes)
+            or model_scope.get("rule_only_fallback_count") != len(fallback_codes)
+            or model_scope.get("delivered_count")
+            != baseline.get("delivered_count")
+            or model_scope.get("model_coverage_bp")
+            != baseline.get("model_coverage_bp")
+            or model_scope.get("fallback_rows_have_model_probability") is not False
+            or len(outcomes) != len(active_codes)
+        ):
+            raise ValueError("Stage C outcome active/fallback cohort differs from capture")
+        delivered = capture.get("delivered_rows")
+        if not isinstance(delivered, list):
+            raise ValueError("verified capture delivered rows are missing")
+        delivered_by_code = {
+            str(row["stock_code"]): row
+            for row in delivered
+            if isinstance(row, Mapping) and type(row.get("stock_code")) is str
+        }
+        seen_codes: set[str] = set()
+        model_probabilities: list[int] = []
+        null_probabilities: list[int] = []
+        labels: list[int] = []
+        stock_returns_bp: dict[str, int] = {}
+        for row in outcomes:
+            if not isinstance(row, Mapping):
+                raise ValueError("Stage C outcome row is invalid")
+            code = row.get("stock_code")
+            if type(code) is not str or code in seen_codes or code not in active_codes:
+                raise ValueError("Stage C outcome row is duplicate or not model-active")
+            seen_codes.add(code)
+            delivered_row = delivered_by_code.get(code)
+            delivered_projection = (
+                delivered_row.get("projection") if isinstance(delivered_row, Mapping) else None
+            )
+            probability = row.get("calibrated_probability_bp")
+            null_probability = row.get("upside_baseline_probability_bp")
+            label = row.get("label")
+            stock_return_bp = row.get("stock_return_bp")
+            if (
+                isinstance(probability, bool)
+                or type(probability) is not int
+                or not 0 <= probability <= 10_000
+                or isinstance(null_probability, bool)
+                or type(null_probability) is not int
+                or null_probability != 5_000
+                or isinstance(label, bool)
+                or type(label) is not int
+                or label not in (0, 1)
+                or row.get("label_kind") != "stock_close_return_positive.v1"
+                or isinstance(stock_return_bp, bool)
+                or type(stock_return_bp) is not int
+                or label != int(stock_return_bp > 0)
+                or not isinstance(delivered_projection, Mapping)
+                or delivered_projection.get("calibrated_probability_bp") != probability
+                or row.get("cost_scenario_hash") != receipt_binding.get("cost_scenario_hash")
+                or row.get("return_basis") != "close_to_close_event_date"
+                or row.get("return_start_date") != baseline.get("decision_date")
+                or row.get("return_end_date") != outcome.get("return_semantics", {}).get("end_date")
+                or row.get("is_execution_pnl") is not False
+            ):
+                raise ValueError("Stage C outcome row does not match captured probability/scope")
+            model_probabilities.append(probability)
+            null_probabilities.append(null_probability)
+            labels.append(label)
+            stock_returns_bp[code] = stock_return_bp
+        if seen_codes != set(active_codes):
+            raise ValueError("Stage C outcome rows do not cover the model-active subset")
+
+        verified_price_rows_sha256 = _verify_personal_outcome_source_prices(
+            source_database_path=source_trust.get("source_database_path"),
+            expected_source_stat=expected_source_stat,
+            start_date=str(baseline_snapshot.get("decision_date")),
+            end_date=str(return_semantics.get("end_date")),
+            expected_returns_bp=stock_returns_bp,
+        )
+
+        model_brier = _assessment_brier_bp(model_probabilities, labels)
+        null_brier = _assessment_brier_bp(null_probabilities, labels)
+        model_gap = _assessment_calibration_gap_bp(model_probabilities, labels)
+        null_gap = _assessment_calibration_gap_bp(null_probabilities, labels)
+        if (
+            metrics_value.get("sample_count") != len(labels)
+            or metrics_value.get("brier_bp") != model_brier
+            or metrics_value.get("calibration_gap_bp") != model_gap
+            or metrics_value.get("fixed_null_benchmark_sample_count") != len(labels)
+            or metrics_value.get("fixed_null_benchmark_brier_bp") != null_brier
+            or metrics_value.get("fixed_null_benchmark_calibration_gap_bp") != null_gap
+        ):
+            raise ValueError("Stage C reported metrics differ from verified outcome rows")
+        verified_metrics: dict[str, int | None] = {
+            "sample_count": len(labels),
+            "model_brier_bp": model_brier,
+            "model_calibration_gap_bp": model_gap,
+            "fixed_null_benchmark_brier_bp": null_brier,
+            "fixed_null_benchmark_calibration_gap_bp": null_gap,
+            "model_minus_fixed_null_brier_bp": model_brier - null_brier,
+        }
+        after_metrics = {
+            "status": "unassessed",
+            "reported_projection_status": str(
+                projection.get("after_cost_status") or "unavailable"
+            ),
+            "model_brier_bp": None,
+            "fixed_null_benchmark_brier_bp": None,
+            "sample_count": None,
+            "reason": "after_cost_metrics_not_recomputed_by_readback",
+        }
+        return (
+            outcome,
+            raw_hash,
+            verified_metrics,
+            after_metrics,
+            verified_price_rows_sha256,
+        )
 
     def read_personal_recommendation_choices(
         self,
@@ -2905,6 +4084,8 @@ __all__ = [
     "DEFAULT_MAX_EVIDENCE_EVENTS",
     "DEFAULT_MAX_JOURNAL_ROWS",
     "DEFAULT_MAX_RESULTS",
+    "PERSONAL_MODEL_ASSESSMENT_SCHEMA_VERSION",
+    "PersonalModelAssessmentV1",
     "PersonalizationReadReport",
     "PersonalizationReadService",
     "PersonalRecommendationChoiceReadEntry",

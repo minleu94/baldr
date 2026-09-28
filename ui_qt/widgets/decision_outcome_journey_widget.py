@@ -8,7 +8,7 @@ generation + stock code + result id 丟棄過期回傳，避免切股後舊結�
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any, Protocol
 
@@ -260,6 +260,24 @@ class DecisionOutcomeJourneyWidget(QWidget):
         maturity_layout.addWidget(self._empty_labels["maturity"])
         content_layout.addWidget(maturity_group)
 
+        personal_choice_group = QGroupBox("此推薦結果的個人決定歷史")
+        personal_choice_layout = QVBoxLayout(personal_choice_group)
+        personal_choice_layout.addWidget(
+            self._wrapped_label(
+                "採用、拒絕或推翻理由只會從同一 result、股票、決策日與來源 snapshot 的已驗證 Journal 讀取；"
+                "每列是一筆 append-only 歷史，依記錄時間排列；較早決定會保留，不代表多筆決定同時有效。"
+                "這是研究紀錄，不是成交或績效結果。"
+            )
+        )
+        self.personal_choice_table = self._make_table(
+            "personalChoices",
+            ("結果／股票", "個人決定", "推翻理由", "記錄時間", "連結狀態"),
+            180,
+        )
+        personal_choice_layout.addWidget(self.personal_choice_table)
+        personal_choice_layout.addWidget(self._empty_labels["personalChoices"])
+        content_layout.addWidget(personal_choice_group)
+
         self.details_toggle = QPushButton("顯示技術詳情")
         self.details_toggle.setObjectName("decisionOutcomeJourneyDetailsToggle")
         self.details_toggle.setProperty("variant", "secondary")
@@ -349,6 +367,11 @@ class DecisionOutcomeJourneyWidget(QWidget):
         root.addWidget(scroll, 1)
 
         self._set_table_rows("maturity", (), "尚未載入；需要 exact result_id 與 candidate_key。")
+        self._set_table_rows(
+            "personalChoices",
+            (),
+            "尚未載入；缺少可核驗的同一推薦結果個人決定。",
+        )
         self._set_table_rows("evidence", (), "尚未載入；不以同股同日猜測 Evidence event。")
         self._set_table_rows("journal", (), "尚未載入；缺少 Journal 不阻擋推薦追蹤。")
         self._set_table_rows(
@@ -574,6 +597,11 @@ class DecisionOutcomeJourneyWidget(QWidget):
         self._restore_identity_label(code)
         self._set_status(f"決策與後續結果讀取失敗：{message}", "error")
         self._set_table_rows("maturity", (), "讀取失敗；可按「重新讀取」重試。")
+        self._set_table_rows(
+            "personalChoices",
+            (),
+            "Journey 讀取失敗；沒有顯示未核驗的個人決定。",
+        )
         self._set_table_rows("evidence", (), "Journey 讀取失敗；尚未顯示 Evidence。")
         self._set_table_rows("journal", (), "Journal 尚未讀取；讀取失敗不建立任何紀錄。")
         self._set_table_rows("portfolio", (), "Portfolio 尚未讀取；讀取失敗不建立任何交易。")
@@ -600,6 +628,7 @@ class DecisionOutcomeJourneyWidget(QWidget):
             f"result_id：{result_id}\n完整來源 identity 讀取中…"
         )
         self._set_table_rows("maturity", (), "讀取中…")
+        self._set_table_rows("personalChoices", (), "正在驗證同一 result／股票／來源 identity…")
         self._set_table_rows("evidence", (), "讀取中…")
         self._set_table_rows("journal", (), "讀取中…")
         self._set_table_rows("portfolio", (), "讀取中…")
@@ -614,6 +643,11 @@ class DecisionOutcomeJourneyWidget(QWidget):
             "maturity",
             (),
             "未連結：需要 exact result_id + stock_code 才能列出 maturity。",
+        )
+        self._set_table_rows(
+            "personalChoices",
+            (),
+            "未連結：缺少完整 result／股票／決策日／來源 snapshot identity。",
         )
         self._set_table_rows(
             "evidence",
@@ -685,6 +719,11 @@ class DecisionOutcomeJourneyWidget(QWidget):
             )
             self._set_table_rows(
                 "maturity",
+                (),
+                "此 result_id 沒有目前股票的 exact candidate_key。",
+            )
+            self._set_table_rows(
+                "personalChoices",
                 (),
                 "此 result_id 沒有目前股票的 exact candidate_key。",
             )
@@ -777,6 +816,30 @@ class DecisionOutcomeJourneyWidget(QWidget):
                 candidate_ledger_ids,
                 stock_code=code,
             )
+        )
+        personal_choice_rows = tuple(
+            sorted(
+                (
+                    row
+                    for item in journals
+                    if (
+                        row := _personal_choice_row(
+                            item,
+                            self.context,
+                            journey,
+                            result_id,
+                            code,
+                        )
+                    )
+                    is not None
+                ),
+                key=lambda row: row[3],
+            )
+        )
+        self._set_table_rows(
+            "personalChoices",
+            personal_choice_rows,
+            "尚無同一推薦結果、股票、決策日與來源 snapshot 的可核驗個人決定；缺件不會以同股同日補接。",
         )
         journal_rows_list: list[tuple[str, ...]] = []
         for item in journals:
@@ -1055,6 +1118,91 @@ def _journal_scope(
     if entry.source_id == result_id:
         return "本次推薦共用筆記"
     return None
+
+
+def _personal_choice_row(
+    entry: JournalEntryRecord,
+    context: ResearchStockContextDTO | None,
+    journey: DecisionOutcomeJourney,
+    result_id: str,
+    stock_code: str,
+) -> tuple[str, str, str, str, str] | None:
+    """只呈現 Journey 與目前 UI context 完全相符的個人決定。"""
+
+    if (
+        entry.source_type != "personal_recommendation_choice"
+        or entry.link_status is not JourneyLinkStatus.LINKED
+        or entry.linked_type != "recommendation_result"
+        or entry.linked_id != result_id
+        or entry.source_id != result_id
+        or context is None
+        or context.identity_status != "linked"
+        or context.result_id.strip() != result_id
+        or context.stock_code.strip() != stock_code
+        or not context.decision_date.strip()
+        or not context.source_snapshot_id.strip()
+        or not context.source_snapshot_hash.strip()
+    ):
+        return None
+
+    raw_choice = entry.original_payload.get("personal_recommendation_choice")
+    if not isinstance(raw_choice, Mapping):
+        return None
+    try:
+        from app_module.personalization_contract import PersonalRecommendationChoice
+
+        choice = PersonalRecommendationChoice.from_mapping(raw_choice)
+    except (TypeError, ValueError):
+        return None
+
+    identity = entry.decision_identity
+    root_identity = journey.recommendation_result.source_identity
+    root_result = journey.recommendation_result
+    if (
+        identity is None
+        or not identity.is_linked
+        or identity.result_id != result_id
+        or identity.stock_code != stock_code
+        or identity.decision_date != choice.decision_date
+        or identity.source_snapshot_id != choice.source_snapshot_id
+        or identity.source_snapshot_hash != choice.source_snapshot_hash
+        or entry.source_snapshot_hash != choice.source_snapshot_hash
+        or choice.result_id != result_id
+        or choice.stock_code != stock_code
+        or choice.decision_date != context.decision_date
+        or choice.source_snapshot_id != context.source_snapshot_id
+        or choice.source_snapshot_hash != context.source_snapshot_hash
+        or root_identity.result_id != result_id
+        or root_identity.decision_date != choice.decision_date
+        or root_identity.universe_snapshot_id != choice.source_snapshot_id
+        or root_identity.universe_snapshot_hash != choice.source_snapshot_hash
+        or not root_result.canonical_integrity_verified
+        or not root_result.canonical_payload_hash
+        or not root_result.raw_artifact_sha256
+        or root_result.canonical_payload_hash != choice.canonical_payload_hash
+        or root_result.raw_artifact_sha256 != choice.raw_artifact_sha256
+    ):
+        return None
+
+    choice_label = {
+        "adopt": "個人採用",
+        "reject": "個人拒絕",
+        "override": "推翻原建議",
+    }.get(choice.choice)
+    if choice_label is None:
+        return None
+    reason = (
+        choice.override_reason.detail
+        if choice.override_reason is not None
+        else "—"
+    )
+    return (
+        f"{choice.result_id}:{choice.stock_code}",
+        choice_label,
+        reason,
+        choice.action_at,
+        "已連結",
+    )
 
 
 def _quantity_side_text(side: str | None, quantity: int | None) -> str:

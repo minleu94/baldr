@@ -296,7 +296,7 @@ def batch_update_market_index(start_date: str, end_date: str = None,
 
 def batch_update_industry_index(start_date: str, end_date: str = None, 
                                 delay_min: float = 4.0, delay_max: float = 4.0,
-                                config=None):
+                                config=None, capture_manifests=None, batch_outcome=None):
     """批量更新產業指數數據
     
     Args:
@@ -307,6 +307,42 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
         config: TWStockConfig 實例（可選），如果提供則使用，否則創建新的
     """
     logger = setup_logging()
+    updated_dates: list[str] = []
+    recovered_dates: list[str] = []
+    failed_dates: list[str] = []
+    verified_skipped_dates: list[str] = []
+    unverified_legacy_dates: list[str] = []
+    attempted_dates: set[str] = set()
+
+    def record_outcome(success, *, failure_reason=None):
+        if batch_outcome is not None:
+            if failed_dates:
+                source_status = "failed_or_partial"
+            elif unverified_legacy_dates and updated_dates:
+                source_status = "updated_with_unknown_legacy_rows"
+            elif unverified_legacy_dates:
+                source_status = "unknown_legacy_rows_skipped"
+            elif recovered_dates and len(recovered_dates) == len(updated_dates):
+                source_status = "recovered_capture_projection"
+            elif updated_dates:
+                source_status = "updated_with_verified_captures"
+            elif verified_skipped_dates:
+                source_status = "verified_projection_noop"
+            else:
+                source_status = "no_official_trading_days"
+            batch_outcome.clear()
+            batch_outcome.update({
+                "success": bool(success),
+                "updated_dates": list(updated_dates),
+                "recovered_dates": list(recovered_dates),
+                "failed_dates": list(failed_dates),
+                "capture_manifests": [str(path) for path in (capture_manifests or [])],
+                "verified_skipped_dates": list(verified_skipped_dates),
+                "unverified_legacy_dates": list(unverified_legacy_dates),
+                "source_status": source_status,
+                "failure_reason": failure_reason,
+            })
+
     if config is None:
         config = TWStockConfig()
     loader = DataLoader(config)
@@ -323,21 +359,86 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
         )
     except OfficialTradingCalendarError as exc:
         logger.error("官方交易日曆無法解析，停止產業批次更新：%s", exc)
+        failed_dates.append(start_date)
+        record_outcome(False, failure_reason=str(exc))
         return False
     
     if not trading_days:
         logger.warning("沒有找到需要更新的交易日")
+        record_outcome(True)
         return True
     
     # 獲取已存在的日期集合，避免重複下載，並支持歷史數據回補
     existing_dates = get_existing_dates(config.industry_index_file)
     if existing_dates:
         logger.info(f"現有 industry_index.csv 中已存在 {len(existing_dates)} 天的數據")
-        trading_days = [d for d in trading_days if d not in existing_dates]
+        from data_module.twse_industry_index_capture import (
+            industry_capture_artifact_dates,
+            recover_industry_capture_receipts_for_csv,
+            verified_industry_projection_dates,
+        )
+
+        try:
+            verified_skipped_dates = sorted(verified_industry_projection_dates(
+                output_root=config.output_root,
+                csv_path=config.industry_index_file,
+                database_path=config.db_file,
+                candidate_dates=sorted(existing_dates),
+            ))
+            attempted_dates = industry_capture_artifact_dates(
+                output_root=config.output_root,
+                candidate_dates=sorted(existing_dates - set(verified_skipped_dates)),
+            )
+            recovery_candidates = sorted(
+                attempted_dates & existing_dates & set(trading_days)
+            )
+            if capture_manifests is not None and recovery_candidates:
+                recovered = recover_industry_capture_receipts_for_csv(
+                    output_root=config.output_root,
+                    csv_path=config.industry_index_file,
+                    candidate_dates=recovery_candidates,
+                )
+                for source_date, capture in sorted(recovered.items()):
+                    manifest_path = Path(str(capture["path"]))
+                    if manifest_path not in capture_manifests:
+                        capture_manifests.append(manifest_path)
+                    recovered_dates.append(source_date)
+                    updated_dates.append(source_date)
+        except Exception as exc:
+            logger.error("無法驗證既有產業日期的 projection marker，停止略過：%s", exc)
+            failed_dates.extend(sorted(existing_dates))
+            record_outcome(False, failure_reason=str(exc))
+            return False
+        unverified_legacy_dates = sorted(
+            existing_dates - set(verified_skipped_dates) - attempted_dates
+        )
+        # Legacy rows without any capture attempt may remain as explicitly
+        # unknown history. Dates with an uncommitted/degraded attempt stay in
+        # the work list and must be retried.
+        skip_dates = (
+            set(verified_skipped_dates)
+            | set(unverified_legacy_dates)
+            | set(recovered_dates)
+        )
+        trading_days = [d for d in trading_days if d not in skip_dates]
+        if verified_skipped_dates:
+            logger.info("已確認 projection marker 的日期可安全略過：%s", ", ".join(verified_skipped_dates))
+        if unverified_legacy_dates:
+            logger.warning(
+                "保留未驗證 legacy CSV 日期為 unknown，不宣稱本次來源已更新：%s",
+                ", ".join(unverified_legacy_dates),
+            )
+        if recovered_dates:
+            logger.info(
+                "已從唯一且與目前 CSV 完全相符的 capture receipt 復原待同步日期：%s",
+                ", ".join(recovered_dates),
+            )
     
     if not trading_days:
-        logger.info("所有數據已是最新，無需更新")
-        return True
+        logger.info("沒有需要重抓的產業日期")
+        no_unverified_legacy_rows = not unverified_legacy_dates
+        record_outcome(no_unverified_legacy_rows)
+        return no_unverified_legacy_rows
     
     logger.info(f"準備更新從 {trading_days[0]} 到 {trading_days[-1]} 的產業指數數據")
     logger.info(f"共 {len(trading_days)} 個交易日需要更新")
@@ -351,18 +452,29 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
     
     success_count = 0
     fail_count = 0
-    failed_dates = []
-    
     for i, date in enumerate(trading_days, 1):
         logger.info(f"\n[{i}/{len(trading_days)}] 正在更新 {date} 的產業指數數據...")
         
         try:
             # 使用主模組的 update_industry_index 方法，並跳過逐日備份
-            success = loader.update_industry_index(date, skip_backup=True)
+            captures_before = len(capture_manifests) if capture_manifests is not None else 0
+            success = loader.update_industry_index(
+                date,
+                skip_backup=True,
+                capture_manifests=capture_manifests,
+            )
+            if (
+                success
+                and capture_manifests is not None
+                and len(capture_manifests) == captures_before
+            ):
+                logger.error("  ✗ %s 回報成功但未提供本次 capture receipt", date)
+                success = False
             
             if success:
                 logger.info(f"  ✓ {date} 更新成功")
                 success_count += 1
+                updated_dates.append(date)
             else:
                 logger.error(f"  ✗ {date} 更新失敗")
                 fail_count += 1
@@ -400,7 +512,14 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
         config.create_backup(config.industry_index_file)
     
     logger.info("=" * 60)
-    return fail_count == 0
+    success = fail_count == 0 and not (unverified_legacy_dates and not updated_dates)
+    failure_reason = (
+        "only unverified legacy industry rows were present; no fresh source capture was produced"
+        if unverified_legacy_dates and not updated_dates
+        else None
+    )
+    record_outcome(success, failure_reason=failure_reason)
+    return success
 
 def main():
     """主函數"""

@@ -269,7 +269,7 @@ class DecisionContinuityController:
             prefix += "；相同 request id 未新增事件"
         return (
             f"{prefix}。目前狀態：{cls._decision_status_text(state.decision_status)}；"
-            f"筆記：{state.active_note_count} 筆；"
+            f"Journal 紀錄：{state.active_note_count} 筆；"
             f"下次檢視：{state.next_review_at or '未設定'}。"
         )
 

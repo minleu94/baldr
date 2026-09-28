@@ -614,6 +614,7 @@ def test_qt_manual_save_without_personal_scope_does_not_ack(tmp_path: Path, monk
         def selectionModel(self):  # type: ignore[no-untyped-def]
             return None
 
+    watchlist_action_state_refreshes: list[bool] = []
     view = SimpleNamespace(
         current_execution=execution,
         current_result_id="",
@@ -626,6 +627,9 @@ def test_qt_manual_save_without_personal_scope_does_not_ack(tmp_path: Path, monk
         _selected_stock_code=lambda: "",
         _current_table_rows=lambda: [],
         _update_detail_text=lambda: None,
+        _update_watchlist_action_state=lambda: watchlist_action_state_refreshes.append(
+            True
+        ),
         _update_company_source_snapshot_display=lambda _execution: None,
         _connect_result_table_interactions=lambda: None,
         _refresh_personal_choice_controls=lambda: None,
@@ -648,6 +652,7 @@ def test_qt_manual_save_without_personal_scope_does_not_ack(tmp_path: Path, monk
     assert journal.list_personalization_delivery_acks(RESULT_ID, STOCK_CODE, DELIVERY_ID) == []
     assert messages and "推薦結果已保存" in messages[0]
     assert composition.store.read_artifact(RESULT_ID) is not None
+    assert watchlist_action_state_refreshes == [True]
 
 
 def test_main_window_host_integration_manual_save_does_not_ack(

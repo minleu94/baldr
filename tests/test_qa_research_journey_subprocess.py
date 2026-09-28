@@ -8,6 +8,7 @@ import subprocess
 import hashlib
 import os
 import sqlite3
+from unittest.mock import patch
 
 import pytest
 
@@ -421,33 +422,37 @@ def test_personal_ui_learning_root_rejects_run_and_snapshot_ancestors(tmp_path):
 
 
 def test_personal_ui_launch_environment_uses_only_isolated_roots(tmp_path, monkeypatch):
-    repo_qa_root, _qa_root, run_root, _policy_path, learning_output_root, _authority = (
-        _personal_ui_fixture(tmp_path)
-    )
-    data_root_base = run_root / "data"
-    output_root_base = run_root / "output"
-    layout = personal_ui.RuntimeLayout(
-        run_root=run_root,
-        data_root_base=data_root_base,
-        output_root_base=output_root_base,
-        data_root_actual=data_root_base / "_test",
-        output_root_actual=output_root_base / "_test",
-        working_db_path=data_root_base / "_test" / "sqlite" / "twstock.db",
-        policy_config_path=run_root / "app_config" / "personal_use_policy.json",
-        receipts_dir=run_root / "receipts",
-    )
-    monkeypatch.setenv("FORMAL_DAILY_DUMMY_BINDING", "must be removed")
-    monkeypatch.setenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
-    monkeypatch.setenv("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")
+    original_environment = os.environ.copy()
+    with patch.dict(os.environ):
+        repo_qa_root, _qa_root, run_root, _policy_path, learning_output_root, _authority = (
+            _personal_ui_fixture(tmp_path)
+        )
+        data_root_base = run_root / "data"
+        output_root_base = run_root / "output"
+        layout = personal_ui.RuntimeLayout(
+            run_root=run_root,
+            data_root_base=data_root_base,
+            output_root_base=output_root_base,
+            data_root_actual=data_root_base / "_test",
+            output_root_actual=output_root_base / "_test",
+            working_db_path=data_root_base / "_test" / "sqlite" / "twstock.db",
+            policy_config_path=run_root / "app_config" / "personal_use_policy.json",
+            receipts_dir=run_root / "receipts",
+        )
+        monkeypatch.setenv("FORMAL_DAILY_DUMMY_BINDING", "must be removed")
+        monkeypatch.setenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+        monkeypatch.setenv("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")
 
-    personal_ui._configure_isolated_environment(layout, learning_output_root)
+        personal_ui._configure_isolated_environment(layout, learning_output_root)
 
-    assert Path(os.environ["DATA_ROOT"]) == data_root_base.resolve()
-    assert Path(os.environ["OUTPUT_ROOT"]) == output_root_base.resolve()
-    assert os.environ["PROFILE"] == "test"
-    assert Path(os.environ["RECOMMENDATION_LEARNING_OUTPUT_ROOT"]) == learning_output_root.resolve()
-    assert os.environ["QT_QPA_PLATFORM"] == "windows"
-    assert "FORMAL_DAILY_DUMMY_BINDING" not in os.environ
+        assert Path(os.environ["DATA_ROOT"]) == data_root_base.resolve()
+        assert Path(os.environ["OUTPUT_ROOT"]) == output_root_base.resolve()
+        assert os.environ["PROFILE"] == "test"
+        assert Path(os.environ["RECOMMENDATION_LEARNING_OUTPUT_ROOT"]) == learning_output_root.resolve()
+        assert os.environ["QT_QPA_PLATFORM"] == "windows"
+        assert "FORMAL_DAILY_DUMMY_BINDING" not in os.environ
+
+    assert os.environ == original_environment
 
 
 def test_personal_ui_launch_summary_reads_nested_tree_pin_and_compares_same_shape():

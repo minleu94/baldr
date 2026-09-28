@@ -4,10 +4,10 @@
 
 ## 2026-09-28 machine refresh
 
-本次補登 `tests/test_qa_native_personal_model_acceptance.py`，分類為 `ui-healthcheck-candidate-bridge`；此 UI 自動化候選不會因此成為 healthcheck direct bridge。已更新 machine summary 計數；完整 pytest collection 未執行。
+本次先補登 `tests/test_qa_native_personal_model_acceptance.py`，分類為 `ui-healthcheck-candidate-bridge`；此 UI 自動化候選不會因此成為 healthcheck direct bridge。WP5 整合核查再補登 `tests/test_twse_industry_index_capture.py`（`service-oracle-data-market`）與 `tests/test_ui_qt_personal_model_assessment.py`（`ui-healthcheck-candidate-bridge`），均維持原分類邊界。最新 machine audit 的 filesystem／registry 均為 1058，missing／stale 為零；完整 pytest collection 未執行。
 
-Current filesystem Python files: `1056`
-Current registry entries: `1056`
+Current filesystem Python files: `1058`
+Current registry entries: `1058`
 Current collected test cases: 未執行
 
 | 分類 | 數量 |
@@ -17,12 +17,12 @@ Current collected test cases: 未執行
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
-| `service-oracle-data-market` | 155 |
+| `service-oracle-data-market` | 156 |
 | `service-oracle-portfolio-decision-runtime` | 131 |
 | `service-oracle-recommendation` | 155 |
 | `service-oracle-research-backtest` | 100 |
 | `slow-e2e-or-environment` | 4 |
-| `ui-healthcheck-candidate-bridge` | 49 |
+| `ui-healthcheck-candidate-bridge` | 50 |
 | `ui-healthcheck-direct-bridge` | 12 |
 | `write-risk-dry-run-required` | 82 |
 

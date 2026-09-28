@@ -426,6 +426,8 @@ CSV 送入 SQLite 前會先在寫入用副本上正規化欄位與識別值：�
 
 合法假日區間沒有官方交易日會回報成功 no-op，不呼叫 API；HTTP、timeout、schema、parser、mapping 或 SQLite transaction 失敗會保留 failed／diagnostic。market／industry 同步只替換驗證過的 date keys，不會以整表 DELETE 取代增量交易。
 
+產業指數的這條 capture 路徑只保存 TWSE `MI_INDEX type=IND` 回應中符合既有 table title 與產業名稱篩選條件的列；它不證明指數成分股、個股產業 membership、上市／上櫃分類，也不代表 TPEx 或興櫃覆蓋。原始 response receipt 的 UTC 時間是本機讀完 response body 的時間，官方 `available_at`／`published_at` 保持 unknown，`historical_pit_eligible=false`。回應本身沒有可核對日期、日期與請求日不一致，或與最近較早 CSV 日期的名稱集合不同時，該日標為 degraded、等待人工確認且不改寫 CSV；不以同日舊列補齊新 response。只有本次 capture 綁定日期會進入明確 date-scoped SQLite 替換；最終 projection commit marker 要等 CSV 與 SQLite 六欄 rowset 獨立 readback 一致後才建立。批次只有在 marker 有效且目前 CSV／SQLite scoped rowset 仍相符時才可 verified skip；沒有 marker 或 capture attempt 的舊 CSV 日期保留為 unknown legacy rows，不宣稱本次已更新；只有這種 legacy skip 而沒有新的 capture 時，更新步驟回報 unknown/degraded，不會當成成功更新。已有 degraded／未完成 capture artifact、尚無有效 marker 的日期會重試。若批次只有部分日期通過，capture 日期可完成 scoped projection，但 updater 結果與 marker 保留 partial／失敗日期；quick scheduled runner 會在終止前只同步本次已驗證 capture 的日期一次，仍將整體 run 標為 failed、保留失敗日期並停止後續步驟；同步失敗時沿用 `UpdateService` 的 CSV／SQLite before-image compensation。此分支不會改走舊 CSV 整份 fallback。零 capture 的 updater 後續同步仍會拒絕以舊 CSV 做整份 fallback。下游 IndustryMapper observation 仍只描述 mapper 實際讀取的 current rows，沒有帶入 capture receipt／projection marker ID 或本機 capture time；不能由此推導 official availability 或 PIT。這個 marker 不提供官方公告時間或歷史 PIT 證據。
+
 月營收 MOPS snapshot 與公告／可得日 mapping 是兩個不同 gate。snapshot 可用時仍須先跑 availability validator／merge preview，再由 owner 確認後執行 `scripts/apply_monthly_revenue_recovery.py`；正式 apply 前要有 task-specific DB／mapping backup、journal、WAL transaction 與 Direct heavy-chain lock 狀態讀回。季報沒有 availability map 時顯示 `unknown`，不能用月營收或 legacy aggregate 代替。
 
 TWSE 補檔遇到平日休市（例如颱風停市）時，只有在至少一個官方查詢型別明確回覆「沒有符合條件的資料」且沒有任何成功資料時，才會標記為「官方無交易資料日」並略過。HTTP 錯誤、逾時或無法辨識的回覆仍保留為更新失敗；更新結果會保留各查詢型別的 HTTP / API 狀態與實際日期，方便後續診斷。
@@ -2061,6 +2063,30 @@ $policy = Join-Path $run 'app_config\personal_use_policy.json'
 ```
 
 成功旅程會在「推薦分析」內逐步檢查明示 DB source、V2 trust、推薦、保存讀回、capture、冷啟、停用與 rollback；每一個 source proof 以該 run 真正的 `TWStockConfig.db_file` 為準。準備器複製已 pin 的 QA snapshot，learning root `output/qa/pc-fit-v7` 保持唯讀。若任何 phase 失敗或逾時，保留原 receipt 與 run tree、停止後續動作並改用新 run ID；不得清理或覆寫失敗 root。
+
+### 9.9.1e 已保存推薦的個人決定與旅程回看（2026-09-28）
+
+這段流程記錄使用者對已保存推薦的個人選擇，並在個股研究的「決策 → 結果」頁回看同一結果的 Journal 歷史。它不重跑推薦、不改寫推薦排序、不建立成交或持倉，也不代表模型成效。
+
+1. 在「推薦分析」完成分析並按「保存結果」，等 canonical save/readback 成功後，選取一檔推薦股票。尚未保存、沒有選取股票或保存身份無法核驗時，個人決定按鈕會停用。
+2. 在結果區下方「個人決定（研究紀錄，不下單）」按「個人採用」或「個人拒絕」；按「推翻並記原因」時，輸入非空的具體理由後才會保存。每次操作都會沿用同一份已保存 `result_id`、股票與來源 snapshot，由既有 typed Journal writer 保存並立即重新讀回核對。
+3. 如需回看，保持選取同一列並按「查看個股研究」，在個股研究中的「決策 → 結果」查看「此推薦結果的個人決定歷史」。Journey 是唯讀表格，依記錄時間顯示各筆 adopt／reject／override 與推翻理由；每筆都是 append-only 歷史，先前紀錄會保留，不代表多筆決定同時有效。
+4. Journal 歷史只在推薦結果、股票、決策日、來源 snapshot 與保存 artifact 身分都吻合時顯示。不同結果、快照、artifact 或衝突列不會以同股票／日期猜測補接；身份缺件或衝突時顯示未連結／衝突或停用操作。Journal 歷史不會遮住 Evidence／Outcome 的 pending、unknown 或尚待成熟狀態。
+
+這是隔離 Qt MainWindow journey 的 bounded 功能增量；其 UI 測試使用明確標記的 synthetic producer fixture，再由真 RecommendationView 與 Journal writer 保存／讀回，不代表自然行情、自然 outcome 或 OS 前景操作。測試收據與未解跨頁回歸見[WP3 Journey choice QA](../06_qa/WP3_WATCHLIST_QA_20260928.md#2026-09-28-recommendationjournal-choice-follow-up)。
+
+### 9.9.1f 個人模型評估摘要讀回（唯讀）
+
+「推薦分析」的「個人模型評估」區只讀取已保存並核驗的單筆推薦、其 personal capture 與一份由你明確選取的 Stage C 日摘要。它不執行評估、不寫入摘要，也沒有自動選取最新檔案的索引。
+
+1. 先在「推薦分析」輸入完整 `result_id` 並按「讀取已保存結果」，或保存目前推薦；確認結果已載入並通過 canonical readback。沒有可核驗結果時，個人模型評估不能開始。
+2. 在「個人模型評估（唯讀）」分別按「選擇 capture…」及「選擇 Stage C summary…」，明確挑選與目前保存結果相同的 capture JSON 與日摘要 JSON。檔案路徑會留在畫面上供核對；重新開啟程式後須再次載入 exact result 並重新選擇兩個檔案。未選摘要時畫面顯示「尚未執行評估」，這代表本頁尚未讀取，不代表系統已查明其他位置沒有摘要。
+3. 按「讀取指定評估」。系統唯讀核對結果 ID、canonical payload/raw artifact、V2 個人政策、capture、Stage C 日摘要的 payload hash、來源根目錄與唯一對應 capture 列。若任一身份或來源不符，畫面會拒絕顯示並清空舊明細；不同結果、不同 capture 或另一個摘要不會按股票、日期或檔名猜測替代。
+4. 狀態列顯示選定摘要內的已成熟與待觀察數；詳細區列出結果／capture／摘要身份、評估範圍、metrics、成本後狀態、缺件與下一步。`unknown` 表示證據或來源未能核實；未成熟指標維持不可得，不以零補值。即使有成熟單筆，本版仍不足以判斷模型效果或建議採用／停用。
+
+成熟 outcome 的價格讀回目前要求穩定、已 checkpoint、沒有 `-wal`／`-shm` sidecar 的隔離 SQLite 副本。正式資料庫若仍有 WAL/SHM，請勿為了讓評估通過而手動 checkpoint 或改寫正式資料；請依核准的 SQLite backup 流程建立隔離副本，確認副本在評估期間不會被替換或寫入，再於來源選擇器明確指定。若來源帶 sidecar 或在讀取期間變動，系統會拒絕成熟讀回；這是來源無法安全重驗，不代表模型無效。m11 的 19 筆 pending 是該次 Stage C summary 記錄的來源／成本證據不完整，並非因 WAL/SHM 被拒。
+
+此評估只限個人研究來源，非官方歷史 PIT 可得時間證明；其 20 個交易日標籤是決策日到後續收盤的 close-to-close 觀察，不是成交損益、模擬成交或持倉報酬。固定 50% null baseline 只作明示比較基準，不把 `rule_score` 當機率。畫面不寫 Journal／Outcome、不回補歷史、不切換模型。更換結果、重跑推薦或更換任一來源檔時，先前的評估明細會清除；來源錯誤時請重新確認精確保存結果、capture 根目錄及 Stage C summary，而不要改名、重算或複製原摘要。實來源與 isolated UI 邊界的測試證據見[WP3 Journey choice 與 Stage C UI QA](../06_qa/WP3_WATCHLIST_QA_20260928.md#2026-09-28-personal-model-assessment-ui-follow-up)。
 
 ### 9.9.2 Historical Evidence Replay（歷史排程重放）
 

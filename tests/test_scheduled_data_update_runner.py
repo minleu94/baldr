@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, timezone
+import csv
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
+import sqlite3
 from types import SimpleNamespace
+
+import pytest
 
 from scripts.batch_update_daily_data import _format_update_diagnostic
 from scripts.scheduled import run_daily_data_update_quick as runner
@@ -20,6 +24,14 @@ from data_module.ml_storage_capacity import (
     release_heavy_chain_reservation,
 )
 from data_module.phase3c_backfill_runner import BackfillSummary
+from app_module.update_service import UpdateService
+from data_module.config import TWStockConfig
+from data_module.twse_industry_index_capture import (
+    CSV_COLUMNS,
+    atomic_write_csv_projection,
+    parse_twse_industry_rows,
+    persist_twse_industry_capture,
+)
 
 
 def _patch_capacity_preflight_for_unit_test(monkeypatch) -> None:
@@ -40,7 +52,7 @@ def _patch_capacity_preflight_for_unit_test(monkeypatch) -> None:
 
 
 def test_update_diagnostic_is_ascii_safe_for_windows_stdout() -> None:
-    diagnostic = {
+    diagnostic: dict[str, object] = {
         "date": "2026-07-10",
         "outcome": "no_data",
         "reason_code": "twse_official_no_data",
@@ -572,3 +584,509 @@ def test_quick_update_fails_before_service_when_shared_capacity_lock_is_busy(
         )
     finally:
         release_heavy_chain_reservation(held)
+
+
+def _patch_isolated_industry_runner(monkeypatch, *, trading_dates: list[str]) -> None:
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
+    _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch)
+    allowed_dates = set(trading_dates)
+
+    class _Calendar:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def require_trading_days_in_range(self, start, end, **_kwargs):
+            requested = [day.isoformat() for day in date_range(start, end)]
+            assert set(requested).issubset(allowed_dates)
+            return [
+                {"date_str": day, "calendar_source": "isolated-test"}
+                for day in requested
+            ]
+
+    def date_range(start: date, end: date):
+        from datetime import timedelta
+
+        current = start
+        while current <= end:
+            yield current
+            current += timedelta(days=1)
+
+    monkeypatch.setattr(runner, "OfficialTradingCalendar", _Calendar)
+    monkeypatch.setattr(runner, "configured_candidate_db_path", lambda: None)
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: runner.datetime(2026, 9, 4, 4, 0, tzinfo=timezone.utc),
+    )
+    from data_module import recommendation_calibration_source_contract as source_contract
+
+    monkeypatch.setattr(
+        source_contract,
+        "publish_technical_indicator_receipt",
+        lambda **_kwargs: {"status": "isolated_test_not_requested"},
+    )
+
+
+def _seed_industry_runner_files(config: TWStockConfig) -> None:
+    config.industry_index_file.parent.mkdir(parents=True, exist_ok=True)
+    with config.industry_index_file.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        writer.writerows(
+            [
+                {
+                    "指數名稱": "電子工業類指數",
+                    "收盤指數": "90",
+                    "漲跌": "+",
+                    "漲跌點數": "1",
+                    "漲跌百分比": "1",
+                    "日期": "2026-09-02",
+                },
+                {
+                    "指數名稱": "電子工業類指數",
+                    "收盤指數": "1",
+                    "漲跌": "-",
+                    "漲跌點數": "99",
+                    "漲跌百分比": "99",
+                    "日期": "2026-09-03",
+                },
+                {
+                    "指數名稱": "舊失敗日資料",
+                    "收盤指數": "77",
+                    "漲跌": "+",
+                    "漲跌點數": "2",
+                    "漲跌百分比": "2",
+                    "日期": "2026-09-04",
+                },
+            ]
+        )
+    config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(config.db_file) as connection:
+        connection.execute(
+            """CREATE TABLE industry_indices (
+                日期 TEXT,
+                指數名稱 TEXT,
+                收盤指數 REAL,
+                漲跌 TEXT,
+                漲跌點數 REAL,
+                漲跌百分比 REAL
+            )"""
+        )
+        connection.executemany(
+            'INSERT INTO industry_indices VALUES (?, ?, ?, ?, ?, ?)',
+            [
+                ("20260902", "電子工業類指數", 90, "+", 1, 1),
+                ("20260903", "電子工業類指數", 1, "-", 99, 99),
+                ("20260904", "舊失敗日資料", 77, "+", 2, 2),
+            ],
+        )
+
+
+@pytest.mark.parametrize(
+    "batch_mode",
+    ["partial_return", "exception_after_capture", "exception_without_capture"],
+)
+def test_quick_runner_scoped_syncs_partial_industry_capture_but_stays_failed(
+    tmp_path, monkeypatch, batch_mode,
+) -> None:
+    """The runner publishes successful captured dates before terminal failure."""
+
+    _patch_isolated_industry_runner(monkeypatch, trading_dates=["2026-09-03", "2026-09-04"])
+    data_root = tmp_path / "qa-data"
+    output_root = tmp_path / "qa-output"
+    status_path = output_root / "scheduled" / "quick" / "latest_status.json"
+    config = TWStockConfig(data_root=data_root, output_root=output_root)
+    _seed_industry_runner_files(config)
+
+    payload = {
+        "stat": "OK",
+        "date": "115年09月03日",
+        "tables": [{
+            "title": "115年09月03日 類股指數",
+            "rows": [
+                ["電子工業類指數", "100.25", "<p>+</p>", "1.00", "0.50"],
+                ["觀光餐旅類指數", "200.75", "<p>-</p>", "2.00", "1.25"],
+            ],
+        }],
+    }
+    service_state: dict[str, object] = {"scoped_calls": [], "generic_industry": 0}
+
+    class _PartialIndustryService(UpdateService):
+        def __init__(self, service_config) -> None:
+            super().__init__(service_config)
+            self.scripts_dir = output_root / "isolated-scripts"
+            self.scripts_dir.mkdir(parents=True, exist_ok=True)
+            (self.scripts_dir / "batch_update_market_and_industry_index.py").write_text(
+                "# isolated fake batch entrypoint\n",
+                encoding="utf-8",
+            )
+
+        def check_data_overview(self):
+            current = json.loads(status_path.read_text(encoding="utf-8"))
+            assert current["status"] == "running"
+            assert current["run_id"] != "stale-success-run"
+            return {
+                "success": True,
+                "daily_data": {"latest_date": "2026-09-04"},
+                "technical_indicators": {"latest_date": "2026-09-04"},
+            }
+
+        def update_daily(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def update_tpex_daily_price_range(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def sync_source_to_sqlite(self, source, *_args, **_kwargs):
+            if source == "industry_index":
+                service_state["generic_industry"] = int(service_state["generic_industry"]) + 1
+                return {"success": False, "message": "legacy sync must not run"}
+            return {"success": True}
+
+        def update_market(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def publish_taiex_market_index(self, **_kwargs):
+            return {"success": True, "skipped": True}
+
+        def sync_industry_index_captures_to_sqlite(self, *args, **kwargs):
+            calls = service_state["scoped_calls"]
+            assert isinstance(calls, list)
+            calls.append((args, kwargs))
+            return super().sync_industry_index_captures_to_sqlite(*args, **kwargs)
+
+        def update_broker_branch(self, *_args, **_kwargs):
+            raise AssertionError("steps after partial industry failure must not run")
+
+    import importlib.util
+
+    class _BatchLoader:
+        def create_module(self, _spec):
+            return None
+
+        def exec_module(self, module):
+            def fake_batch_update(
+                *, start_date, end_date, config, capture_manifests, batch_outcome,
+            ):
+                if batch_mode == "exception_without_capture":
+                    raise RuntimeError("simulated exception before any capture")
+                rows = parse_twse_industry_rows(payload, start_date)
+                capture = persist_twse_industry_capture(
+                    output_root=config.output_root,
+                    source_date=start_date,
+                    requested_url="https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
+                    final_url=(
+                        "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+                        f"?date={start_date.replace('-', '')}&type=IND&response=json"
+                    ),
+                    request_parameters={
+                        "date": start_date.replace("-", ""),
+                        "type": "IND",
+                        "response": "json",
+                    },
+                    http_status=200,
+                    response_headers={"content-type": "application/json"},
+                    raw_response=json.dumps(
+                        payload, ensure_ascii=False, separators=(",", ":")
+                    ).encode("utf-8"),
+                    captured_at=datetime(2026, 9, 4, 4, 0, tzinfo=timezone.utc),
+                    parse_status="accepted",
+                    parse_reason=None,
+                    response_date_status="verified",
+                    completeness_status="accepted",
+                    completeness_reason=None,
+                    selected_table_titles=["115年09月03日 類股指數"],
+                    rows=rows,
+                )
+                atomic_write_csv_projection(
+                    config.industry_index_file,
+                    start_date,
+                    rows,
+                    skip_backup=True,
+                    config=config,
+                )
+                capture_manifests.append(Path(str(capture["path"])))
+                if batch_mode == "exception_after_capture":
+                    raise RuntimeError("simulated exception after first capture")
+                batch_outcome.update({
+                    "success": False,
+                    "updated_dates": [start_date],
+                    "failed_dates": [end_date],
+                })
+                return False
+
+            module.batch_update_industry_index = fake_batch_update
+
+    real_spec_from_file_location = importlib.util.spec_from_file_location
+
+    def isolated_batch_spec(name, location, *args, **kwargs):
+        if name == "batch_update_market_and_industry_index":
+            return importlib.util.spec_from_loader(name, _BatchLoader())
+        return real_spec_from_file_location(name, location, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", isolated_batch_spec)
+    monkeypatch.setattr(runner, "UpdateService", _PartialIndustryService)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps({
+            "status": "passed",
+            "run_id": "stale-success-run",
+            "steps": [{
+                "name": "sync_industry_index_to_sqlite",
+                "result": {"capture_manifests": ["old-success.json"]},
+            }],
+        }),
+        encoding="utf-8",
+    )
+
+    exit_code = runner.main(
+        [
+            "--data-root", str(data_root),
+            "--output-root", str(output_root),
+            "--status-path", str(status_path),
+            "--start-date", "2026-09-03",
+            "--end-date", "2026-09-04",
+        ]
+    )
+
+    terminal = json.loads(status_path.read_text(encoding="utf-8"))
+    steps = {item["name"]: item for item in terminal["steps"]}
+    assert exit_code == 1
+    assert terminal["status"] == "failed"
+    assert terminal["run_id"] != "stale-success-run"
+    assert steps["update_industry_index"]["status"] == "failed"
+    scoped_calls = service_state["scoped_calls"]
+    assert isinstance(scoped_calls, list)
+    update_result = steps["update_industry_index"]["result"]
+    assert update_result["success"] is False
+    assert "sync_industry_index_to_sqlite" not in steps
+    assert "update_broker_branch" not in steps
+    assert "calculate_technical_indicators" not in steps
+    assert service_state["generic_industry"] == 0
+
+    if batch_mode == "exception_without_capture":
+        assert update_result["partial"] is False
+        assert update_result["capture_manifests"] == []
+        assert update_result["updated_dates"] == []
+        assert update_result["failed_dates"] == []
+        assert update_result["failure_date_unknown"] is True
+        assert update_result["failure_reason_code"] == "batch_exception_without_capture"
+        assert "sync_industry_index_partial_captures_to_sqlite" not in steps
+        assert scoped_calls == []
+        with sqlite3.connect(config.db_file) as connection:
+            rows = connection.execute(
+                'SELECT "日期", "指數名稱", "收盤指數" FROM industry_indices '
+                'ORDER BY "日期", "指數名稱"'
+            ).fetchall()
+        assert rows == [
+            ("20260902", "電子工業類指數", 90.0),
+            ("20260903", "電子工業類指數", 1.0),
+            ("20260904", "舊失敗日資料", 77.0),
+        ]
+        return
+
+    assert update_result["partial"] is True
+    assert update_result["updated_dates"] == ["2026-09-03"]
+    if batch_mode == "exception_after_capture":
+        assert update_result["capture_manifests"]
+        assert update_result["failed_dates"] == []
+        assert update_result["failure_date_unknown"] is True
+        assert update_result["failure_reason_code"] == "batch_exception_after_capture"
+        assert update_result["failure_date_range"] == {
+            "start_date": "2026-09-03",
+            "end_date": "2026-09-04",
+        }
+        assert "exact failed date unknown" in update_result["partial_reason"]
+    else:
+        assert update_result["failed_dates"] == ["2026-09-04"]
+        assert "failure_date_unknown" not in update_result
+
+    assert steps["sync_industry_index_partial_captures_to_sqlite"]["status"] == "passed"
+    partial_sync = steps["sync_industry_index_partial_captures_to_sqlite"]["result"]
+    assert partial_sync["success"] is True
+    assert partial_sync["partial"] is True
+    assert partial_sync["dates"] == ["2026-09-03"]
+    expected_failed_dates = [] if batch_mode == "exception_after_capture" else ["2026-09-04"]
+    assert partial_sync["failed_dates"] == expected_failed_dates
+    assert Path(partial_sync["projection_commit_marker"]).is_file()
+    marker_payload = json.loads(
+        Path(partial_sync["projection_commit_marker"]).read_text(encoding="utf-8")
+    )
+    assert marker_payload["batch_scope_status"] == "partial"
+    assert marker_payload["failed_dates"] == expected_failed_dates
+    from data_module.twse_industry_index_capture import verified_industry_projection_dates
+
+    assert verified_industry_projection_dates(
+        output_root=config.output_root,
+        csv_path=config.industry_index_file,
+        database_path=config.db_file,
+        candidate_dates=["2026-09-03"],
+    ) == {"2026-09-03"}
+    assert len(scoped_calls) == 1
+    assert scoped_calls[0][1] == {
+        "batch_partial": True,
+        "failed_dates": expected_failed_dates,
+        "unknown_legacy_dates": [],
+    }
+    with sqlite3.connect(config.db_file) as connection:
+        rows = connection.execute(
+            'SELECT "日期", "指數名稱", "收盤指數" FROM industry_indices '
+            'ORDER BY "日期", "指數名稱"'
+        ).fetchall()
+    assert rows == [
+        ("20260902", "電子工業類指數", 90.0),
+        ("20260903", "觀光餐旅類指數", 200.75),
+        ("20260903", "電子工業類指數", 100.25),
+        ("20260904", "舊失敗日資料", 77.0),
+    ]
+
+
+def test_quick_runner_does_not_sync_legacy_failed_industry_without_capture(
+    tmp_path, monkeypatch
+) -> None:
+    _patch_isolated_industry_runner(monkeypatch, trading_dates=["2026-09-03"])
+    data_root = tmp_path / "qa-data"
+    output_root = tmp_path / "qa-output"
+    status_path = output_root / "scheduled" / "quick" / "latest_status.json"
+    observed: dict[str, object] = {"industry_syncs": 0}
+
+    class _LegacyFailureService:
+        def __init__(self, _config) -> None:
+            pass
+
+        def check_data_overview(self):
+            return {
+                "success": True,
+                "daily_data": {"latest_date": "2026-09-03"},
+                "technical_indicators": {"latest_date": "2026-09-03"},
+            }
+
+        def update_daily(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def update_tpex_daily_price_range(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def sync_source_to_sqlite(self, source, *_args, **_kwargs):
+            if source == "industry_index":
+                observed["industry_syncs"] = int(observed["industry_syncs"]) + 1
+            return {"success": True}
+
+        def update_market(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def publish_taiex_market_index(self, **_kwargs):
+            return {"success": True}
+
+        def update_industry(self, *_args, **_kwargs):
+            return {
+                "success": False,
+                "partial": False,
+                "message": "legacy update failed",
+                "failed_dates": ["2026-09-03"],
+                "capture_manifests": [],
+            }
+
+        def update_broker_branch(self, *_args, **_kwargs):
+            raise AssertionError("steps after update failure must not run")
+
+    monkeypatch.setattr(runner, "UpdateService", _LegacyFailureService)
+    exit_code = runner.main(
+        [
+            "--data-root", str(data_root),
+            "--output-root", str(output_root),
+            "--status-path", str(status_path),
+            "--start-date", "2026-09-03",
+            "--end-date", "2026-09-03",
+        ]
+    )
+
+    terminal = json.loads(status_path.read_text(encoding="utf-8"))
+    step_names = [item["name"] for item in terminal["steps"]]
+    assert exit_code == 1
+    assert terminal["status"] == "failed"
+    assert terminal["steps"][-1]["result"]["failed_dates"] == ["2026-09-03"]
+    assert "sync_industry_index_to_sqlite" not in step_names
+    assert "sync_industry_index_partial_captures_to_sqlite" not in step_names
+    assert observed["industry_syncs"] == 0
+
+
+def test_quick_runner_keeps_verified_industry_noop_on_legacy_sync_path(
+    tmp_path, monkeypatch
+) -> None:
+    _patch_isolated_industry_runner(monkeypatch, trading_dates=["2026-09-03"])
+    data_root = tmp_path / "qa-data"
+    output_root = tmp_path / "qa-output"
+    status_path = output_root / "scheduled" / "quick" / "latest_status.json"
+    industry_sync_results: list[dict[str, object]] = []
+
+    class _VerifiedNoopService:
+        def __init__(self, _config) -> None:
+            pass
+
+        def check_data_overview(self):
+            return {
+                "success": True,
+                "daily_data": {"latest_date": "2026-09-03"},
+                "technical_indicators": {"latest_date": "2026-09-03"},
+            }
+
+        def update_daily(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def update_tpex_daily_price_range(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def sync_source_to_sqlite(self, source, *_args, **_kwargs):
+            if source == "industry_index":
+                result = {
+                    "success": True,
+                    "skipped": True,
+                    "reason": "verified_industry_projection_current",
+                }
+                industry_sync_results.append(result)
+                return result
+            return {"success": True}
+
+        def update_market(self, *_args, **_kwargs):
+            return {"success": True}
+
+        def publish_taiex_market_index(self, **_kwargs):
+            return {"success": True}
+
+        def update_industry(self, *_args, **_kwargs):
+            return {
+                "success": True,
+                "partial": False,
+                "message": "all dates already have verified projections",
+                "verified_skipped_dates": ["2026-09-03"],
+                "failed_dates": [],
+                "capture_manifests": [],
+            }
+
+        def check_technical_indicator_latest_coverage(self):
+            return {"success": True, "is_current": True}
+
+    monkeypatch.setattr(runner, "UpdateService", _VerifiedNoopService)
+    exit_code = runner.main(
+        [
+            "--data-root", str(data_root),
+            "--output-root", str(output_root),
+            "--status-path", str(status_path),
+            "--start-date", "2026-09-03",
+            "--end-date", "2026-09-03",
+            "--skip-broker-branch",
+        ]
+    )
+
+    terminal = json.loads(status_path.read_text(encoding="utf-8"))
+    steps = {item["name"]: item for item in terminal["steps"]}
+    assert exit_code == 0
+    assert terminal["status"] == "passed"
+    assert steps["update_industry_index"]["result"]["verified_skipped_dates"] == [
+        "2026-09-03"
+    ]
+    assert steps["sync_industry_index_to_sqlite"]["status"] == "passed"
+    assert steps["sync_industry_index_to_sqlite"]["result"]["skipped"] is True
+    assert len(industry_sync_results) == 1
+    assert "sync_industry_index_partial_captures_to_sqlite" not in steps

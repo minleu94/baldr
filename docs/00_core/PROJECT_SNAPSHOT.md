@@ -1,6 +1,12 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-**工程驗收已通過；本文件是提交前snapshot，staged review與commit結果以Git history及root最後交付為準。** R031 attempt6的288-path relevant regression及mandatory checks已由root接受。 R027使用者接受的logical-time revision B與R028 scoped migration各自通過獨立gate；原R027 strict仍INCONCLUSIVE，舊oracle、strict receipts與R028 legacy comparator diagnostic FAIL均保留。IndustryMapper明示providers、H5 app初始化前置條件及其受影響路徑已納入current route並通過。attempt6不代表正式資料、native UI、scheduler、未知artifact或model promotion驗收。
+## 2026-09-28 WP5 最新驗證狀態
+
+三項 test-only 隔離修補後，以單一 31-path source/test/doc freeze manifest 重跑 WP1–WP4、4-node 同程序環境控制與 inventory：**183 passed／2 skipped／0 failed**，audit 為 1058/1058、無 missing/stale 或 documentation drift。Workbench 84 passed、Update QA 25 passed／4 skipped、mypy 735 files 無錯、22 個變更 Python 檔 compile 通過。第一次較長 basetemp 的 WP4 route 保留一個 Windows `os.link` WinError 3；同 node／整個 WP4 及共同最終 route 改用短 basetemp 後均通過，細節與限制見 [WP5 current checkpoint](../06_qa/WP5_CHECKPOINT_CURRENT_20260928.md)。一次 8,682 項 full pytest 在這些修補前自然結束但 **FAIL**：274 failed、8,378 passed、17 skipped、13 errors；修補後未重跑 full suite，Boundary 乾淨 HEAD 抽查亦確認另一個未改測試仍有 test-double API 缺口。這些 bounded 結果不代表 WP5 完成。
+
+正式 D 以唯讀方式做 before／after 比對，DB/WAL/SHM size 與 mtime、大盤及產業 CSV hash 均未改變。正常開市日 WP1 真 child、WP2 下游 capture time／官方 PIT、自然 outcome 成熟及 OS foreground UI 仍未驗；目前 Stage C 是 19 pending／0 matured，after-cost unavailable。上述 scoped route、full-suite FAIL 與待驗範圍不改寫下方既有歷史裁定。
+
+**2026-09-27 R031 attempt6 限定工程驗收已通過；本文件是提交前snapshot，staged review與commit結果以Git history及root最後交付為準。** R031 attempt6的288-path relevant regression及mandatory checks已由root接受。 R027使用者接受的logical-time revision B與R028 scoped migration各自通過獨立gate；原R027 strict仍INCONCLUSIVE，舊oracle、strict receipts與R028 legacy comparator diagnostic FAIL均保留。IndustryMapper明示providers、H5 app初始化前置條件及其受影響路徑已納入current route並通過。attempt6不代表正式資料、native UI、scheduler、未知artifact或model promotion驗收，亦不是 WP5 或 full-suite verdict。
 
 ## 2026-09-28 m10 個人模型 Qt widget 驗收更新
 

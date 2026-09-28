@@ -286,6 +286,75 @@ def _sync_market_index_for_run(
     return service.sync_source_to_sqlite("market_index")
 
 
+def _sync_partial_industry_captures(
+    service: Any,
+    update_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Sync only this failed batch's verified capture dates.
+
+    The service method owns receipt, CSV, SQLite readback, and compensation
+    checks. This runner must never replace that bounded path with the legacy
+    whole-CSV synchronizer when an update batch is partial.
+    """
+
+    raw_manifests = update_result.get("capture_manifests")
+    if not isinstance(raw_manifests, (list, tuple)) or not raw_manifests:
+        return {
+            "success": False,
+            "message": "partial industry update has no capture manifests to sync",
+            "reason": "partial_industry_capture_manifest_missing",
+        }
+
+    manifests: list[str | Path] = []
+    for value in raw_manifests:
+        if isinstance(value, Path):
+            manifest = value
+        elif isinstance(value, str) and value.strip():
+            manifest = Path(value)
+        else:
+            return {
+                "success": False,
+                "message": "partial industry update has an invalid capture manifest path",
+                "reason": "partial_industry_capture_manifest_invalid",
+            }
+        manifests.append(manifest)
+
+    scoped_sync = getattr(service, "sync_industry_index_captures_to_sqlite", None)
+    if not callable(scoped_sync):
+        return {
+            "success": False,
+            "message": "service does not provide verified date-scoped industry capture sync",
+            "reason": "partial_industry_scoped_sync_unavailable",
+        }
+
+    failed_dates = update_result.get("failed_dates", [])
+    if not isinstance(failed_dates, (list, tuple)) or not all(
+        isinstance(value, str) and value.strip() for value in failed_dates
+    ):
+        return {
+            "success": False,
+            "message": "partial industry update has invalid failed-date metadata",
+            "reason": "partial_industry_failed_dates_invalid",
+        }
+
+    unknown_legacy_dates = update_result.get("unverified_legacy_dates", [])
+    if not isinstance(unknown_legacy_dates, (list, tuple)) or not all(
+        isinstance(value, str) and value.strip() for value in unknown_legacy_dates
+    ):
+        return {
+            "success": False,
+            "message": "partial industry update has invalid legacy-date metadata",
+            "reason": "partial_industry_legacy_dates_invalid",
+        }
+
+    return scoped_sync(
+        manifests,
+        batch_partial=True,
+        failed_dates=list(failed_dates),
+        unknown_legacy_dates=list(unknown_legacy_dates),
+    )
+
+
 def _run_step(
     *,
     steps: list[dict[str, Any]],
@@ -780,7 +849,35 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
     if failed is None:
-        failed = _run_step(steps=steps, name="update_industry_index", action=lambda: service.update_industry(start_date, end_date))
+        failed = _run_step(
+            steps=steps,
+            name="update_industry_index",
+            action=lambda: service.update_industry(start_date, end_date),
+        )
+        if failed is not None and failed.get("partial") is True:
+            industry_failure = failed
+            capture_manifests = industry_failure.get("capture_manifests")
+            if isinstance(capture_manifests, (list, tuple)) and capture_manifests:
+                sync_failed = _run_step(
+                    steps=steps,
+                    name="sync_industry_index_partial_captures_to_sqlite",
+                    action=lambda: _sync_partial_industry_captures(
+                        service, industry_failure
+                    ),
+                )
+                if sync_failed is not None:
+                    failed = dict(failed)
+                    sync_message = str(
+                        sync_failed.get("message") or "date-scoped industry sync failed"
+                    )
+                    original_message = str(
+                        failed.get("message") or "industry update batch failed"
+                    )
+                    failed["partial_capture_sync_failure"] = sync_failed
+                    failed["message"] = (
+                        f"{original_message}; partial capture date-scoped sync failed: "
+                        f"{sync_message}"
+                    )
     if failed is None:
         failed = _run_step(steps=steps, name="sync_industry_index_to_sqlite", action=lambda: service.sync_source_to_sqlite("industry_index"))
     if failed is None and args.skip_broker_branch:

@@ -189,6 +189,7 @@ def test_new_request_keeps_last_good_result_and_selection_while_worker_starts(
     service = MagicMock()
     service.with_personal_use_policy.return_value = invocation_service
     starts: list[tuple[object, object, str]] = []
+    assessment_invalidations: list[bool] = []
     view = SimpleNamespace()
 
     class SignalProbe:
@@ -216,6 +217,9 @@ def test_new_request_keeps_last_good_result_and_selection_while_worker_starts(
     )
     view._collect_config = lambda: _config(run_id="replacement")
     view._personal_policy_for_invocation = lambda: policy
+    view._invalidate_personal_model_assessment_for_new_run = (
+        lambda: assessment_invalidations.append(True)
+    )
     view.is_beginner_mode = False
     view.recommendation_service = service
     view.current_execution = execution
@@ -238,6 +242,7 @@ def test_new_request_keeps_last_good_result_and_selection_while_worker_starts(
     assert starts[0][0] is execution
     assert starts[0][1] is table_model
     assert "rec-last-good" in starts[0][2]
+    assert assessment_invalidations == [True]
     service.with_personal_use_policy.assert_called_once_with(policy)
 
 

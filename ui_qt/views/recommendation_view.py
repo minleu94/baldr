@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QGroupBox, QProgressBar,
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
     QComboBox, QLineEdit, QMessageBox, QSplitter, QScrollArea,
-    QMenu, QDialog, QInputDialog, QToolButton
+    QMenu, QDialog, QInputDialog, QToolButton, QFileDialog
 )
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
@@ -596,6 +596,11 @@ class RecommendationView(QWidget):
         self._personal_prediction_capture_status_text = ""
         self._personal_prediction_capture_eligible = False
         self._personal_prediction_capture_receipt = None
+        self._personal_model_assessment_worker: TaskWorker | None = None
+        self._personal_model_assessment_generation = 0
+        self._personal_model_assessment_result_id = ""
+        self._personal_model_assessment_resetting = False
+        self._personal_model_assessment_terminal_signature: tuple[str, str, str] | None = None
         from app_module.report_export_service import ReportExportService
         self.report_export_service = ReportExportService()
         self._report_export_workers = []
@@ -3301,6 +3306,141 @@ class RecommendationView(QWidget):
         )
         layout.addLayout(personal_capture_row)
 
+        personal_assessment_group = QGroupBox("個人模型評估（唯讀）")
+        personal_assessment_group.setObjectName("personalModelAssessmentControls")
+        personal_assessment_layout = QVBoxLayout(personal_assessment_group)
+        personal_assessment_layout.setContentsMargins(8, 6, 8, 6)
+        personal_assessment_layout.addWidget(
+            QLabel(
+                "Stage C 沒有 result→summary 索引。請明確選擇目前已核驗結果的 capture 與日摘要 JSON；"
+                "本頁不搜尋資料夾、不猜 latest。"
+            )
+        )
+
+        capture_path_row = QHBoxLayout()
+        capture_path_row.addWidget(QLabel("Personal capture"))
+        self.personal_model_assessment_capture_path = QLineEdit()
+        self.personal_model_assessment_capture_path.setObjectName(
+            "personalModelAssessmentCapturePath"
+        )
+        self.personal_model_assessment_capture_path.setReadOnly(True)
+        self.personal_model_assessment_capture_path.setAccessibleName(
+            "明確選取個人模型 capture 路徑"
+        )
+        self.personal_model_assessment_capture_path.setPlaceholderText(
+            "請明確選擇此已保存結果的 capture JSON"
+        )
+        capture_path_row.addWidget(self.personal_model_assessment_capture_path, 1)
+        self.personal_model_assessment_capture_button = QPushButton(
+            "選擇 capture…"
+        )
+        self.personal_model_assessment_capture_button.setObjectName(
+            "personalModelAssessmentChooseCapture"
+        )
+        self.personal_model_assessment_capture_button.clicked.connect(
+            self._choose_personal_model_assessment_capture
+        )
+        capture_path_row.addWidget(self.personal_model_assessment_capture_button)
+        personal_assessment_layout.addLayout(capture_path_row)
+
+        summary_path_row = QHBoxLayout()
+        summary_path_row.addWidget(QLabel("Stage C 日摘要"))
+        self.personal_model_assessment_summary_path = QLineEdit()
+        self.personal_model_assessment_summary_path.setObjectName(
+            "personalModelAssessmentSummaryPath"
+        )
+        self.personal_model_assessment_summary_path.setReadOnly(True)
+        self.personal_model_assessment_summary_path.setAccessibleName(
+            "明確選取 Stage C 日摘要路徑"
+        )
+        self.personal_model_assessment_summary_path.setPlaceholderText(
+            "尚未選擇 Stage C summary JSON"
+        )
+        summary_path_row.addWidget(self.personal_model_assessment_summary_path, 1)
+        self.personal_model_assessment_summary_button = QPushButton(
+            "選擇 Stage C summary…"
+        )
+        self.personal_model_assessment_summary_button.setObjectName(
+            "personalModelAssessmentChooseSummary"
+        )
+        self.personal_model_assessment_summary_button.clicked.connect(
+            self._choose_personal_model_assessment_summary
+        )
+        summary_path_row.addWidget(self.personal_model_assessment_summary_button)
+        personal_assessment_layout.addLayout(summary_path_row)
+
+        assessment_action_row = QHBoxLayout()
+        self.personal_model_assessment_read_button = QPushButton(
+            "讀取指定評估"
+        )
+        self.personal_model_assessment_read_button.setObjectName(
+            "personalModelAssessmentRead"
+        )
+        self.personal_model_assessment_read_button.setToolTip(
+            "以目前 exact saved result、明示 personal capture、個人 capture root 與明示 Stage C summary 唯讀驗證；不會寫入或尋找其他摘要。"
+        )
+        self.personal_model_assessment_read_button.clicked.connect(
+            self._read_personal_model_assessment
+        )
+        assessment_action_row.addWidget(
+            self.personal_model_assessment_read_button, 0, Qt.AlignLeft
+        )
+        assessment_action_row.addStretch(1)
+        personal_assessment_layout.addLayout(assessment_action_row)
+
+        self.personal_model_assessment_status_label = QLabel(
+            "尚未執行評估：載入已保存結果後，明確選擇其 capture 與 Stage C summary JSON。"
+        )
+        self.personal_model_assessment_status_label.setObjectName(
+            "personalModelAssessmentStatus"
+        )
+        self.personal_model_assessment_status_label.setWordWrap(True)
+        self.personal_model_assessment_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.personal_model_assessment_status_label.setAccessibleName(
+            "個人模型評估狀態"
+        )
+        personal_assessment_layout.addWidget(
+            self.personal_model_assessment_status_label
+        )
+
+        self.personal_model_assessment_details = QTextEdit()
+        self.personal_model_assessment_details.setObjectName(
+            "personalModelAssessmentDetails"
+        )
+        self.personal_model_assessment_details.setReadOnly(True)
+        self.personal_model_assessment_details.setAccessibleName(
+            "個人模型評估身份與範圍明細"
+        )
+        self.personal_model_assessment_details.setPlaceholderText(
+            "成功讀取後，這裡會列出 assessment identity、scope、metrics 與缺件診斷。"
+        )
+        self.personal_model_assessment_details.setMaximumHeight(220)
+        personal_assessment_layout.addWidget(
+            self.personal_model_assessment_details
+        )
+        self.personal_model_assessment_safety_label = QLabel(
+            "個人來源僅供研究，非官方歷史可得時間證明；決策日至後續收盤的標籤不是成交損益。"
+            "目前證據不足；此處只顯示評估，不寫入或自動切換模型。"
+        )
+        self.personal_model_assessment_safety_label.setObjectName(
+            "personalModelAssessmentSafety"
+        )
+        self.personal_model_assessment_safety_label.setWordWrap(True)
+        personal_assessment_layout.addWidget(
+            self.personal_model_assessment_safety_label
+        )
+        layout.addWidget(personal_assessment_group)
+
+        self.personal_model_assessment_capture_path.textChanged.connect(
+            self._on_personal_model_assessment_path_changed
+        )
+        self.personal_model_assessment_summary_path.textChanged.connect(
+            self._on_personal_model_assessment_path_changed
+        )
+        self._refresh_personal_model_assessment_controls()
+
         personal_policy_group = QGroupBox("個人推薦模式")
         personal_policy_group.setObjectName("personalRecommendationPolicyControls")
         personal_policy_layout = QVBoxLayout(personal_policy_group)
@@ -4436,6 +4576,7 @@ class RecommendationView(QWidget):
             "正在分析：完成後會先顯示結果數量、資料品質與風險限制。"
             + (f"目前保留上一筆結果 {previous_result_id}。" if previous_result else "")
         )
+        self._invalidate_personal_model_assessment_for_new_run()
 
         self._begin_execution_status()
 
@@ -5921,6 +6062,7 @@ class RecommendationView(QWidget):
             self._personal_prediction_capture_eligible = False
             label.setText(self._personal_prediction_capture_status_text)
             button.setEnabled(False)
+            self._refresh_personal_model_assessment_controls()
             return
 
         if self._personal_prediction_capture_status_result_id != result_id:
@@ -5949,6 +6091,380 @@ class RecommendationView(QWidget):
             label.setText(self._personal_prediction_capture_status_text)
         button.setEnabled(
             self._personal_prediction_capture_eligible and not worker_busy
+        )
+        self._refresh_personal_model_assessment_controls()
+
+    def _personal_model_assessment_capture_root(self) -> Path | None:
+        if self.config is None:
+            return None
+        return (
+            Path(self.config.output_root).expanduser().resolve()
+            / "personal_prediction"
+        )
+
+    def _reset_personal_model_assessment(
+        self,
+        result_id: str,
+        message: str,
+        *,
+        clear_paths: bool,
+    ) -> None:
+        self._personal_model_assessment_generation += 1
+        self._personal_model_assessment_result_id = result_id
+        self._personal_model_assessment_terminal_signature = None
+        worker = self._personal_model_assessment_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                pass
+        self._personal_model_assessment_resetting = True
+        try:
+            if clear_paths:
+                self.personal_model_assessment_capture_path.clear()
+                self.personal_model_assessment_summary_path.clear()
+            self.personal_model_assessment_details.clear()
+            self.personal_model_assessment_status_label.setText(message)
+        finally:
+            self._personal_model_assessment_resetting = False
+
+    def _refresh_personal_model_assessment_controls(self) -> None:
+        status = getattr(self, "personal_model_assessment_status_label", None)
+        if status is None:
+            return
+        result_id = self._verified_saved_result_id()
+        current_id = getattr(self, "_personal_model_assessment_result_id", "")
+        if result_id != current_id:
+            if result_id:
+                message = (
+                    f"已載入並核驗保存結果 {result_id}。尚未執行評估："
+                    "請明確選取此結果的 capture 與 Stage C 日摘要 JSON。"
+                )
+            else:
+                message = "尚未執行評估：請先載入或保存一筆已核驗的推薦結果。"
+            self._reset_personal_model_assessment(
+                result_id, message, clear_paths=True
+            )
+
+        has_result = bool(result_id)
+        worker = getattr(self, "_personal_model_assessment_worker", None)
+        worker_busy = False
+        if worker is not None:
+            try:
+                worker_busy = worker.isRunning()
+            except RuntimeError:
+                worker_busy = False
+        for button in (
+            self.personal_model_assessment_capture_button,
+            self.personal_model_assessment_summary_button,
+        ):
+            button.setEnabled(has_result and not worker_busy)
+        capture_path = self.personal_model_assessment_capture_path.text().strip()
+        summary_path = self.personal_model_assessment_summary_path.text().strip()
+        self.personal_model_assessment_read_button.setEnabled(
+            has_result
+            and bool(capture_path)
+            and bool(summary_path)
+            and not worker_busy
+        )
+        if worker_busy:
+            return
+        signature = (result_id, capture_path, summary_path)
+        if self._personal_model_assessment_terminal_signature == signature:
+            return
+        if not has_result:
+            status.setText("尚未執行評估：請先載入或保存一筆已核驗的推薦結果。")
+        elif capture_path and summary_path:
+            status.setText(
+                f"結果 {result_id} 已選取兩個來源檔；按「讀取指定評估」後，系統會核驗身份與來源。"
+            )
+        elif capture_path or summary_path:
+            selected = "capture" if capture_path else "Stage C 日摘要"
+            missing = "Stage C 日摘要" if capture_path else "capture"
+            status.setText(
+                f"結果 {result_id}｜已選擇{selected}；尚未執行評估，請再選擇{missing}。"
+            )
+        else:
+            status.setText(
+                f"結果 {result_id} 尚未執行評估：請明確選取此結果的 capture 與 Stage C 日摘要 JSON。"
+            )
+
+    def _on_personal_model_assessment_path_changed(self, *_args: object) -> None:
+        if getattr(self, "_personal_model_assessment_resetting", False):
+            return
+        self._personal_model_assessment_terminal_signature = None
+        result_id = self._verified_saved_result_id()
+        worker = getattr(self, "_personal_model_assessment_worker", None)
+        if worker is not None:
+            worker_result_id = getattr(worker, "personal_assessment_result_id", "")
+            worker_capture_path = getattr(
+                worker, "personal_assessment_capture_path", ""
+            )
+            worker_summary_path = getattr(
+                worker, "personal_assessment_summary_path", ""
+            )
+            if (
+                worker_result_id != result_id
+                or worker_capture_path
+                != self.personal_model_assessment_capture_path.text().strip()
+                or worker_summary_path
+                != self.personal_model_assessment_summary_path.text().strip()
+            ):
+                self._personal_model_assessment_generation += 1
+                try:
+                    if worker.isRunning():
+                        worker.cancel(cooperative=True, wait=False)
+                except RuntimeError:
+                    pass
+        self.personal_model_assessment_details.clear()
+        self._refresh_personal_model_assessment_controls()
+
+    def _choose_personal_model_assessment_capture(self) -> None:
+        result_id = self._verified_saved_result_id()
+        personal_root = self._personal_model_assessment_capture_root()
+        if not result_id or personal_root is None:
+            self._refresh_personal_model_assessment_controls()
+            return
+        capture_dir = personal_root / "captures"
+        initial_path = capture_dir if capture_dir.is_dir() else personal_root
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            "選擇目前保存結果的個人 capture JSON",
+            str(initial_path),
+            "JSON 檔案 (*.json)",
+        )
+        if selected:
+            self.personal_model_assessment_capture_path.setText(
+                str(Path(selected).expanduser())
+            )
+
+    def _choose_personal_model_assessment_summary(self) -> None:
+        if not self._verified_saved_result_id() or self.config is None:
+            self._refresh_personal_model_assessment_controls()
+            return
+        initial_path = Path(self.config.output_root).expanduser()
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            "明確選擇 Stage C 日摘要 JSON",
+            str(initial_path),
+            "JSON 檔案 (*.json)",
+        )
+        if selected:
+            self.personal_model_assessment_summary_path.setText(
+                str(Path(selected).expanduser())
+            )
+
+    def _read_personal_model_assessment(self) -> None:
+        result_id = self._verified_saved_result_id()
+        capture_path = self.personal_model_assessment_capture_path.text().strip()
+        summary_path = self.personal_model_assessment_summary_path.text().strip()
+        personal_root = self._personal_model_assessment_capture_root()
+        if not result_id or personal_root is None:
+            self._reset_personal_model_assessment(
+                "", "尚未執行評估：請先載入或保存一筆已核驗的推薦結果。",
+                clear_paths=False,
+            )
+            self._refresh_personal_model_assessment_controls()
+            return
+        if not capture_path or not summary_path:
+            self._refresh_personal_model_assessment_controls()
+            return
+        if self._personal_model_assessment_worker is not None:
+            return
+        try:
+            service = self._personalization_read_service()
+        except Exception as exc:
+            self.personal_model_assessment_details.clear()
+            self.personal_model_assessment_status_label.setText(
+                "拒絕顯示：無法建立唯讀評估讀取器。"
+                f"{type(exc).__name__}: {str(exc).splitlines()[0][:240]}"
+            )
+            return
+
+        self._personal_model_assessment_generation += 1
+        generation = self._personal_model_assessment_generation
+        self._personal_model_assessment_result_id = result_id
+        self._personal_model_assessment_terminal_signature = None
+        self.personal_model_assessment_details.clear()
+        self.personal_model_assessment_status_label.setText(
+            f"正在唯讀核驗結果 {result_id}、capture 與明確選取的 Stage C 日摘要…"
+        )
+
+        def read_assessment(cancel_callback=None):
+            if callable(cancel_callback) and cancel_callback():
+                return None
+            return service.read_personal_model_assessment(
+                result_id,
+                capture_path,
+                personal_root,
+                summary_path,
+            )
+
+        try:
+            worker = TaskWorker(read_assessment)
+            worker.personal_assessment_result_id = result_id
+            worker.personal_assessment_generation = generation
+            worker.personal_assessment_capture_path = capture_path
+            worker.personal_assessment_summary_path = summary_path
+            self._personal_model_assessment_worker = worker
+            worker.finished.connect(
+                lambda result, current_worker=worker, current_generation=generation:
+                self._on_personal_model_assessment_finished(
+                    result, current_worker, current_generation
+                )
+            )
+            worker.error.connect(
+                lambda message, current_worker=worker, current_generation=generation:
+                self._on_personal_model_assessment_error(
+                    message, current_worker, current_generation
+                )
+            )
+            worker.cancelled.connect(
+                lambda current_worker=worker, current_generation=generation:
+                self._on_personal_model_assessment_cancelled(
+                    current_worker, current_generation
+                )
+            )
+            worker.native_thread_finished.connect(
+                lambda current_worker=worker:
+                self._release_personal_model_assessment_worker(current_worker)
+            )
+            self._refresh_personal_model_assessment_controls()
+            worker.start()
+        except Exception as exc:
+            self._personal_model_assessment_worker = None
+            self.personal_model_assessment_status_label.setText(
+                "拒絕顯示：無法啟動唯讀評估。"
+                f"{type(exc).__name__}: {str(exc).splitlines()[0][:240]}"
+            )
+
+    def _personal_model_assessment_callback_is_current(
+        self, worker: TaskWorker, generation: int
+    ) -> bool:
+        return (
+            generation == self._personal_model_assessment_generation
+            and worker is self._personal_model_assessment_worker
+            and getattr(worker, "personal_assessment_result_id", "")
+            == self._verified_saved_result_id()
+            and getattr(worker, "personal_assessment_capture_path", "")
+            == self.personal_model_assessment_capture_path.text().strip()
+            and getattr(worker, "personal_assessment_summary_path", "")
+            == self.personal_model_assessment_summary_path.text().strip()
+        )
+
+    def _on_personal_model_assessment_finished(
+        self, assessment: Any, worker: TaskWorker, generation: int
+    ) -> None:
+        if not self._personal_model_assessment_callback_is_current(worker, generation):
+            return
+        result_id = getattr(worker, "personal_assessment_result_id", "")
+        try:
+            identity = getattr(assessment, "identity", None)
+            scope = getattr(assessment, "scope", None)
+            trust = identity.get("source_time_trust") if isinstance(identity, Mapping) else None
+            if (
+                getattr(assessment, "result_id", None) != result_id
+                or not isinstance(identity, Mapping)
+                or identity.get("result_id") != result_id
+                or identity.get("capture_id") != getattr(assessment, "capture_id", None)
+                or not identity.get("daily_summary_payload_sha256")
+                or not isinstance(scope, Mapping)
+                or scope.get("is_execution_pnl") is not False
+                or not isinstance(trust, Mapping)
+                or trust.get("research_only") is not True
+                or trust.get("official_historical_pit_verified") is not False
+                or getattr(assessment, "assessment_status", None) != "insufficient_data"
+                or getattr(assessment, "recommendation", None) != "insufficient_data"
+                or getattr(assessment, "read_only", None) is not True
+                or getattr(assessment, "writes_allowed", None) is not False
+                or getattr(assessment, "auto_switch", None) is not False
+            ):
+                raise ValueError("評估投影缺少預期的同結果身份或研究安全標記")
+            assessment_payload = assessment.to_dict()
+            matured = int(assessment.matured_sample_count)
+            pending = assessment.pending_sample_count
+            if assessment.evidence_status == "pending" and pending is not None:
+                status_text = f"模型證據待觀察｜已成熟 {matured} 筆／待觀察 {pending} 筆"
+            elif assessment.evidence_status == "matured":
+                status_text = f"已成熟 {matured} 筆；仍需同範圍累積與明確評估政策"
+            else:
+                status_text = "證據狀態未知；來源或必要欄位仍缺件"
+            self.personal_model_assessment_status_label.setText(
+                f"結果 {result_id}｜{status_text}｜目前證據不足，不提供模型效果結論。"
+            )
+            self.personal_model_assessment_details.setPlainText(
+                json.dumps(assessment_payload, ensure_ascii=False, indent=2)
+            )
+            self._personal_model_assessment_terminal_signature = (
+                result_id,
+                worker.personal_assessment_capture_path,
+                worker.personal_assessment_summary_path,
+            )
+        except Exception as exc:
+            self.personal_model_assessment_details.clear()
+            self.personal_model_assessment_status_label.setText(
+                "拒絕顯示：評估身份／來源安全標記未通過核驗。"
+                f"{type(exc).__name__}: {str(exc).splitlines()[0][:240]}"
+            )
+            self._personal_model_assessment_terminal_signature = (
+                result_id,
+                worker.personal_assessment_capture_path,
+                worker.personal_assessment_summary_path,
+            )
+
+    def _on_personal_model_assessment_error(
+        self, message: str, worker: TaskWorker, generation: int
+    ) -> None:
+        if not self._personal_model_assessment_callback_is_current(worker, generation):
+            return
+        short_message = str(message).splitlines()[0][:300]
+        if "exactly one matching capture" in short_message:
+            reason = "Stage C 日摘要中沒有唯一一筆對應的結果與 capture。"
+        elif "roots differ" in short_message or "source trust" in short_message:
+            reason = "選取檔案的來源根目錄與目前保存結果不符。"
+        elif "identity" in short_message or "mismatch" in short_message:
+            reason = "結果、capture 與 Stage C 日摘要的身份不一致。"
+        else:
+            reason = "檔案無法讀取或未通過結果與來源核驗。"
+        self.personal_model_assessment_details.clear()
+        self.personal_model_assessment_status_label.setText(
+            f"拒絕顯示：{reason}"
+        )
+        self._personal_model_assessment_terminal_signature = (
+            worker.personal_assessment_result_id,
+            worker.personal_assessment_capture_path,
+            worker.personal_assessment_summary_path,
+        )
+
+    def _on_personal_model_assessment_cancelled(
+        self, worker: TaskWorker, generation: int
+    ) -> None:
+        if not self._personal_model_assessment_callback_is_current(worker, generation):
+            return
+        self.personal_model_assessment_details.clear()
+        self.personal_model_assessment_status_label.setText(
+            "評估讀回已取消；原結果未變更，請確認明確選取的來源檔後重試。"
+        )
+        self._personal_model_assessment_terminal_signature = (
+            worker.personal_assessment_result_id,
+            worker.personal_assessment_capture_path,
+            worker.personal_assessment_summary_path,
+        )
+
+    def _release_personal_model_assessment_worker(
+        self, worker: TaskWorker
+    ) -> None:
+        if self._personal_model_assessment_worker is worker:
+            self._personal_model_assessment_worker = None
+            self._refresh_personal_model_assessment_controls()
+        worker.deleteLater()
+
+    def _invalidate_personal_model_assessment_for_new_run(self) -> None:
+        self._reset_personal_model_assessment(
+            "",
+            "推薦分析已重新執行；舊評估已清除。新結果保存並核驗後，請重新選取對應來源檔。",
+            clear_paths=True,
         )
 
     def _retry_personal_prediction_capture(self) -> None:

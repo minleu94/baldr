@@ -52,10 +52,12 @@ from ml_module.recommendation_calibration_learning_runner import (
     DailyRecommendationLearningRunner,
 )
 from ml_module.recommendation_calibration_training import (
+    InvalidCalibrationOutputError,
     RecommendationCalibrationSample,
     RecommendationCalibrationTrainingConfig,
     recommendation_label_registry_hash,
 )
+from ml_module.probability_calibration import FittedShadowProbabilityCalibrator
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
 from ml_module.recommendation_historical_replay import (
     RecommendationHistoricalReplayConfig,
@@ -836,7 +838,7 @@ def test_personal_daily_public_path_keeps_canonical_capture_pending_without_forw
 
 
 def test_user_declared_v2_candidate_reaches_personal_service_and_capture(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """隔離 user-declared SQLite 可經真 runner、consumer 與 canonical capture 使用。
 
@@ -1103,3 +1105,170 @@ def test_user_declared_v2_candidate_reaches_personal_service_and_capture(
         execution.ml_projection_refs[0].reference_id
     )
     assert not global_pointer.exists()
+
+    def run_fallback_and_readback(
+        suffix: str, *, expected_warning: str
+    ) -> None:
+        negative_result_id = f"{result_id}-{suffix}"
+        negative_service = base_service.with_personal_use_policy(policy)
+        negative_execution = execute_module.execute_recommendation(
+            negative_service,
+            {
+                "profile_id": "user-declared-v2-personal",
+                "profile_version": "1",
+                "recommendation_ranking": {"threshold_mode": "fixed"},
+                "filters": {"industry": "全部"},
+            },
+            max_stocks=1,
+            top_n=1,
+            result_id=negative_result_id,
+        )
+        assert negative_execution.status.value == "completed"
+        assert negative_execution.decision is not None
+        assert tuple(
+            item.stock_code for item in negative_execution.decision.items
+        ) == (_SYMBOL,)
+        negative_policy_event = next(
+            event
+            for event in negative_execution.events
+            if event.event_type == "personal_use_policy_snapshot"
+        )
+        assert (
+            negative_policy_event.details["requested_mode"]
+            == PERSONAL_CALIBRATED_PROBABILITY_MODE
+        )
+        assert negative_policy_event.details["effective_mode"] == RULE_ONLY_MODE
+        context_event = next(
+            event
+            for event in negative_execution.events
+            if event.event_type == "legacy_invocation_context"
+        )
+        sealed_warnings = tuple(context_event.details["warnings"])
+        assert expected_warning in sealed_warnings, sealed_warnings
+
+        negative_save = canonical.save_service.save_execution(negative_execution)
+        assert negative_save.result_id == negative_result_id
+        negative_readback = build_recommendation_composition(config).queries.get(
+            negative_result_id
+        )
+        assert negative_readback is not None
+        assert negative_readback.execution == negative_execution
+        assert (
+            negative_readback.integrity_basis
+            == "canonical_payload_and_index_verified"
+        )
+        negative_readback_policy_event = next(
+            event
+            for event in negative_readback.execution.events
+            if event.event_type == "personal_use_policy_snapshot"
+        )
+        assert negative_readback_policy_event.details["effective_mode"] == RULE_ONLY_MODE
+        negative_readback_context = next(
+            event
+            for event in negative_readback.execution.events
+            if event.event_type == "legacy_invocation_context"
+        )
+        readback_warnings = tuple(negative_readback_context.details["warnings"])
+        assert expected_warning in readback_warnings, readback_warnings
+        if negative_readback.ml_projection_rows:
+            assert len(negative_readback.ml_projection_rows) == 1
+            fallback_row = negative_readback.ml_projection_rows[0]
+            assert fallback_row["stock_code"] == _SYMBOL
+            # RecommendationCalibrationProjection.unavailable() serializes
+            # status='rule_only'; the separate probability status is
+            # 'unavailable'. Require the exact DTO values so missing fields
+            # cannot satisfy a negative-control assertion.
+            assert fallback_row["status"] == "rule_only", fallback_row
+            assert fallback_row["calibrated_probability_bp"] is None, fallback_row
+            assert (
+                fallback_row["calibrated_probability_status"] == "unavailable"
+            ), fallback_row
+            row_warnings = fallback_row["warnings"]
+            assert isinstance(row_warnings, list), fallback_row
+            assert expected_warning in row_warnings, fallback_row
+        else:
+            assert negative_readback.ml_read_status == "unavailable"
+            assert "ml_receipt_binding_missing" in negative_readback.diagnostics
+        with pytest.raises(PersonalPredictionCaptureError):
+            capture_personal_saved_result(
+                negative_result_id,
+                build_recommendation_composition(config).queries,
+                tmp_path / f"must-not-capture-{suffix}",
+            )
+        assert not (tmp_path / f"must-not-capture-{suffix}").exists()
+
+    # 非有限校準輸出只在模型數值邊界做故障注入；真實 public caller 仍須
+    # 產生 rule 結果、封存具名 blocker 並由 fresh canonical query 讀回。
+    def _nonfinite_calibration_output(
+        _calibrator: FittedShadowProbabilityCalibrator, _raw: object
+    ) -> list[float]:
+        return [float("inf")]
+
+    with monkeypatch.context() as invalid_output_patch:
+        invalid_output_patch.setattr(
+            FittedShadowProbabilityCalibrator,
+            "predict",
+            _nonfinite_calibration_output,
+        )
+        with pytest.raises(InvalidCalibrationOutputError):
+            # 直接確認數值轉換守門使用具名錯誤；後面的同一 bad output 由
+            # consumer 捕捉並轉成 fail-closed projection。
+            from ml_module.recommendation_calibration_training import _calibrated_bp
+
+            _calibrated_bp(
+                FittedShadowProbabilityCalibrator(
+                    calibration_id="invalid-test",
+                    model_id="invalid-test",
+                    estimator=object(),
+                    sample_count=10,
+                    fold_count=2,
+                ),
+                0.5,
+            )
+        run_fallback_and_readback(
+            "nonfinite-output",
+            expected_warning="model_probability_output_invalid_fail_closed",
+        )
+
+    # 修改隔離 replay slice 的一個 RSI 值，應在候選載入/投影前被來源信任
+    # 重驗擋下；復原原值後再測 artifact hash，兩個負控互不遮蔽。
+    source_sample = next(sample for sample in replay.samples if sample.symbol == _SYMBOL)
+    source_feature_day = date.fromisoformat(source_sample.feature_as_of_date).strftime(
+        "%Y%m%d"
+    )
+    with sqlite3.connect(source_database) as connection:
+        original_row = connection.execute(
+            "SELECT RSI FROM technical_indicators WHERE 日期=? AND 證券代號=?",
+            (source_feature_day, _SYMBOL),
+        ).fetchone()
+        assert original_row is not None
+        original_rsi = str(original_row[0])
+        connection.execute(
+            "UPDATE technical_indicators SET RSI=? WHERE 日期=? AND 證券代號=?",
+            (str(Decimal(original_rsi) + Decimal(1)), source_feature_day, _SYMBOL),
+        )
+        connection.commit()
+    try:
+        run_fallback_and_readback(
+            "source-slice-mismatch",
+            expected_warning="candidate_training_source_time_unverified_fail_closed",
+        )
+    finally:
+        with sqlite3.connect(source_database) as connection:
+            connection.execute(
+                "UPDATE technical_indicators SET RSI=? WHERE 日期=? AND 證券代號=?",
+                (original_rsi, source_feature_day, _SYMBOL),
+            )
+            connection.commit()
+
+    candidate_manifest = json.loads(
+        (candidate_root / "manifest.json").read_text(encoding="utf-8")
+    )
+    artifact_path = candidate_root / str(candidate_manifest["artifact_filename"])
+    artifact_bytes = artifact_path.read_bytes()
+    assert artifact_bytes
+    artifact_path.write_bytes(artifact_bytes[:-1] + bytes((artifact_bytes[-1] ^ 1,)))
+    run_fallback_and_readback(
+        "artifact-hash-mismatch",
+        expected_warning="artifact_hash_mismatch",
+    )

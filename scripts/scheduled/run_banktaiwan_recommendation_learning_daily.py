@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import stat
 import subprocess
 import sys
 from typing import Any, Callable, Literal, Mapping
@@ -50,6 +51,15 @@ DEFAULT_CALENDAR_CACHE_ROOT = (
 )
 OPERATION_SCHEMA_VERSION = "banktaiwan-recommendation-learning-operational.v1"
 _MAX_SNAPSHOT_STATUS_BYTES = 8 * 1024 * 1024
+_MAX_CHILD_RUN_RECEIPT_BYTES = 16 * 1024 * 1024
+_CHILD_CLI_SCHEMA_VERSION = "daily-recommendation-learning-cli-result.v3"
+_CHILD_RECEIPT_SCHEMA_VERSION = "daily-recommendation-learning-receipt.v1"
+_CHILD_RUN_FAILURE_STATUSES = frozenset(
+    {"failed_dependency", "failed_training", "failed_candidate", "failed_lineage"}
+)
+_CHILD_RUN_SKIP_STATUSES = frozenset(
+    {"skipped_insufficient_evidence", "skipped_no_data"}
+)
 
 _REUSABLE_TERMINAL_STATUSES = frozenset(
     {
@@ -179,14 +189,15 @@ def _read_bounded_snapshot_status(
     return payload, None
 
 
-def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+def _write_json(path: Path, payload: Mapping[str, Any]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    encoded = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    temporary.write_bytes(encoded)
     os.replace(temporary, path)
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _hash_payload(payload: Any) -> str:
@@ -557,20 +568,170 @@ def _source_markers(paths: OperationalPaths) -> list[dict[str, Any]]:
     return [_file_marker(path) for path in candidates]
 
 
+_VOLATILE_CALENDAR_EVIDENCE_KEYS = frozenset(
+    {"validated_at", "validation_at", "observed_at", "checked_at"}
+)
+
+
+def _stable_calendar_evidence_value(value: object) -> object:
+    """保留官方日曆證據身份，略過每次重驗才變動的觀測時鐘。"""
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _stable_calendar_evidence_value(item)
+            for key, item in value.items()
+            if str(key) not in _VOLATILE_CALENDAR_EVIDENCE_KEYS
+        }
+    if isinstance(value, (list, tuple)):
+        return [_stable_calendar_evidence_value(item) for item in value]
+    if value is None or type(value) in {str, int, bool}:
+        return value
+    return {"unsupported_evidence_type": type(value).__name__}
+
+
+def _calendar_input_identity(
+    calendar: object,
+    *,
+    source_db: Path,
+    decision_date: date,
+    is_trading_day: bool | None,
+    reason: str,
+) -> dict[str, Any]:
+    """擷取本次官方判定使用的穩定來源身份，不觸發新的網路查詢。"""
+
+    identity: dict[str, Any] = {
+        "decision_date": decision_date.isoformat(),
+        "is_official_trading_day": is_trading_day,
+        "reason": reason,
+    }
+    if reason == "weekend_closed":
+        identity["evidence"] = {"mode": "calendar_weekend_convention"}
+        return identity
+
+    schedule_evidence = getattr(calendar, "_schedule_evidence", None)
+    if isinstance(schedule_evidence, Mapping):
+        annual = schedule_evidence.get(decision_date.year)
+        if isinstance(annual, Mapping):
+            identity["annual_schedule_evidence"] = _stable_calendar_evidence_value(
+                annual
+            )
+
+    temporary_cache = getattr(calendar, "_temporary_closure_cache", None)
+    if isinstance(temporary_cache, Mapping):
+        temporary = temporary_cache.get(decision_date)
+        temporary_evidence = getattr(temporary, "evidence", None)
+        if isinstance(temporary_evidence, Mapping):
+            identity["temporary_closure_evidence"] = (
+                _stable_calendar_evidence_value(temporary_evidence)
+            )
+    failure_reasons = getattr(calendar, "_schedule_failure_reason", None)
+    if isinstance(failure_reasons, Mapping):
+        failure = failure_reasons.get(decision_date.year)
+        if isinstance(failure, str):
+            identity["annual_schedule_failure"] = failure
+    temporary_failures = getattr(calendar, "_temporary_closure_failure_reason", None)
+    if isinstance(temporary_failures, Mapping):
+        failure = temporary_failures.get(decision_date)
+        if isinstance(failure, str):
+            identity["temporary_closure_failure"] = failure
+
+    cache_candidates = getattr(calendar, "_cache_candidates", None)
+    if callable(cache_candidates):
+        try:
+            candidates = tuple(cache_candidates(decision_date.year))
+        except (OSError, RuntimeError, TypeError, ValueError):
+            candidates = ()
+            identity["annual_cache_candidate_scan"] = "failed"
+        identity["annual_cache_candidate_markers"] = [
+            _calendar_path_marker(Path(candidate)) for candidate in candidates
+        ]
+    temporary_root_value = getattr(calendar, "temporary_closure_path", None)
+    if isinstance(temporary_root_value, (str, Path)):
+        temporary_root = Path(temporary_root_value)
+        try:
+            if temporary_root.is_dir():
+                temporary_candidates = tuple(
+                    sorted(
+                        temporary_root.glob(
+                            f"twse_temporary_closure_{decision_date:%Y%m%d}_*.json"
+                        )
+                    )
+                )
+            elif temporary_root.suffix.casefold() == ".json":
+                temporary_candidates = (temporary_root,)
+            else:
+                temporary_candidates = ()
+        except OSError:
+            temporary_candidates = ()
+            identity["temporary_cache_candidate_scan"] = "failed"
+        identity["temporary_cache_candidate_markers"] = [
+            _calendar_path_marker(candidate) for candidate in temporary_candidates
+        ]
+
+    if reason == "twstock_db_market_indices_evidence":
+        identity["market_indices_database_marker"] = _file_marker(
+            source_db,
+            hash_small_file=False,
+        )
+    if not any(
+        key in identity
+        for key in (
+            "annual_schedule_evidence",
+            "temporary_closure_evidence",
+            "annual_schedule_failure",
+            "temporary_closure_failure",
+            "market_indices_database_marker",
+        )
+    ):
+        identity["evidence"] = {"mode": "reason_only", "reason": reason}
+    return identity
+
+
+def _calendar_path_marker(path: Path) -> dict[str, Any]:
+    """記錄日曆候選檔本身身份，不跟隨連結讀取目標內容。"""
+
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return {"path": str(path), "exists": False}
+    except OSError:
+        return {"path": str(path), "stat_readable": False}
+    return {
+        "path": str(path),
+        "exists": True,
+        "is_symlink": path.is_symlink(),
+        "is_regular_file": stat.S_ISREG(info.st_mode),
+        "size": info.st_size,
+        "mtime_ns": info.st_mtime_ns,
+        "device": info.st_dev,
+        "inode": info.st_ino,
+    }
+
+
 def build_input_fingerprint(
     *,
     paths: OperationalPaths,
     decision_date: date,
     scenario: RecommendationCostScenario,
     snapshot: SnapshotSummary | None,
+    history_start_date: str,
+    max_decision_dates: int,
+    calendar_identity: Mapping[str, Any],
 ) -> str:
     """以 immutable input identity 判斷同日重跑是否可安全 reuse。"""
 
     return _hash_payload(
         {
-            "schema_version": "banktaiwan-operational-input-fingerprint.v2",
+            "schema_version": "banktaiwan-operational-input-fingerprint.v3",
             "decision_date": decision_date.isoformat(),
             "decision_timezone": "Asia/Taipei",
+            "replay_scope": {
+                "history_start_date": history_start_date,
+                "max_decision_dates": max_decision_dates,
+                "replay_selection_policy": "latest_eligible_dates",
+                "fixed_round_trip_cost_bp": 50,
+            },
+            "official_calendar": dict(calendar_identity),
             "snapshot": (
                 {
                     "result_id": snapshot.result_id,
@@ -834,6 +995,127 @@ def _extract_child_json(stdout: str) -> dict[str, Any] | None:
     return None
 
 
+def _verify_child_terminal_readback(
+    child_payload: object,
+    *,
+    paths: OperationalPaths,
+    decision_date: date,
+    scenario: RecommendationCostScenario,
+) -> dict[str, Any]:
+    """驗證本次 child stdout 與 lane 內不可變 run/attempt receipt 同一。"""
+
+    if not isinstance(child_payload, Mapping):
+        return {"status": "failed", "reason": "child_stdout_json_missing_or_invalid"}
+    if child_payload.get("schema_version") != _CHILD_CLI_SCHEMA_VERSION:
+        return {"status": "failed", "reason": "child_cli_schema_mismatch"}
+    if child_payload.get("decision_date") != decision_date.isoformat():
+        return {"status": "failed", "reason": "child_decision_date_mismatch"}
+    if child_payload.get("formal_order_allowed") is not False:
+        return {"status": "failed", "reason": "child_formal_order_flag_invalid"}
+    if child_payload.get("shadow_only") is not True:
+        return {"status": "failed", "reason": "child_shadow_flag_invalid"}
+    if child_payload.get("cost_scenario_hash") != scenario.scenario_hash:
+        return {"status": "failed", "reason": "child_cost_scenario_mismatch"}
+
+    run_value = child_payload.get("run")
+    if not isinstance(run_value, Mapping):
+        return {"status": "failed", "reason": "child_run_summary_missing"}
+    run = run_value
+    run_id = run.get("run_id")
+    run_status = run.get("status")
+    receipt_path_value = run.get("receipt_path")
+    if type(run_id) is not str or not run_id.strip():
+        return {"status": "failed", "reason": "child_run_id_missing_or_invalid"}
+    if type(run_status) is not str or not run_status.strip():
+        return {"status": "failed", "reason": "child_run_status_missing_or_invalid"}
+    if type(receipt_path_value) is not str or not receipt_path_value.strip():
+        return {"status": "failed", "reason": "child_run_receipt_path_missing_or_invalid"}
+
+    receipt_path = Path(receipt_path_value)
+    runs_root = paths.lane_learning_root / "runs"
+    if (
+        not receipt_path.is_absolute()
+        or any(part in {".", ".."} for part in receipt_path.parts)
+        or not receipt_path.is_relative_to(runs_root)
+    ):
+        return {"status": "failed", "reason": "child_run_receipt_path_outside_lane"}
+
+    try:
+        from app_module.recommendation.queries import (
+            ExecutionArtifactIntegrityError,
+            _read_regular_file_no_follow,
+        )
+
+        raw_receipt = _read_regular_file_no_follow(
+            receipt_path,
+            paths.lane_learning_root,
+            max_bytes=_MAX_CHILD_RUN_RECEIPT_BYTES,
+        )
+    except (ExecutionArtifactIntegrityError, OSError, ValueError) as exc:
+        return {
+            "status": "failed",
+            "reason": f"child_run_receipt_unreadable_or_unsafe:{type(exc).__name__}",
+        }
+    try:
+        receipt_value = json.loads(raw_receipt.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return {"status": "failed", "reason": "child_run_receipt_json_invalid"}
+    if not isinstance(receipt_value, Mapping):
+        return {"status": "failed", "reason": "child_run_receipt_not_object"}
+    receipt = receipt_value
+
+    expected_identity = {
+        "schema_version": _CHILD_RECEIPT_SCHEMA_VERSION,
+        "run_id": run_id,
+        "decision_date": decision_date.isoformat(),
+        "receipt_path": receipt_path_value,
+        "status": run_status,
+        "cost_scenario_hash": scenario.scenario_hash,
+        "formal_order_allowed": False,
+        "shadow_only": True,
+    }
+    for field, expected in expected_identity.items():
+        actual = receipt.get(field)
+        if actual != expected:
+            return {"status": "failed", "reason": f"child_run_receipt_{field}_mismatch"}
+
+    summary_receipt_fields = (
+        "reason",
+        "dataset_id",
+        "dataset_hash",
+        "candidate_id",
+        "candidate_root",
+        "training_lineage_manifest_hash",
+        "training_lineage_manifest_path",
+        "training_lineage_status",
+        "decision",
+        "decision_reason",
+    )
+    for field in summary_receipt_fields:
+        if run.get(field) != receipt.get(field):
+            return {"status": "failed", "reason": f"child_run_receipt_{field}_mismatch"}
+
+    if run_status not in ({"completed"} | _CHILD_RUN_FAILURE_STATUSES | _CHILD_RUN_SKIP_STATUSES):
+        return {"status": "failed", "reason": "child_run_status_unknown"}
+    if run_status == "completed" and (
+        receipt.get("finalized") is not True or receipt.get("recoverable") is not False
+    ):
+        return {"status": "failed", "reason": "child_completed_receipt_not_finalized"}
+    if run_status != "completed" and receipt.get("recoverable") is not True:
+        return {"status": "failed", "reason": "child_noncompleted_receipt_not_recoverable"}
+
+    return {
+        "status": "verified",
+        "schema_version": _CHILD_RECEIPT_SCHEMA_VERSION,
+        "run_id": run_id,
+        "run_status": run_status,
+        "decision_date": decision_date.isoformat(),
+        "receipt_path": str(receipt_path),
+        "receipt_sha256": "sha256:" + hashlib.sha256(raw_receipt).hexdigest(),
+        "cost_scenario_hash": scenario.scenario_hash,
+    }
+
+
 def _child_command(
     *,
     paths: OperationalPaths,
@@ -947,13 +1229,14 @@ def _run_child_subprocess(
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(f"\n===== CHILD =====\n{combined}\n")
     child_payload = _extract_child_json(completed.stdout or "")
-    if child_payload is None:
-        child_payload = _read_json(paths.lane_learning_root / "latest_status.json")
     return {
         "command": command,
         "returncode": completed.returncode,
         "status": "completed_process",
         "child_payload": child_payload,
+        "child_payload_source": (
+            "invocation_stdout_json" if child_payload is not None else "missing_or_invalid_stdout_json"
+        ),
         "stdout_stderr_tail": _tail(combined),
     }
 
@@ -962,10 +1245,30 @@ def _child_classification(child_result: Mapping[str, Any]) -> tuple[str, str, bo
     returncode = child_result.get("returncode")
     if returncode is None:
         return "failed_dependency", "child_timeout", True
-    if isinstance(returncode, int) and returncode != 0:
+    if isinstance(returncode, bool) or not isinstance(returncode, int):
+        return "failed_dependency", "child_exit_code_invalid", True
+    if returncode != 0:
         return "failed_dependency", f"child_exit_code:{returncode}", True
+    terminal_value = child_result.get("terminal_readback")
+    terminal = terminal_value if isinstance(terminal_value, Mapping) else {}
+    if terminal.get("status") != "verified":
+        reason = str(terminal.get("reason") or "child_terminal_readback_missing")
+        return "failed_dependency", f"child_terminal_readback_failed:{reason}", True
     child = child_result.get("child_payload")
     child = child if isinstance(child, Mapping) else {}
+    run_value = child.get("run")
+    run = run_value if isinstance(run_value, Mapping) else {}
+    run_status = run.get("status")
+    run_reason = str(run.get("reason") or "").strip()
+    if run_status in _CHILD_RUN_FAILURE_STATUSES:
+        return (
+            "failed_dependency",
+            f"child_run_failed:{run_status}:{run_reason or 'no_reason'}",
+            True,
+        )
+    if run_status not in ({"completed"} | _CHILD_RUN_SKIP_STATUSES):
+        return "failed_dependency", "child_run_status_unknown", True
+
     live_capture_value = child.get("live_capture")
     live_capture = live_capture_value if isinstance(live_capture_value, Mapping) else {}
     capture_status = str(live_capture.get("status") or "").strip().lower()
@@ -976,9 +1279,18 @@ def _child_classification(child_result: Mapping[str, Any]) -> tuple[str, str, bo
         "non_trading_day" in capture_reason
         or "official_calendar" in capture_reason
     ):
-        return "skipped_non_trading_day", capture_reason or "non_trading_day_official_calendar", False
-    run_value = child.get("run")
-    run = run_value if isinstance(run_value, Mapping) else {}
+        wrapper_calendar = child_result.get("wrapper_calendar_is_trading_day")
+        if wrapper_calendar is False:
+            return (
+                "skipped_non_trading_day",
+                capture_reason or "non_trading_day_official_calendar",
+                False,
+            )
+        return (
+            "failed_dependency",
+            "child_non_trading_skip_conflicts_with_wrapper_calendar",
+            True,
+        )
     decision_reason = str(
         run.get("decision_reason")
         or child.get("decision_reason")
@@ -986,6 +1298,12 @@ def _child_classification(child_result: Mapping[str, Any]) -> tuple[str, str, bo
     ).strip()
     if "natural" in decision_reason or "matur" in decision_reason:
         return "completed_waiting_natural_maturity", decision_reason or "natural_maturity_pending", False
+    if run_status in _CHILD_RUN_SKIP_STATUSES:
+        return (
+            "completed_with_advisories",
+            f"child_run_skipped:{run_status}:{run_reason or decision_reason or 'no_reason'}",
+            False,
+        )
     dependencies_value = child.get("dependencies")
     dependencies = dependencies_value if isinstance(dependencies_value, Mapping) else {}
     diagnostics = dependencies.get("diagnostics")
@@ -1008,6 +1326,85 @@ def _projection_for_idempotent_replay(
     return payload
 
 
+_LATEST_STATUS_ONLY_FIELDS = frozenset(
+    {
+        "latest_status_path",
+        "terminal_receipt_sha256",
+        "idempotent_replay",
+        "reused_run_id",
+        "reused_receipt_path",
+        "last_observed_at",
+    }
+)
+
+
+def _reusable_terminal_receipt_matches(
+    *,
+    paths: OperationalPaths,
+    latest: Mapping[str, Any],
+    decision_date: date,
+    input_fingerprint: str,
+) -> bool:
+    """只重用有界、非連結且與不可變 run receipt 完全相符的終態。"""
+
+    run_id = latest.get("run_id")
+    receipt_path_value = latest.get("receipt_path")
+    if type(run_id) is not str or not re.fullmatch(
+        rf"{re.escape(decision_date.isoformat())}-attempt-\d{{3}}-[0-9a-f]{{12}}",
+        run_id,
+    ):
+        return False
+    if type(receipt_path_value) is not str:
+        return False
+    expected_path = paths.runs_root / f"{run_id}.json"
+    try:
+        receipt_path = Path(receipt_path_value)
+        if not receipt_path.is_absolute() or receipt_path != expected_path:
+            return False
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+    try:
+        from app_module.recommendation.queries import (
+            ExecutionArtifactIntegrityError,
+            _read_regular_file_no_follow,
+        )
+
+        raw_receipt = _read_regular_file_no_follow(
+            expected_path,
+            paths.runs_root,
+            max_bytes=_MAX_CHILD_RUN_RECEIPT_BYTES,
+        )
+    except (ExecutionArtifactIntegrityError, OSError, ValueError):
+        return False
+    declared_hash = latest.get("terminal_receipt_sha256")
+    actual_hash = "sha256:" + hashlib.sha256(raw_receipt).hexdigest()
+    if type(declared_hash) is not str or declared_hash != actual_hash:
+        return False
+    try:
+        receipt_value = json.loads(raw_receipt.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(receipt_value, Mapping):
+        return False
+    if (
+        latest.get("schema_version") != OPERATION_SCHEMA_VERSION
+        or latest.get("task") != TASK_NAME
+        or latest.get("decision_date") != decision_date.isoformat()
+        or latest.get("input_fingerprint") != input_fingerprint
+        or latest.get("status") not in _REUSABLE_TERMINAL_STATUSES
+        or latest.get("finalized") is not True
+        or latest.get("recoverable") is not False
+    ):
+        return False
+    latest_core = {
+        key: value
+        for key, value in latest.items()
+        if key not in _LATEST_STATUS_ONLY_FIELDS
+    }
+    return dict(receipt_value) == latest_core
+
+
 def _persist_terminal(
     *,
     paths: OperationalPaths,
@@ -1020,9 +1417,10 @@ def _persist_terminal(
     run_payload["receipt_path"] = str(run_path)
     run_payload["finalized"] = True
     run_payload["completed_at"] = datetime.now(TAIPEI).isoformat(timespec="seconds")
-    _write_json(run_path, run_payload)
+    receipt_sha256 = _write_json(run_path, run_payload)
     latest_payload = dict(run_payload)
     latest_payload["latest_status_path"] = str(paths.latest_status_path)
+    latest_payload["terminal_receipt_sha256"] = receipt_sha256
     _write_json(paths.latest_status_path, latest_payload)
     return latest_payload
 
@@ -1163,12 +1561,16 @@ def _run_locked(
 ) -> tuple[int, dict[str, Any]]:
     official_day: bool | None = None
     calendar_reason = "not_checked"
+    calendar: object | None = None
     if paths.source_db.is_file():
         try:
-            official_day, calendar_reason = _official_calendar(
-                paths.source_db
-            ).is_official_trading_day(decision_date, allow_online_probe=False)
+            calendar = _official_calendar(paths.source_db)
+            official_day, calendar_reason = calendar.is_official_trading_day(
+                decision_date,
+                allow_online_probe=False,
+            )
         except (OSError, RuntimeError, TypeError, ValueError):
+            calendar = None
             official_day, calendar_reason = None, "official_calendar_read_failed"
     else:
         calendar_reason = "source_db_missing"
@@ -1184,18 +1586,37 @@ def _run_locked(
             if official_day is False
             else "not_checked_calendar_unresolved"
         )
+    calendar_identity = _calendar_input_identity(
+        calendar if calendar is not None else object(),
+        source_db=paths.source_db,
+        decision_date=decision_date,
+        is_trading_day=official_day,
+        reason=calendar_reason,
+    )
     fingerprint = build_input_fingerprint(
         paths=paths,
         decision_date=decision_date,
         scenario=scenario,
         snapshot=snapshot,
+        history_start_date=str(args.history_start_date),
+        max_decision_dates=int(args.max_decision_dates),
+        calendar_identity=calendar_identity,
     )
-    existing = _read_json(paths.latest_status_path)
+    existing, _existing_read_error = _read_bounded_snapshot_status(
+        paths.latest_status_path,
+        root=paths.operational_root,
+    )
     if (
         isinstance(existing, Mapping)
         and existing.get("decision_date") == decision_date.isoformat()
         and existing.get("input_fingerprint") == fingerprint
         and existing.get("status") in _REUSABLE_TERMINAL_STATUSES
+        and _reusable_terminal_receipt_matches(
+            paths=paths,
+            latest=existing,
+            decision_date=decision_date,
+            input_fingerprint=fingerprint,
+        )
     ):
         projection = _projection_for_idempotent_replay(existing)
         _write_json(paths.latest_status_path, projection)
@@ -1263,12 +1684,19 @@ def _run_locked(
                     snapshot.invocation_output_size if snapshot is not None else None
                 ),
             },
+            "replay_scope": {
+                "history_start_date": str(args.history_start_date),
+                "max_decision_dates": int(args.max_decision_dates),
+                "replay_selection_policy": "latest_eligible_dates",
+                "fixed_round_trip_cost_bp": 50,
+            },
         }
     )
     base["calendar"] = {
         "timezone": "Asia/Taipei",
         "is_official_trading_day": official_day,
         "reason": calendar_reason,
+        "input_identity": calendar_identity,
     }
 
     if official_day is False:
@@ -1334,6 +1762,13 @@ def _run_locked(
         if child_runner is not None
         else dict(_run_child_subprocess(paths, decision_date, scenario, args, snapshot))
     )
+    child_result["wrapper_calendar_is_trading_day"] = official_day
+    child_result["terminal_readback"] = _verify_child_terminal_readback(
+        child_result.get("child_payload"),
+        paths=paths,
+        decision_date=decision_date,
+        scenario=scenario,
+    )
     status, reason, recoverable = _child_classification(child_result)
     child_payload = child_result.get("child_payload")
     child_payload = child_payload if isinstance(child_payload, Mapping) else {}
@@ -1349,6 +1784,8 @@ def _run_locked(
                 "returncode": child_result.get("returncode"),
                 "command": list(child_result.get("command") or []),
                 "stdout_stderr_tail": child_result.get("stdout_stderr_tail", ""),
+                "child_payload_source": child_result.get("child_payload_source"),
+                "terminal_readback": child_result.get("terminal_readback"),
                 "status_path": str(paths.lane_learning_root / "latest_status.json"),
             },
             "child_result": dict(child_payload),

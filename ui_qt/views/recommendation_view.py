@@ -205,6 +205,58 @@ def _has_reparse_attribute(file_stat: os.stat_result) -> bool:
     return bool(reparse_flag and attributes & reparse_flag)
 
 
+def _personal_source_file_binding(value: object) -> tuple[str, tuple[int, int]]:
+    """回傳個人來源 SQLite 的 canonical path 與穩定檔案身分。"""
+
+    if not isinstance(value, (str, Path)):
+        raise ValueError("個人模型來源資料庫路徑未設定")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise ValueError("個人模型來源資料庫必須是絕對路徑")
+    try:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or _has_reparse_attribute(before)
+        ):
+            raise ValueError("個人模型來源資料庫必須是一般檔案，不可為連結或 reparse 路徑")
+        resolved = path.resolve(strict=True)
+        after = resolved.stat()
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("無法安全解析個人模型來源資料庫") from exc
+    if (
+        not stat.S_ISREG(after.st_mode)
+        or stat.S_ISLNK(after.st_mode)
+        or _has_reparse_attribute(after)
+        or (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
+    ):
+        raise ValueError("個人模型來源資料庫在檢查期間變更或不是一般檔案")
+    device = after.st_dev
+    inode = after.st_ino
+    if (
+        type(device) is not int
+        or type(inode) is not int
+        or device <= 0
+        or inode <= 0
+    ):
+        raise ValueError("此檔案系統未提供可驗證的資料庫檔案身分")
+    return str(resolved), (device, inode)
+
+
+def _personal_source_identity_matches(value: object, identity: tuple[int, int]) -> bool:
+    payload = _dto_mapping(value)
+    device = payload.get("device")
+    inode = payload.get("inode")
+    return (
+        type(device) is int
+        and type(inode) is int
+        and device > 0
+        and inode > 0
+        and (device, inode) == identity
+    )
+
+
 def _load_personal_policy_history(
     policy_path: Path,
     *,
@@ -647,12 +699,113 @@ class RecommendationView(QWidget):
         raw = self.personal_source_database_input.text().strip()
         if not raw:
             raise ValueError("請明確輸入或選擇來源 SQLite 檔案的絕對路徑")
-        path = Path(raw).expanduser()
-        if not path.is_absolute():
-            raise ValueError("來源 SQLite 路徑必須是明確的絕對路徑")
-        if not path.exists():
-            raise ValueError("指定的來源 SQLite 檔案不存在")
-        return str(path)
+        canonical_path, _identity = _personal_source_file_binding(raw)
+        return canonical_path
+
+    def _personal_runtime_database_binding(
+        self,
+        service_override: object | None = None,
+    ) -> tuple[str, tuple[int, int]]:
+        """驗證畫面、推薦服務與其預設歷史來源共用同一個 SQLite。"""
+
+        service = (
+            service_override
+            if service_override is not None
+            else getattr(self, "recommendation_service", None)
+        )
+        view_config = getattr(self, "config", None)
+        service_config = getattr(service, "config", None)
+        if view_config is None or service_config is None:
+            raise ValueError("個人校準無法確認畫面與推薦服務的資料庫設定")
+
+        references: list[tuple[str, object]] = [
+            ("畫面設定", getattr(view_config, "db_file", None)),
+            ("推薦服務設定", getattr(service_config, "db_file", None)),
+        ]
+        from app_module.recommendation_market_data_provider import (
+            DefaultRecommendationMarketDataProvider,
+        )
+        from data_module.recommendation_input_providers import (
+            HistoricalRecommendationMarketFrameProvider,
+        )
+
+        preparer = getattr(service, "recommendation_input_preparer", None)
+        historical_provider = getattr(preparer, "historical_market_provider", None)
+        if type(historical_provider) is not HistoricalRecommendationMarketFrameProvider:
+            raise ValueError("推薦服務沒有可核對的歷史特徵來源")
+        historical_config = getattr(historical_provider, "config", None)
+        if historical_config is None:
+            raise ValueError("歷史特徵來源沒有可核對的資料庫設定")
+        references.append(
+            ("歷史特徵來源", getattr(historical_config, "db_file", None))
+        )
+
+        market_provider = getattr(service, "market_data_provider", None)
+        if type(market_provider) is not DefaultRecommendationMarketDataProvider:
+            raise ValueError("自訂推薦行情來源沒有可驗證的個人模型來源契約")
+        market_config = getattr(market_provider, "config", None)
+        if market_config is not None:
+            references.append(("推薦行情來源", getattr(market_config, "db_file", None)))
+        else:
+            raise ValueError("預設推薦行情來源沒有可核對的資料庫設定")
+
+        # 若未來 composition 增加獨立模型特徵 provider，沒有明確 DB 身分時拒絕
+        # 個人模型模式；一般規則模式不會呼叫此檢查。
+        for owner_name, owner in (
+            ("推薦服務", service),
+            ("推薦輸入準備器", preparer),
+        ):
+            if owner is None:
+                continue
+            for attribute in ("model_feature_provider", "calibration_feature_provider"):
+                feature_provider = getattr(owner, attribute, None)
+                if feature_provider is None:
+                    continue
+                if type(feature_provider) is not HistoricalRecommendationMarketFrameProvider:
+                    raise ValueError(
+                        f"{owner_name}使用無法核對資料來源的自訂模型特徵 provider"
+                    )
+                feature_config = getattr(feature_provider, "config", None)
+                feature_db = getattr(feature_config, "db_file", None)
+                if feature_db is None:
+                    raise ValueError(
+                        f"{owner_name}的自訂模型特徵來源沒有可驗證的資料庫路徑"
+                    )
+                references.append((f"{owner_name}模型特徵來源", feature_db))
+
+        bindings = [
+            (label, *_personal_source_file_binding(path_value))
+            for label, path_value in references
+        ]
+        if not bindings:
+            raise ValueError("推薦服務沒有可驗證的資料庫來源")
+        canonical_path, identity = bindings[0][1], bindings[0][2]
+        for label, path, path_identity in bindings[1:]:
+            if path != canonical_path or path_identity != identity:
+                raise ValueError(
+                    f"{label}與個人來源資料庫不一致；請使用本次推薦實際設定的 SQLite"
+                )
+        return canonical_path, identity
+
+    def _personal_source_matches_runtime(
+        self,
+        source_path: object,
+        file_identity: object | None = None,
+        *,
+        service_override: object | None = None,
+    ) -> bool:
+        try:
+            runtime_path, runtime_identity = self._personal_runtime_database_binding(
+                service_override
+            )
+            actual_path, actual_identity = _personal_source_file_binding(source_path)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return False
+        if actual_path != runtime_path or actual_identity != runtime_identity:
+            return False
+        return file_identity is None or _personal_source_identity_matches(
+            file_identity, runtime_identity
+        )
 
     def _browse_personal_source_database(self) -> None:
         from PySide6.QtWidgets import QFileDialog
@@ -674,12 +827,17 @@ class RecommendationView(QWidget):
         candidate = getattr(proposal, "candidate", None)
         proposal_root = getattr(candidate, "candidate_root", None)
         proposal_database = getattr(proposal, "source_database_path", None)
+        proposal_identity = _dto_mapping(proposal).get("file_identity")
         if not selected_root or type(proposal_root) is not str or type(proposal_database) is not str:
             return False
         try:
             return (
                 Path(proposal_root).resolve(strict=True)
                 == Path(str(selected_root)).resolve(strict=True)
+                and self._personal_source_matches_runtime(
+                    proposal_database,
+                    proposal_identity,
+                )
                 and Path(proposal_database).resolve(strict=True)
                 == Path(self._selected_personal_source_database_path()).resolve(strict=True)
             )
@@ -858,6 +1016,21 @@ class RecommendationView(QWidget):
                     or getattr(readback, "policy_sha256", None) != saved.policy_sha256
                 ):
                     raise ValueError("V2 政策保存後讀回的 revision/hash 不一致")
+                readback_trust = _personal_source_time_trust(readback)
+                if (
+                    readback_trust is None
+                    or not self._personal_source_matches_runtime(
+                        readback_trust.get("source_database_path"),
+                        readback_trust.get("file_identity"),
+                    )
+                    or not self._personal_source_matches_runtime(
+                        getattr(proposal, "source_database_path", None),
+                        _dto_mapping(proposal).get("file_identity"),
+                    )
+                ):
+                    raise ValueError(
+                        "保存後來源 DB 路徑或檔案身分已改變；未啟用個人校準"
+                    )
                 self._personal_use_policy = readback
                 self._personal_source_database_saved_path = str(
                     getattr(proposal, "source_database_path")
@@ -955,14 +1128,20 @@ class RecommendationView(QWidget):
         if selected_mode == "personal_calibrated_probability":
             if not self._personal_policy_source_is_verified(policy):
                 raise ValueError(
-                    "V1 或未重新驗證的 V2 不會啟用個人校準；請明確檢查已保存政策的來源 DB。"
+                    "V1、runtime DB 不一致或未重新驗證的 V2 不會啟用個人校準；"
+                    "請使用本次推薦實際資料庫重新檢查已保存政策。"
                 )
         self._personal_use_policy = policy
         self._personal_policy_load_error = ""
         self._sync_personal_policy_controls()
         return policy
 
-    def _personal_policy_source_is_verified(self, policy: object) -> bool:
+    def _personal_policy_source_is_verified(
+        self,
+        policy: object,
+        *,
+        service_override: object | None = None,
+    ) -> bool:
         if (
             _personal_policy_schema(policy)
             != "recommendation-personal-use-policy.v2"
@@ -991,6 +1170,10 @@ class RecommendationView(QWidget):
                 strict=True
             ) == Path(self._selected_personal_source_database_path()).resolve(
                 strict=True
+            ) and self._personal_source_matches_runtime(
+                trust.get("source_database_path"),
+                trust.get("file_identity"),
+                service_override=service_override,
             )
         except (AttributeError, OSError, RuntimeError, ValueError):
             return False
@@ -1015,6 +1198,10 @@ class RecommendationView(QWidget):
             return
         try:
             source_database_path = self._selected_personal_source_database_path()
+            if not self._personal_source_matches_runtime(source_database_path):
+                raise ValueError(
+                    "指定 SQLite 與本次推薦畫面／服務的 runtime DB 不一致"
+                )
             if self.personal_policy_path is None or not self.personal_policy_path.exists():
                 saved_policy = None
             else:
@@ -1040,6 +1227,9 @@ class RecommendationView(QWidget):
                 and type(trust.get("source_database_path")) is str
                 and Path(str(trust.get("source_database_path"))).resolve(strict=True)
                 == Path(source_database_path).resolve(strict=True)
+                and self._personal_source_matches_runtime(
+                    trust.get("source_database_path"), trust.get("file_identity")
+                )
             )
             roots = self._personal_candidate_inventory_roots()
         except Exception as exc:
@@ -1155,6 +1345,21 @@ class RecommendationView(QWidget):
                 != "personal_calibrated_probability"
             ):
                 raise ValueError("讀回政策不是已保存的 V2 個人校準模式")
+            trust = _personal_source_time_trust(policy)
+            if (
+                trust is None
+                or not self._personal_source_matches_runtime(
+                    source_database_path, trust.get("file_identity")
+                )
+                or not self._personal_source_matches_runtime(
+                    trust.get("source_database_path"), trust.get("file_identity")
+                )
+                or Path(str(trust.get("source_database_path"))).resolve(strict=True)
+                != Path(source_database_path).resolve(strict=True)
+            ):
+                raise ValueError(
+                    "保存的來源 DB 與目前推薦服務的 runtime DB 不一致；請重新檢查來源"
+                )
             roots = self._personal_candidate_inventory_roots()
         except Exception as exc:
             self.personal_source_time_status_label.setText(
@@ -1239,6 +1444,9 @@ class RecommendationView(QWidget):
                 == Path(self._safe_current_personal_source_database_path()).resolve(
                     strict=True
                 )
+                and self._personal_source_matches_runtime(
+                    result.get("source_database_path")
+                )
             )
         except (OSError, RuntimeError, ValueError):
             same_candidate = False
@@ -1252,6 +1460,16 @@ class RecommendationView(QWidget):
         kind = result.get("kind")
         entry = result.get("result")
         if kind == "proposal":
+            proposal_payload = _dto_mapping(entry)
+            if not self._personal_source_matches_runtime(
+                proposal_payload.get("source_database_path"),
+                proposal_payload.get("file_identity"),
+            ):
+                self._clear_personal_source_time_preview()
+                self.personal_source_time_status_label.setText(
+                    "檢查完成時 runtime DB 或檔案身分已變更；結果已丟棄，請重新檢查。"
+                )
+                return
             self._personal_source_time_proposal = entry
             self._personal_source_time_verified_entry = None
             self._personal_candidate = None
@@ -1338,6 +1556,10 @@ class RecommendationView(QWidget):
                         )
                         == Path(str(result.get("source_database_path"))).resolve(
                             strict=True
+                        )
+                        and self._personal_source_matches_runtime(
+                            trust.get("source_database_path"),
+                            trust.get("file_identity"),
                         )
                     )
                 except (AttributeError, OSError, RuntimeError, ValueError):
@@ -2976,6 +3198,7 @@ class RecommendationView(QWidget):
         # 加入觀察清單按鈕
         self.add_to_watchlist_btn = QPushButton("加入觀察清單")
         self.add_to_watchlist_btn.setVisible(False)  # 初始隱藏
+        self.add_to_watchlist_btn.setEnabled(False)
         self.add_to_watchlist_btn.clicked.connect(self._add_selected_to_watchlist)
         if self.watchlist_service:
             title_layout.addWidget(self.add_to_watchlist_btn)
@@ -4174,6 +4397,17 @@ class RecommendationView(QWidget):
             invocation_service = self.recommendation_service.with_personal_use_policy(
                 policy_snapshot
             )
+            if (
+                getattr(policy_snapshot, "mode", None)
+                == "personal_calibrated_probability"
+                and not self._personal_policy_source_is_verified(
+                    policy_snapshot,
+                    service_override=invocation_service,
+                )
+            ):
+                raise ValueError(
+                    "個人來源資料庫與實際推薦服務不一致，或檔案身分已變更"
+                )
         except Exception as exc:
             QMessageBox.warning(
                 self,
@@ -4232,6 +4466,29 @@ class RecommendationView(QWidget):
         self.worker.finished.connect(self._on_recommendation_finished)
         self.worker.error.connect(self._on_recommendation_error)
         self.worker.cancelled.connect(self._on_recommendation_cancelled)
+        if (
+            getattr(policy_snapshot, "mode", None)
+            == "personal_calibrated_probability"
+            and not self._personal_policy_source_is_verified(
+                policy_snapshot,
+                service_override=invocation_service,
+            )
+        ):
+            self.worker = None
+            self.execute_btn.setEnabled(True)
+            self.execute_btn.setText("執行推薦分析")
+            self.progress_bar.setVisible(False)
+            self.progress_label.setVisible(False)
+            self._finish_execution_status("來源變更，未啟動")
+            self.result_status_label.setText(
+                "個人模型來源在啟動前已變更；推薦未啟動。請重新檢查指定來源。"
+            )
+            QMessageBox.warning(
+                self,
+                "個人來源已變更",
+                "個人模型來源與本次推薦 runtime DB 不再一致；本次推薦未啟動。",
+            )
+            return
         self.worker.start()
 
     def _begin_execution_status(self) -> None:
@@ -4498,6 +4755,7 @@ class RecommendationView(QWidget):
             self.research_actions_toggle.setChecked(False)
             self.research_actions_widget.setVisible(False)
             self.save_result_btn.setVisible(False)
+            self._update_watchlist_action_state()
             self.send_to_backtest_btn.setVisible(False)
             self.send_profile_to_portfolio_backtest_btn.setVisible(False)
             self.export_report_btn.setVisible(False)
@@ -4543,8 +4801,7 @@ class RecommendationView(QWidget):
         )
 
         # 顯示按鈕
-        if self.watchlist_service:
-            self.add_to_watchlist_btn.setVisible(True)
+        self._update_watchlist_action_state()
         if self.config:
             self.save_result_btn.setVisible(True)
         # 一鍵送回測按鈕（只要有推薦結果就顯示）
@@ -4732,16 +4989,18 @@ class RecommendationView(QWidget):
             QMessageBox.warning(self, "提示", "目前沒有可加入觀察清單的封存推薦結果")
             return
 
+        result_id = self._verified_saved_result_id()
+        if not result_id or result_id != execution.result_id:
+            QMessageBox.warning(
+                self,
+                "尚未驗證保存結果",
+                "請先保存推薦，並完成同一 result_id 的 canonical readback 驗證，再加入觀察清單。",
+            )
+            return
+
         df = self.recommendations_model.getDataFrame()
         stocks = []
         items_by_code = {item.stock_code: item for item in execution.items}
-        result_id = (
-            self.current_read_model.result_id
-            if self.current_read_model is not None
-            and self.current_read_model.integrity_basis
-            == "canonical_payload_and_index_verified"
-            else ""
-        )
         decision_date = (
             execution.context.as_of_date.isoformat()
             if execution.context.as_of_date is not None
@@ -4781,11 +5040,53 @@ class RecommendationView(QWidget):
 
                 added_count = self.watchlist_service.add_stocks(stocks, source='recommendation')
                 if added_count > 0:
-                    QMessageBox.information(self, "成功", f"已將 {added_count} 檔股票加入觀察清單\n{notes}")
+                    QMessageBox.information(
+                        self,
+                        "成功",
+                        f"已將 {added_count} 檔股票加入觀察清單，來源結果 {result_id}。\n{notes}",
+                    )
                 else:
-                    QMessageBox.warning(self, "提示", "選中的股票已在觀察清單中")
+                    QMessageBox.warning(
+                        self,
+                        "未新增觀察項目",
+                        "未新增任何項目；既有觀察項目的來源連結未變更。",
+                    )
             except Exception as e:
                 QMessageBox.critical(self, "錯誤", f"加入觀察清單失敗：\n{str(e)}")
+
+    def _update_watchlist_action_state(self) -> None:
+        """只讓有選取列且已核實 canonical 身分的結果進入 Watchlist。"""
+
+        button = getattr(self, "add_to_watchlist_btn", None)
+        if button is None:
+            return
+        execution = getattr(self, "current_execution", None)
+        model = getattr(self, "recommendations_model", None)
+        has_result_rows = bool(
+            self.watchlist_service
+            and execution is not None
+            and execution.items
+            and model is not None
+        )
+        button.setVisible(has_result_rows)
+        selection_model = self.results_table.selectionModel()
+        has_selection = bool(selection_model and selection_model.selectedRows())
+        verified_result_id = self._verified_saved_result_id()
+        can_add = bool(
+            has_result_rows
+            and has_selection
+            and verified_result_id
+            and execution.result_id == verified_result_id
+        )
+        button.setEnabled(can_add)
+        if can_add:
+            button.setToolTip(f"將選取股票以已驗證結果 {verified_result_id} 加入觀察清單。")
+        elif has_result_rows and not verified_result_id:
+            button.setToolTip("先保存推薦並完成 canonical readback 驗證後，才能加入觀察清單。")
+        elif has_result_rows and not has_selection:
+            button.setToolTip("先選取一檔推薦股票。")
+        else:
+            button.setToolTip("")
 
     @staticmethod
     def _source_snapshot_identity(
@@ -5079,6 +5380,152 @@ class RecommendationView(QWidget):
             "not_observed": "本次未觀察產業指數來源",
             "unknown": "產業指數來源未知",
         }.get(str(index_status), "產業指數來源狀態未知")
+        usage_values = snapshot.get("usage", ())
+        usage_values = (
+            tuple(item for item in usage_values if type(item) is str)
+            if isinstance(usage_values, (list, tuple))
+            else ()
+        )
+        industry_observation_lines: tuple[str, ...] = ()
+        industry_observation_next_step: str | None = None
+        if "current_industry_index_performance_for_reason" in usage_values:
+            raw_observation = snapshot.get("industry_index_source_observation")
+            try:
+                detached_observation = plain_json(raw_observation)
+            except (TypeError, ValueError):
+                detached_observation = None
+            read_model = getattr(self, "current_read_model", None)
+            canonical_readback = (
+                read_model is not None
+                and getattr(read_model, "result_id", None) == execution.result_id
+                and getattr(read_model, "integrity_basis", None)
+                == "canonical_payload_and_index_verified"
+                and getattr(read_model, "execution", None) == execution
+            )
+            observation_valid = False
+            if isinstance(detached_observation, dict):
+                try:
+                    from data_module.industry_mapper_data_provider import (
+                        industry_index_source_observation_hash_matches,
+                    )
+
+                    observation_warnings = snapshot.get("warnings")
+                    warning_contract_valid = (
+                        isinstance(observation_warnings, (list, tuple))
+                        and all(type(item) is str for item in observation_warnings)
+                        and "industry_index_source_capture_time_unknown_for_current_use"
+                        in observation_warnings
+                    )
+                    observation_valid = (
+                        industry_index_source_observation_hash_matches(
+                            detached_observation
+                        )
+                        and snapshot.get(
+                            "industry_index_source_observation_sha256"
+                        )
+                        == detached_observation.get("observation_sha256")
+                        and snapshot.get("industry_index_source_status") == "unknown"
+                        and snapshot.get("industry_index_source_time_status")
+                        == "unknown"
+                        and snapshot.get("industry_index_source_available_at")
+                        is None
+                        and snapshot.get("industry_index_source_published_at")
+                        is None
+                        and warning_contract_valid
+                    )
+                except (ImportError, TypeError, ValueError):
+                    observation_valid = False
+
+            if observation_valid and isinstance(detached_observation, dict):
+                observation = detached_observation
+                date_range = observation.get("date_range")
+                date_from = date_range.get("from") if isinstance(date_range, dict) else None
+                date_through = (
+                    date_range.get("through") if isinstance(date_range, dict) else None
+                )
+
+                def valid_observation_date(raw_value: Any) -> bool:
+                    if raw_value is None:
+                        return True
+                    if type(raw_value) is not str:
+                        return False
+                    try:
+                        return date.fromisoformat(raw_value).isoformat() == raw_value
+                    except ValueError:
+                        return False
+
+                observed_at = observation.get("observed_at")
+                try:
+                    observed_clock = datetime.fromisoformat(
+                        str(observed_at).replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    observed_clock = None
+                date_range_valid = (
+                    valid_observation_date(date_from)
+                    and valid_observation_date(date_through)
+                    and (
+                        date_from is None
+                        or date_through is None
+                        or date_from <= date_through
+                    )
+                )
+                observed_clock_valid = (
+                    observed_clock is not None
+                    and observed_clock.tzinfo is not None
+                    and observed_clock.utcoffset() == timezone.utc.utcoffset(
+                        observed_clock
+                    )
+                )
+                columns = observation.get("columns")
+                locator = observation.get("storage_locator")
+                if (
+                    date_range_valid
+                    and observed_clock_valid
+                    and isinstance(columns, list)
+                    and all(type(column) is str for column in columns)
+                    and (locator is None or type(locator) is str)
+                ):
+                    rowset_hash = str(observation.get("rowset_sha256") or "未知")
+                    storage_kind = str(observation.get("storage_kind") or "未知")
+                    source_id = str(observation.get("source_id") or "未知")
+                    date_text = (
+                        f"{date_from or '未知'} 至 {date_through or '未知'}"
+                    )
+                    persistence_text = (
+                        "已 canonical 保存並以同一結果 ID 讀回"
+                        if canonical_readback
+                        else "本輪尚未 canonical 保存；以下僅為本機觀測"
+                    )
+                    industry_observation_lines = (
+                        f"產業指數列觀察（{persistence_text}）：來源 {source_id}；"
+                        f"儲存方式 {storage_kind}；定位 {locator or '未知'}。",
+                        f"列日期範圍 {date_text}；列數 {observation.get('row_count')}；"
+                        f"欄位 {', '.join(columns) if columns else '未知'}；"
+                        f"rowset SHA-256 {rowset_hash}。",
+                        f"本機觀察時間 {observed_at}（只代表本機讀取時間）；"
+                        "available_at／published_at 未知；PIT eligible=false。",
+                    )
+                    if storage_kind == "csv":
+                        industry_observation_lines += (
+                            "同次 CSV artifact："
+                            f"{observation.get('stored_artifact_bytes')} bytes；"
+                            f"SHA-256 {observation.get('stored_artifact_sha256') or '未知'}。",
+                        )
+                    elif storage_kind == "sqlite":
+                        industry_observation_lines += (
+                            f"SQLite table：{observation.get('table_name') or '未知'}。",
+                        )
+                else:
+                    industry_observation_next_step = (
+                        "產業指數列觀察的日期或本機時鐘格式無法核對；"
+                        "不要以目前資料補填此結果。"
+                    )
+            else:
+                industry_observation_next_step = (
+                    "本次用途有使用產業指數表現，但封存列觀察缺漏、雜湊不符或時間狀態矛盾；"
+                    "請檢查同次來源事件並重新產生推薦。"
+                )
         lines = [
             f"分類來源：{source_status_label}；{date_line}"
             "僅代表 current_classification_only，PIT eligible=false。",
@@ -5088,6 +5535,7 @@ class RecommendationView(QWidget):
             f"{index_status_label}。",
         ]
         lines.extend(v2_source_facts)
+        lines.extend(industry_observation_lines)
         if market_facts:
             lines.append("市場來源：" + "；".join(market_facts) + "。")
         warnings = snapshot.get("warnings", ())
@@ -5105,6 +5553,8 @@ class RecommendationView(QWidget):
             next_steps.append(
                 "產業指數來源尚未核實；依賴該理由前請先檢查來源並重新執行。"
             )
+        if industry_observation_next_step is not None:
+            next_steps.append(industry_observation_next_step)
         if not next_steps:
             next_steps.append(
                 "如需歷史成分判讀，請使用具有歷史可得時間的成分資料；本快照不代表 PIT 成分。"
@@ -5355,7 +5805,6 @@ class RecommendationView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         self.save_result_btn.setVisible(False)
-        self.add_to_watchlist_btn.setVisible(False)
         self.send_to_backtest_btn.setVisible(False)
         self.send_profile_to_portfolio_backtest_btn.setVisible(False)
         self.export_report_btn.setVisible(False)
@@ -5373,6 +5822,7 @@ class RecommendationView(QWidget):
             self.result_status_label.setText(
                 f"已讀取 canonical 保存結果 {requested_result_id}；原結果沒有推薦列。"
             )
+        self._update_watchlist_action_state()
         self._update_detail_text()
         self._refresh_personal_choice_controls()
         self._refresh_personal_prediction_capture_controls()
@@ -5803,6 +6253,7 @@ class RecommendationView(QWidget):
                     if str(row.get("證券代號", "")).strip() == selected_code:
                         self.results_table.selectRow(row_number)
                         break
+            self._update_watchlist_action_state()
             self._update_detail_text()
             self._refresh_personal_choice_controls()
             self._refresh_personal_prediction_capture_controls()
@@ -5869,12 +6320,14 @@ class RecommendationView(QWidget):
         """表格選擇改變（單擊時觸發）"""
         self._update_detail_text()
         self._update_stock_research_button()
+        self._update_watchlist_action_state()
         self._refresh_personal_choice_controls()
 
     def _on_row_clicked(self, index):
         """表格行單擊事件"""
         self._update_detail_text()
         self._update_stock_research_button()
+        self._update_watchlist_action_state()
         self._refresh_personal_choice_controls()
 
     def _on_row_double_clicked(self, index):
@@ -6323,6 +6776,7 @@ class RecommendationView(QWidget):
                 self.results_table.selectRow(row_number)
                 self._update_detail_text()
                 self._update_stock_research_button()
+                self._update_watchlist_action_state()
                 self._refresh_personal_choice_controls()
                 return True
         return False

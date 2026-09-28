@@ -283,10 +283,15 @@ def _write_legacy_snapshot_decoy(snapshot_root: Path, *, decision_date: str) -> 
     return path
 
 
-def _open_calendar(monkeypatch: pytest.MonkeyPatch, is_trading_day: bool = True) -> None:
+def _open_calendar(
+    monkeypatch: pytest.MonkeyPatch,
+    is_trading_day: bool = True,
+    *,
+    evidence_sha256: str = "sha256:" + "a" * 64,
+) -> None:
     class _Calendar:
         def __init__(self, **_kwargs: object) -> None:
-            pass
+            self._schedule_evidence: dict[int, dict[str, object]] = {}
 
         def is_official_trading_day(
             self,
@@ -295,29 +300,79 @@ def _open_calendar(monkeypatch: pytest.MonkeyPatch, is_trading_day: bool = True)
             allow_online_probe: bool,
         ) -> tuple[bool, str]:
             assert allow_online_probe is False
+            self._schedule_evidence[_target_date.year] = {
+                "mode": "hash_bound_official_calendar_cache",
+                "cache_file_sha256": evidence_sha256,
+                "source_hash": evidence_sha256,
+                "captured_at": "2026-09-20T00:00:00+00:00",
+                "validated_at": "2026-09-22T00:00:00+00:00",
+            }
             return is_trading_day, "fixture_open" if is_trading_day else "weekend_closed"
 
     monkeypatch.setattr(operational, "OfficialTradingCalendar", _Calendar)
 
 
 def _successful_child(
-    _paths: operational.OperationalPaths,
-    _decision_date: date,
-    _scenario: object,
+    paths: operational.OperationalPaths,
+    decision_date: date,
+    scenario: object,
     _args: Namespace,
+    *,
+    run_status: str = "completed",
 ) -> dict[str, object]:
+    run_id = f"fixture-run-{decision_date.strftime('%Y%m%d')}"
+    receipt_path = (
+        paths.lane_learning_root
+        / "runs"
+        / decision_date.isoformat()
+        / "fixture-scope"
+        / "run_receipt.json"
+    )
+    cost_scenario_hash = str(getattr(scenario, "scenario_hash", ""))
+    run_summary: dict[str, object] = {
+        "run_id": run_id,
+        "status": run_status,
+        "reason": "fixture_run_reason",
+        "receipt_path": str(receipt_path),
+        "dataset_id": "fixture-dataset",
+        "dataset_hash": "sha256:fixture-dataset",
+        "candidate_id": "rec-cal-fixture",
+        "candidate_root": "fixture-candidate",
+        "training_lineage_manifest_hash": "sha256:fixture-lineage",
+        "training_lineage_manifest_path": "fixture-lineage.json",
+        "training_lineage_status": "verified",
+        "decision": "retain_current",
+        "decision_reason": "natural_forward_evidence_receipt_missing",
+    }
+    receipt = {
+        "schema_version": "daily-recommendation-learning-receipt.v1",
+        **run_summary,
+        "decision_date": decision_date.isoformat(),
+        "run_scope": "fixture-scope",
+        "cost_scenario_hash": cost_scenario_hash,
+        "finalized": run_status == "completed",
+        "recoverable": run_status != "completed",
+        "formal_order_allowed": False,
+        "shadow_only": True,
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(
+        json.dumps(receipt, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
     return {
         "status": "completed_process",
         "returncode": 0,
         "command": ["fixture-child"],
         "stdout_stderr_tail": "fixture",
+        "child_payload_source": "fixture_terminal_json",
         "child_payload": {
-            "run": {
-                "decision": "retain_current",
-                "decision_reason": "natural_forward_evidence_receipt_missing",
-                "candidate_id": "rec-cal-fixture",
-                "candidate_root": "fixture-candidate",
-            },
+            "schema_version": "daily-recommendation-learning-cli-result.v3",
+            "decision_date": decision_date.isoformat(),
+            "cost_scenario_hash": cost_scenario_hash,
+            "formal_order_allowed": False,
+            "shadow_only": True,
+            "run": run_summary,
             "dependencies": {"diagnostics": []},
             "live_capture": {"status": "captured", "reason": "fixture_capture"},
             "natural_evidence": {
@@ -352,6 +407,11 @@ def test_operational_task_reuses_terminal_receipt_without_duplicate_child(
     assert second_code == 0
     assert second["idempotent_replay"] is True
     assert second["reused_run_id"] == first["run_id"]
+    terminal_receipt_bytes = Path(first["receipt_path"]).read_bytes()
+    assert first["terminal_receipt_sha256"] == "sha256:" + hashlib.sha256(
+        terminal_receipt_bytes
+    ).hexdigest()
+    assert second["terminal_receipt_sha256"] == first["terminal_receipt_sha256"]
     assert calls == ["called"]
     assert len(list((tmp_path / "banktaiwan-shadow" / "scheduled" / "recommendation_learning_banktaiwan" / "runs").glob("*.json"))) == 1
     snapshot = first["snapshot"]
@@ -360,6 +420,151 @@ def test_operational_task_reuses_terminal_receipt_without_duplicate_child(
     ).hexdigest()
     assert snapshot["file_sha256"] == snapshot["invocation_output_sha256"]
     assert snapshot["canonical_artifact_sha256"].startswith("sha256:")
+
+
+def test_terminal_reuse_revalidates_complete_run_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    calls = 0
+
+    def child(*child_args: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return _successful_child(*child_args)  # type: ignore[arg-type]
+
+    first_code, first = operational.run_once(args, child_runner=child)
+    wrapper_receipt_path = Path(str(first["receipt_path"]))
+    wrapper_latest_path = (
+        tmp_path
+        / "banktaiwan-shadow"
+        / "scheduled"
+        / "recommendation_learning_banktaiwan"
+        / "latest_status.json"
+    )
+    receipt = json.loads(wrapper_receipt_path.read_text(encoding="utf-8"))
+    receipt["reason"] = "tampered_terminal_reason"
+    wrapper_receipt_path.write_text(
+        json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    latest = json.loads(wrapper_latest_path.read_text(encoding="utf-8"))
+    latest["terminal_receipt_sha256"] = "sha256:" + hashlib.sha256(
+        wrapper_receipt_path.read_bytes()
+    ).hexdigest()
+    wrapper_latest_path.write_text(
+        json.dumps(latest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    second_code, second = operational.run_once(args, child_runner=child)
+
+    assert first_code == second_code == 0
+    assert second.get("idempotent_replay") is not True
+    assert second["attempt_number"] == 2
+    assert calls == 2
+
+
+@pytest.mark.parametrize("unsafe_target", ["latest_status", "run_receipt"])
+def test_terminal_reuse_fails_closed_when_bounded_reader_rejects_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_target: str,
+) -> None:
+    from app_module.recommendation import queries
+
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    first_code, first = operational.run_once(args, child_runner=_successful_child)
+    assert first_code == 0
+    paths, decision_date, _scenario = operational._common_args(args)
+    rejected_path = (
+        paths.latest_status_path
+        if unsafe_target == "latest_status"
+        else Path(str(first["receipt_path"]))
+    ).resolve()
+    original_reader = queries._read_regular_file_no_follow
+
+    def reject_target(path: Path, *reader_args: object, **reader_kwargs: object) -> bytes:
+        if Path(path).resolve() == rejected_path:
+            raise queries.ExecutionArtifactIntegrityError("fixture unsafe file")
+        return original_reader(path, *reader_args, **reader_kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(queries, "_read_regular_file_no_follow", reject_target)
+    second_code, second = operational.run_once(args, child_runner=_successful_child)
+
+    assert second_code == 0
+    assert second.get("idempotent_replay") is not True
+    assert second["attempt_number"] == 2
+
+
+def test_terminal_reuse_fails_closed_when_receipt_exceeds_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    first_code, first = operational.run_once(args, child_runner=_successful_child)
+    assert first_code == 0
+    paths, decision_date, _scenario = operational._common_args(args)
+    latest, error = operational._read_bounded_snapshot_status(
+        paths.latest_status_path,
+        root=paths.operational_root,
+    )
+    assert latest is not None, error
+    monkeypatch.setattr(operational, "_MAX_CHILD_RUN_RECEIPT_BYTES", 1)
+
+    assert not operational._reusable_terminal_receipt_matches(
+        paths=paths,
+        latest=latest,
+        decision_date=decision_date,
+        input_fingerprint=str(first["input_fingerprint"]),
+    )
+
+
+@pytest.mark.parametrize("link_kind", ["latest_status", "run_receipt"])
+def test_terminal_reuse_rejects_symlinked_status_or_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+
+    first_code, first = operational.run_once(args, child_runner=_successful_child)
+    assert first_code == 0
+    if link_kind == "latest_status":
+        protected_path = (
+            tmp_path
+            / "banktaiwan-shadow"
+            / "scheduled"
+            / "recommendation_learning_banktaiwan"
+            / "latest_status.json"
+        )
+    else:
+        protected_path = Path(str(first["receipt_path"]))
+    target_path = tmp_path / f"{link_kind}-target.json"
+    target_bytes = protected_path.read_bytes()
+    target_path.write_bytes(target_bytes)
+    protected_path.unlink()
+    try:
+        protected_path.symlink_to(target_path)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"此環境不能建立測試 symlink：{exc}")
+
+    second_code, second = operational.run_once(args, child_runner=_successful_child)
+
+    assert second_code == 0
+    assert second.get("idempotent_replay") is not True
+    assert second["attempt_number"] == 2
+    assert target_path.read_bytes() == target_bytes
+    if link_kind == "latest_status":
+        assert not protected_path.is_symlink()
+    else:
+        assert protected_path.is_symlink()
+        assert Path(str(second["receipt_path"])) != protected_path
 
 
 def test_operational_task_retries_failed_attempt_with_new_receipt(
@@ -394,6 +599,212 @@ def test_operational_task_retries_failed_attempt_with_new_receipt(
     assert attempts == 2
     runs = tmp_path / "banktaiwan-shadow" / "scheduled" / "recommendation_learning_banktaiwan" / "runs"
     assert len(list(runs.glob("*.json"))) == 2
+
+
+def test_failed_child_cannot_be_reclassified_as_closed_day_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch, is_trading_day=True)
+
+    def failed_but_closed(*child_args: object) -> dict[str, object]:
+        result = _successful_child(
+            *child_args,  # type: ignore[arg-type]
+            run_status="failed_training",
+        )
+        payload = result["child_payload"]
+        assert isinstance(payload, dict)
+        payload["live_capture"] = {
+            "status": "skipped",
+            "reason": "non_trading_day_official_calendar",
+        }
+        return result
+
+    first_code, first = operational.run_once(args, child_runner=failed_but_closed)
+    second_code, second = operational.run_once(args, child_runner=_successful_child)
+
+    assert first_code == 2
+    assert first["status"] == "failed_dependency"
+    assert first["reason"].startswith("child_run_failed:failed_training:")
+    assert second_code == 0
+    assert second["status"] == "completed_waiting_natural_maturity"
+    assert second["attempt_number"] == 2
+    assert second.get("idempotent_replay") is not True
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("history_start_date", "2015-01-01"),
+        ("max_decision_dates", 6),
+    ],
+)
+def test_terminal_fingerprint_binds_replay_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    calls = 0
+
+    def child(*child_args: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return _successful_child(*child_args)  # type: ignore[arg-type]
+
+    first_code, first = operational.run_once(args, child_runner=child)
+    setattr(args, field, replacement)
+    second_code, second = operational.run_once(args, child_runner=child)
+
+    assert first_code == second_code == 0
+    assert first["input_fingerprint"] != second["input_fingerprint"]
+    assert second.get("idempotent_replay") is not True
+    assert second["attempt_number"] == 2
+    assert calls == 2
+
+
+def test_terminal_fingerprint_binds_official_calendar_cache_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    calls = 0
+
+    def child(*child_args: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return _successful_child(*child_args)  # type: ignore[arg-type]
+
+    _open_calendar(monkeypatch, evidence_sha256="sha256:" + "b" * 64)
+    first_code, first = operational.run_once(args, child_runner=child)
+    _open_calendar(monkeypatch, evidence_sha256="sha256:" + "c" * 64)
+    second_code, second = operational.run_once(args, child_runner=child)
+
+    assert first_code == second_code == 0
+    assert first["calendar"]["input_identity"]["annual_schedule_evidence"][
+        "cache_file_sha256"
+    ] != second["calendar"]["input_identity"]["annual_schedule_evidence"][
+        "cache_file_sha256"
+    ]
+    assert first["input_fingerprint"] != second["input_fingerprint"]
+    assert second.get("idempotent_replay") is not True
+    assert second["attempt_number"] == 2
+    assert calls == 2
+
+
+def test_operational_task_rejects_child_run_failure_with_zero_exit_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    attempts = 0
+
+    def child(*child_args: object) -> dict[str, object]:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return _successful_child(
+                *child_args,  # type: ignore[arg-type]
+                run_status="failed_training",
+            )
+        return _successful_child(*child_args)  # type: ignore[arg-type]
+
+    first_code, first = operational.run_once(args, child_runner=child)
+    second_code, second = operational.run_once(args, child_runner=child)
+
+    assert first_code == 2
+    assert first["status"] == "failed_dependency"
+    assert first["reason"].startswith("child_run_failed:failed_training:")
+    assert first["child_invocation"]["terminal_readback"]["status"] == "verified"
+    assert second_code == 0
+    assert second["status"] == "completed_waiting_natural_maturity"
+    assert second["attempt_number"] == 2
+    assert attempts == 2
+
+
+def test_operational_task_rejects_child_summary_that_differs_from_run_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+
+    def mismatched_child(*child_args: object) -> dict[str, object]:
+        child = _successful_child(*child_args)  # type: ignore[arg-type]
+        payload = child["child_payload"]
+        assert isinstance(payload, dict)
+        run = payload["run"]
+        assert isinstance(run, dict)
+        receipt_path = Path(str(run["receipt_path"]))
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt["candidate_id"] = "different-candidate-than-stdout"
+        receipt_path.write_text(
+            json.dumps(receipt, ensure_ascii=False, sort_keys=True),
+            encoding="utf-8",
+        )
+        return child
+
+    code, payload = operational.run_once(args, child_runner=mismatched_child)
+
+    assert code == 2
+    assert payload["status"] == "failed_dependency"
+    assert payload["reason"] == (
+        "child_terminal_readback_failed:child_run_receipt_candidate_id_mismatch"
+    )
+    assert payload["child_invocation"]["terminal_readback"]["status"] == "failed"
+
+
+def test_operational_task_does_not_use_stale_child_latest_status_without_stdout_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    paths, decision_date, scenario = operational._common_args(args)
+    latest_child_status = paths.lane_learning_root / "latest_status.json"
+    latest_child_status.parent.mkdir(parents=True, exist_ok=True)
+    stale = {
+        "schema_version": "daily-recommendation-learning-cli-result.v3",
+        "decision_date": decision_date.isoformat(),
+        "cost_scenario_hash": scenario.scenario_hash,
+        "formal_order_allowed": False,
+        "shadow_only": True,
+        "run": {
+            "run_id": "stale-run-from-earlier-invocation",
+            "status": "completed",
+            "decision_reason": "natural_forward_evidence_receipt_missing",
+        },
+        "live_capture": {"status": "captured", "reason": "stale"},
+    }
+    stale_bytes = json.dumps(stale, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    latest_child_status.write_bytes(stale_bytes)
+
+    def child_without_json(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="child produced no terminal JSON\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(operational.subprocess, "run", child_without_json)
+    first_code, first = operational.run_once(args)
+    assert first_code == 2
+    assert first["status"] == "failed_dependency"
+    assert first["reason"] == (
+        "child_terminal_readback_failed:child_stdout_json_missing_or_invalid"
+    )
+    assert first["child_result"] == {}
+    assert latest_child_status.read_bytes() == stale_bytes
+
+    second_code, second = operational.run_once(args, child_runner=_successful_child)
+    assert second_code == 0
+    assert second["status"] == "completed_waiting_natural_maturity"
+    assert second["attempt_number"] == 2
 
 
 def test_operational_task_blocks_overlap_and_skips_non_trading_day(

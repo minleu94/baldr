@@ -1398,6 +1398,22 @@ class RecommendationService:
             return None
 
         self.last_calibration_projections = dict(projections)
+        if _is_personal_use_policy(personal_policy):
+            warning_values = self.last_run_context.setdefault("warnings", [])
+            if not isinstance(warning_values, list) or any(
+                type(item) is not str for item in warning_values
+            ):
+                raise TypeError("personal calibration context warnings 必須是 str list")
+            for projection in projections.values():
+                if projection.status == "active_candidate":
+                    continue
+                for warning in projection.warnings:
+                    if type(warning) is not str or not warning.strip():
+                        raise TypeError(
+                            "personal fallback projection warning 必須是非空 str"
+                        )
+                    if warning not in warning_values:
+                        warning_values.append(warning)
         handoff_projection_status = (
             CalibrationProjectionStatusV1.ACTIVE_CANDIDATE
             if any(item.status == "active_candidate" for item in projections.values())

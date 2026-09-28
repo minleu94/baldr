@@ -56,6 +56,7 @@ from ml_module.model_artifact_loader import (
 from ml_module.model_artifact_manifest import FeatureSchema, ModelArtifactManifest
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.recommendation_calibration_training import (
+    InvalidCalibrationOutputError,
     RECOMMENDATION_RETURN_BASIS,
     RunnableRecommendationCalibrationModel,
     RecommendationPrediction,
@@ -2058,6 +2059,12 @@ class RecommendationCalibrationConsumer:
                 baseline_probability_bp=rule_probability_bp,
                 baseline_after_cost_probability_bp=after_cost_rule_probability_bp,
                 node_index=len(self._lineage_models) - 1,
+            )
+        except InvalidCalibrationOutputError:
+            return RecommendationCalibrationProjection.unavailable(
+                stock_code=stock_code,
+                warning="model_probability_output_invalid_fail_closed",
+                ranking_percentile_bp=ranking_percentile_bp,
             )
         except (TypeError, ValueError, IndexError):
             return RecommendationCalibrationProjection.unavailable(

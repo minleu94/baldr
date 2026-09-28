@@ -71,15 +71,50 @@ def workspace_personal_capture_root():
         yield Path(temporary_root).resolve()
 
 
-def _make_view(*, personal_policy_path: Path | None = None) -> RecommendationView:
+def _make_view(
+    *,
+    personal_policy_path: Path | None = None,
+    watchlist_service=None,
+    recommendation_service=None,
+) -> RecommendationView:
     return RecommendationView(
-        recommendation_service=MagicMock(),
+        recommendation_service=(
+            recommendation_service
+            if recommendation_service is not None
+            else MagicMock()
+        ),
         regime_service=SimpleNamespace(
             detect_regime=lambda: SimpleNamespace(regime="Unknown"),
             get_strategy_config=lambda _regime: {},
         ),
+        watchlist_service=watchlist_service,
         personal_policy_path=personal_policy_path,
     )
+
+
+def _real_service_for_source_database(
+    source_database: Path,
+    *,
+    data_root: Path,
+    output_root: Path,
+):
+    from tests.recommendation_test_support import build_recommendation_test_service
+
+    config = SimpleNamespace(
+        db_file=source_database,
+        data_root=data_root,
+        output_root=output_root,
+        use_sqlite=True,
+        default_start_date="2025-01-01",
+        pit_market_scope=None,
+    )
+    config.resolve_output_path = lambda subfolder: output_root / subfolder
+    service = build_recommendation_test_service(
+        config,
+        industry_mapper=MagicMock(),
+        regime_detector=MagicMock(),
+    )
+    return config, service
 
 
 class _IsolatedRecommendationConfig:
@@ -485,7 +520,7 @@ def test_policy_history_rollback_selects_saved_mode_for_next_invocation(
         assert restored.mode == first_mode
         assert view.personal_policy_mode_combo.currentData() == first_mode
         if first_mode == "personal_calibrated_probability":
-            with pytest.raises(ValueError, match="V1 或未重新驗證的 V2"):
+            with pytest.raises(ValueError, match="runtime DB 不一致或未重新驗證的 V2"):
                 view._personal_policy_for_invocation()
         else:
             invocation_policy = view._personal_policy_for_invocation()
@@ -528,15 +563,20 @@ def test_v2_source_trust_requires_explicit_preview_and_fresh_readback(
     monkeypatch.setenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", str(learning_output))
     policy_path = tmp_path / "personal" / "recommendation-policy.json"
     policy_path.parent.mkdir()
+    config, service = _real_service_for_source_database(
+        source_database.resolve(),
+        data_root=data_root,
+        output_root=tmp_path / "service-output",
+    )
 
     def configure(view: RecommendationView) -> None:
-        view.config = SimpleNamespace(
-            data_root=data_root,
-            output_root=tmp_path / "product-output-must-not-be-used-as-learning-root",
-        )
+        view.config = config
         _select_personal_candidate(view, candidate_root)
 
-    view = _make_view(personal_policy_path=policy_path)
+    view = _make_view(
+        personal_policy_path=policy_path,
+        recommendation_service=service,
+    )
     configure(view)
     try:
         assert view.personal_source_database_input.text() == ""
@@ -552,6 +592,14 @@ def test_v2_source_trust_requires_explicit_preview_and_fresh_readback(
         assert not policy_path.exists()
 
         view.personal_source_database_input.setText(str(source_database.resolve()))
+        service.model_feature_provider = SimpleNamespace(
+            config=SimpleNamespace(db_file=source_database.resolve())
+        )
+        view._inspect_personal_source_time_binding()
+        assert view._personal_candidate_worker is None
+        assert "runtime DB 不一致" in view.personal_source_time_status_label.text()
+        del service.model_feature_provider
+
         view._inspect_personal_source_time_binding()
         _wait_for_personal_source_check(view, qt_app)
         proposal = view._personal_source_time_proposal
@@ -600,12 +648,120 @@ def test_v2_source_trust_requires_explicit_preview_and_fresh_readback(
         assert verified.official_historical_pit_verified is False
         invocation_policy = view._personal_policy_for_invocation()
         assert invocation_policy.policy_sha256 == saved.policy_sha256
+        assert view._personal_source_matches_runtime(
+            source_database.resolve(),
+            saved.source_time_trust.file_identity,
+        )
+        assert not view._personal_source_matches_runtime(
+            source_database.resolve(),
+            {
+                "device": saved.source_time_trust.file_identity.device + 1,
+                "inode": saved.source_time_trust.file_identity.inode + 1,
+            },
+        )
+        assert not view._personal_source_matches_runtime(
+            source_database.resolve(),
+            {"device": 0, "inode": 0},
+        )
+        runtime_service = service.with_personal_use_policy(invocation_policy)
+        assert runtime_service.config is config
+        assert view._personal_policy_source_is_verified(
+            invocation_policy,
+            service_override=runtime_service,
+        )
+        from ui_qt.workers.task_worker import ProgressTaskWorker
+
+        alternate_service_db = tmp_path / "changed-service-runtime.db"
+        alternate_service_db.write_bytes(b"isolated test placeholder")
+        started_workers: list[object] = []
+        invocation_errors: list[str] = []
+        real_worker_start = ProgressTaskWorker.start
+        monkeypatch.setattr(
+            ProgressTaskWorker,
+            "start",
+            lambda worker: started_workers.append(worker),
+        )
+        monkeypatch.setattr(
+            QMessageBox,
+            "warning",
+            lambda _parent, _title, message, **_kwargs: invocation_errors.append(message),
+        )
+        original_service_config = service.config
+        service.config = SimpleNamespace(db_file=alternate_service_db)
+        view._execute_recommendation()
+        assert started_workers == []
+        assert view.worker is None
+        assert invocation_errors and "未啟動" in invocation_errors[-1]
+        monkeypatch.setattr(ProgressTaskWorker, "start", real_worker_start)
+        service.config = original_service_config
+
+        # Model a DB switch after policy verification and invocation-service
+        # creation but immediately before the worker launch gate.
+        source_verifier = view._personal_policy_source_is_verified
+        verification_calls = 0
+
+        def switch_runtime_db_before_worker(
+            policy: object, *, service_override: object | None = None
+        ) -> bool:
+            nonlocal verification_calls
+            verification_calls += 1
+            if verification_calls == 3:
+                assert service_override is not None
+                service_override.config = SimpleNamespace(db_file=alternate_service_db)
+            return source_verifier(policy, service_override=service_override)
+
+        monkeypatch.setattr(
+            view,
+            "_personal_policy_source_is_verified",
+            switch_runtime_db_before_worker,
+        )
+        view._execute_recommendation()
+        assert verification_calls == 3
+        assert started_workers == []
+        assert view.worker is None
+        assert invocation_errors and "未啟動" in invocation_errors[-1]
+
+        from app_module.recommendation.composition import (
+            build_recommendation_composition,
+        )
+        from ui_qt.views.recommendation.execution_coordinator import (
+            RecommendationExecutionRequest,
+        )
+
+        request = RecommendationExecutionRequest(view._collect_config())
+        assert request.validation_error() is None
+        execution = request.execute(runtime_service, detailed_progress=True)
+        assert execution.status.value == "completed"
+        composition = build_recommendation_composition(config)
+        save_receipt = composition.save_service.save_execution(
+            execution,
+            label="隔離 runtime DB 綁定正例",
+            notes="確認 UI source binding 與真 RecommendationService DB 一致",
+        )
+        assert save_receipt.result_id == execution.result_id
+        readback = build_recommendation_composition(config).queries.get(
+            execution.result_id
+        )
+        assert readback is not None
+        assert readback.execution == execution
+        policy_event = next(
+            event
+            for event in readback.execution.events
+            if event.event_type == "personal_use_policy_snapshot"
+        )
+        assert policy_event.details["policy_snapshot"]["policy_sha256"] == (
+            saved.policy_sha256
+        )
+
     finally:
         view.close()
 
     # A restarted view shows the saved DB for review but does not reuse the old
     # in-memory verification; it must re-run the source check before invocation.
-    restarted = _make_view(personal_policy_path=policy_path)
+    restarted = _make_view(
+        personal_policy_path=policy_path,
+        recommendation_service=service,
+    )
     configure(restarted)
     try:
         assert restarted.personal_source_database_input.text() == str(
@@ -619,7 +775,7 @@ def test_v2_source_trust_requires_explicit_preview_and_fresh_readback(
         assert (
             restarted._personal_source_time_verified_entry.status
             == "metadata_pinned_pending_runtime_validation"
-        )
+        ), restarted.personal_source_time_status_label.text()
         assert restarted._personal_policy_for_invocation().policy_sha256 == saved.policy_sha256
 
         # A same-path source edit invalidates the saved slice; the UI must not
@@ -650,6 +806,102 @@ def test_v2_source_trust_requires_explicit_preview_and_fresh_readback(
         assert restarted.personal_source_database_input.text() == ""
     finally:
         restarted.close()
+
+
+def test_v2_source_trust_for_database_b_cannot_start_recommendation_on_database_a(
+    qt_app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import shutil
+
+    from app_module.recommendation.personal_candidate_inventory import (
+        inspect_personal_source_time_binding,
+    )
+    from app_module.recommendation.personal_use_policy import (
+        RecommendationPersonalUseSelectionV2,
+        save_personal_use_policy_v2,
+    )
+    from ui_qt.workers.task_worker import ProgressTaskWorker
+
+    candidate_root, _candidate_bytes, data_root, _replay_path = (
+        _source_bound_candidate_package(tmp_path)
+    )
+    source_database_b = (data_root / "sqlite" / "twstock.db").resolve()
+    database_a = (tmp_path / "runtime-a" / "twstock.db").resolve()
+    database_a.parent.mkdir()
+    shutil.copyfile(source_database_b, database_a)
+    assert database_a.read_bytes() == source_database_b.read_bytes()
+    assert database_a.resolve() != source_database_b.resolve()
+
+    learning_output = tmp_path / "shadow-output"
+    monkeypatch.setenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", str(learning_output))
+    proposal = inspect_personal_source_time_binding(
+        candidate_root=candidate_root,
+        source_database_path=source_database_b,
+        explicit_output_root=learning_output,
+        data_root=data_root,
+    )
+    policy_path = tmp_path / "personal" / "recommendation-policy.json"
+    policy_path.parent.mkdir()
+    save_personal_use_policy_v2(
+        policy_path,
+        RecommendationPersonalUseSelectionV2(
+            scope_id="runtime-source-a-b-test",
+            mode="personal_calibrated_probability",
+            source_time_binding=proposal,
+        ),
+        expected_revision=0,
+    )
+
+    config, service = _real_service_for_source_database(
+        database_a,
+        data_root=data_root,
+        output_root=tmp_path / "service-output",
+    )
+    view = _make_view(
+        personal_policy_path=policy_path,
+        recommendation_service=service,
+    )
+    started_workers: list[object] = []
+    messages: list[str] = []
+    monkeypatch.setattr(
+        ProgressTaskWorker,
+        "start",
+        lambda worker: started_workers.append(worker),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, _title, message, **_kwargs: messages.append(message),
+    )
+    try:
+        view.config = config
+        _select_personal_candidate(view, candidate_root)
+        view.personal_source_database_input.setText(str(source_database_b))
+        assert not view._personal_source_matches_runtime(
+            source_database_b,
+            proposal.file_identity,
+        )
+
+        view._inspect_personal_source_time_binding()
+        assert view._personal_candidate_worker is None
+        assert "runtime DB 不一致" in view.personal_source_time_status_label.text()
+
+        view._collect_config = lambda: {
+            "patterns": {"selected": ["baseline-pattern"]},
+            "signals": {"technical_indicators": ["RSI"]},
+        }
+        assert (
+            view.personal_policy_mode_combo.currentData()
+            == "personal_calibrated_probability"
+        )
+        view._execute_recommendation()
+        assert started_workers == []
+        assert view.worker is None
+        assert messages and "未啟動" in messages[-1]
+    finally:
+        view.close()
 
 
 def test_recommendation_view_close_waits_for_personal_workers(
@@ -939,6 +1191,7 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
     from app_module.journal_service import JournalService
     from app_module.recommendation import execute as execute_module
     from app_module.recommendation.composition import build_recommendation_composition
+    from data_module.industry_mapper_data_provider import IndustryMapperDataProvider
     from app_module.recommendation.personal_use_policy import (
         RecommendationPersonalUsePolicyV1,
     )
@@ -962,6 +1215,24 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
             _market_frame(),
         )
         config, service, observed_dates = _service(isolated_root, provider)
+        industry_csv = isolated_root / "industry_index.csv"
+        industry_csv.write_text(
+            "日期,指數名稱,收盤指數,漲跌,漲跌點數,漲跌百分比\n"
+            "2026-09-23,半導體類指數,99,+,1,1\n"
+            "2026-09-24,半導體類指數,100,+,1,1\n",
+            encoding="utf-8-sig",
+        )
+        industry_frame = IndustryMapperDataProvider(
+            SimpleNamespace(
+                meta_data_dir=isolated_root,
+                industry_index_file=industry_csv,
+                use_sqlite=False,
+            )
+        ).load_industry_index_frame()
+        service.industry_mapper.companies_df = SimpleNamespace(attrs={})
+        service.industry_mapper.industry_index_df = industry_frame
+        service.industry_mapper.get_stock_industries.return_value = ["半導體"]
+        service.industry_mapper.get_industry_performance.return_value = None
         service = service.with_personal_use_policy(
             RecommendationPersonalUsePolicyV1.default_rule_only("desktop-user")
         )
@@ -999,6 +1270,19 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
         )
         assert source_snapshot["decision_date"] == _DECISION_DATE
         assert source_snapshot["data_as_of_date"] == _SOURCE_DATE
+        assert "current_industry_index_performance_for_reason" in (
+            source_snapshot["usage"]
+        )
+        observation = source_snapshot["industry_index_source_observation"]
+        assert observation["date_range"] == {
+            "from": "2026-09-23",
+            "through": "2026-09-24",
+        }
+        assert observation["available_at"] is None
+        assert observation["published_at"] is None
+        assert source_snapshot["industry_index_source_observation_sha256"] == (
+            observation["observation_sha256"]
+        )
 
         journal = JournalService(
             config,
@@ -1012,6 +1296,23 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
         view.journal_service = journal
         view.load_saved_result_button.setEnabled(True)
         try:
+            # 執行後、保存前可檢視同次自洽封存列觀察，但明確標成未保存。
+            view.current_execution = execution
+            view.current_read_model = None
+            view._update_company_source_snapshot_display(execution)
+            unsaved_display = view.company_source_snapshot_label.text()
+            assert "本輪尚未 canonical 保存；以下僅為本機觀測" in unsaved_display
+            assert observation["rowset_sha256"] in unsaved_display
+            assert observation["observed_at"] in unsaved_display
+            assert "available_at／published_at 未知" in unsaved_display
+            assert "PIT eligible=false" in unsaved_display
+
+            # 改動 live CSV 後再載入舊結果；UI 必須仍呈現 sealed event 的觀察。
+            industry_csv.write_text(
+                "日期,指數名稱,收盤指數,漲跌,漲跌點數,漲跌百分比\n"
+                "2099-01-01,假資料,999,+,1,1\n",
+                encoding="utf-8-sig",
+            )
             view.saved_result_id_input.setText(result_id)
             view.load_saved_result_button.click()
             _wait_for_saved_result_load(view, qt_app)
@@ -1026,6 +1327,12 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
             assert f"sha256:{source_snapshot['market_data_fingerprint']}" in displayed
             assert "current_classification_only" in displayed
             assert "PIT eligible=false" in displayed
+            assert "已 canonical 保存並以同一結果 ID 讀回" in displayed
+            assert observation["rowset_sha256"] in displayed
+            assert "2026-09-23 至 2026-09-24" in displayed
+            assert observation["observed_at"] in displayed
+            assert "available_at／published_at 未知" in displayed
+            assert "2099-01-01" not in displayed
 
             def changed_source_snapshot(**changes: object):
                 changed_events = []
@@ -1047,6 +1354,32 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
             )
             assert "決策日、時鐘或行情來源身分不符" in (
                 view.company_source_snapshot_label.text()
+            )
+
+            # 只有外層重算快照仍不能遮蔽 inner observation echo mismatch。
+            view._update_company_source_snapshot_display(
+                changed_source_snapshot(
+                    industry_index_source_observation_sha256="sha256:" + "c" * 64
+                )
+            )
+            mismatched_observation_display = view.company_source_snapshot_label.text()
+            assert "rowset SHA-256" not in mismatched_observation_display
+            assert "封存列觀察缺漏、雜湊不符或時間狀態矛盾" in (
+                mismatched_observation_display
+            )
+
+            # 即使 warning 字串本身包含預期 token，錯誤型別也不可通過。
+            view._update_company_source_snapshot_display(
+                changed_source_snapshot(
+                    warnings=(
+                        "industry_index_source_capture_time_unknown_for_current_use"
+                    )
+                )
+            )
+            malformed_warning_display = view.company_source_snapshot_label.text()
+            assert "rowset SHA-256" not in malformed_warning_display
+            assert "封存列觀察缺漏、雜湊不符或時間狀態矛盾" in (
+                malformed_warning_display
             )
 
             # 明示未知行情日仍顯示未知，不以目前 provider 資料補值。
@@ -1112,11 +1445,13 @@ def test_personal_choice_readback_names_existing_outcome_review_route(
 def test_exact_saved_result_load_then_selection_and_choice_roundtrip(
     qt_app: QApplication,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """真 canonical save → 新 view 單筆 get → 選股 → Journal fresh readback。"""
 
     from app_module.journal_service import JournalService
     from app_module.recommendation.composition import build_recommendation_composition
+    from app_module.watchlist_service import WatchlistService
     from tests.test_personal_recommendation_choice import (
         _canonical_rule_only_query_fixture,
     )
@@ -1147,8 +1482,32 @@ def test_exact_saved_result_load_then_selection_and_choice_roundtrip(
             config,
             journal_path=config.output_root / "portfolio" / "journal_entries.jsonl",
         )
+        watchlist_service = WatchlistService(config)
+        warning_messages: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            QMessageBox,
+            "information",
+            staticmethod(lambda *_args, **_kwargs: None),
+        )
+        monkeypatch.setattr(
+            QMessageBox,
+            "critical",
+            staticmethod(lambda *_args, **_kwargs: None),
+        )
+        monkeypatch.setattr(
+            QMessageBox,
+            "warning",
+            staticmethod(
+                lambda _parent, title, message: warning_messages.append(
+                    (str(title), str(message))
+                )
+            ),
+        )
 
-        view = _make_view(personal_policy_path=tmp_path / "personal-policy.json")
+        view = _make_view(
+            personal_policy_path=tmp_path / "personal-policy.json",
+            watchlist_service=watchlist_service,
+        )
         view.config = config
         view.recommendation_composition = composition
         view.journal_service = journal
@@ -1165,8 +1524,42 @@ def test_exact_saved_result_load_then_selection_and_choice_roundtrip(
             assert view.current_execution == source_read_model.execution
             assert view.current_save_receipt is None
             assert view._verified_saved_result_id() == result_id
+            assert view.add_to_watchlist_btn.isHidden() is False
+            assert not view.add_to_watchlist_btn.isEnabled()
             assert view.select_stock("2330", result_id=result_id)
             assert view._selected_stock_code() == "2330"
+            assert view.add_to_watchlist_btn.isEnabled()
+
+            # 精確載入的 canonical 結果不需要此 View 內的寫入回條，
+            # 但必須有已驗證的單筆讀回身份才可真正寫入 Watchlist。
+            view.add_to_watchlist_btn.click()
+            persisted_watchlist = WatchlistService(config).get_default_watchlist()
+            assert persisted_watchlist is not None
+            watchlist_items = [
+                item
+                for item in persisted_watchlist.items
+                if item.decision_identity.result_id == result_id
+            ]
+            assert len(watchlist_items) == 1
+            watchlist_identity = watchlist_items[0].decision_identity
+            assert watchlist_identity.stock_code == "2330"
+            assert watchlist_identity.decision_date == (
+                source_read_model.execution.context.as_of_date.isoformat()
+            )
+            expected_snapshot_id, expected_snapshot_hash = (
+                view._source_snapshot_identity(source_read_model.execution)
+            )
+            assert watchlist_identity.source_snapshot_id == expected_snapshot_id
+            assert watchlist_identity.source_snapshot_hash == expected_snapshot_hash
+
+            view.add_to_watchlist_btn.click()
+            assert warning_messages[-1][0] == "未新增觀察項目"
+            assert "來源連結未變更" in warning_messages[-1][1]
+            fresh_watchlist = WatchlistService(config).get_default_watchlist()
+            assert fresh_watchlist is not None
+            assert [
+                item.decision_identity.to_dict() for item in fresh_watchlist.items
+            ].count(watchlist_identity.to_dict()) == 1
 
             # This uses the public view path and the real Journal/read-service writer;
             # the restored view deliberately has no in-process SaveReceipt.

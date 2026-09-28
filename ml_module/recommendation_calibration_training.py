@@ -69,6 +69,10 @@ RECOMMENDATION_LABEL_DEFINITIONS: Mapping[str, str] = {
 RECOMMENDATION_HORIZON_TRADING_DAYS = 20
 
 
+class InvalidCalibrationOutputError(ValueError):
+    """校準器輸出不是有限的合法機率，不能轉成公開 basis points。"""
+
+
 def recommendation_label_contract_id(
     cost_scenario: RecommendationCostScenario | None = None,
 ) -> str:
@@ -1363,6 +1367,12 @@ def _calibrated_bp(
     raw_probability: float,
 ) -> int:
     value = calibrator.predict(np.asarray([raw_probability], dtype=float))[0]
+    # numeric-boundary: sklearn calibration returns floats; validate before the
+    # only outward conversion to integer basis points.
+    if not np.isfinite(value) or value < 0 or value > 1:
+        raise InvalidCalibrationOutputError(
+            "calibrated probability output must be finite within 0..1"
+        )
     return _bounded_int(round(float(value) * 10_000), 0, 10_000)
 
 

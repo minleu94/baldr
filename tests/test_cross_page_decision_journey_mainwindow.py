@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -420,16 +421,25 @@ def _hash_paths(paths: tuple[Path, ...]) -> dict[str, str]:
 def test_actual_mainwindow_cross_page_decision_journey_round_trip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     """真 MainWindow signal／slot route 以 exact result identity 完成一輪。"""
 
     data_root = tmp_path / "data"
-    output_root = tmp_path / "output"
+    # Windows canonical readback holds no-follow handles for every ancestor of
+    # the legacy runs root; pytest's AppData TEMP may contain an unopenable
+    # reparse ancestor, so keep this isolated output tree under the repo.
+    isolated_output = TemporaryDirectory(
+        prefix=".tmp_cross_page_decision_journey_",
+        dir=Path.cwd(),
+    )
+    request.addfinalizer(isolated_output.cleanup)
+    output_root = Path(isolated_output.name).resolve()
     monkeypatch.setenv("DATA_ROOT", str(data_root))
     monkeypatch.setenv("OUTPUT_ROOT", str(output_root))
     monkeypatch.setenv("PYTHONIOENCODING", "utf-8")
 
-    config = _config(tmp_path)
+    config = TWStockConfig(data_root=data_root, output_root=output_root)
     _seed_saved_results(config)
     _seed_watchlist_candidates(config)
     _seed_evidence(
@@ -456,8 +466,26 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         staticmethod(lambda *_args, **_kwargs: ("UI saved R3", True)),
     )
     monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *_args, **_kwargs: None))
-    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *_args, **_kwargs: None))
-    monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *_args, **_kwargs: None))
+    warning_messages: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        staticmethod(
+            lambda _parent, title, message: warning_messages.append(
+                (str(title), str(message))
+            )
+        ),
+    )
+    critical_messages: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "critical",
+        staticmethod(
+            lambda _parent, title, message: critical_messages.append(
+                (str(title), str(message))
+            )
+        ),
+    )
 
     def reject_blocking_message_box(_dialog: QMessageBox) -> int:
         pytest.fail("跨頁 Journey 不應進入阻塞式 QMessageBox.exec")
@@ -588,10 +616,29 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         canonical_snapshot_hash = universe_snapshot.universe_snapshot_hash
         recommendation_view._on_recommendation_finished(execution)
         assert recommendation_view.save_result_btn.isVisible()
+        assert recommendation_view.add_to_watchlist_btn.isHidden() is False
+        assert not recommendation_view.add_to_watchlist_btn.isEnabled()
         recommendation_view.results_table.selectRow(0)
+        watchlist_service = window.watchlist_service
+        before_unsaved_add = watchlist_service.get_default_watchlist()
+        assert before_unsaved_add is not None
+        before_unsaved_identities = [
+            item.decision_identity.to_dict() for item in before_unsaved_add.items
+        ]
+        # 直接走按鈕共用的 slot；右鍵入口也委派至相同 handler，必須同樣拒絕。
+        recommendation_view._add_selected_to_watchlist()
+        after_unsaved_add = watchlist_service.get_default_watchlist()
+        assert after_unsaved_add is not None
+        assert [item.decision_identity.to_dict() for item in after_unsaved_add.items] == (
+            before_unsaved_identities
+        )
+        assert warning_messages[-1][0] == "尚未驗證保存結果"
+
         recommendation_view.save_result_btn.click()
         saved_id = str(recommendation_view.current_result_id).strip()
-        assert saved_id
+        assert saved_id, critical_messages[-1] if critical_messages else recommendation_view.result_status_label.text()
+        assert recommendation_view._verified_saved_result_id() == saved_id
+        assert recommendation_view.add_to_watchlist_btn.isEnabled()
         saved_queries = build_recommendation_execution_queries(config)
         saved_read_model = saved_queries.get(saved_id)
         assert saved_read_model is not None
@@ -633,6 +680,27 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         # The real RecommendationView add button writes a typed Watchlist
         # candidate; no stock/date/latest fallback is involved.
         recommendation_view.add_to_watchlist_btn.click()
+        stored_watchlist = watchlist_service.get_default_watchlist()
+        assert stored_watchlist is not None
+        saved_watchlist_items = [
+            item
+            for item in stored_watchlist.items
+            if item.decision_identity.result_id == saved_id
+        ]
+        assert len(saved_watchlist_items) == 1
+        saved_watchlist_identity = saved_watchlist_items[0].decision_identity
+        assert saved_watchlist_identity.stock_code == "2330"
+        assert saved_watchlist_identity.decision_date == DECISION_DATE
+        assert saved_watchlist_identity.source_snapshot_id == canonical_snapshot_id
+        assert saved_watchlist_identity.source_snapshot_hash == canonical_snapshot_hash
+        recommendation_view.add_to_watchlist_btn.click()
+        assert warning_messages[-1][0] == "未新增觀察項目"
+        assert "來源連結未變更" in warning_messages[-1][1]
+        unchanged_watchlist = watchlist_service.get_default_watchlist()
+        assert unchanged_watchlist is not None
+        assert [
+            item.decision_identity.to_dict() for item in unchanged_watchlist.items
+        ].count(saved_watchlist_identity.to_dict()) == 1
         watchlist_view = window.watchlist_view
         window.left_navigation.button_for_key("watchlist").click()
         _wait_for(lambda: watchlist_view.stocks_model is not None)

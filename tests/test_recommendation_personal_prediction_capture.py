@@ -40,11 +40,16 @@ from ml_module.recommendation_inference_provenance import (
     RecommendationProvenanceError,
     read_inference_projection_receipt,
 )
+from ml_module.recommendation_cost_scenario import build_legacy_cost_scenario
 
 
 _DECISION_AT = datetime(2025, 5, 1, 12, 0, tzinfo=timezone.utc)
 _RECEIPT_CREATED_AT = datetime(2025, 5, 1, 12, 1, tzinfo=timezone.utc)
 _PERSISTED_AT = datetime(2025, 5, 1, 12, 2, tzinfo=timezone.utc)
+
+
+def _sha256(raw: bytes) -> str:
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
 def _build_case(
@@ -408,6 +413,144 @@ def test_personal_capture_v3_rejects_rehashed_v2_source_marker_tamper(
             queries,
             personal_root,
             expected_result_id=execution.result_id,
+        )
+
+
+def test_v3_baseline_accepts_ranked_delivery_order_and_rejects_membership_change() -> None:
+    projected_codes = ["2408", "2454", "3037"]
+    delivered_codes = ["2454", "2408", "3037"]
+    candidate_id = "personal-candidate-ordering"
+    scenario = build_legacy_cost_scenario(50)
+    scenario_payload = scenario.to_dict(include_hash=True)
+    receipt_binding = {
+        "receipt_hash": _sha256(b"receipt"),
+        "projection_rows_sha256": _sha256(b"projection-rows"),
+        "cost_scenario_hash": scenario.scenario_hash,
+        "projected_stock_codes": projected_codes,
+        "candidate_id": candidate_id,
+    }
+
+    def _make_snapshot(codes: list[str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        projections = [
+            {
+                "stock_code": code,
+                "projection": {
+                    "status": "active_candidate",
+                    "calibrated_probability_status": "active_effective",
+                    "model_version": candidate_id,
+                    "calibrated_probability_bp": 6_000,
+                    "after_cost_profit_probability_bp": None,
+                    "cost_scenario_id": scenario.scenario_id,
+                    "cost_scenario_version": scenario.scenario_version,
+                    "cost_scenario_hash": scenario.scenario_hash,
+                    "cost_basis": scenario.cost_basis,
+                    "cost_basis_bp": scenario.fixed_round_trip_cost_bp,
+                    "cost_policy_id": scenario.policy_id,
+                    "cost_policy_version": scenario.policy_version,
+                    "policy_estimate_date": scenario.policy_estimate_date,
+                    "research_order_amount_twd": scenario_payload[
+                        "research_order_amount_twd"
+                    ],
+                    "research_order_quantity_shares": scenario.research_order_quantity_shares,
+                    "lot_type": scenario.lot_type,
+                    "instrument_type": scenario.instrument_type,
+                },
+            }
+            for code in codes
+        ]
+        snapshot: dict[str, Any] = {
+            "schema_version": capture_module.PERSONAL_PROBABILITY_BASELINE_SNAPSHOT_SCHEMA_V2,
+            "result_id": "personal-ordering-result",
+            "decision_at": "2025-05-01T12:00:00.000000Z",
+            "decision_date": "2025-05-01",
+            "receipt_hash": receipt_binding["receipt_hash"],
+            "projection_rows_sha256": receipt_binding["projection_rows_sha256"],
+            "cost_scenario_hash": receipt_binding["cost_scenario_hash"],
+            "projected_stock_codes": projected_codes,
+            "upside_baseline_kind": "fixed_null_benchmark_50pct",
+            "upside_baseline_id": "null_benchmark_50pct_v1",
+            "upside_probability_bp_by_symbol": {
+                code: 5_000 for code in projected_codes
+            },
+            "after_cost_baseline_status": "unavailable",
+            "after_cost_baseline_id": None,
+            "after_cost_probability_bp_by_symbol": {
+                code: None for code in projected_codes
+            },
+            "delivered_stock_codes": list(delivered_codes),
+            "model_active_stock_codes": projected_codes,
+            "rule_only_fallback_stock_codes": [],
+            "delivered_count": len(delivered_codes),
+            "model_active_count": len(projected_codes),
+            "fallback_count": 0,
+            "model_coverage_bp": 10_000,
+            "cost_scenario": scenario_payload,
+        }
+        snapshot["snapshot_sha256"] = _sha256(
+            capture_module._canonical_json_bytes(snapshot)
+        )
+        return snapshot, projections
+
+    snapshot, rows = _make_snapshot(delivered_codes)
+    verified = capture_module._validate_probability_baseline_snapshot(
+        snapshot,
+        result_id="personal-ordering-result",
+        decision_at="2025-05-01T12:00:00.000000Z",
+        decision_date="2025-05-01",
+        receipt_binding=receipt_binding,
+        delivered_rows=rows,
+    )
+    assert verified["projected_stock_codes"] == projected_codes
+    assert verified["delivered_stock_codes"] == delivered_codes
+
+    wrong_delivery_order, canonical_rows = _make_snapshot(delivered_codes)
+    wrong_delivery_order["delivered_stock_codes"] = list(reversed(delivered_codes))
+    wrong_delivery_body = {
+        key: value
+        for key, value in wrong_delivery_order.items()
+        if key != "snapshot_sha256"
+    }
+    wrong_delivery_order["snapshot_sha256"] = _sha256(
+        capture_module._canonical_json_bytes(wrong_delivery_body)
+    )
+    with pytest.raises(ValueError, match="ordered partition"):
+        capture_module._validate_probability_baseline_snapshot(
+            wrong_delivery_order,
+            result_id="personal-ordering-result",
+            decision_at="2025-05-01T12:00:00.000000Z",
+            decision_date="2025-05-01",
+            receipt_binding=receipt_binding,
+            delivered_rows=canonical_rows,
+        )
+
+    mismatched, mismatched_rows = _make_snapshot(["2408", "2454", "9999"])
+    mismatched["delivered_stock_codes"] = ["2408", "2454", "9999"]
+    with pytest.raises(ValueError, match="active/fallback partition"):
+        capture_module._validate_probability_baseline_snapshot(
+            mismatched,
+            result_id="personal-ordering-result",
+            decision_at="2025-05-01T12:00:00.000000Z",
+            decision_date="2025-05-01",
+            receipt_binding=receipt_binding,
+            delivered_rows=mismatched_rows,
+        )
+
+    malformed, malformed_rows = _make_snapshot(delivered_codes)
+    malformed["delivered_stock_codes"] = [{"not": "a stock code"}, "2408", "3037"]
+    malformed_body = {
+        key: value for key, value in malformed.items() if key != "snapshot_sha256"
+    }
+    malformed["snapshot_sha256"] = _sha256(
+        capture_module._canonical_json_bytes(malformed_body)
+    )
+    with pytest.raises(ValueError, match="active/fallback partition"):
+        capture_module._validate_probability_baseline_snapshot(
+            malformed,
+            result_id="personal-ordering-result",
+            decision_at="2025-05-01T12:00:00.000000Z",
+            decision_date="2025-05-01",
+            receipt_binding=receipt_binding,
+            delivered_rows=malformed_rows,
         )
 
 

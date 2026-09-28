@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import math
@@ -14,6 +15,7 @@ import stat
 import sqlite3
 import tempfile
 from typing import Any, Callable, Mapping
+from zoneinfo import ZoneInfo
 
 from app_module.recommendation.personal_use_policy import (
     PersonalCalibrationCandidateV1,
@@ -1227,20 +1229,26 @@ def _verify_personal_training_source_time_proof(
         corporate = replayed.source_disclosures.get("corporate_actions")
         technical_contract = technical.get("source_contract") if isinstance(technical, Mapping) else None
         corporate_contract = corporate.get("source_contract") if isinstance(corporate, Mapping) else None
+        lookahead_checks = replayed.lookahead_checks
         if (
             replayed.training_data_eligible is not True
             or not isinstance(technical_contract, Mapping)
-            or technical_contract.get("verified") is not True
-            or technical_contract.get("source_id") != _TRUSTED_SOURCE_IDS["technical"]
             or not isinstance(corporate_contract, Mapping)
-            or corporate_contract.get("verified") is not True
-            or corporate_contract.get("source_id") != _TRUSTED_SOURCE_IDS["corporate_actions"]
-            or replayed.lookahead_checks.get("feature_snapshot_rows_strictly_before_decision") is not True
-            or replayed.lookahead_checks.get("feature_available_date_not_after_decision") is not True
-            or replayed.lookahead_checks.get("technical_publication_time_verified") is not True
-            or replayed.lookahead_checks.get("corporate_action_adjustment_verified") is not True
+            or lookahead_checks.get("feature_snapshot_rows_strictly_before_decision") is not True
+            or lookahead_checks.get("feature_available_date_not_after_decision") is not True
+            or lookahead_checks.get("future_label_dates_strictly_after_decision") is not True
+            or lookahead_checks.get("label_available_date_not_before_label_end") is not True
+            or lookahead_checks.get("explicit_universe_only") is not True
+            or type(lookahead_checks.get("technical_publication_time_verified")) is not bool
+            or type(lookahead_checks.get("corporate_action_adjustment_verified")) is not bool
         ):
             return "training_source_time_contract_unverified"
+        source_observations, observation_error = _read_personal_training_source_observations(
+            source_database,
+            samples=replayed.samples,
+        )
+        if observation_error is not None:
+            return observation_error
         replay_projection = _personal_replay_source_slice_projection(
             replayed.to_dict()
         )
@@ -1248,7 +1256,11 @@ def _verify_personal_training_source_time_proof(
         if _canonical_json(replay_projection) != _canonical_json(manifest_projection):
             return "training_source_time_replay_mismatch"
         source_slice_material.append(
-            {"dataset_id": dataset_id, "replay": replay_projection}
+            {
+                "dataset_id": dataset_id,
+                "replay": replay_projection,
+                "source_time_observations": source_observations,
+            }
         )
         database_after = _regular_file_stat(source_database)
         _same_file_version(database_before, database_after)
@@ -1373,10 +1385,18 @@ def _count_source_contract_rows(
     total = 0
     with sqlite3.connect(database_path.as_uri() + "?mode=ro", uri=True) as connection:
         connection.execute("PRAGMA query_only=ON")
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
         for table, symbol_column in (
             ("technical_indicators", "證券代號"),
             ("corporate_action_adjustments", "symbol"),
         ):
+            if table not in tables:
+                continue
             count = connection.execute(
                 f'SELECT COUNT(*) FROM "{table}" '
                 f'WHERE "{symbol_column}" IN ({placeholders})',
@@ -1390,6 +1410,238 @@ def _count_source_contract_rows(
             if total > MAX_SOURCE_PROOF_CONTRACT_ROWS:
                 break
     return total
+
+
+def _read_personal_training_source_observations(
+    database_path: Path,
+    *,
+    samples: tuple[Any, ...],
+) -> tuple[dict[str, Any], str | None]:
+    """重驗可見的訓練窗時間列與 label 窗 corporate action。"""
+
+    sample_keys: dict[tuple[str, str], set[str]] = {}
+    label_windows: list[tuple[str, date, date]] = []
+    try:
+        for sample in samples:
+            symbol = str(sample.symbol).strip()
+            feature_day = date.fromisoformat(str(sample.feature_as_of_date))
+            decision_day = date.fromisoformat(str(sample.decision_date))
+            label_end = date.fromisoformat(str(sample.label_end_date))
+            if not symbol or feature_day >= decision_day or label_end <= decision_day:
+                return {}, "training_source_time_replay_mismatch"
+            sample_keys.setdefault((symbol, feature_day.isoformat()), set()).add(
+                decision_day.isoformat()
+            )
+            label_windows.append((symbol, decision_day, label_end))
+    except (AttributeError, TypeError, ValueError):
+        return {}, "training_source_time_replay_mismatch"
+    if not sample_keys or not label_windows:
+        return {}, "training_source_time_training_rows_unbound"
+
+    technical_rows: list[dict[str, Any]] = []
+    technical_status = "unknown"
+    technical_reason = "available_at_column_missing"
+    corporate_rows: list[dict[str, Any]] = []
+    corporate_status = "unknown"
+    corporate_reason = "corporate_action_source_unavailable"
+    corporate_columns: list[str] = []
+
+    uri = database_path.as_uri() + "?mode=ro"
+    with sqlite3.connect(uri, uri=True) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        table_names = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "technical_indicators" in table_names:
+            technical_columns = {
+                str(row[1])
+                for row in connection.execute(
+                    'PRAGMA table_info("technical_indicators")'
+                )
+            }
+            if {"日期", "證券代號", "available_at"}.issubset(technical_columns):
+                technical_status = "unknown"
+                technical_reason = "publication_time_not_independently_verified"
+                ordered_keys = sorted(sample_keys)
+                for offset in range(0, len(ordered_keys), 250):
+                    chunk = ordered_keys[offset : offset + 250]
+                    predicates = " OR ".join(
+                        '("證券代號" = ? AND "日期" = ?)'
+                        for _ in chunk
+                    )
+                    parameters = tuple(
+                        value
+                        for symbol, trading_day in chunk
+                        for value in (symbol, trading_day.replace("-", ""))
+                    )
+                    found = connection.execute(
+                        'SELECT "證券代號", "日期", "available_at" '
+                        'FROM "technical_indicators" WHERE ' + predicates,
+                        parameters,
+                    ).fetchall()
+                    per_key: dict[tuple[str, str], list[Any]] = {}
+                    for row in found:
+                        try:
+                            key = (str(row[0]).strip(), _source_day(row[1]).isoformat())
+                        except (TypeError, ValueError):
+                            return {}, "training_source_time_technical_row_invalid"
+                        per_key.setdefault(key, []).append(row[2])
+                    for symbol, trading_day in chunk:
+                        key = (symbol, trading_day)
+                        values = per_key.get(key, [])
+                        if len(values) > 1:
+                            return {}, "training_source_time_technical_usage_duplicate"
+                        if not values:
+                            technical_rows.append(
+                                {"symbol": symbol, "trading_date": trading_day, "status": "missing"}
+                            )
+                            continue
+                        available_at = values[0]
+                        try:
+                            available_day = _source_day(available_at)
+                        except (TypeError, ValueError):
+                            return {}, "training_source_time_technical_available_at_invalid"
+                        decision_days = sorted(sample_keys[key])
+                        if any(
+                            available_day > date.fromisoformat(decision_day)
+                            for decision_day in decision_days
+                        ):
+                            return {}, "training_source_time_technical_available_at_after_decision"
+                        if not isinstance(available_at, (str, int)) or isinstance(available_at, bool):
+                            return {}, "training_source_time_technical_available_at_invalid"
+                        technical_rows.append(
+                            {
+                                "symbol": symbol,
+                                "trading_date": trading_day,
+                                "available_at": available_at,
+                                "status": "observed_unverified",
+                            }
+                        )
+            else:
+                technical_reason = "available_at_column_missing_or_schema_incomplete"
+
+        if "corporate_action_adjustments" in table_names:
+            corporate_columns = sorted(
+                str(row[1])
+                for row in connection.execute(
+                    'PRAGMA table_info("corporate_action_adjustments")'
+                )
+            )
+            required_detection_columns = {"symbol", "effective_from", "adjustment_factor"}
+            if required_detection_columns.issubset(corporate_columns):
+                corporate_status = "unknown"
+                corporate_reason = "official_adjustment_status_not_independently_verified"
+                symbols = sorted({symbol for symbol, _, _ in label_windows})
+                selected_symbols = set(symbols)
+                placeholders = ",".join("?" for _ in symbols)
+                selected_columns = [
+                    column
+                    for column in (
+                        "symbol",
+                        "event_date",
+                        "available_at",
+                        "effective_from",
+                        "adjustment_factor",
+                    )
+                    if column in corporate_columns
+                ]
+                quoted_columns = ", ".join(f'"{column}"' for column in selected_columns)
+                action_records = connection.execute(
+                    f'SELECT {quoted_columns} FROM "corporate_action_adjustments" '
+                    f'WHERE "symbol" IN ({placeholders})',
+                    tuple(symbols),
+                ).fetchall()
+                column_index = {column: index for index, column in enumerate(selected_columns)}
+                for row in action_records:
+                    symbol = str(row[column_index["symbol"]] or "").strip()
+                    if symbol not in selected_symbols:
+                        continue
+                    try:
+                        effective_day = _source_day(row[column_index["effective_from"]])
+                    except (KeyError, TypeError, ValueError):
+                        return {}, "training_source_time_corporate_action_record_invalid"
+                    event_day: date | None = None
+                    if "event_date" in column_index:
+                        try:
+                            event_day = _source_day(row[column_index["event_date"]])
+                        except (TypeError, ValueError):
+                            event_day = None
+                    relevant_windows = [
+                        (decision, label_end)
+                        for window_symbol, decision, label_end in label_windows
+                        if window_symbol == symbol
+                        and decision <= effective_day <= label_end
+                        and (event_day is None or event_day <= label_end)
+                    ]
+                    if not relevant_windows:
+                        continue
+                    record = {
+                        column: row[index]
+                        for column, index in column_index.items()
+                    }
+                    corporate_rows.append(record)
+                    try:
+                        factor = Decimal(str(row[column_index["adjustment_factor"]]))
+                    except (InvalidOperation, KeyError, TypeError, ValueError):
+                        return {}, "training_source_time_corporate_action_record_invalid"
+                    if not factor.is_finite() or factor <= 0:
+                        return {}, "training_source_time_corporate_action_record_invalid"
+                    if factor != Decimal(1):
+                        return {}, "training_source_time_unadjusted_corporate_action_label_window"
+
+    observations = {
+        "technical_publication_time": {
+            "status": technical_status,
+            "reason": technical_reason,
+            "rows": sorted(
+                technical_rows,
+                key=lambda item: (item["symbol"], item["trading_date"]),
+            ),
+        },
+        "corporate_action_adjustment": {
+            "status": corporate_status,
+            "reason": corporate_reason,
+            "columns": corporate_columns,
+            "label_window_rows": sorted(
+                corporate_rows,
+                key=lambda item: tuple(str(item.get(key) or "") for key in sorted(item)),
+            ),
+        },
+        "official_historical_pit_verified": False,
+        "basis": "user_declared_source_time",
+        "research_only": True,
+    }
+    return observations, None
+
+
+def _source_day(value: Any) -> date:
+    if type(value) is int:
+        text = str(value)
+        if not re.fullmatch(r"\d{8}", text):
+            raise ValueError("來源日期格式無效")
+    elif type(value) is str:
+        text = value.strip()
+    else:
+        raise ValueError("來源日期型別無效")
+    if re.fullmatch(r"\d{8}", text):
+        return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return date.fromisoformat(text)
+    if not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})",
+        text,
+    ):
+        raise ValueError("來源日期或時間格式無效")
+    try:
+        timestamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("來源時間缺少時區")
+        return timestamp.astimezone(ZoneInfo("Asia/Taipei")).date()
+    except (ValueError, OverflowError) as exc:
+        raise ValueError("來源日期或時間格式無效") from exc
 
 
 def _source_proof_failure_code(exc: Exception) -> str:

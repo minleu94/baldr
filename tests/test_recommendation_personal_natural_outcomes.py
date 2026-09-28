@@ -354,6 +354,66 @@ def _structural_v3_capture_fixture(
     return upgraded
 
 
+def _structural_v2_source_time_capture_fixture(
+    payload: dict[str, Any],
+    *,
+    tmp_path: Path,
+    active_codes: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    """在 Stage B 結構樣本中加入完整 V2 source-time event，不作 app ingress 證據。"""
+
+    upgraded = _structural_v3_capture_fixture(payload, active_codes=active_codes)
+    event = upgraded["policy_event"]
+    old_policy = event["policy_snapshot"]
+    policy_body = {
+        key: value for key, value in old_policy.items() if key != "policy_sha256"
+    }
+    candidate = dict(policy_body["candidate"])
+    confirmed_at = str(policy_body["confirmed_at"])
+    source_path = str((tmp_path / "explicit-research-source.sqlite").resolve())
+    source_time_trust = {
+        "schema_version": "personal-user-declared-source-time-trust.v1",
+        "basis": "user_declared_source_time",
+        "confirmed_at": confirmed_at,
+        "source_database_path": source_path,
+        "file_identity": {"device": 1, "inode": 2},
+        "source_database_size_bytes": 4096,
+        "source_slice_sha256": "sha256:" + "a" * 64,
+        "candidate": candidate,
+        "replay_scope": {
+            "dataset_ids": ["fixture-dataset"],
+            "decision_dates": ["2025-01-02"],
+            "symbols": ["1101"],
+            "sample_count": 1,
+        },
+        "research_only": True,
+        "official_historical_pit_verified": False,
+    }
+    policy_body.update(
+        {
+            "schema_version": "recommendation-personal-use-policy.v2",
+            "policy_version": 2,
+            "source_time_trust": source_time_trust,
+        }
+    )
+    policy_body["policy_sha256"] = _policy_hash(policy_body)
+    event.update(
+        {
+            "schema_version": "recommendation-personal-use-policy-snapshot.v2",
+            "policy_snapshot": policy_body,
+            "source_time_basis": "user_declared_source_time",
+            "research_only": True,
+            "official_historical_pit_verified": False,
+        }
+    )
+    upgraded["capture_id"] = _capture_id(upgraded)
+    upgraded["payload_sha256"] = _payload_hash(
+        {key: value for key, value in upgraded.items() if key != "payload_sha256"}
+    )
+    personal_outcome_module._verify_personal_capture_mapping(upgraded, max_rows=500)
+    return upgraded
+
+
 def _write_natural_source(
     root: Path,
     *,
@@ -756,6 +816,143 @@ def test_personal_v2_natural_outcome_rejects_unrehashed_baseline_tamper(
     capture["payload_sha256"] = _payload_hash(capture)
 
     with pytest.raises(ValueError, match="baseline snapshot hash mismatch"):
+        personal_outcome_module._verify_personal_capture_mapping(capture, max_rows=500)
+
+
+def test_personal_v3_v2_source_time_policy_is_accepted_for_active_subset(
+    tmp_path: Path,
+) -> None:
+    capture = _structural_v2_source_time_capture_fixture(
+        _complete_cost_personal_capture(tmp_path),
+        tmp_path=tmp_path,
+        active_codes=("1101",),
+    )
+    verified, policy, _scenario = personal_outcome_module._verify_personal_capture_mapping(
+        capture,
+        max_rows=500,
+    )
+
+    assert capture["schema_version"] == "recommendation-personal-prediction-capture.v3"
+    assert verified["policy_event"]["schema_version"] == (
+        "recommendation-personal-use-policy-snapshot.v2"
+    )
+    saved_policy = verified["policy_event"]["policy_snapshot"]
+    assert saved_policy["schema_version"] == "recommendation-personal-use-policy.v2"
+    assert saved_policy["source_time_trust"]["basis"] == "user_declared_source_time"
+    assert saved_policy["source_time_trust"]["candidate"] == saved_policy["candidate"]
+    assert verified["probability_baseline_snapshot"]["model_active_stock_codes"] == [
+        "1101"
+    ]
+    decision_date = date.fromisoformat(capture["receipt_binding"]["decision_date"])
+    provider, resolver, _sessions = _write_natural_source(
+        tmp_path / "market",
+        capture_day=decision_date,
+    )
+    result = RecommendationNaturalOutcomeService(
+        provider,
+        evidence_db_path=provider.database_path,
+        session_resolver=resolver,
+    ).project_personal_prediction_outcomes(
+        capture,
+        evaluation_at=datetime.now(_UTC),
+    )
+    assert result.status == "matured", (result.reason, result.diagnostics, result.outcomes)
+    assert result.matured_sample_count == 1
+    assert result.metrics is not None
+    assert result.metrics["model_active_count"] == 1
+    assert result.metrics["rule_only_fallback_count"] == 1
+
+
+def test_personal_v3_v2_source_time_event_markers_must_match_trust(
+    tmp_path: Path,
+) -> None:
+    capture = _structural_v2_source_time_capture_fixture(
+        _complete_cost_personal_capture(tmp_path),
+        tmp_path=tmp_path,
+        active_codes=("1101",),
+    )
+    capture["policy_event"]["official_historical_pit_verified"] = True
+    capture["payload_sha256"] = _payload_hash(
+        {key: value for key, value in capture.items() if key != "payload_sha256"}
+    )
+
+    with pytest.raises(ValueError, match="source-time event markers mismatch"):
+        personal_outcome_module._verify_personal_capture_mapping(capture, max_rows=500)
+
+
+def test_personal_v3_v2_snapshot_cannot_hide_behind_v1_event(
+    tmp_path: Path,
+) -> None:
+    capture = _structural_v2_source_time_capture_fixture(
+        _complete_cost_personal_capture(tmp_path),
+        tmp_path=tmp_path,
+        active_codes=("1101",),
+    )
+    event = capture["policy_event"]
+    event["schema_version"] = "recommendation-personal-use-policy-snapshot.v1"
+    for key in (
+        "source_time_basis",
+        "research_only",
+        "official_historical_pit_verified",
+    ):
+        event.pop(key)
+    capture["payload_sha256"] = _payload_hash(
+        {key: value for key, value in capture.items() if key != "payload_sha256"}
+    )
+
+    with pytest.raises(ValueError, match="event and snapshot versions differ"):
+        personal_outcome_module._verify_personal_capture_mapping(capture, max_rows=500)
+
+
+def test_personal_v3_v2_source_time_trust_candidate_pins_must_match_snapshot(
+    tmp_path: Path,
+) -> None:
+    capture = _structural_v2_source_time_capture_fixture(
+        _complete_cost_personal_capture(tmp_path),
+        tmp_path=tmp_path,
+        active_codes=("1101",),
+    )
+    policy_event = capture["policy_event"]
+    policy = policy_event["policy_snapshot"]
+    policy_body = {key: value for key, value in policy.items() if key != "policy_sha256"}
+    policy_body["source_time_trust"]["candidate"]["dataset_hash"] = (
+        "sha256:" + "c" * 64
+    )
+    policy_body["policy_sha256"] = _policy_hash(policy_body)
+    policy_event["policy_snapshot"] = policy_body
+    capture["capture_id"] = _capture_id(capture)
+    capture["payload_sha256"] = _payload_hash(
+        {key: value for key, value in capture.items() if key != "payload_sha256"}
+    )
+
+    with pytest.raises(ValueError, match="candidate pins mismatch policy candidate"):
+        personal_outcome_module._verify_personal_capture_mapping(capture, max_rows=500)
+
+
+def test_personal_v3_baseline_delivery_order_matches_canonical_rows_not_receipt_order(
+    tmp_path: Path,
+) -> None:
+    capture = _structural_v3_capture_fixture(
+        _complete_cost_personal_capture(tmp_path),
+        active_codes=("1101",),
+    )
+    baseline = capture["probability_baseline_snapshot"]
+    baseline_body = {
+        key: value for key, value in baseline.items() if key != "snapshot_sha256"
+    }
+    baseline_body["delivered_stock_codes"] = list(
+        reversed(baseline_body["delivered_stock_codes"])
+    )
+    capture["probability_baseline_snapshot"] = {
+        **baseline_body,
+        "snapshot_sha256": _canonical_hash(baseline_body),
+    }
+    capture["capture_id"] = _capture_id(capture)
+    capture["payload_sha256"] = _payload_hash(
+        {key: value for key, value in capture.items() if key != "payload_sha256"}
+    )
+
+    with pytest.raises(ValueError, match="delivered rank order differs"):
         personal_outcome_module._verify_personal_capture_mapping(capture, max_rows=500)
 
 

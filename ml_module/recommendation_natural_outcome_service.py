@@ -1776,6 +1776,10 @@ _PERSONAL_BASELINE_SNAPSHOT_SCHEMA_V2 = (
 _PERSONAL_FIXED_NULL_BENCHMARK_KIND = "fixed_null_benchmark_50pct"
 _PERSONAL_FIXED_NULL_BENCHMARK_ID = "null_benchmark_50pct_v1"
 _PERSONAL_POLICY_SCHEMA_V1 = "recommendation-personal-use-policy.v1"
+_PERSONAL_POLICY_SCHEMA_V2 = "recommendation-personal-use-policy.v2"
+_PERSONAL_POLICY_EVENT_SCHEMA_V1 = "recommendation-personal-use-policy-snapshot.v1"
+_PERSONAL_POLICY_EVENT_SCHEMA_V2 = "recommendation-personal-use-policy-snapshot.v2"
+_PERSONAL_SOURCE_TIME_TRUST_SCHEMA_V1 = "personal-user-declared-source-time-trust.v1"
 _PERSONAL_MODE = "personal_calibrated_probability"
 _PERSONAL_RECEIPT_MAX_BYTES = 32 * 1024 * 1024
 _PERSONAL_CANDIDATE_JSON_MAX_BYTES = 1_048_576
@@ -1784,6 +1788,10 @@ _PERSONAL_SHA256_PREFIX = "sha256:"
 _PERSONAL_SCOPE_CHARACTERS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 )
+_PERSONAL_SOURCE_PROOF_MANIFEST_LIMIT = 2
+_PERSONAL_SOURCE_PROOF_DECISION_DATE_LIMIT = 64
+_PERSONAL_SOURCE_PROOF_SYMBOL_LIMIT = 32
+_PERSONAL_SOURCE_PROOF_SAMPLE_LIMIT = 2_048
 
 
 def _verify_personal_capture_mapping(
@@ -1858,7 +1866,7 @@ def _verify_personal_capture_mapping(
         raise ValueError("personal capture canonical identity is incomplete")
 
     policy_event = payload.get("policy_event")
-    expected_policy_event_fields = {
+    policy_event_v1_fields = {
         "schema_version",
         "result_id",
         "decision_at",
@@ -1866,18 +1874,52 @@ def _verify_personal_capture_mapping(
         "requested_mode",
         "effective_mode",
     }
+    policy_event_v2_fields = policy_event_v1_fields | {
+        "source_time_basis",
+        "research_only",
+        "official_historical_pit_verified",
+    }
+    event_schema = (
+        policy_event.get("schema_version") if isinstance(policy_event, Mapping) else None
+    )
+    if event_schema == _PERSONAL_POLICY_EVENT_SCHEMA_V1:
+        expected_policy_event_fields = policy_event_v1_fields
+    elif event_schema == _PERSONAL_POLICY_EVENT_SCHEMA_V2:
+        expected_policy_event_fields = policy_event_v2_fields
+    else:
+        expected_policy_event_fields = set()
     if (
         not isinstance(policy_event, Mapping)
         or set(policy_event) != expected_policy_event_fields
-        or policy_event.get("schema_version") != "recommendation-personal-use-policy-snapshot.v1"
         or policy_event.get("result_id") != payload.get("result_id")
         or policy_event.get("requested_mode") != _PERSONAL_MODE
         or policy_event.get("effective_mode") != _PERSONAL_MODE
     ):
         raise ValueError("personal policy event is invalid")
     policy_snapshot = _verify_personal_policy_snapshot(policy_event.get("policy_snapshot"))
+    expected_policy_schema = (
+        _PERSONAL_POLICY_SCHEMA_V2
+        if event_schema == _PERSONAL_POLICY_EVENT_SCHEMA_V2
+        else _PERSONAL_POLICY_SCHEMA_V1
+    )
+    if policy_snapshot.get("schema_version") != expected_policy_schema:
+        raise ValueError("personal policy event and snapshot versions differ")
     if policy_snapshot["mode"] != _PERSONAL_MODE:
         raise ValueError("personal capture policy is not in calibrated probability mode")
+    if event_schema == _PERSONAL_POLICY_EVENT_SCHEMA_V2:
+        source_time_trust = policy_snapshot.get("source_time_trust")
+        if not isinstance(source_time_trust, Mapping):
+            raise ValueError("personal V2 policy source-time trust is missing")
+        if (
+            policy_event.get("source_time_basis") != "user_declared_source_time"
+            or policy_event.get("research_only") is not True
+            or policy_event.get("official_historical_pit_verified") is not False
+            or policy_event.get("source_time_basis") != source_time_trust.get("basis")
+            or policy_event.get("research_only") != source_time_trust.get("research_only")
+            or policy_event.get("official_historical_pit_verified")
+            != source_time_trust.get("official_historical_pit_verified")
+        ):
+            raise ValueError("personal V2 source-time event markers mismatch its policy trust")
 
     decision_at = _parse_aware_datetime(payload.get("decision_at"), "decision_at")
     event_decision_at = _parse_aware_datetime(policy_event.get("decision_at"), "policy decision_at")
@@ -2315,11 +2357,12 @@ def _verify_personal_probability_baseline_snapshot(
             type(delivered_codes) is not list
             or type(active_value) is not list
             or type(fallback_value) is not list
-            or delivered_codes != codes
+            or len(delivered_codes) != len(codes)
             or not active_value
             or any(type(code) is not str or not code.strip() for code in delivered_codes)
             or any(type(code) is not str or not code.strip() for code in active_value)
             or any(type(code) is not str or not code.strip() for code in fallback_value)
+            or set(delivered_codes) != set(codes)
             or len(set(delivered_codes)) != len(delivered_codes)
             or len(set(active_value)) != len(active_value)
             or len(set(fallback_value)) != len(fallback_value)
@@ -2350,6 +2393,9 @@ def _verify_personal_probability_baseline_snapshot(
             delivered_by_code[code] = row
         if set(delivered_by_code) != set(delivered_codes):
             raise ValueError("personal baseline delivered rows differ from its partition")
+        canonical_delivered_codes = [str(row["stock_code"]) for row in delivered_rows]
+        if delivered_codes != canonical_delivered_codes:
+            raise ValueError("personal baseline delivered rank order differs from canonical rows")
         for code in active_codes:
             row = delivered_by_code[code]
             projection = row.get("projection")
@@ -2473,7 +2519,7 @@ def _verify_personal_policy_snapshot(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("personal policy snapshot must be an object")
     policy = _personal_json_mapping(value, "personal policy snapshot")
-    required = {
+    base_required = {
         "schema_version",
         "policy_version",
         "revision",
@@ -2483,6 +2529,15 @@ def _verify_personal_policy_snapshot(value: object) -> dict[str, Any]:
         "candidate",
         "policy_sha256",
     }
+    schema_version = policy.get("schema_version")
+    if schema_version == _PERSONAL_POLICY_SCHEMA_V1:
+        required = base_required
+        expected_version = 1
+    elif schema_version == _PERSONAL_POLICY_SCHEMA_V2:
+        required = base_required | {"source_time_trust"}
+        expected_version = 2
+    else:
+        raise ValueError("personal policy snapshot schema is unsupported")
     rollback_keys = {"rollback_of_revision", "rollback_of_policy_sha256"}
     if set(policy) - rollback_keys != required or (set(policy) & rollback_keys) not in (
         set(),
@@ -2490,9 +2545,8 @@ def _verify_personal_policy_snapshot(value: object) -> dict[str, Any]:
     ):
         raise ValueError("personal policy snapshot fields are invalid")
     if (
-        policy.get("schema_version") != _PERSONAL_POLICY_SCHEMA_V1
-        or type(policy.get("policy_version")) is not int
-        or policy.get("policy_version") != 1
+        type(policy.get("policy_version")) is not int
+        or policy.get("policy_version") != expected_version
         or type(policy.get("revision")) is not int
         or policy["revision"] < 1
     ):
@@ -2540,9 +2594,17 @@ def _verify_personal_policy_snapshot(value: object) -> dict[str, Any]:
         ):
             if not _is_personal_sha256(candidate.get(key)):
                 raise ValueError(f"personal policy candidate {key} is invalid")
+        if schema_version == _PERSONAL_POLICY_SCHEMA_V2:
+            _verify_personal_source_time_trust(
+                policy.get("source_time_trust"),
+                candidate=candidate,
+                policy_confirmed_at=confirmed_at,
+            )
     elif candidate is not None:
         if not isinstance(candidate, Mapping):
             raise ValueError("personal rule-only policy candidate is invalid")
+    if schema_version == _PERSONAL_POLICY_SCHEMA_V2 and mode != _PERSONAL_MODE:
+        raise ValueError("personal V2 capture requires calibrated mode with source-time trust")
     rollback_revision = policy.get("rollback_of_revision")
     rollback_hash = policy.get("rollback_of_policy_sha256")
     if (rollback_revision is None) != (rollback_hash is None):
@@ -2563,6 +2625,114 @@ def _verify_personal_policy_snapshot(value: object) -> dict[str, Any]:
     if declared_hash != actual_hash:
         raise ValueError("personal policy hash mismatch")
     return policy
+
+
+def _verify_personal_source_time_trust(
+    value: object,
+    *,
+    candidate: Mapping[str, Any],
+    policy_confirmed_at: str,
+) -> dict[str, Any]:
+    """驗證封存的 user-declared source-time 區塊，不讀取任何 app/資料來源。"""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("personal V2 source-time trust must be an object")
+    trust = _personal_json_mapping(value, "personal V2 source-time trust")
+    expected_fields = {
+        "schema_version",
+        "basis",
+        "confirmed_at",
+        "source_database_path",
+        "file_identity",
+        "source_database_size_bytes",
+        "source_slice_sha256",
+        "candidate",
+        "replay_scope",
+        "research_only",
+        "official_historical_pit_verified",
+    }
+    if set(trust) != expected_fields:
+        raise ValueError("personal V2 source-time trust fields are invalid")
+    if (
+        trust.get("schema_version") != _PERSONAL_SOURCE_TIME_TRUST_SCHEMA_V1
+        or trust.get("basis") != "user_declared_source_time"
+        or trust.get("research_only") is not True
+        or trust.get("official_historical_pit_verified") is not False
+    ):
+        raise ValueError("personal V2 source-time trust status is invalid")
+    confirmed_at = trust.get("confirmed_at")
+    if type(confirmed_at) is not str or confirmed_at != policy_confirmed_at:
+        raise ValueError("personal V2 source-time trust confirmation mismatch")
+    parsed_confirmed_at = _parse_aware_datetime(
+        confirmed_at, "source_time_trust.confirmed_at"
+    )
+    if _utc_text(parsed_confirmed_at) != confirmed_at:
+        raise ValueError("personal V2 source-time confirmation must be canonical UTC")
+
+    source_path = trust.get("source_database_path")
+    if type(source_path) is not str or not source_path.strip():
+        raise ValueError("personal V2 source database path is missing")
+    source_path_obj = _personal_absolute_path(source_path, "source_database_path")
+    if (
+        ".." in Path(source_path).parts
+        or _normalized_absolute_path(source_path_obj)
+        != _normalized_absolute_path(source_path)
+    ):
+        raise ValueError("personal V2 source database path is not canonical")
+    file_identity = trust.get("file_identity")
+    if not isinstance(file_identity, Mapping) or set(file_identity) != {"device", "inode"}:
+        raise ValueError("personal V2 source file identity is invalid")
+    if any(
+        type(file_identity.get(key)) is not int or file_identity[key] < 0
+        for key in ("device", "inode")
+    ):
+        raise ValueError("personal V2 source file identity values are invalid")
+    source_size = trust.get("source_database_size_bytes")
+    if type(source_size) is not int or source_size < 0:
+        raise ValueError("personal V2 source database size is invalid")
+    if not _is_personal_sha256(trust.get("source_slice_sha256")):
+        raise ValueError("personal V2 source slice hash is invalid")
+
+    trusted_candidate = trust.get("candidate")
+    if not isinstance(trusted_candidate, Mapping) or dict(trusted_candidate) != dict(candidate):
+        raise ValueError("personal V2 source-time candidate pins mismatch policy candidate")
+    replay_scope = trust.get("replay_scope")
+    if not isinstance(replay_scope, Mapping) or set(replay_scope) != {
+        "dataset_ids",
+        "decision_dates",
+        "symbols",
+        "sample_count",
+    }:
+        raise ValueError("personal V2 replay scope fields are invalid")
+    scope_limits = {
+        "dataset_ids": _PERSONAL_SOURCE_PROOF_MANIFEST_LIMIT,
+        "decision_dates": _PERSONAL_SOURCE_PROOF_DECISION_DATE_LIMIT,
+        "symbols": _PERSONAL_SOURCE_PROOF_SYMBOL_LIMIT,
+    }
+    for field_name, limit in scope_limits.items():
+        items = replay_scope.get(field_name)
+        if (
+            type(items) is not list
+            or not items
+            or len(items) > limit
+            or any(type(item) is not str or not item.strip() for item in items)
+            or len(set(items)) != len(items)
+        ):
+            raise ValueError(f"personal V2 replay scope {field_name} is invalid")
+    for date_text in replay_scope["decision_dates"]:
+        try:
+            parsed_date = date.fromisoformat(date_text)
+        except ValueError as exc:
+            raise ValueError("personal V2 replay scope date is invalid") from exc
+        if parsed_date.isoformat() != date_text:
+            raise ValueError("personal V2 replay scope date is not canonical")
+    sample_count = replay_scope.get("sample_count")
+    if (
+        type(sample_count) is not int
+        or not 1 <= sample_count <= _PERSONAL_SOURCE_PROOF_SAMPLE_LIMIT
+    ):
+        raise ValueError("personal V2 replay scope sample count is invalid")
+    return trust
 
 
 def _personal_json_mapping(value: Mapping[str, Any], field_name: str) -> dict[str, Any]:

@@ -688,11 +688,16 @@ def _validate_probability_baseline_snapshot(
             type(delivered_codes) is not list
             or type(active_value) is not list
             or type(fallback_value) is not list
-            or delivered_codes != stock_codes
-            or not active_value
             or any(type(code) is not str or not code.strip() for code in delivered_codes)
             or any(type(code) is not str or not code.strip() for code in active_value)
             or any(type(code) is not str or not code.strip() for code in fallback_value)
+            # Receipt projection codes preserve projection-map order, while
+            # delivered codes preserve recommendation ranking order.  The
+            # capture binds the same unique universe without conflating those
+            # two ordered views.
+            or set(delivered_codes) != set(stock_codes)
+            or len(delivered_codes) != len(stock_codes)
+            or not active_value
             or len(set(delivered_codes)) != len(delivered_codes)
             or len(set(active_value)) != len(active_value)
             or len(set(fallback_value)) != len(fallback_value)
@@ -713,10 +718,14 @@ def _validate_probability_baseline_snapshot(
         fallback_codes = fallback_value
         if delivered_rows is None or type(delivered_rows) is not list:
             raise ValueError("personal baseline requires the canonical delivered rows")
-        if {str(row.get("stock_code")) for row in delivered_rows if isinstance(row, Mapping)} != set(
-            delivered_codes
-        ):
-            raise ValueError("personal baseline delivered rows differ from its partition")
+        canonical_delivered_codes = [
+            row.get("stock_code") if isinstance(row, Mapping) else None
+            for row in delivered_rows
+        ]
+        if canonical_delivered_codes != delivered_codes:
+            raise ValueError(
+                "personal baseline delivered rows differ from its ordered partition"
+            )
         delivered_by_code = {
             str(row["stock_code"]): row
             for row in delivered_rows

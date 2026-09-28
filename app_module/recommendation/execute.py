@@ -1586,19 +1586,38 @@ def _capture_events(
             active_codes_value = baseline_input.get("model_active_stock_codes")
             fallback_codes_value = baseline_input.get("rule_only_fallback_stock_codes")
             delivered_codes_value = baseline_input.get("delivered_stock_codes")
+            active_codes_valid = (
+                isinstance(active_codes_value, (list, tuple))
+                and all(
+                    type(code) is str and bool(code) for code in active_codes_value
+                )
+            )
+            fallback_codes_valid = (
+                isinstance(fallback_codes_value, (list, tuple))
+                and all(
+                    type(code) is str and bool(code) for code in fallback_codes_value
+                )
+            )
+            delivered_codes_valid = (
+                isinstance(delivered_codes_value, (list, tuple))
+                and all(
+                    type(code) is str and bool(code)
+                    for code in delivered_codes_value
+                )
+            )
             active_codes = (
                 list(cast(Sequence[str], active_codes_value))
-                if isinstance(active_codes_value, (list, tuple))
+                if active_codes_valid
                 else []
             )
             fallback_codes = (
                 list(cast(Sequence[str], fallback_codes_value))
-                if isinstance(fallback_codes_value, (list, tuple))
+                if fallback_codes_valid
                 else []
             )
             delivered_codes = (
                 list(cast(Sequence[str], delivered_codes_value))
-                if isinstance(delivered_codes_value, (list, tuple))
+                if delivered_codes_valid
                 else []
             )
             baseline_projected_value = baseline_input.get("projected_stock_codes")
@@ -1607,19 +1626,26 @@ def _capture_events(
                 if isinstance(baseline_projected_value, (list, tuple))
                 else []
             )
-            baseline_codes = set(active_codes) if is_v3_baseline else code_set
+            baseline_codes = (
+                set(active_codes)
+                if is_v3_baseline and active_codes_valid
+                else code_set
+            )
             partition_valid = (
                 not is_v3_baseline
                 or (
                     bool(active_codes)
-                    and isinstance(active_codes_value, (list, tuple))
-                    and isinstance(fallback_codes_value, (list, tuple))
-                    and isinstance(delivered_codes_value, (list, tuple))
-                    and delivered_codes == normalized_projected_codes
+                    and active_codes_valid
+                    and fallback_codes_valid
+                    and delivered_codes_valid
+                    # Projection order is receipt order; delivered order is
+                    # recommendation rank order.  Bind the same universe here
+                    # while preserving each ordered list in its own field.
+                    and set(delivered_codes) == set(normalized_projected_codes)
+                    and len(delivered_codes) == len(normalized_projected_codes)
                     and baseline_projected_codes == normalized_projected_codes
                     and set(active_codes).isdisjoint(fallback_codes)
                     and set(active_codes) | set(fallback_codes) == set(delivered_codes)
-                    and all(type(code) is str and bool(code) for code in delivered_codes)
                     and len(set(active_codes)) == len(active_codes)
                     and len(set(fallback_codes)) == len(fallback_codes)
                     and len(set(delivered_codes)) == len(delivered_codes)

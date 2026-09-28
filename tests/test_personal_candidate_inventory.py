@@ -13,6 +13,7 @@ import pytest
 
 from app_module.recommendation.personal_candidate_inventory import (
     PersonalCandidateInventoryCancelled,
+    _source_day,
     inspect_personal_calibration_candidate,
     inspect_personal_source_time_binding,
     list_personal_calibration_candidates,
@@ -51,6 +52,24 @@ from ml_module.recommendation_training_lineage import (
     persist_recommendation_training_lineage,
     recommendation_training_dataset_hash,
 )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2025-06-30", date(2025, 6, 30)),
+        ("20250630", date(2025, 6, 30)),
+        (20250630, date(2025, 6, 30)),
+    ],
+)
+def test_source_day_accepts_only_documented_date_forms(value: object, expected: date) -> None:
+    assert _source_day(value) == expected
+
+
+@pytest.mark.parametrize("value", ["2025-W27-1", "20250630T00:00:00"])
+def test_source_day_rejects_extended_or_naive_datetime_forms(value: str) -> None:
+    with pytest.raises(ValueError):
+        _source_day(value)
 
 
 FEATURE_SCHEMA = (
@@ -217,6 +236,7 @@ def _verified_source_database(
     *,
     symbols: tuple[str, ...] = ("1101", "2330"),
     days: int = 220,
+    include_source_contract: bool = True,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
@@ -237,15 +257,20 @@ def _verified_source_database(
             symbol TEXT NOT NULL, event_date TEXT NOT NULL, available_at TEXT NOT NULL,
             effective_from TEXT NOT NULL, adjustment_factor TEXT NOT NULL
         );
-        CREATE TABLE recommendation_source_contract (
-            component TEXT PRIMARY KEY, source_id TEXT NOT NULL, source_table TEXT NOT NULL,
-            status TEXT NOT NULL, coverage_start TEXT NOT NULL, coverage_end TEXT NOT NULL,
-            available_at TEXT NOT NULL, evidence_hash TEXT NOT NULL, source_columns_json TEXT NOT NULL,
-            publication_time_verified INTEGER NOT NULL,
-            corporate_action_adjustment_verified INTEGER NOT NULL
-        );
         '''
     )
+    if include_source_contract:
+        connection.execute(
+            '''
+            CREATE TABLE recommendation_source_contract (
+                component TEXT PRIMARY KEY, source_id TEXT NOT NULL, source_table TEXT NOT NULL,
+                status TEXT NOT NULL, coverage_start TEXT NOT NULL, coverage_end TEXT NOT NULL,
+                available_at TEXT NOT NULL, evidence_hash TEXT NOT NULL, source_columns_json TEXT NOT NULL,
+                publication_time_verified INTEGER NOT NULL,
+                corporate_action_adjustment_verified INTEGER NOT NULL
+            )
+            '''
+        )
     start = date(2025, 1, 1)
     for offset in range(days):
         current = (start + timedelta(days=offset)).strftime("%Y%m%d")
@@ -272,54 +297,55 @@ def _verified_source_database(
             (symbol, contract_start.isoformat(), contract_start.isoformat(), contract_start.isoformat(), "1"),
         )
     connection.commit()
-    technical_content = _read_source_content_snapshot(
-        path,
-        component="technical",
-        source_table="technical_indicators",
-        symbols=symbols,
-        history_start=contract_start,
-        replay_end=contract_end,
-    )
-    corporate_content = _read_source_content_snapshot(
-        path,
-        component="corporate_actions",
-        source_table="corporate_action_adjustments",
-        symbols=symbols,
-        history_start=contract_start,
-        replay_end=contract_end,
-    )
-    connection.executemany(
-        'INSERT INTO recommendation_source_contract VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        (
+    if include_source_contract:
+        technical_content = _read_source_content_snapshot(
+            path,
+            component="technical",
+            source_table="technical_indicators",
+            symbols=symbols,
+            history_start=contract_start,
+            replay_end=contract_end,
+        )
+        corporate_content = _read_source_content_snapshot(
+            path,
+            component="corporate_actions",
+            source_table="corporate_action_adjustments",
+            symbols=symbols,
+            history_start=contract_start,
+            replay_end=contract_end,
+        )
+        connection.executemany(
+            'INSERT INTO recommendation_source_contract VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (
-                "technical",
-                "twse.mi_index.daily_price+tpex.daily_close_quotes",
-                "technical_indicators",
-                "accepted",
-                contract_start.isoformat(),
-                contract_end.isoformat(),
-                contract_start.isoformat(),
-                technical_content["digest"],
-                json.dumps(["日期", "證券代號", "RSI", "MACD", "ADX", "available_at"]),
-                1,
-                0,
+                (
+                    "technical",
+                    "twse.mi_index.daily_price+tpex.daily_close_quotes",
+                    "technical_indicators",
+                    "accepted",
+                    contract_start.isoformat(),
+                    contract_end.isoformat(),
+                    contract_start.isoformat(),
+                    technical_content["digest"],
+                    json.dumps(["日期", "證券代號", "RSI", "MACD", "ADX", "available_at"]),
+                    1,
+                    0,
+                ),
+                (
+                    "corporate_actions",
+                    "official_market_event_publication",
+                    "corporate_action_adjustments",
+                    "accepted",
+                    contract_start.isoformat(),
+                    contract_end.isoformat(),
+                    contract_start.isoformat(),
+                    corporate_content["digest"],
+                    json.dumps(["symbol", "event_date", "available_at", "effective_from", "adjustment_factor"]),
+                    0,
+                    1,
+                ),
             ),
-            (
-                "corporate_actions",
-                "official_market_event_publication",
-                "corporate_action_adjustments",
-                "accepted",
-                contract_start.isoformat(),
-                contract_end.isoformat(),
-                contract_start.isoformat(),
-                corporate_content["digest"],
-                json.dumps(["symbol", "event_date", "available_at", "effective_from", "adjustment_factor"]),
-                0,
-                1,
-            ),
-        ),
-    )
-    connection.commit()
+        )
+        connection.commit()
     connection.close()
 
 
@@ -356,10 +382,16 @@ def _source_bound_candidate_package(
     replay_windows: tuple[tuple[str, str], ...] = (("2025-04-01", "2025-06-30"),),
     fit_training_as_of: str | None = None,
     lineage_research_only: bool | None = None,
+    include_source_contract: bool = True,
 ) -> tuple[Path, bytes, Path, Path]:
     data_root = tmp_path / "configured-data"
     database = data_root / "sqlite" / "twstock.db"
-    _verified_source_database(database, symbols=symbols, days=days)
+    _verified_source_database(
+        database,
+        symbols=symbols,
+        days=days,
+        include_source_contract=include_source_contract,
+    )
     output_root = tmp_path / "shadow-output"
     learning_root = output_root / "recommendation_learning"
     start = date(2025, 1, 1)
@@ -381,11 +413,13 @@ def _source_bound_candidate_package(
     )
     assert all(replay.training_data_eligible is True for replay in replays)
     assert all(
-        replay.source_disclosures["technical"]["source_contract"]["verified"] is True
+        replay.source_disclosures["technical"]["source_contract"]["verified"]
+        is include_source_contract
         for replay in replays
     )
     assert all(
-        replay.source_disclosures["corporate_actions"]["source_contract"]["verified"] is True
+        replay.source_disclosures["corporate_actions"]["source_contract"]["verified"]
+        is include_source_contract
         for replay in replays
     )
     samples = tuple(
@@ -919,6 +953,317 @@ def test_v2_source_binding_preview_save_reinspect_and_consumer_gate(
     }
 
 
+def test_v2_user_declared_gate_keeps_missing_publication_and_adjustment_unknown(
+    tmp_path: Path,
+) -> None:
+    candidate_root, _, data_root, replay_path = _source_bound_candidate_package(
+        tmp_path,
+        include_source_contract=False,
+    )
+    source_database = (data_root / "sqlite" / "twstock.db").resolve()
+    replay_manifest = json.loads(replay_path.read_text(encoding="utf-8"))
+    technical = replay_manifest["source_disclosures"]["technical"]
+    corporate = replay_manifest["source_disclosures"]["corporate_actions"]
+    assert technical["publication_time_verified"] is False
+    assert technical["source_contract"]["reason"] == "recommendation_source_contract_missing"
+    assert corporate["adjustment_verified"] is False
+    assert corporate["source_contract"]["reason"] == "recommendation_source_contract_missing"
+    from app_module.recommendation.personal_candidate_inventory import (
+        _read_personal_training_source_observations,
+    )
+
+    replay = RecommendationHistoricalReplayService(
+        MLHistoricalSnapshotProvider(source_database)
+    ).build(
+        RecommendationHistoricalReplayConfig(
+            history_start_date="2025-01-01",
+            replay_start_date="2025-04-01",
+            replay_end_date="2025-06-30",
+            symbols=("1101", "2330"),
+            fixed_round_trip_cost_bp=50,
+            max_decision_dates=1,
+        )
+    )
+    observations, observation_error = _read_personal_training_source_observations(
+        source_database,
+        samples=replay.samples,
+    )
+    assert observation_error is None
+    assert observations["technical_publication_time"]["status"] == "unknown"
+    assert observations["technical_publication_time"]["reason"] == (
+        "publication_time_not_independently_verified"
+    )
+    assert observations["corporate_action_adjustment"]["status"] == "unknown"
+    assert observations["official_historical_pit_verified"] is False
+    assert observations["research_only"] is True
+
+    proposal = inspect_personal_source_time_binding(
+        candidate_root=candidate_root,
+        source_database_path=source_database,
+        explicit_output_root=tmp_path / "shadow-output",
+        data_root=data_root,
+    )
+    assert proposal.basis == "user_declared_source_time"
+    assert proposal.research_only is True
+    assert proposal.official_historical_pit_verified is False
+    policy = save_personal_use_policy_v2(
+        tmp_path / "policy.json",
+        RecommendationPersonalUseSelectionV2(
+            scope_id="missing-source-contract-research-test",
+            mode=PERSONAL_CALIBRATED_PROBABILITY_MODE,
+            source_time_binding=proposal,
+        ),
+        expected_revision=0,
+    )
+    inspected = inspect_personal_calibration_candidate(
+        candidate_root=candidate_root,
+        source_database_path=source_database,
+        personal_use_policy=policy,
+        explicit_output_root=tmp_path / "shadow-output",
+        data_root=data_root,
+    )
+    assert inspected.status == "metadata_pinned_pending_runtime_validation"
+    assert inspected.source_time_basis == "user_declared_source_time"
+    assert inspected.research_only is True
+    assert inspected.official_historical_pit_verified is False
+
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "policy.json",
+        feature_schema=CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema,
+        feature_registry_hash=CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+        data_root=data_root,
+        personal_use_policy=policy,
+    )
+    original_load = consumer._loader.load
+    loader_calls = 0
+
+    def count_loader_calls(*args: object, **kwargs: object) -> object:
+        nonlocal loader_calls
+        loader_calls += 1
+        return original_load(*args, **kwargs)
+
+    consumer._loader.load = count_loader_calls  # type: ignore[method-assign]
+    assert consumer.reload(decision_date="2025-06-30") == "rule_only"
+    assert loader_calls == 1
+    assert consumer._blocker not in {
+        "independent_source_time_authority_missing",
+        "personal_source_time_binding_missing_or_invalid",
+        "personal_source_time_binding_mismatch",
+        "candidate_training_source_time_unverified_fail_closed",
+    }
+
+
+def test_v2_user_declared_gate_rejects_known_future_technical_available_at_without_contract(
+    tmp_path: Path,
+) -> None:
+    candidate_root, candidate_bytes, data_root, _ = _source_bound_candidate_package(
+        tmp_path,
+        include_source_contract=False,
+    )
+    source_database = data_root / "sqlite" / "twstock.db"
+    candidate = json.loads(candidate_bytes)
+    lineage = json.loads(
+        Path(candidate["training_lineage_manifest_path"]).read_text(encoding="utf-8")
+    )
+    sample = lineage["merged_samples"][0]
+    with sqlite3.connect(source_database) as connection:
+        connection.execute(
+            'UPDATE technical_indicators SET available_at = ? '
+            'WHERE "日期" = ? AND "證券代號" = ?',
+            ("20251231", sample["feature_as_of_date"].replace("-", ""), sample["symbol"]),
+        )
+
+    proof_error = verify_personal_training_source_time_proof(
+        lineage_payload=lineage,
+        learning_root=candidate_root.parents[3],
+        data_root=data_root,
+        source_database_path=source_database.resolve(),
+    )
+
+    assert proof_error == "training_source_time_technical_available_at_after_decision"
+
+
+def test_v2_user_declared_gate_rejects_invalid_available_at_timestamp_without_contract(
+    tmp_path: Path,
+) -> None:
+    candidate_root, candidate_bytes, data_root, _ = _source_bound_candidate_package(
+        tmp_path,
+        include_source_contract=False,
+    )
+    source_database = data_root / "sqlite" / "twstock.db"
+    candidate = json.loads(candidate_bytes)
+    lineage = json.loads(
+        Path(candidate["training_lineage_manifest_path"]).read_text(encoding="utf-8")
+    )
+    sample = lineage["merged_samples"][0]
+    with sqlite3.connect(source_database) as connection:
+        connection.execute(
+            'UPDATE technical_indicators SET available_at = ? '
+            'WHERE "日期" = ? AND "證券代號" = ?',
+            ("20251231T99:99", sample["feature_as_of_date"].replace("-", ""), sample["symbol"]),
+        )
+
+    proof_error = verify_personal_training_source_time_proof(
+        lineage_payload=lineage,
+        learning_root=candidate_root.parents[3],
+        data_root=data_root,
+        source_database_path=source_database.resolve(),
+    )
+
+    assert proof_error == "training_source_time_technical_available_at_invalid"
+
+
+def test_v2_user_declared_gate_normalizes_utc_available_at_before_date_comparison(
+    tmp_path: Path,
+) -> None:
+    candidate_root, candidate_bytes, data_root, _ = _source_bound_candidate_package(
+        tmp_path,
+        include_source_contract=False,
+    )
+    source_database = data_root / "sqlite" / "twstock.db"
+    candidate = json.loads(candidate_bytes)
+    lineage = json.loads(
+        Path(candidate["training_lineage_manifest_path"]).read_text(encoding="utf-8")
+    )
+    sample = lineage["merged_samples"][0]
+    # 16:01 UTC 是台北時間的隔日 00:01，不能仍視為原決策日。
+    utc_after_taipei_midnight = f"{sample['decision_date']}T16:01:00Z"
+    with sqlite3.connect(source_database) as connection:
+        connection.execute(
+            'UPDATE technical_indicators SET available_at = ? '
+            'WHERE "日期" = ? AND "證券代號" = ?',
+            (
+                utc_after_taipei_midnight,
+                sample["feature_as_of_date"].replace("-", ""),
+                sample["symbol"],
+            ),
+        )
+
+    proof_error = verify_personal_training_source_time_proof(
+        lineage_payload=lineage,
+        learning_root=candidate_root.parents[3],
+        data_root=data_root,
+        source_database_path=source_database.resolve(),
+    )
+
+    assert proof_error == "training_source_time_technical_available_at_after_decision"
+
+
+def test_v2_user_declared_gate_rejects_naive_available_at_datetime_without_contract(
+    tmp_path: Path,
+) -> None:
+    candidate_root, candidate_bytes, data_root, _ = _source_bound_candidate_package(
+        tmp_path,
+        include_source_contract=False,
+    )
+    source_database = data_root / "sqlite" / "twstock.db"
+    candidate = json.loads(candidate_bytes)
+    lineage = json.loads(
+        Path(candidate["training_lineage_manifest_path"]).read_text(encoding="utf-8")
+    )
+    sample = lineage["merged_samples"][0]
+    naive_timestamp = f"{sample['decision_date']}T16:01:00"
+    with sqlite3.connect(source_database) as connection:
+        connection.execute(
+            'UPDATE technical_indicators SET available_at = ? '
+            'WHERE "日期" = ? AND "證券代號" = ?',
+            (
+                naive_timestamp,
+                sample["feature_as_of_date"].replace("-", ""),
+                sample["symbol"],
+            ),
+        )
+
+    proof_error = verify_personal_training_source_time_proof(
+        lineage_payload=lineage,
+        learning_root=candidate_root.parents[3],
+        data_root=data_root,
+        source_database_path=source_database.resolve(),
+    )
+
+    assert proof_error == "training_source_time_technical_available_at_invalid"
+
+
+def test_v2_user_declared_gate_rejects_known_nonunit_action_in_label_window_without_contract(
+    tmp_path: Path,
+) -> None:
+    candidate_root, candidate_bytes, data_root, _ = _source_bound_candidate_package(
+        tmp_path,
+        include_source_contract=False,
+    )
+    source_database = data_root / "sqlite" / "twstock.db"
+    candidate = json.loads(candidate_bytes)
+    lineage = json.loads(
+        Path(candidate["training_lineage_manifest_path"]).read_text(encoding="utf-8")
+    )
+    sample = lineage["merged_samples"][0]
+    decision_day = date.fromisoformat(sample["decision_date"])
+    event_day = decision_day + timedelta(days=1)
+    with sqlite3.connect(source_database) as connection:
+        connection.execute(
+            'INSERT INTO corporate_action_adjustments '
+            '(symbol, event_date, available_at, effective_from, adjustment_factor) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (
+                sample["symbol"],
+                event_day.isoformat(),
+                event_day.isoformat(),
+                event_day.isoformat(),
+                "0.5",
+            ),
+        )
+
+    proof_error = verify_personal_training_source_time_proof(
+        lineage_payload=lineage,
+        learning_root=candidate_root.parents[3],
+        data_root=data_root,
+        source_database_path=source_database.resolve(),
+    )
+
+    assert proof_error == "training_source_time_unadjusted_corporate_action_label_window"
+
+
+def test_v2_user_declared_gate_rejects_malformed_action_date_for_selected_symbol(
+    tmp_path: Path,
+) -> None:
+    candidate_root, candidate_bytes, data_root, _ = _source_bound_candidate_package(
+        tmp_path,
+        include_source_contract=False,
+    )
+    source_database = data_root / "sqlite" / "twstock.db"
+    candidate = json.loads(candidate_bytes)
+    lineage = json.loads(
+        Path(candidate["training_lineage_manifest_path"]).read_text(encoding="utf-8")
+    )
+    sample = lineage["merged_samples"][0]
+    decision_day = date.fromisoformat(sample["decision_date"])
+    event_day = decision_day + timedelta(days=1)
+    with sqlite3.connect(source_database) as connection:
+        connection.execute(
+            'INSERT INTO corporate_action_adjustments '
+            '(symbol, event_date, available_at, effective_from, adjustment_factor) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (
+                sample["symbol"],
+                event_day.isoformat(),
+                event_day.isoformat(),
+                "invalid-date",
+                "1",
+            ),
+        )
+
+    proof_error = verify_personal_training_source_time_proof(
+        lineage_payload=lineage,
+        learning_root=candidate_root.parents[3],
+        data_root=data_root,
+        source_database_path=source_database.resolve(),
+    )
+
+    assert proof_error == "training_source_time_corporate_action_record_invalid"
+
+
 def test_v2_source_binding_rejects_a_different_database_identity(
     tmp_path: Path,
 ) -> None:
@@ -1096,6 +1441,7 @@ def test_v2_source_binding_rejects_changed_source_slice_and_rehashed_candidate(
         "training_source_time_contract_unverified",
         "training_source_time_replay_mismatch",
         "source_time_binding_mismatch",
+        "training_source_time_technical_available_at_after_decision",
     }
     assert forged_candidate.candidate is None
 
@@ -1246,6 +1592,7 @@ def test_user_declared_source_slice_rejects_missing_training_window_available_at
     assert proof_error in {
         "training_source_time_contract_unverified",
         "training_source_time_replay_mismatch",
+        "training_source_time_technical_available_at_invalid",
     }
 
 
@@ -1304,7 +1651,7 @@ def test_user_declared_source_slice_rejects_changed_source_contract_identity(
         data_root=data_root,
     )
 
-    assert proof_error == "training_source_time_contract_unverified"
+    assert proof_error == "training_source_time_replay_mismatch"
 
 
 def test_rehashed_replay_manifest_cannot_change_cost_scenario(

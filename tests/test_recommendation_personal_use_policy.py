@@ -9,6 +9,7 @@ import multiprocessing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -53,13 +54,18 @@ from app_module.personalization_contract import (
 from app_module.recommendation.codec import decode_execution, encode_execution
 from app_module.recommendation.execute import _capture_events
 from app_module.recommendation.ml_postcalibration_handoff import (
+    CalibrationProjectionStatusV1,
+    CalibrationReceiptEventFactsV1,
+    CalibrationReceiptStatusV1,
     RecommendationPostCalibrationHandoffV1,
+    encode_candidate_identity_event_json_v1,
 )
 from recommendation_test_support import build_recommendation_test_service
 from data_module.company_registry import (
     COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR,
     COMPANY_REGISTRY_SOURCE_CONTRACT_SCHEMA_VERSION,
 )
+from ml_module.recommendation_cost_scenario import build_legacy_cost_scenario
 
 
 def _save_from_child(path_text: str, result_queue: multiprocessing.Queue) -> None:
@@ -504,6 +510,150 @@ def test_policy_snapshot_is_saved_as_event_and_legacy_execution_has_none(
 
     old_events = _events({"result_id": "old-result", "decision_at": decision_at})
     assert all(event.event_type != "personal_use_policy_snapshot" for event in old_events)
+
+
+def test_v3_baseline_binds_receipt_universe_without_confusing_projection_and_rank_order(
+    tmp_path: Path,
+) -> None:
+    candidate = _candidate(tmp_path)
+    policy = save_personal_use_policy(
+        tmp_path / "personal-ordering.json",
+        RecommendationPersonalUseSelectionV1(
+            scope_id="desktop-user",
+            mode=PERSONAL_CALIBRATED_PROBABILITY_MODE,
+            candidate=candidate,
+        ),
+        expected_revision=0,
+    )
+    confirmed_at = datetime.fromisoformat(
+        policy.confirmed_at.replace("Z", "+00:00")
+    ).astimezone(timezone.utc)
+    decision_at = confirmed_at + timedelta(seconds=1)
+    decision_at_text = decision_at.isoformat(timespec="microseconds").replace(
+        "+00:00", "Z"
+    )
+    decision_day = decision_at.astimezone(ZoneInfo("Asia/Taipei")).date()
+    result_id = "personal-v3-ordering-result"
+    projected_codes = ("2408", "2454", "3037")
+    scenario = build_legacy_cost_scenario(50)
+    scenario_payload = scenario.to_dict(include_hash=True)
+    candidate_id = candidate.candidate_id
+
+    def _capture(delivered_codes: tuple[Any, ...]):
+        active_codes = projected_codes
+        projection_rows = {
+            code: {
+                "status": "active_candidate",
+                "calibrated_probability_status": "active_effective",
+                "calibrated_probability_bp": 6_000,
+                "model_version": candidate_id,
+                "cost_scenario_id": scenario.scenario_id,
+                "cost_scenario_version": scenario.scenario_version,
+                "cost_scenario_hash": scenario.scenario_hash,
+                "cost_basis": scenario.cost_basis,
+                "cost_basis_bp": scenario.fixed_round_trip_cost_bp,
+                "cost_policy_id": scenario.policy_id,
+                "cost_policy_version": scenario.policy_version,
+                "policy_estimate_date": scenario.policy_estimate_date,
+                "research_order_amount_twd": scenario_payload[
+                    "research_order_amount_twd"
+                ],
+                "research_order_quantity_shares": scenario.research_order_quantity_shares,
+                "lot_type": scenario.lot_type,
+                "instrument_type": scenario.instrument_type,
+            }
+            for code in projected_codes
+        }
+        baseline = {
+            "schema_version": "recommendation-personal-probability-baseline-inputs.v3",
+            "result_id": result_id,
+            "decision_at": decision_at_text,
+            "decision_date": decision_day.isoformat(),
+            "projected_stock_codes": list(projected_codes),
+            "delivered_stock_codes": list(delivered_codes),
+            "model_active_stock_codes": list(active_codes),
+            "rule_only_fallback_stock_codes": [],
+            "delivered_count": len(delivered_codes),
+            "model_active_count": len(active_codes),
+            "fallback_count": 0,
+            "model_coverage_bp": len(active_codes) * 10_000 // len(delivered_codes),
+            "upside_baseline_kind": "fixed_null_benchmark_50pct",
+            "upside_baseline_id": "null_benchmark_50pct_v1",
+            "upside_probability_bp_by_symbol": {
+                code: 5_000 for code in active_codes
+            },
+            "after_cost_baseline_status": "unavailable",
+            "after_cost_baseline_id": None,
+            "after_cost_probability_bp_by_symbol": {
+                code: None for code in active_codes
+            },
+            "cost_scenario": scenario_payload,
+        }
+        receipt = CalibrationReceiptEventFactsV1(
+            payload_present=True,
+            attempted=True,
+            persisted=True,
+            readback_verified=True,
+            identity_verified=True,
+            path=str(tmp_path / "projection-receipt.json"),
+            receipt_hash=_sha256(b"projection-receipt"),
+            receipt_created_at=decision_at_text,
+            error="",
+            result_id=result_id,
+            decision_date=decision_day.isoformat(),
+            candidate_id=candidate_id,
+            candidate_identity_json=encode_candidate_identity_event_json_v1(
+                {"candidate_id": candidate_id}
+            ),
+            cost_scenario_hash=scenario.scenario_hash,
+            cost_scenario_id=scenario.scenario_id,
+            projected_stock_codes=projected_codes,
+            projection_rows_sha256=_sha256(b"projection-rows"),
+            inference_source_hash=_sha256(b"source"),
+            inference_pit_hash=_sha256(b"pit"),
+            feature_rows_sha256=_sha256(b"features"),
+        )
+        context = {
+            "result_id": result_id,
+            "decision_at": decision_at_text,
+            "as_of_date": decision_day.isoformat(),
+            "personal_use_policy": policy.to_dict(),
+            "personal_use_requested_mode": PERSONAL_CALIBRATED_PROBABILITY_MODE,
+            "personal_use_effective_mode": PERSONAL_CALIBRATED_PROBABILITY_MODE,
+            "personal_probability_baseline_inputs": baseline,
+            "calibration_projection_rows": projection_rows,
+        }
+        return _capture_events(
+            SimpleNamespace(materialize=lambda: {"last_run_context": context}),
+            {},
+            RecommendationPostCalibrationHandoffV1(
+                consumer_configured=True,
+                attempted=True,
+                projection_status=CalibrationProjectionStatusV1.ACTIVE_CANDIDATE,
+                receipt_status=CalibrationReceiptStatusV1.PERSISTED,
+                receipt_event=receipt,
+            ),
+            status=ExecutionStatus.CANCELLED,
+            body_result=None,
+            result_id=result_id,
+            context_as_of_date=decision_day,
+            context_decision_at=decision_at,
+        )
+
+    reordered = _capture(("2454", "2408", "3037"))
+    snapshot_event = next(
+        event
+        for event in reordered
+        if event.event_type == "personal_probability_baseline_snapshot"
+    )
+    snapshot = snapshot_event.details["snapshot"]
+    assert snapshot["projected_stock_codes"] == projected_codes
+    assert snapshot["delivered_stock_codes"] == ("2454", "2408", "3037")
+
+    with pytest.raises(ValueError, match="personal probability baseline.*partition"):
+        _capture(("2408", "2454", "9999"))
+    with pytest.raises(ValueError, match="personal probability baseline"):
+        _capture(({}, "2408", "3037"))
 
 
 @pytest.mark.parametrize(

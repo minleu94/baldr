@@ -1,7 +1,23 @@
 # 系統架構
 
-> **最後更新：2026-09-27｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-09-29｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
+
+## 排程來源與 operational custody（2026-09-29）
+
+Windows query 與 registration inspector 共用同一受測 21 項 inventory，包含 legacy learning
+及 BankTaiwan；readiness 不等於業務成功。Scheduled Evidence 從同日 snapshot status
+取得精確 result ID，經 canonical query/hash/clock 重驗後交給 importer 與 coverage，不
+混用 formal／shadow latest；缺件在 pipeline 啟動前拒絕，child 受 600 秒 timeout 約束。
+Learning orchestration 已驗證的同日 formal technical receipt 直接重用，不重啟 updater
+覆寫主排程 latest；其餘 learning source-time／custody gate 不變。
+
+PIT 盤前 CMD 接到版本化官方 taxonomy source config，archive／denominator 完成後重讀
+clock，taxonomy 失敗傳遞非零。盤後 history 限明確 coverage scope，舊檔保留但不消費，
+日曆只用既有 hash-bound cache；範圍內 source readback、cutoff、license 與 formal
+publication gate 仍完整保留。官方現在取得的來源不反向提供歷史 availability。
+ML forward 等候階段另保存 per-run heartbeat/state；與 business status 分離、無 forward
+credit。這些接線／觀測修正不包含新模型、thesis、Paper 舊成交、formal approval 或 broker。
 
 ## 2026-09-27 邊界／資源 lifecycle 現況
 

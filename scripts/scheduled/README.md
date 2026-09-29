@@ -221,7 +221,25 @@ adapter 建立、EOD 唯讀消費的唯一 Paper state。每輪 candidate 寫入
 scope-validation failure receipt 不使用未驗證 writer root；缺少 ledger 不會被當成 Formal
 或已完成 evidence，只有具體 machine-verified Paper fill 才會建立 append transition。
 
-PIT 的日常來源分成兩個排程：`run_pit_sector_membership_preopen_capture.cmd`
+PIT 的日常來源分成盤前 capture 與盤後 sidecar 兩個排程。
+
+盤前 CMD 未收到 `PIT_TAXONOMY_SOURCE_CONFIG` override 時，使用版本化的
+`scripts/scheduled/pit_taxonomy_source_config.json`，直接抓官方 TWSE／TPEx 規格與 ISIN
+證券清冊；不依賴 TEMP raw file、固定 HTTP timestamp 或人工 symbol mapping。TWSE
+採已生效 B.12.12 composite（base／2023 change／revision history／current regulation），
+B.12.13(202612) 只作 revision history，不提前採用未生效版本；TPEx 為 V12.18 TCPIP。
+此設定的 license scope 明確是 `research_only_unaccepted`、`formal_acceptance_granted=false`，
+不是 formal license approval。Direct Python caller 須明確傳 config 或設定相同環境變數。
+
+真實 archive／獨立 denominator 抓取完成後重新取得時鐘，再驗 taxonomy source completion，
+不拿啟動前 clock 對比本輪完成時間。08:30 cutoff 仍由 producer 驗證；denominator 或
+taxonomy blocked 時，wrapper status 為 degraded 並回 exit 2，不以 archive 單獨成功掩蓋。
+Post-cutoff history 使用與前置 gate 一致的離線官方日曆 cache；缺 cache 不補發 HTTP。
+History inventory 中日期資料夾早於明確 coverage start 的 archives 保留並列入
+`out_of_scope_archives`，不參與當期 universe／license／coverage。未知日期資料夾與
+範圍內失敗仍阻擋；被排除的舊檔不能拿來補 required coverage，也不提供歷史 credit。
+
+兩個排程的原始接線如下：`run_pit_sector_membership_preopen_capture.cmd`
 固定在 Pacific 16:00 執行，PDT/PST 分別對應台北 07:00/08:00，並在每個官方
 response completion timestamp 越過台北 08:30 時停止。盤前 task retry 會先重驗同一
 台北自然日既有的 archive；只有當日完全沒有 archive 才進入一次 live capture，存在
@@ -652,6 +670,13 @@ both modes require the selected wrapper files to pass preflight first.
 
 ## Query
 
+ML forward 等候台北 cutoff 時另保存 operational custody：
+`output/v4_ml_forward_scheduler/runtime_state.json` 及 `run_state/<unique-run-id>/state.json`。
+每次 wait observation（間隔最多 60 秒）更新 phase／heartbeat；可捕捉中斷回 130，未處理
+例外保留失敗 state 並正常以非零退出，terminal state 保存真正 run_once return code。
+等待 state 不覆寫 business latest status、不授予 forward credit。硬 kill 後留下非 terminal
+heartbeat 只能證明最後觀察時間，`terminator=unknown`，不是仍存活或已知中止者的證據。
+
 ```cmd
 scripts\scheduled\query_baldr_scheduled_tasks.cmd
 schtasks /Query /TN baldr-official-market-events-daily /V /FO LIST
@@ -671,13 +696,17 @@ Missing tasks are reported as friendly `Task not found` messages by the query wr
 
 For a machine-readable, side-effect-free check, run
 `scripts\inspect_scheduled_task_registration.py`. In addition to querying each
-expected task, it verifies that all 15 repository wrapper files exist and, when
+expected task（含 05:45 learning 與 05:50 BankTaiwan，共 21 項），it verifies that the corresponding repository wrapper files exist and, when
 `schtasks /Query` exposes `Task To Run`, that the registered action contains the
 expected wrapper path. The report keeps these checks separate from
 `all_available`; an available task without a visible action is marked
 `action_unobserved`, and `configuration_ready` is true only when task
 availability, local wrappers, observed actions, and action matching all pass.
 No task is created or changed.
+
+Query 的 task inventory 與機器 inspector 由 regression 核對完全一致；CMD summary 的
+expected count 由清單推導，不再以舊的 20 項硬編碼。這只是可觀測性，不會讓 aggregate
+register 接管 BankTaiwan／forward 等專用 task，也不把 `Last Result=0` 當成來源完整。
 
 ## Unregister
 
@@ -799,6 +828,12 @@ Canonical request 的 `as_of_date` 必須取自同一份 typed body context；�
 context 與 learning cohort preflight 使用同一資料日，不會把自然執行日誤當市場資料日。
 
 Recommendation calibration learning (shadow-only):
+
+05:45 orchestration 若已找到同日 formal technical publication，仍須通過既有 source contract
+對來源、hash、窗口與 available-at 的完整重驗；通過才記錄
+`steps.data_update_quick.status=skipped`／`verified_existing_same_day_technical_receipt`，不再
+重啟 quick updater 或覆寫其 latest status。只有日期相同、receipt path 存在並不足以重用。
+不合格時走既有 bounded updater／fail-closed 分支；不關閉 source-revision 或未來資料 gate。
 
 ```text
 baldr-recommendation-calibration-learning-daily
@@ -1095,6 +1130,15 @@ Only the dedicated Decision/Evidence capture task writes the durable snapshot an
 ML allocation co-pilot task 只消費前兩個獨立 task 產生、且與本次 inference release 相同的 evidence／authorization custody。Evidence builder 不簽章，Authority 不訓練模型，Co-pilot 不自行製造 OOS、PIT、calibration、drift 或 shadow days 證據；非零 alpha 必須通過三層重驗。
 
 The recommendation snapshot is intentionally saved before the evidence dry-run so the dry-run can observe the latest recommendation payloads, including screening matrix / why-not / liquidity gate payloads when available.
+
+Scheduled CMD／PowerShell callers 固定帶 `--bind-scheduled-recommendation`：只讀當日
+`scheduled/recommendation_snapshot/latest_status.json`，核對 task、成功、日期、root、已保存／
+無 Evidence write flags 與 aware／非未來 clock，再按其精確 `result_id` 從 canonical execution
+query 驗證日期、persisted clock 與 payload hash。該 ID 同時交給 importer／coverage；不在
+formal 與 shadow 混合 inventory 中猜 latest。缺檔、過期、未來、root 不符或 canonical
+readback 失敗時，寫 `recommendation_binding_error`、exit 2，且不啟動 pipeline。Manual CLI
+不帶此 flag 時保留原契約。Pipeline child 有 600 秒 timeout，保留 partial stdout、非零退出
+與 `pipeline_execution_error`，不把 timeout 當空成功，也不使用 `--confirm`。
 
 Generated evidence reports 是機器 Gate 的可稽核輸入；它們本身不證明 alpha，也不得直接轉成交易指令。
 

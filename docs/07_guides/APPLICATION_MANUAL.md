@@ -3521,6 +3521,12 @@ row count／content hash 沒有變化。未同時提供 owner approval、無並�
 
 ## 操作補充與維運參考
 
+### 2026-09-29 排程完整審視與修復
+
+21 項 Windows task 的查詢、same-day Evidence 身份、technical receipt 重用、官方 taxonomy
+接線、PIT coverage scope 與 ML 等待中斷判讀，見[操作手冊附冊](APPLICATION_MANUAL_SUPPLEMENTS.md#2026-09-29-排程完整審視與修復)。
+修正程式不等於現有 failed receipt 已變為成功；仍需下一次自然執行與各自資料／核准 gate。
+
 下列原章節已移至手冊附冊；入口、參數、步驟與限制保留，舊標題維持導向。
 
 ### 正式行情修復補充（2026-09-23）

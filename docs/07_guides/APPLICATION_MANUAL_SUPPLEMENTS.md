@@ -2,6 +2,57 @@
 
 本冊屬於 [完整操作手冊](APPLICATION_MANUAL.md)，保留原手冊中的補充操作、研究 CLI、受控資料維護與排程判讀。日期化結果只代表當次觀測；目前進度請讀 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。章節內容搬移時保留原操作步驟、參數與安全限制；不要把舊狀態或示例命令當成新執行授權。
 
+## 2026-09-29 排程完整審視與修復
+
+一般操作先讀 Windows task，再對照同次 status／log；不要只看 UI 或 Last Result。
+在 repository 根目錄執行以下唯讀入口（不重跑、不重註冊）：
+
+```cmd
+scripts\scheduled\query_baldr_scheduled_tasks.cmd
+.venv\Scripts\python.exe scripts\inspect_scheduled_task_registration.py
+scripts\scheduled\run_ml_allocation_forward_daily.cmd preflight
+```
+
+Query 與 inspector 現覆蓋相同的 21 項清單，包含獨立 05:50 BankTaiwan；`configuration_ready`
+只表示註冊、wrapper 與排程時間一致，不代表資料完整、模型有效或 Evidence 已核准。
+日常 task 仍沿用既有 wrapper path，程式更新不必重建全部 Windows tasks。不要用
+aggregate register 覆寫 dedicated forward／Paper／PIT／BankTaiwan 設定。
+
+05:15 Evidence caller 會強制綁定同日 05:10 保存的精確 canonical `result_id`，並保存 status
+bytes hash／artifact payload hash。`recommendation_binding_error` 表示輸入缺漏、過期、
+未來、root／日期不符或 canonical readback 失敗，pipeline 尚未啟動；先核對快照該次
+status 與 canonical run，不改 ID 或複製昨日檔。Pipeline timeout 為 600 秒，失敗保留
+partial log；所有 dry-run 仍 `confirm=false`／`writes_evidence_db=false`。
+
+05:45 learning 在 formal technical receipt 通過原 source/hash/window/clock 重驗時，
+顯示 `verified_existing_same_day_technical_receipt` 並跳過 quick child，保留主 updater 的
+latest status。不代表 learning 的 PIT availability、after-cost 或模型 gate 都已通過。
+BankTaiwan 預設讀 Shadow root 的 bounded snapshot projection；同次 stdout／canonical
+cohort 驗證不變，projection 損壞不可退回其他快照。固定排程時間也不是依賴完成的證明；
+若 upstream 尚未產生合格同次 projection，仍應保留 dependency failure。
+
+盤前 PIT CMD 預設使用 repository 的 `scripts/scheduled/pit_taxonomy_source_config.json`。
+`PIT_TAXONOMY_SOURCE_CONFIG` 可指定其他明確檔案，但不得使用過期 TEMP 來源；直接
+Python caller 需顯式設定 config。官方來源／parser 成功只證明當次取得，設定本身保持
+research-only／未授予 formal license。Archive／denominator 完成後重讀 actual clock；
+taxonomy 或 denominator blocked 現會回 exit 2。當期 history 只消費 coverage start
+以後的 archive，範圍外舊檔完整保留；缺日曆 cache、範圍內損壞、缺 license／formal
+publication 都仍阻擋，不用今日來源補造過去 PIT。
+
+ML forward 等候 cutoff 的最新 heartbeat 在 `output/v4_ml_forward_scheduler/runtime_state.json`，
+每輪另有 `run_state/<run-id>/state.json`。等待不覆寫 business latest status；中斷／例外
+留 terminal 診斷，硬 kill 的非 terminal state 不代表 process 還活著。Windows
+`0xC000013A` 只表示中斷，不能由此推論 dirty tree、電池或誰停止程序。本機 Operational
+history 尚未啟用，嘗試啟用收到 OS Access denied；需管理員在 Task Scheduler 開啟歷史，
+不是修改 ExecutionPolicy 或繞過 ACL。
+
+仍須 owner 處理的界線：容量不足先規劃空間，不降低 200 GiB safety + 35 GiB persistent
+與 40 GiB temporary 的原始門檻，也不刪既有模型／raw。`pending_execution_session_missed`
+表示已凍結的舊 Paper 批次未完成，不能直接改綁今日推薦、補造舊成交或刪 receipt。
+`human_thesis_required`／持倉 identity 缺件須補真實 thesis 與入場來源。基本面 current-only
+資料不能當歷史公告／available-at；ML custody stale 不能在 frozen manifest 手改 hash。
+完整當次 21 項盤點與受限驗證見[排程審視報告](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260929.md)。
+
 ## 正式行情修復補充（2026-09-23）
 
 本輪已確認的歷史錯價、缺漏交易日、錯日紀錄、相依技術指標與圖表快取已完成修復及全量讀回。5,331,231 列日價與技指、2,210 份技術 CSV 及每日整合快取已同步；原始檔與修復前備份保留。買賣價／量、本益比及漲跌價差六個衍生複本也已依權威日價還原，沒有報價時保留空白，不填零或前日數字。

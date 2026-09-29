@@ -1,5 +1,14 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-29 排程完整審視與修復
+
+[21 項排程審視](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260929.md) 已核對 Windows
+註冊／wrapper／時間，並修復 query inventory、same-day Evidence result binding、verified
+technical receipt reuse、PIT taxonomy 接線／clock／coverage scope 及 ML 等待 heartbeat。
+程式修復與唯讀來源 probe 不代表今日舊 failed receipt 已通過；自然排程重驗仍待後續。
+容量、錯過的 Paper 凍結批次、持倉 thesis／identity、基本面 PIT lineage、Formal 與 ML
+custody 的真實缺件仍保留，不刪原始資料、不補造成交或授予 formal／broker credit。
+
 ## 2026-09-29 WP5 目前 HEAD 缺口盤點
 
 以 `dev` commit `447202fca5ed453f4c0bb399c1c3156c66cef146` 為稽核基準的 [WP5 缺口與 19 筆 pending 逐筆診斷](../06_qa/WP5_HEAD_GAP_AND_PENDING_DIAGNOSIS_20260929.md) 已完成。舊 final scoped route 的 31 個 SHA pin 中，29 個仍與該基準的原始程式／測試 bytes 相同，兩個差異是後續更新文件；受限路由 183P／2S 可引用，但沒有修補後 full-suite 通過證據。舊全套 274F／13E 已按失敗節點分類，三個代表節點在該基準做小範圍重驗；推薦進度測試的過時契約已修補，整檔隔離 **8P**，尚不能外推全套。

@@ -36,6 +36,10 @@ def _seed_position(config):
 
 
 def _run_capture(config, *args):
+    # PROFILE=test 的 TWStockConfig 會在初始化時加上 _test；CLI 需要相同 base roots，
+    # 才會解析到 seed position 使用的隔離目錄，而非重複加上 _test。
+    data_root = config.data_root.parent if config.profile == "test" else config.data_root
+    output_root = config.output_root.parent if config.profile == "test" else config.output_root
     cmd = [
         sys.executable,
         str(ROOT / "scripts" / "capture_live_research_gap.py"),
@@ -44,9 +48,9 @@ def _run_capture(config, *args):
         "--db-path",
         str(config.db_file),
         "--data-root",
-        str(config.data_root),
+        str(data_root),
         "--output-root",
-        str(config.output_root),
+        str(output_root),
         "--json-output",
         *args,
     ]

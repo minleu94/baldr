@@ -231,22 +231,52 @@ def test_decision_qa_failure_is_nonzero_and_preserves_environment(tmp_path, monk
     assert os.environ["DATA_ROOT"] == "outer-data" and os.environ["OUTPUT_ROOT"] == "outer-output"
 
 
-@pytest.mark.parametrize("result_id", ["saved-rec-001", None])
-def test_recommendation_selected_candidate_keeps_real_identity_without_inventing_one(tmp_path, monkeypatch, result_id):
+@pytest.mark.parametrize(
+    ("execution_result_id", "verified_result_id", "expected_saved_result_id"),
+    [
+        ("saved-rec-001", "saved-rec-001", "saved-rec-001"),
+        ("unsaved-execution-001", "", None),
+        ("current-execution-001", "different-saved-result-001", None),
+    ],
+)
+def test_recommendation_selected_candidate_keeps_real_identity_without_inventing_one(
+    tmp_path, monkeypatch, execution_result_id, verified_result_id, expected_saved_result_id
+):
+    # 僅驗 UI 的 verified-ID gate；真實 canonical readback 接線由既有 m11 驗收覆蓋。
     import pandas as pd
     from ui_qt.views import recommendation_view as module
+
     service = WatchlistService(config(tmp_path))
     frame = pd.DataFrame([{"證券代號": "2330", "證券名稱": "台積電"}])
     monkeypatch.setattr(module.QMessageBox, "information", lambda *args: None)
-    errors = []
-    monkeypatch.setattr(module.QMessageBox, "critical", lambda *args: errors.append(args))
+    warnings = []
+    monkeypatch.setattr(module.QMessageBox, "warning", lambda *args: warnings.append(args))
+    execution = SimpleNamespace(
+        result_id=execution_result_id,
+        items=(SimpleNamespace(stock_code="2330", stock_name="台積電"),),
+        context=SimpleNamespace(
+            as_of_date=date(2026, 5, 1),
+            universe_identity=None,
+            universe_snapshot_ref=None,
+            data_snapshot_refs=(),
+        ),
+    )
     view = SimpleNamespace(watchlist_service=service, recommendations_model=SimpleNamespace(getDataFrame=lambda: frame),
         results_table=SimpleNamespace(selectionModel=lambda: SimpleNamespace(selectedRows=lambda: [SimpleNamespace(row=lambda: 0)])),
-        current_result_id=result_id, current_profile=None, current_regime=None, profiles={})
+        current_execution=execution,
+        _verified_saved_result_id=lambda: verified_result_id,
+        _source_snapshot_identity=lambda _execution: ("", ""),
+        current_profile=None, current_regime=None, profiles={})
     module.RecommendationView._add_selected_to_watchlist(view)
     reopened = WatchlistService(config(tmp_path))
-    assert not errors and reopened.get_stocks()[0]["source_id"] == (result_id or "")
-    assert reopened.get_stocks()[0]["source"] == "recommendation"
+    if expected_saved_result_id is None:
+        assert len(warnings) == 1, warnings
+        assert warnings[0][1] == "尚未驗證保存結果"
+        assert reopened.get_stocks() == []
+    else:
+        assert warnings == []
+        assert reopened.get_stocks()[0]["source_id"] == expected_saved_result_id
+        assert reopened.get_stocks()[0]["source"] == "recommendation"
 
 
 @pytest.mark.parametrize("id_column", ["source_id", "result_id"])

@@ -216,9 +216,13 @@ def test_valid_capture_reports_only_same_day_activity_without_pit_or_closure_cla
     assert result["cutoff_utc"] == "2026-09-29T15:30:00Z"
     assert result["markets"]["twse_mi_index"]["rows"] == 2
     assert result["markets"]["twse_mi_index"]["required_symbol_volume_shares"] == 26893348
+    assert len(result["markets"]["twse_mi_index"]["raw_sha256"]) == 64
+    assert result["markets"]["twse_mi_index"]["raw_bytes"] > 0
     assert result["markets"]["tpex_daily_quotes"]["rows"] == 2
     assert result["markets"]["tpex_daily_quotes"]["total_count"] == 2
     assert result["markets"]["tpex_daily_quotes"]["required_symbol_volume_shares"] == 9157413
+    assert len(result["markets"]["tpex_daily_quotes"]["raw_sha256"]) == 64
+    assert result["markets"]["tpex_daily_quotes"]["raw_bytes"] > 0
     assert result["available_at_utc"] == TPEX_END
     assert result["official_published_at_utc"] == "unknown"
     assert result["temporary_closure_negative_coverage"] is False
@@ -261,6 +265,32 @@ def test_content_type_rejects_jsonp_even_with_json_prefix(tmp_path: Path) -> Non
         _validate(tmp_path, capture_dir, _sha(receipt_bytes), manifest_sha)
 
     assert error.value.code == "twse_mi_index_content_type_invalid"
+
+
+@pytest.mark.parametrize("metadata_file", ["receipt", "manifest"])
+def test_untrusted_published_at_claim_is_rejected_even_with_updated_pin(
+    tmp_path: Path,
+    metadata_file: str,
+) -> None:
+    capture_dir, receipt_sha, manifest_sha = _build_capture(tmp_path)
+    if metadata_file == "receipt":
+        metadata_path = capture_dir / "capture_receipt.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    else:
+        metadata_path = capture_dir / "capture_manifest.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["official_published_at_utc"] = "2026-09-29T15:00:00Z"
+    metadata_bytes = _json_bytes(metadata)
+    metadata_path.write_bytes(metadata_bytes)
+    if metadata_file == "receipt":
+        receipt_sha = _sha(metadata_bytes)
+    else:
+        manifest_sha = _sha(metadata_bytes)
+
+    with pytest.raises(CaptureValidationError) as error:
+        _validate(tmp_path, capture_dir, receipt_sha, manifest_sha)
+
+    assert error.value.code == "capture_publication_time_claim_rejected"
 
 
 @pytest.mark.parametrize("truncate", [False, True], ids=["hash-change", "truncated"])

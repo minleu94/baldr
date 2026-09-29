@@ -295,6 +295,33 @@ def _read_json_file(path: Path, *, label: str, expected_sha256: str | None = Non
     return value, digest
 
 
+def _reject_untrusted_publication_claims(value: object) -> None:
+    """Do not accept caller-captured metadata as an official publication time."""
+
+    publication_keys = {
+        "official_published_at",
+        "official_published_at_utc",
+        "published_at",
+        "published_at_utc",
+        "publication_at",
+        "publication_at_utc",
+    }
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if isinstance(key, str) and key.casefold() in publication_keys:
+                if item is not None and not (
+                    isinstance(item, str) and item.strip().casefold() == "unknown"
+                ):
+                    _fail(
+                        "capture_publication_time_claim_rejected",
+                        "capture metadata 不得宣稱未經獨立驗證的 official published_at。",
+                    )
+            _reject_untrusted_publication_claims(item)
+    elif isinstance(value, list):
+        for item in value:
+            _reject_untrusted_publication_claims(item)
+
+
 def _timestamp_text(value: object, label: str) -> tuple[str, tuple[datetime, int]]:
     if not isinstance(value, str):
         _fail(f"{label}_invalid", "缺少 UTC 時間戳。")
@@ -471,6 +498,8 @@ def validate_official_daily_capture(
     manifest, manifest_sha = _read_json_file(
         manifest_path, label="manifest", expected_sha256=manifest_pin
     )
+    _reject_untrusted_publication_claims(receipt)
+    _reject_untrusted_publication_claims(manifest)
     run_id = receipt.get("run_id")
     if not isinstance(run_id, str) or not run_id.strip() or manifest.get("run_id") != run_id:
         _fail("capture_run_id_mismatch", "receipt/manifest 必須有相同且非空的 run_id。")
@@ -576,13 +605,16 @@ def validate_official_daily_capture(
         if len(raw) != body_bytes or actual_sha != body_sha:
             _fail(f"{name}_raw_readback_mismatch", "raw bytes 長度或 SHA-256 與固定 receipt 不符。")
         if name == "twse_mi_index":
-            results[name] = _validate_twse(
+            market_result = _validate_twse(
                 raw, market=market, decision_date=decision_date
             )
         else:
-            results[name] = _validate_tpex(
+            market_result = _validate_tpex(
                 raw, market=market, decision_date=decision_date
             )
+        market_result["raw_bytes"] = len(raw)
+        market_result["raw_sha256"] = actual_sha
+        results[name] = market_result
 
     if capture_intervals[0][1] > capture_intervals[1][0]:
         _fail("market_capture_order_invalid", "TWSE capture 必須先於 TPEx capture，且不得重疊。")

@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 BOOTSTRAP_SCHEMA = "wp5-isolated-qa-sqlite-bootstrap.v1"
 UPSTREAM_SNAPSHOT_SCHEMA = "formal-sqlite-source-snapshot.v1"
 PREFLIGHT_SCHEMA = "wp5-qa-root-read-only-preflight.v1"
+PERSONAL_ACTIVITY_SCHEMA = "wp5-personal-current-observed-activity.v1"
 REPARSE_POINT_ATTRIBUTE = 0x400
 MAX_RECEIPT_BYTES = 2 * 1024 * 1024
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -740,6 +741,347 @@ def _verify_day_evidence(
     result["status"] = "ready" if not blockers else "blocked"
     result["blockers"] = blockers
     return result, blockers
+
+
+def run_personal_current_observed_activity(
+    config: PreflightConfig,
+    *,
+    capture_directory: str | Path | None,
+    expected_capture_receipt_sha256: str | None,
+    expected_capture_manifest_sha256: str | None,
+    expected_calendar_cache_sha256: str | None,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Qualify pinned same-day market activity for personal research only.
+
+    The ordinary daily-chain preflight remains the source for seed integrity,
+    bounded isolation, annual-calendar verification, and the unchanged strict
+    ``day_execution_readiness`` result.  This separate branch accepts positive
+    same-day market data as activity evidence, but never infers negative
+    temporary-closure coverage or runner readiness.
+    """
+
+    blockers: list[dict[str, str]] = []
+
+    def block(code: str, detail: str = "") -> None:
+        blockers.append(
+            {
+                "scope": "personal_current_observed_activity",
+                "code": code,
+                "detail": detail,
+            }
+        )
+
+    expected_calendar_pin: str | None = None
+    try:
+        expected_calendar_pin = _normalise_pin(
+            expected_calendar_cache_sha256 or "",
+            "expected_calendar_cache_sha256",
+        )
+    except _PreflightError as error:
+        block("annual_calendar_pin_missing_or_invalid", str(error))
+
+    try:
+        strict = run_read_only_preflight(config, environ=environ)
+    except Exception as error:
+        strict = {
+            "schema_version": PREFLIGHT_SCHEMA,
+            "observed_at_utc": None,
+            "decision_date": config.decision_date.isoformat(),
+            "status": "blocked",
+            "seed_integrity": {"status": "not_run", "blockers": []},
+            "isolation": {"status": "not_run", "blockers": []},
+            "day_execution_readiness": {"status": "not_run", "blockers": []},
+            "blockers": [],
+            "coverage_limits": [],
+        }
+        block("strict_preflight_failed", f"{type(error).__name__}:{error}")
+
+    try:
+        repo_root = (
+            Path(config.repo_root).resolve(strict=True)
+            if config.repo_root is not None
+            else Path(__file__).resolve().parents[1]
+        )
+    except OSError as error:
+        repo_root = Path(__file__).resolve().parents[1]
+        block("repo_root_missing_or_unresolvable", str(error))
+
+    clock_blockers = [
+        item
+        for item in strict.get("blockers", [])
+        if isinstance(item, Mapping) and item.get("scope") == "preflight_clock"
+    ]
+    if clock_blockers:
+        for item in clock_blockers:
+            block(str(item.get("code", "preflight_clock_blocked")), str(item.get("detail", "")))
+
+    seed = strict.get("seed_integrity", {})
+    if not isinstance(seed, Mapping) or seed.get("status") != "verified":
+        block("seed_integrity_not_verified")
+    isolation = strict.get("isolation", {})
+    if not isinstance(isolation, Mapping) or isolation.get("status") != "bounded_verified":
+        block("bounded_isolation_not_verified")
+
+    day = strict.get("day_execution_readiness", {})
+    calendar = day.get("calendar", {}) if isinstance(day, Mapping) else {}
+    if not isinstance(calendar, Mapping) or calendar.get("status") != "verified":
+        block("annual_calendar_not_verified")
+    elif calendar.get("planned_open") is not True:
+        block("annual_calendar_not_planned_open")
+
+    annual_calendar: dict[str, Any] = {
+        "status": "blocked",
+        "planned_open": False,
+        "temporary_closure_negative_coverage": False,
+    }
+    calendar_hash: str | None = None
+    if isinstance(calendar, Mapping) and calendar.get("status") == "verified":
+        raw_path = calendar.get("path")
+        try:
+            if not isinstance(raw_path, str):
+                raise _PreflightError("annual_calendar_path_missing")
+            safe_path = _existing_path(
+                raw_path,
+                label="annual_calendar_cache",
+                allowed_root=repo_root / "output" / "qa",
+                expect_file=True,
+            )
+            calendar_identity_before = _single_link_identity(
+                safe_path,
+                label="annual_calendar_cache",
+            )
+            calendar_hash, calendar_size, calendar_mtime = _sha256_file(safe_path)
+            calendar_identity_after = _single_link_identity(
+                safe_path,
+                label="annual_calendar_cache",
+            )
+            if calendar_identity_before != calendar_identity_after or (
+                calendar_size,
+                calendar_mtime,
+            ) != (calendar_identity_after[3], calendar_identity_after[4]):
+                raise _PreflightError("annual_calendar_identity_changed_during_read")
+            calendar_pin_matches = (
+                expected_calendar_pin is not None
+                and calendar_hash == expected_calendar_pin
+            )
+            if expected_calendar_pin is not None and not calendar_pin_matches:
+                block("annual_calendar_sha256_pin_mismatch")
+            cache_evidence_hash = calendar.get("cache_file_sha256")
+            cache_readback_matches = cache_evidence_hash == f"sha256:{calendar_hash}"
+            if not cache_readback_matches:
+                block("annual_calendar_readback_sha256_mismatch")
+            annual_calendar = {
+                "status": (
+                    "verified"
+                    if calendar_pin_matches and cache_readback_matches
+                    else "blocked"
+                ),
+                "path": str(safe_path),
+                "sha256": calendar_hash,
+                "caller_pin_sha256": expected_calendar_pin,
+                "caller_pin_matches": calendar_pin_matches,
+                "cache_readback_matches": cache_readback_matches,
+                "planned_open": calendar.get("planned_open") is True,
+                "captured_at": calendar.get("captured_at"),
+                "available_at": calendar.get("available_at"),
+                "expires_at": calendar.get("expires_at"),
+                "temporary_closure_negative_coverage": False,
+            }
+        except (_PreflightError, OSError) as error:
+            block("annual_calendar_pin_readback_failed", str(error))
+            annual_calendar = {"status": "blocked", "reason": str(error)}
+
+    closure_evidence: dict[str, Any] = {
+        "status": "unknown",
+        "decision_date_closure_event": False,
+        "negative_coverage": False,
+        "interpretation": "missing_event_does_not_prove_no_temporary_closure",
+    }
+    if config.temporary_closure_path is not None and not clock_blockers:
+        try:
+            safe_closure_path = _existing_path(
+                config.temporary_closure_path,
+                label="temporary_closure_receipt",
+                allowed_root=repo_root / "output" / "qa",
+                expect_file=True,
+            )
+            closure_identity_before = _single_link_identity(
+                safe_closure_path,
+                label="temporary_closure_receipt",
+            )
+            from data_module.official_trading_calendar_cache import (
+                load_verified_twse_temporary_closure_cache,
+            )
+
+            observed_at = datetime.fromisoformat(
+                str(strict.get("observed_at_utc"))
+            )
+            verified_closure = load_verified_twse_temporary_closure_cache(
+                safe_closure_path,
+                observed_at=observed_at,
+            )
+            closure_identity_after = _single_link_identity(
+                safe_closure_path,
+                label="temporary_closure_receipt",
+            )
+            if closure_identity_before != closure_identity_after:
+                raise _PreflightError(
+                    "temporary_closure_identity_changed_during_read"
+                )
+            closure_on_decision_date = (
+                verified_closure.closure_date == config.decision_date
+            )
+            closure_evidence = {
+                "status": (
+                    "same_day_closure_event"
+                    if closure_on_decision_date
+                    else "verified_other_date_event"
+                ),
+                "path": str(safe_closure_path),
+                "closure_date": verified_closure.closure_date.isoformat(),
+                "decision_date_closure_event": closure_on_decision_date,
+                "negative_coverage": False,
+                "interpretation": (
+                    "verified_same_day_closure_blocks_personal_activity"
+                    if closure_on_decision_date
+                    else "event_for_another_date_does_not_prove_negative_coverage"
+                ),
+            }
+            if closure_on_decision_date:
+                block("verified_temporary_closure_event_on_decision_date")
+        except Exception as error:
+            closure_evidence = {
+                "status": "blocked",
+                "decision_date_closure_event": False,
+                "negative_coverage": False,
+                "reason": f"{type(error).__name__}:{error}",
+            }
+            block("temporary_closure_evidence_invalid", closure_evidence["reason"])
+
+    capture_result: dict[str, Any] = {
+        "status": "blocked",
+        "temporary_closure_negative_coverage": False,
+        "formal_pit": False,
+        "official_published_at": "unknown",
+        "official_published_at_utc": "unknown",
+    }
+    from data_module.wp5_official_daily_capture_validator import (
+        CaptureValidationError,
+        validate_official_daily_capture,
+    )
+
+    missing_capture_inputs = False
+    for label, value in (
+        ("capture_directory", capture_directory),
+        ("capture_receipt_sha256", expected_capture_receipt_sha256),
+        ("capture_manifest_sha256", expected_capture_manifest_sha256),
+    ):
+        if value is None or not str(value).strip():
+            block(f"{label}_missing")
+            missing_capture_inputs = True
+
+    # Do not spend time reading the raw market body when the seed/isolation,
+    # current cutoff, annual-open, or caller-pin prerequisites already fail.
+    prerequisites_ok = not blockers
+    if prerequisites_ok and not missing_capture_inputs:
+        try:
+            observed_at = datetime.fromisoformat(str(strict["observed_at_utc"]))
+            if not isinstance(capture_directory, (str, Path)):
+                raise ValueError("capture_directory must be a filesystem path")
+            capture_result = validate_official_daily_capture(
+                capture_directory,
+                expected_receipt_sha256=str(expected_capture_receipt_sha256),
+                expected_manifest_sha256=str(expected_capture_manifest_sha256),
+                decision_date=config.decision_date,
+                required_symbols_by_venue={"TWSE": "2330", "TPEx": "6488"},
+                cutoff_utc=observed_at,
+                repo_root=(
+                    config.repo_root
+                    if config.repo_root is not None
+                    else Path(__file__).resolve().parents[1]
+                ),
+            )
+            if capture_result.get("official_published_at_utc") != "unknown":
+                block("official_published_at_must_remain_unknown")
+            if capture_result.get("formal_pit") is not False:
+                block("official_capture_must_not_claim_formal_pit")
+            if capture_result.get("temporary_closure_negative_coverage") is not False:
+                block("official_capture_must_not_claim_closure_negative_coverage")
+        except CaptureValidationError as error:
+            capture_result = {
+                "status": "blocked",
+                "blockers": [{"code": error.code, "detail": error.detail}],
+                "official_published_at_utc": "unknown",
+                "temporary_closure_negative_coverage": False,
+                "formal_pit": False,
+            }
+            block(error.code, error.detail)
+        except Exception as error:
+            capture_result = {
+                "status": "blocked",
+                "blockers": [
+                    {
+                        "code": "official_capture_validation_error",
+                        "detail": f"{type(error).__name__}:{error}",
+                    }
+                ],
+                "official_published_at_utc": "unknown",
+                "temporary_closure_negative_coverage": False,
+                "formal_pit": False,
+            }
+            block(
+                "official_capture_validation_error",
+                f"{type(error).__name__}:{error}",
+            )
+
+    status = "eligible_personal_research" if not blockers else "blocked"
+    return {
+        "schema_version": PERSONAL_ACTIVITY_SCHEMA,
+        "mode": "personal_current_observed_activity",
+        "status": status,
+        "decision_date": config.decision_date.isoformat(),
+        "decision_at_utc": strict.get("observed_at_utc"),
+        "observed_at_utc": capture_result.get("available_at_utc"),
+        "cutoff_utc": strict.get("observed_at_utc"),
+        "research_only": True,
+        "formal_pit": False,
+        "official_published_at": "unknown",
+        "official_published_at_utc": "unknown",
+        "temporary_closure_negative_coverage": False,
+        "runner_executed": False,
+        "seed_integrity": strict.get("seed_integrity"),
+        "isolation": strict.get("isolation"),
+        "day_execution_readiness": strict.get("day_execution_readiness"),
+        "annual_calendar": annual_calendar,
+        "capture_pins": {
+            "capture_directory": capture_result.get("capture_directory")
+            or (None if capture_directory is None else str(capture_directory)),
+            "receipt_sha256": capture_result.get("receipt_sha256")
+            or expected_capture_receipt_sha256,
+            "manifest_sha256": capture_result.get("manifest_sha256")
+            or expected_capture_manifest_sha256,
+            "raw_sha256_by_market": {
+                name: market.get("raw_sha256")
+                for name, market in (
+                    capture_result.get("markets", {}).items()
+                    if isinstance(capture_result.get("markets"), Mapping)
+                    else []
+                )
+                if isinstance(market, Mapping)
+            },
+        },
+        "temporary_closure_evidence": closure_evidence,
+        "official_same_day_market_activity": capture_result,
+        "blockers": blockers,
+        "coverage_limits": [
+            "Eligible status is limited to personal research using same-day observed market activity; it is not a normal-full-day or generic runner authorization.",
+            "Annual planned-open schedule and a same-day positive market response do not establish complete temporary-closure negative coverage.",
+            "The official capture's local body-read completion time is a conservative availability upper bound, not an official publication timestamp or Formal PIT proof.",
+            "The original day_execution_readiness value is preserved unchanged; this personal branch does not alter its strict blocked semantics.",
+            "Bounded preflight filesystem checks retain the documented concurrent rename/junction TOCTOU limitation and do not authorize later runner access.",
+        ],
+    }
 
 
 def run_read_only_preflight(

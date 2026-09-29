@@ -20,7 +20,7 @@ Caller SHA pins 只保護本機 receipt、manifest 與 raw bytes 的內容一致
 
 ## 結果
 
-CLI exit `0`、stdout JSON `status=validated`。TWSE `tables[8]` 有 35,673 列、35,673 個唯一代碼，必要代碼 2330 收盤 2,475.00、成交 26,893,348 股；TPEx `tables[0]` 有 11,730 列、11,730 個唯一代碼且 `totalCount=11730`，必要代碼 6488 收盤 945.00、成交 9,157,413 股。Receipt 內 TPEx body 結束時間為兩市場較晚者，因此輸出 `available_at_utc=2026-09-29T15:18:31.0739265+00:00`，早於 caller cutoff `2026-09-29T15:30:00Z`；成功 JSON 亦直接輸出 `cutoff_utc=2026-09-29T15:30:00Z`。Validator 要求每個市場 capture start 與 end 換算台北日期皆等於 caller `decision_date`，另有跨日 capture start/end 負控。
+CLI exit `0`、stdout JSON `status=validated`。TWSE `tables[8]` 有 35,673 列、35,673 個唯一代碼，必要代碼 2330 收盤 2,475.00、成交 26,893,348 股；TPEx `tables[0]` 有 11,730 列、11,730 個唯一代碼且 `totalCount=11730`，必要代碼 6488 收盤 945.00、成交 9,157,413 股。Validator 成功結果逐市場回傳 raw bytes 長度與 SHA-256：TWSE `4,940,389` bytes／`92b8fd6e47c626386daa96b5164efff79cfb8821bd63523ea956d2b8722c5df9`；TPEx `1,760,630` bytes／`41e64aef784e9e4b0672330800acecd5d2b06d7d7f95e51a5b391eb4f5998c4e`。Receipt 內 TPEx body 結束時間為兩市場較晚者，因此輸出 `available_at_utc=2026-09-29T15:18:31.0739265+00:00`，早於 caller cutoff `2026-09-29T15:30:00Z`；成功 JSON 亦直接輸出 `cutoff_utc=2026-09-29T15:30:00Z`。Validator 要求每個市場 capture start 與 end 換算台北日期皆等於 caller `decision_date`，另有跨日 capture start/end 負控；對 receipt 或 manifest 中任何非 `unknown`／非空的 publication-time claim 會 fail closed，不採信未簽章 `published_at`。
 
 輸出刻意保留 `official_published_at_utc=unknown`、`temporary_closure_negative_coverage=false`、`closure_gate_passed=false`、`formal_pit=false`。這只證明兩個官方全市場回應包含該日正向交易資料列；本地 body read-complete 時間是保守可得時間上界，不是官方發布時間，也不證明完整臨時休市 negative coverage、正常日 runner readiness 或正常交易日真鏈已完成。
 

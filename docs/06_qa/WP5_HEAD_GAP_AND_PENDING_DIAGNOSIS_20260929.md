@@ -85,13 +85,31 @@ Runtime API／fixture 桶後續重驗：舊 `test_task_loop_07_contract.py::test
 
 ## 9/29 真實日常鏈前置檢查與首次隔離備份中止
 
-台北 9/29 收盤後，官方年度表與本地有效年曆 cache 都將 9/29 列為**排定開市**；該 cache 同時明記 `temporary_closure_coverage=not_covered`。現行 `OfficialTradingCalendar` 在沒有正向臨時休市 sidecar 時，仍會按有效年度表回傳開市；這是程式 gate 的行為，**不是「當日無臨時休市」的完整官方證明**。正式 SQLite 以唯讀 SQL 查得 `daily_prices.MAX(日期)=20260924`（該日 1,963 筆），尚無 9/29 日價；現有正式／Shadow status 也沒有 9/29 的同日 snapshot／pipeline canonical pair。因此本次沒有把 9/29 裁為真鏈通過，也沒有啟動 updater、scheduler 或 learning child。
+台北 9/29 收盤後，官方年度表與本地有效年曆 cache 都將 9/29 列為**排定開市**；該 cache 同時明記 `temporary_closure_coverage=not_covered`。現行 `OfficialTradingCalendar` 在沒有正向臨時休市 sidecar 時，仍會按有效年度表回傳開市；這是程式 gate 的行為，**不是「當日無臨時休市」的完整官方證明**。正式 SQLite 與既有 QA snapshot 的唯讀檢查中，`daily_prices`、`technical_indicators`、`market_indices`、`industry_indices` 四表最新日期均為 `20260924`，四表的 `20260929` 列數均為 0。這只描述兩份 DB 當時可查到的資料日期與列數，不證明官方發布／可得時間。另未取得可核對的官方 9/29 個股／TPEx 即時行情回應；現有正式／Shadow status 也沒有 9/29 同日 snapshot／pipeline canonical pair。因此本次沒有把 9/29 裁為正常日真鏈通過，也沒有啟動 updater、scheduler 或 learning child。
 
 為準備新隔離資料根目錄，曾從已獲確認的 `D:/Min/Python/Project/FA_Data/sqlite/twstock.db` 以 SQLite `mode=ro`、`query_only=ON` 和 online backup API 建立 `output/qa/wp5_daily_seed_20260929_01/`。正式 DB 約 3.827 GB（934,504 個 4,096-byte pages）。首輪備份在約八分鐘後發現程序累計讀取約 1.8 TB、4.41 億次 read operations，目的 `twstock.db` 仍為 0 bytes、journal 512 bytes，且沒有成功收據；為避免持續無效讀取，已停止**本次啟動的備份程序**，保留隔離目錄供診斷。停止後正式 DB 與 WAL 的大小、修改時間仍與啟動前相同（DB 3,827,728,384 bytes、2026-09-28 12:45:09 UTC；WAL 0 bytes、12:55:10 UTC）。這是檔案層級觀測，不宣稱證明來源所有 bytes 未變。當次目的地不得用於後續 pipeline。
 
-已指派修正備份的進度可觀測性、停滯與總時限，再以合成資料回歸並獨立審查後，才可使用新的 QA root 重試。原有 `output/qa/wp5_daily_seed_20260929_01/` 不覆寫或清除。即使資料 seed 成功，也須另外完成外部 PIT／candidate DB 路徑隔離、當日官方臨時休市查核、當日行情可得時間及同日 canonical pair，才能執行真實日常鏈。
+首次中止後，原規劃是先修正備份的進度可觀測性、停滯與總時限，再以合成資料回歸並獨立審查；原有 `output/qa/wp5_daily_seed_20260929_01/` 至今保留、不覆寫。本次後續改採已核驗、由 repo ignore 排除的 QA snapshot 作來源，另建全新 QA seed root，詳見下節；這不是第二次正式 D 備份，也不改變舊中止目錄的狀態。即使 snapshot seed 成功，仍須另完成外部 PIT／candidate DB 路徑隔離、當日官方臨時休市查核、當日行情可得時間及同日 canonical pair，才能執行正常日真鏈。
 
-另以**同一個** `mode=ro`、`query_only=ON` 的 SQLite 監控連線，約每五秒讀取一次 `PRAGMA data_version`，得到 `2 → 3 → 4`；三次同時觀察的 DB／WAL 大小與修改時間均相同。依 [SQLite `data_version` 語義](https://www.sqlite.org/pragma.html#pragma_data_version)，這表示監控期間有其他連線提交變更；檔案 metadata 穩定不足以證明來源閒置。這支持首輪 backup 可能反覆重啟，但當時沒有 progress callback，尚不能確證首輪各次回退。**目前不是可確認的 writer-idle 時段，不進行第二次正式來源備份。**
+另以**同一個** `mode=ro`、`query_only=ON` 的 SQLite 監控連線，約每五秒讀取一次 `PRAGMA data_version`，得到 `2 → 3 → 4`；三次同時觀察的 DB／WAL 大小與修改時間均相同。後續另一段唯讀監控中，同一連線的 `data_version` 又由 `3 → 21`；依 [SQLite `data_version` 語義](https://www.sqlite.org/pragma.html#pragma_data_version)，讀值變動表示兩次讀取間有其他連線提交，這支持來源提交活動仍在持續，但不能識別提交者。檔案 metadata 穩定不足以證明來源閒置。這些變化支持首輪 backup 可能反覆重啟，但當時沒有 progress callback，尚不能確證首輪各次回退。**目前不是可確認的 writer-idle 時段，不進行第二次正式來源備份。**
+
+## 2026-09-29 已驗證 QA snapshot seed（seed-only）
+
+後續以固定且由 repo ignore 排除的 QA snapshot 建立新 seed root：`output/qa/wp5_verified_snapshot_seed_20260929_01/`。成功收據為 [`bootstrap_receipt.json`](../../output/qa/wp5_verified_snapshot_seed_20260929_01/bootstrap_receipt.json)，11,406 bytes，建立時間為 2026-09-29 12:08:21 UTC；`status=database_seed_created`、`source_mode=verified_qa_snapshot`。來源 snapshot 的上游收據 SHA-256 為 `15e1f66f496865f55f97e6e76d1bb291cb1cb842d42d29ee42b7e8905f5b0e83`，receipt 記錄來源檔案複製前後 identity 相同。目的 working DB 為 3,827,728,384 bytes；全檔 SHA-256 讀回值為 `c99c497657ca4ef63c73e56151d135996e3f2144ec45f8bf4b053eecf8dc5d08`，SQLite `quick_check=ok`。本次 seed 複製的是已核驗 QA snapshot；receipt 記錄未直接開啟或 stat 正式 D 路徑。首次正式 D 備份中止目錄保持原狀，沒有以此方式重試。
+
+未來函數／日期檢查的範圍只涵蓋 receipt 所列四表 `daily_prices`、`technical_indicators`、`market_indices`、`industry_indices` 各自選定的 `日期` 欄：其最大日期均為 2026-09-24，不晚於 2026-09-28 日期上限。`daily_prices` 與 `technical_indicators` 的候選 `Date`（REAL）欄未解析或掃描；其他資料表的日期欄也未掃描。receipt 明確標示 `lookahead_self_check.status=partial`、`full_database_future_date_absence_established=false`，因此不能宣稱完整資料庫已排除未來日期，更不構成官方 PIT。這份 seed 的 `ready_for_daily_pipeline=false`、`daily_chain_preflight_complete=false`；官方 calendar cache、PIT sidecars 與外部 candidate DB path 未由 bootstrap 複製或完成 freshness／路徑 preflight。
+
+bootstrap 子程序約執行 14.5 秒並產生上述成功 receipt；外層 Python／PowerShell wrapper 在將 UTF-8 中文 JSON 寫入 CP1252 stdout 時退出 1，且未保留子程序 return code。因此不宣稱 bootstrap CLI／wrapper exit 0；seed 成功的判讀依據是 bootstrap receipt 的成功狀態、全檔 SHA-256 讀回核對、SQLite quick check 與目的檔存在。這次只有 bootstrap seed，沒有執行 updater、recommendation snapshot 或 learning child，也沒有這些步驟的 receipt；沒有證明 9/29 同日更新或正常日真鏈通過。
+
+新模式的合成測試為 **14 passed**；root 重跑為 **14 passed、1 個 pytest cache warning**；獨立 seed-only review 結論為 **GO**。此 GO 僅接受該隔離 seed 方式，不延伸到 daily-pipeline preflight、正式資料、官方 PIT 或正常交易日真鏈。舊正式來源備份中止、`data_version` 外部提交活躍、未取得可核對的 9/29 個股／TPEx 即時行情回應及同日 canonical pair 缺件等歷史裁定均保留。
+
+## 2026-09-29 正常日 pipeline preflight（NO-GO；未執行 dry-run）
+
+雖已完成 seed-only QA snapshot 複製，收據仍標 `ready_for_daily_pipeline=false`，而且四張受檢表在 9/29 都沒有資料列。本次未執行 quick updater，也未執行 pipeline dry-run。官方來源觀測彼此不一致：TWSE OpenAPI [`FMTQIK`](https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK) 與 [`MI_5MINS_HIST`](https://openapi.twse.com.tw/v1/indicesReport/MI_5MINS_HIST) 約於 12:12 UTC 可讀，但回應最新日期僅到 9/24；TWSE [TAIEX 5 分鐘 HTML](https://www.twse.com.tw/indicesReport/MI_5MINS_HIST?date=&response=html) 有 9/29 指數 OHLC 列。後者不能代替 9/29 個股或 TPEx 行情的來源可得時間證明；尚未驗證官方個股／TPEx 來源是否可用，也未完成當日臨時休市 closure gate。不能由一筆 TAIEX 指數列推論全市場 9/29 行情可用。
+
+環境隔離亦未達執行條件。`scripts/scheduled/run_daily_data_update_quick.py` 的 `_default_calendar_cache_path()` 指向 repo-level `output/paper_execution_eod_replay/calendar_cache`；其 quick-updater 路徑建立 `OfficialTradingCalendar` 時沒有傳入 `temporary_closure_path`，因此不能以該路徑證明本次 QA run 已隔離且具 9/29 臨時休市檢查。該 quick updater 會呼叫 candidate DB path helper；`data_module/phase3c_backfill_runner.py::configured_candidate_db_path()` 在 process environment 缺少 `PHASE3C_CANDIDATE_DB_PATH` 時會讀取 HKCU 使用者環境值，pipeline 子程序環境以 `os.environ.copy()` 為基礎，沒有清除 PIT／candidate 外部路徑變數。因此只指定 QA `DATA_ROOT`／`OUTPUT_ROOT` 不能證明所有讀寫路徑都留在 QA root。另 `PROFILE=test` 會對明確 data/output roots 再加 `_test`；`PROFILE=prod` 搭配 QA roots 僅是待完整環境隔離後再審查的候選配置，沒有執行。
+
+最終 preflight 判定 **NO-GO**：先明確 redirect／隔離 candidate DB 與 PIT 外部路徑，核對實際解析後所有 data/output/DB 路徑，再取得可核實的官方 9/29 個股與 TPEx source availability 及 closure gate 證據，才可考慮 quick updater 或 pipeline dry-run。現有來源回應日期不一致、seed `ready=false`，且無 updater／recommendation snapshot／learning child 收據；因此不宣稱 9/29 同日更新、normal-day pipeline 或日常真鏈成功。既有 full-suite FAIL 與前述中止備份裁定均不變。
 
 ## 2026-09-29 m11 OS 前景隔離嘗試（未驗）
 

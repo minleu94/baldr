@@ -26,6 +26,9 @@ def test_script_cli_help_works_when_launched_outside_repository(tmp_path: Path) 
     )
     assert result.returncode == 0, result.stderr
     assert "--source-data-root" in result.stdout
+    assert "--source-mode" in result.stdout
+    assert "--source-snapshot-db" in result.stdout
+    assert "--snapshot-receipt" in result.stdout
     assert "--qa-root-name" in result.stdout
 
 
@@ -97,6 +100,246 @@ def _source_sidecars(source_root: Path) -> dict[str, bytes | None]:
         name: (Path(str(database) + suffix).read_bytes() if Path(str(database) + suffix).exists() else None)
         for name, suffix in (("db", ""), ("wal", "-wal"), ("shm", "-shm"))
     }
+
+
+def _create_verified_snapshot_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    latest_date: str = "2026-09-28",
+    dual_date_real: bool = False,
+) -> tuple[Path, Path, Path, str, str]:
+    repo_root = tmp_path / "synthetic_repo"
+    relative_snapshot = Path(
+        "output/qa/synthetic_upstream/formal_source_snapshot_v2/twstock.db"
+    )
+    snapshot_db = repo_root / relative_snapshot
+    snapshot_db.parent.mkdir(parents=True)
+    qa_parent = repo_root / "output" / "qa"
+    connection = sqlite3.connect(snapshot_db)
+    connection.execute("PRAGMA journal_mode=DELETE")
+    for table in bootstrap.REQUIRED_DATE_TABLES:
+        if dual_date_real and table in {"daily_prices", "technical_indicators"}:
+            connection.execute(
+                f'CREATE TABLE "{table}" ("日期" TEXT NOT NULL, "Date" REAL, "代碼" TEXT)'
+            )
+            connection.execute(
+                f'INSERT INTO "{table}" VALUES (?, ?, ?)',
+                (latest_date, 20260930.0, "2330"),
+            )
+        else:
+            connection.execute(
+                f'CREATE TABLE "{table}" ("日期" TEXT NOT NULL, "代碼" TEXT)'
+            )
+            connection.execute(
+                f'INSERT INTO "{table}" VALUES (?, ?)', (latest_date, "2330")
+            )
+    connection.commit()
+    connection.close()
+
+    inspection_date = date.fromisoformat(latest_date)
+    inspected = bootstrap._inspect_snapshot_database(
+        snapshot_db, as_of_date=inspection_date
+    )
+    size_bytes = snapshot_db.stat().st_size
+    schema = {
+        "logical_size_bytes": size_bytes,
+        "page_count": inspected["page_count"],
+        "page_size": inspected["page_size"],
+        "schema_object_count": inspected["schema_object_count"],
+        "schema_sha256": inspected["schema_sha256"],
+        "table_count": inspected["table_count"],
+        "table_row_counts": inspected["table_row_counts"],
+    }
+    snapshot_sha256 = bootstrap._full_file_sha256(snapshot_db)
+    formal_source = r"D:\synthetic-formal-data\sqlite\twstock.db"
+    before = {
+        "main": {
+            "path": formal_source,
+            "exists": True,
+            "is_regular_file": True,
+            "is_reparse_point": False,
+            "is_symlink": False,
+            "size_bytes": size_bytes,
+            "sha256": "a" * 64,
+        },
+        "wal": {
+            "path": formal_source + "-wal",
+            "exists": True,
+            "is_regular_file": True,
+            "is_reparse_point": False,
+            "is_symlink": False,
+            "size_bytes": 0,
+            "sha256": hashlib.sha256(b"").hexdigest(),
+        },
+        "shm": {
+            "path": formal_source + "-shm",
+            "exists": True,
+            "is_regular_file": True,
+            "is_reparse_point": False,
+            "is_symlink": False,
+            "size_bytes": 32768,
+            "sha256": "b" * 64,
+        },
+    }
+    upstream = {
+        "backup_pages_per_step": -1,
+        "completed_at": "2026-09-28T02:00:00+00:00",
+        "method": "sqlite3.Connection.backup from mode=ro source with query_only=ON",
+        "schema_version": bootstrap.SNAPSHOT_SCHEMA_VERSION,
+        "snapshot_data_version_checks": [1, 1, 1],
+        "snapshot_data_version_stable": True,
+        "snapshot_integrity_check": ["ok"],
+        "snapshot_journal_mode": "delete",
+        "snapshot_path": str(snapshot_db.resolve()),
+        "snapshot_schema": schema,
+        "snapshot_scope": "repo-ignored QA only; no formal-data writes",
+        "snapshot_sha256": snapshot_sha256,
+        "source_after": before,
+        "source_before": before,
+        "source_confirmation": formal_source,
+        "source_path": formal_source,
+        "source_schema": schema,
+        "source_unchanged": True,
+        "started_at": "2026-09-28T01:00:00+00:00",
+        "status": "complete",
+    }
+    receipt = snapshot_db.parent / "snapshot_receipt.json"
+    receipt_bytes = (json.dumps(upstream, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    receipt.write_bytes(receipt_bytes)
+
+    monkeypatch.setattr(bootstrap, "REPO_ROOT", repo_root)
+    monkeypatch.setattr(bootstrap, "QA_PARENT", qa_parent)
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_RELATIVE_PATH", relative_snapshot)
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_SHA256", snapshot_sha256)
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_RECEIPT_SHA256", hashlib.sha256(receipt_bytes).hexdigest())
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_SCHEMA_SHA256", schema["schema_sha256"])
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_SIZE_BYTES", size_bytes)
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_SCHEMA_OBJECT_COUNT", schema["schema_object_count"])
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_TABLE_COUNT", schema["table_count"])
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_PAGE_COUNT", schema["page_count"])
+    monkeypatch.setattr(bootstrap, "SNAPSHOT_PAGE_SIZE", schema["page_size"])
+    return snapshot_db, receipt, qa_parent, snapshot_sha256, hashlib.sha256(receipt_bytes).hexdigest()
+
+
+def test_verified_snapshot_mode_copies_pinned_bytes_without_opening_formal_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_db, upstream_receipt, qa_parent, snapshot_sha256, receipt_sha256 = (
+        _create_verified_snapshot_fixture(
+            tmp_path, monkeypatch, dual_date_real=True
+        )
+    )
+    opened_databases: list[Path] = []
+    original_connect = bootstrap._connect_read_only
+
+    def track_read_only(path: Path) -> sqlite3.Connection:
+        opened_databases.append(Path(path).resolve())
+        return original_connect(path)
+
+    monkeypatch.setattr(bootstrap, "_connect_read_only", track_read_only)
+    result = bootstrap.bootstrap_from_verified_qa_snapshot(
+        snapshot_db, upstream_receipt, qa_parent / "verified_snapshot_seed"
+    )
+    working_db = Path(result["paths"]["working_db"])
+    assert result["source_mode"] == "verified_qa_snapshot"
+    assert result["ready_for_daily_pipeline"] is False
+    assert result["daily_chain_preflight_complete"] is False
+    assert result["research_use_only"] is True
+    assert result["official_point_in_time_eligibility"] == "not_established"
+    assert "guarded_daily_tables_exclude_date" not in result
+    assert result["date_guard_scope"]["tables"] == list(bootstrap.REQUIRED_DATE_TABLES)
+    assert result["date_guard_scope"]["claim"].startswith(
+        "only each listed date_ranges entry's selected date_column max_date"
+    )
+    assert result["date_guard_scope"]["other_tables_date_scanned"] is False
+    assert result["date_guard_scope"]["unscanned_date_candidate_columns"]["daily_prices"] == [
+        "Date"
+    ]
+    assert result["date_guard_scope"]["unscanned_candidate_columns_parsed_or_normalized"] is False
+    assert result["lookahead_self_check"]["guarded_tables"] == list(
+        bootstrap.REQUIRED_DATE_TABLES
+    )
+    assert result["lookahead_self_check"]["status"] == "partial"
+    assert result["lookahead_self_check"]["all_reported_date_range_max_dates_at_or_before_2026_09_28"] is True
+    assert result["lookahead_self_check"]["full_database_future_date_absence_established"] is False
+    assert "2026_09_29_data_included_in_guarded_tables" not in result["lookahead_self_check"]
+    assert result["lookahead_self_check"]["other_tables_date_scanned"] is False
+    assert result["lineage"]["upstream_receipt_sha256"] == receipt_sha256
+    assert result["lineage"]["snapshot_sha256"] == snapshot_sha256
+    assert result["lineage"]["formal_source_path_access"]["receipt_d_paths_directly_opened_or_statted"] is False
+    assert "not bound to OS file handles" in result["source"]["filesystem_race_limitation"]
+    assert result["destination"]["quick_check"] == "ok"
+    assert result["destination"]["date_ranges"]["daily_prices"]["max_date"] == "2026-09-28"
+    assert result["destination"]["date_ranges"]["daily_prices"]["date_column"] == "日期"
+    assert result["destination"]["date_ranges"]["daily_prices"]["unscanned_date_columns"] == [
+        "Date"
+    ]
+    with closing(
+        sqlite3.connect(working_db.resolve().as_uri() + "?mode=ro", uri=True)
+    ) as reader:
+        reader.execute("PRAGMA query_only=ON")
+        assert reader.execute('SELECT "Date" FROM daily_prices').fetchone() == (
+            20260930.0,
+        )
+    assert bootstrap._full_file_sha256(working_db) == snapshot_sha256
+    assert opened_databases == [working_db.resolve(), working_db.resolve()]
+    assert not (qa_parent / "verified_snapshot_seed" / "bootstrap_failed.json").exists()
+
+
+def test_verified_snapshot_rejects_receipt_forgery_and_writes_failure_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_db, upstream_receipt, qa_parent, _, _ = _create_verified_snapshot_fixture(
+        tmp_path, monkeypatch
+    )
+    upstream_receipt.write_bytes(upstream_receipt.read_bytes() + b" ")
+    qa_root = qa_parent / "forged_receipt_seed"
+    with pytest.raises(bootstrap.BootstrapError, match="receipt SHA"):
+        bootstrap.bootstrap_from_verified_qa_snapshot(
+            snapshot_db, upstream_receipt, qa_root
+        )
+    failure = json.loads((qa_root / "bootstrap_failed.json").read_text(encoding="utf-8"))
+    assert failure["success_receipt_created"] is False
+    assert not (qa_root / "bootstrap_receipt.json").exists()
+
+
+def test_target_path_guard_detects_reparse_component(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    qa_parent = tmp_path / "qa"
+    qa_parent.mkdir()
+    target_root = qa_parent / "guarded_run"
+    data_root = target_root / "data"
+    sqlite_dir = data_root / "sqlite"
+    sqlite_dir.mkdir(parents=True)
+    monkeypatch.setattr(bootstrap, "QA_PARENT", qa_parent)
+    original_is_reparse = bootstrap._is_reparse_point
+    monkeypatch.setattr(
+        bootstrap,
+        "_is_reparse_point",
+        lambda path: Path(path) == data_root or original_is_reparse(Path(path)),
+    )
+    with pytest.raises(bootstrap.BootstrapError, match="symlink/junction"):
+        bootstrap._assert_target_path_in_qa(
+            target_root, sqlite_dir / "twstock.db"
+        )
+
+
+def test_verified_snapshot_rejects_data_after_research_date(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_db, upstream_receipt, qa_parent, _, _ = _create_verified_snapshot_fixture(
+        tmp_path, monkeypatch, latest_date="2026-09-29"
+    )
+    qa_root = qa_parent / "future_snapshot_seed"
+    with pytest.raises(bootstrap.BootstrapError, match="未來資料"):
+        bootstrap.bootstrap_from_verified_qa_snapshot(
+            snapshot_db, upstream_receipt, qa_root
+        )
+    failure = json.loads((qa_root / "bootstrap_failed.json").read_text(encoding="utf-8"))
+    assert failure["success_receipt_created"] is False
+    assert not (qa_root / "bootstrap_receipt.json").exists()
 
 
 def test_wal_source_is_backed_up_read_only_with_bounded_receipt(
@@ -269,13 +512,29 @@ def test_existing_destination_and_reparse_parent_fail_closed(
         monkeypatch.setenv("DATA_ROOT", str(source_root))
         parser = bootstrap._build_parser()
         args = parser.parse_args(["--qa-root-name", "cli_smoke"])
-        assert args.source_data_root == source_root
+        assert args.source_mode == "formal-data-root"
+        assert args.source_data_root is None
         assert args.qa_root_name == "cli_smoke"
         explicit = parser.parse_args(
             ["--source-data-root", str(source_root), "--qa-root-name", "explicit_smoke"]
         )
         assert explicit.source_data_root == source_root
         assert explicit.qa_root_name == "explicit_smoke"
+        alternate = parser.parse_args(
+            [
+                "--source-mode",
+                "verified-qa-snapshot",
+                "--source-snapshot-db",
+                str(source_root / "sqlite" / "twstock.db"),
+                "--snapshot-receipt",
+                str(source_root / "snapshot_receipt.json"),
+                "--qa-root-name",
+                "alternate_smoke",
+            ]
+        )
+        assert alternate.source_mode == "verified-qa-snapshot"
+        assert alternate.source_snapshot_db == source_root / "sqlite" / "twstock.db"
+        assert alternate.snapshot_receipt == source_root / "snapshot_receipt.json"
     finally:
         writer.close()
 

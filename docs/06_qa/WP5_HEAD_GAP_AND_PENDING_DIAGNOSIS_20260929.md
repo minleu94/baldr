@@ -13,7 +13,7 @@
 | OS TEMP／repo-output 路徑契約 | 188 | `test_build_mops_statement_batch.py::test_batch_driver_is_bounded_and_emits_child_lineage` 舊 log 拒絕非 TEMP／repo-output 根目錄；目前 HEAD 將 `TEMP`、`TMP`、basetemp 指向 OS TEMP 後，該節點 **1 passed**。其他 187 項仍須分組重驗。 |
 | 行為／CLI assertion | 48 | 包含 P0 intake CLI exit 2、decision desk snapshot assertion；異質節點，不可推定同一原因。 |
 | Windows staging rename／replace `WinError 5` | 16 | OOC setup errors 與 DB stage guard 等；未在目前 HEAD 重驗。與另一次 WP4 `os.link` `WinError 3` 的短路徑重驗不是同一問題。 |
-| 官方日曆／隔離 DB 前置缺件 | 14 | `test_position_health_transition_read_service.py::test_same_day_available_at_after_evaluator_observed_at_is_blocked` 目前 HEAD 仍先因 `official_calendar_unknown:2026-09-01,...,09-07` 失敗，且 warning 為 QA DB `unable to open database file`；測試未進入預期的 source-time 判斷，不能判該邏輯錯。 |
+| 官方日曆／隔離 DB 前置缺件 | 14 | 修補前的 `test_position_health_transition_read_service.py::test_same_day_available_at_after_evaluator_observed_at_is_blocked` 先因 `official_calendar_unknown:2026-09-01,...,09-07` 失敗，且 warning 為 QA DB `unable to open database file`；當時未進入預期的 source-time 判斷。後續 test-only 修補見下方附記。 |
 | hash／readback mismatch | 11 | R027 logical-time gate 等節點未重驗；應循 R027 自身收據與路由判讀。 |
 | runtime API／fixture mismatch | 7 | 兩個既有 test-double spy 缺口已在後續四節點路由 **4 passed**；其餘 `current_execution`／`reader_status` 等未逐項排除。 |
 | inventory drift | 3 | registry 補登後 focused **13 passed**，audit filesystem／registry **1,058／1,058**、missing／stale 0；舊全套數字保持不變。 |
@@ -58,5 +58,15 @@ m11 capture [`ad981904…json`](../../output/qa/personal_daily_product_20261006/
 2. 在下一個經官方日曆及當日來源可得時間確認的正常交易日，以**新隔離 root** 執行同日更新、同日推薦 snapshot、真 learning child、canonical 保存讀回與同 run retry；保存命令、環境、輸入／輸出 hash、child identity 和 terminal receipt。9/28 閉市 dry-run 不替代此證據。
 3. 補 OS 前景 MainWindow 操作證據。Qt widget journey 已證明 m11 的個人模型啟用、影響推薦、保存讀回與停用回退，但未證真人可見桌面路徑。
 4. 自然 20-session 到期後，以含臨時休市覆蓋的新鮮官方年曆與隔離來源逐筆核對起始價、終點價和成本綁定；缺件繼續 pending，不合成績效。樣本未成熟不妨礙研究模型個人使用，也不能聲稱已勝基準。
+
+## 2026-09-29 後續小範圍驗證（基準 `8457560b`）
+
+Luna Max 修補 `tests/test_position_health_transition_read_service.py` 的合成 fixture：原快取固定在 9/14 擷取，七天 TTL 到現在已過；沒有指定 `calendar_db_path` 時 fallback 會把快取目錄當 SQLite 開啟。修補保留七天 TTL 與早於觀察時點的合成 captured time，只在 evaluator 呼叫期間將日曆檢核時鐘固定為 `OBSERVED_AT`，並傳入 `tmp_path` 下的空白 QA SQLite。精確來源時間節點 **1 passed**，整檔隔離 **15 passed**，已到達 `source_available_at_after_observed` 斷言；沒有改 production。獨立 review 指出此測試僅覆蓋「觀察當時快取有效」的 as-of 情境，**不驗今天回溯執行時過期快取的行為**；正式 provider 仍按實際時鐘檢查 TTL、過期便 fail closed。該範圍已寫入 fixture 註記，不把測試通過解讀為 retrospective production 路徑完成。
+
+路徑分流只重跑四個精確節點：MOPS batch、calendar raw custody 在 OS TEMP basetemp 各 **1 passed**；MOPS materializer 在 repo `output/qa` basetemp **1 passed**，其父目錄須先建立。這些節點各自驗證了對應 allowlist／repo-output 契約，未覆蓋原 188 個路徑症狀。`test_live_research_gap_cli.py::test_capture_cli_confirm_writes_tmp_db` 即使改成含 `pytest` 的 OS TEMP 路徑越過 production-like DB guard，仍因 `gap_observations_created=0` **1 failed**；它是待查行為問題，不能算路徑修復。原始完整全套結果維持 FAIL。
+
+證交所 [115 年開休市表](https://www.twse.com.tw/holidaySchedule/holidaySchedule?response=html) 沒有列 9/30 休市；repo 9/28 23:15 UTC 擷取的年度 cache 將 9/30 列為計畫開市，效期至 10/5 23:15 UTC，但自列 `temporary_closure_coverage=not_covered`。這證明**排定開市**，尚未完成執行日臨時休市覆蓋與當日資料／同日 canonical pair 查核；9/30 真鏈不能預先記為通過。
+
+該 cache 是 `output/paper_execution_eod_replay/calendar_cache/twse_holiday_schedule_2026_20260928T231502681965Z_30badfe7f239.json`，`content_sha256=sha256:18ebea06674a33447384fa83a12f03ca4ce292ed43a1bd3d91c4cdc92dcefcac`。唯讀 status 檢查顯示 Shadow 9/28 snapshot `passed`、同日 pipeline `failed`（含 `official_trading_calendar_unresolved_fail_closed`）；Formal 9/28 snapshot `passed`，但其 calibration-learning latest status 不存在。這些都不是 9/30 配對。Pipeline 的受控入口為 `scripts/scheduled/run_daily_recommendation_learning_pipeline.py`，會串接 quick update、snapshot、learning；BankTaiwan wrapper 為 `scripts/scheduled/run_banktaiwan_recommendation_learning_daily.py`。**仍缺經驗證的隔離資料根目錄 bootstrap**；不得用裸拷帶 WAL 的 SQLite 或指向正式 D 的可寫 updater 來補件。當日需先完成新隔離資料與來源時鐘核對，再執行 pipeline、wrapper dry-run、真 child、canonical 讀回與同 run retry，保留每步 receipt。這些命令目前只經原始碼檢視，尚未真實執行。
 
 **目前裁定：WP5 尚未整體完成。** 受限整合與 m11 模型流程有可核對證據；全套測試、正常交易日真鏈、自然成效及 OS 前景 UI 尚未成立。MOPS prospective 來源仍需另行建立授權、來源時間、原始 hash、覆蓋及修訂證據，不能由每日快照直接升格正式 PIT。

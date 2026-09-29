@@ -6,6 +6,8 @@
 
 m11 的 19 筆仍為 pending／0 matured：Stage C 在決策日 9/29 凌晨 01:13（台北）執行，缺當日 TAIEX 基準收盤及 20-session proof，未進入逐股端點價／成本核驗。18 檔隔離日價最新 9/24；`1441` 只到 9/16，9/17–9/24 計畫開市日無該股列，停牌或來源漏件尚未判明。成本僅固定 50 bp 假設，after-cost unavailable。正常交易日真 child、OS 前景 UI、自然成熟成效與完整測試仍待驗；MOPS prospective 來源保持獨立原型線。
 
+同日後續 WP5 小範圍驗證：Position Health 合成 calendar／DB fixture 修補後整檔隔離 **15P**，精確 source-time blocker 斷言已到達；這只涵蓋 cache 在 `OBSERVED_AT` 當下有效的情境，不驗今日時鐘的回溯快取。路徑分流的 MOPS batch、materializer、calendar raw custody 各 **1P**；另一 live research gap 節點仍因 `gap_observations_created=0` **1F**，不歸因於路徑。TWSE 年度表與新年度快取僅能確認 9/30 排定開市，臨時休市覆蓋及同日更新／snapshot／pipeline pair 仍待執行日證明。完整全套 FAIL 裁定不變，細節見同一 [WP5 診斷附記](../06_qa/WP5_HEAD_GAP_AND_PENDING_DIAGNOSIS_20260929.md)。
+
 ## 2026-09-28 WP5 最新驗證狀態
 
 三項 test-only 隔離修補後，以單一 31-path source/test/doc freeze manifest 重跑 WP1–WP4、4-node 同程序環境控制與 inventory：**183 passed／2 skipped／0 failed**，audit 為 1058/1058、無 missing/stale 或 documentation drift。Workbench 84 passed、Update QA 25 passed／4 skipped、mypy 735 files 無錯、22 個變更 Python 檔 compile 通過。第一次較長 basetemp 的 WP4 route 保留一個 Windows `os.link` WinError 3；同 node／整個 WP4 及共同最終 route 改用短 basetemp 後均通過，細節與限制見 [WP5 current checkpoint](../06_qa/WP5_CHECKPOINT_CURRENT_20260928.md)。一次 8,682 項 full pytest 在這些修補前自然結束但 **FAIL**：274 failed、8,378 passed、17 skipped、13 errors；修補後未重跑 full suite，Boundary 乾淨 HEAD 抽查亦確認另一個未改測試仍有 test-double API 缺口。這些 bounded 結果不代表 WP5 完成。

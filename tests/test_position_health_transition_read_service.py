@@ -5,6 +5,7 @@ from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 import pytest
@@ -52,6 +53,18 @@ def _write_hashed(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
+# 本測試覆蓋 OBSERVED_AT 當下 cache 有效的 as-of 情境，不涵蓋今日時鐘回溯評估。
+# 正式執行仍依當前時鐘檢查 cache 有效期；過期時保持 fail-closed。
+class _FixedCalendarClock(datetime):
+    """將日曆快取檢核固定在測試 evaluator 的觀察時間。"""
+
+    @classmethod
+    def now(cls, tz: Any = None) -> datetime:
+        if tz is None:
+            return OBSERVED_AT.replace(tzinfo=None)
+        return OBSERVED_AT.astimezone(tz)
+
+
 def _contract(action: str = "exit") -> PositionThesisContract:
     return PositionThesisContract(
         position_id=POSITION_ID,
@@ -74,9 +87,10 @@ def _contract(action: str = "exit") -> PositionThesisContract:
     )
 
 
-def _write_calendar_fixture(tmp_path: Path) -> Path:
-    """Create an isolated, hash-bound annual calendar fixture for the producer."""
+def _write_calendar_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    """建立合成年度日曆快取與隔離的 QA 資料庫。"""
 
+    # 合成測試時間早於 OBSERVED_AT，不代表官方日曆實際發布時間。
     captured_at = datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc)
     raw_response = json.dumps(
         [
@@ -104,7 +118,11 @@ def _write_calendar_fixture(tmp_path: Path) -> Path:
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
         encoding="utf-8",
     )
-    return path.parent
+    qa_db_path = tmp_path / "qa_db" / "market.sqlite3"
+    qa_db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(qa_db_path):
+        pass
+    return path.parent, qa_db_path
 
 
 def _write_source_fixture(tmp_path: Path, *, action: str, metric_value: str) -> Path:
@@ -198,17 +216,22 @@ def _write_source_fixture(tmp_path: Path, *, action: str, metric_value: str) -> 
         encoding="utf-8",
     )
     output = tmp_path / "position_health_transition"
-    calendar_cache = _write_calendar_fixture(tmp_path)
-    result = evaluate_baseline_file(
-        baseline_path=baseline,
-        output_dir=output,
-        observed_at=OBSERVED_AT,
-        decision_date=DECISION_DATE,
-        thesis_registry_path=registry,
-        condition_source_path=condition,
-        metrics_source_path=metrics,
-        calendar_cache_path=calendar_cache,
-    )
+    calendar_cache, calendar_db = _write_calendar_fixture(tmp_path)
+    from data_module import official_trading_calendar
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(official_trading_calendar, "datetime", _FixedCalendarClock)
+        result = evaluate_baseline_file(
+            baseline_path=baseline,
+            output_dir=output,
+            observed_at=OBSERVED_AT,
+            decision_date=DECISION_DATE,
+            thesis_registry_path=registry,
+            condition_source_path=condition,
+            metrics_source_path=metrics,
+            calendar_cache_path=calendar_cache,
+            calendar_db_path=calendar_db,
+        )
     assert result["status"] == "passed", result.get("blockers")
     return output
 

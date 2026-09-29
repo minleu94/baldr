@@ -86,3 +86,11 @@ WinError 5 的驗證只覆蓋三個歷史代表節點及 expert 節點的兩種 
 已指派修正備份的進度可觀測性、停滯與總時限，再以合成資料回歸並獨立審查後，才可使用新的 QA root 重試。原有 `output/qa/wp5_daily_seed_20260929_01/` 不覆寫或清除。即使資料 seed 成功，也須另外完成外部 PIT／candidate DB 路徑隔離、當日官方臨時休市查核、當日行情可得時間及同日 canonical pair，才能執行真實日常鏈。
 
 另以**同一個** `mode=ro`、`query_only=ON` 的 SQLite 監控連線，約每五秒讀取一次 `PRAGMA data_version`，得到 `2 → 3 → 4`；三次同時觀察的 DB／WAL 大小與修改時間均相同。依 [SQLite `data_version` 語義](https://www.sqlite.org/pragma.html#pragma_data_version)，這表示監控期間有其他連線提交變更；檔案 metadata 穩定不足以證明來源閒置。這支持首輪 backup 可能反覆重啟，但當時沒有 progress callback，尚不能確證首輪各次回退。**目前不是可確認的 writer-idle 時段，不進行第二次正式來源備份。**
+
+## 2026-09-29 m11 OS 前景隔離嘗試（未驗）
+
+新 QA run 為 `output/qa/personal_daily_product_20261006/personal_research_ui/wp5_os_m11_20260929T103544Z/`，`prepare` 成功並保留 `receipts/isolation_manifest.json`，manifest SHA-256 `e814cfcc089038f4f281793d87b81428b449b66fa0dcb68684bd2dd646468b49`。隔離 working DB 位於 `data/_test/sqlite/twstock.db`，SHA-256 `c99c497657ca4ef63c73e56151d135996e3f2144ec45f8bf4b053eecf8dc5d08`；manifest 記錄其與來源檔案身分分離且 SQLite `query_only=true`。Learning root `output/qa/pc-fit-v7/recommendation_learning` 的唯讀 tree pin SHA-256 為 `3b84158f9ab5edb9420fbcbbc427f0d80ea675fa13a5a741a26824fe8d0f1105`。正式 D 未寫，QA run 保留。
+
+隔離 launcher log 指向該 run 的 `data/_test` 與 `output/_test`。Windows process 欄位顯示 MainWindowTitle `個人研究 QA｜隔離資料工作區`、`Responding=True`；但 `@oai/sky.list_apps()` 與 `list_windows()` 都沒有回傳唯一可操作的 Window。依 fail-closed 停止 UI 操作，未向 UI 點擊或輸入任何內容；故沒有 OS screenshot、截圖時間／路徑／hash，也沒有 launch 或 `visible_mainwindow` receipt。收到 Ctrl+C 後 launcher exit code `1`，run 的 receipts 目錄只有 isolation manifest，隔離 policy 檔也未建立。
+
+候選 `rec-cal-3f8b2c276ef316e28de3806d` 未在 UI 啟用；19 列推薦與 6000 bp 顯示、canonical 保存／讀回、停用至 `rule_only`、版本回復及相關 fresh proof 均未執行，全部 m11 前景 model journey 仍未驗。下一步須有可由 `@oai/sky` 唯一 target 的互動桌面 Window，或採用人工可見操作流程後再重驗；未取得該證據前不得宣稱 OS 前景驗收通過。

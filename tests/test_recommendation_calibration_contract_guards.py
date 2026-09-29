@@ -907,7 +907,7 @@ def test_pipeline_child_status_readback_uses_child_output_root(monkeypatch, tmp_
     assert result["child_status"]["status"] == "passed"
 
 
-def test_pipeline_main_uses_real_same_day_multiday_reuse_and_formal_technical_child(
+def test_pipeline_main_reuses_real_same_day_multiday_receipt_without_formal_writer(
     monkeypatch, tmp_path: Path
 ) -> None:
     with tempfile.TemporaryDirectory(
@@ -916,6 +916,8 @@ def test_pipeline_main_uses_real_same_day_multiday_reuse_and_formal_technical_ch
         fixture_root = Path(short_tmp)
         data_root, source_db, publication = _multi_day_verified_publication(fixture_root)
         _write_formal_quick_pointer(data_root, publication)
+        quick_path = data_root / "output" / "scheduled" / "data_update_quick" / "latest_status.json"
+        quick_before = quick_path.read_bytes()
         decision_now = datetime(2026, 9, 14, 14, 0, tzinfo=pipeline.TAIPEI)
         reuse = reuse_verified_technical_computation_receipt(
             authorized_output_roots=[data_root / "output"],
@@ -949,35 +951,19 @@ def test_pipeline_main_uses_real_same_day_multiday_reuse_and_formal_technical_ch
 
         assert result == 0
         assert [call["name"] for call in calls] == [
-            "data_update_quick",
             "official_market_events",
             "recommendation_snapshot",
             "recommendation_learning",
         ]
-        technical_call = calls[0]
-        technical_arguments = technical_call["arguments"]
-        assert technical_arguments[technical_arguments.index("--output-root") + 1] == str(
-            data_root / "output"
-        )
-        assert technical_arguments[
-            technical_arguments.index("--formal-output-root") + 1
-        ] == str(data_root / "output")
-        assert technical_arguments[technical_arguments.index("--start-date") + 1] == "2026-09-12"
-        assert technical_arguments[technical_arguments.index("--end-date") + 1] == "2026-09-14"
-        assert technical_arguments[technical_arguments.index("--status-path") + 1] == str(
-            data_root
-            / "output"
-            / "scheduled"
-            / "data_update_quick"
-            / "latest_status.json"
-        )
-        technical_environment = technical_call["environment"]
-        assert technical_environment["OUTPUT_ROOT"] == str(data_root / "output")
-        assert technical_environment["RECOMMENDATION_LEARNING_OUTPUT_ROOT"] == str(
-            data_root / "output"
-        )
-        assert technical_environment["DB_PATH"] == str(source_db)
-        for child_call in calls[1:]:
+        status = json.loads((shadow_root / "scheduled" / "recommendation_calibration_learning" / "latest_status.json").read_text(encoding="utf-8"))
+        technical_step = status["steps"]["data_update_quick"]
+        assert technical_step["status"] == "skipped"
+        assert technical_step["reason"] == "verified_existing_same_day_technical_receipt"
+        assert technical_step["source_date_start"] == "2026-09-12"
+        assert technical_step["source_date_end"] == "2026-09-14"
+        assert technical_step["technical_reuse_validation"]["status"] == "reused"
+        assert quick_path.read_bytes() == quick_before
+        for child_call in calls:
             assert child_call["environment"]["OUTPUT_ROOT"] == str(shadow_root)
             assert child_call["environment"]["RECOMMENDATION_LEARNING_OUTPUT_ROOT"] == str(
                 shadow_root
@@ -995,7 +981,7 @@ def test_pipeline_main_uses_real_same_day_multiday_reuse_and_formal_technical_ch
         ] == "sha256:" + "a" * 64
         assert learning_arguments[
             learning_arguments.index("--snapshot-invocation-output-sha256") + 1
-        ] == calls[2]["child_stdout_sha256"]
+        ] == calls[1]["child_stdout_sha256"]
         gc.collect()
 
 
@@ -1167,7 +1153,7 @@ def test_pipeline_file_path_cli_inserts_repo_root_and_reaches_technical_reuse(
     assert "ROOT_BEFORE False" in output
     assert "ROOT_AFTER True" in output
     assert "REUSE_CALLS 1" in output
-    assert "CHILDREN data_update_quick,official_market_events,recommendation_snapshot,recommendation_learning" in output
+    assert "CHILDREN official_market_events,recommendation_snapshot,recommendation_learning" in output
 
     status_path = shadow_root / "scheduled" / "recommendation_calibration_learning" / "latest_status.json"
     status = json.loads(status_path.read_text(encoding="utf-8"))

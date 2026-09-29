@@ -1061,6 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
                         )
                         if reuse.get("status") == "reused":
                             technical_plan = hinted_plan
+                            technical_plan["verified_reuse"] = reuse.get("reuse")
                             technical_plan["window_hint"] = (
                                 "formal_latest_technical_publication_verified_reuse"
                             )
@@ -1077,6 +1078,21 @@ def main(argv: list[str] | None = None) -> int:
                         "source_date_start": technical_plan.get("source_date_start"),
                         "source_date_end": technical_plan.get("source_date_end"),
                         "status_path": technical_plan.get("status_path"),
+                    }
+                elif isinstance(technical_plan.get("verified_reuse"), Mapping):
+                    # 真正重用已逐項核對 source/hash/window/clock 的收據；
+                    # 不再啟動 updater 或覆寫主排程的 latest status。
+                    technical_step = {
+                        "name": "data_update_quick",
+                        "status": "skipped",
+                        "reason": "verified_existing_same_day_technical_receipt",
+                        "source": "formal_data_root",
+                        "formal_output_root": technical_plan.get("formal_output_root"),
+                        "receipt_path": technical_plan.get("receipt_path"),
+                        "source_date_start": technical_plan.get("source_date_start"),
+                        "source_date_end": technical_plan.get("source_date_end"),
+                        "status_path": technical_plan.get("status_path"),
+                        "technical_reuse_validation": technical_plan["verified_reuse"],
                     }
                 else:
                     technical_arguments, technical_environment = _technical_child_invocation(

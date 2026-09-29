@@ -127,6 +127,23 @@ root 對 quick updater 整檔重跑為 **26 passed**，pipeline child invocation
 
 這是 daily-chain 的準備性隔離措施：它只避免 candidate path resolver 及候選 writer，沒有隔離或證明外部 PIT 路徑、temporary-closure sidecar 或當日 source-time availability。未執行真 updater、pipeline、snapshot／learning child 或正常日真鏈；9/29 同日資料、closure gate、canonical pair 仍未驗，原 preflight **NO-GO** 與 full-suite FAIL 裁定不變。
 
+## 2026-09-29 seed-only daily-chain preflight 與官方回應觀測（仍 NO-GO）
+
+唯讀 preflight 由 `data_module/wp5_daily_chain_preflight.py`、`scripts/qa_wp5_daily_chain_preflight.py`、`tests/test_wp5_daily_chain_preflight.py` 組成；root focused tests **11 passed**、compile 通過。它未接入 scheduled runner，也不呼叫 `TWStockConfig`、runner/bootstrap main、網路抓取或 candidate registry；只輸出 JSON，不建立檔案，且檢查結果為 `candidate_db_environment_read=false`、`windows_registry_read=false`。固定 seed 的實際 CLI 為預期阻擋結果：exit **2**、`seed=verified`、`isolation=bounded_verified`、`day=blocked`，缺 `annual_calendar_cache_missing`、`temporary_closure_event_receipt_missing`、`official_source_time_receipt_missing`。working DB 以 SQLite `mode=ro` 開啟並確認 `query_only=1`，`st_nlink=1`、檔案 identity 穩定、未見 sidecar；全檔 SHA-256 為 `c99c497657ca4ef63c73e56151d135996e3f2144ec45f8bf4b053eecf8dc5d08`。CLI stdout 未保存為 durable artifact，沒有固定可讀回的 preflight 收據或觀測時間。
+
+Preflight 拒絕 reparse path component，並在雜湊與唯讀 SQLite 開啟前後檢查 working DB `st_nlink==1` 及檔案 identity；隔離判定僅涵蓋明列環境欄位。這些 path／link-count 檢查不與稍後 runner 的 SQLite handle 綁定，不能防止兩者之間的並行 rename、junction 或 hardlink race，也未證明未盤點的其他環境／持久路徑來源。這只是 seed 與 bounded isolation 的唯讀檢查，不是 runner-ready；正常日真鏈仍 **NO-GO**。
+
+稍後官方 endpoint 的 9/29 HTTP 查核在記憶體中的回應找到當日列，補充了上段較早「未取得可核對回應」的狀態。下列 metadata 由 fetcher 回報；原始 bytes 均未落檔、無法獨立讀回核驗，不構成 durable custody。Capture end 是本次觀測時間，不是官方發布時間，也不能單獨證明決策時點的 source availability。
+
+| 官方 endpoint | 回應中的當日資料 | 回報的原始回應 metadata |
+| --- | --- | --- |
+| TWSE [MI_INDEX](https://www.twse.com.tw/exchangeReport/MI_INDEX?date=20260929&type=ALLBUT0999&response=html) | 9/29 市場資料列 | 2,164,160 bytes；SHA-256 `2e9f772773d1f79a93152be0ea2b222feb15a998383a10d7f79faa6f34787db9`；end `2026-09-29T14:19:36.8761941Z` |
+| TWSE [STOCK_DAY 2330](https://www.twse.com.tw/exchangeReport/STOCK_DAY?date=20260901&stockNo=2330&response=html) | 115/09/29 台積電列；收盤 2,475、成交 26,893,348 股 | 17,190 bytes；SHA-256 `2926bfc62b026eab294d5a7140a723cd62b9814cf83a5e0c9f901ea47b93dd92`；end `2026-09-29T14:19:37.1566648Z` |
+| TPEx [dailyQuotes](https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?date=2026%2F09%2F29&id=&response=json) | 115/09/29；893 家發行人、11,730 筆 | 1,760,630 bytes；SHA-256 `41e64aef784e9e4b0672330800acecd5d2b06d7d7f95e51a5b391eb4f5998c4e`；end `2026-09-29T14:31:43.9501614Z` |
+| TPEx [tradingStock 6488](https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock?code=6488&date=2026%2F09%2F01&response=json) | 115/09/29；成交 9,157 張，OHLC 940／964／930／945 | 2,273 bytes；SHA-256 `0783cef9dceb93e0d7326ba8501a675b8a931ee0f4fe7528762e205fde0eb335`；end `2026-09-29T14:31:38.5697489Z` |
+
+此記憶體內觀測補充了先前「未取得 9/29 個股／TPEx 回應」的狀態，但不補 durable custody、官方發布時間、source-time receipt、closure evidence 或同日 canonical pair，不改變 preflight blocked／真鏈 NO-GO。下一包需以 create-only 保存原始回應與 request／response metadata，再由 validator 核對 hash、交易日期、schema 及來源時間；在此之前不可視為正式 PIT 或日常鏈輸入證據。
+
 ## 2026-09-29 m11 OS 前景隔離嘗試（未驗）
 
 新 QA run 為 `output/qa/personal_daily_product_20261006/personal_research_ui/wp5_os_m11_20260929T103544Z/`，`prepare` 成功並保留 `receipts/isolation_manifest.json`，manifest SHA-256 `e814cfcc089038f4f281793d87b81428b449b66fa0dcb68684bd2dd646468b49`。隔離 working DB 位於 `data/_test/sqlite/twstock.db`，SHA-256 `c99c497657ca4ef63c73e56151d135996e3f2144ec45f8bf4b053eecf8dc5d08`；manifest 記錄其與來源檔案身分分離且 SQLite `query_only=true`。Learning root `output/qa/pc-fit-v7/recommendation_learning` 的唯讀 tree pin SHA-256 為 `3b84158f9ab5edb9420fbcbbc427f0d80ea675fa13a5a741a26824fe8d0f1105`。正式 D 未寫，QA run 保留。

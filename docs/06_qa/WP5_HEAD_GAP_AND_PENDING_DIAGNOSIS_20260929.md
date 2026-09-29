@@ -119,6 +119,14 @@ bootstrap 子程序約執行 14.5 秒並產生上述成功 receipt；外層 Pyth
 
 此外，quick updater 在 calendar gate 前仍會產生 logging、capacity 與 config 目錄等 operational writes；新增旗標不是唯讀 preflight。本輪未執行真實 updater 或 pipeline；candidate DB／PIT 外部路徑隔離仍未解，沒有正常日更新、同日 snapshot／learning child 或 9/29 日常真鏈通過證據。
 
+## 2026-09-29 candidate update 明確 skip（preparatory only）
+
+Quick updater 新增 `--skip-candidate-update`；daily recommendation learning pipeline 可接收同名旗標並傳給 quick child。指定時，quick runner 在第一次呼叫 `configured_candidate_db_path()` 前設 `candidate_db_path=None`，不查 process `PHASE3C_CANDIDATE_DB_PATH` 或 HKCU；若流程到達 candidate step，收據記為 `skipped`、reason=`operator_requested_candidate_update_skip`，不呼叫 `UpdateService.update_phase3c_candidate_range`。未指定旗標時仍走原有設定解析與 candidate 更新路徑。這只略過候選 DB 更新，不略過其他市場／技術更新，也不是唯讀 preflight。
+
+root 對 quick updater 整檔重跑為 **26 passed**，pipeline child invocation 路由 **2 passed**；兩支程式的語法檢查及 `git diff --check` 通過。若 capacity preflight 或 calendar gate 提早 return，流程會在後段 candidate step 收據之前結束，故可能沒有 candidate `skipped` step；但明確 skip 分支仍不解析候選路徑、不呼叫 updater。另有 pipeline main 整合測試在 recommendation snapshot stdout artifact create-only write/readback 階段失敗；移除 skip 旗標後同樣失敗，不能歸因於此 skip 變更，也不計入上述 child invocation 通過數。
+
+這是 daily-chain 的準備性隔離措施：它只避免 candidate path resolver 及候選 writer，沒有隔離或證明外部 PIT 路徑、temporary-closure sidecar 或當日 source-time availability。未執行真 updater、pipeline、snapshot／learning child 或正常日真鏈；9/29 同日資料、closure gate、canonical pair 仍未驗，原 preflight **NO-GO** 與 full-suite FAIL 裁定不變。
+
 ## 2026-09-29 m11 OS 前景隔離嘗試（未驗）
 
 新 QA run 為 `output/qa/personal_daily_product_20261006/personal_research_ui/wp5_os_m11_20260929T103544Z/`，`prepare` 成功並保留 `receipts/isolation_manifest.json`，manifest SHA-256 `e814cfcc089038f4f281793d87b81428b449b66fa0dcb68684bd2dd646468b49`。隔離 working DB 位於 `data/_test/sqlite/twstock.db`，SHA-256 `c99c497657ca4ef63c73e56151d135996e3f2144ec45f8bf4b053eecf8dc5d08`；manifest 記錄其與來源檔案身分分離且 SQLite `query_only=true`。Learning root `output/qa/pc-fit-v7/recommendation_learning` 的唯讀 tree pin SHA-256 為 `3b84158f9ab5edb9420fbcbbc427f0d80ea675fa13a5a741a26824fe8d0f1105`。正式 D 未寫，QA run 保留。

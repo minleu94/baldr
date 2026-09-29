@@ -106,6 +106,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="only for an already verified same-day technical receipt; status records the skip",
     )
+    parser.add_argument(
+        "--skip-candidate-update",
+        action="store_true",
+        help=(
+            "forward an explicit skip for the optional Phase 3C candidate "
+            "update to the quick updater"
+        ),
+    )
     return parser
 
 
@@ -389,6 +397,7 @@ def _technical_child_invocation(
     daily_delay_seconds: float,
     tpex_delay_seconds: float,
     broker_delay_seconds: float,
+    skip_candidate_update: bool = False,
     calendar_cache_path: Path | None = None,
     temporary_closure_path: Path | None = None,
 ) -> tuple[list[str], dict[str, str]]:
@@ -426,6 +435,8 @@ def _technical_child_invocation(
         str(plan["status_path"]),
         "--skip-broker-branch",
     ]
+    if skip_candidate_update:
+        arguments.append("--skip-candidate-update")
     if calendar_cache_path is not None:
         arguments.extend(["--calendar-cache-path", str(calendar_cache_path)])
     if temporary_closure_path is not None:
@@ -1041,6 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
                         daily_delay_seconds=args.daily_delay_seconds,
                         tpex_delay_seconds=args.tpex_delay_seconds,
                         broker_delay_seconds=args.broker_delay_seconds,
+                        skip_candidate_update=args.skip_candidate_update,
                         calendar_cache_path=args.calendar_cache_path,
                         temporary_closure_path=args.temporary_closure_path,
                     )

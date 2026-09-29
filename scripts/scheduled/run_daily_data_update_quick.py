@@ -626,6 +626,14 @@ def build_parser() -> argparse.ArgumentParser:
             "official price/index/technical source path can complete"
         ),
     )
+    parser.add_argument(
+        "--skip-candidate-update",
+        action="store_true",
+        help=(
+            "skip the optional Phase 3C candidate database update without "
+            "resolving its configured path"
+        ),
+    )
     parser.add_argument("--status-path")
     parser.add_argument(
         "--history-path",
@@ -690,7 +698,11 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging(log_path)
 
     capacity_preflight: dict[str, Any] | None = None
-    candidate_db_path = configured_candidate_db_path()
+    candidate_db_path = (
+        None
+        if args.skip_candidate_update
+        else configured_candidate_db_path()
+    )
     capacity_lock_path = Path(args.capacity_lock_path) if args.capacity_lock_path else (
         output_root / "release_v4" / HEAVY_CHAIN_LOCK_FILENAME
     )
@@ -1045,7 +1057,21 @@ def main(argv: list[str] | None = None) -> int:
             name="sync_broker_branch_to_sqlite",
             action=lambda: service.sync_source_to_sqlite("broker_branch_files", start_date, end_date),
         )
-    if failed is None:
+    if args.skip_candidate_update:
+        steps.append(
+            {
+                "name": "update_phase3c_candidate_sources",
+                "status": "skipped",
+                "message": "依明確選項略過 Phase 3C candidate 更新；未解析候選資料庫路徑",
+                "result": {
+                    "success": True,
+                    "skipped": True,
+                    "candidate_only": True,
+                    "reason": "operator_requested_candidate_update_skip",
+                },
+            }
+        )
+    elif failed is None:
         candidate_updater = getattr(service, "update_phase3c_candidate_range", None)
         if candidate_db_path is None or not callable(candidate_updater):
             steps.append(

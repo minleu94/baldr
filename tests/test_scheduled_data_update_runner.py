@@ -647,6 +647,88 @@ def test_quick_update_can_skip_optional_broker_branch_for_bounded_core_run(
     )
 
 
+def test_quick_update_can_skip_candidate_without_resolving_configured_path(
+    tmp_path, monkeypatch
+) -> None:
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
+    _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch)
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    observed = {"candidate_calls": 0}
+
+    class _FakeUpdateService:
+        def __init__(self, _config) -> None:
+            pass
+
+        def check_data_overview(self):
+            return {
+                "success": True,
+                "daily_data": {"latest_date": "2026-07-03"},
+                "technical_indicators": {"latest_date": "2026-07-03"},
+            }
+
+        def _success(self, *_args, **_kwargs):
+            return {"success": True}
+
+        update_daily = _success
+        update_tpex_daily_price_range = _success
+        sync_source_to_sqlite = _success
+        update_market = _success
+        update_industry = _success
+
+        def update_broker_branch(self, *_args, **_kwargs):
+            raise AssertionError("the test skips the optional broker branch")
+
+        def update_phase3c_candidate_range(self, **_kwargs):
+            observed["candidate_calls"] += 1
+            raise AssertionError("explicit candidate skip must not call the updater")
+
+        def check_technical_indicator_latest_coverage(self):
+            return {"success": True, "is_current": True}
+
+    def _unexpected_candidate_path_lookup():
+        raise AssertionError("explicit candidate skip must not resolve env or HKCU")
+
+    monkeypatch.setattr(runner, "UpdateService", _FakeUpdateService)
+    monkeypatch.setattr(
+        runner,
+        "configured_candidate_db_path",
+        _unexpected_candidate_path_lookup,
+    )
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
+    )
+
+    assert runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--status-path",
+            str(status_path),
+            "--skip-broker-branch",
+            "--skip-candidate-update",
+        ]
+    ) == 0
+
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    candidate_step = next(
+        item
+        for item in payload["steps"]
+        if item["name"] == "update_phase3c_candidate_sources"
+    )
+    assert payload["status"] == "passed"
+    assert candidate_step["status"] == "skipped"
+    assert candidate_step["result"]["reason"] == (
+        "operator_requested_candidate_update_skip"
+    )
+    assert observed["candidate_calls"] == 0
+
+
 def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     tmp_path, monkeypatch
 ) -> None:
@@ -656,7 +738,7 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     output_root = data_root / "output"
     status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
     candidate_path = tmp_path / "candidate" / "phase3c.sqlite"
-    observed = {"candidate_calls": 0}
+    observed = {"candidate_calls": 0, "configured_path_lookups": 0}
 
     class _FakeUpdateService:
         def __init__(self, _config) -> None:
@@ -710,7 +792,15 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
             return {"success": True, "is_current": True}
 
     monkeypatch.setattr(runner, "UpdateService", _FakeUpdateService)
-    monkeypatch.setattr(runner, "configured_candidate_db_path", lambda: candidate_path)
+    def _configured_candidate_path():
+        observed["configured_path_lookups"] += 1
+        return candidate_path
+
+    monkeypatch.setattr(
+        runner,
+        "configured_candidate_db_path",
+        _configured_candidate_path,
+    )
     monkeypatch.setattr(
         runner,
         "scheduled_now",
@@ -732,6 +822,7 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
         item for item in payload["steps"] if item["name"] == "update_phase3c_candidate_sources"
     )
     assert observed["candidate_calls"] == 1
+    assert observed["configured_path_lookups"] == 1
     assert candidate_step["status"] == "passed"
     assert candidate_step["result"]["candidate_only"] is True
     assert candidate_step["result"]["summary"]["succeeded_days_count"] == 3

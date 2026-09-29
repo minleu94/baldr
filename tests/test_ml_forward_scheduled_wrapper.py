@@ -262,15 +262,70 @@ def test_wait_uses_real_taipei_clock_and_never_sleeps_more_than_one_minute() -> 
         ]
     )
     sleeps: list[float] = []
+    observations: list[tuple[datetime, datetime]] = []
 
     reached = wrapper._wait_until_taipei_cutoff(
         now_fn=lambda: next(clock_values),
         sleep_fn=sleeps.append,
+        on_observation=lambda current, cutoff: observations.append((current, cutoff)),
     )
 
     assert reached == DECISION_AT
     assert sleeps == [pytest.approx(30.0)]
     assert all(value <= 60.0 for value in sleeps)
+    assert [item[0] for item in observations] == [DECISION_AT - timedelta(seconds=30), DECISION_AT]
+    assert all(item[1] == DECISION_AT for item in observations)
+
+
+def test_main_records_interruption_while_waiting_without_child(tmp_path, monkeypatch):
+    def wait(**kwargs):
+        kwargs["on_observation"](DECISION_AT - timedelta(minutes=15), DECISION_AT)
+        state = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+        assert state["phase"] == "waiting_for_taipei_cutoff"
+        assert state["terminal"] is False
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(wrapper, "_wait_until_taipei_cutoff", wait)
+    monkeypatch.setattr(wrapper, "run_once", lambda **k: pytest.fail("interruption must not run child"))
+    assert wrapper.main(["--status-root", str(tmp_path)]) == 130
+    state = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+    assert state["phase"] == "interrupted"
+    assert state["terminal"] is True
+    assert state["forward_credit_granted"] is False
+    assert state["terminator"] == "unknown"
+    assert json.loads(Path(state["state_path"]).read_text(encoding="utf-8")) == state
+
+
+def test_main_preserves_prior_run_custody_and_terminal_result(tmp_path, monkeypatch):
+    def wait(**kwargs):
+        kwargs["on_observation"](DECISION_AT, DECISION_AT)
+        return DECISION_AT
+
+    monkeypatch.setattr(wrapper, "_wait_until_taipei_cutoff", wait)
+    monkeypatch.setattr(wrapper, "run_once", lambda **k: ({"status": "blocked_invalid_config"}, 2))
+    assert wrapper.main(["--status-root", str(tmp_path)]) == 2
+    prior = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+    prior_path = Path(prior["state_path"])
+    prior_bytes = prior_path.read_bytes()
+    assert prior["terminal"] is True and prior["exit_code"] == 2
+    assert wrapper.main(["--status-root", str(tmp_path)]) == 2
+    assert prior_path.read_bytes() == prior_bytes
+    assert len(tuple((tmp_path / "run_state").glob("*/state.json"))) == 2
+
+
+def test_main_records_unhandled_failure_without_granting_forward_credit(tmp_path, monkeypatch):
+    monkeypatch.setattr(wrapper, "_wait_until_taipei_cutoff", lambda **k: DECISION_AT)
+
+    def fail(**kwargs):
+        raise RuntimeError("child contract unavailable")
+
+    monkeypatch.setattr(wrapper, "run_once", fail)
+    with pytest.raises(RuntimeError, match="child contract unavailable"):
+        wrapper.main(["--status-root", str(tmp_path)])
+    state = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+    assert state["phase"] == "failed"
+    assert state["terminal"] is True and state["exit_code"] == 1
+    assert state["forward_credit_granted"] is False
 
 
 def test_run_once_before_cutoff_is_blocked_without_reading_config_or_child(

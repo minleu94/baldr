@@ -24,6 +24,7 @@ import sys
 import time as time_module
 from typing import Callable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
+from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -269,6 +270,7 @@ def _wait_until_taipei_cutoff(
     *,
     now_fn: Callable[[], datetime] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
+    on_observation: Callable[[datetime, datetime], None] | None = None,
 ) -> datetime:
     """Wait on the real Taipei clock; test clocks are accepted only by tests."""
 
@@ -280,6 +282,8 @@ def _wait_until_taipei_cutoff(
             raise ValueError("scheduled Taipei clock must include timezone")
         current = current_raw.astimezone(TAIPEI)
         cutoff = _taipei_cutoff_for(current)
+        if on_observation is not None:
+            on_observation(current, cutoff)
         if current >= cutoff:
             return current
         remaining = (cutoff - current).total_seconds()
@@ -1408,14 +1412,59 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload, code = run_preflight(derived_script=args.derived_script)
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return code
-    reached = _wait_until_taipei_cutoff()
-    payload, code = run_once(
-        config_path=args.config,
-        config_root=args.config_root,
-        observed=reached,
-        derived_script=args.derived_script,
-        status_root_override=args.status_root,
-    )
+    # 等候本身也是排程執行：每次觀察留 heartbeat，不把前次成功誤當本次。
+    # 這份 operational custody 不給 forward credit，也不能識別外部 terminator。
+    state_root = (args.status_root or DEFAULT_STATUS_ROOT).expanduser().resolve()
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid4().hex[:12]
+    state_path = state_root / "run_state" / run_id / "state.json"
+    state: dict[str, object] = {
+        "schema_version": "ml-forward-runtime-state.v1", "task": TASK_NAME,
+        "run_id": run_id, "process_id": os.getpid(), "terminal": False,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "phase": "starting", "forward_credit_granted": False,
+        "broker_order_allowed": False, "terminator": "unknown",
+        "state_path": str(state_path),
+    }
+
+    def persist_state() -> None:
+        _atomic_write_json(state_path, state)
+        _atomic_write_json(state_root / "runtime_state.json", state)
+
+    def observe_wait(current: datetime, cutoff: datetime) -> None:
+        state.update({
+            "last_heartbeat_at": current.astimezone(timezone.utc).isoformat(),
+            "decision_at": cutoff.isoformat(),
+            "phase": "waiting_for_taipei_cutoff" if current < cutoff else "cutoff_reached",
+        })
+        persist_state()
+
+    persist_state()
+    try:
+        reached = _wait_until_taipei_cutoff(on_observation=observe_wait)
+        state["phase"] = "running_after_cutoff"
+        persist_state()
+        payload, code = run_once(
+            config_path=args.config,
+            config_root=args.config_root,
+            observed=reached,
+            derived_script=args.derived_script,
+            status_root_override=args.status_root,
+        )
+    except KeyboardInterrupt:
+        state.update({"phase": "interrupted", "exit_code": 130, "terminal": True,
+                      "finished_at": datetime.now(timezone.utc).isoformat()})
+        persist_state()
+        return 130
+    except Exception as error:  # noqa: BLE001 - 留下失敗 custody，不回填歷史
+        state.update({"phase": "failed", "exit_code": 1, "terminal": True,
+                      "error": f"{type(error).__name__}:{error}",
+                      "finished_at": datetime.now(timezone.utc).isoformat()})
+        persist_state()
+        raise
+    state.update({"phase": "terminal", "exit_code": code, "terminal": True,
+                  "result_status": payload.get("status"),
+                  "finished_at": datetime.now(timezone.utc).isoformat()})
+    persist_state()
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return code
 

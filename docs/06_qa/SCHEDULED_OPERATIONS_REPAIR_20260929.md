@@ -151,6 +151,15 @@ CMD inventory／registration suites：24 passed、exit 0。5 skips 全為 Window
 14 個 changed Python files py_compile 通過（包含後續 inventory inspector／tests）。
 未改 UI，未聲稱 full-suite 或真實 scheduled E2E 通過。
 
+提交後整合重驗（same committed source）：17 suites 合併為 **286 passed／5 skipped**，
+15.08 秒、exit 0，basetemp=`.tmp_scheduler_final_temp/r4`。此前較長的
+`.tmp_scheduler_final_temp/committed` 輪次為 285P／1F／5S，不刪除或改標：direct-file-path
+fixture 已到 technical reuse，接著 262 字元的 stdout artifact path 在 `Path.open("xb")`
+收到 `FileNotFoundError`，外層記 `snapshot child stdout artifact create-only write/readback 失敗`。
+相同節點改用較短 basetemp（`r3`）1P，整合 `r4` 再 286P／5S；未修改 production code、
+verifier 或 Windows long-path registry，與本機長路徑限制相符。此環境限制不冒充正式
+pipeline 故障，也不宣稱任意超長 override path 已受支援。
+
 測試 TEMP／TMP 都指定 repo 的 ignored `.tmp_scheduler_final_temp`，pytest basetemp 在
 其下，符合原有 TEMP-only guard；不是放寬正式 root 限制。使用 `-o addopts=`／
 `-p no:cacheprovider`，避免本機 pytest cache 權限干擾。第一輪未正確指定 TEMP 的

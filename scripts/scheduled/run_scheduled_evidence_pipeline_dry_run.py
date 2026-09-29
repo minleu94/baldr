@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
+import hashlib
 import json
 from json import JSONDecodeError
 import subprocess
 import sys
 from typing import Any
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.scheduled.scheduled_clock import scheduled_now
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    canonical_scheduled_decision_date,
+)
 from app_module.position_health_daily_refresh_service import PositionHealthDailyRefreshService
 from app_module.forward_position_thesis_candidate_producer import (
     bind_available_candidates,
@@ -32,6 +38,53 @@ from app_module.exit_effectiveness_read_model import (
 
 
 EXIT_EFFECTIVENESS_TIMEOUT_SECONDS = 300
+PIPELINE_TIMEOUT_SECONDS = 600
+
+
+def _scheduled_recommendation_binding(
+    output_root: Path, *, decision_date: str, observed_at: datetime,
+) -> dict[str, Any]:
+    """只讀驗證當日排程快照的精確 canonical 身份，不猜 mixed 最新結果。"""
+    path = output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    raw = path.read_bytes()
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("scheduled_recommendation_status_not_object")
+    if (
+        payload.get("task") != "baldr-recommendation-snapshot-daily"
+        or payload.get("status") != "passed"
+        or payload.get("decision_date") != decision_date
+        or payload.get("writes_recommendation_result") is not True
+        or payload.get("writes_evidence_db") is not False
+        or Path(str(payload.get("output_root", ""))).resolve() != output_root.resolve()
+    ):
+        raise ValueError("scheduled_recommendation_status_identity_mismatch")
+    checked = datetime.fromisoformat(str(payload.get("checked_at", "")).replace("Z", "+00:00"))
+    if checked.tzinfo is None or checked.utcoffset() is None or checked > observed_at:
+        raise ValueError("scheduled_recommendation_clock_invalid")
+    if checked.date().isoformat() != decision_date:
+        raise ValueError("scheduled_recommendation_clock_date_mismatch")
+    result_id = payload.get("result_id")
+    if not isinstance(result_id, str) or not result_id.strip():
+        raise ValueError("scheduled_recommendation_result_id_missing")
+    queries = build_recommendation_execution_queries(SimpleNamespace(output_root=output_root))
+    read_model = queries.get(result_id)
+    if read_model is None or canonical_scheduled_decision_date(read_model) != decision_date:
+        raise ValueError("scheduled_recommendation_canonical_identity_mismatch")
+    persisted_at = read_model.persisted_at
+    if (
+        persisted_at is None or persisted_at.tzinfo is None
+        or persisted_at.utcoffset() is None or persisted_at > observed_at
+    ):
+        raise ValueError("scheduled_recommendation_persisted_clock_invalid")
+    return {
+        "result_id": result_id,
+        "decision_date": decision_date,
+        "status_path": str(path.resolve()),
+        "status_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "artifact_payload_hash": read_model.payload_hash,
+        "verified_at": observed_at.astimezone(timezone.utc).isoformat(),
+    }
 
 
 def _read_status(path: Path) -> str:
@@ -387,6 +440,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--sources", default="all")
     parser.add_argument(
+        "--bind-scheduled-recommendation", action="store_true",
+        help="require the same-day saved canonical scheduled snapshot and pass its exact result ID",
+    )
+    parser.add_argument(
         "--paper-evidence-operation-root",
         help="isolated repository output root containing Paper snapshot state",
     )
@@ -518,6 +575,25 @@ def main(argv: list[str] | None = None) -> int:
     log_path = run_root / f"{run_stamp}_evidence_pipeline_dry_run.log"
     report_path = report_root / f"{today_key}_evidence_pipeline_dry_run.md"
     freshness_status_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    recommendation_binding = None
+    if args.bind_scheduled_recommendation:
+        try:
+            recommendation_binding = _scheduled_recommendation_binding(
+                output_root, decision_date=decision_date, observed_at=run_now,
+            )
+        except Exception as error:  # noqa: BLE001 - 不退回猜測 latest 或舊快照
+            payload = {
+                "task": "baldr-evidence-pipeline-dry-run-daily", "status": "failed",
+                "decision_date": decision_date, "checked_at": run_now.isoformat(),
+                "dry_run": True, "confirm": False, "writes_evidence_db": False,
+                "production_scheduler_allowed": False, "manual_action_required": True,
+                "exit_code": 2, "pipeline_summary_available": False,
+                "pipeline_execution_started": False,
+                "recommendation_binding_error": f"{type(error).__name__}:{error}",
+            }
+            status_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+            return 2
     paper_operation_root = Path(
         args.paper_evidence_operation_root
         or (REPO_ROOT / "output" / "paper_execution_eod_replay")
@@ -792,13 +868,20 @@ def main(argv: list[str] | None = None) -> int:
         "--paper-evidence-status-path",
         str(paper_status_path),
     ]
-    completed = subprocess.run(
-        command,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+    if recommendation_binding is not None:
+        command.extend(("--result-id", recommendation_binding["result_id"]))
+    pipeline_execution_error = None
+    try:
+        completed = subprocess.run(
+            command, check=False, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, timeout=PIPELINE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        pipeline_execution_error = "evidence_pipeline_child_timeout"
+        completed = subprocess.CompletedProcess(command, 2, stdout=_process_output_text(error.stdout))
+    except OSError as error:
+        pipeline_execution_error = f"evidence_pipeline_child_launch_failed:{type(error).__name__}"
+        completed = subprocess.CompletedProcess(command, 2, stdout=str(error))
     pipeline_output = _process_output_text(completed.stdout)
     pipeline_log_write_error = _persist_log(
         log_path,
@@ -899,6 +982,9 @@ def main(argv: list[str] | None = None) -> int:
         "report_path": str(report_path),
         "log_path": str(log_path),
         "pipeline_log_write_error": pipeline_log_write_error,
+        "pipeline_execution_error": pipeline_execution_error,
+        "pipeline_timeout_seconds": PIPELINE_TIMEOUT_SECONDS,
+        "recommendation_binding": recommendation_binding,
         "exit_code": wrapper_exit_code,
         "checked_at": run_now.isoformat(timespec="seconds"),
         "manual_action_required": manual_action_required,

@@ -7,8 +7,114 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from types import SimpleNamespace
+
+import pytest
 
 from scripts.scheduled import run_scheduled_evidence_pipeline_dry_run
+
+
+def _binding_fixture(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    now = datetime(2026, 9, 29, 5, 15, tzinfo=ZoneInfo("America/Los_Angeles"))
+    path = tmp_path / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    path.parent.mkdir(parents=True)
+    payload = {
+        "task": "baldr-recommendation-snapshot-daily", "status": "passed",
+        "decision_date": "2026-09-29", "checked_at": "2026-09-29T05:10:00-07:00",
+        "output_root": str(tmp_path), "result_id": "canonical-same-day",
+        "writes_recommendation_result": True, "writes_evidence_db": False,
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    model = SimpleNamespace(
+        result_id="canonical-same-day", persisted_at=now,
+        payload_hash="sha256:" + "a" * 64,
+    )
+
+    class Queries:
+        def get(self, result_id):
+            assert result_id == "canonical-same-day"
+            return model
+
+        def list(self):
+            pytest.fail("scheduled source must never guess mixed latest")
+
+    monkeypatch.setattr(runner, "build_recommendation_execution_queries", lambda config: Queries())
+    monkeypatch.setattr(runner, "canonical_scheduled_decision_date", lambda item: "2026-09-29")
+    return now, path, payload, model
+
+
+def test_binding_uses_exact_canonical_id_not_mixed_latest(tmp_path, monkeypatch):
+    now, path, _payload, _model = _binding_fixture(tmp_path, monkeypatch)
+    binding = run_scheduled_evidence_pipeline_dry_run._scheduled_recommendation_binding(
+        tmp_path, decision_date="2026-09-29", observed_at=now,
+    )
+    assert binding["result_id"] == "canonical-same-day"
+    assert binding["status_path"] == str(path.resolve())
+    assert binding["status_sha256"].startswith("sha256:")
+
+
+@pytest.mark.parametrize("changes", [
+    {"decision_date": "2026-09-28"}, {"status": "running"},
+    {"writes_recommendation_result": False}, {"output_root": "other-root"},
+    {"checked_at": "2026-09-29T05:10:00"},
+    {"checked_at": "2026-09-29T05:16:00-07:00"},
+    {"checked_at": "2026-09-28T05:10:00-07:00"}, {"result_id": ""},
+])
+def test_binding_rejects_stale_unproven_or_future_status(tmp_path, monkeypatch, changes):
+    now, path, payload, _model = _binding_fixture(tmp_path, monkeypatch)
+    payload.update(changes)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError):
+        run_scheduled_evidence_pipeline_dry_run._scheduled_recommendation_binding(
+            tmp_path, decision_date="2026-09-29", observed_at=now,
+        )
+
+
+def test_binding_rejects_missing_canonical_or_future_persistence(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    now, _path, _payload, model = _binding_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(runner, "canonical_scheduled_decision_date", lambda item: None)
+    with pytest.raises(ValueError, match="canonical_identity_mismatch"):
+        runner._scheduled_recommendation_binding(tmp_path, decision_date="2026-09-29", observed_at=now)
+    monkeypatch.setattr(runner, "canonical_scheduled_decision_date", lambda item: "2026-09-29")
+    model.persisted_at = datetime(2026, 9, 30, tzinfo=ZoneInfo("America/Los_Angeles"))
+    with pytest.raises(ValueError, match="persisted_clock_invalid"):
+        runner._scheduled_recommendation_binding(tmp_path, decision_date="2026-09-29", observed_at=now)
+
+
+def test_binding_missing_stops_before_any_child_and_records_failure(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("child must not start"))
+    assert runner.main([
+        "--dry-run", "--bind-scheduled-recommendation", "--data-root", str(tmp_path / "data"),
+        "--output-root", str(tmp_path), "--db-path", str(tmp_path / "market.db"),
+    ]) == 2
+    payload = json.loads((tmp_path / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json").read_text(encoding="utf-8"))
+    assert payload["pipeline_execution_started"] is False
+    assert payload["writes_evidence_db"] is False
+    assert payload["manual_action_required"] is True
+
+
+def test_binding_is_forwarded_and_timeout_preserves_partial_output(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    now, _path, _payload, _model = _binding_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(runner, "scheduled_now", lambda: now)
+
+    def child(command, **kwargs):
+        assert command[command.index("--result-id") + 1] == "canonical-same-day"
+        assert kwargs["timeout"] == 600
+        raise subprocess.TimeoutExpired(command, 600, output=b"partial output")
+
+    monkeypatch.setattr(subprocess, "run", child)
+    assert runner.main([
+        "--dry-run", "--bind-scheduled-recommendation", "--data-root", str(tmp_path / "data"),
+        "--output-root", str(tmp_path), "--db-path", str(tmp_path / "market.db"),
+    ]) == 2
+    payload = json.loads((tmp_path / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json").read_text(encoding="utf-8"))
+    assert payload["recommendation_binding"]["result_id"] == "canonical-same-day"
+    assert payload["pipeline_execution_error"] == "evidence_pipeline_child_timeout"
+    assert Path(payload["log_path"]).read_text(encoding="utf-8") == "partial output"
 
 
 def test_scheduled_wrapper_stdout_survives_cp1252_console_with_chinese_paths(

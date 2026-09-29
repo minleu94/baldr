@@ -64,6 +64,7 @@ if (-not (Test-Path $Python)) {
 $PythonArgs = @(
     (Join-Path $RepoRoot "scripts\scheduled\run_scheduled_evidence_pipeline_dry_run.py"),
     "--dry-run",
+    "--bind-scheduled-recommendation",
     "--refresh-paper-health",
     "--bind-forward-thesis",
     "--produce-position-health-sources",

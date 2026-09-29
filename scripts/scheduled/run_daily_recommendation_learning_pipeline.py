@@ -186,6 +186,41 @@ def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _snapshot_source_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """供下游讀取同次 snapshot 的小型狀態，不複製 learning 大型 payload。"""
+
+    steps = payload.get("steps")
+    snapshot = steps.get("recommendation_snapshot") if isinstance(steps, Mapping) else None
+    projected_step: dict[str, Any] = {}
+    if isinstance(snapshot, Mapping):
+        child = snapshot.get("child_status")
+        projected_child = (
+            {key: child.get(key) for key in (
+                "status", "decision_date", "output_root", "result_id", "snapshot_cohort",
+            )}
+            if isinstance(child, Mapping)
+            else None
+        )
+        projected_step = {
+            key: snapshot.get(key) for key in (
+                "status", "returncode", "child_receipt_error",
+                "child_stdout_artifact_path", "child_stdout_artifact_size",
+                "child_stdout_sha256",
+            )
+        }
+        projected_step["child_status"] = projected_child
+    return {
+        "schema_version": "daily-recommendation-snapshot-source.v1",
+        "task": payload.get("task"),
+        "run_id": payload.get("run_id"),
+        "decision_date": payload.get("decision_date"),
+        "output_root": payload.get("output_root"),
+        "status": payload.get("status"),
+        "completed_at": payload.get("completed_at"),
+        "steps": {"recommendation_snapshot": projected_step},
+    }
+
+
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -1291,6 +1326,15 @@ def main(argv: list[str] | None = None) -> int:
             payload["failure_stage"] = "terminal_receipt"
     payload["warnings"] = list(dict.fromkeys(str(item) for item in payload["warnings"]))
     payload["blockers"] = list(dict.fromkeys(str(item) for item in payload["blockers"]))
+    try:
+        _write_json(
+            run_root / "latest_snapshot_source_status.json",
+            _snapshot_source_projection(payload),
+        )
+    except Exception as exc:
+        payload["status"] = "failed"
+        payload["blockers"].append("snapshot_source_projection_write_failed")
+        payload["snapshot_source_projection_error_type"] = type(exc).__name__
     _write_json(status_path, payload)
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0 if payload["status"] in {"passed", "passed_with_warnings"} else 1

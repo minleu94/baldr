@@ -426,7 +426,7 @@ CSV 送入 SQLite 前會先在寫入用副本上正規化欄位與識別值：�
 
 合法假日區間沒有官方交易日會回報成功 no-op，不呼叫 API；HTTP、timeout、schema、parser、mapping 或 SQLite transaction 失敗會保留 failed／diagnostic。market／industry 同步只替換驗證過的 date keys，不會以整表 DELETE 取代增量交易。
 
-產業指數的這條 capture 路徑只保存 TWSE `MI_INDEX type=IND` 回應中符合既有 table title 與產業名稱篩選條件的列；它不證明指數成分股、個股產業 membership、上市／上櫃分類，也不代表 TPEx 或興櫃覆蓋。原始 response receipt 的 UTC 時間是本機讀完 response body 的時間，官方 `available_at`／`published_at` 保持 unknown，`historical_pit_eligible=false`。回應本身沒有可核對日期、日期與請求日不一致，或與最近較早 CSV 日期的名稱集合不同時，該日標為 degraded、等待人工確認且不改寫 CSV；不以同日舊列補齊新 response。只有本次 capture 綁定日期會進入明確 date-scoped SQLite 替換；最終 projection commit marker 要等 CSV 與 SQLite 六欄 rowset 獨立 readback 一致後才建立。批次只有在 marker 有效且目前 CSV／SQLite scoped rowset 仍相符時才可 verified skip；沒有 marker 或 capture attempt 的舊 CSV 日期保留為 unknown legacy rows，不宣稱本次已更新；只有這種 legacy skip 而沒有新的 capture 時，更新步驟回報 unknown/degraded，不會當成成功更新。已有 degraded／未完成 capture artifact、尚無有效 marker 的日期會重試。若批次只有部分日期通過，capture 日期可完成 scoped projection，但 updater 結果與 marker 保留 partial／失敗日期；quick scheduled runner 會在終止前只同步本次已驗證 capture 的日期一次，仍將整體 run 標為 failed、保留失敗日期並停止後續步驟；同步失敗時沿用 `UpdateService` 的 CSV／SQLite before-image compensation。此分支不會改走舊 CSV 整份 fallback。零 capture 的 updater 後續同步仍會拒絕以舊 CSV 做整份 fallback。下游 IndustryMapper observation 仍只描述 mapper 實際讀取的 current rows，沒有帶入 capture receipt／projection marker ID 或本機 capture time；不能由此推導 official availability 或 PIT。這個 marker 不提供官方公告時間或歷史 PIT 證據。
+產業指數的這條 capture 路徑只保存 TWSE `MI_INDEX type=IND` 回應中符合既有 table title 與產業名稱篩選條件的列；它不證明指數成分股、個股產業 membership、上市／上櫃分類，也不代表 TPEx 或興櫃覆蓋。原始 response receipt 的 UTC 時間是本機讀完 response body 的時間，官方 `available_at`／`published_at` 保持 unknown，`historical_pit_eligible=false`。回應本身沒有可核對日期、日期與請求日不一致，或與最近較早 CSV 日期的名稱集合不同時，該日標為 degraded、等待人工確認且不改寫 CSV；不以同日舊列補齊新 response。只有本次 capture 綁定日期會進入明確 date-scoped SQLite 替換；最終 projection commit marker 要等 CSV 與 SQLite 六欄 rowset 獨立 readback 一致後才建立。批次只有在 marker 有效且目前 CSV／SQLite scoped rowset 仍相符時才可 verified skip；沒有 marker 或 capture attempt 的舊 CSV 日期保留為 unknown legacy rows，不宣稱本次已更新；只有本次請求日期落入這種 legacy skip 而沒有新的 capture 時，更新步驟回報 unknown/degraded，不會當成成功更新。請求範圍外的舊日期仍是 unknown，但不會阻擋當日 verified no-op。已有 degraded／未完成 capture artifact、尚無有效 marker 的日期會重試。若批次只有部分日期通過，capture 日期可完成 scoped projection，但 updater 結果與 marker 保留 partial／失敗日期；quick scheduled runner 會在終止前只同步本次已驗證 capture 的日期一次，仍將整體 run 標為 failed、保留失敗日期並停止後續步驟；同步失敗時沿用 `UpdateService` 的 CSV／SQLite before-image compensation。此分支不會改走舊 CSV 整份 fallback。零 capture 的 updater 後續同步仍會拒絕以舊 CSV 做整份 fallback。下游 IndustryMapper observation 仍只描述 mapper 實際讀取的 current rows，沒有帶入 capture receipt／projection marker ID 或本機 capture time；不能由此推導 official availability 或 PIT。這個 marker 不提供官方公告時間或歷史 PIT 證據。
 
 月營收 MOPS snapshot 與公告／可得日 mapping 是兩個不同 gate。snapshot 可用時仍須先跑 availability validator／merge preview，再由 owner 確認後執行 `scripts/apply_monthly_revenue_recovery.py`；正式 apply 前要有 task-specific DB／mapping backup、journal、WAL transaction 與 Direct heavy-chain lock 狀態讀回。季報沒有 availability map 時顯示 `unknown`，不能用月營收或 legacy aggregate 代替。
 
@@ -2679,6 +2679,7 @@ matured=0，待後續合法來源更新後由既有排程重試。
 ```text
 <RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\latest_status.json
 <RECOMMENDATION_LEARNING_OUTPUT_ROOT>\scheduled\recommendation_calibration_learning\latest_status.json
+<RECOMMENDATION_LEARNING_OUTPUT_ROOT>\scheduled\recommendation_calibration_learning\latest_snapshot_source_status.json
 <RECOMMENDATION_LEARNING_OUTPUT_ROOT>\scheduled\data_update_quick\latest_status.json
 <RECOMMENDATION_LEARNING_OUTPUT_ROOT>\scheduled\official_market_events\latest_status.json
 <RECOMMENDATION_LEARNING_OUTPUT_ROOT>\scheduled\recommendation_snapshot\latest_status.json
@@ -2692,6 +2693,8 @@ matured=0，待後續合法來源更新後由既有排程重試。
 <RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\active_evidence\<candidate_id>\YYYY-MM-DD.json
 <RECOMMENDATION_LEARNING_OUTPUT_ROOT>\recommendation_learning\recommendation-calibration-active-pointer.json
 ```
+
+BankTaiwan 05:50 排程的 snapshot root 預設與 05:45 Legacy learning shadow root 相同（`BANKTAIWAN_SOURCE_ARTIFACT_ROOT`），不是正式 `DATA_ROOT\output`。05:45 保留完整 pipeline status 供診斷，另外原子發布 `daily-recommendation-snapshot-source.v1` 小型同次投影；BankTaiwan 優先讀投影，再依 immutable stdout、canonical artifact、cohort、日期與雜湊做唯讀回驗。沒有投影的舊輸出才讀完整 status，仍受 8 MiB 上限約束；投影存在但格式錯誤時不得回退至舊 status。若顯示 `recommendation_pipeline_status_missing_or_invalid`，先核對兩個 wrapper 的 root 與上述投影，不要複製正式 snapshot 來湊同次身分。這仍是 research-only，不提供正式 Evidence 或交易授權。
 
 判讀時先看 `dependencies`、`natural_evidence`、`active_model_natural_evidence`、`model_performance`、`candidate_blockers`、`decision_receipt` 與 `formal_order_allowed=false`。`pending` 代表等待真正成熟時間或不足門檻；`failed_dependency` 且 `finalized=false`／`recoverable=true` 代表暫時前置資料未到，可於同一 decision date 重跑；`retain_current`／`rule_only` 代表沒有通過 authority；`adopt` 只代表 shadow consumer 可讀取 versioned candidate，並不改正式 Recommendation；`rollback` 會回到完整 previous candidate，沒有可恢復 champion 時回到 explicit rule-only。pointer、artifact、manifest、lineage、policy 或 evidence receipt 損壞時一律 fail closed。目前正式 DB 的 source contract、自然 matured evidence 與成本覆蓋仍須以當次 receipt／QA 判讀，不可用 fixture、historical replay、單次 bounded run 或手動改 JSON 解除 gate。
 

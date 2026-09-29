@@ -912,6 +912,51 @@ def test_same_day_reader_uses_canonical_result_not_legacy_json_decoys(
     assert snapshot.path != decoy_path
 
 
+def test_same_day_reader_uses_bounded_shadow_projection_when_full_status_is_large(
+    tmp_path: Path,
+) -> None:
+    from scripts.scheduled import run_daily_recommendation_learning_pipeline as pipeline
+
+    args = _fixture_args(tmp_path)
+    pipeline_root = (
+        args.snapshot_output_root / "scheduled" / "recommendation_calibration_learning"
+    )
+    full_path = pipeline_root / "latest_status.json"
+    full_status = json.loads(full_path.read_text(encoding="utf-8"))
+    projection = pipeline._snapshot_source_projection(full_status)
+    assert projection["schema_version"] == "daily-recommendation-snapshot-source.v1"
+    assert projection["steps"]["recommendation_snapshot"]["child_status"]["result_id"] == (
+        full_status["steps"]["recommendation_snapshot"]["child_status"]["result_id"]
+    )
+    projection_path = pipeline_root / "latest_snapshot_source_status.json"
+    projection_path.write_text(json.dumps(projection), encoding="utf-8")
+    full_status["large_learning_only_payload"] = "x" * operational._MAX_SNAPSHOT_STATUS_BYTES
+    full_path.write_text(json.dumps(full_status), encoding="utf-8")
+
+    snapshot, reason = operational.load_same_day_snapshot(
+        output_root=args.snapshot_output_root,
+        decision_date=date.fromisoformat(args.decision_date),
+    )
+    assert snapshot is not None, reason
+
+
+def test_same_day_reader_rejects_corrupt_projection_without_full_status_fallback(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path)
+    projection_path = (
+        args.snapshot_output_root / "scheduled" / "recommendation_calibration_learning"
+        / "latest_snapshot_source_status.json"
+    )
+    projection_path.write_text("{broken", encoding="utf-8")
+    snapshot, reason = operational.load_same_day_snapshot(
+        output_root=args.snapshot_output_root,
+        decision_date=date.fromisoformat(args.decision_date),
+    )
+    assert snapshot is None
+    assert reason == "recommendation_pipeline_status_missing_or_invalid"
+
+
 @pytest.mark.parametrize(
     ("status_kind", "relative_path"),
     [

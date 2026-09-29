@@ -286,8 +286,7 @@ def resolve_operational_paths(
     snapshot_root = Path(
         snapshot_output_root
         or os.environ.get("BANKTAIWAN_SNAPSHOT_OUTPUT_ROOT")
-        or os.environ.get("OUTPUT_ROOT")
-        or formal_root / "output"
+        or source_root
     ).expanduser().resolve()
     database = Path(
         source_db
@@ -351,11 +350,17 @@ def load_same_day_snapshot(
     if not isinstance(cohort_hash, str) or not _is_sha256_text(cohort_hash):
         return None, "recommendation_snapshot_status_cohort_hash_missing_or_invalid"
 
-    pipeline_status_path = (
+    pipeline_root = (
         root
         / "scheduled"
         / "recommendation_calibration_learning"
-        / "latest_status.json"
+    )
+    projection_path = pipeline_root / "latest_snapshot_source_status.json"
+    # 新版 producer 以 bounded projection 交接；舊版 fixture／歷史輸出
+    # 沒有 projection 時仍按原契約讀 full status，且保留 8 MiB 上限。
+    use_projection = os.path.lexists(projection_path)
+    pipeline_status_path = (
+        projection_path if use_projection else pipeline_root / "latest_status.json"
     )
     pipeline_status_payload, pipeline_status_read_error = (
         _read_bounded_snapshot_status(pipeline_status_path, root=root)
@@ -363,6 +368,10 @@ def load_same_day_snapshot(
     if pipeline_status_payload is None:
         suffix = pipeline_status_read_error or "missing_or_invalid"
         return None, f"recommendation_pipeline_status_{suffix}"
+    if use_projection and pipeline_status_payload.get("schema_version") != (
+        "daily-recommendation-snapshot-source.v1"
+    ):
+        return None, "recommendation_pipeline_projection_schema_mismatch"
     if pipeline_status_payload.get("task") != "baldr-recommendation-calibration-learning-daily":
         return None, "recommendation_pipeline_status_task_mismatch"
     if pipeline_status_payload.get("decision_date") != expected_date:

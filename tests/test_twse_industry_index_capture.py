@@ -541,6 +541,49 @@ def test_batch_keeps_precontract_legacy_date_unknown_without_refetch(tmp_path, m
     assert outcome["success"] is False
 
 
+def test_batch_ignores_unknown_legacy_dates_outside_requested_window(
+    tmp_path, monkeypatch,
+):
+    from scripts import batch_update_market_and_industry_index as batch_module
+    from data_module import twse_industry_index_capture as capture_module
+
+    config = _config(tmp_path)
+    current_day = "2026-09-29"
+    historical_day = "2014-01-02"
+    monkeypatch.setattr(batch_module, "get_trading_days", lambda *_args, **_kwargs: [current_day])
+    monkeypatch.setattr(
+        batch_module, "get_existing_dates", lambda _path: {historical_day, current_day},
+    )
+
+    def verified_dates(*, candidate_dates, **_kwargs):
+        assert candidate_dates == [current_day]
+        return {current_day}
+
+    monkeypatch.setattr(capture_module, "verified_industry_projection_dates", verified_dates)
+
+    def no_capture_attempts(*, candidate_dates, **_kwargs):
+        assert candidate_dates == []
+        return set()
+
+    monkeypatch.setattr(capture_module, "industry_capture_artifact_dates", no_capture_attempts)
+
+    class NeverCalledLoader:
+        def __init__(self, _config):
+            pass
+
+        def update_industry_index(self, *_args, **_kwargs):
+            pytest.fail("verified requested date must not be refetched")
+
+    monkeypatch.setattr(batch_module, "DataLoader", NeverCalledLoader)
+    outcome = {}
+    assert batch_module.batch_update_industry_index(
+        current_day, current_day, config=config, batch_outcome=outcome,
+    ) is True
+    assert outcome["source_status"] == "verified_projection_noop"
+    assert outcome["verified_skipped_dates"] == [current_day]
+    assert outcome["unverified_legacy_dates"] == []
+
+
 def test_legacy_only_batch_fails_through_update_service_and_scheduled_step(tmp_path, monkeypatch):
     import importlib.util
 

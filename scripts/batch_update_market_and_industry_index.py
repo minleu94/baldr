@@ -372,6 +372,9 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
     existing_dates = get_existing_dates(config.industry_index_file)
     if existing_dates:
         logger.info(f"現有 industry_index.csv 中已存在 {len(existing_dates)} 天的數據")
+        # 只審核本次要求的交易日。歷史 legacy rows 仍維持 unknown，
+        # 但不能讓範圍外的舊資料阻擋當日的 verified no-op。
+        requested_existing_dates = existing_dates & set(trading_days)
         from data_module.twse_industry_index_capture import (
             industry_capture_artifact_dates,
             recover_industry_capture_receipts_for_csv,
@@ -383,14 +386,14 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
                 output_root=config.output_root,
                 csv_path=config.industry_index_file,
                 database_path=config.db_file,
-                candidate_dates=sorted(existing_dates),
+                candidate_dates=sorted(requested_existing_dates),
             ))
             attempted_dates = industry_capture_artifact_dates(
                 output_root=config.output_root,
-                candidate_dates=sorted(existing_dates - set(verified_skipped_dates)),
+                candidate_dates=sorted(requested_existing_dates - set(verified_skipped_dates)),
             )
             recovery_candidates = sorted(
-                attempted_dates & existing_dates & set(trading_days)
+                attempted_dates & requested_existing_dates
             )
             if capture_manifests is not None and recovery_candidates:
                 recovered = recover_industry_capture_receipts_for_csv(
@@ -406,11 +409,11 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
                     updated_dates.append(source_date)
         except Exception as exc:
             logger.error("無法驗證既有產業日期的 projection marker，停止略過：%s", exc)
-            failed_dates.extend(sorted(existing_dates))
+            failed_dates.extend(sorted(requested_existing_dates))
             record_outcome(False, failure_reason=str(exc))
             return False
         unverified_legacy_dates = sorted(
-            existing_dates - set(verified_skipped_dates) - attempted_dates
+            requested_existing_dates - set(verified_skipped_dates) - attempted_dates
         )
         # Legacy rows without any capture attempt may remain as explicitly
         # unknown history. Dates with an uncommitted/degraded attempt stay in

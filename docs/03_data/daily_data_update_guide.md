@@ -12,6 +12,8 @@
 
 本文檔說明如何使用主模組更新每日股票數據。系統已實現完整的數據更新功能，包括批量更新、單日更新和數據合併。
 
+產業指數批次更新只檢查本次請求交易日的 capture／projection marker。請求範圍外的舊 CSV 日期即使仍屬 unknown，也不會讓當日已驗證的 no-op 排程失敗；請求範圍內的未驗證 legacy 日期仍須回報 unknown／失敗，不可當成已更新或整份同步至 SQLite。排錯時應對照 `data_update_quick/latest_status.json` 的 `verified_skipped_dates`、`unverified_legacy_dates` 與 `failed_dates`，不要僅看 CSV 是否存在。
+
 ## 批量更新（推薦 ⭐⭐⭐）
 
 ### 使用方式

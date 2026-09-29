@@ -220,6 +220,20 @@ def _fixture_args(tmp_path: Path, *, decision_date: str = "2026-09-22") -> Names
     )
 
 
+def test_default_snapshot_root_follows_legacy_source_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BANKTAIWAN_SNAPSHOT_OUTPUT_ROOT", raising=False)
+    monkeypatch.delenv("OUTPUT_ROOT", raising=False)
+    source_root = tmp_path / "legacy-shadow"
+    paths = operational.resolve_operational_paths(
+        data_root=tmp_path / "formal-data",
+        lane_output_root=tmp_path / "banktaiwan-shadow",
+        source_artifact_root=source_root,
+    )
+    assert paths.snapshot_output_root == source_root.resolve()
+
+
 def _rewrite_snapshot_result_id(snapshot_root: Path, result_id: str) -> None:
     snapshot_status_path = (
         snapshot_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"

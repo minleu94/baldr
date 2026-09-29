@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -8,6 +9,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
+from app_module.recommendation.contracts import (
+    Context,
+    DecisionBatch,
+    ExecutionStatus,
+    RecommendationExecution,
+    Request,
+)
 from decision_module.flow_contracts import (
     BranchFlowAggregation,
     FlowSignalDTO,
@@ -44,56 +52,117 @@ def _request() -> RecommendationExecutionRequest:
     )
 
 
-def test_recommendation_detailed_progress_is_opt_in_and_cancellable() -> None:
-    class Service:
-        def __init__(self) -> None:
-            self.cancel_callback = None
+def _execution(
+    config_snapshot,
+    *,
+    result_id: str,
+    status: ExecutionStatus,
+) -> RecommendationExecution:
+    completed = status is ExecutionStatus.COMPLETED
+    return RecommendationExecution(
+        result_id=result_id,
+        request=Request(
+            config_snapshot=config_snapshot,
+            max_stocks=200,
+            top_n=50,
+        ),
+        context=Context(
+            created_at=datetime(2026, 9, 23, tzinfo=timezone.utc),
+            available_at=datetime(2026, 9, 23, tzinfo=timezone.utc),
+            decision_at=datetime(2026, 9, 23, tzinfo=timezone.utc),
+        ),
+        status=status,
+        decision=DecisionBatch() if completed else None,
+        failure_reason=None if completed else "cancelled by test",
+    )
 
-        def run_recommendation(self, **kwargs):
-            self.cancel_callback = kwargs.pop("cancel_callback", None)
-            assert kwargs["max_stocks"] == 200
-            return ["result"]
 
-    service = Service()
-    progress = []
-    result = _request().execute(
+def test_recommendation_detailed_progress_is_opt_in_and_cancellable(monkeypatch) -> None:
+    from ui_qt.views.recommendation import execution_coordinator as module
+
+    request = _request()
+    service = object()
+    calls = []
+
+    def execute(_service, runtime_config, **kwargs):
+        assert _service is service
+        calls.append((runtime_config, kwargs))
+        progress_callback = kwargs["progress"]
+        assert progress_callback is not None
+        progress_callback("recommendation_started", 10)
+        progress_callback("recommendation_body_started", 35)
+        progress_callback("recommendation_body_finished", 90)
+        if kwargs["cancel"]():
+            progress_callback("recommendation_cancelled", 100)
+            return _execution(
+                kwargs["request_config_snapshot"],
+                result_id="rec-cancelled",
+                status=ExecutionStatus.CANCELLED,
+            )
+        progress_callback("recommendation_execution_finished", 100)
+        return _execution(
+            kwargs["request_config_snapshot"],
+            result_id="rec-completed",
+            status=ExecutionStatus.COMPLETED,
+        )
+
+    monkeypatch.setattr(module, "execute_recommendation", execute)
+    cancel = lambda: True
+    detailed_progress = []
+    cancelled = request.execute(
         service,
-        progress_callback=lambda message, percentage: progress.append((message, percentage)),
-        cancellation_callback=lambda: False,
+        progress_callback=lambda message, percentage: detailed_progress.append(
+            (message, percentage)
+        ),
+        cancellation_callback=cancel,
         detailed_progress=True,
     )
 
-    assert result == ["result"]
-    assert service.cancel_callback is not None
-    assert progress == [
+    assert type(cancelled) is RecommendationExecution
+    assert cancelled.status is ExecutionStatus.CANCELLED
+    assert calls[0][1]["cancel"] is cancel
+    assert calls[0][1]["request_config_snapshot"] is request.config_snapshot
+    assert calls[0][1]["max_stocks"] == 200
+    assert calls[0][1]["top_n"] == 50
+    assert "manual_qt_snapshot" not in calls[0][0]
+    assert detailed_progress == [
         ("讀取股票數據...", 10),
         ("建立分析範圍...", 25),
         ("執行推薦規則...", 35),
         ("整理推薦結果...", 90),
-        ("分析完成", 100),
+        ("分析已取消", 100),
     ]
 
-
-def test_recommendation_cancel_before_service_keeps_old_service_contract() -> None:
-    class Service:
-        def __init__(self) -> None:
-            self.called = False
-
-        def run_recommendation(self, **kwargs):
-            self.called = True
-            return ["unexpected"]
-
-    service = Service()
-    progress = []
-    result = _request().execute(
+    summary_progress = []
+    completed = request.execute(
         service,
-        progress_callback=lambda message, percentage: progress.append((message, percentage)),
-        cancellation_callback=lambda: True,
+        progress_callback=lambda message, percentage: summary_progress.append(
+            (message, percentage)
+        ),
+        cancellation_callback=lambda: False,
     )
 
-    assert result == []
-    assert service.called is False
-    assert progress == [("讀取股票數據...", 10), ("已取消：推薦分析尚未開始", 10)]
+    assert type(completed) is RecommendationExecution
+    assert completed.status is ExecutionStatus.COMPLETED
+    assert summary_progress == [("讀取股票數據...", 10), ("分析完成", 100)]
+
+
+def test_recommendation_cancel_before_start_returns_typed_execution() -> None:
+    progress = []
+    result = _request().execute(
+        object(),
+        progress_callback=lambda message, percentage: progress.append(
+            (message, percentage)
+        ),
+        cancellation_callback=lambda: True,
+        detailed_progress=True,
+    )
+
+    assert type(result) is RecommendationExecution
+    assert result.status is ExecutionStatus.CANCELLED
+    assert result.decision is None
+    assert result.failure_reason == "cancelled_before_start"
+    assert progress == [("讀取股票數據...", 10), ("分析已取消", 100)]
 
 
 def test_recommendation_status_helpers_expose_elapsed_and_stage() -> None:

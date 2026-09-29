@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-09-29 WP5 目前 HEAD 缺口盤點
+
+以 `dev` commit `447202fca5ed453f4c0bb399c1c3156c66cef146` 為稽核基準的 [WP5 缺口與 19 筆 pending 逐筆診斷](../06_qa/WP5_HEAD_GAP_AND_PENDING_DIAGNOSIS_20260929.md) 已完成。舊 final scoped route 的 31 個 SHA pin 中，29 個仍與該基準的原始程式／測試 bytes 相同，兩個差異是後續更新文件；受限路由 183P／2S 可引用，但沒有修補後 full-suite 通過證據。舊全套 274F／13E 已按失敗節點分類，三個代表節點在該基準做小範圍重驗；推薦進度測試的過時契約已修補，整檔隔離 **8P**，尚不能外推全套。
+
+m11 的 19 筆仍為 pending／0 matured：Stage C 在決策日 9/29 凌晨 01:13（台北）執行，缺當日 TAIEX 基準收盤及 20-session proof，未進入逐股端點價／成本核驗。18 檔隔離日價最新 9/24；`1441` 只到 9/16，9/17–9/24 計畫開市日無該股列，停牌或來源漏件尚未判明。成本僅固定 50 bp 假設，after-cost unavailable。正常交易日真 child、OS 前景 UI、自然成熟成效與完整測試仍待驗；MOPS prospective 來源保持獨立原型線。
+
 ## 2026-09-28 WP5 最新驗證狀態
 
 三項 test-only 隔離修補後，以單一 31-path source/test/doc freeze manifest 重跑 WP1–WP4、4-node 同程序環境控制與 inventory：**183 passed／2 skipped／0 failed**，audit 為 1058/1058、無 missing/stale 或 documentation drift。Workbench 84 passed、Update QA 25 passed／4 skipped、mypy 735 files 無錯、22 個變更 Python 檔 compile 通過。第一次較長 basetemp 的 WP4 route 保留一個 Windows `os.link` WinError 3；同 node／整個 WP4 及共同最終 route 改用短 basetemp 後均通過，細節與限制見 [WP5 current checkpoint](../06_qa/WP5_CHECKPOINT_CURRENT_20260928.md)。一次 8,682 項 full pytest 在這些修補前自然結束但 **FAIL**：274 failed、8,378 passed、17 skipped、13 errors；修補後未重跑 full suite，Boundary 乾淨 HEAD 抽查亦確認另一個未改測試仍有 test-double API 缺口。這些 bounded 結果不代表 WP5 完成。

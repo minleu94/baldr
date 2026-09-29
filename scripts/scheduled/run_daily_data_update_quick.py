@@ -58,6 +58,7 @@ def _calendar_records_for_window(
     days: int,
     *,
     calendar: OfficialTradingCalendar | None = None,
+    allow_online_probe: bool = True,
 ) -> list[dict[str, Any]]:
     resolver = calendar or OfficialTradingCalendar(
         calendar_cache_path=_default_calendar_cache_path(),
@@ -66,7 +67,7 @@ def _calendar_records_for_window(
         reference_date,
         max(1, int(days)),
         include_reference=True,
-        allow_online_probe=True,
+        allow_online_probe=allow_online_probe,
     )
 
 
@@ -105,6 +106,115 @@ def _default_calendar_cache_path() -> Path | None:
 
     path = REPO_ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
     return path if path.is_dir() else None
+
+
+def _calendar_for_run(
+    args: argparse.Namespace,
+    *,
+    db_path: Path,
+    reference_date: date,
+) -> tuple[OfficialTradingCalendar, bool]:
+    """Resolve calendar inputs; explicit paths disable implicit fallbacks."""
+
+    cache_argument = getattr(args, "calendar_cache_path", None)
+    closure_argument = getattr(args, "temporary_closure_path", None)
+    explicit_override = cache_argument is not None or closure_argument is not None
+    if not explicit_override:
+        return (
+            OfficialTradingCalendar(
+                db_path=db_path,
+                calendar_cache_path=_default_calendar_cache_path(),
+            ),
+            True,
+        )
+
+    def resolve_existing_path(value: Path | None, label: str) -> Path | None:
+        if value is None:
+            return None
+        try:
+            path = Path(value).expanduser().resolve()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise OfficialTradingCalendarError(
+                f"explicit {label} path cannot be resolved"
+            ) from exc
+        if not path.exists():
+            raise OfficialTradingCalendarError(
+                f"explicit {label} path does not exist: {path}"
+            )
+        return path
+
+    calendar_cache_path = resolve_existing_path(
+        Path(cache_argument) if cache_argument is not None else None,
+        "calendar cache",
+    )
+    temporary_closure_path = resolve_existing_path(
+        Path(closure_argument) if closure_argument is not None else None,
+        "temporary closure cache",
+    )
+    if calendar_cache_path is None:
+        raise OfficialTradingCalendarError(
+            "an explicit temporary-closure path requires an explicit annual calendar cache"
+        )
+
+    calendar = OfficialTradingCalendar(
+        db_path=db_path,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+
+    # Validate every year this run may inspect. This ensures a missing QA cache
+    # cannot silently fall through to a live request while evidence is attached.
+    if getattr(args, "start_date", None) and getattr(args, "end_date", None):
+        start_date = date.fromisoformat(str(args.start_date))
+        end_date = date.fromisoformat(str(args.end_date))
+        first_year = min(start_date.year, end_date.year)
+        last_year = max(start_date.year, end_date.year)
+    else:
+        first_year = (reference_date - timedelta(days=92)).year
+        last_year = reference_date.year
+    required_years = range(first_year, last_year + 1)
+    for calendar_year in required_years:
+        verified = calendar._load_cached_year_schedule(calendar_year)
+        if verified is None:
+            observed, reason = calendar.is_official_trading_day(
+                reference_date,
+                allow_online_probe=False,
+            )
+            detail = reason if observed is None else "explicit annual cache unavailable"
+            raise OfficialTradingCalendarError(
+                f"explicit annual calendar cache unavailable for {calendar_year}: {detail}"
+            )
+    return calendar, False
+
+
+def _reject_invalid_temporary_closure_evidence(
+    records: list[dict[str, Any]],
+) -> None:
+    """Require positive sidecar evidence for open sessions in explicit mode."""
+
+    for record in records:
+        is_open_session = record.get("is_trading_day") is True
+        evidence = record.get("evidence")
+        if not isinstance(evidence, Mapping):
+            if is_open_session:
+                date_str = record.get("date_str", "unknown")
+                raise OfficialTradingCalendarError(
+                    "explicit temporary-closure evidence is missing for open "
+                    f"session {date_str}"
+                )
+            continue
+        scope = evidence.get("temporary_closure_scope")
+        status = scope.get("status") if isinstance(scope, Mapping) else None
+        date_str = record.get("date_str", "unknown")
+        if status == "invalid":
+            raise OfficialTradingCalendarError(
+                f"explicit temporary-closure evidence is invalid for {date_str}"
+            )
+        if is_open_session and status != "verified":
+            raise OfficialTradingCalendarError(
+                "explicit temporary-closure evidence does not positively resolve "
+                f"open session {date_str}: status={status or 'missing'}"
+            )
 
 
 def _json_safe(value: Any, *, _seen: set[int] | None = None) -> Any:
@@ -494,6 +604,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
+    parser.add_argument(
+        "--calendar-cache-path",
+        type=Path,
+        help="annual TWSE calendar cache; explicit paths disable implicit/live fallbacks",
+    )
+    parser.add_argument(
+        "--temporary-closure-path",
+        type=Path,
+        help="official temporary-closure cache file or directory",
+    )
     parser.add_argument("--window-weekdays", type=int, default=10)
     parser.add_argument("--daily-delay-seconds", type=float, default=0.5)
     parser.add_argument("--tpex-delay-seconds", type=float, default=0.5)
@@ -675,26 +795,32 @@ def main(argv: list[str] | None = None) -> int:
     if args.technical_process_pool_max_retries is not None:
         config.technical_process_pool_max_retries = args.technical_process_pool_max_retries
 
-    calendar = OfficialTradingCalendar(
-        db_path=config.db_file,
-        calendar_cache_path=_default_calendar_cache_path(),
-    )
     calendar_records: list[dict[str, Any]] = []
     try:
+        calendar, allow_calendar_online_probe = _calendar_for_run(
+            args,
+            db_path=config.db_file,
+            reference_date=run_date,
+        )
         if args.start_date and args.end_date:
             start_date = args.start_date
             end_date = args.end_date
             calendar_records = calendar.require_trading_days_in_range(
                 date.fromisoformat(start_date),
                 date.fromisoformat(end_date),
-                allow_online_probe=True,
+                allow_online_probe=allow_calendar_online_probe,
             )
+            if args.temporary_closure_path is not None:
+                _reject_invalid_temporary_closure_evidence(calendar_records)
         else:
             calendar_records = _calendar_records_for_window(
                 run_date,
                 max(1, args.window_weekdays),
                 calendar=calendar,
+                allow_online_probe=allow_calendar_online_probe,
             )
+            if args.temporary_closure_path is not None:
+                _reject_invalid_temporary_closure_evidence(calendar_records)
             start_date = str(calendar_records[0]["date_str"])
             end_date = str(calendar_records[-1]["date_str"])
     except (OfficialTradingCalendarError, ValueError) as exc:

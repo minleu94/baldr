@@ -764,11 +764,56 @@ def test_technical_child_invocation_is_formal_and_preserves_shadow_environment(
     assert arguments[arguments.index("--start-date") + 1] == "2026-09-15"
     assert arguments[arguments.index("--end-date") + 1] == "2026-09-18"
     assert arguments[arguments.index("--status-path") + 1] == plan["status_path"]
+    assert "--calendar-cache-path" not in arguments
+    assert "--temporary-closure-path" not in arguments
     assert child_environment["OUTPUT_ROOT"] == str(data_root / "output")
     assert child_environment["RECOMMENDATION_LEARNING_OUTPUT_ROOT"] == str(data_root / "output")
     assert child_environment["DB_PATH"] == str(source_db)
     assert base_environment["OUTPUT_ROOT"] == str(shadow_root)
     assert base_environment["RECOMMENDATION_LEARNING_OUTPUT_ROOT"] == str(shadow_root)
+
+
+def test_technical_child_invocation_forwards_explicit_calendar_paths(
+    tmp_path: Path,
+) -> None:
+    data_root, source_db, _receipt_path, _now = _formal_quick_fixture(tmp_path)
+    plan = pipeline._technical_child_plan(
+        data_root=data_root,
+        source_db=source_db,
+        source_date_start="2026-09-20",
+        source_date_end="2026-09-20",
+    )
+    calendar_cache_path = tmp_path / "qa-calendar"
+    temporary_closure_path = tmp_path / "qa-closures"
+
+    arguments, _environment = pipeline._technical_child_invocation(
+        data_root=data_root,
+        plan=plan,
+        base_environment={},
+        window_weekdays=10,
+        daily_delay_seconds=0.5,
+        tpex_delay_seconds=0.5,
+        broker_delay_seconds=0.5,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+    parsed = pipeline.build_parser().parse_args(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(tmp_path / "shadow"),
+            "--calendar-cache-path",
+            str(calendar_cache_path),
+            "--temporary-closure-path",
+            str(temporary_closure_path),
+        ]
+    )
+
+    assert parsed.calendar_cache_path == calendar_cache_path
+    assert parsed.temporary_closure_path == temporary_closure_path
+    assert arguments[arguments.index("--calendar-cache-path") + 1] == str(calendar_cache_path)
+    assert arguments[arguments.index("--temporary-closure-path") + 1] == str(temporary_closure_path)
 
 
 def test_explicit_skip_requires_existing_verified_reuse(monkeypatch, tmp_path: Path) -> None:

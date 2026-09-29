@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -26,6 +26,10 @@ from data_module.ml_storage_capacity import (
 from data_module.phase3c_backfill_runner import BackfillSummary
 from app_module.update_service import UpdateService
 from data_module.config import TWStockConfig
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    write_twse_calendar_cache,
+)
 from data_module.twse_industry_index_capture import (
     CSV_COLUMNS,
     atomic_write_csv_projection,
@@ -49,6 +53,245 @@ def _patch_capacity_preflight_for_unit_test(monkeypatch) -> None:
             }
         ),
     )
+
+
+def _write_test_calendar_cache(cache_root: Path, *, year: int = 2026) -> Path:
+    captured_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    raw_response = json.dumps(
+        [
+            {
+                "Name": "國曆新年開始交易日",
+                "Date": f"{year - 1911:03d}0102",
+                "Weekday": "五",
+                "Description": "國曆新年開始交易。",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache = build_twse_calendar_cache(
+        calendar_year=year,
+        raw_response=raw_response,
+        requested_at=captured_at - timedelta(seconds=1),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"Content-Type": "application/json"},
+    )
+    cache_path = cache_root / f"twse_holiday_schedule_{year}_test.json"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    write_twse_calendar_cache(
+        cache_path,
+        cache,
+        allowed_root=cache_root.parent.parent,
+    )
+    return cache_path
+
+
+def test_explicit_calendar_override_uses_only_supplied_caches_offline(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    calendar_root = tmp_path / "qa" / "calendar"
+    closure_root = tmp_path / "qa" / "temporary-closures"
+    closure_root.mkdir(parents=True)
+    _write_test_calendar_cache(calendar_root)
+    monkeypatch.setattr(
+        "data_module.official_trading_calendar.safe_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("explicit QA calendar must not probe online")
+        ),
+    )
+    args = SimpleNamespace(
+        calendar_cache_path=calendar_root,
+        temporary_closure_path=closure_root,
+        start_date="2026-09-29",
+        end_date="2026-09-29",
+    )
+    parsed = runner.build_parser().parse_args(
+        [
+            "--data-root",
+            str(tmp_path / "data"),
+            "--output-root",
+            str(tmp_path / "output"),
+            "--calendar-cache-path",
+            str(calendar_root),
+            "--temporary-closure-path",
+            str(closure_root),
+        ]
+    )
+    assert parsed.calendar_cache_path == calendar_root
+    assert parsed.temporary_closure_path == closure_root
+
+    calendar, allow_online_probe = runner._calendar_for_run(
+        args,
+        db_path=tmp_path / "missing-market.sqlite",
+        reference_date=date(2026, 9, 29),
+    )
+    records = calendar.require_trading_days_in_range(
+        date(2026, 9, 29),
+        date(2026, 9, 29),
+        allow_online_probe=allow_online_probe,
+    )
+
+    assert allow_online_probe is False
+    assert calendar.calendar_cache_path == calendar_root.resolve()
+    assert calendar.temporary_closure_path == closure_root.resolve()
+    assert records[0]["is_trading_day"] is True
+    scope = records[0]["evidence"]["temporary_closure_scope"]
+    assert scope["status"] == "not_captured"
+    assert scope["path"] == str(closure_root.resolve())
+    with pytest.raises(
+        runner.OfficialTradingCalendarError,
+        match="does not positively resolve open session",
+    ):
+        runner._reject_invalid_temporary_closure_evidence(records)
+    for open_record_without_evidence in (
+        {"date_str": "2026-09-29", "is_trading_day": True},
+        {
+            "date_str": "2026-09-29",
+            "is_trading_day": True,
+            "evidence": "not-a-mapping",
+        },
+    ):
+        with pytest.raises(
+            runner.OfficialTradingCalendarError,
+            match="evidence is missing for open session",
+        ):
+            runner._reject_invalid_temporary_closure_evidence(
+                [open_record_without_evidence]
+            )
+
+
+def test_explicit_calendar_override_fails_closed_but_legacy_uses_default(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    empty_calendar_root = tmp_path / "qa" / "empty-calendar"
+    empty_calendar_root.mkdir(parents=True)
+    closure_root = tmp_path / "qa" / "temporary-closures"
+    closure_root.mkdir()
+    monkeypatch.setattr(
+        "data_module.official_trading_calendar.safe_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("explicit QA calendar must not probe online")
+        ),
+    )
+    with pytest.raises(runner.OfficialTradingCalendarError, match="annual calendar cache unavailable"):
+        runner._calendar_for_run(
+            SimpleNamespace(
+                calendar_cache_path=empty_calendar_root,
+                temporary_closure_path=closure_root,
+                start_date="2026-09-29",
+                end_date="2026-09-29",
+            ),
+            db_path=tmp_path / "missing-market.sqlite",
+            reference_date=date(2026, 9, 29),
+        )
+    with pytest.raises(runner.OfficialTradingCalendarError, match="does not exist"):
+        runner._calendar_for_run(
+            SimpleNamespace(
+                calendar_cache_path=empty_calendar_root / "missing",
+                temporary_closure_path=None,
+            ),
+            db_path=tmp_path / "missing-market.sqlite",
+            reference_date=date(2026, 9, 29),
+        )
+
+    valid_calendar_root = tmp_path / "qa" / "valid-calendar"
+    closure_with_invalid_event = tmp_path / "qa" / "invalid-closures"
+    _write_test_calendar_cache(valid_calendar_root)
+    closure_with_invalid_event.mkdir()
+    (closure_with_invalid_event / "twse_temporary_closure_2026-09-29.json").write_text(
+        "{invalid json",
+        encoding="utf-8",
+    )
+    explicit_calendar, allow_online_probe = runner._calendar_for_run(
+        SimpleNamespace(
+            calendar_cache_path=valid_calendar_root,
+            temporary_closure_path=closure_with_invalid_event,
+            start_date="2026-09-29",
+            end_date="2026-09-29",
+        ),
+        db_path=tmp_path / "missing-market.sqlite",
+        reference_date=date(2026, 9, 29),
+    )
+    records = explicit_calendar.require_trading_days_in_range(
+        date(2026, 9, 29),
+        date(2026, 9, 29),
+        allow_online_probe=allow_online_probe,
+    )
+    with pytest.raises(runner.OfficialTradingCalendarError, match="evidence is invalid"):
+        runner._reject_invalid_temporary_closure_evidence(records)
+
+    default_calendar_root = tmp_path / "legacy-calendar"
+    monkeypatch.setattr(runner, "_default_calendar_cache_path", lambda: default_calendar_root)
+    legacy_calendar, legacy_allow_online = runner._calendar_for_run(
+        SimpleNamespace(),
+        db_path=tmp_path / "missing-market.sqlite",
+        reference_date=date(2026, 9, 29),
+    )
+    assert legacy_calendar.calendar_cache_path == default_calendar_root
+    assert legacy_calendar.temporary_closure_path is None
+    assert legacy_allow_online is True
+
+
+def test_empty_explicit_closure_cache_blocks_before_market_update_service(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "qa-data"
+    output_root = tmp_path / "qa-output"
+    calendar_root = tmp_path / "qa-calendar"
+    closure_root = tmp_path / "empty-closure-cache"
+    closure_root.mkdir()
+    _write_test_calendar_cache(calendar_root)
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: datetime(2026, 9, 29, 8, 30, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(runner, "_setup_logging", lambda _path: None)
+    monkeypatch.setattr(runner, "acquire_heavy_chain_reservation", lambda _path: object())
+    monkeypatch.setattr(runner, "release_heavy_chain_reservation", lambda _item: None)
+    monkeypatch.setattr(
+        runner,
+        "configured_candidate_db_path",
+        lambda: tmp_path / "qa-candidates.db",
+    )
+    update_service_calls: list[Path] = []
+    monkeypatch.setattr(
+        runner,
+        "UpdateService",
+        lambda config: update_service_calls.append(Path(config.db_file)),
+    )
+    status_path = tmp_path / "qa-status" / "quick-status.json"
+
+    result = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--start-date",
+            "2026-09-29",
+            "--end-date",
+            "2026-09-29",
+            "--calendar-cache-path",
+            str(calendar_root),
+            "--temporary-closure-path",
+            str(closure_root),
+            "--status-path",
+            str(status_path),
+        ]
+    )
+
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert result == 1
+    assert update_service_calls == []
+    assert status["status"] == "failed"
+    assert status["writes_market_data_db"] is False
+    assert "does not positively resolve open session 2026-09-29" in status["errors"][0]
 
 
 def test_update_diagnostic_is_ascii_safe_for_windows_stdout() -> None:

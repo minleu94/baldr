@@ -76,6 +76,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--official-retry-delay-seconds", type=int, default=2)
     parser.add_argument("--official-request-delay-seconds", type=int, default=1)
     parser.add_argument("--window-weekdays", type=int, default=10)
+    parser.add_argument(
+        "--calendar-cache-path",
+        type=Path,
+        help="annual TWSE calendar cache forwarded to the quick updater",
+    )
+    parser.add_argument(
+        "--temporary-closure-path",
+        type=Path,
+        help="official temporary-closure cache forwarded to the quick updater",
+    )
     parser.add_argument("--daily-delay-seconds", type=float, default=0.5)
     parser.add_argument("--tpex-delay-seconds", type=float, default=0.5)
     parser.add_argument("--broker-delay-seconds", type=float, default=0.5)
@@ -379,6 +389,8 @@ def _technical_child_invocation(
     daily_delay_seconds: float,
     tpex_delay_seconds: float,
     broker_delay_seconds: float,
+    calendar_cache_path: Path | None = None,
+    temporary_closure_path: Path | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     """組出 technical child command，同時保留其他 child 的 shadow routing。"""
 
@@ -414,6 +426,10 @@ def _technical_child_invocation(
         str(plan["status_path"]),
         "--skip-broker-branch",
     ]
+    if calendar_cache_path is not None:
+        arguments.extend(["--calendar-cache-path", str(calendar_cache_path)])
+    if temporary_closure_path is not None:
+        arguments.extend(["--temporary-closure-path", str(temporary_closure_path)])
     return arguments, technical_environment
 
 
@@ -1025,6 +1041,8 @@ def main(argv: list[str] | None = None) -> int:
                         daily_delay_seconds=args.daily_delay_seconds,
                         tpex_delay_seconds=args.tpex_delay_seconds,
                         broker_delay_seconds=args.broker_delay_seconds,
+                        calendar_cache_path=args.calendar_cache_path,
+                        temporary_closure_path=args.temporary_closure_path,
                     )
                     stage = "technical_child"
                     technical_step = run_child_bounded(

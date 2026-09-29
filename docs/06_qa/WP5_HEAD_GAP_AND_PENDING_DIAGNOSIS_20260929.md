@@ -151,3 +151,13 @@ Preflight 拒絕 reparse path component，並在雜湊與唯讀 SQLite 開啟前
 隔離 launcher log 指向該 run 的 `data/_test` 與 `output/_test`。Windows process 欄位顯示 MainWindowTitle `個人研究 QA｜隔離資料工作區`、`Responding=True`；但 `@oai/sky.list_apps()` 與 `list_windows()` 都沒有回傳唯一可操作的 Window。依 fail-closed 停止 UI 操作，未向 UI 點擊或輸入任何內容；故沒有 OS screenshot、截圖時間／路徑／hash，也沒有 launch 或 `visible_mainwindow` receipt。收到 Ctrl+C 後 launcher exit code `1`，run 的 receipts 目錄只有 isolation manifest，隔離 policy 檔也未建立。
 
 候選 `rec-cal-3f8b2c276ef316e28de3806d` 未在 UI 啟用；19 列推薦與 6000 bp 顯示、canonical 保存／讀回、停用至 `rule_only`、版本回復及相關 fresh proof 均未執行，全部 m11 前景 model journey 仍未驗。下一步須有可由 `@oai/sky` 唯一 target 的互動桌面 Window，或採用人工可見操作流程後再重驗；未取得該證據前不得宣稱 OS 前景驗收通過。
+
+## 2026-09-29 TPEx raw-to-row-binding QA 驗證器（準備性；無真實 run 收據）
+
+新增 QA-only 驗證器 `data_module/qa_tpex_daily_row_binding.py`、獨立 CLI `scripts/qa_validate_tpex_daily_row_binding.py` 與 synthetic 測試 `tests/test_qa_tpex_daily_row_binding.py`。CLI 要求明確指定 terminal status 路徑與 `--expected-run-id`，只接受 `output/qa` 的直接子目錄；不啟動 updater、不寫 SQLite。驗證器核對 terminal run 身分、TPEx step 的 `source_custody`、capture observation 時間是否落在該 run 時窗、raw response／first receipt／observation receipt 的完整 SHA-256 與 receipt self-hash，並用既有 TPEx parser／normalizer 重建列。
+
+對每個有 capture 的日期，驗證器逐列比較 parser 重建列、`daily_price_tpex/YYYYMMDD.csv` 與隔離 QA `daily_prices` 的 17 欄值，使用 `(證券代號, 日期)` 自然鍵及 Decimal／整數 canonical 比較；若同日 TWSE CSV 有相同鍵則阻擋。SQLite 以 `mode=ro` 與 `query_only=1` 開啟，要求 working DB `st_nlink=1`、唯一自然鍵約束，使用 read transaction 並檢查 DB／WAL metadata 穩定。在 CLI 正常路徑中，只有所有比對成功才會在 QA output 原子 create-only 發布 row-binding receipt；收據不計算整個 DB SHA-256，並固定標示 `formal_pit_proof=false`、`ready_for_daily_pipeline=false`。模組的 public publisher 可被單獨呼叫；它只檢查傳入 mapping 的 `status` 與 readiness flag，不能證明驗證曾執行或成功，因此本身不是驗證邊界。
+
+合成正向與負向路由為 **7 passed**；三個新增 Python 檔案 `py_compile` 通過，CLI 從 repo root 執行 `--help` exit 0。pytest 有一項本機 cache 寫入權限 warning，不影響測試結果。未執行真實 updater、quick run 或 pipeline，也沒有在本輪讀寫正式 D。**9/29 目前沒有當次 quick terminal status 可供明確 run-id 綁定，因此此驗證器無法對 9/29 真資料出具 row-binding receipt。**
+
+此收據的證明範圍只涵蓋列出的 TPEx raw response → 當日 TPEx CSV → 隔離 QA `daily_prices` 列值，且 TWSE 碰撞檢查只涵蓋同日 TWSE CSV 中可觀察的鍵；capture time 是本程序讀完 body 的時間，不代表官方發布時間或歷史 PIT 可得性。檔案讀取採 `stat`／`read_bytes`／`stat`、mtime 與大小檢查，64 MiB 上限只在讀取前檢查；這些不是 handle-bound，不能排除檢查與讀取期間的大小增長、同大小改寫或惡意並行 namespace swap。真實 QA run 仍須先有當次 terminal status、custody、日曆／closure 與 source-time 前置證據。正常日真鏈維持 **NO-GO**。

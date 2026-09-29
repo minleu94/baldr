@@ -70,3 +70,13 @@ Luna Max 修補 `tests/test_position_health_transition_read_service.py` 的合�
 該 cache 是 `output/paper_execution_eod_replay/calendar_cache/twse_holiday_schedule_2026_20260928T231502681965Z_30badfe7f239.json`，`content_sha256=sha256:18ebea06674a33447384fa83a12f03ca4ce292ed43a1bd3d91c4cdc92dcefcac`。唯讀 status 檢查顯示 Shadow 9/28 snapshot `passed`、同日 pipeline `failed`（含 `official_trading_calendar_unresolved_fail_closed`）；Formal 9/28 snapshot `passed`，但其 calibration-learning latest status 不存在。這些都不是 9/30 配對。Pipeline 的受控入口為 `scripts/scheduled/run_daily_recommendation_learning_pipeline.py`，會串接 quick update、snapshot、learning；BankTaiwan wrapper 為 `scripts/scheduled/run_banktaiwan_recommendation_learning_daily.py`。**仍缺經驗證的隔離資料根目錄 bootstrap**；不得用裸拷帶 WAL 的 SQLite 或指向正式 D 的可寫 updater 來補件。當日需先完成新隔離資料與來源時鐘核對，再執行 pipeline、wrapper dry-run、真 child、canonical 讀回與同 run retry，保留每步 receipt。這些命令目前只經原始碼檢視，尚未真實執行。
 
 **目前裁定：WP5 尚未整體完成。** 受限整合與 m11 模型流程有可核對證據；全套測試、正常交易日真鏈、自然成效及 OS 前景 UI 尚未成立。MOPS prospective 來源仍需另行建立授權、來源時間、原始 hash、覆蓋及修訂證據，不能由每日快照直接升格正式 PIT。
+
+## 9/29 真實日常鏈前置檢查與首次隔離備份中止
+
+台北 9/29 收盤後，官方年度表與本地有效年曆 cache 都將 9/29 列為**排定開市**；該 cache 同時明記 `temporary_closure_coverage=not_covered`。現行 `OfficialTradingCalendar` 在沒有正向臨時休市 sidecar 時，仍會按有效年度表回傳開市；這是程式 gate 的行為，**不是「當日無臨時休市」的完整官方證明**。正式 SQLite 以唯讀 SQL 查得 `daily_prices.MAX(日期)=20260924`（該日 1,963 筆），尚無 9/29 日價；現有正式／Shadow status 也沒有 9/29 的同日 snapshot／pipeline canonical pair。因此本次沒有把 9/29 裁為真鏈通過，也沒有啟動 updater、scheduler 或 learning child。
+
+為準備新隔離資料根目錄，曾從已獲確認的 `D:/Min/Python/Project/FA_Data/sqlite/twstock.db` 以 SQLite `mode=ro`、`query_only=ON` 和 online backup API 建立 `output/qa/wp5_daily_seed_20260929_01/`。正式 DB 約 3.827 GB（934,504 個 4,096-byte pages）。首輪備份在約八分鐘後發現程序累計讀取約 1.8 TB、4.41 億次 read operations，目的 `twstock.db` 仍為 0 bytes、journal 512 bytes，且沒有成功收據；為避免持續無效讀取，已停止**本次啟動的備份程序**，保留隔離目錄供診斷。停止後正式 DB 與 WAL 的大小、修改時間仍與啟動前相同（DB 3,827,728,384 bytes、2026-09-28 12:45:09 UTC；WAL 0 bytes、12:55:10 UTC）。這是檔案層級觀測，不宣稱證明來源所有 bytes 未變。當次目的地不得用於後續 pipeline。
+
+已指派修正備份的進度可觀測性、停滯與總時限，再以合成資料回歸並獨立審查後，才可使用新的 QA root 重試。原有 `output/qa/wp5_daily_seed_20260929_01/` 不覆寫或清除。即使資料 seed 成功，也須另外完成外部 PIT／candidate DB 路徑隔離、當日官方臨時休市查核、當日行情可得時間及同日 canonical pair，才能執行真實日常鏈。
+
+另以**同一個** `mode=ro`、`query_only=ON` 的 SQLite 監控連線，約每五秒讀取一次 `PRAGMA data_version`，得到 `2 → 3 → 4`；三次同時觀察的 DB／WAL 大小與修改時間均相同。依 [SQLite `data_version` 語義](https://www.sqlite.org/pragma.html#pragma_data_version)，這表示監控期間有其他連線提交變更；檔案 metadata 穩定不足以證明來源閒置。這支持首輪 backup 可能反覆重啟，但當時沒有 progress callback，尚不能確證首輪各次回退。**目前不是可確認的 writer-idle 時段，不進行第二次正式來源備份。**

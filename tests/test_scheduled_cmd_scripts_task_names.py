@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -153,13 +154,17 @@ def test_query_and_unregister_cmd_include_all_task_names() -> None:
     assert "baldr-evidence-working-copy-smoke-manual" in unregister_text
 
 
-def test_query_cmd_returns_nonzero_when_a_task_is_missing(tmp_path: Path) -> None:
+@pytest.mark.parametrize("missing_task", [
+    "baldr-ml-allocation-copilot-daily",
+    "baldr-recommendation-calibration-learning-banktaiwan-shadow-daily",
+])
+def test_query_cmd_returns_nonzero_when_a_task_is_missing(tmp_path: Path, missing_task: str) -> None:
     fake_schtasks = tmp_path / "fake_schtasks.cmd"
     fake_schtasks.write_text(
         "\n".join(
             (
                 "@echo off",
-                "echo %* | findstr /C:\"baldr-ml-allocation-copilot-daily\" >nul",
+                f"echo %* | findstr /C:\"{missing_task}\" >nul",
                 "if not errorlevel 1 exit /b 1",
                 "exit /b 0",
             )
@@ -184,8 +189,8 @@ def test_query_cmd_returns_nonzero_when_a_task_is_missing(tmp_path: Path) -> Non
     )
 
     assert result.returncode == 1
-    assert "Task not found: baldr-ml-allocation-copilot-daily" in result.stdout
-    assert "1 of 20 task(s) missing or unavailable" in result.stdout
+    assert f"Task not found: {missing_task}" in result.stdout
+    assert "1 of 21 task(s) missing or unavailable" in result.stdout
 
 
 def test_query_cmd_returns_zero_when_all_tasks_exist(tmp_path: Path) -> None:
@@ -209,7 +214,7 @@ def test_query_cmd_returns_zero_when_all_tasks_exist(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "all 20 task(s) are available" in result.stdout
+    assert "all 21 task(s) are available" in result.stdout
 
 
 def test_weekly_register_creates_only_the_sunday_sidecar_collection_task() -> None:

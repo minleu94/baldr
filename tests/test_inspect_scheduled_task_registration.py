@@ -57,6 +57,17 @@ def test_scheduler_registration_probe_is_query_only_and_redacts_raw_output() -> 
     assert all("output" not in item for item in report["tasks"])
 
 
+def test_registration_inspector_and_cmd_query_cover_identical_twenty_one_tasks() -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts/scheduled/query_baldr_scheduled_tasks.cmd"
+    lines = script.read_text(encoding="utf-8").splitlines()
+    daily = next(line.removeprefix("set TASKS=").split() for line in lines if line.startswith("set TASKS="))
+    weekly = next(line.removeprefix("set WEEKLY_TASK=") for line in lines if line.startswith("set WEEKLY_TASK="))
+    names = [spec["name"] for spec in EXPECTED_TASKS]
+    assert len(names) == len(set(names)) == 21
+    assert set(names) == set(daily + [weekly]) == set(TASK_WRAPPER_PATHS)
+    assert next(spec["schedule"] for spec in EXPECTED_TASKS if spec["name"].endswith("banktaiwan-shadow-daily")) == "DAILY 05:50"
+
+
 def test_scheduler_registration_probe_counts_missing_tasks() -> None:
     def fake_run(command, **kwargs):
         name = command[3]

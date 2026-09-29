@@ -50,6 +50,15 @@ DEFAULT_PUBLICATION_ROOT = ROOT / "output" / "formal_daily_publications"
 PIT_TAXONOMY_PREOPEN_ROOT_ENV = "PIT_TAXONOMY_PREOPEN_ROOT"
 
 
+class _OfflinePITHistoryCalendar(OfficialTradingCalendar):
+    """歷史覆蓋與前置 gate 共用離線 calendar，缺 cache 不做 HTTP 補證。"""
+
+    def is_official_trading_day(
+        self, target_date: date, allow_online_probe: bool = True,
+    ) -> tuple[bool | None, str]:
+        return super().is_official_trading_day(target_date, allow_online_probe=False)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -331,7 +340,14 @@ def run_sidecar(
             decision_at=decision,
             expected_universe_path=denominator,
             coverage_start=coverage_start,
-            calendar=OfficialTradingCalendar(),
+            calendar=_OfflinePITHistoryCalendar(
+                db_path=_env_path("FORMAL_DAILY_MARKET_DB")
+                or Path(r"D:\Min\Python\Project\FA_Data\sqlite\twstock.db"),
+                calendar_cache_path=_env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+                or ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache",
+                temporary_closure_path=_env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+                or ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache",
+            ),
         )
         handoff_path = Path(str(handoff["handoff_path"])).resolve()
         result = publish_formal_pit_sector_sidecar(

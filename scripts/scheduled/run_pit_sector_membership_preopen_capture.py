@@ -770,9 +770,12 @@ def run_capture(
             if isinstance(archive_value, Mapping)
             else None
         )
+        # denominator／archive 含本次 HTTP 完成時間，不能拿啟動前的時鐘驗證。
+        # 真實執行重讀時鐘；fixture 保留注入時鐘，cutoff 仍由 producer 強制。
+        taxonomy_observed = observed if injected_clock else datetime.now(timezone.utc)
         taxonomy = _capture_taxonomy_for_run(
             publication_root=publication_root,
-            observed=observed,
+            observed=taxonomy_observed,
             denominator=denominator,
             archive_manifest_path=(
                 archive_info.get("archive_manifest_path")
@@ -784,9 +787,15 @@ def run_capture(
             fetch_source=taxonomy_fetch_source,
             now_provider=taxonomy_now_provider,
         )
+        component_blocked = denominator.get("status") == "blocked" or taxonomy.get("status") == "blocked"
+        taxonomy_blockers = taxonomy.get("blockers")
+        blockers = (
+            [str(value) for value in taxonomy_blockers]
+            if isinstance(taxonomy_blockers, (list, tuple)) else []
+        )
         payload = {
             **base,
-            "status": "machine_verified_candidate",
+            "status": "degraded" if component_blocked else "machine_verified_candidate",
             "capture": result,
             "archive_manifest_path": archive_info.get("archive_manifest_path")
             if archive_info is not None
@@ -795,13 +804,18 @@ def run_capture(
             "capture_mode": capture_mode,
             "denominator_refresh": denominator,
             "taxonomy": taxonomy,
+            "taxonomy_observed_at": taxonomy_observed.isoformat(),
+            "blockers": blockers + (
+                [str(denominator.get("reason") or "pit_denominator_blocked")]
+                if denominator.get("status") == "blocked" else []
+            ),
             "taxonomy_bundle_path": taxonomy.get("bundle_manifest_path"),
             "taxonomy_industry_filter_usable": taxonomy.get(
                 "industry_filter_usable"
             ) is True,
         }
         _write_status(status_path, payload)
-        return payload, 2 if denominator.get("status") == "blocked" else 0
+        return payload, 2 if component_blocked else 0
     except Exception as error:  # noqa: BLE001 - scheduled boundary is fail closed
         payload = {
             **base,

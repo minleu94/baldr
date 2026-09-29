@@ -28,6 +28,71 @@ from scripts.scheduled import run_pit_sector_membership_preopen_capture as captu
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
+def test_natural_capture_taxonomy_validation_uses_post_capture_clock_and_nonzero_failure(tmp_path, monkeypatch):
+    started = datetime(2026, 9, 30, 7, 0, tzinfo=TAIPEI)
+    finished = started + timedelta(seconds=20)
+
+    class Clock(datetime):
+        values = iter((started, finished))
+
+        @classmethod
+        def now(cls, tz=None):
+            return next(cls.values).astimezone(tz)
+
+    monkeypatch.setattr(capture_runner, "datetime", Clock)
+    monkeypatch.setattr(capture_runner, "formal_schedule_day_state", lambda **k: (True, "official_open"))
+    monkeypatch.setattr(capture_runner, "load_optional_formal_runtime_config", lambda **k: None)
+    monkeypatch.setattr(capture_runner, "reuse_pit_candidate_archive_before_cutoff", lambda **k: {
+        "durable_archive": {"archive_manifest_path": "archive.json"}, "durable_archive_verified": True,
+    })
+    monkeypatch.setattr(capture_runner, "_refresh_pit_denominator", lambda **k: {"status": "captured_verified"})
+
+    def taxonomy(**kwargs):
+        assert kwargs["observed"] == finished
+        assert kwargs["observed"] > started
+        return {"status": "blocked", "blockers": ["exact_source_blocker"]}
+
+    monkeypatch.setattr(capture_runner, "_capture_taxonomy_for_run", taxonomy)
+    payload, code = capture_runner.run_capture(publication_root=tmp_path, status_root=tmp_path / "status")
+    assert code == 2
+    assert payload["status"] == "degraded"
+    assert payload["archive_readback_verified"] is True
+    assert payload["blockers"] == ["exact_source_blocker"]
+    assert datetime.fromisoformat(payload["taxonomy_observed_at"]) == finished
+
+
+def test_postcutoff_history_calendar_cannot_probe_network(tmp_path, monkeypatch):
+    calls = []
+
+    def classify(self, target_date, allow_online_probe=True):
+        calls.append(allow_online_probe)
+        return None, "missing_official_cache"
+
+    monkeypatch.setattr(sidecar_runner.OfficialTradingCalendar, "is_official_trading_day", classify)
+    calendar = sidecar_runner._OfflinePITHistoryCalendar(db_path=tmp_path / "market.db")
+    assert calendar.is_official_trading_day(date(2026, 9, 29)) == (None, "missing_official_cache")
+    assert calls == [False]
+
+
+def test_scheduled_taxonomy_config_is_live_bounded_and_never_formally_self_accepted():
+    from data_module.pit_taxonomy_source_producer import load_pit_taxonomy_source_config
+
+    root = Path(__file__).resolve().parents[1] / "scripts" / "scheduled"
+    config = load_pit_taxonomy_source_config(root / "pit_taxonomy_source_config.json")
+    assert config["license_scope"]["formal_acceptance_granted"] is False
+    assert config["license_scope"]["redistribution_allowed"] is False
+    assert config["security"]["all"]["url"] == "https://isin.twse.com.tw/isin/e_single_main.jsp"
+    for market in config["classification"].values():
+        assert "mapping" not in market
+        specs = market.get("components", {"primary": market})
+        for source in specs.values():
+            assert source["url"].startswith("https://")
+            assert "path" not in source and "http" not in source
+    cmd = (root / "run_pit_sector_membership_preopen_capture.cmd").read_text(encoding="utf-8")
+    assert 'if not defined PIT_TAXONOMY_SOURCE_CONFIG' in cmd
+    assert 'pit_taxonomy_source_config.json' in cmd
+
+
 class _FrozenDateTime(datetime):
     frozen_utc = datetime(2026, 8, 17, 0, 20, tzinfo=timezone.utc)
 

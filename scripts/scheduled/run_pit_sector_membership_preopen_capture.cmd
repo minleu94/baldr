@@ -9,6 +9,9 @@ if defined BALDR_PYTHON set "PYTHON=%BALDR_PYTHON%"
 if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not defined PYTHON set "PYTHON=python"
 if not defined FORMAL_DAILY_PUBLICATION_ROOT set "FORMAL_DAILY_PUBLICATION_ROOT=%REPO_ROOT%\output\formal_daily_publications"
+rem 使用可重驗的官方 live source 設定，不依賴歷史 TEMP 研究檔。
+rem 明確 caller 設定優先；設定仍限 research，不授予 formal license。
+if not defined PIT_TAXONOMY_SOURCE_CONFIG set "PIT_TAXONOMY_SOURCE_CONFIG=%SCRIPT_DIR%pit_taxonomy_source_config.json"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 

@@ -424,14 +424,19 @@ class PortfolioAlertSummary:
     alert_codes: tuple[str, ...] = ()
     alert_level: str | None = None
     attributions: tuple[PortfolioAlertAttribution, ...] = ()
+    population_status: str = "unknown"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
         object.__setattr__(self, "alert_codes", tuple(str(code) for code in self.alert_codes))
         object.__setattr__(self, "attributions", tuple(self.attributions))
+        population_status = str(self.population_status or "unknown").strip().lower()
+        if population_status not in {"unknown", "has_positions", "no_positions"}:
+            population_status = "unknown"
+        object.__setattr__(self, "population_status", population_status)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "as_of_date": self.as_of_date.isoformat() if self.as_of_date else None,
             "quality": self.quality.value,
             "warnings": list(self.warnings),
@@ -440,6 +445,11 @@ class PortfolioAlertSummary:
             "alert_level": self.alert_level,
             "attributions": [item.to_dict() for item in self.attributions],
         }
+        # Preserve legacy snapshot payloads: an absent population marker stays
+        # unknown and is never inferred from a zero alert count.
+        if self.population_status != "unknown":
+            payload["population_status"] = self.population_status
+        return payload
 
 
 @dataclass(frozen=True)

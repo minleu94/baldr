@@ -88,11 +88,12 @@ class PortfolioAlertService:
         if not positions:
             return PortfolioAlertSummary(
                 as_of_date=as_of_date,
-                quality=DecisionDeskQuality.MISSING,
-                warnings=("portfolio_alerts_no_active_position",),
+                quality=DecisionDeskQuality.OBSERVED,
+                warnings=(),
                 alert_count=0,
                 alert_codes=(),
                 alert_level="low",
+                population_status="no_positions",
             )
 
         attribution_items, hard_failures = self._collect_alerts(positions, warnings_for_quality)
@@ -118,6 +119,7 @@ class PortfolioAlertService:
                 alert_codes=(),
                 alert_level="low",
                 attributions=attributions,
+                population_status="has_positions",
             )
 
         return PortfolioAlertSummary(
@@ -132,6 +134,7 @@ class PortfolioAlertService:
             alert_codes=self._top_alert_codes(alert_items),
             alert_level=self._infer_alert_level(alert_items),
             attributions=attributions,
+            population_status="has_positions",
         )
 
     def _build_attributions(self, alerts: list[_AlertItem]) -> tuple[PortfolioAlertAttribution, ...]:

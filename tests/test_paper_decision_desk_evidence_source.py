@@ -4,6 +4,9 @@ from datetime import date
 from decimal import Decimal
 import json
 from pathlib import Path
+import sqlite3
+
+import pytest
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
@@ -51,6 +54,36 @@ def _snapshot(snapshot_id: str, decision_date: str) -> PaperPortfolioSnapshot:
                 weight_bp=1000,
             ),
         ),
+    )
+
+
+def _empty_snapshot(
+    snapshot_id: str,
+    decision_date: str,
+    *,
+    zero_quantity_row: bool = False,
+) -> PaperPortfolioSnapshot:
+    positions = (
+        (
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=0,
+                mark_price=Decimal("100.00"),
+                market_value=Decimal("0.00"),
+                weight_bp=0,
+            ),
+        )
+        if zero_quantity_row
+        else ()
+    )
+    return PaperPortfolioSnapshot(
+        snapshot_id=snapshot_id,
+        portfolio_id="paper-main",
+        decision_date=decision_date,
+        source_result_id="scheduled-rec-empty",
+        cash=Decimal("487350.00"),
+        total_value=Decimal("487350.00"),
+        positions=positions,
     )
 
 
@@ -123,6 +156,40 @@ def _source(tmp_path: Path) -> tuple[PaperDecisionDeskEvidenceSource, Path, Path
     )
 
 
+def _append_empty_snapshot(
+    state_db: Path,
+    status_path: Path,
+    health_path: Path,
+    *,
+    zero_quantity_row: bool = False,
+) -> None:
+    repository = PaperPortfolioSnapshotRepository(state_db)
+    snapshot = _empty_snapshot(
+        "paper-main-20260902",
+        "2026-09-02",
+        zero_quantity_row=zero_quantity_row,
+    )
+    repository.append(snapshot)
+    _status(status_path, snapshot, state_db)
+    health_path.write_text(
+        json.dumps(
+            {
+                "decision_date": snapshot.decision_date,
+                "research_only": True,
+                "writes_positions_db": False,
+                "auto_action_allowed": False,
+                "positions": [],
+                "diagnostics": [
+                    "no_active_paper_positions",
+                    "position_health_baseline_is_not_an_exit_instruction",
+                ],
+                "warnings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_paper_source_keeps_real_health_attribution_and_hash_bound_provenance(tmp_path: Path) -> None:
     source, state_db, status_path, health_path = _source(tmp_path)
     before = (state_db.read_bytes(), status_path.read_bytes(), health_path.read_bytes())
@@ -156,6 +223,147 @@ def test_missing_or_future_health_stays_unknown_without_synthetic_attributions(t
     assert future.status == "unknown"
     assert "paper_health_baseline_future_dated" in future.blockers
     assert future.portfolio_alerts.attributions == ()
+
+
+@pytest.mark.parametrize("zero_quantity_row", (False, True))
+def test_verified_empty_paper_snapshot_is_observed_and_scoped_as_research(
+    tmp_path: Path,
+    zero_quantity_row: bool,
+) -> None:
+    source, state_db, status_path, health_path = _source(tmp_path)
+    _append_empty_snapshot(
+        state_db,
+        status_path,
+        health_path,
+        zero_quantity_row=zero_quantity_row,
+    )
+
+    result = source.build(date(2026, 9, 2))
+
+    assert result.status == "ready"
+    assert result.portfolio_alerts.quality is DecisionDeskQuality.OBSERVED
+    assert result.portfolio_alerts.population_status == "no_positions"
+    assert result.portfolio_alerts.alert_count == 0
+    assert result.portfolio_alerts.alert_codes == ()
+    assert result.metadata["source_scope"] == "paper_research"
+    assert result.metadata["population_status"] == "no_positions"
+    assert result.metadata["paper_position_count"] == 0
+    assert result.metadata["paper_health_diagnostics"] == [
+        "no_active_paper_positions",
+        "position_health_baseline_is_not_an_exit_instruction",
+    ]
+
+
+def test_1418_unproven_position_remains_degraded_and_explicitly_paper_research(
+    tmp_path: Path,
+) -> None:
+    source, state_db, status_path, health_path = _source(tmp_path)
+    repository = PaperPortfolioSnapshotRepository(state_db)
+    snapshot = PaperPortfolioSnapshot(
+        snapshot_id="paper-main-20260902",
+        portfolio_id="paper-main",
+        decision_date="2026-09-02",
+        source_result_id="scheduled-rec-1418-seed",
+        cash=Decimal("341000.00"),
+        total_value=Decimal("487350.00"),
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="1418",
+                quantity=3000,
+                mark_price=Decimal("30.00"),
+                market_value=Decimal("90000.00"),
+                weight_bp=1847,
+            ),
+        ),
+    )
+    repository.append(snapshot)
+    _status(status_path, snapshot, state_db)
+    health_path.write_text(
+        json.dumps(
+            {
+                "decision_date": snapshot.decision_date,
+                "research_only": True,
+                "writes_positions_db": False,
+                "auto_action_allowed": False,
+                "positions": [
+                    {
+                        "stock_code": "1418",
+                        "state": "WATCH",
+                        "entry_thesis": None,
+                        "required_human_fields": ["entry_thesis", "invalidation"],
+                        "reasons": ["missing_entry_thesis", "missing_invalidation"],
+                    }
+                ],
+                "warnings": [
+                    "human_thesis_required_before_health_transition_validation",
+                    "paper_position_identity_unproven:1418",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = source.build(date(2026, 9, 2))
+
+    assert result.status == "degraded"
+    assert result.portfolio_alerts.quality is DecisionDeskQuality.DEGRADED
+    assert result.portfolio_alerts.population_status == "has_positions"
+    assert result.portfolio_alerts.alert_codes == ("1418",)
+    assert "human_thesis_required_before_health_transition_validation" in result.warnings
+    assert "paper_position_identity_unproven:1418" in result.warnings
+    assert result.metadata["source_scope"] == "paper_research"
+    assert result.metadata["research_only"] is True
+    assert result.metadata["formal_credit"] is False
+
+
+@pytest.mark.parametrize(
+    "invalid_source",
+    ("missing_snapshot", "bad_status", "bad_schema", "bad_date", "bad_quantity"),
+)
+def test_invalid_paper_sources_do_not_claim_no_positions(
+    tmp_path: Path,
+    invalid_source: str,
+) -> None:
+    source, state_db, status_path, health_path = _source(tmp_path)
+    _append_empty_snapshot(
+        state_db,
+        status_path,
+        health_path,
+        zero_quantity_row=True,
+    )
+    if invalid_source == "missing_snapshot":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute("DELETE FROM paper_portfolio_positions")
+            connection.execute("DELETE FROM paper_portfolio_snapshots WHERE snapshot_id = ?", ("paper-main-20260902",))
+    elif invalid_source == "bad_status":
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        payload["status"] = "failed"
+        status_path.write_text(json.dumps(payload), encoding="utf-8")
+    elif invalid_source == "bad_schema":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute("DROP TABLE paper_portfolio_positions")
+            connection.execute(
+                "CREATE TABLE paper_portfolio_positions "
+                "(snapshot_id TEXT, stock_code TEXT, quantity INTEGER)"
+            )
+    elif invalid_source == "bad_date":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute(
+                "UPDATE paper_portfolio_snapshots SET decision_date = ? WHERE snapshot_id = ?",
+                ("not-a-date", "paper-main-20260902"),
+            )
+    elif invalid_source == "bad_quantity":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute(
+                "UPDATE paper_portfolio_positions SET quantity = ? WHERE stock_code = ?",
+                (-1, "2330"),
+            )
+
+    result = source.build(date(2026, 9, 2))
+
+    assert result.status == "unknown"
+    assert result.portfolio_alerts.population_status == "unknown"
+    assert result.portfolio_alerts.quality is DecisionDeskQuality.MISSING
 
 
 def test_future_paper_snapshot_is_excluded_and_does_not_become_current_evidence(tmp_path: Path) -> None:

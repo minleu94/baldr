@@ -113,6 +113,39 @@ def test_portfolio_alert_service_returns_low_quality_when_no_alert():
     assert snapshot.warnings == ()
 
 
+def test_empty_successful_portfolio_is_observed_no_positions():
+    service = PortfolioAlertService(
+        FakePortfolioService([]),
+        FakeConditionMonitor({}),
+    )
+
+    snapshot = service.build_snapshot(date(2026, 6, 15))
+
+    assert snapshot.quality == DecisionDeskQuality.OBSERVED
+    assert snapshot.population_status == "no_positions"
+    assert snapshot.alert_count == 0
+    assert snapshot.alert_codes == ()
+    assert snapshot.alert_level == "low"
+    assert snapshot.warnings == ()
+
+
+def test_portfolio_provider_error_does_not_become_an_empty_population():
+    class BrokenPortfolioService:
+        def list_positions(self, portfolio_id: str = "default"):
+            del portfolio_id
+            raise RuntimeError("portfolio unavailable")
+
+    snapshot = PortfolioAlertService(
+        BrokenPortfolioService(),
+        FakeConditionMonitor({}),
+    ).build_snapshot(date(2026, 6, 15))
+
+    assert snapshot.quality == DecisionDeskQuality.DEGRADED
+    assert snapshot.population_status == "unknown"
+    assert snapshot.alert_count == 0
+    assert any(item.startswith("portfolio_alerts_portfolio_service_error:") for item in snapshot.warnings)
+
+
 def test_portfolio_alert_service_marks_estimated_when_chip_summary_missing_for_positions():
     positions = [
         make_position("1101", "recommendation_result", "rec_watch"),

@@ -83,7 +83,14 @@ class PositionHealthBaselineService:
                 }
             )
 
-        diagnostics = [] if positions else ["no_active_paper_positions"]
+        diagnostics = []
+        if not positions:
+            diagnostics.extend(
+                [
+                    "no_active_paper_positions",
+                    "position_health_baseline_is_not_an_exit_instruction",
+                ]
+            )
         return {
             "source_path": str(source_path.resolve()),
             "decision_date": str(source.get("decision_date") or ""),
@@ -92,8 +99,12 @@ class PositionHealthBaselineService:
             "auto_action_allowed": False,
             "positions": positions,
             "diagnostics": diagnostics,
-            "warnings": [
-                "human_thesis_required_before_health_transition_validation",
-                "position_health_baseline_is_not_an_exit_instruction",
-            ],
+            "warnings": (
+                [
+                    "human_thesis_required_before_health_transition_validation",
+                    "position_health_baseline_is_not_an_exit_instruction",
+                ]
+                if positions
+                else []
+            ),
         }

@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import sqlite3
 
+import pytest
+
 from app_module.position_health_daily_refresh_service import (
     PositionHealthDailyRefreshService,
 )
@@ -494,6 +496,104 @@ def test_refresh_blocks_without_verified_paper_status_and_does_not_create_baseli
     status = json.loads((output / "latest_status.json").read_text(encoding="utf-8"))
     assert status["status"] == "blocked"
     assert status["writes_positions_db"] is False
+
+
+def test_refresh_accepts_verified_empty_snapshot_without_health_or_identity_carry(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "state.sqlite"
+    status_path = tmp_path / "status.json"
+    output = tmp_path / "health"
+    _make_state(state_db)
+    with sqlite3.connect(state_db) as connection:
+        connection.execute(
+            "DELETE FROM paper_portfolio_positions WHERE stock_code = ?",
+            ("1615",),
+        )
+    _write_status(status_path, state_db)
+
+    class IdentityMustNotBeRequested:
+        def resolve(self, **_kwargs):
+            raise AssertionError("empty snapshot has no active position identity to resolve")
+
+    receipt = PositionHealthDailyRefreshService(
+        state_db_path=state_db,
+        status_path=status_path,
+        position_identity_provider=IdentityMustNotBeRequested(),  # type: ignore[arg-type]
+    ).refresh(
+        as_of_date=date(2026, 9, 7),
+        output_dir=output,
+        previous_baseline_path=tmp_path / "malformed-previous.json",
+        observed_at=datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc),
+    )
+
+    assert receipt["status"] == "passed"
+    baseline = json.loads((output / "latest.json").read_text(encoding="utf-8"))
+    assert baseline["positions"] == []
+    assert baseline["warnings"] == []
+    assert "no_active_paper_positions" in baseline["diagnostics"]
+    assert "position_health_baseline_is_not_an_exit_instruction" in baseline["diagnostics"]
+    assert "position_health_daily_refresh_does_not_evaluate_transition" in baseline["diagnostics"]
+    assert baseline["position_identity_source"] is None
+
+
+@pytest.mark.parametrize(
+    "invalid_source",
+    ("missing_snapshot", "missing_status", "bad_status", "bad_schema", "bad_date", "bad_quantity"),
+)
+def test_empty_population_stays_blocked_when_its_source_is_missing_or_invalid(
+    tmp_path: Path,
+    invalid_source: str,
+) -> None:
+    state_db = tmp_path / "state.sqlite"
+    status_path = tmp_path / "status.json"
+    output = tmp_path / "health"
+    _make_state(state_db)
+    with sqlite3.connect(state_db) as connection:
+        connection.execute(
+            "DELETE FROM paper_portfolio_positions WHERE stock_code = ?",
+            ("1615",),
+        )
+    _write_status(status_path, state_db)
+
+    if invalid_source == "missing_snapshot":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute("DELETE FROM paper_portfolio_positions")
+            connection.execute("DELETE FROM paper_portfolio_snapshots")
+    elif invalid_source == "missing_status":
+        status_path.unlink()
+    elif invalid_source == "bad_status":
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        payload["status"] = "failed"
+        status_path.write_text(json.dumps(payload), encoding="utf-8")
+    elif invalid_source == "bad_schema":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute("DROP TABLE paper_portfolio_positions")
+            connection.execute(
+                "CREATE TABLE paper_portfolio_positions "
+                "(snapshot_id TEXT, stock_code TEXT, quantity INTEGER)"
+            )
+    elif invalid_source == "bad_date":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute(
+                "UPDATE paper_portfolio_snapshots SET decision_date = ?",
+                ("not-a-date",),
+            )
+    elif invalid_source == "bad_quantity":
+        with sqlite3.connect(state_db) as connection:
+            connection.execute(
+                "UPDATE paper_portfolio_positions SET quantity = ? WHERE stock_code = ?",
+                (-1, "2330"),
+            )
+
+    receipt = PositionHealthDailyRefreshService(
+        state_db_path=state_db,
+        status_path=status_path,
+    ).refresh(as_of_date=date(2026, 9, 8), output_dir=output)
+
+    assert receipt["status"] == "blocked"
+    assert receipt["blockers"]
+    assert not (output / "latest.json").exists()
 
 
 def test_refresh_keeps_immutable_history_when_same_date_snapshot_bytes_change(

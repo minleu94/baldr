@@ -417,6 +417,12 @@ def _portfolio_alert(payload: SnapshotJson) -> PortfolioAlertSummary:
         alert_codes=tuple(str(item) for item in _list(payload.get("alert_codes"))),
         alert_level=payload.get("alert_level"),
         attributions=attributions,
+        population_status=(
+            str(payload.get("population_status") or "unknown")
+            if str(payload.get("population_status") or "unknown")
+            in {"unknown", "has_positions", "no_positions"}
+            else "unknown"
+        ),
     )
 
 

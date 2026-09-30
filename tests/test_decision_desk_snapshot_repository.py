@@ -19,7 +19,10 @@ from app_module.decision_desk_dtos import (
     WatchlistTriggerSummary,
 )
 from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
-from app_module.decision_desk_snapshot_storage_dtos import build_stored_decision_desk_snapshot
+from app_module.decision_desk_snapshot_storage_dtos import (
+    _portfolio_alert,
+    build_stored_decision_desk_snapshot,
+)
 from data_module.config import TWStockConfig
 
 
@@ -120,6 +123,44 @@ def test_same_snapshot_is_idempotent_and_hash_is_deterministic(tmp_path):
 
     assert saved_first.snapshot_id == saved_second.snapshot_id
     assert len(repository.list_snapshots()) == 1
+
+
+def test_population_status_roundtrips_without_changing_legacy_snapshot_hash():
+    legacy_alert_payload = {
+        "as_of_date": "2026-06-30",
+        "quality": "observed",
+        "warnings": [],
+        "alert_count": 0,
+        "alert_codes": [],
+        "alert_level": "low",
+        "attributions": [],
+    }
+    restored_alert = _portfolio_alert(legacy_alert_payload)
+    assert restored_alert.population_status == "unknown"
+    assert restored_alert.to_dict() == legacy_alert_payload
+
+    legacy_snapshot = replace(_snapshot(), portfolio_alerts=restored_alert)
+    stored = build_stored_decision_desk_snapshot(legacy_snapshot)
+    assert "population_status" not in stored.portfolio_alert_json
+    restored_snapshot = stored.to_decision_desk_snapshot()
+    rebuilt = build_stored_decision_desk_snapshot(
+        restored_snapshot,
+        decision_date=stored.decision_date,
+        source_version=stored.source_version,
+        builder_version=stored.builder_version,
+        metadata=stored.metadata_json,
+    )
+    assert rebuilt.snapshot_hash == stored.snapshot_hash
+
+    empty = PortfolioAlertSummary(
+        date(2026, 6, 30),
+        DecisionDeskQuality.OBSERVED,
+        (),
+        alert_count=0,
+        alert_level="low",
+        population_status="no_positions",
+    )
+    assert _portfolio_alert(empty.to_dict()).population_status == "no_positions"
 
 
 def test_different_hash_keeps_new_version_and_supersedes_prior_active(tmp_path):

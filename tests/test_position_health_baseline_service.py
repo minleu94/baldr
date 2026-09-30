@@ -64,4 +64,8 @@ def test_zero_share_allocation_is_not_treated_as_active_position(tmp_path: Path)
     payload = PositionHealthBaselineService().build(source)
 
     assert payload["positions"] == []
-    assert payload["diagnostics"] == ["no_active_paper_positions"]
+    assert payload["diagnostics"] == [
+        "no_active_paper_positions",
+        "position_health_baseline_is_not_an_exit_instruction",
+    ]
+    assert payload["warnings"] == []

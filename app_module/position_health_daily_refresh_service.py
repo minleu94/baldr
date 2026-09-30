@@ -257,19 +257,28 @@ class PositionHealthDailyRefreshService:
                     warnings=warnings,
                     snapshot=snapshot,
                 )
-            (
-                previous,
-                previous_hash,
-                previous_warnings,
-                previous_snapshot_id,
-                previous_snapshot_date,
-            ) = self._read_previous_baseline(
-                previous_baseline_path,
-                snapshot_date=snapshot.decision_date,
-            )
-            warnings.extend(previous_warnings)
+            if snapshot.positions:
+                (
+                    previous,
+                    previous_hash,
+                    previous_warnings,
+                    previous_snapshot_id,
+                    previous_snapshot_date,
+                ) = self._read_previous_baseline(
+                    previous_baseline_path,
+                    snapshot_date=snapshot.decision_date,
+                )
+                warnings.extend(previous_warnings)
+            else:
+                # A validated empty snapshot needs neither historical thesis
+                # carry nor position identity. The current snapshot/status
+                # still pass all normal schema, date, and boundary checks.
+                previous = {}
+                previous_hash = None
+                previous_snapshot_id = None
+                previous_snapshot_date = None
             identity_source: PositionIdentitySourceResult | None = None
-            if self.position_identity_provider is not None:
+            if snapshot.positions and self.position_identity_provider is not None:
                 identity_source = self.position_identity_provider.resolve(
                     snapshot_id=snapshot.snapshot_id,
                     snapshot_date=snapshot.decision_date,
@@ -357,30 +366,28 @@ class PositionHealthDailyRefreshService:
                 (snapshot_id,),
             ).fetchall()
             positions: list[dict[str, Any]] = []
+            raw_positions: list[dict[str, Any]] = []
             for item in positions_rows:
                 code = str(item["stock_code"] or "").strip()
                 if not code:
                     raise ValueError("paper_position_stock_code_missing")
                 quantity = _non_negative_int(item["quantity"], "paper position quantity")
-                if quantity <= 0:
-                    continue
-                positions.append(
-                    {
-                        "stock_code": code,
-                        "executable_shares": quantity,
-                        "constrained_weight_bp": _non_negative_int(
-                            item["weight_bp"], "paper position weight_bp"
-                        ),
-                    }
-                )
-            if not positions:
-                raise ValueError("paper_snapshot_positions_missing")
+                position = {
+                    "stock_code": code,
+                    "executable_shares": quantity,
+                    "constrained_weight_bp": _non_negative_int(
+                        item["weight_bp"], "paper position weight_bp"
+                    ),
+                }
+                raw_positions.append(position)
+                if quantity > 0:
+                    positions.append(position)
             canonical = {
                 "snapshot_id": snapshot_id,
                 "portfolio_id": str(row["portfolio_id"] or ""),
                 "decision_date": selected_date.isoformat(),
                 "source_result_id": str(row["source_result_id"] or ""),
-                "positions": positions,
+                "positions": raw_positions,
             }
             data_version = int(connection.execute("PRAGMA data_version").fetchone()[0])
             return _PaperSnapshot(
@@ -1035,6 +1042,25 @@ class PositionHealthDailyRefreshService:
         if closed_prior_codes:
             lineage_warning.append("paper_position_prior_closed_not_projected")
         lineage_warning.extend(lineage_warnings)
+        baseline_warnings = list(
+            dict.fromkeys(
+                [str(item) for item in baseline.get("warnings", [])]
+                + list(warnings)
+                + lineage_warning
+            )
+        )
+        transition_diagnostic = "position_health_daily_refresh_does_not_evaluate_transition"
+        baseline_diagnostics = [
+            *list(baseline.get("diagnostics", [])),
+            "paper_snapshot_rows_read_in_one_transaction",
+            "health_transition_requires_human_thesis_and_current_condition_source",
+        ]
+        if positions:
+            baseline_warnings.append(transition_diagnostic)
+        else:
+            # These describe the empty projection's limits without turning a
+            # verified no-position result into degraded health evidence.
+            baseline_diagnostics.append(transition_diagnostic)
         baseline.update(
             {
                 "schema_version": SCHEMA_VERSION,
@@ -1079,21 +1105,8 @@ class PositionHealthDailyRefreshService:
                 "broker_execution": False,
                 "formal_credit": False,
                 "positions": positions,
-                "warnings": list(
-                    dict.fromkeys(
-                        [
-                            str(item) for item in baseline.get("warnings", [])
-                        ]
-                        + list(warnings)
-                        + lineage_warning
-                        + ["position_health_daily_refresh_does_not_evaluate_transition"]
-                    )
-                ),
-                "diagnostics": [
-                    *list(baseline.get("diagnostics", [])),
-                    "paper_snapshot_rows_read_in_one_transaction",
-                    "health_transition_requires_human_thesis_and_current_condition_source",
-                ],
+                "warnings": list(dict.fromkeys(baseline_warnings)),
+                "diagnostics": baseline_diagnostics,
             }
         )
         return baseline

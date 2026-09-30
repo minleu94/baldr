@@ -9,9 +9,9 @@ from datetime import date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTableView, QMessageBox,
-    QTabWidget, QSplitter, QComboBox, QHeaderView, QFrame
+    QTabWidget, QSplitter, QComboBox, QHeaderView, QFrame, QSizePolicy,
 )
-from PySide6.QtCore import Qt, QItemSelectionModel
+from PySide6.QtCore import QEvent, Qt, QItemSelectionModel
 from PySide6.QtGui import QColor
 
 from ui_qt.widgets.info_button import InfoButton
@@ -28,9 +28,12 @@ from ui_qt.views.smart_money.terminal_delegate import TerminalScannerDelegate
 from ui_qt.views.smart_money.detail_table_delegate import DetailTableDelegate
 from ui_qt.models.pandas_table_model import PandasTableModel # 給 Detail Table 用
 from ui_qt.workers.task_worker import TaskWorker
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 
 class SmartMoneyFlowView(QWidget):
     """Terminal Style Smart Money Scanner 主視圖"""
+
+    RESPONSIVE_BREAKPOINT = 1120
 
     def __init__(
         self,
@@ -68,7 +71,6 @@ class SmartMoneyFlowView(QWidget):
                 border-radius: 6px;
                 padding: 5px 10px;
                 min-width: 90px;
-                font-family: 'Segoe UI', Arial;
             }
             QComboBox::drop-down {
                 border: none;
@@ -80,21 +82,35 @@ class SmartMoneyFlowView(QWidget):
                 selection-background-color: #3b82f6;
                 border: 1px solid #334155;
             }
-            QLabel {
-                font-family: 'Segoe UI', Arial;
-            }
         """)
 
         self._setup_ui()
+        self.installEventFilter(self)
 
     def _setup_ui(self):
-        main_layout = QVBoxLayout(self)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+        page_content = QWidget()
+        main_layout = QVBoxLayout(page_content)
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         # --- Top: Summary Strip ---
         self.summary_strip = SummaryStrip(self)
-        main_layout.addWidget(self.summary_strip)
+        self.summary_scroll_area = create_scroll_area(
+            self.summary_strip,
+            object_name="smartMoneySummaryScrollArea",
+            horizontal_scroll=True,
+        )
+        self.summary_scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        self.summary_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        main_layout.addWidget(self.summary_scroll_area)
 
         # --- Controls Bar ---
         control_widget = QWidget()
@@ -184,7 +200,20 @@ class SmartMoneyFlowView(QWidget):
             self.add_watchlist_btn.clicked.connect(self._add_to_watchlist)
             control_layout.addWidget(self.add_watchlist_btn)
 
-        main_layout.addWidget(control_widget)
+        self.controls_scroll_area = create_scroll_area(
+            control_widget,
+            object_name="smartMoneyControlsScrollArea",
+            horizontal_scroll=True,
+        )
+        self.controls_scroll_area.setAccessibleName("主力資金流向控制列水平捲動區")
+        self.controls_scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        self.controls_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        main_layout.addWidget(self.controls_scroll_area)
 
         # --- Body: Tabs ---
         self.tab_widget = QTabWidget()
@@ -214,7 +243,7 @@ class SmartMoneyFlowView(QWidget):
             "使用方向鍵或 Tab 瀏覽股票；信號與近期趨勢提供文字數值替代。"
         )
         self.scanner_table.setSortingEnabled(True)
-        self.scanner_table.setMinimumWidth(900)
+        self.scanner_table.setMinimumWidth(0)
         self.scanner_table.horizontalHeader().setStretchLastSection(False)
         self.scanner_table.verticalHeader().setVisible(False)
         self.scanner_table.setShowGrid(False)
@@ -245,6 +274,7 @@ class SmartMoneyFlowView(QWidget):
         self.scanner_table.setItemDelegate(self.delegate)
         # 增加 Row Height 以容納 Badges 與 Sparklines
         self.scanner_table.verticalHeader().setDefaultSectionSize(48)
+        ensure_visible_rows(self.scanner_table, rows=5)
 
         self.splitter.addWidget(self.scanner_table)
 
@@ -309,6 +339,7 @@ class SmartMoneyFlowView(QWidget):
         self.detail_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.detail_table.verticalHeader().setVisible(False)
         self.detail_table.verticalHeader().setDefaultSectionSize(38)
+        ensure_visible_rows(self.detail_table, rows=5)
         self.detail_table.setStyleSheet("""
             QTableView {
                 background-color: #0b0f19;
@@ -378,6 +409,7 @@ class SmartMoneyFlowView(QWidget):
         self.branch_table.setShowGrid(False)
         self.branch_table.setStyleSheet(self.scanner_table.styleSheet())
         self.branch_table.verticalHeader().setDefaultSectionSize(48)
+        ensure_visible_rows(self.branch_table, rows=5)
 
         self.branch_delegate = TerminalScannerDelegate(self.branch_table)
         self.branch_table.setItemDelegate(self.branch_delegate)
@@ -386,6 +418,33 @@ class SmartMoneyFlowView(QWidget):
         self.tab_widget.addTab(tab2, "分點進出追蹤 (BRANCH TRACKER)")
 
         self._on_chart_changed()
+        self._smart_money_narrow: bool | None = None
+        self._apply_responsive_layout(force=True)
+        self.page_scroll_area = create_scroll_area(
+            page_content, object_name="smartMoneyPageScrollArea"
+        )
+        page_layout.addWidget(self.page_scroll_area)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
+
+    def eventFilter(self, watched, event):  # noqa: N802 - Qt override
+        if watched is self and event.type() == QEvent.Type.Resize:
+            self._apply_responsive_layout()
+        return super().eventFilter(watched, event)
+
+    def _apply_responsive_layout(self, *, force: bool = False) -> None:
+        if not hasattr(self, "splitter"):
+            return
+        narrow = self.width() < self.RESPONSIVE_BREAKPOINT
+        if not force and narrow == self._smart_money_narrow:
+            return
+        self.splitter.setOrientation(
+            Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
+        )
+        self.splitter.setSizes([560, 360] if narrow else [980, 360])
+        self._smart_money_narrow = narrow
 
     def _get_current_period_val(self) -> str:
         idx = self.period_combo.currentIndex()

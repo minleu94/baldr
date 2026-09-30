@@ -6,6 +6,10 @@
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
 from ui_qt.widgets.info_button import InfoButton
+from ui_qt.widgets.layout_helpers import (
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from ui_qt.widgets.theme_widgets import EmptyStatePanel
 from ui_qt.theme import MIDNIGHT_ANALYST
 from app_module.dtos.runtime_dtos import (
@@ -121,6 +125,7 @@ class RuntimeView(QWidget):
         main_layout = QVBoxLayout(content_widget)
         main_layout.setContentsMargins(10, 8, 10, 10)
         main_layout.setSpacing(6)
+        set_scroll_content_constraints(content_widget)
 
         # 標題列（標題 + InfoButton）
         title_layout = QHBoxLayout()
@@ -139,7 +144,6 @@ class RuntimeView(QWidget):
             "上方營運排程只讀取 OUTPUT_ROOT/scheduled 的已保存狀態；它不代表 Windows Task Scheduler 正在執行或已註冊。"
         )
         self.scope_label.setWordWrap(True)
-        self.scope_label.setMaximumHeight(44)
         self.scope_label.setMinimumWidth(0)
         self.scope_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.scope_label.setStyleSheet(
@@ -172,7 +176,9 @@ class RuntimeView(QWidget):
         self.environment_list = QListWidget()
         self.environment_list.setMinimumWidth(0)
         self.environment_list.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        self.environment_list.setMaximumHeight(116)
+        self.environment_list.setWordWrap(True)
+        self.environment_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.environment_list, 5)
         environment_layout.addWidget(self.environment_summary_label)
         environment_layout.addWidget(self.environment_detail_label)
         environment_layout.addWidget(self.environment_list)
@@ -201,7 +207,9 @@ class RuntimeView(QWidget):
         self.operations_list = QListWidget()
         self.operations_list.setMinimumWidth(0)
         self.operations_list.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        self.operations_list.setMaximumHeight(142)
+        self.operations_list.setWordWrap(True)
+        self.operations_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.operations_list, 5)
         operations_layout.addWidget(self.operations_summary_label)
         operations_layout.addWidget(self.operations_detail_label)
         operations_layout.addWidget(self.operations_list)
@@ -292,6 +300,9 @@ class RuntimeView(QWidget):
         self.event_list = QListWidget()
         self.event_list.setMinimumWidth(0)
         self.event_list.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        self.event_list.setWordWrap(True)
+        self.event_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.event_list, 5)
         events_layout.addWidget(self.event_list)
 
         right_layout.addWidget(self.health_group)

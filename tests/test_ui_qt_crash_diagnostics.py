@@ -126,3 +126,41 @@ def test_crash_diagnostics_install_is_idempotent(tmp_path, monkeypatch) -> None:
     assert "SESSION_END clean_shutdown=true exception_observed=false" in first_path.read_text(
         encoding="utf-8"
     )
+
+
+def test_record_diagnostic_is_bounded_and_nonfatal_on_log_write_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(crash_diagnostics.faulthandler, "is_enabled", lambda: True)
+    log_path = crash_diagnostics.install_crash_diagnostics(tmp_path)
+    session = crash_diagnostics._ACTIVE_SESSION
+    assert session is not None
+
+    original_write_line = session.write_line
+    try:
+        crash_diagnostics.record_diagnostic(
+            "ui close/request",
+            elapsed_seconds=0.25,
+            worker_count=2,
+            background_process_running=False,
+            exit_code=0,
+        )
+        log_text = log_path.read_text(encoding="utf-8")
+        assert "DIAGNOSTIC event=ui_close_request" in log_text
+        assert "elapsed_seconds=0.250" in log_text
+        assert "worker_count=2" in log_text
+        assert "background_process_running=false" in log_text
+        assert "exit_code=0" in log_text
+
+        def fail_write(_message: str) -> None:
+            raise OSError("diagnostic volume unavailable")
+
+        monkeypatch.setattr(session, "write_line", fail_write)
+        # Diagnostics are best-effort and must never block the UI close path.
+        crash_diagnostics.record_diagnostic("ui_shutdown_close_accepted")
+    finally:
+        monkeypatch.setattr(session, "write_line", original_write_line)
+        crash_diagnostics.close_crash_diagnostics()
+
+    assert "SESSION_END clean_shutdown=true" in log_path.read_text(encoding="utf-8")

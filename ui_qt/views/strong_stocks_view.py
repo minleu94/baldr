@@ -5,7 +5,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QTableView, QHeaderView, QMessageBox
+    QPushButton, QTableView, QHeaderView, QMessageBox, QSizePolicy
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -17,6 +17,7 @@ from app_module.screening_service import ScreeningService
 from app_module.watchlist_service import WatchlistService
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 
 
 class StrongStocksView(QWidget):
@@ -49,7 +50,11 @@ class StrongStocksView(QWidget):
     
     def _setup_ui(self):
         """設置 UI"""
-        main_layout = QVBoxLayout(self)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+        page_content = QWidget()
+        main_layout = QVBoxLayout(page_content)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(10, 10, 10, 10)
         
@@ -67,7 +72,8 @@ class StrongStocksView(QWidget):
         main_layout.addLayout(title_layout)
         
         # 控制欄
-        control_layout = QHBoxLayout()
+        controls_widget = QWidget()
+        control_layout = QHBoxLayout(controls_widget)
         
         # 時間範圍選擇
         control_layout.addWidget(QLabel("時間範圍:"))
@@ -107,7 +113,19 @@ class StrongStocksView(QWidget):
         self.refresh_btn.clicked.connect(lambda: self._refresh_stocks(use_cache=False))
         control_layout.addWidget(self.refresh_btn)
         
-        main_layout.addLayout(control_layout)
+        self.controls_scroll_area = create_scroll_area(
+            controls_widget,
+            object_name="strongStocksControlsScrollArea",
+            horizontal_scroll=True,
+        )
+        self.controls_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.controls_scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        main_layout.addWidget(self.controls_scroll_area)
         
         # 表格
         self.stocks_table = QTableView()
@@ -116,12 +134,18 @@ class StrongStocksView(QWidget):
         self.stocks_table.setSortingEnabled(True)
         self.stocks_table.horizontalHeader().setStretchLastSection(True)  # 最後一列（推薦理由）自動拉伸
         self.stocks_table.setWordWrap(True)  # 允許推薦理由換行
+        ensure_visible_rows(self.stocks_table, rows=5)
         main_layout.addWidget(self.stocks_table)
 
         self.status_label = QLabel("尚未載入")
         self.status_label.setWordWrap(True)
         self._set_status_label(self.status_label, "尚未載入", level="info")
         main_layout.addWidget(self.status_label)
+
+        self.page_scroll_area = create_scroll_area(
+            page_content, object_name="strongStocksPageScrollArea"
+        )
+        page_layout.addWidget(self.page_scroll_area)
         
         # 注意：選擇事件將在設置模型後連接（在 _refresh_stocks 中）
 

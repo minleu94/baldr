@@ -17,6 +17,7 @@ from app_module.evidence_event_dtos import (
     normalize_outcome_status,
 )
 from app_module.research_run_dtos import canonical_json
+from app_module.sqlite_read_only import connect_read_only_sqlite
 from data_module.evidence_event_migration import apply_evidence_event_schema
 from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
 
@@ -36,8 +37,7 @@ class EvidenceEventRepository:
     def _read_rows(self, table: str, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
         if not self.db_path.exists():
             return []
-        with closing(sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
-            conn.execute("PRAGMA query_only = ON")
+        with closing(connect_read_only_sqlite(self.db_path)) as conn:
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is None:
                 return []
             conn.row_factory = sqlite3.Row
@@ -280,9 +280,7 @@ class EvidenceEventRepository:
         normalized_ids = tuple(dict.fromkeys(event_ids))
         if not normalized_ids or not self.db_path.exists():
             return []
-        uri = self.db_path.resolve().as_uri() + "?mode=ro"
-        with closing(sqlite3.connect(uri, uri=True)) as conn:
-            conn.execute("PRAGMA query_only = ON")
+        with closing(connect_read_only_sqlite(self.db_path)) as conn:
             conn.execute("BEGIN")
             conn.row_factory = sqlite3.Row
             if (

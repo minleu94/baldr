@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, fields
+from contextlib import closing
 from pathlib import Path
 import json
 import sqlite3
@@ -25,6 +26,7 @@ from app_module.research_run_dtos import (
     parse_json_object,
 )
 from app_module.research_run_repository import ResearchRunRepository
+from app_module.sqlite_read_only import check_read_cancelled, connect_read_only_sqlite
 
 
 DEFAULT_AGENT_QUERY_LIMIT = 50
@@ -157,6 +159,7 @@ class AgentEvidenceAccessService:
                 window_days=window_days,
             )
         except (FileNotFoundError, sqlite3.Error, ValueError) as exc:
+            check_read_cancelled()
             events = []
             outcomes_by_event = {}
             diagnostics.append(f"evidence_store_unavailable:{exc}")
@@ -218,6 +221,7 @@ class AgentEvidenceAccessService:
                 min_sample_size=int(min_sample_size),
             )
         except (FileNotFoundError, sqlite3.Error, ValueError) as exc:
+            check_read_cancelled()
             summaries = []
             diagnostics.append(f"forward_evidence_unavailable:{exc}")
 
@@ -265,7 +269,7 @@ class AgentEvidenceAccessService:
         }
 
         try:
-            with _connect_read_only(self.research_db_path) as conn:
+            with closing(_connect_read_only(self.research_db_path)) as conn:
                 if not _table_exists(conn, "research_runs"):
                     diagnostics.append("research_runs_table_missing")
                 else:
@@ -278,8 +282,10 @@ class AgentEvidenceAccessService:
                         limit=safe_limit,
                     )
         except FileNotFoundError as exc:
+            check_read_cancelled()
             diagnostics.append(f"research_db_missing:{exc}")
         except (sqlite3.Error, ValueError) as exc:
+            check_read_cancelled()
             diagnostics.append(f"research_runs_unavailable:{exc}")
 
         return {
@@ -400,7 +406,7 @@ class AgentEvidenceAccessService:
         diagnostics: list[str],
     ) -> list[dict[str, Any]]:
         try:
-            with _connect_read_only(self.evidence_db_path) as conn:
+            with closing(_connect_read_only(self.evidence_db_path)) as conn:
                 if not _table_exists(conn, "live_research_gap_observations"):
                     diagnostics.append("live_research_gap_observations_table_missing")
                     return []
@@ -429,9 +435,11 @@ class AgentEvidenceAccessService:
                 rows = conn.execute(sql, tuple(params)).fetchall()
                 return [_live_gap_row_to_dict(dict(row)) for row in rows]
         except FileNotFoundError as exc:
+            check_read_cancelled()
             diagnostics.append(f"evidence_db_missing:{exc}")
             return []
         except (sqlite3.Error, ValueError) as exc:
+            check_read_cancelled()
             diagnostics.append(f"live_research_gap_unavailable:{exc}")
             return []
 
@@ -444,7 +452,7 @@ class AgentEvidenceAccessService:
         diagnostics: list[str],
     ) -> list[dict[str, Any]]:
         try:
-            with _connect_read_only(self.research_db_path) as conn:
+            with closing(_connect_read_only(self.research_db_path)) as conn:
                 if not _table_exists(conn, "strategy_lifecycle_evidence"):
                     diagnostics.append("strategy_lifecycle_evidence_table_missing")
                     return []
@@ -464,9 +472,11 @@ class AgentEvidenceAccessService:
                 rows = conn.execute(sql, tuple(params)).fetchall()
                 return [_lifecycle_row_to_dict(dict(row)) for row in rows]
         except FileNotFoundError as exc:
+            check_read_cancelled()
             diagnostics.append(f"research_db_missing:{exc}")
             return []
         except (sqlite3.Error, ValueError) as exc:
+            check_read_cancelled()
             diagnostics.append(f"strategy_lifecycle_evidence_unavailable:{exc}")
             return []
 
@@ -478,10 +488,8 @@ def create_agent_evidence_access_service(config: Any) -> AgentEvidenceAccessServ
 def _connect_read_only(path: Path) -> sqlite3.Connection:
     if not path.exists():
         raise FileNotFoundError(str(path))
-    uri_path = path.resolve().as_posix()
-    conn = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True)
+    conn = connect_read_only_sqlite(path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = ON")
     return conn
 
 

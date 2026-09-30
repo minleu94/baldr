@@ -972,7 +972,16 @@ def test_update_view_reflows_for_narrow_viewport_without_changing_navigation():
 
     assert view.workbench_layout.direction().name == "TopToBottom"
     assert view.nav_list.width() >= view.content_stack.width() - 2
-    assert view.nav_list.maximumHeight() == 190
+    assert view.nav_list.maximumHeight() >= view.nav_list.minimumHeight()
+    view.nav_list.verticalScrollBar().setValue(0)
+    app().processEvents()
+    assert view.nav_list.count() == 12
+    assert view.nav_list.visualItemRect(view.nav_list.item(0)).top() >= 0
+    assert (
+        view.nav_list.visualItemRect(view.nav_list.item(4)).bottom()
+        < view.nav_list.viewport().height()
+    )
+    assert view.nav_list.verticalScrollBar().maximum() > 0
     assert view._actions_layout.direction().name == "TopToBottom"
     assert view._cards_layout.getItemPosition(0)[:2] == (0, 0)
     assert view._cards_layout.getItemPosition(1)[:2] == (0, 1)
@@ -2356,12 +2365,36 @@ def test_sqlite_inspector_header_sort_requests_server_order(monkeypatch):
 
 def test_pandas_table_model_handles_duplicate_display_columns_without_series_error():
     from ui_qt.models.pandas_table_model import PandasTableModel
+    from PySide6.QtCore import Qt
 
     df = pd.DataFrame([[1, 2]], columns=["漲跌", "漲跌"])
     model = PandasTableModel(df)
 
     assert model.data(model.index(0, 0)) == "1"
     assert model.data(model.index(0, 1)) == "2"
+    assert model.data(model.index(0, 0), Qt.ToolTipRole) == "1"
+    assert model.data(model.index(0, 1), Qt.ToolTipRole) == "2"
+    assert model.headerData(0, Qt.Horizontal, Qt.ToolTipRole) == "漲跌"
+    assert model.headerData(1, Qt.Horizontal, Qt.ToolTipRole) == "漲跌"
+
+
+def test_pandas_table_model_tooltips_preserve_long_strings_and_list_values():
+    from PySide6.QtCore import Qt
+    from ui_qt.models.pandas_table_model import PandasTableModel
+
+    long_text = "來源狀態與資料限制：" + "完整內容需要可以由提示讀取。" * 8
+    df = pd.DataFrame(
+        {
+            "完整來源與治理說明": [long_text],
+            "標籤": [["正式觀測", "唯讀", "人工覆核"]],
+        }
+    )
+    model = PandasTableModel(df)
+
+    assert model.data(model.index(0, 0), Qt.DisplayRole) == long_text
+    assert model.data(model.index(0, 0), Qt.ToolTipRole) == long_text
+    assert model.data(model.index(0, 1), Qt.ToolTipRole) == "正式觀測, 唯讀, 人工覆核"
+    assert model.headerData(0, Qt.Horizontal, Qt.ToolTipRole) == "完整來源與治理說明"
 
 
 def test_stale_worker_result_is_ignored():

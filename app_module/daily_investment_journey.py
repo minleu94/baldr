@@ -31,6 +31,7 @@ from app_module.saved_recommendation_queries import (
     verified_saved_calibration_projections,
 )
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+from app_module.sqlite_read_only import check_read_cancelled, connect_read_only_sqlite
 from app_module.workbench_dtos import (
     WorkbenchDailyEvidence,
     WorkbenchEvidenceWindow,
@@ -2383,17 +2384,18 @@ def _candidate_identity(
 def _sqlite_table_exists(path: Path, table: str, diagnostics: list[str]) -> bool:
     try:
         with closing(
-            sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+            connect_read_only_sqlite(path)
         ) as conn:
-            conn.execute("PRAGMA query_only = ON")
             row = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
                 (table,),
             ).fetchone()
+            check_read_cancelled()
             if row is None:
                 diagnostics.append(f"evidence_table_missing:{table}")
             return row is not None
     except (OSError, sqlite3.Error) as exc:
+        check_read_cancelled()
         diagnostics.append(f"evidence_db_read_failure:{type(exc).__name__}:{exc}")
         return False
 

@@ -5,7 +5,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTableView, QHeaderView, QMessageBox, QComboBox
+    QPushButton, QTableView, QHeaderView, QMessageBox, QComboBox, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
@@ -17,6 +17,7 @@ from app_module.screening_service import ScreeningService
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
 from app_module.research_session import ResearchStockContextDTO
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 
 
 class WeakIndustriesView(QWidget):
@@ -52,7 +53,11 @@ class WeakIndustriesView(QWidget):
     
     def _setup_ui(self):
         """設置 UI"""
-        main_layout = QVBoxLayout(self)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+        page_content = QWidget()
+        main_layout = QVBoxLayout(page_content)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(10, 10, 10, 10)
         
@@ -72,7 +77,8 @@ class WeakIndustriesView(QWidget):
         main_layout.addLayout(title_layout)
         
         # 控制欄
-        control_layout = QHBoxLayout()
+        controls_widget = QWidget()
+        control_layout = QHBoxLayout(controls_widget)
         
         # 時間範圍選擇
         control_layout.addWidget(QLabel("時間範圍:"))
@@ -116,7 +122,19 @@ class WeakIndustriesView(QWidget):
         self.refresh_btn.clicked.connect(lambda: self._refresh_industries(use_cache=False))
         control_layout.addWidget(self.refresh_btn)
         
-        main_layout.addLayout(control_layout)
+        self.controls_scroll_area = create_scroll_area(
+            controls_widget,
+            object_name="weakIndustriesControlsScrollArea",
+            horizontal_scroll=True,
+        )
+        self.controls_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.controls_scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        main_layout.addWidget(self.controls_scroll_area)
         
         # 表格
         self.industries_table = QTableView()
@@ -126,6 +144,7 @@ class WeakIndustriesView(QWidget):
         self.industries_table.clicked.connect(self._select_representative_row)
         self.industries_table.doubleClicked.connect(self._select_representative_row)
         self.industries_table.horizontalHeader().setStretchLastSection(True)
+        ensure_visible_rows(self.industries_table, rows=5)
         main_layout.addWidget(self.industries_table)
 
         drilldown_layout = QHBoxLayout()
@@ -146,6 +165,11 @@ class WeakIndustriesView(QWidget):
         self.status_label.setWordWrap(True)
         self._set_status_label(self.status_label, "尚未載入", level="info")
         main_layout.addWidget(self.status_label)
+
+        self.page_scroll_area = create_scroll_area(
+            page_content, object_name="weakIndustriesPageScrollArea"
+        )
+        page_layout.addWidget(self.page_scroll_area)
 
     @staticmethod
     def _set_status_label(label: QLabel, text: str, *, level: str) -> None:

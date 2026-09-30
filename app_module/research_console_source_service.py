@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import inspect as pyinspect
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -17,6 +18,11 @@ from app_module.research_console_dtos import (
     ResearchGateCardDTO,
     ResearchPipelineRowDTO,
     ResearchSourceRowDTO,
+)
+from app_module.sqlite_read_only import (
+    ReadOperationCancelled,
+    check_read_cancelled,
+    cooperative_read_cancellation,
 )
 from app_module.p0_source_control_center import (
     P0SourceControlCenterDTO,
@@ -140,26 +146,63 @@ class ResearchConsoleSourceService:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._max_projection_age = max_projection_age
 
-    def inspect(self) -> ResearchConsoleDTO:
-        try:
-            payload, reference, artifact_hash = self._read_projection()
-        except Exception:
-            return self._missing("projection_read_failed", overall_status="degraded")
-        if payload is None:
-            return self._missing("projection_missing")
-        if not self._has_safe_boundary(payload):
-            return self._missing("projection_boundary_violation", overall_status="degraded")
-        try:
-            return self._project(payload, reference, artifact_hash)
-        except Exception:
-            return self._missing("projection_schema_invalid", overall_status="degraded")
+    def inspect(
+        self,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> ResearchConsoleDTO:
+        with cooperative_read_cancellation(cancel_callback):
+            check_read_cancelled()
+            try:
+                payload, reference, artifact_hash = self._read_projection(cancel_callback)
+            except ReadOperationCancelled:
+                raise
+            except Exception:
+                check_read_cancelled()
+                return self._missing(
+                    "projection_read_failed",
+                    overall_status="degraded",
+                    cancel_callback=cancel_callback,
+                )
+            check_read_cancelled()
+            if payload is None:
+                return self._missing("projection_missing", cancel_callback=cancel_callback)
+            if not self._has_safe_boundary(payload):
+                return self._missing(
+                    "projection_boundary_violation",
+                    overall_status="degraded",
+                    cancel_callback=cancel_callback,
+                )
+            try:
+                return self._project(payload, reference, artifact_hash, cancel_callback)
+            except ReadOperationCancelled:
+                raise
+            except Exception:
+                check_read_cancelled()
+                return self._missing(
+                    "projection_schema_invalid",
+                    overall_status="degraded",
+                    cancel_callback=cancel_callback,
+                )
 
-    def _read_projection(self) -> tuple[Mapping[str, object] | None, str, str | None]:
+    def missing_projection(self) -> ResearchConsoleDTO:
+        """建立不讀取 provider 或檔案的本機 fail-closed 初始 DTO。"""
+
+        return self._missing("projection_missing", include_optional_sources=False)
+
+    def _read_projection(
+        self,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> tuple[Mapping[str, object] | None, str, str | None]:
+        check_read_cancelled()
         if self._projection_provider is not None:
-            return self._projection_provider(), "injected_projection", None
+            payload = _call_provider(self._projection_provider, cancel_callback)
+            check_read_cancelled()
+            return payload, "injected_projection", None
         if self._projection_path is None or not self._projection_path.is_file():
             return None, "not_configured", None
         projection_bytes = self._projection_path.read_bytes()
+        check_read_cancelled()
         payload = json.loads(projection_bytes)
         if not isinstance(payload, Mapping):
             raise TypeError("projection root must be an object")
@@ -171,19 +214,29 @@ class ResearchConsoleSourceService:
         payload: Mapping[str, object],
         reference: str,
         artifact_hash: str | None,
+        cancel_callback: Callable[[], bool] | None,
     ) -> ResearchConsoleDTO:
         _validate_mops_sanitized_projection(payload)
+        check_read_cancelled()
         identity = _mapping(payload, "identity")
         status = _mapping(payload, "status")
         metrics = _mapping(payload, "frozen_metrics")
         lineage = _mapping(payload, "lineage")
         blockers = _string_tuple(payload.get("blockers")) + self._freshness_blockers(lineage)
-        governance = self._governance_provider() if self._governance_provider is not None else None
+        governance = (
+            _call_provider(self._governance_provider, cancel_callback)
+            if self._governance_provider is not None
+            else None
+        )
+        check_read_cancelled()
         if governance is None and ("sources" in payload or "gates" in payload):
             governance = payload
         if governance is not None and not isinstance(governance, Mapping):
             raise TypeError("governance projection must be an object")
-        source_control_center = self._build_p0_source_control_center(governance)
+        source_control_center = self._build_p0_source_control_center(
+            governance, cancel_callback
+        )
+        check_read_cancelled()
         sample_count = _optional_int(metrics.get("sample_count"))
         feature_names = lineage.get("feature_names")
         feature_count = len(feature_names) if isinstance(feature_names, list) else None
@@ -270,10 +323,24 @@ class ResearchConsoleSourceService:
             return ("projection_stale",)
         return ()
 
-    def _missing(self, blocker: str, *, overall_status: str = "missing") -> ResearchConsoleDTO:
+    def _missing(
+        self,
+        blocker: str,
+        *,
+        overall_status: str = "missing",
+        include_optional_sources: bool = True,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> ResearchConsoleDTO:
         try:
-            source_control_center = self._build_p0_source_control_center(None)
+            source_control_center = (
+                self._build_p0_source_control_center(None, cancel_callback)
+                if include_optional_sources
+                else self._p0_control_center_service.build()
+            )
+        except ReadOperationCancelled:
+            raise
         except Exception:
+            check_read_cancelled()
             # A malformed optional audit/decision artifact must not make the
             # fail-closed fallback itself escape.  Keep the authoritative
             # thirteen contract rows visible without applying the bad input.
@@ -299,11 +366,19 @@ class ResearchConsoleSourceService:
         )
 
     def _build_p0_source_control_center(
-        self, governance: Mapping[str, object] | None
+        self,
+        governance: Mapping[str, object] | None,
+        cancel_callback: Callable[[], bool] | None,
     ) -> P0SourceControlCenterDTO:
-        audit = self._p0_audit_provider() if self._p0_audit_provider is not None else None
+        check_read_cancelled()
+        audit = (
+            _call_provider(self._p0_audit_provider, cancel_callback)
+            if self._p0_audit_provider is not None
+            else None
+        )
         if audit is None and self._p0_audit_path is not None:
             audit_bytes = self._p0_audit_path.read_bytes()
+            check_read_cancelled()
             parsed = json.loads(audit_bytes)
             if not isinstance(parsed, Mapping):
                 raise TypeError("P0 audit artifact must be an object")
@@ -318,17 +393,20 @@ class ResearchConsoleSourceService:
                     audit = embedded  # type: ignore[assignment]
         decisions: Iterable[SourceAcceptanceDecisionRevision] = ()
         if self._p0_decision_provider is not None:
-            decisions = self._p0_decision_provider()
+            decisions = _call_provider(self._p0_decision_provider, cancel_callback)
         elif self._p0_decision_path is not None:
             decision_bytes = self._p0_decision_path.read_bytes()
+            check_read_cancelled()
             decisions = parse_source_acceptance_decisions(json.loads(decision_bytes))
+        check_read_cancelled()
         license_evidence = (
-            self._p0_license_evidence_provider()
+            _call_provider(self._p0_license_evidence_provider, cancel_callback)
             if self._p0_license_evidence_provider is not None
             else None
         )
         if license_evidence is None and self._p0_license_evidence_path is not None:
             license_bytes = self._p0_license_evidence_path.read_bytes()
+            check_read_cancelled()
             parsed_license = json.loads(license_bytes)
             if not isinstance(parsed_license, Mapping):
                 raise TypeError("P0 license evidence artifact must be an object")
@@ -370,6 +448,44 @@ def _missing_gates() -> tuple[ResearchGateCardDTO, ...]:
         )
         for index in range(1, 6)
     )
+
+
+def _call_provider(
+    provider: Callable[..., Any],
+    cancel_callback: Callable[[], bool] | None,
+) -> Any:
+    check_read_cancelled()
+    if cancel_callback is None:
+        result = provider()
+    else:
+        try:
+            signature = pyinspect.signature(provider)
+        except (TypeError, ValueError):
+            signature = None
+        if signature is None:
+            result = provider()
+        else:
+            parameters = signature.parameters
+            accepts_kwargs = any(
+                parameter.kind is pyinspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+            cancel_parameter = parameters.get("cancel_callback") or parameters.get(
+                "cancellation_callback"
+            )
+            if (
+                cancel_parameter is not None
+                and cancel_parameter.kind is pyinspect.Parameter.POSITIONAL_ONLY
+            ):
+                result = provider(cancel_callback)
+            elif cancel_parameter is not None:
+                result = provider(**{cancel_parameter.name: cancel_callback})
+            elif accepts_kwargs:
+                result = provider(cancel_callback=cancel_callback)
+            else:
+                result = provider()
+    check_read_cancelled()
+    return result
 
 
 def _missing_sources() -> tuple[ResearchSourceRowDTO, ...]:

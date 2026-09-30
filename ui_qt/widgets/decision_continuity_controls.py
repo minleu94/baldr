@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from PySide6.QtCore import QDateTime, Qt, Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -32,6 +34,7 @@ from app_module.dtos.decision_continuity_dtos import (
     DecisionIdentity,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.layout_helpers import ensure_visible_rows
 
 
 class DecisionContinuityControlsWidget(QWidget):
@@ -78,6 +81,7 @@ class DecisionContinuityControlsWidget(QWidget):
         group_layout.addWidget(self.note_summary_label)
 
         action_layout = QHBoxLayout()
+        self.action_layout = action_layout
         action_layout.setSpacing(6)
         self.accept_button = self._button(
             "納入研究", "將此 exact candidate 標記為已納入研究；不會採用 Advice。"
@@ -122,8 +126,12 @@ class DecisionContinuityControlsWidget(QWidget):
         self.review_datetime.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.review_datetime.setCalendarPopup(True)
         self.review_datetime.setToolTip("以台北時間選擇日期與時間；無效日期不會保存。")
+        self.review_datetime.setMinimumWidth(0)
         review_row.addWidget(self.review_datetime, 1)
-        review_row.addWidget(QLabel("台北時間"))
+        self.review_timezone_label = QLabel("台北時間")
+        self.review_timezone_label.setWordWrap(True)
+        review_row.addWidget(self.review_timezone_label)
+        self.review_row = review_row
         group_layout.addLayout(review_row)
 
         self.technical_toggle = QPushButton("顯示技術詳情")
@@ -151,12 +159,28 @@ class DecisionContinuityControlsWidget(QWidget):
         self.history_list.setAccessibleName("研究動作歷史")
         self.history_list.setSelectionMode(QListWidget.NoSelection)
         self.history_list.setFocusPolicy(Qt.NoFocus)
-        self.history_list.setMaximumHeight(126)
-        self.history_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.history_list.setWordWrap(True)
+        self.history_list.setUniformItemSizes(False)
+        self.history_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        ensure_visible_rows(self.history_list, 5)
         technical_layout.addWidget(self.history_list)
         self.technical_details.setVisible(False)
         group_layout.addWidget(self.technical_details)
         root.addWidget(group)
+        self._apply_responsive_layouts()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._apply_responsive_layouts()
+
+    def _apply_responsive_layouts(self) -> None:
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < 680
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.action_layout.setDirection(direction)
+        self.review_row.setDirection(direction)
 
     @staticmethod
     def _initial_taipei_datetime() -> QDateTime:
@@ -442,6 +466,8 @@ class PersonalRecommendationChoiceControlsWidget(QWidget):
         )
 
     def _setup_personal_choice_ui(self) -> None:
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(6)
@@ -455,7 +481,9 @@ class PersonalRecommendationChoiceControlsWidget(QWidget):
         self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.status_label)
 
-        actions = QHBoxLayout()
+        actions = QBoxLayout(QBoxLayout.LeftToRight)
+        actions.setSpacing(6)
+        self._choice_actions_layout = actions
         self.adopt_button = QPushButton("個人採用")
         self.adopt_button.setObjectName("personalRecommendationAdopt")
         self.adopt_button.setToolTip("記錄你對此已保存推薦的個人採用決定；不會送出委託。")
@@ -481,6 +509,22 @@ class PersonalRecommendationChoiceControlsWidget(QWidget):
         actions.addWidget(self.retry_button)
         layout.addLayout(actions)
         root.addWidget(group)
+        self._apply_choice_action_layout()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._apply_choice_action_layout()
+
+    def _apply_choice_action_layout(self) -> None:
+        """窄版將個人決定按鈕直排，避免縮成難以辨識的窄欄。"""
+
+        direction = (
+            QBoxLayout.TopToBottom
+            if self.width() < 660
+            else QBoxLayout.LeftToRight
+        )
+        if self._choice_actions_layout.direction() != direction:
+            self._choice_actions_layout.setDirection(direction)
 
     def set_context_available(self, available: bool, message: str) -> None:
         self.status_label.setText(message)

@@ -32,6 +32,7 @@ _QWIDGET_DIR = set(dir(QWidget))
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.info_button import InfoButton
+from ui_qt.widgets.layout_helpers import ensure_visible_rows
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.backtest_service import BacktestService
 from app_module.backtest_analyst_diagnostics import build_backtest_analyst_diagnostics
@@ -649,7 +650,9 @@ class BacktestView(QWidget):
         config_scroll = QScrollArea()
         config_scroll.setWidgetResizable(True)
         config_scroll.setMinimumWidth(0)
-        config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # 設定面板有最低可讀寬度；在 390px 等窄視窗中保留水平捲動，
+        # 避免右側控制欄遭裁切且使用者無從到達。
+        config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         config_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         config_container = QWidget()
@@ -1432,6 +1435,7 @@ class BacktestView(QWidget):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("保存推薦回測結果")
+        dialog.setMinimumWidth(520)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("執行名稱:"))
@@ -2064,7 +2068,7 @@ class BacktestView(QWidget):
         # 創建管理對話框
         dialog = QDialog(self)
         dialog.setWindowTitle("管理選股清單")
-        dialog.setMinimumSize(500, 400)
+        dialog.setMinimumSize(520, 460)
         dialog_layout = QVBoxLayout(dialog)
 
         # 清單列表
@@ -2072,6 +2076,7 @@ class BacktestView(QWidget):
         list_layout = QVBoxLayout()
 
         self.watchlist_manage_list = QListWidget()
+        ensure_visible_rows(self.watchlist_manage_list, rows=5)
         self._refresh_watchlist_manage_list()
         list_layout.addWidget(self.watchlist_manage_list)
 
@@ -2126,6 +2131,7 @@ class BacktestView(QWidget):
         """創建新清單"""
         dialog = QDialog(parent_dialog)
         dialog.setWindowTitle("新增選股清單")
+        dialog.setMinimumSize(520, 440)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("清單名稱:"))
@@ -2187,6 +2193,7 @@ class BacktestView(QWidget):
 
         dialog = QDialog(parent_dialog)
         dialog.setWindowTitle("編輯選股清單")
+        dialog.setMinimumSize(520, 440)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("清單名稱:"))
@@ -2684,6 +2691,7 @@ class BacktestView(QWidget):
         # 彈出對話框輸入名稱和備註
         dialog = QDialog(self)
         dialog.setWindowTitle("保存回測結果")
+        dialog.setMinimumWidth(520)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("執行名稱:"))
@@ -2767,12 +2775,14 @@ class BacktestView(QWidget):
         # 顯示檢查結果對話框
         dialog = QDialog(self)
         dialog.setWindowTitle("升級條件檢查")
+        dialog.setMinimumSize(620, 460)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("升級條件檢查結果:"))
         result_text = QTextEditDialog()
         result_text.setReadOnly(True)
-        result_text.setMaximumHeight(200)
+        result_text.setMinimumHeight(200)
+        result_text.setMaximumHeight(320)
 
         if criteria.passed:
             result_text.setPlainText("✓ 通過升級條件\n\n" + "\n".join(criteria.reasons))

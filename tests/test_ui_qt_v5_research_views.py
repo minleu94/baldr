@@ -11,10 +11,9 @@ from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QFont, QFontDatabase, QMouseEvent
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
-from PySide6.QtTest import QTest
 
 from app_module.stock_research_report_dtos import (
     ReportSectionStatus,
@@ -37,6 +36,23 @@ def _app() -> QApplication:
     if instance is None:
         instance = QApplication(sys.argv)
     return instance
+
+
+def _send_chart_mouse_move(
+    chart: StockPriceChartWidget,
+    position: QPoint,
+) -> None:
+    """透過 Qt event dispatcher 將真實 mouse-move event 送至 chart widget。"""
+
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(position),
+        QPointF(chart.mapToGlobal(position)),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    assert QApplication.sendEvent(chart, event)
 
 
 def _configure_visual_qa_theme(app: QApplication) -> None:
@@ -140,103 +156,123 @@ def test_price_chart_requires_complete_ohlc_for_candles_and_volume() -> None:
 def test_price_chart_hover_exposes_point_date_ohlc_volume_and_range() -> None:
     app = _app()
     chart = StockPriceChartWidget()
-    chart.resize(720, 240)
+    screen = app.primaryScreen()
+    available = screen.availableGeometry() if screen is not None else None
+    if available is None:
+        chart.resize(720, 240)
+    else:
+        chart.resize(
+            max(140, min(720, available.width() - 40)),
+            max(188, min(240, available.height() - 40)),
+        )
+        chart.move(available.topLeft())
     chart.show()
-    points = (
-        StockPricePointDTO(
-            data_date="2026-09-07",
-            open_price=Decimal("99"),
-            high_price=Decimal("103"),
-            low_price=Decimal("98"),
-            close_price=Decimal("102"),
-            volume=1000,
-        ),
-        StockPricePointDTO(
-            data_date="2026-09-08",
-            open_price=Decimal("102"),
-            high_price=Decimal("104"),
-            low_price=Decimal("101"),
-            close_price=Decimal("103"),
-            volume=1500,
-        ),
-        StockPricePointDTO(
-            data_date="2026-09-09",
-            open_price=Decimal("103"),
-            high_price=Decimal("105"),
-            low_price=Decimal("102"),
-            close_price=Decimal("104"),
-            volume=2000,
-        ),
-    )
-    chart.set_points(points)
-    app.processEvents()
-
-    assert "圖表範圍：2026-09-07 至 2026-09-09" in chart.toolTip()
-    assert "最新涵蓋日：2026-09-09" in chart.toolTip()
-
-    QTest.mouseMove(chart, QPoint(58, 80))
-    app.processEvents()
-    first_tooltip = chart.toolTip()
-    assert "日期：2026-09-07" in first_tooltip
-    assert "開盤：99" in first_tooltip
-    assert "最高：103" in first_tooltip
-    assert "最低：98" in first_tooltip
-    assert "收盤：102" in first_tooltip
-    assert "成交量：1,000" in first_tooltip
-
-    QTest.mouseMove(chart, QPoint(380, 80))
-    app.processEvents()
-    assert "日期：2026-09-08" in chart.toolTip()
-    assert "成交量：1,500" in chart.toolTip()
-
-    chart.set_points(
-        (
+    try:
+        points = (
             StockPricePointDTO(
-                data_date="2026-09-10",
-                close_price=Decimal("105"),
+                data_date="2026-09-07",
+                open_price=Decimal("99"),
+                high_price=Decimal("103"),
+                low_price=Decimal("98"),
+                close_price=Decimal("102"),
+                volume=1000,
+            ),
+            StockPricePointDTO(
+                data_date="2026-09-08",
+                open_price=Decimal("102"),
+                high_price=Decimal("104"),
+                low_price=Decimal("101"),
+                close_price=Decimal("103"),
+                volume=1500,
+            ),
+            StockPricePointDTO(
+                data_date="2026-09-09",
+                open_price=Decimal("103"),
+                high_price=Decimal("105"),
+                low_price=Decimal("102"),
+                close_price=Decimal("104"),
+                volume=2000,
             ),
         )
-    )
-    QTest.mouseMove(chart, QPoint(60, 80))
-    app.processEvents()
-    incomplete_tooltip = chart.toolTip()
-    assert "日期：2026-09-10" in incomplete_tooltip
-    assert "開盤：未提供" in incomplete_tooltip
-    assert "最高：未提供" in incomplete_tooltip
-    assert "最低：未提供" in incomplete_tooltip
-    assert "成交量：未提供" in incomplete_tooltip
+        chart.set_points(points)
+        app.processEvents()
 
-    chart.set_points(
-        (
-            StockPricePointDTO(
-                data_date="2026-09-11",
-                close_price=Decimal("106"),
-            ),
-            StockPricePointDTO(
-                data_date="2026-09-12",
-                open_price=Decimal("106"),
-                high_price=Decimal("108"),
-                low_price=Decimal("105"),
-                close_price=None,
-                volume=1800,
-            ),
-            StockPricePointDTO(
-                data_date="2026-09-15",
-                close_price=Decimal("107"),
-            ),
+        assert "圖表範圍：2026-09-07 至 2026-09-09" in chart.toolTip()
+        assert "最新涵蓋日：2026-09-09" in chart.toolTip()
+
+        # This widget-level regression should exercise the chart's real Qt handler
+        # without relying on process-wide cursor/window hit-testing.
+        plot_left, plot_right = chart._plot_x_bounds()
+        middle_x = (plot_left + plot_right) // 2
+        last_x = max(plot_left, plot_right - 2)
+        _send_chart_mouse_move(chart, QPoint(10, chart.height() - 10))
+        app.processEvents()
+        _send_chart_mouse_move(chart, QPoint(plot_left, 80))
+        app.processEvents()
+        first_tooltip = chart.toolTip()
+        assert "日期：2026-09-07" in first_tooltip
+        assert "開盤：99" in first_tooltip
+        assert "最高：103" in first_tooltip
+        assert "最低：98" in first_tooltip
+        assert "收盤：102" in first_tooltip
+        assert "成交量：1,000" in first_tooltip
+
+        _send_chart_mouse_move(chart, QPoint(middle_x, 80))
+        app.processEvents()
+        assert "日期：2026-09-08" in chart.toolTip()
+        assert "成交量：1,500" in chart.toolTip()
+
+        chart.set_points(
+            (
+                StockPricePointDTO(
+                    data_date="2026-09-10",
+                    close_price=Decimal("105"),
+                ),
+            )
         )
-    )
-    QTest.mouseMove(chart, QPoint(702, 80))
-    app.processEvents()
-    assert "日期：2026-09-15" in chart.toolTip()
-    assert "資料範圍：2026-09-11 至 2026-09-15" in chart.accessibleDescription()
-    assert "圖上可繪製 2 點" in chart.accessibleDescription()
+        _send_chart_mouse_move(chart, QPoint(plot_left, 80))
+        app.processEvents()
+        incomplete_tooltip = chart.toolTip()
+        assert "日期：2026-09-10" in incomplete_tooltip
+        assert "開盤：未提供" in incomplete_tooltip
+        assert "最高：未提供" in incomplete_tooltip
+        assert "最低：未提供" in incomplete_tooltip
+        assert "成交量：未提供" in incomplete_tooltip
 
-    chart.set_points(())
-    QTest.mouseMove(chart, QPoint(380, 80))
-    app.processEvents()
-    assert chart.toolTip() == "目前沒有可繪製的價格資料。"
-    chart.close()
+        chart.set_points(
+            (
+                StockPricePointDTO(
+                    data_date="2026-09-11",
+                    close_price=Decimal("106"),
+                ),
+                StockPricePointDTO(
+                    data_date="2026-09-12",
+                    open_price=Decimal("106"),
+                    high_price=Decimal("108"),
+                    low_price=Decimal("105"),
+                    close_price=None,
+                    volume=1800,
+                ),
+                StockPricePointDTO(
+                    data_date="2026-09-15",
+                    close_price=Decimal("107"),
+                ),
+            )
+        )
+        _send_chart_mouse_move(chart, QPoint(last_x, 80))
+        app.processEvents()
+        assert "日期：2026-09-15" in chart.toolTip()
+        assert "資料範圍：2026-09-11 至 2026-09-15" in chart.accessibleDescription()
+        assert "圖上可繪製 2 點" in chart.accessibleDescription()
+
+        chart.set_points(())
+        _send_chart_mouse_move(chart, QPoint(middle_x, 80))
+        app.processEvents()
+        assert chart.toolTip() == "目前沒有可繪製的價格資料。"
+    finally:
+        chart.close()
+        chart.deleteLater()
+        app.processEvents()
 
 
 def test_report_summary_exposes_evidence_change_risk_sufficiency_and_next_step() -> None:

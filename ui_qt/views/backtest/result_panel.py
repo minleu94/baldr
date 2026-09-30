@@ -4,7 +4,7 @@
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QAbstractItemView, QListView, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QGroupBox, QTableView, QTextEdit, QComboBox, 
     QHeaderView, QListWidget, QTabWidget, QPushButton
 )
@@ -28,6 +28,7 @@ from ui_qt.views.evidence_review_view import EvidenceReviewView
 from ui_qt.views.forward_performance_view import ForwardPerformanceView
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 
 
 class BacktestResultPanel(QWidget):
@@ -61,6 +62,7 @@ class BacktestResultPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self._result_tab_widgets: dict[str, QWidget] = {}
+        self._result_tab_content_widgets: dict[str, QWidget] = {}
         self._result_tab_titles: dict[str, str] = {}
         self._research_mode_id = "single_stock"
 
@@ -452,10 +454,28 @@ class BacktestResultPanel(QWidget):
         self.set_research_mode("single_stock")
 
     def _register_result_tab(self, key: str, widget: QWidget, title: str) -> None:
-        """以 semantic key 註冊頂層結果頁，避免以顯示文字猜 tab。"""
-        self._result_tab_widgets[key] = widget
+        """以 semantic key 註冊可捲動結果頁，保留原始頁面供內容查找。"""
+        self._result_tab_content_widgets[key] = widget
+        for view in widget.findChildren(QAbstractItemView):
+            if isinstance(view, QHeaderView) or not isinstance(view, (QTableView, QListView)):
+                continue
+            ensure_visible_rows(view, rows=5)
+
+        scroll_area = create_scroll_area(
+            widget,
+            object_name=f"backtestResultScrollArea_{key}",
+            # 診斷 KPI 以三欄呈現且每欄保留可讀寬度；超窄結果面板需能
+            # 橫向查看完整 KPI 與表格欄位。
+            horizontal_scroll=key == "diagnostics",
+        )
+        scroll_area.setAccessibleName(f"{title}內容捲動區")
+        self._result_tab_widgets[key] = scroll_area
         self._result_tab_titles[key] = title
-        self.result_tabs.addTab(widget, title)
+        self.result_tabs.addTab(scroll_area, title)
+
+    def result_tab_content_widget(self, key: str) -> QWidget | None:
+        """依 semantic key 取得結果頁內層內容 widget。"""
+        return self._result_tab_content_widgets.get(key)
 
     def result_tab_key(self, index: int) -> str | None:
         for key, widget in self._result_tab_widgets.items():

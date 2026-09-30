@@ -8,7 +8,7 @@ from pathlib import Path
 import json
 import os
 import sqlite3
-from typing import Any
+from typing import Any, Callable
 
 from app_module.decision_desk_dtos import DecisionDeskSnapshot, DecisionDeskQuality, RecommendationDeskSummary
 from app_module.decision_desk_snapshot_storage_dtos import StoredDecisionDeskSnapshot
@@ -35,6 +35,11 @@ from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
 from app_module.paper_portfolio_time import taiwan_market_today
 from app_module.position_health_transition_read_service import (
     PositionHealthTransitionReadService,
+)
+from app_module.sqlite_read_only import (
+    check_read_cancelled,
+    cooperative_read_cancellation,
+    connect_read_only_sqlite,
 )
 
 
@@ -97,8 +102,35 @@ class WorkbenchSourceService:
         replay_summary_json: str | Path | None = None,
         recommendation_learning_status_json: str | Path | None = None,
         continuity_as_of: datetime | str | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> WorkbenchDashboardDTO:
+        with cooperative_read_cancellation(cancel_callback):
+            check_read_cancelled()
+            return self._inspect(
+                decision_date=decision_date,
+                multi_day_record_path=multi_day_record_path,
+                min_weekly_records=min_weekly_records,
+                min_dry_run_days=min_dry_run_days,
+                agent_report_limit=agent_report_limit,
+                replay_summary_json=replay_summary_json,
+                recommendation_learning_status_json=recommendation_learning_status_json,
+                continuity_as_of=continuity_as_of,
+            )
+
+    def _inspect(
+        self,
+        *,
+        decision_date: str | None = None,
+        multi_day_record_path: str | Path | None = None,
+        min_weekly_records: int = DEFAULT_MIN_WEEKLY_HISTORY_RECORDS,
+        min_dry_run_days: int = DEFAULT_MIN_DRY_RUN_DAYS,
+        agent_report_limit: int = 5,
+        replay_summary_json: str | Path | None = None,
+        recommendation_learning_status_json: str | Path | None = None,
+        continuity_as_of: datetime | str | None = None,
     ) -> WorkbenchDashboardDTO:
         decision_snapshot, source_diagnostics = self._load_decision_snapshot(decision_date)
+        check_read_cancelled()
         readiness_report = self.readiness_service.inspect(
             decision_date=decision_date,
             multi_day_record_path=multi_day_record_path,
@@ -106,18 +138,26 @@ class WorkbenchSourceService:
             min_dry_run_days=min_dry_run_days,
             agent_report_limit=agent_report_limit,
         )
-        agent_report_sample = self.readiness_service.build_agent_report_sample(limit=agent_report_limit)
+        check_read_cancelled()
+        agent_report_sample = self.readiness_service.build_agent_report_sample(
+            limit=agent_report_limit
+        )
+        check_read_cancelled()
         historical_replay_summary = (
             load_historical_replay_summary(replay_summary_json) if replay_summary_json is not None else None
         )
+        check_read_cancelled()
         scheduled_status = self.scheduled_status_service.load_latest()
+        check_read_cancelled()
         recommendation_learning_status, learning_diagnostics = self._load_recommendation_learning_status(
             recommendation_learning_status_json
         )
+        check_read_cancelled()
         source_diagnostics.extend(learning_diagnostics)
         continuity_reviews = self.continuity_review_projection_service.project(
             as_of=continuity_as_of,
         )
+        check_read_cancelled()
         source_mode = "read_only_sources_plus_historical_replay" if historical_replay_summary else "read_only_sources"
         dashboard = self.composer.compose(
             decision_snapshot=decision_snapshot,
@@ -133,6 +173,7 @@ class WorkbenchSourceService:
         learning_projection = self.learning_evidence_projection_service.inspect(
             requested_date=dashboard.as_of_date.isoformat()
         )
+        check_read_cancelled()
         daily_evidence = self.daily_investment_journey_service.build(
             decision_snapshot=decision_snapshot,
             scheduled_status=scheduled_status,
@@ -140,9 +181,11 @@ class WorkbenchSourceService:
             recommendation_learning_projection=learning_projection,
             requested_decision_date=dashboard.as_of_date.isoformat(),
         )
+        check_read_cancelled()
         position_health = self.position_health_read_service.read_latest(
             expected_decision_date=dashboard.as_of_date.isoformat(),
         )
+        check_read_cancelled()
         return replace(
             dashboard,
             daily_evidence=daily_evidence,
@@ -175,9 +218,11 @@ class WorkbenchSourceService:
                 )
         if not path.is_file():
             return None, []
+        check_read_cancelled()
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
+            check_read_cancelled()
             return {
                 "status": "failed",
                 "reason": "recommendation_learning_latest_status_invalid",
@@ -185,6 +230,7 @@ class WorkbenchSourceService:
                 "decision_reason": "recommendation_learning_latest_status_invalid",
                 "warnings": [f"{type(exc).__name__}"],
             }, ["recommendation_learning_latest_status_invalid"]
+        check_read_cancelled()
         if not isinstance(payload, dict):
             return {
                 "status": "failed",
@@ -237,6 +283,7 @@ class WorkbenchSourceService:
             diagnostics.append(f"decision_desk_snapshot_db_missing:{exc}")
             return None, diagnostics
         except sqlite3.Error as exc:
+            check_read_cancelled()
             diagnostics.append(f"decision_desk_snapshot_unavailable:{exc}")
             return None, diagnostics
 
@@ -277,10 +324,8 @@ class WorkbenchSourceService:
 def _connect_read_only(path: Path) -> sqlite3.Connection:
     if not path.exists():
         raise FileNotFoundError(str(path))
-    uri_path = path.resolve().as_posix()
-    conn = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True)
+    conn = connect_read_only_sqlite(path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = ON")
     return conn
 
 

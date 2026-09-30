@@ -42,6 +42,11 @@ from ml_module.recommendation_calibration_evidence import (
     RecommendationPredictionCaptureVerification,
     verify_prediction_capture_read_only,
 )
+from app_module.sqlite_read_only import (
+    ReadOperationCancelled,
+    check_read_cancelled,
+    cooperative_read_cancellation,
+)
 
 
 PROJECTION_SCHEMA_VERSION = "recommendation-learning-evidence-projection.v1"
@@ -478,7 +483,17 @@ class RecommendationLearningEvidenceProjectionService:
             return None
         return path
 
-    def inspect(self, requested_date: str | None = None) -> RecommendationLearningEvidenceProjection:
+    def inspect(
+        self,
+        requested_date: str | None = None,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> RecommendationLearningEvidenceProjection:
+        with cooperative_read_cancellation(cancel_callback):
+            return self._inspect(requested_date)
+
+    def _inspect(self, requested_date: str | None = None) -> RecommendationLearningEvidenceProjection:
+        check_read_cancelled()
         diagnostics: list[str] = []
         warnings: list[str] = []
         if self.latest_status_path is None:
@@ -489,6 +504,7 @@ class RecommendationLearningEvidenceProjectionService:
                 diagnostics=["recommendation_learning_output_root_invalid"],
             )
         status_payload, status_error = _read_json_object(self.latest_status_path)
+        check_read_cancelled()
         if status_error is not None:
             return self._empty_projection(
                 requested_date=_date_key(requested_date),
@@ -507,8 +523,10 @@ class RecommendationLearningEvidenceProjectionService:
                     else _resolve_default_requested_date(self.config)
                 )
             except (OSError, TypeError, ValueError, KeyError):
+                check_read_cancelled()
                 resolved_requested_date = None
             requested = _date_key(resolved_requested_date)
+            check_read_cancelled()
         date_status = _date_scope_status(learning_date, requested)
         if date_status in {"future_blocked", "stale", "unknown"}:
             diagnostics.append(
@@ -519,6 +537,7 @@ class RecommendationLearningEvidenceProjectionService:
             status_payload,
             requested_date=requested,
         )
+        check_read_cancelled()
         diagnostics.extend(candidate_diagnostics)
         candidate_lane = self._candidate_lane(
             status_payload,
@@ -529,12 +548,14 @@ class RecommendationLearningEvidenceProjectionService:
             date_status=date_status,
             diagnostics=diagnostics,
         )
+        check_read_cancelled()
         active_lane = self._active_lane(
             status_payload,
             requested_date=requested,
             date_status=date_status,
             diagnostics=diagnostics,
         )
+        check_read_cancelled()
 
         live_capture = _mapping(status_payload.get("live_capture"))
         candidate_capture = _mapping(live_capture.get("candidate")) or live_capture
@@ -550,6 +571,7 @@ class RecommendationLearningEvidenceProjectionService:
             ),
             capture_verifier=self.capture_verifier,
         )
+        check_read_cancelled()
         if candidate_lane.status == "blocked_provenance" and data_recorded_status == "recorded":
             data_recorded_status = "blocked_provenance"
             data_recorded_reason = candidate_lane.reason
@@ -923,6 +945,7 @@ class RecommendationLearningEvidenceProjectionService:
             truncated = False
             try:
                 for path in capture_root.rglob("*.json"):
+                    check_read_cancelled()
                     if path.is_symlink() or not path.is_file():
                         continue
                     discovered_count += 1
@@ -932,6 +955,7 @@ class RecommendationLearningEvidenceProjectionService:
                     try:
                         raw_payload, raw_error = _read_json_object(path)
                     except (OSError, TypeError, ValueError):
+                        check_read_cancelled()
                         raw_payload, raw_error = None, "read_failure"
                     raw_candidate_id = _text(raw_payload.get("candidate_id")) if raw_payload else ""
                     if raw_candidate_id and raw_candidate_id != candidate_id:
@@ -940,7 +964,10 @@ class RecommendationLearningEvidenceProjectionService:
                     if raw_error is not None and str(path) not in seen:
                         diagnostics.append("capture_scan_unreadable:" + path.name)
                     add_path(str(path), explicit=False)
+            except ReadOperationCancelled:
+                raise
             except (OSError, RuntimeError) as exc:
+                check_read_cancelled()
                 truncated = True
                 diagnostics.append(f"capture_scan_truncated:{type(exc).__name__}")
             scan_status = "truncated" if truncated else "complete"
@@ -967,8 +994,10 @@ class RecommendationLearningEvidenceProjectionService:
         latest_decision_date: str | None = None
 
         for path in explicit_paths:
+            check_read_cancelled()
             try:
                 verified = self.capture_verifier(path)
+                check_read_cancelled()
                 capture_date = _date_key(verified.capture_as_of_date)
                 if verified.candidate_id != candidate_id:
                     raise ValueError("candidate capture identity mismatch")
@@ -984,6 +1013,7 @@ class RecommendationLearningEvidenceProjectionService:
                 if verified.cost_scenario_hash != expected_cost_scenario.scenario_hash:
                     raise ValueError("candidate capture cost scenario mismatch")
             except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+                check_read_cancelled()
                 invalid_capture_count += 1
                 diagnostics.append(f"capture_invalid:{path.name}:{type(exc).__name__}")
                 continue
@@ -1009,6 +1039,7 @@ class RecommendationLearningEvidenceProjectionService:
             local_conflict = False
             if isinstance(raw_rows, list):
                 for raw_row in raw_rows:
+                    check_read_cancelled()
                     if not isinstance(raw_row, Mapping):
                         continue
                     symbol = _text(raw_row.get("symbol"))
@@ -1058,6 +1089,7 @@ class RecommendationLearningEvidenceProjectionService:
                 conflicting_capture_ids.add(verified.capture_id)
             else:
                 for key, fingerprint in local_rows:
+                    check_read_cancelled()
                     if key not in seen_symbol_dates:
                         seen_symbol_dates[key] = (verified.capture_id, fingerprint)
                     symbol_date_capture_ids.setdefault(key, set()).add(verified.capture_id)
@@ -1510,10 +1542,13 @@ class RecommendationLearningEvidenceProjectionService:
 
 
 def _read_json_object(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    check_read_cancelled()
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        check_read_cancelled()
         return None, type(exc).__name__
+    check_read_cancelled()
     if not isinstance(payload, dict):
         return None, "json_object_required"
     return payload, None
@@ -1904,7 +1939,8 @@ def _hash_payload(payload: Any) -> str:
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
+        while block := handle.read(1024 * 1024):
+            check_read_cancelled()
             digest.update(block)
     return "sha256:" + digest.hexdigest()
 
@@ -1983,7 +2019,10 @@ def _resolve_default_requested_date(config: Any | None) -> str | None:
             include_reference=True,
             allow_online_probe=False,
         )
+    except ReadOperationCancelled:
+        raise
     except (OSError, TypeError, ValueError, RuntimeError):
+        check_read_cancelled()
         return None
     if not sessions:
         return None

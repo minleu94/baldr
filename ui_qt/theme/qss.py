@@ -231,7 +231,7 @@ def build_global_stylesheet(tokens: ThemeTokens = MIDNIGHT_ANALYST) -> str:
         font-weight: 700;
     }}
     QPushButton#clearUpdateLog {{
-        min-height: 0px;
+        min-height: 21px;
         padding: 2px 5px;
         font-size: 9pt;
     }}
@@ -371,6 +371,12 @@ def build_global_stylesheet(tokens: ThemeTokens = MIDNIGHT_ANALYST) -> str:
     QComboBox::drop-down, QDateEdit::drop-down {{
         border: 0;
         width: 22px;
+    }}
+    QLineEdit#sqliteInspectorBrokerBranchInput {{
+        padding: 0 5px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
     }}
     QComboBox QAbstractItemView {{
         background: {tokens.surface_1};

@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, QDate
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.layout_helpers import create_scroll_area
 from app_module.sqlite_inspector_service import SqliteInspectorService
 
 
@@ -139,13 +140,28 @@ class SqliteInspectorWidget(QWidget):
 
         row2_layout.addWidget(QLabel("券商分點:"))
         self.broker_branch_combo = QComboBox()
+        self.broker_branch_combo.setObjectName("sqliteInspectorBrokerBranchCombo")
         self.broker_branch_combo.setEditable(True)
         self.broker_branch_combo.setInsertPolicy(QComboBox.NoInsert)
         self.broker_branch_combo.setMinimumWidth(150)
         self.broker_branch_combo.setMaximumWidth(190)
         self.broker_branch_combo.setMaxVisibleItems(20)
         self.broker_branch_combo.addItem("")
-        self.broker_branch_combo.lineEdit().setPlaceholderText("分點名稱 (選填)")
+        branch_input = self.broker_branch_combo.lineEdit()
+        if branch_input is not None:
+            branch_input.setObjectName("sqliteInspectorBrokerBranchInput")
+            branch_input.setPlaceholderText("分點名稱 (選填)")
+            branch_input.setMinimumHeight(
+                max(branch_input.minimumHeight(), branch_input.sizeHint().height())
+            )
+        # QComboBox 的內嵌編輯框有自己的幾何分配；讓外層高度至少採用其
+        # 主題套用後的自然尺寸，避免 editable 輸入文字區被壓到小於 sizeHint。
+        self.broker_branch_combo.setMinimumHeight(
+            max(
+                self.broker_branch_combo.minimumHeight(),
+                self.broker_branch_combo.sizeHint().height(),
+            )
+        )
         self.broker_branch_combo.setToolTip(
             "【券商分點】\n"
             "選擇或輸入分點名稱關鍵字（例如 凱基台北），用以篩選分點買賣超資料（僅適用於 broker_flows 表）。"
@@ -198,7 +214,15 @@ class SqliteInspectorWidget(QWidget):
         control_main_layout.addLayout(row2_layout)
 
         control_group.setLayout(control_main_layout)
-        main_layout.addWidget(control_group)
+        # 篩選項目在窄視窗中改以明確水平捲動呈現，避免日期與分點欄位
+        # 被擠成不可操作的窄控件；外層 Update 頁仍負責整頁垂直捲動。
+        main_layout.addWidget(
+            create_scroll_area(
+                control_group,
+                object_name="sqliteInspectorFiltersScroll",
+                horizontal_scroll=True,
+            )
+        )
 
         # 2. 中央 TabWidget 頁面展示
         self.tabs = QTabWidget()

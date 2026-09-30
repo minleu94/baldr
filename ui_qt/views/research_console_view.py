@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from collections.abc import Callable
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -28,8 +29,10 @@ from app_module.recommendation_learning_evidence_projection_service import (
 )
 from app_module.p0_source_control_center import P0SourceControlCenterDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.layout_helpers import ensure_visible_rows, set_scroll_content_constraints
 from ui_qt.widgets.theme_widgets import SectionPanel
 from ui_qt.views.update.update_formatters import format_p0_license_capture_status
+from ui_qt.workers.task_worker import TaskWorker
 
 
 _STATUS_COLORS = {
@@ -118,6 +121,34 @@ _BLOCKER_LABELS = {
 }
 
 
+def _inspect_research_console_bundle(
+    source_service: ResearchConsoleSourceService,
+    learning_service: RecommendationLearningEvidenceProjectionService | None,
+    decision_date: str | None,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> tuple[
+    ResearchConsoleDTO,
+    RecommendationLearningEvidenceProjection | None,
+    str | None,
+]:
+    """在 worker thread 取得兩個唯讀 projection，保留同一日期快照。"""
+
+    console = source_service.inspect(cancel_callback=cancel_callback)
+    if cancel_callback is not None and cancel_callback():
+        return console, None, None
+    if learning_service is None:
+        return console, None, None
+    try:
+        projection = learning_service.inspect(
+            requested_date=decision_date,
+            cancel_callback=cancel_callback,
+        )
+    except (OSError, TypeError, ValueError, KeyError) as exc:
+        return console, None, f"{type(exc).__name__}: {exc}"
+    return console, projection, None
+
+
 class ResearchConsoleView(QWidget):
     """只複製 ResearchConsoleDTO；不計算或寫入 domain state。"""
 
@@ -130,6 +161,7 @@ class ResearchConsoleView(QWidget):
         legacy_learning_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
         decision_date: str | None = None,
         auto_refresh: bool = True,
+        async_refresh: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -137,15 +169,28 @@ class ResearchConsoleView(QWidget):
         self.learning_projection_service = learning_projection_service
         self.legacy_learning_projection_service = legacy_learning_projection_service
         self.decision_date = decision_date
+        self._async_refresh = bool(async_refresh)
         self._learning_projection: RecommendationLearningEvidenceProjection | None = None
         self._console: ResearchConsoleDTO | None = None
+        self._console_loaded = console is not None
+        self._load_requested = False
+        self._shutdown_requested = False
+        self._refresh_worker: TaskWorker | None = None
+        self._refresh_generation = 0
+        self._refresh_pending = False
         self._setup_ui()
         if console is not None:
             self.render_console(console)
+            if self._async_refresh and self._selected_learning_service() is not None:
+                self._refresh_learning_projection()
+        elif auto_refresh and self._async_refresh:
+            self.render_console(self.source_service.missing_projection())
+            QTimer.singleShot(0, self.ensure_loaded)
         elif auto_refresh:
             self.refresh_console()
         else:
-            self.render_console(self.source_service.inspect())
+            # auto_refresh=False 代表建構時不讀取來源；placeholder 不觸碰設定路徑。
+            self.render_console(self.source_service.missing_projection())
 
     def _setup_ui(self) -> None:
         root_layout = QVBoxLayout(self)
@@ -177,6 +222,12 @@ class ResearchConsoleView(QWidget):
         self.refresh_button.setProperty("variant", "secondary")
         self.refresh_button.clicked.connect(self.refresh_console)
         layout.addWidget(self.refresh_button)
+        self.refresh_status_label = QLabel("尚未載入；切換到此分頁時才會讀取唯讀投影。")
+        self.refresh_status_label.setWordWrap(True)
+        self.refresh_status_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        layout.addWidget(self.refresh_status_label)
 
         self.conclusion_banner = QLabel()
         self.conclusion_banner.setObjectName("ResearchConsoleConclusion")
@@ -331,23 +382,208 @@ class ResearchConsoleView(QWidget):
         layout.addWidget(gates_panel)
         layout.addStretch()
 
+        set_scroll_content_constraints(content)
         scroll.setWidget(content)
         root_layout.addWidget(scroll)
 
     def refresh_console(self) -> None:
-        self.render_console(self.source_service.inspect())
-        self._refresh_learning_projection()
+        if self._shutdown_requested:
+            return
+        if self._async_refresh:
+            self._start_async_refresh()
+            return
+        self.refresh_button.setEnabled(False)
+        self.refresh_status_label.setText("正在讀取唯讀 projection…")
+        try:
+            self.render_console(self.source_service.inspect())
+            self._refresh_learning_projection()
+            self._console_loaded = True
+            self._load_requested = False
+            self.refresh_status_label.setText("唯讀 projection 已載入。")
+        finally:
+            self.refresh_button.setEnabled(True)
+
+    def ensure_loaded(self) -> None:
+        """只在研究證據分頁首次顯示時載入；重複切頁不重讀。"""
+
+        if self._shutdown_requested or self._console_loaded or self._load_requested:
+            return
+        self._load_requested = True
+        self.refresh_console()
+
+    def begin_shutdown(self) -> None:
+        if self._shutdown_requested:
+            return
+        self._shutdown_requested = True
+        self._refresh_generation += 1
+        self._refresh_pending = False
+        worker = self._refresh_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                self._refresh_worker = None
+
+    def _start_async_refresh(self) -> None:
+        if self._shutdown_requested:
+            return
+        # 任何新日期／成本 lane 請求都立刻使先前已排隊的結果失效。
+        self._refresh_generation += 1
+        generation = self._refresh_generation
+        # Keep the in-flight state explicit for initial loads and retries as
+        # well as refreshes of an already rendered console. A lane/date change
+        # during any of these reads must request the latest snapshot.
+        self._load_requested = True
+        worker = self._refresh_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    self._refresh_pending = True
+                    worker.cancel(cooperative=True, wait=False)
+                    self.refresh_status_label.setText(
+                        "正在取消較早的唯讀讀取，完成後載入最新日期與成本情境。"
+                    )
+                    return
+            except RuntimeError:
+                self._refresh_worker = None
+
+        requested_date = self.decision_date
+        learning_service = self._selected_learning_service()
+        worker = TaskWorker(
+            _inspect_research_console_bundle,
+            self.source_service,
+            learning_service,
+            requested_date,
+        )
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.finished.connect(
+            lambda bundle, current_generation=generation, current_date=requested_date: self._on_async_refresh_finished(
+                current_generation, current_date, bundle
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.error.connect(
+            lambda error, current_generation=generation, current_date=requested_date: self._on_async_refresh_error(
+                current_generation, current_date, error
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.cancelled.connect(
+            lambda current_generation=generation: self._on_async_refresh_cancelled(
+                current_generation
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.native_thread_finished.connect(
+            lambda current_worker=worker: self._on_async_refresh_thread_finished(
+                current_worker
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._refresh_worker = worker
+        self.refresh_button.setEnabled(False)
+        self.refresh_status_label.setText(
+            "正在背景讀取唯讀資料來源；關閉程式時會合作式取消。"
+        )
+        worker.start()
+
+    def _on_async_refresh_finished(
+        self,
+        generation: int,
+        requested_date: str | None,
+        bundle: object,
+    ) -> None:
+        if self._shutdown_requested or generation != self._refresh_generation:
+            return
+        if requested_date != self.decision_date:
+            self._refresh_pending = True
+            return
+        if (
+            not isinstance(bundle, tuple)
+            or len(bundle) != 3
+            or not isinstance(bundle[0], ResearchConsoleDTO)
+        ):
+            self._on_async_refresh_error(
+                generation,
+                requested_date,
+                "Research Console source 回傳格式無效。",
+            )
+            return
+        console, projection, projection_error = bundle
+        self.render_console(console)
+        self.render_learning_projection(projection, error=projection_error)
+        self._console_loaded = True
+        self._load_requested = False
+        self.refresh_status_label.setText("唯讀 projection 已載入。")
+
+    def _on_async_refresh_error(
+        self,
+        generation: int,
+        requested_date: str | None,
+        error_message: str,
+    ) -> None:
+        if self._shutdown_requested or generation != self._refresh_generation:
+            return
+        if requested_date != self.decision_date:
+            self._refresh_pending = True
+            return
+        self._load_requested = False
+        self.refresh_status_label.setText(
+            f"唯讀 projection 讀取失敗：{error_message}；可重新載入。"
+        )
+
+    def _on_async_refresh_cancelled(self, generation: int) -> None:
+        if generation != self._refresh_generation or self._shutdown_requested:
+            return
+        if not self._refresh_pending:
+            self._load_requested = False
+            self.refresh_status_label.setText(
+                "唯讀讀取已取消；目前畫面保留最後一次結果。"
+            )
+
+    def _on_async_refresh_thread_finished(self, worker: TaskWorker) -> None:
+        if self._refresh_worker is not worker:
+            try:
+                worker.deleteLater()
+            except RuntimeError:
+                pass
+            return
+        self._refresh_worker = None
+        should_refresh = self._refresh_pending and not self._shutdown_requested
+        self._refresh_pending = False
+        try:
+            worker.deleteLater()
+        except RuntimeError:
+            pass
+        if not self._shutdown_requested:
+            self.refresh_button.setEnabled(True)
+        if should_refresh:
+            QTimer.singleShot(0, self.refresh_console)
 
     def set_decision_date(self, decision_date: str | None) -> None:
         """Bind learning freshness to the selected Workbench decision date."""
 
+        if decision_date == self.decision_date:
+            return
         self.decision_date = decision_date
-        self._refresh_learning_projection()
+        if self._async_refresh:
+            if self._console_loaded or self._load_requested:
+                self.refresh_console()
+        else:
+            self._refresh_learning_projection()
 
     def _on_learning_lane_changed(self, _index: int) -> None:
         self._refresh_learning_projection()
 
     def _refresh_learning_projection(self) -> None:
+        if self._async_refresh:
+            # A lane change during the first lazy load must invalidate that
+            # in-flight result too; otherwise its older projection can be
+            # rendered under the newly selected lane.
+            if self._console_loaded or self._load_requested:
+                self.refresh_console()
+            return
         service = self._selected_learning_service()
         if service is None:
             self.render_learning_projection(None)
@@ -590,7 +826,7 @@ class ResearchConsoleView(QWidget):
             ((row.artifact_type, row.artifact_id, row.status, row.citation) for row in console.artifacts),
             status_column=2,
         )
-        if self.learning_projection_service is not None:
+        if self.learning_projection_service is not None and not self._async_refresh:
             self._refresh_learning_projection()
 
     def visible_text(self) -> str:
@@ -620,7 +856,11 @@ def _table(headers: tuple[str, ...]) -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
     table.horizontalHeader().setStretchLastSection(True)
-    table.setMinimumHeight(150)
+    for column in range(table.columnCount()):
+        header_item = table.horizontalHeaderItem(column)
+        if header_item is not None:
+            header_item.setToolTip(header_item.text())
+    ensure_visible_rows(table, 5)
     return table
 
 
@@ -636,6 +876,7 @@ def _set_rows(table: QTableWidget, rows, *, status_column: int) -> None:
             if column_index == status_column:
                 item.setForeground(QColor(_STATUS_COLORS.get(str(value).lower(), "#94a3b8")))
             table.setItem(row_index, column_index, item)
+    ensure_visible_rows(table, 5)
 
 
 def _display(value: object) -> str:

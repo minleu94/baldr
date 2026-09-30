@@ -11,7 +11,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from ui_qt.crash_diagnostics import install_crash_diagnostics, record_exception
+from ui_qt.crash_diagnostics import (
+    install_crash_diagnostics,
+    record_diagnostic,
+    record_exception,
+)
 
 
 def _configure_console_streams() -> None:
@@ -133,6 +137,7 @@ from ui_qt.theme.fonts import (
 )
 from ui_qt.widgets.left_navigation import LeftNavigationWidget, NavigationItem
 from ui_qt.widgets.adaptive_workspace_stack import AdaptiveWorkspaceStack
+from ui_qt.widgets.layout_helpers import bounded_initial_window_geometry
 from ui_qt.widgets.text_sanitizer import sanitize_button_texts
 from ui_qt.main_window_coordinator import WORKSPACE_DEFINITIONS, resolve_workspace_key
 from ui_qt.runtime_composition import build_runtime_ui_composition
@@ -173,6 +178,8 @@ def _drain_qt_deferred_deletes(
 ) -> None:
     """在 QApplication 有效期間釋放已關閉的 GUI QObject。"""
 
+    record_diagnostic("qt_deferred_delete_drain_started")
+
     for window in windows:
         try:
             delete_later = getattr(window, "deleteLater", None)
@@ -187,6 +194,11 @@ def _drain_qt_deferred_deletes(
             continue
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
     app.processEvents()
+    # processEvents 可能才配送 QThread.finished 的 queued cleanup；若該回呼
+    # 在視窗釋放後呼叫 worker.deleteLater，第二次有限 flush 會在 Qt 尚有效時
+    # 一併排空新建立的 DeferredDelete。
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    record_diagnostic("qt_deferred_delete_drain_finished")
 
 
 def _resolve_personal_policy_config_path(
@@ -260,7 +272,14 @@ class MainWindow(QMainWindow):
     def __init__(self, *, policy_config_path: str | Path | None = None):
         super().__init__()
         self.setWindowTitle("baldr")
-        self.setGeometry(100, 100, 1400, 800)
+        primary_screen = QApplication.primaryScreen()
+        available_geometry = (
+            primary_screen.availableGeometry() if primary_screen is not None else None
+        )
+        self._initial_window_geometry = bounded_initial_window_geometry(
+            available_geometry
+        )
+        self.setGeometry(self._initial_window_geometry)
         self._navigation_collapsed_by_window = False
         self._shutdown_close_requested = False
         self._shutdown_close_finalizing = False
@@ -361,7 +380,9 @@ class MainWindow(QMainWindow):
 
             # 設置 UI
             self._setup_ui()
-            self.setMinimumWidth(self.RESPONSIVE_MIN_WIDTH)
+            self.setMinimumWidth(
+                min(self.RESPONSIVE_MIN_WIDTH, self._initial_window_geometry.width())
+            )
         except Exception as e:
             logger.error(f"初始化主窗口失敗: {e}")
             import traceback
@@ -740,6 +761,7 @@ class MainWindow(QMainWindow):
                         "recommendation"
                     ),
                     auto_refresh=True,
+                    async_refresh=True,
                     parent=self,
                 )
                 self.workbench_view = workbench_view
@@ -1270,10 +1292,27 @@ class MainWindow(QMainWindow):
 
         logging.getLogger(__name__).info(message)
 
+    def _record_shutdown_diagnostic(
+        self,
+        event: str,
+        *,
+        elapsed_seconds: float | None = None,
+        worker_count: int | None = None,
+        background_process_running: bool | None = None,
+    ) -> None:
+        """保存不含路徑或工作參數的關閉階段摘要。"""
+
+        record_diagnostic(
+            f"ui_shutdown_{event}",
+            elapsed_seconds=elapsed_seconds,
+            worker_count=worker_count,
+            background_process_running=background_process_running,
+        )
+
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
 
-        for attribute in ("decision_desk_view", "portfolio_view"):
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view"):
             view = getattr(self, attribute, None)
             begin_shutdown = getattr(view, "begin_shutdown", None)
             if not callable(begin_shutdown):
@@ -1310,8 +1349,21 @@ class MainWindow(QMainWindow):
             if blocker_tuple != self._shutdown_close_last_blockers:
                 self._shutdown_close_last_blockers = blocker_tuple
                 self._shutdown_close_last_diagnostic_monotonic = now
+                started = self._shutdown_close_started_monotonic
+                elapsed = now - started if started is not None else 0.0
+                MainWindow._record_shutdown_diagnostic(
+                    self,
+                    "waiting",
+                    elapsed_seconds=elapsed,
+                    worker_count=len(remaining_workers),
+                    background_process_running=background_process_running,
+                )
                 MainWindow._record_shutdown_message(
                     self, "主視窗關閉仍在等待：" + "、".join(blocker_tuple)
+                )
+                self.statusBar().showMessage(
+                    "已暫停關閉：" + "、".join(blocker_tuple)
+                    + "；目前仍在安全收尾，完成後會自動關閉。"
                 )
             elif (
                 self._shutdown_close_last_diagnostic_monotonic is None
@@ -1320,10 +1372,21 @@ class MainWindow(QMainWindow):
                 self._shutdown_close_last_diagnostic_monotonic = now
                 started = self._shutdown_close_started_monotonic
                 elapsed = now - started if started is not None else 0.0
+                MainWindow._record_shutdown_diagnostic(
+                    self,
+                    "still_waiting",
+                    elapsed_seconds=elapsed,
+                    worker_count=len(remaining_workers),
+                    background_process_running=background_process_running,
+                )
                 MainWindow._record_shutdown_message(
                     self,
                     "主視窗關閉仍在等待（UI event loop 持續運作）："
                     f"elapsed={elapsed:.1f}s，原因=" + "、".join(blocker_tuple),
+                )
+                self.statusBar().showMessage(
+                    f"已暫停關閉 {elapsed:.0f} 秒：" + "、".join(blocker_tuple)
+                    + "；介面仍在等待安全收尾，完成後會自動關閉。"
                 )
             return
 
@@ -1336,6 +1399,13 @@ class MainWindow(QMainWindow):
         MainWindow._record_shutdown_message(
             self,
             f"主視窗背景工作已安全收尾，關閉耗時 {elapsed:.3f} 秒；自動完成 close。",
+        )
+        MainWindow._record_shutdown_diagnostic(
+            self,
+            "workers_finished",
+            elapsed_seconds=elapsed,
+            worker_count=0,
+            background_process_running=False,
         )
         self.statusBar().showMessage("背景工作已安全收尾，正在關閉…", 3_000)
         QTimer.singleShot(0, self.close)
@@ -1356,6 +1426,7 @@ class MainWindow(QMainWindow):
             self._shutdown_close_started_monotonic = time.monotonic()
             self._shutdown_close_last_blockers = ()
             self._shutdown_close_last_diagnostic_monotonic = None
+            MainWindow._record_shutdown_diagnostic(self, "requested")
             MainWindow._freeze_child_refresh_sources(self)
 
             research_workspace = getattr(self, "stock_research_workspace", None)
@@ -1369,6 +1440,14 @@ class MainWindow(QMainWindow):
         remaining_workers, background_process_running = (
             MainWindow._request_shutdown_dependencies(self, send_cancel=first_request)
         )
+        if first_request:
+            MainWindow._record_shutdown_diagnostic(
+                self,
+                "cancel_requested",
+                elapsed_seconds=0.0,
+                worker_count=len(remaining_workers),
+                background_process_running=background_process_running,
+            )
         if remaining_workers or background_process_running:
             MainWindow._set_shutdown_ui(self)
             parts: list[str] = []
@@ -1399,6 +1478,13 @@ class MainWindow(QMainWindow):
         elapsed = time.monotonic() - started if started is not None else 0.0
         MainWindow._record_shutdown_message(
             self, f"主視窗閒置關閉耗時 {elapsed:.3f} 秒；沒有背景依賴。"
+        )
+        MainWindow._record_shutdown_diagnostic(
+            self,
+            "accepted_idle_close",
+            elapsed_seconds=elapsed,
+            worker_count=0,
+            background_process_running=False,
         )
         event.accept()
 
@@ -1452,8 +1538,10 @@ def main():
             return 1
 
         # 運行應用程序
+        record_diagnostic("qapplication_exec_started")
         print("[Main] 開始運行應用程序事件循環...")
         exit_code = app.exec()
+        record_diagnostic("qapplication_exec_returned", exit_code=exit_code)
         print(f"[Main] 應用程序退出，退出碼: {exit_code}")
         # closeEvent 只會隱藏／接受主視窗；若把 QObject 留到 Python
         # interpreter shutdown，PySide6／Qt6 可能在 native teardown 卡住。

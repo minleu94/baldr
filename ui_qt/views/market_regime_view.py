@@ -16,6 +16,7 @@ from app_module.regime_service import RegimeService
 from app_module.dtos import RegimeResultDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.info_button import InfoButton
+from ui_qt.widgets.layout_helpers import create_scroll_area
 
 
 # ============================================================================
@@ -64,7 +65,11 @@ class MarketRegimeView(QWidget):
     
     def _setup_ui(self):
         """設置 UI"""
-        main_layout = QVBoxLayout(self)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+        page_content = QWidget()
+        main_layout = QVBoxLayout(page_content)
         main_layout.setSpacing(8)  # 減少間距
         main_layout.setContentsMargins(10, 10, 10, 10)  # 減少邊距
         
@@ -258,14 +263,24 @@ class MarketRegimeView(QWidget):
         self.layer3_layout.setSpacing(8)  # GroupBox 之間的間距
         self.layer3_content.setLayout(self.layer3_layout)
         
-        layer3_layout.addWidget(self.layer3_content)
+        self.layer3_scroll_area = create_scroll_area(
+            self.layer3_content,
+            object_name="marketRegimeLayer3ScrollArea",
+            horizontal_scroll=True,
+        )
+        self.layer3_scroll_area.setAccessibleName("市場狀態技術細節水平捲動區")
+        self.layer3_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.layer3_scroll_area.setMinimumHeight(220)
+        layer3_layout.addWidget(self.layer3_scroll_area)
         layer3_group.setLayout(layer3_layout)
         status_layout.addWidget(layer3_group)
         
         # 保存 layer3_group 的引用，以便控制顯示/隱藏
         self.layer3_group = layer3_group
-        # 初始狀態：收合
-        self.layer3_content.hide()
+        # 初始狀態：收合；展開時水平捲動區仍保留五個以上細節分組的自然寬度。
+        self.layer3_scroll_area.hide()
         
         status_group.setLayout(status_layout)
         splitter.addWidget(status_group)
@@ -295,6 +310,7 @@ class MarketRegimeView(QWidget):
         strategy_layout.setSpacing(12)
         self.strategy_text = QTextEdit()
         self.strategy_text.setReadOnly(True)
+        self.strategy_text.setMinimumHeight(180)
         self.strategy_text.setPlaceholderText("根據市場狀態自動顯示策略建議")
         # 深色主題樣式：深色背景，淺色文字
         strategy_font = QFont()
@@ -318,6 +334,10 @@ class MarketRegimeView(QWidget):
         splitter.setSizes([1, 1])  # 使用相對比例，會自動適應視窗大小
         
         main_layout.addWidget(splitter, 1)  # 設置 stretch factor 為 1，讓分割器可以隨視窗縮放
+        self.page_scroll_area = create_scroll_area(
+            page_content, object_name="marketRegimePageScrollArea"
+        )
+        page_layout.addWidget(self.page_scroll_area)
     
     def _detect_regime(self):
         """檢測市場狀態"""
@@ -763,8 +783,5 @@ class MarketRegimeView(QWidget):
     
     def _update_layer3_visibility(self):
         """更新 Layer 3 的可見性"""
-        if self.layer3_group.isChecked():
-            self.layer3_content.show()
-        else:
-            self.layer3_content.hide()
+        self.layer3_scroll_area.setVisible(self.layer3_group.isChecked())
 

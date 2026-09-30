@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QGroupBox, QProgressBar,
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
     QComboBox, QLineEdit, QMessageBox, QSplitter, QScrollArea,
-    QMenu, QDialog, QInputDialog, QToolButton, QFileDialog
+    QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy
 )
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
@@ -55,6 +55,7 @@ from app_module.strategy_version_service import StrategyVersionService
 from data_module.config import TWStockConfig
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 from ui_qt.widgets.text_sanitizer import remove_symbol_icons
 from ui_qt.theme import MIDNIGHT_ANALYST
 
@@ -620,6 +621,7 @@ class RecommendationView(QWidget):
         self._execution_cancel_requested = False
         self._execution_generation = 0
         self._recommendation_narrow = False
+        self._recommendation_result_narrow = False
 
         # 策略配置狀態
         self.strategy_config = self._get_default_config()
@@ -2392,56 +2394,104 @@ class RecommendationView(QWidget):
         self.main_splitter = splitter
 
         # 左側：策略配置面板（使用 ScrollArea 支援滾動）
-        config_scroll = QScrollArea()
-        config_scroll.setWidgetResizable(True)
-        config_scroll.setMinimumWidth(0)
-        config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        config_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.config_scroll = config_scroll
-
         config_panel = self._create_config_panel()
-        config_scroll.setWidget(config_panel)
+        config_scroll = create_scroll_area(
+            config_panel,
+            object_name="recommendationConfigScroll",
+            horizontal_scroll=True,
+        )
+        config_scroll.setMinimumWidth(0)
+        self.config_scroll = config_scroll
         splitter.addWidget(config_scroll)
 
         # 右側：結果面板
         result_panel = self._create_result_panel()
         result_panel.setMinimumWidth(0)
         self.result_panel = result_panel
-        splitter.addWidget(result_panel)
+        self.result_scroll = create_scroll_area(
+            result_panel,
+            object_name="recommendationResultScroll",
+            horizontal_scroll=False,
+        )
+        self.result_scroll.setMinimumWidth(0)
+        splitter.addWidget(self.result_scroll)
+
+        # 兩側各自處理內容溢位；分割器不得把任一面板壓成不可操作的細縫。
+        splitter.setChildrenCollapsible(False)
 
         # 設置分割器比例（左側40%，右側60%）
         # 日常模式需要同時看見策略選擇與主要執行動作；窄版仍由 responsive flow 改為上下排列。
         splitter.setSizes([420, 900])
+        splitter.splitterMoved.connect(
+            lambda *_args: self._apply_responsive_layout(force=True)
+        )
 
         main_layout.addWidget(splitter)
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
         self._apply_responsive_layout()
+        # QSplitter 的子 viewport 幾何會在父視圖 resizeEvent 後才更新；
+        # 下一輪事件再依結果區實際寬度切換長控制列的方向。
+        QTimer.singleShot(0, self._apply_responsive_layout)
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
         """在窄版把設定與結果上下排列，保留同一份分析 context。"""
-        if not hasattr(self, "main_splitter"):
+        if not hasattr(self, "main_splitter") or not hasattr(self, "result_scroll"):
             return
         narrow = self.width() < 820
-        if not force and narrow == self._recommendation_narrow:
+        result_narrow = narrow or self.result_scroll.viewport().width() < 900
+        if (
+            not force
+            and narrow == self._recommendation_narrow
+            and result_narrow == self._recommendation_result_narrow
+        ):
             return
+        orientation_changed = narrow != self._recommendation_narrow
         self._recommendation_narrow = narrow
+        self._recommendation_result_narrow = result_narrow
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
         self.result_title_layout.setDirection(
-            QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+            QBoxLayout.TopToBottom if result_narrow else QBoxLayout.LeftToRight
         )
         self.config_scroll.setMinimumWidth(0)
-        self.config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.result_scroll.setMinimumWidth(0)
+        self._set_result_row_directions(result_narrow)
         self.result_panel.setMinimumWidth(0)
-        if narrow:
+        self.result_panel.updateGeometry()
+        if orientation_changed and narrow:
             self.main_splitter.setSizes([520, 680])
-        else:
+        elif orientation_changed:
             self.main_splitter.setSizes([360, 900])
         if hasattr(self, "results_table"):
-            self.results_table.setHorizontalScrollBarPolicy(
-                Qt.ScrollBarAsNeeded if narrow else Qt.ScrollBarAlwaysOff
-            )
+            self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+    def _reserve_recommendation_table_rows(self) -> None:
+        """依目前列高更新結果表格最低高度，確保至少五列可供檢視。"""
+        table = getattr(self, "results_table", None)
+        if isinstance(table, QTableView):
+            self.results_table_minimum_height = ensure_visible_rows(table, rows=5)
+
+    def _set_result_row_directions(self, narrow: bool) -> None:
+        """窄版時將長路徑欄與操作按鈕改為垂直排列，保留可讀寬度。"""
+        direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+        for layout_name in (
+            "research_context_header_layout",
+            "saved_result_row",
+            "personal_capture_row",
+            "assessment_capture_path_row",
+            "assessment_summary_path_row",
+            "assessment_action_row",
+            "personal_policy_row",
+            "personal_policy_history_row",
+            "personal_source_path_row",
+            "personal_candidate_row",
+            "research_actions_layout",
+        ):
+            row = getattr(self, layout_name, None)
+            if row is not None:
+                row.setDirection(direction)
 
     def _create_checkbox_with_tooltip(
         self,
@@ -3125,6 +3175,7 @@ class RecommendationView(QWidget):
         layout.setSpacing(10)
 
         context_header = QHBoxLayout()
+        self.research_context_header_layout = context_header
         self.research_context_summary_label = QLabel(
             "判讀前確認：尚未執行推薦分析；執行後會先顯示資料日期、結果數量與限制。"
         )
@@ -3163,6 +3214,7 @@ class RecommendationView(QWidget):
         layout.addWidget(self.research_context_label)
 
         saved_result_row = QHBoxLayout()
+        self.saved_result_row = saved_result_row
         saved_result_row.addWidget(QLabel("讀取已保存結果"))
         self.saved_result_id_input = QLineEdit()
         self.saved_result_id_input.setObjectName("savedRecommendationResultId")
@@ -3272,6 +3324,7 @@ class RecommendationView(QWidget):
         layout.addWidget(self.result_status_label)
 
         personal_capture_row = QHBoxLayout()
+        self.personal_capture_row = personal_capture_row
         self.personal_prediction_capture_status_label = QLabel(
             "個人模型擷取：保存並驗證推薦結果後，依當次模式判斷是否建立。"
         )
@@ -3310,14 +3363,18 @@ class RecommendationView(QWidget):
         personal_assessment_group.setObjectName("personalModelAssessmentControls")
         personal_assessment_layout = QVBoxLayout(personal_assessment_group)
         personal_assessment_layout.setContentsMargins(8, 6, 8, 6)
-        personal_assessment_layout.addWidget(
-            QLabel(
-                "Stage C 沒有 result→summary 索引。請明確選擇目前已核驗結果的 capture 與日摘要 JSON；"
-                "本頁不搜尋資料夾、不猜 latest。"
-            )
+        self.personal_model_assessment_intro_label = QLabel(
+            "Stage C 沒有 result→summary 索引。請明確選擇目前已核驗結果的 capture 與日摘要 JSON；"
+            "本頁不搜尋資料夾、不猜 latest。"
         )
+        self.personal_model_assessment_intro_label.setWordWrap(True)
+        self.personal_model_assessment_intro_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        personal_assessment_layout.addWidget(self.personal_model_assessment_intro_label)
 
         capture_path_row = QHBoxLayout()
+        self.assessment_capture_path_row = capture_path_row
         capture_path_row.addWidget(QLabel("Personal capture"))
         self.personal_model_assessment_capture_path = QLineEdit()
         self.personal_model_assessment_capture_path.setObjectName(
@@ -3344,6 +3401,7 @@ class RecommendationView(QWidget):
         personal_assessment_layout.addLayout(capture_path_row)
 
         summary_path_row = QHBoxLayout()
+        self.assessment_summary_path_row = summary_path_row
         summary_path_row.addWidget(QLabel("Stage C 日摘要"))
         self.personal_model_assessment_summary_path = QLineEdit()
         self.personal_model_assessment_summary_path.setObjectName(
@@ -3370,6 +3428,7 @@ class RecommendationView(QWidget):
         personal_assessment_layout.addLayout(summary_path_row)
 
         assessment_action_row = QHBoxLayout()
+        self.assessment_action_row = assessment_action_row
         self.personal_model_assessment_read_button = QPushButton(
             "讀取指定評估"
         )
@@ -3416,7 +3475,8 @@ class RecommendationView(QWidget):
         self.personal_model_assessment_details.setPlaceholderText(
             "成功讀取後，這裡會列出 assessment identity、scope、metrics 與缺件診斷。"
         )
-        self.personal_model_assessment_details.setMaximumHeight(220)
+        self.personal_model_assessment_details.setMinimumHeight(150)
+        self.personal_model_assessment_details.setMaximumHeight(360)
         personal_assessment_layout.addWidget(
             self.personal_model_assessment_details
         )
@@ -3446,6 +3506,7 @@ class RecommendationView(QWidget):
         personal_policy_layout = QVBoxLayout(personal_policy_group)
         personal_policy_layout.setContentsMargins(8, 6, 8, 6)
         personal_policy_row = QHBoxLayout()
+        self.personal_policy_row = personal_policy_row
         self.personal_policy_mode_combo = QComboBox()
         self.personal_policy_mode_combo.setObjectName("personalRecommendationMode")
         self.personal_policy_mode_combo.addItem("規則排序（個人紀錄）", "rule_only")
@@ -3493,6 +3554,7 @@ class RecommendationView(QWidget):
         self._sync_personal_policy_controls()
 
         history_row = QHBoxLayout()
+        self.personal_policy_history_row = history_row
         history_row.addWidget(QLabel("已保存版本"))
         self.personal_policy_history_combo = QComboBox()
         self.personal_policy_history_combo.setObjectName(
@@ -3534,7 +3596,13 @@ class RecommendationView(QWidget):
         personal_policy_layout.addWidget(self.personal_policy_history_status_label)
 
         source_path_row = QHBoxLayout()
-        source_path_row.addWidget(QLabel("個人研究來源 SQLite（明確選擇）"))
+        self.personal_source_path_row = source_path_row
+        self.personal_source_database_label = QLabel(
+            "個人研究來源 SQLite（明確選擇）"
+        )
+        self.personal_source_database_label.setWordWrap(True)
+        self.personal_source_database_label.setMinimumWidth(0)
+        source_path_row.addWidget(self.personal_source_database_label)
         self.personal_source_database_input = QLineEdit(
             self._personal_source_database_saved_path
         )
@@ -3564,16 +3632,30 @@ class RecommendationView(QWidget):
         )
         personal_policy_layout.addWidget(self.personal_source_time_check_button)
         self.personal_source_time_trust_checkbox = QCheckBox(
-            "我明確信任以上指定 SQLite 的資料時間來源，僅供個人研究，不代表官方歷史 PIT。"
+            "我明確信任以上指定 SQLite 的資料時間來源"
         )
         self.personal_source_time_trust_checkbox.setObjectName(
             "personalRecommendationSourceTimeTrust"
+        )
+        self.personal_source_time_trust_checkbox.setAccessibleDescription(
+            "此信任僅供個人研究，不代表官方歷史 PIT。"
+        )
+        self.personal_source_time_trust_checkbox.setToolTip(
+            "我明確信任以上指定 SQLite 的資料時間來源；僅供個人研究，不代表官方歷史 PIT。"
         )
         self.personal_source_time_trust_checkbox.setEnabled(False)
         self.personal_source_time_trust_checkbox.toggled.connect(
             lambda *_args: self._sync_personal_policy_controls()
         )
         personal_policy_layout.addWidget(self.personal_source_time_trust_checkbox)
+        self.personal_source_time_trust_note = QLabel(
+            "此信任僅供個人研究，不代表官方歷史 PIT。"
+        )
+        self.personal_source_time_trust_note.setWordWrap(True)
+        self.personal_source_time_trust_note.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        personal_policy_layout.addWidget(self.personal_source_time_trust_note)
         self.personal_source_time_status_label = QLabel(
             "預設不信任任何資料庫來源，個人校準保持停用；請明確檢查來源後再另行確認。"
         )
@@ -3596,6 +3678,7 @@ class RecommendationView(QWidget):
             self._inspect_selected_personal_candidate
         )
         candidate_row = QHBoxLayout()
+        self.personal_candidate_row = candidate_row
         candidate_row.addWidget(QLabel("校準候選"))
         candidate_row.addWidget(self.personal_candidate_combo, 1)
         self.personal_candidate_refresh_button = QPushButton("讀取候選清冊")
@@ -3624,15 +3707,27 @@ class RecommendationView(QWidget):
 
         # 使用分割器來控制表格和詳情的比例
         result_splitter = QSplitter(Qt.Vertical)
+        result_splitter.setChildrenCollapsible(False)
+        self.result_splitter = result_splitter
 
         # 結果表格
         self.results_table = QTableView()
         apply_financial_table_style(self.results_table)
+        self.results_table.setMinimumWidth(0)
+        self.results_table.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding,
+        )
         self.results_table.setSortingEnabled(True)
         self.results_table.horizontalHeader().setStretchLastSection(True)
         # 設置選擇模式為單行選擇
         self.results_table.setSelectionBehavior(QTableView.SelectRows)
         self.results_table.setSelectionMode(QTableView.SingleSelection)
+        self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.results_table_minimum_height = ensure_visible_rows(
+            self.results_table,
+            rows=5,
+        )
 
         # 啟用右鍵選單
         self.results_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -3642,6 +3737,7 @@ class RecommendationView(QWidget):
 
         # 詳細信息（推薦理由）
         detail_group = QGroupBox("推薦理由詳情")
+        detail_group.setMinimumHeight(200)
         detail_layout = QVBoxLayout()
         self.company_source_snapshot_label = QLabel(
             "分類來源：尚未有本次推薦的封存來源快照。"
@@ -3656,15 +3752,21 @@ class RecommendationView(QWidget):
         detail_layout.addWidget(self.company_source_snapshot_label)
         self.detail_text = QTextEdit()
         self.detail_text.setReadOnly(True)
+        self.detail_text.setMinimumHeight(140)
         self.detail_text.setPlaceholderText("選取推薦結果後，這裡會顯示分數拆解、策略傾向與風險提示。")
         detail_layout.addWidget(self.detail_text)
         detail_group.setLayout(detail_layout)
         result_splitter.addWidget(detail_group)
 
         # 設置分割器比例（上面70%，下面30%）
+        result_splitter.setStretchFactor(0, 5)
+        result_splitter.setStretchFactor(1, 2)
         result_splitter.setSizes([700, 300])
 
-        layout.addWidget(result_splitter)
+        # 結果表與理由緊接狀態摘要，讓預設首屏先呈現推薦內容；
+        # 個人評估／模式等研究工具留在其後並由外層捲動完整瀏覽。
+        result_status_index = layout.indexOf(self.result_status_label)
+        layout.insertWidget(result_status_index + 1, result_splitter)
 
         self.personal_choice_controls = PersonalRecommendationChoiceControlsWidget(
             parent=panel
@@ -4885,6 +4987,7 @@ class RecommendationView(QWidget):
         if not recommendations:
             self.recommendations_model = PandasTableModel(pd.DataFrame())
             self.results_table.setModel(self.recommendations_model)
+            self._reserve_recommendation_table_rows()
             if hasattr(self, "stock_research_btn"):
                 self.stock_research_btn.setVisible(False)
                 self.stock_research_btn.setEnabled(False)
@@ -4921,6 +5024,7 @@ class RecommendationView(QWidget):
         # 設置模型
         self.recommendations_model = PandasTableModel(df)
         self.results_table.setModel(self.recommendations_model)
+        self._reserve_recommendation_table_rows()
 
         if previous_stock_code:
             for row_number, code in enumerate(df.get("證券代號", ())):
@@ -4932,6 +5036,7 @@ class RecommendationView(QWidget):
 
         # 調整列寬
         self.results_table.resizeColumnsToContents()
+        self._reserve_recommendation_table_rows()
 
         # 顯示統計信息
         self.progress_label.setText(f"找到 {len(recommendations)} 支推薦股票")
@@ -5941,6 +6046,7 @@ class RecommendationView(QWidget):
         rows = self._current_table_rows()
         self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
         self.results_table.setModel(self.recommendations_model)
+        self._reserve_recommendation_table_rows()
         self._connect_result_table_interactions()
         self.saved_result_id_input.setText(requested_result_id)
         self.progress_bar.setVisible(False)
@@ -6763,6 +6869,7 @@ class RecommendationView(QWidget):
             rows = self._current_table_rows()
             self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
             self.results_table.setModel(self.recommendations_model)
+            self._reserve_recommendation_table_rows()
             self._connect_result_table_interactions()
             if selected_code:
                 for row_number, row in enumerate(rows):

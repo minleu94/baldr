@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("PySide6")
 from PySide6.QtCore import QDateTime
 from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QBoxLayout
 
 from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.dtos.decision_continuity_dtos import ACTION_NOTE
@@ -21,6 +22,7 @@ from app_module.journal_service import JournalService
 from app_module.research_session import ResearchStockContextDTO
 from ui_qt.widgets.decision_continuity_controls import (
     DecisionContinuityControlsWidget,
+    PersonalRecommendationChoiceControlsWidget,
 )
 
 
@@ -137,3 +139,28 @@ def test_failed_write_shows_retry_and_reuses_request_id_without_duplicate(
     assert calls == [request_id]
     assert len(service.list_decision_revisions()) == 1
     widget.close()
+
+
+def test_personal_recommendation_choice_reflows_on_narrow_width() -> None:
+    _app()
+    widget = PersonalRecommendationChoiceControlsWidget()
+    try:
+        widget.resize(390, 700)
+        widget.show()
+        _app().processEvents()
+
+        assert widget._choice_actions_layout.direction() == QBoxLayout.TopToBottom
+        for button in (
+            widget.adopt_button,
+            widget.reject_button,
+            widget.override_button,
+        ):
+            assert button.width() >= button.sizeHint().width()
+
+        widget.resize(900, 700)
+        _app().processEvents()
+        assert widget._choice_actions_layout.direction() == QBoxLayout.LeftToRight
+    finally:
+        widget.close()
+        widget.deleteLater()
+        _app().processEvents()

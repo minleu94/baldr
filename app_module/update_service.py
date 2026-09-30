@@ -1033,6 +1033,7 @@ class UpdateService :
                 "batch_partial": batch_partial,
                 "failed_dates": sorted(set(failed_dates)),
                 "unknown_legacy_dates": sorted(set(unknown_legacy_dates)),
+                "projection_status": "not_committed",
                 "partial": partial or batch_partial,
             }
 
@@ -1234,6 +1235,7 @@ class UpdateService :
                     rows=len(expected_rows),
                 ),
                 "projection_commit_marker": str(marker),
+                "projection_status": "committed_after_exact_csv_sqlite_readback",
                 "dates": dates,
             }
         except Exception as exc:
@@ -3078,7 +3080,9 @@ class UpdateService :
     def update_industry (
     self ,
     start_date :str ,
-    end_date :str
+    end_date :str ,
+    *,
+    reverify_unknown_legacy_dates: bool = False,
     )->Dict [str ,Any ]:
         """更新產業指數數據
 
@@ -3177,7 +3181,8 @@ class UpdateService :
                 import inspect
                 update_func =update_module .batch_update_industry_index
                 sig =inspect .signature (update_func )
-                params =list (sig .parameters .keys ())
+                signature_parameters = list(sig.parameters.values())
+                params = [parameter.name for parameter in signature_parameters]
                 csv_path = Path(self.config.industry_index_file)
                 before_csv = csv_path.read_bytes() if csv_path.is_file() else None
 
@@ -3192,6 +3197,30 @@ class UpdateService :
                     update_kwargs['capture_manifests'] = capture_manifests
                 if 'batch_outcome' in params:
                     update_kwargs['batch_outcome'] = batch_outcome
+                supports_legacy_reverification = (
+                    'reverify_unknown_legacy_dates' in params
+                )
+                if reverify_unknown_legacy_dates and not supports_legacy_reverification:
+                    message = (
+                        '已要求重新擷取未知 legacy 產業日期，但載入的批次更新器未明確支援此選項'
+                    )
+                    logger.error(message)
+                    return {
+                        'success': False,
+                        'partial': False,
+                        'message': message,
+                        'updated_dates': [],
+                        'recovered_dates': [],
+                        'failed_dates': [],
+                        'verified_skipped_dates': [],
+                        'unverified_legacy_dates': [],
+                        'pending_projection_dates': [],
+                        'capture_manifests': [],
+                        'source_status': 'legacy_reverification_contract_unsupported',
+                        'projection_status': 'not_started',
+                    }
+                if reverify_unknown_legacy_dates:
+                    update_kwargs['reverify_unknown_legacy_dates'] = True
                 result = update_func(**update_kwargs)
                 if capture_manifests:
                     self._pending_industry_capture_manifests = list(capture_manifests)
@@ -3245,11 +3274,15 @@ class UpdateService :
                     source_status = batch_outcome.get('source_status')
                     verified_skipped_dates = list(batch_outcome.get('verified_skipped_dates', []))
                     unverified_legacy_dates = list(batch_outcome.get('unverified_legacy_dates', []))
+                    pending_projection_dates = list(
+                        batch_outcome.get('pending_projection_dates', [])
+                    )
                 else:
                     source_status = None
                     recovered_dates = []
                     verified_skipped_dates = []
                     unverified_legacy_dates = []
+                    pending_projection_dates = []
                 if not result_success and not failed_dates:
                     if not unverified_legacy_dates:
                         failed_dates = [start_date]
@@ -3283,7 +3316,13 @@ class UpdateService :
                     'failed_dates': failed_dates,
                     'verified_skipped_dates': verified_skipped_dates,
                     'unverified_legacy_dates': unverified_legacy_dates,
+                    'pending_projection_dates': pending_projection_dates,
                     'source_status': source_status,
+                    'projection_status': (
+                        'pending_csv_sqlite_readback'
+                        if capture_manifests
+                        else 'not_started'
+                    ),
                     'capture_manifests':[str(path) for path in capture_manifests],
                 }
             except Exception as e :

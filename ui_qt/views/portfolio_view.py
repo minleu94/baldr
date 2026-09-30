@@ -25,6 +25,11 @@ from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
 from PySide6.QtGui import QFont, QColor, QPalette, QBrush
 
 from ui_qt.models.pandas_table_model import PandasTableModel
+from ui_qt.widgets.layout_helpers import (
+    create_scroll_area,
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from app_module.portfolio_service import PortfolioService
 from app_module.dtos.portfolio_dtos import PortfolioDTO
 from app_module.recommendation.legacy_dtos import RecommendationResultDTO
@@ -644,7 +649,6 @@ class GradientCard(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
         self.setMinimumHeight(86)
-        self.setMaximumHeight(96)
 
         # 設置漸層樣式與圓角、陰影
         self.setStyleSheet(f"""
@@ -1006,9 +1010,29 @@ class PortfolioView(QWidget):
         self.refresh_all()
 
     def _setup_ui(self):
-        # 頁首摘要固定保留，持倉健康與所有進階明細放在同一個可捲動正文。
-        # 這讓窄版／DPI 放大時由正文承接高度，而不是把主視窗撐出可用 viewport。
-        main_layout = QVBoxLayout(self)
+        # 全頁共用單一垂直捲動區，避免窄視窗／放大字體時頁首摘要、警示或
+        # 進階明細被主視窗 viewport 裁掉。保留 portfolio_advanced_scroll 公開
+        # 屬性供既有嵌入端與測試操作；它現在承接整頁，避免巢狀雙捲動。
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        self.portfolio_advanced_scroll = create_scroll_area(
+            QWidget(), object_name="portfolioAdvancedScroll"
+        )
+        self.portfolio_advanced_scroll.setAccessibleName("持倉與覆盤頁面可捲動區域")
+        self.portfolio_advanced_scroll.setAccessibleDescription(
+            "垂直捲動持倉摘要、警示、交易歷史、日誌、模擬持倉、壓力測試與研究分頁；"
+            "表格可另行垂直或水平捲動。"
+        )
+        page_content = self.portfolio_advanced_scroll.widget()
+        assert page_content is not None
+        page_content.setObjectName("portfolioPageContent")
+        page_content.setMinimumWidth(0)
+        page_content.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        outer_layout.addWidget(self.portfolio_advanced_scroll, 1)
+
+        # 頁首摘要、持倉狀態與明細置於同一個可捲動正文，確保所有資訊可達。
+        main_layout = QVBoxLayout(page_content)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(12, 12, 12, 12)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
@@ -1080,7 +1104,6 @@ class PortfolioView(QWidget):
 
         self.active_positions_summary_label = QLabel("活躍持倉：0 檔")
         self.active_positions_summary_label.setWordWrap(True)
-        self.active_positions_summary_label.setMaximumHeight(100)
         self.active_positions_summary_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; background-color: {MIDNIGHT_ANALYST.surface_1}; "
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
@@ -1348,6 +1371,8 @@ class PortfolioView(QWidget):
 
         self.journal_list = QListWidget()
         self.journal_list.setWordWrap(True)
+        self.journal_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.journal_list, 5)
         # 啟用右鍵選單
         self.journal_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.journal_list.customContextMenuRequested.connect(self._show_journal_context_menu)
@@ -1367,8 +1392,9 @@ class PortfolioView(QWidget):
             condition_source=self.user_declared_condition_source,
             parent=None,
         )
+        set_scroll_content_constraints(self.user_declared_research_widget)
         # 研究頁同時承載安全邊界、結果列與可選技術詳情；在一般 viewport
-        # 中以頁內 scroll 保持表格至少能讀到表頭與一列，不把整個 Portfolio
+        # 中以頁內 scroll 保持表格至少能讀到表頭與五列，不把整個 Portfolio
         # 撐出主視窗，也不把 Paper lane 的語意混進 user_declared lane。
         self.user_declared_research_widget.setMinimumHeight(390)
         self.user_declared_research_scroll_area = QScrollArea()
@@ -1524,7 +1550,6 @@ class PortfolioView(QWidget):
         apply_financial_table_style(self.stress_history_table)
         self.stress_history_table.setSelectionBehavior(QTableView.SelectRows)
         self.stress_history_table.horizontalHeader().setStretchLastSection(True)
-        self.stress_history_table.setMaximumHeight(190)
         stress_layout.addWidget(self.stress_history_table)
         right_widget.addTab(stress_tab, "情境壓力")
 
@@ -1667,30 +1692,9 @@ class PortfolioView(QWidget):
         # 初始比例由 _apply_responsive_layout 依實際 pane 寬度設定；保留
         # QSplitter 自身的 handle 供使用者後續調整，不用 stretch factor 抵銷。
         main_splitter.setSizes([720, 480])
-        self.portfolio_advanced_scroll = QScrollArea(self)
-        self.portfolio_advanced_scroll.setObjectName("portfolioAdvancedScroll")
-        self.portfolio_advanced_scroll.setWidgetResizable(True)
-        self.portfolio_advanced_scroll.setFrameShape(QFrame.NoFrame)
-        self.portfolio_advanced_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.portfolio_advanced_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.portfolio_advanced_scroll.setSizePolicy(
-            QSizePolicy.Ignored, QSizePolicy.Expanding
-        )
-        self.portfolio_advanced_scroll.setAccessibleName("持倉進階正文可捲動區域")
-        self.portfolio_advanced_scroll.setAccessibleDescription(
-            "在此垂直捲動 Paper 健康、持倉表、選取詳情與右側各研究分頁；不改變資料身份或安全邊界。"
-        )
-        advanced_content = QWidget()
-        advanced_content.setObjectName("portfolioAdvancedContent")
-        advanced_content.setMinimumWidth(0)
-        advanced_content.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        advanced_layout = QVBoxLayout(advanced_content)
-        advanced_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_layout.setSpacing(10)
-        advanced_layout.addWidget(paper_health_group)
-        advanced_layout.addWidget(main_splitter, 1)
-        self.portfolio_advanced_scroll.setWidget(advanced_content)
-        main_layout.addWidget(self.portfolio_advanced_scroll, 1)
+        main_layout.addWidget(paper_health_group)
+        main_layout.addWidget(main_splitter, 1)
+        set_scroll_content_constraints(page_content)
         self._portfolio_advanced_widgets = (
             self.portfolio_detail_tabs,
             self.position_health_table,

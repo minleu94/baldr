@@ -35,6 +35,7 @@ from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_run_service import ResearchRunRepositoryError, ResearchRunServiceError
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.models.pandas_table_model import PandasTableModel
+from ui_qt.widgets.layout_helpers import ensure_visible_rows
 from ui_qt.widgets.table_style import apply_financial_table_style
 
 
@@ -148,6 +149,7 @@ class RunRegistryCompareWidget(QWidget):
             "可用 Ctrl（macOS 為 Command）點擊多選；選取會跨頁保留，最多 5 筆。"
         )
         self.run_list.itemSelectionChanged.connect(self._on_visible_selection_changed)
+        ensure_visible_rows(self.run_list, 5)
         list_layout.addWidget(self.run_list)
 
         selection_row = QHBoxLayout()
@@ -484,6 +486,7 @@ class RunRegistryCompareWidget(QWidget):
         finally:
             del blocker
 
+        ensure_visible_rows(self.run_list, 5)
         self.page_label.setText(f"第 {self.current_page} / {total_pages} 頁")
         self.prev_page_btn.setEnabled(self.current_page > 1)
         self.next_page_btn.setEnabled(self.current_page < total_pages)

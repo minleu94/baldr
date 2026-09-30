@@ -26,6 +26,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtTest import QTest
 
 from app_module.dtos.portfolio_dtos import PortfolioDTO, PositionDTO, TradeDTO
+from app_module.recommendation.legacy_dtos import (
+    RecommendationDTO,
+    RecommendationResultDTO,
+)
+from app_module.portfolio_source_adapter import build_recommendation_trade_source
 from app_module.decision_presentation import (
     PositionHealthPresentationDTO,
     PositionHealthReadModel,
@@ -254,10 +259,15 @@ class FakeChipService:
         }
 
 
-def make_portfolio_view(tmp_path, parent=None, position_health_read_service=None):
+def make_portfolio_view(
+    tmp_path,
+    parent=None,
+    position_health_read_service=None,
+    portfolio_service=None,
+):
     app()
     view = PortfolioView(
-        portfolio_service=FakePortfolioService(FakeConfig(tmp_path)),
+        portfolio_service=portfolio_service or FakePortfolioService(FakeConfig(tmp_path)),
         journal_service=FakeJournalService(),
         condition_monitor=FakeConditionMonitor(),
         position_health_read_service=position_health_read_service,
@@ -371,18 +381,37 @@ def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path
 
 
 def test_portfolio_return_uses_position_id_after_table_sort_and_keeps_trade_filter(tmp_path):
+    recommendation = RecommendationDTO(
+        stock_code="2317",
+        stock_name="鴻海",
+        close_price=Decimal("151.0"),
+        price_change=0.01,
+        total_score=75.0,
+        indicator_score=70.0,
+        pattern_score=72.0,
+        volume_score=68.0,
+        recommendation_reasons="合成測試推薦",
+        industry="電子零組件",
+        regime_match=True,
+    )
+    saved_result = RecommendationResultDTO(
+        result_id="rec-1",
+        result_name="合成保存結果",
+        config={"profile_id": "balanced"},
+        recommendations=[recommendation],
+        created_at="2026-06-20T09:00:00+08:00",
+    )
+    trade_source = build_recommendation_trade_source(saved_result, recommendation)
     result_path = tmp_path / "recommendation" / "runs" / "rec-1.json"
     result_path.parent.mkdir(parents=True)
     result_path.write_text(
-        json.dumps(
-            {
-                "result_id": "rec-1",
-                "recommendations": [{"stock_code": "2317"}],
-            }
-        ),
-        encoding="utf-8",
+        json.dumps(saved_result.to_dict(), default=str), encoding="utf-8"
     )
-    view = make_portfolio_view(tmp_path)
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    linked_position = service.positions[1]
+    linked_position.source_summary = trade_source.source_summary
+    linked_position.source_snapshot_hash = trade_source.source_snapshot_hash
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
 
     assert view.positions_model is not None
     stock_column = view.positions_model.getVisibleColumns().index("證券代號")
@@ -394,6 +423,10 @@ def test_portfolio_return_uses_position_id_after_table_sort_and_keeps_trade_filt
     assert view.select_stock("2317", "rec-1") is True
     assert view.selected_stock_code == "2317"
     assert "目前只顯示：2317" in view.trade_filter_status_label.text()
+
+    # 完整 legacy writer identity 通過；任一來源 hash 不一致仍 fail closed。
+    linked_position.source_snapshot_hash = "sha256:mismatched-fixture"
+    assert view.select_stock("2317", "rec-1") is False
 
 
 def test_portfolio_page_hydrates_summary_and_table_from_one_portfolio_dto(tmp_path):

@@ -152,4 +152,5 @@ def test_daily_journey_details_are_collapsed_until_requested_and_evidence_tab_is
     assert view.daily_trace_label.isHidden() is True
 
     view.daily_evidence_button.click()
-    assert view.subtabs.tabText(view.subtabs.currentIndex()) == "Evidence"
+    assert view.subtabs.currentWidget() is view.research_console_view
+    assert view.subtabs.tabText(view.subtabs.currentIndex()) == "研究證據"

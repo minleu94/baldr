@@ -6,7 +6,7 @@
 from collections.abc import Mapping
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel,
     QPushButton, QTableView, QMessageBox, QDialog,
     QDialogButtonBox, QLineEdit, QTextEdit, QListWidget,
     QListWidgetItem, QHeaderView, QMenu, QAbstractItemView,
@@ -41,6 +41,7 @@ from app_module.research_session import (
 )
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.info_button import InfoButton
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 
@@ -123,9 +124,15 @@ class WatchlistView(QWidget):
     
     def _setup_ui(self):
         """設置 UI"""
-        main_layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        content = QWidget()
+        content.setObjectName("watchlistPageContent")
+        main_layout = QVBoxLayout(content)
         main_layout.setSpacing(8)
         main_layout.setContentsMargins(10, 10, 10, 10)
+        self.page_scroll = create_scroll_area(content, object_name="watchlistPageScroll")
+        outer_layout.addWidget(self.page_scroll)
         
         # 標題列（標題 + InfoButton）
         title_layout = QHBoxLayout()
@@ -216,10 +223,10 @@ class WatchlistView(QWidget):
         # 操作區留在候選池內，讓使用者不必在三個區塊間來回尋找。
         watchlist_ops_group = QGroupBox("候選池操作")
         watchlist_ops_group.setObjectName("watchlistOpsGroup")
-        watchlist_ops_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        watchlist_ops_group.setFixedHeight(64)
+        watchlist_ops_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.watchlist_ops_group = watchlist_ops_group
         watchlist_ops_layout = QHBoxLayout(watchlist_ops_group)
+        self.watchlist_ops_layout = watchlist_ops_layout
         watchlist_ops_layout.setSpacing(8)
         watchlist_ops_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -267,6 +274,7 @@ class WatchlistView(QWidget):
         )
         self.stocks_table.verticalHeader().setDefaultSectionSize(28)
         self.stocks_table.verticalHeader().setMinimumSectionSize(28)
+        ensure_visible_rows(self.stocks_table, 5)
 
         # 右鍵選單
         self.stocks_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -278,8 +286,7 @@ class WatchlistView(QWidget):
         # 研究摘要明確標示，不再讓 QTextEdit 看起來像不明原因的第三個區塊。
         analysis_group = QGroupBox("個股研究摘要")
         analysis_group.setObjectName("watchlistResearchSummary")
-        analysis_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        analysis_group.setFixedHeight(142)
+        analysis_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.analysis_group = analysis_group
         self.analysis_group.setVisible(False)
         analysis_layout = QVBoxLayout(analysis_group)
@@ -324,8 +331,8 @@ class WatchlistView(QWidget):
         self.analysis_text = QTextEdit()
         self.analysis_text.setObjectName("watchlistAnalysisText")
         self.analysis_text.setReadOnly(True)
-        self.analysis_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.analysis_text.setFixedHeight(90)
+        self.analysis_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.analysis_text.setMinimumHeight(96)
         self.analysis_text.setPlaceholderText("選取一檔股票，查看共用呈現契約與已保存的推薦理由。")
         analysis_layout.addWidget(self.analysis_text)
         candidate_layout.addWidget(analysis_group)
@@ -333,20 +340,19 @@ class WatchlistView(QWidget):
         # 主要下一步與保存動作集中在候選池底部，並與資料區保持明確界線。
         next_actions_group = QGroupBox("下一步")
         next_actions_group.setObjectName("watchlistNextActions")
-        next_actions_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        # 兩排按鈕各自需要 44px 高度，另保留 layout spacing、上下 margin
-        # 與 QGroupBox 標題空間；不足時第二排會覆蓋第一排。
-        next_actions_group.setFixedHeight(124)
+        next_actions_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.next_actions_group = next_actions_group
         next_actions_layout = QVBoxLayout(next_actions_group)
         next_actions_layout.setSpacing(4)
         next_actions_layout.setContentsMargins(8, 8, 8, 8)
         research_actions_layout = QHBoxLayout()
+        self.research_actions_layout = research_actions_layout
         research_actions_layout.setSpacing(8)
         research_actions_layout.addWidget(self.stock_analysis_btn)
         research_actions_layout.addWidget(self.choose_source_btn)
         research_actions_layout.addStretch()
         batch_actions_layout = QHBoxLayout()
+        self.batch_actions_layout = batch_actions_layout
         batch_actions_layout.setSpacing(8)
 
         self.send_to_research_lab_btn = QPushButton("送 Research Lab 批次回測")
@@ -442,6 +448,9 @@ class WatchlistView(QWidget):
             "可用方向鍵選取保存清單；下方預覽只讀取既有清單內容。"
         )
         self.universe_list.setMinimumHeight(100)
+        self.universe_list.setWordWrap(True)
+        self.universe_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.universe_list, 5)
         universe_list_section_layout.addWidget(self.universe_list)
         management_splitter.addWidget(universe_list_section)
 
@@ -463,6 +472,9 @@ class WatchlistView(QWidget):
             "可用方向鍵選取個股；雙擊開啟與候選池共用的研究報告。"
         )
         self.universe_stock_list.setMinimumHeight(100)
+        self.universe_stock_list.setWordWrap(True)
+        self.universe_stock_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.universe_stock_list, 5)
         universe_preview_section_layout.addWidget(self.universe_stock_list)
         management_splitter.addWidget(universe_preview_section)
         management_splitter.setStretchFactor(0, 2)
@@ -542,17 +554,6 @@ class WatchlistView(QWidget):
             self.main_splitter.setSizes(
                 [max(400, int(height * 0.60)), max(280, int(height * 0.40))]
             )
-            self.watchlist_ops_group.setFixedHeight(64)
-            self.stocks_table.setMinimumHeight(76)
-            advanced_visible = bool(
-                getattr(self, "toggle_advanced_research_btn", None)
-                and self.toggle_advanced_research_btn.isChecked()
-            )
-            self.analysis_group.setFixedHeight(118 if advanced_visible else 0)
-            self.analysis_text.setFixedHeight(56 if advanced_visible else 0)
-            self.next_actions_group.setFixedHeight(116)
-            self.universe_list.setMinimumHeight(50)
-            self.universe_stock_list.setMinimumHeight(50)
             self.work_title.setVisible(False)
             self.candidate_hint.setVisible(False)
             self.universe_hint.setVisible(False)
@@ -563,22 +564,20 @@ class WatchlistView(QWidget):
             self.main_splitter.setSizes(
                 [max(720, int(width * 0.68)), max(360, int(width * 0.32))]
             )
-            self.watchlist_ops_group.setFixedHeight(64)
-            self.stocks_table.setMinimumHeight(90)
-            advanced_visible = bool(
-                getattr(self, "toggle_advanced_research_btn", None)
-                and self.toggle_advanced_research_btn.isChecked()
-            )
-            self.analysis_group.setFixedHeight(170 if advanced_visible else 0)
-            self.analysis_text.setFixedHeight(112 if advanced_visible else 0)
-            self.next_actions_group.setFixedHeight(124)
-            self.universe_list.setMinimumHeight(100)
-            self.universe_stock_list.setMinimumHeight(100)
             # 外層 QGroupBox 已提供唯一主標題，避免桌面版重複顯示「觀察候選池」。
             self.work_title.setVisible(False)
             self.candidate_hint.setVisible(True)
             self.universe_hint.setVisible(True)
             self.analysis_hint.setVisible(True)
+
+        action_direction = (
+            QBoxLayout.Direction.TopToBottom
+            if main_is_narrow
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.watchlist_ops_layout.setDirection(action_direction)
+        self.research_actions_layout.setDirection(action_direction)
+        self.batch_actions_layout.setDirection(action_direction)
 
         # 子元件的窄版尺寸先完成，再重設主分割比例，避免 Qt 依舊的 sizeHint
         # 把兩個面板強制平均分配而造成內部內容重疊。
@@ -605,12 +604,6 @@ class WatchlistView(QWidget):
         """顯示／隱藏已保存研究明細，不改變目前選取與來源 binding。"""
 
         self.analysis_group.setVisible(expanded)
-        if self._watchlist_layout_mode:
-            self.analysis_group.setFixedHeight(118 if expanded else 0)
-            self.analysis_text.setFixedHeight(56 if expanded else 0)
-        else:
-            self.analysis_group.setFixedHeight(170 if expanded else 0)
-            self.analysis_text.setFixedHeight(112 if expanded else 0)
         self.toggle_advanced_research_btn.setText(
             "隱藏進階研究" if expanded else "顯示進階研究"
         )

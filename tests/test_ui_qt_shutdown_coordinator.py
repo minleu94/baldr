@@ -96,6 +96,27 @@ def test_main_close_accepts_when_no_managed_work_remains(monkeypatch) -> None:
     assert window._status_bar.messages == []
 
 
+def test_main_close_freezes_workbench_before_waiting_for_read_only_workers(
+    monkeypatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        main_module,
+        "request_cooperative_task_worker_shutdown",
+        lambda: (),
+    )
+    window = _Window()
+    window.workbench_view = SimpleNamespace(
+        begin_shutdown=lambda: calls.append("workbench")
+    )
+    event = _CloseEvent()
+
+    main_module.MainWindow.closeEvent(window, event)
+
+    assert calls == ["workbench"]
+    assert event.accepted is True
+
+
 def test_pending_close_sends_cancel_once_then_only_polls(monkeypatch) -> None:
     worker = object()
     calls = {"begin": 0, "request": 0, "poll": 0}
@@ -229,3 +250,26 @@ def test_deferred_mainwindow_teardown_releases_cpp_wrapper() -> None:
     main_module._drain_qt_deferred_deletes(app, (window,))
 
     assert shiboken6.isValid(window) is False
+
+
+def test_main_drain_releases_worker_delete_queued_by_native_finished() -> None:
+    """排空 queued finished callback 後，再排空它建立的 DeferredDelete。"""
+
+    from PySide6.QtWidgets import QApplication, QMainWindow
+
+    import shiboken6
+
+    app = QApplication.instance() or QApplication([])
+    window = QMainWindow()
+    worker = TaskWorker(lambda: "done")
+    worker.native_thread_finished.connect(worker.deleteLater)
+    worker.start()
+    assert worker.wait(5_000) is True
+    window.show()
+    app.processEvents()
+    window.close()
+
+    main_module._drain_qt_deferred_deletes(app, (window,))
+
+    assert shiboken6.isValid(window) is False
+    assert shiboken6.isValid(worker) is False

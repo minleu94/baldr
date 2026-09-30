@@ -52,6 +52,7 @@ from app_module.user_declared_holding_research import (
     research_status_label,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.layout_helpers import ensure_visible_rows
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -383,9 +384,8 @@ class UserDeclaredHoldingResearchWidget(QWidget):
         self.holdings_table.setAccessibleDescription(
             "只顯示 user_declared research-only rows；同股以 exact holding identity 管理。"
         )
-        # 研究表是主檢視；給表頭加一列的合理最小高度，讓窄 viewport
-        # 不會只剩 header 或下方摘要。完整技術欄位仍留在可選詳情。
-        self.holdings_table.setMinimumHeight(72)
+        # 研究表是主檢視；依自訂 row/header 高度重新確保至少五列可見。
+        # 完整技術欄位仍留在可選詳情。
         self.holdings_table.verticalHeader().setDefaultSectionSize(28)
         self.holdings_table.verticalHeader().setMinimumSectionSize(28)
         holdings_header = self.holdings_table.horizontalHeader()
@@ -395,6 +395,7 @@ class UserDeclaredHoldingResearchWidget(QWidget):
         for column, width in enumerate(compact_widths):
             holdings_header.setSectionResizeMode(column, QHeaderView.Fixed)
             holdings_header.resizeSection(column, width)
+        ensure_visible_rows(self.holdings_table, 5)
         self.holdings_table.clicked.connect(self._on_row_selected)
         root.addWidget(self.holdings_table, 1)
 

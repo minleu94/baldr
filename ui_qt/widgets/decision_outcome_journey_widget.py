@@ -45,6 +45,10 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.decision_continuity_controls import (
     DecisionContinuityControlsWidget,
 )
+from ui_qt.widgets.layout_helpers import (
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.theme_widgets import StatusBadge
 from ui_qt.workers.task_worker import TaskWorker
@@ -237,6 +241,7 @@ class DecisionOutcomeJourneyWidget(QWidget):
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(10)
+        set_scroll_content_constraints(content)
 
         maturity_group = QGroupBox("後續結果（5／10／20／60 個交易日）")
         maturity_layout = QVBoxLayout(maturity_group)
@@ -391,8 +396,7 @@ class DecisionOutcomeJourneyWidget(QWidget):
         table.setObjectName(f"decisionOutcomeJourney{table_id.title()}Table")
         self._table_columns[table_id] = tuple(str(column) for column in columns)
         table.setAccessibleName(f"決策結果旅程{table_id}表")
-        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        table.setMaximumHeight(maximum_height)
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
         table.setSelectionMode(QAbstractItemView.SingleSelection)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -406,6 +410,7 @@ class DecisionOutcomeJourneyWidget(QWidget):
             "唯讀資料表；可用鍵盤選取，完整欄位文字可由 tooltip 讀取。"
         )
         apply_financial_table_style(table)
+        ensure_visible_rows(table, 5)
         self._tables[table_id] = table
         empty = self._wrapped_label("")
         empty.setObjectName(f"decisionOutcomeJourney{table_id.title()}Empty")

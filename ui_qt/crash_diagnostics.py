@@ -8,8 +8,10 @@ from __future__ import annotations
 import atexit
 from datetime import datetime, timezone
 import faulthandler
+import math
 import os
 from pathlib import Path
+import re
 import sys
 import threading
 import traceback
@@ -178,6 +180,49 @@ def record_exception(context: str, error: BaseException) -> None:
         error,
         error.__traceback__,
     )
+
+
+def record_diagnostic(
+    event: str,
+    *,
+    elapsed_seconds: float | None = None,
+    worker_count: int | None = None,
+    worker_names: tuple[str, ...] | None = None,
+    background_process_running: bool | None = None,
+    exit_code: int | None = None,
+) -> None:
+    """記錄不含路徑、參數或個資的有限生命週期診斷欄位。"""
+
+    session = _ACTIVE_SESSION
+    if session is None:
+        return
+    safe_event = re.sub(r"[^A-Za-z0-9_.-]", "_", str(event))[:80]
+    if not safe_event:
+        return
+
+    fields = [f"event={safe_event}"]
+    if elapsed_seconds is not None and math.isfinite(float(elapsed_seconds)):
+        fields.append(f"elapsed_seconds={max(0.0, float(elapsed_seconds)):.3f}")
+    if worker_count is not None:
+        fields.append(f"worker_count={max(0, int(worker_count))}")
+    if worker_names:
+        safe_names = tuple(
+            re.sub(r"[^A-Za-z0-9_.-]", "_", str(name))[:64]
+            for name in worker_names[:8]
+        )
+        fields.append(f"worker_names={','.join(name or 'unknown' for name in safe_names)}")
+    if background_process_running is not None:
+        fields.append(
+            "background_process_running="
+            f"{str(bool(background_process_running)).lower()}"
+        )
+    if exit_code is not None:
+        fields.append(f"exit_code={int(exit_code)}")
+    try:
+        session.write_line(f"DIAGNOSTIC {' '.join(fields)} at={_utc_now()}")
+    except (OSError, ValueError):
+        # 診斷磁碟滿、唯讀或 handle 已關閉時，絕不能阻止正常 close。
+        return
 
 
 def close_crash_diagnostics() -> None:

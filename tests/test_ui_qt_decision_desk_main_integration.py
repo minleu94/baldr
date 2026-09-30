@@ -330,6 +330,7 @@ def test_main_window_adds_unified_decision_workbench_tab(monkeypatch, tmp_path):
     assert _TrackingWorkbenchSourceService.instances
     assert workbench_tab.source_service is _TrackingWorkbenchSourceService.instances[-1]
     assert workbench_tab.auto_refresh is True
+    assert workbench_tab.kwargs["async_refresh"] is True
     assert workbench_tab.kwargs["replay_summary_json"] == replay_summary_path
     assert isinstance(
         workbench_tab.kwargs["research_console_source_service"],

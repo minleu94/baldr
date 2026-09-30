@@ -24,6 +24,10 @@ import sys
 import inspect
 
 from ui_qt.workers.task_worker import TaskWorker, ProgressTaskWorker
+from ui_qt.widgets.layout_helpers import (
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from app_module.update_service import UpdateService
 from app_module.paper_portfolio_time import taiwan_market_today
 from app_module.p0_source_control_center import (
@@ -997,6 +1001,7 @@ class UpdateView(QWidget):
         main_layout = QVBoxLayout(content_widget)
         main_layout.setSpacing(12)
         main_layout.setContentsMargins(15, 15, 15, 15)
+        set_scroll_content_constraints(content_widget)
 
         # 1. 隱藏的 Radio Buttons（保留底層代碼的屬性相容性，使之不受改動影響）
         self.hidden_widget = QWidget()
@@ -1033,6 +1038,9 @@ class UpdateView(QWidget):
 
         # 左側導覽列
         self.nav_list = QListWidget()
+        self.nav_list.setWordWrap(True)
+        self.nav_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.nav_list, 5)
         self.nav_list.setObjectName("updateNavigation")
         self.nav_list.setFixedWidth(160)
         self.nav_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
@@ -1053,6 +1061,7 @@ class UpdateView(QWidget):
         ]
         for _, label in self._nav_items:
             self.nav_list.addItem(label)
+        self._nav_visible_rows_height = ensure_visible_rows(self.nav_list, 5)
 
         # 右側堆疊視窗
         self.content_stack = QStackedWidget()
@@ -1170,6 +1179,7 @@ class UpdateView(QWidget):
         )
         self.data_update_timeline_table.horizontalHeader().setStretchLastSection(True)
         self.data_update_timeline_table.setMinimumHeight(72)
+        ensure_visible_rows(self.data_update_timeline_table, 5)
         self.data_update_timeline_table.setToolTip(
             "只顯示明確指定的更新 status artifact；缺失、失敗或過期不會被舊資料掩蓋。"
         )
@@ -1191,7 +1201,11 @@ class UpdateView(QWidget):
             QHeaderView.ResizeToContents
         )
         self.data_update_timeline_history_table.horizontalHeader().setStretchLastSection(True)
-        self.data_update_timeline_history_table.setMaximumHeight(180)
+        self.data_update_timeline_history_table.setWordWrap(True)
+        self.data_update_timeline_history_table.setVerticalScrollMode(
+            QAbstractItemView.ScrollPerPixel
+        )
+        ensure_visible_rows(self.data_update_timeline_history_table, 5)
         self.data_update_timeline_history_table.setToolTip(
             "只讀取明確指定的 data-update-status-history.v1 JSONL；不會改寫或回填歷史。"
         )
@@ -1284,7 +1298,7 @@ class UpdateView(QWidget):
             QHeaderView.ResizeToContents
         )
         self.p0_source_control_table.setMinimumHeight(180)
-        self.p0_source_control_table.setMaximumHeight(520)
+        ensure_visible_rows(self.p0_source_control_table, 5)
         self.p0_source_control_table.setToolTip(
             "P0 row 只代表候選觀測與治理缺口；downstream eligibility 永遠為 none。"
         )
@@ -1328,7 +1342,7 @@ class UpdateView(QWidget):
         readiness_header.setSectionResizeMode(3, QHeaderView.Stretch)
         self.program_readiness_table.horizontalHeader().setStretchLastSection(True)
         self.program_readiness_table.setMinimumHeight(120)
-        self.program_readiness_table.setMaximumHeight(360)
+        ensure_visible_rows(self.program_readiness_table, 5)
         self.program_readiness_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.program_readiness_table.setToolTip(
             "固定顯示七個 readiness lane；缺少的 lane 會標示未提供。只讀取明確 readiness artifact；"
@@ -1496,13 +1510,17 @@ class UpdateView(QWidget):
         log_toolbar.addStretch()
         clear_log_btn = QPushButton("清除日誌")
         clear_log_btn.setObjectName("clearUpdateLog")
-        clear_log_btn.setFixedHeight(20)
+        clear_log_btn.setMinimumHeight(clear_log_btn.sizeHint().height())
         clear_log_btn.setProperty("variant", "ghost")
         clear_log_btn.clicked.connect(lambda: self.log_text.clear())
         log_toolbar.addWidget(clear_log_btn)
         log_layout.addLayout(log_toolbar)
 
-        log_group.setMaximumHeight(118)  # 緊湊主控台高度，保留更多空間給上方表格
+        # 保持緊湊日誌區，但不可讓父視窗把工具列按鈕壓縮到只剩數像素。
+        # 若目前平台字體／主題的自然最小高度較大，讓整頁 scroll 承接差額。
+        log_group_minimum = log_group.minimumSizeHint().height()
+        log_group.setMinimumHeight(log_group_minimum)
+        log_group.setMaximumHeight(max(118, log_group_minimum))
         main_layout.addWidget(log_group)
 
         # 初始化各資料區塊的顯示 (卡片)
@@ -1552,7 +1570,7 @@ class UpdateView(QWidget):
             self.workbench_layout.setDirection(QBoxLayout.TopToBottom)
             self.nav_list.setMinimumWidth(0)
             self.nav_list.setMaximumWidth(16777215)
-            self.nav_list.setMaximumHeight(190)
+            self.nav_list.setMaximumHeight(self._nav_visible_rows_height)
             self.nav_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self.content_stack.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             self._reflow_grid(self._cards_layout, self._status_cards, columns=2)

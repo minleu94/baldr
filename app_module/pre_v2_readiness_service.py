@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 import json
 import re
 import sqlite3
-from typing import Any
+from typing import Any, Callable
 
 from app_module.agent_evidence_access_service import (
     AgentEvidenceAccessService,
@@ -20,6 +21,11 @@ from app_module.saved_recommendation_queries import (
     build_recommendation_execution_queries,
     saved_recommendation_capture_projection,
     select_latest_saved_recommendation,
+)
+from app_module.sqlite_read_only import (
+    check_read_cancelled,
+    cooperative_read_cancellation,
+    connect_read_only_sqlite,
 )
 
 
@@ -123,18 +129,26 @@ class PreV2ReadinessService:
         min_weekly_records: int = DEFAULT_MIN_WEEKLY_HISTORY_RECORDS,
         min_dry_run_days: int = DEFAULT_MIN_DRY_RUN_DAYS,
         agent_report_limit: int = 5,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> PreV2ReadinessReport:
-        items = (
-            self._weekly_history_item(min_weekly_records),
-            self._multi_day_dry_run_item(multi_day_record_path, min_dry_run_days),
-            self._source_gap_item(decision_date),
-            self._read_only_agent_report_item(agent_report_limit),
-        )
+        with cooperative_read_cancellation(cancel_callback):
+            items: list[PreV2ReadinessItem] = []
+            builders = (
+                lambda: self._weekly_history_item(min_weekly_records),
+                lambda: self._multi_day_dry_run_item(multi_day_record_path, min_dry_run_days),
+                lambda: self._source_gap_item(decision_date),
+                lambda: self._read_only_agent_report_item(agent_report_limit),
+            )
+            for build_item in builders:
+                check_read_cancelled()
+                items.append(build_item())
+            check_read_cancelled()
+        item_tuple = tuple(items)
         return PreV2ReadinessReport(
             generated_at=_utc_now_text(),
-            overall_status=_overall_status(items),
+            overall_status=_overall_status(item_tuple),
             production_scheduler_allowed=False,
-            items=items,
+            items=item_tuple,
             limitations=(
                 "此報告只讀取現有 evidence / 文件 / report，不會建立 schema 或寫入 DB。",
                 "waiting_for_time 只限制 formal evidence credit；排程會自動累積與重驗，不需要人工批准。",
@@ -148,9 +162,13 @@ class PreV2ReadinessService:
             evidence_db_path=self.evidence_db_path,
             research_db_path=self.research_db_path,
         )
+        check_read_cancelled()
         evidence = service.query_evidence_events(limit=limit, include_outcomes=True)
+        check_read_cancelled()
         research_runs = service.query_research_runs(limit=limit)
+        check_read_cancelled()
         portfolio_review = service.query_portfolio_review_evidence(limit=limit)
+        check_read_cancelled()
         template = build_ai_report_template()
         evidence_rows = _evidence_rows_from_agent_payloads(evidence, research_runs, portfolio_review)
         warnings = _collect_agent_payload_warnings(evidence, research_runs, portfolio_review)
@@ -210,7 +228,7 @@ class PreV2ReadinessService:
                 diagnostics.append("approved_weekly_history_projection_not_found")
 
         try:
-            with _connect_read_only(self.evidence_db_path) as conn:
+            with closing(_connect_read_only(self.evidence_db_path)) as conn:
                 if _table_exists(conn, "evidence_operations_weekly_reviews"):
                     rows = conn.execute(
                         """
@@ -223,8 +241,10 @@ class PreV2ReadinessService:
                             "legacy_review_history"
                         )
         except FileNotFoundError as exc:
+            check_read_cancelled()
             diagnostics.append(f"legacy_evidence_db_missing_non_blocking:{exc}")
         except sqlite3.Error as exc:
+            check_read_cancelled()
             diagnostics.append(f"legacy_weekly_history_unavailable_non_blocking:{exc}")
 
         sidecar_path = self.weekly_collection_sidecar_path or (
@@ -235,7 +255,7 @@ class PreV2ReadinessService:
         )
         evidence["weekly_collection_sidecar_path"] = str(sidecar_path)
         try:
-            with _connect_read_only(sidecar_path) as conn:
+            with closing(_connect_read_only(sidecar_path)) as conn:
                 if _table_exists(conn, "evidence_weekly_collections"):
                     rows = conn.execute(
                         """
@@ -255,8 +275,10 @@ class PreV2ReadinessService:
                             }
                         )
         except FileNotFoundError:
+            check_read_cancelled()
             diagnostics.append("weekly_collection_sidecar_not_observed")
         except sqlite3.Error as exc:
+            check_read_cancelled()
             diagnostics.append(f"weekly_collection_sidecar_unavailable:{exc}")
 
         count = len(periods)
@@ -453,10 +475,8 @@ def _overall_status(items: tuple[PreV2ReadinessItem, ...]) -> str:
 def _connect_read_only(path: Path) -> sqlite3.Connection:
     if not path.exists():
         raise FileNotFoundError(str(path))
-    uri_path = path.resolve().as_posix()
-    conn = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True)
+    conn = connect_read_only_sqlite(path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = ON")
     return conn
 
 
@@ -610,7 +630,9 @@ def _scheduled_dry_run_source_gap_closeout(
     try:
         loaded = json.loads(status_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        check_read_cancelled()
         return None
+    check_read_cancelled()
     if not isinstance(loaded, dict):
         return None
 
@@ -708,7 +730,7 @@ def _latest_decision_desk_snapshot(
 ) -> tuple[dict[str, Any] | None, tuple[str, ...]]:
     future_snapshot_dates: tuple[str, ...] = ()
     try:
-        with _connect_read_only(evidence_db_path) as conn:
+        with closing(_connect_read_only(evidence_db_path)) as conn:
             if not _table_exists(conn, "decision_desk_snapshots"):
                 return None, future_snapshot_dates
             future_rows = conn.execute(
@@ -732,6 +754,7 @@ def _latest_decision_desk_snapshot(
                 (decision_date or today.isoformat(),),
             ).fetchone()
     except (FileNotFoundError, sqlite3.Error):
+        check_read_cancelled()
         return None, future_snapshot_dates
     if row is None:
         return None, future_snapshot_dates

@@ -37,6 +37,7 @@ from ui_qt.widgets.theme_widgets import (
     StatusBadge,
     WarningList,
 )
+from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
 
 
 class DecisionDeskView(QWidget):
@@ -307,6 +308,7 @@ class DecisionDeskView(QWidget):
         content_layout.addWidget(self.advanced_market_panel)
         content_layout.addStretch()
 
+        set_scroll_content_constraints(scroll_content)
         scroll_area.setWidget(scroll_content)
         layout.addWidget(scroll_area)
 

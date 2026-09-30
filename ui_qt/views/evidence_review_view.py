@@ -9,6 +9,7 @@ from ui_qt.views.live_research_gap_view import LiveResearchGapView
 from ui_qt.views.scheduled_evidence_status_view import ScheduledEvidenceStatusView
 from ui_qt.views.signal_decay_view import SignalDecayView
 from ui_qt.widgets.evidence_boundary_banner import EvidenceBoundaryBanner
+from ui_qt.widgets.layout_helpers import create_scroll_area
 
 
 class EvidenceReviewView(QWidget):
@@ -26,7 +27,11 @@ class EvidenceReviewView(QWidget):
     ) -> None:
         super().__init__(parent)
         self.evidence_db_path = str(evidence_db_path or "").strip()
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        content = QWidget()
+        content.setObjectName("evidenceReviewPageContent")
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
         self.boundary_banner = EvidenceBoundaryBanner("任何 demote / retire candidate 都只代表人工覆盤候選，不會自動執行。")
@@ -65,6 +70,13 @@ class EvidenceReviewView(QWidget):
         self.tabs.addTab(data_gap_widget, "資料缺口")
 
         layout.addWidget(self.tabs, stretch=1)
+        outer_layout.addWidget(
+            create_scroll_area(
+                content,
+                object_name="evidenceReviewPageScroll",
+                horizontal_scroll=True,
+            )
+        )
 
     def _add_database_path_row(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()

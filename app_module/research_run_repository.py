@@ -16,6 +16,10 @@ from app_module.research_run_dtos import (
     parse_json_list,
     parse_json_object,
 )
+from app_module.sqlite_read_only import (
+    check_read_cancelled,
+    connect_read_only_sqlite,
+)
 
 
 class ResearchRunRepositoryError(Exception):
@@ -71,8 +75,7 @@ class ResearchRunRepository:
 
     @contextmanager
     def _read_connection(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
-        conn.execute("PRAGMA query_only = ON")
+        conn = connect_read_only_sqlite(self.db_path, require_existing=False)
         try:
             row = conn.execute(
                 "SELECT version FROM schema_version WHERE name = ?", (self.SCHEMA_NAME,)
@@ -81,6 +84,7 @@ class ResearchRunRepository:
                 raise ResearchRunRepositoryError("Registry schema version 不相容；需由寫入 owner 明確遷移")
             yield conn
         except sqlite3.Error as exc:
+            check_read_cancelled()
             raise ResearchRunRepositoryError(f"Registry schema 無法唯讀載入: {exc}") from exc
         finally:
             conn.close()

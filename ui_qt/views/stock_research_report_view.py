@@ -61,6 +61,10 @@ from app_module.research_result_presentation import (
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
+from ui_qt.widgets.layout_helpers import (
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from ui_qt.widgets.theme_widgets import StatusBadge
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
@@ -569,10 +573,15 @@ class StockResearchReportView(QWidget):
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(10)
+        set_scroll_content_constraints(inner, horizontal_scroll=True)
         layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setMinimumSize(0, 0)
+        scroll.setObjectName(f"stockResearchScroll_{page_id}")
         scroll.setWidget(inner)
         scroll.setAccessibleName(f"{title}內容")
         self.tabs.addTab(scroll, title)
@@ -669,7 +678,7 @@ class StockResearchReportView(QWidget):
         self.sources_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.sources_table.verticalHeader().setDefaultSectionSize(28)
         self.sources_table.verticalHeader().setMinimumSectionSize(28)
-        self.sources_table.setMaximumHeight(240)
+        ensure_visible_rows(self.sources_table, 5)
         source_layout.addWidget(self.sources_table)
         self.summary_source_group.setVisible(False)
         layout.addWidget(self.summary_source_group)
@@ -1139,6 +1148,7 @@ class StockResearchReportView(QWidget):
             )
         )
         self.sources_table.resizeColumnsToContents()
+        ensure_visible_rows(self.sources_table, 5)
 
     def _render_price(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("price")
@@ -1609,25 +1619,25 @@ class StockResearchReportView(QWidget):
         if object_name:
             table.setObjectName(object_name)
         table.setWordWrap(False)
-        visible_rows = len(rows) if max_visible_rows is None else min(len(rows), max_visible_rows)
+        preferred_visible_rows = (
+            len(rows) if max_visible_rows is None else min(len(rows), max_visible_rows)
+        )
         header_height = max(30, table.horizontalHeader().sizeHint().height())
         row_height = max(28, table.verticalHeader().defaultSectionSize())
         horizontal_scroll_height = (
             table.horizontalScrollBar().sizeHint().height() if not compact_columns else 0
         )
-        table_height = min(
-            maximum_height,
-            max(
-                72,
-                header_height
-                + visible_rows * row_height
-                + 2 * table.frameWidth()
-                + horizontal_scroll_height
-                + 4,
-            ),
+        preferred_height = max(
+            72,
+            header_height
+            + max(5, preferred_visible_rows) * row_height
+            + 2 * table.frameWidth()
+            + horizontal_scroll_height
+            + 4,
         )
-        table.setFixedHeight(table_height)
-        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # 舊參數保留作為預設展示高度提示；它不再限制可見列或縮放高度。
+        table.setMinimumHeight(min(maximum_height, preferred_height))
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
         table.setSelectionMode(QAbstractItemView.SingleSelection)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -1641,7 +1651,7 @@ class StockResearchReportView(QWidget):
             header = table.horizontalHeader()
             for column in range(len(columns)):
                 header.setSectionResizeMode(column, QHeaderView.Stretch)
-            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         elif balanced_columns:
             header = table.horizontalHeader()
             header.setStretchLastSection(False)
@@ -1652,6 +1662,7 @@ class StockResearchReportView(QWidget):
                 header.setSectionResizeMode(0, QHeaderView.Interactive)
                 header.resizeSection(0, 165)
             table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        ensure_visible_rows(table, 5)
         layout.addWidget(table)
         return table
 

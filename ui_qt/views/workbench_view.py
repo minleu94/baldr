@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import cast
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
@@ -75,6 +75,7 @@ from ui_qt.models.workbench_table_models import (
     display_workbench_value,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.theme_widgets import (
     CollapsibleSectionPanel,
@@ -93,6 +94,7 @@ from ui_qt.views.workbench_presenter import (
     review_queue_state_text,
 )
 from ui_qt.views.research_console_view import ResearchConsoleView
+from ui_qt.workers.task_worker import TaskWorker
 
 WORKBENCH_TONES: dict[str, dict[str, str]] = {
     "ready": {"fg": "#22c55e", "bg": "#0d2116", "border": "#166534"},
@@ -125,6 +127,22 @@ WORKBENCH_TONES: dict[str, dict[str, str]] = {
 }
 
 
+def _inspect_workbench_dashboard(
+    source_service: WorkbenchSourceService,
+    decision_date: str | None,
+    replay_summary_json: str | Path | None,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> WorkbenchDashboardDTO:
+    """在 TaskWorker 中讀取 Workbench 唯讀 DTO。"""
+
+    return source_service.inspect(
+        decision_date=decision_date,
+        replay_summary_json=replay_summary_json,
+        cancel_callback=cancel_callback,
+    )
+
+
 class UnifiedDecisionWorkbenchView(QWidget):
     """Read-only Unified Decision Workbench shell backed only by Workbench DTOs."""
 
@@ -140,6 +158,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         learning_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
         legacy_learning_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
         auto_refresh: bool = True,
+        async_refresh: bool = False,
         decision_source_widget: QWidget | None = None,
         navigate_to_daily_decision_callback: Callable[[], None] | None = None,
         navigate_to_market_explore_callback: Callable[[], None] | None = None,
@@ -154,6 +173,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         super().__init__(parent)
         self.source_service = source_service
         self.decision_date = decision_date
+        self._async_refresh = bool(async_refresh)
+        self._refresh_worker: TaskWorker | None = None
+        self._refresh_generation = 0
+        self._refresh_pending = False
+        self._shutdown_requested = False
         self.replay_summary_json = replay_summary_json
         self.evidence_rehearsal_dashboard = evidence_rehearsal_dashboard
         self.research_console_source_service = (
@@ -199,7 +223,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if dashboard is not None:
             self.render_dashboard(dashboard)
         elif auto_refresh and self.source_service is not None:
-            self.refresh_dashboard()
+            if self._async_refresh:
+                QTimer.singleShot(0, self.refresh_dashboard)
+            else:
+                self.refresh_dashboard()
         else:
             self._display_pending_dashboard()
 
@@ -701,6 +728,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         root_content_layout.addWidget(self.advanced_workbench_panel)
         root_content_layout.addStretch()
 
+        set_scroll_content_constraints(scroll_content)
         scroll_area.setWidget(scroll_content)
         overview_layout.addWidget(scroll_area)
         self.subtabs.addTab(overview_page, "總覽")
@@ -710,11 +738,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             learning_projection_service=self.learning_projection_service,
             legacy_learning_projection_service=self.legacy_learning_projection_service,
             decision_date=self.decision_date,
-            auto_refresh=True,
+            auto_refresh=False,
+            async_refresh=self._async_refresh,
             parent=self.subtabs,
         )
         self.subtabs.addTab(self.research_console_view, "研究證據")
         self.subtabs.setTabToolTip(2, "研究證據：查看完整的唯讀證據與成熟度資訊。")
+        self.subtabs.currentChanged.connect(self._on_subtab_changed)
         self.subtabs.addTab(
             self._build_navigation_page(
                 "持倉追蹤",
@@ -2178,9 +2208,35 @@ class UnifiedDecisionWorkbenchView(QWidget):
             button.clicked.connect(callback)
         return button
 
+    def _on_subtab_changed(self, index: int) -> None:
+        if self.subtabs.widget(index) is self.research_console_view:
+            self.research_console_view.ensure_loaded()
+
+    def begin_shutdown(self) -> None:
+        """停止排隊中的唯讀 refresh，並合作式取消正在執行的讀取。"""
+
+        if self._shutdown_requested:
+            return
+        self._shutdown_requested = True
+        self._refresh_generation += 1
+        self._refresh_pending = False
+        worker = self._refresh_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                self._refresh_worker = None
+        self.research_console_view.begin_shutdown()
+
     def refresh_dashboard(self) -> None:
         if self.source_service is None:
             self._display_exception_dashboard("WorkbenchSourceService 不可用")
+            return
+        if self._shutdown_requested:
+            return
+        if self._async_refresh:
+            self._start_async_dashboard_refresh()
             return
         self.refresh_button.setEnabled(False)
         try:
@@ -2194,6 +2250,129 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.render_dashboard(cast(WorkbenchDashboardDTO, dashboard))
         finally:
             self.refresh_button.setEnabled(True)
+
+    def _start_async_dashboard_refresh(self) -> None:
+        if self.source_service is None or self._shutdown_requested:
+            return
+        # 每次 refresh request 都先使舊結果失效，即使取消回呼尚在排隊。
+        self._refresh_generation += 1
+        generation = self._refresh_generation
+        worker = self._refresh_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    self._refresh_pending = True
+                    worker.cancel(cooperative=True, wait=False)
+                    self.meta_label.setText(
+                        "正在取消較早的唯讀讀取，完成後會載入最新狀態。"
+                    )
+                    return
+            except RuntimeError:
+                self._refresh_worker = None
+
+        requested_date = self.decision_date
+        worker = TaskWorker(
+            _inspect_workbench_dashboard,
+            self.source_service,
+            requested_date,
+            self.replay_summary_json,
+        )
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.finished.connect(
+            lambda dashboard, current_generation=generation, current_date=requested_date: self._on_async_dashboard_finished(
+                current_generation, current_date, dashboard
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.error.connect(
+            lambda error, current_generation=generation, current_date=requested_date: self._on_async_dashboard_error(
+                current_generation, current_date, error
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.cancelled.connect(
+            lambda current_generation=generation: self._on_async_dashboard_cancelled(
+                current_generation
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.native_thread_finished.connect(
+            lambda current_worker=worker: self._on_async_dashboard_thread_finished(
+                current_worker
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._refresh_worker = worker
+        self.refresh_button.setEnabled(False)
+        if self._last_good_dashboard is None:
+            self._display_pending_dashboard()
+            self.refresh_button.setEnabled(False)
+        else:
+            self.meta_label.setText(
+                "正在背景重新讀取既有唯讀狀態；目前保留最後可信結果。"
+            )
+            self.priority_banner.setText(
+                "資料狀態：更新中；目前仍顯示最後可信 Workbench DTO。"
+            )
+        worker.start()
+
+    def _on_async_dashboard_finished(
+        self,
+        generation: int,
+        requested_date: str | None,
+        dashboard: object,
+    ) -> None:
+        if self._shutdown_requested or generation != self._refresh_generation:
+            return
+        if requested_date != self.decision_date:
+            self._refresh_pending = True
+            return
+        if not isinstance(dashboard, WorkbenchDashboardDTO):
+            self._on_async_dashboard_error(
+                generation,
+                requested_date,
+                "WorkbenchSourceService 回傳非 WorkbenchDashboardDTO。",
+            )
+            return
+        self.render_dashboard(dashboard)
+
+    def _on_async_dashboard_error(
+        self,
+        generation: int,
+        requested_date: str | None,
+        error_message: str,
+    ) -> None:
+        if self._shutdown_requested or generation != self._refresh_generation:
+            return
+        if requested_date != self.decision_date:
+            self._refresh_pending = True
+            return
+        self._display_exception_dashboard(error_message)
+
+    def _on_async_dashboard_cancelled(self, generation: int) -> None:
+        if generation != self._refresh_generation or self._shutdown_requested:
+            return
+        if not self._refresh_pending:
+            self.meta_label.setText("唯讀讀取已取消；目前資料狀態維持原樣。")
+
+    def _on_async_dashboard_thread_finished(self, worker: TaskWorker) -> None:
+        if self._refresh_worker is not worker:
+            try:
+                worker.deleteLater()
+            except RuntimeError:
+                pass
+            return
+        self._refresh_worker = None
+        should_refresh = self._refresh_pending and not self._shutdown_requested
+        self._refresh_pending = False
+        try:
+            worker.deleteLater()
+        except RuntimeError:
+            pass
+        if not self._shutdown_requested:
+            self.refresh_button.setEnabled(self.source_service is not None)
+        if should_refresh:
+            QTimer.singleShot(0, self.refresh_dashboard)
 
     def navigate_to_drilldown_target(self, target: str) -> bool:
         if target == "update" and hasattr(self, "navigate_to_update_callback") and self.navigate_to_update_callback:
@@ -2756,9 +2935,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_portfolio_table,
             self.position_health_table,
         ):
-            table.setHorizontalScrollBarPolicy(
-                Qt.ScrollBarAsNeeded if self._workbench_narrow else Qt.ScrollBarAlwaysOff
-            )
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             table.resizeColumnsToContents()
             table.resizeRowsToContents()
         self._fit_summary_table(self.evidence_feed_table, fixed_widths=(190, 92))
@@ -2768,9 +2945,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         header = table.horizontalHeader()
         if table.model() is None or table.model().columnCount() <= len(fixed_widths):
             return
-        table.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarAsNeeded if self._workbench_narrow else Qt.ScrollBarAlwaysOff
-        )
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         for index, width in enumerate(fixed_widths):
             header.setSectionResizeMode(index, QHeaderView.Fixed)
             table.setColumnWidth(index, width)

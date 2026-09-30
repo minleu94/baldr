@@ -78,7 +78,7 @@ class PandasTableModel(QAbstractTableModel):
             ]
             value = self._dataframe.iloc[row, source_column]
             
-            if role == Qt.DisplayRole:
+            if role in (Qt.DisplayRole, Qt.ToolTipRole):
                 # 處理列表/數組類型（如 tags）
                 if isinstance(value, (list, tuple, np.ndarray)):
                     if len(value) == 0:
@@ -144,12 +144,12 @@ class PandasTableModel(QAbstractTableModel):
     
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
         """返回表頭數據"""
-        if role == Qt.DisplayRole:
+        if role in (Qt.DisplayRole, Qt.ToolTipRole):
             if orientation == Qt.Horizontal:
-                # 返回欄位名稱
-                if section < len(self._visible_columns):
+                # 表頭懸停也回傳同一個可見欄名，包含被截斷的長欄名。
+                if 0 <= section < len(self._visible_columns):
                     return self._visible_columns[section]
-            else:
+            elif section >= 0:
                 # 返回行號（從1開始）
                 return str(section + 1)
         

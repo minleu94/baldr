@@ -79,10 +79,25 @@ def test_runtime_view_static_labels_are_chinese_and_scope_is_explicit():
 def test_runtime_scope_note_is_compact_and_content_starts_near_top():
     app()
     view = RuntimeView()
+    try:
+        view.scope_label.setText("窄版長範圍說明；" * 16)
+        view.resize(390, 420)
+        view.show()
+        app().processEvents()
 
-    assert view.scope_label.maximumHeight() <= 48
-    assert hasattr(view, "main_splitter")
-    assert view.main_splitter.minimumHeight() >= 360
+        assert view.scope_label.wordWrap()
+        assert view.scope_label.maximumHeight() > view.scope_label.height()
+        assert view.scope_label.height() >= view.scope_label.heightForWidth(
+            view.scope_label.width()
+        )
+        assert hasattr(view, "main_splitter")
+        assert view.content_scroll.verticalScrollBar().maximum() > 0
+        assert view.content_scroll.verticalScrollBar().value() == 0
+        assert view.scope_label.isVisible()
+    finally:
+        view.close()
+        view.deleteLater()
+        app().processEvents()
 
 
 def test_runtime_view_yields_horizontal_size_hints_for_narrow_workspaces():

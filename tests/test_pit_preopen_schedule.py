@@ -529,6 +529,65 @@ def test_split_preopen_status_keeps_stable_latest_path_for_default_caller(
     assert persisted["capture_attempt_id"] == payload["capture_attempt_id"]
 
 
+def test_existing_split_candidate_reuse_blocks_before_any_acquisition_when_not_verified(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = datetime(2026, 8, 17, 7, 10, tzinfo=TAIPEI)
+    publication_root = tmp_path / "publication"
+    (publication_root / "pit_taxonomy_preopen_split_v2" / observed.date().isoformat()).mkdir(
+        parents=True
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (True, "official_open"),
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "load_optional_formal_runtime_config",
+        lambda **_kwargs: None,
+    )
+    acquisition_calls: list[str] = []
+    monkeypatch.setattr(
+        capture_runner,
+        "reuse_pit_candidate_archive_before_cutoff",
+        lambda **_kwargs: acquisition_calls.append("archive") or pytest.fail(
+            "existing split candidate must be validated before archive acquisition"
+        ),
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "_refresh_pit_denominator",
+        lambda **_kwargs: acquisition_calls.append("denominator") or pytest.fail(
+            "existing split candidate must not refresh the denominator"
+        ),
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "_reuse_existing_split_taxonomy_candidate",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            capture_runner.PITTaxonomySourceError("late source config proof is missing")
+        ),
+    )
+
+    payload, exit_code = capture_runner.run_capture(
+        publication_root=publication_root,
+        status_root=publication_root / "isolated-status",
+        now=observed,
+        split_denominator_contract=True,
+    )
+
+    assert exit_code == 2
+    assert payload["status"] == "blocked"
+    assert payload["capture_mode"] == "reused_existing_split_candidate_blocked"
+    assert payload["network_attempted"] is False
+    assert payload["new_attempt_created"] is False
+    assert "capture_attempt_id" not in payload
+    assert acquisition_calls == []
+    assert (publication_root / "isolated-status" / "latest_status.json").is_file()
+
+
 def _make_split_scope_binding_inputs(tmp_path: Path) -> tuple[
     Path,
     Path,

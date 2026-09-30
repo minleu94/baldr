@@ -37,13 +37,22 @@ from data_module.formal_runtime_config import (  # noqa: E402
     load_optional_formal_runtime_config,
 )
 from data_module.pit_taxonomy_source_producer import (  # noqa: E402
+    OFFICIAL_COMPANY_SOURCE_DEFINITIONS,
+    PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH,
     PIT_TAXONOMY_MAX_SOURCE_BYTES,
     PIT_TAXONOMY_SOURCE_CONFIG_ENV,
     PITTaxonomySourceError,
+    _decode_json_object_no_duplicates,
+    _proof_child,
+    _plan_configured_components,
     _assert_no_link_path,
     capture_configured_daily_pit_taxonomy_bundle,
     load_pit_taxonomy_source_config,
+    materialize_existing_split_source_config_proof,
+    read_existing_split_source_config_proof,
+    read_pit_taxonomy_capture_attempt,
     _proof_file_bytes,
+    validate_daily_pit_taxonomy_bundle,
 )
 from data_module.prospective_formal_clock import canonical_json  # noqa: E402
 from scripts.capture_pit_prospective_denominator import (  # noqa: E402
@@ -102,6 +111,16 @@ def _parser() -> argparse.ArgumentParser:
             "明確 opt-in 建立獨立 v2 taxonomy-only candidate；不代表 Rule/formal acceptance，"
             "也不覆寫 v1 archive"
         ),
+    )
+    parser.add_argument(
+        "--materialize-existing-split-config-proof",
+        action="store_true",
+        help="僅為指定既有 split candidate 建立獨立晚綁定 config proof；不抓網路、不改 candidate",
+    )
+    parser.add_argument(
+        "--source-config-proof-source",
+        type=Path,
+        help="既有 2026-10-01 saved-notice source config bytes；只供明確 materialization 子命令使用",
     )
     return parser
 
@@ -870,6 +889,336 @@ def _capture_taxonomy_for_run(
         }
 
 
+def _read_split_candidate_json(
+    publication_root: Path,
+    path: Path,
+    *,
+    label: str,
+    max_bytes: int,
+) -> tuple[dict[str, object], bytes]:
+    _resolved, raw = _read_split_scope_proof_file(
+        publication_root,
+        path,
+        label=label,
+        max_bytes=max_bytes,
+    )
+    return _decode_json_object_no_duplicates(raw, label), raw
+
+
+def _verify_split_candidate_company_archive(
+    *,
+    publication_root: Path,
+    bundle_root: Path,
+    archive_raw: Mapping[str, bytes],
+    archive_http: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    """將 bundle 實際使用的公司原始 bytes/HTTP 對回當日已驗 archive。"""
+
+    raw_manifest, _ = _read_split_candidate_json(
+        publication_root,
+        bundle_root / "metadata" / "raw_manifest.json",
+        label="reused split taxonomy raw manifest",
+        max_bytes=16 * 1024 * 1024,
+    )
+    rows = raw_manifest.get("files")
+    if not isinstance(rows, list):
+        raise PITTaxonomySourceError("reused split taxonomy raw manifest has no files")
+    by_source: dict[str, Mapping[str, object]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise PITTaxonomySourceError("reused split taxonomy raw manifest entry is invalid")
+        source_id = row.get("source_id")
+        if isinstance(source_id, str) and source_id in by_source:
+            raise PITTaxonomySourceError("reused split taxonomy raw source id is duplicated")
+        if isinstance(source_id, str):
+            by_source[source_id] = row
+    checked: dict[str, object] = {}
+    for market, archive_bytes in archive_raw.items():
+        definition = OFFICIAL_COMPANY_SOURCE_DEFINITIONS.get(market)
+        if definition is None:
+            raise PITTaxonomySourceError(f"reused archive market is unsupported: {market}")
+        row = by_source.get(definition.source_id)
+        if row is None:
+            raise PITTaxonomySourceError(
+                f"reused split taxonomy omits archived company source: {definition.source_id}"
+            )
+        relative = row.get("path")
+        if not isinstance(relative, str) or not relative:
+            raise PITTaxonomySourceError("reused split company raw path is invalid")
+        _resolved, bundle_bytes = _read_split_scope_proof_file(
+            publication_root,
+            bundle_root / Path(relative),
+            label=f"reused split company raw {market}",
+            max_bytes=64 * 1024 * 1024,
+        )
+        expected_hash = _sha256_bytes(archive_bytes)
+        if (
+            bundle_bytes != archive_bytes
+            or row.get("source_file_hash") != expected_hash
+            or row.get("content_bytes") != len(archive_bytes)
+            or row.get("http") != dict(archive_http.get(market, {}))
+        ):
+            raise PITTaxonomySourceError(
+                f"reused split company raw/HTTP differs from verified archive: {market}"
+            )
+        checked[market] = {
+            "source_id": definition.source_id,
+            "source_file_hash": expected_hash,
+            "content_bytes": len(archive_bytes),
+            "requested_url": archive_http.get(market, {}).get("requested_url"),
+        }
+    if set(archive_raw) != {"twse", "tpex"}:
+        raise PITTaxonomySourceError("reused PIT archive must contain both TWSE and TPEx")
+    return checked
+
+
+def _config_expected_urls(config: Mapping[str, object]) -> dict[str, str]:
+    urls: dict[str, str] = {}
+    classification = config.get("classification")
+    security = config.get("security")
+    inactive = config.get("inactive_security", {})
+    if not isinstance(classification, Mapping) or not isinstance(security, Mapping):
+        raise PITTaxonomySourceError("reused source config sections are invalid")
+    if not isinstance(inactive, Mapping):
+        raise PITTaxonomySourceError("reused inactive source config is invalid")
+    for market, spec in classification.items():
+        if not isinstance(spec, Mapping):
+            raise PITTaxonomySourceError("reused classification source spec is invalid")
+        components = spec.get("components")
+        if isinstance(components, Mapping):
+            for component_name, component in components.items():
+                if not isinstance(component, Mapping):
+                    raise PITTaxonomySourceError("reused classification component is invalid")
+                source_name = f"classification:{market}:{component_name}"
+                url = component.get("url")
+                http = component.get("http")
+                if not isinstance(url, str) and isinstance(http, Mapping):
+                    url = http.get("requested_url")
+                if isinstance(url, str):
+                    urls[source_name] = url
+        else:
+            url = spec.get("url")
+            http = spec.get("http")
+            if not isinstance(url, str) and isinstance(http, Mapping):
+                url = http.get("requested_url")
+            if isinstance(url, str):
+                urls[f"classification:{market}"] = url
+    for key, spec in security.items():
+        if not isinstance(spec, Mapping):
+            raise PITTaxonomySourceError("reused security source spec is invalid")
+        url = spec.get("url")
+        http = spec.get("http")
+        if not isinstance(url, str) and isinstance(http, Mapping):
+            url = http.get("requested_url")
+        if isinstance(url, str):
+            urls[f"security:{key}"] = url
+    for key, spec in inactive.items():
+        if not isinstance(spec, Mapping):
+            raise PITTaxonomySourceError("reused inactive security spec is invalid")
+        url = spec.get("source_url")
+        if isinstance(url, str):
+            urls[f"inactive_security:{key}"] = url
+            urls[f"inactive_security:{key}:capture_metadata"] = url
+    return urls
+
+
+def _verify_reused_attempt_source_config(
+    *,
+    attempt: Mapping[str, object],
+    descriptor: Mapping[str, object],
+    config: Mapping[str, object],
+    company_raw: Mapping[str, bytes],
+    capture_date: date,
+) -> None:
+    expected_plan = _plan_configured_components(config, company_raw, capture_date)
+    if descriptor.get("planned_sources") != expected_plan:
+        raise PITTaxonomySourceError("reused split attempt source plan differs from current config")
+    components = attempt.get("components")
+    if not isinstance(components, list) or len(components) != len(expected_plan):
+        raise PITTaxonomySourceError("reused split attempt components differ from current source plan")
+    expected_urls = _config_expected_urls(config)
+    for plan_item, component in zip(expected_plan, components):
+        if not isinstance(plan_item, Mapping) or not isinstance(component, Mapping):
+            raise PITTaxonomySourceError("reused split attempt component is invalid")
+        source_name = str(plan_item.get("source_name"))
+        if component.get("source_name") != source_name:
+            raise PITTaxonomySourceError("reused split attempt component order/name differs")
+        metadata = component.get("http_metadata")
+        if not isinstance(metadata, Mapping):
+            raise PITTaxonomySourceError("reused split attempt HTTP metadata is missing")
+        expected_url = expected_urls.get(source_name)
+        if expected_url is not None and metadata.get("requested_url") != expected_url:
+            raise PITTaxonomySourceError(
+                f"reused split attempt URL differs from source config: {source_name}"
+            )
+        if plan_item.get("mode") == "url" and expected_url is None:
+            raise PITTaxonomySourceError(
+                f"reused configured URL is absent from current config: {source_name}"
+            )
+
+
+def _reuse_existing_split_taxonomy_candidate(
+    *,
+    publication_root: Path,
+    observed: datetime,
+    config_path: Path | None,
+    now_provider: Callable[[], datetime] | None = None,
+) -> dict[str, object]:
+    """完整重驗當日既有 split candidate；此分支絕不擷取或覆寫 source。"""
+
+    local_date = observed.astimezone(TAIPEI).date()
+    cutoff = datetime.combine(local_date, PIT_CUTOFF, tzinfo=TAIPEI)
+    if observed >= cutoff:
+        raise PITTaxonomySourceError(
+            "same-day split candidate reuse is only allowed before Taipei 08:30"
+        )
+    root = publication_root.expanduser().resolve(strict=True)
+    bundle_root = _split_taxonomy_bundle_root(root, local_date)
+    _assert_no_link_path(bundle_root, allow_missing=False, confine_to=root)
+    bundle_path = bundle_root / "bundle_manifest.json"
+    config = load_pit_taxonomy_source_config(config_path, bounded_read=True)
+    config_proof = read_existing_split_source_config_proof(
+        publication_root=root,
+        bundle_manifest_path=bundle_path,
+        repository_root=ROOT,
+        current_config=config,
+        now=observed,
+    )
+    proof_config = config_proof.get("config")
+    if not isinstance(proof_config, Mapping):
+        raise PITTaxonomySourceError("late-bound source config proof has no config body")
+
+    # Existing archive readback is read-only. Missing or invalid inputs fail
+    # here; this branch never falls through to a new archive or HTTP request.
+    archive_result = reuse_pit_candidate_archive_before_cutoff(
+        publication_root=root,
+        now=observed,
+    )
+    archive_value = archive_result.get("durable_archive")
+    if not isinstance(archive_value, Mapping) or archive_result.get("durable_archive_verified") is not True:
+        raise PITTaxonomySourceError("same-day PIT archive is not an existing verified archive")
+    archive_path = Path(str(archive_value.get("archive_manifest_path"))).expanduser()
+    archive_raw, archive_http, archive_lineage = _load_archived_company_sources(archive_path)
+    company_binding = _verify_split_candidate_company_archive(
+        publication_root=root,
+        bundle_root=bundle_root,
+        archive_raw=archive_raw,
+        archive_http=archive_http,
+    )
+
+    denominator_path, denominator_lookup = _find_verified_denominator(
+        root,
+        target_date=observed,
+    )
+    if denominator_path is None:
+        raise PITTaxonomySourceError(
+            f"same-day verified PIT denominator is missing: {denominator_lookup}"
+        )
+    denominator = validate_prospective_pit_denominator(denominator_path, now=observed)
+    denominator_symbols = denominator.get("symbols")
+    if not isinstance(denominator_symbols, list):
+        raise PITTaxonomySourceError("same-day verified denominator symbols are missing")
+    parent = _find_rule_source_parent(root, target_date=local_date)
+    current_binding = _build_split_scope_binding(
+        publication_root=root,
+        denominator_path=denominator_path,
+        denominator_payload=denominator,
+        parent=parent,
+        capture_date=local_date,
+        decision_at=cutoff,
+        denominator_symbols=tuple(str(item) for item in denominator_symbols),
+    )
+    validated = validate_daily_pit_taxonomy_bundle(
+        bundle_path,
+        decision_at=cutoff,
+        now=observed,
+    )
+    bundle, _ = _read_split_candidate_json(
+        root,
+        bundle_path,
+        label="reused split taxonomy bundle manifest",
+        max_bytes=16 * 1024 * 1024,
+    )
+    for key in (
+        "scope_binding_schema_version",
+        "denominator_binding",
+        "rule_candidate_binding",
+        "scope_diff",
+        "taxonomy_coverage_complete",
+        "rule_scope_compatible",
+    ):
+        if bundle.get(key) != current_binding.get(key):
+            raise PITTaxonomySourceError(f"current split binding differs from candidate: {key}")
+    if (
+        bundle.get("symbols") != list(denominator_symbols)
+        or bundle.get("universe_hash") != parent["universe_hash"]
+        or bundle.get("universe_hash_symbols") != list(parent["universe_hash_symbols"])
+        or bundle.get("scores_bp") != list(parent["scores_bp"])
+        or bundle.get("rank_order") != list(parent["rank_order"])
+        or bundle.get("clock_id") != parent["clock_id"]
+        or bundle.get("clock_manifest_hash") != parent["clock_manifest_hash"]
+    ):
+        raise PITTaxonomySourceError(
+            "current full Rule score/clock tuple differs from split candidate"
+        )
+    binding = bundle.get("capture_attempt_binding")
+    if not isinstance(binding, Mapping):
+        raise PITTaxonomySourceError("reused split candidate attempt binding is missing")
+    attempt_path = _proof_child(
+        root,
+        binding.get("path"),
+        required_prefix=f"pit_taxonomy_capture_attempts/{local_date.isoformat()}/",
+        label="reused split candidate attempt",
+    )
+    attempt = read_pit_taxonomy_capture_attempt(attempt_path, verify_complete=True)
+    attempt_descriptor_path = attempt_path / "attempt_descriptor.json"
+    descriptor_raw = _proof_file_bytes(
+        attempt_descriptor_path,
+        "reused split attempt descriptor",
+        1024 * 1024,
+    )
+    descriptor = _decode_json_object_no_duplicates(
+        descriptor_raw,
+        "reused split attempt descriptor",
+    )
+    _verify_reused_attempt_source_config(
+        attempt=attempt,
+        descriptor=descriptor,
+        config=proof_config,
+        company_raw=archive_raw,
+        capture_date=local_date,
+    )
+    refreshed = (now_provider or (lambda: datetime.now(timezone.utc)))()
+    if refreshed.astimezone(TAIPEI).date() != local_date or refreshed >= cutoff:
+        raise PITTaxonomySourceError(
+            "same-day split validation finished outside Taipei 08:30 cutoff"
+        )
+    return {
+        "status": "verified_reused_existing_split_candidate",
+        "taxonomy_bundle_path": str(bundle_path),
+        "validation_completed_at": refreshed.isoformat(),
+        "bundle_hash": bundle.get("bundle_hash"),
+        "capture_date": local_date.isoformat(),
+        "archive": archive_lineage,
+        "company_archive_binding": company_binding,
+        "denominator_path": str(denominator_path),
+        "rule_parent_root": parent["bundle_root"],
+        "rule_universe_hash": parent["universe_hash"],
+        "capture_attempt_id": attempt.get("attempt_id"),
+        "capture_attempt_status": attempt.get("status"),
+        "source_config_proof_sha256": config_proof.get("proof_sha256"),
+        "source_config_proof_materialized_at": config_proof.get("materialized_at"),
+        "taxonomy_coverage_complete": validated.get("taxonomy_coverage_complete") is True,
+        "rule_scope_compatible": validated.get("rule_scope_compatible") is True,
+        "formal_consumer_compatible": False,
+        "formal_credit": False,
+        "research_only": True,
+        "candidate_only": True,
+        "network_attempted": False,
+        "new_attempt_created": False,
+    }
+
+
 def run_capture(
     *,
     publication_root: Path,
@@ -882,7 +1231,36 @@ def run_capture(
 ) -> tuple[dict[str, object], int]:
     injected_clock = now is not None
     observed = now or datetime.now(timezone.utc)
-    capture_attempt_id = uuid.uuid4().hex if split_denominator_contract else None
+    split_bundle_root = (
+        _split_taxonomy_bundle_root(
+            publication_root,
+            observed.astimezone(TAIPEI).date(),
+        )
+        if split_denominator_contract
+        else None
+    )
+    split_candidate_exists = False
+    split_candidate_precheck_error: str | None = None
+    if split_bundle_root is not None:
+        try:
+            _assert_no_link_path(
+                split_bundle_root,
+                allow_missing=True,
+                confine_to=publication_root.expanduser().resolve(),
+            )
+            split_candidate_exists = (
+                split_bundle_root.exists() or split_bundle_root.is_symlink()
+            )
+        except (OSError, TypeError, ValueError, PITTaxonomySourceError) as error:
+            split_candidate_precheck_error = (
+                f"{type(error).__name__}:{str(error).splitlines()[0][:220]}"
+            )
+            split_candidate_exists = True
+    capture_attempt_id = (
+        uuid.uuid4().hex
+        if split_denominator_contract and not split_candidate_exists
+        else None
+    )
     # Operational consumers are pinned to this stable readback path for both
     # legacy and split-contract runs.  One-off validation runs can isolate the
     # whole status root with --status-root instead of changing this contract.
@@ -982,6 +1360,75 @@ def run_capture(
         }
         _write_status(status_path, payload)
         return payload, 2
+    if split_denominator_contract and split_candidate_exists:
+        if injected_clock:
+            payload = {
+                **base,
+                "status": "blocked",
+                "capture_mode": "reused_existing_split_candidate_blocked",
+                "blockers": [
+                    "existing_split_candidate_reuse_requires_actual_operational_clock"
+                ],
+                "capture": {},
+                "network_attempted": False,
+                "new_attempt_created": False,
+            }
+            _write_status(status_path, payload)
+            return payload, 2
+        try:
+            if split_candidate_precheck_error is not None:
+                raise PITTaxonomySourceError(
+                    f"existing split candidate root failed path validation: {split_candidate_precheck_error}"
+                )
+            taxonomy = _reuse_existing_split_taxonomy_candidate(
+                publication_root=publication_root,
+                observed=observed,
+                config_path=taxonomy_config_path,
+                now_provider=taxonomy_now_provider or (lambda: datetime.now(timezone.utc)),
+            )
+            taxonomy_archive = taxonomy.get("archive")
+            archive_manifest_path = (
+                taxonomy_archive.get("manifest_path")
+                if isinstance(taxonomy_archive, Mapping)
+                else None
+            )
+            payload = {
+                **base,
+                "status": "machine_verified_candidate",
+                "capture_mode": "reused_existing_split_candidate",
+                "capture": {"status": "existing_verified_archive_readback"},
+                "archive_manifest_path": archive_manifest_path,
+                "archive_readback_verified": True,
+                "denominator_refresh": {
+                    "status": "existing_verified",
+                    "path": taxonomy.get("denominator_path"),
+                    "network_attempted": False,
+                },
+                "taxonomy": taxonomy,
+                "taxonomy_observed_at": str(
+                    taxonomy.get("validation_completed_at") or observed.isoformat()
+                ),
+                "taxonomy_bundle_path": taxonomy.get("taxonomy_bundle_path"),
+                "taxonomy_industry_filter_usable": False,
+                "blockers": [],
+            }
+            _write_status(status_path, payload)
+            return payload, 0
+        except Exception as error:  # noqa: BLE001 - present candidate never falls through
+            payload = {
+                **base,
+                "status": "blocked",
+                "capture_mode": "reused_existing_split_candidate_blocked",
+                "blockers": [
+                    "existing_split_candidate_reuse_rejected:"
+                    f"{type(error).__name__}:{str(error).splitlines()[0][:220]}"
+                ],
+                "capture": {},
+                "network_attempted": False,
+                "new_attempt_created": False,
+            }
+            _write_status(status_path, payload)
+            return payload, 2
     try:
         try:
             result = reuse_pit_candidate_archive_before_cutoff(
@@ -1076,6 +1523,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         publication_root = _publication_root(args.publication_root)
+        if args.materialize_existing_split_config_proof:
+            if args.split_denominator_contract or args.status_root is not None:
+                raise ValueError(
+                    "late source config proof mode cannot be combined with capture/status options"
+                )
+            source_config_path = (
+                args.source_config_proof_source
+                or ROOT / Path(PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH)
+            )
+            materialization_started_at = datetime.now(timezone.utc)
+            payload = materialize_existing_split_source_config_proof(
+                publication_root=publication_root,
+                bundle_manifest_path=(
+                    publication_root
+                    / "pit_taxonomy_preopen_split_v2"
+                    / materialization_started_at.astimezone(TAIPEI).date().isoformat()
+                    / "bundle_manifest.json"
+                ),
+                source_config_path=source_config_path,
+                repository_root=ROOT,
+                materialized_at=materialization_started_at,
+            )
+            print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.source_config_proof_source is not None:
+            raise ValueError(
+                "--source-config-proof-source requires --materialize-existing-split-config-proof"
+            )
         status_root = _status_root(publication_root, args.status_root)
         payload, exit_code = run_capture(
             publication_root=publication_root,

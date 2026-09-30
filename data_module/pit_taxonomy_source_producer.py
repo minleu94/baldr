@@ -73,6 +73,11 @@ PIT_TAXONOMY_SOURCE_CONFIG_SCHEMA_VERSION = "pit-industry-taxonomy-source-config
 PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION = "pit-industry-taxonomy-capture-attempt.v1"
 PIT_TAXONOMY_CAPTURE_ATTEMPT_BINDING_SCHEMA_VERSION = "pit-industry-taxonomy-capture-attempt-binding.v1"
 PIT_TAXONOMY_SOURCE_CONFIG_ENV = "PIT_TAXONOMY_SOURCE_CONFIG"
+PIT_TAXONOMY_SOURCE_CONFIG_PROOF_SCHEMA_VERSION = "pit-taxonomy-source-config-proof.v1"
+PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES = 1024 * 1024
+PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH = (
+    "output/qa/pit_taxonomy_split_candidate_20261001/source_config_saved_notice.json"
+)
 PIT_TAXONOMY_CUTOFF = time(8, 30)
 PIT_TAXONOMY_FETCH_TIMEOUT_SECONDS = 30
 PIT_TAXONOMY_MAX_SOURCE_BYTES = 64 * 1024 * 1024
@@ -603,7 +608,11 @@ def read_pit_taxonomy_capture_attempt(
     return result
 
 
-def load_pit_taxonomy_source_config(path: Path | None = None) -> dict[str, object]:
+def load_pit_taxonomy_source_config(
+    path: Path | None = None,
+    *,
+    bounded_read: bool = False,
+) -> dict[str, object]:
     """讀取 preopen 的 static definition／security source 設定。
 
     設定只描述官方 source URL、版本與「分類適用日」；``http.captured_at``
@@ -617,19 +626,29 @@ def load_pit_taxonomy_source_config(path: Path | None = None) -> dict[str, objec
 
     configured = path
     if configured is None:
-        raw_path = os.environ.get(PIT_TAXONOMY_SOURCE_CONFIG_ENV)
-        if not isinstance(raw_path, str) or not raw_path.strip():
+        configured_value = os.environ.get(PIT_TAXONOMY_SOURCE_CONFIG_ENV)
+        if not isinstance(configured_value, str) or not configured_value.strip():
             raise PITTaxonomySourceError(
                 f"{PIT_TAXONOMY_SOURCE_CONFIG_ENV} is not configured"
             )
-        configured = Path(raw_path.strip())
-    resolved = configured.expanduser().resolve()
-    try:
-        value = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise PITTaxonomySourceError("PIT taxonomy source config is unreadable") from error
-    if not isinstance(value, Mapping):
-        raise PITTaxonomySourceError("PIT taxonomy source config must be an object")
+        configured = Path(configured_value.strip())
+    if bounded_read:
+        bounded_config_path = Path(os.path.abspath(str(configured.expanduser())))
+        _assert_no_link_path(bounded_config_path, allow_missing=False)
+        raw = _proof_file_bytes(
+            bounded_config_path,
+            "PIT taxonomy source config",
+            PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+        )
+        value = _decode_json_object_no_duplicates(raw, "PIT taxonomy source config")
+    else:
+        resolved = configured.expanduser().resolve()
+        try:
+            value = json.loads(resolved.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise PITTaxonomySourceError("PIT taxonomy source config is unreadable") from error
+        if not isinstance(value, Mapping):
+            raise PITTaxonomySourceError("PIT taxonomy source config must be an object")
     payload = {str(key): item for key, item in value.items()}
     if payload.get("schema_version") != PIT_TAXONOMY_SOURCE_CONFIG_SCHEMA_VERSION:
         raise PITTaxonomySourceError("PIT taxonomy source config schema is unsupported")
@@ -642,6 +661,631 @@ def load_pit_taxonomy_source_config(path: Path | None = None) -> dict[str, objec
     if license_scope is not None and not isinstance(license_scope, Mapping):
         raise PITTaxonomySourceError("PIT taxonomy source config license_scope is invalid")
     return payload
+
+
+def _source_config_canonical_sha256(config: Mapping[str, object]) -> str:
+    return _sha256_bytes(canonical_json(dict(config)).encode("utf-8"))
+
+
+def _source_config_semantic_value(config: Mapping[str, object]) -> dict[str, object]:
+    """只忽略 inactive saved-evidence 的運送路徑，其餘設定逐欄保留。"""
+
+    value = json.loads(canonical_json(dict(config)))
+    if not isinstance(value, dict):
+        raise PITTaxonomySourceError("PIT taxonomy source config must be an object")
+    inactive = value.get("inactive_security", {})
+    if not isinstance(inactive, dict):
+        raise PITTaxonomySourceError("PIT taxonomy inactive_security section is invalid")
+    for key, spec in inactive.items():
+        if not isinstance(spec, dict):
+            raise PITTaxonomySourceError(
+                f"PIT taxonomy inactive security config is invalid: {key}"
+            )
+        saved = spec.get("saved_evidence")
+        if saved is None:
+            continue
+        if not isinstance(saved, dict) or set(saved) != {"raw_path", "metadata_path"}:
+            raise PITTaxonomySourceError(
+                f"inactive_security.{key}.saved_evidence fields are invalid"
+            )
+        if any(
+            not isinstance(saved.get(field), str) or not str(saved[field]).strip()
+            for field in ("raw_path", "metadata_path")
+        ):
+            raise PITTaxonomySourceError(
+                f"inactive_security.{key}.saved_evidence paths are invalid"
+            )
+        spec.pop("saved_evidence")
+    return value
+
+
+def _source_config_proof_cache_root(repository_root: Path) -> Path:
+    # Keep the root short enough for Windows MAX_PATH even when nested under
+    # a pytest temp directory; the one child is still a full SHA-256 address.
+    return Path(os.path.abspath(str(repository_root.expanduser()))) / "output" / "qa" / "pit_cfg_proofs"
+
+
+def _source_config_proof_cache_path(
+    repository_root: Path,
+    *,
+    capture_date: date,
+    attempt_id: str,
+    source_config_sha256: str,
+) -> Path:
+    canonical_hash = _require_sha256(source_config_sha256, "source_config_sha256")
+    if re.fullmatch(r"[0-9a-f]{32}", attempt_id) is None:
+        raise PITTaxonomySourceError("source config proof attempt id is invalid")
+    cache_key = _sha256_json(
+        {
+            "capture_date": capture_date.isoformat(),
+            "attempt_id": attempt_id,
+            "source_config_canonical_sha256": canonical_hash,
+        }
+    ).removeprefix("sha256:")
+    return _source_config_proof_cache_root(repository_root) / cache_key
+
+
+def _bounded_repo_source_config_bytes(
+    source_config_path: Path,
+    *,
+    repository_root: Path,
+) -> tuple[Path, bytes, dict[str, object]]:
+    repo = Path(os.path.abspath(str(repository_root.expanduser())))
+    _assert_no_link_path(repo, allow_missing=False)
+    repo = repo.resolve(strict=True)
+    source = Path(os.path.abspath(str(source_config_path.expanduser())))
+    _assert_no_link_path(source, allow_missing=False, confine_to=repo)
+    try:
+        source.resolve(strict=True).relative_to(repo)
+    except (OSError, ValueError) as error:
+        raise PITTaxonomySourceError(
+            "saved taxonomy source config must be a no-link repository file"
+        ) from error
+    raw = _proof_file_bytes(
+        source,
+        "saved PIT taxonomy source config",
+        PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+    )
+    config = _decode_json_object_no_duplicates(raw, "saved PIT taxonomy source config")
+    return source, raw, config
+
+
+def _read_split_config_proof_bundle(
+    bundle_manifest_path: Path,
+    *,
+    publication_root: Path,
+    now: datetime,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object], Path, bytes]:
+    """在實際同日 cutoff 前完整驗證既有 split candidate 與 attempt。"""
+
+    observed = _aware(now, "split_config_proof.now")
+    bundle_path = Path(os.path.abspath(str(bundle_manifest_path.expanduser())))
+    publication = Path(os.path.abspath(str(publication_root.expanduser())))
+    _assert_no_link_path(publication, allow_missing=False)
+    publication = publication.resolve(strict=True)
+    _assert_no_link_path(bundle_path, allow_missing=False, confine_to=publication)
+    try:
+        bundle_path.resolve(strict=True).relative_to(publication)
+    except (OSError, ValueError) as error:
+        raise PITTaxonomySourceError("split candidate bundle escapes publication root") from error
+    bundle_raw = _proof_file_bytes(
+        bundle_path, "split candidate bundle manifest", 16 * 1024 * 1024
+    )
+    bundle = _decode_json_object_no_duplicates(bundle_raw, "split candidate bundle manifest")
+    capture_date = _required_date(bundle.get("capture_date"), "bundle.capture_date")
+    cutoff = datetime.combine(capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI)
+    if observed.astimezone(TAIPEI).date() != capture_date or observed >= cutoff:
+        raise PITTaxonomySourceError(
+            "split config proof must be materialized on the candidate date before Taipei 08:30"
+        )
+    if bundle.get("schema_version") != "pit-industry-taxonomy-daily-bundle.v2":
+        raise PITTaxonomySourceError("split config proof requires the v2 taxonomy candidate")
+    if (
+        bundle.get("taxonomy_coverage_complete") is not True
+        or bundle.get("rule_scope_compatible") is not False
+        or bundle.get("formal_oos_allowed") is not False
+        or bundle.get("production_action_allowed") is not False
+        or bundle.get("promotion_eligible") is not False
+    ):
+        raise PITTaxonomySourceError("split taxonomy candidate has unsafe consumer flags")
+    expected_bundle_path = (
+        publication
+        / "pit_taxonomy_preopen_split_v2"
+        / capture_date.isoformat()
+        / "bundle_manifest.json"
+    )
+    if bundle_path.resolve(strict=True) != expected_bundle_path.resolve(strict=False):
+        raise PITTaxonomySourceError(
+            "split taxonomy candidate is outside its canonical immutable root"
+        )
+    bundle_hash = _require_sha256(bundle.get("bundle_hash"), "bundle_hash")
+    bundle_body = dict(bundle)
+    bundle_body.pop("bundle_hash", None)
+    if _sha256_json(bundle_body) != bundle_hash:
+        raise PITTaxonomySourceError("split candidate bundle hash mismatch")
+    expected_decision = cutoff
+    try:
+        validated = validate_daily_pit_taxonomy_bundle(
+            bundle_path,
+            decision_at=expected_decision,
+            now=observed,
+        )
+    except Exception as error:  # validator is the authoritative full readback
+        raise PITTaxonomySourceError(
+            f"split candidate full validation failed:{type(error).__name__}"
+        ) from error
+    if validated.get("schema_version") != "pit-industry-taxonomy-daily-bundle.v2":
+        raise PITTaxonomySourceError("split candidate full validator did not return v2")
+    if _proof_file_bytes(
+        bundle_path, "split candidate bundle manifest recheck", 16 * 1024 * 1024
+    ) != bundle_raw:
+        raise PITTaxonomySourceError("split candidate bundle changed during validation")
+    attempt_binding = bundle.get("capture_attempt_binding")
+    if not isinstance(attempt_binding, Mapping):
+        raise PITTaxonomySourceError("split candidate capture-attempt binding is missing")
+    fields = _capture_attempt_binding_fields(attempt_binding)
+    attempt_path = _proof_child(
+        publication,
+        fields.get("path"),
+        required_prefix=f"pit_taxonomy_capture_attempts/{capture_date.isoformat()}/",
+        label="split candidate capture attempt",
+    )
+    attempt = read_pit_taxonomy_capture_attempt(attempt_path, verify_complete=True)
+    if attempt.get("status") != "success" or attempt.get("attempt_id") != fields.get("attempt_id"):
+        raise PITTaxonomySourceError("split candidate capture attempt is not a successful match")
+    if attempt.get("descriptor_sha256") != fields.get("descriptor_sha256"):
+        raise PITTaxonomySourceError("split candidate descriptor hash differs from bundle binding")
+    if attempt.get("receipt_sha256") != fields.get("receipt_sha256"):
+        raise PITTaxonomySourceError("split candidate receipt hash differs from bundle binding")
+    descriptor_path = _proof_child(
+        attempt_path,
+        "attempt_descriptor.json",
+        required_prefix=None,
+        label="split candidate descriptor",
+    )
+    descriptor_raw = _proof_file_bytes(
+        descriptor_path, "split candidate descriptor", 1024 * 1024
+    )
+    if _sha256_bytes(descriptor_raw) != fields.get("descriptor_sha256"):
+        raise PITTaxonomySourceError("split candidate descriptor changed during readback")
+    descriptor = _decode_json_object_no_duplicates(descriptor_raw, "split candidate descriptor")
+    if descriptor.get("source_config_sha256") is None:
+        raise PITTaxonomySourceError("split candidate descriptor has no source config hash")
+    return bundle, validated, attempt, descriptor_path, bundle_raw
+
+
+def materialize_existing_split_source_config_proof(
+    *,
+    publication_root: Path,
+    bundle_manifest_path: Path,
+    source_config_path: Path,
+    repository_root: Path,
+    materialized_at: datetime,
+    now_provider: Callable[[], datetime] | None = None,
+) -> dict[str, object]:
+    """為舊 split attempt late-bind 原設定 bytes；不改舊 bundle 或 attempt。"""
+
+    bundle, validated, attempt, descriptor_path, bundle_raw = _read_split_config_proof_bundle(
+        bundle_manifest_path,
+        publication_root=publication_root,
+        now=materialized_at,
+    )
+    source, source_raw, source_config = _bounded_repo_source_config_bytes(
+        source_config_path,
+        repository_root=repository_root,
+    )
+    repo = Path(os.path.abspath(str(repository_root.expanduser()))).resolve(strict=True)
+    source_relative = source.resolve(strict=True).relative_to(repo).as_posix()
+    if source_relative != PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH:
+        raise PITTaxonomySourceError(
+            "late source config proof source path is not the approved saved notice config"
+        )
+    canonical_hash = _source_config_canonical_sha256(source_config)
+    attempt_root = descriptor_path.parent
+    descriptor_raw = _proof_file_bytes(
+        descriptor_path, "split candidate descriptor", 1024 * 1024
+    )
+    descriptor = _decode_json_object_no_duplicates(descriptor_raw, "split candidate descriptor")
+    if canonical_hash != descriptor.get("source_config_sha256"):
+        raise PITTaxonomySourceError(
+            "saved source config canonical hash differs from original attempt descriptor"
+        )
+    capture_date = _required_date(bundle.get("capture_date"), "bundle.capture_date")
+    capture_binding = bundle.get("capture_attempt_binding")
+    if not isinstance(capture_binding, Mapping):
+        raise PITTaxonomySourceError("split candidate attempt binding is missing")
+    attempt_id = str(capture_binding.get("attempt_id"))
+    bundle_hash = _require_sha256(bundle.get("bundle_hash"), "bundle_hash")
+    materialized = _aware(materialized_at, "source_config_proof.materialized_at")
+    captured_at = _aware(bundle.get("captured_at"), "bundle.captured_at")
+    if materialized < captured_at:
+        raise PITTaxonomySourceError("late source config proof predates bundle capture")
+    publication = Path(os.path.abspath(str(publication_root.expanduser()))).resolve(strict=True)
+    bundle_relative = Path(os.path.abspath(str(bundle_manifest_path.expanduser()))).resolve(strict=True).relative_to(publication).as_posix()
+    attempt_relative = attempt_root.resolve(strict=True).relative_to(publication).as_posix()
+    attempt_result = attempt.get("terminal_result")
+    if not isinstance(attempt_result, Mapping):
+        raise PITTaxonomySourceError("split candidate attempt terminal result is missing")
+    proof_root = _source_config_proof_cache_path(
+        repo,
+        capture_date=capture_date,
+        attempt_id=attempt_id,
+        source_config_sha256=canonical_hash,
+    )
+    body: dict[str, object] = {
+        "schema_version": PIT_TAXONOMY_SOURCE_CONFIG_PROOF_SCHEMA_VERSION,
+        "capture_date": capture_date.isoformat(),
+        "attempt_id": attempt_id,
+        "bundle_path": bundle_relative,
+        "bundle_file_sha256": _sha256_bytes(bundle_raw),
+        "bundle_hash": bundle_hash,
+        "attempt_path": attempt_relative,
+        "descriptor_path": f"{attempt_relative}/attempt_descriptor.json",
+        "descriptor_sha256": attempt.get("descriptor_sha256"),
+        "receipt_path": f"{attempt_relative}/capture_receipt.json",
+        "receipt_sha256": attempt.get("receipt_sha256"),
+        "source_config_original_path": source_relative,
+        "source_config_raw_path": "source_config.json",
+        "source_config_raw_sha256": _sha256_bytes(source_raw),
+        "source_config_raw_bytes": len(source_raw),
+        "source_config_canonical_sha256": canonical_hash,
+        "source_config_semantic_sha256": _sha256_json(
+            _source_config_semantic_value(source_config)
+        ),
+        "materialization_started_at": materialized.isoformat(),
+        "bundle_captured_at": captured_at.isoformat(),
+        "historical_availability_proven": False,
+        "historical_pit_eligible": False,
+        "research_only": True,
+        "candidate_only": True,
+        "formal_consumer_compatible": False,
+        "formal_credit": False,
+    }
+    proof_payload = {**body, "proof_sha256": _sha256_json(body)}
+    cache_raw_path = proof_root / "source_config.json"
+    cache_proof_path = proof_root / "config_proof.json"
+    cache_completion_path = proof_root / "completion_receipt.json"
+    _assert_no_link_path(proof_root, allow_missing=True, confine_to=_source_config_proof_cache_root(repo))
+    expected_cache_names = {
+        "source_config.json",
+        "config_proof.json",
+        "completion_receipt.json",
+    }
+    if proof_root.exists():
+        if not proof_root.is_dir() or {item.name for item in proof_root.iterdir()} != expected_cache_names:
+            raise PITTaxonomySourceError("source config proof cache is partial or has unexpected files")
+        existing = read_existing_split_source_config_proof(
+            publication_root=publication_root,
+            bundle_manifest_path=bundle_manifest_path,
+            repository_root=repo,
+            current_config=source_config,
+            now=materialized,
+        )
+        return {
+            "status": "late_source_config_proof_already_verified",
+            "source_config_proof_root": str(proof_root),
+            "source_config_proof_path": str(cache_proof_path),
+            "source_config_raw_path": str(cache_raw_path),
+            **{
+                key: existing[key]
+                for key in (
+                    "proof_sha256",
+                    "source_config_raw_sha256",
+                    "source_config_canonical_sha256",
+                    "materialized_at",
+                    "historical_availability_proven",
+                    "historical_pit_eligible",
+                    "formal_credit",
+                    "research_only",
+                    "candidate_only",
+                )
+            },
+        }
+    proof_root.mkdir(parents=True, exist_ok=True)
+    _assert_no_link_path(proof_root, allow_missing=False, confine_to=_source_config_proof_cache_root(repo))
+    _write_bounded_create_only(cache_raw_path, source_raw, "source config proof raw", PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES, proof_root)
+    _write_bounded_create_only(
+        cache_proof_path,
+        (canonical_json(proof_payload) + "\n").encode("utf-8"),
+        "source config proof metadata",
+        PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+        proof_root,
+    )
+    raw_readback = _proof_file_bytes(
+        cache_raw_path,
+        "source config proof raw readback",
+        PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+    )
+    proof_readback = _proof_file_bytes(
+        cache_proof_path,
+        "source config proof metadata readback",
+        PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+    )
+    if raw_readback != source_raw or proof_readback != (canonical_json(proof_payload) + "\n").encode("utf-8"):
+        raise PITTaxonomySourceError("source config proof create-only readback differs")
+    completed_at = _aware(
+        (now_provider or (lambda: datetime.now(timezone.utc)))(),
+        "source_config_proof.completed_at",
+    )
+    cutoff = datetime.combine(capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI)
+    if (
+        completed_at.astimezone(TAIPEI).date() != capture_date
+        or completed_at >= cutoff
+        or completed_at < materialized
+    ):
+        raise PITTaxonomySourceError("source config proof completed outside same-day cutoff")
+    completion_body: dict[str, object] = {
+        "schema_version": "pit-taxonomy-source-config-proof-completion.v1",
+        "capture_date": capture_date.isoformat(),
+        "attempt_id": attempt_id,
+        "source_config_canonical_sha256": canonical_hash,
+        "source_config_raw_sha256": body["source_config_raw_sha256"],
+        "proof_sha256": proof_payload["proof_sha256"],
+        "materialization_started_at": materialized.isoformat(),
+        "materialized_at": completed_at.isoformat(),
+        "historical_availability_proven": False,
+        "historical_pit_eligible": False,
+        "research_only": True,
+        "candidate_only": True,
+        "formal_credit": False,
+    }
+    completion_payload = {
+        **completion_body,
+        "completion_sha256": _sha256_json(completion_body),
+    }
+    _write_bounded_create_only(
+        cache_completion_path,
+        (canonical_json(completion_payload) + "\n").encode("utf-8"),
+        "source config proof completion receipt",
+        PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+        proof_root,
+    )
+    completion_readback = _proof_file_bytes(
+        cache_completion_path,
+        "source config proof completion receipt readback",
+        PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+    )
+    if completion_readback != (canonical_json(completion_payload) + "\n").encode("utf-8"):
+        raise PITTaxonomySourceError("source config proof completion receipt readback differs")
+    verification_completed_at = _aware(
+        (now_provider or (lambda: datetime.now(timezone.utc)))(),
+        "source_config_proof.verification_completed_at",
+    )
+    if (
+        verification_completed_at.astimezone(TAIPEI).date() != capture_date
+        or verification_completed_at >= cutoff
+        or verification_completed_at < completed_at
+    ):
+        raise PITTaxonomySourceError("source config proof readback completed outside same-day cutoff")
+    verified = read_existing_split_source_config_proof(
+        publication_root=publication_root,
+        bundle_manifest_path=bundle_manifest_path,
+        repository_root=repo,
+        current_config=source_config,
+        now=verification_completed_at,
+    )
+    if verified.get("proof_sha256") != proof_payload["proof_sha256"]:
+        raise PITTaxonomySourceError("source config proof linkage readback failed")
+    return {
+        "status": "late_source_config_proof_materialized",
+        "source_config_proof_root": str(proof_root),
+        "source_config_proof_path": str(cache_proof_path),
+        "source_config_raw_path": str(cache_raw_path),
+        "proof_sha256": proof_payload["proof_sha256"],
+        "source_config_raw_sha256": body["source_config_raw_sha256"],
+        "source_config_canonical_sha256": canonical_hash,
+        "materialized_at": completed_at.isoformat(),
+        "verification_completed_at": verification_completed_at.isoformat(),
+        "historical_availability_proven": False,
+        "historical_pit_eligible": False,
+        "formal_credit": False,
+        "research_only": True,
+        "candidate_only": True,
+    }
+
+
+def read_existing_split_source_config_proof(
+    *,
+    publication_root: Path,
+    bundle_manifest_path: Path,
+    repository_root: Path,
+    current_config: Mapping[str, object],
+    now: datetime,
+) -> dict[str, object]:
+    """只讀晚綁定的 hash-addressed config proof，並比對目前完整語意。"""
+
+    bundle, _validated, attempt, descriptor_path, bundle_raw = _read_split_config_proof_bundle(
+        bundle_manifest_path,
+        publication_root=publication_root,
+        now=now,
+    )
+    descriptor_raw = _proof_file_bytes(
+        descriptor_path, "split candidate descriptor", 1024 * 1024
+    )
+    descriptor = _decode_json_object_no_duplicates(descriptor_raw, "split candidate descriptor")
+    canonical_hash = _require_sha256(
+        descriptor.get("source_config_sha256"), "descriptor.source_config_sha256"
+    )
+    capture_date = _required_date(bundle.get("capture_date"), "bundle.capture_date")
+    bundle_attempt_binding = bundle.get("capture_attempt_binding")
+    if not isinstance(bundle_attempt_binding, Mapping):
+        raise PITTaxonomySourceError("split candidate attempt binding is missing")
+    attempt_id = str(bundle_attempt_binding.get("attempt_id"))
+    repo_input = Path(os.path.abspath(str(repository_root.expanduser())))
+    _assert_no_link_path(repo_input, allow_missing=False)
+    repo = repo_input.resolve(strict=True)
+    proof_root = _source_config_proof_cache_path(
+        repo,
+        capture_date=capture_date,
+        attempt_id=attempt_id,
+        source_config_sha256=canonical_hash,
+    )
+    proof_cache_root = _source_config_proof_cache_root(repo)
+    _assert_no_link_path(proof_root, allow_missing=True, confine_to=proof_cache_root)
+    if not proof_root.exists():
+        raise PITTaxonomySourceError("late source config proof is missing")
+    expected_cache_names = {
+        "source_config.json",
+        "config_proof.json",
+        "completion_receipt.json",
+    }
+    if not proof_root.is_dir() or {item.name for item in proof_root.iterdir()} != expected_cache_names:
+        raise PITTaxonomySourceError("source config proof cache is partial or has unexpected files")
+    raw_path = proof_root / "source_config.json"
+    proof_path = proof_root / "config_proof.json"
+    completion_path = proof_root / "completion_receipt.json"
+    raw = _proof_file_bytes(
+        raw_path, "hash-addressed source config proof raw", PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES
+    )
+    proof_raw = _proof_file_bytes(
+        proof_path, "hash-addressed source config proof metadata", PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES
+    )
+    completion_raw = _proof_file_bytes(
+        completion_path,
+        "hash-addressed source config proof completion receipt",
+        PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES,
+    )
+    proof = _decode_json_object_no_duplicates(proof_raw, "source config proof metadata")
+    proof_hash = _require_sha256(proof.pop("proof_sha256", None), "source_config_proof.proof_sha256")
+    if _sha256_json(proof) != proof_hash:
+        raise PITTaxonomySourceError("source config proof metadata hash mismatch")
+    completion = _decode_json_object_no_duplicates(
+        completion_raw, "source config proof completion receipt"
+    )
+    completion_hash = _require_sha256(
+        completion.pop("completion_sha256", None),
+        "source_config_proof_completion.completion_sha256",
+    )
+    if _sha256_json(completion) != completion_hash:
+        raise PITTaxonomySourceError("source config proof completion receipt hash mismatch")
+    config = _decode_json_object_no_duplicates(raw, "hash-addressed source config proof raw")
+    if proof.get("source_config_original_path") != PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH:
+        raise PITTaxonomySourceError(
+            "source config proof original path is not the approved saved notice config"
+        )
+    raw_hash = _sha256_bytes(raw)
+    semantic_hash = _sha256_json(_source_config_semantic_value(config))
+    if _source_config_canonical_sha256(config) != canonical_hash:
+        raise PITTaxonomySourceError("source config proof does not match attempt canonical hash")
+    if _source_config_semantic_value(config) != _source_config_semantic_value(current_config):
+        raise PITTaxonomySourceError("current source config semantic contract differs from proof")
+    started_at = _aware(
+        proof.get("materialization_started_at"),
+        "source_config_proof.materialization_started_at",
+    )
+    materialized_at = _aware(
+        completion.get("materialized_at"),
+        "source_config_proof_completion.materialized_at",
+    )
+    observed = _aware(now, "source_config_proof.now")
+    cutoff = datetime.combine(capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI)
+    if materialized_at > observed or observed >= cutoff or observed.astimezone(TAIPEI).date() != capture_date:
+        raise PITTaxonomySourceError("source config proof availability is outside same-day reuse window")
+    if (
+        started_at < _aware(bundle.get("captured_at"), "bundle.captured_at")
+        or materialized_at < started_at
+    ):
+        raise PITTaxonomySourceError("source config proof claims pre-capture materialization")
+    binding = bundle.get("capture_attempt_binding")
+    if not isinstance(binding, Mapping):
+        raise PITTaxonomySourceError("source config proof bundle binding is missing")
+    binding_fields = _capture_attempt_binding_fields(binding)
+    attempt_root = _proof_child(
+        Path(os.path.abspath(str(publication_root.expanduser()))).resolve(strict=True),
+        binding_fields.get("path"),
+        required_prefix=f"pit_taxonomy_capture_attempts/{capture_date.isoformat()}/",
+        label="source config proof attempt",
+    )
+    attempt = read_pit_taxonomy_capture_attempt(attempt_root, verify_complete=True)
+    expected_proof = {
+        "schema_version": PIT_TAXONOMY_SOURCE_CONFIG_PROOF_SCHEMA_VERSION,
+        "capture_date": capture_date.isoformat(),
+        "attempt_id": attempt_id,
+        "bundle_path": Path(os.path.abspath(str(bundle_manifest_path.expanduser()))).resolve(strict=True).relative_to(Path(os.path.abspath(str(publication_root.expanduser()))).resolve(strict=True)).as_posix(),
+        "bundle_file_sha256": _sha256_bytes(bundle_raw),
+        "bundle_hash": bundle.get("bundle_hash"),
+        "attempt_path": binding_fields.get("path"),
+        "descriptor_path": f"{binding_fields.get('path')}/attempt_descriptor.json",
+        "descriptor_sha256": attempt.get("descriptor_sha256"),
+        "receipt_path": f"{binding_fields.get('path')}/capture_receipt.json",
+        "receipt_sha256": attempt.get("receipt_sha256"),
+        "source_config_original_path": PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH,
+        "source_config_raw_path": "source_config.json",
+        "source_config_raw_sha256": raw_hash,
+        "source_config_raw_bytes": len(raw),
+        "source_config_canonical_sha256": canonical_hash,
+        "source_config_semantic_sha256": semantic_hash,
+        "materialization_started_at": started_at.isoformat(),
+        "bundle_captured_at": _aware(bundle.get("captured_at"), "bundle.captured_at").isoformat(),
+        "historical_availability_proven": False,
+        "historical_pit_eligible": False,
+        "research_only": True,
+        "candidate_only": True,
+        "formal_consumer_compatible": False,
+        "formal_credit": False,
+    }
+    if proof != expected_proof:
+        raise PITTaxonomySourceError("source config proof linkage differs from validated bundle/attempt")
+    expected_completion = {
+        "schema_version": "pit-taxonomy-source-config-proof-completion.v1",
+        "capture_date": capture_date.isoformat(),
+        "attempt_id": attempt_id,
+        "source_config_canonical_sha256": canonical_hash,
+        "source_config_raw_sha256": raw_hash,
+        "proof_sha256": proof_hash,
+        "materialization_started_at": started_at.isoformat(),
+        "materialized_at": materialized_at.isoformat(),
+        "historical_availability_proven": False,
+        "historical_pit_eligible": False,
+        "research_only": True,
+        "candidate_only": True,
+        "formal_credit": False,
+    }
+    if completion != expected_completion:
+        raise PITTaxonomySourceError("source config proof completion linkage differs")
+    return {
+        "status": "hash_addressed_source_config_proof_verified",
+        "proof_sha256": proof_hash,
+        "source_config_raw_sha256": raw_hash,
+        "source_config_canonical_sha256": canonical_hash,
+        "source_config_semantic_sha256": semantic_hash,
+        "materialized_at": materialized_at.isoformat(),
+        "materialization_started_at": started_at.isoformat(),
+        "completion_receipt_sha256": completion_hash,
+        "historical_availability_proven": False,
+        "historical_pit_eligible": False,
+        "research_only": True,
+        "candidate_only": True,
+        "formal_consumer_compatible": False,
+        "formal_credit": False,
+        "config": config,
+    }
+
+
+def _write_bounded_create_only(
+    path: Path,
+    payload: bytes,
+    label: str,
+    max_bytes: int,
+    confinement_root: Path,
+) -> None:
+    if len(payload) > max_bytes:
+        raise PITTaxonomySourceError(f"{label} exceeds byte bound")
+    root = Path(os.path.abspath(str(confinement_root.expanduser())))
+    target = Path(os.path.abspath(str(path.expanduser())))
+    _assert_no_link_path(root, allow_missing=True)
+    _assert_no_link_path(target, allow_missing=True, confine_to=root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _assert_no_link_path(target.parent, allow_missing=False, confine_to=root)
+    try:
+        with target.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except FileExistsError:
+        existing = _proof_file_bytes(target, label, max_bytes)
+        if existing != payload:
+            raise PITTaxonomySourceError(f"immutable {label} differs on retry")
 
 
 def _plan_configured_components(

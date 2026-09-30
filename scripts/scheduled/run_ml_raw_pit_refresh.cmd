@@ -12,9 +12,11 @@ if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHO
 if not defined PYTHON set "PYTHON=python"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
+set "PROSPECTIVE_CAPTURE_ARGS=--capture-prospective-daily-price-candidate"
+if "%BALDR_ENABLE_ML_PROSPECTIVE_DAILY_CAPTURE%"=="0" set "PROSPECTIVE_CAPTURE_ARGS="
 
 "%PYTHON%" "%REPO_ROOT%\scripts\scheduled\run_ml_raw_pit_refresh.py" ^
   --data-root "%DATA_ROOT%" ^
   --output-root "%OUTPUT_ROOT%" ^
-  --database "%DATA_ROOT%\sqlite\twstock.db"
+  --database "%DATA_ROOT%\sqlite\twstock.db" %PROSPECTIVE_CAPTURE_ARGS%
 exit /b %ERRORLEVEL%

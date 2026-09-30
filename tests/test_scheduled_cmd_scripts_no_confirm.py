@@ -92,6 +92,15 @@ def test_ml_raw_pit_refresh_wrapper_is_noninteractive_and_read_only() -> None:
     assert "input(" not in text
 
 
+def test_ml_raw_cmd_enables_prospective_candidate_capture_unless_explicitly_disabled() -> None:
+    cmd_text = (SCHEDULED_DIR / "run_ml_raw_pit_refresh.cmd").read_text(encoding="utf-8").lower()
+    py_text = (SCHEDULED_DIR / "run_ml_raw_pit_refresh.py").read_text(encoding="utf-8").lower()
+
+    assert "prospective_capture_args=--capture-prospective-daily-price-candidate" in cmd_text
+    assert 'if "%baldr_enable_ml_prospective_daily_capture%"=="0"' in cmd_text
+    assert "--capture-prospective-daily-price-candidate" in py_text
+
+
 def test_ml_direct_chain_maintenance_wrapper_is_noninteractive_and_fail_closed() -> None:
     cmd_text = (
         SCHEDULED_DIR / "run_ml_direct_chain_maintenance.cmd"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,107 @@ from scripts.scheduled import run_ml_raw_pit_refresh as runner
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
+
+
+def _write_formal_market_revision_run(
+    database_path: Path,
+    *,
+    run_id: str,
+    source_start_date: str = "2024-01-02",
+    source_end_date: str = "2024-01-31",
+    state: str = "applied",
+    marker_database_path: Path | None = None,
+) -> Path:
+    from data_module.formal_market_revision import RECEIPT_DIR
+
+    run_dir = database_path.parent.parent / RECEIPT_DIR / run_id
+    run_dir.mkdir(parents=True)
+    identity = str((marker_database_path or database_path).resolve())
+    plan = {
+        "schema_version": "formal-market-repair.v1",
+        "database_path": identity,
+        "source_start_date": source_start_date,
+        "source_end_date": source_end_date,
+    }
+    plan_bytes = json.dumps(plan, sort_keys=True).encode("utf-8")
+    plan_hash = hashlib.sha256(plan_bytes).hexdigest()
+    journal = {
+        "schema_version": "formal-market-repair.v1",
+        "plan_sha256": plan_hash,
+    }
+    marker: dict[str, object] = {
+        "schema_version": "formal-market-revision.v1",
+        "database_path": identity,
+        "source_start_date": source_start_date,
+        "source_end_date": source_end_date,
+        "state": state,
+    }
+    (run_dir / "plan.json").write_bytes(plan_bytes)
+    (run_dir / "journal.json").write_text(
+        json.dumps(journal, sort_keys=True), encoding="utf-8"
+    )
+    if state == "applied":
+        receipt_bytes = json.dumps(
+            {
+                "schema_version": "formal-market-repair.v1",
+                "plan_sha256": plan_hash,
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+        (run_dir / "receipt.json").write_bytes(receipt_bytes)
+        marker["receipt_sha256"] = hashlib.sha256(receipt_bytes).hexdigest()
+    elif state == "rolled_back":
+        rollback_bytes = b'{"state":"rolled_back"}'
+        (run_dir / "rollback.json").write_bytes(rollback_bytes)
+        marker["rollback_sha256"] = hashlib.sha256(rollback_bytes).hexdigest()
+    (run_dir / "revision.json").write_text(
+        json.dumps(marker, sort_keys=True), encoding="utf-8"
+    )
+    return run_dir
+
+
+def _configure_runnable_raw_main(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path, Path]:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    _write_freshness_status(output_root)
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
+    monkeypatch.setattr(
+        runner,
+        "_taipei_now",
+        lambda: datetime(2026, 8, 12, 12, 0, tzinfo=_TAIPEI),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_storage_preflight",
+        lambda *_args, **_kwargs: {"within_minimum_free_space": True},
+    )
+    monkeypatch.setattr(
+        runner,
+        "_capacity_evaluation",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            within_budget=True,
+            as_dict=lambda: {"within_budget": True},
+        ),
+    )
+    monkeypatch.setattr(
+        runner, "_direct_chain_instance_lock_present", lambda _root: False
+    )
+
+    class _FakeLock:
+        owner_pid = 424_242
+
+        def authorize_child(self, _child_pid: int) -> None:
+            return None
+
+    fake_lock = _FakeLock()
+    monkeypatch.setattr(runner, "_acquire_lock", lambda _path: fake_lock)
+    monkeypatch.setattr(runner, "_release_lock", lambda _lock: None)
+    return data_root, output_root, database
 
 
 def _write_freshness_status(
@@ -599,6 +701,228 @@ def test_main_persists_bounded_source_quality_summary_on_builder_failure(
     assert receipt["source_quality_evidence"]["candidate_full_unique_key_count_verified"] is True
 
 
+def test_source_revision_blocker_distinguishes_holds_from_receipt_validation(
+    tmp_path: Path,
+) -> None:
+    decision_at = "2026-08-12T08:30:00+08:00"
+
+    no_revision_db = tmp_path / "no-revision" / "sqlite" / "twstock.db"
+    no_revision_db.parent.mkdir(parents=True)
+    no_revision_db.write_bytes(b"sqlite-placeholder")
+    assert runner._source_revision_blocker(no_revision_db, decision_at) is None
+
+    future_revision_db = tmp_path / "future-revision" / "sqlite" / "twstock.db"
+    future_revision_db.parent.mkdir(parents=True)
+    future_revision_db.write_bytes(b"sqlite-placeholder")
+    _write_formal_market_revision_run(
+        future_revision_db,
+        run_id="future",
+        source_start_date="2099-01-02",
+        source_end_date="2099-01-31",
+    )
+    assert runner._source_revision_blocker(future_revision_db, decision_at) is None
+
+    rolled_back_db = tmp_path / "rolled-back" / "sqlite" / "twstock.db"
+    rolled_back_db.parent.mkdir(parents=True)
+    rolled_back_db.write_bytes(b"sqlite-placeholder")
+    _write_formal_market_revision_run(
+        rolled_back_db,
+        run_id="rolled-back",
+        state="rolled_back",
+    )
+    assert runner._source_revision_blocker(rolled_back_db, decision_at) is None
+
+    pending_db = tmp_path / "pending" / "sqlite" / "twstock.db"
+    pending_db.parent.mkdir(parents=True)
+    pending_db.write_bytes(b"sqlite-placeholder")
+    _write_formal_market_revision_run(
+        pending_db,
+        run_id="pending",
+        state="pending",
+    )
+    pending_blocker = runner._source_revision_blocker(pending_db, decision_at)
+    assert pending_blocker is not None
+    assert pending_blocker["source_date"] == "2024-01-02"
+    assert pending_blocker["error_type"] == "DailyPriceSourceRevisionError"
+    assert "formal market source revision blocks historical PIT" in str(
+        pending_blocker["error"]
+    )
+
+    missing_receipt_db = tmp_path / "missing-receipt" / "sqlite" / "twstock.db"
+    missing_receipt_db.parent.mkdir(parents=True)
+    missing_receipt_db.write_bytes(b"sqlite-placeholder")
+    missing_run = _write_formal_market_revision_run(
+        missing_receipt_db,
+        run_id="missing-receipt",
+    )
+    (missing_run / "receipt.json").unlink()
+    missing_blocker = runner._source_revision_blocker(
+        missing_receipt_db, decision_at
+    )
+    assert missing_blocker is not None
+    assert missing_blocker["blocker_kind"] == "receipt_validation_failure"
+    assert str(missing_blocker["error"]).startswith("大盤來源修訂紀錄無法驗證：")
+
+    broken_chain_db = tmp_path / "broken-chain" / "sqlite" / "twstock.db"
+    broken_chain_db.parent.mkdir(parents=True)
+    broken_chain_db.write_bytes(b"sqlite-placeholder")
+    broken_run = _write_formal_market_revision_run(
+        broken_chain_db,
+        run_id="broken-chain",
+    )
+    journal_path = broken_run / "journal.json"
+    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    journal["plan_sha256"] = "0" * 64
+    journal_path.write_text(json.dumps(journal, sort_keys=True), encoding="utf-8")
+    broken_blocker = runner._source_revision_blocker(broken_chain_db, decision_at)
+    assert broken_blocker is not None
+    assert broken_blocker["blocker_kind"] == "receipt_validation_failure"
+    assert "無法驗證" in str(broken_blocker["error"])
+
+    mismatched_db = tmp_path / "mismatched" / "sqlite" / "twstock.db"
+    mismatched_db.parent.mkdir(parents=True)
+    mismatched_db.write_bytes(b"sqlite-placeholder")
+    _write_formal_market_revision_run(
+        mismatched_db,
+        run_id="wrong-database",
+        marker_database_path=mismatched_db.with_name("other.db"),
+    )
+    mismatch_blocker = runner._source_revision_blocker(mismatched_db, decision_at)
+    assert mismatch_blocker is not None
+    assert mismatch_blocker["source_date"] is None
+    assert "無法驗證" in str(mismatch_blocker["error"])
+    receipt_reference = mismatch_blocker["receipt_reference"]
+    assert isinstance(receipt_reference, dict)
+    assert receipt_reference["kind"] == "diagnostic_lookup_only"
+    assert str(receipt_reference["path"]).endswith("revision.json")
+    assert mismatch_blocker["receipt_reference_is_immutable_evidence"] is False
+
+
+def test_source_revision_blocker_classifies_known_holds_and_unknown_rejections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True)
+    database.write_bytes(b"sqlite-placeholder")
+    decision_at = "2026-09-30T08:30:00+08:00"
+
+    def raise_guard(message: str) -> None:
+        def _raise(**_kwargs: object) -> None:
+            raise runner.DailyPriceSourceRevisionError(message)
+
+        monkeypatch.setattr(runner, "check_daily_price_source_revision", _raise)
+
+    raise_guard(
+        "historical price repair receipt blocks this PIT prefix; "
+        "source_date=2026-09-23"
+    )
+    temporal_blocker = runner._source_revision_blocker(database, decision_at)
+    assert temporal_blocker is not None
+    assert temporal_blocker["blocker_kind"] == "temporal_source_revision"
+    assert temporal_blocker["source_date"] == "2026-09-23"
+
+    raise_guard("unexpected revision policy rejection")
+    generic_blocker = runner._source_revision_blocker(database, decision_at)
+    assert generic_blocker is not None
+    assert generic_blocker["blocker_kind"] == "generic_guard_rejection"
+    assert generic_blocker["error"] == "unexpected revision policy rejection"
+
+
+def test_main_classifies_source_revision_before_spawning_builder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root, output_root, database = _configure_runnable_raw_main(
+        tmp_path, monkeypatch
+    )
+    run_dir = _write_formal_market_revision_run(
+        database,
+        run_id="applied-source-revision",
+        source_start_date="2014-01-02",
+        source_end_date="2026-09-23",
+    )
+    database_hash_before = hashlib.sha256(database.read_bytes()).hexdigest()
+    marker_path = run_dir / "revision.json"
+    marker_hash_before = hashlib.sha256(marker_path.read_bytes()).hexdigest()
+    builder_called = False
+
+    def fail_builder(*_args: object, **_kwargs: object) -> None:
+        nonlocal builder_called
+        builder_called = True
+        raise AssertionError("builder must not start after the revision guard blocks")
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fail_builder)
+
+    exit_code = runner.main(
+        ["--data-root", str(data_root), "--output-root", str(output_root), "--database", str(database)]
+    )
+
+    status_path = (
+        output_root
+        / "scheduled"
+        / "ml_raw_pit_refresh"
+        / "latest_status.json"
+    )
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert builder_called is False
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["decision_at"] == "2026-08-12T08:30:00+08:00"
+    assert payload["source_revision_gate"]["source_date"] == "2014-01-02"
+    assert payload["source_revision_gate"]["error_type"] == (
+        "DailyPriceSourceRevisionError"
+    )
+    assert payload["source_revision_gate"]["blocker_kind"] == (
+        "temporal_source_revision"
+    )
+    assert payload["source_revision_gate"]["receipt_reference_is_immutable_evidence"] is False
+    assert "historical PIT from 2014-01-02" in payload["error"]
+    assert payload["source_quality_evidence"]["reason"] == "builder_not_started"
+    assert not (output_root / "release_v4" / "ml_pit_year_shards" / "latest_manifest.json").exists()
+    assert hashlib.sha256(database.read_bytes()).hexdigest() == database_hash_before
+    assert hashlib.sha256(marker_path.read_bytes()).hexdigest() == marker_hash_before
+
+
+def test_main_fails_closed_when_source_revision_guard_raises_unexpected_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root, output_root, database = _configure_runnable_raw_main(
+        tmp_path, monkeypatch
+    )
+    builder_called = False
+
+    def fail_guard(**_kwargs: object) -> None:
+        raise RuntimeError("revision guard internal failure")
+
+    def fail_builder(*_args: object, **_kwargs: object) -> None:
+        nonlocal builder_called
+        builder_called = True
+        raise AssertionError("builder must not start when the guard fails")
+
+    monkeypatch.setattr(runner, "check_daily_price_source_revision", fail_guard)
+    monkeypatch.setattr(runner.subprocess, "Popen", fail_builder)
+
+    exit_code = runner.main(
+        ["--data-root", str(data_root), "--output-root", str(output_root), "--database", str(database)]
+    )
+
+    payload = json.loads(
+        (
+            output_root
+            / "scheduled"
+            / "ml_raw_pit_refresh"
+            / "latest_status.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert exit_code == 1
+    assert builder_called is False
+    assert payload["status"] == "failed"
+    assert payload["error_type"] == "RuntimeError"
+    assert payload["error"] == "revision guard internal failure"
+
+
 def test_core_freshness_proof_blocks_lagging_technical_date(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -665,6 +989,9 @@ def test_main_skips_when_current_publication_is_new_enough(
     output_root = data_root / "output"
     status_path = _write_freshness_status(output_root)
     raw_root = output_root / "release_v4" / "ml_pit_year_shards"
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
     publication_path = _write_raw_publication(raw_root)
     mtime = datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp()
     os.utime(publication_path, (mtime, mtime))
@@ -706,6 +1033,345 @@ def test_main_skips_when_current_publication_is_new_enough(
     assert builder_called is False
     assert payload["status"] == "passed"
     assert refresh_payload["status"] == "skipped_current"
+
+
+def test_main_revision_guard_precedes_current_publication_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    _write_freshness_status(output_root)
+    raw_root = output_root / "release_v4" / "ml_pit_year_shards"
+    publication_path = _write_raw_publication(raw_root)
+    current_mtime = datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp()
+    os.utime(publication_path, (current_mtime, current_mtime))
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
+    run_dir = _write_formal_market_revision_run(
+        database,
+        run_id="current-publication-applied-revision",
+        source_start_date="2014-01-02",
+        source_end_date="2026-09-23",
+    )
+    pointer_path = raw_root / "latest_manifest.json"
+    database_hash_before = hashlib.sha256(database.read_bytes()).hexdigest()
+    pointer_hash_before = hashlib.sha256(pointer_path.read_bytes()).hexdigest()
+    marker_hash_before = hashlib.sha256(
+        (run_dir / "revision.json").read_bytes()
+    ).hexdigest()
+    builder_called = False
+
+    def fail_builder(*_args: object, **_kwargs: object) -> None:
+        nonlocal builder_called
+        builder_called = True
+        raise AssertionError("builder must not start for an applied source revision")
+
+    monkeypatch.setattr(
+        runner,
+        "_taipei_now",
+        lambda: datetime(2026, 8, 12, 12, 0, tzinfo=_TAIPEI),
+    )
+    monkeypatch.setattr(runner.subprocess, "Popen", fail_builder)
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+        ]
+    )
+
+    status_path = (
+        output_root
+        / "scheduled"
+        / "ml_raw_pit_refresh"
+        / "latest_status.json"
+    )
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert builder_called is False
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["source_revision_gate"]["source_date"] == "2014-01-02"
+    assert payload.get("reason") != "raw_pit_publication_current"
+    assert hashlib.sha256(database.read_bytes()).hexdigest() == database_hash_before
+    assert hashlib.sha256(pointer_path.read_bytes()).hexdigest() == pointer_hash_before
+    assert hashlib.sha256(
+        (run_dir / "revision.json").read_bytes()
+    ).hexdigest() == marker_hash_before
+
+
+def test_opt_in_prospective_capture_precedes_current_revision_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    _write_freshness_status(output_root)
+    raw_root = output_root / "release_v4" / "ml_pit_year_shards"
+    publication_path = _write_raw_publication(raw_root)
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
+    run_dir = _write_formal_market_revision_run(
+        database,
+        run_id="capture-before-current-block",
+        source_start_date="2014-01-02",
+        source_end_date="2026-09-23",
+    )
+    pointer_path = raw_root / "latest_manifest.json"
+    database_hash_before = hashlib.sha256(database.read_bytes()).hexdigest()
+    pointer_hash_before = hashlib.sha256(pointer_path.read_bytes()).hexdigest()
+    marker_hash_before = hashlib.sha256((run_dir / "revision.json").read_bytes()).hexdigest()
+    events: list[str] = []
+    builder_called = False
+    original_blocker = runner._source_revision_blocker
+
+    def capture(**kwargs: object) -> dict[str, object]:
+        events.append("capture")
+        assert kwargs["source_output_root"] == output_root.resolve()
+        assert kwargs["source_date"] == "2026-08-12"
+        assert kwargs["candidate_root"] == runner.REPO_ROOT / "output" / "ml_prospective_daily_price_candidates"
+        return {
+            "status": "captured",
+            "candidate_id": "candidate-123",
+            "candidate_path": "repo-candidate/manifest.json",
+            "candidate_available_at": "2026-08-12T07:30:00+00:00",
+            "candidate_capture_receipt_sha256": "sha256:" + ("a" * 64),
+            "historical_pit_eligible": False,
+            "formal_credit": False,
+        }
+
+    def blocker(*args: object, **kwargs: object) -> dict[str, object] | None:
+        events.append("revision_guard")
+        return original_blocker(*args, **kwargs)
+
+    def fail_builder(*_args: object, **_kwargs: object) -> None:
+        nonlocal builder_called
+        builder_called = True
+        raise AssertionError("raw builder must remain blocked")
+
+    monkeypatch.setattr(
+        runner,
+        "_taipei_now",
+        lambda: datetime(2026, 8, 12, 12, 0, tzinfo=_TAIPEI),
+    )
+    monkeypatch.setattr(runner, "capture_prospective_daily_price_candidate", capture)
+    monkeypatch.setattr(runner, "_source_revision_blocker", blocker)
+    monkeypatch.setattr(runner.subprocess, "Popen", fail_builder)
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+            "--capture-prospective-daily-price-candidate",
+        ]
+    )
+
+    status_path = output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json"
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    log_text = (status_path.parent / "refresh.log").read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert events == ["capture", "revision_guard"]
+    assert builder_called is False
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["prospective_daily_price_capture"]["status"] == "captured"
+    assert payload["prospective_daily_price_capture"]["formal_credit"] is False
+    assert payload["source_revision_gate"]["blocker_kind"] == "temporal_source_revision"
+    assert "prospective_daily_price_capture" in log_text
+    assert "candidate-123" in log_text
+    assert hashlib.sha256(database.read_bytes()).hexdigest() == database_hash_before
+    assert hashlib.sha256(pointer_path.read_bytes()).hexdigest() == pointer_hash_before
+    assert hashlib.sha256((run_dir / "revision.json").read_bytes()).hexdigest() == marker_hash_before
+
+
+def test_opt_in_prospective_capture_precedes_current_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    _write_freshness_status(output_root)
+    raw_root = output_root / "release_v4" / "ml_pit_year_shards"
+    publication_path = _write_raw_publication(raw_root)
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
+    events: list[str] = []
+
+    def capture(**kwargs: object) -> dict[str, object]:
+        events.append("capture")
+        assert kwargs["source_date"] == "2026-08-12"
+        return {
+            "status": "captured",
+            "candidate_id": "current-skip-candidate",
+            "formal_credit": False,
+        }
+
+    original_blocker = runner._source_revision_blocker
+
+    def blocker(*args: object, **kwargs: object) -> dict[str, object] | None:
+        events.append("revision_guard")
+        return original_blocker(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runner,
+        "_taipei_now",
+        lambda: datetime(2026, 8, 12, 12, 0, tzinfo=_TAIPEI),
+    )
+    monkeypatch.setattr(runner, "capture_prospective_daily_price_candidate", capture)
+    monkeypatch.setattr(runner, "_source_revision_blocker", blocker)
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+            "--capture-prospective-daily-price-candidate",
+        ]
+    )
+
+    payload = json.loads(
+        (output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert exit_code == 0
+    assert events == ["capture", "revision_guard"]
+    assert payload["status"] == "skipped_current"
+    assert payload["prospective_daily_price_capture"]["candidate_id"] == (
+        "current-skip-candidate"
+    )
+
+
+def test_opt_in_capture_failure_is_logged_without_skipping_revision_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    _write_freshness_status(output_root)
+    raw_root = output_root / "release_v4" / "ml_pit_year_shards"
+    publication_path = _write_raw_publication(raw_root)
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
+    _write_formal_market_revision_run(
+        database,
+        run_id="capture-failure-still-blocks",
+        source_start_date="2014-01-02",
+        source_end_date="2026-09-23",
+    )
+    events: list[str] = []
+
+    def fail_capture(**_kwargs: object) -> dict[str, object]:
+        events.append("capture")
+        raise RuntimeError("isolated candidate source rejected")
+
+    original_blocker = runner._source_revision_blocker
+
+    def blocker(*args: object, **kwargs: object) -> dict[str, object] | None:
+        events.append("revision_guard")
+        return original_blocker(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runner,
+        "_taipei_now",
+        lambda: datetime(2026, 8, 12, 12, 0, tzinfo=_TAIPEI),
+    )
+    monkeypatch.setattr(runner, "capture_prospective_daily_price_candidate", fail_capture)
+    monkeypatch.setattr(runner, "_source_revision_blocker", blocker)
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+            "--capture-prospective-daily-price-candidate",
+        ]
+    )
+
+    payload = json.loads(
+        (output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert exit_code == 0
+    assert events == ["capture", "revision_guard"]
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["prospective_daily_price_capture"]["status"] == "rejected"
+    assert payload["prospective_daily_price_capture"]["error"] == (
+        "isolated candidate source rejected"
+    )
+    assert payload["source_revision_gate"]["blocker_kind"] == "temporal_source_revision"
+
+
+def test_disabled_prospective_capture_preserves_legacy_status_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    status_path = _write_freshness_status(output_root)
+    raw_root = output_root / "release_v4" / "ml_pit_year_shards"
+    publication_path = _write_raw_publication(raw_root)
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    database = data_root / "sqlite" / "twstock.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"sqlite-placeholder")
+    monkeypatch.setattr(
+        runner,
+        "_taipei_now",
+        lambda: datetime(2026, 8, 12, 12, 0, tzinfo=_TAIPEI),
+    )
+    monkeypatch.setattr(
+        runner,
+        "capture_prospective_daily_price_candidate",
+        lambda **_kwargs: pytest.fail("opt-out runner must not invoke candidate capture"),
+    )
+
+    exit_code = runner.main(
+        ["--data-root", str(data_root), "--output-root", str(output_root)]
+    )
+
+    payload = json.loads(
+        (output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert exit_code == 0
+    assert payload["status"] == "skipped_current"
+    assert "prospective_daily_price_capture" not in payload
+    assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "passed"
 
 
 def test_main_runs_builder_and_validates_new_publication(

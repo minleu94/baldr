@@ -2,8 +2,10 @@
 
 這個 runner 只在 data-update quick 已經證明 daily／technical core date 就緒時，
 以 SQLite ``mode=ro/query_only`` 呼叫既有 PIT shard exporter。它不寫正式 SQLite、
-不建立 promotion evidence，也不放寬任何 ML formal gate；publication 完成後由
-Direct/OOC maintenance watcher 依 hash-bound pointer 自動接續。
+不建立 promotion evidence，也不放寬任何 ML formal gate。排程可 opt-in 將已存在的
+TWSE／TPEx custody bytes 複製到 repo-local、research-only prospective candidate；
+這不改變 historical PIT revision guard。publication 完成後由 Direct/OOC maintenance
+watcher 依 hash-bound pointer 自動接續。
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -29,6 +32,14 @@ if str(REPO_ROOT) not in sys.path:
 
 from data_module import portfolio_ml_dataset_assembler as dataset_assembler
 from data_module import ml_daily_price_source_quality as source_quality
+from data_module.formal_market_revision import RECEIPT_DIR as FORMAL_MARKET_RECEIPT_DIR
+from data_module.ml_prospective_daily_price_capture import (
+    capture_prospective_daily_price_candidate,
+)
+from data_module.ml_daily_price_revision_gate import (
+    DailyPriceSourceRevisionError,
+    check_daily_price_source_revision,
+)
 from data_module.ml_storage_capacity import (
     BYTES_PER_GIB,
     build_heavy_chain_reservation_handoff_environment,
@@ -209,6 +220,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--status-path", type=Path)
     parser.add_argument("--log-path", type=Path)
+    parser.add_argument(
+        "--capture-prospective-daily-price-candidate",
+        action="store_true",
+        help=(
+            "copy already-captured TWSE/TPEx custody into a repository-local "
+            "research-only candidate before raw revision/skip decisions"
+        ),
+    )
     return parser
 
 
@@ -1017,6 +1036,84 @@ def _refresh_needed(
     return current.manifest_mtime < proof.completed_at.astimezone(timezone.utc)
 
 
+def _source_revision_blocker(
+    database_path: Path,
+    decision_at: str,
+) -> dict[str, object] | None:
+    """Return a bounded, auditable blocker from the builder's revision guard.
+
+    The exporter runs the same guard, but its CLI reports exit code 2. Run it
+    here before spawning that child so an expected source-revision hold is
+    represented as a blocked scheduled run rather than a generic builder
+    failure. Unexpected exceptions deliberately propagate and remain
+    fail-closed in ``main``. The receipt reference is only a lookup aid; the
+    existing guard owns chain validation, and this wrapper does not claim a
+    receipt hash or immutable evidence it did not receive from that guard.
+    """
+
+    try:
+        check_daily_price_source_revision(
+            database_path=database_path,
+            decision_date=decision_at,
+        )
+    except DailyPriceSourceRevisionError as exc:
+        message = str(exc)
+        source_date_match = re.search(
+            r"(?:historical PIT from\s+|source_date=)(\d{4}-\d{2}-\d{2})",
+            message,
+            flags=re.IGNORECASE,
+        )
+        receipt_path_match = re.search(
+            r"(?P<path>(?:[A-Za-z]:[\\/]|/)[^\r\n,]+?\.json)(?::|\s|$)",
+            message,
+            flags=re.IGNORECASE,
+        )
+        receipt_reference: dict[str, str] | None = None
+        if receipt_path_match is not None:
+            receipt_reference = {
+                "kind": "diagnostic_lookup_only",
+                "path": receipt_path_match.group("path"),
+            }
+        elif "formal market source revision" in message.casefold():
+            database_root = database_path.resolve().parent
+            if database_root.name.casefold() == "sqlite":
+                database_root = database_root.parent
+            receipt_reference = {
+                "kind": "diagnostic_lookup_only",
+                "root": str((database_root / FORMAL_MARKET_RECEIPT_DIR).resolve())
+            }
+        return {
+            "status": "blocked",
+            "guard": "data_module.ml_daily_price_revision_gate.check_daily_price_source_revision",
+            "blocker_kind": _source_revision_blocker_kind(message),
+            "database": str(database_path.resolve()),
+            "decision_at": decision_at,
+            "source_date": (
+                None if source_date_match is None else source_date_match.group(1)
+            ),
+            "receipt_reference": receipt_reference,
+            "receipt_reference_is_immutable_evidence": False,
+            "error_type": type(exc).__name__,
+            "error": message,
+        }
+    return None
+
+
+def _source_revision_blocker_kind(message: str) -> str:
+    normalized = message.casefold()
+    if any(
+        marker in normalized
+        for marker in (
+            "blocks historical pit",
+            "historical price repair receipt blocks this pit prefix",
+        )
+    ):
+        return "temporal_source_revision"
+    if "無法驗證" in message or "historical price repair receipt requires" in normalized:
+        return "receipt_validation_failure"
+    return "generic_guard_rejection"
+
+
 def _acquire_lock(lock_path: Path) -> MLStorageChainReservation | None:
     """保留舊 private caller 名稱，實際使用 raw/Direct 共用 reservation。"""
 
@@ -1293,6 +1390,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     builder_returncode: int | None = None
     builder_source_quality_summary: dict[str, object] | None = None
     builder_started = False
+    prospective_capture_status: dict[str, object] = {
+        "status": "not_run_core_freshness_proof_pending"
+    }
     inherited_env_value = os.environ.get(HEAVY_CHAIN_RESERVATION_HELD_ENV)
 
     def _write_status(payload: Mapping[str, Any]) -> None:
@@ -1310,7 +1410,49 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "source_quality_evidence": dict(source_quality_evidence),
             }
         )
+        if args.capture_prospective_daily_price_candidate:
+            enriched["prospective_daily_price_capture"] = dict(
+                prospective_capture_status
+            )
         _write_json(status_path, enriched)
+
+    def _write_source_revision_blocked(
+        proof: _CoreFreshnessProof,
+        current: _RawPublication | None,
+    ) -> bool:
+        if not database.is_file():
+            raise RuntimeError(f"database_missing:{database}")
+        blocker = _source_revision_blocker(database, proof.decision_at)
+        if blocker is None:
+            return False
+        payload = _base_status(
+            status="blocked_source_revision",
+            output_root=output_root,
+            raw_root=raw_root,
+            database=database,
+            status_path=status_path,
+            log_path=log_path,
+            started_at=started_at.isoformat(timespec="seconds"),
+            completed_at=scheduled_now().isoformat(timespec="seconds"),
+            latest_core_date=proof.latest_core_date.isoformat(),
+            decision_at=proof.decision_at,
+            data_update_status=proof.data_update_status,
+            current_publication_id=(
+                None if current is None else current.publication_id
+            ),
+            source_revision_gate=blocker,
+            error_type=blocker["error_type"],
+            error=blocker["error"],
+        )
+        _write_status(payload)
+        _append_log(
+            log_path,
+            json.dumps(
+                {"event": "source_revision_gate_blocked", **blocker},
+                ensure_ascii=False,
+            ),
+        )
+        return True
 
     _write_status(
         _base_status(
@@ -1328,8 +1470,55 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         try:
             proof = _core_freshness_proof(data_update_status_path)
+            if args.capture_prospective_daily_price_candidate:
+                candidate_root = (
+                    REPO_ROOT / "output" / "ml_prospective_daily_price_candidates"
+                )
+                try:
+                    prospective_capture_status = (
+                        capture_prospective_daily_price_candidate(
+                            source_output_root=output_root,
+                            database_path=database,
+                            source_date=proof.latest_core_date.isoformat(),
+                            candidate_root=candidate_root,
+                        )
+                    )
+                    prospective_capture_status.setdefault(
+                        "trigger", "raw_runner_core_freshness_proof"
+                    )
+                except Exception as exc:
+                    prospective_capture_status = {
+                        "status": "rejected",
+                        "trigger": "raw_runner_core_freshness_proof",
+                        "source_date": proof.latest_core_date.isoformat(),
+                        "candidate_root": str(candidate_root),
+                        "historical_pit_eligible": False,
+                        "formal_oos_allowed": False,
+                        "formal_credit": False,
+                        "features_included": False,
+                        "labels_included": False,
+                        "model_use_claimed": False,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                _append_log(
+                    log_path,
+                    json.dumps(
+                        {
+                            "event": "prospective_daily_price_capture",
+                            **prospective_capture_status,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
             current = _latest_raw_publication(raw_root)
             if not _refresh_needed(current, proof):
+                # Validate the source revision before trusting a
+                # manifest/cutoff as current. The publication pointer proves
+                # only its own content; it does not establish that today's
+                # source revision is PIT-safe.
+                if _write_source_revision_blocked(proof, current):
+                    return 0
                 payload = _base_status(
                     status="skipped_current",
                     output_root=output_root,
@@ -1513,8 +1702,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 _write_status(payload)
                 return 0
-            if not database.is_file():
-                raise RuntimeError(f"database_missing:{database}")
+            if _write_source_revision_blocked(proof, current):
+                return 0
             command = _builder_command(
                 database=database,
                 raw_root=raw_root,

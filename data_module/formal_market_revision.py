@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -23,6 +24,26 @@ from data_module.contracts.source_revision import (
 
 RECEIPT_DIR = Path('output/scheduled/formal_market_repair_receipts')
 _MARKET_REPAIR_SCHEMA_VERSION = 'formal-market-repair.v1'
+
+
+@dataclass(frozen=True, slots=True)
+class MarketRevisionRunState:
+    """Current validated state and affected date range for one repair run."""
+
+    run_id: str
+    state: str
+    database_path: str
+    source_start_date: str
+    source_end_date: str
+
+
+@dataclass(frozen=True, slots=True)
+class MarketRevisionStateInspection:
+    """Validated market-revision chain without applying a historical cutoff."""
+
+    database_path: str
+    evidence: ValidatedNamespaceEvidenceV1
+    runs: tuple[MarketRevisionRunState, ...]
 
 
 class _MarketEvidenceCapture:
@@ -174,22 +195,29 @@ def _market_run_role_id(marker: Path, receipt_root: Path) -> str:
     return f'run_{encoded.rstrip("=")}'
 
 
-def collect_market_revision_evidence(
-    database_path: Path, decision_date: date
-) -> ValidatedNamespaceEvidenceV1:
-    """驗證 market revision 並摘要同次解析／hash-link 使用的 bytes。
+def inspect_market_revision_state(
+    database_path: Path,
+) -> MarketRevisionStateInspection:
+    """驗證目前 market revision chain，不作歷史 PIT cutoff 判定。
 
-    這只固定單次呼叫實際讀取的檔案 bytes；不宣稱多檔或跨資源具原子性。
+    Prospective capture 可用此結果綁定實際修訂狀態與同次驗證讀取的檔案
+    SHA-256；它不授予歷史 PIT、formal source 或 OOS 資格。此 API 不接受
+    cutoff 參數，避免呼叫端用假日期略過歷史入口的時間保護。
     """
     try:
-        receipt_root = _market_receipt_root(database_path)
+        database = Path(database_path).expanduser().resolve()
+        receipt_root = _market_receipt_root(database)
     except (OSError, RuntimeError, ValueError) as exc:
         raise ValueError(f'大盤來源修訂紀錄無法驗證：{database_path}') from exc
     if receipt_root is None:
-        return ValidatedNamespaceEvidenceV1(
-            namespace=SourceEvidenceNamespaceV1.MARKET_REVISION,
-            presence=SourceEvidencePresenceV1.EMPTY,
-            files=(),
+        return MarketRevisionStateInspection(
+            database_path=str(database),
+            evidence=ValidatedNamespaceEvidenceV1(
+                namespace=SourceEvidenceNamespaceV1.MARKET_REVISION,
+                presence=SourceEvidencePresenceV1.EMPTY,
+                files=(),
+            ),
+            runs=(),
         )
 
     try:
@@ -197,14 +225,19 @@ def collect_market_revision_evidence(
     except ValueError as exc:
         raise ValueError(f'大盤來源修訂紀錄無法驗證：{receipt_root}') from exc
     if not marker_paths:
-        return ValidatedNamespaceEvidenceV1(
-            namespace=SourceEvidenceNamespaceV1.MARKET_REVISION,
-            presence=SourceEvidencePresenceV1.EMPTY,
-            files=(),
+        return MarketRevisionStateInspection(
+            database_path=str(database),
+            evidence=ValidatedNamespaceEvidenceV1(
+                namespace=SourceEvidenceNamespaceV1.MARKET_REVISION,
+                presence=SourceEvidencePresenceV1.EMPTY,
+                files=(),
+            ),
+            runs=(),
         )
 
     capture = _MarketEvidenceCapture(receipt_root)
     files: list[ValidatedEvidenceFileV1] = []
+    summaries: list[MarketRevisionRunState] = []
     for marker_path in marker_paths:
         try:
             run_role = _market_run_role_id(marker_path, receipt_root)
@@ -214,7 +247,7 @@ def collect_market_revision_evidence(
             payload = capture.read_json(marker_path, marker_role)
             if payload['schema_version'] != 'formal-market-revision.v1':
                 raise ValueError('不支援的大盤修訂標記')
-            if Path(payload['database_path']).resolve() != database_path.resolve():
+            if Path(payload['database_path']).resolve() != database:
                 raise ValueError('大盤修訂資料庫不符')
             state = payload['state']
             if state not in {'pending', 'applied', 'rolled_back'}:
@@ -238,6 +271,10 @@ def collect_market_revision_evidence(
                 for field in ('database_path', 'source_start_date', 'source_end_date')
             ):
                 raise ValueError('大盤修訂標記與計畫範圍不符')
+            start = date.fromisoformat(plan['source_start_date'])
+            end = date.fromisoformat(plan['source_end_date'])
+            if end < start:
+                raise ValueError('大盤修訂來源日期範圍無效')
 
             if state == 'applied':
                 receipt_role = f'{run_role}/receipt.json'
@@ -258,21 +295,48 @@ def collect_market_revision_evidence(
                 )
                 if rollback_sha256 != payload['rollback_sha256']:
                     raise ValueError('大盤回復紀錄不符')
+            summaries.append(
+                MarketRevisionRunState(
+                    run_id=marker_path.parent.relative_to(receipt_root).as_posix(),
+                    state=str(state),
+                    database_path=str(database),
+                    source_start_date=start.isoformat(),
+                    source_end_date=end.isoformat(),
+                )
+            )
             files.extend(capture.files)
             capture.files.clear()
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise ValueError(f'大盤來源修訂紀錄無法驗證：{marker_path}') from exc
-        if state != 'rolled_back' and decision_date >= start:
-            raise ValueError(
-                f'formal market source revision blocks historical PIT from {start}; '
-                'use a revision-aware rebuilt dataset; current data is not historical availability'
-            )
 
-    return ValidatedNamespaceEvidenceV1(
+    evidence = ValidatedNamespaceEvidenceV1(
         namespace=SourceEvidenceNamespaceV1.MARKET_REVISION,
         presence=SourceEvidencePresenceV1.PRESENT,
         files=tuple(files),
     )
+    return MarketRevisionStateInspection(
+        database_path=str(database),
+        evidence=evidence,
+        runs=tuple(summaries),
+    )
+
+
+def collect_market_revision_evidence(
+    database_path: Path, decision_date: date
+) -> ValidatedNamespaceEvidenceV1:
+    """驗證 market revision 並套用既有歷史 PIT cutoff 保護。
+
+    這只固定單次呼叫實際讀取的檔案 bytes；不宣稱多檔或跨資源具原子性。
+    """
+    inspection = inspect_market_revision_state(database_path)
+    for run in inspection.runs:
+        start = date.fromisoformat(run.source_start_date)
+        if run.state != 'rolled_back' and decision_date >= start:
+            raise ValueError(
+                f'formal market source revision blocks historical PIT from {start}; '
+                'use a revision-aware rebuilt dataset; current data is not historical availability'
+            )
+    return inspection.evidence
 
 
 def validate_market_replacement(

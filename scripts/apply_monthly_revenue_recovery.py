@@ -69,7 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 journal_file=args.journal_file,
             )
             payload = _apply_payload(result)
-            ready = result.plan.ready_for_apply
+            ready = result.plan.formal_apply_eligible
             applied = result.applied
         else:
             plan = plan_monthly_revenue_recovery(
@@ -93,7 +93,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(_render_markdown(payload))
-    return 0 if (applied or ready) else 1
+    if args.apply:
+        return 0 if applied else 1
+    return 0 if ready else 1
 
 
 def _apply_payload(result: MonthlyRevenueRecoveryApplyResult) -> dict[str, Any]:

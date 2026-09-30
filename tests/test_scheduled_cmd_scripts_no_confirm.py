@@ -61,6 +61,15 @@ def test_daily_data_update_wrapper_does_not_confirm_or_trade() -> None:
     assert "production evidence" not in text
     assert 'set "window_weekdays=10"' in cmd_text
     assert "--reverify-unknown-legacy-industry-dates" in cmd_text
+    assert (
+        'set "monthly_revenue_research_args=--capture-monthly-revenue-research-candidate"'
+        in cmd_text
+    )
+    assert (
+        'if /i "%baldr_capture_monthly_revenue_research_candidate%"=="0" '
+        'set "monthly_revenue_research_args="'
+    ) in cmd_text
+    assert "--capture-monthly-revenue-research-candidate" in py_text
 
 
 def test_official_market_event_wrapper_has_no_prompt_or_broker() -> None:

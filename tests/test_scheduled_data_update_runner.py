@@ -94,9 +94,14 @@ def test_unknown_legacy_reverification_is_explicit_cli_opt_in() -> None:
     opted_in_args = runner.build_parser().parse_args(
         common + ["--reverify-unknown-legacy-industry-dates"]
     )
+    research_capture_args = runner.build_parser().parse_args(
+        common + ["--capture-monthly-revenue-research-candidate"]
+    )
 
     assert default_args.reverify_unknown_legacy_industry_dates is False
     assert opted_in_args.reverify_unknown_legacy_industry_dates is True
+    assert default_args.capture_monthly_revenue_research_candidate is False
+    assert research_capture_args.capture_monthly_revenue_research_candidate is True
 
 
 def test_industry_policy_preserves_old_service_call_by_default() -> None:
@@ -590,6 +595,132 @@ def test_quick_update_publishes_running_before_work_and_terminal_metadata(
     )
     assert recovered_reservation is not None
     release_heavy_chain_reservation(recovered_reservation)
+
+
+def test_monthly_revenue_research_capture_runs_after_capacity_release_without_changing_core(
+    tmp_path, monkeypatch
+) -> None:
+    _patch_capacity_preflight_for_unit_test(monkeypatch)
+    _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch)
+    data_root = tmp_path / "FA_Data"
+    output_root = data_root / "output"
+    status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    lock_path = output_root / "release_v4" / ".ml_heavy_chain.lock"
+    history_path = status_path.parent / "history.jsonl"
+    observed = {
+        "capacity_released_before_capture": False,
+        "release_count_at_publication": None,
+        "status_bytes_before_capture": None,
+    }
+    real_release = runner.release_heavy_chain_reservation
+    release_calls = {"count": 0}
+
+    def tracked_release(reservation):
+        if reservation is not None:
+            release_calls["count"] += 1
+        return real_release(reservation)
+
+    monkeypatch.setattr(runner, "release_heavy_chain_reservation", tracked_release)
+
+    class _FakeUpdateService:
+        def __init__(self, _config) -> None:
+            pass
+
+        def check_data_overview(self):
+            return {
+                "success": True,
+                "daily_data": {"latest_date": "2026-07-03"},
+                "technical_indicators": {"latest_date": "2026-07-03"},
+            }
+
+        def _success(self, *_args, **_kwargs):
+            return {"success": True}
+
+        update_daily = _success
+        update_tpex_daily_price_range = _success
+        sync_source_to_sqlite = _success
+        update_market = _success
+        update_industry = _success
+        update_broker_branch = _success
+
+        def check_technical_indicator_latest_coverage(self):
+            return {"success": True, "is_current": True}
+
+    def fail_candidate_capture(command, **kwargs):
+        assert command[-1].endswith("capture_monthly_revenue_research_candidate.py")
+        assert kwargs["timeout"] == 90
+        assert release_calls["count"] == 1
+        core_status = json.loads(status_path.read_text(encoding="utf-8"))
+        assert core_status["status"] == "passed"
+        assert core_status["technical_publication_receipt"]["status"] == "published"
+        history_records = [
+            json.loads(line)
+            for line in history_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert history_records[-1]["status"] == "passed"
+        observed["status_bytes_before_capture"] = status_path.read_bytes()
+        reservation = acquire_heavy_chain_reservation(lock_path)
+        observed["capacity_released_before_capture"] = reservation is not None
+        release_heavy_chain_reservation(reservation)
+        return SimpleNamespace(
+            returncode=2,
+            stdout=json.dumps({"status": "rejected", "reason": "source_unavailable"}),
+            stderr="official source timeout",
+        )
+
+    from data_module import recommendation_calibration_source_contract as source_contract
+
+    def publish_receipt(**_kwargs):
+        observed["release_count_at_publication"] = release_calls["count"]
+        return {"status": "published", "path": "unit-test-technical-receipt.json"}
+
+    monkeypatch.setattr(
+        source_contract,
+        "publish_technical_indicator_receipt",
+        publish_receipt,
+    )
+    monkeypatch.setattr(runner, "UpdateService", _FakeUpdateService)
+    monkeypatch.setattr(runner.subprocess, "run", fail_candidate_capture)
+    monkeypatch.setattr(
+        runner,
+        "scheduled_now",
+        lambda: runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
+    )
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--status-path",
+            str(status_path),
+            "--capture-monthly-revenue-research-candidate",
+        ]
+    )
+
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert payload["status"] == "passed"
+    assert payload["errors"] == []
+    assert observed["release_count_at_publication"] == 0
+    assert observed["capacity_released_before_capture"] is True
+    assert payload["capacity_reservation_acquired"] is True
+    assert payload["capacity_reservation_released_before_research_capture"] is False
+    assert payload["monthly_revenue_research_capture"]["status"] == (
+        "pending_after_core_publication"
+    )
+    receipt_path = Path(
+        payload["monthly_revenue_research_capture"]["result_receipt_path"]
+    )
+    assert receipt_path.is_file()
+    child_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert child_receipt["run_id"] == payload["run_id"]
+    assert child_receipt["core_status"] == "passed"
+    assert child_receipt["research_capture"]["status"] == "failed"
+    assert child_receipt["research_capture"]["child_status"] == "rejected"
+    assert status_path.read_bytes() == observed["status_bytes_before_capture"]
 
 
 def _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch) -> None:

@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
@@ -13,6 +14,7 @@ from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
+from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -295,6 +297,22 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def _write_json_create_only(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    safe_payload = _json_safe_payload(payload)
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            json.dumps(
+                safe_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+                allow_nan=False,
+            )
+            + "\n"
+        )
 
 
 def _append_history_safely(path: Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -653,6 +671,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--capture-monthly-revenue-research-candidate",
+        action="store_true",
+        help=(
+            "after all daily data and Phase 3C steps complete, run the bounded "
+            "official TWSE/TPEx monthly revenue research capture; nested status "
+            "does not change the core data-update result"
+        ),
+    )
+    parser.add_argument(
         "--reverify-unknown-legacy-industry-dates",
         action="store_true",
         help=(
@@ -696,6 +723,74 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--technical-process-pool-max-in-flight", type=int)
     parser.add_argument("--technical-process-pool-max-retries", type=int)
     return parser
+
+
+def _run_monthly_revenue_research_capture() -> dict[str, Any]:
+    script = REPO_ROOT / "scripts" / "capture_monthly_revenue_research_candidate.py"
+    command = [sys.executable, str(script)]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "failed",
+            "reason": "research_capture_timeout",
+            "timeout_seconds": 90,
+            "command": command,
+            "stdout_tail": _bounded_process_text(exc.stdout),
+            "stderr_tail": _bounded_process_text(exc.stderr),
+        }
+    except OSError as exc:
+        return {
+            "status": "failed",
+            "reason": f"research_capture_process_start_failed:{type(exc).__name__}",
+            "error": str(exc)[:1000],
+            "command": command,
+        }
+    try:
+        child_result = json.loads(completed.stdout or "")
+    except (TypeError, json.JSONDecodeError):
+        child_result = None
+    if not isinstance(child_result, dict):
+        return {
+            "status": "failed",
+            "reason": "research_capture_child_output_invalid",
+            "return_code": completed.returncode,
+            "command": command,
+            "stdout_tail": _bounded_process_text(completed.stdout),
+            "stderr_tail": _bounded_process_text(completed.stderr),
+        }
+    child_status = str(child_result.get("status") or "unknown")
+    if completed.returncode != 0 or child_status != "captured":
+        return {
+            "status": "failed",
+            "reason": "research_capture_child_not_captured",
+            "child_status": child_status,
+            "return_code": completed.returncode,
+            "command": command,
+            "result": child_result,
+            "stderr_tail": _bounded_process_text(completed.stderr),
+        }
+    return {
+        "status": "captured",
+        "return_code": completed.returncode,
+        "command": command,
+        "result": child_result,
+    }
+
+
+def _bounded_process_text(value: object, limit: int = 2000) -> str:
+    if isinstance(value, bytes):
+        text = value.decode("utf-8", errors="replace")
+    else:
+        text = str(value or "")
+    return text[-limit:]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -906,6 +1001,7 @@ def main(argv: list[str] | None = None) -> int:
         capacity_reservation = None
         return 1
 
+    capacity_reservation_acquired_for_run = capacity_reservation is not None
     service = UpdateService(config)
     steps: list[dict[str, Any]] = []
     warnings: list[str] = []
@@ -1321,6 +1417,24 @@ def main(argv: list[str] | None = None) -> int:
                 warnings.extend(_tpex_warning_messages(result))
     warnings = list(dict.fromkeys(warnings))
     final_status = "failed" if failed is not None else "passed_with_warnings" if warnings else "passed"
+    research_capture_receipt_path = (
+        status_path.parent
+        / "research_capture_receipts"
+        / f"{run_id}-{uuid4().hex}.json"
+        if args.capture_monthly_revenue_research_candidate and failed is None
+        else None
+    )
+    research_capture: dict[str, Any] = (
+        {
+            "status": "pending_after_core_publication",
+            "result_receipt_path": str(research_capture_receipt_path),
+        }
+        if research_capture_receipt_path is not None
+        else {"status": "skipped_core_failure"}
+        if args.capture_monthly_revenue_research_candidate
+        else {"status": "not_requested"}
+    )
+    capacity_reservation_released_before_research_capture = False
     completed_at = scheduled_now()
     payload = {
         "task": "baldr-data-update-quick-daily",
@@ -1341,7 +1455,10 @@ def main(argv: list[str] | None = None) -> int:
             args.reverify_unknown_legacy_industry_dates
         ),
         "capacity_lock_path": str(capacity_lock_path),
-        "capacity_reservation_acquired": capacity_reservation is not None,
+        "capacity_reservation_acquired": capacity_reservation_acquired_for_run,
+        "capacity_reservation_released_before_research_capture": (
+            capacity_reservation_released_before_research_capture
+        ),
         "start_date": start_date,
         "end_date": end_date,
         "calendar_resolution": _serializable_calendar_records(calendar_records),
@@ -1362,6 +1479,7 @@ def main(argv: list[str] | None = None) -> int:
         "optional_source_policy": {
             "skip_broker_branch": bool(args.skip_broker_branch),
         },
+        "monthly_revenue_research_capture": research_capture,
     }
     try:
         from data_module.recommendation_calibration_source_contract import (
@@ -1384,6 +1502,46 @@ def main(argv: list[str] | None = None) -> int:
         }
     payload["history"] = _append_history_safely(history_path, payload)
     _write_json(status_path, payload)
+
+    # Keep the shared heavy-chain reservation until all core witnesses and
+    # terminal history/status have been published. The candidate collector is
+    # a separate, lower-priority research child and must not race the technical
+    # publication that describes this same data-update run.
+    if research_capture_receipt_path is not None:
+        try:
+            release_heavy_chain_reservation(capacity_reservation)
+            capacity_reservation = None
+            capacity_reservation_released_before_research_capture = True
+        except Exception as exc:  # noqa: BLE001 - preserve core result
+            research_capture = {
+                "status": "failed",
+                "reason": "capacity_reservation_release_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:1000],
+            }
+        else:
+            research_capture = _run_monthly_revenue_research_capture()
+        try:
+            _write_json_create_only(
+                research_capture_receipt_path,
+                {
+                    "schema_version": "scheduled-monthly-revenue-research-capture.v1",
+                    "run_id": run_id,
+                    "core_status": final_status,
+                    "core_status_path": str(status_path),
+                    "captured_at": scheduled_now().isoformat(),
+                    "capacity_reservation_released_before_capture": (
+                        capacity_reservation_released_before_research_capture
+                    ),
+                    "research_capture": research_capture,
+                    "core_status_unchanged": True,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - child receipt is nonfatal
+            logging.warning(
+                "Unable to write monthly revenue research child receipt: %s", exc
+            )
+
     logging.info("Scheduled quick data update finished with status=%s", final_status)
     release_heavy_chain_reservation(capacity_reservation)
     return 1 if failed is not None else 0

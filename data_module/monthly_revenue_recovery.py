@@ -49,9 +49,31 @@ class MonthlyRevenueRecoveryPlan:
             and self.backfill_plan.ready_for_apply
         )
 
+    @property
+    def formal_apply_eligible(self) -> bool:
+        return (
+            self.ready_for_apply
+            and self.backfill_plan.formal_apply_eligible
+        )
+
+    @property
+    def formal_apply_blocked_reason(self) -> str | None:
+        if self.formal_apply_eligible:
+            return None
+        if self.backfill_plan.formal_apply_blocked_reason:
+            return self.backfill_plan.formal_apply_blocked_reason
+        if self.ready_for_apply:
+            return (
+                "mechanical preview is ready, but this source lane has no "
+                "hash-bound formal source/unit acceptance receipt"
+            )
+        return None
+
     def to_payload(self) -> dict[str, Any]:
         return {
             "ready_for_apply": self.ready_for_apply,
+            "formal_apply_eligible": self.formal_apply_eligible,
+            "formal_apply_blocked_reason": self.formal_apply_blocked_reason,
             "snapshot_scope": self.backfill_plan.snapshot_scope,
             "full_snapshot_row_count": self.backfill_plan.full_snapshot_row_count,
             "accepted_snapshot_row_count": self.backfill_plan.raw_row_count,
@@ -172,6 +194,22 @@ def apply_monthly_revenue_recovery(
         target_mapping_file=mapping_target,
         source_version=source_version,
     )
+    if plan.ready_for_apply and not plan.formal_apply_eligible:
+        reason = plan.formal_apply_blocked_reason or (
+            "source lane is not formally eligible for monthly revenue apply"
+        )
+        return MonthlyRevenueRecoveryApplyResult(
+            applied=False,
+            rolled_back=False,
+            plan=plan,
+            availability_result=None,
+            backfill_result=None,
+            mapping_backup_file=None,
+            db_backup_file=None,
+            evidence_file=evidence_path,
+            error=f"formal apply blocked before any writes: {reason}",
+            journal_file=journal_path,
+        )
     operation_identity = _recovery_operation_identity(
         candidate_mapping_file=candidate_mapping,
         snapshot_file=snapshot_source,

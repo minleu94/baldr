@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 from contextlib import closing
+from datetime import datetime, timedelta
 import hashlib
+from io import BytesIO
 import json
+from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 
 import data_module.monthly_revenue_recovery as recovery_module
+from data_module import monthly_revenue_research_candidate as candidate_module
 from data_module.fundamental_schema import apply_fundamental_schema
 from data_module.monthly_revenue_recovery import apply_monthly_revenue_recovery
+from data_module.monthly_revenue_availability_history import OFFICIAL_OPENAPI_URLS
+from scripts import apply_monthly_revenue_recovery as recovery_cli
 
 
 _HEADER = (
@@ -105,6 +113,84 @@ def _prepare(tmp_path):
     return candidate_mapping, target_mapping, snapshot, manifest, db_file
 
 
+def _make_research_candidate(tmp_path, monkeypatch):
+    monkeypatch.setattr(candidate_module, "REPO_ROOT", tmp_path)
+    taipei_now = datetime.now(ZoneInfo("Asia/Taipei"))
+    if taipei_now.month == 1:
+        period_year, period_month = taipei_now.year - 1, 12
+    else:
+        period_year, period_month = taipei_now.year, taipei_now.month - 1
+    period = f"{period_year - 1911:03d}{period_month:02d}"
+    announcement_date = taipei_now.date() - timedelta(days=1)
+    announcement = (
+        f"{announcement_date.year - 1911:03d}"
+        f"{announcement_date.month:02d}{announcement_date.day:02d}"
+    )
+
+    def source_row(stock_code):
+        return {
+            "出表日期": announcement,
+            "資料年月": period,
+            "公司代號": stock_code,
+            "公司名稱": f"測試公司{stock_code}",
+            "營業收入-當月營收": "1000",
+            "營業收入-上月營收": "900",
+            "營業收入-去年當月營收": "800",
+            "營業收入-上月比較增減(%)": "11.11",
+            "營業收入-去年同月增減(%)": "25.00",
+            "累計營業收入-當月累計營收": "7000",
+            "累計營業收入-去年累計營收": "6000",
+            "累計營業收入-前期比較增減(%)": "16.66",
+            "備註": "-",
+        }
+
+    class Response:
+        def __init__(self, url, body):
+            self._url = url
+            self._body = BytesIO(body)
+            self.status = 200
+            self.headers = {"Content-Type": "application/json; charset=utf-8"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self._body.close()
+
+        def geturl(self):
+            return self._url
+
+        def read(self, size=-1):
+            return self._body.read(size)
+
+    def opener(request, *, timeout):
+        assert timeout == candidate_module.REQUEST_TIMEOUT_SECONDS
+        venue = next(
+            name
+            for name, url in OFFICIAL_OPENAPI_URLS.items()
+            if url == request.full_url
+        )
+        code = "2330" if venue == "twse" else "6488"
+        body = json.dumps([source_row(code)], ensure_ascii=False).encode("utf-8")
+        return Response(request.full_url, body)
+
+    result = candidate_module._capture_monthly_revenue_research_candidate(
+        candidate_parent=tmp_path / "research_candidates",
+        opener=opener,
+        disk_usage=lambda _path: SimpleNamespace(free=64 * 1024 * 1024),
+    )
+    assert result["status"] == "captured"
+    run_root = Path(result["run_root"])
+    candidate_manifest = json.loads(
+        (run_root / "candidate_manifest.json").read_text(encoding="utf-8")
+    )
+    return (
+        run_root / candidate_manifest["availability_file"],
+        run_root / candidate_manifest["candidate_file"],
+        run_root / candidate_manifest["scope_manifest_file"],
+    )
+
+
 def test_monthly_revenue_recovery_applies_explicit_partial_scope_atomically(
     tmp_path,
 ):
@@ -147,6 +233,90 @@ def test_monthly_revenue_recovery_applies_explicit_partial_scope_atomically(
     assert json.loads(evidence_file.read_text(encoding="utf-8"))["status"] == "applied"
     assert len(list(backup_dir.glob("*.db"))) == 1
     assert len(list(backup_dir.glob("*.csv"))) == 1
+
+
+def test_monthly_revenue_recovery_rejects_research_candidate_before_any_writes(
+    tmp_path, monkeypatch, capsys
+):
+    candidate_mapping, snapshot, scope_manifest = _make_research_candidate(
+        tmp_path,
+        monkeypatch,
+    )
+    _legacy_candidate, target_mapping, _legacy_snapshot, _legacy_manifest, db_file = (
+        _prepare(tmp_path)
+    )
+    backup_dir = tmp_path / "research_apply_backups"
+    evidence_file = tmp_path / "research_apply_evidence.json"
+    journal_file = tmp_path / "research_apply_journal.json"
+    before_mapping = target_mapping.read_bytes()
+    before_db = hashlib.sha256(db_file.read_bytes()).hexdigest()
+
+    def forbidden_side_effect(*_args, **_kwargs):
+        pytest.fail("research-only recovery must stop before apply-side effects")
+
+    monkeypatch.setattr(recovery_module.sqlite3, "connect", forbidden_side_effect)
+    monkeypatch.setattr(
+        recovery_module,
+        "reserve_monthly_revenue_mapping_backup_path",
+        forbidden_side_effect,
+    )
+    monkeypatch.setattr(
+        recovery_module,
+        "reserve_monthly_revenue_sqlite_backup_path",
+        forbidden_side_effect,
+    )
+    monkeypatch.setattr(
+        recovery_module,
+        "_write_recovery_journal",
+        forbidden_side_effect,
+    )
+    monkeypatch.setattr(
+        recovery_module,
+        "_write_recovery_evidence",
+        forbidden_side_effect,
+    )
+
+    exit_code = recovery_cli.main(
+        [
+            "--candidate-mapping",
+            str(candidate_mapping),
+            "--snapshot-file",
+            str(snapshot),
+            "--scope-manifest",
+            str(scope_manifest),
+            "--target-mapping",
+            str(target_mapping),
+            "--db-file",
+            str(db_file),
+            "--backup-dir",
+            str(backup_dir),
+            "--evidence-file",
+            str(evidence_file),
+            "--journal-file",
+            str(journal_file),
+            "--source-version",
+            "research-candidate-test",
+            "--apply",
+            "--confirm",
+            "apply-monthly-revenue-recovery",
+            "--format",
+            "json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "failed"
+    assert payload["ready_for_apply"] is True
+    assert payload["formal_apply_eligible"] is False
+    assert "hash-bound formal source/unit acceptance receipt" in (
+        payload["formal_apply_blocked_reason"]
+    )
+    assert target_mapping.read_bytes() == before_mapping
+    assert hashlib.sha256(db_file.read_bytes()).hexdigest() == before_db
+    assert backup_dir.exists() is False
+    assert evidence_file.exists() is False
+    assert journal_file.exists() is False
 
 
 def test_monthly_revenue_recovery_restores_mapping_when_db_stage_fails(

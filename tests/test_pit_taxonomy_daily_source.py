@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import hashlib
 import json
 from pathlib import Path
 
@@ -73,7 +74,13 @@ def _security_html(*, tdr_and_foreign_common: bool = False) -> bytes:
     """.replace("__FIRST_TYPE__", first_type).replace("__SECOND_ISIN__", second_isin).encode("utf-8")
 
 
-def _build_bundle(tmp_path: Path, *, license_accepted: bool = True):
+def _build_bundle(
+    tmp_path: Path,
+    *,
+    license_accepted: bool = True,
+    scope_binding: dict[str, object] | None = None,
+    expected_symbols: tuple[str, ...] = ("1101", "2330"),
+):
     parent = build_pit_fixture(tmp_path / "parent", symbols=("1101", "2330"))
     parent_identity = dict(load_json(parent.universe_identity_path))
     # The legacy fixture predates the explicit hash-symbol projection; the
@@ -95,7 +102,7 @@ def _build_bundle(tmp_path: Path, *, license_accepted: bool = True):
         capture_date=DECISION_AT.date(),
         decision_at=DECISION_AT,
         now=datetime.fromisoformat("2026-08-25T07:55:00+08:00"),
-        expected_symbols=("1101", "2330"),
+        expected_symbols=expected_symbols,
         universe_hash=str(load_json(parent.universe_identity_path)["universe_hash"]),
         universe_hash_symbols=("1101", "2330"),
         scores_bp=(8000, 8001),
@@ -135,6 +142,7 @@ def _build_bundle(tmp_path: Path, *, license_accepted: bool = True):
             "allowed_use_cases": ["formal_pit_sector_membership"],
             "redistribution_allowed": False,
         },
+        scope_binding=scope_binding,
     )
     return result, parent
 
@@ -633,6 +641,10 @@ def test_definition_and_security_negative_rechecks_fail_closed(
 
 def test_daily_bundle_to_postcutoff_reader_readback(tmp_path: Path) -> None:
     result, _ = _build_bundle(tmp_path)
+    assert result.schema_version == source_producer.PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION
+    # Keep the legacy v1 result envelope byte/API shape; only split-contract
+    # results announce their separate bundle schema.
+    assert "schema_version" not in result.to_dict()
     validation = validate_daily_pit_taxonomy_bundle(
         result.bundle_manifest_path,
         decision_at=CAPTURE_NOW,
@@ -649,6 +661,38 @@ def test_daily_bundle_to_postcutoff_reader_readback(tmp_path: Path) -> None:
     assert published["full_symbol_count"] == 2
     assert published["eligible_symbol_count"] == 2
     assert published["excluded_symbol_count"] == 0
+
+
+def test_split_scope_binding_rejects_empty_and_reserved_fields_before_writes(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(PITTaxonomySourceError, match="exactly the approved binding fields"):
+        _build_bundle(tmp_path / "empty", scope_binding={})
+    assert not (tmp_path / "empty" / "bundle").exists()
+
+    reserved_binding: dict[str, object] = {
+        "scope_binding_schema_version": source_producer.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+        "denominator_binding": {},
+        "rule_candidate_binding": {},
+        "scope_diff": {},
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": True,
+        "schema_version": "attacker-overridden-schema",
+    }
+    with pytest.raises(PITTaxonomySourceError, match="exactly the approved binding fields"):
+        _build_bundle(tmp_path / "reserved", scope_binding=reserved_binding)
+    assert not (tmp_path / "reserved" / "bundle").exists()
+
+
+def test_legacy_v1_contract_still_rejects_official_universe_mismatch(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        PITTaxonomySourceError,
+        match="full universe symbols and universe_hash_symbols must have the same set",
+    ):
+        _build_bundle(tmp_path, expected_symbols=("1101",))
+    assert not (tmp_path / "bundle").exists()
 
 
 def test_tampered_taxonomy_raw_is_blocked_before_publication(tmp_path: Path) -> None:
@@ -1120,6 +1164,9 @@ def test_configured_composite_capture_custodies_component_raw_files(
     assert classification_entry["http"]["http_last_modified"] == "Mon, 24 Aug 2026 20:00:00 GMT"
     assert classification_entry["derived_metadata"]["metadata_kind"] == "derived_composite"
     assert "http_status" not in classification_entry["derived_metadata"]
+
+
+
     assert (
         classification_entry["source_lineage"]["components"]["base_definition"]["sha256"]
         == classification_entry["source_file_hash"]
@@ -1246,6 +1293,595 @@ def test_configured_composite_capture_custodies_component_raw_files(
         for warning in tampered_readback.warnings
     ), tampered_readback.warnings
 
+
+def _capture_attempt_fixture(
+    tmp_path: Path,
+    *,
+    attempt_id: str = "0123456789abcdef0123456789abcdef",
+    status: int = 200,
+):
+    publication_root = tmp_path / "publication"
+    publication_root.mkdir(parents=True, exist_ok=True)
+    capture_date = date(2026, 8, 25)
+    started_at = datetime.fromisoformat("2026-08-25T07:55:00+08:00")
+    custody_at = datetime.fromisoformat("2026-08-25T08:00:00+08:00")
+    scope_binding: dict[str, object] = {
+        "scope_binding_schema_version": source_producer.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+        "denominator_binding": {"fixture": "denominator"},
+        "rule_candidate_binding": {"fixture": "rule"},
+        "scope_diff": {"fixture": "diff"},
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": False,
+    }
+    attempt = source_producer._PITTaxonomyCaptureAttempt(
+        publication_root=publication_root,
+        capture_date=capture_date,
+        attempt_id=attempt_id,
+        started_at=started_at,
+        scope_binding=scope_binding,
+        universe_hash="sha256:" + "1" * 64,
+        clock_id="clock:fixture",
+        clock_manifest_hash="sha256:" + "2" * 64,
+        source_config_hash="sha256:" + "3" * 64,
+        planned_sources=[{"source_name": "security:twse_listed", "mode": "url"}],
+        custody_now=lambda: custody_at,
+    )
+    metadata = _http(
+        "https://isin.twse.com.tw/isin/e_single_main.jsp",
+        "2026-08-25T08:00:00+08:00",
+        "text/html",
+    )
+    metadata["http_status"] = status
+    attempt.record_component(
+        "security:twse_listed", b"official response body", metadata, fetched=True
+    )
+    return publication_root, capture_date, started_at, scope_binding, attempt
+
+
+def test_split_capture_attempt_success_binds_and_revalidates_receipt(
+    tmp_path: Path,
+) -> None:
+    publication_root, capture_date, started_at, scope_binding, attempt = (
+        _capture_attempt_fixture(tmp_path)
+    )
+    binding = attempt.seal_inputs()
+    bundle_path = (
+        publication_root
+        / "pit_taxonomy_preopen_split_v2"
+        / capture_date.isoformat()
+        / "bundle_manifest.json"
+    )
+    bundle_path.parent.mkdir(parents=True)
+    bundle_hash = "sha256:" + "4" * 64
+    bundle_path.write_text(json.dumps({"bundle_hash": bundle_hash}), encoding="utf-8")
+    attempt.finish_success(bundle_manifest_path=bundle_path)
+
+    verified = source_producer._verify_capture_attempt_binding(
+        binding,
+        publication_root=publication_root,
+        capture_date=capture_date,
+        capture_started_at=started_at,
+        decision_at=DECISION_AT,
+        universe_hash="sha256:" + "1" * 64,
+        clock_id="clock:fixture",
+        clock_manifest_hash="sha256:" + "2" * 64,
+        scope_binding=scope_binding,
+        expected_bundle_hash=bundle_hash,
+        require_success=True,
+    )
+    assert verified["capture_attempt_verified"] is True
+    assert verified["capture_attempt_id"] == attempt.attempt_id
+    readback = source_producer.read_pit_taxonomy_capture_attempt(
+        attempt.root, verify_complete=True
+    )
+    assert readback["status"] == "success"
+    assert readback["component_count"] == 1
+
+
+@pytest.mark.parametrize("mutated_file", ["raw", "metadata"])
+def test_failed_attempt_body_is_readable_and_component_mutation_is_rejected(
+    tmp_path: Path,
+    mutated_file: str,
+) -> None:
+    _publication, _capture_date, _started, _scope, attempt = _capture_attempt_fixture(
+        tmp_path, attempt_id=("a" if mutated_file == "raw" else "b") * 32, status=503
+    )
+    error = PITTaxonomySourceError("HTTP status intentionally rejected")
+    attempt.finish_failure(error)
+    readback = source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+    assert readback["status"] == "failed"
+    components = readback["components"]
+    assert isinstance(components, list) and len(components) == 1
+    component = components[0]
+    assert isinstance(component, dict)
+    raw_path = attempt.root / str(component["raw_path"])
+    assert raw_path.read_bytes() == b"official response body"
+    target = (
+        raw_path
+        if mutated_file == "raw"
+        else attempt.root / str(component["metadata_path"])
+    )
+    target.write_bytes(target.read_bytes() + b" ")
+    with pytest.raises(PITTaxonomySourceError, match="pinned|hash"):
+        source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+
+
+def test_split_capture_attempt_partial_is_untrusted_and_pins_raw_hash(
+    tmp_path: Path,
+) -> None:
+    _publication, _capture_date, _started, _scope, attempt = _capture_attempt_fixture(
+        tmp_path, attempt_id="c" * 32
+    )
+    readback = source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+    assert readback["status"] == "partial_untrusted"
+    components = readback["components"]
+    assert isinstance(components, list) and len(components) == 1
+    raw_path = attempt.root / str(components[0]["raw_path"])
+    raw_path.write_bytes(b"mutated partial body")
+    with pytest.raises(PITTaxonomySourceError, match="pinned component metadata"):
+        source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+
+
+def test_failed_after_seal_attempt_pins_and_rejects_receipt_mutation(
+    tmp_path: Path,
+) -> None:
+    _publication, _capture_date, _started, _scope, attempt = _capture_attempt_fixture(
+        tmp_path, attempt_id="9" * 32
+    )
+    attempt.seal_inputs()
+    attempt.finish_failure(PITTaxonomySourceError("post-capture validation failed"))
+    receipt_path = attempt.root / "capture_receipt.json"
+    receipt_path.write_bytes(receipt_path.read_bytes() + b" ")
+    with pytest.raises(PITTaxonomySourceError, match="terminal receipt hash"):
+        source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+
+
+def test_split_configured_capture_saves_non_200_body_before_status_rejection(
+    tmp_path: Path,
+) -> None:
+    publication_root = tmp_path / "publication"
+    capture_date = DECISION_AT.date()
+    bundle_root = (
+        publication_root
+        / "pit_taxonomy_preopen_split_v2"
+        / capture_date.isoformat()
+    )
+    scope_binding: dict[str, object] = {
+        "scope_binding_schema_version": source_producer.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+        "denominator_binding": {},
+        "rule_candidate_binding": {},
+        "scope_diff": {},
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": False,
+    }
+    url = "https://example.invalid/security"
+    response_metadata = _http(url, "2026-08-25T08:00:00+08:00", "text/html")
+    response_metadata["http_status"] = 503
+    config: dict[str, object] = {
+        "classification": {},
+        "security": {"twse_listed": {"url": url}},
+    }
+    with pytest.raises(PITTaxonomySourceError, match="http_status must be 200") as captured:
+        capture_configured_daily_pit_taxonomy_bundle(
+            config=config,
+            bundle_root=bundle_root,
+            capture_date=capture_date,
+            decision_at=DECISION_AT,
+            now=datetime.fromisoformat("2026-08-25T07:55:00+08:00"),
+            expected_symbols=("1101",),
+            universe_hash="sha256:" + "1" * 64,
+            universe_hash_symbols=("1101",),
+            scores_bp=(8000,),
+            rank_order=("1101",),
+            clock_id="clock:fixture",
+            clock_manifest_hash="sha256:" + "2" * 64,
+            clock_payload={},
+            universe_identity_payload={},
+            company_raw_payloads={},
+            company_http={},
+            scope_binding=scope_binding,
+            fetch_source=lambda _url: (b"bounded failure body", response_metadata),
+            capture_attempt_id="e" * 32,
+            now_provider=lambda: datetime.fromisoformat("2026-08-25T08:00:00+08:00"),
+        )
+    attempt_root = Path(getattr(captured.value, "capture_attempt")["path"])
+    readback = source_producer.read_pit_taxonomy_capture_attempt(attempt_root)
+    assert readback["status"] == "failed"
+    components = readback["components"]
+    assert isinstance(components, list) and len(components) == 1
+    component = components[0]
+    assert isinstance(component, dict)
+    assert (attempt_root / str(component["raw_path"])).read_bytes() == b"bounded failure body"
+    assert component["http_metadata"]["http_status"] == 503
+
+
+def test_split_capture_attempt_rejects_aggregate_raw_byte_overflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publication_root = tmp_path / "publication"
+    publication_root.mkdir()
+    monkeypatch.setattr(
+        source_producer, "PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES", 3
+    )
+    custody_at = datetime.fromisoformat("2026-08-25T08:00:00+08:00")
+    attempt = source_producer._PITTaxonomyCaptureAttempt(
+        publication_root=publication_root,
+        capture_date=DECISION_AT.date(),
+        attempt_id="f" * 32,
+        started_at=datetime.fromisoformat("2026-08-25T07:55:00+08:00"),
+        scope_binding={
+            "scope_binding_schema_version": source_producer.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+            "denominator_binding": {},
+            "rule_candidate_binding": {},
+            "scope_diff": {},
+            "taxonomy_coverage_complete": True,
+            "rule_scope_compatible": False,
+        },
+        universe_hash="sha256:" + "1" * 64,
+        clock_id="clock:fixture",
+        clock_manifest_hash="sha256:" + "2" * 64,
+        source_config_hash="sha256:" + "3" * 64,
+        planned_sources=[
+            {"source_name": "security:a", "mode": "url"},
+            {"source_name": "security:b", "mode": "url"},
+        ],
+        custody_now=lambda: custody_at,
+    )
+    attempt.record_component(
+        "security:a",
+        b"ab",
+        _http("https://example.invalid/a", "2026-08-25T08:00:00+08:00"),
+        fetched=True,
+    )
+    with pytest.raises(PITTaxonomySourceError, match="aggregate raw-byte limit"):
+        attempt.record_component(
+            "security:b",
+            b"cd",
+            _http("https://example.invalid/b", "2026-08-25T08:00:00+08:00"),
+            fetched=True,
+        )
+    attempt.finish_failure(PITTaxonomySourceError("aggregate bound reached"))
+    readback = source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+    assert readback["status"] == "failed"
+    assert readback["component_count"] == 1
+    rejected = readback.get("rejected_components")
+    assert isinstance(rejected, list) and rejected[0]["source_name"] == "security:b"
+    assert rejected[0]["full_body_saved"] is False
+
+
+def test_split_capture_attempt_pins_bounded_oversize_diagnostic_without_claiming_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publication_root = tmp_path / "publication"
+    publication_root.mkdir()
+    monkeypatch.setattr(source_producer, "PIT_TAXONOMY_MAX_SOURCE_BYTES", 3)
+    custody_at = datetime.fromisoformat("2026-08-25T08:00:00+08:00")
+    attempt = source_producer._PITTaxonomyCaptureAttempt(
+        publication_root=publication_root,
+        capture_date=DECISION_AT.date(),
+        attempt_id="a" * 32,
+        started_at=datetime.fromisoformat("2026-08-25T07:55:00+08:00"),
+        scope_binding={
+            "scope_binding_schema_version": source_producer.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+            "denominator_binding": {},
+            "rule_candidate_binding": {},
+            "scope_diff": {},
+            "taxonomy_coverage_complete": True,
+            "rule_scope_compatible": False,
+        },
+        universe_hash="sha256:" + "1" * 64,
+        clock_id="clock:fixture",
+        clock_manifest_hash="sha256:" + "2" * 64,
+        source_config_hash="sha256:" + "3" * 64,
+        planned_sources=[{"source_name": "security:oversize", "mode": "url"}],
+        custody_now=lambda: custody_at,
+    )
+    response_metadata = _http(
+        "https://example.invalid/oversize", "2026-08-25T08:00:00+08:00"
+    )
+    response_metadata.update({"body_truncated": True, "body_bytes_seen": 4})
+    with pytest.raises(PITTaxonomySourceError, match="per-source byte limit"):
+        attempt.record_component(
+            "security:oversize", b"abcd", response_metadata, fetched=True
+        )
+    attempt.finish_failure(PITTaxonomySourceError("oversize response"))
+    readback = source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+    assert readback["component_count"] == 0
+    rejected = readback["rejected_components"]
+    assert rejected == [
+        {
+            "source_name": "security:oversize",
+            "reason": "per_source_byte_limit",
+            "bytes_seen": 4,
+            "truncated": True,
+            "full_body_saved": False,
+        }
+    ]
+
+
+def test_split_capture_attempt_rejects_oversize_terminal_result(
+    tmp_path: Path,
+) -> None:
+    _publication, _capture_date, _started, _scope, attempt = _capture_attempt_fixture(
+        tmp_path
+    )
+    attempt.finish_failure(PITTaxonomySourceError("fixture terminal"))
+    attempt.result_path.write_bytes(b" " * (1024 * 1024 + 1))
+    with pytest.raises(PITTaxonomySourceError, match="capture attempt result proof file custody failed"):
+        source_producer.read_pit_taxonomy_capture_attempt(attempt.root)
+
+
+def test_split_saved_active_source_bounds_before_readback_or_custody(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_path = tmp_path / "large-source.raw"
+    source_path.write_bytes(b"123456789")
+    monkeypatch.setattr(source_producer, "PIT_TAXONOMY_MAX_SOURCE_BYTES", 8)
+
+    with pytest.raises(PITTaxonomySourceError, match="proof file custody failed"):
+        source_producer._capture_configured_source(
+            {
+                "path": str(source_path),
+                "http": _http("https://example.test/source", CAPTURE_NOW.isoformat()),
+            },
+            source_name="classification:test:oversize_saved",
+            fetch_source=None,
+            attempt_writer=object(),  # type: ignore[arg-type]
+        )
+
+
+def test_split_saved_active_source_rejects_linked_path_before_resolving(
+    tmp_path: Path,
+) -> None:
+    target_path = tmp_path / "source.raw"
+    target_path.write_bytes(b"small")
+    linked_path = tmp_path / "linked.raw"
+    try:
+        linked_path.symlink_to(target_path)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"the current Windows token cannot create symlinks: {error}")
+
+    with pytest.raises(PITTaxonomySourceError, match="capture attempt path contains a link"):
+        source_producer._capture_configured_source(
+            {
+                "path": str(linked_path),
+                "http": _http("https://example.test/source", CAPTURE_NOW.isoformat()),
+            },
+            source_name="classification:test:linked_saved",
+            fetch_source=None,
+            attempt_writer=object(),  # type: ignore[arg-type]
+        )
+
+
+def test_v1_saved_active_source_keeps_legacy_reader_shape(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "source.raw"
+    source_path.write_bytes(b"legacy-source")
+    metadata = _http("https://example.test/source", CAPTURE_NOW.isoformat())
+
+    raw, observed_metadata, fetched = source_producer._capture_configured_source(
+        {"path": str(source_path), "http": metadata},
+        source_name="classification:test:legacy_saved",
+        fetch_source=None,
+    )
+
+    assert raw == b"legacy-source"
+    assert dict(observed_metadata) == metadata
+    assert fetched is False
+
+
+def test_inactive_termination_overlay_is_separate_from_active_isin_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keep the Windows temp-path budget below MAX_PATH once the immutable
+    # capture-attempt/component hierarchy is appended.
+    repo_root = tmp_path / "r"
+    module_path = repo_root / "data_module" / "pit_taxonomy_source_producer.py"
+    module_path.parent.mkdir(parents=True)
+    monkeypatch.setattr(source_producer, "__file__", str(module_path))
+    source_url = "https://www.tpex.org.tw/storage/eb_data/11509/11500054131.html"
+    raw = (
+        '<!doctype html><html><head><meta http-equiv="Content-Type" '
+        'content="text/html; charset=utf-8"></head><body>'
+        "<div>發文日期：中華民國115年9月3日</div>"
+        "<p>公告台灣精星科技股份有限公司上櫃之有價證券（股票代號：8183，"
+        "以下簡稱精星公司）自115年9月23日起停止櫃檯買賣，並自115年10月1日起終止櫃檯買賣。</p>"
+        "<p>精星公司每1股普通股換發精成科公司普通股。</p></body></html>"
+    ).encode("utf-8")
+    captured_at = "2026-09-30T21:23:55.086807+00:00"
+    metadata = {
+        "schema_version": "pit-8183-bounded-http-diagnostic.v1",
+        "request_url": source_url,
+        "method": "GET",
+        "started_at": "2026-09-30T21:23:53.756235+00:00",
+        "timeout_seconds": 25,
+        "max_response_bytes": 8 * 1024 * 1024,
+        "redirects_followed": False,
+        "status_code": 200,
+        "final_url": source_url,
+        "content_type": "text/html",
+        "charset": None,
+        "content_length_header": str(len(raw)),
+        "body_bytes": len(raw),
+        "body_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "body_complete": True,
+        "body_file": "announcement.html",
+        "body_kind": "official_announcement_candidate",
+        "error": None,
+        "completed_at": captured_at,
+    }
+    source_dir = repo_root / "output" / "qa" / "inactive_notice" / "attempt-1"
+    source_dir.mkdir(parents=True)
+    raw_path = source_dir / "announcement.html"
+    metadata_path = source_dir / "metadata.json"
+    raw_path.write_bytes(raw)
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    source_spec: dict[str, object] = {
+        "source_version": "tpex-termination-notice-2026-09-03.v1",
+        "source_url": source_url,
+        "symbol": "8183",
+        "issuer_name": "台灣精星科技股份有限公司",
+        "market_scope": "tpex_otc",
+        "published_on": "2026-09-03",
+        "suspension_effective_on": "2026-09-23",
+        "termination_effective_on": "2026-10-01",
+        "saved_evidence": {
+            "raw_path": str(raw_path),
+            "metadata_path": str(metadata_path),
+        },
+    }
+    config: dict[str, object] = {
+        "classification": {},
+        "security": {},
+        "inactive_security": {"tpex_8183_termination": source_spec},
+    }
+    capture_date = date(2026, 10, 1)
+    planned = source_producer._plan_configured_components(
+        config, {}, capture_date
+    )
+    assert [item["source_name"] for item in planned] == [
+        "inactive_security:tpex_8183_termination",
+        "inactive_security:tpex_8183_termination:capture_metadata",
+    ]
+    started_at = datetime.fromisoformat("2026-10-01T05:30:00+08:00")
+    custody_at = datetime.fromisoformat("2026-10-01T05:36:00+08:00")
+    scope_binding: dict[str, object] = {
+        "scope_binding_schema_version": source_producer.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+        "denominator_binding": {"symbol_count": 1, "coverage_start": capture_date.isoformat()},
+        "rule_candidate_binding": {
+            "universe_hash": "sha256:" + "1" * 64,
+            "candidate_count": 1,
+            "activation_trading_day": capture_date.isoformat(),
+            "decision_at": "2026-10-01T08:30:00+08:00",
+        },
+        "scope_diff": source_producer._scope_diff(("8183",), ("8183",)),
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": True,
+    }
+    attempt = source_producer._PITTaxonomyCaptureAttempt(
+        publication_root=repo_root / "p",
+        capture_date=capture_date,
+        attempt_id="a" * 32,
+        started_at=started_at,
+        scope_binding=scope_binding,
+        universe_hash="sha256:" + "1" * 64,
+        clock_id="clock:inactive-fixture",
+        clock_manifest_hash="sha256:" + "2" * 64,
+        source_config_hash="sha256:" + "3" * 64,
+        planned_sources=planned,
+        custody_now=lambda: custody_at,
+    )
+    inputs, live_fetch = source_producer._capture_configured_inactive_security_sources(
+        config=config,
+        capture_date=capture_date,
+        request_started_at=started_at,
+        fetch_source=None,
+        attempt_writer=attempt,
+    )
+    assert live_fetch is False
+    binding = attempt.seal_inputs()
+    overlays = source_producer._verified_inactive_overlay_map(
+        inputs,
+        capture_attempt_binding=binding,
+        publication_root=attempt.publication_root,
+        capture_date=capture_date,
+        expected_symbols=("8183",),
+        market_by_symbol={"8183": "tpex_otc"},
+        security_records=(),
+    )
+    proof = overlays["8183"]["proof"]
+    assert isinstance(proof, dict)
+    assert proof["state"] == "proven_inactive_common_stock"
+    assert proof["eligible"] is False
+    assert proof["formal_credit"] is False
+    assert proof["historical_pit"] is False
+    assert proof["active_security_record"] is False
+    assert proof["isin_code"] is None and proof["cfi_code"] is None
+
+    conflicting = source_producer.OfficialSecurityRecord(
+        symbol="8183",
+        market_scope="tpex_otc",
+        section="Stocks",
+        security_type="common_equity",
+        cfi_code="ESVUFR",
+        isin_code="TW0008183000",
+        security_name="fixture active",
+        market_label="TPEx",
+        industry_group="fixture",
+        row_hash="sha256:" + "9" * 64,
+    )
+    with pytest.raises(PITTaxonomySourceError, match="conflicts with active ISIN row"):
+        source_producer._verified_inactive_overlay_map(
+            inputs,
+            capture_attempt_binding=binding,
+            publication_root=attempt.publication_root,
+            capture_date=capture_date,
+            expected_symbols=("8183",),
+            market_by_symbol={"8183": "tpex_otc"},
+            security_records=(conflicting,),
+        )
+
+
+def test_split_capture_attempt_rejects_over_limit_source_plan_before_fetch(
+    tmp_path: Path,
+) -> None:
+    publication_root = tmp_path / "publication"
+    capture_date = DECISION_AT.date()
+    bundle_root = (
+        publication_root
+        / "pit_taxonomy_preopen_split_v2"
+        / capture_date.isoformat()
+    )
+    fetch_calls: list[str] = []
+    config: dict[str, object] = {
+        "classification": {},
+        "security": {
+            f"source_{index}": {"url": f"https://example.invalid/{index}"}
+            for index in range(source_producer.PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS + 1)
+        },
+    }
+    scope_binding: dict[str, object] = {
+        "scope_binding_schema_version": source_producer.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+        "denominator_binding": {},
+        "rule_candidate_binding": {},
+        "scope_diff": {},
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": False,
+    }
+    with pytest.raises(PITTaxonomySourceError, match="component-count limit") as captured:
+        capture_configured_daily_pit_taxonomy_bundle(
+            config=config,
+            bundle_root=bundle_root,
+            capture_date=capture_date,
+            decision_at=DECISION_AT,
+            now=datetime.fromisoformat("2026-08-25T07:55:00+08:00"),
+            expected_symbols=("1101",),
+            universe_hash="sha256:" + "1" * 64,
+            universe_hash_symbols=("1101",),
+            scores_bp=(8000,),
+            rank_order=("1101",),
+            clock_id="clock:fixture",
+            clock_manifest_hash="sha256:" + "2" * 64,
+            clock_payload={},
+            universe_identity_payload={},
+            company_raw_payloads={},
+            company_http={},
+            scope_binding=scope_binding,
+            fetch_source=lambda url: fetch_calls.append(url),
+            capture_attempt_id="d" * 32,
+            now_provider=lambda: datetime.fromisoformat("2026-08-25T08:00:00+08:00"),
+        )
+    assert fetch_calls == []
+    attempt_info = getattr(captured.value, "capture_attempt")
+    attempt_root = Path(attempt_info["path"])
+    terminal = source_producer.read_pit_taxonomy_capture_attempt(attempt_root)
+    assert terminal["status"] == "failed"
+    assert terminal["component_count"] == 0
 
 def test_composite_normalization_rejects_primary_base_payload_mismatch(
     monkeypatch: pytest.MonkeyPatch,

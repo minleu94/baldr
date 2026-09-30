@@ -23,7 +23,7 @@ rem 但最後 exit code 保留失敗，避免排程把部分成功誤報成整�
 call "%REPO_ROOT%\scripts\scheduled\run_formal_rule_source_preopen.cmd"
 set "RULE_SOURCE_EXIT=%ERRORLEVEL%"
 if not "%RULE_SOURCE_EXIT%"=="0" echo Rule source preopen blocked; inspect rule_source\scheduler\rule_source_latest_status.json
-"%PYTHON%" "%REPO_ROOT%\scripts\scheduled\run_pit_sector_membership_preopen_capture.py"
+"%PYTHON%" "%REPO_ROOT%\scripts\scheduled\run_pit_sector_membership_preopen_capture.py" --split-denominator-contract
 set "PIT_EXIT=%ERRORLEVEL%"
 if not "%PIT_EXIT%"=="0" exit /b %PIT_EXIT%
 exit /b %RULE_SOURCE_EXIT%

@@ -13,14 +13,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 from typing import Any, TypedDict, cast
+import uuid
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -38,23 +41,45 @@ from data_module.pit_taxonomy_security_adapter import (
     build_security_evidence_map,
     parse_official_isin_security_source,
 )
+from data_module.pit_inactive_security_termination_evidence import (
+    InactiveTerminationEvidenceError,
+    OfficialTerminationSourceSpec,
+    PIT_INACTIVE_TERMINATION_MAX_SOURCE_BYTES,
+    parse_official_termination_notice,
+    validate_official_termination_proof_readback,
+)
 from data_module.prospective_formal_clock import canonical_json
 from data_module.prospective_official_pit_source import (
     OFFICIAL_COMPANY_SOURCE_DEFINITIONS,
     build_official_first_seen_capture,
+)
+from data_module.pit_prospective_denominator import validate_prospective_pit_denominator
+from data_module.wp5_official_daily_capture_validator import (
+    CaptureValidationError,
+    _read_regular_single_link_file,
 )
 
 
 PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION = "pit-industry-taxonomy-daily-bundle.v1"
 PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION = "pit-industry-taxonomy-identity.v3"
 PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION = "pit-industry-taxonomy-source.v2"
+PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION = "pit-industry-taxonomy-daily-bundle.v2"
+PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION = "pit-industry-taxonomy-identity.v4"
+PIT_TAXONOMY_SOURCE_V3_SCHEMA_VERSION = "pit-industry-taxonomy-source.v3"
+PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION = "pit-industry-taxonomy-scope-binding.v1"
 PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION = "pit-industry-taxonomy-raw-manifest.v1"
 PIT_TAXONOMY_BUNDLE_PRODUCER_VERSION = "official-pit-taxonomy-daily-producer.v1"
 PIT_TAXONOMY_SOURCE_CONFIG_SCHEMA_VERSION = "pit-industry-taxonomy-source-config.v1"
+PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION = "pit-industry-taxonomy-capture-attempt.v1"
+PIT_TAXONOMY_CAPTURE_ATTEMPT_BINDING_SCHEMA_VERSION = "pit-industry-taxonomy-capture-attempt-binding.v1"
 PIT_TAXONOMY_SOURCE_CONFIG_ENV = "PIT_TAXONOMY_SOURCE_CONFIG"
 PIT_TAXONOMY_CUTOFF = time(8, 30)
 PIT_TAXONOMY_FETCH_TIMEOUT_SECONDS = 30
 PIT_TAXONOMY_MAX_SOURCE_BYTES = 64 * 1024 * 1024
+PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS = 16
+PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES = 128 * 1024 * 1024
+PIT_TAXONOMY_CAPTURE_MIN_FREE_BYTES = 16 * 1024 * 1024
+PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD = "inactive_security_overlay_by_symbol"
 TAIPEI = ZoneInfo("Asia/Taipei")
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SYMBOL_RE = re.compile(r"^[0-9]{4,6}$")
@@ -89,10 +114,13 @@ class PITTaxonomyBundleResult:
     security_type_counts: Mapping[str, int] = field(default_factory=dict)
     market_scope_counts: Mapping[str, int] = field(default_factory=dict)
     status: str = "preopen_captured"
+    schema_version: str = PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION
+    capture_attempt_id: str | None = None
+    capture_attempt_path: Path | None = None
+    capture_attempt_result_path: Path | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "schema_version": PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION,
+        payload: dict[str, object] = {
             "status": self.status,
             "bundle_root": str(self.bundle_root),
             "bundle_manifest_path": str(self.bundle_manifest_path),
@@ -107,6 +135,21 @@ class PITTaxonomyBundleResult:
             "security_type_counts": dict(self.security_type_counts),
             "market_scope_counts": dict(self.market_scope_counts),
         }
+        if self.schema_version != PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION:
+            payload["schema_version"] = self.schema_version
+        if self.schema_version == PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION:
+            payload["capture_attempt_id"] = self.capture_attempt_id
+            payload["capture_attempt_path"] = (
+                str(self.capture_attempt_path)
+                if self.capture_attempt_path is not None
+                else None
+            )
+            payload["capture_attempt_result_path"] = (
+                str(self.capture_attempt_result_path)
+                if self.capture_attempt_result_path is not None
+                else None
+            )
+        return payload
 
 
 @dataclass(frozen=True)
@@ -115,6 +158,449 @@ class PITTaxonomySourceResponse:
 
     body: bytes
     metadata: Mapping[str, object]
+
+
+class _PITTaxonomyCaptureAttempt:
+    """split candidate 的前解析原始回應 custody；所有檔案均 create-only。"""
+
+    def __init__(
+        self,
+        *,
+        publication_root: Path,
+        capture_date: date,
+        attempt_id: str,
+        started_at: datetime,
+        scope_binding: Mapping[str, object],
+        universe_hash: str,
+        clock_id: str,
+        clock_manifest_hash: str,
+        source_config_hash: str,
+        planned_sources: Sequence[Mapping[str, object]],
+        custody_now: Callable[[], datetime],
+    ) -> None:
+        if re.fullmatch(r"[0-9a-f]{32}", attempt_id) is None:
+            raise PITTaxonomySourceError("capture attempt id must be a 32-character UUID hex")
+        raw_publication_root = Path(os.path.abspath(str(publication_root.expanduser())))
+        _assert_no_link_path(raw_publication_root, allow_missing=True)
+        self.publication_root = raw_publication_root
+        self.capture_date = capture_date
+        self.attempt_id = attempt_id
+        self.started_at = _aware(started_at, "capture_attempt.started_at")
+        self.planned_sources = [dict(item) for item in planned_sources]
+        self.custody_now = custody_now
+        self.components: list[dict[str, object]] = []
+        self.rejected_components: list[dict[str, object]] = []
+        self.total_raw_bytes = 0
+        self.root = (
+            self.publication_root
+            / "pit_taxonomy_capture_attempts"
+            / capture_date.isoformat()
+            / attempt_id
+        )
+        _assert_no_link_path(self.publication_root, allow_missing=True)
+        _assert_no_link_path(self.root, allow_missing=True, confine_to=self.publication_root)
+        if self.root.exists() or self.root.is_symlink():
+            raise PITTaxonomySourceError("capture attempt root already exists")
+        parent = self.root.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        _assert_no_link_path(parent, allow_missing=False, confine_to=self.publication_root)
+        self._require_free_space(0)
+        self.root.mkdir(exist_ok=False)
+        self.components_root = self.root / "components"
+        self.components_root.mkdir(exist_ok=False)
+        binding = _split_scope_binding_fields(scope_binding)
+        self.descriptor: dict[str, object] = {
+            "schema_version": PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION,
+            "attempt_id": attempt_id,
+            "capture_date": capture_date.isoformat(),
+            "cutoff_at": datetime.combine(
+                capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI
+            ).isoformat(),
+            "started_at": self.started_at.isoformat(),
+            "source_config_sha256": source_config_hash,
+            "scope_binding": binding,
+            "scope_binding_sha256": _sha256_json(binding),
+            "universe_hash": universe_hash,
+            "clock_id": clock_id,
+            "clock_manifest_hash": clock_manifest_hash,
+            "planned_sources": self.planned_sources,
+            "planned_component_count": len(self.planned_sources),
+            "max_component_count": PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS,
+            "max_component_raw_bytes": PIT_TAXONOMY_MAX_SOURCE_BYTES,
+            "max_aggregate_raw_bytes": PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES,
+            "minimum_free_bytes": PIT_TAXONOMY_CAPTURE_MIN_FREE_BYTES,
+            "candidate_only": True,
+            "research_only": True,
+            "formal_consumer_compatible": False,
+            "formal_credit": False,
+        }
+        descriptor_path = self.root / "attempt_descriptor.json"
+        self._write_json(descriptor_path, self.descriptor)
+        self.descriptor_sha256 = _file_sha256(descriptor_path)
+        if len(self.planned_sources) > PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS:
+            error = PITTaxonomySourceError(
+                "capture attempt source plan exceeds component-count limit"
+            )
+            self.finish_failure(error)
+            setattr(
+                error,
+                "capture_attempt",
+                {
+                    "attempt_id": attempt_id,
+                    "path": str(self.root),
+                    "result_path": str(self.result_path),
+                    "components_saved_count": 0,
+                    "aggregate_raw_bytes": 0,
+                },
+            )
+            raise error
+
+    @property
+    def relative_root(self) -> str:
+        return self.root.relative_to(self.publication_root).as_posix()
+
+    @property
+    def result_path(self) -> Path:
+        return self.root / "capture_result.json"
+
+    def _require_free_space(self, incoming_bytes: int) -> None:
+        try:
+            free_bytes = shutil.disk_usage(self.publication_root).free
+        except OSError as error:
+            raise PITTaxonomySourceError("capture attempt cannot inspect free disk space") from error
+        if free_bytes - incoming_bytes < PIT_TAXONOMY_CAPTURE_MIN_FREE_BYTES:
+            raise PITTaxonomySourceError("capture attempt free-space reserve would be breached")
+
+    def _write_bytes(self, path: Path, value: bytes) -> None:
+        _assert_no_link_path(path.parent, allow_missing=False, confine_to=self.root)
+        self._require_free_space(len(value))
+        _write_create_only_bytes(path, value)
+
+    def _write_json(self, path: Path, value: object) -> None:
+        encoded = (canonical_json(value) + "\n").encode("utf-8")
+        if len(encoded) > 1024 * 1024:
+            raise PITTaxonomySourceError("capture attempt metadata exceeds byte bound")
+        self._write_bytes(path, encoded)
+
+    def record_component(
+        self,
+        source_name: str,
+        raw: bytes,
+        metadata: Mapping[str, object] | None,
+        *,
+        fetched: bool,
+    ) -> dict[str, object]:
+        if not isinstance(raw, bytes) or not raw:
+            raise PITTaxonomySourceError(f"{source_name}.body must be non-empty bytes")
+        body = raw
+        if len(self.components) >= PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS:
+            self._record_rejected_component(
+                source_name,
+                body,
+                metadata,
+                reason="component_count_limit",
+            )
+            raise PITTaxonomySourceError("capture attempt exceeds component-count limit")
+        if len(body) > PIT_TAXONOMY_MAX_SOURCE_BYTES:
+            self._record_rejected_component(
+                source_name,
+                body,
+                metadata,
+                reason="per_source_byte_limit",
+            )
+            raise PITTaxonomySourceError("capture attempt component exceeds per-source byte limit")
+        if self.total_raw_bytes + len(body) > PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES:
+            self._record_rejected_component(
+                source_name,
+                body,
+                metadata,
+                reason="aggregate_raw_byte_limit",
+            )
+            raise PITTaxonomySourceError("capture attempt exceeds aggregate raw-byte limit")
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", source_name).strip("._")[:72]
+        if not safe_name:
+            raise PITTaxonomySourceError("capture attempt source name is invalid")
+        ordinal = len(self.components) + 1
+        stem = f"{ordinal:02d}_{safe_name}"
+        raw_relative = Path("components") / f"{stem}.raw"
+        metadata_relative = Path("components") / f"{stem}.metadata.json"
+        raw_path = self.root / raw_relative
+        metadata_path = self.root / metadata_relative
+        metadata_body: dict[str, object] = {
+            "source_name": source_name,
+            "fetched": fetched,
+            "custodied_at": _aware(self.custody_now(), "capture_attempt.custodied_at").isoformat(),
+            "raw_sha256": _sha256_bytes(body),
+            "raw_bytes": len(body),
+            "http_metadata": (
+                {str(key): value for key, value in metadata.items()}
+                if isinstance(metadata, Mapping)
+                else None
+            ),
+            "metadata_valid": isinstance(metadata, Mapping),
+        }
+        metadata_encoded = (canonical_json(metadata_body) + "\n").encode("utf-8")
+        if len(metadata_encoded) > 1024 * 1024:
+            raise PITTaxonomySourceError("capture attempt HTTP metadata exceeds byte bound")
+        self._require_free_space(len(body) + len(metadata_encoded))
+        self._write_bytes(raw_path, body)
+        self._write_bytes(metadata_path, metadata_encoded)
+        item = {
+            "source_name": source_name,
+            "fetched": fetched,
+            "raw_path": raw_relative.as_posix(),
+            "raw_sha256": _sha256_bytes(body),
+            "raw_bytes": len(body),
+            "metadata_path": metadata_relative.as_posix(),
+            "metadata_sha256": _sha256_bytes(metadata_encoded),
+        }
+        self.components.append(item)
+        self.total_raw_bytes += len(body)
+        return dict(item)
+
+    def _record_rejected_component(
+        self,
+        source_name: str,
+        body: bytes,
+        metadata: Mapping[str, object] | None,
+        *,
+        reason: str,
+    ) -> None:
+        self.rejected_components.append(
+            {
+                "source_name": source_name,
+                "reason": reason,
+                "bytes_seen": min(len(body), PIT_TAXONOMY_MAX_SOURCE_BYTES + 1),
+                "truncated": (
+                    metadata.get("body_truncated") is True
+                    if isinstance(metadata, Mapping)
+                    else len(body) > PIT_TAXONOMY_MAX_SOURCE_BYTES
+                ),
+                "full_body_saved": False,
+            }
+        )
+
+    def seal_inputs(self) -> dict[str, object]:
+        if len(self.planned_sources) > PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS:
+            raise PITTaxonomySourceError("capture attempt source plan exceeds component-count limit")
+        if len(self.components) != len(self.planned_sources):
+            raise PITTaxonomySourceError("capture attempt component set is incomplete")
+        receipt_body: dict[str, object] = {
+            "schema_version": PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION,
+            "attempt_id": self.attempt_id,
+            "capture_date": self.capture_date.isoformat(),
+            "started_at": self.started_at.isoformat(),
+            "descriptor_path": "attempt_descriptor.json",
+            "descriptor_sha256": self.descriptor_sha256,
+            "scope_binding_sha256": self.descriptor["scope_binding_sha256"],
+            "components": list(self.components),
+            "component_count": len(self.components),
+            "aggregate_raw_bytes": self.total_raw_bytes,
+            "candidate_only": True,
+            "research_only": True,
+            "formal_consumer_compatible": False,
+            "formal_credit": False,
+        }
+        path = self.root / "capture_receipt.json"
+        self._write_json(path, receipt_body)
+        receipt_sha256 = _file_sha256(path)
+        return {
+            "schema_version": PIT_TAXONOMY_CAPTURE_ATTEMPT_BINDING_SCHEMA_VERSION,
+            "attempt_id": self.attempt_id,
+            "path": self.relative_root,
+            "descriptor_sha256": self.descriptor_sha256,
+            "receipt_path": (Path(self.relative_root) / "capture_receipt.json").as_posix(),
+            "receipt_sha256": receipt_sha256,
+            "component_count": len(self.components),
+            "aggregate_raw_bytes": self.total_raw_bytes,
+        }
+
+    def finish_success(self, *, bundle_manifest_path: Path) -> None:
+        bundle = _read_json_object(bundle_manifest_path, "taxonomy bundle manifest")
+        self._write_json(
+            self.result_path,
+            {
+                "schema_version": PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION,
+                "attempt_id": self.attempt_id,
+                "capture_date": self.capture_date.isoformat(),
+                "status": "success",
+                "descriptor_sha256": self.descriptor_sha256,
+                "receipt_sha256": _file_sha256(self.root / "capture_receipt.json"),
+                "components": list(self.components),
+                "rejected_components": list(self.rejected_components),
+                "components_saved_count": len(self.components),
+                "aggregate_raw_bytes": self.total_raw_bytes,
+                "bundle_manifest_path": _relative_path(
+                    self.publication_root, bundle_manifest_path
+                ),
+                "bundle_hash": bundle.get("bundle_hash"),
+                "completed_at": _aware(self.custody_now(), "capture_attempt.completed_at").isoformat(),
+            },
+        )
+
+    def finish_failure(self, error: Exception) -> None:
+        if self.result_path.exists():
+            return
+        payload: dict[str, object] = {
+                "schema_version": PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION,
+                "attempt_id": self.attempt_id,
+                "capture_date": self.capture_date.isoformat(),
+                "status": "failed",
+                "descriptor_sha256": self.descriptor_sha256,
+                "components_saved_count": len(self.components),
+                "aggregate_raw_bytes": self.total_raw_bytes,
+                "components": list(self.components),
+                "rejected_components": list(self.rejected_components),
+                "error_type": type(error).__name__,
+                "error": str(error).splitlines()[0][:400],
+                "completed_at": _aware(self.custody_now(), "capture_attempt.completed_at").isoformat(),
+            }
+        receipt_path = self.root / "capture_receipt.json"
+        if receipt_path.is_file():
+            payload["receipt_sha256"] = _file_sha256(receipt_path)
+        self._write_json(self.result_path, payload)
+
+
+def read_pit_taxonomy_capture_attempt(
+    attempt_root: Path,
+    *,
+    verify_complete: bool = False,
+) -> dict[str, object]:
+    """唯讀檢查 attempt 的描述檔、已保存 component 與終態；失敗 body 仍可取回。"""
+
+    raw_root = Path(os.path.abspath(str(attempt_root.expanduser())))
+    _assert_no_link_path(raw_root, allow_missing=False)
+    root = raw_root.resolve(strict=True)
+    descriptor_path = root / "attempt_descriptor.json"
+    descriptor_raw = _proof_file_bytes(descriptor_path, "capture attempt descriptor", 1024 * 1024)
+    descriptor = _decode_json_object(descriptor_raw, "capture attempt descriptor")
+    if descriptor.get("schema_version") != PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION:
+        raise PITTaxonomySourceError("capture attempt descriptor schema is unsupported")
+    attempt_id = descriptor.get("attempt_id")
+    if root.name != attempt_id or re.fullmatch(r"[0-9a-f]{32}", str(attempt_id)) is None:
+        raise PITTaxonomySourceError("capture attempt id/path mismatch")
+    components_root = root / "components"
+    _assert_no_link_path(components_root, allow_missing=False, confine_to=root)
+    discovered_raw = sorted(components_root.glob("*.raw"))
+    verified_components: list[dict[str, object]] = []
+    aggregate = 0
+    for raw_path in discovered_raw:
+        metadata_path = raw_path.with_suffix(".metadata.json")
+        raw = _proof_file_bytes(raw_path, "capture attempt raw component", PIT_TAXONOMY_MAX_SOURCE_BYTES)
+        metadata_raw = _proof_file_bytes(metadata_path, "capture attempt component metadata", 1024 * 1024)
+        metadata = _decode_json_object(metadata_raw, "capture attempt component metadata")
+        http_metadata = metadata.get("http_metadata")
+        if not isinstance(http_metadata, Mapping):
+            raise PITTaxonomySourceError("capture attempt component HTTP metadata is missing")
+        if metadata.get("source_name") is None:
+            raise PITTaxonomySourceError("capture attempt component source name is missing")
+        if (
+            metadata.get("raw_sha256") != _sha256_bytes(raw)
+            or metadata.get("raw_bytes") != len(raw)
+        ):
+            raise PITTaxonomySourceError("capture attempt raw bytes differ from pinned component metadata")
+        aggregate += len(raw)
+        verified_components.append(
+            {
+                "source_name": metadata["source_name"],
+                "fetched": metadata.get("fetched"),
+                "raw_path": raw_path.relative_to(root).as_posix(),
+                "raw_sha256": _sha256_bytes(raw),
+                "raw_bytes": len(raw),
+                "metadata_path": metadata_path.relative_to(root).as_posix(),
+                "metadata_sha256": _sha256_bytes(metadata_raw),
+                "http_metadata": dict(http_metadata),
+            }
+        )
+    if len(verified_components) > PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS:
+        raise PITTaxonomySourceError("capture attempt component-count limit exceeded")
+    if aggregate > PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES:
+        raise PITTaxonomySourceError("capture attempt aggregate raw-byte limit exceeded")
+    result_path = root / "capture_result.json"
+    result: dict[str, object] = {
+        "status": "partial_untrusted",
+        "attempt_id": attempt_id,
+        "components": verified_components,
+        "component_count": len(verified_components),
+        "aggregate_raw_bytes": aggregate,
+        "descriptor_sha256": _sha256_bytes(descriptor_raw),
+    }
+    if result_path.is_file():
+        _assert_no_link_path(result_path, allow_missing=False, confine_to=root)
+        result_raw = _proof_file_bytes(
+            result_path, "capture attempt result", 1024 * 1024
+        )
+        result_value = _decode_json_object(result_raw, "capture attempt result")
+        if (
+            result_value.get("schema_version")
+            != PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION
+            or result_value.get("attempt_id") != attempt_id
+            or result_value.get("capture_date") != descriptor.get("capture_date")
+            or result_value.get("status") not in {"success", "failed"}
+        ):
+            raise PITTaxonomySourceError("capture attempt result id mismatch")
+        if result_value.get("descriptor_sha256") != result["descriptor_sha256"]:
+            raise PITTaxonomySourceError("capture attempt terminal descriptor hash mismatch")
+        terminal_components = result_value.get("components")
+        observed_component_pins = [
+            {
+                "source_name": item["source_name"],
+                "fetched": item.get("fetched"),
+                "raw_path": item["raw_path"],
+                "raw_sha256": item["raw_sha256"],
+                "raw_bytes": item["raw_bytes"],
+                "metadata_path": item["metadata_path"],
+                "metadata_sha256": item["metadata_sha256"],
+            }
+            for item in verified_components
+        ]
+        if terminal_components != observed_component_pins:
+            raise PITTaxonomySourceError("capture attempt terminal component hashes mismatch")
+        if (
+            result_value.get("components_saved_count") != len(verified_components)
+            or result_value.get("aggregate_raw_bytes") != aggregate
+        ):
+            raise PITTaxonomySourceError("capture attempt terminal component counts mismatch")
+        rejected_value = result_value.get("rejected_components", [])
+        if not isinstance(rejected_value, list) or any(
+            not isinstance(item, Mapping)
+            or not isinstance(item.get("source_name"), str)
+            or not isinstance(item.get("reason"), str)
+            or isinstance(item.get("bytes_seen"), bool)
+            or not isinstance(item.get("bytes_seen"), int)
+            or item.get("bytes_seen", -1) < 0
+            or item.get("full_body_saved") is not False
+            or not isinstance(item.get("truncated"), bool)
+            for item in rejected_value
+        ):
+            raise PITTaxonomySourceError("capture attempt rejected-component diagnostics are invalid")
+        result["rejected_components"] = [dict(item) for item in rejected_value]
+        result["terminal_result"] = result_value
+        result["status"] = str(result_value.get("status"))
+    receipt_path = root / "capture_receipt.json"
+    if receipt_path.is_file():
+        _assert_no_link_path(receipt_path, allow_missing=False, confine_to=root)
+        receipt_raw = _proof_file_bytes(receipt_path, "capture attempt receipt", 4 * 1024 * 1024)
+        receipt = _decode_json_object(receipt_raw, "capture attempt receipt")
+        if receipt.get("attempt_id") != attempt_id:
+            raise PITTaxonomySourceError("capture attempt receipt id mismatch")
+        result["receipt"] = receipt
+        result["receipt_sha256"] = _sha256_bytes(receipt_raw)
+        terminal_value = result.get("terminal_result")
+        if isinstance(terminal_value, Mapping) and terminal_value.get("receipt_sha256") != result["receipt_sha256"]:
+            raise PITTaxonomySourceError("capture attempt terminal receipt hash mismatch")
+        _verify_capture_attempt_files(root, descriptor, receipt)
+    if verify_complete or result.get("status") == "success":
+        if result.get("status") != "success" or "receipt" not in result:
+            raise PITTaxonomySourceError("capture attempt is not a successful complete attempt")
+        terminal_value = result.get("terminal_result")
+        if (
+            not isinstance(terminal_value, Mapping)
+            or terminal_value.get("receipt_sha256") != result.get("receipt_sha256")
+        ):
+            raise PITTaxonomySourceError("capture attempt terminal receipt hash mismatch")
+        _verify_capture_attempt_files(root, descriptor, cast(Mapping[str, object], result["receipt"]))
+    return result
 
 
 def load_pit_taxonomy_source_config(path: Path | None = None) -> dict[str, object]:
@@ -158,6 +644,88 @@ def load_pit_taxonomy_source_config(path: Path | None = None) -> dict[str, objec
     return payload
 
 
+def _plan_configured_components(
+    config: Mapping[str, object],
+    company_raw_payloads: Mapping[str, bytes],
+    capture_date: date,
+) -> list[dict[str, object]]:
+    classification = config.get("classification")
+    security = config.get("security")
+    if not isinstance(classification, Mapping) or not isinstance(security, Mapping):
+        raise PITTaxonomySourceError("PIT taxonomy source sections are missing")
+    company_markets = sorted(
+        {
+            OFFICIAL_COMPANY_SOURCE_DEFINITIONS[str(key)].market
+            for key in company_raw_payloads
+            if str(key) in OFFICIAL_COMPANY_SOURCE_DEFINITIONS
+        }
+    )
+    plan: list[dict[str, object]] = []
+    for market in company_markets:
+        spec = classification.get(market)
+        if not isinstance(spec, Mapping):
+            raise PITTaxonomySourceError(
+                f"PIT taxonomy classification config missing: {market}"
+            )
+        components = spec.get("components")
+        if isinstance(components, Mapping):
+            for component_name in _TWSE_B1212_COMPOSITE_COMPONENTS:
+                component_spec = components.get(component_name)
+                if not isinstance(component_spec, Mapping):
+                    raise PITTaxonomySourceError(
+                        f"PIT taxonomy composite component is invalid: {market}:{component_name}"
+                    )
+                mode = "url" if isinstance(component_spec.get("url"), str) else "path"
+                plan.append(
+                    {
+                        "source_name": f"classification:{market}:{component_name}",
+                        "mode": mode,
+                    }
+                )
+        else:
+            mode = "url" if isinstance(spec.get("url"), str) else "path"
+            plan.append({"source_name": f"classification:{market}", "mode": mode})
+    for key, spec in sorted(security.items(), key=lambda item: str(item[0])):
+        if not isinstance(spec, Mapping):
+            raise PITTaxonomySourceError(f"PIT taxonomy security config is invalid: {key}")
+        mode = "url" if isinstance(spec.get("url"), str) else "path"
+        plan.append({"source_name": f"security:{str(key)}", "mode": mode})
+    inactive_security = config.get("inactive_security", {})
+    if not isinstance(inactive_security, Mapping):
+        raise PITTaxonomySourceError("PIT taxonomy inactive_security section is invalid")
+    for key, value in sorted(inactive_security.items(), key=lambda item: str(item[0])):
+        if not isinstance(value, Mapping):
+            raise PITTaxonomySourceError(
+                f"PIT taxonomy inactive security config is invalid: {key}"
+            )
+        termination_date = _required_date(
+            value.get("termination_effective_on"),
+            f"inactive_security.{key}.termination_effective_on",
+        )
+        if termination_date > capture_date:
+            continue
+        source_name = f"inactive_security:{str(key)}"
+        saved_value = value.get("saved_evidence")
+        if saved_value is not None:
+            if not isinstance(saved_value, Mapping) or set(saved_value) != {
+                "raw_path",
+                "metadata_path",
+            }:
+                raise PITTaxonomySourceError(
+                    f"{source_name}.saved_evidence fields are invalid"
+                )
+            plan.append({"source_name": source_name, "mode": "saved_evidence"})
+            plan.append(
+                {
+                    "source_name": f"{source_name}:capture_metadata",
+                    "mode": "saved_evidence_metadata",
+                }
+            )
+        else:
+            plan.append({"source_name": source_name, "mode": "url"})
+    return plan
+
+
 def capture_configured_daily_pit_taxonomy_bundle(
     *,
     config: Mapping[str, object],
@@ -177,8 +745,175 @@ def capture_configured_daily_pit_taxonomy_bundle(
     company_raw_payloads: Mapping[str, bytes],
     company_http: Mapping[str, Mapping[str, object]],
     universe_symbols_payload: object | None = None,
+    scope_binding: Mapping[str, object] | None = None,
     fetch_source: Callable[[str], object] | None = None,
     now_provider: Callable[[], datetime] | None = None,
+    capture_attempt_id: str | None = None,
+    capture_attempt_root: Path | None = None,
+) -> PITTaxonomyBundleResult:
+    """執行每日 capture；只有 split opt-in 會先建立獨立 raw custody。"""
+
+    if scope_binding is None:
+        if capture_attempt_id is not None or capture_attempt_root is not None:
+            raise PITTaxonomySourceError(
+                "legacy v1 capture cannot use split capture-attempt custody"
+            )
+        return _capture_configured_daily_pit_taxonomy_bundle_impl(
+            config=config,
+            bundle_root=bundle_root,
+            capture_date=capture_date,
+            decision_at=decision_at,
+            now=now,
+            expected_symbols=expected_symbols,
+            universe_hash=universe_hash,
+            universe_hash_symbols=universe_hash_symbols,
+            scores_bp=scores_bp,
+            rank_order=rank_order,
+            clock_id=clock_id,
+            clock_manifest_hash=clock_manifest_hash,
+            clock_payload=clock_payload,
+            universe_identity_payload=universe_identity_payload,
+            company_raw_payloads=company_raw_payloads,
+            company_http=company_http,
+            universe_symbols_payload=universe_symbols_payload,
+            scope_binding=None,
+            fetch_source=fetch_source,
+            now_provider=now_provider,
+        )
+
+    request_started_at = _aware(now, "request_started_at")
+    cutoff = datetime.combine(capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI)
+    if request_started_at.astimezone(TAIPEI).date() != capture_date:
+        raise PITTaxonomySourceError(
+            "taxonomy request start date does not match capture_date"
+        )
+    if request_started_at >= cutoff:
+        raise PITTaxonomySourceError("taxonomy request must start before Taipei 08:30")
+    if not isinstance(config, Mapping):
+        raise PITTaxonomySourceError("PIT taxonomy source config must be an object")
+    _assert_no_link_path(bundle_root, allow_missing=True)
+    plan = _plan_configured_components(
+        config, company_raw_payloads, capture_date
+    )
+    attempt_id = capture_attempt_id or uuid.uuid4().hex
+    if capture_attempt_root is None:
+        resolved_bundle_root = bundle_root.expanduser().resolve()
+        if (
+            resolved_bundle_root.parent.name != "pit_taxonomy_preopen_split_v2"
+            or resolved_bundle_root.name != capture_date.isoformat()
+        ):
+            raise PITTaxonomySourceError(
+                "split capture attempt requires the canonical dated v2 bundle root"
+            )
+        publication_root = resolved_bundle_root.parent.parent
+        capture_attempt_root = (
+            publication_root
+            / "pit_taxonomy_capture_attempts"
+            / capture_date.isoformat()
+            / attempt_id
+        )
+    else:
+        capture_attempt_root = capture_attempt_root.expanduser().resolve()
+        if capture_attempt_root.name != attempt_id:
+            raise PITTaxonomySourceError("capture attempt root does not match attempt id")
+        if capture_attempt_root.parent.name != capture_date.isoformat():
+            raise PITTaxonomySourceError("capture attempt root date does not match capture date")
+        publication_root = capture_attempt_root.parent.parent.parent
+    source_config_hash = _sha256_bytes(canonical_json(config).encode("utf-8"))
+    attempt = _PITTaxonomyCaptureAttempt(
+        publication_root=publication_root,
+        capture_date=capture_date,
+        attempt_id=attempt_id,
+        started_at=request_started_at,
+        scope_binding=scope_binding,
+        universe_hash=universe_hash,
+        clock_id=clock_id,
+        clock_manifest_hash=clock_manifest_hash,
+        source_config_hash=source_config_hash,
+        planned_sources=plan,
+        custody_now=(
+            now_provider
+            if now_provider is not None
+            else lambda: datetime.now(timezone.utc)
+        ),
+    )
+    try:
+        if len(plan) > PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS:
+            raise PITTaxonomySourceError(
+                "capture attempt source plan exceeds component-count limit"
+            )
+        result = _capture_configured_daily_pit_taxonomy_bundle_impl(
+            config=config,
+            bundle_root=bundle_root,
+            capture_date=capture_date,
+            decision_at=decision_at,
+            now=now,
+            expected_symbols=expected_symbols,
+            universe_hash=universe_hash,
+            universe_hash_symbols=universe_hash_symbols,
+            scores_bp=scores_bp,
+            rank_order=rank_order,
+            clock_id=clock_id,
+            clock_manifest_hash=clock_manifest_hash,
+            clock_payload=clock_payload,
+            universe_identity_payload=universe_identity_payload,
+            company_raw_payloads=company_raw_payloads,
+            company_http=company_http,
+            universe_symbols_payload=universe_symbols_payload,
+            scope_binding=scope_binding,
+            fetch_source=fetch_source,
+            now_provider=now_provider,
+            attempt_writer=attempt,
+        )
+        attempt.finish_success(bundle_manifest_path=result.bundle_manifest_path)
+        return replace(
+            result,
+            capture_attempt_id=attempt_id,
+            capture_attempt_path=attempt.root,
+            capture_attempt_result_path=attempt.result_path,
+        )
+    except Exception as error:
+        try:
+            attempt.finish_failure(error)
+        except Exception as custody_error:  # noqa: BLE001 - preserve primary failure
+            setattr(error, "capture_attempt_error", str(custody_error)[:300])
+        setattr(
+            error,
+            "capture_attempt",
+            {
+                "attempt_id": attempt_id,
+                "path": str(attempt.root),
+                "result_path": str(attempt.result_path),
+                "components_saved_count": len(attempt.components),
+                "aggregate_raw_bytes": attempt.total_raw_bytes,
+            },
+        )
+        raise
+
+
+def _capture_configured_daily_pit_taxonomy_bundle_impl(
+    *,
+    config: Mapping[str, object],
+    bundle_root: Path,
+    capture_date: date,
+    decision_at: datetime,
+    now: datetime,
+    expected_symbols: Sequence[str],
+    universe_hash: str,
+    universe_hash_symbols: Sequence[str],
+    scores_bp: Sequence[int],
+    rank_order: Sequence[str],
+    clock_id: str,
+    clock_manifest_hash: str,
+    clock_payload: Mapping[str, object],
+    universe_identity_payload: Mapping[str, object],
+    company_raw_payloads: Mapping[str, bytes],
+    company_http: Mapping[str, Mapping[str, object]],
+    universe_symbols_payload: object | None = None,
+    scope_binding: Mapping[str, object] | None = None,
+    fetch_source: Callable[[str], object] | None = None,
+    now_provider: Callable[[], datetime] | None = None,
+    attempt_writer: _PITTaxonomyCaptureAttempt | None = None,
 ) -> PITTaxonomyBundleResult:
     """由明確 source config 在 cutoff 前抓取並建立 taxonomy bundle。
 
@@ -245,6 +980,7 @@ def capture_configured_daily_pit_taxonomy_bundle(
                 spec,
                 source_name=f"classification:{market}",
                 fetch_source=fetch_source,
+                attempt_writer=attempt_writer,
             )
             classification_component_payloads[market] = component_payloads
             classification_component_http[market] = component_http
@@ -253,6 +989,7 @@ def capture_configured_daily_pit_taxonomy_bundle(
                 spec,
                 source_name=f"classification:{market}",
                 fetch_source=fetch_source,
+                attempt_writer=attempt_writer,
             )
         live_fetch_performed = live_fetch_performed or fetched
         if fetched and _component_available(http, f"classification:{market}") < request_started_at:
@@ -334,6 +1071,7 @@ def capture_configured_daily_pit_taxonomy_bundle(
             value,
             source_name=f"security:{payload_key}",
             fetch_source=fetch_source,
+            attempt_writer=attempt_writer,
         )
         live_fetch_performed = live_fetch_performed or fetched
         if fetched and _component_available(http, f"security:{payload_key}") < request_started_at:
@@ -344,6 +1082,19 @@ def capture_configured_daily_pit_taxonomy_bundle(
         security_http[payload_key] = http
     if not security_payloads:
         raise PITTaxonomySourceError("PIT taxonomy security config is empty")
+
+    inactive_security_sources: dict[str, dict[str, object]] = {}
+    if attempt_writer is not None:
+        inactive_security_sources, inactive_live_fetch = (
+            _capture_configured_inactive_security_sources(
+                config=config,
+                capture_date=capture_date,
+                request_started_at=request_started_at,
+                fetch_source=fetch_source,
+                attempt_writer=attempt_writer,
+            )
+        )
+        live_fetch_performed = live_fetch_performed or inactive_live_fetch
 
     license_scope_value = config.get("license_scope")
     license_scope = (
@@ -371,6 +1122,9 @@ def capture_configured_daily_pit_taxonomy_bundle(
             raise PITTaxonomySourceError(
                 "taxonomy completion clock moved before request start"
             )
+    capture_attempt_binding = (
+        attempt_writer.seal_inputs() if attempt_writer is not None else None
+    )
     return build_daily_pit_taxonomy_bundle(
         bundle_root=bundle_root,
         capture_date=capture_date,
@@ -396,7 +1150,10 @@ def capture_configured_daily_pit_taxonomy_bundle(
         security_http=security_http,
         license_scope=license_scope,
         universe_symbols_payload=universe_symbols_payload,
+        scope_binding=scope_binding,
         capture_started_at=request_started_at,
+        capture_attempt_binding=capture_attempt_binding,
+        inactive_security_sources=inactive_security_sources,
     )
 
 
@@ -419,16 +1176,18 @@ def fetch_official_pit_taxonomy_source(url: str) -> PITTaxonomySourceResponse:
             final_url = response.geturl()
             status = response.status
             headers = response.headers
+    except HTTPError as error:
+        # HTTPError is itself a response: retain its bounded body and headers in
+        # split-attempt custody before the status validator rejects it.
+        body = error.read(PIT_TAXONOMY_MAX_SOURCE_BYTES + 1)
+        completed_at = datetime.now(timezone.utc)
+        final_url = error.geturl()
+        status = error.code
+        headers = error.headers
     except Exception as error:  # noqa: BLE001 - transport boundary is fail closed
         raise PITTaxonomySourceError(
             f"official PIT taxonomy source fetch failed: {endpoint}"
         ) from error
-    if not body:
-        raise PITTaxonomySourceError("official PIT taxonomy source body is empty")
-    if len(body) > PIT_TAXONOMY_MAX_SOURCE_BYTES:
-        raise PITTaxonomySourceError("official PIT taxonomy source exceeds byte bound")
-    if isinstance(status, bool) or not isinstance(status, int) or status != 200:
-        raise PITTaxonomySourceError("official PIT taxonomy source HTTP status is not 200")
     metadata: dict[str, object] = {
         "requested_url": endpoint,
         "final_url": str(final_url),
@@ -437,6 +1196,8 @@ def fetch_official_pit_taxonomy_source(url: str) -> PITTaxonomySourceResponse:
         "http_date": headers.get("Date"),
         "http_last_modified": headers.get("Last-Modified"),
         "captured_at": completed_at.isoformat(),
+        "body_bytes_seen": len(body),
+        "body_truncated": len(body) > PIT_TAXONOMY_MAX_SOURCE_BYTES,
     }
     return PITTaxonomySourceResponse(body=body, metadata=metadata)
 
@@ -446,6 +1207,7 @@ def _capture_configured_source(
     *,
     source_name: str,
     fetch_source: Callable[[str], object] | None,
+    attempt_writer: _PITTaxonomyCaptureAttempt | None = None,
 ) -> tuple[bytes, Mapping[str, object], bool]:
     url_value = spec.get("url")
     path_value = spec.get("path")
@@ -456,13 +1218,32 @@ def _capture_configured_source(
             f"{source_name} must configure exactly one of url or path"
         )
     if has_path:
-        raw_path = Path(str(path_value)).expanduser().resolve()
-        try:
-            raw = raw_path.read_bytes()
-        except OSError as error:
-            raise PITTaxonomySourceError(
-                f"{source_name} saved source bytes are unreadable"
-            ) from error
+        configured_path = Path(str(path_value)).expanduser()
+        if attempt_writer is not None:
+            # The split/custody path must reject links before resolution and
+            # bound the read itself; checking the size after read_bytes could
+            # allocate an arbitrarily large local source into memory.
+            _assert_no_link_path(configured_path, allow_missing=False)
+            try:
+                raw_path = configured_path.resolve(strict=True)
+            except OSError as error:
+                raise PITTaxonomySourceError(
+                    f"{source_name} saved source path is unreadable"
+                ) from error
+            raw = _proof_file_bytes(
+                raw_path,
+                f"{source_name} saved source",
+                PIT_TAXONOMY_MAX_SOURCE_BYTES,
+            )
+        else:
+            # Preserve the legacy v1 saved-source behavior and payload shape.
+            raw_path = configured_path.resolve()
+            try:
+                raw = raw_path.read_bytes()
+            except OSError as error:
+                raise PITTaxonomySourceError(
+                    f"{source_name} saved source bytes are unreadable"
+                ) from error
         saved_metadata_value = spec.get("http")
         if not isinstance(saved_metadata_value, Mapping):
             raise PITTaxonomySourceError(
@@ -470,6 +1251,10 @@ def _capture_configured_source(
             )
         metadata = {str(key): item for key, item in saved_metadata_value.items()}
         fetched = False
+        if attempt_writer is not None:
+            attempt_writer.record_component(
+                source_name, raw, metadata, fetched=fetched
+            )
     else:
         endpoint = _required_text(url_value, f"{source_name}.url")
         response = (
@@ -488,11 +1273,23 @@ def _capture_configured_source(
             body_value = getattr(response, "body", None)
             metadata_value = getattr(response, "metadata", None)
         raw = _require_bytes(body_value, f"{source_name}.body")
-        if not isinstance(metadata_value, Mapping):
+        metadata_is_valid = isinstance(metadata_value, Mapping)
+        metadata = (
+            {str(key): item for key, item in metadata_value.items()}
+            if isinstance(metadata_value, Mapping)
+            else {}
+        )
+        if attempt_writer is not None:
+            attempt_writer.record_component(
+                source_name,
+                raw,
+                metadata if metadata_is_valid else None,
+                fetched=True,
+            )
+        if not metadata_is_valid:
             raise PITTaxonomySourceError(
                 f"{source_name} fetcher returned invalid metadata"
             )
-        metadata = {str(key): item for key, item in metadata_value.items()}
         if metadata.get("requested_url") != endpoint:
             raise PITTaxonomySourceError(
                 f"{source_name} requested URL differs from configured URL"
@@ -501,8 +1298,784 @@ def _capture_configured_source(
     raw = _require_bytes(raw, f"{source_name}.body")
     if len(raw) > PIT_TAXONOMY_MAX_SOURCE_BYTES:
         raise PITTaxonomySourceError(f"{source_name} exceeds bounded source bytes")
+    if not raw:
+        raise PITTaxonomySourceError(f"{source_name} response body is empty")
     _component_available(metadata, source_name)
     return raw, metadata, fetched
+
+
+def _capture_configured_inactive_security_sources(
+    *,
+    config: Mapping[str, object],
+    capture_date: date,
+    request_started_at: datetime,
+    fetch_source: Callable[[str], object] | None,
+    attempt_writer: _PITTaxonomyCaptureAttempt,
+) -> tuple[dict[str, dict[str, object]], bool]:
+    configured = config.get("inactive_security", {})
+    if not isinstance(configured, Mapping):
+        raise PITTaxonomySourceError("PIT taxonomy inactive_security section is invalid")
+    cutoff = datetime.combine(capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI)
+    inputs: dict[str, dict[str, object]] = {}
+    live_fetch_performed = False
+    for key, raw_spec in sorted(configured.items(), key=lambda item: str(item[0])):
+        if not isinstance(raw_spec, Mapping):
+            raise PITTaxonomySourceError(
+                f"inactive security source config is invalid: {key}"
+            )
+        source_version = _required_text(
+            raw_spec.get("source_version"), f"inactive_security.{key}.source_version"
+        )
+        source_url = _required_text(
+            raw_spec.get("source_url"), f"inactive_security.{key}.source_url"
+        )
+        spec = _inactive_termination_spec(raw_spec, f"inactive_security.{key}")
+        if spec.termination_effective_on > capture_date:
+            continue
+        if spec.symbol in inputs:
+            raise PITTaxonomySourceError(
+                f"inactive security source duplicates symbol: {spec.symbol}"
+            )
+        source_name = f"inactive_security:{str(key)}"
+        saved_value = raw_spec.get("saved_evidence")
+        capture_metadata_source_name: str | None = None
+
+        if saved_value is not None:
+            if not isinstance(saved_value, Mapping) or set(saved_value) != {
+                "raw_path",
+                "metadata_path",
+            }:
+                raise PITTaxonomySourceError(
+                    f"{source_name}.saved_evidence fields are invalid"
+                )
+            raw_source_path, metadata_source_path, raw, metadata_raw = (
+                _read_saved_inactive_security_evidence(saved_value)
+            )
+            origin_metadata = _decode_json_object_no_duplicates(
+                metadata_raw, f"{source_name} saved HTTP metadata"
+            )
+            capture_at = _validate_saved_inactive_security_http_metadata(
+                origin_metadata,
+                raw=raw,
+                spec=spec,
+                raw_path=raw_source_path,
+                metadata_path=metadata_source_path,
+            )
+            capture_metadata_source_name = f"{source_name}:capture_metadata"
+            attempt_metadata: dict[str, object] = {
+                "request_url": source_url,
+                "requested_url": source_url,
+                "final_url": source_url,
+                "status_code": 200,
+                "http_status": 200,
+                "content_type": str(origin_metadata["content_type"]),
+                "charset": origin_metadata.get("charset"),
+                "captured_at": capture_at.isoformat(),
+                "raw_sha256": _sha256_bytes(raw),
+                "raw_bytes": len(raw),
+                "body_bytes_seen": len(raw),
+                "body_truncated": False,
+                "upstream_http_metadata": origin_metadata,
+                "source_capture_metadata_sha256": _sha256_bytes(metadata_raw),
+                "source_capture_metadata_bytes": len(metadata_raw),
+                "source_capture_metadata_source_name": capture_metadata_source_name,
+                "source_capture_raw_path": str(raw_source_path),
+                "source_capture_metadata_path": str(metadata_source_path),
+            }
+            capture_http = {
+                "requested_url": source_url,
+                "final_url": source_url,
+                "http_status": 200,
+                "content_type": "application/json",
+                "captured_at": capture_at.isoformat(),
+                "metadata_role": "source_http_capture_metadata",
+                "source_metadata_sha256": _sha256_bytes(metadata_raw),
+            }
+            attempt_writer.record_component(
+                source_name,
+                raw,
+                attempt_metadata,
+                fetched=False,
+            )
+            attempt_writer.record_component(
+                capture_metadata_source_name,
+                metadata_raw,
+                capture_http,
+                fetched=False,
+            )
+            fetched = False
+        else:
+            response = (
+                fetch_source(source_url)
+                if fetch_source is not None
+                else fetch_official_pit_taxonomy_source(source_url)
+            )
+            body_value: object
+            metadata_value: object
+            if isinstance(response, PITTaxonomySourceResponse):
+                body_value = response.body
+                metadata_value = response.metadata
+            elif isinstance(response, tuple) and len(response) == 2:
+                body_value, metadata_value = response
+            else:
+                body_value = getattr(response, "body", None)
+                metadata_value = getattr(response, "metadata", None)
+            if not isinstance(body_value, bytes) or not body_value:
+                raise PITTaxonomySourceError(
+                    f"{source_name} fetcher returned an invalid body"
+                )
+            response_metadata = (
+                {str(name): value for name, value in metadata_value.items()}
+                if isinstance(metadata_value, Mapping)
+                else None
+            )
+            if response_metadata is None:
+                attempt_writer.record_component(
+                    source_name,
+                    body_value,
+                    None,
+                    fetched=True,
+                )
+                raise PITTaxonomySourceError(
+                    f"{source_name} fetcher returned invalid metadata"
+                )
+            captured = response_metadata.get(
+                "captured_at", response_metadata.get("completed_at")
+            )
+            attempt_metadata = {
+                **response_metadata,
+                "request_url": response_metadata.get(
+                    "requested_url", response_metadata.get("request_url")
+                ),
+                "status_code": response_metadata.get(
+                    "http_status", response_metadata.get("status_code")
+                ),
+                "captured_at": captured,
+                "raw_sha256": _sha256_bytes(body_value),
+                "raw_bytes": len(body_value),
+                "body_bytes_seen": response_metadata.get(
+                    "body_bytes_seen", len(body_value)
+                ),
+                "body_truncated": response_metadata.get("body_truncated") is True,
+                "upstream_http_metadata": response_metadata,
+            }
+            attempt_writer.record_component(
+                source_name,
+                body_value,
+                attempt_metadata,
+                fetched=True,
+            )
+            if attempt_metadata["request_url"] != source_url:
+                raise PITTaxonomySourceError(
+                    f"{source_name} requested URL differs from configured URL"
+                )
+            if not isinstance(captured, str):
+                raise PITTaxonomySourceError(
+                    f"{source_name} captured-at time is missing"
+                )
+            capture_at = _aware(captured, f"{source_name}.captured_at")
+            fetched = True
+            live_fetch_performed = True
+
+        if capture_at >= cutoff:
+            raise PITTaxonomySourceError(
+                f"{source_name} source capture is at/after Taipei 08:30"
+            )
+        if fetched and capture_at < request_started_at:
+            raise PITTaxonomySourceError(
+                f"{source_name} completion predates request start"
+            )
+        inputs[spec.symbol] = {
+            "source_version": source_version,
+            "spec": _inactive_spec_payload(spec),
+            "attempt_source_name": source_name,
+            "capture_metadata_source_name": capture_metadata_source_name,
+        }
+    return inputs, live_fetch_performed
+
+
+def _read_saved_inactive_security_evidence(
+    saved_evidence: Mapping[str, object],
+) -> tuple[Path, Path, bytes, bytes]:
+    repo_root = Path(__file__).resolve().parent.parent
+    qa_root = repo_root / "output" / "qa"
+    paths: list[Path] = []
+    for field_name in ("raw_path", "metadata_path"):
+        value = saved_evidence.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            raise PITTaxonomySourceError(
+                f"inactive saved evidence {field_name} is missing"
+            )
+        candidate = Path(os.path.abspath(str(Path(value).expanduser())))
+        _assert_no_link_path(candidate, allow_missing=False, confine_to=qa_root)
+        try:
+            candidate.resolve(strict=True).relative_to(qa_root.resolve(strict=True))
+        except (OSError, ValueError) as error:
+            raise PITTaxonomySourceError(
+                "inactive saved evidence must remain under repository output/qa"
+            ) from error
+        paths.append(candidate)
+    raw_path, metadata_path = paths
+    if raw_path.parent != metadata_path.parent or metadata_path.name != "metadata.json":
+        raise PITTaxonomySourceError(
+            "inactive saved evidence raw and metadata must be sibling capture files"
+        )
+    raw = _proof_file_bytes(
+        raw_path,
+        "inactive termination notice raw",
+        PIT_INACTIVE_TERMINATION_MAX_SOURCE_BYTES,
+    )
+    metadata_raw = _proof_file_bytes(
+        metadata_path, "inactive termination notice HTTP metadata", 1024 * 1024
+    )
+    return raw_path, metadata_path, raw, metadata_raw
+
+
+def _validate_saved_inactive_security_http_metadata(
+    metadata: Mapping[str, object],
+    *,
+    raw: bytes,
+    spec: OfficialTerminationSourceSpec,
+    raw_path: Path,
+    metadata_path: Path,
+) -> datetime:
+    if (
+        metadata.get("schema_version") != "pit-8183-bounded-http-diagnostic.v1"
+        or metadata.get("method") != "GET"
+        or metadata.get("request_url") != spec.source_url
+        or metadata.get("final_url") != spec.source_url
+        or metadata.get("redirects_followed") is not False
+        or metadata.get("status_code") != 200
+        or metadata.get("content_type") != "text/html"
+        or metadata.get("body_complete") is not True
+        or metadata.get("body_kind") != "official_announcement_candidate"
+        or metadata.get("body_file") != raw_path.name
+        or metadata.get("error") is not None
+        or metadata.get("body_bytes") != len(raw)
+        or metadata.get("body_sha256") != _sha256_bytes(raw)
+        or metadata_path.parent != raw_path.parent
+    ):
+        raise PITTaxonomySourceError(
+            "saved inactive termination source HTTP metadata is invalid"
+        )
+    completed = metadata.get("completed_at")
+    if not isinstance(completed, str):
+        raise PITTaxonomySourceError(
+            "saved inactive termination capture time is missing"
+        )
+    try:
+        return _aware(completed, "inactive_security.completed_at")
+    except (TypeError, ValueError) as error:
+        raise PITTaxonomySourceError(
+            "saved inactive termination capture time is invalid"
+        ) from error
+
+
+def _inactive_termination_spec(
+    value: Mapping[str, object], field_name: str
+) -> OfficialTerminationSourceSpec:
+    try:
+        return OfficialTerminationSourceSpec(
+            source_url=_required_text(value.get("source_url"), f"{field_name}.source_url"),
+            symbol=_required_text(value.get("symbol"), f"{field_name}.symbol"),
+            issuer_name=_required_text(
+                value.get("issuer_name"), f"{field_name}.issuer_name"
+            ),
+            market_scope=_required_text(
+                value.get("market_scope"), f"{field_name}.market_scope"
+            ),
+            published_on=_required_date(
+                value.get("published_on"), f"{field_name}.published_on"
+            ),
+            suspension_effective_on=_required_date(
+                value.get("suspension_effective_on"),
+                f"{field_name}.suspension_effective_on",
+            ),
+            termination_effective_on=_required_date(
+                value.get("termination_effective_on"),
+                f"{field_name}.termination_effective_on",
+            ),
+        )
+    except (InactiveTerminationEvidenceError, ValueError, TypeError) as error:
+        raise PITTaxonomySourceError(
+            f"inactive security source specification is invalid: {field_name}"
+        ) from error
+
+
+def _inactive_spec_payload(spec: OfficialTerminationSourceSpec) -> dict[str, object]:
+    return {
+        "source_url": spec.source_url,
+        "symbol": spec.symbol,
+        "issuer_name": spec.issuer_name,
+        "market_scope": spec.market_scope,
+        "published_on": spec.published_on.isoformat(),
+        "suspension_effective_on": spec.suspension_effective_on.isoformat(),
+        "termination_effective_on": spec.termination_effective_on.isoformat(),
+    }
+
+
+def _inactive_overlay_entry_from_attempt(
+    symbol: str,
+    entry: Mapping[str, object],
+    *,
+    capture_attempt_binding: Mapping[str, object],
+    publication_root: Path,
+    capture_date: date,
+) -> dict[str, object]:
+    allowed_input_keys = {
+        "schema_version",
+        "source_version",
+        "spec",
+        "attempt_source_name",
+        "capture_metadata_source_name",
+        "proof",
+        "attempt_component",
+        "capture_metadata_component",
+    }
+    if set(entry) - allowed_input_keys:
+        raise PITTaxonomySourceError(
+            f"inactive overlay contains unsupported binding fields: {symbol}"
+        )
+    if entry.get("schema_version") not in {
+        None,
+        "pit-inactive-security-overlay-binding.v1",
+    }:
+        raise PITTaxonomySourceError(
+            f"inactive overlay schema is unsupported: {symbol}"
+        )
+    if entry.get("source_version") is None:
+        raise PITTaxonomySourceError(
+            f"inactive overlay source version is missing: {symbol}"
+        )
+    source_version = _required_text(
+        entry.get("source_version"), f"inactive_security_overlay.{symbol}.source_version"
+    )
+    spec_value = entry.get("spec")
+    if not isinstance(spec_value, Mapping):
+        raise PITTaxonomySourceError(
+            f"inactive overlay source specification is missing: {symbol}"
+        )
+    spec = _inactive_termination_spec(spec_value, f"inactive_security_overlay.{symbol}.spec")
+    if spec.symbol != symbol or spec.termination_effective_on > capture_date:
+        raise PITTaxonomySourceError(
+            f"inactive overlay symbol or effective date is invalid: {symbol}"
+        )
+    source_name = _required_text(
+        entry.get("attempt_source_name"),
+        f"inactive_security_overlay.{symbol}.attempt_source_name",
+    )
+    metadata_source_value = entry.get("capture_metadata_source_name")
+    metadata_source_name = (
+        _required_text(
+            metadata_source_value,
+            f"inactive_security_overlay.{symbol}.capture_metadata_source_name",
+        )
+        if metadata_source_value is not None
+        else None
+    )
+
+    binding = _capture_attempt_binding_fields(capture_attempt_binding)
+    attempt_root = _proof_child(
+        publication_root,
+        binding.get("path"),
+        required_prefix="pit_taxonomy_capture_attempts/",
+        label="inactive overlay capture attempt",
+    )
+    attempt_readback = read_pit_taxonomy_capture_attempt(attempt_root)
+    if (
+        attempt_readback.get("attempt_id") != binding.get("attempt_id")
+        or attempt_readback.get("receipt_sha256") != binding.get("receipt_sha256")
+    ):
+        raise PITTaxonomySourceError(
+            f"inactive overlay attempt receipt differs: {symbol}"
+        )
+    components_value = attempt_readback.get("components")
+    if not isinstance(components_value, list):
+        raise PITTaxonomySourceError(
+            f"inactive overlay attempt components are invalid: {symbol}"
+        )
+    components = [
+        item
+        for item in components_value
+        if isinstance(item, Mapping)
+    ]
+    source_components = [
+        item for item in components if item.get("source_name") == source_name
+    ]
+    if len(source_components) != 1:
+        raise PITTaxonomySourceError(
+            f"inactive overlay source component is missing or ambiguous: {symbol}"
+        )
+    source_component = dict(source_components[0])
+    if source_component.get("fetched") not in {True, False}:
+        raise PITTaxonomySourceError(
+            f"inactive overlay source fetch state is invalid: {symbol}"
+        )
+    raw_path = _proof_child(
+        attempt_root,
+        source_component.get("raw_path"),
+        required_prefix="components/",
+        label="inactive overlay raw component",
+    )
+    raw = _proof_file_bytes(
+        raw_path, "inactive overlay raw component", PIT_INACTIVE_TERMINATION_MAX_SOURCE_BYTES
+    )
+    if (
+        _sha256_bytes(raw) != source_component.get("raw_sha256")
+        or len(raw) != source_component.get("raw_bytes")
+    ):
+        raise PITTaxonomySourceError(
+            f"inactive overlay raw component pin differs: {symbol}"
+        )
+    source_http_value = source_component.get("http_metadata")
+    if not isinstance(source_http_value, Mapping):
+        raise PITTaxonomySourceError(
+            f"inactive overlay HTTP metadata is missing: {symbol}"
+        )
+    source_http = dict(source_http_value)
+    parser_metadata = {
+        "request_url": source_http.get("request_url"),
+        "final_url": source_http.get("final_url"),
+        "status_code": source_http.get("status_code"),
+        "content_type": source_http.get("content_type"),
+        "charset": source_http.get("charset"),
+        "captured_at": source_http.get("captured_at"),
+        "raw_sha256": source_component.get("raw_sha256"),
+        "raw_bytes": source_component.get("raw_bytes"),
+        "raw_path": source_component.get("raw_path"),
+    }
+    origin_metadata_value = source_http.get("upstream_http_metadata")
+    if not isinstance(origin_metadata_value, Mapping):
+        raise PITTaxonomySourceError(
+            f"inactive overlay upstream HTTP metadata is missing: {symbol}"
+        )
+    origin_metadata = dict(origin_metadata_value)
+
+    metadata_component: dict[str, object] | None = None
+    if metadata_source_name is not None:
+        metadata_components = [
+            item
+            for item in components
+            if item.get("source_name") == metadata_source_name
+        ]
+        if len(metadata_components) != 1:
+            raise PITTaxonomySourceError(
+                f"inactive overlay capture metadata component is missing: {symbol}"
+            )
+        metadata_component = dict(metadata_components[0])
+        metadata_raw_path = _proof_child(
+            attempt_root,
+            metadata_component.get("raw_path"),
+            required_prefix="components/",
+            label="inactive overlay capture metadata component",
+        )
+        metadata_raw = _proof_file_bytes(
+            metadata_raw_path,
+            "inactive overlay capture metadata component",
+            1024 * 1024,
+        )
+        if (
+            _sha256_bytes(metadata_raw) != metadata_component.get("raw_sha256")
+            or len(metadata_raw) != metadata_component.get("raw_bytes")
+            or _sha256_bytes(metadata_raw)
+            != source_http.get("source_capture_metadata_sha256")
+            or len(metadata_raw) != source_http.get("source_capture_metadata_bytes")
+        ):
+            raise PITTaxonomySourceError(
+                f"inactive overlay capture metadata pin differs: {symbol}"
+            )
+        origin_metadata = _decode_json_object_no_duplicates(
+            metadata_raw, f"inactive overlay saved HTTP metadata {symbol}"
+        )
+        _validate_saved_inactive_security_http_metadata(
+            origin_metadata,
+            raw=raw,
+            spec=spec,
+            raw_path=Path(str(source_http.get("source_capture_raw_path"))),
+            metadata_path=Path(str(source_http.get("source_capture_metadata_path"))),
+        )
+    elif source_http.get("source_capture_metadata_sha256") is not None:
+        raise PITTaxonomySourceError(
+            f"inactive overlay capture metadata binding has no component: {symbol}"
+        )
+
+    actual_capture_at = _aware(
+        parser_metadata.get("captured_at"),
+        f"inactive_security_overlay.{symbol}.captured_at",
+    )
+    real_cutoff = datetime.combine(
+        capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI
+    )
+    serialized_proof_value = entry.get("proof")
+    try:
+        if serialized_proof_value is None:
+            proof = parse_official_termination_notice(
+                raw,
+                parser_metadata,
+                spec,
+                actual_capture_at,
+                real_cutoff,
+            )
+        elif isinstance(serialized_proof_value, Mapping):
+            proof = validate_official_termination_proof_readback(
+                raw,
+                parser_metadata,
+                spec,
+                actual_capture_at,
+                real_cutoff,
+                serialized_proof_value,
+            )
+        else:
+            raise PITTaxonomySourceError(
+                f"inactive overlay serialized proof is invalid: {symbol}"
+            )
+    except InactiveTerminationEvidenceError as error:
+        raise PITTaxonomySourceError(
+            f"inactive overlay proof verification failed: {symbol}"
+        ) from error
+
+    expected_source_component = {
+        "source_name": source_name,
+        "fetched": source_component.get("fetched"),
+        "raw_path": source_component.get("raw_path"),
+        "raw_sha256": source_component.get("raw_sha256"),
+        "raw_bytes": source_component.get("raw_bytes"),
+        "metadata_path": source_component.get("metadata_path"),
+        "metadata_sha256": source_component.get("metadata_sha256"),
+    }
+    expected_metadata_component = (
+        {
+            "source_name": metadata_source_name,
+            "fetched": metadata_component.get("fetched"),
+            "raw_path": metadata_component.get("raw_path"),
+            "raw_sha256": metadata_component.get("raw_sha256"),
+            "raw_bytes": metadata_component.get("raw_bytes"),
+            "metadata_path": metadata_component.get("metadata_path"),
+            "metadata_sha256": metadata_component.get("metadata_sha256"),
+        }
+        if metadata_component is not None
+        else None
+    )
+    for field_name, observed in (
+        ("attempt_component", expected_source_component),
+        ("capture_metadata_component", expected_metadata_component),
+    ):
+        if field_name in entry and entry.get(field_name) != observed:
+            raise PITTaxonomySourceError(
+                f"inactive overlay {field_name} pin differs: {symbol}"
+            )
+    return {
+        "schema_version": "pit-inactive-security-overlay-binding.v1",
+        "source_version": source_version,
+        "spec": _inactive_spec_payload(spec),
+        "proof": proof.to_dict(),
+        "attempt_source_name": source_name,
+        "capture_metadata_source_name": metadata_source_name,
+        "attempt_component": expected_source_component,
+        "capture_metadata_component": expected_metadata_component,
+    }
+
+
+def _verified_inactive_overlay_map(
+    configured: Mapping[str, Mapping[str, object]] | None,
+    *,
+    capture_attempt_binding: Mapping[str, object],
+    publication_root: Path,
+    capture_date: date,
+    expected_symbols: Sequence[str],
+    market_by_symbol: Mapping[str, str],
+    security_records: Sequence[OfficialSecurityRecord],
+) -> dict[str, dict[str, object]]:
+    if not configured:
+        return {}
+    expected = set(expected_symbols)
+    active_record_symbols = {item.symbol for item in security_records}
+    verified: dict[str, dict[str, object]] = {}
+    for symbol, entry in sorted(configured.items()):
+        normalized_symbol = _normalize_symbols((symbol,), "inactive_security_overlay.symbol")[0]
+        if normalized_symbol not in expected:
+            raise PITTaxonomySourceError(
+                f"inactive security proof symbol is outside the official denominator: {normalized_symbol}"
+            )
+        if normalized_symbol in verified:
+            raise PITTaxonomySourceError(
+                f"inactive security proof symbol is duplicated: {normalized_symbol}"
+            )
+        checked = _inactive_overlay_entry_from_attempt(
+            normalized_symbol,
+            entry,
+            capture_attempt_binding=capture_attempt_binding,
+            publication_root=publication_root,
+            capture_date=capture_date,
+        )
+        proof = checked.get("proof")
+        if not isinstance(proof, Mapping):
+            raise PITTaxonomySourceError(
+                f"inactive security proof readback is missing: {normalized_symbol}"
+            )
+        if proof.get("symbol") != normalized_symbol:
+            raise PITTaxonomySourceError(
+                f"inactive security proof symbol differs: {normalized_symbol}"
+            )
+        if proof.get("market_scope") != market_by_symbol.get(normalized_symbol):
+            raise PITTaxonomySourceError(
+                f"inactive security proof market differs from official denominator: {normalized_symbol}"
+            )
+        if normalized_symbol in active_record_symbols:
+            raise PITTaxonomySourceError(
+                f"inactive security overlay conflicts with active ISIN row: {normalized_symbol}"
+            )
+        verified[normalized_symbol] = checked
+    return verified
+
+
+def _validate_bundle_inactive_security_overlay(
+    overlay_value: object,
+    *,
+    capture_attempt_binding: Mapping[str, object],
+    publication_root: Path,
+    capture_date: date,
+    bundle_root: Path,
+    raw_files: Sequence[Mapping[str, object]],
+    symbols: Sequence[str],
+    market_by_symbol: Mapping[str, str],
+    security_type_by_symbol: Mapping[str, str],
+    security_eligibility_by_symbol: Mapping[str, Mapping[str, object]],
+    eligible_symbols: Sequence[str],
+    excluded_symbols: Sequence[str],
+    unknown_symbols: Sequence[str],
+) -> dict[str, dict[str, object]]:
+    if not isinstance(overlay_value, Mapping):
+        raise PITTaxonomySourceError("inactive security overlay map is invalid")
+    overlay_inputs: dict[str, Mapping[str, object]] = {}
+    for symbol, entry in overlay_value.items():
+        if not isinstance(symbol, str) or not isinstance(entry, Mapping):
+            raise PITTaxonomySourceError("inactive security overlay entry is invalid")
+        overlay_inputs[symbol] = entry
+
+    security_records: list[OfficialSecurityRecord] = []
+    seen_hashes: set[str] = set()
+    for raw_entry in raw_files:
+        if raw_entry.get("role") != "security_typing":
+            continue
+        raw_path = _resolve_relative(bundle_root, raw_entry.get("path"))
+        market = str(raw_entry.get("market_scope") or "")
+        try:
+            records = parse_official_isin_security_source(
+                _proof_file_bytes(
+                    raw_path,
+                    "official security raw component",
+                    PIT_TAXONOMY_MAX_SOURCE_BYTES,
+                ),
+                default_market_scope=(None if market == "all" else market),
+            )
+        except (OfficialSecurityTypingError, ValueError) as error:
+            raise PITTaxonomySourceError(
+                "official security raw component cannot be re-parsed"
+            ) from error
+        for record in records:
+            if record.row_hash not in seen_hashes:
+                security_records.append(record)
+                seen_hashes.add(record.row_hash)
+
+    verified_overlay = _verified_inactive_overlay_map(
+        overlay_inputs,
+        capture_attempt_binding=capture_attempt_binding,
+        publication_root=publication_root,
+        capture_date=capture_date,
+        expected_symbols=symbols,
+        market_by_symbol=market_by_symbol,
+        security_records=security_records,
+    )
+    for symbol, overlay in verified_overlay.items():
+        proof = cast(Mapping[str, object], overlay["proof"])
+        raw_hash = proof.get("source_raw_sha256")
+        matches = [
+            item
+            for item in raw_files
+            if item.get("role") == "security_inactive_termination"
+            and item.get("source_id") == f"official:tpex:termination:{symbol}"
+        ]
+        if len(matches) != 1 or matches[0].get("source_file_hash") != raw_hash:
+            raise PITTaxonomySourceError(
+                f"inactive proof raw manifest binding differs: {symbol}"
+            )
+        copy_path = _resolve_relative(bundle_root, matches[0].get("path"))
+        copied_raw = _proof_file_bytes(
+            copy_path,
+            "inactive termination notice bundle raw",
+            PIT_INACTIVE_TERMINATION_MAX_SOURCE_BYTES,
+        )
+        if (
+            _sha256_bytes(copied_raw) != raw_hash
+            or len(copied_raw) != proof.get("source_raw_bytes")
+        ):
+            raise PITTaxonomySourceError(
+                f"inactive proof bundle raw differs from attempt custody: {symbol}"
+            )
+
+    expected = set(symbols)
+    inactive_symbols = set(verified_overlay)
+    active_expected = tuple(sorted(expected - inactive_symbols))
+    if active_expected:
+        try:
+            expected_types, expected_eligibility, _selected = build_security_evidence_map(
+                security_records,
+                expected_symbols=active_expected,
+                market_by_symbol={
+                    symbol: market_by_symbol[symbol] for symbol in active_expected
+                },
+            )
+        except OfficialSecurityTypingError as error:
+            raise PITTaxonomySourceError(
+                "active official security map has missing, unknown, or conflicting rows"
+            ) from error
+    else:
+        expected_types, expected_eligibility = {}, {}
+    for symbol, overlay in verified_overlay.items():
+        proof = cast(Mapping[str, object], overlay["proof"])
+        expected_types[symbol] = "inactive_common_stock"
+        expected_eligibility[symbol] = {
+            "eligible": False,
+            "reason": "official_security_termination_inactive_research_only",
+            "security_type": "inactive_common_stock",
+            "market_scope": market_by_symbol[symbol],
+            "state": proof.get("state"),
+            "proof_sha256": _sha256_json(dict(proof)),
+        }
+    if dict(security_type_by_symbol) != expected_types:
+        raise PITTaxonomySourceError("inactive/active security type map differs from source bytes")
+    if dict(security_eligibility_by_symbol) != expected_eligibility:
+        raise PITTaxonomySourceError("inactive/active security eligibility map differs from source bytes")
+    if set(eligible_symbols) != {
+        symbol for symbol, item in expected_eligibility.items() if item.get("eligible") is True
+    }:
+        raise PITTaxonomySourceError("inactive overlay eligible projection differs")
+    if set(excluded_symbols) != {
+        symbol for symbol, item in expected_eligibility.items() if item.get("eligible") is False
+    }:
+        raise PITTaxonomySourceError("inactive overlay excluded projection differs")
+    if unknown_symbols:
+        raise PITTaxonomySourceError("inactive overlay cannot suppress unknown security symbols")
+    return verified_overlay
+
+
+def _decode_json_object_no_duplicates(raw: bytes, label: str) -> dict[str, object]:
+    def reject_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=reject_duplicates)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise PITTaxonomySourceError(f"{label} JSON is invalid") from error
+    if not isinstance(value, Mapping):
+        raise PITTaxonomySourceError(f"{label} is not an object")
+    return {str(key): item for key, item in value.items()}
 
 
 _TWSE_B1212_COMPOSITE_COMPONENTS = (
@@ -518,6 +2091,7 @@ def _capture_configured_composite_source(
     *,
     source_name: str,
     fetch_source: Callable[[str], object] | None,
+    attempt_writer: _PITTaxonomyCaptureAttempt | None = None,
 ) -> tuple[
     bytes,
     Mapping[str, object],
@@ -557,6 +2131,7 @@ def _capture_configured_composite_source(
             component_spec,
             source_name=f"{source_name}:{component_name}",
             fetch_source=fetch_source,
+            attempt_writer=attempt_writer,
         )
         payloads[component_name] = raw
         metadata[component_name] = component_metadata
@@ -621,6 +2196,9 @@ def build_daily_pit_taxonomy_bundle(
     company_license_urls: Mapping[str, str] | None = None,
     universe_symbols_payload: object | None = None,
     capture_started_at: datetime | None = None,
+    scope_binding: Mapping[str, object] | None = None,
+    capture_attempt_binding: Mapping[str, object] | None = None,
+    inactive_security_sources: Mapping[str, Mapping[str, object]] | None = None,
 ) -> PITTaxonomyBundleResult:
     """建立一份當日 preopen 完成的 PIT taxonomy bundle。
 
@@ -634,14 +2212,35 @@ def build_daily_pit_taxonomy_bundle(
 
     expected = _normalize_symbols(expected_symbols, "expected_symbols")
     hash_symbols = _normalize_symbols(universe_hash_symbols, "universe_hash_symbols")
-    if set(expected) != set(hash_symbols):
+    split_contract = scope_binding is not None
+    binding_fields = _split_scope_binding_fields(scope_binding) if split_contract else {}
+    if split_contract:
+        if not isinstance(capture_attempt_binding, Mapping):
+            raise PITTaxonomySourceError(
+                "split candidate requires verified capture-attempt custody"
+            )
+        capture_attempt_fields = _capture_attempt_binding_fields(
+            capture_attempt_binding
+        )
+    else:
+        if capture_attempt_binding is not None:
+            raise PITTaxonomySourceError(
+                "legacy v1 bundle cannot carry split capture-attempt custody"
+            )
+        capture_attempt_fields = {}
+    if not split_contract and set(expected) != set(hash_symbols):
         raise PITTaxonomySourceError(
             "full universe symbols and universe_hash_symbols must have the same set"
         )
     scores = _normalize_scores(scores_bp, len(hash_symbols))
     supplied_rank = _normalize_symbols(rank_order, "rank_order")
-    if set(supplied_rank) != set(expected):
-        raise PITTaxonomySourceError("rank_order must cover the full denominator exactly")
+    expected_rank_set = set(hash_symbols) if split_contract else set(expected)
+    if set(supplied_rank) != expected_rank_set:
+        raise PITTaxonomySourceError(
+            "rank_order must cover the Rule candidate set exactly"
+            if split_contract
+            else "rank_order must cover the full denominator exactly"
+        )
     _require_sha256(universe_hash, "universe_hash")
     expected_universe_hash = _sha256_json(
         {
@@ -678,13 +2277,61 @@ def build_daily_pit_taxonomy_bundle(
     if decision.astimezone(TAIPEI) < cutoff:
         raise PITTaxonomySourceError("decision_at must be the Taipei 08:30 taxonomy boundary")
     _validate_clock_payload(clock_payload, clock_id, clock_manifest_hash, universe_hash, capture_date)
-    _validate_universe_identity(
-        universe_identity_payload,
-        expected=expected,
-        hash_symbols=hash_symbols,
-        scores=scores,
-        universe_hash=universe_hash,
-    )
+    if split_contract:
+        _validate_split_scope_binding_claims(
+            binding_fields,
+            denominator_symbols=expected,
+            candidate_symbols=hash_symbols,
+            universe_hash=universe_hash,
+            capture_date=capture_date,
+            decision_at=decision,
+        )
+        _verify_split_scope_binding(
+            {
+                **binding_fields,
+                "symbols": list(expected),
+                "universe_hash_symbols": list(hash_symbols),
+                "universe_hash": universe_hash,
+                "clock_id": clock_id,
+                "clock_manifest_hash": clock_manifest_hash,
+                "rank_order": list(supplied_rank),
+                "capture_started_at": started.isoformat(),
+            },
+            bundle_manifest_path=(
+                bundle_root.expanduser().resolve() / "bundle_manifest.json"
+            ),
+            capture_date=capture_date,
+            decision_at=decision,
+            observed_at=observed,
+        )
+        _verify_capture_attempt_binding(
+            capture_attempt_fields,
+            publication_root=bundle_root.expanduser().resolve().parent.parent,
+            capture_date=capture_date,
+            capture_started_at=started,
+            decision_at=decision,
+            universe_hash=universe_hash,
+            clock_id=clock_id,
+            clock_manifest_hash=clock_manifest_hash,
+            scope_binding=binding_fields,
+            expected_bundle_hash=None,
+            require_success=False,
+        )
+        _validate_universe_identity(
+            universe_identity_payload,
+            expected=tuple(sorted(hash_symbols)),
+            hash_symbols=hash_symbols,
+            scores=scores,
+            universe_hash=universe_hash,
+        )
+    else:
+        _validate_universe_identity(
+            universe_identity_payload,
+            expected=expected,
+            hash_symbols=hash_symbols,
+            scores=scores,
+            universe_hash=universe_hash,
+        )
 
     company_payloads = {
         str(key): _require_bytes(value, f"company_raw_payloads[{key}]")
@@ -793,14 +2440,52 @@ def build_daily_pit_taxonomy_bundle(
         except OfficialSecurityTypingError as error:
             raise PITTaxonomySourceError(str(error)) from error
     market_by_symbol = _market_by_symbol(company_capture.rows, company_source_by_market)
-    try:
-        security_types, eligibility, selected_security = build_security_evidence_map(
-            security_records,
-            expected_symbols=expected,
-            market_by_symbol=market_by_symbol,
+    configured_inactive = inactive_security_sources or {}
+    if configured_inactive and not split_contract:
+        raise PITTaxonomySourceError(
+            "inactive security overlay is supported only by split research candidates"
         )
-    except OfficialSecurityTypingError as error:
-        raise PITTaxonomySourceError(str(error)) from error
+    inactive_overlay_by_symbol = _verified_inactive_overlay_map(
+        configured_inactive,
+        capture_attempt_binding=capture_attempt_fields,
+        publication_root=bundle_root.expanduser().resolve().parent.parent,
+        capture_date=capture_date,
+        expected_symbols=expected,
+        market_by_symbol=market_by_symbol,
+        security_records=security_records,
+    )
+    active_expected = tuple(
+        symbol for symbol in expected if symbol not in inactive_overlay_by_symbol
+    )
+    if active_expected:
+        try:
+            security_types, eligibility, selected_security = build_security_evidence_map(
+                security_records,
+                expected_symbols=active_expected,
+                market_by_symbol={
+                    symbol: market_by_symbol[symbol] for symbol in active_expected
+                },
+            )
+        except OfficialSecurityTypingError as error:
+            raise PITTaxonomySourceError(str(error)) from error
+    else:
+        security_types, eligibility, selected_security = {}, {}, {}
+    for symbol, overlay in inactive_overlay_by_symbol.items():
+        proof = overlay["proof"]
+        if not isinstance(proof, Mapping):
+            raise PITTaxonomySourceError(
+                f"inactive security proof is invalid: {symbol}"
+            )
+        proof_hash = _sha256_json(dict(proof))
+        security_types[symbol] = "inactive_common_stock"
+        eligibility[symbol] = {
+            "eligible": False,
+            "reason": "official_security_termination_inactive_research_only",
+            "security_type": "inactive_common_stock",
+            "market_scope": market_by_symbol[symbol],
+            "state": proof.get("state"),
+            "proof_sha256": proof_hash,
+        }
     unknown_symbols = sorted(
         symbol
         for symbol, evidence in eligibility.items()
@@ -965,6 +2650,64 @@ def build_daily_pit_taxonomy_bundle(
                     source_kind="official_isin_security_typing",
                 )
             )
+    inactive_completion: list[datetime] = []
+    if inactive_overlay_by_symbol:
+        publication_root = bundle_root.expanduser().resolve().parent.parent
+        attempt_root = _proof_child(
+            publication_root,
+            capture_attempt_fields.get("path"),
+            required_prefix="pit_taxonomy_capture_attempts/",
+            label="inactive overlay capture attempt",
+        )
+        for symbol, overlay in sorted(inactive_overlay_by_symbol.items()):
+            proof = cast(Mapping[str, object], overlay["proof"])
+            component = cast(Mapping[str, object], overlay["attempt_component"])
+            attempt_raw_path = _proof_child(
+                attempt_root,
+                component.get("raw_path"),
+                required_prefix="components/",
+                label="inactive overlay attempt raw",
+            )
+            raw = _proof_file_bytes(
+                attempt_raw_path,
+                "inactive overlay attempt raw",
+                PIT_INACTIVE_TERMINATION_MAX_SOURCE_BYTES,
+            )
+            if _sha256_bytes(raw) != proof.get("source_raw_sha256"):
+                raise PITTaxonomySourceError(
+                    f"inactive overlay raw hash differs before bundle write: {symbol}"
+                )
+            relative = Path("raw") / f"inactive_security_{symbol}_termination_notice.html"
+            _write_create_only_bytes(root / relative, raw)
+            available_at = _aware(
+                proof.get("captured_at"), f"inactive_security_overlay.{symbol}.captured_at"
+            )
+            spec = _inactive_termination_spec(
+                cast(Mapping[str, object], overlay["spec"]),
+                f"inactive_security_overlay.{symbol}.spec",
+            )
+            inactive_completion.append(available_at)
+            raw_files.append(
+                _raw_entry(
+                    role="security_inactive_termination",
+                    market_scope=spec.market_scope,
+                    source_id=f"official:tpex:termination:{symbol}",
+                    source_version=overlay["source_version"],
+                    path=relative,
+                    raw_payload=raw,
+                    http={
+                        "requested_url": proof.get("source_url"),
+                        "final_url": proof.get("source_url"),
+                        "http_status": proof.get("response_status"),
+                        "content_type": proof.get("content_type"),
+                        "captured_at": available_at.isoformat(),
+                    },
+                    available_at=available_at,
+                    effective_from=spec.termination_effective_on,
+                    parser_version=str(proof.get("schema_version")),
+                    source_kind="official_inactive_common_stock_termination_research",
+                )
+            )
     raw_files.sort(key=lambda item: (str(item["role"]), str(item["market_scope"]), str(item["path"])))
     raw_manifest_body: dict[str, object] = {
         "schema_version": PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION,
@@ -985,7 +2728,12 @@ def build_daily_pit_taxonomy_bundle(
     raw_manifest_hash = _file_sha256(raw_manifest_path)
 
     source_available_at = max(
-        [*company_completion.values(), *classification_completion.values(), *security_completion.values()]
+        [
+            *company_completion.values(),
+            *classification_completion.values(),
+            *security_completion.values(),
+            *inactive_completion,
+        ]
     )
     source_version = f"daily:{capture_date.isoformat()}"
     security_sources_by_market = _security_sources(
@@ -999,7 +2747,11 @@ def build_daily_pit_taxonomy_bundle(
         market: dict(value) for market, value in classification_sources.items()
     }
     source_body: dict[str, object] = {
-        "schema_version": PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION,
+        "schema_version": (
+            PIT_TAXONOMY_SOURCE_V3_SCHEMA_VERSION
+            if split_contract
+            else PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION
+        ),
         "producer_version": PIT_TAXONOMY_BUNDLE_PRODUCER_VERSION,
         "capture_date": capture_date.isoformat(),
         "source_id": "official:pit-industry-taxonomy-daily",
@@ -1032,11 +2784,19 @@ def build_daily_pit_taxonomy_bundle(
         "raw_manifest_path": "raw_manifest.json",
         "raw_manifest_hash": raw_manifest_hash,
     }
+    if split_contract:
+        source_body.update(binding_fields)
+        source_body["capture_attempt_binding"] = capture_attempt_fields
+        source_body[PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD] = inactive_overlay_by_symbol
     taxonomy_source_path = metadata_root / "taxonomy_source.json"
     _write_create_only_json(taxonomy_source_path, source_body)
     taxonomy_source_hash = _file_sha256(taxonomy_source_path)
     identity_body: dict[str, object] = {
-        "schema_version": PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION,
+        "schema_version": (
+            PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION
+            if split_contract
+            else PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION
+        ),
         "classification_version_by_market": {
             market: definitions_by_market[market].classification_version
             for market in sorted(definitions_by_market)
@@ -1065,6 +2825,10 @@ def build_daily_pit_taxonomy_bundle(
         "raw_manifest_path": "raw_manifest.json",
         "raw_manifest_hash": raw_manifest_hash,
     }
+    if split_contract:
+        identity_body.update(binding_fields)
+        identity_body["capture_attempt_binding"] = capture_attempt_fields
+        identity_body[PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD] = inactive_overlay_by_symbol
     identity = {**identity_body, "mapping_hash": _sha256_json(identity_body)}
     taxonomy_identity_path = metadata_root / "taxonomy_identity.json"
     _write_create_only_json(taxonomy_identity_path, identity)
@@ -1118,7 +2882,11 @@ def build_daily_pit_taxonomy_bundle(
         )
     )
     bundle_body: dict[str, object] = {
-        "schema_version": PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION,
+        "schema_version": (
+            PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION
+            if split_contract
+            else PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION
+        ),
         "status": "preopen_captured",
         "producer": "data_module.pit_taxonomy_source_producer",
         "producer_version": PIT_TAXONOMY_BUNDLE_PRODUCER_VERSION,
@@ -1161,6 +2929,10 @@ def build_daily_pit_taxonomy_bundle(
         "production_action_allowed": False,
         "historical_backfill_claimed": False,
     }
+    if split_contract:
+        bundle_body.update(binding_fields)
+        bundle_body["capture_attempt_binding"] = capture_attempt_fields
+        bundle_body[PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD] = inactive_overlay_by_symbol
     bundle_manifest_path = root / "bundle_manifest.json"
     _write_create_only_json(
         bundle_manifest_path,
@@ -1179,6 +2951,11 @@ def build_daily_pit_taxonomy_bundle(
         unknown_symbol_count=len(unknown_symbols),
         security_type_counts=_value_counts(security_types.values()),
         market_scope_counts=_value_counts(market_by_symbol.values()),
+        schema_version=(
+            PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION
+            if split_contract
+            else PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION
+        ),
     )
 
 
@@ -1190,14 +2967,20 @@ def validate_daily_pit_taxonomy_bundle(
 ) -> dict[str, object]:
     """postcutoff 只讀驗證 bundle envelope、hash、raw component 與 cutoff。"""
 
-    path = bundle_manifest_path.expanduser().resolve()
+    raw_path = Path(os.path.abspath(str(bundle_manifest_path.expanduser())))
+    _assert_no_link_path(raw_path, allow_missing=False)
+    path = raw_path.resolve()
     payload = _read_json_object(path, "taxonomy bundle manifest")
     bundle_hash = _require_sha256(payload.get("bundle_hash"), "bundle_hash")
     body = dict(payload)
     body.pop("bundle_hash", None)
     if _sha256_json(body) != bundle_hash:
         raise PITTaxonomySourceError("taxonomy bundle hash mismatch")
-    if payload.get("schema_version") != PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION:
+    bundle_schema = payload.get("schema_version")
+    if bundle_schema not in {
+        PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION,
+        PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION,
+    }:
         raise PITTaxonomySourceError("taxonomy bundle schema_version is unsupported")
     if payload.get("status") != "preopen_captured":
         raise PITTaxonomySourceError("taxonomy bundle is not a preopen capture")
@@ -1219,6 +3002,50 @@ def validate_daily_pit_taxonomy_bundle(
             )
     if decision.astimezone(TAIPEI) < cutoff:
         raise PITTaxonomySourceError("postcutoff bundle validation is before Taipei 08:30")
+    split_scope: dict[str, object] | None = None
+    if bundle_schema == PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION:
+        split_scope = _verify_split_scope_binding(
+            payload,
+            bundle_manifest_path=path,
+            capture_date=capture_date,
+            decision_at=decision,
+            observed_at=(
+                _aware(now, "now") if now is not None else datetime.now(timezone.utc)
+            ),
+        )
+        capture_attempt_value = payload.get("capture_attempt_binding")
+        if not isinstance(capture_attempt_value, Mapping):
+            raise PITTaxonomySourceError("split candidate capture-attempt binding is missing")
+        split_scope.update(
+            _verify_capture_attempt_binding(
+                capture_attempt_value,
+                publication_root=path.parent.parent.parent.resolve(),
+                capture_date=capture_date,
+                capture_started_at=_aware(payload.get("capture_started_at"), "bundle.capture_started_at"),
+                decision_at=decision,
+                universe_hash=str(payload.get("universe_hash")),
+                clock_id=str(payload.get("clock_id")),
+                clock_manifest_hash=str(payload.get("clock_manifest_hash")),
+                scope_binding={
+                    field_name: payload.get(field_name)
+                    for field_name in _SPLIT_SCOPE_BINDING_FIELDS
+                },
+                expected_bundle_hash=bundle_hash,
+                require_success=True,
+            )
+        )
+    elif any(
+        field_name in payload
+        for field_name in (
+            "denominator_binding",
+            "rule_candidate_binding",
+            "scope_diff",
+            "scope_binding_schema_version",
+            "capture_attempt_binding",
+            PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD,
+        )
+    ):
+        raise PITTaxonomySourceError("v1 taxonomy bundle cannot carry split-scope fields")
     if payload.get("decision_at") != decision.isoformat() and _aware(
         payload.get("decision_at"), "bundle.decision_at"
     ) > decision:
@@ -1255,6 +3082,14 @@ def validate_daily_pit_taxonomy_bundle(
     identity_hash = _require_sha256(payload.get("taxonomy_identity_hash"), "taxonomy_identity_hash")
     if _file_sha256(source_path) != source_hash or _file_sha256(identity_path) != identity_hash:
         raise PITTaxonomySourceError("taxonomy source or identity file hash mismatch")
+    if bundle_schema == PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION:
+        _verify_split_taxonomy_metadata(
+            payload,
+            source_path=source_path,
+            identity_path=identity_path,
+            source_hash=source_hash,
+            identity_hash=identity_hash,
+        )
     rows = payload.get("rows")
     symbols = payload.get("symbols")
     if not isinstance(rows, list) or not isinstance(symbols, list):
@@ -1298,7 +3133,37 @@ def validate_daily_pit_taxonomy_bundle(
         raise PITTaxonomySourceError("taxonomy bundle security type counts mismatch")
     if market_scope_counts != _value_counts(market_by_symbol.values()):
         raise PITTaxonomySourceError("taxonomy bundle market scope counts mismatch")
-    return {
+    inactive_overlay_verified: dict[str, dict[str, object]] = {}
+    if bundle_schema == PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION:
+        capture_attempt_value = payload.get("capture_attempt_binding")
+        if not isinstance(capture_attempt_value, Mapping):
+            raise PITTaxonomySourceError("split inactive overlay capture-attempt binding is missing")
+        eligibility_value = payload.get("security_eligibility_by_symbol")
+        if not isinstance(eligibility_value, Mapping) or set(eligibility_value) != full_set:
+            raise PITTaxonomySourceError("taxonomy bundle security eligibility map is invalid")
+        eligibility_map: dict[str, Mapping[str, object]] = {}
+        for symbol, detail in eligibility_value.items():
+            if not isinstance(detail, Mapping):
+                raise PITTaxonomySourceError("taxonomy bundle security eligibility entry is invalid")
+            eligibility_map[str(symbol)] = dict(detail)
+        inactive_overlay_verified = _validate_bundle_inactive_security_overlay(
+            payload.get(PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD),
+            capture_attempt_binding=capture_attempt_value,
+            publication_root=path.parent.parent.parent.resolve(),
+            capture_date=capture_date,
+            bundle_root=root,
+            raw_files=[item for item in files if isinstance(item, Mapping)],
+            symbols=tuple(sorted(full_set)),
+            market_by_symbol=market_by_symbol,
+            security_type_by_symbol=security_types,
+            security_eligibility_by_symbol=eligibility_map,
+            eligible_symbols=eligible,
+            excluded_symbols=excluded,
+            unknown_symbols=unknown,
+        )
+    elif PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD in payload:
+        raise PITTaxonomySourceError("v1 taxonomy bundle cannot carry inactive security overlays")
+    result: dict[str, object] = {
         "status": "preopen_captured_verified",
         "bundle_manifest_path": str(path),
         "bundle_hash": bundle_hash,
@@ -1315,6 +3180,844 @@ def validate_daily_pit_taxonomy_bundle(
         "security_type_counts": security_type_counts,
         "market_scope_counts": market_scope_counts,
         "post_cutoff_refetch_forbidden": True,
+    }
+    if split_scope is not None:
+        result["schema_version"] = str(bundle_schema)
+        result.update(split_scope)
+        result[PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD] = inactive_overlay_verified
+    return result
+
+
+_SPLIT_SCOPE_BINDING_FIELDS = frozenset(
+    {
+        "scope_binding_schema_version",
+        "denominator_binding",
+        "rule_candidate_binding",
+        "scope_diff",
+        "taxonomy_coverage_complete",
+        "rule_scope_compatible",
+    }
+)
+
+
+def _split_scope_binding_fields(
+    value: Mapping[str, object] | None,
+) -> dict[str, object]:
+    if not isinstance(value, Mapping) or set(value) != _SPLIT_SCOPE_BINDING_FIELDS:
+        raise PITTaxonomySourceError(
+            "split-scope binding must contain exactly the approved binding fields"
+        )
+    return {str(key): item for key, item in value.items()}
+
+
+def _validate_split_scope_binding_claims(
+    value: Mapping[str, object],
+    *,
+    denominator_symbols: Sequence[str],
+    candidate_symbols: Sequence[str],
+    universe_hash: str,
+    capture_date: date,
+    decision_at: datetime,
+) -> None:
+    """檢查新契約的自我一致性；外部來源 bytes 另由讀回 validator 重驗。"""
+
+    if set(value) != _SPLIT_SCOPE_BINDING_FIELDS:
+        raise PITTaxonomySourceError("split-scope binding fields are invalid or reserved")
+    if value.get("scope_binding_schema_version") != PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION:
+        raise PITTaxonomySourceError("split-scope binding schema is missing or unsupported")
+    denominator = _normalize_symbols(denominator_symbols, "denominator_symbols")
+    candidates = _normalize_symbols(candidate_symbols, "universe_hash_symbols")
+    if not set(candidates).issubset(set(denominator)):
+        # Candidate-only symbols are preserved as explicit diagnostics, but
+        # they are never considered compatible with the official denominator.
+        compatible = False
+    else:
+        compatible = True
+    if value.get("taxonomy_coverage_complete") is not True:
+        raise PITTaxonomySourceError("split-scope taxonomy coverage must be explicitly complete")
+    if value.get("rule_scope_compatible") is not compatible:
+        raise PITTaxonomySourceError("split-scope Rule compatibility claim is inconsistent")
+    denominator_binding = value.get("denominator_binding")
+    candidate_binding = value.get("rule_candidate_binding")
+    diff = value.get("scope_diff")
+    if not isinstance(denominator_binding, Mapping) or not isinstance(candidate_binding, Mapping):
+        raise PITTaxonomySourceError("split-scope denominator or Rule binding is missing")
+    if not isinstance(diff, Mapping):
+        raise PITTaxonomySourceError("split-scope bidirectional diff is missing")
+    if candidate_binding.get("universe_hash") != universe_hash:
+        raise PITTaxonomySourceError("split-scope Rule universe hash differs")
+    if candidate_binding.get("candidate_count") != len(candidates):
+        raise PITTaxonomySourceError("split-scope Rule candidate count differs")
+    if denominator_binding.get("symbol_count") != len(denominator):
+        raise PITTaxonomySourceError("split-scope denominator count differs")
+    if denominator_binding.get("coverage_start") != capture_date.isoformat():
+        raise PITTaxonomySourceError("split-scope denominator coverage date differs")
+    if candidate_binding.get("activation_trading_day") != capture_date.isoformat():
+        raise PITTaxonomySourceError("split-scope Rule clock date differs")
+    if candidate_binding.get("decision_at") != decision_at.isoformat():
+        raise PITTaxonomySourceError("split-scope Rule decision timestamp differs")
+    expected_diff = _scope_diff(denominator, candidates)
+    if dict(diff) != expected_diff:
+        raise PITTaxonomySourceError("split-scope bidirectional diff claim differs")
+
+
+def _verify_split_scope_binding(
+    bundle: Mapping[str, object],
+    *,
+    bundle_manifest_path: Path,
+    capture_date: date,
+    decision_at: datetime,
+    observed_at: datetime,
+) -> dict[str, object]:
+    """從固定 publication-root 相對位置重讀 denominator 與 Rule parent。"""
+
+    _validate_split_scope_binding_claims(
+        {field_name: bundle.get(field_name) for field_name in _SPLIT_SCOPE_BINDING_FIELDS},
+        denominator_symbols=_string_list(bundle.get("symbols"), "symbols"),
+        candidate_symbols=_string_list(
+            bundle.get("universe_hash_symbols"), "universe_hash_symbols"
+        ),
+        universe_hash=str(bundle.get("universe_hash")),
+        capture_date=capture_date,
+        decision_at=decision_at,
+    )
+    bundle_root = bundle_manifest_path.parent.resolve()
+    taxonomy_root = bundle_root.parent
+    if taxonomy_root.name != "pit_taxonomy_preopen_split_v2":
+        raise PITTaxonomySourceError("split-scope bundle is outside its immutable v2 root")
+    if bundle_root.name != capture_date.isoformat():
+        raise PITTaxonomySourceError("split-scope bundle directory differs from capture date")
+    publication_root = taxonomy_root.parent.resolve()
+
+    denominator_claim = bundle.get("denominator_binding")
+    rule_claim = bundle.get("rule_candidate_binding")
+    if not isinstance(denominator_claim, Mapping) or not isinstance(rule_claim, Mapping):
+        raise PITTaxonomySourceError("split-scope source binding is invalid")
+    denominator_path = _proof_child(
+        publication_root,
+        denominator_claim.get("path"),
+        required_prefix="pit_denominator/",
+        label="denominator",
+    )
+    denominator_raw = _proof_file_bytes(denominator_path, "denominator", 16 * 1024 * 1024)
+    denominator_file_hash = _sha256_bytes(denominator_raw)
+    if denominator_file_hash != denominator_claim.get("file_sha256"):
+        raise PITTaxonomySourceError("split-scope denominator raw bytes changed")
+    try:
+        denominator_manifest = json.loads(denominator_raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise PITTaxonomySourceError("split-scope denominator JSON is invalid") from error
+    if not isinstance(denominator_manifest, Mapping):
+        raise PITTaxonomySourceError("split-scope denominator manifest is not an object")
+    _precheck_denominator_child_custody(denominator_path.parent, denominator_manifest)
+    try:
+        verified_denominator = validate_prospective_pit_denominator(
+            denominator_path,
+            now=observed_at,
+        )
+    except Exception as error:  # validator provides the authoritative contract
+        raise PITTaxonomySourceError(
+            f"split-scope denominator revalidation failed:{type(error).__name__}"
+        ) from error
+    if _sha256_bytes(_proof_file_bytes(denominator_path, "denominator", 16 * 1024 * 1024)) != denominator_file_hash:
+        raise PITTaxonomySourceError("split-scope denominator changed during revalidation")
+    denominator_symbols = _normalize_symbols(
+        _string_list(verified_denominator.get("symbols"), "denominator.symbols"),
+        "verified denominator symbols",
+    )
+    denominator_expected = {
+        "schema_version": "pit-prospective-pit-denominator-binding.v1",
+        "path": denominator_claim.get("path"),
+        "file_sha256": denominator_file_hash,
+        "content_sha256": verified_denominator.get("content_sha256"),
+        "symbols_hash": verified_denominator.get("symbols_hash"),
+        "symbol_count": len(denominator_symbols),
+        "scope": verified_denominator.get("scope"),
+        "coverage_start": verified_denominator.get("coverage_start"),
+        "observed_at": verified_denominator.get("observed_at"),
+    }
+    if dict(denominator_claim) != denominator_expected:
+        raise PITTaxonomySourceError("split-scope denominator binding does not match verified source")
+    if verified_denominator.get("scope") != "prospective_pit_sector_membership":
+        raise PITTaxonomySourceError("split-scope denominator is not official PIT scope")
+    if verified_denominator.get("coverage_start") != capture_date.isoformat():
+        raise PITTaxonomySourceError("split-scope denominator is not same-day prospective")
+    denominator_observed = _aware(verified_denominator.get("observed_at"), "denominator.observed_at")
+    started_at = _aware(bundle.get("capture_started_at"), "bundle.capture_started_at")
+    cutoff = datetime.combine(capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI)
+    if denominator_observed > started_at or denominator_observed >= cutoff:
+        raise PITTaxonomySourceError("split-scope denominator timestamp is after capture boundary")
+    expected_denominator_symbols = _normalize_symbols(
+        _string_list(bundle.get("symbols"), "bundle.symbols"), "bundle.symbols"
+    )
+    if denominator_symbols != expected_denominator_symbols:
+        raise PITTaxonomySourceError("split-scope official denominator symbols changed")
+
+    rule_bundle_path = _proof_child(
+        publication_root,
+        rule_claim.get("bundle_path"),
+        required_prefix="rule_source/",
+        label="Rule bundle",
+    )
+    if not rule_bundle_path.is_dir() or rule_bundle_path.is_symlink():
+        raise PITTaxonomySourceError("split-scope Rule bundle directory is invalid")
+    expected_relatives = {
+        "identity": "metadata/universe_identity.json",
+        "symbols": "metadata/universe_symbols.json",
+        "clock": "clock/manifest.json",
+        "source_window": "source/daily_price_window.json",
+    }
+    declared_hashes = rule_claim.get("file_hashes")
+    if not isinstance(declared_hashes, Mapping) or set(declared_hashes) != set(expected_relatives):
+        raise PITTaxonomySourceError("split-scope Rule raw file hash set is incomplete")
+    raw_files: dict[str, bytes] = {}
+    for key, relative in expected_relatives.items():
+        file_path = _proof_child(
+            rule_bundle_path,
+            relative,
+            required_prefix=None,
+            label=f"Rule {key}",
+        )
+        raw = _proof_file_bytes(
+            file_path,
+            f"Rule {key}",
+            128 * 1024 * 1024 if key == "source_window" else 16 * 1024 * 1024,
+        )
+        actual_hash = _sha256_bytes(raw)
+        if actual_hash != declared_hashes.get(key):
+            raise PITTaxonomySourceError(f"split-scope Rule {key} raw bytes changed")
+        raw_files[key] = raw
+    try:
+        identity = json.loads(raw_files["identity"].decode("utf-8"))
+        symbols_payload = json.loads(raw_files["symbols"].decode("utf-8"))
+        clock = json.loads(raw_files["clock"].decode("utf-8"))
+        source_window = json.loads(raw_files["source_window"].decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise PITTaxonomySourceError("split-scope Rule parent JSON is invalid") from error
+    if not all(isinstance(item, Mapping) for item in (identity, clock, source_window)):
+        raise PITTaxonomySourceError("split-scope Rule parent payload is invalid")
+    if not isinstance(symbols_payload, list):
+        raise PITTaxonomySourceError("split-scope Rule symbols payload is invalid")
+    identity = dict(identity)
+    clock = dict(clock)
+    source_window = dict(source_window)
+    candidate_symbols = _normalize_symbols(
+        _string_list(identity.get("symbols"), "rule identity symbols"),
+        "rule identity symbols",
+    )
+    raw_hash_symbols = identity.get("universe_hash_symbols")
+    if not isinstance(raw_hash_symbols, list) or any(
+        not isinstance(item, str) for item in raw_hash_symbols
+    ):
+        raise PITTaxonomySourceError(
+            "rule identity hash symbols must be a string array"
+        )
+    # This is the score-alignment order committed by the Rule producer.  Do
+    # not route it through _string_list, which sorts the values and silently
+    # detaches each score from its candidate.
+    hash_symbols = _normalize_symbols(
+        raw_hash_symbols,
+        "universe_hash_symbols",
+    )
+    scores_value = identity.get("scores_bp")
+    if not isinstance(scores_value, list):
+        raise PITTaxonomySourceError("rule identity scores_bp must be an array")
+    scores = _normalize_scores(scores_value, len(hash_symbols))
+    if set(hash_symbols) != set(candidate_symbols) or symbols_payload != list(candidate_symbols):
+        raise PITTaxonomySourceError("split-scope Rule candidate symbols do not reconstruct")
+    if identity.get("schema_version") != "manual-rule-only-universe.v1" or identity.get("source_id") != "daily_prices":
+        raise PITTaxonomySourceError("split-scope Rule identity schema/source is unsupported")
+    candidate_hash = _sha256_json(
+        {
+            "schema_version": "manual-rule-only-universe.v1",
+            "symbols": list(hash_symbols),
+            "scores_bp": scores,
+        }
+    )
+    if identity.get("universe_hash") != candidate_hash or bundle.get("universe_hash") != candidate_hash:
+        raise PITTaxonomySourceError("split-scope Rule candidate score hash differs")
+    identity_body = dict(identity)
+    identity_hash = identity_body.pop("identity_hash", None)
+    if identity_hash != _sha256_json(identity_body):
+        raise PITTaxonomySourceError("split-scope Rule identity logical hash mismatch")
+    clock_body = dict(clock)
+    clock_hash = clock_body.pop("manifest_hash", None)
+    if clock_hash != _sha256_json(clock_body):
+        raise PITTaxonomySourceError("split-scope Rule clock logical hash mismatch")
+    if (
+        clock.get("clock_id") != bundle.get("clock_id")
+        or clock_hash != bundle.get("clock_manifest_hash")
+        or clock.get("universe_hash") != candidate_hash
+        or clock.get("activation_trading_day") != capture_date.isoformat()
+    ):
+        raise PITTaxonomySourceError("split-scope Rule clock binding differs")
+    # This field binds the upstream accepted clock used to derive the current
+    # candidate clock; it is not the current bundle's clock file hash.  The
+    # current bytes are independently pinned above and the current logical
+    # clock hash is verified below.
+    _require_sha256(
+        identity.get("parent_clock_manifest_file_hash"),
+        "parent_clock_manifest_file_hash",
+    )
+    if identity.get("source_window_file_hash") != declared_hashes.get("source_window"):
+        raise PITTaxonomySourceError("split-scope Rule identity does not bind source-window bytes")
+    source_hash = _require_sha256(source_window.get("source_window_hash"), "source_window_hash")
+    source_payload = source_window.get("source_payload")
+    if not isinstance(source_payload, Mapping) or _sha256_json(dict(source_payload)) != source_hash:
+        raise PITTaxonomySourceError("split-scope Rule source-window payload hash mismatch")
+    source_as_of = _required_date(
+        source_window.get("data_as_of_date"),
+        "rule.source_window.data_as_of_date",
+    )
+    source_max_available = _aware(
+        source_window.get("max_available_timestamp"),
+        "rule.source_window.max_available_timestamp",
+    )
+    if (
+        identity.get("source_window_hash") != source_hash
+        or source_window.get("schema_version") != "formal-rule-source-window.v1"
+        or source_window.get("capture_boundary")
+        != "daily_prices.date < decision_session"
+        or source_payload.get("schema_version")
+        != "manual-rule-only-daily-price-window.v1"
+        or source_payload.get("source_id") != "daily_prices"
+        or source_payload.get("decision_session") != capture_date.isoformat()
+    ):
+        raise PITTaxonomySourceError("split-scope Rule source-window identity differs")
+    as_of = _required_date(identity.get("data_as_of_date"), "rule.data_as_of_date")
+    max_available = _aware(identity.get("max_available_timestamp"), "rule.max_available_timestamp")
+    if source_as_of != as_of or source_max_available != max_available:
+        raise PITTaxonomySourceError(
+            "split-scope Rule source-window availability metadata differs"
+        )
+    if as_of >= capture_date or max_available.astimezone(TAIPEI).date() >= capture_date:
+        raise PITTaxonomySourceError("split-scope Rule data is not prior-session available")
+    if max_available >= cutoff or max_available > decision_at:
+        raise PITTaxonomySourceError("split-scope Rule availability is after cutoff")
+    rank = identity.get("rank_order")
+    if rank is not None:
+        if not isinstance(rank, (list, tuple)) or any(
+            not isinstance(item, str) for item in rank
+        ):
+            raise PITTaxonomySourceError("split-scope Rule rank order is invalid")
+        bundle_rank = bundle.get("rank_order")
+        if not isinstance(bundle_rank, (list, tuple)) or any(
+            not isinstance(item, str) for item in bundle_rank
+        ):
+            raise PITTaxonomySourceError("split-scope bundle rank order is invalid")
+        if _normalize_symbols(rank, "rank_order") != _normalize_symbols(
+            bundle_rank, "rank_order"
+        ):
+            raise PITTaxonomySourceError("split-scope Rule rank-order binding differs")
+    if rank is None and list(hash_symbols) != bundle.get("rank_order"):
+        raise PITTaxonomySourceError("split-scope implicit Rule rank order differs")
+    if int(identity.get("candidate_count", -1)) != len(candidate_symbols):
+        raise PITTaxonomySourceError("split-scope Rule candidate count mismatch")
+
+    candidate_expected = {
+        "schema_version": "pit-rule-candidate-binding.v1",
+        "bundle_path": rule_claim.get("bundle_path"),
+        "file_hashes": dict(cast(Mapping[str, object], declared_hashes)),
+        "identity_hash": identity_hash,
+        "clock_id": clock.get("clock_id"),
+        "clock_manifest_hash": clock_hash,
+        "universe_hash": candidate_hash,
+        "candidate_count": len(candidate_symbols),
+        "candidate_symbols_hash": _sha256_json(list(candidate_symbols)),
+        "activation_trading_day": capture_date.isoformat(),
+        "decision_at": decision_at.isoformat(),
+        "data_as_of_date": as_of.isoformat(),
+        # Preserve the identity's original offset spelling in the binding;
+        # the parsed instant is compared against cutoff above.
+        "max_available_timestamp": identity.get("max_available_timestamp"),
+        "source_window_hash": source_hash,
+    }
+    if dict(cast(Mapping[str, object], rule_claim)) != candidate_expected:
+        raise PITTaxonomySourceError("split-scope Rule binding does not match revalidated parent")
+
+    expected_diff = _scope_diff(denominator_symbols, candidate_symbols)
+    diff_claim = bundle.get("scope_diff")
+    if not isinstance(diff_claim, Mapping) or dict(
+        cast(Mapping[str, object], diff_claim)
+    ) != expected_diff:
+        raise PITTaxonomySourceError("split-scope stored set diff differs from verified sources")
+    expected_compatible = not expected_diff["rule_only_symbols"]
+    if bundle.get("rule_scope_compatible") is not expected_compatible:
+        raise PITTaxonomySourceError("split-scope Rule compatibility is not fail-closed")
+    return {
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": expected_compatible,
+        "denominator_symbols_hash": verified_denominator.get("symbols_hash"),
+        "rule_candidate_symbols_hash": _sha256_json(list(candidate_symbols)),
+        "scope_diff": expected_diff,
+        "denominator_binding_verified": True,
+        "rule_candidate_binding_verified": True,
+    }
+
+
+def _precheck_denominator_child_custody(
+    root: Path,
+    denominator: Mapping[str, object],
+) -> None:
+    registry = denominator.get("source_registry")
+    if not isinstance(registry, list) or not registry:
+        raise PITTaxonomySourceError("split-scope denominator source registry is missing")
+    for entry in registry:
+        if not isinstance(entry, Mapping):
+            raise PITTaxonomySourceError("split-scope denominator source entry is invalid")
+        for field_name in ("json_path", "csv_path", "metadata_path", "swagger_path_file"):
+            path = _proof_child(root, entry.get(field_name), required_prefix=None, label=field_name)
+            _proof_file_bytes(path, f"denominator {field_name}", 64 * 1024 * 1024)
+    license_path = _proof_child(
+        root,
+        "government_open_data_license.html",
+        required_prefix=None,
+        label="denominator license",
+    )
+    _proof_file_bytes(license_path, "denominator license", 4 * 1024 * 1024)
+
+
+def _verify_split_taxonomy_metadata(
+    bundle: Mapping[str, object],
+    *,
+    source_path: Path,
+    identity_path: Path,
+    source_hash: str,
+    identity_hash: str,
+) -> None:
+    if source_path.name != "taxonomy_source.json" or identity_path.name != "taxonomy_identity.json":
+        raise PITTaxonomySourceError("split-scope taxonomy metadata path is unsupported")
+    source_raw = _proof_file_bytes(source_path, "taxonomy source metadata", 16 * 1024 * 1024)
+    identity_raw = _proof_file_bytes(identity_path, "taxonomy identity metadata", 16 * 1024 * 1024)
+    if _sha256_bytes(source_raw) != source_hash or _sha256_bytes(identity_raw) != identity_hash:
+        raise PITTaxonomySourceError("split-scope taxonomy metadata bytes changed")
+    try:
+        source_value = json.loads(source_raw.decode("utf-8"))
+        identity_value = json.loads(identity_raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise PITTaxonomySourceError("split-scope taxonomy metadata JSON is invalid") from error
+    if not isinstance(source_value, Mapping) or not isinstance(identity_value, Mapping):
+        raise PITTaxonomySourceError("split-scope taxonomy metadata is not an object")
+    source = dict(source_value)
+    identity = dict(identity_value)
+    if (
+        source.get("schema_version") != PIT_TAXONOMY_SOURCE_V3_SCHEMA_VERSION
+        or identity.get("schema_version") != PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION
+    ):
+        raise PITTaxonomySourceError("split-scope taxonomy metadata version mismatch")
+    attempt_binding_value = bundle.get("capture_attempt_binding")
+    if not isinstance(attempt_binding_value, Mapping):
+        raise PITTaxonomySourceError("split-scope capture-attempt binding is missing")
+    attempt_binding = _capture_attempt_binding_fields(attempt_binding_value)
+    if (
+        source.get("capture_attempt_binding") != attempt_binding
+        or identity.get("capture_attempt_binding") != attempt_binding
+    ):
+        raise PITTaxonomySourceError("split-scope capture-attempt binding differs")
+    binding_fields = _split_scope_binding_fields(
+        {field_name: bundle.get(field_name) for field_name in _SPLIT_SCOPE_BINDING_FIELDS}
+    )
+    for field_name, expected in binding_fields.items():
+        if source.get(field_name) != expected or identity.get(field_name) != expected:
+            raise PITTaxonomySourceError(f"split-scope taxonomy {field_name} differs")
+    identity_body = dict(identity)
+    mapping_hash = identity_body.pop("mapping_hash", None)
+    if mapping_hash != _sha256_json(identity_body):
+        raise PITTaxonomySourceError("split-scope taxonomy identity mapping hash mismatch")
+    for field_name in (
+        "source_id",
+        "source_version",
+        "available_at",
+        "effective_from",
+        "universe_hash",
+        "symbols",
+        "universe_hash_symbols",
+        "scores_bp",
+        "rank_order",
+        "mapping_by_market",
+        "classification_sources_by_market",
+        "security_sources_by_market",
+        "market_by_symbol",
+        "security_type_by_symbol",
+        "security_eligibility_by_symbol",
+        "eligible_symbols",
+        "excluded_by_security",
+        "unknown_symbols",
+        "license_scope",
+        "raw_manifest_path",
+        "raw_manifest_hash",
+        PIT_TAXONOMY_INACTIVE_OVERLAY_FIELD,
+        "capture_attempt_binding",
+    ):
+        if source.get(field_name) != identity.get(field_name):
+            raise PITTaxonomySourceError(f"split-scope taxonomy source {field_name} mismatch")
+    if (
+        identity.get("source_hash") != source_hash
+        or identity.get("universe_hash") != bundle.get("universe_hash")
+        or identity.get("symbols") != bundle.get("symbols")
+        or identity.get("universe_hash_symbols") != bundle.get("universe_hash_symbols")
+        or identity.get("scores_bp") != bundle.get("scores_bp")
+        or identity.get("rank_order") != bundle.get("rank_order")
+    ):
+        raise PITTaxonomySourceError("split-scope taxonomy identity differs from bundle envelope")
+
+
+def _proof_child(
+    root: Path,
+    value: object,
+    *,
+    required_prefix: str | None,
+    label: str,
+) -> Path:
+    if not isinstance(value, str) or not value or "\\" in value or ":" in value:
+        raise PITTaxonomySourceError(f"{label} proof path is invalid")
+    raw_parts = value.split("/")
+    if value.startswith("/") or any(part in {"", ".", ".."} for part in raw_parts):
+        raise PITTaxonomySourceError(f"{label} proof path must be normalized and relative")
+    relative = Path(value)
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        raise PITTaxonomySourceError(f"{label} proof path must be normalized and relative")
+    if required_prefix is not None and not value.startswith(required_prefix):
+        raise PITTaxonomySourceError(f"{label} proof path has the wrong root")
+    target = root.joinpath(relative)
+    try:
+        resolved = target.resolve(strict=True)
+        resolved.relative_to(root.resolve(strict=True))
+    except (OSError, ValueError) as error:
+        raise PITTaxonomySourceError(f"{label} proof path escapes or is missing") from error
+    return target
+
+
+def _proof_file_bytes(path: Path, label: str, max_bytes: int) -> bytes:
+    try:
+        return _read_regular_single_link_file(path, label=label, max_bytes=max_bytes)
+    except (CaptureValidationError, OSError) as error:
+        raise PITTaxonomySourceError(f"{label} proof file custody failed") from error
+
+
+def _assert_no_link_path(
+    path: Path,
+    *,
+    allow_missing: bool,
+    confine_to: Path | None = None,
+) -> None:
+    """拒絕 custody path 中的 symlink/junction，並可限制在單一根目錄內。"""
+
+    absolute = Path(os.path.abspath(str(path.expanduser())))
+    confinement = (
+        Path(os.path.abspath(str(confine_to.expanduser())))
+        if confine_to is not None
+        else None
+    )
+    if confinement is not None:
+        try:
+            absolute.relative_to(confinement)
+        except ValueError as error:
+            raise PITTaxonomySourceError("capture attempt path escapes publication root") from error
+    parts = absolute.parts
+    current = Path(parts[0])
+    for part in parts[1:]:
+        current = current / part
+        try:
+            is_link = current.is_symlink()
+            is_junction = bool(
+                getattr(current, "is_junction", lambda: False)()
+            )
+            exists = current.exists()
+        except OSError as error:
+            raise PITTaxonomySourceError("capture attempt path cannot be inspected") from error
+        if is_link or is_junction:
+            raise PITTaxonomySourceError("capture attempt path contains a link")
+        if not exists and not allow_missing:
+            raise PITTaxonomySourceError("capture attempt path is missing")
+
+
+def _relative_path(root: Path, target: Path) -> str:
+    try:
+        relative = target.resolve(strict=True).relative_to(root.resolve(strict=True))
+    except (OSError, ValueError) as error:
+        raise PITTaxonomySourceError("capture attempt bundle path is outside publication root") from error
+    return relative.as_posix()
+
+
+def _decode_json_object(raw: bytes, label: str) -> dict[str, object]:
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise PITTaxonomySourceError(f"{label} JSON is invalid") from error
+    if not isinstance(value, Mapping):
+        raise PITTaxonomySourceError(f"{label} is not an object")
+    return {str(key): item for key, item in value.items()}
+
+
+def _capture_attempt_binding_fields(value: Mapping[str, object]) -> dict[str, object]:
+    expected = {
+        "schema_version",
+        "attempt_id",
+        "path",
+        "descriptor_sha256",
+        "receipt_path",
+        "receipt_sha256",
+        "component_count",
+        "aggregate_raw_bytes",
+    }
+    if set(value) != expected:
+        raise PITTaxonomySourceError("capture-attempt binding fields are invalid or reserved")
+    if value.get("schema_version") != PIT_TAXONOMY_CAPTURE_ATTEMPT_BINDING_SCHEMA_VERSION:
+        raise PITTaxonomySourceError("capture-attempt binding schema is unsupported")
+    if re.fullmatch(r"[0-9a-f]{32}", str(value.get("attempt_id"))) is None:
+        raise PITTaxonomySourceError("capture-attempt binding id is invalid")
+    for field_name in ("descriptor_sha256", "receipt_sha256"):
+        _require_sha256(value.get(field_name), f"capture_attempt_binding.{field_name}")
+    component_count = value.get("component_count")
+    aggregate_raw_bytes = value.get("aggregate_raw_bytes")
+    for field_name, item in (
+        ("component_count", component_count),
+        ("aggregate_raw_bytes", aggregate_raw_bytes),
+    ):
+        if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+            raise PITTaxonomySourceError(f"capture-attempt binding {field_name} is invalid")
+    if not isinstance(component_count, int) or isinstance(component_count, bool):
+        raise PITTaxonomySourceError("capture-attempt binding component count is invalid")
+    if not isinstance(aggregate_raw_bytes, int) or isinstance(aggregate_raw_bytes, bool):
+        raise PITTaxonomySourceError("capture-attempt binding aggregate bytes are invalid")
+    if component_count < 1 or component_count > PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS:
+        raise PITTaxonomySourceError("capture-attempt binding component count is out of bounds")
+    if aggregate_raw_bytes > PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES:
+        raise PITTaxonomySourceError("capture-attempt binding aggregate bytes are out of bounds")
+    attempt_id = str(value["attempt_id"])
+    capture_path = value.get("path")
+    receipt_path = value.get("receipt_path")
+    expected_path = f"pit_taxonomy_capture_attempts/{_path_date_from_capture_path(capture_path)}/{attempt_id}"
+    if capture_path != expected_path or receipt_path != f"{expected_path}/capture_receipt.json":
+        raise PITTaxonomySourceError("capture-attempt binding paths are not canonical")
+    return {str(key): item for key, item in value.items()}
+
+
+def _path_date_from_capture_path(value: object) -> str:
+    if not isinstance(value, str) or "\\" in value or ":" in value:
+        raise PITTaxonomySourceError("capture-attempt path is invalid")
+    parts = value.split("/")
+    if len(parts) != 3 or parts[0] != "pit_taxonomy_capture_attempts":
+        raise PITTaxonomySourceError("capture-attempt path has the wrong root")
+    try:
+        parsed = date.fromisoformat(parts[1])
+    except ValueError as error:
+        raise PITTaxonomySourceError("capture-attempt path date is invalid") from error
+    if parsed.isoformat() != parts[1]:
+        raise PITTaxonomySourceError("capture-attempt path date is not canonical")
+    return parts[1]
+
+
+def _verify_capture_attempt_files(
+    attempt_root: Path,
+    descriptor: Mapping[str, object],
+    receipt: Mapping[str, object],
+) -> None:
+    if descriptor.get("schema_version") != PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION:
+        raise PITTaxonomySourceError("capture-attempt descriptor schema is unsupported")
+    attempt_id = descriptor.get("attempt_id")
+    if attempt_root.name != attempt_id or receipt.get("attempt_id") != attempt_id:
+        raise PITTaxonomySourceError("capture-attempt identity mismatch")
+    planned = descriptor.get("planned_sources")
+    components = receipt.get("components")
+    if not isinstance(planned, list) or not isinstance(components, list):
+        raise PITTaxonomySourceError("capture-attempt source plan or receipt is invalid")
+    if len(planned) != len(components) or not 1 <= len(components) <= PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS:
+        raise PITTaxonomySourceError("capture-attempt component set is incomplete")
+    aggregate = 0
+    cutoff = _aware(descriptor.get("cutoff_at"), "capture_attempt.cutoff_at")
+    started_at = _aware(descriptor.get("started_at"), "capture_attempt.started_at")
+    for index, (planned_item, component) in enumerate(zip(planned, components), start=1):
+        if not isinstance(planned_item, Mapping) or not isinstance(component, Mapping):
+            raise PITTaxonomySourceError("capture-attempt component entry is invalid")
+        source_name = str(planned_item.get("source_name"))
+        if component.get("source_name") != source_name:
+            raise PITTaxonomySourceError("capture-attempt component order/name mismatch")
+        raw_relative = component.get("raw_path")
+        metadata_relative = component.get("metadata_path")
+        if not isinstance(raw_relative, str) or not isinstance(metadata_relative, str):
+            raise PITTaxonomySourceError("capture-attempt component paths are missing")
+        prefix = f"components/{index:02d}_"
+        if not raw_relative.startswith(prefix) or not raw_relative.endswith(".raw"):
+            raise PITTaxonomySourceError("capture-attempt raw path is not canonical")
+        if metadata_relative != raw_relative[:-4] + ".metadata.json":
+            raise PITTaxonomySourceError("capture-attempt metadata path does not match raw path")
+        raw_path = _proof_child(attempt_root, raw_relative, required_prefix="components/", label="capture raw")
+        metadata_path = _proof_child(attempt_root, metadata_relative, required_prefix="components/", label="capture metadata")
+        raw = _proof_file_bytes(raw_path, "capture attempt raw component", PIT_TAXONOMY_MAX_SOURCE_BYTES)
+        metadata_raw = _proof_file_bytes(metadata_path, "capture attempt component metadata", 1024 * 1024)
+        if _sha256_bytes(raw) != component.get("raw_sha256") or len(raw) != component.get("raw_bytes"):
+            raise PITTaxonomySourceError("capture-attempt raw component hash/size mismatch")
+        if _sha256_bytes(metadata_raw) != component.get("metadata_sha256"):
+            raise PITTaxonomySourceError("capture-attempt component metadata hash mismatch")
+        metadata = _decode_json_object(metadata_raw, "capture attempt component metadata")
+        if metadata.get("source_name") != source_name or metadata.get("metadata_valid") is not True:
+            raise PITTaxonomySourceError("capture-attempt component metadata is invalid")
+        if metadata.get("raw_sha256") != _sha256_bytes(raw) or metadata.get("raw_bytes") != len(raw):
+            raise PITTaxonomySourceError("capture-attempt raw metadata hash/size mismatch")
+        http_metadata = metadata.get("http_metadata")
+        if not isinstance(http_metadata, Mapping):
+            raise PITTaxonomySourceError("capture-attempt HTTP metadata is missing")
+        available = _component_available(http_metadata, source_name)
+        if available >= cutoff:
+            raise PITTaxonomySourceError("capture-attempt source completed after cutoff")
+        if metadata.get("fetched") is True and available < started_at:
+            raise PITTaxonomySourceError("capture-attempt source completion predates actual start")
+        custodied_at = _aware(metadata.get("custodied_at"), "capture_attempt.custodied_at")
+        if custodied_at < started_at or custodied_at >= cutoff:
+            raise PITTaxonomySourceError("capture-attempt custody time is outside cutoff")
+        aggregate += len(raw)
+    if aggregate > PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES:
+        raise PITTaxonomySourceError("capture-attempt aggregate raw-byte limit exceeded")
+    if receipt.get("component_count") != len(components):
+        raise PITTaxonomySourceError("capture-attempt receipt component count mismatch")
+    if receipt.get("aggregate_raw_bytes") != aggregate:
+        raise PITTaxonomySourceError("capture-attempt receipt aggregate byte count mismatch")
+    if descriptor.get("scope_binding_sha256") != receipt.get("scope_binding_sha256"):
+        raise PITTaxonomySourceError("capture-attempt scope binding changed")
+
+
+def _verify_capture_attempt_binding(
+    binding: Mapping[str, object],
+    *,
+    publication_root: Path,
+    capture_date: date,
+    capture_started_at: datetime,
+    decision_at: datetime,
+    universe_hash: str,
+    clock_id: str,
+    clock_manifest_hash: str,
+    scope_binding: Mapping[str, object],
+    expected_bundle_hash: str | None,
+    require_success: bool,
+) -> dict[str, object]:
+    fields = _capture_attempt_binding_fields(binding)
+    attempt_id = str(fields["attempt_id"])
+    if fields["path"] != f"pit_taxonomy_capture_attempts/{capture_date.isoformat()}/{attempt_id}":
+        raise PITTaxonomySourceError("capture-attempt binding capture date mismatch")
+    publication = Path(os.path.abspath(str(publication_root.expanduser())))
+    _assert_no_link_path(publication, allow_missing=False)
+    attempt_root = _proof_child(
+        publication,
+        fields.get("path"),
+        required_prefix="pit_taxonomy_capture_attempts/",
+        label="capture attempt",
+    )
+    _assert_no_link_path(attempt_root, allow_missing=False, confine_to=publication)
+    descriptor_path = _proof_child(
+        attempt_root,
+        "attempt_descriptor.json",
+        required_prefix=None,
+        label="capture attempt descriptor",
+    )
+    receipt_path = _proof_child(
+        attempt_root,
+        "capture_receipt.json",
+        required_prefix=None,
+        label="capture attempt receipt",
+    )
+    descriptor_raw = _proof_file_bytes(descriptor_path, "capture attempt descriptor", 1024 * 1024)
+    receipt_raw = _proof_file_bytes(receipt_path, "capture attempt receipt", 4 * 1024 * 1024)
+    if _sha256_bytes(descriptor_raw) != fields.get("descriptor_sha256"):
+        raise PITTaxonomySourceError("capture-attempt descriptor hash mismatch")
+    if _sha256_bytes(receipt_raw) != fields.get("receipt_sha256"):
+        raise PITTaxonomySourceError("capture-attempt receipt hash mismatch")
+    descriptor = _decode_json_object(descriptor_raw, "capture attempt descriptor")
+    receipt = _decode_json_object(receipt_raw, "capture attempt receipt")
+    if descriptor.get("attempt_id") != attempt_id or receipt.get("attempt_id") != attempt_id:
+        raise PITTaxonomySourceError("capture-attempt id differs from binding")
+    if descriptor.get("capture_date") != capture_date.isoformat():
+        raise PITTaxonomySourceError("capture-attempt date differs from bundle")
+    if _aware(descriptor.get("started_at"), "capture_attempt.started_at") != capture_started_at:
+        raise PITTaxonomySourceError("capture-attempt start differs from bundle")
+    if descriptor.get("universe_hash") != universe_hash or descriptor.get("clock_id") != clock_id:
+        raise PITTaxonomySourceError("capture-attempt Rule identity differs from bundle")
+    if descriptor.get("clock_manifest_hash") != clock_manifest_hash:
+        raise PITTaxonomySourceError("capture-attempt Rule clock hash differs from bundle")
+    binding_hash = _sha256_json(_split_scope_binding_fields(scope_binding))
+    if descriptor.get("scope_binding_sha256") != binding_hash:
+        raise PITTaxonomySourceError("capture-attempt denominator/Rule binding differs")
+    if fields.get("component_count") != receipt.get("component_count"):
+        raise PITTaxonomySourceError("capture-attempt bound component count differs")
+    if fields.get("aggregate_raw_bytes") != receipt.get("aggregate_raw_bytes"):
+        raise PITTaxonomySourceError("capture-attempt bound aggregate byte count differs")
+    _verify_capture_attempt_files(attempt_root, descriptor, receipt)
+    if require_success:
+        terminal_raw = _proof_file_bytes(
+            _proof_child(
+                attempt_root,
+                "capture_result.json",
+                required_prefix=None,
+                label="capture attempt terminal result",
+            ),
+            "capture attempt terminal result",
+            1024 * 1024,
+        )
+        terminal = _decode_json_object(
+            terminal_raw, "capture attempt terminal result"
+        )
+        if (
+            terminal.get("schema_version")
+            != PIT_TAXONOMY_CAPTURE_ATTEMPT_SCHEMA_VERSION
+            or terminal.get("attempt_id") != attempt_id
+            or terminal.get("capture_date") != capture_date.isoformat()
+            or terminal.get("status") != "success"
+        ):
+            raise PITTaxonomySourceError("capture-attempt terminal result is not successful")
+        if terminal.get("descriptor_sha256") != fields.get("descriptor_sha256"):
+            raise PITTaxonomySourceError("capture-attempt terminal descriptor hash mismatch")
+        if terminal.get("receipt_sha256") != fields.get("receipt_sha256"):
+            raise PITTaxonomySourceError("capture-attempt terminal receipt hash mismatch")
+        terminal_at = _aware(terminal.get("completed_at"), "capture_attempt.completed_at")
+        cutoff = datetime.combine(capture_date, PIT_TAXONOMY_CUTOFF, tzinfo=TAIPEI)
+        if terminal_at >= cutoff or terminal_at < capture_started_at:
+            raise PITTaxonomySourceError("capture-attempt terminal time is outside cutoff")
+        if expected_bundle_hash is None or terminal.get("bundle_hash") != expected_bundle_hash:
+            raise PITTaxonomySourceError("capture-attempt terminal bundle hash mismatch")
+        if terminal.get("bundle_manifest_path") != f"pit_taxonomy_preopen_split_v2/{capture_date.isoformat()}/bundle_manifest.json":
+            raise PITTaxonomySourceError("capture-attempt terminal bundle path mismatch")
+        if terminal.get("components") != receipt.get("components"):
+            raise PITTaxonomySourceError("capture-attempt terminal component pins differ from receipt")
+        rejected = terminal.get("rejected_components", [])
+        if rejected != []:
+            raise PITTaxonomySourceError("successful capture attempt has rejected components")
+    else:
+        if expected_bundle_hash is not None:
+            raise PITTaxonomySourceError("unexpected bundle hash check for prewrite validation")
+        if (attempt_root / "capture_result.json").exists():
+            raise PITTaxonomySourceError("capture-attempt already has a terminal result")
+    return {
+        "capture_attempt_id": attempt_id,
+        "capture_attempt_path": str(attempt_root),
+        "capture_attempt_receipt_sha256": fields["receipt_sha256"],
+        "capture_attempt_component_count": fields["component_count"],
+        "capture_attempt_aggregate_raw_bytes": fields["aggregate_raw_bytes"],
+        "capture_attempt_verified": True,
+    }
+
+
+def _scope_diff(
+    denominator_symbols: Sequence[str],
+    candidate_symbols: Sequence[str],
+) -> dict[str, object]:
+    denominator = set(denominator_symbols)
+    candidates = set(candidate_symbols)
+    intersection = sorted(denominator & candidates)
+    denominator_only = sorted(denominator - candidates)
+    rule_only = sorted(candidates - denominator)
+    return {
+        "denominator_count": len(denominator),
+        "candidate_count": len(candidates),
+        "intersection_count": len(intersection),
+        "denominator_only_count": len(denominator_only),
+        "rule_only_count": len(rule_only),
+        "intersection_symbols": intersection,
+        "intersection_symbols_hash": _sha256_json(intersection),
+        "denominator_only_symbols": denominator_only,
+        "denominator_only_symbols_hash": _sha256_json(denominator_only),
+        "rule_only_symbols": rule_only,
+        "rule_only_symbols_hash": _sha256_json(rule_only),
     }
 
 
@@ -1971,12 +4674,16 @@ def _sha256_json(value: object) -> str:
 __all__ = [
     "PIT_TAXONOMY_BUNDLE_PRODUCER_VERSION",
     "PIT_TAXONOMY_BUNDLE_SCHEMA_VERSION",
+    "PIT_TAXONOMY_SPLIT_BUNDLE_SCHEMA_VERSION",
     "PIT_TAXONOMY_CUTOFF",
     "PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION",
+    "PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION",
     "PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION",
     "PIT_TAXONOMY_SOURCE_CONFIG_ENV",
     "PIT_TAXONOMY_SOURCE_CONFIG_SCHEMA_VERSION",
     "PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION",
+    "PIT_TAXONOMY_SOURCE_V3_SCHEMA_VERSION",
+    "PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION",
     "PITTaxonomyBundleResult",
     "PITTaxonomySourceResponse",
     "PITTaxonomySourceError",

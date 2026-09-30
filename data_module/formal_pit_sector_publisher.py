@@ -39,6 +39,8 @@ FORMAL_PIT_SECTOR_PUBLISHER_ID = "machine:formal-pit-sector-publisher"
 DAILY_PIT_TAXONOMY_PUBLISHER_VERSION = "daily-pit-taxonomy-publisher.v1"
 SIDECAR_SCHEMA_VERSION = "pit-sector-membership-sidecar-v1"
 MANIFEST_SCHEMA_VERSION = "pit-sector-membership-manifest-v1"
+SPLIT_SIDECAR_SCHEMA_VERSION = "pit-sector-membership-sidecar-v2"
+SPLIT_MANIFEST_SCHEMA_VERSION = "pit-sector-membership-manifest-v2"
 TAIPEI = ZoneInfo("Asia/Taipei")
 _SHA256_RE = __import__("re").compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -81,12 +83,24 @@ def publish_daily_pit_taxonomy_sidecar(
             now=observed,
         )
         bundle = read_daily_pit_taxonomy_bundle(bundle_manifest_path)
+        split_contract = (
+            validation.get("schema_version")
+            == "pit-industry-taxonomy-daily-bundle.v2"
+        )
         capture_date = date.fromisoformat(str(validation["capture_date"]))
         source_root = Path(bundle_manifest_path).expanduser().resolve().parent
         output_root = publication_root.expanduser().resolve()
         _require_output_root(output_root)
-        target_root = output_root / "pit_sector_membership_formal" / capture_date.isoformat()
-        _copy_taxonomy_bundle_create_only(source_root, target_root)
+        if split_contract:
+            expected_root = output_root / "pit_taxonomy_preopen_split_v2" / capture_date.isoformat()
+            if source_root != expected_root:
+                raise FormalPITSectorPublisherError(
+                    "split-scope publication must stay inside its separate v2 candidate root"
+                )
+            target_root = source_root
+        else:
+            target_root = output_root / "pit_sector_membership_formal" / capture_date.isoformat()
+            _copy_taxonomy_bundle_create_only(source_root, target_root)
 
         rows = bundle.get("rows")
         sources = bundle.get("source_registry")
@@ -95,12 +109,19 @@ def publish_daily_pit_taxonomy_sidecar(
         if not isinstance(sources, list) or any(not isinstance(item, Mapping) for item in sources):
             raise FormalPITSectorPublisherError("taxonomy bundle source registry is invalid")
         normalized_rows = [dict(row) for row in rows]
+        sidecar_schema_version = (
+            SPLIT_SIDECAR_SCHEMA_VERSION if split_contract else SIDECAR_SCHEMA_VERSION
+        )
+        manifest_schema_version = (
+            SPLIT_MANIFEST_SCHEMA_VERSION if split_contract else MANIFEST_SCHEMA_VERSION
+        )
         manifest_body: dict[str, object] = {
-            "schema_version": MANIFEST_SCHEMA_VERSION,
+            "schema_version": manifest_schema_version,
             "status": "formal_source_publication",
             "formal_source_only": True,
-            "research_only": False,
-            "formal_consumer_compatible": True,
+            "research_only": split_contract,
+            "formal_consumer_compatible": not split_contract
+            and validation.get("rule_scope_compatible", True) is True,
             "promotion_eligible": False,
             "scope": "prospective_pit_sector_membership",
             "historical_backfill_claimed": False,
@@ -127,13 +148,28 @@ def publish_daily_pit_taxonomy_sidecar(
             "production_action_allowed": False,
             "broker_order_allowed": False,
         }
+        if split_contract:
+            for field_name in (
+                "scope_binding_schema_version",
+                "denominator_binding",
+                "rule_candidate_binding",
+                "scope_diff",
+                "taxonomy_coverage_complete",
+                "rule_scope_compatible",
+            ):
+                manifest_body[field_name] = bundle.get(field_name)
+            manifest_body["status"] = "complete"
+            manifest_body["candidate_only"] = True
+            manifest_body["taxonomy_coverage_verified"] = (
+                validation.get("taxonomy_coverage_complete") is True
+            )
         sidecar = {
-            "schema_version": SIDECAR_SCHEMA_VERSION,
+            "schema_version": sidecar_schema_version,
             "manifest": {
                 **manifest_body,
                 "canonical_hash": _payload_hash(
                     {
-                        "sidecar_schema_version": SIDECAR_SCHEMA_VERSION,
+                        "sidecar_schema_version": sidecar_schema_version,
                         "manifest": manifest_body,
                     }
                 ),
@@ -165,7 +201,17 @@ def publish_daily_pit_taxonomy_sidecar(
                 for warning in readback.warnings
                 if warning not in blockers
             )
-        status = "formal_source_publication" if industry_filter_usable else "blocked"
+        status = (
+            "formal_source_publication"
+            if industry_filter_usable
+            else (
+                "candidate_only_rule_scope_incompatible"
+                if split_contract
+                and validation.get("taxonomy_coverage_complete") is True
+                and validation.get("rule_scope_compatible") is False
+                else "blocked"
+            )
+        )
         receipt_body: dict[str, object] = {
             "schema_version": "daily-pit-taxonomy-publisher-receipt.v1",
             "status": status,
@@ -197,6 +243,13 @@ def publish_daily_pit_taxonomy_sidecar(
             "broker_order_allowed": False,
             "post_cutoff_refetch_forbidden": True,
         }
+        if split_contract:
+            receipt_body["taxonomy_coverage_complete"] = (
+                validation.get("taxonomy_coverage_complete") is True
+            )
+            receipt_body["rule_scope_compatible"] = validation.get(
+                "rule_scope_compatible"
+            )
         receipt_path = target_root / "taxonomy_receipt.json"
         _write_create_only_json(
             receipt_path,

@@ -4,11 +4,14 @@ from datetime import date, datetime, time, timedelta
 import json
 from pathlib import Path
 import shutil
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 
 import data_module.formal_pit_sector_publisher as publisher_module
+import data_module.pit_sector_membership_reader as reader_module
+import data_module.pit_taxonomy_source_producer as source_producer_module
 from data_module.formal_pit_history_handoff import (
     persist_pit_candidate_history_handoff,
 )
@@ -125,6 +128,124 @@ def test_formal_sidecar_publishes_and_reads_through_existing_assembler(
     assert receipt["historical_backfill_claimed"] is False
     assert receipt["formal_ready"] is True
     assert receipt["candidate_only"] is False
+
+
+def test_split_taxonomy_publisher_keeps_v2_candidate_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_day = date(2026, 8, 25)
+    decision = datetime(2026, 8, 25, 8, 30, tzinfo=TAIPEI)
+    publication_root = tmp_path / "publication"
+    source_root = (
+        publication_root
+        / "pit_taxonomy_preopen_split_v2"
+        / capture_day.isoformat()
+    )
+    source_root.mkdir(parents=True)
+    bundle_manifest_path = source_root / "bundle_manifest.json"
+    bundle_manifest_path.write_text("{}\n", encoding="utf-8")
+    bundle_hash = "sha256:" + ("d" * 64)
+    diff: dict[str, object] = {
+        "denominator_count": 2,
+        "candidate_count": 1,
+        "intersection_count": 1,
+        "denominator_only_count": 1,
+        "rule_only_count": 0,
+        "intersection_symbols": ["2330"],
+        "intersection_symbols_hash": "sha256:" + ("1" * 64),
+        "denominator_only_symbols": ["1101"],
+        "denominator_only_symbols_hash": "sha256:" + ("2" * 64),
+        "rule_only_symbols": [],
+        "rule_only_symbols_hash": "sha256:" + ("3" * 64),
+    }
+    scope_fields: dict[str, object] = {
+        "scope_binding_schema_version": "pit-industry-taxonomy-scope-binding.v1",
+        "denominator_binding": {"schema_version": "denominator-binding-test.v1"},
+        "rule_candidate_binding": {"schema_version": "rule-candidate-binding-test.v1"},
+        "scope_diff": diff,
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": False,
+    }
+    bundle: dict[str, object] = {
+        "bundle_hash": bundle_hash,
+        "rows": [
+            {
+                "symbol": "2330",
+                "sector_id": "SEMI",
+                "available_at": "2026-08-25T05:00:00+08:00",
+                "effective_from": "2026-08-25",
+                "status": "accepted",
+                "source_id": "official:twse:industry-definition",
+                "license_id": "research-only",
+                "source_hash": "sha256:" + ("4" * 64),
+            }
+        ],
+        "source_registry": [{"source_id": "official:twse:industry-definition"}],
+        "clock_id": "clock:prospective:20260825:test",
+        "clock_manifest_hash": "sha256:" + ("5" * 64),
+        "universe_hash": "sha256:" + ("6" * 64),
+        "license_scope": {"status": "research_only_unaccepted"},
+        "security_type_counts": {"common_equity": 1},
+        "market_scope_counts": {"twse_listed": 1},
+        **scope_fields,
+    }
+    monkeypatch.setattr(
+        source_producer_module,
+        "validate_daily_pit_taxonomy_bundle",
+        lambda *_args, **_kwargs: {
+            "schema_version": "pit-industry-taxonomy-daily-bundle.v2",
+            "status": "preopen_captured_verified",
+            "capture_date": capture_day.isoformat(),
+            "bundle_hash": bundle_hash,
+            "taxonomy_coverage_complete": True,
+            "rule_scope_compatible": False,
+            "full_symbol_count": 2,
+            "eligible_symbol_count": 1,
+            "excluded_symbol_count": 1,
+            "unknown_symbol_count": 0,
+        },
+    )
+    monkeypatch.setattr(
+        source_producer_module,
+        "read_daily_pit_taxonomy_bundle",
+        lambda _path: dict(bundle),
+    )
+
+    class _CandidateReader:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def read(self, **_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                status="candidate_only",
+                industry_filter_usable=False,
+                rows=(),
+                quality="candidate_only",
+                warnings=("membership_split_rule_scope_incompatible",),
+                lineage={"taxonomy_coverage_complete": True},
+            )
+
+    monkeypatch.setattr(reader_module, "PITSectorMembershipReader", _CandidateReader)
+    result = publisher_module.publish_daily_pit_taxonomy_sidecar(
+        bundle_manifest_path=bundle_manifest_path,
+        publication_root=publication_root,
+        decision_at=decision,
+        now=decision,
+    )
+
+    assert result["status"] == "candidate_only_rule_scope_incompatible"
+    assert result["taxonomy_coverage_complete"] is True
+    assert result["rule_scope_compatible"] is False
+    assert result["formal_ready"] is False
+    assert result["formal_consumer_compatible"] is False
+    assert result["candidate_only"] is True
+    sidecar_path = Path(str(result["sidecar_path"]))
+    assert sidecar_path.is_relative_to(source_root)
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["schema_version"] == "pit-sector-membership-sidecar-v2"
+    assert sidecar["manifest"]["formal_consumer_compatible"] is False
+    assert sidecar["manifest"]["research_only"] is True
 
 
 def test_formal_sidecar_keeps_current_day_before_taipei_cutoff_blocked(

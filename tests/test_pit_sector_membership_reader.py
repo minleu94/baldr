@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 
+import data_module.pit_sector_membership_reader as reader_module
 from data_module.pit_sector_membership_machine import build_machine_pit_publication
 from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
@@ -151,6 +152,89 @@ def test_taxonomy_missing_unknown_code_and_partial_denominator_never_verify_filt
     assert partial.status == "accepted"
     assert partial.industry_filter_usable is False
     assert "membership_taxonomy_partial_denominator" in partial.warnings
+
+
+def test_v2_reader_blocks_formal_consumption_for_rule_scope_incompatibility(
+    tmp_path: Path,
+) -> None:
+    fixture = build_pit_fixture(tmp_path, symbols=("2330",))
+    envelope = load_json(fixture.artifact_path)
+    assert isinstance(envelope, dict)
+    manifest = envelope["manifest"]
+    assert isinstance(manifest, dict)
+    manifest.pop("canonical_hash", None)
+    manifest["schema_version"] = reader_module.PIT_SPLIT_MANIFEST_SCHEMA_VERSION
+    manifest.update(
+        {
+            "scope_binding_schema_version": reader_module.PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION,
+            "denominator_binding": {"schema_version": "denominator-binding-test.v1"},
+            "rule_candidate_binding": {"schema_version": "rule-candidate-binding-test.v1"},
+            "scope_diff": {
+                "denominator_count": 2,
+                "candidate_count": 2,
+                "intersection_count": 1,
+                "denominator_only_count": 1,
+                "rule_only_count": 1,
+                "intersection_symbols": ["2330"],
+                "intersection_symbols_hash": _sha256_json(["2330"]),
+                "denominator_only_symbols": ["1101"],
+                "denominator_only_symbols_hash": _sha256_json(["1101"]),
+                "rule_only_symbols": ["5371"],
+                "rule_only_symbols_hash": _sha256_json(["5371"]),
+            },
+            "taxonomy_coverage_complete": True,
+            "rule_scope_compatible": False,
+            "research_only": True,
+            "formal_consumer_compatible": False,
+        }
+    )
+    envelope["schema_version"] = reader_module.PIT_SPLIT_SIDECAR_SCHEMA_VERSION
+    manifest["canonical_hash"] = _sha256_json(
+        {
+            "sidecar_schema_version": reader_module.PIT_SPLIT_SIDECAR_SCHEMA_VERSION,
+            "manifest": manifest,
+        }
+    )
+    write_json(fixture.artifact_path, envelope)
+
+    result = _read(fixture)
+
+    assert result.status != "accepted"
+    assert result.industry_filter_usable is False
+    assert result.artifact is not None
+    assert result.artifact.artifact_status == "unavailable"
+    assert result.artifact.formal_consumer_compatible is False
+
+    # Re-signing a candidate sidecar after changing only its self-declared
+    # research/formal flags must not turn the preview schema into an accepted
+    # consumer contract.
+    manifest["research_only"] = False
+    manifest["formal_consumer_compatible"] = True
+    manifest.pop("canonical_hash", None)
+    manifest["canonical_hash"] = _sha256_json(
+        {
+            "sidecar_schema_version": reader_module.PIT_SPLIT_SIDECAR_SCHEMA_VERSION,
+            "manifest": manifest,
+        }
+    )
+    write_json(fixture.artifact_path, envelope)
+    forged = _read(fixture)
+    assert forged.status != "accepted"
+    assert forged.industry_filter_usable is False
+    rows = envelope.get("rows")
+    assert isinstance(rows, list)
+    try:
+        PITSectorMembershipReader([fixture.artifact_path])._parse_sidecar(
+            fixture.artifact_path,
+            manifest,
+            rows,
+            decision_at=DECISION_AT,
+            sidecar_schema_version=reader_module.PIT_SPLIT_SIDECAR_SCHEMA_VERSION,
+        )
+    except reader_module.PITMembershipReaderError as error:
+        assert str(error) == "PIT split candidate cannot claim formal compatibility"
+    else:
+        raise AssertionError("re-signed candidate flags must still fail the split reader")
 
 
 def test_taxonomy_requires_real_source_hash_schema_and_available_at_cutoff(

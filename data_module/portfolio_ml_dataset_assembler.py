@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
 import gzip
 import hashlib
@@ -77,6 +77,13 @@ SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION = (
 SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION = (
     "pit-sector-membership-manifest-v1"
 )
+SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION = (
+    "pit-sector-membership-sidecar-v2"
+)
+SPLIT_SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION = (
+    "pit-sector-membership-manifest-v2"
+)
+SPLIT_SCOPE_BINDING_SCHEMA_VERSION = "pit-industry-taxonomy-scope-binding.v1"
 SUPPORTED_HORIZONS = (5, 10, 20, 60)
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _DECISION_TIME = time(8, 30)
@@ -2396,7 +2403,10 @@ def _load_sector_membership_sidecar(
         envelope.get("schema_version"),
         field_name="sector membership schema_version",
     )
-    if schema_version != SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION:
+    if schema_version not in {
+        SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+        SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+    }:
         raise ValueError(
             "unsupported sector membership sidecar schema"
         )
@@ -2421,10 +2431,98 @@ def _load_sector_membership_sidecar(
         manifest.get("schema_version"),
         field_name="sector membership manifest schema_version",
     )
-    if manifest_schema != SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION:
+    split_contract = schema_version == SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION
+    expected_manifest_schema = (
+        SPLIT_SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION
+        if split_contract
+        else SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION
+    )
+    if manifest_schema != expected_manifest_schema:
         raise ValueError(
             "unsupported sector membership manifest schema"
         )
+    if split_contract:
+        expected_split_canonical_hash = _sha256_json(
+            {
+                "sidecar_schema_version": schema_version,
+                "manifest": manifest,
+            }
+        )
+        if canonical_hash != expected_split_canonical_hash:
+            raise ValueError("split taxonomy sidecar canonical hash mismatch")
+        required_scope_fields = {
+            "scope_binding_schema_version",
+            "denominator_binding",
+            "rule_candidate_binding",
+            "scope_diff",
+            "taxonomy_coverage_complete",
+            "rule_scope_compatible",
+        }
+        if required_scope_fields - set(manifest):
+            raise ValueError("split sector membership source binding is incomplete")
+        if manifest.get("scope_binding_schema_version") != SPLIT_SCOPE_BINDING_SCHEMA_VERSION:
+            raise ValueError("split sector membership scope-binding schema is unsupported")
+        if manifest.get("taxonomy_coverage_complete") is not True:
+            raise ValueError("split sector taxonomy coverage is not complete")
+        diff = manifest.get("scope_diff")
+        if not isinstance(diff, Mapping):
+            raise ValueError("split sector membership scope diff is invalid")
+        rule_only = diff.get("rule_only_symbols")
+        if not isinstance(rule_only, list) or any(not isinstance(item, str) for item in rule_only):
+            raise ValueError("split sector membership Rule-only set is invalid")
+        if rule_only or manifest.get("rule_scope_compatible") is not True:
+            raise ValueError("Rule candidate set is outside the official denominator")
+        if manifest.get("formal_consumer_compatible") is not True:
+            raise ValueError("split taxonomy candidate has no formal consumer acceptance")
+        if not isinstance(manifest.get("denominator_binding"), Mapping) or not isinstance(
+            manifest.get("rule_candidate_binding"), Mapping
+        ):
+            raise ValueError("split sector membership source binding is invalid")
+        bundle_relative = manifest.get("taxonomy_bundle_manifest_path")
+        if bundle_relative != "../bundle_manifest.json":
+            raise ValueError("split taxonomy bundle binding path is not canonical")
+        decision_value = manifest.get("decision_at")
+        if not isinstance(decision_value, str):
+            raise ValueError("split taxonomy decision timestamp is missing")
+        try:
+            decision_at = datetime.fromisoformat(decision_value)
+        except ValueError as error:
+            raise ValueError("split taxonomy decision timestamp is invalid") from error
+        if decision_at.tzinfo is None or decision_at.utcoffset() is None:
+            raise ValueError("split taxonomy decision timestamp must be timezone-aware")
+        bundle_manifest_path = (path.parent / bundle_relative).resolve()
+        try:
+            bundle = _as_mapping(
+                json.loads(bundle_manifest_path.read_text(encoding="utf-8")),
+                field_name="split taxonomy bundle manifest",
+            )
+            for field_name in required_scope_fields:
+                if bundle.get(field_name) != manifest.get(field_name):
+                    raise ValueError(
+                        f"split taxonomy sidecar {field_name} differs from bundle"
+                    )
+            from data_module.pit_taxonomy_source_producer import (
+                validate_daily_pit_taxonomy_bundle,
+            )
+
+            validation = validate_daily_pit_taxonomy_bundle(
+                bundle_manifest_path,
+                decision_at=decision_at,
+                now=datetime.now(timezone.utc),
+            )
+        except Exception as error:  # noqa: BLE001 - bad source binding stays unusable
+            raise ValueError("split taxonomy source binding failed revalidation") from error
+        if (
+            validation.get("taxonomy_coverage_complete") is not True
+            or validation.get("rule_scope_compatible") is not True
+            or validation.get("bundle_hash") != manifest.get("taxonomy_bundle_hash")
+            or validation.get("scope_diff") != manifest.get("scope_diff")
+        ):
+            raise ValueError("split taxonomy bundle binding does not match the sidecar")
+        # v2 is deliberately an opt-in research preview.  It has no owner
+        # acceptance field or Formal consumer contract, so self-asserting the
+        # two compatibility flags cannot promote it into training input.
+        raise ValueError("split taxonomy v2 remains preview-only without an accepted contract")
     row_count = manifest.get("row_count")
     if (
         isinstance(row_count, bool)

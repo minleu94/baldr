@@ -50,13 +50,18 @@ from data_module.pit_taxonomy_security_adapter import (
 
 PIT_MEMBERSHIP_READER_SCHEMA_VERSION = "pit-sector-membership-reader.v1"
 PIT_SIDECAR_SCHEMA_VERSION = "pit-sector-membership-sidecar-v1"
+PIT_SPLIT_SIDECAR_SCHEMA_VERSION = "pit-sector-membership-sidecar-v2"
 PIT_PROSPECTIVE_MANIFEST_SCHEMA_VERSION = "pit-sector-membership-prospective-manifest-v1"
 PIT_FORMAL_MANIFEST_SCHEMA_VERSION = "pit-sector-membership-manifest-v1"
+PIT_SPLIT_MANIFEST_SCHEMA_VERSION = "pit-sector-membership-manifest-v2"
 PIT_MACHINE_PUBLICATION_SCHEMA_VERSION = "pit-sector-membership-machine-publication.v1"
 PIT_TAXONOMY_IDENTITY_SCHEMA_VERSION = "pit-industry-taxonomy-identity.v2"
 PIT_TAXONOMY_SOURCE_SCHEMA_VERSION = "pit-industry-taxonomy-source.v1"
 PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION = "pit-industry-taxonomy-identity.v3"
 PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION = "pit-industry-taxonomy-source.v2"
+PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION = "pit-industry-taxonomy-identity.v4"
+PIT_TAXONOMY_SOURCE_V3_SCHEMA_VERSION = "pit-industry-taxonomy-source.v3"
+PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION = "pit-industry-taxonomy-scope-binding.v1"
 PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION = "pit-industry-taxonomy-raw-manifest.v1"
 PIT_UNIVERSE_IDENTITY_SCHEMA_VERSION = "manual-rule-only-universe.v1"
 TAIPEI_TIMEZONE = ZoneInfo("Asia/Taipei")
@@ -180,6 +185,26 @@ _TAXONOMY_SOURCE_V2_REQUIRED_FIELDS = frozenset(
         "raw_manifest_path",
         "raw_manifest_hash",
     }
+)
+_SCOPE_BINDING_FIELDS = frozenset(
+    {
+        "scope_binding_schema_version",
+        "denominator_binding",
+        "rule_candidate_binding",
+        "scope_diff",
+        "taxonomy_coverage_complete",
+        "rule_scope_compatible",
+    }
+)
+_TAXONOMY_V4_REQUIRED_FIELDS = (
+    _TAXONOMY_V3_REQUIRED_FIELDS
+    | _SCOPE_BINDING_FIELDS
+    | frozenset({"capture_attempt_binding", "inactive_security_overlay_by_symbol"})
+)
+_TAXONOMY_SOURCE_V3_REQUIRED_FIELDS = (
+    _TAXONOMY_SOURCE_V2_REQUIRED_FIELDS
+    | _SCOPE_BINDING_FIELDS
+    | frozenset({"capture_attempt_binding", "inactive_security_overlay_by_symbol"})
 )
 _MANIFEST_REQUIRED_FIELDS = frozenset(
     {
@@ -754,7 +779,11 @@ class PITSectorMembershipReader:
             return self._parse_machine_publication(path, payload, decision_at=decision_at)
         if set(payload) != {"schema_version", "manifest", "rows"}:
             raise PITMembershipReaderError("PIT sidecar envelope fields are invalid")
-        if payload.get("schema_version") != PIT_SIDECAR_SCHEMA_VERSION:
+        sidecar_schema = payload.get("schema_version")
+        if sidecar_schema not in {
+            PIT_SIDECAR_SCHEMA_VERSION,
+            PIT_SPLIT_SIDECAR_SCHEMA_VERSION,
+        }:
             raise PITMembershipReaderError("PIT sidecar schema_version is unsupported")
         manifest_value = payload.get("manifest")
         rows_value = payload.get("rows")
@@ -767,6 +796,7 @@ class PITSectorMembershipReader:
             dict(manifest_value),
             rows_value,
             decision_at=decision_at,
+            sidecar_schema_version=str(sidecar_schema),
         )
 
     def _parse_sidecar(
@@ -776,6 +806,7 @@ class PITSectorMembershipReader:
         rows_value: list[object],
         *,
         decision_at: datetime,
+        sidecar_schema_version: str = PIT_SIDECAR_SCHEMA_VERSION,
     ) -> _ParsedArtifact:
         missing = sorted(_MANIFEST_REQUIRED_FIELDS - set(manifest))
         if missing:
@@ -783,10 +814,32 @@ class PITSectorMembershipReader:
                 "PIT manifest missing fields: " + ",".join(missing)
             )
         manifest_schema = _required_text(manifest.get("schema_version"), "manifest.schema_version")
-        if manifest_schema not in {
+        allowed_manifest_schemas = {
             PIT_PROSPECTIVE_MANIFEST_SCHEMA_VERSION,
             PIT_FORMAL_MANIFEST_SCHEMA_VERSION,
-        }:
+        }
+        if sidecar_schema_version == PIT_SPLIT_SIDECAR_SCHEMA_VERSION:
+            allowed_manifest_schemas.add(PIT_SPLIT_MANIFEST_SCHEMA_VERSION)
+            missing_scope = sorted(_SCOPE_BINDING_FIELDS - set(manifest))
+            if missing_scope:
+                raise PITMembershipReaderError(
+                    "PIT split manifest missing scope fields: " + ",".join(missing_scope)
+                )
+            if manifest_schema != PIT_SPLIT_MANIFEST_SCHEMA_VERSION:
+                raise PITMembershipReaderError("PIT split manifest schema_version is unsupported")
+            if manifest.get("scope_binding_schema_version") != PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION:
+                raise PITMembershipReaderError("PIT split scope-binding schema is unsupported")
+            if manifest.get("taxonomy_coverage_complete") is not True:
+                raise PITMembershipReaderError("PIT split taxonomy coverage is not complete")
+            if manifest.get("formal_consumer_compatible") is not False:
+                raise PITMembershipReaderError("PIT split candidate cannot claim formal compatibility")
+            if not isinstance(manifest.get("denominator_binding"), Mapping) or not isinstance(
+                manifest.get("rule_candidate_binding"), Mapping
+            ) or not isinstance(manifest.get("scope_diff"), Mapping):
+                raise PITMembershipReaderError("PIT split source bindings are invalid")
+        elif sidecar_schema_version != PIT_SIDECAR_SCHEMA_VERSION:
+            raise PITMembershipReaderError("PIT sidecar schema_version is unsupported")
+        if manifest_schema not in allowed_manifest_schemas:
             raise PITMembershipReaderError("PIT manifest schema_version is unsupported")
         status = _required_text(manifest.get("status"), "manifest.status")
         if status not in {"complete", "formal_source_publication", "accepted"}:
@@ -806,7 +859,7 @@ class PITSectorMembershipReader:
         canonical_manifest = dict(manifest)
         canonical_manifest.pop("canonical_hash", None)
         expected_canonical_hash = _sha256_json(
-            {"sidecar_schema_version": PIT_SIDECAR_SCHEMA_VERSION, "manifest": canonical_manifest}
+            {"sidecar_schema_version": sidecar_schema_version, "manifest": canonical_manifest}
         )
         blocking: list[str] = []
         warnings: list[str] = []
@@ -854,6 +907,11 @@ class PITSectorMembershipReader:
             blocking.append("membership_research_only_not_consumable")
         if declared_flags["formal_consumer_compatible"] is not True:
             blocking.append("membership_formal_consumer_compatible_required")
+        if (
+            sidecar_schema_version == PIT_SPLIT_SIDECAR_SCHEMA_VERSION
+            and manifest.get("rule_scope_compatible") is not True
+        ):
+            blocking.append("membership_rule_scope_incompatible")
         if declared_flags["promotion_eligible"] is not False:
             blocking.append("membership_promotion_eligibility_must_remain_false")
         if declared_flags["historical_backfill_claimed"] is not False:
@@ -876,13 +934,18 @@ class PITSectorMembershipReader:
         warnings.extend(clock_warnings)
         blocking.extend(clock_warnings)
 
-        universe_symbols, universe_warnings = self._load_and_verify_universe(
-            path,
-            universe_hash=universe_hash,
-            row_symbols=tuple(str(row["symbol"]) for row in normalized_rows),
-            inline_symbols=None,
-        )
-        del universe_symbols
+        if sidecar_schema_version == PIT_SPLIT_SIDECAR_SCHEMA_VERSION:
+            # v4 taxonomy validation rechecks both raw bindings.  v1 retains
+            # the historical score-universe == row-universe equality reader.
+            universe_warnings: list[str] = []
+        else:
+            universe_symbols, universe_warnings = self._load_and_verify_universe(
+                path,
+                universe_hash=universe_hash,
+                row_symbols=tuple(str(row["symbol"]) for row in normalized_rows),
+                inline_symbols=None,
+            )
+            del universe_symbols
         warnings.extend(universe_warnings)
         if universe_warnings:
             blocking.extend(universe_warnings)
@@ -920,7 +983,7 @@ class PITSectorMembershipReader:
         artifact_status = "accepted" if not blocking else "unavailable"
         artifact = PITMembershipArtifact(
             path=path,
-            artifact_schema_version=PIT_SIDECAR_SCHEMA_VERSION,
+            artifact_schema_version=sidecar_schema_version,
             manifest_schema_version=manifest_schema,
             artifact_status=artifact_status,
             scope=scope,
@@ -1582,7 +1645,10 @@ class PITSectorMembershipReader:
             )
         if isinstance(raw_identity, Mapping) and raw_identity.get(
             "schema_version"
-        ) == PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION:
+        ) in {
+            PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION,
+            PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION,
+        }:
             return self._load_and_verify_taxonomy_v3(
                 artifact_path,
                 identity_path=identity_path,
@@ -1591,6 +1657,10 @@ class PITSectorMembershipReader:
                 rows=rows,
                 as_of_date=as_of_date,
                 decision_at=decision_at,
+                split_contract=(
+                    raw_identity.get("schema_version")
+                    == PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION
+                ),
             )
         return self._legacy_taxonomy_verification(
             self._load_and_verify_taxonomy_v2(
@@ -1976,6 +2046,7 @@ class PITSectorMembershipReader:
         rows: Sequence[Mapping[str, object]],
         as_of_date: date,
         decision_at: datetime,
+        split_contract: bool = False,
     ) -> _TaxonomyVerification:
         """重新驗證 market-scoped v3 identity 及每個官方 raw component。"""
 
@@ -1984,12 +2055,49 @@ class PITSectorMembershipReader:
         row_symbol_set = set(row_symbols)
         base_lineage: dict[str, object] = {
             "taxonomy_identity_path": str(identity_path),
-            "taxonomy_schema_version": PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION,
+            "taxonomy_schema_version": (
+                PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION
+                if split_contract
+                else PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION
+            ),
             "taxonomy_status": "partial",
             "taxonomy_verified": False,
         }
-        if set(identity) != _TAXONOMY_V3_REQUIRED_FIELDS:
+        required_identity_fields = (
+            _TAXONOMY_V4_REQUIRED_FIELDS
+            if split_contract
+            else _TAXONOMY_V3_REQUIRED_FIELDS
+        )
+        if set(identity) != required_identity_fields:
             warnings.append("membership_taxonomy_identity_schema_invalid")
+
+        split_validation: Mapping[str, object] = {}
+        if split_contract:
+            try:
+                from data_module.pit_taxonomy_source_producer import (
+                    validate_daily_pit_taxonomy_bundle,
+                )
+
+                split_validation = validate_daily_pit_taxonomy_bundle(
+                    identity_path.parent.parent / "bundle_manifest.json",
+                    decision_at=decision_at,
+                    now=decision_at,
+                )
+            except Exception as error:  # noqa: BLE001 - source bytes remain fail-closed
+                warnings.append(
+                    "membership_split_scope_source_binding_invalid:"
+                    + _one_line(error)
+                )
+            if (
+                identity.get("scope_binding_schema_version")
+                != PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION
+                or identity.get("taxonomy_coverage_complete") is not True
+            ):
+                warnings.append("membership_split_scope_taxonomy_coverage_invalid")
+            if identity.get("inactive_security_overlay_by_symbol") != split_validation.get(
+                "inactive_security_overlay_by_symbol"
+            ):
+                warnings.append("membership_split_inactive_security_overlay_binding_mismatch")
 
         source_id = _text_or_none(identity.get("source_id"), warnings, "membership_taxonomy_source_id_missing")
         source_version = _text_or_none(
@@ -2042,13 +2150,15 @@ class PITSectorMembershipReader:
             }
         ) != universe_hash:
             warnings.append("membership_taxonomy_universe_hash_reconstruction_mismatch")
-        if hash_symbols is not None and set(hash_symbols) != row_symbol_set:
+        if hash_symbols is not None and not split_contract and set(hash_symbols) != row_symbol_set:
             warnings.append("membership_taxonomy_universe_hash_symbols_mismatch")
 
         rank_order = _v3_symbol_list(
             identity.get("rank_order"), warnings, "membership_taxonomy_rank_order_invalid", require_sorted=False
         )
-        if rank_order is not None and set(rank_order) != row_symbol_set:
+        if rank_order is not None and set(rank_order) != (
+            set(hash_symbols) if split_contract and hash_symbols is not None else row_symbol_set
+        ):
             warnings.append("membership_taxonomy_rank_order_partial_denominator")
 
         versions_value = identity.get("classification_version_by_market")
@@ -2089,7 +2199,15 @@ class PITSectorMembershipReader:
         # verified exclusion, not a missing denominator row; only an
         # unrecognised type remains a taxonomy blocker.
         known_excluded_security_types = frozenset(
-            {"tdr", "etf", "etn", "warrant", "preferred_equity", "bond"}
+            {
+                "tdr",
+                "etf",
+                "etn",
+                "warrant",
+                "preferred_equity",
+                "bond",
+                "inactive_common_stock",
+            }
         )
         unsupported_security = sorted(
             symbol
@@ -2169,11 +2287,21 @@ class PITSectorMembershipReader:
                 else:
                     warnings.append("membership_taxonomy_source_schema_invalid")
         if taxonomy_source_payload is not None:
-            if set(taxonomy_source_payload) != _TAXONOMY_SOURCE_V2_REQUIRED_FIELDS or taxonomy_source_payload.get(
+            expected_source_fields = (
+                _TAXONOMY_SOURCE_V3_REQUIRED_FIELDS
+                if split_contract
+                else _TAXONOMY_SOURCE_V2_REQUIRED_FIELDS
+            )
+            expected_source_schema = (
+                PIT_TAXONOMY_SOURCE_V3_SCHEMA_VERSION
+                if split_contract
+                else PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION
+            )
+            if set(taxonomy_source_payload) != expected_source_fields or taxonomy_source_payload.get(
                 "schema_version"
-            ) != PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION:
+            ) != expected_source_schema:
                 warnings.append("membership_taxonomy_source_schema_invalid")
-            compare_fields = (
+            compare_fields: tuple[str, ...] = (
                 "source_id",
                 "source_version",
                 "available_at",
@@ -2196,6 +2324,12 @@ class PITSectorMembershipReader:
                 "raw_manifest_path",
                 "raw_manifest_hash",
             )
+            if split_contract:
+                compare_fields = (
+                    *compare_fields,
+                    *_SCOPE_BINDING_FIELDS,
+                    "inactive_security_overlay_by_symbol",
+                )
             for field_name in compare_fields:
                 if taxonomy_source_payload.get(field_name) != identity.get(field_name):
                     warnings.append(f"membership_taxonomy_source_{field_name}_mismatch")
@@ -2395,16 +2529,52 @@ class PITSectorMembershipReader:
                 if record.row_hash not in seen_security_rows:
                     records.append(record)
                     seen_security_rows.add(record.row_hash)
-        try:
-            expected_types, expected_eligibility, _ = build_security_evidence_map(
-                records,
-                expected_symbols=tuple(sorted(row_symbol_set)),
-                market_by_symbol=market_by_symbol,
-            )
-        except (OfficialSecurityTypingError, ValueError) as error:
-            warnings.append(f"membership_taxonomy_security_revalidation_failed:{_one_line(error)}")
-            expected_types = {}
-            expected_eligibility = {}
+        inactive_overlay_value = (
+            split_validation.get("inactive_security_overlay_by_symbol")
+            if split_contract
+            else None
+        )
+        inactive_overlay = (
+            {
+                str(key): dict(value)
+                for key, value in inactive_overlay_value.items()
+                if isinstance(value, Mapping)
+            }
+            if isinstance(inactive_overlay_value, Mapping)
+            else {}
+        )
+        active_row_symbols = row_symbol_set - set(inactive_overlay)
+        if active_row_symbols:
+            try:
+                expected_types, expected_eligibility, _ = build_security_evidence_map(
+                    records,
+                    expected_symbols=tuple(sorted(active_row_symbols)),
+                    market_by_symbol={
+                        symbol: market_by_symbol[symbol]
+                        for symbol in sorted(active_row_symbols)
+                        if symbol in market_by_symbol
+                    },
+                )
+            except (OfficialSecurityTypingError, ValueError) as error:
+                warnings.append(f"membership_taxonomy_security_revalidation_failed:{_one_line(error)}")
+                expected_types = {}
+                expected_eligibility = {}
+        else:
+            expected_types, expected_eligibility = {}, {}
+        for symbol, overlay_binding in inactive_overlay.items():
+            proof_value = overlay_binding.get("proof")
+            if not isinstance(proof_value, Mapping):
+                warnings.append(f"membership_taxonomy_inactive_security_proof_missing:{symbol}")
+                continue
+            expected_types[symbol] = "inactive_common_stock"
+            expected_eligibility[symbol] = {
+                "eligible": False,
+                "reason": "official_security_termination_inactive_research_only",
+                "security_type": "inactive_common_stock",
+                "market_scope": market_by_symbol.get(symbol),
+                "state": proof_value.get("state"),
+                "proof_sha256": _sha256_json(dict(proof_value)),
+            }
         if expected_types != security_by_symbol:
             warnings.append("membership_taxonomy_security_type_reverification_mismatch")
         for symbol, detail in expected_eligibility.items():
@@ -2434,7 +2604,7 @@ class PITSectorMembershipReader:
         verified = not warnings and bool(mapping_by_market) and bool(security_by_symbol)
         taxonomy_version_values = sorted(set(versions.values()))
         taxonomy_version = taxonomy_version_values[0] if len(taxonomy_version_values) == 1 else (
-            "market-scoped:v3" if versions else None
+            "market-scoped:v4" if split_contract and versions else "market-scoped:v3" if versions else None
         )
         lineage = {
             **base_lineage,
@@ -2463,6 +2633,30 @@ class PITSectorMembershipReader:
             "taxonomy_covered_symbol_count": len(row_symbol_set & set(identity_symbols or ())),
             "taxonomy_row_symbol_count": len(row_symbol_set),
         }
+        if split_contract:
+            lineage.update(
+                {
+                    "taxonomy_coverage_complete": split_validation.get(
+                        "taxonomy_coverage_complete"
+                    ) is True,
+                    "rule_scope_compatible": split_validation.get(
+                        "rule_scope_compatible"
+                    ) is True,
+                    "scope_diff": split_validation.get("scope_diff"),
+                    "denominator_binding_verified": split_validation.get(
+                        "denominator_binding_verified"
+                    ) is True,
+                    "rule_candidate_binding_verified": split_validation.get(
+                        "rule_candidate_binding_verified"
+                    ) is True,
+                    "denominator_symbols_hash": split_validation.get(
+                        "denominator_symbols_hash"
+                    ),
+                    "rule_candidate_symbols_hash": split_validation.get(
+                        "rule_candidate_symbols_hash"
+                    ),
+                }
+            )
         return _TaxonomyVerification(
             mapping=mapping_flat,
             mapping_by_market=dict(mapping_by_market),
@@ -3516,10 +3710,15 @@ __all__ = [
     "PIT_MEMBERSHIP_READER_SCHEMA_VERSION",
     "PIT_PROSPECTIVE_MANIFEST_SCHEMA_VERSION",
     "PIT_SIDECAR_SCHEMA_VERSION",
+    "PIT_SPLIT_SIDECAR_SCHEMA_VERSION",
+    "PIT_SPLIT_MANIFEST_SCHEMA_VERSION",
     "PIT_TAXONOMY_IDENTITY_SCHEMA_VERSION",
     "PIT_TAXONOMY_IDENTITY_V3_SCHEMA_VERSION",
+    "PIT_TAXONOMY_IDENTITY_V4_SCHEMA_VERSION",
     "PIT_TAXONOMY_SOURCE_SCHEMA_VERSION",
     "PIT_TAXONOMY_SOURCE_V2_SCHEMA_VERSION",
+    "PIT_TAXONOMY_SOURCE_V3_SCHEMA_VERSION",
+    "PIT_TAXONOMY_SCOPE_BINDING_SCHEMA_VERSION",
     "PIT_TAXONOMY_RAW_MANIFEST_SCHEMA_VERSION",
     "PITMembershipArtifact",
     "PITMembershipReadResult",

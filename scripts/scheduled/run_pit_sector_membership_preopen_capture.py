@@ -37,10 +37,13 @@ from data_module.formal_runtime_config import (  # noqa: E402
     load_optional_formal_runtime_config,
 )
 from data_module.pit_taxonomy_source_producer import (  # noqa: E402
+    PIT_TAXONOMY_MAX_SOURCE_BYTES,
     PIT_TAXONOMY_SOURCE_CONFIG_ENV,
     PITTaxonomySourceError,
+    _assert_no_link_path,
     capture_configured_daily_pit_taxonomy_bundle,
     load_pit_taxonomy_source_config,
+    _proof_file_bytes,
 )
 from data_module.prospective_formal_clock import canonical_json  # noqa: E402
 from scripts.capture_pit_prospective_denominator import (  # noqa: E402
@@ -57,6 +60,9 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 PIT_CUTOFF = time(8, 30)
 RULE_SOURCE_ROOT_ENV = "FORMAL_DAILY_RULE_SOURCE_ROOT"
 PIT_TAXONOMY_PREOPEN_ROOT_ENV = "PIT_TAXONOMY_PREOPEN_ROOT"
+SPLIT_DENOMINATOR_PROOF_MAX_BYTES = 16 * 1024 * 1024
+SPLIT_RULE_METADATA_PROOF_MAX_BYTES = 16 * 1024 * 1024
+SPLIT_RULE_SOURCE_WINDOW_PROOF_MAX_BYTES = 128 * 1024 * 1024
 
 
 class _RuleSourceParent(TypedDict):
@@ -88,6 +94,14 @@ def _parser() -> argparse.ArgumentParser:
         "--status-root",
         type=Path,
         help="狀態輸出目錄；預設為 publication root/scheduler/pit_preopen_capture",
+    )
+    parser.add_argument(
+        "--split-denominator-contract",
+        action="store_true",
+        help=(
+            "明確 opt-in 建立獨立 v2 taxonomy-only candidate；不代表 Rule/formal acceptance，"
+            "也不覆寫 v1 archive"
+        ),
     )
     return parser
 
@@ -502,6 +516,171 @@ def _strict_symbol_list(
     return values
 
 
+def _build_split_scope_binding(
+    *,
+    publication_root: Path,
+    denominator_path: Path,
+    denominator_payload: Mapping[str, object],
+    parent: _RuleSourceParent,
+    capture_date: date,
+    decision_at: datetime,
+    denominator_symbols: Sequence[str],
+) -> dict[str, object]:
+    """Build explicit, byte-pinned official-denominator / Rule-candidate proof."""
+
+    root_input = publication_root.expanduser()
+    _assert_no_link_path(root_input, allow_missing=False)
+    root = root_input.resolve(strict=True)
+    denominator_file, denominator_raw = _read_split_scope_proof_file(
+        root,
+        denominator_path.expanduser(),
+        label="split-scope denominator",
+        max_bytes=SPLIT_DENOMINATOR_PROOF_MAX_BYTES,
+    )
+    rule_root_input = Path(parent["bundle_root"]).expanduser()
+    _assert_no_link_path(rule_root_input, allow_missing=False, confine_to=root)
+    rule_root = rule_root_input.resolve(strict=True)
+    try:
+        denominator_relative = denominator_file.relative_to(root).as_posix()
+        rule_relative = rule_root.relative_to(root).as_posix()
+    except ValueError as error:
+        raise PITTaxonomySourceError(
+            "split-scope proof inputs must be under the publication root"
+        ) from error
+    if not denominator_relative.startswith("pit_denominator/"):
+        raise PITTaxonomySourceError("split-scope denominator is outside pit_denominator")
+    if not rule_relative.startswith("rule_source/"):
+        raise PITTaxonomySourceError("split-scope Rule parent is outside rule_source")
+
+    identity_path = rule_root / "metadata" / "universe_identity.json"
+    symbols_path = rule_root / "metadata" / "universe_symbols.json"
+    clock_path = rule_root / "clock" / "manifest.json"
+    source_window_path = rule_root / "source" / "daily_price_window.json"
+    proof_inputs = {
+        "identity": (identity_path, SPLIT_RULE_METADATA_PROOF_MAX_BYTES),
+        "symbols": (symbols_path, SPLIT_RULE_METADATA_PROOF_MAX_BYTES),
+        "clock": (clock_path, SPLIT_RULE_METADATA_PROOF_MAX_BYTES),
+        "source_window": (source_window_path, SPLIT_RULE_SOURCE_WINDOW_PROOF_MAX_BYTES),
+    }
+    proof_raw: dict[str, bytes] = {}
+    file_hashes: dict[str, str] = {}
+    for key, (proof_path, max_bytes) in proof_inputs.items():
+        _resolved_path, raw = _read_split_scope_proof_file(
+            root,
+            proof_path,
+            label=f"split-scope Rule {key}",
+            max_bytes=max_bytes,
+        )
+        proof_raw[key] = raw
+        file_hashes[key] = _sha256_bytes(raw)
+
+    try:
+        denominator_from_bytes = json.loads(denominator_raw.decode("utf-8"))
+        identity_from_bytes = json.loads(proof_raw["identity"].decode("utf-8"))
+        symbols_from_bytes = json.loads(proof_raw["symbols"].decode("utf-8"))
+        clock_from_bytes = json.loads(proof_raw["clock"].decode("utf-8"))
+        source_window_from_bytes = json.loads(proof_raw["source_window"].decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise PITTaxonomySourceError("split-scope proof input JSON is invalid") from error
+    if not isinstance(denominator_from_bytes, Mapping) or dict(denominator_from_bytes) != dict(denominator_payload):
+        raise PITTaxonomySourceError("split-scope denominator bytes differ from validated payload")
+    if not isinstance(identity_from_bytes, Mapping) or dict(identity_from_bytes) != parent["identity"]:
+        raise PITTaxonomySourceError("split-scope Rule identity bytes changed after validation")
+    if symbols_from_bytes != parent["symbols_payload"]:
+        raise PITTaxonomySourceError("split-scope Rule symbols bytes changed after validation")
+    if not isinstance(clock_from_bytes, Mapping) or dict(clock_from_bytes) != parent["clock"]:
+        raise PITTaxonomySourceError("split-scope Rule clock bytes changed after validation")
+    if not isinstance(source_window_from_bytes, Mapping):
+        raise PITTaxonomySourceError("split-scope Rule source-window payload is invalid")
+    source_window_payload = source_window_from_bytes.get("source_payload")
+    source_window_hash = source_window_from_bytes.get("source_window_hash")
+    if (
+        not isinstance(source_window_payload, Mapping)
+        or not isinstance(source_window_hash, str)
+        or _sha256_json(dict(source_window_payload)) != source_window_hash
+        or parent["identity"].get("source_window_hash") != source_window_hash
+        or parent["identity"].get("source_window_file_hash") != file_hashes["source_window"]
+    ):
+        raise PITTaxonomySourceError("split-scope Rule source-window bytes changed or are invalid")
+
+    identity = parent["identity"]
+    candidate_symbols = tuple(parent["expected_symbols"])
+    denominator_set = set(denominator_symbols)
+    candidate_set = set(candidate_symbols)
+    intersection = sorted(denominator_set & candidate_set)
+    denominator_only = sorted(denominator_set - candidate_set)
+    rule_only = sorted(candidate_set - denominator_set)
+    diff = {
+        "denominator_count": len(denominator_set),
+        "candidate_count": len(candidate_set),
+        "intersection_count": len(intersection),
+        "denominator_only_count": len(denominator_only),
+        "rule_only_count": len(rule_only),
+        "intersection_symbols": intersection,
+        "intersection_symbols_hash": _sha256_json(intersection),
+        "denominator_only_symbols": denominator_only,
+        "denominator_only_symbols_hash": _sha256_json(denominator_only),
+        "rule_only_symbols": rule_only,
+        "rule_only_symbols_hash": _sha256_json(rule_only),
+    }
+    return {
+        "scope_binding_schema_version": "pit-industry-taxonomy-scope-binding.v1",
+        "denominator_binding": {
+            "schema_version": "pit-prospective-pit-denominator-binding.v1",
+            "path": denominator_relative,
+            "file_sha256": _sha256_bytes(denominator_raw),
+            "content_sha256": denominator_payload.get("content_sha256"),
+            "symbols_hash": denominator_payload.get("symbols_hash"),
+            "symbol_count": len(denominator_symbols),
+            "scope": denominator_payload.get("scope"),
+            "coverage_start": denominator_payload.get("coverage_start"),
+            "observed_at": denominator_payload.get("observed_at"),
+        },
+        "rule_candidate_binding": {
+            "schema_version": "pit-rule-candidate-binding.v1",
+            "bundle_path": rule_relative,
+            "file_hashes": file_hashes,
+            "identity_hash": identity.get("identity_hash"),
+            "clock_id": parent["clock_id"],
+            "clock_manifest_hash": parent["clock_manifest_hash"],
+            "universe_hash": parent["universe_hash"],
+            "candidate_count": len(candidate_symbols),
+            "candidate_symbols_hash": _sha256_json(list(candidate_symbols)),
+            "activation_trading_day": capture_date.isoformat(),
+            "decision_at": decision_at.isoformat(),
+            "data_as_of_date": identity.get("data_as_of_date"),
+            "max_available_timestamp": identity.get("max_available_timestamp"),
+            "source_window_hash": identity.get("source_window_hash"),
+        },
+        "scope_diff": diff,
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": not rule_only,
+    }
+
+
+def _read_split_scope_proof_file(
+    publication_root: Path,
+    proof_path: Path,
+    *,
+    label: str,
+    max_bytes: int,
+) -> tuple[Path, bytes]:
+    """Read one confined split proof file once, with its existing byte limit."""
+
+    root = publication_root.expanduser()
+    path = proof_path.expanduser()
+    _assert_no_link_path(root, allow_missing=False)
+    root = root.resolve(strict=True)
+    _assert_no_link_path(path, allow_missing=False, confine_to=root)
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as error:
+        raise PITTaxonomySourceError(f"{label} proof path escapes or is missing") from error
+    raw = _proof_file_bytes(path, label, max_bytes)
+    return resolved, raw
+
+
 def _taxonomy_bundle_root(publication_root: Path, target_date: date) -> Path:
     configured = _env_path(PIT_TAXONOMY_PREOPEN_ROOT_ENV)
     root = (configured or publication_root / "pit_taxonomy_preopen").expanduser().resolve()
@@ -511,6 +690,16 @@ def _taxonomy_bundle_root(publication_root: Path, target_date: date) -> Path:
         raise PITTaxonomySourceError(
             "PIT taxonomy preopen root must be under publication root"
         ) from error
+    return root / target_date.isoformat()
+
+
+def _split_taxonomy_bundle_root(publication_root: Path, target_date: date) -> Path:
+    root = publication_root.expanduser().resolve() / "pit_taxonomy_preopen_split_v2"
+    configured = _env_path(PIT_TAXONOMY_PREOPEN_ROOT_ENV)
+    if configured is not None and configured.resolve() != root:
+        raise PITTaxonomySourceError(
+            "split-denominator contract requires its separate immutable v2 output root"
+        )
     return root / target_date.isoformat()
 
 
@@ -532,6 +721,8 @@ def _capture_taxonomy_for_run(
     denominator: Mapping[str, object],
     archive_manifest_path: object,
     injected_clock: bool,
+    split_denominator_contract: bool = False,
+    capture_attempt_id: str | None = None,
     config_path: Path | None = None,
     fetch_source: Callable[[str], object] | None = None,
     now_provider: Callable[[], datetime] | None = None,
@@ -567,7 +758,7 @@ def _capture_taxonomy_for_run(
             publication_root,
             target_date=target_date,
         )
-        if tuple(parent["expected_symbols"]) != denominator_symbols:
+        if not split_denominator_contract and tuple(parent["expected_symbols"]) != denominator_symbols:
             raise PITTaxonomySourceError(
                 "rule parent full symbols differ from verified denominator"
             )
@@ -588,13 +779,34 @@ def _capture_taxonomy_for_run(
                 "post_cutoff_refetch_forbidden": True,
                 "industry_filter_usable": False,
             }
+        scope_binding = (
+            _build_split_scope_binding(
+                publication_root=publication_root,
+                denominator_path=Path(denominator_path_value),
+                denominator_payload=denominator_payload,
+                parent=parent,
+                capture_date=target_date,
+                decision_at=datetime.combine(target_date, PIT_CUTOFF, tzinfo=TAIPEI),
+                denominator_symbols=denominator_symbols,
+            )
+            if split_denominator_contract
+            else None
+        )
         result = capture_configured_daily_pit_taxonomy_bundle(
             config=config,
-            bundle_root=_taxonomy_bundle_root(publication_root, target_date),
+            bundle_root=(
+                _split_taxonomy_bundle_root(publication_root, target_date)
+                if split_denominator_contract
+                else _taxonomy_bundle_root(publication_root, target_date)
+            ),
             capture_date=target_date,
             decision_at=datetime.combine(target_date, PIT_CUTOFF, tzinfo=TAIPEI),
             now=observed,
-            expected_symbols=parent["expected_symbols"],
+            expected_symbols=(
+                denominator_symbols
+                if split_denominator_contract
+                else parent["expected_symbols"]
+            ),
             universe_hash=str(parent["universe_hash"]),
             universe_hash_symbols=parent["universe_hash_symbols"],
             scores_bp=parent["scores_bp"],
@@ -606,8 +818,10 @@ def _capture_taxonomy_for_run(
             company_raw_payloads=raw_payloads,
             company_http=company_http,
             universe_symbols_payload=parent["symbols_payload"],
+            scope_binding=scope_binding,
             fetch_source=fetch_source,
             now_provider=now_provider,
+            capture_attempt_id=capture_attempt_id,
         )
         return {
             **result.to_dict(),
@@ -626,8 +840,20 @@ def _capture_taxonomy_for_run(
             },
             "post_cutoff_refetch_forbidden": True,
             "industry_filter_usable": False,
+            "taxonomy_coverage_complete": (
+                result.schema_version
+                == "pit-industry-taxonomy-daily-bundle.v2"
+            ),
+            "rule_scope_compatible": (
+                bool((scope_binding or {}).get("rule_scope_compatible"))
+                if split_denominator_contract
+                else None
+            ),
+            "candidate_only": True,
+            "formal_consumer_compatible": False,
         }
     except (OSError, PITTaxonomySourceError, TypeError, ValueError) as error:
+        attempt_value = getattr(error, "capture_attempt", None)
         return {
             "status": "blocked",
             "blockers": [
@@ -636,6 +862,11 @@ def _capture_taxonomy_for_run(
             ],
             "post_cutoff_refetch_forbidden": True,
             "industry_filter_usable": False,
+            **(
+                {"capture_attempt": dict(attempt_value)}
+                if isinstance(attempt_value, Mapping)
+                else {}
+            ),
         }
 
 
@@ -645,11 +876,16 @@ def run_capture(
     status_root: Path,
     now: datetime | None = None,
     taxonomy_config_path: Path | None = None,
+    split_denominator_contract: bool = False,
     taxonomy_fetch_source: Callable[[str], object] | None = None,
     taxonomy_now_provider: Callable[[], datetime] | None = None,
 ) -> tuple[dict[str, object], int]:
     injected_clock = now is not None
     observed = now or datetime.now(timezone.utc)
+    capture_attempt_id = uuid.uuid4().hex if split_denominator_contract else None
+    # Operational consumers are pinned to this stable readback path for both
+    # legacy and split-contract runs.  One-off validation runs can isolate the
+    # whole status root with --status-root instead of changing this contract.
     status_path = status_root / "latest_status.json"
     calendar_state, calendar_reason = formal_schedule_day_state(
         observed=observed,
@@ -676,6 +912,11 @@ def run_capture(
         "observed_at": observed.isoformat(),
         "publication_root": str(publication_root),
         "status_path": str(status_path),
+        **(
+            {"capture_attempt_id": capture_attempt_id}
+            if capture_attempt_id is not None
+            else {}
+        ),
         "capture_policy": "capture_before_taipei_0830_then_read_archive_after_cutoff",
         "post_cutoff_refetch_forbidden": True,
         "candidate_only": True,
@@ -783,6 +1024,8 @@ def run_capture(
                 else None
             ),
             injected_clock=injected_clock,
+            split_denominator_contract=split_denominator_contract,
+            capture_attempt_id=capture_attempt_id,
             config_path=taxonomy_config_path,
             fetch_source=taxonomy_fetch_source,
             now_provider=taxonomy_now_provider,
@@ -837,6 +1080,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload, exit_code = run_capture(
             publication_root=publication_root,
             status_root=status_root,
+            split_denominator_contract=args.split_denominator_contract,
         )
     except (OSError, TypeError, ValueError, FormalDailyInputProducerError) as error:
         payload = {

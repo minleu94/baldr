@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from data_module import portfolio_ml_dataset_assembler as assembler_module
+from data_module import pit_taxonomy_source_producer as source_producer_module
 from data_module.ml_pit_year_shard_exporter import (
     PITYearShardBuildRequest,
     PITYearShardExporter,
@@ -1055,6 +1056,97 @@ def test_sector_membership_sidecar_rejects_missing_or_tampered_manifest(
     with pytest.raises(ValueError, match="rows hash mismatch"):
         _spool_sector_memberships(connection, tampered_path)
     connection.close()
+
+
+def test_split_taxonomy_candidate_cannot_self_promote_to_formal_consumer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar_path = tmp_path / "split-bundle" / "pit_sector_membership" / "sidecar.json"
+    sidecar_path.parent.mkdir(parents=True)
+    bundle_path = sidecar_path.parent.parent / "bundle_manifest.json"
+    decision_at = "2026-08-25T08:30:00+08:00"
+    diff: dict[str, object] = {
+        "denominator_count": 1,
+        "candidate_count": 1,
+        "intersection_count": 1,
+        "denominator_only_count": 0,
+        "rule_only_count": 0,
+        "intersection_symbols": ["2330"],
+        "intersection_symbols_hash": _manifest_hash(["2330"]),
+        "denominator_only_symbols": [],
+        "denominator_only_symbols_hash": _manifest_hash([]),
+        "rule_only_symbols": [],
+        "rule_only_symbols_hash": _manifest_hash([]),
+    }
+    scope_fields: dict[str, object] = {
+        "scope_binding_schema_version": "pit-industry-taxonomy-scope-binding.v1",
+        "denominator_binding": {"schema_version": "denominator-binding-fixture.v1"},
+        "rule_candidate_binding": {"schema_version": "rule-binding-fixture.v1"},
+        "scope_diff": diff,
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": True,
+    }
+    bundle_hash = "sha256:" + ("e" * 64)
+    bundle_path.write_text(
+        json.dumps(scope_fields, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    row = _sector_membership_row()
+    manifest: dict[str, object] = {
+        "schema_version": assembler_module.SPLIT_SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION,
+        "row_count": 1,
+        "rows_hash": _manifest_hash([row]),
+        **scope_fields,
+        "taxonomy_bundle_manifest_path": "../bundle_manifest.json",
+        "taxonomy_bundle_hash": bundle_hash,
+        "decision_at": decision_at,
+        # Deliberately forge every promotion-looking flag, then compute the
+        # canonical hash honestly.  The assembler still requires an accepted
+        # owner contract for v2 before any formal consumption.
+        "research_only": False,
+        "candidate_only": False,
+        "formal_consumer_compatible": True,
+    }
+    canonical_hash = _manifest_hash(
+        {
+            "sidecar_schema_version": assembler_module.SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+            "manifest": manifest,
+        }
+    )
+    sidecar_path.write_text(
+        json.dumps(
+            {
+                "schema_version": assembler_module.SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+                "manifest": {**manifest, "canonical_hash": canonical_hash},
+                "rows": [row],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        source_producer_module,
+        "validate_daily_pit_taxonomy_bundle",
+        lambda *_args, **_kwargs: {
+            "taxonomy_coverage_complete": True,
+            "rule_scope_compatible": True,
+            "bundle_hash": bundle_hash,
+            "scope_diff": diff,
+        },
+    )
+    connection = sqlite3.connect(":memory:")
+    _initialize_spool(connection)
+    try:
+        with pytest.raises(ValueError, match="remains preview-only"):
+            _spool_sector_memberships(
+                connection,
+                sidecar_path,
+                training_as_of=datetime.fromisoformat(decision_at),
+            )
+    finally:
+        connection.close()
 
 
 def test_sector_membership_rejects_current_snapshot_backfill_poison(

@@ -9,12 +9,14 @@ investment thesis、不讀 UI cache、不修改 Paper／Formal／D 槽來源，�
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+import copy
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -118,11 +120,18 @@ class DailyPositionHealthTransitionEvaluator:
         state_machine: PositionHealthStateMachine | None = None,
         transition_repository: PositionHealthTransitionRepository | None = None,
         policy_hash: str = DEFAULT_POLICY_HASH,
+        legacy_replay_output_dir: str | Path | None = None,
     ) -> None:
         self.health_service = health_service or PositionHealthService()
         self.state_machine = state_machine or PositionHealthStateMachine()
         self.transition_repository = transition_repository
         self.policy_hash = policy_hash
+        self.legacy_replay_output_dir = (
+            None
+            if legacy_replay_output_dir is None
+            else Path(legacy_replay_output_dir)
+        )
+        self._proposal_input_payloads_by_position: dict[str, dict[str, Any]] = {}
 
     def evaluate(self, request: DailyPositionHealthTransitionRequest) -> dict[str, Any]:
         """Evaluate one request and return a JSON-serializable receipt.
@@ -192,6 +201,7 @@ class DailyPositionHealthTransitionEvaluator:
         assert observed is not None
 
         result_positions: list[dict[str, Any]] = []
+        self._proposal_input_payloads_by_position = {}
         any_degraded = bool(global_warnings)
         persistence_blockers: list[str] = []
         for raw_position in positions:
@@ -504,6 +514,8 @@ class DailyPositionHealthTransitionEvaluator:
             "decision_date": decision.isoformat(),
             "policy_hash": policy_hash,
         }
+        if position_id:
+            self._proposal_input_payloads_by_position[position_id] = input_payload
         input_hash = _sha256_json(_proposal_input_identity(input_payload))
         transition_event: dict[str, Any] | None = None
         if position_id:
@@ -525,14 +537,27 @@ class DailyPositionHealthTransitionEvaluator:
             }
             if self.transition_repository is not None and not blockers:
                 try:
-                    transition_event["persistence"] = self._persist_proposal(
+                    persistence, reuse_proof = self._persist_proposal(
                         event_id=event_id,
                         position_id=position_id,
                         decision_date=decision.isoformat(),
                         previous_state=previous_state,
                         proposed_state=proposed_state,
                         reasons=tuple(reasons),
+                        input_payload=input_payload,
+                        current_input_hash=input_hash,
+                        current_observed=observed,
                     )
+                    transition_event["persistence"] = persistence
+                    if reuse_proof is not None:
+                        transition_event.update(
+                            {
+                                "event_id": reuse_proof["stored_record"]["event_id"],
+                                "input_hash": reuse_proof["stored_record"]["input_hash"],
+                                "current_input_hash": input_hash,
+                                "reuse_proof": reuse_proof,
+                            }
+                        )
                 except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
                     blockers.append(f"transition_proposal_persistence_blocked:{type(exc).__name__}")
                     transition_event["persistence"] = "blocked"
@@ -633,18 +658,50 @@ class DailyPositionHealthTransitionEvaluator:
         previous_state: PositionHealthState,
         proposed_state: PositionHealthState,
         reasons: tuple[str, ...],
-    ) -> str:
+        input_payload: Mapping[str, Any],
+        current_input_hash: str,
+        current_observed: datetime,
+    ) -> tuple[str, dict[str, Any] | None]:
         assert self.transition_repository is not None
-        return self.transition_repository.append_proposal_idempotent(
-            PositionHealthTransitionRecord.proposal(
-                event_id=event_id,
+        current_record = PositionHealthTransitionRecord.proposal(
+            event_id=event_id,
+            position_id=position_id,
+            decision_date=decision_date,
+            previous_state=previous_state,
+            proposed_state=proposed_state,
+            reasons=reasons,
+        )
+        try:
+            return (
+                self.transition_repository.append_proposal_idempotent(current_record),
+                None,
+            )
+        except ValueError:
+            if self.legacy_replay_output_dir is None:
+                raise
+            existing = self.transition_repository.find_proposal(
                 position_id=position_id,
                 decision_date=decision_date,
-                previous_state=previous_state,
-                proposed_state=proposed_state,
-                reasons=reasons,
             )
-        )
+            if existing is None:
+                raise
+            proof = _verify_legacy_same_snapshot_reuse(
+                output_dir=self.legacy_replay_output_dir,
+                current_input_payload=input_payload,
+                current_input_hash=current_input_hash,
+                current_observed=current_observed,
+                current_record=current_record,
+                existing_record=existing,
+            )
+            if proof is None:
+                raise ValueError("legacy_same_snapshot_reuse_not_proven")
+            latest = self.transition_repository.find_proposal(
+                position_id=position_id,
+                decision_date=decision_date,
+            )
+            if latest is None or _transition_record_payload(latest) != _transition_record_payload(existing):
+                raise ValueError("legacy_same_snapshot_record_changed_during_verification")
+            return "idempotent_legacy_same_snapshot_reuse", proof
 
     @staticmethod
     def _blocked_result(
@@ -861,6 +918,7 @@ def evaluate_baseline_file(
             if source_bundle is not None and source_bundle.blockers
             else repository
         ),
+        legacy_replay_output_dir=output,
         policy_hash=(
             request.policy_hash
             if source_bundle is not None
@@ -1352,6 +1410,947 @@ def _proposal_input_identity(value: object) -> Any:
     if isinstance(material, list):
         return [_proposal_input_identity(item) for item in material]
     return material
+
+
+def _verify_legacy_same_snapshot_reuse(
+    *,
+    output_dir: Path,
+    current_input_payload: Mapping[str, Any],
+    current_input_hash: str,
+    current_observed: datetime,
+    current_record: PositionHealthTransitionRecord,
+    existing_record: PositionHealthTransitionRecord,
+) -> dict[str, Any] | None:
+    """Verify the one approved v2 same-snapshot history rollover case.
+
+    The verifier reconstructs the immutable first evaluation from its result
+    and hash-bound source artifacts, then proves that the current proposal has
+    the same decision-bearing values after the narrowly allowed daily-refresh
+    lineage rollover.  It never writes the transition database or refreshes a
+    source.
+    """
+
+    try:
+        return _verify_legacy_same_snapshot_reuse_strict(
+            output_dir=output_dir,
+            current_input_payload=current_input_payload,
+            current_input_hash=current_input_hash,
+            current_observed=current_observed,
+            current_record=current_record,
+            existing_record=existing_record,
+        )
+    except Exception:
+        return None
+
+
+def _verify_legacy_same_snapshot_reuse_strict(
+    *,
+    output_dir: Path,
+    current_input_payload: Mapping[str, Any],
+    current_input_hash: str,
+    current_observed: datetime,
+    current_record: PositionHealthTransitionRecord,
+    existing_record: PositionHealthTransitionRecord,
+) -> dict[str, Any] | None:
+    if current_record.position_id != existing_record.position_id:
+        return None
+    if current_record.decision_date != existing_record.decision_date:
+        return None
+    if (
+        current_record.previous_state is not existing_record.previous_state
+        or current_record.proposed_state is not existing_record.proposed_state
+        or current_record.recorded_state is not existing_record.recorded_state
+        or current_record.decision_kind != existing_record.decision_kind
+        or current_record.reasons != existing_record.reasons
+    ):
+        return None
+    if current_record.reviewer is not None or current_record.auto_action_allowed:
+        return None
+    if existing_record.reviewer is not None or existing_record.auto_action_allowed:
+        return None
+
+    repo_root = Path(__file__).resolve().parents[1]
+    formal_output_root = output_dir.parent
+    decision_date = current_record.decision_date
+    date_key = decision_date.replace("-", "")
+    if len(date_key) != 8 or not date_key.isdigit():
+        return None
+    expected_output = formal_output_root / "position_health_transition"
+    if output_dir != expected_output:
+        return None
+    result_path = output_dir / f"transition_{date_key}.json"
+    result_bytes = _read_bounded_nofollow(
+        result_path,
+        root=output_dir,
+        max_bytes=512 * 1024,
+    )
+    result_hash = _sha256_bytes(result_bytes)
+    try:
+        legacy_result = json.loads(result_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("legacy transition result is not JSON") from exc
+    if not isinstance(legacy_result, Mapping):
+        return None
+    if legacy_result.get("schema_version") != SCHEMA_VERSION:
+        return None
+    if legacy_result.get("decision_date") != decision_date:
+        return None
+    if legacy_result.get("status") not in {"passed", "degraded"}:
+        return None
+    if (
+        legacy_result.get("research_only") is not True
+        or legacy_result.get("apply_transition") is not False
+        or legacy_result.get("auto_action_allowed") is not False
+        or legacy_result.get("broker_execution") is not False
+        or legacy_result.get("formal_credit") is not False
+    ):
+        return None
+    old_observed_value = legacy_result.get("observed_at")
+    if not isinstance(old_observed_value, (datetime, str)):
+        return None
+    old_observed = _parse_observed_at(old_observed_value, [])
+    if old_observed is None or current_observed.tzinfo is None or current_observed.utcoffset() is None:
+        return None
+    current_observed = current_observed.astimezone(timezone.utc)
+    if old_observed > current_observed or old_observed > datetime.now(timezone.utc):
+        return None
+    if old_observed.astimezone(TAIPEI).date().isoformat() != decision_date:
+        return None
+
+    old_provenance = legacy_result.get("provenance")
+    current_provenance = current_input_payload.get("provenance")
+    if not isinstance(old_provenance, Mapping) or not isinstance(current_provenance, Mapping):
+        return None
+    old_positions = old_provenance.get("positions")
+    if not isinstance(old_positions, list) or not old_positions:
+        return None
+    old_rows = legacy_result.get("positions")
+    if not isinstance(old_rows, list):
+        return None
+    old_row_matches = [
+        row
+        for row in old_rows
+        if isinstance(row, Mapping)
+        and str(row.get("position_id") or "") == existing_record.position_id
+    ]
+    if len(old_row_matches) != 1:
+        return None
+    old_row = old_row_matches[0]
+    old_event = old_row.get("transition_event")
+    if not isinstance(old_event, Mapping) or old_event.get("persistence") != "written":
+        return None
+    old_input_hash = str(old_event.get("input_hash") or "")
+    if not _is_sha256(old_input_hash):
+        return None
+    if old_event.get("event_id") != existing_record.event_id:
+        return None
+    if old_event.get("policy_hash") != legacy_result.get("policy_hash"):
+        return None
+    if old_event.get("decision_kind") != "proposal":
+        return None
+    if (
+        old_row.get("previous_state") != existing_record.previous_state.value
+        or old_row.get("proposed_state") != existing_record.proposed_state.value
+        or old_row.get("reasons") != list(existing_record.reasons)
+        or old_event.get("previous_state") != existing_record.previous_state.value
+        or old_event.get("proposed_state") != existing_record.proposed_state.value
+        or old_event.get("recorded_state") != existing_record.recorded_state.value
+        or existing_record.decision_kind != "proposal"
+    ):
+        return None
+
+    source_proof, source_paths = _verify_legacy_health_sources(
+        repo_root=repo_root,
+        formal_output_root=formal_output_root,
+        decision_date=decision_date,
+        old_provenance=old_provenance,
+        current_provenance=current_provenance,
+    )
+    if source_proof is None:
+        return None
+
+    from app_module.position_health_source_providers import (
+        build_position_health_source_bundle,
+    )
+
+    condition_path = source_paths["condition"]
+    metrics_path = source_paths["metrics"]
+    current_condition_path = source_paths["current_condition"]
+    current_metrics_path = source_paths["current_metrics"]
+    policy_path = source_paths["policy"]
+    calendar_path = source_paths["calendar_cache"]
+    forward_binding_path = source_paths["forward_binding"]
+    calendar_start_date = str(
+        _mapping(old_provenance.get("official_calendar")).get("start_date") or decision_date
+    )
+    old_bundle = build_position_health_source_bundle(
+        positions=tuple(item for item in old_positions if isinstance(item, Mapping)),
+        decision_date=decision_date,
+        decision_at=old_observed.astimezone(TAIPEI),
+        observed_at=old_observed,
+        forward_binding_path=forward_binding_path,
+        condition_source_path=condition_path,
+        metrics_source_path=metrics_path,
+        policy_source_path=policy_path,
+        calendar_cache_path=calendar_path,
+        calendar_start_date=calendar_start_date,
+    )
+    if old_bundle.blockers:
+        return None
+    if list(old_bundle.warnings) != list(old_provenance.get("source_provider_warnings") or []):
+        return None
+    if list(old_bundle.blockers) != list(old_provenance.get("source_provider_blockers") or []):
+        return None
+
+    current_positions = current_provenance.get("positions")
+    if not isinstance(current_positions, list) or not current_positions:
+        return None
+    current_bundle = build_position_health_source_bundle(
+        positions=tuple(item for item in current_positions if isinstance(item, Mapping)),
+        decision_date=decision_date,
+        decision_at=current_observed.astimezone(TAIPEI),
+        observed_at=current_observed,
+        forward_binding_path=forward_binding_path,
+        condition_source_path=current_condition_path,
+        metrics_source_path=current_metrics_path,
+        policy_source_path=policy_path,
+        calendar_cache_path=calendar_path,
+        calendar_start_date=str(
+            _mapping(current_provenance.get("official_calendar")).get("start_date") or decision_date
+        ),
+    )
+    if current_bundle.blockers:
+        return None
+    if list(current_bundle.warnings) != list(current_provenance.get("source_provider_warnings") or []):
+        return None
+    if list(current_bundle.blockers) != list(current_provenance.get("source_provider_blockers") or []):
+        return None
+
+    current_request = DailyPositionHealthTransitionRequest(
+        decision_date=decision_date,
+        observed_at=current_observed,
+        positions=tuple(item for item in current_positions if isinstance(item, Mapping)),
+        thesis_by_position=current_bundle.thesis_by_position,
+        conditions_by_position=current_bundle.conditions_by_position,
+        metrics_by_position=current_bundle.metrics_by_position,
+        forward_binding_by_position=current_bundle.forward_binding_by_position,
+        trading_dates=current_bundle.trading_dates,
+        provenance=current_provenance,
+        policy_hash=str(current_input_payload.get("policy_hash") or ""),
+    )
+    current_evaluator = DailyPositionHealthTransitionEvaluator(
+        policy_hash=current_request.policy_hash
+    )
+    current_replayed = current_evaluator.evaluate(current_request)
+    if current_replayed.get("status") == "blocked":
+        return None
+    current_replayed_payload = current_evaluator._proposal_input_payloads_by_position.get(
+        current_record.position_id
+    )
+    if (
+        not isinstance(current_replayed_payload, Mapping)
+        or _canonical_json(current_replayed_payload) != _canonical_json(current_input_payload)
+    ):
+        return None
+
+    old_request = DailyPositionHealthTransitionRequest(
+        decision_date=decision_date,
+        observed_at=old_observed,
+        positions=tuple(item for item in old_positions if isinstance(item, Mapping)),
+        thesis_by_position=old_bundle.thesis_by_position,
+        conditions_by_position=old_bundle.conditions_by_position,
+        metrics_by_position=old_bundle.metrics_by_position,
+        forward_binding_by_position=old_bundle.forward_binding_by_position,
+        trading_dates=old_bundle.trading_dates,
+        provenance=old_provenance,
+        policy_hash=str(legacy_result.get("policy_hash") or ""),
+    )
+    old_evaluator = DailyPositionHealthTransitionEvaluator(
+        policy_hash=old_request.policy_hash
+    )
+    replayed = old_evaluator.evaluate(old_request)
+    if replayed.get("status") == "blocked":
+        return None
+    replayed_payload = old_evaluator._proposal_input_payloads_by_position.get(
+        existing_record.position_id
+    )
+    if not isinstance(replayed_payload, Mapping):
+        return None
+    replayed_hash = _sha256_json(_proposal_input_identity(replayed_payload))
+    if replayed_hash != old_input_hash:
+        return None
+    replayed_rows = [
+        row
+        for row in replayed.get("positions", [])
+        if isinstance(row, Mapping)
+        and str(row.get("position_id") or "") == existing_record.position_id
+    ]
+    if len(replayed_rows) != 1:
+        return None
+    replayed_row = replayed_rows[0]
+    replayed_event = replayed_row.get("transition_event")
+    if not isinstance(replayed_event, Mapping):
+        return None
+    if (
+        replayed_event.get("event_id") != existing_record.event_id
+        or replayed_event.get("input_hash") != old_input_hash
+    ):
+        return None
+    if (
+        replayed_row.get("previous_state") != existing_record.previous_state.value
+        or replayed_row.get("proposed_state") != existing_record.proposed_state.value
+        or replayed_row.get("reasons") != list(existing_record.reasons)
+    ):
+        return None
+    expected_event_id = _proposal_event_id(
+        position_id=existing_record.position_id,
+        decision_date=decision_date,
+        policy_hash=str(legacy_result.get("policy_hash") or ""),
+        input_hash=old_input_hash,
+    )
+    if expected_event_id != existing_record.event_id:
+        return None
+
+    if not _same_snapshot_history_rollover(
+        old_input_payload=replayed_payload,
+        current_input_payload=current_input_payload,
+        old_provenance=old_provenance,
+        current_provenance=current_provenance,
+        position_id=existing_record.position_id,
+        decision_date=decision_date,
+    ):
+        return None
+    if _sha256_json(_proposal_input_identity(current_input_payload)) != current_input_hash:
+        return None
+    rereads = source_proof.pop("_rereads", [])
+    _read_hashed_legacy_file(
+        role="legacy_result",
+        path=result_path,
+        root=output_dir,
+        expected_hash=result_hash,
+        max_bytes=512 * 1024,
+        proofs=[],
+    )
+    _reread_legacy_artifacts(rereads)
+
+    database_record_hash = _sha256_json(_transition_record_payload(existing_record))
+    return {
+        "schema_version": "position-health-transition-v2-same-snapshot-reuse.v1",
+        "stored_record": {
+            "event_id": existing_record.event_id,
+            "input_hash": old_input_hash,
+            "record_sha256": database_record_hash,
+        },
+        "current_input_hash": current_input_hash,
+        "legacy_result": {
+            "path": str(result_path),
+            "size_bytes": len(result_bytes),
+            "sha256": result_hash,
+            "observed_at": old_observed.isoformat(),
+        },
+        "source_artifacts": source_proof,
+        "source_snapshot": {
+            "snapshot_id": str(old_provenance.get("source_snapshot_id") or ""),
+            "snapshot_date": str(old_provenance.get("source_snapshot_date") or ""),
+            "rows_sha256": str(old_provenance.get("source_snapshot_rows_sha256") or ""),
+        },
+        "ledger_window": {
+            "start_exclusive": str(_mapping(old_provenance.get("entry_lineage_source")).get("window_start_exclusive") or ""),
+            "end_inclusive": str(_mapping(old_provenance.get("entry_lineage_source")).get("window_end_inclusive") or ""),
+            "row_count": 0,
+            "event_count": 0,
+            "rows_sha256": str(_mapping(old_provenance.get("entry_lineage_source")).get("rows_sha256") or ""),
+        },
+        "allowed_differences": [
+            "previous_snapshot_id_and_date_rollover_to_current_same_snapshot",
+            "position_historical_prior_source_snapshot_id_rollover",
+            "ready_empty_entry_lineage_to_not_needed",
+            "entry_lineage_verified_codes_cleared_on_same_snapshot",
+            "paper_position_entry_lineage_not_verified_warning_cleared",
+            "current_condition_and_metrics_capture_paths_may_change_within_the_fixed_date_root",
+            "current_condition_and_metrics_file_hashes_may_change_when_full_suffix_hashes_and_semantic_rows_verify",
+            "current_capture_available_at_is_preserved_without_historical_backfill",
+        ],
+    }
+
+
+def _verify_legacy_health_sources(
+    *,
+    repo_root: Path,
+    formal_output_root: Path,
+    decision_date: str,
+    old_provenance: Mapping[str, Any],
+    current_provenance: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Path]]:
+    date_key = decision_date.replace("-", "")
+    condition_root = formal_output_root / "position_health_sources"
+    condition_path = condition_root / f"condition_{date_key}.json"
+    metrics_path = condition_root / f"metrics_{date_key}.json"
+    policy_root = repo_root / "output" / "formal_daily_publications" / "rule_source" / "scheduler"
+    policy_path = policy_root / "rule_source_latest_status.json"
+    calendar_root = repo_root / "output" / "paper_execution_eod_replay" / "calendar_cache"
+    ledger_path = repo_root / "output" / "paper_execution_eod_replay" / "paper_trade_ledger.sqlite"
+    state_path = repo_root / "output" / "paper_execution_eod_replay" / "paper_portfolio" / "paper_portfolio.sqlite"
+    coverage_path = repo_root / "output" / "paper_execution_eod_replay" / "scheduled" / "paper_portfolio_isolated" / "latest_status.json"
+    forward_binding_path = repo_root / "output" / "forward_position_thesis" / "bindings"
+
+    old_condition = _mapping(old_provenance.get("condition"))
+    current_condition = _mapping(current_provenance.get("condition"))
+    old_metrics = _mapping(old_provenance.get("metrics"))
+    current_metrics = _mapping(current_provenance.get("metrics"))
+    old_policy = _mapping(old_provenance.get("policy"))
+    old_calendar = _mapping(old_provenance.get("official_calendar"))
+    if not _recorded_path_equals(old_condition.get("path"), condition_path):
+        return None, {}
+    if not _recorded_path_equals(old_metrics.get("path"), metrics_path):
+        return None, {}
+    current_condition_path = Path(str(current_condition.get("path") or ""))
+    current_metrics_path = Path(str(current_metrics.get("path") or ""))
+    if not _is_captured_daily_source_path(
+        current_condition_path, root=condition_root, stem="condition", date_key=date_key
+    ):
+        return None, {}
+    if not _is_captured_daily_source_path(
+        current_metrics_path, root=condition_root, stem="metrics", date_key=date_key
+    ):
+        return None, {}
+    if _proposal_input_identity(old_condition) != _proposal_input_identity(current_condition):
+        return None, {}
+    if _proposal_input_identity(old_metrics) != _proposal_input_identity(current_metrics):
+        return None, {}
+    if not _recorded_path_equals(old_policy.get("path"), policy_path):
+        return None, {}
+    if not _recorded_path_equals(old_calendar.get("calendar_cache_path"), calendar_root):
+        return None, {}
+    if old_calendar.get("temporary_closure_path") is not None:
+        return None, {}
+    old_forward = _mapping(old_provenance.get("forward_binding"))
+    if (
+        not _recorded_path_equals(old_forward.get("path"), forward_binding_path)
+        or old_forward.get("status") != "missing"
+    ):
+        return None, {}
+
+    proofs: list[dict[str, Any]] = []
+    _read_hashed_legacy_file(
+        role="condition_original",
+        path=condition_path,
+        root=condition_root,
+        expected_hash=old_condition.get("file_sha256"),
+        max_bytes=8 * 1024 * 1024,
+        proofs=proofs,
+    )
+    _read_hashed_legacy_file(
+        role="metrics_original",
+        path=metrics_path,
+        root=condition_root,
+        expected_hash=old_metrics.get("file_sha256"),
+        max_bytes=8 * 1024 * 1024,
+        proofs=proofs,
+    )
+    current_condition_bytes = _read_hashed_legacy_file(
+        role="condition_current_capture",
+        path=current_condition_path,
+        root=condition_root,
+        expected_hash=current_condition.get("file_sha256"),
+        max_bytes=8 * 1024 * 1024,
+        proofs=proofs,
+    )
+    current_metrics_bytes = _read_hashed_legacy_file(
+        role="metrics_current_capture",
+        path=current_metrics_path,
+        root=condition_root,
+        expected_hash=current_metrics.get("file_sha256"),
+        max_bytes=8 * 1024 * 1024,
+        proofs=proofs,
+    )
+    available_at_by_role = {
+        "condition_original": old_condition.get("available_at"),
+        "condition_current_capture": current_condition.get("available_at"),
+        "metrics_original": old_metrics.get("available_at"),
+        "metrics_current_capture": current_metrics.get("available_at"),
+    }
+    for proof in proofs:
+        if proof.get("role") in available_at_by_role:
+            proof["available_at"] = available_at_by_role[str(proof["role"])]
+    for path, raw, stem in (
+        (current_condition_path, current_condition_bytes, "condition"),
+        (current_metrics_path, current_metrics_bytes, "metrics"),
+    ):
+        if not _captured_daily_source_suffix_matches(
+            path,
+            raw,
+            stem=stem,
+            date_key=date_key,
+        ):
+            return None, {}
+    _read_hashed_legacy_file(
+        role="policy",
+        path=policy_path,
+        root=policy_root,
+        expected_hash=old_policy.get("file_sha256"),
+        max_bytes=8 * 1024 * 1024,
+        proofs=proofs,
+    )
+    year = int(decision_date[:4])
+    year_evidence = _mapping(_mapping(old_calendar.get("years")).get(str(year)))
+    recorded_calendar_file = year_evidence.get("path")
+    calendar_file = Path(str(recorded_calendar_file or ""))
+    if (
+        calendar_file.parent != calendar_root
+        or not calendar_file.name.startswith(f"twse_holiday_schedule_{year}_")
+        or not calendar_file.name.endswith(".json")
+    ):
+        return None, {}
+    _read_hashed_legacy_file(
+        role="official_calendar",
+        path=calendar_file,
+        root=calendar_root,
+        expected_hash=year_evidence.get("cache_file_sha256"),
+        max_bytes=16 * 1024 * 1024,
+        proofs=proofs,
+    )
+
+    old_identity = _mapping(old_provenance.get("position_identity_source"))
+    current_identity = _mapping(current_provenance.get("position_identity_source"))
+    if not old_identity or not current_identity:
+        return None, {}
+    if _without_observed_at(old_identity) != _without_observed_at(current_identity):
+        return None, {}
+    if old_identity.get("status") != "degraded" or current_identity.get("status") != "degraded":
+        return None, {}
+    old_state = _mapping(old_identity.get("state"))
+    old_ledger = _mapping(old_identity.get("ledger"))
+    if (
+        not _recorded_path_equals(old_state.get("path"), state_path)
+        or not _recorded_path_equals(old_ledger.get("path"), ledger_path)
+        or not _recorded_path_equals(_mapping(old_identity.get("coverage")).get("path"), coverage_path)
+    ):
+        return None, {}
+    state_bytes = _read_hashed_legacy_file(
+        role="paper_snapshot_state",
+        path=state_path,
+        root=state_path.parent,
+        expected_hash=old_state.get("file_sha256"),
+        max_bytes=32 * 1024 * 1024,
+        proofs=proofs,
+    )
+    coverage_hash = _mapping(old_identity.get("coverage")).get("file_sha256")
+    _read_hashed_legacy_file(
+        role="paper_snapshot_coverage",
+        path=coverage_path,
+        root=coverage_path.parent,
+        expected_hash=coverage_hash,
+        max_bytes=1024 * 1024,
+        proofs=proofs,
+    )
+
+    lineage = _mapping(old_provenance.get("entry_lineage_source"))
+    current_lineage = _mapping(current_provenance.get("entry_lineage_source"))
+    if (
+        lineage.get("status") != "ready"
+        or lineage.get("row_count") != 0
+        or lineage.get("event_count") != 0
+        or lineage.get("rows_sha256") != _sha256_json([])
+        or current_lineage != {"status": "not_needed"}
+    ):
+        return None, {}
+    if not _recorded_path_equals(lineage.get("path"), ledger_path):
+        return None, {}
+    ledger_hash = lineage.get("file_sha256")
+    if (
+        ledger_hash != old_ledger.get("file_sha256")
+        or ledger_hash != _mapping(current_identity.get("ledger")).get("file_sha256")
+    ):
+        return None, {}
+    ledger_bytes = _read_hashed_legacy_file(
+        role="paper_trade_ledger",
+        path=ledger_path,
+        root=ledger_path.parent,
+        expected_hash=ledger_hash,
+        max_bytes=32 * 1024 * 1024,
+        proofs=proofs,
+    )
+    _verify_empty_ledger_window(
+        path=ledger_path,
+        start_exclusive=str(lineage.get("window_start_exclusive") or ""),
+        end_inclusive=str(lineage.get("window_end_inclusive") or ""),
+        stock_codes=tuple(str(item) for item in lineage.get("focused_stock_codes", [])),
+        portfolio_id=str(old_identity.get("portfolio_id") or ""),
+        expected_data_version=lineage.get("data_version"),
+    )
+    _assert_no_sqlite_sidecar(state_path)
+    _assert_no_sqlite_sidecar(ledger_path)
+
+    current_policy = _mapping(current_provenance.get("policy"))
+    if (
+        old_policy.get("file_sha256") != current_policy.get("file_sha256")
+        or _proposal_input_identity(old_policy) != _proposal_input_identity(current_policy)
+    ):
+        return None, {}
+    current_calendar = _mapping(current_provenance.get("official_calendar"))
+    if _without_volatile_calendar_custody(old_calendar) != _without_volatile_calendar_custody(current_calendar):
+        return None, {}
+    old_calendar_years = _mapping(old_calendar.get("years"))
+    current_calendar_years = _mapping(current_calendar.get("years"))
+    if set(old_calendar_years) != set(current_calendar_years):
+        return None, {}
+    for calendar_year, old_calendar_evidence in old_calendar_years.items():
+        if _mapping(old_calendar_evidence).get("cache_file_sha256") != _mapping(
+            current_calendar_years.get(calendar_year)
+        ).get("cache_file_sha256"):
+            return None, {}
+    if _mapping(old_identity.get("state")).get("selected_snapshot_rows_sha256") != _mapping(current_identity.get("state")).get("selected_snapshot_rows_sha256"):
+        return None, {}
+    if old_provenance.get("source_snapshot_id") != current_provenance.get("source_snapshot_id"):
+        return None, {}
+    if old_provenance.get("source_snapshot_date") != current_provenance.get("source_snapshot_date"):
+        return None, {}
+    if old_provenance.get("source_snapshot_rows_sha256") != current_provenance.get("source_snapshot_rows_sha256"):
+        return None, {}
+    if old_provenance.get("source_data_version") != current_provenance.get("source_data_version"):
+        return None, {}
+
+    reread = [
+        ("condition_original", condition_path, condition_root, old_condition.get("file_sha256"), 8 * 1024 * 1024),
+        ("condition_current_capture", current_condition_path, condition_root, current_condition.get("file_sha256"), 8 * 1024 * 1024),
+        ("metrics_original", metrics_path, condition_root, old_metrics.get("file_sha256"), 8 * 1024 * 1024),
+        ("metrics_current_capture", current_metrics_path, condition_root, current_metrics.get("file_sha256"), 8 * 1024 * 1024),
+        ("policy", policy_path, policy_root, old_policy.get("file_sha256"), 8 * 1024 * 1024),
+        ("official_calendar", calendar_file, calendar_root, year_evidence.get("cache_file_sha256"), 16 * 1024 * 1024),
+        ("paper_snapshot_state", state_path, state_path.parent, old_state.get("file_sha256"), 32 * 1024 * 1024),
+        ("paper_snapshot_coverage", coverage_path, coverage_path.parent, coverage_hash, 1024 * 1024),
+        ("paper_trade_ledger", ledger_path, ledger_path.parent, ledger_hash, 32 * 1024 * 1024),
+    ]
+    return {"artifacts": proofs, "_rereads": reread}, {
+        "condition": condition_path,
+        "metrics": metrics_path,
+        "current_condition": current_condition_path,
+        "current_metrics": current_metrics_path,
+        "policy": policy_path,
+        "calendar_cache": calendar_root,
+        "forward_binding": forward_binding_path,
+    }
+
+
+def _same_snapshot_history_rollover(
+    *,
+    old_input_payload: Mapping[str, Any],
+    current_input_payload: Mapping[str, Any],
+    old_provenance: Mapping[str, Any],
+    current_provenance: Mapping[str, Any],
+    position_id: str,
+    decision_date: str,
+) -> bool:
+    source_id = str(old_provenance.get("source_snapshot_id") or "")
+    source_date = str(old_provenance.get("source_snapshot_date") or "")
+    old_prior_id = str(old_provenance.get("previous_source_snapshot_id") or "")
+    old_prior_date = str(old_provenance.get("previous_source_snapshot_date") or "")
+    current_prior_id = str(current_provenance.get("previous_source_snapshot_id") or "")
+    current_prior_date = str(current_provenance.get("previous_source_snapshot_date") or "")
+    if (
+        not source_id
+        or source_date != decision_date
+        or current_provenance.get("source_snapshot_id") != source_id
+        or current_provenance.get("source_snapshot_date") != source_date
+        or current_prior_id != source_id
+        or current_prior_date != decision_date
+        or not old_prior_id
+        or not old_prior_date
+        or old_prior_id == source_id
+        or old_prior_date >= decision_date
+    ):
+        return False
+    old_lineage = _mapping(old_provenance.get("entry_lineage_source"))
+    if (
+        old_lineage.get("status") != "ready"
+        or old_lineage.get("row_count") != 0
+        or old_lineage.get("event_count") != 0
+        or old_lineage.get("rows_sha256") != _sha256_json([])
+        or _mapping(current_provenance.get("entry_lineage_source")) != {"status": "not_needed"}
+    ):
+        return False
+    old_codes = old_provenance.get("entry_lineage_verified_codes")
+    if not isinstance(old_codes, list) or not old_codes:
+        return False
+    if current_provenance.get("entry_lineage_verified_codes") != []:
+        return False
+
+    old_warnings = old_provenance.get("warnings")
+    current_warnings = current_provenance.get("warnings")
+    if not isinstance(old_warnings, list) or not isinstance(current_warnings, list):
+        return False
+    warning_code = "paper_position_entry_lineage_not_verified"
+    if old_warnings.count(warning_code) != 1:
+        return False
+    normalized_warnings = [item for item in old_warnings if item != warning_code]
+    if normalized_warnings != current_warnings:
+        return False
+
+    old_identity = _proposal_input_identity(old_input_payload)
+    current_identity = _proposal_input_identity(current_input_payload)
+    if not isinstance(old_identity, Mapping) or not isinstance(current_identity, Mapping):
+        return False
+    normalized_old = copy.deepcopy(dict(old_identity))
+    current_position = current_identity.get("position")
+    old_position = normalized_old.get("position")
+    old_identity_provenance = normalized_old.get("provenance")
+    current_identity_provenance = current_identity.get("provenance")
+    if not all(
+        isinstance(item, Mapping)
+        for item in (current_position, old_position, old_identity_provenance, current_identity_provenance)
+    ):
+        return False
+    current_position_map = _mapping(current_position)
+    old_position_map = _mapping(old_position)
+    old_provenance_map = _mapping(old_identity_provenance)
+    current_provenance_map = _mapping(current_identity_provenance)
+    if str(old_position_map.get("position_id") or "") != position_id:
+        return False
+    if old_position_map.get("historical_prior_source_snapshot_id") != old_prior_id:
+        return False
+    if current_position_map.get("historical_prior_source_snapshot_id") != source_id:
+        return False
+    normalized_old_position = dict(old_position_map)
+    normalized_old_position["historical_prior_source_snapshot_id"] = source_id
+    normalized_old["position"] = normalized_old_position
+
+    old_positions = old_provenance_map.get("positions")
+    current_positions = current_provenance_map.get("positions")
+    if not isinstance(old_positions, list) or not isinstance(current_positions, list):
+        return False
+    old_by_id = {
+        str(item.get("position_id") or ""): item
+        for item in old_positions
+        if isinstance(item, Mapping)
+    }
+    current_by_id = {
+        str(item.get("position_id") or ""): item
+        for item in current_positions
+        if isinstance(item, Mapping)
+    }
+    if set(old_by_id) != set(current_by_id) or position_id not in old_by_id:
+        return False
+    normalized_positions: list[dict[str, Any]] = []
+    for old_item in old_positions:
+        if not isinstance(old_item, Mapping):
+            return False
+        old_id = str(old_item.get("position_id") or "")
+        current_item = current_by_id.get(old_id)
+        if not isinstance(current_item, Mapping):
+            return False
+        if old_item.get("historical_prior_source_snapshot_id") != old_prior_id:
+            return False
+        if current_item.get("historical_prior_source_snapshot_id") != source_id:
+            return False
+        normalized_item = dict(old_item)
+        normalized_item["historical_prior_source_snapshot_id"] = source_id
+        normalized_positions.append(normalized_item)
+    if {str(item.get("position_id") or "") for item in normalized_positions} != set(current_by_id):
+        return False
+
+    normalized_old_provenance = dict(old_provenance_map)
+    normalized_old_provenance["positions"] = normalized_positions
+    normalized_old_provenance["previous_source_snapshot_id"] = source_id
+    normalized_old_provenance["previous_source_snapshot_date"] = decision_date
+    normalized_old_provenance["entry_lineage_source"] = copy.deepcopy(
+        current_provenance_map.get("entry_lineage_source")
+    )
+    normalized_old_provenance["entry_lineage_verified_codes"] = copy.deepcopy(
+        current_provenance_map.get("entry_lineage_verified_codes")
+    )
+    old_input_warnings = normalized_old_provenance.get("warnings")
+    if not isinstance(old_input_warnings, list) or old_input_warnings.count(warning_code) != 1:
+        return False
+    normalized_old_provenance["warnings"] = [
+        item for item in old_input_warnings if item != warning_code
+    ]
+    normalized_old["provenance"] = normalized_old_provenance
+    return _canonical_json(normalized_old) == _canonical_json(current_identity)
+
+
+def _verify_empty_ledger_window(
+    *,
+    path: Path,
+    start_exclusive: str,
+    end_inclusive: str,
+    stock_codes: tuple[str, ...],
+    portfolio_id: str,
+    expected_data_version: object,
+) -> None:
+    if not start_exclusive or not end_inclusive or not stock_codes or not portfolio_id:
+        raise ValueError("ledger window proof is incomplete")
+    if start_exclusive >= end_inclusive:
+        raise ValueError("ledger window is not ordered")
+    if isinstance(expected_data_version, bool) or not isinstance(expected_data_version, int):
+        raise ValueError("ledger data_version is invalid")
+    if path.with_name(path.name + "-wal").exists():
+        raise ValueError("ledger WAL prevents stable custody proof")
+    uri = f"{path.resolve().as_uri()}?mode=ro"
+    with sqlite3.connect(uri, uri=True, timeout=5.0) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("BEGIN")
+        data_version = int(conn.execute("PRAGMA data_version").fetchone()[0])
+        if data_version != expected_data_version:
+            raise ValueError("ledger data_version changed")
+        columns = {
+            str(row[1]) for row in conn.execute('PRAGMA table_info("paper_trade_ledger")')
+        }
+        required = {
+            "portfolio_id",
+            "event_date",
+            "stock_code",
+        }
+        if not required.issubset(columns):
+            raise ValueError("ledger schema cannot prove the scoped window")
+        placeholders = ",".join("?" for _ in stock_codes)
+        rows = conn.execute(
+            f"""
+            SELECT 1 FROM paper_trade_ledger
+            WHERE portfolio_id = ?
+              AND event_date > ?
+              AND event_date <= ?
+              AND stock_code IN ({placeholders})
+            LIMIT 1
+            """,
+            (portfolio_id, start_exclusive, end_inclusive, *stock_codes),
+        ).fetchone()
+        if rows is not None:
+            raise ValueError("ledger scoped window is no longer empty")
+
+
+def _read_hashed_legacy_file(
+    *,
+    role: str,
+    path: Path,
+    root: Path,
+    expected_hash: object,
+    max_bytes: int,
+    proofs: list[dict[str, Any]],
+) -> bytes:
+    if not _is_sha256(expected_hash):
+        raise ValueError(f"{role} source hash is invalid")
+    raw = _read_bounded_nofollow(path, root=root, max_bytes=max_bytes)
+    actual_hash = _sha256_bytes(raw)
+    if actual_hash != expected_hash:
+        raise ValueError(f"{role} source hash changed")
+    proofs.append(
+        {
+            "role": role,
+            "path": str(path),
+            "size_bytes": len(raw),
+            "sha256": actual_hash,
+        }
+    )
+    return raw
+
+
+def _reread_legacy_artifacts(
+    artifacts: Sequence[tuple[str, Path, Path, object, int]],
+) -> None:
+    """在來源重建後，以原本各自的容量限制確認檔案沒有變動。"""
+
+    for role, path, root, expected_hash, max_bytes in artifacts:
+        _read_hashed_legacy_file(
+            role=role,
+            path=path,
+            root=root,
+            expected_hash=expected_hash,
+            max_bytes=max_bytes,
+            proofs=[],
+        )
+
+
+def _read_bounded_nofollow(path: Path, *, root: Path, max_bytes: int) -> bytes:
+    from app_module.recommendation.queries import _read_regular_file_no_follow
+
+    return _read_regular_file_no_follow(path, root, max_bytes=max_bytes)
+
+
+def _recorded_path_equals(value: object, expected: Path) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        return Path(value) == expected
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_captured_daily_source_path(
+    path: Path,
+    *,
+    root: Path,
+    stem: str,
+    date_key: str,
+) -> bool:
+    if path.parent != root:
+        return False
+    if path.name == f"{stem}_{date_key}.json":
+        return True
+    match = re.fullmatch(
+        rf"{re.escape(stem)}_{re.escape(date_key)}_([0-9a-f]{{16}})\.json",
+        path.name,
+    )
+    return match is not None
+
+
+def _captured_daily_source_suffix_matches(
+    path: Path,
+    raw: bytes,
+    *,
+    stem: str,
+    date_key: str,
+) -> bool:
+    if path.name == f"{stem}_{date_key}.json":
+        return True
+    match = re.fullmatch(
+        rf"{re.escape(stem)}_{re.escape(date_key)}_([0-9a-f]{{16}})\.json",
+        path.name,
+    )
+    return match is not None and _sha256_bytes(raw)[7:23] == match.group(1)
+
+
+def _without_observed_at(value: Mapping[str, Any]) -> dict[str, Any]:
+    stable = copy.deepcopy(dict(value))
+    stable.pop("observed_at", None)
+    return stable
+
+
+def _without_volatile_calendar_custody(value: Mapping[str, Any]) -> Any:
+    return _proposal_input_identity(value)
+
+
+def _transition_record_payload(record: PositionHealthTransitionRecord) -> dict[str, Any]:
+    return {
+        "event_id": record.event_id,
+        "position_id": record.position_id,
+        "decision_date": record.decision_date,
+        "previous_state": record.previous_state.value,
+        "proposed_state": record.proposed_state.value,
+        "recorded_state": record.recorded_state.value,
+        "decision_kind": record.decision_kind,
+        "reasons": list(record.reasons),
+        "reviewer": record.reviewer,
+        "auto_action_allowed": record.auto_action_allowed,
+    }
+
+
+def _assert_no_sqlite_sidecar(path: Path) -> None:
+    for suffix in ("-wal", "-shm", "-journal"):
+        if path.with_name(path.name + suffix).exists():
+            raise ValueError("SQLite sidecar prevents stable source custody")
+
+
+def _is_sha256(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        return False
+    digest = value[7:]
+    return len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
 def _atomic_write(path: Path, payload: object) -> None:

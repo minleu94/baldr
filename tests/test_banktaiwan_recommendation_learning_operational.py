@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from argparse import Namespace
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 import gc
 import hashlib
 import importlib.util
@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -436,6 +437,211 @@ def test_operational_task_reuses_terminal_receipt_without_duplicate_child(
     assert snapshot["canonical_artifact_sha256"].startswith("sha256:")
 
 
+def test_production_child_stdout_over_status_bound_is_pinned_and_reusable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    paths, decision_date, scenario = operational._common_args(args)
+    child_result = _successful_child(paths, decision_date, scenario, args)
+    child_payload = child_result["child_payload"]
+    assert isinstance(child_payload, dict)
+    child_payload["test_only_large_report"] = "x" * (
+        operational._MAX_OPERATIONAL_STATUS_BYTES + 1024
+    )
+    dependencies = child_payload["dependencies"]
+    assert isinstance(dependencies, dict)
+    dependencies["source_contract"] = {
+        "status": "blocked",
+        "decision_date": decision_date.isoformat(),
+        "contract_sha256": "sha256:" + "a" * 64,
+        "technical": {
+            "reason": "prospective_feature_snapshot_failed:DailyPriceSourceRevisionError",
+            "prospective_feature_snapshot": {
+                "status": "blocked",
+                "verified": False,
+                "reason": "prospective_feature_snapshot_failed:DailyPriceSourceRevisionError",
+            },
+        },
+        "lanes": {
+            "price_up_calibration": {
+                "prospective_status": "blocked",
+                "prospective_blockers": ["formal_market_source_revision_blocks_pit"],
+            }
+        },
+    }
+    dependencies["source_contract_receipt"] = {
+        "status": "blocked",
+        "contract_path": str(paths.lane_learning_root / "source_contract" / "contract.json"),
+        "contract_content_sha256": "sha256:" + "b" * 64,
+        "contract_file_sha256": "sha256:" + "c" * 64,
+        "decision_date": decision_date.isoformat(),
+    }
+    raw_stdout = json.dumps(
+        child_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+    ).encode("utf-8") + b"\n"
+    assert len(raw_stdout) > operational._MAX_OPERATIONAL_STATUS_BYTES
+    assert len(raw_stdout) <= operational._MAX_CHILD_CLI_STDOUT_ARTIFACT_BYTES
+    invocations: list[object] = []
+
+    def completed_process(command: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        invocations.append(command)
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=raw_stdout,
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(operational.subprocess, "run", completed_process)
+    first_code, first = operational.run_once(args)
+
+    assert first_code == 0, (
+        first.get("status"),
+        first.get("reason"),
+        (first.get("child_invocation") or {}).get("child_payload_source"),
+        (first.get("child_invocation") or {}).get("stdout_artifact"),
+        (first.get("child_invocation") or {}).get("terminal_readback"),
+    )
+    assert first["status"] == "completed_waiting_natural_maturity"
+    artifact = first["child_invocation"]["stdout_artifact"]
+    assert artifact["status"] == "verified"
+    assert artifact["size_bytes"] == len(raw_stdout)
+    artifact_path = Path(artifact["path"])
+    assert artifact_path.read_bytes() == raw_stdout
+    assert "sha256:" + hashlib.sha256(raw_stdout).hexdigest() == artifact["sha256"]
+    assert "test_only_large_report" not in first["child_result"]
+    assert first["child_result"]["dependencies"]["source_contract_receipt"][
+        "contract_file_sha256"
+    ] == "sha256:" + "c" * 64
+    assert first["child_result"]["dependencies"]["price_up_calibration"][
+        "prospective_status"
+    ] == "blocked"
+    receipt_path = Path(str(first["receipt_path"]))
+    assert receipt_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+    assert paths.latest_status_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+
+    def unexpected_second_child(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        raise AssertionError("same input should reuse the verified terminal")
+
+    monkeypatch.setattr(operational.subprocess, "run", unexpected_second_child)
+    second_code, second = operational.run_once(args)
+    assert second_code == 0
+    assert second["idempotent_replay"] is True
+    assert second["reused_run_id"] == first["run_id"]
+    assert invocations and len(invocations) == 1
+    assert receipt_path.stat().st_size <= operational._MAX_CHILD_RUN_RECEIPT_BYTES
+
+
+def test_production_child_stdout_size_cap_blocks_without_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    paths, decision_date, scenario = operational._common_args(args)
+    _successful_child(paths, decision_date, scenario, args)
+    raw_stdout = b"x" * (operational._MAX_CHILD_CLI_STDOUT_ARTIFACT_BYTES + 1)
+
+    def completed_process(command: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=raw_stdout,
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(operational.subprocess, "run", completed_process)
+    monkeypatch.setattr(
+        operational,
+        "_extract_child_json",
+        lambda _stdout: (_ for _ in ()).throw(AssertionError("over-cap stdout must not be parsed")),
+    )
+    code, payload = operational.run_once(args)
+
+    assert code == 2
+    assert payload["status"] == "failed_dependency"
+    artifact = payload["child_invocation"]["stdout_artifact"]
+    assert artifact["status"] == "blocked"
+    assert artifact["reason"] == "child_stdout_artifact_size_limit_exceeded"
+    assert artifact["observed_size_bytes"] == len(raw_stdout)
+    assert "path" in artifact
+    assert not Path(artifact["path"]).exists()
+    receipt_path = Path(str(payload["receipt_path"]))
+    assert receipt_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["status"] == "failed_dependency"
+    assert receipt["reason"] == payload["reason"]
+    assert paths.latest_status_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+
+
+def test_child_stdout_artifact_readback_mismatch_keeps_artifact_and_blocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    paths, decision_date, scenario = operational._common_args(args)
+    child_result = _successful_child(paths, decision_date, scenario, args)
+    child_payload = child_result["child_payload"]
+    assert isinstance(child_payload, dict)
+    raw_stdout = json.dumps(child_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    original_reader = operational._read_child_stdout_artifact
+    changed_paths: list[Path] = []
+
+    def mutate_published_file(path: Path, *, root: Path) -> bytes:
+        if not changed_paths:
+            path.write_bytes(b"mutated-after-create-only-publish")
+            changed_paths.append(path)
+        return original_reader(path, root=root)
+
+    def completed_process(command: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=raw_stdout, stderr=b"")
+
+    monkeypatch.setattr(operational.subprocess, "run", completed_process)
+    monkeypatch.setattr(operational, "_read_child_stdout_artifact", mutate_published_file)
+    code, payload = operational.run_once(args)
+
+    assert code == 2
+    assert payload["status"] == "failed_dependency"
+    artifact = payload["child_invocation"]["stdout_artifact"]
+    assert artifact["status"] == "blocked"
+    assert artifact["reason"] == "child_stdout_artifact_publish_or_readback_failed"
+    assert len(changed_paths) == 1
+    assert changed_paths[0].read_bytes() == b"mutated-after-create-only-publish"
+    assert paths.latest_status_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+
+
+def test_child_stdout_artifact_preflight_failure_does_not_start_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    monkeypatch.setattr(
+        operational,
+        "_prepare_child_stdout_artifact_target",
+        lambda **_kwargs: (None, "child_stdout_artifact_root_unsafe"),
+    )
+    monkeypatch.setattr(
+        operational.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unsafe artifact root must block before child start")
+        ),
+    )
+
+    code, payload = operational.run_once(args)
+
+    assert code == 2
+    assert payload["status"] == "failed_dependency"
+    assert payload["reason"] == "child_stdout_artifact_root_unsafe"
+    assert payload["child_invocation"]["status"] == "not_started"
+
+
 def test_terminal_reuse_revalidates_complete_run_receipt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -479,6 +685,88 @@ def test_terminal_reuse_revalidates_complete_run_receipt(
     assert second.get("idempotent_replay") is not True
     assert second["attempt_number"] == 2
     assert calls == 2
+
+
+def test_terminal_reuse_checks_original_child_stdout_artifact_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    paths, decision_date, scenario = operational._common_args(args)
+    child_result = _successful_child(paths, decision_date, scenario, args)
+    child_payload = child_result["child_payload"]
+    assert isinstance(child_payload, dict)
+    raw_stdout = json.dumps(child_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+    def completed_process(command: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=raw_stdout, stderr=b"")
+
+    monkeypatch.setattr(operational.subprocess, "run", completed_process)
+    first_code, first = operational.run_once(args)
+    assert first_code == 0
+    stdout_artifact = Path(first["child_invocation"]["stdout_artifact"]["path"])
+    stdout_artifact.write_bytes(raw_stdout + b"tampered")
+    latest, latest_error = operational._read_bounded_snapshot_status(
+        paths.latest_status_path,
+        root=paths.operational_root,
+    )
+    assert latest is not None, latest_error
+    assert not operational._reusable_terminal_receipt_matches(
+        paths=paths,
+        latest=latest,
+        decision_date=decision_date,
+        input_fingerprint=str(first["input_fingerprint"]),
+    )
+
+
+def test_terminal_receipt_size_guard_writes_small_blocked_fallback(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path)
+    paths, decision_date, scenario = operational._common_args(args)
+    input_fingerprint = "sha256:" + "d" * 64
+    run_id = operational._run_id(decision_date, input_fingerprint, 1)
+    base = operational._base_payload(
+        paths=paths,
+        decision_date=decision_date,
+        scenario=scenario,
+        input_fingerprint=input_fingerprint,
+    )
+    base.update(
+        {
+            "status": "completed_shadow",
+            "reason": "fixture_completed",
+            "recoverable": False,
+            "started_at": datetime.now(ZoneInfo("Asia/Taipei")).isoformat(),
+            "attempt_number": 1,
+            "child_invocation": {
+                "status": "completed_process",
+                "returncode": 0,
+                "command": ["fixture-child"],
+                "child_payload_source": "invocation_stdout_json",
+                "stdout_artifact": {
+                    "status": "verified",
+                    "path": str(paths.operational_root / "child_cli_artifacts" / "fixture.stdout.bin"),
+                    "size_bytes": 1,
+                    "sha256": "sha256:" + "e" * 64,
+                },
+            },
+            "child_result": {"unbounded_fixture": "x" * operational._MAX_OPERATIONAL_STATUS_BYTES},
+        }
+    )
+
+    latest = operational._persist_terminal(paths=paths, payload=base, run_id=run_id)
+
+    receipt_path = Path(str(latest["receipt_path"]))
+    assert latest["status"] == "failed_dependency"
+    assert latest["reason"] == "operational_terminal_payload_size_limit_exceeded"
+    assert latest["original_operational_classification"]["status"] == "completed_shadow"
+    assert receipt_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+    assert paths.latest_status_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["status"] == latest["status"]
+    assert receipt["original_operational_classification"]["status"] == "completed_shadow"
 
 
 @pytest.mark.parametrize("unsafe_target", ["latest_status", "run_receipt"])
@@ -772,6 +1060,30 @@ def test_operational_task_rejects_child_summary_that_differs_from_run_receipt(
     assert payload["child_invocation"]["terminal_readback"]["status"] == "failed"
 
 
+def test_operational_task_rejects_missing_child_run_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+
+    def missing_receipt(*child_args: object) -> dict[str, object]:
+        child = _successful_child(*child_args)  # type: ignore[arg-type]
+        payload = child["child_payload"]
+        assert isinstance(payload, dict)
+        run = payload["run"]
+        assert isinstance(run, dict)
+        Path(str(run["receipt_path"])).unlink()
+        return child
+
+    code, payload = operational.run_once(args, child_runner=missing_receipt)
+
+    assert code == 2
+    assert payload["status"] == "failed_dependency"
+    assert payload["child_invocation"]["terminal_readback"]["status"] == "failed"
+    assert "child_run_receipt_unreadable_or_unsafe" in payload["reason"]
+
+
 def test_operational_task_does_not_use_stale_child_latest_status_without_stdout_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -952,6 +1264,49 @@ def test_same_day_reader_uses_bounded_shadow_projection_when_full_status_is_larg
         decision_date=date.fromisoformat(args.decision_date),
     )
     assert snapshot is not None, reason
+
+
+def test_same_day_reader_accepts_snapshot_when_parent_learning_fails(
+    tmp_path: Path,
+) -> None:
+    from scripts.scheduled import run_daily_recommendation_learning_pipeline as pipeline
+
+    args = _fixture_args(tmp_path)
+    pipeline_root = (
+        args.snapshot_output_root / "scheduled" / "recommendation_calibration_learning"
+    )
+    full_path = pipeline_root / "latest_status.json"
+    full_status = json.loads(full_path.read_text(encoding="utf-8"))
+    full_status["status"] = "failed"
+    full_status["failure_stage"] = "recommendation_learning"
+    full_status["blockers"] = ["recommendation_learning_failed"]
+    full_status["steps"]["data_update_quick"] = {
+        "status": "passed",
+        "returncode": 0,
+    }
+    full_status["steps"]["official_market_events"] = {
+        "status": "passed",
+        "returncode": 0,
+    }
+    full_status["steps"]["recommendation_learning"] = {
+        "status": "failed",
+        "returncode": 2,
+    }
+    projection = pipeline._snapshot_source_projection(full_status)
+    projection_path = pipeline_root / "latest_snapshot_source_status.json"
+    projection_path.write_text(
+        json.dumps(projection, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    snapshot, reason = operational.load_same_day_snapshot(
+        output_root=args.snapshot_output_root,
+        decision_date=date.fromisoformat(args.decision_date),
+    )
+
+    assert snapshot is not None, reason
+    assert snapshot.pipeline_status_payload["status"] == "failed"
+    assert snapshot.result_id == "bank-snapshot-20260922"
 
 
 def test_same_day_reader_rejects_corrupt_projection_without_full_status_fallback(
@@ -1239,3 +1594,1307 @@ def test_naturally_ended_windows_pid_is_detected_as_dead_and_reclaimed(
         assert current["token"] == lock.token
     finally:
         lock.release()
+
+
+def _producer_run_id(decision_date: date, started_at: datetime) -> str:
+    started_utc = started_at.astimezone(timezone.utc)
+    return (
+        f"{decision_date:%Y%m%d}-{started_utc.strftime('%Y%m%dT%H%M%S%fZ')}"
+        "-a1b2c3d4e5f6"
+    )
+
+
+def _write_producer_terminal_snapshot_source(
+    args: Namespace,
+    *,
+    run_id: str,
+    completed_at: datetime,
+    parent_status: str = "passed_with_warnings",
+    corrupt_projection_hash: bool = False,
+) -> dict[str, object]:
+    """Use the producer's real projection/terminal-receipt builders in tests."""
+    from scripts.scheduled import run_daily_recommendation_learning_pipeline as pipeline
+
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date.fromisoformat(args.decision_date)
+    pipeline_root = output_root / "scheduled" / "recommendation_calibration_learning"
+    snapshot_status_path = output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    snapshot_status = json.loads(snapshot_status_path.read_text(encoding="utf-8"))
+    cohort = snapshot_status["snapshot_cohort"]
+    result_id = snapshot_status["result_id"]
+    invocation_dir = pipeline_root / "runs" / run_id
+    invocation_dir.mkdir(parents=True, exist_ok=False)
+    invocation_path = invocation_dir / "recommendation_snapshot.stdout.bin"
+    invocation_payload = {
+        "task": "baldr-recommendation-snapshot-daily",
+        "status": "passed",
+        "decision_date": decision_date.isoformat(),
+        "output_root": str(output_root),
+        "result_id": result_id,
+        "snapshot_cohort": cohort,
+    }
+    invocation_raw = json.dumps(
+        invocation_payload,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
+    invocation_path.write_bytes(invocation_raw)
+    invocation_sha256 = "sha256:" + hashlib.sha256(invocation_raw).hexdigest()
+    status_path = pipeline_root / "latest_status.json"
+    log_path = pipeline_root / f"{decision_date:%Y%m%d}_pipeline.log"
+    full_status: dict[str, object] = {
+        "schema_version": "daily-recommendation-learning-pipeline.v1",
+        "task": "baldr-recommendation-calibration-learning-daily",
+        "status": parent_status,
+        "run_id": run_id,
+        "decision_date": decision_date.isoformat(),
+        "decision_timezone": "Asia/Taipei",
+        "output_root": str(output_root),
+        "status_path": str(status_path.resolve()),
+        "log_path": str(log_path.resolve()),
+        "started_at": operational._parse_pipeline_run_id_start(run_id).isoformat(),
+        "completed_at": completed_at.isoformat(),
+        "blockers": (
+            ["recommendation_learning_failed"]
+            if parent_status == "failed"
+            else []
+        ),
+        "warnings": [],
+        "steps": {
+            "recommendation_snapshot": {
+                "name": "recommendation_snapshot",
+                "status": "passed",
+                "returncode": 0,
+                "recoverable": False,
+                "child_status": invocation_payload,
+                "child_status_source": "invocation_stdout_json",
+                "child_stdout_artifact_path": str(invocation_path.resolve()),
+                "child_stdout_artifact_size": len(invocation_raw),
+                "child_stdout_sha256": invocation_sha256,
+                "child_receipt_error": None,
+            },
+            "recommendation_learning": {
+                "name": "recommendation_learning",
+                "status": "failed" if parent_status == "failed" else "passed",
+                "returncode": 2 if parent_status == "failed" else 0,
+                "recoverable": parent_status == "failed",
+            },
+        },
+    }
+    receipt_path = invocation_dir / "receipt.json"
+    full_status["terminal_receipt_path"] = str(receipt_path.resolve())
+    full_status["terminal_receipt_sha256"] = pipeline._write_terminal_receipt(
+        receipt_path,
+        pipeline._terminal_receipt_projection(full_status),
+    )
+    projection = pipeline._snapshot_source_projection(full_status)
+    if corrupt_projection_hash:
+        projected_step = projection["steps"]["recommendation_snapshot"]
+        projected_step["child_stdout_sha256"] = "sha256:" + "f" * 64
+    pipeline._write_json(
+        pipeline_root / "latest_snapshot_source_status.json",
+        projection,
+    )
+    pipeline._write_json(status_path, full_status)
+    return {
+        "status": full_status,
+        "projection": projection,
+        "receipt_path": receipt_path,
+        "invocation_path": invocation_path,
+        "result_id": result_id,
+    }
+
+
+def _write_producer_running_status(
+    output_root: Path,
+    *,
+    decision_date: date,
+    run_id: str,
+    last_run_time: datetime,
+    mtime_offset_seconds: float = 1.0,
+) -> Path:
+    from scripts.scheduled import run_daily_recommendation_learning_pipeline as pipeline
+
+    pipeline_root = output_root / "scheduled" / "recommendation_calibration_learning"
+    status_path = pipeline_root / "latest_status.json"
+    payload = {
+        "schema_version": "daily-recommendation-learning-pipeline.v1",
+        "task": "baldr-recommendation-calibration-learning-daily",
+        "status": "running",
+        "run_id": run_id,
+        "decision_date": decision_date.isoformat(),
+        "decision_timezone": "Asia/Taipei",
+        "output_root": str(output_root.resolve()),
+        "status_path": str(status_path.resolve()),
+        "log_path": str(
+            (pipeline_root / f"{decision_date:%Y%m%d}_pipeline.log").resolve()
+        ),
+    }
+    pipeline._write_json(status_path, payload)
+    timestamp = last_run_time.timestamp() + mtime_offset_seconds
+    os.utime(status_path, (timestamp, timestamp))
+    return status_path
+
+
+def _producer_task_observation(
+    last_run_time: datetime,
+    *,
+    state: str = "Running",
+    task_name: str = "baldr-recommendation-calibration-learning-daily",
+    task_path: str = "\\",
+) -> operational.ScheduledTaskObservation:
+    return operational.ScheduledTaskObservation(
+        task_name=task_name,
+        task_path=task_path,
+        state=state,
+        last_run_time_utc=last_run_time,
+    )
+
+
+def test_upstream_task_not_running_reuses_verified_current_snapshot_without_wait(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    terminal = _write_producer_terminal_snapshot_source(
+        args,
+        run_id=run_id,
+        completed_at=datetime(2026, 9, 30, 9, 1, tzinfo=timezone.utc),
+    )
+    projection_path = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_snapshot_source_status.json"
+    )
+    projection_mtime = datetime(2026, 9, 30, 9, 1, 1, tzinfo=timezone.utc)
+    os.utime(
+        projection_path,
+        (projection_mtime.timestamp(), projection_mtime.timestamp()),
+    )
+    snapshot, reason = operational.load_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    assert snapshot is not None, reason
+    assert snapshot.pipeline_run_id == run_id
+
+    now = datetime(2026, 9, 30, 17, 5, tzinfo=ZoneInfo("Asia/Taipei"))
+    sleeps: list[float] = []
+    paths, _, _ = operational._common_args(args)
+    result, result_reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=snapshot,
+        initial_reason=None,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: _producer_task_observation(last_run, state="Ready"),
+        monotonic=lambda: 0.0,
+        sleep=sleeps.append,
+        now_provider=lambda: now,
+    )
+
+    assert result is not None
+    assert result.pipeline_run_id == snapshot.pipeline_run_id
+    assert result.result_id == snapshot.result_id
+    assert result.payload_hash == snapshot.payload_hash
+    assert result_reason is None
+    assert audit["status"] == "current_terminal_projection_available"
+    assert sleeps == []
+    assert Path(str(terminal["receipt_path"])).is_file()
+
+
+@pytest.mark.parametrize(
+    ("task_state_before", "task_state_after"),
+    [("Running", "Ready"), ("Ready", "Ready")],
+)
+def test_task_accepts_matching_published_terminal_projection_without_parent_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_state_before: str,
+    task_state_after: str,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    completed_at = last_run + timedelta(minutes=2)
+    _write_producer_terminal_snapshot_source(
+        args,
+        run_id=run_id,
+        completed_at=completed_at,
+        parent_status="failed",
+    )
+    projection_path = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_snapshot_source_status.json"
+    )
+    projection_mtime = completed_at + timedelta(seconds=1)
+    os.utime(
+        projection_path,
+        (projection_mtime.timestamp(), projection_mtime.timestamp()),
+    )
+    initial_snapshot, initial_reason = operational.load_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    assert initial_snapshot is not None, initial_reason
+    assert initial_snapshot.pipeline_run_id == run_id
+
+    # 模擬 producer 已用大型 terminal payload 取代 parent latest；此路徑
+    # 必須只依賴 bounded projection、terminal receipt 與 canonical readback。
+    _pipeline_root, parent_status_path, _projection_path = operational._pipeline_paths(
+        output_root
+    )
+    parent_status_path.write_bytes(
+        b"x" * (operational._MAX_SNAPSHOT_STATUS_BYTES + 1)
+    )
+    original_projection_reader = operational._read_bounded_snapshot_status_with_mtime
+    projection_reads: list[Path] = []
+
+    def projection_reader(
+        path: Path,
+        *,
+        root: Path,
+    ) -> tuple[dict[str, object] | None, datetime | None, str | None]:
+        projection_reads.append(path)
+        assert path != parent_status_path
+        return original_projection_reader(path, root=root)
+
+    monkeypatch.setattr(
+        operational,
+        "_read_bounded_snapshot_status_with_mtime",
+        projection_reader,
+    )
+    monkeypatch.setattr(
+        operational,
+        "_current_upstream_run_proof",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("terminal projection fast path must not read parent status")
+        ),
+    )
+
+    observations = [
+        _producer_task_observation(last_run, state=task_state_before),
+        _producer_task_observation(last_run, state=task_state_after),
+    ]
+    paths, _, _ = operational._common_args(args)
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=initial_snapshot,
+        initial_reason=None,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: observations.pop(0),
+        monotonic=lambda: 0.0,
+        sleep=lambda _seconds: pytest.fail("published terminal projection must not wait"),
+        now_provider=lambda: datetime(
+            2026, 9, 30, 9, 5, tzinfo=timezone.utc
+        ),
+    )
+
+    assert snapshot is not None
+    assert snapshot.pipeline_run_id == run_id
+    assert snapshot.result_id == initial_snapshot.result_id
+    assert snapshot.payload_hash == initial_snapshot.payload_hash
+    assert snapshot.canonical_artifact_sha256 == initial_snapshot.canonical_artifact_sha256
+    assert reason is None
+    assert audit["status"] == "current_terminal_projection_available"
+    assert audit["terminal_receipt_verified"] is True
+    assert audit["task_state_before"] == task_state_before
+    assert audit["task_state_after"] == task_state_after
+    assert audit["waited_seconds"] == 0.0
+    assert len(projection_reads) == 2
+    assert not observations
+
+
+@pytest.mark.parametrize("initial_case", ["missing", "old_same_day"])
+def test_running_task_accepts_new_terminal_projection_over_missing_or_old_initial(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_case: str,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    initial_snapshot: operational.SnapshotSummary | None = None
+    if initial_case == "old_same_day":
+        old_run_id = _producer_run_id(decision_date, last_run - timedelta(minutes=10))
+        _write_producer_terminal_snapshot_source(
+            args,
+            run_id=old_run_id,
+            completed_at=last_run - timedelta(minutes=9),
+            parent_status="failed",
+        )
+        initial_snapshot, initial_reason = operational.load_same_day_snapshot(
+            output_root=output_root,
+            decision_date=decision_date,
+        )
+        assert initial_snapshot is not None, initial_reason
+        assert initial_snapshot.pipeline_run_id == old_run_id
+
+    current_run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    current_completed_at = last_run + timedelta(minutes=2)
+    _write_producer_terminal_snapshot_source(
+        args,
+        run_id=current_run_id,
+        completed_at=current_completed_at,
+        parent_status="failed",
+    )
+    projection_path = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_snapshot_source_status.json"
+    )
+    projection_mtime = current_completed_at + timedelta(seconds=1)
+    os.utime(
+        projection_path,
+        (projection_mtime.timestamp(), projection_mtime.timestamp()),
+    )
+    _pipeline_root, parent_status_path, _projection_path = operational._pipeline_paths(
+        output_root
+    )
+    parent_status_path.write_bytes(
+        b"x" * (operational._MAX_SNAPSHOT_STATUS_BYTES + 1)
+    )
+    monkeypatch.setattr(
+        operational,
+        "_current_upstream_run_proof",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("current terminal projection must not read parent status")
+        ),
+    )
+    paths, _, _ = operational._common_args(args)
+    observations = [
+        _producer_task_observation(last_run, state="Running"),
+        _producer_task_observation(last_run, state="Ready"),
+    ]
+
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=initial_snapshot,
+        initial_reason="initial_snapshot_missing" if initial_snapshot is None else None,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: observations.pop(0),
+        monotonic=lambda: 0.0,
+        sleep=lambda _seconds: pytest.fail("current terminal publication must not wait"),
+        now_provider=lambda: datetime(2026, 9, 30, 9, 5, tzinfo=timezone.utc),
+    )
+
+    assert snapshot is not None
+    assert snapshot.pipeline_run_id == current_run_id
+    assert snapshot.result_id
+    assert reason is None
+    assert audit["status"] == "current_terminal_projection_available"
+    assert audit["terminal_receipt_verified"] is True
+    assert audit["task_state_after"] == "Ready"
+    assert not observations
+
+
+@pytest.mark.parametrize("change_task_last_run_during_readback", [False, True])
+def test_missing_initial_and_old_projection_wait_only_after_current_live_proof(
+    tmp_path: Path,
+    change_task_last_run_during_readback: bool,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    # 模擬前一個極短 Task instance 在新 LastRun 前約三秒完成；僅因日期
+    # 同為今天不能把這份舊 terminal projection 誤認成新 Task 的輸入。
+    old_run_id = _producer_run_id(decision_date, last_run - timedelta(seconds=3))
+    _write_producer_terminal_snapshot_source(
+        args,
+        run_id=old_run_id,
+        completed_at=last_run - timedelta(seconds=2),
+        parent_status="failed",
+    )
+    current_run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=current_run_id,
+        last_run_time=last_run,
+    )
+    paths, _, _ = operational._common_args(args)
+    monotonic_now = [0.0]
+    sleep_calls: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        monotonic_now[0] += seconds
+        completed_at = last_run + timedelta(minutes=2)
+        _write_producer_terminal_snapshot_source(
+            args,
+            run_id=current_run_id,
+            completed_at=completed_at,
+            parent_status="failed",
+        )
+        projection_path = (
+            output_root
+            / "scheduled"
+            / "recommendation_calibration_learning"
+            / "latest_snapshot_source_status.json"
+        )
+        projection_mtime = completed_at + timedelta(seconds=1)
+        os.utime(
+            projection_path,
+            (projection_mtime.timestamp(), projection_mtime.timestamp()),
+        )
+
+    task_observations = [_producer_task_observation(last_run)] * 4 + [
+        _producer_task_observation(last_run, state="Ready"),
+        _producer_task_observation(
+            last_run + timedelta(minutes=1)
+            if change_task_last_run_during_readback
+            else last_run,
+            state="Ready",
+        ),
+    ]
+
+    def task_reader() -> operational.ScheduledTaskObservation:
+        assert task_observations
+        return task_observations.pop(0)
+
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=None,
+        initial_reason="initial_snapshot_missing",
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=task_reader,
+        monotonic=lambda: monotonic_now[0],
+        sleep=fake_sleep,
+        now_provider=lambda: datetime(2026, 9, 30, 9, 5, tzinfo=timezone.utc),
+    )
+
+    if change_task_last_run_during_readback:
+        assert snapshot is None
+        assert reason is not None
+        assert "upstream_task_observation_changed_during_terminal_readback" in reason
+        assert audit["status"] == "blocked"
+    else:
+        assert snapshot is not None
+        assert snapshot.pipeline_run_id == current_run_id
+        assert reason is None
+        assert audit["status"] == "ready"
+        assert audit["upstream_run_id"] == current_run_id
+        assert audit["last_projection_run_id"] == current_run_id
+    assert sleep_calls == [5]
+    assert not task_observations
+
+
+def test_ready_task_does_not_reuse_old_same_day_source_after_new_run_started(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    old_run_id = _producer_run_id(decision_date, last_run - timedelta(seconds=3))
+    _write_producer_terminal_snapshot_source(
+        args,
+        run_id=old_run_id,
+        completed_at=last_run - timedelta(seconds=2),
+        parent_status="failed",
+    )
+    initial_snapshot, initial_reason = operational.load_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    assert initial_snapshot is not None, initial_reason
+    assert initial_snapshot.pipeline_run_id == old_run_id
+
+    paths, _, _ = operational._common_args(args)
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=initial_snapshot,
+        initial_reason=None,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: _producer_task_observation(last_run, state="Ready"),
+        monotonic=lambda: 0.0,
+        sleep=lambda _seconds: pytest.fail("Ready Task cannot wait for a finished run"),
+        now_provider=lambda: datetime(2026, 9, 30, 9, 5, tzinfo=timezone.utc),
+    )
+
+    assert snapshot is None
+    assert reason == "recommendation_pipeline_stale_projection_after_task_completion"
+    assert audit["status"] == "current_terminal_proof_invalid"
+
+
+def test_running_task_rejects_matching_terminal_projection_with_mutated_receipt(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    terminal = _write_producer_terminal_snapshot_source(
+        args,
+        run_id=run_id,
+        completed_at=last_run + timedelta(minutes=2),
+    )
+    projection_path = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_snapshot_source_status.json"
+    )
+    projection_mtime = last_run + timedelta(minutes=2, seconds=1)
+    os.utime(
+        projection_path,
+        (projection_mtime.timestamp(), projection_mtime.timestamp()),
+    )
+    initial_snapshot, initial_reason = operational.load_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    assert initial_snapshot is not None, initial_reason
+
+    receipt_path = Path(str(terminal["receipt_path"]))
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["completed_at"] = (last_run + timedelta(minutes=3)).isoformat()
+    receipt_path.write_text(
+        json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    paths, _, _ = operational._common_args(args)
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=initial_snapshot,
+        initial_reason=None,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        monotonic=lambda: 0.0,
+        sleep=lambda _seconds: pytest.fail("mutated receipt must fail without waiting"),
+        now_provider=lambda: datetime(
+            2026, 9, 30, 9, 5, tzinfo=timezone.utc
+        ),
+    )
+
+    assert snapshot is None
+    assert reason is not None
+    assert "terminal_receipt_identity_mismatch" in reason
+    assert audit["status"] == "current_terminal_proof_invalid"
+
+
+@pytest.mark.parametrize(
+    ("clock_case", "expected_reason"),
+    [
+        ("task_last_run_future", "upstream_task_last_run_time_in_future"),
+        (
+            "run_start_future",
+            "recommendation_pipeline_terminal_run_start_in_future",
+        ),
+        (
+            "projection_mtime_before_run",
+            "recommendation_pipeline_projection_mtime_precedes_run_start",
+        ),
+        (
+            "projection_mtime_before_completed",
+            "recommendation_pipeline_projection_mtime_precedes_terminal_completion",
+        ),
+        (
+            "projection_mtime_future",
+            "recommendation_pipeline_projection_mtime_in_future",
+        ),
+        (
+            "completed_before_run",
+            "recommendation_pipeline_terminal_completed_at_precedes_run_start",
+        ),
+        (
+            "completed_future",
+            "recommendation_pipeline_terminal_completed_at_in_future",
+        ),
+    ],
+)
+def test_running_task_rejects_current_terminal_projection_with_invalid_clock(
+    tmp_path: Path,
+    clock_case: str,
+    expected_reason: str,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    now = datetime(2026, 9, 30, 9, 5, tzinfo=timezone.utc)
+    last_run = now + timedelta(seconds=3) if clock_case == "task_last_run_future" else now - timedelta(minutes=5)
+    run_start = now + timedelta(seconds=3) if clock_case == "run_start_future" else last_run + timedelta(seconds=1)
+    run_id = _producer_run_id(decision_date, run_start)
+    completed_at = (
+        run_start - timedelta(seconds=1)
+        if clock_case == "completed_before_run"
+        else now + timedelta(seconds=3)
+        if clock_case == "completed_future"
+        else now - timedelta(minutes=3)
+    )
+    _write_producer_terminal_snapshot_source(
+        args,
+        run_id=run_id,
+        completed_at=completed_at,
+    )
+    projection_path = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_snapshot_source_status.json"
+    )
+    projection_mtime = (
+        run_start - timedelta(seconds=1)
+        if clock_case == "projection_mtime_before_run"
+        else completed_at - timedelta(seconds=2)
+        if clock_case == "projection_mtime_before_completed"
+        else now + timedelta(seconds=3)
+        if clock_case == "projection_mtime_future"
+        else now - timedelta(minutes=2)
+    )
+    os.utime(
+        projection_path,
+        (projection_mtime.timestamp(), projection_mtime.timestamp()),
+    )
+    initial_snapshot, initial_reason = operational.load_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    assert initial_snapshot is not None, initial_reason
+    paths, _, _ = operational._common_args(args)
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=initial_snapshot,
+        initial_reason=None,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        monotonic=lambda: 0.0,
+        sleep=lambda _seconds: pytest.fail("invalid terminal clock must fail immediately"),
+        now_provider=lambda: now,
+    )
+
+    assert snapshot is None
+    assert reason is not None
+    assert expected_reason in reason
+    assert audit["status"] == "current_terminal_proof_invalid"
+
+
+def test_wait_pins_new_current_run_and_accepts_snapshot_after_parent_learning_failure(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    old_run_id = _producer_run_id(decision_date, last_run - timedelta(minutes=10))
+    old_run = _write_producer_terminal_snapshot_source(
+        args,
+        run_id=old_run_id,
+        completed_at=last_run - timedelta(minutes=1),
+        parent_status="failed",
+    )
+    current_run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=current_run_id,
+        last_run_time=last_run,
+    )
+    initial_snapshot, initial_reason = operational.load_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    assert initial_snapshot is not None, initial_reason
+    assert initial_snapshot.pipeline_run_id == old_run_id
+    assert initial_snapshot.pipeline_status_payload["status"] == "failed"
+
+    now = datetime(2026, 9, 30, 17, 5, tzinfo=ZoneInfo("Asia/Taipei"))
+    task = _producer_task_observation(last_run)
+    monotonic_now = [0.0]
+    sleep_calls: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        monotonic_now[0] += seconds
+        if len(sleep_calls) == 1:
+            completed_at = datetime(2026, 9, 30, 9, 2, tzinfo=timezone.utc)
+            _write_producer_terminal_snapshot_source(
+                args,
+                run_id=current_run_id,
+                completed_at=completed_at,
+                parent_status="failed",
+            )
+            projection_path = (
+                output_root
+                / "scheduled"
+                / "recommendation_calibration_learning"
+                / "latest_snapshot_source_status.json"
+            )
+            projection_mtime = completed_at + timedelta(seconds=1)
+            os.utime(
+                projection_path,
+                (projection_mtime.timestamp(), projection_mtime.timestamp()),
+            )
+
+    paths, _, _ = operational._common_args(args)
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=initial_snapshot,
+        initial_reason=None,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: task,
+        monotonic=lambda: monotonic_now[0],
+        sleep=fake_sleep,
+        now_provider=lambda: now,
+    )
+
+    assert snapshot is not None
+    assert snapshot.pipeline_run_id == current_run_id
+    assert snapshot.pipeline_run_id != old_run_id
+    assert snapshot.pipeline_status_payload["status"] == "failed"
+    assert snapshot.result_id == old_run["result_id"]
+    assert reason is None
+    assert audit["status"] == "ready"
+    assert audit["upstream_run_id"] == current_run_id
+    assert audit["last_projection_run_id"] == current_run_id
+    assert len(sleep_calls) == 1
+    heartbeat_path = Path(str(audit["heartbeat_path"]))
+    heartbeat_rows = [json.loads(line) for line in heartbeat_path.read_text().splitlines()]
+    assert heartbeat_rows[0]["status"] == "waiting"
+    assert heartbeat_rows[-1]["status"] == "ready"
+
+
+def test_running_task_proof_checks_real_identity_and_30_second_start_bound(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    now = last_run + timedelta(seconds=35)
+
+    run_id_at_boundary = _producer_run_id(
+        decision_date,
+        last_run + timedelta(seconds=29),
+    )
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=run_id_at_boundary,
+        last_run_time=last_run,
+        mtime_offset_seconds=29.0,
+    )
+    proof, error = operational._current_upstream_run_proof(
+        output_root=output_root,
+        decision_date=decision_date,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        now=now,
+    )
+    assert error is None
+    assert proof is not None
+    assert proof.run_id == run_id_at_boundary
+    assert (proof.status_mtime_utc - last_run).total_seconds() == pytest.approx(29.0)
+
+    run_id_too_late = _producer_run_id(
+        decision_date,
+        last_run + timedelta(seconds=31),
+    )
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=run_id_too_late,
+        last_run_time=last_run,
+        mtime_offset_seconds=31.0,
+    )
+    proof, error = operational._current_upstream_run_proof(
+        output_root=output_root,
+        decision_date=decision_date,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        now=now,
+    )
+    assert proof is None
+    assert error == "upstream_running_status_run_start_too_late"
+
+    proof, error = operational._current_upstream_run_proof(
+        output_root=output_root,
+        decision_date=decision_date,
+        task_state_reader=lambda: _producer_task_observation(
+            last_run,
+            task_name="different-task",
+        ),
+        now=now,
+    )
+    assert proof is None
+    assert error == "upstream_task_identity_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("run_offset_seconds", "mtime_offset_seconds", "expected_error"),
+    [
+        (-5.0, 1.0, "upstream_running_status_run_precedes_task_last_run"),
+        (1.0, -2.0, "upstream_running_status_mtime_precedes_task_last_run"),
+    ],
+)
+def test_same_day_running_proof_rejects_stale_run_or_status_mtime(
+    tmp_path: Path,
+    run_offset_seconds: float,
+    mtime_offset_seconds: float,
+    expected_error: str,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=_producer_run_id(
+            decision_date,
+            last_run + timedelta(seconds=run_offset_seconds),
+        ),
+        last_run_time=last_run,
+        mtime_offset_seconds=mtime_offset_seconds,
+    )
+
+    proof, error = operational._current_upstream_run_proof(
+        output_root=output_root,
+        decision_date=decision_date,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        now=last_run + timedelta(minutes=1),
+    )
+
+    assert proof is None
+    assert error == expected_error
+
+
+@pytest.mark.parametrize(
+    ("clock_kind", "expected_error"),
+    [
+        ("task_last_run", "upstream_task_last_run_time_in_future"),
+        ("run_start", "upstream_running_status_run_start_in_future"),
+        ("status_mtime", "upstream_running_status_mtime_in_future"),
+    ],
+)
+def test_running_proof_rejects_clocks_materially_after_observation(
+    tmp_path: Path,
+    clock_kind: str,
+    expected_error: str,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    now = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    last_run = now + timedelta(seconds=3) if clock_kind == "task_last_run" else now - timedelta(seconds=1)
+    run_offset = 4.0 if clock_kind == "run_start" else 1.0
+    mtime_offset = 4.0 if clock_kind == "status_mtime" else 1.0
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=_producer_run_id(
+            decision_date,
+            last_run + timedelta(seconds=run_offset),
+        ),
+        last_run_time=last_run,
+        mtime_offset_seconds=mtime_offset,
+    )
+
+    proof, error = operational._current_upstream_run_proof(
+        output_root=output_root,
+        decision_date=decision_date,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        now=now,
+    )
+
+    assert proof is None
+    assert error == expected_error
+
+
+def test_previous_day_without_live_task_proof_does_not_wait(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-29")
+    paths, _, _ = operational._common_args(args)
+    previous_day = date(2026, 9, 29)
+    now = datetime(2026, 9, 30, 17, 5, tzinfo=ZoneInfo("Asia/Taipei"))
+    sleeps: list[float] = []
+    task_reads: list[str] = []
+
+    def task_reader() -> operational.ScheduledTaskObservation | None:
+        task_reads.append("read")
+        return None
+
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=previous_day,
+        initial_snapshot=None,
+        initial_reason="previous_day_source_missing",
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=task_reader,
+        monotonic=lambda: 0.0,
+        sleep=sleeps.append,
+        now_provider=lambda: now,
+    )
+
+    assert snapshot is None
+    assert reason == "previous_day_source_missing"
+    assert audit["status"] == "not_current_taipei_day"
+    assert task_reads == []
+    assert sleeps == []
+
+
+def test_current_projection_receipt_hash_mismatch_fails_without_waiting(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    _write_producer_terminal_snapshot_source(
+        args,
+        run_id=run_id,
+        completed_at=datetime(2026, 9, 30, 9, 2, tzinfo=timezone.utc),
+        corrupt_projection_hash=True,
+    )
+    projection_path = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "latest_snapshot_source_status.json"
+    )
+    projection_mtime = datetime(2026, 9, 30, 9, 2, 1, tzinfo=timezone.utc)
+    os.utime(
+        projection_path,
+        (projection_mtime.timestamp(), projection_mtime.timestamp()),
+    )
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=run_id,
+        last_run_time=last_run,
+    )
+    initial_snapshot, initial_reason = operational.load_same_day_snapshot(
+        output_root=output_root,
+        decision_date=decision_date,
+    )
+    assert initial_snapshot is None
+    assert initial_reason is not None
+
+    now = datetime(2026, 9, 30, 17, 5, tzinfo=ZoneInfo("Asia/Taipei"))
+    paths, _, _ = operational._common_args(args)
+    sleeps: list[float] = []
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=None,
+        initial_reason=initial_reason,
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        monotonic=lambda: 0.0,
+        sleep=sleeps.append,
+        now_provider=lambda: now,
+    )
+
+    assert snapshot is None
+    assert reason is not None
+    assert "recommendation_pipeline_terminal_receipt_snapshot_binding_mismatch" in reason
+    assert audit["status"] == "current_terminal_proof_invalid"
+    assert audit["poll_count"] == 0
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("terminal_state", ["stopped", "run_changed"])
+def test_wait_stops_immediately_when_task_stops_or_last_run_changes(
+    tmp_path: Path,
+    terminal_state: str,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    current_run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=current_run_id,
+        last_run_time=last_run,
+    )
+    if terminal_state == "stopped":
+        observations = [_producer_task_observation(last_run)] * 3 + [
+            _producer_task_observation(last_run, state="Ready")
+        ]
+        expected_reason = "recommendation_pipeline_stopped_without_current_projection"
+    else:
+        changed_last_run = last_run + timedelta(minutes=1)
+        observations = [_producer_task_observation(last_run)] * 3 + [
+            _producer_task_observation(changed_last_run)
+        ]
+        expected_reason = "recommendation_pipeline_task_last_run_changed"
+
+    def task_reader() -> operational.ScheduledTaskObservation:
+        return observations.pop(0) if len(observations) > 1 else observations[0]
+
+    now = datetime(2026, 9, 30, 17, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    paths, _, _ = operational._common_args(args)
+    sleeps: list[float] = []
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=None,
+        initial_reason="no_snapshot_yet",
+        wait_seconds=1800,
+        attempt_deadline=6900.0,
+        task_state_reader=task_reader,
+        monotonic=lambda: 0.0,
+        sleep=sleeps.append,
+        now_provider=lambda: now,
+    )
+
+    assert snapshot is None
+    assert expected_reason in str(reason)
+    assert audit["status"] in {"upstream_stopped", "blocked"}
+    assert sleeps == []
+
+
+def test_wait_deadline_emits_bounded_heartbeat_and_times_out(
+    tmp_path: Path,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    output_root = Path(args.snapshot_output_root).resolve()
+    decision_date = date(2026, 9, 30)
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=run_id,
+        last_run_time=last_run,
+    )
+    now = datetime(2026, 9, 30, 17, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    monotonic_now = [0.0]
+    paths, _, _ = operational._common_args(args)
+
+    def fake_sleep(seconds: float) -> None:
+        monotonic_now[0] += seconds
+
+    snapshot, reason, audit = operational._maybe_wait_for_current_upstream_projection(
+        paths=paths,
+        decision_date=decision_date,
+        initial_snapshot=None,
+        initial_reason="no_snapshot_yet",
+        wait_seconds=35,
+        attempt_deadline=6900.0,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        monotonic=lambda: monotonic_now[0],
+        sleep=fake_sleep,
+        now_provider=lambda: now,
+    )
+
+    assert snapshot is None
+    assert reason == "recommendation_pipeline_wait_timeout"
+    assert audit["status"] == "timed_out"
+    assert audit["waited_seconds"] == 35.0
+    heartbeat_rows = [
+        json.loads(line)
+        for line in Path(str(audit["heartbeat_path"])).read_text().splitlines()
+    ]
+    assert [row["status"] for row in heartbeat_rows] == [
+        "waiting",
+        "waiting",
+        "timed_out",
+    ]
+    assert any(row.get("waited_seconds", 0) >= 30 for row in heartbeat_rows)
+
+
+def test_run_once_caps_child_timeout_below_two_hour_task_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    args.upstream_projection_wait_seconds = 1800
+    _open_calendar(monkeypatch)
+    observed_time = datetime(2026, 9, 30, 17, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    child_timeouts: list[int] = []
+
+    def child(
+        paths: operational.OperationalPaths,
+        decision_date: date,
+        scenario: object,
+        child_args: Namespace,
+    ) -> dict[str, object]:
+        child_timeouts.append(child_args.child_timeout_seconds)
+        return _successful_child(paths, decision_date, scenario, child_args)
+
+    code, payload = operational.run_once(
+        args,
+        child_runner=child,
+        task_state_reader=lambda: _producer_task_observation(
+            datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc),
+            state="Ready",
+        ),
+        monotonic=lambda: 100.0,
+        now_provider=lambda: observed_time,
+    )
+
+    assert code == 0
+    assert child_timeouts == [6900]
+    assert payload["attempt_budget"]["total_limit_seconds"] == 7200
+    assert payload["attempt_budget"]["terminal_flush_reserve_seconds"] == 300
+    assert payload["attempt_budget"]["effective_child_timeout_seconds"] == 6900
+    assert payload["upstream_projection_wait"]["status"] == "upstream_not_running"
+
+
+@pytest.mark.parametrize("terminal_case", ["timeout", "stopped"])
+def test_run_once_wait_timeout_or_stopped_never_starts_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_case: str,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    args.upstream_projection_wait_seconds = 5
+    _open_calendar(monkeypatch)
+    decision_date = date(2026, 9, 30)
+    output_root = Path(args.snapshot_output_root).resolve()
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=_producer_run_id(decision_date, last_run + timedelta(seconds=1)),
+        last_run_time=last_run,
+    )
+    observations = [_producer_task_observation(last_run)] * 4
+    if terminal_case == "stopped":
+        observations[-1] = _producer_task_observation(last_run, state="Ready")
+    child_calls: list[str] = []
+    monotonic_now = [0.0]
+    observed_time = last_run + timedelta(minutes=1)
+
+    def task_reader() -> operational.ScheduledTaskObservation:
+        return observations.pop(0) if len(observations) > 1 else observations[0]
+
+    def fake_sleep(seconds: float) -> None:
+        monotonic_now[0] += seconds
+
+    def child(*_args: object) -> dict[str, object]:
+        child_calls.append("started")
+        return {}
+
+    code, payload = operational.run_once(
+        args,
+        child_runner=child,
+        task_state_reader=task_reader,
+        monotonic=lambda: monotonic_now[0],
+        sleep=fake_sleep,
+        now_provider=lambda: observed_time,
+    )
+
+    expected_wait_status = "timed_out" if terminal_case == "timeout" else "upstream_stopped"
+    expected_reason = (
+        "recommendation_pipeline_wait_timeout"
+        if terminal_case == "timeout"
+        else "recommendation_pipeline_stopped_without_current_projection"
+    )
+    assert code == 2
+    assert payload["status"] == "failed_dependency"
+    assert payload["reason"] == expected_reason
+    assert payload["upstream_projection_wait"]["status"] == expected_wait_status
+    assert payload["child_invocation"] == "not_started"
+    assert child_calls == []
+
+
+def test_run_once_reduces_child_timeout_by_time_spent_waiting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path, decision_date="2026-09-30")
+    args.upstream_projection_wait_seconds = 1800
+    _open_calendar(monkeypatch)
+    decision_date = date(2026, 9, 30)
+    output_root = Path(args.snapshot_output_root).resolve()
+    last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+    current_run_id = _producer_run_id(decision_date, last_run + timedelta(seconds=1))
+    _write_producer_running_status(
+        output_root,
+        decision_date=decision_date,
+        run_id=current_run_id,
+        last_run_time=last_run,
+    )
+    monotonic_now = [0.0]
+    observed_time = last_run + timedelta(minutes=5)
+    child_timeouts: list[int] = []
+
+    def fake_sleep(_seconds: float) -> None:
+        monotonic_now[0] += 125.0
+        completed_at = last_run + timedelta(minutes=2)
+        _write_producer_terminal_snapshot_source(
+            args,
+            run_id=current_run_id,
+            completed_at=completed_at,
+        )
+        projection_path = (
+            output_root
+            / "scheduled"
+            / "recommendation_calibration_learning"
+            / "latest_snapshot_source_status.json"
+        )
+        projection_mtime = completed_at + timedelta(seconds=1)
+        os.utime(
+            projection_path,
+            (projection_mtime.timestamp(), projection_mtime.timestamp()),
+        )
+
+    def child(
+        paths: operational.OperationalPaths,
+        decision_date: date,
+        scenario: object,
+        child_args: Namespace,
+    ) -> dict[str, object]:
+        child_timeouts.append(child_args.child_timeout_seconds)
+        return _successful_child(paths, decision_date, scenario, child_args)
+
+    code, payload = operational.run_once(
+        args,
+        child_runner=child,
+        task_state_reader=lambda: _producer_task_observation(last_run),
+        monotonic=lambda: monotonic_now[0],
+        sleep=fake_sleep,
+        now_provider=lambda: observed_time,
+    )
+
+    assert code == 0
+    assert payload["upstream_projection_wait"]["status"] == "ready"
+    assert payload["upstream_projection_wait"]["waited_seconds"] == 125.0
+    assert child_timeouts == [6775]
+    assert payload["attempt_budget"]["effective_child_timeout_seconds"] == 6775
+
+
+def test_upstream_wait_defaults_off_but_bank_wrapper_enables_fixed_cap() -> None:
+    assert operational.build_parser().parse_args([]).upstream_projection_wait_seconds == 0
+    wrapper = (
+        Path(__file__).parents[1]
+        / "scripts"
+        / "scheduled"
+        / "run_banktaiwan_recommendation_learning_daily.cmd"
+    ).read_text(encoding="utf-8")
+    assert 'set "BANKTAIWAN_UPSTREAM_PROJECTION_WAIT_SECONDS=1800"' in wrapper
+    assert "--upstream-projection-wait-seconds" in wrapper

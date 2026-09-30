@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
 import sys
@@ -13,7 +13,19 @@ from data_module.formal_daily_input_producer import OfficialSourceResponse
 from data_module.prospective_official_pit_source import (
     OFFICIAL_COMPANY_SOURCE_DEFINITIONS,
 )
+from data_module.formal_pit_history_handoff import inspect_pit_candidate_archive_history
+from data_module.pit_prospective_denominator import (
+    _MAX_SOURCE_BYTES,
+    build_prospective_pit_denominator,
+    validate_prospective_pit_denominator,
+)
 from scripts.scheduled import run_formal_input_producer_daily as runner
+import tests.test_pit_prospective_denominator as denominator_fixtures
+from tests.test_formal_pit_history_handoff import (
+    _AllTradingDays,
+    _produce_with_archive,
+)
+from data_module.wp5_official_daily_capture_validator import CaptureValidationError
 from tests.test_formal_daily_input_producer import (
     _CaptureCalendar,
     _market_db,
@@ -27,6 +39,40 @@ WRAPPER = (
     / "scheduled"
     / "run_formal_input_producer_daily.cmd"
 )
+
+
+def _clear_expected_universe_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE",
+        "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH",
+        "FORMAL_DAILY_PIT_HISTORY_COVERAGE_START",
+        "FORMAL_DAILY_RULE_SOURCE_ROOT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def _write_verified_test_denominator(
+    publication_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    captured_at: datetime,
+    coverage_start: date,
+    run_name: str = "fixture",
+) -> Path:
+    monkeypatch.setattr(denominator_fixtures, "NOW", captured_at)
+    arguments = denominator_fixtures._inputs(monkeypatch)
+    output_dir = (
+        publication_root
+        / "pit_denominator"
+        / f"{captured_at.astimezone(runner.TAIPEI).date().isoformat()}-run-{run_name}"
+    )
+    arguments["output_dir"] = output_dir
+    arguments["coverage_start"] = coverage_start
+    arguments["now"] = captured_at
+    build_prospective_pit_denominator(**arguments)
+    return output_dir / "denominator.json"
 
 
 @pytest.fixture(autouse=True)
@@ -189,34 +235,47 @@ def test_runtime_paths_auto_resolve_verified_current_pit_publications(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _clear_expected_universe_environment(monkeypatch)
     for name in (
         "FORMAL_DAILY_FORMAL_SECTOR_PATH",
         "BALDR_ML_PIT_SECTOR_MEMBERSHIP_PATH",
-        "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE",
-        "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH",
     ):
         monkeypatch.delenv(name, raising=False)
-    denominator = tmp_path / "pit_denominator" / "denominator.json"
-    sidecar = tmp_path / "pit_sector_membership_formal" / "sidecar.json"
-    monkeypatch.setattr(
-        runner,
-        "_find_current_verified_pit_denominator",
-        lambda _root, *, observed: (denominator, "verified_current_natural_day"),
+    observed = datetime(2026, 8, 17, 1, 0, tzinfo=timezone.utc)
+    denominator = _write_verified_test_denominator(
+        tmp_path / "publication",
+        monkeypatch,
+        captured_at=observed,
+        coverage_start=date(2026, 8, 17),
     )
+    sidecar = tmp_path / "pit_sector_membership_formal" / "sidecar.json"
     monkeypatch.setattr(
         runner,
         "_find_current_verified_pit_sidecar",
         lambda _root, *, observed: (sidecar, "verified_current_formal_pit_sidecar"),
     )
 
+    resolution: dict[str, object] = {}
     paths = runner._build_paths(
         source_paths={},
         publication_root=tmp_path / "publication",
-        observed=datetime(2026, 8, 17, 1, 0, tzinfo=timezone.utc),
+        observed=observed,
+        pit_expected_universe_resolution_details=resolution,
     )
 
-    assert paths.pit_expected_universe_path == denominator
+    assert paths.pit_expected_universe_path == denominator.resolve()
     assert paths.formal_sector_path == sidecar
+    assert paths.pit_history_coverage_start == date(2026, 8, 17)
+    assert resolution["resolution"] == "publication_root_current_day_auto_discovery"
+    assert resolution["reason"] == "verified_current_natural_day"
+    assert resolution["coverage_start"] == "2026-08-17"
+    assert resolution["coverage_start_source"] == "verified_denominator"
+    assert str(resolution["file_sha256"]).startswith("sha256:")
+    validated = validate_prospective_pit_denominator(
+        paths.pit_expected_universe_path,
+        now=observed,
+    )
+    assert resolution["content_sha256"] == validated["content_sha256"]
 
 
 def test_scheduled_source_root_ignores_existing_legacy_formal_paths(
@@ -251,18 +310,20 @@ def test_scheduled_source_root_ignores_existing_legacy_formal_paths(
         monkeypatch.delenv(primary, raising=False)
     monkeypatch.setenv("FORMAL_DAILY_RULE_SOURCE_ROOT", str(tmp_path / "source-root"))
 
-    denominator = tmp_path / "current" / "denominator.json"
+    observed = datetime(2026, 9, 8, 0, 0, tzinfo=timezone.utc)
+    denominator = _write_verified_test_denominator(
+        tmp_path / "publication",
+        monkeypatch,
+        captured_at=observed,
+        coverage_start=date(2026, 9, 8),
+        run_name="current",
+    )
     sidecar = tmp_path / "current" / "sidecar.json"
     rule_history = tmp_path / "current" / "rule-manifest.json"
     ledger = tmp_path / "current" / "ledger-manifest.json"
-    for path in (denominator, sidecar, rule_history, ledger):
+    for path in (sidecar, rule_history, ledger):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("current", encoding="utf-8")
-    monkeypatch.setattr(
-        runner,
-        "_find_current_verified_pit_denominator",
-        lambda _root, *, observed: (denominator, "verified_current_natural_day"),
-    )
     monkeypatch.setattr(
         runner,
         "_find_current_verified_pit_sidecar",
@@ -282,10 +343,10 @@ def test_scheduled_source_root_ignores_existing_legacy_formal_paths(
     paths = runner._build_paths(
         source_paths={},
         publication_root=tmp_path / "publication",
-        observed=datetime(2026, 9, 8, 0, 0, tzinfo=timezone.utc),
+        observed=observed,
     )
 
-    assert paths.pit_expected_universe_path == denominator
+    assert paths.pit_expected_universe_path == denominator.resolve()
     assert paths.formal_sector_path == sidecar
     assert paths.formal_rule_history_path == rule_history
     assert paths.formal_ledger_path == ledger
@@ -300,6 +361,442 @@ def test_scheduled_source_root_ignores_existing_legacy_formal_paths(
     assert set(configuration["legacy_environment_present"]) == {
         legacy for _, legacy in legacy_paths
     }
+
+
+def test_current_runtime_config_uses_verified_denominator_for_archive_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_expected_universe_environment(monkeypatch)
+    archive_capture = datetime(2026, 9, 7, 23, 30, tzinfo=timezone.utc)
+    observed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    archive_paths, _ = _produce_with_archive(
+        tmp_path,
+        monkeypatch,
+        captured_at=archive_capture,
+    )
+    denominator = _write_verified_test_denominator(
+        archive_paths.publication_root,
+        monkeypatch,
+        captured_at=observed,
+        coverage_start=date(2026, 9, 8),
+        run_name="archive-binding",
+    )
+    resolution: dict[str, object] = {}
+
+    scheduled_paths = runner._build_paths(
+        source_paths={},
+        publication_root=archive_paths.publication_root,
+        observed=observed,
+        runtime_config={
+            "activation_status": "active",
+            "activation_trading_day": "2026-09-08",
+            "publication_paths": {},
+        },
+        pit_expected_universe_resolution_details=resolution,
+    )
+    assert scheduled_paths.pit_expected_universe_path == denominator
+    assert scheduled_paths.pit_history_coverage_start == date(2026, 9, 8)
+    assert resolution["observed_taipei_date"] == "2026-09-08"
+    assert resolution["coverage_start"] == "2026-09-08"
+
+    report = inspect_pit_candidate_archive_history(
+        archive_paths.publication_root / "pit_candidate_archive",
+        decision_at=observed,
+        expected_universe_path=scheduled_paths.pit_expected_universe_path,
+        coverage_start=scheduled_paths.pit_history_coverage_start,
+        calendar=_AllTradingDays(),
+    )
+    universe = report["independent_universe"]
+    assert isinstance(universe, dict)
+    assert universe["state"] == "verified"
+    assert universe["symbol_count"] == 4
+    assert report["valid_archive_count"] == 1
+    assert report["out_of_scope_archive_count"] == 0
+    assert report["coverage"]["coverage_start"] == "2026-09-08"
+    assert report["coverage"]["covered_trading_dates"] == ["2026-09-08"]
+    assert report["coverage"]["missing_trading_dates"] == []
+    assert not any(
+        "independent_expected_universe" in str(item)
+        for item in report["blockers"]
+    )
+
+
+@pytest.mark.parametrize("pin_value", ("2026-09-07", " "))
+def test_explicit_history_coverage_start_is_never_replaced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pin_value: str,
+) -> None:
+    _clear_expected_universe_environment(monkeypatch)
+    monkeypatch.setenv(
+        "FORMAL_DAILY_PIT_HISTORY_COVERAGE_START",
+        pin_value,
+    )
+    observed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    _write_verified_test_denominator(
+        tmp_path / "publication",
+        monkeypatch,
+        captured_at=observed,
+        coverage_start=date(2026, 9, 8),
+    )
+    resolution: dict[str, object] = {}
+
+    paths = runner._build_paths(
+        source_paths={},
+        publication_root=tmp_path / "publication",
+        observed=observed,
+        runtime_config={
+            "activation_status": "active",
+            "activation_trading_day": "2026-09-08",
+            "publication_paths": {},
+        },
+        pit_expected_universe_resolution_details=resolution,
+    )
+
+    assert resolution["coverage_start"] == "2026-09-08"
+    if pin_value.strip():
+        explicit_start = date.fromisoformat(pin_value)
+        assert paths.pit_history_coverage_start == explicit_start
+        assert resolution["coverage_start_source"] == "explicit_environment"
+        assert resolution["applied_coverage_start"] == explicit_start.isoformat()
+    else:
+        assert paths.pit_history_coverage_start is None
+        assert resolution["coverage_start_source"] == "invalid_explicit_environment"
+        assert resolution["applied_coverage_start"] is None
+
+
+def test_scheduled_status_records_verified_denominator_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_expected_universe_environment(monkeypatch)
+    observed = datetime.now(timezone.utc)
+    observed_day = observed.astimezone(runner.TAIPEI).date()
+    publication_root = tmp_path / "publication"
+    denominator = _write_verified_test_denominator(
+        publication_root,
+        monkeypatch,
+        captured_at=observed - timedelta(minutes=1),
+        coverage_start=observed_day,
+    )
+    monkeypatch.setattr(
+        runner,
+        "load_optional_formal_runtime_config",
+        lambda **kwargs: {
+            "activation_status": "active",
+            "activation_trading_day": kwargs["observed"]
+            .astimezone(runner.TAIPEI)
+            .date()
+            .isoformat(),
+            "publication_paths": {},
+        },
+    )
+    monkeypatch.setattr(
+        runner,
+        "_validate_rule_source_predecessor",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_resolve_required_source_paths",
+        lambda **_kwargs: ({}, list(runner._REQUIRED_SOURCE_ENV), "fixture_missing"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_candidate_roots",
+        lambda: (tmp_path / "candidate", tmp_path / "development"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "run_daily_formal_input_producer",
+        lambda _paths: {
+            "status": "candidate_only",
+            "formal_ready_input_count": 0,
+            "formal_consumer_compatible_count": 0,
+            "machine_candidate_input_count": 0,
+            "inputs": {},
+            "blockers": ["fixture_only"],
+        },
+    )
+
+    status, exit_code = runner.run_from_environment(
+        publication_root=publication_root,
+        status_root=publication_root / "scheduler",
+    )
+
+    assert exit_code == 2
+    source_config = status["scheduled_source_configuration"]
+    assert isinstance(source_config, dict)
+    details = source_config["pit_expected_universe_resolution_details"]
+    assert isinstance(details, dict)
+    assert details["resolution"] == "publication_root_current_day_auto_discovery"
+    assert details["reason"] == "verified_current_natural_day"
+    assert details["path"] == str(denominator)
+    assert str(details["file_sha256"]).startswith("sha256:")
+    assert str(details["content_sha256"]).startswith("sha256:")
+    assert details["coverage_start"] == observed_day.isoformat()
+    stored = json.loads(
+        (publication_root / "scheduler" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert stored["scheduled_source_configuration"][
+        "pit_expected_universe_resolution_details"
+    ] == details
+
+
+def test_activation_date_mismatch_does_not_auto_discover_denominator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_expected_universe_environment(monkeypatch)
+    observed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    _write_verified_test_denominator(
+        tmp_path / "publication",
+        monkeypatch,
+        captured_at=observed,
+        coverage_start=date(2026, 9, 8),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_find_current_verified_pit_denominator",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("mismatched activation must not start discovery")
+        ),
+    )
+    resolution: dict[str, object] = {}
+
+    paths = runner._build_paths(
+        source_paths={},
+        publication_root=tmp_path / "publication",
+        observed=observed,
+        runtime_config={
+            "activation_status": "active",
+            "activation_trading_day": "2026-09-09",
+            "publication_paths": {},
+        },
+        pit_expected_universe_resolution_details=resolution,
+    )
+
+    assert paths.pit_expected_universe_path is None
+    assert paths.pit_history_coverage_start is None
+    assert resolution["status"] == "not_attempted"
+    assert resolution["reason"] == "runtime_config_activation_not_current_taipei_day"
+
+
+@pytest.mark.parametrize(
+    "pin_kind", ("environment", "empty_environment", "runtime_config")
+)
+def test_explicit_missing_universe_pin_is_not_replaced_by_auto_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pin_kind: str,
+) -> None:
+    _clear_expected_universe_environment(monkeypatch)
+    missing_pin = tmp_path / "missing-pinned-denominator.json"
+    runtime_config: dict[str, object] = {
+        "activation_status": "active",
+        "activation_trading_day": "2026-09-08",
+        "publication_paths": {},
+    }
+    if pin_kind == "environment":
+        monkeypatch.setenv(
+            "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE", str(missing_pin)
+        )
+    elif pin_kind == "empty_environment":
+        monkeypatch.setenv("FORMAL_DAILY_PIT_EXPECTED_UNIVERSE", " ")
+    else:
+        runtime_config["publication_paths"] = {
+            "pit_expected_universe": str(missing_pin)
+        }
+    monkeypatch.setattr(
+        runner,
+        "_find_current_verified_pit_denominator",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("an explicit missing pin must remain authoritative")
+        ),
+    )
+    resolution: dict[str, object] = {}
+
+    paths = runner._build_paths(
+        source_paths={},
+        publication_root=tmp_path / "publication",
+        observed=datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc),
+        runtime_config=runtime_config,
+        pit_expected_universe_resolution_details=resolution,
+    )
+
+    if pin_kind == "empty_environment":
+        assert paths.pit_expected_universe_path is None
+        assert resolution["status"] == "blocked"
+        assert resolution["reason"] == "explicit_environment_pin_empty"
+    else:
+        assert paths.pit_expected_universe_path == missing_pin.resolve()
+        assert not paths.pit_expected_universe_path.is_file()
+        assert resolution["status"] == "explicit_pin"
+        assert resolution["path"] == str(missing_pin.resolve())
+
+
+def test_invalid_explicit_runtime_universe_pin_blocks_auto_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_expected_universe_environment(monkeypatch)
+    monkeypatch.setattr(
+        runner,
+        "_find_current_verified_pit_denominator",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("an invalid explicit pin must not start discovery")
+        ),
+    )
+    resolution: dict[str, object] = {}
+
+    paths = runner._build_paths(
+        source_paths={},
+        publication_root=tmp_path / "publication",
+        observed=datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc),
+        runtime_config={
+            "activation_status": "active",
+            "activation_trading_day": "2026-09-08",
+            "publication_paths": {"pit_expected_universe": " "},
+        },
+        pit_expected_universe_resolution_details=resolution,
+    )
+
+    assert paths.pit_expected_universe_path is None
+    assert resolution["resolution"] == "invalid_runtime_config_pin"
+    assert resolution["status"] == "blocked"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_reason"),
+    (
+        ("missing", "missing_verified_current_denominator"),
+        ("tampered", "missing_verified_current_denominator:"),
+        (
+            "wrong_coverage_date",
+            "missing_verified_current_denominator:denominator.json:coverage_start_mismatch",
+        ),
+        ("future_clock", "missing_verified_current_denominator:"),
+    ),
+)
+def test_current_denominator_finder_fails_closed_on_invalid_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    expected_reason: str,
+) -> None:
+    observed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    publication_root = tmp_path / "publication"
+    if failure != "missing":
+        captured_at = (
+            observed + timedelta(minutes=1)
+            if failure == "future_clock"
+            else observed - timedelta(minutes=1)
+        )
+        coverage_start = (
+            date(2026, 9, 9)
+            if failure == "wrong_coverage_date"
+            else date(2026, 9, 8)
+        )
+        denominator = _write_verified_test_denominator(
+            publication_root,
+            monkeypatch,
+            captured_at=captured_at,
+            coverage_start=coverage_start,
+            run_name=failure,
+        )
+        if failure == "tampered":
+            csv_path = denominator.parent / "twse_t187ap03.csv"
+            csv_path.write_bytes(
+                csv_path.read_bytes().replace(b",01,", b",99,")
+            )
+
+    path, reason = runner._find_current_verified_pit_denominator(
+        publication_root,
+        observed=observed,
+    )
+
+    assert path is None
+    assert reason.startswith(expected_reason)
+
+
+def test_verified_denominator_resolution_rejects_size_and_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    publication_root = tmp_path / "publication"
+    denominator = _write_verified_test_denominator(
+        publication_root,
+        monkeypatch,
+        captured_at=observed,
+        coverage_start=date(2026, 9, 8),
+    )
+    oversized = (
+        publication_root
+        / "pit_denominator"
+        / "2026-09-08-run-oversized"
+        / "denominator.json"
+    )
+    oversized.parent.mkdir(parents=True)
+    oversized.write_bytes(b"x" * (_MAX_SOURCE_BYTES + 1))
+    with pytest.raises(CaptureValidationError) as size_error:
+        runner._verified_denominator_resolution_details(
+            oversized,
+            publication_root=publication_root,
+            observed=observed,
+            reason="verified_current_natural_day",
+        )
+    assert size_error.value.code.endswith("_size_limit")
+
+    original_validator = runner.validate_prospective_pit_denominator
+
+    def mutate_after_validation(path: Path, *, now: datetime) -> dict[str, object]:
+        validated = original_validator(path, now=now)
+        path.write_bytes(path.read_bytes() + b" ")
+        return validated
+
+    monkeypatch.setattr(
+        runner,
+        "validate_prospective_pit_denominator",
+        mutate_after_validation,
+    )
+    with pytest.raises(ValueError, match="驗證期間發生變動"):
+        runner._verified_denominator_resolution_details(
+            denominator,
+            publication_root=publication_root,
+            observed=observed,
+            reason="verified_current_natural_day",
+        )
+
+
+def test_verified_denominator_resolution_rejects_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    publication_root = tmp_path / "publication"
+    denominator = _write_verified_test_denominator(
+        publication_root,
+        monkeypatch,
+        captured_at=observed,
+        coverage_start=date(2026, 9, 8),
+    )
+    symlink = publication_root / "pit_denominator" / "2026-09-08-run-link"
+    try:
+        symlink.symlink_to(denominator.parent, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"此 Windows 執行環境無法建立 symlink：{error}")
+
+    with pytest.raises(CaptureValidationError):
+        runner._verified_denominator_resolution_details(
+            symlink / "denominator.json",
+            publication_root=publication_root,
+            observed=observed,
+            reason="verified_current_natural_day",
+        )
 
 
 def test_rule_source_discovery_failure_reason_is_durable(

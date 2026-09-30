@@ -15,7 +15,8 @@ observable discovery blocker，不把失敗視為休市或正式 credit。
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import argparse
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timezone
 import hashlib
 import json
@@ -1417,6 +1418,7 @@ def run_isolated(*, now: datetime | None = None) -> dict[str, object]:
         calendar=calendar,
         confirm_append=True,
         persist_receipt=False,
+        recommendation_pattern="paper_frozen_*.json",
     )
     result = _bind_paper_result_to_event_capture(result, observed=observed)
     persisted_result = persist_operational_receipt(
@@ -1445,7 +1447,10 @@ def run_isolated(*, now: datetime | None = None) -> dict[str, object]:
     }
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
+    argparse.ArgumentParser(
+        description="執行固定 repository scope 的研究用 Paper EOD replay。"
+    ).parse_args(argv)
     try:
         result = run_isolated()
     except Exception as error:  # noqa: BLE001 - scheduled boundary is fail-closed

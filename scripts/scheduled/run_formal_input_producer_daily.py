@@ -46,6 +46,7 @@ from data_module.formal_pit_sector_publisher import (  # noqa: E402
     read_formal_pit_sector_receipt,
 )
 from data_module.pit_prospective_denominator import (  # noqa: E402
+    _MAX_SOURCE_BYTES,
     validate_prospective_pit_denominator,
 )
 from data_module.formal_schedule_gate import (  # noqa: E402
@@ -712,13 +713,110 @@ def _find_current_verified_pit_denominator(
             if payload.get("coverage_start") != target_date.isoformat():
                 failures.append(f"{candidate.name}:coverage_start_mismatch")
                 continue
-            return candidate.resolve(), "verified_current_natural_day"
+            return candidate, "verified_current_natural_day"
         except Exception as error:  # noqa: BLE001 - 繼續嘗試下一個 immutable run
             failures.append(f"{candidate.name}:{type(error).__name__}")
     detail = ";".join(failures[:3])
     return None, "missing_verified_current_denominator" + (
         ":" + detail if detail else ""
     )
+
+
+def _runtime_config_allows_current_pit_denominator(
+    runtime_config: Mapping[str, object] | None,
+    *,
+    observed: datetime | None,
+) -> bool:
+    """只允許有效中的日期設定使用當日自動分母。"""
+
+    if observed is None or observed.tzinfo is None or observed.utcoffset() is None:
+        return False
+    if runtime_config is None:
+        return True
+    activation_raw = runtime_config.get("activation_trading_day")
+    if (
+        runtime_config.get("activation_status") != "active"
+        or not isinstance(activation_raw, str)
+    ):
+        return False
+    try:
+        activation_day = date.fromisoformat(activation_raw)
+    except ValueError:
+        return False
+    return (
+        activation_day.isoformat() == activation_raw
+        and activation_day == observed.astimezone(TAIPEI).date()
+    )
+
+
+def _verified_denominator_resolution_details(
+    path: Path,
+    *,
+    publication_root: Path,
+    observed: datetime,
+    reason: str,
+) -> dict[str, object]:
+    """以 bounded reader 與 consumer validator 固定自動分母證據。"""
+
+    from data_module.wp5_official_daily_capture_validator import (  # noqa: PLC0415
+        _read_regular_single_link_file,
+    )
+
+    allowed_root = Path(
+        os.path.abspath(publication_root.expanduser().resolve())
+    )
+    lexical_path = Path(os.path.abspath(path.expanduser()))
+    try:
+        relative_path = lexical_path.relative_to(allowed_root)
+    except ValueError as error:
+        raise ValueError("自動分母路徑超出指定 publication root") from error
+    if (
+        len(relative_path.parts) != 3
+        or relative_path.parts[0] != "pit_denominator"
+        or relative_path.name != "denominator.json"
+        or not relative_path.parts[1].startswith(
+            observed.astimezone(TAIPEI).date().isoformat()
+        )
+    ):
+        raise ValueError("自動分母路徑不符合當日 publication 契約")
+    raw_before = _read_regular_single_link_file(
+        lexical_path,
+        label="PIT denominator manifest",
+        max_bytes=_MAX_SOURCE_BYTES,
+    )
+    validated = validate_prospective_pit_denominator(lexical_path, now=observed)
+    raw_after = _read_regular_single_link_file(
+        lexical_path,
+        label="PIT denominator manifest",
+        max_bytes=_MAX_SOURCE_BYTES,
+    )
+    if raw_before != raw_after:
+        raise ValueError("自動分母在驗證期間發生變動")
+    parsed = json.loads(raw_before.decode("utf-8"))
+    if not isinstance(parsed, dict) or parsed != validated:
+        raise ValueError("自動分母驗證結果與固定 bytes 不一致")
+    coverage_raw = validated.get("coverage_start")
+    if not isinstance(coverage_raw, str):
+        raise ValueError("已驗證分母缺少 coverage_start")
+    coverage_start = date.fromisoformat(coverage_raw)
+    if coverage_start.isoformat() != coverage_raw:
+        raise ValueError("已驗證分母 coverage_start 格式無效")
+    observed_day = observed.astimezone(TAIPEI).date()
+    if coverage_start != observed_day:
+        raise ValueError("已驗證分母 coverage_start 不等於台北當日")
+    return {
+        "resolution": "publication_root_current_day_auto_discovery",
+        "status": "verified",
+        "source": "publication_root_current_taipei_day_denominator",
+        "reason": reason,
+        "path": str(lexical_path),
+        "file_sha256": "sha256:" + hashlib.sha256(raw_before).hexdigest(),
+        "content_sha256": validated.get("content_sha256"),
+        "symbols_hash": validated.get("symbols_hash"),
+        "coverage_start": coverage_raw,
+        "observed_taipei_date": observed_day.isoformat(),
+        "coverage_start_source": "verified_denominator",
+    }
 
 
 def _find_current_verified_pit_sidecar(
@@ -832,6 +930,7 @@ def _build_paths(
     observed: datetime | None = None,
     runtime_config: Mapping[str, object] | None = None,
     daily_rule_lineage: Mapping[str, object] | None = None,
+    pit_expected_universe_resolution_details: dict[str, object] | None = None,
 ) -> DailyFormalInputPaths:
     data_root = _data_root().expanduser().resolve()
     output_root = _output_root(data_root).expanduser().resolve()
@@ -869,16 +968,226 @@ def _build_paths(
             value = runtime_publications.get("pit_sidecar")
             if isinstance(value, str) and value.strip():
                 formal_sector_path = Path(value).expanduser().resolve()
-    pit_expected_universe_path = _formal_source_path(
-        "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE",
-        "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH",
+    history_coverage_pin_configured = (
+        "FORMAL_DAILY_PIT_HISTORY_COVERAGE_START" in os.environ
     )
-    if observed is not None and runtime_config is None:
-        if pit_expected_universe_path is None:
-            pit_expected_universe_path, _ = _find_current_verified_pit_denominator(
+    pit_history_coverage_start = _env_date(
+        "FORMAL_DAILY_PIT_HISTORY_COVERAGE_START"
+    )
+    primary_universe_pin_configured = (
+        "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE" in os.environ
+    )
+    pit_expected_universe_path = _env_path(
+        "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE"
+    )
+    legacy_universe_pin_configured = (
+        _env_path(_RULE_SOURCE_ROOT_ENV) is None
+        and "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH" in os.environ
+    )
+    pit_expected_universe_resolution: dict[str, object]
+    if primary_universe_pin_configured and pit_expected_universe_path is None:
+        pit_expected_universe_resolution = {
+            "resolution": "invalid_environment_pin",
+            "status": "blocked",
+            "source": "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE",
+            "reason": "explicit_environment_pin_empty",
+            "path": None,
+            "coverage_start": (
+                pit_history_coverage_start.isoformat()
+                if pit_history_coverage_start is not None
+                else None
+            ),
+            "coverage_start_source": (
+                "explicit_environment"
+                if pit_history_coverage_start is not None
+                else "not_configured"
+            ),
+        }
+    elif pit_expected_universe_path is not None:
+        pit_expected_universe_resolution = {
+            "resolution": "environment",
+            "status": "explicit_pin",
+            "source": "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE",
+            "reason": "explicit_environment_pin_preserved",
+            "path": str(pit_expected_universe_path.expanduser().resolve()),
+            "coverage_start": (
+                pit_history_coverage_start.isoformat()
+                if pit_history_coverage_start is not None
+                else None
+            ),
+            "coverage_start_source": (
+                "explicit_environment"
+                if pit_history_coverage_start is not None
+                else "not_configured"
+            ),
+        }
+    elif legacy_universe_pin_configured and _env_path(
+        "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH"
+    ) is None:
+        pit_expected_universe_resolution = {
+            "resolution": "invalid_environment_pin",
+            "status": "blocked",
+            "source": "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH",
+            "reason": "explicit_legacy_environment_pin_empty",
+            "path": None,
+            "coverage_start": (
+                pit_history_coverage_start.isoformat()
+                if pit_history_coverage_start is not None
+                else None
+            ),
+            "coverage_start_source": (
+                "explicit_environment"
+                if pit_history_coverage_start is not None
+                else "not_configured"
+            ),
+        }
+    elif legacy_universe_pin_configured:
+        pit_expected_universe_path = _env_path(
+            "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH"
+        )
+        if pit_expected_universe_path is None:  # pragma: no cover - guarded above
+            raise AssertionError("explicit legacy universe pin unexpectedly missing")
+        pit_expected_universe_resolution = {
+            "resolution": "environment",
+            "status": "explicit_pin",
+            "source": "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH",
+            "reason": "explicit_legacy_environment_pin_preserved",
+            "path": str(pit_expected_universe_path.expanduser().resolve()),
+            "coverage_start": (
+                pit_history_coverage_start.isoformat()
+                if pit_history_coverage_start is not None
+                else None
+            ),
+            "coverage_start_source": (
+                "explicit_environment"
+                if pit_history_coverage_start is not None
+                else "not_configured"
+            ),
+        }
+    elif "pit_expected_universe" in runtime_publications:
+        configured_universe = runtime_publications.get("pit_expected_universe")
+        if isinstance(configured_universe, str) and configured_universe.strip():
+            pit_expected_universe_path = Path(configured_universe).expanduser().resolve()
+            pit_expected_universe_resolution = {
+                "resolution": "runtime_config",
+                "status": "explicit_pin",
+                "source": "publication_paths.pit_expected_universe",
+                "reason": "explicit_runtime_config_pin_preserved",
+                "path": str(pit_expected_universe_path),
+                "coverage_start": (
+                    pit_history_coverage_start.isoformat()
+                    if pit_history_coverage_start is not None
+                    else None
+                ),
+                "coverage_start_source": (
+                    "explicit_environment"
+                    if pit_history_coverage_start is not None
+                    else "not_configured"
+                ),
+            }
+        else:
+            pit_expected_universe_resolution = {
+                "resolution": "invalid_runtime_config_pin",
+                "status": "blocked",
+                "source": "publication_paths.pit_expected_universe",
+                "reason": "explicit_runtime_config_pin_invalid",
+                "path": None,
+                "coverage_start": (
+                    pit_history_coverage_start.isoformat()
+                    if pit_history_coverage_start is not None
+                    else None
+                ),
+                "coverage_start_source": (
+                    "explicit_environment"
+                    if pit_history_coverage_start is not None
+                    else "not_configured"
+                ),
+            }
+    elif _runtime_config_allows_current_pit_denominator(
+        runtime_config,
+        observed=observed,
+    ):
+        if observed is None:  # pragma: no cover - helper already rejects this case
+            raise AssertionError("denominator discovery requires an observed clock")
+        pit_expected_universe_path, denominator_reason = (
+            _find_current_verified_pit_denominator(
                 publication_root,
                 observed=observed,
             )
+        )
+        if pit_expected_universe_path is None:
+            pit_expected_universe_resolution = {
+                "resolution": "missing_current_day_verified_denominator",
+                "status": "unavailable",
+                "source": "publication_root_current_taipei_day_denominator",
+                "reason": denominator_reason,
+                "path": None,
+                "coverage_start": None,
+                "coverage_start_source": "not_configured",
+                "observed_taipei_date": observed.astimezone(TAIPEI).date().isoformat(),
+            }
+        else:
+            pit_expected_universe_resolution = (
+                _verified_denominator_resolution_details(
+                    pit_expected_universe_path,
+                    publication_root=publication_root,
+                    observed=observed,
+                    reason=denominator_reason,
+                )
+            )
+            if pit_history_coverage_start is None and not history_coverage_pin_configured:
+                pit_history_coverage_start = date.fromisoformat(
+                    str(pit_expected_universe_resolution["coverage_start"])
+                )
+            elif history_coverage_pin_configured and pit_history_coverage_start is None:
+                pit_expected_universe_resolution["coverage_start_source"] = (
+                    "invalid_explicit_environment"
+                )
+                pit_expected_universe_resolution["applied_coverage_start"] = None
+            else:
+                pit_expected_universe_resolution["coverage_start_source"] = (
+                    "explicit_environment"
+                )
+                if pit_history_coverage_start is not None:
+                    pit_expected_universe_resolution[
+                        "applied_coverage_start"
+                    ] = pit_history_coverage_start.isoformat()
+                else:  # pragma: no cover - 前方分支已涵蓋未設定情況
+                    pit_expected_universe_resolution[
+                        "coverage_start_source"
+                    ] = "invalid_unresolved_coverage_start"
+                    pit_expected_universe_resolution[
+                        "applied_coverage_start"
+                    ] = None
+    else:
+        observed_day = (
+            observed.astimezone(TAIPEI).date().isoformat()
+            if observed is not None
+            and observed.tzinfo is not None
+            and observed.utcoffset() is not None
+            else None
+        )
+        pit_expected_universe_resolution = {
+            "resolution": "not_attempted_activation_date_mismatch",
+            "status": "not_attempted",
+            "source": "publication_root_current_taipei_day_denominator",
+            "reason": "runtime_config_activation_not_current_taipei_day",
+            "path": None,
+            "coverage_start": None,
+            "coverage_start_source": "not_configured",
+            "activation_trading_day": (
+                runtime_config.get("activation_trading_day")
+                if isinstance(runtime_config, Mapping)
+                else None
+            ),
+            "observed_taipei_date": observed_day,
+        }
+    if pit_expected_universe_resolution_details is not None:
+        pit_expected_universe_resolution_details.clear()
+        pit_expected_universe_resolution_details.update(
+            pit_expected_universe_resolution
+        )
+    if observed is not None and runtime_config is None:
         if formal_sector_path is None:
             formal_sector_path, _ = _find_current_verified_pit_sidecar(
                 publication_root,
@@ -967,9 +1276,7 @@ def _build_paths(
         paper_execution_receipt_root=paper_execution_receipt_root,
         publication_root=publication_root,
         pit_expected_universe_path=pit_expected_universe_path,
-        pit_history_coverage_start=_env_date(
-            "FORMAL_DAILY_PIT_HISTORY_COVERAGE_START"
-        ),
+        pit_history_coverage_start=pit_history_coverage_start,
         pit_preopen_archive_root=_env_path(
             "FORMAL_DAILY_PIT_PREOPEN_ARCHIVE_ROOT"
         ),
@@ -1318,6 +1625,7 @@ def run_from_environment(
     source_paths: dict[str, Path] = {}
     missing: list[str] = list(_REQUIRED_SOURCE_ENV)
     discovery_reason: str | None = "not_attempted"
+    pit_expected_universe_resolution_details: dict[str, object] = {}
     runtime = _runtime_projection()
     runtime["formal_runtime_config"] = (
         runtime_config
@@ -1377,6 +1685,9 @@ def run_from_environment(
             observed=observed,
             runtime_config=runtime_config,
             daily_rule_lineage=daily_rule_lineage,
+            pit_expected_universe_resolution_details=(
+                pit_expected_universe_resolution_details
+            ),
         )
         result = run_daily_formal_input_producer(paths)
         status = {
@@ -1432,18 +1743,11 @@ def run_from_environment(
                     if paths.official_calendar_cache_path is not None
                     else _default_official_calendar_cache_root()
                 ),
-                "pit_expected_universe_resolution": (
-                    "environment"
-                    if _formal_path(
-                        "FORMAL_DAILY_PIT_EXPECTED_UNIVERSE",
-                        "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH",
-                    )
-                    is not None
-                    else (
-                        "publication_root_current_day_auto_discovery"
-                        if paths.pit_expected_universe_path is not None
-                        else "missing_current_day_verified_denominator"
-                    )
+                "pit_expected_universe_resolution": pit_expected_universe_resolution_details.get(
+                    "resolution", "unavailable_due_to_runner_error"
+                ),
+                "pit_expected_universe_resolution_details": dict(
+                    pit_expected_universe_resolution_details
                 ),
             "formal_pit_sidecar_resolution": (
                     "environment"

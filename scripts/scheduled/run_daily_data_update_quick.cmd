@@ -16,5 +16,5 @@ if not "%BALDR_TECHNICAL_PROCESS_POOL_WORKERS%"=="" set "TECHNICAL_POOL_ARGS=%TE
 if not "%BALDR_TECHNICAL_PROCESS_POOL_MAX_IN_FLIGHT%"=="" set "TECHNICAL_POOL_ARGS=%TECHNICAL_POOL_ARGS% --technical-process-pool-max-in-flight %BALDR_TECHNICAL_PROCESS_POOL_MAX_IN_FLIGHT%"
 if not "%BALDR_TECHNICAL_PROCESS_POOL_MAX_RETRIES%"=="" set "TECHNICAL_POOL_ARGS=%TECHNICAL_POOL_ARGS% --technical-process-pool-max-retries %BALDR_TECHNICAL_PROCESS_POOL_MAX_RETRIES%"
 
-"%PYTHON%" "scripts\scheduled\run_daily_data_update_quick.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --window-weekdays "%WINDOW_WEEKDAYS%" %TECHNICAL_POOL_ARGS%
+"%PYTHON%" "scripts\scheduled\run_daily_data_update_quick.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --window-weekdays "%WINDOW_WEEKDAYS%" --reverify-unknown-legacy-industry-dates %TECHNICAL_POOL_ARGS%
 exit /b %ERRORLEVEL%

@@ -13,6 +13,7 @@ from scripts.batch_update_daily_data import _format_update_diagnostic
 from scripts.scheduled import run_daily_data_update_quick as runner
 from scripts.scheduled.run_daily_data_update_quick import (
     _run_step,
+    _update_industry_with_policy,
     _scheduled_target_weekday,
     _technical_is_current,
     _tpex_warning_messages,
@@ -85,6 +86,45 @@ def _write_test_calendar_cache(cache_root: Path, *, year: int = 2026) -> Path:
         allowed_root=cache_root.parent.parent,
     )
     return cache_path
+
+
+def test_unknown_legacy_reverification_is_explicit_cli_opt_in() -> None:
+    common = ["--data-root", "data", "--output-root", "output"]
+    default_args = runner.build_parser().parse_args(common)
+    opted_in_args = runner.build_parser().parse_args(
+        common + ["--reverify-unknown-legacy-industry-dates"]
+    )
+
+    assert default_args.reverify_unknown_legacy_industry_dates is False
+    assert opted_in_args.reverify_unknown_legacy_industry_dates is True
+
+
+def test_industry_policy_preserves_old_service_call_by_default() -> None:
+    class LegacyService:
+        def update_industry(self, start_date, end_date):
+            return {"dates": (start_date, end_date)}
+
+    class ReverificationService:
+        def update_industry(
+            self, start_date, end_date, *, reverify_unknown_legacy_dates=False,
+        ):
+            return {
+                "dates": (start_date, end_date),
+                "reverify": reverify_unknown_legacy_dates,
+            }
+
+    assert _update_industry_with_policy(
+        LegacyService(),
+        "2026-09-30",
+        "2026-09-30",
+        reverify_unknown_legacy_dates=False,
+    ) == {"dates": ("2026-09-30", "2026-09-30")}
+    assert _update_industry_with_policy(
+        ReverificationService(),
+        "2026-09-30",
+        "2026-09-30",
+        reverify_unknown_legacy_dates=True,
+    ) == {"dates": ("2026-09-30", "2026-09-30"), "reverify": True}
 
 
 def test_explicit_calendar_override_uses_only_supplied_caches_offline(
@@ -588,6 +628,7 @@ def test_quick_update_can_skip_optional_broker_branch_for_bounded_core_run(
     data_root = tmp_path / "FA_Data"
     output_root = data_root / "output"
     status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    observed: dict[str, object] = {}
 
     class _FakeUpdateService:
         def __init__(self, _config) -> None:
@@ -607,7 +648,16 @@ def test_quick_update_can_skip_optional_broker_branch_for_bounded_core_run(
         update_tpex_daily_price_range = _success
         sync_source_to_sqlite = _success
         update_market = _success
-        update_industry = _success
+
+        def update_industry(
+            self,
+            start_date,
+            end_date,
+            *,
+            reverify_unknown_legacy_dates=False,
+        ):
+            observed["reverify_unknown_legacy_dates"] = reverify_unknown_legacy_dates
+            return {"success": True}
 
         def update_broker_branch(self, *_args, **_kwargs):
             raise AssertionError("optional broker branch must not run")
@@ -631,11 +681,14 @@ def test_quick_update_can_skip_optional_broker_branch_for_bounded_core_run(
             "--status-path",
             str(status_path),
             "--skip-broker-branch",
+            "--reverify-unknown-legacy-industry-dates",
         ]
     ) == 0
 
     payload = json.loads(status_path.read_text(encoding="utf-8"))
     assert payload["optional_source_policy"] == {"skip_broker_branch": True}
+    assert payload["industry_legacy_reverification_enabled"] is True
+    assert observed["reverify_unknown_legacy_dates"] is True
     skipped = {
         item["name"]: item for item in payload["steps"] if item["status"] == "skipped"
     }

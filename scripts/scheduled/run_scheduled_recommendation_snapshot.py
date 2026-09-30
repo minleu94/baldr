@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -22,6 +23,7 @@ from app_module.forward_position_thesis_candidate_producer import (
     SCHEMA_VERSION as FORWARD_CANDIDATE_SCHEMA_VERSION,
 )
 from app_module.recommendation.composition import build_recommendation_composition
+from app_module.recommendation.codec import decode_artifact
 from app_module.recommendation.contracts import (
     ExecutionStatus,
     IndexStatus,
@@ -33,6 +35,7 @@ from app_module.recommendation.contracts import (
     SnapshotCohortCoverage,
     SnapshotCohortCoverageStatus,
 )
+from app_module.recommendation.queries import _read_regular_file_no_follow
 from app_module.recommendation.execute import (
     RecommendationPostprocessFacts,
     RecommendationPostprocessInput,
@@ -59,6 +62,7 @@ from app_module.v4_evidence_identity import (
 from data_module.config import TWStockConfig
 from data_module.official_trading_calendar_cache import (
     OfficialCalendarCacheError,
+    _normalized_flag,
     load_verified_twse_calendar_cache,
 )
 from scripts.scheduled.scheduled_clock import scheduled_now
@@ -77,6 +81,17 @@ DEFAULT_FORWARD_CALENDAR_REFRESH_STATUS_PATH = (
     / "latest_status.json"
 )
 TAIPEI = ZoneInfo("Asia/Taipei")
+PAPER_FROZEN_SCHEMA_VERSION = "paper-frozen-recommendation.v1"
+PAPER_FROZEN_PURPOSE = "paper-next-session-research-source"
+PAPER_FROZEN_PORTFOLIO_ID = "paper-main"
+PAPER_FROZEN_ARTIFACT_MAX_BYTES = 8 * 1024 * 1024
+PAPER_FROZEN_EXPORT_MAX_BYTES = 1024 * 1024
+PAPER_FROZEN_SAFETY_FIELDS = (
+    "confirm",
+    "writes_evidence_db",
+    "auto_trading",
+    "lifecycle_action",
+)
 
 
 def _scheduled_default_config() -> dict[str, Any]:
@@ -815,6 +830,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--forward-calendar-refresh-status-path",
         help="optional latest official-calendar refresh receipt used to select the current cache",
     )
+    parser.add_argument(
+        "--export-paper-frozen-source",
+        action="store_true",
+        help="選擇輸出當日 Paper 專用 create-only 研究來源",
+    )
     return parser
 
 
@@ -985,6 +1005,607 @@ def _read_verified_saved_execution(
     return read_model
 
 
+def _strict_sha256(value: object, field_name: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 71
+        or not value.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in value[7:])
+    ):
+        raise ValueError(f"{field_name}_invalid_sha256")
+    return value
+
+
+def _aware_source_clock(value: object, field_name: str) -> datetime:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
+        raise ValueError(f"{field_name}_missing_or_naive")
+    return value
+
+
+def _paper_frozen_result_id_component(result_id: object) -> str:
+    if (
+        not isinstance(result_id, str)
+        or not result_id
+        or len(result_id) > 160
+        or result_id in {".", ".."}
+        or result_id[-1] in {".", " "}
+        or any(
+            not character.isascii()
+            or not (character.isalnum() or character in "._-")
+            for character in result_id
+        )
+    ):
+        raise ValueError("paper_frozen_result_id_is_not_safe_for_filename")
+    return result_id
+
+
+def _paper_decimal_text(value: object, field_name: str) -> str:
+    if type(value) is Decimal:
+        if not value.is_finite():
+            raise ValueError(f"paper_frozen_{field_name}_not_finite")
+        return str(value)
+    if type(value) is int:
+        return str(value)
+    raise ValueError(f"paper_frozen_{field_name}_missing_or_untyped")
+
+
+def _build_paper_frozen_source_payload(
+    *,
+    read_model: Any,
+    receipt: Any,
+    raw_artifact: bytes,
+    artifact_location: str,
+    exported_at: datetime,
+    calendar_identity: Mapping[str, Any],
+) -> dict[str, Any]:
+    """從已驗證的 canonical execution 建立 Paper 專用唯讀來源投影。"""
+
+    execution = read_model.execution
+    if (
+        read_model.integrity_basis != "canonical_payload_and_index_verified"
+        or execution is None
+        or read_model.legacy_result is not None
+        or execution.status is not ExecutionStatus.COMPLETED
+        or execution.decision is None
+    ):
+        raise ValueError("paper_frozen_source_must_be_verified_completed_canonical")
+    result_id = _required_identity_text(execution.result_id, "result_id")
+    if receipt.result_id != result_id or read_model.result_id != result_id:
+        raise ValueError("paper_frozen_source_result_id_mismatch")
+    if receipt.index_status is not IndexStatus.INDEXED:
+        raise ValueError("paper_frozen_source_not_indexed")
+    if receipt.artifact_location != artifact_location:
+        raise ValueError("paper_frozen_source_artifact_location_mismatch")
+    source_payload_hash = _strict_sha256(receipt.payload_hash, "source_payload_hash")
+    if _strict_sha256(read_model.payload_hash, "read_model_payload_hash") != source_payload_hash:
+        raise ValueError("paper_frozen_source_payload_hash_mismatch")
+    source_artifact_hash = "sha256:" + hashlib.sha256(raw_artifact).hexdigest()
+    if (
+        _strict_sha256(read_model.raw_artifact_sha256, "read_model_artifact_hash")
+        != source_artifact_hash
+    ):
+        raise ValueError("paper_frozen_source_artifact_hash_mismatch")
+    decoded = decode_artifact(raw_artifact, expected_sha256=source_artifact_hash)
+    if not isinstance(decoded, RecommendationExecution) or decoded != execution:
+        raise ValueError("paper_frozen_source_artifact_execution_mismatch")
+
+    context = execution.context
+    source_created_at = _aware_source_clock(context.created_at, "source_created_at")
+    decision_at = _aware_source_clock(context.decision_at, "source_decision_at")
+    available_at = _aware_source_clock(context.available_at, "source_available_at")
+    observed_at = _aware_source_clock(exported_at, "paper_frozen_exported_at")
+    if source_created_at > observed_at:
+        raise ValueError("paper_frozen_source_created_after_export_observation")
+    if available_at > observed_at:
+        raise ValueError("paper_frozen_source_available_after_export_observation")
+    if available_at > decision_at:
+        raise ValueError("paper_frozen_source_available_after_decision")
+    if decision_at > observed_at:
+        raise ValueError("paper_frozen_source_decision_after_export_observation")
+
+    result_config_snapshot = context.result_config_snapshot
+    if result_config_snapshot is None:
+        raise ValueError("paper_frozen_source_result_config_missing")
+    result_config = _load_json_object(
+        result_config_snapshot.raw_result_config_json,
+        "paper_frozen_source_result_config",
+    )
+    if _canonical_json_sha256(result_config) != result_config_snapshot.config_sha256:
+        raise ValueError("paper_frozen_source_result_config_hash_mismatch")
+    if result_config.get("scheduled_snapshot") is not True:
+        raise ValueError("paper_frozen_source_not_scheduled_snapshot")
+    if result_config.get("research_only") is not True:
+        raise ValueError("paper_frozen_source_not_research_only")
+    safety_boundary = result_config.get("safety_boundary")
+    if not isinstance(safety_boundary, Mapping) or any(
+        safety_boundary.get(field_name) is not False
+        for field_name in PAPER_FROZEN_SAFETY_FIELDS
+    ):
+        raise ValueError("paper_frozen_source_safety_boundary_invalid")
+
+    decision_date_value = result_config.get("decision_date")
+    if not isinstance(decision_date_value, str):
+        raise ValueError("paper_frozen_source_decision_date_missing")
+    try:
+        decision_date = date.fromisoformat(decision_date_value)
+    except ValueError as exc:
+        raise ValueError("paper_frozen_source_decision_date_invalid") from exc
+    if decision_date.isoformat() != decision_date_value:
+        raise ValueError("paper_frozen_source_decision_date_not_canonical")
+    if (
+        decision_at.astimezone(TAIPEI).date() != decision_date
+        or observed_at.astimezone(TAIPEI).date() != decision_date
+    ):
+        raise ValueError("paper_frozen_source_taipei_natural_date_mismatch")
+
+    as_of_date = context.as_of_date
+    if type(as_of_date) is not date:
+        raise ValueError("paper_frozen_source_as_of_date_missing")
+    if as_of_date > decision_date:
+        raise ValueError("paper_frozen_source_as_of_date_after_decision_date")
+    top_n = result_config.get("top_n")
+    if type(top_n) is not int or top_n <= 0:
+        raise ValueError("paper_frozen_source_top_n_invalid")
+    profile_id = result_config.get("profile_id")
+    if not isinstance(profile_id, str) or not profile_id.strip():
+        raise ValueError("paper_frozen_source_profile_id_missing")
+
+    items = execution.decision.items
+    if not items:
+        raise ValueError("paper_frozen_source_has_no_recommendation_rows")
+    rows: list[dict[str, Any]] = []
+    seen_symbols: set[str] = set()
+    for item in items:
+        symbol = _required_identity_text(item.stock_code, "recommendation_stock_code")
+        if (
+            not symbol.isdigit()
+            or not 2 <= len(symbol) <= 6
+            or symbol in seen_symbols
+        ):
+            raise ValueError("paper_frozen_source_stock_code_invalid_or_duplicated")
+        seen_symbols.add(symbol)
+        eligible_date = item.eligible_universe_date
+        if type(eligible_date) is not date or eligible_date != decision_date:
+            raise ValueError("paper_frozen_source_eligible_date_mismatch")
+        score_text = _paper_decimal_text(item.rule_score, "rule_score")
+        score = Decimal(score_text)
+        if score < 0 or score > 100:
+            raise ValueError("paper_frozen_source_rule_score_outside_0_100")
+        close_price_text = _paper_decimal_text(item.close_price, "close_price")
+        if Decimal(close_price_text) <= 0:
+            raise ValueError("paper_frozen_source_close_price_not_positive")
+        for optional_text, field_name in (
+            (item.stock_name, "stock_name"),
+            (item.industry, "industry"),
+        ):
+            if optional_text is not None and not isinstance(optional_text, str):
+                raise ValueError(f"paper_frozen_source_{field_name}_invalid")
+        rows.append(
+            {
+                "證券代號": symbol,
+                "證券名稱": item.stock_name or symbol,
+                "產業": item.industry or "",
+                "總分": score_text,
+                "收盤價": close_price_text,
+                "eligible_universe_date": eligible_date.isoformat(),
+            }
+        )
+
+    artifact_relative_path = f"execution_artifacts/{artifact_location}"
+    schema_version = read_model.schema_version
+    if not isinstance(schema_version, str) or not schema_version.strip():
+        raise ValueError("paper_frozen_source_schema_version_missing")
+    schema_revision = read_model.schema_revision
+    if type(schema_revision) is not int or schema_revision <= 0:
+        raise ValueError("paper_frozen_source_schema_revision_invalid")
+    return {
+        "schema_version": PAPER_FROZEN_SCHEMA_VERSION,
+        "purpose": PAPER_FROZEN_PURPOSE,
+        "result_id": result_id,
+        # Paper 的 created_at 是凍結決策時鐘；保留 canonical decision_at 原值。
+        "created_at": decision_at.isoformat(),
+        "decision_at": decision_at.isoformat(),
+        "available_at": available_at.isoformat(),
+        "decision_date": decision_date.isoformat(),
+        "data_as_of_date": as_of_date.isoformat(),
+        "source_created_at": source_created_at.isoformat(),
+        "exported_at": observed_at.isoformat(),
+        "config": {
+            "research_only": True,
+            "portfolio_id": PAPER_FROZEN_PORTFOLIO_ID,
+            "profile_id": profile_id,
+            "decision_date": decision_date.isoformat(),
+            "top_n": top_n,
+            "formal_credit": False,
+            "safety_boundary": {field: False for field in PAPER_FROZEN_SAFETY_FIELDS},
+        },
+        "recommendations": rows,
+        "source": {
+            "task": TASK_NAME,
+            "result_id": result_id,
+            "status": execution.status.value,
+            "artifact_path": artifact_relative_path,
+            "artifact_sha256": source_artifact_hash,
+            "canonical_payload_hash": source_payload_hash,
+            "schema_version": schema_version,
+            "schema_revision": schema_revision,
+            "source_created_at": source_created_at.isoformat(),
+            "decision_at": decision_at.isoformat(),
+            "available_at": available_at.isoformat(),
+            "data_as_of_date": as_of_date.isoformat(),
+        },
+        "calendar": dict(calendar_identity),
+        "provenance": {
+            "producer": "run_scheduled_recommendation_snapshot",
+            "contract": "canonical_execution_to_paper_frozen_source.v1",
+            "source_result_id": result_id,
+            "source_artifact_path": artifact_relative_path,
+            "source_artifact_sha256": source_artifact_hash,
+            "source_canonical_payload_hash": source_payload_hash,
+            "source_created_at": source_created_at.isoformat(),
+            "source_available_at": available_at.isoformat(),
+            "export_observation": "current_scheduled_clock",
+            "official_annual_calendar": dict(calendar_identity),
+            "research_only": True,
+            "formal_credit": False,
+        },
+    }
+
+
+def _paper_frozen_json_bytes(payload: Mapping[str, Any]) -> bytes:
+    raw = (_canonical_json(payload) + "\n").encode("utf-8")
+    if len(raw) > PAPER_FROZEN_EXPORT_MAX_BYTES:
+        raise ValueError("paper_frozen_export_exceeds_size_limit")
+    return raw
+
+
+def _verified_paper_calendar_observation(
+    *,
+    calendar_path: Path | None,
+    calendar_observation: Mapping[str, Any] | None,
+    decision_date: date,
+    observed_at: datetime,
+) -> tuple[bool | None, dict[str, Any]]:
+    """重驗既有 resolver 選出的官方年表，回傳排定開市／休市或阻塞。"""
+
+    if not isinstance(calendar_observation, Mapping):
+        return None, {
+            "status": "blocked",
+            "reason": "paper_frozen_official_calendar_observation_missing",
+        }
+    observation_status = calendar_observation.get("status")
+    if observation_status not in {
+        "explicit_path_verified",
+        "verified_refresh_receipt",
+    }:
+        return None, {
+            "status": "blocked",
+            "reason": "paper_frozen_official_calendar_observation_unverified",
+            "observation_status": observation_status,
+            "blocker": calendar_observation.get("blocker"),
+        }
+    if calendar_path is None:
+        return None, {
+            "status": "blocked",
+            "reason": "paper_frozen_official_calendar_path_missing",
+            "blocker": calendar_observation.get("blocker"),
+        }
+    expected_year = calendar_observation.get("calendar_year")
+    expected_file_hash = calendar_observation.get("file_sha256")
+    expected_path = calendar_observation.get("path")
+    if (
+        isinstance(expected_year, bool)
+        or not isinstance(expected_year, int)
+        or expected_year != decision_date.year
+        or not isinstance(expected_file_hash, str)
+        or not _is_sha256(expected_file_hash)
+        or not isinstance(expected_path, str)
+        or not expected_path.strip()
+    ):
+        return None, {
+            "status": "blocked",
+            "reason": "paper_frozen_official_calendar_identity_invalid",
+        }
+    try:
+        selected_path = Path(calendar_path).expanduser().resolve(strict=True)
+        observed_path = Path(expected_path).expanduser().resolve(strict=True)
+        if selected_path != observed_path:
+            raise ValueError("paper_frozen_official_calendar_path_mismatch")
+        verified = load_verified_twse_calendar_cache(
+            selected_path,
+            calendar_year=decision_date.year,
+            observed_at=observed_at,
+        )
+        evidence = verified.evidence
+        actual_file_hash = evidence.get("cache_file_sha256")
+        if (
+            verified.calendar_year != decision_date.year
+            or actual_file_hash != expected_file_hash
+            or evidence.get("path") != str(selected_path)
+        ):
+            raise ValueError("paper_frozen_official_calendar_readback_mismatch")
+        is_open = _normalized_flag(decision_date, verified.schedule)
+    except (OSError, TypeError, ValueError, OfficialCalendarCacheError) as error:
+        return None, {
+            "status": "blocked",
+            "reason": (
+                "paper_frozen_official_calendar_revalidation_failed:"
+                f"{type(error).__name__}:{error}"
+            ),
+            "path": str(calendar_path),
+            "file_sha256": expected_file_hash,
+        }
+    return is_open, {
+        "status": "verified",
+        "calendar_year": verified.calendar_year,
+        "path": str(selected_path),
+        "file_sha256": actual_file_hash,
+        "content_sha256": evidence.get("cache_content_sha256"),
+        "captured_at": evidence.get("captured_at"),
+        "expires_at": evidence.get("expires_at"),
+        "observation_status": observation_status,
+    }
+
+
+def _validate_existing_paper_frozen_export(
+    *,
+    raw: bytes,
+    expected_payload: Mapping[str, Any],
+    observed_at: datetime,
+) -> tuple[dict[str, Any], datetime]:
+    try:
+        existing_value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("paper_frozen_existing_export_invalid_json") from exc
+    if not isinstance(existing_value, Mapping):
+        raise ValueError("paper_frozen_existing_export_not_object")
+    existing = dict(existing_value)
+    if existing.get("schema_version") != PAPER_FROZEN_SCHEMA_VERSION:
+        raise ValueError("paper_frozen_existing_export_schema_mismatch")
+    if existing.get("purpose") != PAPER_FROZEN_PURPOSE:
+        raise ValueError("paper_frozen_existing_export_purpose_mismatch")
+    existing_config = existing.get("config")
+    if not isinstance(existing_config, Mapping):
+        raise ValueError("paper_frozen_existing_export_config_missing")
+    existing_safety = existing_config.get("safety_boundary")
+    if (
+        existing_config.get("research_only") is not True
+        or existing_config.get("portfolio_id") != PAPER_FROZEN_PORTFOLIO_ID
+        or not isinstance(existing_safety, Mapping)
+        or any(existing_safety.get(field_name) is not False for field_name in PAPER_FROZEN_SAFETY_FIELDS)
+    ):
+        raise ValueError("paper_frozen_existing_export_safety_invalid")
+    if any(
+        existing.get(field_name) != expected_payload.get(field_name)
+        for field_name in (
+            "result_id",
+            "created_at",
+            "decision_at",
+            "available_at",
+            "decision_date",
+            "data_as_of_date",
+            "source_created_at",
+            "config",
+            "recommendations",
+            "source",
+            "calendar",
+            "provenance",
+        )
+    ):
+        raise ValueError("paper_frozen_existing_export_source_or_projection_mismatch")
+    existing_exported_value = existing.get("exported_at")
+    if not isinstance(existing_exported_value, str) or not existing_exported_value.strip():
+        raise ValueError("paper_frozen_existing_exported_at_missing")
+    try:
+        existing_exported_at = datetime.fromisoformat(
+            existing_exported_value.strip().replace("Z", "+00:00")
+        )
+    except ValueError as exc:
+        raise ValueError("paper_frozen_existing_exported_at_invalid") from exc
+    if existing_exported_at.tzinfo is None or existing_exported_at.utcoffset() is None:
+        raise ValueError("paper_frozen_existing_exported_at_must_be_aware")
+    source_available_at = _parse_aware_timestamp(
+        expected_payload.get("available_at"),
+        "paper_frozen_source_available_at",
+    )
+    source_decision_at = _parse_aware_timestamp(
+        expected_payload.get("decision_at"),
+        "paper_frozen_source_decision_at",
+    )
+    decision_date = date.fromisoformat(str(expected_payload.get("decision_date")))
+    if (
+        existing_exported_at < source_available_at
+        or existing_exported_at < source_decision_at
+        or existing_exported_at > observed_at
+        or existing_exported_at.astimezone(TAIPEI).date() != decision_date
+        or observed_at.astimezone(TAIPEI).date() != decision_date
+    ):
+        raise ValueError("paper_frozen_existing_export_clock_invalid")
+    expected = dict(expected_payload)
+    expected["exported_at"] = existing_exported_at.isoformat()
+    if _paper_frozen_json_bytes(expected) != raw:
+        raise ValueError("paper_frozen_existing_export_bytes_conflict")
+    return existing, existing_exported_at
+
+
+def _export_paper_frozen_source(
+    *,
+    composition: Any,
+    read_model: Any,
+    receipt: Any,
+    observed_at: datetime,
+    calendar_path: Path | None,
+    calendar_observation: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """只將已保存完成的 canonical 結果 create-only 輸出至 Paper 專用檔。"""
+
+    observed = _aware_source_clock(observed_at, "paper_frozen_export_observed_at")
+    execution = read_model.execution
+    if execution is None or execution.context.result_config_snapshot is None:
+        return {
+            "status": "blocked",
+            "reason": "paper_frozen_source_result_config_missing",
+        }
+    result_config = _load_json_object(
+        execution.context.result_config_snapshot.raw_result_config_json,
+        "paper_frozen_source_result_config",
+    )
+    if _canonical_json_sha256(result_config) != execution.context.result_config_snapshot.config_sha256:
+        return {
+            "status": "blocked",
+            "reason": "paper_frozen_source_result_config_hash_mismatch",
+        }
+    decision_date_value = result_config.get("decision_date")
+    if not isinstance(decision_date_value, str):
+        return {
+            "status": "blocked",
+            "reason": "paper_frozen_source_decision_date_missing",
+        }
+    try:
+        decision_date = date.fromisoformat(decision_date_value)
+    except (TypeError, ValueError):
+        return {
+            "status": "blocked",
+            "reason": "paper_frozen_source_decision_date_invalid",
+        }
+    if decision_date.isoformat() != decision_date_value:
+        return {
+            "status": "blocked",
+            "reason": "paper_frozen_source_decision_date_not_canonical",
+        }
+    is_planned_open, calendar_identity = _verified_paper_calendar_observation(
+        calendar_path=calendar_path,
+        calendar_observation=calendar_observation,
+        decision_date=decision_date,
+        observed_at=observed,
+    )
+    if is_planned_open is None:
+        return {
+            "status": "blocked",
+            "reason": calendar_identity.get("reason", "paper_frozen_calendar_blocked"),
+            "calendar": calendar_identity,
+        }
+    if not is_planned_open:
+        return {
+            "status": "skipped_non_trading_day",
+            "decision_date": decision_date.isoformat(),
+            "calendar": calendar_identity,
+            "reason": "official_annual_calendar_confirms_non_trading_day",
+        }
+    store = composition.store
+    if not store._ensure_layout():
+        raise ValueError("paper_frozen_recommendation_runs_root_missing")
+    runs_root = Path(os.path.abspath(composition.runs_dir))
+    if (
+        Path(os.path.abspath(store.artifact_root.parent)) != runs_root
+        or Path(os.path.abspath(store.database_path.parent)) != runs_root
+    ):
+        raise ValueError("paper_frozen_source_store_root_mismatch")
+    if store._is_symlink_or_reparse(runs_root):
+        raise ValueError("paper_frozen_recommendation_runs_root_is_reparse")
+    try:
+        if Path(os.path.abspath(runs_root.resolve(strict=True))) != runs_root:
+            raise ValueError("paper_frozen_recommendation_runs_root_not_canonical")
+    except OSError as exc:
+        raise ValueError("paper_frozen_recommendation_runs_root_unavailable") from exc
+
+    result_id = _required_identity_text(read_model.result_id, "result_id")
+    artifact_location = receipt.artifact_location
+    expected_location = store.artifact_name_for(result_id)
+    if (
+        not isinstance(artifact_location, str)
+        or artifact_location != expected_location
+        or Path(artifact_location).name != artifact_location
+    ):
+        raise ValueError("paper_frozen_source_artifact_location_invalid")
+    artifact_path = store.artifact_root / artifact_location
+    raw_artifact = _read_regular_file_no_follow(
+        artifact_path,
+        Path(os.path.abspath(store.artifact_root)),
+        max_bytes=PAPER_FROZEN_ARTIFACT_MAX_BYTES,
+    )
+    payload = _build_paper_frozen_source_payload(
+        read_model=read_model,
+        receipt=receipt,
+        raw_artifact=raw_artifact,
+        artifact_location=artifact_location,
+        exported_at=observed,
+        calendar_identity=calendar_identity,
+    )
+    target_name = f"paper_frozen_{_paper_frozen_result_id_component(result_id)}.json"
+    target_path = runs_root / target_name
+    if target_path.parent != runs_root:
+        raise ValueError("paper_frozen_export_target_outside_runs_root")
+    payload_bytes = _paper_frozen_json_bytes(payload)
+    temporary_path: Path | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=".paper-frozen-",
+            suffix=".tmp",
+            dir=runs_root,
+        )
+        temporary_path = Path(temporary_name)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload_bytes)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary_path, target_path, follow_symlinks=False)
+        except FileExistsError:
+            existing_raw = _read_regular_file_no_follow(
+                target_path,
+                runs_root,
+                max_bytes=PAPER_FROZEN_EXPORT_MAX_BYTES,
+            )
+            existing_payload, existing_exported_at = _validate_existing_paper_frozen_export(
+                raw=existing_raw,
+                expected_payload=payload,
+                observed_at=observed,
+            )
+            return {
+                "status": "reused",
+                "result_id": result_id,
+                "path": str(target_path),
+                "source_artifact_sha256": payload["source"]["artifact_sha256"],
+                "canonical_payload_hash": payload["source"]["canonical_payload_hash"],
+                "paper_file_sha256": "sha256:" + hashlib.sha256(existing_raw).hexdigest(),
+                "exported_at": existing_exported_at.isoformat(),
+                "calendar": dict(calendar_identity),
+            }
+        published_raw = _read_regular_file_no_follow(
+            target_path,
+            runs_root,
+            max_bytes=PAPER_FROZEN_EXPORT_MAX_BYTES,
+        )
+        if published_raw != payload_bytes:
+            raise ValueError("paper_frozen_created_export_readback_bytes_mismatch")
+        published_hash = "sha256:" + hashlib.sha256(published_raw).hexdigest()
+        if os.name != "nt":
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            directory_fd = os.open(runs_root, flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+    return {
+        "status": "created",
+        "result_id": result_id,
+        "path": str(target_path),
+        "source_artifact_sha256": payload["source"]["artifact_sha256"],
+        "canonical_payload_hash": payload["source"]["canonical_payload_hash"],
+        "paper_file_sha256": published_hash,
+        "exported_at": payload["exported_at"],
+        "calendar": dict(calendar_identity),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_root = Path(args.output_root)
@@ -1054,6 +1675,8 @@ def main(argv: list[str] | None = None) -> int:
         saved_execution = read_model.execution
         assert saved_execution is not None
         result_id = saved_execution.result_id
+        payload["result_id"] = result_id
+        payload["writes_recommendation_result"] = True
         result_config_snapshot = saved_execution.context.result_config_snapshot
         if result_config_snapshot is None:
             raise ValueError("recommendation_execution_result_config_snapshot_missing")
@@ -1074,6 +1697,7 @@ def main(argv: list[str] | None = None) -> int:
         warnings = []
         if not recommendations:
             warnings.append("no_recommendations_returned")
+        paper_frozen_export: dict[str, Any] | None = None
         if snapshot_cohort.get("missing_symbols"):
             warnings.append("snapshot_cohort_partial_source_coverage")
         elif snapshot_cohort.get("degraded_symbols"):
@@ -1081,23 +1705,22 @@ def main(argv: list[str] | None = None) -> int:
 
         forward_candidate: dict[str, Any] | None = None
         forward_calendar_observation: dict[str, Any] | None = None
-        if args.forward_candidate_output_root:
-            source_path = composition.store.artifact_root / str(receipt.artifact_location)
+        forward_calendar_path: Path | None = None
+        calendar_observed_at: datetime | None = None
+        source_path = composition.store.artifact_root / str(receipt.artifact_location)
+        if args.forward_candidate_output_root or args.export_paper_frozen_source:
             if source_path.is_file():
                 try:
                     actual_decision_at = saved_execution.context.decision_at
                     if actual_decision_at is None:
                         raise ValueError("recommendation_decision_at_missing")
-                    # The recommendation service records its decision clock
-                    # after the wrapper's initial ``checked_at``.  Re-read
-                    # the wall clock after persistence so a normal, slightly
-                    # longer run is not mistaken for a future decision.
-                    forward_observed_at = scheduled_now()
+                    # 持久化後重新讀取同一個現在時鐘，供 forward 與 Paper 年表觀察共用。
+                    calendar_observed_at = scheduled_now()
                     forward_calendar_path, forward_calendar_observation = (
                         _resolve_forward_calendar_cache(
                             explicit_path=args.forward_calendar_cache_path,
                             refresh_status_path=args.forward_calendar_refresh_status_path,
-                            observed_at=forward_observed_at,
+                            observed_at=calendar_observed_at,
                             decision_at=actual_decision_at,
                         )
                     )
@@ -1112,31 +1735,50 @@ def main(argv: list[str] | None = None) -> int:
                             f"{type(error).__name__}:{error}"
                         ),
                     }
-                if forward_calendar_observation.get("status") == "blocked":
-                    forward_candidate = _write_blocked_forward_candidate_receipt(
-                        output_root=args.forward_candidate_output_root,
-                        source_path=source_path,
-                        result_id=result_id,
-                        decision_date=decision_date,
-                        decision_at=actual_decision_at,
+            else:
+                forward_calendar_observation = {
+                    "status": "blocked",
+                    "selection_source": "forward_calendar_observation",
+                    "blocker": "recommendation_result_file_missing_after_save",
+                }
+
+        if args.export_paper_frozen_source:
+            if calendar_observed_at is None:
+                paper_frozen_export = {
+                    "status": "blocked",
+                    "reason": "paper_frozen_source_artifact_missing_after_save",
+                }
+            else:
+                try:
+                    paper_frozen_export = _export_paper_frozen_source(
+                        composition=composition,
+                        read_model=read_model,
+                        receipt=receipt,
+                        observed_at=calendar_observed_at,
+                        calendar_path=forward_calendar_path,
                         calendar_observation=forward_calendar_observation,
                     )
-                    warnings.append("forward_calendar_observation_blocked")
-                else:
-                    forward_candidate = ForwardPositionThesisCandidateProducer(
-                        args.forward_candidate_output_root,
-                        calendar_cache_path=str(forward_calendar_path),
-                    ).produce_verified_read(
-                        read_model,
-                        receipt,
-                        source_artifact_path=source_path,
-                        policy_path=args.forward_thesis_policy_path,
-                    )
-                    if str(forward_candidate.get("status")) == "blocked":
-                        warnings.append("forward_position_thesis_candidate_blocked")
-                    elif str(forward_candidate.get("status")) == "degraded":
-                        warnings.append("forward_position_thesis_candidate_degraded")
-            else:
+                except Exception as error:
+                    paper_frozen_export = {
+                        "status": "blocked",
+                        "reason": (
+                            "paper_frozen_export_error:"
+                            f"{type(error).__name__}:{error}"
+                        ),
+                    }
+            if paper_frozen_export.get("status") == "blocked":
+                warnings.append("paper_frozen_source_export_blocked")
+        payload.update(
+            {
+                "result_id": result_id,
+                "forward_calendar_observation": forward_calendar_observation,
+                "paper_frozen_source_export": paper_frozen_export,
+                "warnings": list(warnings),
+            }
+        )
+
+        if args.forward_candidate_output_root:
+            if not source_path.is_file():
                 forward_candidate = {
                     "status": "skipped_source_missing",
                     "source_path": str(source_path),
@@ -1145,10 +1787,45 @@ def main(argv: list[str] | None = None) -> int:
                     "blockers": [],
                 }
                 warnings.append("forward_position_thesis_source_missing")
+            elif (
+                forward_calendar_observation is not None
+                and forward_calendar_observation.get("status") == "blocked"
+            ):
+                forward_candidate = _write_blocked_forward_candidate_receipt(
+                    output_root=args.forward_candidate_output_root,
+                    source_path=source_path,
+                    result_id=result_id,
+                    decision_date=decision_date,
+                    decision_at=actual_decision_at,
+                    calendar_observation=forward_calendar_observation,
+                )
+                warnings.append("forward_calendar_observation_blocked")
+            else:
+                forward_candidate = ForwardPositionThesisCandidateProducer(
+                    args.forward_candidate_output_root,
+                    calendar_cache_path=str(forward_calendar_path),
+                ).produce_verified_read(
+                    read_model,
+                    receipt,
+                    source_artifact_path=source_path,
+                    policy_path=args.forward_thesis_policy_path,
+                )
+                if str(forward_candidate.get("status")) == "blocked":
+                    warnings.append("forward_position_thesis_candidate_blocked")
+                elif str(forward_candidate.get("status")) == "degraded":
+                    warnings.append("forward_position_thesis_candidate_degraded")
 
+        paper_export_blocked = (
+            args.export_paper_frozen_source
+            and paper_frozen_export is not None
+            and paper_frozen_export.get("status") == "blocked"
+        )
+        terminal_status = "blocked" if paper_export_blocked else "passed"
+        terminal_exit_code = 2 if paper_export_blocked else 0
         payload.update(
             {
-                "status": "passed",
+                "status": terminal_status,
+                "exit_code": terminal_exit_code,
                 "result_id": result_id,
                 "result_name": result_name,
                 "recommendations_count": len(recommendations),
@@ -1162,6 +1839,7 @@ def main(argv: list[str] | None = None) -> int:
                 "warnings": warnings,
                 "forward_position_thesis": forward_candidate,
                 "forward_calendar_observation": forward_calendar_observation,
+                "paper_frozen_source_export": paper_frozen_export,
                 "db_path": str(composition.store.database_path),
                 "runs_dir": str(composition.runs_dir),
                 "writes_recommendation_result": True,
@@ -1200,7 +1878,8 @@ def main(argv: list[str] | None = None) -> int:
         log_path.write_text(
             "\n".join(
                 [
-                    f"status=passed",
+                    f"status={terminal_status}",
+                    f"exit_code={terminal_exit_code}",
                     f"decision_date={decision_date}",
                     f"result_id={result_id}",
                     f"recommendations_count={len(recommendations)}",
@@ -1215,14 +1894,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         _write_status(status_path, payload)
         print(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True))
-        return 0
+        return terminal_exit_code
     except Exception as exc:  # noqa: BLE001
         payload.update(
             {
                 "status": "failed",
                 "error_type": type(exc).__name__,
                 "error": str(exc),
-                "writes_recommendation_result": False,
+                "writes_recommendation_result": bool(payload.get("result_id")),
                 "writes_evidence_db": False,
                 "auto_trading": False,
                 "lifecycle_action": False,
@@ -1236,4 +1915,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     raise SystemExit(main())

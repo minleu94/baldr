@@ -296,7 +296,8 @@ def batch_update_market_index(start_date: str, end_date: str = None,
 
 def batch_update_industry_index(start_date: str, end_date: str = None, 
                                 delay_min: float = 4.0, delay_max: float = 4.0,
-                                config=None, capture_manifests=None, batch_outcome=None):
+                                config=None, capture_manifests=None, batch_outcome=None,
+                                reverify_unknown_legacy_dates: bool = False):
     """批量更新產業指數數據
     
     Args:
@@ -312,12 +313,15 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
     failed_dates: list[str] = []
     verified_skipped_dates: list[str] = []
     unverified_legacy_dates: list[str] = []
+    pending_projection_dates: list[str] = []
     attempted_dates: set[str] = set()
 
     def record_outcome(success, *, failure_reason=None):
         if batch_outcome is not None:
             if failed_dates:
                 source_status = "failed_or_partial"
+            elif pending_projection_dates:
+                source_status = "legacy_capture_accepted_pending_projection"
             elif unverified_legacy_dates and updated_dates:
                 source_status = "updated_with_unknown_legacy_rows"
             elif unverified_legacy_dates:
@@ -339,6 +343,7 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
                 "capture_manifests": [str(path) for path in (capture_manifests or [])],
                 "verified_skipped_dates": list(verified_skipped_dates),
                 "unverified_legacy_dates": list(unverified_legacy_dates),
+                "pending_projection_dates": list(pending_projection_dates),
                 "source_status": source_status,
                 "failure_reason": failure_reason,
             })
@@ -418,11 +423,17 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
         # Legacy rows without any capture attempt may remain as explicitly
         # unknown history. Dates with an uncommitted/degraded attempt stay in
         # the work list and must be retried.
-        skip_dates = (
-            set(verified_skipped_dates)
-            | set(unverified_legacy_dates)
-            | set(recovered_dates)
-        )
+        skip_dates = set(verified_skipped_dates) | set(recovered_dates)
+        if not reverify_unknown_legacy_dates:
+            skip_dates.update(unverified_legacy_dates)
+        elif unverified_legacy_dates and capture_manifests is None:
+            capture_sink_failure_reason = (
+                "重新擷取未知 legacy 日期必須提供 capture manifest 接收清單"
+            )
+            logger.error(capture_sink_failure_reason)
+            failed_dates.extend(unverified_legacy_dates)
+            record_outcome(False, failure_reason=capture_sink_failure_reason)
+            return False
         trading_days = [d for d in trading_days if d not in skip_dates]
         if verified_skipped_dates:
             logger.info("已確認 projection marker 的日期可安全略過：%s", ", ".join(verified_skipped_dates))
@@ -498,6 +509,16 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
             if i < len(trading_days):
                 delay_time = random.uniform(delay_min, delay_max)
                 time.sleep(delay_time)
+
+    if reverify_unknown_legacy_dates:
+        # 這些 capture 是已接受的來源觀測，尚未提交 CSV/SQLite projection。
+        # 後續日期範圍同步完成獨立 readback 並發布 projection marker 後，才算完成。
+        pending_projection_dates = sorted(
+            set(unverified_legacy_dates) & set(updated_dates)
+        )
+        unverified_legacy_dates = sorted(
+            set(unverified_legacy_dates) - set(pending_projection_dates)
+        )
     
     # 顯示總結
     logger.info("\n" + "=" * 60)
@@ -516,7 +537,7 @@ def batch_update_industry_index(start_date: str, end_date: str = None,
     
     logger.info("=" * 60)
     success = fail_count == 0 and not (unverified_legacy_dates and not updated_dates)
-    failure_reason = (
+    failure_reason: str | None = (
         "only unverified legacy industry rows were present; no fresh source capture was produced"
         if unverified_legacy_dates and not updated_dates
         else None

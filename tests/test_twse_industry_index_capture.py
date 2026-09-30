@@ -18,11 +18,14 @@ from data_module.twse_industry_index_capture import (
     TwseIndustryIndexCaptureError,
     assess_industry_name_completeness,
     atomic_write_csv_projection,
+    canonical_rowset,
     industry_capture_artifact_dates,
     parse_twse_industry_rows,
     persist_twse_industry_capture,
     recover_industry_capture_receipts_for_csv,
+    rowset_sha256,
     verify_capture_receipt,
+    verify_csv_date_projection,
     verified_industry_projection_dates,
 )
 
@@ -51,6 +54,90 @@ def test_industry_parser_accepts_roc_and_gregorian_response_dates():
 
     gregorian = _payload(response_date="2026/09/03", table_title="2026-09-03 類股指數")
     assert parse_twse_industry_rows(gregorian, "2026-09-03")[0]["日期"] == "2026-09-03"
+
+
+def test_industry_parser_preserves_exact_twse_missing_change_row_as_nulls():
+    payload = {
+        "stat": "OK",
+        "date": "115年09月16日",
+        "tables": [{
+            "title": "115年09月16日 價格指數(臺灣證券交易所)",
+            "fields": [
+                "指數", "收盤指數", "漲跌(+/-)", "漲跌點數",
+                "漲跌百分比(%)", "特殊處理註記",
+            ],
+            "data": [["觀光餐旅類指數", "100.95", "", "--", "--", ""]],
+        }],
+    }
+
+    rows = parse_twse_industry_rows(payload, "2026-09-16")
+
+    assert rows == [{
+        "指數名稱": "觀光餐旅類指數",
+        "收盤指數": "100.95",
+        "漲跌": None,
+        "漲跌點數": None,
+        "漲跌百分比": None,
+        "日期": "2026-09-16",
+    }]
+
+
+def test_industry_parser_treats_html_whitespace_as_blank_direction_only_when_changes_missing():
+    payload = _payload()
+    payload["tables"][0]["rows"][0][2] = "<p>&nbsp;<br> </p>"
+    payload["tables"][0]["rows"][0][3] = "--"
+    payload["tables"][0]["rows"][0][4] = "--"
+
+    rows = parse_twse_industry_rows(payload, "2026-09-03")
+
+    row = next(row for row in rows if row["指數名稱"] == "電子工業類指數")
+    assert row["漲跌"] is None
+    assert row["漲跌點數"] is None
+    assert row["漲跌百分比"] is None
+
+
+@pytest.mark.parametrize(
+    ("direction", "change_points", "change_percent"),
+    [
+        ("", "1.00", "--"),
+        ("", "0", "0.00"),
+        ("<p>&nbsp;</p>", "--", "0.10"),
+        ("X", "--", "--"),
+    ],
+)
+def test_industry_parser_rejects_missing_or_unknown_direction_with_numeric_changes(
+    direction, change_points, change_percent,
+):
+    payload = _payload()
+    payload["tables"][0]["rows"][0][2] = direction
+    payload["tables"][0]["rows"][0][3] = change_points
+    payload["tables"][0]["rows"][0][4] = change_percent
+
+    with pytest.raises(TwseIndustryIndexCaptureError, match="漲跌欄缺少明確方向"):
+        parse_twse_industry_rows(payload, "2026-09-03")
+
+
+@pytest.mark.parametrize(
+    ("close", "response_date", "requested_date", "error"),
+    [
+        ("--", "115年09月16日", "2026-09-16", "收盤指數 缺少數值"),
+        ("100.95", "115年09月16日", "2026-09-17", "日期與請求日期不一致"),
+    ],
+)
+def test_industry_parser_still_rejects_missing_close_and_mismatched_date(
+    close, response_date, requested_date, error,
+):
+    payload = {
+        "stat": "OK",
+        "date": response_date,
+        "tables": [{
+            "title": f"{response_date} 價格指數(臺灣證券交易所)",
+            "data": [["觀光餐旅類指數", close, "", "--", "--", ""]],
+        }],
+    }
+
+    with pytest.raises(TwseIndustryIndexCaptureError, match=error):
+        parse_twse_industry_rows(payload, requested_date)
 
 
 @pytest.mark.parametrize(
@@ -235,6 +322,91 @@ def test_scoped_industry_sync_reads_back_exact_dates_and_writes_marker_last(tmp_
         info = connection.execute("PRAGMA table_info(industry_indices)").fetchall()
     assert [row[1] for row in info] == list(CSV_COLUMNS[-1:]) + list(CSV_COLUMNS[:5])
     assert all(row[5] == 0 for row in info)
+
+
+def test_missing_change_fields_round_trip_to_sqlite_null_with_exact_marker(tmp_path):
+    config = _config(tmp_path)
+    service = _service_with_prior_industry_row(config)
+    before_csv, _ = _prepare_csv(config, existing_target=True)
+    payload = {
+        "stat": "OK",
+        "date": "115年09月03日",
+        "tables": [{
+            "title": "115年09月03日 價格指數(臺灣證券交易所)",
+            "fields": [
+                "指數", "收盤指數", "漲跌(+/-)", "漲跌點數",
+                "漲跌百分比(%)", "特殊處理註記",
+            ],
+            "data": [
+                ["電子工業類指數", "100.25", "<p>+</p>", "1.00", "0.50", ""],
+                ["觀光餐旅類指數", "100.95", "", "--", "--", ""],
+            ],
+        }],
+    }
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    rows = parse_twse_industry_rows(payload, "2026-09-03")
+    capture = persist_twse_industry_capture(
+        output_root=config.output_root,
+        source_date="2026-09-03",
+        requested_url="https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
+        final_url=(
+            "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+            "?date=20260903&type=IND&response=json"
+        ),
+        request_parameters={"date": "20260903", "type": "IND", "response": "json"},
+        http_status=200,
+        response_headers={"content-type": "application/json"},
+        raw_response=raw,
+        captured_at=datetime(2026, 9, 3, 8, 0, tzinfo=timezone.utc),
+        parse_status="accepted",
+        parse_reason=None,
+        response_date_status="verified",
+        completeness_status="accepted",
+        completeness_reason=None,
+        selected_table_titles=["115年09月03日 價格指數(臺灣證券交易所)"],
+        rows=rows,
+    )
+    _, after_csv_sha = atomic_write_csv_projection(
+        config.industry_index_file,
+        "2026-09-03",
+        rows,
+        skip_backup=True,
+        config=config,
+    )
+    service._pending_industry_capture_manifests = [Path(str(capture["path"]))]
+    service._pending_industry_csv_before = before_csv
+    service._pending_industry_csv_after_sha256 = after_csv_sha
+
+    result = service.sync_industry_index_captures_to_sqlite(
+        [Path(str(capture["path"]))],
+    )
+
+    assert result["success"] is True
+    assert result["projection_status"] == "committed_after_exact_csv_sqlite_readback"
+    receipt = verify_capture_receipt(capture["path"], config.output_root)
+    csv_rows, _csv_sha = verify_csv_date_projection(
+        config.industry_index_file,
+        [receipt],
+    )
+    null_csv_row = next(row for row in csv_rows if row["指數名稱"] == "觀光餐旅類指數")
+    assert null_csv_row["漲跌"] is None
+    assert null_csv_row["漲跌點數"] is None
+    assert null_csv_row["漲跌百分比"] is None
+
+    with sqlite3.connect(config.db_file) as connection:
+        null_sqlite_row = connection.execute(
+            '''SELECT "收盤指數", "漲跌", "漲跌點數", "漲跌百分比"
+               FROM industry_indices
+               WHERE "日期" = ? AND "指數名稱" = ?''',
+            ("20260903", "觀光餐旅類指數"),
+        ).fetchone()
+    assert null_sqlite_row == (100.95, None, None, None)
+
+    marker_path = Path(result["projection_commit_marker"])
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert marker["rowset_sha256"] == marker["sqlite_rowset_sha256"]
+    assert marker["rowset_sha256"] == rowset_sha256(rows)
+    assert canonical_rowset(csv_rows) == canonical_rowset(rows)
 
 
 def test_failed_final_marker_restores_csv_and_entire_qa_database(tmp_path, monkeypatch):
@@ -502,6 +674,36 @@ def test_batch_only_skips_dates_with_verified_current_projection_marker(tmp_path
     ) == set()
 
 
+def test_projection_marker_stales_when_captured_csv_row_changes(tmp_path):
+    config = _config(tmp_path)
+    capture = _make_capture(config)
+    service = _service_with_prior_industry_row(config)
+    before_csv, after_sha = _prepare_csv(config, existing_target=True)
+    service._pending_industry_csv_before = before_csv
+    service._pending_industry_csv_after_sha256 = after_sha
+    assert service.sync_industry_index_captures_to_sqlite([capture])["success"] is True
+    assert verified_industry_projection_dates(
+        output_root=config.output_root,
+        csv_path=config.industry_index_file,
+        database_path=config.db_file,
+        candidate_dates=["2026-09-03"],
+    ) == {"2026-09-03"}
+
+    frame = pd.read_csv(config.industry_index_file, dtype=str, keep_default_na=False)
+    frame.loc[
+        (frame["日期"] == "2026-09-03") & (frame["指數名稱"] == "電子工業類指數"),
+        "收盤指數",
+    ] = "999.25"
+    frame.to_csv(config.industry_index_file, index=False, encoding="utf-8-sig")
+
+    assert verified_industry_projection_dates(
+        output_root=config.output_root,
+        csv_path=config.industry_index_file,
+        database_path=config.db_file,
+        candidate_dates=["2026-09-03"],
+    ) == set()
+
+
 def test_batch_keeps_precontract_legacy_date_unknown_without_refetch(tmp_path, monkeypatch):
     from scripts import batch_update_market_and_industry_index as batch_module
 
@@ -539,6 +741,109 @@ def test_batch_keeps_precontract_legacy_date_unknown_without_refetch(tmp_path, m
     assert outcome["verified_skipped_dates"] == []
     assert outcome["updated_dates"] == []
     assert outcome["success"] is False
+
+
+def test_batch_reverifies_only_unknown_requested_dates_when_enabled(tmp_path, monkeypatch):
+    from scripts import batch_update_market_and_industry_index as batch_module
+    from data_module import twse_industry_index_capture as capture_module
+
+    config = _config(tmp_path)
+    requested = ["2026-09-03", "2026-09-04", "2026-09-05"]
+    monkeypatch.setattr(batch_module, "get_trading_days", lambda *_args, **_kwargs: requested)
+    monkeypatch.setattr(
+        batch_module,
+        "get_existing_dates",
+        lambda _path: {"2026-09-03", "2026-09-04", "2014-01-02"},
+    )
+
+    def verified_dates(*, candidate_dates, **_kwargs):
+        assert candidate_dates == ["2026-09-03", "2026-09-04"]
+        return {"2026-09-03"}
+
+    def attempted_dates(*, candidate_dates, **_kwargs):
+        assert candidate_dates == ["2026-09-04"]
+        return set()
+
+    monkeypatch.setattr(capture_module, "verified_industry_projection_dates", verified_dates)
+    monkeypatch.setattr(capture_module, "industry_capture_artifact_dates", attempted_dates)
+    monkeypatch.setattr(batch_module.time, "sleep", lambda _seconds: None)
+
+    calls: list[str] = []
+    captures: list[Path] = []
+
+    class FakeLoader:
+        def __init__(self, _config):
+            pass
+
+        def update_industry_index(self, source_date, *, skip_backup, capture_manifests):
+            calls.append(source_date)
+            assert skip_backup is True
+            capture_manifests.append(tmp_path / f"{source_date}.capture.json")
+            return True
+
+    monkeypatch.setattr(batch_module, "DataLoader", FakeLoader)
+    outcome = {}
+    assert batch_module.batch_update_industry_index(
+        "2026-09-03",
+        "2026-09-05",
+        delay_min=0,
+        delay_max=0,
+        config=config,
+        capture_manifests=captures,
+        batch_outcome=outcome,
+        reverify_unknown_legacy_dates=True,
+    ) is True
+
+    assert calls == ["2026-09-04", "2026-09-05"]
+    assert outcome["updated_dates"] == calls
+    assert outcome["verified_skipped_dates"] == ["2026-09-03"]
+    assert outcome["pending_projection_dates"] == ["2026-09-04"]
+    assert outcome["unverified_legacy_dates"] == []
+    assert outcome["source_status"] == "legacy_capture_accepted_pending_projection"
+    assert "2014-01-02" not in outcome["updated_dates"]
+
+
+def test_batch_reverification_keeps_failed_legacy_date_unknown(tmp_path, monkeypatch):
+    from scripts import batch_update_market_and_industry_index as batch_module
+    from data_module import twse_industry_index_capture as capture_module
+
+    config = _config(tmp_path)
+    day = "2026-09-03"
+    monkeypatch.setattr(batch_module, "get_trading_days", lambda *_args, **_kwargs: [day])
+    monkeypatch.setattr(batch_module, "get_existing_dates", lambda _path: {day})
+    monkeypatch.setattr(
+        capture_module,
+        "verified_industry_projection_dates",
+        lambda **_kwargs: set(),
+    )
+    monkeypatch.setattr(
+        capture_module,
+        "industry_capture_artifact_dates",
+        lambda **_kwargs: set(),
+    )
+
+    class FailingLoader:
+        def __init__(self, _config):
+            pass
+
+        def update_industry_index(self, *_args, **_kwargs):
+            return False
+
+    monkeypatch.setattr(batch_module, "DataLoader", FailingLoader)
+    captures: list[Path] = []
+    outcome = {}
+    assert batch_module.batch_update_industry_index(
+        day,
+        day,
+        config=config,
+        capture_manifests=captures,
+        batch_outcome=outcome,
+        reverify_unknown_legacy_dates=True,
+    ) is False
+    assert captures == []
+    assert outcome["failed_dates"] == [day]
+    assert outcome["unverified_legacy_dates"] == [day]
+    assert outcome["pending_projection_dates"] == []
 
 
 def test_batch_ignores_unknown_legacy_dates_outside_requested_window(
@@ -663,6 +968,268 @@ def test_legacy_only_batch_fails_through_update_service_and_scheduled_step(tmp_p
     sync_result = service.sync_source_to_sqlite("industry_index")
     assert sync_result["success"] is False
     assert sync_result["skipped"] is False
+
+
+def test_update_service_fails_closed_when_batch_lacks_named_reverify_option(
+    tmp_path, monkeypatch,
+):
+    import importlib.util
+
+    config = _config(tmp_path)
+    service = UpdateService(config)
+    service.scripts_dir = tmp_path / "service_scripts"
+    service.scripts_dir.mkdir()
+    (service.scripts_dir / "batch_update_market_and_industry_index.py").write_text(
+        "# intercepted legacy batch updater\n", encoding="utf-8",
+    )
+    observed = {"called": False}
+
+    class LegacyBatchLoader:
+        def create_module(self, _spec):
+            return None
+
+        def exec_module(self, module):
+            def old_batch(*, start_date, end_date, config, capture_manifests, batch_outcome):
+                observed["called"] = True
+                return True
+
+            module.batch_update_industry_index = old_batch
+
+    monkeypatch.setattr(
+        importlib.util,
+        "spec_from_file_location",
+        lambda name, _path: importlib.util.spec_from_loader(name, LegacyBatchLoader()),
+    )
+
+    result = service.update_industry(
+        "2026-09-03",
+        "2026-09-03",
+        reverify_unknown_legacy_dates=True,
+    )
+
+    assert result["success"] is False
+    assert result["source_status"] == "legacy_reverification_contract_unsupported"
+    assert "未明確支援" in result["message"]
+    assert observed["called"] is False
+    assert service._industry_update_block_legacy_sync is True
+
+
+def test_update_service_passes_explicit_reverification_to_named_batch_option(
+    tmp_path, monkeypatch,
+):
+    import importlib.util
+
+    config = _config(tmp_path)
+    service = UpdateService(config)
+    service.scripts_dir = tmp_path / "service_scripts"
+    service.scripts_dir.mkdir()
+    (service.scripts_dir / "batch_update_market_and_industry_index.py").write_text(
+        "# intercepted re-verification batch updater\n", encoding="utf-8",
+    )
+    observed: dict[str, object] = {}
+    manifest = tmp_path / "accepted-capture.json"
+
+    class ReverificationBatchLoader:
+        def create_module(self, _spec):
+            return None
+
+        def exec_module(self, module):
+            def run_batch(
+                *,
+                start_date,
+                end_date,
+                config,
+                capture_manifests,
+                batch_outcome,
+                reverify_unknown_legacy_dates=False,
+            ):
+                observed["reverify_unknown_legacy_dates"] = reverify_unknown_legacy_dates
+                capture_manifests.append(manifest)
+                batch_outcome.update({
+                    "success": True,
+                    "updated_dates": [start_date],
+                    "recovered_dates": [],
+                    "failed_dates": [],
+                    "verified_skipped_dates": [],
+                    "unverified_legacy_dates": [],
+                    "pending_projection_dates": [start_date],
+                    "source_status": "legacy_capture_accepted_pending_projection",
+                })
+                return True
+
+            module.batch_update_industry_index = run_batch
+
+    monkeypatch.setattr(
+        importlib.util,
+        "spec_from_file_location",
+        lambda name, _path: importlib.util.spec_from_loader(
+            name, ReverificationBatchLoader(),
+        ),
+    )
+
+    result = service.update_industry(
+        "2026-09-03",
+        "2026-09-03",
+        reverify_unknown_legacy_dates=True,
+    )
+
+    assert observed["reverify_unknown_legacy_dates"] is True
+    assert result["success"] is True
+    assert result["pending_projection_dates"] == ["2026-09-03"]
+    assert result["projection_status"] == "pending_csv_sqlite_readback"
+    assert result["capture_manifests"] == [str(manifest)]
+
+
+def test_update_service_does_not_treat_generic_kwargs_as_reverification_support(
+    tmp_path, monkeypatch,
+):
+    import importlib.util
+
+    config = _config(tmp_path)
+    service = UpdateService(config)
+    service.scripts_dir = tmp_path / "service_scripts"
+    service.scripts_dir.mkdir()
+    (service.scripts_dir / "batch_update_market_and_industry_index.py").write_text(
+        "# intercepted permissive batch updater\n", encoding="utf-8",
+    )
+    observed = {"called": False, "kwargs": None}
+
+    class PermissiveBatchLoader:
+        def create_module(self, _spec):
+            return None
+
+        def exec_module(self, module):
+            def old_batch(
+                *, start_date, end_date, config, capture_manifests, batch_outcome,
+                **kwargs,
+            ):
+                observed["called"] = True
+                observed["kwargs"] = kwargs
+                return True
+
+            module.batch_update_industry_index = old_batch
+
+    monkeypatch.setattr(
+        importlib.util,
+        "spec_from_file_location",
+        lambda name, _path: importlib.util.spec_from_loader(
+            name, PermissiveBatchLoader(),
+        ),
+    )
+
+    result = service.update_industry(
+        "2026-09-03",
+        "2026-09-03",
+        reverify_unknown_legacy_dates=True,
+    )
+
+    assert result["success"] is False
+    assert result["source_status"] == "legacy_reverification_contract_unsupported"
+    assert observed == {"called": False, "kwargs": None}
+
+
+def test_optin_legacy_reverification_commits_real_capture_and_same_day_rerun_is_noop(
+    tmp_path, monkeypatch,
+):
+    import importlib.util
+    from types import SimpleNamespace
+
+    from scripts import batch_update_market_and_industry_index as batch_module
+    from data_module.twse_industry_index_capture import verify_capture_receipt
+
+    config = _config(tmp_path)
+    service = _service_with_prior_industry_row(config)
+    _prepare_csv(config, existing_target=True)
+    source_date = "2026-09-03"
+    payload = _payload()
+    response_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    requests = {"count": 0}
+
+    def official_response(_loader, _url, _parameters):
+        requests["count"] += 1
+        return SimpleNamespace(
+            content=response_body,
+            status_code=200,
+            url=(
+                "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+                "?date=20260903&type=IND&response=json"
+            ),
+            headers={"content-type": "application/json"},
+        )
+
+    monkeypatch.setattr(DataLoader, "_make_request", official_response)
+    monkeypatch.setattr(
+        batch_module,
+        "get_trading_days",
+        lambda *_args, **_kwargs: [source_date],
+    )
+    monkeypatch.setattr(batch_module.time, "sleep", lambda _seconds: None)
+
+    class ExistingBatchLoader:
+        def create_module(self, _spec):
+            return None
+
+        def exec_module(self, module):
+            module.batch_update_industry_index = batch_module.batch_update_industry_index
+
+    monkeypatch.setattr(
+        importlib.util,
+        "spec_from_file_location",
+        lambda name, _path: importlib.util.spec_from_loader(
+            name, ExistingBatchLoader(),
+        ),
+    )
+
+    first = service.update_industry(
+        source_date,
+        source_date,
+        reverify_unknown_legacy_dates=True,
+    )
+
+    assert first["success"] is True
+    assert first["pending_projection_dates"] == [source_date]
+    assert first["projection_status"] == "pending_csv_sqlite_readback"
+    assert len(first["capture_manifests"]) == 1
+    first_receipt = verify_capture_receipt(
+        first["capture_manifests"][0], config.output_root,
+    )
+    assert first_receipt["source_date"] == source_date
+    assert first_receipt["available_at"] is None
+    assert first_receipt["published_at"] is None
+    assert first_receipt["historical_pit_eligible"] is False
+
+    committed = service.sync_source_to_sqlite("industry_index")
+    assert committed["success"] is True
+    assert committed["projection_status"] == "committed_after_exact_csv_sqlite_readback"
+    marker_path = Path(committed["projection_commit_marker"])
+    assert marker_path.is_file()
+    marker_payload = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert marker_payload["available_at"] is None
+    assert marker_payload["published_at"] is None
+    assert marker_payload["historical_pit_eligible"] is False
+    assert verified_industry_projection_dates(
+        output_root=config.output_root,
+        csv_path=config.industry_index_file,
+        database_path=config.db_file,
+        candidate_dates=[source_date],
+    ) == {source_date}
+
+    second = service.update_industry(
+        source_date,
+        source_date,
+        reverify_unknown_legacy_dates=True,
+    )
+    assert second["success"] is True
+    assert second["source_status"] == "verified_projection_noop"
+    assert second["verified_skipped_dates"] == [source_date]
+    assert second["unverified_legacy_dates"] == []
+    assert second["pending_projection_dates"] == []
+    assert second["capture_manifests"] == []
+
+    second_sync = service.sync_source_to_sqlite("industry_index")
+    assert second_sync["success"] is True
+    assert second_sync["skipped"] is True
+    assert requests["count"] == 1
 
 
 def test_batch_retries_existing_date_with_degraded_capture_artifact(tmp_path, monkeypatch):
@@ -918,6 +1485,79 @@ def test_capture_recovery_fails_closed_on_multiple_same_day_receipts(tmp_path):
         )
 
 
+def test_projection_marker_uses_explicit_accepted_receipt_with_rejected_sibling(tmp_path):
+    config = _config(tmp_path)
+    accepted_manifest = _make_capture(config)
+    rejected = persist_twse_industry_capture(
+        output_root=config.output_root,
+        source_date="2026-09-03",
+        requested_url="https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
+        final_url="https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=20260903&type=IND&response=json",
+        request_parameters={"date": "20260903", "type": "IND", "response": "json"},
+        http_status=200,
+        response_headers={"content-type": "application/json"},
+        raw_response=b'{"stat":"not ready","date":"2026-09-03","tables":[]}',
+        captured_at=datetime(2026, 9, 3, 7, 0, tzinfo=timezone.utc),
+        parse_status="rejected",
+        parse_reason="test rejected observation",
+        response_date_status="unverified",
+        completeness_status="rejected",
+        completeness_reason="test rejected observation",
+        selected_table_titles=[],
+        rows=[],
+    )
+    assert rejected["parse_status"] == "rejected"
+
+    service = _service_with_prior_industry_row(config)
+    before_csv, after_sha = _prepare_csv(config, existing_target=True)
+    service._pending_industry_csv_before = before_csv
+    service._pending_industry_csv_after_sha256 = after_sha
+    assert service.sync_industry_index_captures_to_sqlite([accepted_manifest])["success"] is True
+
+    assert verified_industry_projection_dates(
+        output_root=config.output_root,
+        csv_path=config.industry_index_file,
+        database_path=config.db_file,
+        candidate_dates=["2026-09-03"],
+    ) == {"2026-09-03"}
+    with pytest.raises(TwseIndustryIndexCaptureError, match="multiple capture receipts"):
+        recover_industry_capture_receipts_for_csv(
+            output_root=config.output_root,
+            csv_path=config.industry_index_file,
+            candidate_dates=["2026-09-03"],
+        )
+
+
+def test_projection_marker_rejects_malformed_historical_csv_sha256(tmp_path):
+    config = _config(tmp_path)
+    capture = _make_capture(config)
+    service = _service_with_prior_industry_row(config)
+    before_csv, after_sha = _prepare_csv(config, existing_target=True)
+    service._pending_industry_csv_before = before_csv
+    service._pending_industry_csv_after_sha256 = after_sha
+    assert service.sync_industry_index_captures_to_sqlite([capture])["success"] is True
+    marker = next(
+        (config.output_root / "industry_capture" / "twse" / "projection_commits")
+        .rglob("*.json")
+    )
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    payload["csv_sha256"] = "not-a-sha256"
+    body = {key: value for key, value in payload.items() if key != "content_sha256"}
+    payload["content_sha256"] = hashlib.sha256(
+        json.dumps(
+            body, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    marker.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    assert verified_industry_projection_dates(
+        output_root=config.output_root,
+        csv_path=config.industry_index_file,
+        database_path=config.db_file,
+        candidate_dates=["2026-09-03"],
+    ) == set()
+
+
 def test_restart_recovers_csv_replace_manifest_gap_and_scoped_sqlite_projection(
     tmp_path, monkeypatch,
 ):
@@ -1024,7 +1664,7 @@ def test_restart_recovers_csv_replace_manifest_gap_and_scoped_sqlite_projection(
     ) == {"2026-09-03"}
 
 
-def test_other_date_csv_change_stales_marker_then_exact_receipt_recovers(tmp_path, monkeypatch):
+def test_other_date_append_keeps_marker_scoped_to_its_capture_receipt(tmp_path, monkeypatch):
     from scripts import batch_update_market_and_industry_index as batch_module
 
     config = _config(tmp_path)
@@ -1043,15 +1683,32 @@ def test_other_date_csv_change_stales_marker_then_exact_receipt_recovers(tmp_pat
     ) == {"2026-09-03"}
 
     frame = pd.read_csv(config.industry_index_file, dtype=str, keep_default_na=False)
-    other_date = frame["日期"] == "2026-09-02"
-    frame.loc[other_date, "收盤指數"] = "91"
+    frame = pd.concat(
+        [
+            frame,
+            pd.DataFrame([{
+                "指數名稱": "新日期測試類指數",
+                "收盤指數": "101",
+                "漲跌": "+",
+                "漲跌點數": "1",
+                "漲跌百分比": "0.5",
+                "日期": "2026-09-04",
+            }]),
+        ],
+        ignore_index=True,
+    )
     frame.to_csv(config.industry_index_file, index=False, encoding="utf-8-sig")
+    with sqlite3.connect(config.db_file) as connection:
+        connection.execute(
+            'INSERT INTO industry_indices VALUES (?, ?, ?, ?, ?, ?)',
+            ("20260904", "新日期測試類指數", 101.0, "+", 1.0, 0.5),
+        )
     assert verified_industry_projection_dates(
         output_root=config.output_root,
         csv_path=config.industry_index_file,
         database_path=config.db_file,
-        candidate_dates=["2026-09-03"],
-    ) == set()
+        candidate_dates=["2026-09-03", "2026-09-04"],
+    ) == {"2026-09-03"}
 
     monkeypatch.setattr(
         batch_module, "get_trading_days",
@@ -1066,7 +1723,7 @@ def test_other_date_csv_change_stales_marker_then_exact_receipt_recovers(tmp_pat
             pass
 
         def update_industry_index(self, *_args, **_kwargs):
-            pytest.fail("stale full-file marker should recover the exact date receipt")
+            pytest.fail("a verified captured date should skip without refetch")
 
     monkeypatch.setattr(batch_module, "DataLoader", NeverCalledLoader)
     captures = []
@@ -1077,21 +1734,9 @@ def test_other_date_csv_change_stales_marker_then_exact_receipt_recovers(tmp_pat
     )
 
     assert success is True
-    assert outcome["recovered_dates"] == ["2026-09-03"]
-    assert captures == [manifest]
-    service._pending_industry_capture_manifests = [manifest]
-    service._pending_industry_csv_before = config.industry_index_file.read_bytes()
-    service._pending_industry_csv_after_sha256 = hashlib.sha256(
-        service._pending_industry_csv_before
-    ).hexdigest()
-    synced = service.sync_industry_index_captures_to_sqlite(captures)
-    assert synced["success"] is True
-    assert verified_industry_projection_dates(
-        output_root=config.output_root,
-        csv_path=config.industry_index_file,
-        database_path=config.db_file,
-        candidate_dates=["2026-09-03"],
-    ) == {"2026-09-03"}
+    assert outcome["verified_skipped_dates"] == ["2026-09-03"]
+    assert outcome["recovered_dates"] == []
+    assert captures == []
 
 
 def test_missing_receipt_cannot_verify_marker_or_recover_date(tmp_path, monkeypatch):

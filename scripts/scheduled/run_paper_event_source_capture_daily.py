@@ -11,7 +11,8 @@ hash 讀回這個 durable capture。
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import argparse
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, time, timezone
 import json
 import os
@@ -507,7 +508,10 @@ def run_capture(
     return payload, 0
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
+    argparse.ArgumentParser(
+        description="在合法台北交易時段擷取已凍結 Paper recommendation 的開盤來源。"
+    ).parse_args(argv)
     try:
         result, exit_code = run_capture()
     except Exception as error:  # noqa: BLE001 - scheduled boundary is fail closed

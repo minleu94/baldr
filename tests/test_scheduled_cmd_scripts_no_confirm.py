@@ -40,6 +40,14 @@ def test_daily_recommendation_snapshot_wrapper_does_not_confirm_or_trade() -> No
     assert "writes_evidence_db" in text
     assert "auto_trading" in text
     assert "lifecycle_action" in text
+    assert 'if not defined export_paper_frozen_source set "export_paper_frozen_source=1"' in cmd_text
+    assert 'if "%export_paper_frozen_source%"=="1"' in cmd_text
+    assert 'set "export_paper_frozen_source=0"' not in cmd_text
+    assert "--export-paper-frozen-source" in cmd_text
+    shadow_text = (
+        SCHEDULED_DIR / "run_daily_recommendation_learning_pipeline.py"
+    ).read_text(encoding="utf-8").lower()
+    assert "--export-paper-frozen-source" not in shadow_text
 
 
 def test_daily_data_update_wrapper_does_not_confirm_or_trade() -> None:
@@ -51,6 +59,8 @@ def test_daily_data_update_wrapper_does_not_confirm_or_trade() -> None:
     assert "--confirm" not in text
     assert "--allow-production-db-confirm" not in text
     assert "production evidence" not in text
+    assert 'set "window_weekdays=10"' in cmd_text
+    assert "--reverify-unknown-legacy-industry-dates" in cmd_text
 
 
 def test_official_market_event_wrapper_has_no_prompt_or_broker() -> None:

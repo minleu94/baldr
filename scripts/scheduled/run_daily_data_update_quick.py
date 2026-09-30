@@ -376,6 +376,24 @@ def _update_market_with_capture(
     return update_market(start_date, end_date)
 
 
+def _update_industry_with_policy(
+    service: Any,
+    start_date: str,
+    end_date: str,
+    *,
+    reverify_unknown_legacy_dates: bool,
+) -> dict[str, Any]:
+    """只有明確啟用重新驗證時才擴充既有 service 呼叫參數。"""
+
+    if reverify_unknown_legacy_dates:
+        return service.update_industry(
+            start_date,
+            end_date,
+            reverify_unknown_legacy_dates=True,
+        )
+    return service.update_industry(start_date, end_date)
+
+
 def _sync_market_index_for_run(
     service: Any,
     *,
@@ -634,6 +652,13 @@ def build_parser() -> argparse.ArgumentParser:
             "resolving its configured path"
         ),
     )
+    parser.add_argument(
+        "--reverify-unknown-legacy-industry-dates",
+        action="store_true",
+        help=(
+            "僅重新擷取本次官方交易日窗口內未知的 legacy 產業列；預設仍採 fail-closed"
+        ),
+    )
     parser.add_argument("--status-path")
     parser.add_argument(
         "--history-path",
@@ -775,6 +800,9 @@ def main(argv: list[str] | None = None) -> int:
                 str(path) for path in authorized_technical_output_roots
             ],
             "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+            "industry_legacy_reverification_enabled": bool(
+                args.reverify_unknown_legacy_industry_dates
+            ),
             "capacity_lock_path": str(capacity_lock_path),
             "capacity_reservation_acquired": False,
             "calendar_resolution": [],
@@ -853,6 +881,9 @@ def main(argv: list[str] | None = None) -> int:
                 str(path) for path in authorized_technical_output_roots
             ],
             "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+            "industry_legacy_reverification_enabled": bool(
+                args.reverify_unknown_legacy_industry_dates
+            ),
             "start_date": args.start_date,
             "end_date": args.end_date,
             "capacity_lock_path": str(capacity_lock_path),
@@ -897,6 +928,9 @@ def main(argv: list[str] | None = None) -> int:
             str(path) for path in authorized_technical_output_roots
         ],
         "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+        "industry_legacy_reverification_enabled": bool(
+            args.reverify_unknown_legacy_industry_dates
+        ),
         "capacity_lock_path": str(capacity_lock_path),
         "capacity_reservation_acquired": capacity_reservation is not None,
         "start_date": start_date,
@@ -990,7 +1024,14 @@ def main(argv: list[str] | None = None) -> int:
         failed = _run_step(
             steps=steps,
             name="update_industry_index",
-            action=lambda: service.update_industry(start_date, end_date),
+            action=lambda: _update_industry_with_policy(
+                service,
+                start_date,
+                end_date,
+                reverify_unknown_legacy_dates=bool(
+                    args.reverify_unknown_legacy_industry_dates
+                ),
+            ),
         )
         if failed is not None and failed.get("partial") is True:
             industry_failure = failed
@@ -1296,6 +1337,9 @@ def main(argv: list[str] | None = None) -> int:
             str(path) for path in authorized_technical_output_roots
         ],
         "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+        "industry_legacy_reverification_enabled": bool(
+            args.reverify_unknown_legacy_industry_dates
+        ),
         "capacity_lock_path": str(capacity_lock_path),
         "capacity_reservation_acquired": capacity_reservation is not None,
         "start_date": start_date,

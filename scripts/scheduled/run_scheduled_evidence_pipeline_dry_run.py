@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from json import JSONDecodeError
+import os
+import re
 import subprocess
 import sys
 from typing import Any
@@ -35,9 +37,16 @@ from app_module.position_health_transition_repository import (
 from app_module.exit_effectiveness_read_model import (
     DEFAULT_EXIT_HORIZON_TRADING_DAYS,
 )
+from app_module.recommendation.queries import _read_regular_file_no_follow
 
 
 EXIT_EFFECTIVENESS_TIMEOUT_SECONDS = 300
+EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES = 32 * 1024 * 1024
+EXIT_EFFECTIVENESS_SCHEMA_VERSION = "exit-effectiveness-evidence.v1"
+EXIT_EFFECTIVENESS_POLICY_ID = "exit-effectiveness-research-policy.v1"
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_EXIT_EFFECTIVENESS_SUFFIX_RE = re.compile(r"(?P<date>\d{8})_(?P<digest>[0-9a-f]{16})\.json\Z")
+TAIPEI = timezone(timedelta(hours=8))
 PIPELINE_TIMEOUT_SECONDS = 600
 
 
@@ -244,6 +253,170 @@ def _persist_log(log_path: Path, text: str, *, failure_token: str) -> str | None
     return None
 
 
+def _utc_now() -> datetime:
+    """Return the current aware UTC clock for child/artifact binding."""
+
+    return datetime.now(timezone.utc)
+
+
+def _sha256_text(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _canonical_exit_effectiveness_json(payload: dict[str, Any]) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _verify_exit_effectiveness_artifact(
+    *,
+    receipt: dict[str, Any],
+    requested_output_path: Path,
+    child_started_at: datetime,
+    child_completed_at: datetime,
+) -> tuple[Path, str]:
+    """Verify the exact create-only artifact returned by the producer."""
+
+    requested_path = Path(os.path.abspath(requested_output_path))
+    artifact_root = requested_path.parent
+    expected_date_key = requested_path.stem
+    if (
+        requested_path.suffix != ".json"
+        or not re.fullmatch(r"\d{8}", expected_date_key)
+        or artifact_root.name != "exit_effectiveness"
+    ):
+        raise ValueError("exit_effectiveness_requested_path_shape_invalid")
+
+    as_of_date = receipt.get("as_of_date")
+    try:
+        expected_business_date = child_started_at.astimezone(TAIPEI).date()
+        parsed_as_of_date = datetime.strptime(str(as_of_date), "%Y-%m-%d").date()
+    except (TypeError, ValueError) as exc:
+        raise ValueError("exit_effectiveness_as_of_date_invalid") from exc
+    if (
+        parsed_as_of_date.isoformat() != as_of_date
+        or parsed_as_of_date != expected_business_date
+        or parsed_as_of_date.strftime("%Y%m%d") != expected_date_key
+    ):
+        raise ValueError("exit_effectiveness_as_of_date_mismatch")
+
+    generated_at_value = receipt.get("generated_at")
+    if not isinstance(generated_at_value, str) or not generated_at_value.strip():
+        raise ValueError("exit_effectiveness_generated_at_missing")
+    try:
+        generated_at = datetime.fromisoformat(
+            generated_at_value.replace("Z", "+00:00")
+        )
+    except ValueError as exc:
+        raise ValueError("exit_effectiveness_generated_at_invalid") from exc
+    if generated_at.tzinfo is None or generated_at.utcoffset() is None:
+        raise ValueError("exit_effectiveness_generated_at_naive")
+    generated_at_utc = generated_at.astimezone(timezone.utc)
+    if generated_at.utcoffset() != timedelta(0):
+        raise ValueError("exit_effectiveness_generated_at_not_utc")
+    if (
+        generated_at_utc < child_started_at - timedelta(seconds=2)
+        or generated_at_utc > child_completed_at + timedelta(seconds=2)
+    ):
+        raise ValueError("exit_effectiveness_generated_at_outside_child_run")
+
+    if receipt.get("schema_version") != EXIT_EFFECTIVENESS_SCHEMA_VERSION:
+        raise ValueError("exit_effectiveness_schema_version_invalid")
+    if receipt.get("policy_id") != EXIT_EFFECTIVENESS_POLICY_ID:
+        raise ValueError("exit_effectiveness_policy_id_invalid")
+    for field_name in (
+        "policy_hash",
+        "transition_policy_hash",
+        "evidence_hash",
+        "artifact_file_sha256",
+    ):
+        value = receipt.get(field_name)
+        if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
+            raise ValueError(f"exit_effectiveness_{field_name}_invalid")
+    if receipt.get("artifact_write_status") not in {"inserted", "reused"}:
+        raise ValueError("exit_effectiveness_artifact_write_status_invalid")
+    horizon = receipt.get("horizon_trading_days")
+    if (
+        isinstance(horizon, bool)
+        or not isinstance(horizon, int)
+        or horizon != DEFAULT_EXIT_HORIZON_TRADING_DAYS
+    ):
+        raise ValueError("exit_effectiveness_horizon_invalid")
+    for field_name, expected in (
+        ("research_only", True),
+        ("formal_credit", False),
+        ("investment_effectiveness_claim", False),
+        ("auto_exit_allowed", False),
+        ("broker_order_allowed", False),
+        ("historical_backfill", False),
+    ):
+        if receipt.get(field_name) is not expected:
+            raise ValueError(f"exit_effectiveness_{field_name}_invalid")
+
+    status_value = receipt.get("status")
+    if status_value not in {"passed", "degraded", "blocked"}:
+        raise ValueError("exit_effectiveness_status_invalid")
+    observations = receipt.get("observations")
+    report = receipt.get("report")
+    if not isinstance(observations, list) or not isinstance(report, dict):
+        raise ValueError("exit_effectiveness_body_shape_invalid")
+
+    artifact_path_value = receipt.get("artifact_path")
+    if not isinstance(artifact_path_value, str) or not artifact_path_value.strip():
+        raise ValueError("exit_effectiveness_artifact_path_missing")
+    artifact_path = Path(artifact_path_value)
+    if (
+        not artifact_path.is_absolute()
+        or any(part in {".", ".."} for part in artifact_path.parts)
+        or os.path.normcase(str(artifact_path.parent))
+        != os.path.normcase(str(artifact_root))
+    ):
+        raise ValueError("exit_effectiveness_artifact_path_outside_root")
+    if artifact_path.name != requested_path.name:
+        suffix_match = _EXIT_EFFECTIVENESS_SUFFIX_RE.fullmatch(artifact_path.name)
+        if suffix_match is None or suffix_match.group("date") != expected_date_key:
+            raise ValueError("exit_effectiveness_artifact_filename_invalid")
+        if suffix_match.group("digest") != receipt["artifact_file_sha256"][7:23]:
+            raise ValueError("exit_effectiveness_artifact_suffix_mismatch")
+
+    artifact_bytes = _read_regular_file_no_follow(
+        artifact_path,
+        artifact_root,
+        max_bytes=EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES,
+    )
+    if _sha256_text(artifact_bytes) != receipt["artifact_file_sha256"]:
+        raise ValueError("exit_effectiveness_artifact_file_sha256_mismatch")
+    try:
+        artifact_payload = json.loads(artifact_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("exit_effectiveness_artifact_json_invalid") from exc
+    if not isinstance(artifact_payload, dict):
+        raise ValueError("exit_effectiveness_artifact_not_object")
+
+    stdout_body = dict(receipt)
+    for stdout_only_field in (
+        "artifact_path",
+        "artifact_write_status",
+        "artifact_file_sha256",
+    ):
+        stdout_body.pop(stdout_only_field, None)
+    expected_artifact_bytes = _canonical_exit_effectiveness_json(stdout_body) + b"\n"
+    if artifact_payload != stdout_body or artifact_bytes != expected_artifact_bytes:
+        raise ValueError("exit_effectiveness_artifact_body_stdout_mismatch")
+
+    body_for_hash = dict(artifact_payload)
+    body_for_hash.pop("evidence_hash", None)
+    if _sha256_text(_canonical_exit_effectiveness_json(body_for_hash)) != receipt[
+        "evidence_hash"
+    ]:
+        raise ValueError("exit_effectiveness_evidence_hash_mismatch")
+    return artifact_path, receipt["artifact_file_sha256"]
+
+
 def _exit_effectiveness_blocked_receipt(
     *,
     command: list[str],
@@ -262,7 +435,11 @@ def _exit_effectiveness_blocked_receipt(
         "auto_exit_allowed": False,
         "broker_order_allowed": False,
         "historical_backfill": False,
-        "artifact_path": str(output_path),
+        "artifact_path": None,
+        "requested_artifact_path": str(output_path),
+        "actual_artifact_path": None,
+        "artifact_identity_status": "unverified",
+        "artifact_file_sha256": None,
         "log_path": str(log_path),
         "command": command,
         "child_return_code": return_code,
@@ -310,6 +487,7 @@ def _run_exit_effectiveness_child(
         command.extend(("--temporary-closure-cache", str(temporary_closure_cache)))
 
     completed_stdout = ""
+    child_started_at = _utc_now()
     try:
         completed = subprocess.run(
             command,
@@ -352,6 +530,7 @@ def _run_exit_effectiveness_child(
         )
 
     completed_stdout = _process_output_text(getattr(completed, "stdout", None))
+    child_completed_at = _utc_now()
     log_write_error = _persist_log(
         log_path,
         completed_stdout,
@@ -389,18 +568,61 @@ def _run_exit_effectiveness_child(
         blockers.append(f"exit_effectiveness_child_returncode:{child_return_code}")
     if child_status not in {"passed", "degraded"} and not blockers:
         blockers.append(f"exit_effectiveness_child_status:{child_status}")
+    verified_artifact_path: Path | None = None
+    verified_artifact_hash: str | None = None
+    artifact_identity_status = "unknown_legacy"
+    try:
+        verified_artifact_path, verified_artifact_hash = (
+            _verify_exit_effectiveness_artifact(
+                receipt=receipt,
+                requested_output_path=output_path,
+                child_started_at=child_started_at,
+                child_completed_at=child_completed_at,
+            )
+        )
+        artifact_identity_status = "verified"
+    except Exception as exc:  # noqa: BLE001 - child success needs exact artifact proof
+        artifact_identity_status = (
+            "unknown_legacy"
+            if "schema_version" not in receipt
+            and "artifact_path" not in receipt
+            and "artifact_file_sha256" not in receipt
+            else "invalid"
+        )
+        artifact_blocker = (
+            f"exit_effectiveness_artifact_unverified:{type(exc).__name__}:{exc}"
+        )
+        if artifact_blocker not in blockers:
+            blockers.append(artifact_blocker)
+        blocked = True
     return {
         "status": "blocked" if blocked else child_status,
         "blocked": blocked,
         "blockers": blockers,
         "research_only": bool(receipt.get("research_only", True)),
         "historical_backfill": bool(receipt.get("historical_backfill", False)),
-        "artifact_path": str(output_path),
+        "artifact_path": (
+            None if verified_artifact_path is None else str(verified_artifact_path)
+        ),
+        "requested_artifact_path": str(output_path),
+        "actual_artifact_path": (
+            None if verified_artifact_path is None else str(verified_artifact_path)
+        ),
+        "artifact_identity_status": artifact_identity_status,
+        "artifact_file_sha256": verified_artifact_hash,
         "log_path": str(log_path),
         "command": command,
         "child_return_code": child_return_code,
         "timeout_seconds": EXIT_EFFECTIVENESS_TIMEOUT_SECONDS,
-        "receipt": receipt,
+        "receipt": {
+            **receipt,
+            "artifact_path": (
+                None if verified_artifact_path is None else str(verified_artifact_path)
+            ),
+            "artifact_file_sha256": verified_artifact_hash,
+            "artifact_identity_status": artifact_identity_status,
+        },
+        "producer_receipt": receipt,
     }
 
 
@@ -1050,6 +1272,21 @@ def main(argv: list[str] | None = None) -> int:
             None
             if exit_effectiveness_output is None
             else str(exit_effectiveness_output)
+        ),
+        "exit_effectiveness_requested_output": (
+            None
+            if exit_effectiveness_output is None
+            else str(exit_effectiveness_output)
+        ),
+        "exit_effectiveness_artifact_path": (
+            None
+            if exit_effectiveness is None
+            else exit_effectiveness.get("actual_artifact_path")
+        ),
+        "exit_effectiveness_artifact_identity_status": (
+            "not_requested"
+            if exit_effectiveness is None
+            else exit_effectiveness.get("artifact_identity_status", "unknown")
         ),
         "exit_effectiveness_log": (
             None

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "scheduled" / "run_paper_execution_daily.cmd"
 
 
-def test_scheduled_wrapper_uses_queue_without_fixed_recommendation_env(
+def test_scheduled_wrapper_fails_closed_when_queue_root_is_missing(
     tmp_path: Path,
 ) -> None:
     output_root = tmp_path / "output"
@@ -46,16 +46,16 @@ def test_scheduled_wrapper_uses_queue_without_fixed_recommendation_env(
         text=True,
     )
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 2, result.stdout + result.stderr
     candidate = json.loads(
         (candidate_root / "paper_execution_candidate.json").read_text(
             encoding="utf-8"
         )
     )
-    assert candidate["status"] == "skipped_no_pending_recommendation"
+    assert candidate["status"] == "blocked"
     assert candidate["blockers"] == ["recommendation_root_missing"]
     receipts = list(receipt_root.glob("*.json"))
     assert len(receipts) == 1
     receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
-    assert receipt["queue_state"] == "skipped"
-    assert receipt["status"] == "skipped_no_pending_recommendation"
+    assert receipt["queue_state"] == "failed"
+    assert receipt["status"] == "blocked"

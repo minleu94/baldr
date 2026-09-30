@@ -623,6 +623,204 @@ def test_public_daily_run_connects_paper_source_to_formal_consumer(
     assert ledger_result["candidate_only"] is True
 
 
+def test_same_run_rule_manifest_resolves_exact_pinned_preflight_missing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同輪精確 manifest 通過正式 consumer 後，只解除原路徑缺檔提示。"""
+
+    manifest_path = (
+        tmp_path / "publication" / "rule_history" / "2026-08-19" / "manifest.json"
+    )
+    manifest_hash = "sha256:" + "a" * 64
+    file_hash = "sha256:" + "b" * 64
+    missing_reason = "formal_rule_history_source_file_missing"
+    preflight = {
+        "blockers": [missing_reason, "another_preflight_blocker"],
+        "formal_sources": {
+            "formal_rule_champion_snapshot_history": {
+                "state": "missing",
+                "reason": missing_reason,
+                "path": str(manifest_path.resolve()),
+                "file_hash": None,
+            }
+        },
+        "rule_capture": {"eligible": True, "blockers": []},
+        "pit_capture": {
+            "capture_eligible": False,
+            "eligible": False,
+            "blockers": [],
+        },
+        "paper_sources": {
+            "paper_snapshot": {"state": "missing", "reason": "test"},
+            "paper_trade_ledger": {"state": "missing", "reason": "test"},
+            "durable_causal_ledger": {"state": "missing", "reason": "test"},
+        },
+    }
+    monkeypatch.setattr(
+        formal_daily_input_producer_module,
+        "build_daily_formal_input_preflight",
+        lambda *_args, **_kwargs: preflight,
+    )
+    monkeypatch.setattr(
+        formal_daily_input_producer_module,
+        "_load_clock_from_preflight",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        formal_daily_input_producer_module,
+        "_read_symbols",
+        lambda *_args, **_kwargs: ("2330",),
+    )
+
+    def produce_rule_candidate(*, output_root: Path, **_kwargs: object) -> dict[str, object]:
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text("same-run formal manifest\n", encoding="utf-8")
+        return {
+            "status": "machine_verified_candidate",
+            "candidate_only": True,
+            "formal_consumer_verified": True,
+            "formal_manifest_path": str(manifest_path.resolve()),
+            "formal_manifest_hash": manifest_hash,
+            "formal_manifest_file_hash": file_hash,
+        }
+
+    monkeypatch.setattr(
+        formal_daily_input_producer_module,
+        "_produce_rule_candidate",
+        produce_rule_candidate,
+    )
+    monkeypatch.setattr(
+        formal_daily_input_producer_module,
+        "_readback_explicit_formal_sources",
+        lambda *_args, **_kwargs: (
+            {
+                "formal_rule_champion_snapshot_history": {
+                    "input": "formal_rule_champion_snapshot_history",
+                    "state": "ready",
+                    "formal_ready": True,
+                    "formal_consumer_compatible": True,
+                    "candidate_only": False,
+                    "consumer_verified": True,
+                    "path": str(manifest_path.resolve()),
+                    "file_hash": file_hash,
+                    "manifest_hash": manifest_hash,
+                },
+                "causal_non_cash_portfolio_ledger": {
+                    "state": "missing",
+                    "formal_ready": False,
+                    "formal_consumer_compatible": False,
+                },
+                "pit_sector_membership": {
+                    "state": "missing",
+                    "formal_ready": False,
+                    "formal_consumer_compatible": False,
+                },
+            },
+            ["formal_ledger_source_missing", "formal_sector_source_missing"],
+        ),
+    )
+    paths = DailyFormalInputPaths(
+        output_root=tmp_path / "public-output",
+        development_output_root=tmp_path / "technical_analysis_development_output",
+        market_db=tmp_path / "market.sqlite",
+        clock_manifest=tmp_path / "clock.json",
+        universe_symbols=tmp_path / "universe_symbols.json",
+        formal_rule_history_path=manifest_path,
+    )
+
+    result = run_daily_formal_input_producer(
+        paths,
+        now=datetime(2026, 8, 19, 9, 5, tzinfo=TAIPEI),
+    )
+
+    assert missing_reason not in result["blockers"]
+    assert "another_preflight_blocker" in result["blockers"]
+    assert missing_reason in result["preflight"]["blockers"]
+    resolution = result["resolved_preflight_blockers"]
+    assert len(resolution) == 1
+    assert resolution[0] == {
+        "reason": missing_reason,
+        "input": "formal_rule_champion_snapshot_history",
+        "resolution": "same_run_exact_manifest_verified_by_formal_consumer",
+        "path": str(manifest_path.resolve()),
+        "manifest_hash": manifest_hash,
+        "file_hash": file_hash,
+        "consumer_verified": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    ("configured_path", "candidate_path", "manifest_hash", "file_hash", "consumer"),
+)
+def test_rule_preflight_missing_file_resolution_fails_closed_on_mismatch(
+    tmp_path: Path,
+    mismatch: str,
+) -> None:
+    """路徑、manifest/file hash 或 consumer readback 不同就保留 blocker。"""
+
+    manifest_path = tmp_path / "rule_history" / "manifest.json"
+    manifest_hash = "sha256:" + "a" * 64
+    file_hash = "sha256:" + "b" * 64
+    reason = "formal_rule_history_source_file_missing"
+    preflight = {
+        "blockers": [reason],
+        "formal_sources": {
+            "formal_rule_champion_snapshot_history": {
+                "state": "missing",
+                "reason": reason,
+                "path": str(manifest_path.resolve()),
+                "file_hash": None,
+            }
+        },
+    }
+    rule_candidate = {
+        "status": "machine_verified_candidate",
+        "formal_consumer_verified": True,
+        "formal_manifest_path": str(manifest_path.resolve()),
+        "formal_manifest_hash": manifest_hash,
+        "formal_manifest_file_hash": file_hash,
+    }
+    formal_readback = {
+        "input": "formal_rule_champion_snapshot_history",
+        "state": "ready",
+        "formal_ready": True,
+        "formal_consumer_compatible": True,
+        "consumer_verified": True,
+        "path": str(manifest_path.resolve()),
+        "manifest_hash": manifest_hash,
+        "file_hash": file_hash,
+    }
+    configured_path = manifest_path
+    if mismatch == "configured_path":
+        configured_path = tmp_path / "other" / "manifest.json"
+    elif mismatch == "candidate_path":
+        rule_candidate["formal_manifest_path"] = str(
+            (tmp_path / "other" / "manifest.json").resolve()
+        )
+    elif mismatch == "manifest_hash":
+        formal_readback["manifest_hash"] = "sha256:" + "c" * 64
+    elif mismatch == "file_hash":
+        formal_readback["file_hash"] = "sha256:" + "d" * 64
+    elif mismatch == "consumer":
+        formal_readback["consumer_verified"] = False
+
+    resolution = formal_daily_input_producer_module._resolve_same_run_rule_history_missing_blocker(
+        configured_paths=DailyFormalInputPaths(
+            output_root=tmp_path / "output",
+            development_output_root=tmp_path / "technical_analysis_development_output",
+            market_db=tmp_path / "market.sqlite",
+            formal_rule_history_path=configured_path,
+        ),
+        preflight=preflight,
+        rule_candidate=rule_candidate,
+        formal_rule_readback=formal_readback,
+    )
+
+    assert resolution is None
+
+
 @pytest.mark.parametrize(
     ("identity_configured", "expected_status"),
     ((True, "blocked"), (False, "individual_sources_verified")),

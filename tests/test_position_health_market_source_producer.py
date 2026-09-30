@@ -67,6 +67,17 @@ def _make_inputs(tmp_path: Path, *, with_identity: bool = True) -> tuple[Path, P
                 "schema_version": "position-health-daily-refresh.v1",
                 "decision_date": DECISION,
                 "as_of_date": DECISION,
+                "status": "fresh",
+                "source_type": "paper_snapshot_read_only",
+                "source_read_mode": "sqlite_uri_mode_ro_and_query_only",
+                "research_only": True,
+                "writes_positions_db": False,
+                "auto_action_allowed": False,
+                "broker_execution": False,
+                "formal_credit": False,
+                "source_snapshot_id": "paper-main-20260908",
+                "source_snapshot_date": DECISION,
+                "source_snapshot_rows_sha256": "sha256:" + "a" * 64,
                 "positions": [
                     {
                         "stock_code": "2330",
@@ -124,6 +135,8 @@ def test_producer_writes_hash_bound_sources_from_verified_daily_rows(tmp_path: P
     )
 
     assert result["status"] == "passed"
+    assert result["position_snapshot_observation"]["source_snapshot_id"] == "paper-main-20260908"
+    assert result["position_snapshot_observation"]["same_day_paper_producer_success_proven"] is False
     assert result["condition_row_count"] == 1
     assert result["metric_row_count"] >= 10
     positions = [{
@@ -141,6 +154,8 @@ def test_producer_writes_hash_bound_sources_from_verified_daily_rows(tmp_path: P
     observation = condition.values["paper:2330:entry-a"]
     assert observation.result is not None
     assert observation.result.status == "warning"
+    assert observation.result.details["paper_position_snapshot_date"] == DECISION
+    assert observation.result.details["paper_position_snapshot_id"] == "paper-main-20260908"
     assert observation.current_snapshot is not None
     assert str(observation.current_snapshot.current_price) == "910.0"
     metrics = DecimalMetricSourceProvider(result["metrics_source_path"]).read_for_positions(
@@ -292,6 +307,207 @@ def test_producer_rejects_baseline_from_different_decision_date(tmp_path: Path) 
     baseline, quick, freshness, market, output = _make_inputs(tmp_path)
     baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
     baseline_payload["decision_date"] = "2026-09-07"
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    with pytest.raises(PositionHealthMarketSourceError, match="health_baseline_date_mismatch"):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: OBSERVED,
+        ).produce(
+            baseline_path=baseline,
+            output_dir=output,
+            decision_date=DECISION,
+            decision_at=CUTOFF,
+            observed_at=OBSERVED,
+        )
+
+
+def test_daily_refresh_baseline_uses_as_of_date_for_holdings_observation_only(
+    tmp_path: Path,
+) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
+    baseline_payload.update(
+        {
+            "decision_date": "2026-09-07",
+            "source_snapshot_date": "2026-09-07",
+            "source_snapshot_id": "paper-main-20260907",
+            "as_of_date": DECISION,
+        }
+    )
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    result = PositionHealthMarketSourceProducer(
+        market_db_path=market,
+        quick_status_path=quick,
+        freshness_status_path=freshness,
+        now_provider=lambda: OBSERVED,
+    ).produce(
+        baseline_path=baseline,
+        output_dir=output,
+        decision_date=DECISION,
+        decision_at=CUTOFF,
+        observed_at=OBSERVED,
+    )
+
+    assert result["status"] == "degraded"
+    assert result["decision_date"] == DECISION
+    assert result["position_snapshot_observation"] == {
+        "schema_version": "position-health-daily-refresh.v1",
+        "source_snapshot_id": "paper-main-20260907",
+        "source_snapshot_date": "2026-09-07",
+        "source_snapshot_rows_sha256": "sha256:" + "a" * 64,
+        "decision_date": "2026-09-07",
+        "as_of_date": DECISION,
+        "observation_semantics": "paper_holdings_snapshot_observation_only",
+        "same_day_paper_producer_success_proven": False,
+        "is_stale_as_of": True,
+    }
+    assert "paper_holdings_snapshot_older_than_health_as_of:2026-09-07" in result[
+        "warnings"
+    ]
+    condition_payload = json.loads(
+        Path(result["condition_source_path"]).read_text(encoding="utf-8")
+    )
+    assert condition_payload["as_of_date"] == DECISION
+    assert condition_payload["positions"][0]["result"]["details"][
+        "paper_position_snapshot_date"
+    ] == "2026-09-07"
+
+
+def test_daily_refresh_baseline_rejects_snapshot_after_health_as_of(tmp_path: Path) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
+    baseline_payload.update(
+        {
+            "decision_date": "2026-09-09",
+            "source_snapshot_date": "2026-09-09",
+            "as_of_date": DECISION,
+        }
+    )
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    with pytest.raises(PositionHealthMarketSourceError, match="health_baseline_date_mismatch"):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: OBSERVED,
+        ).produce(
+            baseline_path=baseline,
+            output_dir=output,
+            decision_date=DECISION,
+            decision_at=CUTOFF,
+            observed_at=OBSERVED,
+        )
+
+
+def test_daily_refresh_baseline_rejects_as_of_different_from_requested_date(
+    tmp_path: Path,
+) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
+    baseline_payload["as_of_date"] = "2026-09-07"
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    with pytest.raises(PositionHealthMarketSourceError, match="health_baseline_date_mismatch"):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: OBSERVED,
+        ).produce(
+            baseline_path=baseline,
+            output_dir=output,
+            decision_date=DECISION,
+            decision_at=CUTOFF,
+            observed_at=OBSERVED,
+        )
+
+
+def test_daily_refresh_baseline_requires_snapshot_identity_provenance(
+    tmp_path: Path,
+) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
+    baseline_payload["decision_date"] = "2026-09-07"
+    baseline_payload["source_snapshot_date"] = "2026-09-07"
+    baseline_payload.pop("source_snapshot_rows_sha256")
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    with pytest.raises(
+        PositionHealthMarketSourceError,
+        match="health_baseline_snapshot_identity_invalid",
+    ):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: OBSERVED,
+        ).produce(
+            baseline_path=baseline,
+            output_dir=output,
+            decision_date=DECISION,
+            decision_at=CUTOFF,
+            observed_at=OBSERVED,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe_value", "error_code"),
+    [
+        ("status", "degraded", "health_baseline_source_contract_invalid"),
+        ("source_type", "manual_json", "health_baseline_source_contract_invalid"),
+        ("source_read_mode", "sqlite_rw", "health_baseline_source_contract_invalid"),
+        ("research_only", False, "health_baseline_boundary_invalid"),
+        ("writes_positions_db", True, "health_baseline_boundary_invalid"),
+        ("auto_action_allowed", True, "health_baseline_boundary_invalid"),
+        ("broker_execution", True, "health_baseline_boundary_invalid"),
+        ("formal_credit", True, "health_baseline_boundary_invalid"),
+    ],
+)
+def test_stale_daily_refresh_requires_read_only_research_contract(
+    tmp_path: Path,
+    field: str,
+    unsafe_value: object,
+    error_code: str,
+) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
+    baseline_payload.update(
+        {
+            "decision_date": "2026-09-07",
+            "source_snapshot_date": "2026-09-07",
+            "source_snapshot_id": "paper-main-20260907",
+            "as_of_date": DECISION,
+            field: unsafe_value,
+        }
+    )
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    with pytest.raises(PositionHealthMarketSourceError, match=error_code):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: OBSERVED,
+        ).produce(
+            baseline_path=baseline,
+            output_dir=output,
+            decision_date=DECISION,
+            decision_at=CUTOFF,
+            observed_at=OBSERVED,
+        )
+
+
+def test_legacy_baseline_does_not_gain_daily_refresh_as_of_fallback(tmp_path: Path) -> None:
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    baseline_payload = json.loads(baseline.read_text(encoding="utf-8"))
+    baseline_payload["schema_version"] = "position-health-legacy.v1"
+    baseline_payload["decision_date"] = "2026-09-07"
+    baseline_payload["as_of_date"] = DECISION
     baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
 
     with pytest.raises(PositionHealthMarketSourceError, match="health_baseline_date_mismatch"):

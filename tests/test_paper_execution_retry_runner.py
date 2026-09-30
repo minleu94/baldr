@@ -11,10 +11,32 @@ import pytest
 from data_module import formal_runtime_config
 from data_module import formal_runtime_roll_forward as roll
 
+from scripts.scheduled import paper_execution_retry_runner
 from scripts.scheduled.paper_execution_retry_runner import run_scheduled
 
 
 OBSERVED = datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_exit_code"),
+    [
+        ("skipped_no_pending_recommendation", 0),
+        ("blocked", 2),
+    ],
+)
+def test_retry_runner_exit_code_preserves_skip_and_blocked_statuses(
+    status: str,
+    expected_exit_code: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        paper_execution_retry_runner,
+        "run_scheduled",
+        lambda **_kwargs: {"status": status, "blockers": []},
+    )
+
+    assert paper_execution_retry_runner.main([]) == expected_exit_code
 
 
 def _write_cross_day_calendar(path: Path) -> tuple[Path, str]:

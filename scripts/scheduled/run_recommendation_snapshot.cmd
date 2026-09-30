@@ -17,6 +17,9 @@ if "%FORWARD_THESIS_POLICY_PATH%"=="" set "FORWARD_THESIS_POLICY_PATH=%REPO_ROOT
 set "FORWARD_ARGS=--forward-candidate-output-root "%FORWARD_CANDIDATE_OUTPUT_ROOT%""
 if not "%FORWARD_THESIS_POLICY_PATH%"=="" set "FORWARD_ARGS=%FORWARD_ARGS% --forward-thesis-policy-path "%FORWARD_THESIS_POLICY_PATH%""
 if not "%FORWARD_CALENDAR_CACHE_PATH%"=="" set "FORWARD_ARGS=%FORWARD_ARGS% --forward-calendar-cache-path "%FORWARD_CALENDAR_CACHE_PATH%""
+if not defined EXPORT_PAPER_FROZEN_SOURCE set "EXPORT_PAPER_FROZEN_SOURCE=1"
+set "PAPER_FROZEN_EXPORT_ARGS="
+if "%EXPORT_PAPER_FROZEN_SOURCE%"=="1" set "PAPER_FROZEN_EXPORT_ARGS=--export-paper-frozen-source"
 
-"%PYTHON%" "scripts\scheduled\run_scheduled_recommendation_snapshot.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --max-stocks "%MAX_STOCKS%" --top-n "%TOP_N%" %FORWARD_ARGS%
+"%PYTHON%" "scripts\scheduled\run_scheduled_recommendation_snapshot.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --max-stocks "%MAX_STOCKS%" --top-n "%TOP_N%" %FORWARD_ARGS% %PAPER_FROZEN_EXPORT_ARGS%
 exit /b %ERRORLEVEL%

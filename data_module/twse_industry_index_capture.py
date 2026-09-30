@@ -155,13 +155,20 @@ def _decimal_text(value: object, *, field: str, optional: bool = False) -> str |
     return normalized or "0"
 
 
-def _direction(value: object) -> str:
-    text = unescape(str(value or ""))
+def _direction(
+    value: object,
+    *,
+    change_points: str | None,
+    change_percent: str | None,
+) -> str | None:
+    text = unescape(str(value if value is not None else ""))
     text = re.sub(r"<[^>]*>", "", text).strip()
     if "+" in text or "＋" in text:
         return "+"
     if "-" in text or "－" in text or "−" in text:
         return "-"
+    if not text and change_points is None and change_percent is None:
+        return None
     raise TwseIndustryIndexCaptureError("漲跌欄缺少明確方向")
 
 
@@ -237,13 +244,17 @@ def parse_twse_industry_rows(payload: object, source_date: str) -> list[dict[str
                 raise TwseIndustryIndexCaptureError("TWSE 產業列名稱為空或重複")
             seen.add(name)
             close = _decimal_text(raw_row[1], field="收盤指數")
-            change = _direction(raw_row[2])
             change_points = _decimal_text(raw_row[3], field="漲跌點數", optional=True)
             if change_points is not None:
                 change_points = format(abs(Decimal(change_points)), "f")
                 if "." in change_points:
                     change_points = change_points.rstrip("0").rstrip(".")
             change_percent = _decimal_text(raw_row[4], field="漲跌百分比", optional=True)
+            change = _direction(
+                raw_row[2],
+                change_points=change_points,
+                change_percent=change_percent,
+            )
             rows.append({
                 "指數名稱": name,
                 "收盤指數": close,
@@ -824,6 +835,10 @@ def verified_industry_projection_dates(
                     payload.get("schema_version") != PROJECTION_SCHEMA_VERSION
                     or _sha256(_canonical_json(body)) != declared_hash
                     or payload.get("source_authority") != "TWSE"
+                    or not isinstance(payload.get("csv_sha256"), str)
+                    or re.fullmatch(
+                        r"[0-9a-fA-F]{64}", str(payload.get("csv_sha256", "")),
+                    ) is None
                     or payload.get("available_at") is not None
                     or payload.get("published_at") is not None
                     or payload.get("historical_pit_eligible") is not False
@@ -862,11 +877,11 @@ def verified_industry_projection_dates(
                     != Path(database_path).resolve()
                 ):
                     continue
-                csv_rows, csv_sha256 = verify_csv_date_projection(csv_path, captures)
-                if (
-                    csv_sha256 != payload.get("csv_sha256")
-                    or canonical_rowset(csv_rows) != canonical_rowset(expected_rows)
-                ):
+                # csv_sha256 is the immutable hash of the complete CSV bytes at
+                # commit time. Later dates may be appended without invalidating
+                # these captured-date rows, so current validity is date-scoped.
+                csv_rows, _ = verify_csv_date_projection(csv_path, captures)
+                if canonical_rowset(csv_rows) != canonical_rowset(expected_rows):
                     continue
                 db_path = Path(database_path).resolve(strict=True)
                 uri = f"{db_path.as_uri()}?mode=ro"

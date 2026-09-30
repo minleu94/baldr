@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from types import SimpleNamespace
@@ -12,6 +13,31 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.scheduled import run_scheduled_evidence_pipeline_dry_run
+from app_module import exit_effectiveness_producer as exit_producer
+
+
+def _canonical_exit_json(payload: object) -> str:
+    return exit_producer._canonical_json(payload)
+
+
+def _exit_effectiveness_payload(*, generated_at: datetime) -> dict[str, object]:
+    taipei_date = generated_at.astimezone(timezone(timedelta(hours=8))).date()
+    payload = exit_producer._base_payload(now=generated_at, as_of_date=taipei_date)
+    payload["status"] = "passed"
+    payload["evidence_hash"] = exit_producer._sha256_json(payload)
+    return payload
+
+
+def _fake_exit_effectiveness_stdout(
+    *, output_path: Path, generated_at: datetime
+) -> dict[str, object]:
+    payload = _exit_effectiveness_payload(generated_at=generated_at)
+    encoded = (_canonical_exit_json(payload) + "\n").encode("utf-8")
+    artifact_path, write_status = exit_producer._create_only(output_path, encoded)
+    payload["artifact_path"] = str(artifact_path)
+    payload["artifact_write_status"] = write_status
+    payload["artifact_file_sha256"] = exit_producer._sha256(encoded)
+    return payload
 
 
 def _binding_fixture(tmp_path, monkeypatch):
@@ -763,6 +789,17 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
         "scheduled_now",
         lambda: datetime(2026, 9, 8, 5, 15, tzinfo=ZoneInfo("America/Los_Angeles")),
     )
+    child_clock = datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        run_scheduled_evidence_pipeline_dry_run, "_utc_now", lambda: child_clock
+    )
+    requested_output_path = output_root / "exit_effectiveness" / "20260908.json"
+    requested_output_path.parent.mkdir(parents=True)
+    old_payload = _exit_effectiveness_payload(
+        generated_at=child_clock - timedelta(seconds=20)
+    )
+    old_bytes = (_canonical_exit_json(old_payload) + "\n").encode("utf-8")
+    requested_output_path.write_bytes(old_bytes)
 
     calls: list[tuple[list[str], dict[str, object]]] = []
     pipeline_summary = {
@@ -772,20 +809,15 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
         "blocking_gaps": [],
         "source_coverage": {},
     }
-    exit_receipt = {
-        "status": "passed",
-        "research_only": True,
-        "historical_backfill": False,
-        "auto_exit_allowed": False,
-        "broker_order_allowed": False,
-        "observations": [],
-        "blockers": [],
-    }
-
     def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         command = list(args[0])
         calls.append((command, dict(kwargs)))
         if any(str(item).endswith("run_exit_effectiveness_daily.py") for item in command):
+            output_path = Path(command[command.index("--output") + 1])
+            exit_receipt = _fake_exit_effectiveness_stdout(
+                output_path=output_path,
+                generated_at=child_clock + timedelta(seconds=1),
+            )
             return subprocess.CompletedProcess(
                 args=command,
                 returncode=0,
@@ -822,6 +854,21 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
     assert payload["exit_effectiveness_blocked"] is False
     assert payload["exit_effectiveness_receipt"]["receipt"]["research_only"] is True
     assert payload["exit_effectiveness_receipt"]["receipt"]["historical_backfill"] is False
+    assert payload["exit_effectiveness_artifact_identity_status"] == "verified"
+    actual_artifact = Path(payload["exit_effectiveness_artifact_path"])
+    assert actual_artifact.parent == requested_output_path.parent
+    assert actual_artifact.name.startswith("20260908_")
+    assert payload["exit_effectiveness_receipt"]["artifact_path"] == str(actual_artifact)
+    assert payload["exit_effectiveness_receipt"]["receipt"]["artifact_path"] == str(
+        actual_artifact
+    )
+    assert payload["exit_effectiveness_receipt"]["producer_receipt"]["artifact_path"] == str(
+        actual_artifact
+    )
+    assert payload["exit_effectiveness_output"] == str(requested_output_path)
+    assert payload["exit_effectiveness_requested_output"] == str(requested_output_path)
+    assert requested_output_path.read_bytes() == old_bytes
+    assert actual_artifact.read_bytes() != old_bytes
     assert len(calls) == 2
     exit_command, exit_kwargs = calls[0]
     assert "scripts/run_exit_effectiveness_daily.py" in exit_command
@@ -837,6 +884,193 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
     assert exit_kwargs["timeout"] == 300
     assert exit_kwargs["cwd"] == str(run_scheduled_evidence_pipeline_dry_run.REPO_ROOT)
     assert Path(payload["exit_effectiveness_log"]).is_file()
+
+
+def test_exit_effectiveness_verifies_initial_requested_artifact_path(tmp_path: Path) -> None:
+    runner = run_scheduled_evidence_pipeline_dry_run
+    child_started_at = datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc)
+    child_completed_at = child_started_at + timedelta(seconds=2)
+    requested_path = tmp_path / "output" / "exit_effectiveness" / "20260908.json"
+    receipt = _fake_exit_effectiveness_stdout(
+        output_path=requested_path,
+        generated_at=child_started_at + timedelta(seconds=1),
+    )
+
+    actual_path, file_hash = runner._verify_exit_effectiveness_artifact(
+        receipt=receipt,
+        requested_output_path=requested_path,
+        child_started_at=child_started_at,
+        child_completed_at=child_completed_at,
+    )
+
+    assert actual_path == requested_path.resolve()
+    assert file_hash == receipt["artifact_file_sha256"]
+    assert runner.EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES == 32 * 1024 * 1024
+
+
+def test_exit_effectiveness_v1_missing_path_blocks_without_stale_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runner = run_scheduled_evidence_pipeline_dry_run
+    child_clock = datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc)
+    requested_path = tmp_path / "output" / "exit_effectiveness" / "20260908.json"
+    requested_path.parent.mkdir(parents=True)
+    old_bytes = b'{"old":"immutable artifact"}\n'
+    requested_path.write_bytes(old_bytes)
+    child_stdout = _fake_exit_effectiveness_stdout(
+        output_path=requested_path,
+        generated_at=child_clock + timedelta(seconds=1),
+    )
+    child_stdout.pop("artifact_path")
+    monkeypatch.setattr(runner, "_utc_now", lambda: child_clock)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout=json.dumps(child_stdout)
+        ),
+    )
+
+    result = runner._run_exit_effectiveness_child(
+        transition_db=tmp_path / "transition.sqlite",
+        paper_ledger_db=tmp_path / "ledger.sqlite",
+        market_db=tmp_path / "market.sqlite",
+        calendar_cache=tmp_path / "calendar",
+        temporary_closure_cache=None,
+        output_path=requested_path,
+        log_path=tmp_path / "child.log",
+    )
+
+    assert result["blocked"] is True
+    assert result["status"] == "blocked"
+    assert result["artifact_identity_status"] == "invalid"
+    assert result["artifact_path"] is None
+    assert result["actual_artifact_path"] is None
+    assert result["receipt"]["artifact_path"] is None
+    assert result["requested_artifact_path"] == str(requested_path)
+    assert any("artifact_path_missing" in item for item in result["blockers"])
+    assert requested_path.read_bytes() == old_bytes
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [
+        ("schema", "schema_version_invalid"),
+        ("date", "as_of_date_mismatch"),
+        ("clock", "generated_at_outside_child_run"),
+        ("naive_clock", "generated_at_naive"),
+        ("formal_flag", "formal_credit_invalid"),
+        ("hash_format", "artifact_file_sha256_invalid"),
+        ("missing_path", "artifact_path_missing"),
+        ("outside_root", "artifact_path_outside_root"),
+        ("bad_suffix", "artifact_suffix_mismatch"),
+        ("stdout_body", "artifact_body_stdout_mismatch"),
+        ("evidence_hash", "evidence_hash_mismatch"),
+        ("file_tamper", "artifact_file_sha256_mismatch"),
+    ],
+)
+def test_exit_effectiveness_artifact_identity_mismatch_fails_closed(
+    tmp_path: Path, mutation: str, expected_reason: str
+) -> None:
+    runner = run_scheduled_evidence_pipeline_dry_run
+    child_started_at = datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc)
+    child_completed_at = child_started_at + timedelta(seconds=2)
+    requested_path = tmp_path / "output" / "exit_effectiveness" / "20260908.json"
+    receipt = _fake_exit_effectiveness_stdout(
+        output_path=requested_path,
+        generated_at=child_started_at + timedelta(seconds=1),
+    )
+    if mutation == "schema":
+        receipt["schema_version"] = "unknown.v1"
+    elif mutation == "date":
+        receipt["as_of_date"] = "2026-09-07"
+    elif mutation == "clock":
+        receipt["generated_at"] = "2026-09-08T11:00:00+00:00"
+    elif mutation == "naive_clock":
+        receipt["generated_at"] = "2026-09-08T12:15:01"
+    elif mutation == "formal_flag":
+        receipt["formal_credit"] = True
+    elif mutation == "hash_format":
+        receipt["artifact_file_sha256"] = "not-a-sha"
+    elif mutation == "missing_path":
+        receipt.pop("artifact_path")
+    elif mutation == "outside_root":
+        receipt["artifact_path"] = str(tmp_path / "outside.json")
+    elif mutation == "bad_suffix":
+        receipt["artifact_path"] = str(
+            requested_path.with_name("20260908_0000000000000000.json").resolve()
+        )
+    elif mutation == "stdout_body":
+        receipt["status"] = "degraded"
+    elif mutation == "evidence_hash":
+        artifact_path = Path(receipt["artifact_path"])
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+        payload["evidence_hash"] = "sha256:" + "f" * 64
+        encoded = (_canonical_exit_json(payload) + "\n").encode("utf-8")
+        artifact_path.write_bytes(encoded)
+        receipt["evidence_hash"] = payload["evidence_hash"]
+        receipt["artifact_file_sha256"] = "sha256:" + hashlib.sha256(encoded).hexdigest()
+    elif mutation == "file_tamper":
+        requested_path.write_bytes(requested_path.read_bytes() + b" ")
+
+    with pytest.raises(ValueError, match=expected_reason):
+        runner._verify_exit_effectiveness_artifact(
+            receipt=receipt,
+            requested_output_path=requested_path,
+            child_started_at=child_started_at,
+            child_completed_at=child_completed_at,
+        )
+
+
+def test_exit_effectiveness_artifact_verification_rejects_symlink(
+    tmp_path: Path,
+) -> None:
+    runner = run_scheduled_evidence_pipeline_dry_run
+    child_started_at = datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc)
+    child_completed_at = child_started_at + timedelta(seconds=2)
+    requested_path = tmp_path / "output" / "exit_effectiveness" / "20260908.json"
+    receipt = _fake_exit_effectiveness_stdout(
+        output_path=requested_path,
+        generated_at=child_started_at + timedelta(seconds=1),
+    )
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(requested_path.read_bytes())
+    requested_path.unlink()
+    try:
+        requested_path.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"filesystem does not permit symlink setup: {exc}")
+    with pytest.raises(Exception, match="no-follow|reparse|regular file|legacy"):
+        runner._verify_exit_effectiveness_artifact(
+            receipt=receipt,
+            requested_output_path=requested_path,
+            child_started_at=child_started_at,
+            child_completed_at=child_completed_at,
+        )
+
+
+def test_exit_effectiveness_artifact_verification_enforces_size_bound(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runner = run_scheduled_evidence_pipeline_dry_run
+    child_started_at = datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc)
+    child_completed_at = child_started_at + timedelta(seconds=2)
+    requested_path = tmp_path / "output" / "exit_effectiveness" / "20260908.json"
+    receipt = _fake_exit_effectiveness_stdout(
+        output_path=requested_path,
+        generated_at=child_started_at + timedelta(seconds=1),
+    )
+    # Exercise the cap without allocating a 32 MiB fixture; assert the fixed
+    # production value separately so this remains an Exit-only contract.
+    assert runner.EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES == 32 * 1024 * 1024
+    monkeypatch.setattr(runner, "EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES", 64)
+    with pytest.raises(Exception):
+        runner._verify_exit_effectiveness_artifact(
+            receipt=receipt,
+            requested_output_path=requested_path,
+            child_started_at=child_started_at,
+            child_completed_at=child_completed_at,
+        )
 
 
 def test_scheduled_wrapper_surfaces_exit_effectiveness_timeout_without_stale_fallback(

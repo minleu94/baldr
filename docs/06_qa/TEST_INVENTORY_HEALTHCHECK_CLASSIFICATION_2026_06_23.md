@@ -2,6 +2,58 @@
 
 > 本文件只維護目前分類摘要；逐檔清單以 `qa/full_app_healthcheck/test_inventory.py` 為準。歷史執行紀錄不可當作本次通過證據。
 
+## 2026-09-30 machine refresh
+
+本次以 `scripts/audit_test_inventory.py --skip-pytest-collection` 更新清冊，pytest collection 未執行。新增 UI natural-shutdown runner 為 `ui-healthcheck-candidate-bridge`、read-only cancellation contract 為 `service-oracle-portfolio-decision-runtime`；另為同期新增的 paper scheduled CLI 參數測試補登 `governance-doc-tooling`。candidate bridge 仍不屬於 healthcheck direct bridge。filesystem／registry 均為 1072，missing／stale 為零；分類如下。
+
+Current filesystem Python files: `1072`
+Current registry entries: `1072`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 155 |
+| `governance-doc-tooling` | 170 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 159 |
+| `service-oracle-portfolio-decision-runtime` | 132 |
+| `service-oracle-recommendation` | 155 |
+| `service-oracle-research-backtest` | 100 |
+| `slow-e2e-or-environment` | 4 |
+| `ui-healthcheck-candidate-bridge` | 57 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 82 |
+
+Machine audit：filesystem／registry `1072/1072`、missing／stale `0/0`、collection errors `0`、documentation count drift `0`；pytest collection 未執行，因此不記錄 collected test cases。
+
+## 2026-09-29 machine refresh
+
+本次以 `scripts/audit_test_inventory.py --skip-pytest-collection` 刷新檔案清冊；pytest collection 未執行。補登先前遺漏的 WP5／隔離 QA 測試（`governance-doc-tooling` 2 項、`service-oracle-data-market` 3 項），以及本次 UI layout runner、helper、wrapped-list、推薦、回測與市場 layout 測試（`ui-healthcheck-candidate-bridge` 6 項）。候選測試仍不屬於 healthcheck direct bridge。filesystem／registry 均為 1069，missing／stale 為零；當期 category 數量如下。
+
+Current filesystem Python files: `1069`
+Current registry entries: `1069`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 155 |
+| `governance-doc-tooling` | 169 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 159 |
+| `service-oracle-portfolio-decision-runtime` | 131 |
+| `service-oracle-recommendation` | 155 |
+| `service-oracle-research-backtest` | 100 |
+| `slow-e2e-or-environment` | 4 |
+| `ui-healthcheck-candidate-bridge` | 56 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 82 |
+
+本次 machine audit：filesystem／registry `1069/1069`、missing／stale `0/0`、collection errors `0`、documentation count drift `0`；pytest collection 未執行，因此不記錄 collected test cases。
+
 ## 2026-09-28 machine refresh
 
 本次先補登 `tests/test_qa_native_personal_model_acceptance.py`，分類為 `ui-healthcheck-candidate-bridge`；此 UI 自動化候選不會因此成為 healthcheck direct bridge。WP5 整合核查再補登 `tests/test_twse_industry_index_capture.py`（`service-oracle-data-market`）與 `tests/test_ui_qt_personal_model_assessment.py`（`ui-healthcheck-candidate-bridge`），均維持原分類邊界。最新 machine audit 的 filesystem／registry 均為 1058，missing／stale 為零；完整 pytest collection 未執行。

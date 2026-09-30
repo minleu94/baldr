@@ -1,6 +1,6 @@
 # 系統架構
 
-> **最後更新：2026-09-29｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-09-30｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
 
 ## 排程來源與 operational custody（2026-09-29）
@@ -18,6 +18,37 @@ clock，taxonomy 失敗傳遞非零。盤後 history 限明確 coverage scope，
 publication gate 仍完整保留。官方現在取得的來源不反向提供歷史 availability。
 ML forward 等候階段另保存 per-run heartbeat/state；與 business status 分離、無 forward
 credit。這些接線／觀測修正不包含新模型、thesis、Paper 舊成交、formal approval 或 broker。
+
+## 9/30 排程資料流與 lane 邊界
+
+```mermaid
+flowchart LR
+    Q[Quick data and technical publication] --> F[Freshness read-only validation]
+    F --> R[Canonical Recommendation artifact and index]
+    R --> E[Evidence dry-run / Position Health / Exit]
+    R --> P[Paper queue: next official session]
+    C[Same-run 05:45 learning receipt] --> B[05:50 Bank shadow barrier]
+    D[Verified daily denominator] --> S[Sector-membership sidecar]
+    U[Rule parent universe] --> T[PIT taxonomy preopen bundle]
+    T --> W[Combined post-cutoff PIT publication]
+    S --> I[Formal Input consumer]
+    T --> I
+    X[Raw PIT publication] --> O[Direct / OOC maintenance]
+    V[ML forward daily run] --> Z[Release-pinned shadow child]
+```
+
+Quick／Freshness／Recommendation／Evidence 和 Paper 共用明確日期與來源 identity，但各自
+保存 terminal receipt；Evidence 只組合當次 readback，Paper queue 只挑下一個已到期的官方
+session source。Bank shadow 先綁定 05:45 Task 的同一 run、immutable receipt 與 source hash，
+不能以舊 latest projection 取代 upstream barrier。PIT sector sidecar 與 taxonomy preopen 是
+可分離輸出；Formal consumer 讀取相容的 sidecar不代表 combined taxonomy bundle完整，兩條
+路徑仍要分別驗證 universe、clock、coverage 與 readback。Raw／Direct／OOC maintenance 和
+ML forward 使用不同來源／release pins，不因同日 Task 成功互相授權。
+
+2026-09-30 的真實排程 status、receipt hash、Task clock、目前 blocker 與驗收範圍是可變運行
+事實，集中記錄於[排程修復 QA](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)；本架構
+只記錄 producer／consumer 依賴與 lane 邊界，不把某次 no-op、candidate 或 blocked receipt
+寫成固定系統狀態。
 
 ## 2026-09-27 邊界／資源 lifecycle 現況
 

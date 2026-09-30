@@ -13,11 +13,14 @@
 
 | 要查的內容 | 證據入口 |
 | --- | --- |
+| 2026-09-30 排程修復、自然 Quick warning／Freshness degraded／Official events publication_scope=formal_historical／nested `corporate_action_adjustment_custody` `prospective_only=true`、`formal_source_contract_eligible=false`、`historical_pit_eligible=false`、Paper no-work、Evidence #3 engineering pass／business degraded、Bank#2 barrier pass／source failed、PIT／ML／fundamental blocker | [9/30 排程修復與執行驗收](SCHEDULED_OPERATIONS_REPAIR_20260930.md) |
 | Windows 排程、來源契約與資料接線 | [9/29 全項審視及修復](SCHEDULED_OPERATIONS_REPAIR_20260929.md) |
 | 重構驗收範圍與保留限制 | [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)、[C4 mandatory gates](C4_FINAL_MANDATORY_STATIC_GATES_20260925.md) |
 | ML 邊界與 R026 後續驗證 | [R026 exact allowlist](ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md)、[source revision aggregate](R026_SOURCE_REVISION_EVIDENCE_AGGREGATE_20260925.md) |
 | 正式行情修復及候選模型品質 | [正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md)、[修復來源候選驗收](REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md) |
 | 個股研究與日常操作可讀性 | [V5 readability acceptance](V5_READABILITY_ACCEPTANCE_2026_09_21.md) |
+| 跨工作區捲動、表格與視窗幾何 | [UI Layout Audit 2026-09-29](UI_LAYOUT_AUDIT_20260929.md) |
+| 唯讀服務刷新取消與回歸 | [唯讀服務刷新取消驗證](READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md) |
 | 分支、工作副本與復原備份 | [本機分支整理](BRANCH_WORKTREE_CONSOLIDATION_20260927.md) |
 | WP5 目前 HEAD 缺口與 19 筆 pending | [9/29 逐筆診斷與接續路由](WP5_HEAD_GAP_AND_PENDING_DIAGNOSIS_20260929.md) |
 | 文檔重複的取捨與保留理由 | [文檔整理審查](DOCUMENTATION_CONSOLIDATION_20260927.md) |

@@ -22,6 +22,9 @@
 
 - 理想目標架構與 Current → Target 演進：[target_system_architecture.md](../01_architecture/target_system_architecture.md)
 - Formal input readiness 最新查核：[FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md](../06_qa/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md)
+- 2026-09-29 跨工作區 UI 版面、捲動與幾何驗收（六格 MainWindow offscreen 矩陣通過）：[UI_LAYOUT_AUDIT_20260929.md](../06_qa/UI_LAYOUT_AUDIT_20260929.md)
+- 2026-09-30 七項排程問題修復、Task identity、真實 Quick／freshness receipts 與尚存資料缺口：[SCHEDULED_OPERATIONS_REPAIR_20260930.md](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)
+- 2026-09-30 唯讀服務合作式取消與 repository contract 驗證：[READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md](../06_qa/READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md)
 
 ## 領域目錄
 

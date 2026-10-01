@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -34,7 +35,14 @@ from data_module import portfolio_ml_dataset_assembler as dataset_assembler
 from data_module import ml_daily_price_source_quality as source_quality
 from data_module.formal_market_revision import RECEIPT_DIR as FORMAL_MARKET_RECEIPT_DIR
 from data_module.ml_prospective_daily_price_capture import (
+    MAX_RECEIPT_BYTES as MAX_DAILY_PRICE_CAPTURE_RECEIPT_BYTES,
     capture_prospective_daily_price_candidate,
+)
+from data_module.ml_daily_source_row_research_projection import (
+    MAX_PROJECTION_BYTES as MAX_DAILY_SOURCE_ROW_PROJECTION_BYTES,
+    MAX_PROJECTION_MANIFEST_BYTES as MAX_DAILY_SOURCE_ROW_MANIFEST_BYTES,
+    PROJECTION_OUTPUT_ROOT as DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
+    project_daily_source_rows,
 )
 from data_module.ml_daily_price_revision_gate import (
     DailyPriceSourceRevisionError,
@@ -80,6 +88,11 @@ _DIRECT_TRAINING_OUTPUT_DIR_NAME = (
     "portfolio_ml_direct_ooc_training_production_v4_v5"
 )
 _DEFAULT_SOURCE_QUALITY_CANDIDATE_SAMPLE_LIMIT = 64
+_DAILY_SOURCE_ROW_TERMINAL_RECEIPT_SCHEMA = (
+    "ml-daily-source-row-runner-terminal-receipt.v1"
+)
+_DAILY_SOURCE_ROW_TERMINAL_RECEIPT_MAX_BYTES = 2 * 1024 * 1024
+_DAILY_SOURCE_ROW_CAPTURE_MANIFEST_MAX_BYTES = 4 * 1024 * 1024
 _ALLOWED_DATA_UPDATE_STATUSES = frozenset(
     {"passed", "passed_with_warnings"}
 )
@@ -228,6 +241,14 @@ def _parser() -> argparse.ArgumentParser:
             "research-only candidate before raw revision/skip decisions"
         ),
     )
+    parser.add_argument(
+        "--project-daily-source-rows",
+        action="store_true",
+        help=(
+            "project a verified prospective TWSE/TPEx candidate into a separate "
+            "repository-local source-row research candidate"
+        ),
+    )
     return parser
 
 
@@ -367,6 +388,822 @@ def _required_sha256(value: object, *, field_name: str) -> str:
     if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
         raise ValueError(f"{field_name} must be sha256")
     return value
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _canonical_json_bytes(payload: object) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _strict_json_object(payload: bytes, *, label: str) -> dict[str, Any]:
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"{label} contains duplicate JSON keys")
+            value[key] = item
+        return value
+
+    def reject_non_finite(value: str) -> None:
+        raise ValueError(f"{label} contains non-finite JSON number: {value}")
+
+    try:
+        value = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_non_finite,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"{label} is not bounded strict JSON") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} JSON root must be an object")
+    return value
+
+
+def _verify_content_sha256(value: Mapping[str, Any], *, label: str) -> None:
+    claimed = value.get("content_sha256")
+    body = dict(value)
+    body.pop("content_sha256", None)
+    if claimed != _canonical_sha256(body):
+        raise ValueError(f"{label} content hash mismatch")
+
+
+def _is_link_or_reparse(path: Path, info: os.stat_result) -> bool:
+    reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    attributes = getattr(info, "st_file_attributes", 0)
+    is_junction = getattr(path, "is_junction", None)
+    return (
+        stat.S_ISLNK(info.st_mode)
+        or bool(attributes & reparse_point)
+        or (callable(is_junction) and bool(is_junction()))
+    )
+
+
+def _assert_unlinked_path(
+    path: Path,
+    *,
+    root: Path,
+    label: str,
+    allow_missing_leaf: bool = False,
+) -> Path:
+    """Require a path below root with no symlink, junction, or reparse component."""
+
+    root_abs = Path(os.path.abspath(str(root.expanduser())))
+    path_abs = Path(os.path.abspath(str(path.expanduser())))
+    try:
+        relative = path_abs.relative_to(root_abs)
+    except ValueError as exc:
+        raise ValueError(f"{label} escapes its allowed root") from exc
+    repository_root = Path(os.path.abspath(str(REPO_ROOT)))
+    if root_abs != repository_root:
+        _assert_unlinked_path(
+            root_abs,
+            root=repository_root,
+            label=f"{label} allowed root",
+        )
+    try:
+        root_info = os.lstat(root_abs)
+    except OSError as exc:
+        raise ValueError(f"{label} root is unavailable") from exc
+    if _is_link_or_reparse(root_abs, root_info) or not stat.S_ISDIR(root_info.st_mode):
+        raise ValueError(f"{label} root is not an unlinked directory")
+
+    current = root_abs
+    parts = relative.parts
+    for index, part in enumerate(parts):
+        current = current / part
+        try:
+            info = os.lstat(current)
+        except FileNotFoundError as exc:
+            if allow_missing_leaf and index == len(parts) - 1:
+                return path_abs
+            raise ValueError(f"{label} path is incomplete") from exc
+        except OSError as exc:
+            raise ValueError(f"{label} path cannot be inspected") from exc
+        if _is_link_or_reparse(current, info):
+            raise ValueError(f"{label} contains a linked path component")
+        if index < len(parts) - 1 and not stat.S_ISDIR(info.st_mode):
+            raise ValueError(f"{label} parent is not a directory")
+    return path_abs
+
+
+def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int, int]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _read_unlinked_bounded_file(
+    path: Path,
+    *,
+    root: Path,
+    max_bytes: int,
+    label: str,
+) -> bytes:
+    path_abs = _assert_unlinked_path(path, root=root, label=label)
+    try:
+        before_path = os.lstat(path_abs)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be statted") from exc
+    if (
+        not stat.S_ISREG(before_path.st_mode)
+        or before_path.st_nlink != 1
+        or before_path.st_size <= 0
+        or before_path.st_size > max_bytes
+    ):
+        raise ValueError(f"{label} is not a bounded single-link regular file")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path_abs, flags)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be opened safely") from exc
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            before_fd = os.fstat(stream.fileno())
+            if _stat_identity(before_fd) != _stat_identity(before_path):
+                raise ValueError(f"{label} changed before bounded read")
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = stream.read(min(1024 * 1024, max_bytes + 1 - total))
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError(f"{label} exceeds its byte limit")
+                chunks.append(chunk)
+            after_fd = os.fstat(stream.fileno())
+        after_path = os.lstat(path_abs)
+    except Exception:
+        # fdopen owns and closes the descriptor after it succeeds.
+        raise
+    if (
+        _stat_identity(after_fd) != _stat_identity(before_path)
+        or _stat_identity(after_path) != _stat_identity(before_path)
+        or _is_link_or_reparse(path_abs, after_path)
+        or total != before_path.st_size
+    ):
+        raise ValueError(f"{label} changed during bounded read")
+    return b"".join(chunks)
+
+
+def _stream_unlinked_file_sha256(
+    path: Path,
+    *,
+    root: Path,
+    max_bytes: int,
+    label: str,
+) -> tuple[str, int, int]:
+    path_abs = _assert_unlinked_path(path, root=root, label=label)
+    try:
+        before_path = os.lstat(path_abs)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be statted") from exc
+    if (
+        not stat.S_ISREG(before_path.st_mode)
+        or before_path.st_nlink != 1
+        or before_path.st_size <= 0
+        or before_path.st_size > max_bytes
+    ):
+        raise ValueError(f"{label} is not a bounded single-link regular file")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path_abs, flags)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be opened safely") from exc
+    digest = hashlib.sha256()
+    total = 0
+    line_count = 0
+    last_byte = b""
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            before_fd = os.fstat(stream.fileno())
+            if _stat_identity(before_fd) != _stat_identity(before_path):
+                raise ValueError(f"{label} changed before streaming read")
+            while True:
+                chunk = stream.read(min(1024 * 1024, max_bytes + 1 - total))
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError(f"{label} exceeds its byte limit")
+                digest.update(chunk)
+                line_count += chunk.count(b"\n")
+                last_byte = chunk[-1:]
+            after_fd = os.fstat(stream.fileno())
+        after_path = os.lstat(path_abs)
+    except Exception:
+        raise
+    if (
+        _stat_identity(after_fd) != _stat_identity(before_path)
+        or _stat_identity(after_path) != _stat_identity(before_path)
+        or _is_link_or_reparse(path_abs, after_path)
+        or total != before_path.st_size
+    ):
+        raise ValueError(f"{label} changed during streaming read")
+    if not last_byte.endswith(b"\n") or line_count == 0:
+        raise ValueError(f"{label} must contain newline-terminated JSONL rows")
+    return "sha256:" + digest.hexdigest(), total, line_count
+
+
+def _write_projection_terminal_receipt(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    root: Path,
+) -> tuple[str, bytes]:
+    content = _canonical_json_bytes(payload) + b"\n"
+    if not content or len(content) > _DAILY_SOURCE_ROW_TERMINAL_RECEIPT_MAX_BYTES:
+        raise ValueError("projection terminal receipt exceeds its metadata byte cap")
+    path_abs = _assert_unlinked_path(
+        path,
+        root=root,
+        label="projection terminal receipt",
+        allow_missing_leaf=True,
+    )
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(path_abs, flags, 0o600)
+    except OSError as exc:
+        raise ValueError("projection terminal receipt create-only path is occupied") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception:
+        raise
+    readback = _read_unlinked_bounded_file(
+        path_abs,
+        root=root,
+        max_bytes=_DAILY_SOURCE_ROW_TERMINAL_RECEIPT_MAX_BYTES,
+        label="projection terminal receipt readback",
+    )
+    if readback != content:
+        raise ValueError("projection terminal receipt readback differs")
+    decoded = _strict_json_object(readback, label="projection terminal receipt")
+    _verify_content_sha256(decoded, label="projection terminal receipt")
+    return _sha256_bytes(readback), readback
+
+
+def _validate_daily_price_capture_for_projection(
+    capture: Mapping[str, Any], *, source_date: str
+) -> dict[str, Any]:
+    if capture.get("status") not in {"captured", "already_captured"}:
+        raise ValueError("daily price capture did not complete")
+    if capture.get("source_date") != source_date:
+        raise ValueError("daily price capture source date differs from core proof")
+    if capture.get("candidate_readback_verified") is not True:
+        raise ValueError("daily price capture readback is not verified")
+    for field in (
+        "historical_pit_eligible",
+        "formal_source_contract_eligible",
+        "formal_oos_allowed",
+        "formal_credit",
+        "features_included",
+        "labels_included",
+        "model_use_claimed",
+    ):
+        if capture.get(field) is not False:
+            raise ValueError(f"daily price capture has unsafe eligibility field: {field}")
+    if capture.get("decision_cutoff_comparison") != "not_declared":
+        raise ValueError("daily price capture cutoff comparison is not supported")
+
+    candidate_id = capture.get("candidate_id")
+    if not isinstance(candidate_id, str) or re.fullmatch(r"[0-9a-f]{64}", candidate_id) is None:
+        raise ValueError("daily price capture candidate id is invalid")
+    candidate_root = REPO_ROOT / "output" / "ml_prospective_daily_price_candidates"
+    manifest_path_value = capture.get("candidate_path")
+    receipt_path_value = capture.get("candidate_capture_receipt_path")
+    directory_value = capture.get("candidate_directory")
+    if not all(isinstance(value, str) and value.strip() for value in (manifest_path_value, receipt_path_value, directory_value)):
+        raise ValueError("daily price capture paths are incomplete")
+    manifest_path = Path(str(manifest_path_value))
+    candidate_dir = candidate_root / source_date / candidate_id
+    expected_manifest_path = candidate_dir / "manifest.json"
+    expected_receipt_path = candidate_dir / "capture_receipt.json"
+    expected_manifest_abs = Path(os.path.abspath(str(expected_manifest_path)))
+    expected_receipt_abs = Path(os.path.abspath(str(expected_receipt_path)))
+    expected_candidate_dir_abs = Path(os.path.abspath(str(candidate_dir)))
+    if Path(os.path.abspath(str(manifest_path))) != expected_manifest_abs:
+        raise ValueError("daily price capture manifest path drifted")
+    if Path(os.path.abspath(str(Path(str(receipt_path_value))))) != expected_receipt_abs:
+        raise ValueError("daily price capture receipt path drifted")
+    if Path(os.path.abspath(str(Path(str(directory_value))))) != expected_candidate_dir_abs:
+        raise ValueError("daily price capture candidate directory drifted")
+
+    manifest_bytes = _read_unlinked_bounded_file(
+        manifest_path,
+        root=candidate_root,
+        max_bytes=_DAILY_SOURCE_ROW_CAPTURE_MANIFEST_MAX_BYTES,
+        label="daily price capture manifest",
+    )
+    manifest_sha = _sha256_bytes(manifest_bytes)
+    if manifest_sha != _required_sha256(
+        capture.get("candidate_manifest_sha256"),
+        field_name="candidate_manifest_sha256",
+    ):
+        raise ValueError("daily price capture manifest hash differs")
+    manifest = _strict_json_object(manifest_bytes, label="daily price capture manifest")
+    _verify_content_sha256(manifest, label="daily price capture manifest")
+    if (
+        manifest.get("schema_version") != "ml-prospective-daily-price-candidate.v1"
+        or manifest.get("candidate_id") != candidate_id
+        or manifest.get("source_date") != source_date
+    ):
+        raise ValueError("daily price capture manifest identity differs")
+    for field in (
+        "historical_pit_eligible",
+        "formal_source_contract_eligible",
+        "formal_oos_allowed",
+        "formal_credit",
+        "features_included",
+        "labels_included",
+        "model_use_claimed",
+    ):
+        if manifest.get(field) is not False:
+            raise ValueError(f"daily price capture manifest has unsafe field: {field}")
+    if manifest.get("decision_cutoff_comparison") != "not_declared":
+        raise ValueError("daily price capture manifest declares an unsupported cutoff")
+
+    receipt_bytes = _read_unlinked_bounded_file(
+        Path(str(receipt_path_value)),
+        root=candidate_root,
+        max_bytes=MAX_DAILY_PRICE_CAPTURE_RECEIPT_BYTES,
+        label="daily price capture receipt",
+    )
+    receipt_sha = _sha256_bytes(receipt_bytes)
+    if receipt_sha != _required_sha256(
+        capture.get("candidate_capture_receipt_sha256"),
+        field_name="candidate_capture_receipt_sha256",
+    ):
+        raise ValueError("daily price capture receipt hash differs")
+    receipt = _strict_json_object(receipt_bytes, label="daily price capture receipt")
+    _verify_content_sha256(receipt, label="daily price capture receipt")
+    if (
+        receipt.get("schema_version") != "ml-prospective-daily-price-capture-receipt.v1"
+        or receipt.get("candidate_id") != candidate_id
+        or receipt.get("manifest_path") != "manifest.json"
+        or receipt.get("manifest_sha256") != manifest_sha
+        or receipt.get("candidate_available_at") != capture.get("candidate_available_at")
+        or receipt.get("candidate_observed_at") != capture.get("candidate_observed_at")
+        or receipt.get("availability_basis") != "candidate_manifest_and_source_readback_completed_at"
+    ):
+        raise ValueError("daily price capture receipt binding differs")
+    observed_at = _parse_datetime(
+        capture.get("candidate_observed_at"),
+        field_name="daily_price_capture.candidate_observed_at",
+    )
+    available_at = _parse_datetime(
+        capture.get("candidate_available_at"),
+        field_name="daily_price_capture.candidate_available_at",
+    )
+    if available_at < observed_at:
+        raise ValueError("daily price capture availability precedes observation")
+    if any(
+        receipt.get(field) is not False
+        for field in (
+            "historical_pit_eligible",
+            "formal_oos_allowed",
+            "formal_credit",
+            "features_included",
+            "labels_included",
+            "model_use_claimed",
+        )
+    ) or receipt.get("decision_cutoff_comparison") != "not_declared":
+        raise ValueError("daily price capture receipt has unsafe eligibility fields")
+
+    sources = manifest.get("candidate_sources")
+    status_sources = capture.get("candidate_files")
+    if not isinstance(sources, list) or len(sources) != 2 or not isinstance(status_sources, list) or len(status_sources) != 2:
+        raise ValueError("daily price capture source pins are incomplete")
+    source_pins: list[dict[str, str]] = []
+    for expected_venue, source, status_source in zip(
+        ("twse", "tpex"), sources, status_sources
+    ):
+        if not isinstance(source, Mapping) or not isinstance(status_source, Mapping):
+            raise ValueError("daily price capture source pin is invalid")
+        if (
+            source.get("venue") != expected_venue
+            or status_source.get("venue") != expected_venue
+            or source.get("candidate_raw_response_path") != f"sources/{expected_venue}/raw_response.bin"
+            or source.get("candidate_receipt_path") != f"sources/{expected_venue}/source_receipt.json"
+            or status_source.get("raw_response_path") != source.get("candidate_raw_response_path")
+            or status_source.get("receipt_path") != source.get("candidate_receipt_path")
+            or status_source.get("raw_response_sha256") != source.get("raw_response_sha256")
+            or status_source.get("receipt_file_sha256") != source.get("receipt_file_sha256")
+        ):
+            raise ValueError(f"daily price capture {expected_venue} source pin differs")
+        source_pins.append(
+            {
+                "venue": expected_venue,
+                "raw_response_path": str(source["candidate_raw_response_path"]),
+                "raw_response_sha256": _required_sha256(
+                    source.get("raw_response_sha256"),
+                    field_name=f"{expected_venue}.raw_response_sha256",
+                ),
+                "receipt_path": str(source["candidate_receipt_path"]),
+                "receipt_file_sha256": _required_sha256(
+                    source.get("receipt_file_sha256"),
+                    field_name=f"{expected_venue}.receipt_file_sha256",
+                ),
+            }
+        )
+    receipt_source_hashes = receipt.get("source_hashes")
+    expected_receipt_hashes = [
+        {
+            "venue": item["venue"],
+            "raw_response_sha256": item["raw_response_sha256"],
+            "receipt_file_sha256": item["receipt_file_sha256"],
+        }
+        for item in source_pins
+    ]
+    if receipt_source_hashes != expected_receipt_hashes:
+        raise ValueError("daily price capture receipt source hashes differ")
+
+    market_revision = manifest.get("market_revision")
+    if not isinstance(market_revision, Mapping) or market_revision.get("cutoff_policy_evaluated") is not False:
+        raise ValueError("daily price capture market revision is invalid")
+    return {
+        "candidate_id": candidate_id,
+        "source_date": source_date,
+        "manifest_path": str(manifest_path.resolve(strict=True)),
+        "manifest_relative_path": manifest_path.resolve(strict=True).relative_to(REPO_ROOT).as_posix(),
+        "manifest_sha256": manifest_sha,
+        "capture_receipt_path": str(Path(str(receipt_path_value)).resolve(strict=True)),
+        "capture_receipt_sha256": receipt_sha,
+        "candidate_available_at": str(capture.get("candidate_available_at")),
+        "source_pins": source_pins,
+        "market_revision": dict(market_revision),
+    }
+
+
+def _project_daily_source_rows_from_capture(
+    capture: Mapping[str, Any], *, source_date: str
+) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "research_only": True,
+        "candidate_only": True,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+    }
+    if capture.get("status") not in {"captured", "already_captured"}:
+        return {
+            **base,
+            "status": "not_run_capture_not_verified",
+            "capture_status": str(capture.get("status") or "missing"),
+        }
+    try:
+        input_pins = _validate_daily_price_capture_for_projection(
+            capture, source_date=source_date
+        )
+        projection = project_daily_source_rows(
+            candidate_manifest_path=Path(input_pins["manifest_path"]),
+            expected_manifest_sha256=input_pins["manifest_sha256"],
+            repository_root=REPO_ROOT,
+            output_root=REPO_ROOT / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
+            preview_only=False,
+        )
+        terminal = _validate_and_write_projection_terminal_receipt(
+            projection,
+            input_pins=input_pins,
+        )
+        return {**base, **terminal}
+    except Exception as exc:  # noqa: BLE001 - research hook must not alter core/hold result
+        return {
+            **base,
+            "status": "rejected",
+            "source_date": source_date,
+            "candidate_id": capture.get("candidate_id"),
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+
+
+def _validate_and_write_projection_terminal_receipt(
+    result: Mapping[str, Any], *, input_pins: Mapping[str, Any]
+) -> dict[str, Any]:
+    if result.get("status") != "completed_research_only":
+        raise ValueError("daily source row projection has no terminal completion")
+    if result.get("research_only") is not True or result.get("formal_credit") is not False:
+        raise ValueError("daily source row projection returned unsafe eligibility")
+    projection_id = result.get("projection_id")
+    if not isinstance(projection_id, str) or re.fullmatch(r"[0-9a-f]{64}", projection_id) is None:
+        raise ValueError("daily source row projection id is invalid")
+    source_date = str(input_pins["source_date"])
+    projection_root = Path(os.path.abspath(str(REPO_ROOT / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT)))
+    candidate_root = projection_root / source_date / projection_id
+    candidate_root_value = result.get("candidate_root")
+    if not isinstance(candidate_root_value, str) or Path(os.path.abspath(candidate_root_value)) != candidate_root:
+        raise ValueError("daily source row projection candidate root drifted")
+    _assert_unlinked_path(candidate_root, root=projection_root, label="projection candidate root")
+
+    manifest_path = candidate_root / "manifest.json"
+    completion_path = candidate_root / "completion_receipt.json"
+    if result.get("manifest_path") != str(manifest_path) or result.get("completion_receipt_path") != str(completion_path):
+        raise ValueError("daily source row projection receipt paths drifted")
+    manifest_bytes = _read_unlinked_bounded_file(
+        manifest_path,
+        root=projection_root,
+        max_bytes=MAX_DAILY_SOURCE_ROW_MANIFEST_BYTES,
+        label="daily source row projection manifest",
+    )
+    completion_bytes = _read_unlinked_bounded_file(
+        completion_path,
+        root=projection_root,
+        max_bytes=MAX_DAILY_SOURCE_ROW_MANIFEST_BYTES,
+        label="daily source row projection intermediate completion receipt",
+    )
+    manifest_sha = _sha256_bytes(manifest_bytes)
+    completion_sha = _sha256_bytes(completion_bytes)
+    if manifest_sha != _required_sha256(result.get("manifest_sha256"), field_name="projection.manifest_sha256"):
+        raise ValueError("daily source row projection manifest hash differs")
+    if completion_sha != _required_sha256(
+        result.get("completion_receipt_sha256"),
+        field_name="projection.completion_receipt_sha256",
+    ):
+        raise ValueError("daily source row projection intermediate receipt hash differs")
+    manifest = _strict_json_object(manifest_bytes, label="daily source row projection manifest")
+    completion = _strict_json_object(completion_bytes, label="daily source row projection intermediate completion")
+    _verify_content_sha256(manifest, label="daily source row projection manifest")
+    _verify_content_sha256(completion, label="daily source row projection intermediate completion")
+    if (
+        manifest.get("schema_version") != "ml-daily-source-row-research-projection.v1"
+        or manifest.get("projection_id") != projection_id
+        or manifest.get("source_date") != source_date
+        or manifest.get("candidate_only") is not True
+        or manifest.get("research_only") is not True
+        or manifest.get("historical_pit_eligible") is not False
+        or manifest.get("formal_source_contract_eligible") is not False
+        or manifest.get("formal_oos_allowed") is not False
+        or manifest.get("formal_credit") is not False
+        or manifest.get("features_included") is not False
+        or manifest.get("labels_included") is not False
+        or manifest.get("model_use_claimed") is not False
+        or manifest.get("direct_ooc_compatible") is not False
+        or manifest.get("decision_cutoff_comparison") != "not_declared"
+        or manifest.get("market_revision_cutoff_policy_evaluated") is not False
+    ):
+        raise ValueError("daily source row projection manifest schema or safety flags differ")
+    if (
+        completion.get("schema_version") != "ml-daily-source-row-research-completion.v1"
+        or completion.get("projection_id") != projection_id
+        or completion.get("manifest_sha256") != manifest_sha
+        or completion.get("completion_status") != "awaiting_terminal_revision_validation"
+        or completion.get("research_only") is not True
+        or completion.get("candidate_only") is not True
+        or completion.get("formal_credit") is not False
+    ):
+        raise ValueError("daily source row projection intermediate receipt is invalid")
+    candidate_available_at = _parse_datetime(
+        input_pins.get("candidate_available_at"),
+        field_name="input_candidate.candidate_available_at",
+    ).astimezone(timezone.utc)
+    projection_started_at = _parse_datetime(
+        manifest.get("projection_started_at"),
+        field_name="projection_manifest.projection_started_at",
+    ).astimezone(timezone.utc)
+    completion_started_at = _parse_datetime(
+        completion.get("completion_started_at"),
+        field_name="projection_completion.completion_started_at",
+    ).astimezone(timezone.utc)
+    if (
+        projection_started_at < candidate_available_at
+        or completion_started_at < projection_started_at
+    ):
+        raise ValueError("daily source row projection materialization clock moved backwards")
+
+    input_candidate = manifest.get("input_candidate")
+    if not isinstance(input_candidate, Mapping):
+        raise ValueError("daily source row projection input candidate pin is missing")
+    if (
+        input_candidate.get("candidate_id") != input_pins.get("candidate_id")
+        or input_candidate.get("manifest_path") != input_pins.get("manifest_relative_path")
+        or input_candidate.get("manifest_sha256") != input_pins.get("manifest_sha256")
+        or input_candidate.get("capture_receipt_sha256") != input_pins.get("capture_receipt_sha256")
+        or input_candidate.get("capture_receipt_available_at") != input_pins.get("candidate_available_at")
+    ):
+        raise ValueError("daily source row projection input candidate binding differs")
+
+    market_revision = manifest.get("market_revision")
+    revision_digest = result.get("market_revision_digest_sha256")
+    if (
+        not isinstance(market_revision, Mapping)
+        or market_revision.get("digest_sha256") != revision_digest
+        or input_pins.get("market_revision", {}).get("digest_sha256") != revision_digest
+    ):
+        raise ValueError("daily source row projection market revision pin differs")
+
+    expected_input_files: dict[str, str] = {
+        "inputs/candidate_manifest.json": str(input_pins["manifest_sha256"]),
+        "inputs/capture_receipt.json": str(input_pins["capture_receipt_sha256"]),
+    }
+    for source in input_pins["source_pins"]:
+        venue = str(source["venue"])
+        expected_input_files[f"inputs/sources/{venue}/raw_response.bin"] = str(
+            source["raw_response_sha256"]
+        )
+        expected_input_files[f"inputs/sources/{venue}/source_receipt.json"] = str(
+            source["receipt_file_sha256"]
+        )
+    input_files = manifest.get("input_files")
+    if not isinstance(input_files, Mapping) or set(input_files) != set(expected_input_files):
+        raise ValueError("daily source row projection copied-input manifest is incomplete")
+    for relative, expected_sha in expected_input_files.items():
+        entry = input_files.get(relative)
+        if not isinstance(entry, Mapping) or entry.get("sha256") != expected_sha:
+            raise ValueError(f"daily source row projection copied input pin differs: {relative}")
+
+    source_scope = manifest.get("source_scope")
+    if not isinstance(source_scope, list) or len(source_scope) != 2:
+        raise ValueError("daily source row projection source scope is incomplete")
+    for expected_source, projected_source in zip(input_pins["source_pins"], source_scope):
+        if (
+            not isinstance(projected_source, Mapping)
+            or projected_source.get("venue") != expected_source["venue"]
+            or projected_source.get("source_raw_response_sha256") != expected_source["raw_response_sha256"]
+            or projected_source.get("source_receipt_sha256") != expected_source["receipt_file_sha256"]
+        ):
+            raise ValueError("daily source row projection source scope hashes differ")
+
+    observations = manifest.get("observations_file")
+    if not isinstance(observations, Mapping) or observations.get("path") != "observations.jsonl" or observations.get("format") != "jsonl":
+        raise ValueError("daily source row projection observations metadata is invalid")
+    observations_path = candidate_root / "observations.jsonl"
+    observations_sha, observations_bytes, observations_rows = _stream_unlinked_file_sha256(
+        observations_path,
+        root=projection_root,
+        max_bytes=MAX_DAILY_SOURCE_ROW_PROJECTION_BYTES,
+        label="daily source row projection observations",
+    )
+    result_rows_sha = _required_sha256(
+        result.get("projected_rows_sha256"), field_name="projection.projected_rows_sha256"
+    )
+    manifest_rows_sha = _required_sha256(
+        observations.get("sha256"), field_name="projection.observations.sha256"
+    )
+    completion_rows_sha = _required_sha256(
+        completion.get("observations_sha256"), field_name="completion.observations_sha256"
+    )
+    row_count = observations.get("row_count")
+    byte_count = observations.get("bytes")
+    if (
+        observations_sha != result_rows_sha
+        or observations_sha != manifest_rows_sha
+        or observations_sha != completion_rows_sha
+        or isinstance(byte_count, bool)
+        or not isinstance(byte_count, int)
+        or byte_count <= 0
+        or observations_bytes != byte_count
+        or isinstance(row_count, bool)
+        or not isinstance(row_count, int)
+        or row_count <= 0
+        or observations_rows != row_count
+        or isinstance(result.get("projected_row_count"), bool)
+        or not isinstance(result.get("projected_row_count"), int)
+        or observations_rows != result.get("projected_row_count")
+    ):
+        raise ValueError("daily source row projection observations bytes/hash/count differ")
+
+    verification_completed_at = result.get("verification_completed_at")
+    verification_time = _parse_datetime(
+        verification_completed_at,
+        field_name="projection.verification_completed_at",
+    )
+    if (
+        result.get("candidate_available_at") != verification_completed_at
+        or verification_time.astimezone(timezone.utc) < completion_started_at
+    ):
+        raise ValueError("daily source row projection availability time differs")
+    receipt_started_at = datetime.now(timezone.utc)
+    if receipt_started_at < verification_time.astimezone(timezone.utc):
+        raise ValueError("daily source row projection terminal verification is future-dated")
+
+    terminal_body: dict[str, Any] = {
+        "schema_version": _DAILY_SOURCE_ROW_TERMINAL_RECEIPT_SCHEMA,
+        "terminal_status": "completed_research_only",
+        "source_date": source_date,
+        "input_candidate": {
+            "candidate_id": input_pins["candidate_id"],
+            "manifest_path": input_pins["manifest_relative_path"],
+            "manifest_sha256": input_pins["manifest_sha256"],
+            "capture_receipt_path": str(
+                Path(input_pins["capture_receipt_path"]).relative_to(REPO_ROOT).as_posix()
+            ),
+            "capture_receipt_sha256": input_pins["capture_receipt_sha256"],
+            "candidate_available_at": input_pins["candidate_available_at"],
+            "source_pins": input_pins["source_pins"],
+        },
+        "projection": {
+            "projection_id": projection_id,
+            "candidate_root": candidate_root.relative_to(REPO_ROOT).as_posix(),
+            "manifest_path": manifest_path.relative_to(REPO_ROOT).as_posix(),
+            "manifest_sha256": manifest_sha,
+            "intermediate_completion_receipt_path": completion_path.relative_to(REPO_ROOT).as_posix(),
+            "intermediate_completion_receipt_sha256": completion_sha,
+            "intermediate_completion_status": completion["completion_status"],
+            "projection_started_at": projection_started_at.isoformat(),
+            "intermediate_completion_started_at": completion_started_at.isoformat(),
+            "observations_path": observations_path.relative_to(REPO_ROOT).as_posix(),
+            "observations_sha256": observations_sha,
+            "observations_bytes": observations_bytes,
+            "projected_row_count": observations_rows,
+            "market_revision_digest_sha256": revision_digest,
+            "verification_completed_at": verification_time.astimezone(timezone.utc).isoformat(),
+        },
+        "terminal_receipt_materialization_started_at": receipt_started_at.isoformat(),
+        "input_files": dict(input_files),
+        "no_new_http": True,
+        "no_source_database_write": True,
+        "research_only": True,
+        "candidate_only": True,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "direct_ooc_compatible": False,
+        "decision_cutoff_comparison": "not_declared",
+    }
+    terminal_payload = {
+        **terminal_body,
+        "content_sha256": _canonical_sha256(terminal_body),
+    }
+    terminal_path = candidate_root / "runner_terminal_verification_receipt.json"
+    receipt_sha, _receipt_bytes = _write_projection_terminal_receipt(
+        terminal_path,
+        terminal_payload,
+        root=projection_root,
+    )
+    receipt_completed_at = datetime.now(timezone.utc)
+    if receipt_completed_at < receipt_started_at:
+        raise ValueError("daily source row terminal receipt clock moved backwards")
+    return {
+        "status": "projected_research_only",
+        "schema_version": _DAILY_SOURCE_ROW_TERMINAL_RECEIPT_SCHEMA,
+        "source_date": source_date,
+        "candidate_id": input_pins["candidate_id"],
+        "candidate_manifest_path": input_pins["manifest_path"],
+        "candidate_manifest_sha256": input_pins["manifest_sha256"],
+        "candidate_capture_receipt_path": input_pins["capture_receipt_path"],
+        "candidate_capture_receipt_sha256": input_pins["capture_receipt_sha256"],
+        "projection_id": projection_id,
+        "projection_candidate_root": str(candidate_root),
+        "projection_manifest_path": str(manifest_path),
+        "projection_manifest_sha256": manifest_sha,
+        "projection_intermediate_completion_receipt_path": str(completion_path),
+        "projection_intermediate_completion_receipt_sha256": completion_sha,
+        "projection_observations_path": str(observations_path),
+        "projection_observations_sha256": observations_sha,
+        "projection_observations_bytes": observations_bytes,
+        "projected_row_count": observations_rows,
+        "market_revision_digest_sha256": revision_digest,
+        "verification_completed_at": verification_time.astimezone(timezone.utc).isoformat(),
+        "terminal_receipt_path": str(terminal_path),
+        "terminal_receipt_sha256": receipt_sha,
+        "terminal_receipt_readback_verified": True,
+        "terminal_receipt_readback_completed_at": receipt_completed_at.isoformat(),
+        "research_only": True,
+        "candidate_only": True,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "direct_ooc_compatible": False,
+        "decision_cutoff_comparison": "not_declared",
+    }
 
 
 def _file_sha256(path: Path) -> str:
@@ -1328,7 +2165,10 @@ def _base_status(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.project_daily_source_rows and not args.capture_prospective_daily_price_candidate:
+        parser.error("--project-daily-source-rows requires --capture-prospective-daily-price-candidate")
     if args.batch_size <= 0 or args.batch_size > 100_000:
         raise ValueError("batch-size must be within 1..100000")
     if args.minimum_free_space_bytes <= 0:
@@ -1393,6 +2233,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     prospective_capture_status: dict[str, object] = {
         "status": "not_run_core_freshness_proof_pending"
     }
+    prospective_projection_status: dict[str, object] = {
+        "status": "not_run_core_freshness_proof_pending",
+        "research_only": True,
+        "candidate_only": True,
+        "formal_credit": False,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+    }
     inherited_env_value = os.environ.get(HEAVY_CHAIN_RESERVATION_HELD_ENV)
 
     def _write_status(payload: Mapping[str, Any]) -> None:
@@ -1413,6 +2265,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.capture_prospective_daily_price_candidate:
             enriched["prospective_daily_price_capture"] = dict(
                 prospective_capture_status
+            )
+        if args.project_daily_source_rows:
+            enriched["prospective_daily_source_row_projection"] = dict(
+                prospective_projection_status
             )
         _write_json(status_path, enriched)
 
@@ -1511,6 +2367,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                         ensure_ascii=False,
                     ),
                 )
+                if args.project_daily_source_rows:
+                    prospective_projection_status = (
+                        _project_daily_source_rows_from_capture(
+                            prospective_capture_status,
+                            source_date=proof.latest_core_date.isoformat(),
+                        )
+                    )
+                    _append_log(
+                        log_path,
+                        json.dumps(
+                            {
+                                "event": "prospective_daily_source_row_projection",
+                                **prospective_projection_status,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
             current = _latest_raw_publication(raw_root)
             if not _refresh_needed(current, proof):
                 # Validate the source revision before trusting a

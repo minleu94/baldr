@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -1711,3 +1715,841 @@ def test_raw_direct_custody_guard_blocks_live_continuation_after_owner_exit(
     )
 
     assert runner._direct_chain_instance_lock_present(release_root) is True
+
+
+def _fixture_json_bytes(payload: object) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _fixture_seal(body: dict[str, object]) -> dict[str, object]:
+    return {
+        **body,
+        "content_sha256": "sha256:" + hashlib.sha256(_fixture_json_bytes(body)).hexdigest(),
+    }
+
+
+def _fixture_write_json(path: Path, payload: dict[str, object]) -> bytes:
+    content = _fixture_json_bytes(payload) + b"\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return content
+
+
+def _make_daily_price_capture_fixture(
+    repo_root: Path, *, source_date: str = "2026-08-12", status: str = "captured"
+) -> dict[str, object]:
+    source_root = repo_root / "output" / "ml_prospective_daily_price_candidates"
+    revision_digest = "sha256:" + ("d" * 64)
+    revision = {
+        "database_path": str((repo_root / "fake-data" / "sqlite" / "twstock.db").resolve()),
+        "namespace": "formal_market_revision",
+        "presence": "present",
+        "digest_sha256": revision_digest,
+        "validated_files": [],
+        "runs": [],
+        "cutoff_policy_evaluated": False,
+    }
+    sources: list[dict[str, object]] = []
+    for venue, raw_char, receipt_char in (
+        ("twse", "a", "b"),
+        ("tpex", "c", "e"),
+    ):
+        sources.append(
+            {
+                "venue": venue,
+                "source_id": f"{venue}.daily_prices",
+                "parser_id": f"{venue}.daily.v1",
+                "source_date": source_date,
+                "captured_at": "2026-08-12T07:00:00+00:00",
+                "available_at": "2026-08-12T07:00:00+00:00",
+                "requested_url": f"https://{venue}.example.test/daily",
+                "final_url": f"https://{venue}.example.test/daily",
+                "row_count": 1,
+                "source_columns": ["symbol", "close"],
+                "raw_response_sha256": "sha256:" + (raw_char * 64),
+                "receipt_file_sha256": "sha256:" + (receipt_char * 64),
+            }
+        )
+    identity_body: dict[str, object] = {
+        "schema_version": "ml-prospective-daily-price-candidate.v1",
+        "source_date": source_date,
+        "database_path": revision["database_path"],
+        "market_revision": revision,
+        "sources": sources,
+    }
+    candidate_id = hashlib.sha256(_fixture_json_bytes(identity_body)).hexdigest()
+    candidate_dir = source_root / source_date / candidate_id
+    candidate_sources: list[dict[str, object]] = []
+    status_sources: list[dict[str, str]] = []
+    for source in sources:
+        venue = str(source["venue"])
+        candidate_sources.append(
+            {
+                **source,
+                "candidate_raw_response_path": f"sources/{venue}/raw_response.bin",
+                "candidate_receipt_path": f"sources/{venue}/source_receipt.json",
+            }
+        )
+        status_sources.append(
+            {
+                "venue": venue,
+                "raw_response_path": f"sources/{venue}/raw_response.bin",
+                "raw_response_sha256": str(source["raw_response_sha256"]),
+                "receipt_path": f"sources/{venue}/source_receipt.json",
+                "receipt_file_sha256": str(source["receipt_file_sha256"]),
+            }
+        )
+    manifest_body = {
+        **identity_body,
+        "candidate_id": candidate_id,
+        "observed_at": "2026-08-12T07:00:00+00:00",
+        "observation_cutoff_at": "2026-08-12T07:00:00+00:00",
+        "candidate_sources": candidate_sources,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "decision_cutoff_comparison": "not_declared",
+        "future_consumer_cutoff_is_planned_only": True,
+        "availability_basis": "candidate_manifest_and_source_readback_completed_at",
+    }
+    manifest = _fixture_seal(manifest_body)
+    manifest_bytes = _fixture_write_json(candidate_dir / "manifest.json", manifest)
+    manifest_sha = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
+    capture_receipt_body: dict[str, object] = {
+        "schema_version": "ml-prospective-daily-price-capture-receipt.v1",
+        "candidate_id": candidate_id,
+        "candidate_observed_at": "2026-08-12T07:00:00+00:00",
+        "candidate_available_at": "2026-08-12T07:01:00+00:00",
+        "availability_basis": "candidate_manifest_and_source_readback_completed_at",
+        "manifest_path": "manifest.json",
+        "manifest_sha256": manifest_sha,
+        "source_hashes": [
+            {
+                "venue": item["venue"],
+                "raw_response_sha256": item["raw_response_sha256"],
+                "receipt_file_sha256": item["receipt_file_sha256"],
+            }
+            for item in sources
+        ],
+        "historical_pit_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "decision_cutoff_comparison": "not_declared",
+    }
+    capture_receipt = _fixture_seal(capture_receipt_body)
+    capture_receipt_bytes = _fixture_write_json(
+        candidate_dir / "capture_receipt.json", capture_receipt
+    )
+    return {
+        "status": status,
+        "schema_version": "ml-prospective-daily-price-candidate.v1",
+        "candidate_id": candidate_id,
+        "source_date": source_date,
+        "candidate_path": str((candidate_dir / "manifest.json").resolve()),
+        "candidate_directory": str(candidate_dir.resolve()),
+        "candidate_manifest_sha256": "sha256:" + hashlib.sha256(manifest_bytes).hexdigest(),
+        "candidate_capture_receipt_path": str((candidate_dir / "capture_receipt.json").resolve()),
+        "candidate_capture_receipt_sha256": "sha256:" + hashlib.sha256(capture_receipt_bytes).hexdigest(),
+        "candidate_observed_at": "2026-08-12T07:00:00+00:00",
+        "candidate_available_at": "2026-08-12T07:01:00+00:00",
+        "candidate_availability_basis": "candidate_manifest_and_source_readback_completed_at",
+        "candidate_readback_verified": True,
+        "candidate_files": status_sources,
+        "market_revision": revision,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "decision_cutoff_comparison": "not_declared",
+    }
+
+
+def _make_daily_source_projection_fixture(
+    repo_root: Path, capture: dict[str, object]
+) -> dict[str, object]:
+    projection_id = "f" * 64
+    source_date = str(capture["source_date"])
+    output_root = repo_root / runner.DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT
+    candidate_root = output_root / source_date / projection_id
+    candidate_root.mkdir(parents=True)
+    observations_bytes = b'{"venue":"twse","value_int":12}\n{"venue":"tpex","value_int":13}\n'
+    observations_sha = "sha256:" + hashlib.sha256(observations_bytes).hexdigest()
+    candidate_sources = json.loads(
+        Path(str(capture["candidate_path"])).read_bytes().decode("utf-8")
+    )["candidate_sources"]
+    input_files: dict[str, dict[str, object]] = {
+        "inputs/candidate_manifest.json": {
+            "sha256": capture["candidate_manifest_sha256"],
+            "bytes": Path(str(capture["candidate_path"])).stat().st_size,
+        },
+        "inputs/capture_receipt.json": {
+            "sha256": capture["candidate_capture_receipt_sha256"],
+            "bytes": Path(str(capture["candidate_capture_receipt_path"])).stat().st_size,
+        },
+    }
+    source_scope: list[dict[str, object]] = []
+    for source in candidate_sources:
+        venue = str(source["venue"])
+        input_files[f"inputs/sources/{venue}/raw_response.bin"] = {
+            "sha256": source["raw_response_sha256"],
+            "bytes": 11,
+        }
+        input_files[f"inputs/sources/{venue}/source_receipt.json"] = {
+            "sha256": source["receipt_file_sha256"],
+            "bytes": 13,
+        }
+        source_scope.append(
+            {
+                "venue": venue,
+                "source_raw_response_sha256": source["raw_response_sha256"],
+                "source_receipt_sha256": source["receipt_file_sha256"],
+            }
+        )
+    projection_manifest_body: dict[str, object] = {
+        "schema_version": "ml-daily-source-row-research-projection.v1",
+        "projection_id": projection_id,
+        "projection_started_at": "2026-08-12T07:02:00+00:00",
+        "source_date": source_date,
+        "scope": "single-day official source rows only",
+        "input_candidate": {
+            "candidate_id": capture["candidate_id"],
+            "manifest_path": Path(str(capture["candidate_path"]))
+            .resolve()
+            .relative_to(repo_root.resolve())
+            .as_posix(),
+            "manifest_sha256": capture["candidate_manifest_sha256"],
+            "capture_receipt_sha256": capture["candidate_capture_receipt_sha256"],
+            "capture_receipt_available_at": capture["candidate_available_at"],
+        },
+        "market_revision": capture["market_revision"],
+        "market_revision_rechecked_before_manifest": True,
+        "market_revision_cutoff_policy_evaluated": False,
+        "source_scope": source_scope,
+        "input_files": input_files,
+        "observations_file": {
+            "path": "observations.jsonl",
+            "sha256": observations_sha,
+            "bytes": len(observations_bytes),
+            "row_count": 2,
+            "format": "jsonl",
+        },
+        "source_numeric_representation": {
+            "coefficient_field": "value_int",
+            "scale_field": "scale",
+            "scale_must_be_positive": True,
+            "max_significant_digits": 38,
+            "max_abs_exponent": 18,
+            "unit_claimed": False,
+            "feature_engineering": False,
+            "derived_returns_or_labels": False,
+        },
+        "research_only": True,
+        "candidate_only": True,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "direct_ooc_compatible": False,
+        "decision_cutoff_comparison": "not_declared",
+    }
+    projection_manifest = _fixture_seal(projection_manifest_body)
+    manifest_bytes = _fixture_write_json(candidate_root / "manifest.json", projection_manifest)
+    manifest_sha = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
+    (candidate_root / "observations.jsonl").write_bytes(observations_bytes)
+    completion_body: dict[str, object] = {
+        "schema_version": "ml-daily-source-row-research-completion.v1",
+        "projection_id": projection_id,
+        "manifest_sha256": manifest_sha,
+        "observations_sha256": observations_sha,
+        "completion_started_at": "2026-08-12T07:03:00+00:00",
+        "completion_status": "awaiting_terminal_revision_validation",
+        "completion_policy": "manifest_rows_and_copied_inputs_readback_verified_before_final_revision_check",
+        "research_only": True,
+        "candidate_only": True,
+        "formal_credit": False,
+    }
+    completion = _fixture_seal(completion_body)
+    completion_bytes = _fixture_write_json(candidate_root / "completion_receipt.json", completion)
+    verified_at = datetime.now(timezone.utc).isoformat()
+    return {
+        "status": "completed_research_only",
+        "projection_id": projection_id,
+        "candidate_root": str(candidate_root),
+        "manifest_path": str(candidate_root / "manifest.json"),
+        "manifest_sha256": manifest_sha,
+        "completion_receipt_path": str(candidate_root / "completion_receipt.json"),
+        "completion_receipt_sha256": "sha256:" + hashlib.sha256(completion_bytes).hexdigest(),
+        "verification_completed_at": verified_at,
+        "candidate_available_at": verified_at,
+        "projected_row_count": 2,
+        "projected_rows_sha256": observations_sha,
+        "candidate_bytes_written": len(observations_bytes),
+        "market_revision_digest_sha256": capture["market_revision"]["digest_sha256"],
+        "research_only": True,
+        "formal_credit": False,
+    }
+
+
+def _short_ml_hook_test_root(request: pytest.FixtureRequest) -> Path:
+    root = Path(tempfile.mkdtemp(prefix="mlhook-"))
+    request.addfinalizer(lambda: shutil.rmtree(root, ignore_errors=True))
+    return root
+
+
+def _rewrite_fixture_sealed_json(path: Path, updates: dict[str, object]) -> bytes:
+    payload = json.loads(path.read_bytes().decode("utf-8"))
+    assert isinstance(payload, dict)
+    body = dict(payload)
+    body.pop("content_sha256", None)
+    body.update(updates)
+    return _fixture_write_json(path, _fixture_seal(body))
+
+
+@pytest.mark.parametrize("clock_case", ["projection_before_capture", "terminal_future"])
+def test_daily_projection_terminal_rejects_backwards_or_future_clock(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    clock_case: str,
+) -> None:
+    repo_root = _short_ml_hook_test_root(request) / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    capture = _make_daily_price_capture_fixture(repo_root)
+    input_pins = runner._validate_daily_price_capture_for_projection(
+        capture, source_date="2026-08-12"
+    )
+    projection = _make_daily_source_projection_fixture(repo_root, capture)
+    candidate_root = Path(str(projection["candidate_root"]))
+    if clock_case == "projection_before_capture":
+        manifest_bytes = _rewrite_fixture_sealed_json(
+            candidate_root / "manifest.json",
+            {"projection_started_at": "2026-08-12T07:00:00+00:00"},
+        )
+        manifest_sha = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
+        completion_bytes = _rewrite_fixture_sealed_json(
+            candidate_root / "completion_receipt.json",
+            {"manifest_sha256": manifest_sha},
+        )
+        projection["manifest_sha256"] = manifest_sha
+        projection["completion_receipt_sha256"] = (
+            "sha256:" + hashlib.sha256(completion_bytes).hexdigest()
+        )
+        with pytest.raises(ValueError, match="materialization clock moved backwards"):
+            runner._validate_and_write_projection_terminal_receipt(
+                projection, input_pins=input_pins
+            )
+    else:
+        future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        projection["verification_completed_at"] = future
+        projection["candidate_available_at"] = future
+        with pytest.raises(ValueError, match="future-dated"):
+            runner._validate_and_write_projection_terminal_receipt(
+                projection, input_pins=input_pins
+            )
+
+
+def test_projection_observations_bound_is_enforced_without_full_read(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = _short_ml_hook_test_root(request) / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    capture = _make_daily_price_capture_fixture(repo_root)
+    input_pins = runner._validate_daily_price_capture_for_projection(
+        capture, source_date="2026-08-12"
+    )
+    projection = _make_daily_source_projection_fixture(repo_root, capture)
+    monkeypatch.setattr(runner, "MAX_DAILY_SOURCE_ROW_PROJECTION_BYTES", 8)
+    with pytest.raises(ValueError, match="bounded single-link regular file"):
+        runner._validate_and_write_projection_terminal_receipt(
+            projection, input_pins=input_pins
+        )
+
+
+def test_projection_observations_hardlink_is_rejected(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = _short_ml_hook_test_root(request) / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    capture = _make_daily_price_capture_fixture(repo_root)
+    input_pins = runner._validate_daily_price_capture_for_projection(
+        capture, source_date="2026-08-12"
+    )
+    projection = _make_daily_source_projection_fixture(repo_root, capture)
+    observations_path = Path(str(projection["candidate_root"])) / "observations.jsonl"
+    try:
+        os.link(observations_path, observations_path.with_name("observations.link"))
+    except OSError as exc:
+        pytest.skip(f"Windows hardlink privilege unavailable: {exc}")
+    with pytest.raises(ValueError, match="bounded single-link regular file"):
+        runner._validate_and_write_projection_terminal_receipt(
+            projection, input_pins=input_pins
+        )
+
+
+def test_projection_observations_symlink_is_rejected_when_supported(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = _short_ml_hook_test_root(request) / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    capture = _make_daily_price_capture_fixture(repo_root)
+    input_pins = runner._validate_daily_price_capture_for_projection(
+        capture, source_date="2026-08-12"
+    )
+    projection = _make_daily_source_projection_fixture(repo_root, capture)
+    observations_path = Path(str(projection["candidate_root"])) / "observations.jsonl"
+    original = observations_path.with_name("original-observations.jsonl")
+    observations_path.replace(original)
+    try:
+        os.symlink(original, observations_path)
+    except OSError as exc:
+        original.replace(observations_path)
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege unavailable (WinError 1314)")
+        raise
+    with pytest.raises(ValueError, match="linked path component"):
+        runner._validate_and_write_projection_terminal_receipt(
+            projection, input_pins=input_pins
+        )
+
+
+def test_daily_capture_pin_drift_skips_projection_and_preserves_hold(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    short_root = _short_ml_hook_test_root(request)
+    repo_root = short_root / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    capture = _make_daily_price_capture_fixture(repo_root)
+    capture["candidate_manifest_sha256"] = "sha256:" + ("0" * 64)
+    data_root, output_root, database = _configure_runnable_raw_main(short_root, monkeypatch)
+    publication_path = _write_raw_publication(
+        output_root / "release_v4" / "ml_pit_year_shards"
+    )
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        runner,
+        "capture_prospective_daily_price_candidate",
+        lambda **_kwargs: capture,
+    )
+
+    def no_projection(**_kwargs: object) -> dict[str, object]:
+        events.append("projection")
+        pytest.fail("projection must not run after capture hash drift")
+
+    def source_hold(*_args: object, **_kwargs: object) -> dict[str, object]:
+        events.append("source_revision_hold")
+        return {
+            "blocker_kind": "test_temporal_hold",
+            "error_type": "DailyPriceSourceRevisionError",
+            "error": "test hold remains in force",
+        }
+
+    monkeypatch.setattr(runner, "project_daily_source_rows", no_projection)
+    monkeypatch.setattr(runner, "_source_revision_blocker", source_hold)
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+            "--capture-prospective-daily-price-candidate",
+            "--project-daily-source-rows",
+        ]
+    )
+    payload = json.loads(
+        (output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert exit_code == 0
+    assert events == ["source_revision_hold"]
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["prospective_daily_source_row_projection"]["status"] == "rejected"
+
+
+@pytest.mark.parametrize("capture_status", ["captured", "already_captured"])
+def test_daily_source_row_projection_pins_terminal_result_before_source_hold(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    capture_status: str,
+) -> None:
+    short_root = _short_ml_hook_test_root(request)
+    repo_root = short_root / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    capture = _make_daily_price_capture_fixture(
+        repo_root, status=capture_status
+    )
+    projection_result = _make_daily_source_projection_fixture(repo_root, capture)
+    data_root, output_root, database = _configure_runnable_raw_main(
+        short_root, monkeypatch
+    )
+    publication_path = _write_raw_publication(
+        output_root / "release_v4" / "ml_pit_year_shards"
+    )
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    events: list[str] = []
+    builder_called = False
+
+    def capture_candidate(**kwargs: object) -> dict[str, object]:
+        events.append("capture")
+        assert kwargs["source_output_root"] == output_root.resolve()
+        assert kwargs["source_date"] == "2026-08-12"
+        assert kwargs["candidate_root"] == (
+            repo_root / "output" / "ml_prospective_daily_price_candidates"
+        )
+        return capture
+
+    def project_candidate(**kwargs: object) -> dict[str, object]:
+        events.append("projection")
+        assert kwargs["candidate_manifest_path"] == Path(str(capture["candidate_path"]))
+        assert kwargs["expected_manifest_sha256"] == capture["candidate_manifest_sha256"]
+        assert kwargs["repository_root"] == repo_root
+        assert kwargs["output_root"] == (
+            repo_root / runner.DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT
+        )
+        assert kwargs["preview_only"] is False
+        return projection_result
+
+    def source_hold(*_args: object, **_kwargs: object) -> dict[str, object]:
+        events.append("source_revision_hold")
+        return {
+            "blocker_kind": "test_temporal_hold",
+            "error_type": "DailyPriceSourceRevisionError",
+            "error": "test hold remains in force",
+        }
+
+    def fail_builder(*_args: object, **_kwargs: object) -> None:
+        nonlocal builder_called
+        builder_called = True
+        raise AssertionError("builder must not run after source revision hold")
+
+    monkeypatch.setattr(runner, "capture_prospective_daily_price_candidate", capture_candidate)
+    monkeypatch.setattr(runner, "project_daily_source_rows", project_candidate)
+    monkeypatch.setattr(runner, "_source_revision_blocker", source_hold)
+    monkeypatch.setattr(runner.subprocess, "Popen", fail_builder)
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+            "--capture-prospective-daily-price-candidate",
+            "--project-daily-source-rows",
+        ]
+    )
+
+    status_path = output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json"
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    projection = payload["prospective_daily_source_row_projection"]
+    assert exit_code == 0
+    assert events == ["capture", "projection", "source_revision_hold"]
+    assert builder_called is False
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["source_revision_gate"]["blocker_kind"] == "test_temporal_hold"
+    assert payload["prospective_daily_price_capture"]["status"] == capture_status
+    assert projection["status"] == "projected_research_only"
+    assert projection["terminal_receipt_readback_verified"] is True
+    assert projection["formal_credit"] is False
+    terminal_path = Path(projection["terminal_receipt_path"])
+    terminal_bytes = terminal_path.read_bytes()
+    assert "sha256:" + hashlib.sha256(terminal_bytes).hexdigest() == projection[
+        "terminal_receipt_sha256"
+    ]
+    terminal = json.loads(terminal_bytes.decode("utf-8"))
+    assert terminal["terminal_status"] == "completed_research_only"
+    assert terminal["projection"]["intermediate_completion_status"] == (
+        "awaiting_terminal_revision_validation"
+    )
+    assert terminal["projection"]["observations_sha256"] == (
+        "sha256:" + hashlib.sha256(Path(projection["projection_observations_path"]).read_bytes()).hexdigest()
+    )
+    assert terminal["projection"]["projected_row_count"] == 2
+    assert terminal["research_only"] is True
+    assert terminal["historical_pit_eligible"] is False
+    assert terminal["formal_credit"] is False
+
+
+def test_capture_failure_skips_projection_but_preserves_source_revision_hold(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    short_root = _short_ml_hook_test_root(request)
+    repo_root = short_root / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    data_root, output_root, database = _configure_runnable_raw_main(short_root, monkeypatch)
+    publication_path = _write_raw_publication(
+        output_root / "release_v4" / "ml_pit_year_shards"
+    )
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    events: list[str] = []
+
+    def failed_capture(**_kwargs: object) -> dict[str, object]:
+        events.append("capture")
+        return {"status": "rejected", "formal_credit": False}
+
+    def no_projection(**_kwargs: object) -> dict[str, object]:
+        events.append("projection")
+        pytest.fail("projection must not run after capture failure")
+
+    def source_hold(*_args: object, **_kwargs: object) -> dict[str, object]:
+        events.append("source_revision_hold")
+        return {
+            "blocker_kind": "test_temporal_hold",
+            "error_type": "DailyPriceSourceRevisionError",
+            "error": "test hold remains in force",
+        }
+
+    monkeypatch.setattr(runner, "capture_prospective_daily_price_candidate", failed_capture)
+    monkeypatch.setattr(runner, "project_daily_source_rows", no_projection)
+    monkeypatch.setattr(runner, "_source_revision_blocker", source_hold)
+
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+            "--capture-prospective-daily-price-candidate",
+            "--project-daily-source-rows",
+        ]
+    )
+    payload = json.loads(
+        (output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert exit_code == 0
+    assert events == ["capture", "source_revision_hold"]
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["prospective_daily_source_row_projection"]["status"] == (
+        "not_run_capture_not_verified"
+    )
+    assert payload["prospective_daily_source_row_projection"]["formal_credit"] is False
+
+
+@pytest.mark.parametrize("failure_mode", ["projector_error", "observations_hash_drift", "receipt_collision"])
+def test_projection_failure_is_additive_and_does_not_change_core_hold(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_mode: str,
+) -> None:
+    short_root = _short_ml_hook_test_root(request)
+    repo_root = short_root / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(runner, "REPO_ROOT", repo_root)
+    capture = _make_daily_price_capture_fixture(repo_root)
+    projection_result = _make_daily_source_projection_fixture(repo_root, capture)
+    if failure_mode == "observations_hash_drift":
+        Path(str(projection_result["candidate_root"]), "observations.jsonl").write_bytes(
+            b'{"venue":"twse","value_int":99}\n'
+        )
+    elif failure_mode == "receipt_collision":
+        collision_path = Path(
+            str(projection_result["candidate_root"]),
+            "runner_terminal_verification_receipt.json",
+        )
+        collision_path.write_bytes(b"pre-existing receipt must remain untouched")
+
+    data_root, output_root, database = _configure_runnable_raw_main(short_root, monkeypatch)
+    publication_path = _write_raw_publication(
+        output_root / "release_v4" / "ml_pit_year_shards"
+    )
+    os.utime(
+        publication_path,
+        (datetime(2026, 8, 12, 8, 0, tzinfo=timezone.utc).timestamp(),) * 2,
+    )
+    events: list[str] = []
+
+    def capture_candidate(**_kwargs: object) -> dict[str, object]:
+        events.append("capture")
+        return capture
+
+    def project_candidate(**_kwargs: object) -> dict[str, object]:
+        events.append("projection")
+        if failure_mode == "projector_error":
+            raise RuntimeError("fixture projection failure")
+        return projection_result
+
+    def source_hold(*_args: object, **_kwargs: object) -> dict[str, object]:
+        events.append("source_revision_hold")
+        return {
+            "blocker_kind": "test_temporal_hold",
+            "error_type": "DailyPriceSourceRevisionError",
+            "error": "test hold remains in force",
+        }
+
+    monkeypatch.setattr(runner, "capture_prospective_daily_price_candidate", capture_candidate)
+    monkeypatch.setattr(runner, "project_daily_source_rows", project_candidate)
+    monkeypatch.setattr(runner, "_source_revision_blocker", source_hold)
+    exit_code = runner.main(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--database",
+            str(database),
+            "--capture-prospective-daily-price-candidate",
+            "--project-daily-source-rows",
+        ]
+    )
+    payload = json.loads(
+        (output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert exit_code == 0
+    assert events == ["capture", "projection", "source_revision_hold"]
+    assert payload["status"] == "blocked_source_revision"
+    assert payload["source_revision_gate"]["blocker_kind"] == "test_temporal_hold"
+    assert payload["prospective_daily_source_row_projection"]["status"] == "rejected"
+    assert payload["prospective_daily_source_row_projection"]["formal_credit"] is False
+    terminal_path = Path(
+        str(projection_result["candidate_root"]),
+        "runner_terminal_verification_receipt.json",
+    )
+    if failure_mode == "receipt_collision":
+        assert terminal_path.read_bytes() == b"pre-existing receipt must remain untouched"
+    else:
+        assert not terminal_path.exists()
+
+
+def test_project_flag_requires_capture_flag() -> None:
+    with pytest.raises(SystemExit) as error:
+        runner.main(
+            [
+                "--data-root",
+                "unused-data-root",
+                "--output-root",
+                "unused-output-root",
+                "--project-daily-source-rows",
+            ]
+        )
+    assert error.value.code == 2
+
+
+@pytest.mark.skipif(os.name != "nt", reason="需在 Windows cmd.exe 下驗證批次 wrapper 控制流")
+@pytest.mark.parametrize(
+    ("projection_opt_out", "capture_opt_out", "expected_flags"),
+    [
+        (None, None, ["--capture-prospective-daily-price-candidate", "--project-daily-source-rows"]),
+        ("0", None, ["--capture-prospective-daily-price-candidate"]),
+        (None, "0", []),
+    ],
+    ids=("default", "projection-opt-out", "capture-opt-out"),
+)
+def test_ml_raw_pit_wrapper_forwards_flags_and_child_exit(
+    request: pytest.FixtureRequest,
+    projection_opt_out: str | None,
+    capture_opt_out: str | None,
+    expected_flags: list[str],
+) -> None:
+    source_wrapper = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "scheduled"
+        / "run_ml_raw_pit_refresh.cmd"
+    )
+    temp_root = _short_ml_hook_test_root(request)
+    repo_root = temp_root / "repo"
+    scheduled_dir = repo_root / "scripts" / "scheduled"
+    scheduled_dir.mkdir(parents=True)
+    wrapper_path = scheduled_dir / source_wrapper.name
+    shutil.copyfile(source_wrapper, wrapper_path)
+
+    fake_runner_path = scheduled_dir / "run_ml_raw_pit_refresh.py"
+    argv_path = temp_root / "argv.json"
+    fake_runner_path.write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['FAKE_ARGV_PATH']).write_text("
+        "json.dumps(sys.argv[1:]), encoding='utf-8')\n"
+        "raise SystemExit(17)\n",
+        encoding="utf-8",
+    )
+    data_root = temp_root / "data"
+    output_root = temp_root / "output"
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "BALDR_PYTHON": sys.executable,
+            "DATA_ROOT": str(data_root),
+            "OUTPUT_ROOT": str(output_root),
+            "FAKE_ARGV_PATH": str(argv_path),
+        }
+    )
+    environment.pop("BALDR_ENABLE_ML_PROSPECTIVE_DAILY_CAPTURE", None)
+    environment.pop("BALDR_ENABLE_ML_DAILY_SOURCE_ROW_PROJECTION", None)
+    if capture_opt_out is not None:
+        environment["BALDR_ENABLE_ML_PROSPECTIVE_DAILY_CAPTURE"] = capture_opt_out
+    if projection_opt_out is not None:
+        environment["BALDR_ENABLE_ML_DAILY_SOURCE_ROW_PROJECTION"] = projection_opt_out
+
+    result = subprocess.run(
+        [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", str(wrapper_path)],
+        cwd=repo_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 17, result.stdout + result.stderr
+
+    observed_argv = json.loads(argv_path.read_text(encoding="utf-8"))
+    expected_base = [
+        "--data-root",
+        str(data_root),
+        "--output-root",
+        str(output_root),
+        "--database",
+        str(data_root / "sqlite" / "twstock.db"),
+    ]
+    assert observed_argv == expected_base + expected_flags

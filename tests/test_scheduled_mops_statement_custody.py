@@ -115,16 +115,21 @@ def test_weekly_preset_makes_exact_six_fixed_bounded_queries_and_status(
     assert [call["url"] for call in session.calls] == [MOPS_EZSEARCH_QUERY_URL] * 6
     assert all(call["allow_redirects"] is False for call in session.calls)
     assert all(call["timeout"] == 30 for call in session.calls)
+    request_data: list[dict[str, object]] = []
+    for call in session.calls:
+        data = call["data"]
+        assert isinstance(data, dict)
+        request_data.append(data)
     assert [
-        (call["data"]["TYPEK"], call["data"]["PRO_ITEM"])
-        for call in session.calls
+        (data["TYPEK"], data["PRO_ITEM"])
+        for data in request_data
     ] == [
         (market, item)
         for market in ("sii", "otc")
         for item in ("F26", "F27", "F28")
     ]
-    starts = {call["data"]["SDATE"] for call in session.calls}
-    ends = {call["data"]["EDATE"] for call in session.calls}
+    starts = {data["SDATE"] for data in request_data}
+    ends = {data["EDATE"] for data in request_data}
     assert len(starts) == len(ends) == 1
 
     output = json.loads(capsys.readouterr().out)
@@ -162,7 +167,7 @@ def test_weekly_preset_makes_exact_six_fixed_bounded_queries_and_status(
     assert receipt["formal_credit_authorized"] is False
 
 
-def test_weekly_wrapper_preserves_core_result_and_defaults_research_hook_on() -> None:
+def test_weekly_wrapper_preserves_core_result_and_defaults_both_research_hooks_on() -> None:
     wrapper = (
         Path(__file__).resolve().parents[1]
         / "scripts"
@@ -170,29 +175,47 @@ def test_weekly_wrapper_preserves_core_result_and_defaults_research_hook_on() ->
         / "run_v2_2_weekly_collection.cmd"
     ).read_text(encoding="utf-8")
     core_call = wrapper.index("collect_v2_2_weekly_evidence.py")
-    research_call = wrapper.index("fetch_mops_statement_availability.py")
-    assert core_call < wrapper.index('if not "%CORE_EXIT%"=="0" exit /b %CORE_EXIT%') < research_call
+    statement_call = wrapper.index("fetch_mops_statement_availability.py")
+    quarterly_call = wrapper.index("capture_mops_quarterly_openapi_research.py")
+    core_gate = wrapper.index('if not "%CORE_EXIT%"=="0" exit /b %CORE_EXIT%')
+    assert core_call < core_gate < statement_call < quarterly_call
     assert 'if not defined BALDR_ENABLE_MOPS_STATEMENT_CUSTODY set "BALDR_ENABLE_MOPS_STATEMENT_CUSTODY=1"' in wrapper
-    assert 'if /I "%BALDR_ENABLE_MOPS_STATEMENT_CUSTODY%"=="0" exit /b %CORE_EXIT%' in wrapper
+    assert 'if /I "%BALDR_ENABLE_MOPS_STATEMENT_CUSTODY%"=="0" goto :after_statement_research' in wrapper
+    assert 'if not defined BALDR_ENABLE_MOPS_QUARTERLY_OPENAPI_RESEARCH set "BALDR_ENABLE_MOPS_QUARTERLY_OPENAPI_RESEARCH=1"' in wrapper
+    assert 'if /I "%BALDR_ENABLE_MOPS_QUARTERLY_OPENAPI_RESEARCH%"=="0" goto :after_quarterly_research' in wrapper
     assert "--last-complete-taipei-7-days" in wrapper
+    assert "--capture" in wrapper
     assert wrapper.rstrip().endswith("exit /b %CORE_EXIT%")
 
 
 @pytest.mark.parametrize(
-    ("core_exit", "research_exit", "capture_enabled", "expected_exit", "expected_calls"),
+    (
+        "core_exit",
+        "statement_exit",
+        "quarterly_exit",
+        "statement_enabled",
+        "quarterly_enabled",
+        "expected_exit",
+        "expected_children",
+    ),
     [
-        (5, 7, None, 5, 1),
-        (0, 7, None, 0, 2),
-        (0, 7, "0", 0, 1),
+        (5, 7, 9, None, None, 5, ["core"]),
+        (0, 7, 9, None, None, 0, ["core", "statement", "quarterly"]),
+        (0, 7, 9, "0", None, 0, ["core", "quarterly"]),
+        (0, 7, 9, "0", "0", 0, ["core"]),
+        (0, 0, 9, None, None, 0, ["core", "statement", "quarterly"]),
     ],
 )
-def test_weekly_wrapper_keeps_core_exit_when_child_fails_and_short_circuits(
+@pytest.mark.skipif(os.name != "nt", reason="需在 Windows cmd.exe 下驗證批次 wrapper 控制流")
+def test_weekly_wrapper_runs_research_children_independently_and_keeps_core_exit(
     tmp_path: Path,
     core_exit: int,
-    research_exit: int,
-    capture_enabled: str | None,
+    statement_exit: int,
+    quarterly_exit: int,
+    statement_enabled: str | None,
+    quarterly_enabled: str | None,
     expected_exit: int,
-    expected_calls: int,
+    expected_children: list[str],
 ) -> None:
     repo_root = tmp_path / "repo"
     wrapper_path = repo_root / "scripts" / "scheduled" / "run_v2_2_weekly_collection.cmd"
@@ -214,6 +237,7 @@ def test_weekly_wrapper_keeps_core_exit_when_child_fails_and_short_circuits(
         ">>\"%FAKE_PYTHON_LOG%\" echo %*\r\n"
         "if /I \"%~1\"==\"scripts\\collect_v2_2_weekly_evidence.py\" exit /b %FAKE_CORE_EXIT%\r\n"
         "if /I \"%~1\"==\"scripts\\fetch_mops_statement_availability.py\" exit /b %FAKE_RESEARCH_EXIT%\r\n"
+        "if /I \"%~1\"==\"scripts\\capture_mops_quarterly_openapi_research.py\" exit /b %FAKE_QUARTERLY_EXIT%\r\n"
         "exit /b 99\r\n",
         encoding="utf-8",
     )
@@ -221,11 +245,16 @@ def test_weekly_wrapper_keeps_core_exit_when_child_fails_and_short_circuits(
     environment["PATH"] = str(fake_bin) + os.pathsep + environment.get("PATH", "")
     environment["FAKE_PYTHON_LOG"] = str(log_path)
     environment["FAKE_CORE_EXIT"] = str(core_exit)
-    environment["FAKE_RESEARCH_EXIT"] = str(research_exit)
-    if capture_enabled is not None:
-        environment["BALDR_ENABLE_MOPS_STATEMENT_CUSTODY"] = capture_enabled
+    environment["FAKE_RESEARCH_EXIT"] = str(statement_exit)
+    environment["FAKE_QUARTERLY_EXIT"] = str(quarterly_exit)
+    if statement_enabled is not None:
+        environment["BALDR_ENABLE_MOPS_STATEMENT_CUSTODY"] = statement_enabled
     else:
         environment.pop("BALDR_ENABLE_MOPS_STATEMENT_CUSTODY", None)
+    if quarterly_enabled is not None:
+        environment["BALDR_ENABLE_MOPS_QUARTERLY_OPENAPI_RESEARCH"] = quarterly_enabled
+    else:
+        environment.pop("BALDR_ENABLE_MOPS_QUARTERLY_OPENAPI_RESEARCH", None)
 
     result = subprocess.run(
         ["cmd.exe", "/d", "/c", "scripts\\scheduled\\run_v2_2_weekly_collection.cmd"],
@@ -238,9 +267,18 @@ def test_weekly_wrapper_keeps_core_exit_when_child_fails_and_short_circuits(
 
     assert result.returncode == expected_exit, result.stdout + result.stderr
     calls = log_path.read_text(encoding="utf-8").splitlines()
-    assert len(calls) == expected_calls
-    assert "collect_v2_2_weekly_evidence.py" in calls[0]
-    if expected_calls == 1:
-        assert "fetch_mops_statement_availability.py" not in calls[0]
-    else:
-        assert "fetch_mops_statement_availability.py" in calls[1]
+    observed_children = [
+        child
+        for child, needle in (
+            ("core", "collect_v2_2_weekly_evidence.py"),
+            ("statement", "fetch_mops_statement_availability.py"),
+            ("quarterly", "capture_mops_quarterly_openapi_research.py"),
+        )
+        if any(needle in call for call in calls)
+    ]
+    assert observed_children == expected_children
+    if "quarterly" in observed_children:
+        quarterly_call = next(
+            call for call in calls if "capture_mops_quarterly_openapi_research.py" in call
+        )
+        assert quarterly_call.endswith("--capture")

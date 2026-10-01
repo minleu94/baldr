@@ -2,7 +2,7 @@
 
 ## 範圍與結論
 
-本次僅檢查已保存的月營收研究候選、正式套用 guard 與 TWSE／TPEx 官方 OpenAPI metadata。沒有呼叫季度數值端點、寫入正式資料庫、執行 apply 或修改既有 capture。
+本文件前半最初記錄的是 metadata-only catalog／來源採用檢查：當時沒有呼叫季度數值端點。10/1 後續另以受控 standalone collector CLI 實際執行一次 26 GET；collector 已接到 weekly wrapper，但該次不是自然 weekly Task child。完整 rows、readback 與 review items 見[季度 OpenAPI live capture QA](SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md)。兩輪都沒有寫正式資料庫或執行 apply；本文件描述的單位與 formal acceptance 缺件仍成立。
 
 目前月營收 OpenAPI 候選可供研究及完整性檢查，不能正式套用：官方公開欄位與 OpenAPI schema 沒有說明一般金額欄位的幣別或倍率；候選的 `source_api_unit_explicit`、`formal_unit_contract_accepted`、`owner_acceptance`、`formal_apply_authorized`、`historical_pit_credit` 與 `auto_apply` 都是 `false`。機械 preview 的 `ready_for_apply=true` 只表示資料列可解析且沒有機械診斷，不代表 source/unit contract 已接受，也不授權正式寫入。
 
@@ -100,7 +100,7 @@ TWSE Swagger 為 2.0，host `openapi.twse.com.tw`、base path `/v1`、143 paths�
 
 Swagger 對 EPS 明列 `元`，資產負債表中若干股數欄明列 `股`；這些局部標註不能推廣至一般金額欄位。一般營業／損益／資產負債金額的幣別與 scale 未由目錄證實，OpenAPI schema 以 string 保存也沒有補足此缺口。故第一輪只能是 source research，不能升為 formal unit contract。
 
-Collector 設計是每週一次 full-route prospective snapshot；來源季度仍依每列實際 period 判定。每個 run 先 GET 兩份 catalog、再對上述 24 個 numeric targets 各 GET 一次，總上限 26 GET。單次 timeout 30 秒、body cap 8 MiB；numeric aggregate cap 192 MiB，catalog aggregate cap 16 MiB（總 raw 上限 208 MiB）。失敗路徑保留狀態並令本輪不完整，不在同一輪自動重試，避免 unknown cap/rate limit 時擴大負載；失敗 target 要由之後另啟新 bounded cycle 重取。只有兩份 catalog 與每個市場×業別×表別均成功，且 key/period/scope 驗證通過，才建立該週完整研究候選；部分成功不得標記 full-market complete。
+原始設計提案曾列每個 run 26 GET、numeric raw 192 MiB 加 catalog 16 MiB（合計 208 MiB）。目前已實作的 collector budget 以 [module constants](../../data_module/mops_quarterly_openapi_research_capture.py#L33) 為準：每個 encoded entity 與 decoded body 各 8 MiB、aggregate raw 256 MiB、preview 128 MiB、metadata 16 MiB；這些是分項上限，不能合併誤稱為 208 MiB 實際硬上限。每週一輪先 GET 兩份 catalog，再對 24 個 numeric targets 各 GET 一次，至多 26 GET、0 retry。Connect/read timeout 各 30 秒；60 秒/request 與 900 秒/run elapsed gates 在阻塞 read 返回後檢查，不是硬牆鐘中止。失敗路徑保留狀態並令本輪不完整；只有兩份 catalog 與每個市場×業別×表別均成功，且 key/period/scope 驗證通過，才建立該週完整研究候選；部分成功不得標記 full-market complete。10/1 實際只跑過一次 live candidate，沒有自然 weekly Task 同次 child receipt 驗收，見[季度 OpenAPI live capture QA](SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md)。
 
 Captured catalogs 還列出 TWSE 公發 `_X`、TPEx 興櫃 `_U` 財報路徑，未列入上述上市／上櫃 24 routes，也尚未做 scope 核對。TPEx Swagger 還列出六條 `mopsfin_t187ap06_O_*A`「財報資訊」income siblings；因可能有重疊／不同格式，首輪不納入，需先做單獨 schema、key、scope 比較。兩份被保存 catalog 的路徑標題搜尋未找到明稱「現金流量」或「權益變動」的 t187ap report route；這只能說本次所查 catalog 未證實該兩表，不能推斷其他 portal／文件管道不存在。現金流量與權益變動應維持明確 scope gap，不能用 income/balance 完成度代替。
 
@@ -108,5 +108,18 @@ Captured catalogs 還列出 TWSE 公發 `_X`、TPEx 興櫃 `_U` 財報路徑，�
 
 - 讀回並 SHA-256 驗證兩份 200 response 原件與 receipt 相符；成功 catalog 可 JSON parse。
 - 兩個首次 WinError 10013 失敗 receipt 均保留，沒有把環境拒絕誤報成來源 HTTP status。
-- 只解析已保存 Swagger JSON、已保存月營收 candidate/manifest 與 repository source/tests；未呼叫 quarterly numeric endpoints。
+- 原 catalog／unit acceptance review 只解析已保存 Swagger JSON、月營收 candidate/manifest 與 repository source/tests，未呼叫 quarterly numeric endpoints；之後的 numeric capture 由獨立 collector route 執行，請見後續 live QA。
 - 未執行正式 apply、Task、Quick runner 或 DB writer；未改既有 raw/candidate/DB、未訓練或更動任何 formal pointer。
+
+## 2026-10-01 官方 metadata 頁面補充：欄位與單位尚未形成接受契約
+
+另有限度讀取四個官方政府資料集 metadata 頁面，以確認公開欄名與更新頻率；這不是完整 API unit contract 檢索，也沒有取得 numeric response：
+
+| 資料集 | 官方頁面 | 可直接確認的欄位／頻率 | 不能據此確認 |
+|---|---|---|---|
+| TWSE 月營收 | [data.gov.tw/dataset/18420](https://data.gov.tw/dataset/18420) | 年月、出表日期與營收相關欄位；頁面標示每年更新 | 一般金額欄的幣別／倍率、出表日期代表首次公告或修訂、每列首次可得時間 |
+| TPEx 月營收 | [data.gov.tw/dataset/56510](https://data.gov.tw/dataset/56510) | 年月、出表日期與營收相關欄位；頁面標示每月更新 | 一般金額欄的幣別／倍率、出表日期代表首次公告或修訂、每列首次可得時間 |
+| TWSE 季報一般業 metadata | [data.gov.tw/dataset/91998](https://data.gov.tw/dataset/91998) | 年度、季別、公司、EPS（元）；每 3 個月更新 | 一般業 income statement 金額單位、balance-specific 欄位與單位、合併／個別 basis、逐筆首次／更正公告 available-at、更新頻率是否等同每筆公告時間 |
+| TPEx 季報一般業 metadata | [data.gov.tw/dataset/94853](https://data.gov.tw/dataset/94853) | 年度、季別、公司、EPS（元）；每 3 個月更新 | 一般業 income statement 金額單位、balance-specific 欄位與單位、合併／個別 basis、逐筆首次／更正公告 available-at、更新頻率是否等同每筆公告時間 |
+
+此處只記錄四個已檢 metadata 頁的證據，不推論所有官方財報來源都缺單位。季度 metadata 查證限一般業 income statement 頁，沒有檢查 balance-specific metadata page；因此 balance 欄、income/balance 的合併／個別 basis 以及一般金額單位仍未證實。更新頻率不等同個別記錄的公開時間；EPS「元」也不能推廣成其他金額欄位的單位。月營收與季報 OpenAPI 的正式 unit acceptance 仍為 false。要接受來源，仍需把實際 endpoint、response header/schema/sample、數值欄位和來源修訂身份綁到候選 hashes，核實單位、basis、精度、缺值語意與可得時間；現階段不能靠一般 metadata 頁或空泛 owner 同意完成該契約。

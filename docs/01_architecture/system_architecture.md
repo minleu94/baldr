@@ -1,7 +1,30 @@
 # 系統架構
 
-> **最後更新：2026-09-30｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-10-01｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
+
+## 2026-10-01 研究資料來源與排程 lane 邊界
+
+每日 Quick 在 core 更新、技術 publication 與 terminal status/history 完成後，可建立
+TWSE／TPEx 月營收 research candidate；只保存原始回應、scope、保守 availability 與
+候選 readback，不寫正式 CSV、availability mapping 或 DB。05:05 ML raw/PIT runner
+在 core freshness proof 後、revision hold 前，先捕獲前瞻日價來源並以同一候選的精確
+manifest pin 建立每日 source-row research projection。projection 不計 features／labels，
+不消費正式 Direct/OOC schema，也不解除後續 revision gate；只有 core gate 通過時，既有
+正式 raw publication 才能繼續。
+
+既有每週 `baldr-v2-2-weekly-collection` 仍先完成 core sidecar collection，只有 core exit
+為 0 才啟動 MOPS statement-availability 與 quarterly OpenAPI 兩個獨立研究 child。它們
+各自保存 per-run 原件、status 與 terminal；child 停用或失敗不改寫 core exit 或
+`pending_human_review`。季度 child 每週最多 2 個 catalog 與 24 個上市／上櫃損益及資產負債
+數值 endpoint GET；結果是 current-observation candidate，沒有自動補歷史 availability、
+issuer denominator 或 unit acceptance。
+
+Paper seed、使用者宣告持倉與正式成交是不同來源身份。機器初始化的 Paper research seed
+可保留在隔離 Paper lane 並帶研究品質診斷；不得將它映射為使用者真實持倉，也不得因其
+存在而阻止其他 lane 保存較低層研究事件。無 seed 或 valid-empty 的語意只能來自明確驗證的
+來源契約，不能以缺檔推斷空持倉。各 producer 的當日運行結果以[排程修復 QA](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)
+與其專項 receipt 為準。
 
 ## 排程來源與 operational custody（2026-09-29）
 
@@ -19,7 +42,7 @@ publication gate 仍完整保留。官方現在取得的來源不反向提供歷
 ML forward 等候階段另保存 per-run heartbeat/state；與 business status 分離、無 forward
 credit。這些接線／觀測修正不包含新模型、thesis、Paper 舊成交、formal approval 或 broker。
 
-## 9/30 排程資料流與 lane 邊界
+## 9/30 排程資料流與 lane 邊界（歷史架構切片）
 
 ```mermaid
 flowchart LR

@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import io
 import json
+import os
 import re
 import sqlite3
+import stat
 from datetime import date, datetime, time
 from pathlib import Path
 import sys
@@ -28,6 +32,11 @@ from data_module.official_trading_calendar import (
 )
 from data_module.phase3c_backfill_runner import configured_candidate_db_path
 from data_module.p0_candidate_repository import validate_candidate_working_copy_path
+from app_module.update_status_history import (
+    MAX_STATUS_HISTORY_BYTES,
+    UPDATE_STATUS_HISTORY_SCHEMA,
+    build_update_status_history_record,
+)
 from scripts.scheduled.scheduled_clock import scheduled_now
 
 
@@ -35,6 +44,393 @@ PACIFIC = ZoneInfo("America/Los_Angeles")
 DAILY_DATA_CUTOFF_LOCAL = time(4, 30)
 _DATE_RE = re.compile(r"(?<!\d)(\d{8})(?!\d)")
 _ISO_DATE_RE = re.compile(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)")
+MAX_QUICK_STATUS_BYTES = 2 * 1024 * 1024
+MAX_QUICK_HISTORY_RECORD_BYTES = 512 * 1024
+MAX_QUICK_HISTORY_RECORD_COUNT = 10_000
+_QUICK_TERMINAL_STATUSES = {"passed", "passed_with_warnings", "failed"}
+
+
+class _QuickReceiptReadError(ValueError):
+    """A bounded Quick receipt read failed its local file contract."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate_json_key:{key}")
+        value[key] = item
+    return value
+
+
+def _reject_non_finite_json_constant(value: str) -> None:
+    raise ValueError(f"non_finite_json_constant:{value}")
+
+
+def _strict_json_loads(raw: str | bytes) -> Any:
+    """Parse bounded JSON while rejecting duplicate keys and nonstandard numbers."""
+
+    return json.loads(
+        raw,
+        object_pairs_hook=_strict_json_object,
+        parse_constant=_reject_non_finite_json_constant,
+    )
+
+
+def _path_key(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
+def _is_reparse_point(info: os.stat_result) -> bool:
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(getattr(info, "st_file_attributes", 0) & flag)
+
+
+def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        int(info.st_dev),
+        int(info.st_ino),
+        int(info.st_size),
+        int(info.st_mtime_ns),
+        int(info.st_ctime_ns),
+    )
+
+
+def _assert_quick_receipt_path_no_link(path: Path) -> Path:
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    for candidate in reversed([*absolute.parents, absolute]):
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            raise
+        except OSError as exc:
+            raise _QuickReceiptReadError(
+                f"receipt_path_unreadable:{type(exc).__name__}"
+            ) from exc
+        if stat.S_ISLNK(info.st_mode) or _is_reparse_point(info):
+            raise _QuickReceiptReadError("receipt_path_contains_link")
+        if candidate != absolute and not stat.S_ISDIR(info.st_mode):
+            raise _QuickReceiptReadError("receipt_parent_not_directory")
+    return absolute
+
+
+def _read_bounded_regular_file(path: Path, *, max_bytes: int) -> bytes:
+    """Read one stable regular-file snapshot without following path links."""
+
+    absolute = _assert_quick_receipt_path_no_link(path)
+    try:
+        before = absolute.lstat()
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise _QuickReceiptReadError(
+            f"receipt_file_unreadable:{type(exc).__name__}"
+        ) from exc
+    if stat.S_ISLNK(before.st_mode) or _is_reparse_point(before):
+        raise _QuickReceiptReadError("receipt_file_is_link")
+    if not stat.S_ISREG(before.st_mode) or int(before.st_nlink) != 1:
+        raise _QuickReceiptReadError("receipt_file_not_regular_single_link")
+    if int(before.st_size) > max_bytes:
+        raise _QuickReceiptReadError("receipt_file_too_large")
+
+    try:
+        with absolute.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or _is_reparse_point(opened)
+                or _stat_identity(before) != _stat_identity(opened)
+            ):
+                raise _QuickReceiptReadError("receipt_file_identity_changed")
+            if int(opened.st_nlink) != 1:
+                raise _QuickReceiptReadError("receipt_file_not_regular_single_link")
+            raw = handle.read(max_bytes + 1)
+            after = os.fstat(handle.fileno())
+    except _QuickReceiptReadError:
+        raise
+    except OSError as exc:
+        raise _QuickReceiptReadError(
+            f"receipt_file_unreadable:{type(exc).__name__}"
+        ) from exc
+
+    if len(raw) > max_bytes or int(after.st_size) > max_bytes:
+        raise _QuickReceiptReadError("receipt_file_too_large")
+    if (
+        _stat_identity(opened) != _stat_identity(after)
+        or len(raw) != int(after.st_size)
+    ):
+        raise _QuickReceiptReadError("receipt_file_changed_during_read")
+    return raw
+
+
+def _unverified_quick_binding(
+    *,
+    status_path: Path,
+    observed_at: datetime,
+    reason: str,
+    status_sha256: str | None = None,
+    status_bytes: int | None = None,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    return {
+        "binding_status": "unverified",
+        "binding_reason": reason,
+        "binding_scope": "terminal_receipt_identity_only",
+        "status_path": str(status_path),
+        "status_sha256": status_sha256,
+        "status_bytes": status_bytes,
+        "observed_at": observed_at.isoformat(),
+        "task": payload.get("task"),
+        "status": payload.get("status"),
+        "run_id": payload.get("run_id"),
+        "started_at": payload.get("started_at"),
+        "completed_at": payload.get("completed_at"),
+        "checked_at": payload.get("checked_at"),
+        "history_record_id": None,
+        "history_record_sha256": None,
+        "history_payload_sha256": None,
+        "db_write_attribution": False,
+        "historical_pit": False,
+        "formal_credit": False,
+    }
+
+
+def _verify_quick_history_record(
+    *,
+    status_path: Path,
+    payload: dict[str, Any],
+    observed_at: datetime,
+) -> dict[str, Any]:
+    """Bind one Quick terminal payload to its canonical sibling history row."""
+
+    history_path = status_path.parent / "history.jsonl"
+    terminal_binding = _unverified_quick_binding(
+        status_path=status_path,
+        observed_at=observed_at,
+        reason="quick_terminal_identity_missing",
+        payload=payload,
+    )
+    task = payload.get("task")
+    status = str(payload.get("status", "")).strip().lower()
+    run_id = payload.get("run_id")
+    started_at = payload.get("started_at")
+    completed_at = payload.get("completed_at")
+    history_pointer = payload.get("history")
+
+    if task != "baldr-data-update-quick-daily":
+        terminal_binding["binding_reason"] = "quick_task_identity_mismatch"
+        return terminal_binding
+    if status not in _QUICK_TERMINAL_STATUSES:
+        terminal_binding["binding_reason"] = "quick_status_not_terminal"
+        return terminal_binding
+    if not isinstance(run_id, str) or not run_id.strip():
+        terminal_binding["binding_reason"] = "quick_run_id_missing"
+        return terminal_binding
+    if (
+        not isinstance(started_at, str)
+        or _parse_timestamp(started_at) is None
+        or not isinstance(completed_at, str)
+        or _parse_timestamp(completed_at) is None
+    ):
+        terminal_binding["binding_reason"] = "quick_terminal_time_missing_or_invalid"
+        return terminal_binding
+    if not isinstance(history_pointer, dict):
+        terminal_binding["binding_reason"] = "quick_history_pointer_missing"
+        return terminal_binding
+    record_id = history_pointer.get("record_id")
+    pointer_path = history_pointer.get("path")
+    if not isinstance(record_id, str) or not record_id.strip():
+        terminal_binding["binding_reason"] = "quick_history_record_id_missing"
+        return terminal_binding
+    if not isinstance(pointer_path, str) or _path_key(Path(pointer_path)) != _path_key(history_path):
+        terminal_binding["binding_reason"] = "quick_history_path_not_canonical"
+        return terminal_binding
+
+    try:
+        history_raw = _read_bounded_regular_file(
+            history_path,
+            max_bytes=MAX_STATUS_HISTORY_BYTES,
+        )
+    except FileNotFoundError:
+        terminal_binding["binding_reason"] = "quick_history_missing"
+        return terminal_binding
+    except _QuickReceiptReadError as exc:
+        terminal_binding["binding_reason"] = exc.reason
+        return terminal_binding
+
+    stream = io.BytesIO(history_raw)
+    record_count = 0
+    matching_record_ids: list[tuple[dict[str, Any], bytes]] = []
+    terminal_run_records = 0
+    seen_record_ids: set[str] = set()
+    try:
+        while True:
+            line = stream.readline(MAX_QUICK_HISTORY_RECORD_BYTES + 2)
+            if not line:
+                break
+            if len(line) > MAX_QUICK_HISTORY_RECORD_BYTES + 1:
+                terminal_binding["binding_reason"] = "quick_history_record_too_large"
+                return terminal_binding
+            if line.endswith(b"\n"):
+                record_bytes = line[:-1]
+                if record_bytes.endswith(b"\r"):
+                    record_bytes = record_bytes[:-1]
+            else:
+                record_bytes = line
+            if not record_bytes:
+                continue
+            record_count += 1
+            if record_count > MAX_QUICK_HISTORY_RECORD_COUNT:
+                terminal_binding["binding_reason"] = "quick_history_record_count_exceeded"
+                return terminal_binding
+            record = _strict_json_loads(record_bytes.decode("utf-8"))
+            if not isinstance(record, dict):
+                terminal_binding["binding_reason"] = "quick_history_record_not_object"
+                return terminal_binding
+            if record.get("schema_version") != UPDATE_STATUS_HISTORY_SCHEMA:
+                terminal_binding["binding_reason"] = "quick_history_schema_mismatch"
+                return terminal_binding
+            row_id = record.get("record_id")
+            row_run_id = record.get("run_id")
+            if not isinstance(row_id, str) or not row_id:
+                terminal_binding["binding_reason"] = "quick_history_identity_missing"
+                return terminal_binding
+            if row_id in seen_record_ids:
+                terminal_binding["binding_reason"] = "quick_history_duplicate_record_id"
+                return terminal_binding
+            seen_record_ids.add(row_id)
+            if row_run_id == run_id and str(record.get("status", "")).lower() in _QUICK_TERMINAL_STATUSES:
+                terminal_run_records += 1
+            if row_id == record_id:
+                matching_record_ids.append((record, record_bytes))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        terminal_binding["binding_reason"] = "quick_history_record_invalid"
+        return terminal_binding
+
+    if terminal_run_records != 1:
+        terminal_binding["binding_reason"] = "quick_history_terminal_run_not_unique"
+        return terminal_binding
+    if len(matching_record_ids) != 1:
+        terminal_binding["binding_reason"] = "quick_history_record_id_not_unique"
+        return terminal_binding
+    history_record, history_record_bytes = matching_record_ids[0]
+    payload_without_history = dict(payload)
+    payload_without_history.pop("history", None)
+    captured_at = history_record.get("captured_at")
+    if not isinstance(captured_at, str) or _parse_timestamp(captured_at) is None:
+        terminal_binding["binding_reason"] = "quick_history_capture_time_invalid"
+        return terminal_binding
+    try:
+        expected_record = build_update_status_history_record(
+            payload_without_history,
+            captured_at=captured_at,
+        )
+    except (TypeError, ValueError):
+        terminal_binding["binding_reason"] = "quick_history_payload_unserializable"
+        return terminal_binding
+    if expected_record != history_record:
+        terminal_binding["binding_reason"] = "quick_history_payload_or_record_hash_mismatch"
+        return terminal_binding
+    if (
+        history_record.get("run_id") != run_id
+        or history_record.get("status") != status
+        or history_record.get("started_at") != started_at
+        or history_record.get("completed_at") != completed_at
+    ):
+        terminal_binding["binding_reason"] = "quick_history_terminal_identity_mismatch"
+        return terminal_binding
+
+    return {
+        **terminal_binding,
+        "binding_status": "verified",
+        "binding_reason": "quick_terminal_receipt_and_append_record_match",
+        "task": task,
+        "status": status,
+        "run_id": run_id,
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "checked_at": payload.get("checked_at"),
+        "history_record_id": record_id,
+        "history_record_sha256": hashlib.sha256(history_record_bytes).hexdigest(),
+        "history_payload_sha256": history_record.get("payload_sha256"),
+        "db_write_attribution": False,
+        "historical_pit": False,
+        "formal_credit": False,
+    }
+
+
+def _quick_status_snapshot(
+    *,
+    status_path: Path,
+    canonical_status_path: Path,
+    observed_at: datetime,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    try:
+        raw = _read_bounded_regular_file(
+            status_path,
+            max_bytes=MAX_QUICK_STATUS_BYTES,
+        )
+    except FileNotFoundError:
+        return None, _unverified_quick_binding(
+            status_path=status_path,
+            observed_at=observed_at,
+            reason="quick_status_missing",
+        )
+    except _QuickReceiptReadError as exc:
+        return None, _unverified_quick_binding(
+            status_path=status_path,
+            observed_at=observed_at,
+            reason=exc.reason,
+        )
+    except OSError as exc:
+        return None, _unverified_quick_binding(
+            status_path=status_path,
+            observed_at=observed_at,
+            reason=f"quick_status_unreadable:{type(exc).__name__}",
+        )
+
+    status_sha256 = f"sha256:{hashlib.sha256(raw).hexdigest()}"
+    try:
+        parsed = _strict_json_loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return None, _unverified_quick_binding(
+            status_path=status_path,
+            observed_at=observed_at,
+            reason="quick_status_json_invalid",
+            status_sha256=status_sha256,
+            status_bytes=len(raw),
+        )
+    if not isinstance(parsed, dict):
+        return None, _unverified_quick_binding(
+            status_path=status_path,
+            observed_at=observed_at,
+            reason="quick_status_not_object",
+            status_sha256=status_sha256,
+            status_bytes=len(raw),
+        )
+
+    if _path_key(status_path) != _path_key(canonical_status_path):
+        return parsed, _unverified_quick_binding(
+            status_path=status_path,
+            observed_at=observed_at,
+            reason="quick_status_path_not_canonical",
+            status_sha256=status_sha256,
+            status_bytes=len(raw),
+            payload=parsed,
+        )
+    binding = _verify_quick_history_record(
+        status_path=status_path,
+        payload=parsed,
+        observed_at=observed_at,
+    )
+    binding["status_sha256"] = status_sha256
+    binding["status_bytes"] = len(raw)
+    return parsed, binding
 
 
 def _parse_timestamp(value: object) -> datetime | None:
@@ -406,6 +802,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--status-path")
     parser.add_argument("--log-path")
+    parser.add_argument("--quick-status-path")
     parser.add_argument("--stale-days", type=int, default=7)
     parser.add_argument("--calendar-cache-path")
     parser.add_argument("--temporary-closure-path")
@@ -1186,25 +1583,39 @@ def main(argv: list[str] | None = None) -> int:
     if not db_path.exists():
         errors.append("sqlite_db_missing")
 
-    quick_update_status_path = output_root / "scheduled" / "data_update_quick" / "latest_status.json"
-    quick_payload: dict[str, Any] | None = None
-    if not quick_update_status_path.exists():
+    canonical_quick_status_path = (
+        output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+    )
+    quick_update_status_path = (
+        Path(args.quick_status_path)
+        if args.quick_status_path
+        else canonical_quick_status_path
+    )
+    quick_payload, quick_binding = _quick_status_snapshot(
+        status_path=quick_update_status_path,
+        canonical_status_path=canonical_quick_status_path,
+        observed_at=run_now,
+    )
+    checks["data_update_quick_receipt_binding"] = quick_binding
+    if quick_binding["binding_reason"] == "quick_status_missing":
         checks["data_update_quick_status"] = "missing"
         _append_warning(warnings, "data_update_quick_status_missing")
-    else:
-        try:
-            parsed = json.loads(quick_update_status_path.read_text(encoding="utf-8"))
-            quick_payload = parsed if isinstance(parsed, dict) else None
-            quick_status = str((quick_payload or {}).get("status", "unknown"))
-            checks["data_update_quick_status"] = quick_status
-            if quick_status == "failed":
-                _append_warning(warnings, "data_update_quick_failed")
-            quick_checked_at = _parse_timestamp(
-                (quick_payload or {}).get("completed_at") or (quick_payload or {}).get("checked_at")
-            )
-            checks["data_update_quick_checked_at"] = quick_checked_at.isoformat(timespec="seconds") if quick_checked_at else None
-        except (OSError, json.JSONDecodeError):
-            _append_warning(warnings, "data_update_quick_status_unreadable")
+    elif quick_binding["binding_reason"] == "quick_status_not_object":
+        # Preserve the legacy status classification for valid non-object JSON.
+        checks["data_update_quick_status"] = "unknown"
+    elif quick_payload is None:
+        _append_warning(warnings, "data_update_quick_status_unreadable")
+    elif isinstance(quick_payload, dict):
+        quick_status = str(quick_payload.get("status", "unknown"))
+        checks["data_update_quick_status"] = quick_status
+        if quick_status == "failed":
+            _append_warning(warnings, "data_update_quick_failed")
+        quick_checked_at = _parse_timestamp(
+            quick_payload.get("completed_at") or quick_payload.get("checked_at")
+        )
+        checks["data_update_quick_checked_at"] = (
+            quick_checked_at.isoformat(timespec="seconds") if quick_checked_at else None
+        )
 
     source_statuses: list[dict[str, Any]] = []
     candidate_db_path: Path | None = None

@@ -21,6 +21,7 @@ if ([string]::IsNullOrWhiteSpace($DbPath)) {
 }
 
 $RunRoot = Join-Path $OutputRoot "scheduled\data_freshness"
+$QuickStatusPath = Join-Path $OutputRoot "scheduled\data_update_quick\latest_status.json"
 $LogRoot = Join-Path $RunRoot "logs"
 if ([string]::IsNullOrWhiteSpace($StatusPath)) {
     $StatusPath = Join-Path $RunRoot "latest_status.json"
@@ -43,6 +44,7 @@ if (-not (Test-Path -LiteralPath $Probe)) {
     --data-root $DataRoot `
     --output-root $OutputRoot `
     --db-path $DbPath `
+    --quick-status-path $QuickStatusPath `
     --status-path $StatusPath `
     --log-path $LogPath `
     --stale-days ([string]$StaleDays)

@@ -1098,6 +1098,45 @@ class RecommendationExecutionReadModel:
         raise ExecutionArtifactIntegrityError("read view 缺少保存結果")
 
 
+@dataclass(frozen=True, slots=True)
+class RecommendationExecutionReadSnapshot:
+    """保存同次 Workbench inspect 共用的一次已驗證 query 結果或原始錯誤。"""
+
+    read_models: tuple[RecommendationExecutionReadModel, ...] | None
+    failure: Exception | None = None
+
+    @classmethod
+    def capture(
+        cls,
+        queries: RecommendationExecutionQueries,
+    ) -> RecommendationExecutionReadSnapshot:
+        """只呼叫一次既有 verified query；錯誤保留原型別交回原 consumer。"""
+
+        try:
+            read_models = queries.list()
+            if type(read_models) is not tuple or any(
+                not isinstance(item, RecommendationExecutionReadModel)
+                for item in read_models
+            ):
+                raise ExecutionArtifactIntegrityError(
+                    "recommendation list 未回傳已驗證 read-model tuple"
+                )
+        except Exception as exc:
+            return cls(read_models=None, failure=exc)
+        return cls(read_models=read_models)
+
+    def require_read_models(self) -> tuple[RecommendationExecutionReadModel, ...]:
+        """回傳同一次讀取結果；失敗時以原例外型別 fail closed。"""
+
+        if self.failure is not None:
+            raise self.failure
+        if self.read_models is None:
+            raise ExecutionArtifactIntegrityError(
+                "recommendation read snapshot 缺少成功結果與失敗原因"
+            )
+        return self.read_models
+
+
 def _metadata_datetime(value: str | None) -> datetime | None:
     if value is None:
         return None
@@ -1768,5 +1807,6 @@ __all__ = (
     "LegacyRecommendationRawByteReader",
     "RecommendationExecutionQueries",
     "RecommendationExecutionReadModel",
+    "RecommendationExecutionReadSnapshot",
     "SQLiteLegacyRecommendationRawByteReader",
 )

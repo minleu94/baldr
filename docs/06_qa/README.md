@@ -13,6 +13,7 @@
 
 | 要查的內容 | 證據入口 |
 | --- | --- |
+| 本次Windows／Codex排程修復、Gemini ML真實建置／訓練／推論及原Legacy／Bank受控讀回；產品收尾進度與保留限制 | [10/2–10/3整合修復紀錄](INTEGRATION_REPAIR_ACCEPTANCE_20261002.md) |
 | 2026-09-30 排程修復、自然 Quick warning／Freshness degraded／Official events publication_scope=formal_historical／nested `corporate_action_adjustment_custody` `prospective_only=true`、`formal_source_contract_eligible=false`、`historical_pit_eligible=false`、Paper no-work、Evidence #3 engineering pass／business degraded、Bank#2 barrier pass／source failed、PIT／ML／fundamental blocker | [9/30 排程修復與執行驗收](SCHEDULED_OPERATIONS_REPAIR_20260930.md) |
 | Windows 排程、來源契約與資料接線 | [9/29 全項審視及修復](SCHEDULED_OPERATIONS_REPAIR_20260929.md) |
 | 重構驗收範圍與保留限制 | [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)、[C4 mandatory gates](C4_FINAL_MANDATORY_STATIC_GATES_20260925.md) |
@@ -61,3 +62,6 @@
 - `../02_features/` - 功能文檔
 - `../03_data/` - 數據相關文檔
 - `../09_archive/` - 已過時但仍有追溯價值的歷史文檔
+
+
+2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。

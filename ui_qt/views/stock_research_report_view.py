@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import replace
+from datetime import date
 from decimal import Decimal
+import inspect
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QComboBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -440,6 +443,7 @@ class StockResearchReportView(QWidget):
     activeStockChanged = Signal(str)
     activeContextChanged = Signal(object)
     returnRequested = Signal()
+    createAnalysisRequested = Signal(str)
     readyToClose = Signal()
 
     def __init__(
@@ -522,6 +526,15 @@ class StockResearchReportView(QWidget):
         self.identity_label.setFont(identity_font)
         self.identity_label.setAccessibleName("個股識別")
         root.addWidget(self.identity_label)
+
+        self.query_as_of_label = QLabel("本次研究查詢日（as_of）：尚未載入")
+        self.query_as_of_label.setObjectName("stockResearchQueryAsOf")
+        self.query_as_of_label.setAccessibleName("本次研究查詢日")
+        self.query_as_of_label.setWordWrap(True)
+        self.query_as_of_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
+        root.addWidget(self.query_as_of_label)
 
         self.context_path_label = QLabel("研究路徑：" + format_research_workflow_path())
         self.context_path_label.setWordWrap(True)
@@ -783,7 +796,8 @@ class StockResearchReportView(QWidget):
         self.activeContextChanged.emit(context)
 
         def task(cancel_callback=None) -> StockResearchReportDTO:
-            return self.service.read_report(
+            return _read_report_with_context_cutoff(
+                self.service,
                 code,
                 context=context,
                 cancel_callback=cancel_callback,
@@ -875,7 +889,8 @@ class StockResearchReportView(QWidget):
             self._on_report_error(request_id, code, "service returned an invalid report DTO")
             return
         self._render_report(report)
-        self._set_status("報告已載入；內容只讀取既有來源。", "observed")
+        incomplete = report.advice.recommendation is None or any(section.status in {'missing','error','partial','unavailable'} for section in report.sections)
+        self._set_status("報告部分載入；可讀內容與缺件分開列示，請選擇保存來源或建立分析。" if incomplete else "報告已載入；內容只讀取既有來源。", "partial" if incomplete else "observed")
         self.reportLoaded.emit(report)
 
     def _on_report_error(self, request_id: int, code: str, error: object) -> None:
@@ -944,6 +959,7 @@ class StockResearchReportView(QWidget):
 
         self._loaded_report = None
         self._rendered_report_tabs = set()
+        self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         for value in self._summary_values.values():
             value.setText("尚未載入。")
         self.summary_detail_toggle.setChecked(False)
@@ -965,6 +981,7 @@ class StockResearchReportView(QWidget):
         next_step: str,
     ) -> None:
         self.identity_label.setText(f"{code}｜尚無可用報告")
+        self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         self.summary_focus.set_summary(
             conclusion=conclusion,
             reasons=(reason,),
@@ -982,6 +999,9 @@ class StockResearchReportView(QWidget):
         next_step: str,
     ) -> None:
         data_date = _report_data_date(report)
+        self.query_as_of_label.setText(
+            f"上次可用報告查詢日（as_of）：{report.as_of or '未知'}"
+        )
         identity = (
             f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
             f"｜上次可用資料 {data_date}"
@@ -1024,6 +1044,9 @@ class StockResearchReportView(QWidget):
     def _render_report(self, report: StockResearchReportDTO) -> None:
         self._loaded_report = report
         self._rendered_report_tabs = {"summary"}
+        self.query_as_of_label.setText(
+            f"本次研究查詢日（as_of）：{report.as_of or '未知'}"
+        )
         self.identity_label.setText(
             f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
             + (f"｜{report.industry}" if report.industry else "")
@@ -1438,6 +1461,24 @@ class StockResearchReportView(QWidget):
 
     def _render_decision(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("decision")
+        source_group = QGroupBox("明確選擇此股的保存推薦來源")
+        source_layout = QVBoxLayout(source_group)
+        self.saved_source_combo = QComboBox()
+        self.saved_source_combo.setObjectName("stockResearchSavedSource")
+        self.saved_source_combo.addItem("請明確選擇；不自動套用最新結果", None)
+        for option in report.saved_source_options:
+            self.saved_source_combo.addItem(f"{option.label}｜決策 {option.decision_date or '未知'}｜資料 {option.data_date or '未知'}", option.result_id)
+        source_layout.addWidget(self.saved_source_combo)
+        self.use_saved_source_button = QPushButton("載入選定來源")
+        self.use_saved_source_button.setObjectName("stockResearchUseSavedSource")
+        self.use_saved_source_button.clicked.connect(self._use_saved_source)
+        source_layout.addWidget(self.use_saved_source_button)
+        self.create_analysis_button = QPushButton(f"前往推薦分析，分析 {report.stock_code} 並保存")
+        self.create_analysis_button.setObjectName("stockResearchCreateAnalysis")
+        self.create_analysis_button.clicked.connect(lambda: self.createAnalysisRequested.emit(self._active_code))
+        source_layout.addWidget(self.create_analysis_button)
+        source_layout.addWidget(self._wrapped_label("只列查詢日期內且包含此股的最近保存來源（最多檢查30筆）。若無來源，可建立指定股票分析、保存後返回本頁重新載入，再明確選取。未入選時仍保留排除理由，不補造 Advice／ML 機率。"))
+        layout.addWidget(source_group)
         advice_group = QGroupBox("Advice（沿用既有 AdviceComposer）")
         advice_layout = QVBoxLayout(advice_group)
         self._render_advice_content(advice_layout, report.advice, report.position)
@@ -1470,6 +1511,20 @@ class StockResearchReportView(QWidget):
         layout.addWidget(self._wrapped_label("研究報告不觸發自動下單；持倉修改仍沿既有確認與記錄流程。"))
         layout.addStretch()
 
+    def _use_saved_source(self) -> None:
+        report = self._loaded_report
+        if report is None or report.stock_code != self._active_code:
+            return
+        selected_id = self.saved_source_combo.currentData()
+        option = next((item for item in report.saved_source_options if item.result_id == selected_id), None)
+        if option is None:
+            self._set_status("請先明確選取保存來源。", "warning")
+            return
+        self.set_context(ResearchStockContextDTO(stock_code=report.stock_code, stock_name=report.stock_name,
+            result_id=option.result_id, source_id=option.result_id, decision_date=option.decision_date,
+            data_date=option.data_date, source_kind="recommendation", source_label=option.label,
+            source_workspace="recommendation"))
+
     def _render_advice_content(
         self,
         layout: QVBoxLayout,
@@ -1477,7 +1532,7 @@ class StockResearchReportView(QWidget):
         position: StockPositionSnapshotDTO | None = None,
     ) -> None:
         presentation = self.presentation_service.from_report_parts(advice, position)
-        if presentation is not None:
+        if presentation is not None and advice.recommendation is not None:
             layout.addWidget(
                 self._wrapped_label(
                     "共用呈現契約（唯讀）\n" + format_decision_presentation(presentation)
@@ -2083,11 +2138,83 @@ def _report_sufficiency_text(report: StockResearchReportDTO) -> str:
 def _report_conclusion(report: StockResearchReportDTO) -> str:
     """挑出既有 evidence 的一句話作結，不生成新投資結論。"""
 
+    historical_alert = _historical_portfolio_alert_summary(report.events)
+    if historical_alert:
+        return historical_alert
+
     if report.attention_reasons:
-        return f"值得看：{report.attention_reasons[0]}"
+        reason = report.attention_reasons[0]
+        if not report.price_points or report.price_points[-1].close_price is None:
+            return f"資料不足，需核對：{reason}"
+        return f"需核對資料：{reason}"
     if report.rule_reasons:
         return f"值得深入核對：{report.rule_reasons[0]}"
     return "目前沒有足夠資料支持「值得看」結論。"
+
+
+def _historical_portfolio_alert_summary(events: Sequence[StockEvidenceEventDTO]) -> str:
+    alerts = tuple(
+        event
+        for event in events
+        if event.event_type.casefold().startswith("portfolio_alert")
+        or event.source_type.casefold()
+        in {
+            "daily_decision_desk_portfolio_alert",
+            "daily_decision_desk.portfolio_alert",
+            "portfolio_alert",
+            "portfolio-alert",
+        }
+    )
+    if not alerts:
+        return ""
+    presentation = build_stock_research_event_table(alerts)
+    if not presentation.rows:
+        return ""
+    date_text, event_label, _quality, reason = presentation.rows[0]
+    detail = presentation.details[0] if presentation.details else ""
+    source_text = next(
+        (line for line in detail.splitlines() if line.startswith("來源：")),
+        "來源：未提供",
+    )
+    reason_text = reason or "原因未提供"
+    return (
+        f"歷史持倉警示：{date_text}｜{event_label}｜{source_text}｜{reason_text}；"
+        "這是事件當時的保存記錄，不代表目前持倉狀態。"
+    )
+
+
+def _read_report_with_context_cutoff(
+    service: object,
+    stock_code: str,
+    *,
+    context: ResearchStockContextDTO | None,
+    cancel_callback: object = None,
+) -> StockResearchReportDTO:
+    """將下鑽 context 的決策日傳入報告查詢；壞日期不回退到今天。"""
+
+    read_report = getattr(service, "read_report")
+    kwargs: dict[str, object] = {
+        "context": context,
+        "cancel_callback": cancel_callback,
+    }
+    raw_date = context.decision_date.strip() if context is not None else ""
+    if raw_date:
+        try:
+            cutoff = date.fromisoformat(raw_date)
+        except ValueError as exc:
+            raise ValueError("研究 context 決策日必須是 YYYY-MM-DD") from exc
+        if cutoff.isoformat() != raw_date:
+            raise ValueError("研究 context 決策日必須是 YYYY-MM-DD")
+        parameters = inspect.signature(read_report).parameters.values()
+        accepts_cutoff = any(
+            parameter.name == "as_of_date"
+            or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+        if not accepts_cutoff:
+            raise TypeError("研究報告 service 不接受 context 決策日 cutoff")
+        kwargs["as_of_date"] = raw_date
+    return read_report(stock_code, **kwargs)
 
 
 def _report_next_step(report: StockResearchReportDTO) -> str:

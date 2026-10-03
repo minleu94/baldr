@@ -78,6 +78,62 @@ from ui_qt.views.recommendation.presenter import (
     ranking_value_label,
     recommendation_item_to_view_row,
 )
+
+
+def recommendation_empty_state_message(execution: RecommendationExecution) -> str:
+    """依本次封存的篩選列區分資料不足與門檻篩空。"""
+
+    rows: tuple[Mapping[str, Any], ...] = ()
+    for event in execution.events:
+        if event.event_type != "legacy_negative_evidence_capture":
+            continue
+        details = event.details
+        raw_rows = details.get("screening_matrix")
+        if isinstance(raw_rows, (list, tuple)):
+            rows = tuple(row for row in raw_rows if isinstance(row, Mapping))
+        break
+    if not rows:
+        return (
+            "篩選前沒有可評估的候選資料；請先確認來源日期與候選清單。"
+            "目前沒有可據以放寬條件的分數證據。"
+        )
+    has_score = any(
+        type(row.get("score_bp")) is int
+        or (type(row.get("total_score")) is str and bool(row["total_score"].strip()))
+        for row in rows
+    )
+    if has_score:
+        return (
+            "有候選已完成評分，但沒有通過目前篩選／排名條件的列；"
+            "可檢查門檻設定後重試。"
+        )
+    return (
+        "目前沒有可計分的候選，來源欄位或啟用指標可能缺件；"
+        "請先檢查資料日期與指標觀測值，不要用放寬篩選取代資料檢查。"
+    )
+
+
+_RECOMMENDATION_TABLE_DECIMAL_PLACES = {
+    "收盤價": 2,
+    "漲幅%": 2,
+    "總分": 2,
+    "指標分": 2,
+    "圖形分": 2,
+    "成交量分": 2,
+}
+
+
+def _recommendation_results_table_model(dataframe: pd.DataFrame) -> PandasTableModel:
+    """為推薦結果表啟用兩位顯示格式，保留 DataFrame 原始數值。"""
+
+    if dataframe.empty and len(dataframe.columns) == 0:
+        return PandasTableModel(dataframe)
+    return PandasTableModel(
+        dataframe,
+        decimal_places_by_column=_RECOMMENDATION_TABLE_DECIMAL_PLACES,
+    )
+
+
 from ui_qt.views.recommendation.execution_coordinator import (
     RecommendationExecutionRequest,
 )
@@ -2695,6 +2751,14 @@ class RecommendationView(QWidget):
         layout.addWidget(self.profile_group)
 
         # 建議內容屬於可追溯研究資訊；預設只留入口，避免把主要執行動作推到首屏之外。
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("研究股票範圍："))
+        self.research_scope_input = QLineEdit()
+        self.research_scope_input.setObjectName("recommendationResearchScope")
+        self.research_scope_input.setPlaceholderText("留空沿用全部；指定代碼以逗號分隔，例如1477")
+        self.research_scope_input.setAccessibleName("指定研究股票範圍")
+        scope_row.addWidget(self.research_scope_input)
+        layout.addLayout(scope_row)
         self.execute_btn = QPushButton("執行推薦分析")
         self.execute_btn.setMinimumHeight(40)
         self.execute_btn.setProperty("variant", "primary")
@@ -4621,7 +4685,14 @@ class RecommendationView(QWidget):
             profile_meta = self.profiles.get(active_profile, {})
             config["profile_id"] = active_profile
             config["profile_version"] = profile_meta.get("version", "1.0.0")
-        request = RecommendationExecutionRequest(config)
+        scope_input = getattr(self, "research_scope_input", None)
+        scope_text = scope_input.text().strip() if scope_input is not None else ""
+        universe = tuple(dict.fromkeys(re.split(r"[\s,，]+", scope_text))) if scope_text else None
+        try:
+            request = RecommendationExecutionRequest(config, universe=universe)
+        except ValueError as exc:
+            QMessageBox.warning(self, "研究範圍錯誤", str(exc))
+            return
 
         # 檢查配置有效性
         validation_error = request.validation_error()
@@ -4985,6 +5056,7 @@ class RecommendationView(QWidget):
 
         # 顯示結果
         if not recommendations:
+            empty_message = recommendation_empty_state_message(execution)
             self.recommendations_model = PandasTableModel(pd.DataFrame())
             self.results_table.setModel(self.recommendations_model)
             self._reserve_recommendation_table_rows()
@@ -4992,8 +5064,7 @@ class RecommendationView(QWidget):
                 self.stock_research_btn.setVisible(False)
                 self.stock_research_btn.setEnabled(False)
             self.result_status_label.setText(
-                "結果未就緒：目前沒有符合條件的股票。可放寬篩選條件或確認資料日期後再試；"
-                "沒有結果不等於策略有效或失效。"
+                f"結果未就緒：{empty_message}沒有結果不等於策略有效或失效。"
             )
             self.research_actions_toggle.setVisible(False)
             self.research_actions_toggle.setChecked(False)
@@ -5006,7 +5077,7 @@ class RecommendationView(QWidget):
             QMessageBox.information(
                 self,
                 "分析完成",
-                "目前沒有符合條件的股票。請確認資料日期或調整篩選條件後再試。",
+                empty_message,
             )
             return
 
@@ -5022,7 +5093,7 @@ class RecommendationView(QWidget):
         df = pd.DataFrame(data)
 
         # 設置模型
-        self.recommendations_model = PandasTableModel(df)
+        self.recommendations_model = _recommendation_results_table_model(df)
         self.results_table.setModel(self.recommendations_model)
         self._reserve_recommendation_table_rows()
 
@@ -6044,7 +6115,7 @@ class RecommendationView(QWidget):
         self._update_company_source_snapshot_display(execution)
         self._update_research_context_banner()
         rows = self._current_table_rows()
-        self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
+        self.recommendations_model = _recommendation_results_table_model(pd.DataFrame(rows))
         self.results_table.setModel(self.recommendations_model)
         self._reserve_recommendation_table_rows()
         self._connect_result_table_interactions()
@@ -6867,7 +6938,7 @@ class RecommendationView(QWidget):
             self._pending_save_metadata = None
             selected_code = self._selected_stock_code()
             rows = self._current_table_rows()
-            self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
+            self.recommendations_model = _recommendation_results_table_model(pd.DataFrame(rows))
             self.results_table.setModel(self.recommendations_model)
             self._reserve_recommendation_table_rows()
             self._connect_result_table_interactions()

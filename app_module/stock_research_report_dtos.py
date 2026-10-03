@@ -223,6 +223,14 @@ class StockMLSnapshotDTO:
 
 
 @dataclass(frozen=True)
+class StockSavedSourceOptionDTO:
+    result_id: str
+    label: str
+    decision_date: str = ""
+    data_date: str = ""
+
+
+@dataclass(frozen=True)
 class StockAdviceSnapshotDTO:
     """沿用既有 Advice DTO；本 DTO 不新增評分或交易動作。"""
 
@@ -264,6 +272,7 @@ class StockResearchReportDTO:
     advice: StockAdviceSnapshotDTO = StockAdviceSnapshotDTO()
     ml: StockMLSnapshotDTO = StockMLSnapshotDTO()
     rule_reasons: tuple[str, ...] = ()
+    saved_source_options: tuple[StockSavedSourceOptionDTO, ...] = ()
     research_context: Mapping[str, str] = field(default_factory=dict)
     read_only: bool = True
     schema_version: str = STOCK_RESEARCH_REPORT_SCHEMA_VERSION

@@ -154,6 +154,7 @@ class ForwardOutcomeSummary:
     missing_outcome_price: int = 0
     missing_benchmark: int = 0
     missing_industry_benchmark: int = 0
+    blocked_time_contract_count: int = 0
     warnings_count: int = 0
     dry_run: bool = True
 
@@ -241,6 +242,7 @@ class ForwardPerformanceService:
             "missing_outcome_price": 0,
             "missing_benchmark": 0,
             "missing_industry_benchmark": 0,
+            "blocked_time_contract_count": 0,
             "warnings_count": 0,
         }
         pending_writes: list[EvidenceOutcome] = []
@@ -259,6 +261,8 @@ class ForwardPerformanceService:
                     **_event_identity_metadata(event),
                 })
                 counters["warnings_count"] += len(outcome.warnings)
+                if outcome.metadata.get("time_contract_state") == "blocked_time_contract":
+                    counters["blocked_time_contract_count"] += 1
                 if outcome.outcome_status == EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA:
                     counters["pending_insufficient_future_data"] += 1
                 if outcome.outcome_status == EvidenceOutcomeStatus.MISSING_PRICE:
@@ -357,6 +361,25 @@ class ForwardPerformanceService:
                     else "blocked_mismatch"
                 )
             event_price_metadata["maturity_calendar_comparison"] = comparison
+            if comparison == "blocked_mismatch":
+                event_price_metadata["time_contract_state"] = "blocked_time_contract"
+                event_price_metadata["readiness_blocker"] = (
+                    "maturity_calendar_comparison_blocked"
+                )
+                return EvidenceOutcome(
+                    outcome_id=f"out_{uuid4().hex}",
+                    event_id=event.event_id,
+                    window_days=window_days,
+                    event_price_date=event_price_date,
+                    event_close=str(event_close),
+                    outcome_status=EvidenceOutcomeStatus.PENDING,
+                    data_quality=EvidenceDataQuality.DEGRADED,
+                    warnings=(
+                        "blocked_time_contract_requires_review",
+                        "maturity_calendar_comparison_blocked",
+                    ),
+                    metadata=event_price_metadata,
+                )
         outcome_price = self._find_outcome_price(
             str(event.symbol),
             event_price_date,

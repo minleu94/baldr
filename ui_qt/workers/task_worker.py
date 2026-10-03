@@ -50,6 +50,14 @@ def _invoke_task_with_optional_cancel(
     return task_function(*args, **call_kwargs)
 
 
+def _has_explicit_cancel_outcome(result: Any) -> bool:
+    """確認任務結果是否明確交代取消與已完成工作量。"""
+    if isinstance(result, dict):
+        return isinstance(result.get("cancelled"), bool)
+    value = getattr(result, "cancelled", None)
+    return isinstance(value, bool)
+
+
 class _ManagedTaskThread(QThread):
     """Keep QThread lifetime separate from the task-result signal lifecycle.
 
@@ -219,7 +227,7 @@ class TaskWorker(_ManagedTaskThread):
             )
 
             # ✅ 再次檢查是否已取消（任務執行期間可能被取消）
-            if self.is_cancel_requested():
+            if self.is_cancel_requested() and not _has_explicit_cancel_outcome(result):
                 self.cancelled.emit()
             else:
                 self.finished.emit(result)
@@ -227,12 +235,10 @@ class TaskWorker(_ManagedTaskThread):
         except BacktestCancelledError:
             self.cancelled.emit()
         except Exception as e:
-            # ✅ 確保錯誤信號被發送，除非線程被取消
-            if not self.is_cancel_requested():
-                error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                self.error.emit(error_msg)
-            else:
-                self.cancelled.emit()
+            # 取消旗標不能掩蓋真實例外；只有任務明確回報安全取消或
+            # BacktestCancelledError 才送出 cancelled signal。
+            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+            self.error.emit(error_msg)
 
     def cancel(self, cooperative: bool = True, wait: bool = False):
         """取消任務
@@ -319,7 +325,7 @@ class ProgressTaskWorker(_ManagedTaskThread):
                 self.is_cancel_requested,
             )
 
-            if self.is_cancel_requested():
+            if self.is_cancel_requested() and not _has_explicit_cancel_outcome(result):
                 self.cancelled.emit()
             else:
                 self.finished.emit(result)
@@ -327,11 +333,8 @@ class ProgressTaskWorker(_ManagedTaskThread):
         except BacktestCancelledError:
             self.cancelled.emit()
         except Exception as e:
-            if not self.is_cancel_requested():
-                error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                self.error.emit(error_msg)
-            else:
-                self.cancelled.emit()
+            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+            self.error.emit(error_msg)
 
     def cancel(self, cooperative: bool = True, wait: bool = False):
         """取消任務

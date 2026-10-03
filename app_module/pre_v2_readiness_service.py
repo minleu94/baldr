@@ -130,13 +130,17 @@ class PreV2ReadinessService:
         min_dry_run_days: int = DEFAULT_MIN_DRY_RUN_DAYS,
         agent_report_limit: int = 5,
         cancel_callback: Callable[[], bool] | None = None,
+        recommendation_queries: Any | None = None,
     ) -> PreV2ReadinessReport:
         with cooperative_read_cancellation(cancel_callback):
             items: list[PreV2ReadinessItem] = []
             builders = (
                 lambda: self._weekly_history_item(min_weekly_records),
                 lambda: self._multi_day_dry_run_item(multi_day_record_path, min_dry_run_days),
-                lambda: self._source_gap_item(decision_date),
+                lambda: self._source_gap_item(
+                    decision_date,
+                    recommendation_queries=recommendation_queries,
+                ),
                 lambda: self._read_only_agent_report_item(agent_report_limit),
             )
             for build_item in builders:
@@ -374,12 +378,21 @@ class PreV2ReadinessService:
             evidence={"dates": [row["Date"] for row in rows]},
         )
 
-    def _source_gap_item(self, decision_date: str | None) -> PreV2ReadinessItem:
+    def _source_gap_item(
+        self,
+        decision_date: str | None,
+        *,
+        recommendation_queries: Any | None = None,
+    ) -> PreV2ReadinessItem:
         payload = _inspect_source_gaps_read_only(
             self.config,
             evidence_db_path=self.evidence_db_path,
             decision_date=decision_date,
-            queries=self.recommendation_queries,
+            queries=(
+                recommendation_queries
+                if recommendation_queries is not None
+                else self.recommendation_queries
+            ),
         )
         blocking_gaps = tuple(payload["blocking_gaps"])
         warnings = tuple(payload["warnings"])

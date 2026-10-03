@@ -31,6 +31,8 @@ from app_module.workbench_replay_summary import load_historical_replay_summary
 from app_module.recommendation_learning_evidence_projection_service import (
     RecommendationLearningEvidenceProjectionService,
 )
+from app_module.recommendation.queries import RecommendationExecutionReadSnapshot
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 from app_module.paper_portfolio_time import taiwan_market_today
 from app_module.position_health_transition_read_service import (
@@ -41,6 +43,25 @@ from app_module.sqlite_read_only import (
     cooperative_read_cancellation,
     connect_read_only_sqlite,
 )
+
+
+class _WorkbenchRecommendationReadSession:
+    """限定單次 inspect 共用讀取；新 inspect 會建立新的 session。"""
+
+    def __init__(self, queries: Any) -> None:
+        self._queries = queries
+        self._snapshot: RecommendationExecutionReadSnapshot | None = None
+
+    def list(self) -> tuple[Any, ...]:
+        check_read_cancelled()
+        if self._snapshot is None:
+            self._snapshot = RecommendationExecutionReadSnapshot.capture(self._queries)
+        check_read_cancelled()
+        return self._snapshot.require_read_models()
+
+    def __getattr__(self, name: str) -> Any:
+        # legacy collision 的 get/get_legacy_original_payload 仍逐次走原始精確讀取。
+        return getattr(self._queries, name)
 
 
 class WorkbenchSourceService:
@@ -55,8 +76,14 @@ class WorkbenchSourceService:
         learning_evidence_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
         position_health_read_service: PositionHealthTransitionReadService | None = None,
         continuity_review_projection_service: ContinuityReviewProjectionService | None = None,
+        recommendation_queries: Any | None = None,
     ) -> None:
         self.config = config
+        self.recommendation_queries = (
+            recommendation_queries
+            if recommendation_queries is not None
+            else build_recommendation_execution_queries(config)
+        )
         self.evidence_db_path = Path(evidence_db_path) if evidence_db_path is not None else Path(config.db_file)
         self.research_db_path = (
             Path(research_db_path) if research_db_path is not None else Path(config.research_run_db_file)
@@ -66,9 +93,13 @@ class WorkbenchSourceService:
             evidence_db_path=self.evidence_db_path,
             research_db_path=self.research_db_path,
             approved_weekly_history_projection_path=os.environ.get("WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH"),
+            recommendation_queries=self.recommendation_queries,
         )
         self.composer = WorkbenchReadOnlyComposer()
-        self.scheduled_status_service = ScheduledEvidenceStatusService(config)
+        self.scheduled_status_service = ScheduledEvidenceStatusService(
+            config,
+            recommendation_queries=self.recommendation_queries,
+        )
         self.learning_evidence_projection_service = (
             learning_evidence_projection_service
             or RecommendationLearningEvidenceProjectionService(config)
@@ -129,6 +160,9 @@ class WorkbenchSourceService:
         recommendation_learning_status_json: str | Path | None = None,
         continuity_as_of: datetime | str | None = None,
     ) -> WorkbenchDashboardDTO:
+        recommendation_read_session = _WorkbenchRecommendationReadSession(
+            self.recommendation_queries
+        )
         decision_snapshot, source_diagnostics = self._load_decision_snapshot(decision_date)
         check_read_cancelled()
         readiness_report = self.readiness_service.inspect(
@@ -137,6 +171,7 @@ class WorkbenchSourceService:
             min_weekly_records=min_weekly_records,
             min_dry_run_days=min_dry_run_days,
             agent_report_limit=agent_report_limit,
+            recommendation_queries=recommendation_read_session,
         )
         check_read_cancelled()
         agent_report_sample = self.readiness_service.build_agent_report_sample(
@@ -147,7 +182,9 @@ class WorkbenchSourceService:
             load_historical_replay_summary(replay_summary_json) if replay_summary_json is not None else None
         )
         check_read_cancelled()
-        scheduled_status = self.scheduled_status_service.load_latest()
+        scheduled_status = self.scheduled_status_service.load_latest(
+            recommendation_queries=recommendation_read_session,
+        )
         check_read_cancelled()
         recommendation_learning_status, learning_diagnostics = self._load_recommendation_learning_status(
             recommendation_learning_status_json

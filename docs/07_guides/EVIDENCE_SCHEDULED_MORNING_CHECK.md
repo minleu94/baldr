@@ -25,6 +25,13 @@ schtasks /Query /TN baldr-evidence-pipeline-dry-run-daily /V /FO LIST
 - `baldr-evidence-working-copy-smoke-manual`：manual-only；目前不建立每日自動 task。
 - Codex app `baldr scheduled evidence morning report`：每天約 05:30，只讀查詢上述 task、status、report 與必要 log，產生繁體中文摘要；它不是 Windows Task Scheduler task，也不重新執行 pipeline。
 
+### Codex app 的兩項唯讀 heartbeat
+
+- `baldr-scheduled-evidence-morning-report`：每天 `America/Los_Angeles` 本地 05:30，讀當次 Quick／freshness／evidence 與 Task 終態；沒有有意義變化時保持安靜。
+- `paper`（「晚間學習與 Paper 排程驗收」）：每天 `America/Los_Angeles` 本地 06:20，唯讀核對 Paper／ML run identity、同次 immutable receipt/hash 與有限錯誤摘要；不重新執行 Task、更新來源、訓練模型或寫入 Paper。
+
+兩項 heartbeat 已保留原名稱／thread／ACTIVE／trigger，prompt 原地更新並精確 readback；排程依美西本地時區處理 DST，不要轉成手動固定 UTC 時刻。它們只在同一 run 的 status、receipt 與 identity 能對上時報告結果，不拿舊 `latest_status` 冒充新 run，也不在摘要工作中重新計算或修改 receipt。通知採 change-only 的有意義變化判讀；兩個 heartbeat 不是 Windows Task Scheduler tasks。
+
 若前兩個 task 沒有出現，先執行：
 
 ```cmd

@@ -113,6 +113,49 @@ from ui_qt.widgets.user_declared_holding_research_widget import (
 logger = logging.getLogger(__name__)
 
 
+def _format_recorded_trade_costs(summary: Any) -> str:
+    """呈現 JSONL 明確保存的費稅；缺值不補成零或淨損益。"""
+
+    if summary is None:
+        return "已記錄交易費稅：來源未提供彙總"
+    trade_count = int(getattr(summary, "trade_count", 0) or 0)
+    if trade_count == 0:
+        return "已記錄交易費稅：目前沒有已記錄交易"
+
+    def format_group(label: str, value_key: str, count_key: str, missing_key: str) -> str:
+        amounts = getattr(summary, value_key, {}) or {}
+        rendered: list[str] = []
+        if isinstance(amounts, Mapping):
+            for currency, amount in sorted(amounts.items(), key=lambda item: str(item[0])):
+                if not isinstance(amount, Decimal) or not amount.is_finite():
+                    continue
+                rendered.append(f"{currency} {format(amount, ',f')}")
+        amount_text = "、".join(rendered) if rendered else "未提供有效金額"
+        recorded = int(getattr(summary, count_key, 0) or 0)
+        missing = int(getattr(summary, missing_key, 0) or 0)
+        coverage = f"已記錄 {recorded}/{trade_count} 筆"
+        if missing:
+            coverage += f"；{missing} 筆缺值或格式無效"
+        return f"{label} {amount_text}（{coverage}）"
+
+    return "已記錄費稅：" + "；".join(
+        (
+            format_group(
+                "手續費",
+                "fees_by_currency",
+                "fees_recorded_count",
+                "fees_missing_count",
+            ),
+            format_group(
+                "交易稅",
+                "taxes_by_currency",
+                "taxes_recorded_count",
+                "taxes_missing_count",
+            ),
+        )
+    )
+
+
 def _first_error_line(message: object) -> str:
     """Normalize empty worker exceptions for a stable UI diagnostic."""
 
@@ -1084,11 +1127,11 @@ class PortfolioView(QWidget):
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1a365d, stop:1 #2a4365)"
         )
         self.card_invested = GradientCard(
-            "總投入資金", "TWD 0",
+            "投入金額（毛額，未扣費稅）", "TWD 0",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2d3748, stop:1 #4a5568)"
         )
         self.card_pnl = GradientCard(
-            "已實現損益", "TWD 0",
+            "已實現損益（毛額，未扣費稅）", "TWD 0",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1a202c, stop:1 #2d3748)"
         )
         self.card_positions = GradientCard(
@@ -1921,7 +1964,9 @@ class PortfolioView(QWidget):
                 "目前持有：" + known_positions + "。",
                 self._portfolio_health_focus_reason(),
             ]
-            conclusion = f"目前持有 {count_text} 檔；已知投入金額 {invested_text}。"
+            conclusion = (
+                f"目前持有 {count_text} 檔；投入金額（毛額，未扣費稅）{invested_text}。"
+            )
             next_step = "先選取一檔持倉核對目前價格與退出條件；歷史、日誌與模擬持倉請開啟進階。"
             sufficiency = "持倉資料可讀；健康與退出條件依獨立資料來源顯示。"
         else:
@@ -1934,11 +1979,17 @@ class PortfolioView(QWidget):
             sufficiency = "持倉資料不足；摘要只呈現已知狀態。"
 
         updated_at = getattr(portfolio, "updated_at", "") or "未提供"
+        recorded_costs = _format_recorded_trade_costs(
+            getattr(portfolio, "recorded_trade_costs", None)
+        )
         self.portfolio_focus_summary.set_summary(
             conclusion=conclusion,
             reasons=reasons,
             next_step=next_step,
-            evidence=f"持倉資料最後更新：{updated_at}；持倉數：{count_text}。",
+            evidence=(
+                f"持倉資料最後更新：{updated_at}；持倉數：{count_text}。"
+                f"{recorded_costs}。"
+            ),
             risk="目前價格或健康資料缺漏時，這頁不替你推測結果；人工持倉與模擬持倉分開核對。",
             sufficiency=sufficiency,
             reasons_title="重點",
@@ -3072,7 +3123,8 @@ class PortfolioView(QWidget):
             if not positions:
                 df = pd.DataFrame(columns=[
                     "證券代號", "證券名稱", "持有股數", "平均成本", "目前價格",
-                    "投入金額", "未實現損益", "未實現損益%", "已實現損益",
+                    "投入金額（毛額，未扣費稅）", "未實現損益（毛額，未扣費稅）",
+                    "未實現損益%（毛額）", "已實現損益（毛額，未扣費稅）",
                     "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因",
                     "動作適合度", "Advice 動作（研究）", "Position Health", "Health 來源",
                     "權重差距(bp)", "失效條件", "_position_id"
@@ -3114,10 +3166,12 @@ class PortfolioView(QWidget):
                         "持有股數": p.quantity,
                         "平均成本": p.average_cost,
                         "目前價格": p.current_price if p.current_price is not None else "-",
-                        "投入金額": p.invested_amount,
-                        "未實現損益": p.unrealized_pnl if p.unrealized_pnl is not None else "-",
-                        "未實現損益%": pnl_pct_str,
-                        "已實現損益": p.realized_pnl,
+                        "投入金額（毛額，未扣費稅）": p.invested_amount,
+                        "未實現損益（毛額，未扣費稅）": (
+                            p.unrealized_pnl if p.unrealized_pnl is not None else "-"
+                        ),
+                        "未實現損益%（毛額）": pnl_pct_str,
+                        "已實現損益（毛額，未扣費稅）": p.realized_pnl,
                         "來源脈絡": monitor_result.source_label,
                         "進場分數": monitor_result.entry_total_score,
                         "目前分數": monitor_result.current_total_score,

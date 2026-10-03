@@ -138,6 +138,39 @@ class RecommendationInputSession:
             cutoff=cutoff,
         )
 
+    def load_market_frame_with_minimum_bars(
+        self, *, cutoff: str | None, minimum_bars: int
+    ) -> pd.DataFrame:
+        return load_recommendation_market_frame(
+            config=self.config,
+            market_data_provider=self.market_data_provider,
+            historical_market_provider=self.historical_market_provider,
+            cutoff=cutoff,
+            minimum_bars=minimum_bars,
+        )
+
+    def prepare_market_with_minimum_bars(
+        self,
+        *,
+        cutoff: str | None,
+        minimum_bars: int,
+        universe: Sequence[str] | None = None,
+        decision_date: str | None = None,
+        source_frame: pd.DataFrame | None = None,
+    ) -> PreparedRecommendationMarket:
+        if source_frame is None:
+            source_frame = self.load_market_frame_with_minimum_bars(
+                cutoff=cutoff,
+                minimum_bars=minimum_bars,
+            )
+        return prepare_recommendation_market(
+            source_frame=source_frame,
+            cutoff=cutoff,
+            decision_date=decision_date,
+            market_data_provider=self.market_data_provider,
+            universe=universe,
+        )
+
     def read_pit_membership(
         self, cutoff: str, runtime_config: Mapping[str, Any]
     ) -> PITMembershipReadResult | None:
@@ -345,14 +378,115 @@ def load_recommendation_market_frame(
     market_data_provider: Callable[[], pd.DataFrame],
     historical_market_provider: _HistoricalMarketProvider,
     cutoff: str | None,
+    minimum_bars: int | None = None,
 ) -> pd.DataFrame:
     """可見地保留 default provider 的歷史／即時來源分流。"""
 
-    if isinstance(market_data_provider, DefaultRecommendationMarketDataProvider) and (
-        cutoff or getattr(config, "use_sqlite", False)
-    ):
-        return historical_market_provider(cutoff)
+    if isinstance(market_data_provider, DefaultRecommendationMarketDataProvider):
+        should_use_history = cutoff or getattr(config, "use_sqlite", False)
+        is_builtin_provider = type(market_data_provider) is DefaultRecommendationMarketDataProvider
+        if minimum_bars is not None and is_builtin_provider:
+            load_with_minimum_bars = getattr(
+                historical_market_provider, "load_with_minimum_bars", None
+            )
+            if callable(load_with_minimum_bars):
+                return load_with_minimum_bars(cutoff, minimum_bars)
+        if should_use_history:
+            return historical_market_provider(cutoff)
     return market_data_provider()
+
+
+def minimum_recommendation_history_rows(config: Mapping[str, Any]) -> int:
+    """依啟用指標的實際週期決定所需交易 bar 數，並設 60 bar 下限。"""
+
+    from analysis_module.technical_analysis.indicator_parameter_registry import (
+        IndicatorParameterRegistry,
+    )
+
+    schema_version = IndicatorParameterRegistry.get_config_schema_version(
+        dict(config)
+    )
+    technical = config.get("technical", {})
+    if not isinstance(technical, Mapping):
+        return 60
+    required_rows = [60]
+
+    def section_is_enabled(section_name: str) -> Mapping[str, Any] | None:
+        section = technical.get(section_name)
+        if not isinstance(section, Mapping):
+            return None
+        enabled = section.get("enabled", schema_version >= 1)
+        if enabled is not True:
+            return None
+        return section
+
+    def enabled_params(
+        section: Mapping[str, Any], indicator_name: str
+    ) -> dict[str, Any] | None:
+        raw = section.get(indicator_name)
+        if raw is None:
+            enabled = schema_version < 1
+            params: dict[str, Any] = {}
+        elif isinstance(raw, Mapping):
+            enabled = raw.get("enabled", True) is True
+            params = {key: value for key, value in raw.items() if key != "enabled"}
+        elif raw is True:
+            enabled = True
+            params = {}
+        else:
+            enabled = False
+            params = {}
+        if not enabled:
+            return None
+        return IndicatorParameterRegistry.validate_and_sanitize(
+            indicator_name,
+            params,
+            dict(config),
+        )
+
+    momentum = section_is_enabled("momentum")
+    if momentum is not None:
+        rsi = enabled_params(momentum, "rsi")
+        if rsi is not None:
+            required_rows.append(int(rsi["timeperiod"]) + 1)
+        macd = enabled_params(momentum, "macd")
+        if macd is not None:
+            required_rows.append(
+                int(macd["slowperiod"]) + int(macd["signalperiod"])
+            )
+        kd = enabled_params(momentum, "kd")
+        if kd is not None:
+            required_rows.append(
+                int(kd["fastk_period"])
+                + int(kd["slowk_period"])
+                + int(kd["slowd_period"])
+            )
+
+    trend = section_is_enabled("trend")
+    if trend is not None:
+        adx = enabled_params(trend, "adx")
+        if adx is not None:
+            required_rows.append(2 * int(adx["timeperiod"]))
+        tsf = enabled_params(trend, "tsf")
+        if tsf is not None:
+            required_rows.append(int(tsf["timeperiod"]))
+        ma = enabled_params(trend, "ma")
+        if ma is not None:
+            required_rows.append(max(int(value) for value in ma["windows"]))
+
+    volatility = section_is_enabled("volatility")
+    if volatility is not None:
+        bollinger = enabled_params(volatility, "bollinger")
+        if bollinger is not None:
+            required_rows.append(int(bollinger["timeperiod"]))
+        sar = enabled_params(volatility, "sar")
+        if sar is not None:
+            required_rows.append(2)
+        atr = enabled_params(volatility, "atr")
+        if atr is not None:
+            required_rows.append(int(atr["timeperiod"]) + 1)
+
+    return max(required_rows)
 
 
 def prepare_recommendation_market(
@@ -451,6 +585,7 @@ __all__ = (
     "RecommendationInputSession",
     "build_default_recommendation_input_preparer",
     "load_recommendation_market_frame",
+    "minimum_recommendation_history_rows",
     "prepare_recommendation_market",
     "resolve_recommendation_cutoff",
     "validate_recommendation_cutoff_request",

@@ -65,6 +65,7 @@ class ScheduledEvidenceStatusView(QWidget):
         cards = QGridLayout()
         self.freshness_label = self._make_card("Data freshness", "尚未載入")
         self.recommendation_label = self._make_card("Recommendation snapshot", "尚未載入")
+        self.recommendation_label.setMinimumHeight(112)
         self.evidence_label = self._make_card("Evidence dry-run", "尚未載入")
         self.forward_outcome_label = self._make_card("Forward outcomes", "尚未載入")
         self.safety_label = self._make_card("安全邊界", "尚未載入")
@@ -169,6 +170,7 @@ class ScheduledEvidenceStatusView(QWidget):
             "Recommendation snapshot\n"
             f"{status.recommendation_status} / {status.recommendation_source} / "
             f"{recommendation_id} / {recommendation_count} 筆\n"
+            f"{_recommendation_cohort_classification_text(status)}\n"
             f"分類：{format_machine_status_classification(recommendation_class)}{stale_suffix}"
         )
         self.safety_label.setText(
@@ -274,6 +276,25 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
             f"{recommendation_id} / {recommendation_count} 筆"
         ),
         f"- recommendation note: {recommendation_note}",
+        (
+            "- 推薦工程執行結果："
+            f"{status.recommendation_status} / source={status.recommendation_source} / "
+            f"result_id={recommendation_id} / decision_date={status.decision_date or '未知'}"
+        ),
+        (
+            "- snapshot cohort："
+            f"integrity_basis={status.recommendation_cohort_integrity_basis or '未確認'} / "
+            f"payload_hash={status.recommendation_canonical_payload_hash or '未確認'} / "
+            f"cohort_hash={status.recommendation_cohort_hash or '未確認'} / "
+            f"requested={_count_text(status.recommendation_cohort_requested_count)}"
+        ),
+        (
+            "- 保存的 cohort quality 原始統計（未改寫）："
+            f"degraded={_count_text(status.recommendation_cohort_quality_degraded_count)} / "
+            f"missing={_count_text(status.recommendation_cohort_quality_missing_count)}"
+        ),
+        f"- {_recommendation_cohort_classification_text(status)}",
+        "- 分類用途：研究用途；本次 snapshot 覆蓋與策略篩選分類不代表勝率或策略績效，也不改原始 cohort quality 或 Advice。",
         f"- evidence dry-run: {status.evidence_status} / 決策日 {status.decision_date or '未知'}",
         (
             "- forward outcomes: "
@@ -370,6 +391,38 @@ def _recommendation_note(status: ScheduledEvidenceStatus) -> str:
     if status.recommendation_status == "missing":
         return "recommendation snapshot missing"
     return "review recommendation status"
+
+
+def _recommendation_cohort_classification_text(status: ScheduledEvidenceStatus) -> str:
+    expected_labels = (
+        "可用候選",
+        "策略排除",
+        "缺資料",
+        "來源品質問題",
+        "其他未判定",
+    )
+    if (
+        status.recommendation_cohort_integrity_basis
+        != "canonical_payload_and_index_verified"
+        or not status.recommendation_canonical_payload_hash
+        or not status.recommendation_cohort_hash
+        or status.recommendation_cohort_requested_count is None
+        or type(status.recommendation_cohort_quality_missing_count) is not int
+        or type(status.recommendation_cohort_quality_degraded_count) is not int
+        or status.recommendation_cohort_quality_missing_count < 0
+        or status.recommendation_cohort_quality_degraded_count < 0
+    ):
+        return "snapshot cohort 派生分類：未確認（缺少匹配且已驗證的 canonical cohort）"
+    classifications = status.recommendation_cohort_classifications
+    if (
+        tuple(label for label, _ in classifications) != expected_labels
+        or any(type(count) is not int or count < 0 for _, count in classifications)
+        or sum(count for _, count in classifications)
+        != status.recommendation_cohort_requested_count
+    ):
+        return "snapshot cohort 派生分類：未確認（分類計數不完整）"
+    counts_text = " / ".join(f"{label} {count}" for label, count in classifications)
+    return f"snapshot cohort 派生分類（研究用途）：{counts_text}"
 
 
 def _progress_card_text(status: ScheduledEvidenceStatus) -> str:

@@ -192,6 +192,7 @@ from data_module.industry_mapper_data_provider import (
 from app_module.recommendation.input_preparation import (
     RecommendationInputPreparer,
     RecommendationInputSession,
+    minimum_recommendation_history_rows,
 )
 from app_module.recommendation.evaluation_driver import evaluate_candidate_staged
 from app_module.recommendation.score_projection import project_legacy_recommendation_score
@@ -1363,6 +1364,12 @@ class RecommendationService:
                 self.last_run_context.pop(key, None)
             self.last_run_context["calibration_projection_status"] = "unavailable"
             self.last_run_context["calibration_projection_receipt_status"] = "unavailable"
+            self.last_run_context["calibration_feature_source_error_detail"] = {
+                "error_type": type(exc).__name__, "reason": str(exc)[:1000],
+                "cutoff_date": decision_date,
+                "source_database": str(getattr(self.config, "db_file", "")),
+                "historical_pit_relaxed": False,
+            }
             self.last_run_context.setdefault("warnings", []).append(
                 f"calibration_feature_source_unavailable:{type(exc).__name__}"
             )
@@ -2438,12 +2445,18 @@ class RecommendationService:
         if personal_live_clock:
             # 先完成一次 live source read，再凍結整次執行共用的 aware 決策時鐘；
             # 後續日期篩選、評估、consumer 與 receipt 都沿用這個決策日。
-            load_market_frame = getattr(input_session, "load_market_frame", None)
-            if not callable(load_market_frame):
-                raise TypeError(
-                    "personal natural/live input session 必須提供 load_market_frame(cutoff=None)"
+            if isinstance(input_session, RecommendationInputSession):
+                market_source_frame = input_session.load_market_frame_with_minimum_bars(
+                    cutoff=None,
+                    minimum_bars=minimum_recommendation_history_rows(config),
                 )
-            market_source_frame = load_market_frame(cutoff=None)
+            else:
+                load_market_frame = getattr(input_session, "load_market_frame", None)
+                if not callable(load_market_frame):
+                    raise TypeError(
+                        "personal natural/live input session 必須提供 load_market_frame(cutoff=None)"
+                    )
+                market_source_frame = load_market_frame(cutoff=None)
             personal_decision_clock = datetime.now(timezone.utc)
             personal_decision_date = personal_decision_clock.astimezone(
                 ZoneInfo("Asia/Taipei")
@@ -2458,7 +2471,15 @@ class RecommendationService:
             f"技術指標啟用={config.get('technical', {}).get('momentum', {}).get('enabled', False) or config.get('technical', {}).get('trend', {}).get('enabled', False)}"
         )
 
-        if personal_live_clock:
+        if personal_live_clock and isinstance(input_session, RecommendationInputSession):
+            prepared_market = input_session.prepare_market_with_minimum_bars(
+                cutoff=cutoff,
+                minimum_bars=minimum_recommendation_history_rows(config),
+                universe=universe,
+                decision_date=personal_decision_date,
+                source_frame=market_source_frame,
+            )
+        elif personal_live_clock:
             # 新的決策日／同次來源 frame 只屬明示個人即時模式；舊注入
             # input-session 仍沿用原本的兩參數呼叫契約。
             prepared_market = input_session.prepare_market(
@@ -2466,6 +2487,12 @@ class RecommendationService:
                 universe=universe,
                 decision_date=personal_decision_date,
                 source_frame=market_source_frame,
+            )
+        elif isinstance(input_session, RecommendationInputSession):
+            prepared_market = input_session.prepare_market_with_minimum_bars(
+                cutoff=cutoff,
+                minimum_bars=minimum_recommendation_history_rows(config),
+                universe=universe,
             )
         else:
             prepared_market = input_session.prepare_market(

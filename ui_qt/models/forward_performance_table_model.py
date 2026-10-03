@@ -25,7 +25,7 @@ COLUMNS = (
     ("group_key", "群組"),
     ("window_days", "觀察天數"),
     ("sample_size", "樣本數"),
-    ("pending_count", "等待中"),
+    ("pending_count", "待觀測/受阻"),
     ("missing_count", "缺失"),
     ("mean_forward_return_bp", "平均前瞻報酬"),
     ("median_forward_return_bp", "中位前瞻報酬"),

@@ -1877,6 +1877,17 @@ class UpdateView(QWidget):
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True)
             )
             button_layout.addWidget(self.monthly_revenue_apply_btn)
+            self.monthly_revenue_current_btn = QPushButton("更新現況研究資料")
+            self.monthly_revenue_current_btn.setObjectName("monthly_revenue_current_btn")
+            self.monthly_revenue_current_btn.setMinimumHeight(35)
+            self.monthly_revenue_current_btn.setToolTip(
+                "重驗兩市場raw HTML、來源hash與千元單位，轉成TWD後保留版本供現況研究。"
+                "不回填公告時間，也不修改正式歷史PIT月營收。"
+            )
+            self.monthly_revenue_current_btn.clicked.connect(
+                lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True, current_only=True)
+            )
+            button_layout.addWidget(self.monthly_revenue_current_btn)
             button_layout.addStretch()
             layout.addWidget(op_group)
             self._add_source_detail_status(layout, key, self)
@@ -2137,6 +2148,7 @@ class UpdateView(QWidget):
             "monthly_revenue_fetch_btn",
             "monthly_revenue_dry_run_btn",
             "monthly_revenue_apply_btn",
+            "monthly_revenue_current_btn",
         ):
             button = getattr(self, attr, None)
             if button:
@@ -2172,7 +2184,9 @@ class UpdateView(QWidget):
         start_date = end_date - timedelta(days=30)
         try:
             source_status = self.update_service.check_decision_data_status().get(source, {})
-            latest = self._parse_status_date(source_status.get("latest_date"))
+            # 增量依隔離候選資料的日期計算；正式資料可能領先或落後，
+            # 不得把正式日期當成候選已完成的 checkpoint。
+            latest = self._parse_status_date(source_status.get("candidate_latest_date"))
             if latest is not None:
                 start_date = latest.date() + timedelta(days=1)
         except Exception:
@@ -2272,7 +2286,7 @@ class UpdateView(QWidget):
             "只寫入隔離 Candidate DB"
         )
 
-        def task(progress_callback=None):
+        def task(progress_callback=None, cancel_callback=None):
             return update_method(
                 start_date=start_date,
                 end_date=end_date,
@@ -2280,6 +2294,7 @@ class UpdateView(QWidget):
                 include_latest_tdcc_snapshot=source_token == "tdcc",
                 allow_online_calendar_probe=True,
                 progress_callback=progress_callback,
+                cancel_callback=cancel_callback,
             )
 
         worker = self._start_worker(
@@ -2326,14 +2341,18 @@ class UpdateView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         message = str(result.get("message") or "候選更新完成")
+        cancelled = result.get("cancelled") is True
         self._render_manual_update_summary(
-            "success" if result.get("success") is True else "failed",
+            "cancelled" if cancelled else "success" if result.get("success") is True else "failed",
             result=result,
         )
         self._log(message)
+        # 後續日期取消或失敗時，先前完整交易仍可能已提交；重讀以呈現部分結果。
+        self._check_source_detail(source, force=True)
         if result.get("success") is True:
             QMessageBox.information(self, "候選資料更新完成", message)
-            self._check_source_detail(source, force=True)
+        elif cancelled:
+            QMessageBox.warning(self, "候選更新已安全取消", message)
         else:
             QMessageBox.warning(self, "候選資料更新未完成", message)
 
@@ -2405,7 +2424,7 @@ class UpdateView(QWidget):
             "只寫入候選 snapshot／raw HTML"
         )
 
-        def task(progress_callback=None):
+        def task(progress_callback=None, cancel_callback=None):
             return fetch_method(
                 start_period=target_period,
                 end_period=target_period,
@@ -2413,6 +2432,7 @@ class UpdateView(QWidget):
                 fetch_date=fetch_date,
                 sleep_seconds=0.5,
                 progress_callback=progress_callback,
+                cancel_callback=cancel_callback,
             )
 
         worker = self._start_worker(
@@ -2446,8 +2466,9 @@ class UpdateView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         message = str(result.get("message") or "月營收候選抓取完成")
+        cancelled = result.get("cancelled") is True
         self._render_manual_update_summary(
-            "success" if result.get("success") is True else "failed",
+            "cancelled" if cancelled else "success" if result.get("success") is True else "failed",
             result=result,
         )
         output_csv = str(result.get("output_csv") or "").strip()
@@ -2463,6 +2484,8 @@ class UpdateView(QWidget):
         if result.get("success") is True:
             QMessageBox.information(self, "月營收候選抓取完成", message)
             self._check_source_detail("monthly_revenue", force=True)
+        elif cancelled:
+            QMessageBox.warning(self, "月營收候選已安全取消", message)
         else:
             QMessageBox.warning(self, "月營收候選抓取未完成", message)
 
@@ -2475,14 +2498,17 @@ class UpdateView(QWidget):
         self._log(f"月營收候選抓取失敗：{error_msg}")
         QMessageBox.critical(self, "月營收候選抓取失敗", error_msg)
 
-    def _execute_monthly_revenue_backfill(self, apply: bool = False):
+    def _execute_monthly_revenue_backfill(self, apply: bool = False, *, current_only: bool = False):
         """Run MOPS monthly revenue dry-run or controlled SQLite apply."""
         if self._reject_busy_write("月營收處理"):
             return
         if apply:
             reply = QMessageBox.question(
                 self,
-                "確認寫入月營收",
+                "確認更新現況研究資料" if current_only else "確認寫入月營收",
+                ("重驗官方原件及金額單位、備份SQLite後，追加現況研究觀測。\n\n"
+                 "以現在的觀測時間提供現況研究，不回填歷史公告時間或正式PIT資格。")
+                if current_only else
                 "確定要正式寫入 fundamental_monthly_revenues 嗎？\n\n"
                 "系統會先建立 SQLite 備份，再用 MOPS snapshot 與正式 availability mapping 回填月營收。",
                 QMessageBox.Yes | QMessageBox.No,
@@ -2502,20 +2528,34 @@ class UpdateView(QWidget):
         self.progress_label.setVisible(True)
         self.progress_label.setText("正在處理 MOPS 月營收...")
         self.log_text.clear()
-        mode_text = "正式寫入" if apply else "dry-run"
+        mode_text = "現況研究更新" if current_only else "正式寫入" if apply else "dry-run"
         self._log(f"開始 MOPS 月營收 {mode_text}")
         self._log(f"MOPS snapshot: {snapshot_text}")
         self._log(f"Availability mapping: {availability_text}")
 
-        def task():
+        def task(cancel_callback=None):
+            if cancel_callback is not None and cancel_callback():
+                return {"success": False, "cancelled": True, "message": "月營收處理已在開始前取消"}
             kwargs = {
                 "snapshot_file": Path(snapshot_text) if snapshot_text else None,
                 "availability_file": Path(availability_text) if availability_text else None,
                 "source_version": source_version or None,
+                "cancel_callback": cancel_callback,
             }
-            if apply:
-                return self.update_service.apply_mops_monthly_revenue_backfill(**kwargs)
-            return self.update_service.dry_run_mops_monthly_revenue_backfill(**kwargs)
+            if current_only:
+                result = self.update_service.materialize_current_monthly_revenue(
+                    snapshot_file=kwargs['snapshot_file'], apply=apply, cancel_callback=cancel_callback,
+                )
+            elif apply:
+                result = self.update_service.apply_mops_monthly_revenue_backfill(**kwargs)
+            else:
+                result = self.update_service.dry_run_mops_monthly_revenue_backfill(**kwargs)
+            # SQLite 回填是完整交易；交易期間按取消只在提交後回報，不切斷寫入。
+            if isinstance(result, dict):
+                result.setdefault("cancelled", False)
+                if cancel_callback is not None and cancel_callback():
+                    result["cancel_requested_after_commit"] = True
+            return result
 
         worker = self._start_worker(TaskWorker(task), operation_kind="write")
         worker.finished.connect(lambda result, apply_mode=apply: self._on_monthly_revenue_finished(result, apply_mode))
@@ -2530,6 +2570,14 @@ class UpdateView(QWidget):
         self.progress_label.setVisible(False)
 
         message = result.get("message", "月營收處理完成")
+        diagnostic_blocks = self._monthly_revenue_diagnostic_display(result)
+        for block in diagnostic_blocks:
+            self._log(block.replace("\n", " | "))
+        if diagnostic_blocks:
+            message = f"{message}\n\n" + "\n\n".join(diagnostic_blocks)
+        cancelled = result.get("cancelled") is True
+        if result.get("cancel_requested_after_commit") is True:
+            message = f"{message}（取消要求於交易提交後收到，完整交易已保留）"
         self._log(message)
         self._log(f"raw rows: {result.get('raw_row_count', 0):,}")
         self._log(f"normalized records: {result.get('normalized_record_count', result.get('inserted_count', 0)):,}")
@@ -2538,12 +2586,75 @@ class UpdateView(QWidget):
         if backup_file:
             self._log(f"SQLite backup: {backup_file}")
 
-        if result.get("success", False):
+        if cancelled:
+            self._render_manual_update_summary("cancelled", message=message, result=result)
+            QMessageBox.warning(self, "月營收處理已安全取消", message)
+        elif result.get("success", False):
+            self._render_manual_update_summary("success", message=message, result=result)
             QMessageBox.information(self, "月營收處理完成", message)
             if apply:
                 self._check_source_detail("monthly_revenue", force=True)
         else:
+            self._render_manual_update_summary("failed", message=message, result=result)
             QMessageBox.warning(self, "月營收處理失敗", message)
+
+    @staticmethod
+    def _monthly_revenue_diagnostic_display(result: Any) -> List[str]:
+        """將月營收 dry-run 診斷轉成可操作的繁中說明，不改變服務判定。"""
+        if not isinstance(result, dict):
+            return []
+        diagnostics = result.get("diagnostics")
+        if not isinstance(diagnostics, (list, tuple)):
+            return []
+
+        blocks: List[str] = []
+        display_limit = 5
+        for raw_diagnostic in diagnostics[:display_limit]:
+            if not isinstance(raw_diagnostic, dict):
+                blocks.append(
+                    "診斷格式：無法辨識的診斷資料。\n"
+                    "說明：目前無法安全判讀這筆診斷，也不代表檢查通過。\n"
+                    "下一步：保留失敗狀態，查看原始 dry-run 結果並交維護者確認。"
+                )
+                continue
+
+            raw_code = raw_diagnostic.get("code")
+            code = raw_code.strip() if isinstance(raw_code, str) and raw_code.strip() else "（診斷代碼缺失）"
+            raw_message = raw_diagnostic.get("message")
+            detail = raw_message.strip() if isinstance(raw_message, str) and raw_message.strip() else "（沒有文字訊息）"
+            if len(detail) > 800:
+                detail = f"{detail[:800]}…（訊息已截斷，完整內容請查看原始結果）"
+
+            explanation = "目前介面沒有這個診斷代碼的已知解讀；不會推定資料可用。"
+            next_action = "保留檢查失敗，核對原始診斷後再處理；不要以此結果執行正式回填。"
+            if code == "fundamental_availability.snapshot_mapping_incomplete":
+                explanation = "候選月營收列缺少正式治理的可得日 mapping，因此無法確認何時可供使用。"
+                next_action = (
+                    "補齊並核准對應期間的正式可得日 mapping，再重新執行 dry-run。"
+                    "不得以抓取日代替可得日；mapping 未完整前不可正式回填。"
+                )
+            elif code == "monthly_revenue.dry_run_error":
+                lowered_detail = detail.casefold()
+                if "snapshot 不存在" in lowered_detail or "snapshot file not found" in lowered_detail:
+                    explanation = "指定的月營收候選快照檔不存在。"
+                    next_action = (
+                        "先使用「抓取最新候選快照」建立候選檔，再重新執行 dry-run；"
+                        "抓取只建立候選，不會替代正式可得日 mapping。"
+                    )
+
+            blocks.append(
+                f"診斷代碼：{code}\n"
+                f"原始訊息：{detail}\n"
+                f"說明：{explanation}\n"
+                f"下一步：{next_action}"
+            )
+
+        omitted = len(diagnostics) - len(blocks)
+        if omitted > 0:
+            blocks.append(
+                f"另有 {omitted} 筆診斷未在視窗中展開；請查看原始 dry-run 結果。"
+            )
+        return blocks
 
     def _on_monthly_revenue_error(self, error_msg: str):
         self._invalidate_detail_cache()
@@ -3701,9 +3812,13 @@ class UpdateView(QWidget):
 
     @staticmethod
     def _format_candidate_status_card(value: Dict[str, Any]) -> str:
-        record_count = _safe_nonnegative_int(value.get("total_records"))
-        earliest = value.get("earliest_date") or "無"
-        latest = value.get("latest_date") or "無"
+        record_count = _safe_nonnegative_int(
+            value.get("candidate_records", value.get("total_records"))
+        )
+        earliest = value.get("candidate_earliest_date", value.get("earliest_date")) or "無"
+        latest = value.get("candidate_latest_date", value.get("latest_date")) or "無"
+        formal_count = _safe_nonnegative_int(value.get("formal_records"))
+        formal_latest = value.get("formal_latest_date") or "無"
         coverage = value.get("coverage_pct") or "0.0%"
         freshness_status = str(value.get("freshness_status") or "").strip().lower()
         status = format_status_token(
@@ -3717,6 +3832,8 @@ class UpdateView(QWidget):
                 f"狀態：{status}\n"
                 f"區間：{earliest} ~ {latest}\n"
                 f"覆蓋率：{coverage}\n"
+                f"正式資料：{formal_count:,} 筆，最新 {formal_latest}；狀態 {value.get('formal_status') or '未知'}\n"
+                f"候選資料：{record_count:,} 筆，最新 {latest}；狀態 {value.get('candidate_status') or '未知'}\n"
                 f"[{disclaimer}]"
             ]
             reference = value.get("freshness_reference_date")
@@ -3726,6 +3843,8 @@ class UpdateView(QWidget):
         return (
             f"最新日期：{latest}\n"
             f"總記錄數：{record_count:,}\n"
+            f"正式資料：{formal_count:,} 筆，最新 {formal_latest}；狀態 {value.get('formal_status') or '未知'}\n"
+            f"候選狀態：{value.get('candidate_status') or '未確認'}，候選最新 {latest}\n"
             f"狀態：{status} / 尚未匯入\n"
             f"[{disclaimer}]"
         )

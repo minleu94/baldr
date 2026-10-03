@@ -1,5 +1,6 @@
 """觀察清單的唯讀已保存個股分析，不重新評分或改寫來源。"""
 from dataclasses import dataclass
+from collections.abc import Mapping
 from datetime import date
 
 from app_module.recommendation.contracts import ExecutionStatus
@@ -7,6 +8,8 @@ from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.saved_recommendation_queries import (
     build_recommendation_execution_queries,
     execution_result_config,
+    canonical_scheduled_decision_date,
+    saved_recommendation_capture_projection,
     recommendation_runs_dir,
     verified_saved_calibration_projections,
 )
@@ -156,7 +159,11 @@ class WatchlistAnalysisService:
             context = execution.context
             config_values = execution_result_config(execution)
             cutoff = context.as_of_date.isoformat() if context.as_of_date is not None else ""
-            data_date = ""
+            if config_values.get("scheduled_snapshot") is True:
+                cutoff = canonical_scheduled_decision_date(result) or ""
+                data_date = context.as_of_date.isoformat() if context.as_of_date else ""
+            else:
+                data_date = ""
             profile_id = str(
                 config_values.get("profile_id")
                 or (context.profile_ref.reference_id if context.profile_ref is not None else "")
@@ -257,11 +264,28 @@ class WatchlistAnalysisService:
                     calibration_raw_probability_bp=(recommendation.calibration_raw_probability_bp if legacy is not None else (calibration.raw_calibrated_probability_bp if calibration is not None else None)),
                     calibration_raw_after_cost_probability_bp=(recommendation.calibration_raw_after_cost_probability_bp if legacy is not None else (calibration.raw_after_cost_profit_probability_bp if calibration is not None else None)),
                 )
+        capture = saved_recommendation_capture_projection(result)
+        screening = capture.get("screening_matrix_json") or ()
+        if isinstance(screening, str):
+            import json
+            screening = json.loads(screening)
+        if not isinstance(screening, (list, tuple)):
+            raise ValueError("保存篩選矩陣必須是逐列清單")
+        rows = [row for row in screening if isinstance(row, Mapping) and str(row.get("stock_code") or "") == stock_code]
+        if len(rows) > 1:
+            raise ValueError("指定股票在保存篩選矩陣出現重複列")
+        exclusion_reasons = ""
+        if rows:
+            reasons = rows[0].get("reason_codes") or ()
+            exclusion_reasons = "；".join(str(reason) for reason in reasons)
+            if not exclusion_reasons:
+                exclusion_reasons = str(rows[0].get("status") or "未入選")
         return WatchlistAnalysisDTO(
             stock_code,
             "not_in_result",
             cutoff,
             result.result_id,
+            reasons=exclusion_reasons,
             decision_date=cutoff,
             data_date=data_date,
             profile_id=profile_id,
@@ -270,7 +294,7 @@ class WatchlistAnalysisService:
             source_kind=source_kind,
             source_snapshot_id=source_snapshot_id,
             source_snapshot_hash=source_snapshot_hash,
-            message="這份推薦未包含此股票；未入選不等於看空，可查看主力流向或重新分析。",
+            message=("此股已在這份保存結果中接受篩選，未入選原因："+exclusion_reasons+"；不等於看空。") if rows else "這份推薦未包含此股票；未入選不等於看空，可查看主力流向或重新分析。",
         )
 
     def list_saved_sources(self, stock_code: str = "") -> list[dict[str, str]]:
@@ -298,6 +322,9 @@ def _result_as_of_date(read_model: RecommendationExecutionReadModel) -> date | N
         except ValueError:
             return None
     if read_model.execution is not None:
+        if execution_result_config(read_model.execution).get("scheduled_snapshot") is True:
+            day = canonical_scheduled_decision_date(read_model)
+            return date.fromisoformat(day) if day else None
         return read_model.execution.context.as_of_date
     return None
 

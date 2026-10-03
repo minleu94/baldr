@@ -1,7 +1,15 @@
 # 系統架構
 
-> **最後更新：2026-10-01｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-10-03｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
+
+## 2026-10-03 current-restated 研究支線與 Data Update 狀態邊界
+
+受控的 current-restated 研究支線已由 `data_module.ml_daily_price_revision_gate.load_verified_current_restated_source_context()` 驗證 snapshot、原 DB 與修訂相依，再由 `scripts/build_ml_pit_year_shards.py` 建立 current-observed 年度 raw、`scripts/build_ml_current_restated_outcome_store.py` 建立 Outcome Direct，並由 `ml_module/current_restated_research_bridge.py` 投影受限 CORE19、呼叫既有 outcome-only fitter 及以新 Python process 載入／推論。原 Legacy Pipeline 與 Bank Taiwan 只在明確 `current-restated-research-only` opt-in 下，以同一 context、模型、來源列 cohort 經研究 sidecar early return／terminal barrier 接入。這是分離的 research lane：historical PIT、formal training／校準、teacher、promotion、Recommendation cohort 與 production pointer 均不因此改變；沒有 verified industry membership 的第 20 欄維持排除／缺件。
+
+更新頁由 freshness producer 與唯讀 status consumer 分工：`scripts/scheduled/data_freshness_probe.py` 按台北 04:30 cutoff、verified calendar、實際資料根／DB 與各來源期別生成 receipt；`app_module/update_service_status_support.py` 只有在根、DB、candidate DB、market day、cutoff 與目前期別均吻合時才投影 receipt。查詢跨過 cutoff 時舊 receipt 回 `unknown`／`needs_revalidation`，須重新 probe；consumer 不會據時鐘自行把 `expected_wait` 升成 current 或 stale。`FORMAL_AVAILABLE` 與 `CANDIDATE_AVAILABLE` 分別描述正式表與隔離候選，UI 的日期／筆數分開呈現。
+
+UpdateView 的寫入 worker 以 callback 在日期／檔案／transaction 邊界合作式取消，不強制終止執行緒；已安全提交的資料可以保留，真正例外仍回報失敗。MOPS 月營收中止可保存完整 raw HTML response 作診斷，但未完成的 candidate CSV 不發布；畫面列出的已解析列數不是已可用候選。TDCC 週候選以資料列與 checkpoint 同 transaction、可冪等重試；不一致資料或部分未提交不得冒稱完整成功。運行及操作證據以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[整合修復紀錄](../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md) 與 [Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 ## 2026-10-01 研究資料來源與排程 lane 邊界
 
@@ -19,6 +27,8 @@ manifest pin 建立每日 source-row research projection。projection 不計 fea
 `pending_human_review`。季度 child 每週最多 2 個 catalog 與 24 個上市／上櫃損益及資產負債
 數值 endpoint GET；結果是 current-observation candidate，沒有自動補歷史 availability、
 issuer denominator 或 unit acceptance。
+
+2026-10-03 起 weekly `.cmd` 由 `weekly_collection_controller.py` 綁定 core、MOPS statement 與 quarterly child。控制器以 `OUTPUT_ROOT/scheduled/v2_2_weekly_collection/latest_status.json` 精確定位 create-only start／terminal receipts；consumer 以 locator 宣告的 path／bytes SHA／run ID 讀回 parent，再核驗每個 child 的當次 receipt，沒有 glob 或 mtime fallback。Quick child 的 pending grace 為 120 秒，weekly freshness terminal 等待窗為 1,170 秒（含邊界）；這些只界定何時仍可等待，不提高資料資格。parent-child binding verified、core `pending_human_review`、child review／partial 與 `formal_credit=false` 是不同維度。
 
 Paper seed、使用者宣告持倉與正式成交是不同來源身份。機器初始化的 Paper research seed
 可保留在隔離 Paper lane 並帶研究品質診斷；不得將它映射為使用者真實持倉，也不得因其
@@ -1121,3 +1131,6 @@ UI 修改：
 - 2026-06-16：更新 SQLite / broker flow 邊界，確認 `broker_flows` 唯一鍵需包含 `trade_type`，且 SQLite Inspector 顯示 alias 不得影響表格 model 取值。
 
 
+
+
+2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。

@@ -25,6 +25,10 @@
 - 2026-09-29 跨工作區 UI 版面、捲動與幾何驗收（六格 MainWindow offscreen 矩陣通過）：[UI_LAYOUT_AUDIT_20260929.md](../06_qa/UI_LAYOUT_AUDIT_20260929.md)
 - 2026-09-30 七項排程問題修復、Task identity、真實 Quick／freshness receipts 與尚存資料缺口：[SCHEDULED_OPERATIONS_REPAIR_20260930.md](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)
 - 2026-09-30 唯讀服務合作式取消與 repository contract 驗證：[READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md](../06_qa/READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md)
+- 2026-10-01 Gemini ML revision-aware rebuild 交接與建置證據（獨立整合驗收另列）：[ML_REVISION_AWARE_REBUILD_EXECUTION_PLAN_20261001.md](../06_qa/ML_REVISION_AWARE_REBUILD_EXECUTION_PLAN_20261001.md)
+
+- 2026-10-02 三階段整合修復、排程／automation 實際設定與受控執行驗收：[INTEGRATION_REPAIR_ACCEPTANCE_20261002.md](../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)
+- 2026-10-03 weekly controller、canonical locator、child readback 與 partial／review 判讀：[APPLICATION_MANUAL §2026-10-03 週度研究採集與讀回](../07_guides/APPLICATION_MANUAL.md#2026-10-03-週度研究採集與讀回)
 
 ## 領域目錄
 

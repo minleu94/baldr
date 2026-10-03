@@ -204,6 +204,36 @@ class JournalEntryDTO:
 
 
 @dataclass
+class RecordedTradeCostSummaryDTO:
+    """以原幣別彙總 JSONL 已記錄費稅，不推算未保存的成本。"""
+
+    trade_count: int
+    fees_recorded_count: int
+    fees_missing_count: int
+    taxes_recorded_count: int
+    taxes_missing_count: int
+    fees_by_currency: Dict[str, Decimal] = field(default_factory=dict)
+    taxes_by_currency: Dict[str, Decimal] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "trade_count": self.trade_count,
+            "fees_recorded_count": self.fees_recorded_count,
+            "fees_missing_count": self.fees_missing_count,
+            "taxes_recorded_count": self.taxes_recorded_count,
+            "taxes_missing_count": self.taxes_missing_count,
+            "fees_by_currency": {
+                currency: format(amount, "f")
+                for currency, amount in self.fees_by_currency.items()
+            },
+            "taxes_by_currency": {
+                currency: format(amount, "f")
+                for currency, amount in self.taxes_by_currency.items()
+            },
+        }
+
+
+@dataclass
 class PortfolioDTO:
     portfolio_id: str
     portfolio_name: str
@@ -214,9 +244,10 @@ class PortfolioDTO:
     total_realized_pnl: float = 0.0
     updated_at: str = ""
     schema_version: str = "4.1"
+    recorded_trade_costs: RecordedTradeCostSummaryDTO | None = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "portfolio_id": self.portfolio_id,
             "portfolio_name": self.portfolio_name,
             "total_positions": self.total_positions,
@@ -227,6 +258,9 @@ class PortfolioDTO:
             "updated_at": self.updated_at,
             "schema_version": self.schema_version,
         }
+        if self.recorded_trade_costs is not None:
+            payload["recorded_trade_costs"] = self.recorded_trade_costs.to_dict()
+        return payload
 
 
 @dataclass(frozen=True)

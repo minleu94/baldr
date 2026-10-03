@@ -99,6 +99,25 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 完整操作、參數與排錯以 [Application Manual](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/APPLICATION_MANUAL.md) 為準；實作與整合證據見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)。本輪不改 `action_required`／V4 Evidence Accumulation，不授予 Formal credit、來源 acceptance、scheduler、broker 或正式 writer 權限。
 
+## 2026-10-03 資料更新 freshness、Formal／Candidate 與合作式取消
+
+資料更新狀態卡將正式 SQLite 與隔離 Candidate DB 分成不同資料 lane。服務回傳的 `FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是機器狀態 token，代表來源可讀性與所屬資料根；畫面分別顯示正式資料與候選資料的日期／筆數，candidate 不會因此進入正式評分、推薦或交易。Freshness receipt 只有在目前 `DATA_ROOT`、SQLite／Candidate DB 路徑、台北市場日、04:30 cutoff 與 receipt 的實際期別相符時才投影為來源狀態；跨過 cutoff 或 live period 已變動時顯示未知／需重新驗證，重新執行唯讀 freshness probe 後再判讀。
+
+寫入型更新的「取消目前工作」採合作式取消，worker 會在安全單位邊界停止，不強制終止 QThread；已完成的安全提交可能保留，並應再做唯讀狀態檢查。錯誤仍以失敗顯示，不因取消而清除。MOPS 月營收候選抓取取消時可留下完整 raw HTML 作診斷，但不發布未完成的 candidate CSV；訊息所列「已解析資料」筆數不能當成已可用候選。
+
+操作步驟及排錯見 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 第 4 節；狀態、取消及 TDCC checkpoint 邊界的當前證據見[整合修復紀錄](../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)。本段說明 UI contract，不表示 native Windows 前景操作驗收已完成。
+
+## 2026-10-03 推薦、研究與 Portfolio 顯示判讀
+
+- Market Breadth 的多方／空方方向要求來源變動值與方向欄位相符；缺方向、未知或衝突欄位會保留未知，不用正負號代猜。
+- 技術評分只使用父層與子指標均啟用的項目。所需行情 bars 隨啟用指標週期增加，至少 60 個有效交易 bars；缺少啟用指標資料屬不可計分，不等於零分或被門檻篩除。
+- 推薦空結果分成「沒有可評估候選」、「候選不可計分／來源缺件」與「已評分但未通過目前篩選／排名條件」。只有最後一種是門檻篩選後為空；不要以降低門檻處理前兩種。
+- 歷史 Portfolio Alert 顯示原事件日期與來源，是保存的歷史快照，不代表目前持倉；請回持倉管理確認現況。
+- 個股研究報告沿用已保存上下文的 `decision_date` 作行情 cutoff。缺漏或不合法時阻擋歷史查詢，不以今天日期替代。
+- Portfolio 目前投入、已實現與未實現金額以毛額呈現，未扣費稅。費稅僅彙整已記錄資料，依原幣別列出已記錄及缺值筆數；缺件不補零，不冒充完整淨損益。
+
+Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下載／合併的測試略過；另有 138 項 focused tests、750 個來源檔案的 scoped mypy 與 20 個 Python 檔案 compile 通過。完整結果見 `output/qa/integration_20261002/phase3_luna_implementation_20261003/ui/REPORT.md`。Native Windows 可見操作仍待 root 驗收。完整操作與限制以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 ## 二、頂層 Tab
 
 ### 1. 數據更新

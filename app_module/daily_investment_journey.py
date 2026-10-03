@@ -1021,8 +1021,10 @@ class DailyInvestmentJourneyService:
         )
         portfolio_codes = ", ".join(portfolio.alert_codes[:8]) or "無"
         portfolio_summary = (
-            f"持倉：警示 {portfolio.alert_count if portfolio.alert_count is not None else '未知'} 檔"
-            f"（{portfolio_codes}）｜層級 {portfolio.alert_level or '未知'}｜品質 {_quality_label(portfolio.quality)}"
+            f"保存快照警示：{portfolio.alert_count if portfolio.alert_count is not None else '未知'} 檔"
+            f"（{portfolio_codes}）｜快照資料日 {snapshot.as_of_date.isoformat()}"
+            f"｜來源 DecisionDeskSnapshot.portfolio_alerts｜層級 {portfolio.alert_level or '未知'}"
+            f"｜品質 {_quality_label(portfolio.quality)}｜不是目前持倉狀態"
         )
         return market, industry, stock, watchlist_summary, portfolio_summary
 
@@ -1091,8 +1093,10 @@ class DailyInvestmentJourneyService:
                 "portfolio",
                 "持倉覆盤",
                 decision_snapshot.portfolio_alerts.quality.value,
-                f"既有持倉警示 {decision_snapshot.portfolio_alerts.alert_count if decision_snapshot.portfolio_alerts.alert_count is not None else '未知'} 檔；依既有 alert 人工覆盤。",
-                "DecisionDeskSnapshot.portfolio_alerts",
+                f"保存快照於 {decision_snapshot.as_of_date.isoformat()} 記錄警示 "
+                f"{decision_snapshot.portfolio_alerts.alert_count if decision_snapshot.portfolio_alerts.alert_count is not None else '未知'} 檔；"
+                "這不是目前持倉狀態，請以持倉帳本重新核對。",
+                f"DecisionDeskSnapshot.portfolio_alerts（資料日 {decision_snapshot.as_of_date.isoformat()}）",
                 "開啟持倉管理",
                 decision_snapshot.portfolio_alerts.alert_codes,
             ),
@@ -2104,12 +2108,14 @@ def _headline(
         else "目前沒有可安全呈現的研究候選"
     )
     portfolio_alert_count = decision_snapshot.portfolio_alerts.alert_count
+    portfolio_date = decision_snapshot.as_of_date.isoformat()
     if portfolio_alert_count is None:
-        portfolio_text = "持倉警示未知，需複核"
-    elif portfolio_alert_count > 0:
-        portfolio_text = f"持倉有 {portfolio_alert_count} 檔警示，需複核"
+        portfolio_text = f"{portfolio_date} 快照中的持倉警示數未知，需查原始快照"
     else:
-        portfolio_text = "持倉來源未見警示，仍需複核"
+        portfolio_text = (
+            f"{portfolio_date} 快照記錄 {portfolio_alert_count} 檔持倉警示，"
+            "需以目前帳本核對"
+        )
     if evidence.outcome_pending > 0:
         evidence_surface = "證據結果尚待後續交易日成熟"
     elif evidence.outcome_ready > 0 and evidence.outcome_missing == 0:
@@ -2129,7 +2135,8 @@ def _headline(
     else:
         learning_surface = "模型尚待自然成熟樣本，今日候選僅供研究"
     return (
-        f"盤勢：{regime}；今日研究候選：{candidate_text}；{portfolio_text}。"
+        f"盤勢：{regime}；今日研究候選：{candidate_text}；{portfolio_text}"
+        "（來源 DecisionDeskSnapshot.portfolio_alerts；不代表目前持倉狀態）。"
         f"{evidence_surface}；{learning_surface}。"
     )
 

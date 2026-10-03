@@ -3,7 +3,7 @@
 import logging
 from dataclasses import replace
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 import pandas as pd
@@ -15,6 +15,7 @@ from app_module.dtos.portfolio_dtos import (
     PortfolioDTO,
     PortfolioLedgerReadModelDTO,
     PositionDTO,
+    RecordedTradeCostSummaryDTO,
     TradeDTO,
 )
 from app_module.portfolio_store import PortfolioJsonlStore
@@ -163,7 +164,20 @@ class PortfolioService:
         return None
 
     def get_portfolio(self, portfolio_id: str = "default") -> PortfolioDTO:
-        positions = self.list_positions(portfolio_id=portfolio_id)
+        # 由同一次 JSONL 讀取建立持倉與已記錄費稅摘要，避免兩個投影讀到
+        # 不同版本；此路徑只讀取，沒有改寫或補算交易成本。
+        raw_trades = self.store.load_trades()
+        selected_trades = [
+            item
+            for item in raw_trades
+            if str(item.get("portfolio_id", "default")) == portfolio_id
+        ]
+        positions = [
+            self._position_to_dto(position)
+            for position in rebuild_positions(
+                [Trade.from_mapping(item) for item in selected_trades]
+            )
+        ]
         return PortfolioDTO(
             portfolio_id=portfolio_id,
             portfolio_name="Default Portfolio",
@@ -173,6 +187,60 @@ class PortfolioService:
             total_invested_amount=self._sum_money(position.invested_amount for position in positions),
             total_realized_pnl=self._sum_money(position.realized_pnl for position in positions),
             updated_at=datetime.now().isoformat(),
+            recorded_trade_costs=self._summarize_recorded_trade_costs(
+                selected_trades
+            ),
+        )
+
+    @staticmethod
+    def _summarize_recorded_trade_costs(
+        trades: List[Dict[str, Any]],
+    ) -> RecordedTradeCostSummaryDTO:
+        fees_by_currency: Dict[str, Decimal] = {}
+        taxes_by_currency: Dict[str, Decimal] = {}
+        fees_recorded_count = 0
+        taxes_recorded_count = 0
+        fees_missing_count = 0
+        taxes_missing_count = 0
+
+        for trade in trades:
+            currency = str(trade.get("currency", "TWD") or "").strip().upper()
+            currency = currency or "未知幣別"
+            for key, totals in (
+                ("fees", fees_by_currency),
+                ("taxes", taxes_by_currency),
+            ):
+                raw_value = trade.get(key)
+                if isinstance(raw_value, bool) or raw_value is None:
+                    if key == "fees":
+                        fees_missing_count += 1
+                    else:
+                        taxes_missing_count += 1
+                    continue
+                try:
+                    amount = Decimal(str(raw_value))
+                    if not amount.is_finite():
+                        raise ValueError("non-finite recorded trade cost")
+                    totals[currency] = totals.get(currency, Decimal("0")) + amount
+                except (DecimalException, TypeError, ValueError):
+                    if key == "fees":
+                        fees_missing_count += 1
+                    else:
+                        taxes_missing_count += 1
+                    continue
+                if key == "fees":
+                    fees_recorded_count += 1
+                else:
+                    taxes_recorded_count += 1
+
+        return RecordedTradeCostSummaryDTO(
+            trade_count=len(trades),
+            fees_recorded_count=fees_recorded_count,
+            fees_missing_count=fees_missing_count,
+            taxes_recorded_count=taxes_recorded_count,
+            taxes_missing_count=taxes_missing_count,
+            fees_by_currency=fees_by_currency,
+            taxes_by_currency=taxes_by_currency,
         )
 
     def update_portfolio(self) -> PortfolioDTO:

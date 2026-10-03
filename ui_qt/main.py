@@ -10,6 +10,7 @@ from pathlib import Path
 # 添加項目根目錄到系統路徑
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+from data_module.phase3c_backfill_runner import configured_candidate_db_path
 
 from ui_qt.crash_diagnostics import (
     install_crash_diagnostics,
@@ -364,6 +365,7 @@ class MainWindow(QMainWindow):
                 portfolio_service=self.portfolio_service,
                 condition_monitor=PortfolioConditionMonitor(),
                 freshness_status_path=self._data_freshness_status_path(),
+                candidate_db_file=configured_candidate_db_path() if self.config.profile != 'test' else None,
             )
             self.decision_outcome_journey_service = (
                 DecisionOutcomeJourneyService.from_config(
@@ -922,6 +924,7 @@ class MainWindow(QMainWindow):
             self.stock_research_workspace.returnRequested.connect(
                 self._return_from_stock_research_report
             )
+            self.stock_research_workspace.report_view.createAnalysisRequested.connect(self._prepare_stock_research_analysis)
             self.stock_research_workspace.report_view.activeContextChanged.connect(
                 lambda context: self.research_session_store.set_stock_context(
                     context, source="stock_research"
@@ -1090,6 +1093,16 @@ class MainWindow(QMainWindow):
                 return None
             return ResearchStockContextDTO(**payload)
         return None
+
+    def _prepare_stock_research_analysis(self, code: str) -> None:
+        view = self.workspace_widgets.get("recommendation")
+        scope = getattr(view, "research_scope_input", None)
+        if scope is None:
+            self.statusBar().showMessage("推薦分析入口未就緒，請檢查模組狀態。")
+            return
+        scope.setText(code)
+        self._select_main_workspace("recommendation")
+        self.statusBar().showMessage(f"已指定研究股票 {code}；檢查策略後執行並保存，再返回個股研究明確選取來源。")
 
     def _open_stock_research_context(self, value: object) -> None:
         """接收保存結果／觀察清單的下鑽 context 並開啟單股研究頁。"""

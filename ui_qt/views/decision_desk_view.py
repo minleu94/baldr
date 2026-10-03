@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskSnapshot,
+    RelativeStrengthLiquiditySummary,
 )
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
 from app_module.watchlist_trigger_presentation import format_watchlist_trigger_review
@@ -756,10 +757,50 @@ class DecisionDeskView(QWidget):
         for card in cards[:6]:
             presentation = self.presentation_service.from_market_focus_card(
                 card,
-                as_of_date=snapshot.as_of_date,
+                as_of_date=self._focus_stock_data_date(card, snapshot),
             )
             rows.append(f"{presentation.stock_code} {presentation.stock_name}\n{format_decision_presentation(presentation)}")
         self.presentation_contract_label.setText("\n\n".join(rows))
+
+    @staticmethod
+    def _focus_stock_data_date(card: Any, snapshot: DecisionDeskSnapshot | None) -> date | None:
+        """只傳遞相對強弱來源已證明的有效資料日。"""
+
+        if snapshot is None:
+            return None
+        source = str(getattr(card, "source", "") or "")
+        if source not in {"relative_strength", "relative_strength_liquidity"}:
+            return None
+
+        summary = getattr(snapshot, "relative_strength_liquidity", None)
+        if not isinstance(summary, RelativeStrengthLiquiditySummary):
+            return None
+        if summary.quality == DecisionDeskQuality.MISSING:
+            return None
+        meta = summary.meta
+        if not isinstance(meta, dict) or meta.get("source") != "relative_strength_liquidity_service":
+            return None
+
+        stock_code = str(getattr(card, "stock_code", "") or "").strip()
+        if source == "relative_strength" and stock_code not in summary.top_strength_codes:
+            return None
+        if source == "relative_strength_liquidity" and stock_code not in (
+            *summary.weak_strength_codes,
+            *summary.low_liquidity_codes,
+        ):
+            return None
+
+        effective_date = summary.as_of_date
+        decision_date = snapshot.as_of_date
+        if (
+            not isinstance(effective_date, date)
+            or isinstance(effective_date, datetime)
+            or not isinstance(decision_date, date)
+            or isinstance(decision_date, datetime)
+            or effective_date > decision_date
+        ):
+            return None
+        return effective_date
 
     @staticmethod
     def _format_sector_cards(cards) -> str:
@@ -866,6 +907,7 @@ class DecisionDeskView(QWidget):
         card = getattr(self, "_stock_focus_research_card", None)
         if card is None:
             return
+        source_data_date = self._focus_stock_data_date(card, self._last_snapshot)
         self.stockResearchRequested.emit(
             ResearchStockContextDTO(
                 stock_code=str(card.stock_code),
@@ -875,11 +917,7 @@ class DecisionDeskView(QWidget):
                     if self._last_snapshot is not None
                     else self.as_of_date.isoformat()
                 ),
-                data_date=(
-                    self._last_snapshot.as_of_date.isoformat()
-                    if self._last_snapshot is not None
-                    else self.as_of_date.isoformat()
-                ),
+                data_date=source_data_date.isoformat() if source_data_date is not None else "",
                 source_id=str(getattr(card, "source", "") or "decision_desk"),
                 source_kind="decision_desk",
                 source_label="市場總覽／關鍵股焦點",

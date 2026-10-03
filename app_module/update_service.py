@@ -10,11 +10,12 @@ import sqlite3
 import hashlib
 from pathlib import Path
 from typing import Dict ,Any ,Optional ,List ,Callable, Sequence
-from datetime import date, datetime ,timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import app_module.update_data_normalization as update_data_normalization
 from app_module.update_service_status_support import (
     compose_sqlite_status_read_model,
+    FreshnessReceiptBinding,
 )
 from app_module.dtos.update_loop_dtos import (
     UpdateStatusSnapshotDTO,
@@ -503,8 +504,11 @@ class UpdateService :
     snapshot_file :Optional [Path ]=None ,
     availability_file :Optional [Path ]=None ,
     source_version :Optional [str ]=None ,
+    cancel_callback: Optional[Callable[[], bool]] = None,
     )->Dict [str ,Any ]:
         """Plan MOPS snapshot monthly revenue backfill without writing SQLite."""
+        if _is_cancel_requested(cancel_callback):
+            return {'success':False, 'cancelled':True, 'message':'月營收 dry-run 已在開始前取消'}
         try :
             from data_module .monthly_revenue_backfill import plan_mops_snapshot_monthly_revenue_backfill
             from decision_module .factors .fundamental_adapters import source_diagnostics_to_factor_diagnostics
@@ -535,6 +539,7 @@ class UpdateService :
         except Exception as exc :
             return {
             'success':False ,
+            'cancelled':False,
             'ready_for_apply':False ,
             'raw_row_count':0 ,
             'normalized_record_count':0 ,
@@ -548,8 +553,11 @@ class UpdateService :
     snapshot_file :Optional [Path ]=None ,
     availability_file :Optional [Path ]=None ,
     source_version :Optional [str ]=None ,
+    cancel_callback: Optional[Callable[[], bool]] = None,
     )->Dict [str ,Any ]:
         """Apply MOPS snapshot monthly revenue backfill into SQLite."""
+        if _is_cancel_requested(cancel_callback):
+            return {'success':False, 'cancelled':True, 'message':'月營收正式回填已在交易開始前取消'}
         try :
             from data_module .monthly_revenue_backfill import apply_mops_snapshot_monthly_revenue_backfill
 
@@ -565,6 +573,8 @@ class UpdateService :
             )
             return {
             'success':result .applied ,
+            'cancelled':False,
+            'cancel_requested_after_commit':_is_cancel_requested(cancel_callback),
             'applied':result .applied ,
             'inserted_count':result .inserted_count ,
             'ready_for_apply':result .plan .ready_for_apply ,
@@ -584,10 +594,40 @@ class UpdateService :
         except Exception as exc :
             return {
             'success':False ,
+            'cancelled':False,
             'applied':False ,
             'inserted_count':0 ,
             'message':f"MOPS 月營收寫入失敗: {exc}",
             }
+
+    def materialize_current_monthly_revenue(
+        self,
+        snapshot_file: Optional[Path] = None,
+        *,
+        apply: bool = False,
+        cancel_callback: Optional[Callable[[], bool]] = None,
+    ) -> Dict[str, Any]:
+        """重驗官方原件與Decimal正規化，只供現況研究，不修改正式PIT。"""
+        if _is_cancel_requested(cancel_callback):
+            return {'success': False, 'cancelled': True, 'message': '現況月營收已在開始前取消'}
+        try:
+            from data_module.current_monthly_revenue_materialization import plan_current_revenue, apply_current_revenue
+            plan = plan_current_revenue(self._resolve_monthly_revenue_snapshot_file(snapshot_file))
+            result = dict(plan.custody)
+            if _is_cancel_requested(cancel_callback):
+                return dict(result, success=False, cancelled=True, applied=False, message='現況月營收已在寫入前取消')
+            if apply:
+                result = apply_current_revenue(
+                    plan, db_file=Path(self.config.db_file),
+                    backup_dir=Path(self.config.meta_data_dir) / 'backup',
+                    receipt_dir=Path(self.config.output_root) / 'current_monthly_revenue_receipts',
+                )
+            return dict(result, success=True, cancelled=False, ready_for_current_apply=True,
+                        cancel_requested_after_commit=apply and _is_cancel_requested(cancel_callback),
+                        message=f"現況月營收{'已更新' if apply else '重驗完成'}：{len(plan.records):,} 筆 TWD；僅供現況研究，正式歷史可得日未改")
+        except Exception as exc:
+            return {'success': False, 'cancelled': False, 'applied': False, 'formal_pit_eligible': False,
+                    'message': f'現況月營收原件／正規化驗證失敗：{exc}'}
 
     def _resolve_monthly_revenue_snapshot_file (self ,snapshot_file :Optional [Path ])->Path :
         if snapshot_file :
@@ -611,6 +651,7 @@ class UpdateService :
         fetch_date: str | None = None,
         sleep_seconds: float = 0.5,
         progress_callback: Optional[Callable[[str, int], None]] = None,
+        cancel_callback: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """抓取 MOPS 月營收候選 snapshot；只寫候選輸出，不寫 SQLite。
 
@@ -618,6 +659,12 @@ class UpdateService :
         避免使用者只看到舊 snapshot 卻沒有可追蹤的更新入口。正式月營收與
         availability mapping 仍須另行 dry-run／人工確認。
         """
+        if _is_cancel_requested(cancel_callback):
+            return {
+                "success": False, "cancelled": True, "candidate_only": True,
+                "output_csv": None, "row_count": 0,
+                "diagnostics": [], "message": "MOPS 月營收候選抓取已在開始前取消",
+            }
         try:
             from data_module.monthly_revenue_snapshot_harvester import (
                 build_mops_monthly_revenue_snapshot,
@@ -645,12 +692,14 @@ class UpdateService :
                 fetch_date=target_date,
                 save_html_dir=output_dir / "raw_html",
                 sleep_seconds=max(0.0, float(sleep_seconds)),
+                cancel_callback=cancel_callback,
+                progress_callback=progress_callback,
             )
             output_csv = output_dir / (
                 f"mops_monthly_revenue_snapshot_{start_period}_{end_period}_"
                 f"{target_date.isoformat()}.csv"
             )
-            if result.rows:
+            if result.rows and not result.cancelled:
                 write_mops_snapshot_csv(output_csv, result.rows)
             if progress_callback is not None:
                 progress_callback(
@@ -666,9 +715,10 @@ class UpdateService :
             ]
             success = bool(result.rows) and result.valid_candidate
             return {
-                "success": success,
+                "success": success and not result.cancelled,
+                "cancelled": result.cancelled,
                 "candidate_only": True,
-                "output_csv": str(output_csv) if result.rows else None,
+                "output_csv": str(output_csv) if result.rows and not result.cancelled else None,
                 "raw_html_dir": str(output_dir / "raw_html"),
                 "start_period": start_period,
                 "end_period": end_period,
@@ -680,13 +730,19 @@ class UpdateService :
                 "message": (
                     f"MOPS 月營收候選完成：{len(result.rows):,} 筆；"
                     f"期別 {start_period} ~ {end_period}"
-                    if success
-                    else "MOPS 月營收候選未產生可用列；請查看 diagnostics"
+                    if success and not result.cancelled
+                    else (
+                        f"MOPS 月營收候選已安全取消；保留 {len(result.rows):,} 筆已解析資料，"
+                        "未發布不完整 CSV"
+                        if result.cancelled
+                        else "MOPS 月營收候選未產生可用列；請查看 diagnostics"
+                    )
                 ),
             }
         except Exception as exc:
             return {
                 "success": False,
+                "cancelled": False,
                 "candidate_only": True,
                 "output_csv": None,
                 "row_count": 0,
@@ -707,8 +763,10 @@ class UpdateService :
         sources: tuple[str, ...] = ("institutional", "credit"),
         include_latest_tdcc_snapshot: bool = False,
         allow_online_calendar_probe: bool = True,
+        calendar: Optional[OfficialTradingCalendar] = None,
         rate_limit_seconds: float = 3.0,
         progress_callback: Optional[Callable[[str, int], None]] = None,
+        cancel_callback: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """更新 Phase 3C 候選資料；明確限制為隔離 Candidate DB。
 
@@ -735,12 +793,15 @@ class UpdateService :
                 rate_limit_seconds=max(0.0, float(rate_limit_seconds)),
                 allow_online_calendar_probe=allow_online_calendar_probe,
                 include_latest_tdcc_snapshot=include_latest_tdcc_snapshot,
+                calendar=calendar,
                 progress_callback=progress_callback,
+                cancel_callback=cancel_callback,
                 confirm_token=APPLY_CONFIRM_TOKEN,
             )
             summary = result.get("summary")
             return {
                 "success": bool(result.get("success")),
+                "cancelled": bool(result.get("cancelled", False)),
                 "candidate_only": True,
                 "candidate_db_path": str(candidate_path),
                 "summary": summary,
@@ -749,6 +810,7 @@ class UpdateService :
         except Exception as exc:
             return {
                 "success": False,
+                "cancelled": False,
                 "candidate_only": True,
                 "message": f"Phase 3C 候選更新失敗：{exc}",
                 "candidate_db_path": None,
@@ -3424,6 +3486,17 @@ class UpdateService :
             return None
         return payload if isinstance(payload, dict) else None
 
+    def _freshness_receipt_binding(self) -> FreshnessReceiptBinding:
+        """建立 receipt 必須符合的目前路徑、日曆政策與查詢時鐘。"""
+        candidate_path = configured_candidate_db_path()
+        return FreshnessReceiptBinding(
+            data_root=str(getattr(self.config, "data_root", "")),
+            db_path=str(getattr(self.config, "db_file", "")),
+            output_root=str(getattr(self.config, "output_root", "")),
+            candidate_db_path=str(candidate_path) if candidate_path is not None else None,
+            evaluated_at=datetime.now(timezone.utc),
+        )
+
     def _sqlite_unavailable_status(self) -> Dict[str, Any]:
         """回傳明確 unavailable payload，讓 UI／一鍵更新不會假裝成功。"""
         db_file = getattr(self.config, "db_file", "")
@@ -3938,7 +4011,8 @@ class UpdateService :
                 'technical_indicators':self ._technical_status_from_sqlite (),
                 'monthly_revenue':self ._monthly_revenue_status_from_sqlite (),
                 }, apply_freshness=True, include_contract=True,
-                   freshness_receipt=self._read_freshness_receipt())
+                   freshness_receipt=self._read_freshness_receipt(),
+                   freshness_binding=self._freshness_receipt_binding())
                 logger .info ("[UpdateService] 成功從 SQLite 資料庫極速獲取數據狀態！")
                 return result
             except Exception as sql_err :
@@ -4134,7 +4208,8 @@ class UpdateService :
                 'technical_indicators':self ._technical_status_from_sqlite (),
                 'monthly_revenue':self ._monthly_revenue_status_from_sqlite (),
                 },is_overview =True ,apply_freshness =True ,include_contract =True,
-                   freshness_receipt=self._read_freshness_receipt())
+                   freshness_receipt=self._read_freshness_receipt(),
+                   freshness_binding=self._freshness_receipt_binding())
                 return overview
             except Exception as sql_err :
                 import logging
@@ -4317,6 +4392,7 @@ class UpdateService :
                         apply_freshness=True,
                         include_contract=True,
                         freshness_receipt=self._read_freshness_receipt(),
+                        freshness_binding=self._freshness_receipt_binding(),
                     ).get(normalized, detail)
                 return enrich_status_mapping({normalized: detail}).get(normalized, detail)
             except Exception as sql_err :
@@ -5548,8 +5624,10 @@ class UpdateService :
             }
 
         def inspect_candidate(table_name: str, source: str) -> Dict[str, Any]:
-            if candidate_db is None or not candidate_db.exists():
-                return empty_info()
+            if candidate_db is None:
+                return {**empty_info(), "candidate_read_status": "not_configured"}
+            if not candidate_db.exists():
+                return {**empty_info(), "candidate_read_status": "missing"}
             try:
                 import sqlite3
                 read_only_uri = (
@@ -5562,7 +5640,7 @@ class UpdateService :
                         f"COUNT(DISTINCT decision_date) FROM {table_name}"
                     ).fetchone()
                     if row is None or int(row[0]) == 0:
-                        return empty_info()
+                        return {**empty_info(), "candidate_read_status": "available"}
                     try:
                         success_count, attempted_count = conn.execute(
                             """
@@ -5586,9 +5664,14 @@ class UpdateService :
                         "latest_date": row[2] or "無",
                         "coverage_pct": coverage,
                         "distinct_dates": int(row[3]),
+                        "candidate_read_status": "available",
                     }
-            except Exception:
-                return empty_info()
+            except Exception as exc:
+                return {
+                    **empty_info(),
+                    "candidate_read_status": "error",
+                    "candidate_read_error": f"{type(exc).__name__}: {exc}",
+                }
 
         result: Dict[str, Any] = {}
         for key, (table_name, source) in tables.items():
@@ -5609,7 +5692,14 @@ class UpdateService :
                 "disclaimer": "候選研究資料，不參與評分或投資決策",
                 "formal_records": 0,
                 "candidate_records": info["total_records"],
+                "candidate_earliest_date": info["earliest_date"],
                 "candidate_latest_date": info["latest_date"],
+                "formal_latest_date": None,
+                "formal_earliest_date": None,
+                "candidate_status": (
+                    "CANDIDATE_AVAILABLE" if has_candidate else info["candidate_read_status"].upper()
+                ),
+                "formal_status": "MISSING",
             }
             if formal_reference_date:
                 result[key]["freshness_reference_date"] = formal_reference_date
@@ -5637,6 +5727,9 @@ class UpdateService :
                             continue
                         row = conn.execute(f"SELECT COUNT(*), MIN(decision_date), MAX(decision_date), COUNT(DISTINCT decision_date) FROM {table_name}").fetchone()
                         result[key]["formal_records"] = int(row[0])
+                        result[key]["formal_latest_date"] = row[2]
+                        result[key]["formal_earliest_date"] = row[1]
+                        result[key]["formal_status"] = "FORMAL_AVAILABLE" if row[0] else "MISSING"
                         if row[0]:
                             result[key].update(
                                 total_records=int(row[0]), earliest_date=row[1], latest_date=row[2],
@@ -5652,4 +5745,5 @@ class UpdateService :
             except sqlite3.Error as exc:
                 for info in result.values():
                     info["formal_read_error"] = str(exc)
+                    info["formal_status"] = "READ_ERROR"
         return result

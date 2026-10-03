@@ -982,6 +982,9 @@ class RecommendationCalibrationConsumer:
                 )
                 pointer_text = captured_pointer_bytes.decode("utf-8")
             pointer = json.loads(pointer_text)
+        except UnicodeDecodeError:
+            self._blocker = "active_pointer_invalid_encoding"
+            return "rule_only"
         except (OSError, json.JSONDecodeError):
             self._blocker = "active_pointer_invalid_json"
             return "rule_only"

@@ -595,6 +595,16 @@ def _validate_postprocess_facts(
                     f"scheduled result config {key} 與 typed BodyResult 不一致"
                 )
         expected_decision_date = _scheduled_decision_date(facts.created_at)
+        if raw_result_config.get("date_semantics_schema") is not None:
+            if (raw_result_config.get("date_semantics_schema") != "scheduled-recommendation-date-roles.v1"
+                    or raw_result_config.get("decision_timezone") != "Asia/Taipei"
+                    or raw_result_config.get("market_cutoff_date") != context.as_of_date):
+                raise ValueError("scheduled date roles schema/timezone/cutoff mismatch")
+            assert facts.created_at is not None
+            expected_decision_date = facts.created_at.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat()
+            captured_decision_at = datetime.fromisoformat(context.decision_at)
+            if captured_decision_at.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat() != expected_decision_date:
+                raise ValueError("scheduled invocation crossed Taipei decision-date boundary; retry with a new invocation")
         if raw_result_config.get("decision_date") != expected_decision_date:
             raise ValueError(
                 "scheduled result config decision_date 必須符合同次 invocation created_at 排程日期"

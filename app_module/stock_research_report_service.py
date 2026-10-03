@@ -15,6 +15,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN
 import inspect
 import json
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -27,12 +28,18 @@ from app_module.portfolio_condition_monitor import (
     PortfolioConditionMonitor,
     PortfolioCurrentSnapshot,
 )
+from app_module.price_change_direction import (
+    change_sign_columns as _change_sign_columns,
+    normalize_change_sign as _normalize_change_sign,
+    resolve_signed_change as _resolve_signed_change,
+)
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from app_module.stock_research_report_dtos import (
     ReportFreshness,
     ReportQuality,
     ReportSectionStatus,
     StockAdviceSnapshotDTO,
+    StockSavedSourceOptionDTO,
     StockEvidenceEventDTO,
     StockFlowObservationDTO,
     StockFundamentalObservationDTO,
@@ -100,6 +107,7 @@ class StockResearchReportReadService:
         ml_provider: Callable[..., object] | None = None,
         clock: Callable[[], datetime] | None = None,
         freshness_status_path: Path | str | None = None,
+        candidate_db_file: Path | None = None,
     ) -> None:
         self.config = config
         self.portfolio_service = portfolio_service
@@ -112,6 +120,7 @@ class StockResearchReportReadService:
         self.ml_provider = ml_provider
         self.clock = clock or (lambda: datetime.now(_TAIPEI))
         self.freshness_status_path = _resolve_freshness_status_path(config, freshness_status_path)
+        self.candidate_db_file = Path(candidate_db_file) if candidate_db_file is not None else None
         # Worker 可能同時讀取不同股票；以 context-local snapshot 避免較慢的舊請求
         # 讀到新請求的 freshness receipt。每次 read_report 都會重新載入一次 bounded bytes。
         self._freshness_statuses: ContextVar[
@@ -368,6 +377,19 @@ class StockResearchReportReadService:
                 )
             )
 
+        source_options = []
+        if self.watchlist_analysis_service is not None:
+            try:
+                for option in self.watchlist_analysis_service.list_saved_sources(code)[:30]:
+                    self._check_cancel(cancel_callback)
+                    selected = self.watchlist_analysis_service.fetch(code, option["result_id"], cutoff)
+                    if selected.status == "saved" or (selected.status == "not_in_result" and selected.reasons):
+                        source_options.append(StockSavedSourceOptionDTO(option["result_id"], option.get("result_name") or option["result_id"], selected.decision_date, selected.data_date))
+            except StockResearchReportCancelled:
+                raise
+            except Exception as exc:
+                limitations.append(_error_text("保存來源選擇", exc))
+
         ml_error = ""
         try:
             self._check_cancel(cancel_callback)
@@ -398,7 +420,7 @@ class StockResearchReportReadService:
             )
 
         rule_reasons = _dedupe(
-            (*advice.rule_reasons,)
+            (*_technical_rule_observations(price_points, technical), *advice.rule_reasons,)
             + tuple(
                 reason
                 for event in events
@@ -458,6 +480,7 @@ class StockResearchReportReadService:
             advice=advice,
             ml=ml,
             rule_reasons=rule_reasons,
+            saved_source_options=tuple(source_options),
             research_context=context_map,
         )
 
@@ -805,9 +828,17 @@ class StockResearchReportReadService:
                 fresh.append(StockFundamentalObservationDTO(
                     kind=key[0], label=str(row["item_name"]), period=key[1],
                     as_of_date=str(row["as_of_date"]), announced_date="",
-                    available_at=str(row["observed_at"]), value=_decimal(row["value"]),
-                    unit=str(row["unit"]), source_id=f"sqlite.{current_table}",
-                    source_version=str(row["source_version"]), quality=ReportQuality.OBSERVED.value,
+                    available_at=str(row["observed_at"]),
+                    value=(None if str(row["source_version"]).startswith("official-openapi-statement-endpoints.v1:")
+                           else _decimal(row["value"])),
+                    value_text=("原始現況 API 單位契約尚未驗證；數值不供判讀。"
+                                if str(row["source_version"]).startswith("official-openapi-statement-endpoints.v1:") else ""),
+                    unit=("" if str(row["source_version"]).startswith("official-openapi-statement-endpoints.v1:") else str(row["unit"])),
+                    source_id=f"sqlite.{current_table}",
+                    source_version=str(row["source_version"]),
+                    quality=(ReportQuality.DEGRADED.value
+                             if str(row["source_version"]).startswith("official-openapi-statement-endpoints.v1:")
+                             else ReportQuality.OBSERVED.value),
                 ))
             if fresh:
                 covered = {(r.kind, r.period, r.label) for r in fresh}
@@ -1035,6 +1066,27 @@ class StockResearchReportReadService:
                     limitations=("沒有該股票 row 時維持缺資料，不補零。",),
                 )
             )
+        if include_current and self.candidate_db_file is not None and self.candidate_db_file.is_file():
+            from data_module.institutional_revision_read_model import read_current_institutional, FIELDS
+            with sqlite3.connect(self.candidate_db_file.resolve().as_uri() + '?mode=ro', uri=True) as conn:
+                conn.row_factory = sqlite3.Row
+                conn.execute('PRAGMA query_only=ON')
+                conn.execute('BEGIN')
+                row = read_current_institutional(conn, stock_code=code, observed_at=self.clock(), decision_date=cutoff)
+            if row is not None:
+                source_id = 'candidate.institutional.current_restated'
+                labels = dict(specifications[0][2])
+                result['institutional'] = tuple(StockMetricDTO(
+                    key=field, label=labels[field], value=Decimal(row[field]), unit='股',
+                    data_as_of=row['decision_date'], available_at=row['available_at'],
+                    source_id=source_id, quality=ReportQuality.OBSERVED.value,
+                ) for field in FIELDS)
+                sources = [source for source in sources if source.source_id != 'sqlite.institutional_flows']
+                sources.append(self._source(source_id, '法人現況研究（保留歷史版本）',
+                    row_count=len(FIELDS), data_as_of=row['decision_date'], available_at=row['available_at'],
+                    version=row.get('revision_observation_hash', row['source_version']),
+                    quality=ReportQuality.OBSERVED.value, cutoff=cutoff,
+                    limitations=('此為候選現況／修訂觀測，不授歷史PIT；原始列與失敗checkpoint保留。',)))
         return result["institutional"], result["credit"], result["shareholding"], tuple(sources)
 
     def _read_events(
@@ -1307,6 +1359,7 @@ class StockResearchReportReadService:
                 StockAdviceSnapshotDTO(
                     status=ReportQuality.UNAVAILABLE.value,
                     saved_analysis=analysis,
+                    rule_reasons=(analysis.reasons,) if analysis.reasons else (),
                     limitations=(analysis.message or "沒有可用的已保存推薦結果。",),
                 ),
                 self._source(
@@ -1797,72 +1850,6 @@ def _select_column(columns: Sequence[str], candidates: Sequence[str], alias: str
     return f"{_quote(column)} AS {_quote(alias)}" if column else f"NULL AS {_quote(alias)}"
 
 
-def _change_sign_columns(columns: Sequence[str]) -> tuple[str, ...]:
-    """找出 daily_prices 可用的方向欄，保留原始欄位優先序。"""
-
-    selected: list[str] = []
-    for candidate in ("漲跌(+/-)", "漲跌", "涨跌"):
-        if candidate in columns and candidate not in selected:
-            selected.append(candidate)
-    return tuple(selected)
-
-
-def _normalize_change_sign(value: object) -> str | None:
-    text = str(value or "").strip()
-    if text in {"-", "−", "－", "跌", "▼"}:
-        return "-"
-    if text in {"+", "＋", "漲", "▲"}:
-        return "+"
-    return None
-
-
-def _resolve_signed_change(
-    value: object,
-    sign_values: Sequence[object],
-) -> tuple[Decimal | None, str]:
-    """將來源方向與價差組成可安全展示的 signed change。
-
-    ``漲跌價差`` 在正式 daily_prices 常是絕對值；沒有明確方向時，
-    正數不能被冒充為上漲。未知／特殊 corporate-action 標記與互相衝突的
-    方向一律降級為缺值，避免研究報告給出錯誤的漲跌結論。
-    """
-
-    amount = _decimal(value)
-    if amount is None:
-        return None, ""
-
-    signs: list[str] = []
-    has_unknown = False
-    for raw_sign in sign_values:
-        text = str(raw_sign or "").strip()
-        if not text:
-            continue
-        sign = _normalize_change_sign(text)
-        if sign is None:
-            has_unknown = True
-        else:
-            signs.append(sign)
-
-    if has_unknown:
-        return None, "unknown_change_direction"
-    distinct_signs = set(signs)
-    if len(distinct_signs) > 1:
-        return None, "conflicting_change_direction"
-    if amount < 0 and distinct_signs == {"+"}:
-        return None, "conflicting_change_direction"
-    if distinct_signs == {"-"}:
-        return -abs(amount), ""
-    if distinct_signs == {"+"}:
-        return abs(amount), ""
-    if amount < 0:
-        # 某些舊 schema 已將數值存成 signed change；負值本身不會被
-        # 誤判為上漲，因此可保留。正值則沒有足夠證據判斷方向。
-        return amount, ""
-    if amount == 0:
-        return amount, ""
-    return None, "missing_change_direction"
-
-
 def _date_key_expr(column: str) -> str:
     return f"substr(replace(replace(CAST({_quote(column)} AS TEXT), '-', ''), '/', ''), 1, 8)"
 
@@ -2195,3 +2182,19 @@ def _key_risks(
     if not risks:
         risks.extend(limitations[:3])
     return _dedupe(risks)[:8]
+
+
+def _technical_rule_observations(points: tuple[StockPricePointDTO, ...], technical: StockTechnicalSnapshotDTO | None) -> tuple[str, ...]:
+    """只解釋截止當下已讀到的指標，不產生分數、機率或交易適合度。"""
+    if technical is None:
+        return ()
+    values = {metric.key: metric.value for metric in technical.indicators if metric.value is not None}
+    facts = [f"技術觀察：{key}={values[key]}（資料日 {technical.data_date}；來源 {technical.source_id}）" for key in ('RSI','MACD','ADX') if key in values]
+    if points and points[-1].data_date == technical.data_date and points[-1].close_price is not None:
+        close = points[-1].close_price
+        for key in ('MA20','MA60'):
+            value = values.get(key)
+            if value is not None:
+                relation = '高於' if close > value else '低於' if close < value else '等於'
+                facts.append(f"技術觀察：收盤 {close} {relation} {key} {value}（資料日 {technical.data_date}；只解釋行情，不是推薦或勝率）")
+    return tuple(facts)

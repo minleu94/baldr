@@ -21,8 +21,16 @@ def format_watchlist_trigger_review(
         "degraded": "資料降級",
         "missing": "資料缺失",
     }.get(summary.quality.value, "未知")
-    context = f"資料日：{date_text}；資料品質：{quality_text}"
+    warnings = set(summary.warnings)
+    empty_source_pool = total == 0 and "watchlist_trigger_empty_pool" in warnings
+    context = (
+        f"候選池檢查日：{date_text}；候選池來源：可讀但為空"
+        if empty_source_pool
+        else f"資料日：{date_text}；資料品質：{quality_text}"
+    )
     if not total:
+        if empty_source_pool:
+            return f"候選池來源為空（{context}）；目前沒有可評估的股票，不代表沒有風險。"
         if reported_count is None:
             return f"候選池觸發數未知（{context}）；請先確認資料是否齊全。"
         return f"候選池目前沒有指標變化觸發（{context}）；不代表沒有風險。"
@@ -36,7 +44,6 @@ def format_watchlist_trigger_review(
                 signals.setdefault(code.strip(), set()).add(kind)
 
     lines = [f"候選池有 {total} 筆指標變化待查看（{context}）。"]
-    warnings = set(summary.warnings)
     for code in selected_codes:
         kinds = signals.get(code, set())
         if len(kinds) != 1:

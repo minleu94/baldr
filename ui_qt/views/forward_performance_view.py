@@ -309,7 +309,7 @@ class ForwardPerformanceView(QWidget):
                     f"套用篩選: 開始={filters.start_date or '全部'}, 結束={filters.end_date or '全部'}, "
                     f"事件類型={filters.event_type or '全部'}, 來源類型={filters.source_type or '全部'}, "
                     f"股票={filters.symbol or '全部'}, 觀察天數={filters.window_days}",
-                    f"樣本 / 等待 / 缺失: {row.sample_size} / {row.pending_count} / {row.missing_count}",
+                    f"樣本 / 待觀測或受阻 / 缺失: {row.sample_size} / {row.pending_count} / {row.missing_count}",
                     f"資料品質分布: {quality}",
                     f"警告分布: {warnings}",
                     f"大盤基準可用性: {benchmark_note}",

@@ -9,12 +9,20 @@ from pathlib import Path
 from threading import RLock
 
 import pandas as pd
+from app_module.price_change_direction import CHANGE_SIGN_COLUMNS
 
 
 class DecisionMarketFrameLoader:
     """在單次 snapshot 內重用 daily_prices，下一次 snapshot 必須 reset。"""
 
-    COLUMNS = ("日期", "證券代號", "收盤價", "漲跌價差", "成交股數")
+    COLUMNS = (
+        "日期",
+        "證券代號",
+        "收盤價",
+        "漲跌價差",
+        "成交股數",
+        *CHANGE_SIGN_COLUMNS,
+    )
 
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
@@ -83,6 +91,10 @@ class DecisionMarketFrameLoader:
         try:
             with sqlite3.connect(db_uri, uri=True) as conn:
                 conn.execute("PRAGMA query_only=ON")
+                table_columns = {
+                    str(row[1])
+                    for row in conn.execute('PRAGMA table_info("daily_prices")')
+                }
                 date_rows = pd.read_sql_query(
                     """
                     SELECT DISTINCT 日期
@@ -101,9 +113,13 @@ class DecisionMarketFrameLoader:
                     for value in date_rows["日期"].tolist()
                 ]
                 placeholders = ",".join("?" for _ in normalized_dates)
+                sign_projection = ", ".join(
+                    f'"{name}"' if name in table_columns else f'NULL AS "{name}"'
+                    for name in CHANGE_SIGN_COLUMNS
+                )
                 return pd.read_sql_query(
                     f"""
-                    SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數
+                    SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數, {sign_projection}
                     FROM daily_prices
                     WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') IN ({placeholders})
                     ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') ASC, 證券代號 ASC

@@ -20,6 +20,10 @@
 
 SQLite 同步階段會讀取上述兩個目錄，依 `(證券代號, 日期)` upsert 到 `daily_prices`。TPEX 日價是市場資料層，只補市場行情，不修改 `companies.csv`、fundamental tables、技術指標計算邏輯或推薦分數。
 
+## 2026-10-03 當前 freshness／candidate 消費邊界
+
+本文件中以 `update_20250828.py` 為例的 HTTP 範例是資料抓取歷史說明；更新頁目前另有只讀 freshness receipt 與隔離 Phase3C candidate lane。consumer 會綁定來源根目錄、SQLite／Candidate DB、台北 04:30 cutoff 及實際來源期別；receipt 與當前查詢跨過 cutoff 時需重新 probe，不能由同日期或舊 `expected_wait` 自行推定 fresh。Candidate rows／checkpoint 必須按同 transaction 與自然鍵重試，取消保留已提交單位但不代表整個範圍成功。MOPS 中止時 raw HTML 可留作診斷，尚未完成的 candidate CSV 不發布。操作者請依[每日更新指南](daily_data_update_guide.md)與[Application Manual](../07_guides/APPLICATION_MANUAL.md)的 current 操作，不以本文件的舊範例替代受控 CLI／UI 契約。
+
 ## 獲取邏輯（update_20250828.py）
 
 ### 1. API 端點和參數

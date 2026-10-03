@@ -12,6 +12,10 @@ import pandas as pd
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketBreadthSummary
 from app_module.decision_market_frame import DecisionMarketFrameLoader
 from app_module.dtos.market_loop_dtos import MarketBreadthDTO
+from app_module.price_change_direction import (
+    CHANGE_SIGN_COLUMNS,
+    resolve_signed_change,
+)
 
 
 class MarketBreadthProvider(Protocol):
@@ -321,9 +325,17 @@ class SQLiteDailyPriceMarketBreadthProvider:
             ]
             actual_key = normalized_dates[0]
             placeholders = ",".join("?" for _ in normalized_dates)
+            table_columns = {
+                str(row[1])
+                for row in conn.execute('PRAGMA table_info("daily_prices")')
+            }
+            sign_projection = ", ".join(
+                f'"{name}"' if name in table_columns else f'NULL AS "{name}"'
+                for name in CHANGE_SIGN_COLUMNS
+            )
             prices = pd.read_sql_query(
                 f"""
-                SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數
+                SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數, {sign_projection}
                 FROM daily_prices
                 WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') IN ({placeholders})
                 """,
@@ -340,7 +352,6 @@ class SQLiteDailyPriceMarketBreadthProvider:
         data = prices.copy()
         data["_date_key"] = data["日期"].map(self._normalize_date_key)
         data["_close"] = data["收盤價"].map(self._to_decimal)
-        data["_change"] = data["漲跌價差"].map(self._to_decimal)
         data["_volume"] = data["成交股數"].map(self._to_decimal)
 
         current = data.loc[data["_date_key"] == actual_key].copy()
@@ -350,14 +361,6 @@ class SQLiteDailyPriceMarketBreadthProvider:
 
         previous_key = self._previous_date_key(data, actual_key)
         previous = data.loc[data["_date_key"] == previous_key].copy() if previous_key else pd.DataFrame()
-        previous_close_by_code = (
-            previous.dropna(subset=["證券代號", "_close"])
-            .drop_duplicates(subset=["證券代號"], keep="last")
-            .set_index("證券代號")["_close"]
-            .to_dict()
-            if not previous.empty
-            else {}
-        )
 
         advancing = 0
         declining = 0
@@ -367,17 +370,16 @@ class SQLiteDailyPriceMarketBreadthProvider:
         skipped = 0
 
         for _, row in current.iterrows():
-            stock_code = row["證券代號"]
             close_value = row["_close"]
-            change = row["_change"]
+            change, _ = resolve_signed_change(
+                row.get("漲跌價差"),
+                tuple(row.get(name) for name in CHANGE_SIGN_COLUMNS),
+            )
             if change is None:
-                previous_close = previous_close_by_code.get(stock_code)
-                if previous_close is None:
-                    skipped += 1
-                    continue
-                change = close_value - previous_close
-            else:
-                previous_close = close_value - change
+                # 價差與方向都未知時，不得以收盤價差猜測當日方向。
+                skipped += 1
+                continue
+            previous_close = close_value - change
 
             if change > 0:
                 advancing += 1

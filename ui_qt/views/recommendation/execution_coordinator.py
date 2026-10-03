@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 import hashlib
 import json
+import re
 from typing import Any, Callable
 
 from app_module.recommendation.contracts import (
@@ -50,10 +51,17 @@ class RecommendationExecutionRequest:
     config: dict[str, Any]
     max_stocks: int = 200
     top_n: int = 50
+    universe: tuple[str, ...] | None = None
     config_snapshot: RecommendationConfigSnapshot = field(init=False)
 
     def __post_init__(self) -> None:
-        copied, snapshot = _config_snapshot(self.config)
+        config = deepcopy(self.config)
+        if self.universe is not None:
+            if not self.universe or len(self.universe) > 200 or any(not re.fullmatch(r"[0-9]{4,6}", code) for code in self.universe):
+                raise ValueError("指定研究範圍必須為1至200個有效股票代碼")
+            object.__setattr__(self, "universe", tuple(dict.fromkeys(self.universe)))
+            config["manual_research_universe"] = list(self.universe)
+        copied, snapshot = _config_snapshot(config)
         object.__setattr__(self, "config", copied)
         object.__setattr__(self, "config_snapshot", snapshot)
 
@@ -103,6 +111,7 @@ class RecommendationExecutionRequest:
         # 不會改寫已送出的推薦設定。
         runtime_config = json.loads(self.config_snapshot.raw_config_json)
         runtime_config.pop("manual_qt_snapshot", None)
+        runtime_config.pop("manual_research_universe", None)
         execution = execute_recommendation(
             recommendation_service,
             runtime_config,
@@ -111,6 +120,7 @@ class RecommendationExecutionRequest:
             request_config_snapshot=self.config_snapshot,
             cancel=cancellation_callback,
             progress=use_case_progress,
+            **({"universe": list(self.universe)} if self.universe is not None else {}),
         )
         if type(execution) is not RecommendationExecution:
             raise TypeError("推薦 execution use case 必須回傳 RecommendationExecution")

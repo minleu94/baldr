@@ -1,7 +1,8 @@
 """Prepare one bounded, natural-date ML forward shadow run.
 
-This is an unregistered scheduler preparation wrapper.  It wakes from the
-Pacific 16:15 hook, waits for the real Asia/Taipei 08:30 decision clock, and
+This is an unregistered scheduler preparation wrapper. It wakes from the
+timezone-aware Asia/Taipei 08:25 hook, refreshes the bounded official calendar
+cache before the decision boundary, waits for the real 08:30 clock, and
 then invokes the derived shadow CLI with one explicitly frozen PIT source.
 The operational publication and durable archive branches are mutually
 exclusive.  A late start, missing config, source hash change, child failure,
@@ -31,11 +32,16 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
+from data_module.ml_daily_price_revision_gate import (  # noqa: E402
+    DailyPriceSourceRevisionError,
+    assert_model_artifact_source_revision_safe,
+)
 from scripts import run_daily_ml_allocation_orchestration as daily_orchestration  # noqa: E402
 TAIPEI = ZoneInfo("Asia/Taipei")
 TAIPEI_CUTOFF = time(8, 30)
 FORWARD_DEADLINE = time(8, 35)
-SCHEDULED_WAKE_LOCAL_TIME = "16:15"
+SCHEDULED_WAKE_LOCAL_TIME = "08:25"
+SCHEDULED_WAKE_TIMEZONE = "Asia/Taipei"
 TASK_NAME = "baldr-ml-allocation-forward-daily"
 SCHEMA_VERSION = "ml-forward-scheduled-status.v1"
 CONFIG_SCHEMA_VERSION = "ml-forward-scheduled-config.v1"
@@ -160,6 +166,7 @@ def load_schedule_config(
         "decision_timezone",
         "decision_time",
         "scheduled_wake_local",
+        "scheduled_wake_timezone",
         "run_date",
         "database",
         "paper_state_db",
@@ -181,7 +188,11 @@ def load_schedule_config(
         raise ForwardScheduleConfigError("config.decision_time must be 08:30")
     if decoded.get("scheduled_wake_local") != SCHEDULED_WAKE_LOCAL_TIME:
         raise ForwardScheduleConfigError(
-            "config.scheduled_wake_local must be 16:15"
+            "config.scheduled_wake_local must be 08:25"
+        )
+    if decoded.get("scheduled_wake_timezone") != SCHEDULED_WAKE_TIMEZONE:
+        raise ForwardScheduleConfigError(
+            "config.scheduled_wake_timezone must be Asia/Taipei"
         )
     run_date_text = _required_text(decoded, "run_date")
     try:
@@ -399,6 +410,7 @@ def _base_payload(
         "decision_at": decision_at.astimezone(TAIPEI).isoformat(),
         "natural_forward_deadline_at": deadline_at.astimezone(TAIPEI).isoformat(),
         "scheduled_wake_local": SCHEDULED_WAKE_LOCAL_TIME,
+        "scheduled_wake_timezone": SCHEDULED_WAKE_TIMEZONE,
         "config_path": str(config_path.expanduser().resolve()),
         "status": status,
         "blockers": list(blockers),
@@ -521,13 +533,59 @@ def run_preflight(
 
     observed_release_hash: str | None = None
     release_error: str | None = None
+    model_source_error: str | None = None
+    model_source_quarantined = False
+    max_release_manifest_bytes = 1_048_576
     if release_manifest.is_file():
         try:
-            observed_release_hash = _canonical_file_hash(release_manifest)
+            with release_manifest.open("rb") as stream:
+                release_manifest_bytes = stream.read(max_release_manifest_bytes + 1)
         except OSError as error:
             release_error = f"{type(error).__name__}:{error}"
-    if observed_release_hash != expected_release_hash:
-        release_error = release_error or "release manifest file hash mismatch"
+            model_source_error = "release_manifest_read_failed"
+        else:
+            if len(release_manifest_bytes) > max_release_manifest_bytes:
+                release_error = "release manifest exceeds preflight JSON size limit"
+                model_source_error = "release_manifest_size_limit_exceeded"
+            else:
+                observed_release_hash = "sha256:" + hashlib.sha256(
+                    release_manifest_bytes
+                ).hexdigest()
+                if observed_release_hash != expected_release_hash:
+                    release_error = "release manifest file hash mismatch"
+                    model_source_error = "release_pin_unverified"
+                else:
+                    try:
+                        release_payload = json.loads(
+                            release_manifest_bytes.decode("utf-8")
+                        )
+                    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                        model_source_error = (
+                            f"release_manifest_invalid:{type(error).__name__}"
+                        )
+                    else:
+                        artifact_hash = (
+                            release_payload.get("artifact_hash")
+                            if isinstance(release_payload, Mapping)
+                            else None
+                        )
+                        if (
+                            not isinstance(artifact_hash, str)
+                            or SHA256_RE.fullmatch(artifact_hash) is None
+                        ):
+                            model_source_error = "release_artifact_hash_invalid"
+                        else:
+                            try:
+                                assert_model_artifact_source_revision_safe(
+                                    artifact_hash
+                                )
+                            except DailyPriceSourceRevisionError:
+                                model_source_quarantined = True
+                                model_source_error = "known_source_revision_quarantine"
+    else:
+        model_source_error = "release_manifest_missing"
+    if observed_release_hash != expected_release_hash and release_error is None:
+        release_error = "release manifest file hash mismatch"
 
     blockers = [
         f"missing:{item['name']}"
@@ -536,6 +594,13 @@ def run_preflight(
     ]
     if release_error is not None:
         blockers.append(f"release_pin:{release_error}")
+    if model_source_error is not None:
+        blockers.append(f"model_source:{model_source_error}")
+    deployment_path_ready = (
+        all(item["exists"] is True for item in checks)
+        and release_error is None
+    )
+    model_source_ready = model_source_error is None
     payload: dict[str, object] = {
         "schema_version": "ml-forward-preflight.v1",
         "task": TASK_NAME,
@@ -544,6 +609,10 @@ def run_preflight(
         "release_root": str(release_root.expanduser().resolve()),
         "release_manifest_file_hash": expected_release_hash,
         "release_manifest_file_hash_observed": observed_release_hash,
+        "deployment_path_ready": deployment_path_ready,
+        "model_source_ready": model_source_ready,
+        "model_source_quarantined": model_source_quarantined,
+        "model_source_blocker": model_source_error,
         "blockers": blockers,
         "wait_started": False,
         "config_producer_called": False,

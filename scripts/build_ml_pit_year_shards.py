@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping
 from dataclasses import asdict
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,9 @@ from data_module.ml_pit_year_shard_exporter import (  # noqa: E402
 )
 from data_module.ml_daily_price_source_quality import (  # noqa: E402
     DailyPriceSourceQualityError,
+)
+from data_module.ml_daily_price_revision_gate import (  # noqa: E402
+    load_verified_current_restated_source_context,
 )
 from data_module.ml_storage_capacity import (  # noqa: E402
     BYTES_PER_GIB,
@@ -355,6 +359,33 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--allow-source-revision-research",
+        "--research-candidate",
+        dest="allow_source_revision_research",
+        action="store_true",
+        help=(
+            "允許在資料庫存在修訂時輸出 research-only 原始 PIT shards。"
+            "產物標記 research_only=True，禁止 formal_oos 與 alpha credit。"
+        ),
+    )
+    parser.add_argument(
+        "--current-restated-research",
+        action="store_true",
+        help=(
+            "使用已驗證 original DB + consistent snapshot 的 current-restated CORE lane；"
+            "必須提供下列 snapshot、receipt、SHA、原始 DB 與 aware source-selection cutoff。"
+        ),
+    )
+    parser.add_argument("--snapshot-database", type=Path)
+    parser.add_argument("--snapshot-receipt", type=Path)
+    parser.add_argument("--expected-snapshot-database-sha256")
+    parser.add_argument("--expected-snapshot-receipt-sha256")
+    parser.add_argument("--original-source-database", type=Path)
+    parser.add_argument(
+        "--data-selection-as-of",
+        help="明確帶時區的 source-selection cutoff；不是模型 fit freeze。",
+    )
+    parser.add_argument(
         "--heavy-lock-path",
         type=Path,
         help="可選；正式 release_v4 output 必須與 canonical lock 相同",
@@ -369,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
     reservation = None
     handoff: MLStorageChainReservationHandoff | None = None
     try:
+        source_context = _load_current_restated_source_context(args)
         lock_path = resolve_heavy_chain_lock_path(
             args.output_dir,
             explicit_path=args.heavy_lock_path,
@@ -428,6 +460,11 @@ def main(argv: list[str] | None = None) -> int:
                 source_quality_candidate_sample_limit=(
                     args.source_quality_candidate_sample_limit
                 ),
+                allow_source_revision_research=(
+                    args.allow_source_revision_research
+                    or args.current_restated_research
+                ),
+                current_restated_source_context=source_context,
             )
         )
     except DailyPriceSourceQualityError as exc:
@@ -484,10 +521,20 @@ def main(argv: list[str] | None = None) -> int:
         "dataset_manifest_paths": {
             key: str(value)
             for key, value in publication.dataset_manifest_paths.items()
+            if value.is_file()
         },
         "sqlite_mode": "ro",
         "query_only": True,
         "parquet_dependency_added": False,
+        "research_only": args.allow_source_revision_research
+        or args.current_restated_research,
+        "data_temporality": (
+            "current_restated_research"
+            if args.current_restated_research
+            else "pit"
+        ),
+        "formal_oos_allowed": False,
+        "production_alpha_bp": 0,
     }
     print(
         json.dumps(
@@ -506,6 +553,74 @@ def _default_database_path() -> Path:
     if os.environ.get("PROFILE", "prod") == "test":
         data_root = data_root / "_test"
     return data_root / "sqlite" / "twstock.db"
+
+
+def _load_current_restated_source_context(args: argparse.Namespace):
+    context_values = (
+        args.snapshot_database,
+        args.snapshot_receipt,
+        args.expected_snapshot_database_sha256,
+        args.expected_snapshot_receipt_sha256,
+        args.original_source_database,
+        args.data_selection_as_of,
+    )
+    if not args.current_restated_research:
+        if any(value is not None for value in context_values):
+            raise ValueError(
+                "snapshot/context pins require --current-restated-research"
+            )
+        return None
+    if args.all_universe or not args.symbols:
+        raise ValueError(
+            "current-restated research requires an explicit bounded --symbols universe"
+        )
+    if len(set(args.symbols)) != len(args.symbols) or len(args.symbols) > 20:
+        raise ValueError(
+            "current-restated research symbols must be unique and limited to 20"
+        )
+    if any(value is None for value in context_values):
+        raise ValueError(
+            "current-restated research requires snapshot/receipt/original DB, both expected SHA-256 pins, and --data-selection-as-of"
+        )
+    decision_at = _require_aware_datetime(args.decision_at, "--decision-at")
+    selection_as_of = _require_aware_datetime(
+        args.data_selection_as_of, "--data-selection-as-of"
+    )
+    if selection_as_of > datetime.now(timezone.utc):
+        raise ValueError("--data-selection-as-of cannot be in the future")
+    if decision_at > selection_as_of:
+        raise ValueError("--decision-at cannot exceed --data-selection-as-of")
+    database_path = Path(args.database)
+    snapshot_path = Path(args.snapshot_database)
+    if database_path.resolve(strict=True) != snapshot_path.resolve(strict=True):
+        raise ValueError(
+            "--database must resolve to the pinned --snapshot-database"
+        )
+    return load_verified_current_restated_source_context(
+        snapshot_path,
+        Path(args.snapshot_receipt),
+        expected_snapshot_database_sha256=str(
+            args.expected_snapshot_database_sha256
+        ),
+        expected_snapshot_receipt_sha256=str(
+            args.expected_snapshot_receipt_sha256
+        ),
+        original_database_path=Path(args.original_source_database),
+        decision_at=args.decision_at,
+        training_as_of=args.data_selection_as_of,
+    )
+
+
+def _require_aware_datetime(value: str, label: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a timezone-aware ISO datetime")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be a timezone-aware ISO datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{label} must include a timezone")
+    return parsed.astimezone(timezone.utc)
 
 
 def _configure_utf8_stdio() -> None:

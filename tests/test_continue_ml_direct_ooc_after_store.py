@@ -9,6 +9,9 @@ from types import SimpleNamespace
 import pytest
 
 import scripts.continue_ml_direct_ooc_after_store as continuation
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
 
 
 def test_main_publishes_live_waiting_status_before_store_wait(
@@ -58,6 +61,59 @@ def test_main_publishes_live_waiting_status_before_store_wait(
     )
     assert terminal_payload["status"] == "blocked"
     assert terminal_payload["message"] == "test_wait_boundary"
+
+
+def test_research_mode_blocks_before_formal_trainer_or_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    research_root = tmp_path / "output" / "ml_research"
+    store_output_dir = research_root / "store"
+    training_output_dir = research_root / "training"
+    store_output_dir.mkdir(parents=True)
+    training_output_dir.mkdir(parents=True)
+
+    def resolve(path: Path | str) -> Path:
+        return resolve_ml_research_output_path(
+            path,
+            repository_root=tmp_path,
+        )
+
+    monkeypatch.setattr(
+        continuation,
+        "resolve_ml_research_output_path",
+        resolve,
+    )
+    monkeypatch.setattr(
+        continuation,
+        "_ensure_current_direct_schema",
+        lambda **_: pytest.fail("formal store upgrade must not start"),
+    )
+
+    result = continuation.main(
+        [
+            "--resume-after-direct-store",
+            "--store-output-dir",
+            str(store_output_dir),
+            "--training-output-dir",
+            str(training_output_dir),
+            "--output-root",
+            str(research_root),
+            "--allow-research",
+        ]
+    )
+
+    status = json.loads(
+        (training_output_dir / "continuation_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert result == 2
+    assert status["classification"] == (
+        "current_restated_training_consumer_not_connected"
+    )
+    assert status["formal_release_coordinator_started"] is False
+    assert status["formal_oos_allowed"] is False
 
 
 def test_main_publishes_store_custody_validation_phase(

@@ -32,6 +32,9 @@ from data_module.ml_storage_capacity import (  # noqa: E402
     validate_heavy_chain_reservation_handoff,
     forward_heavy_chain_reservation_handoff_environment,
 )
+from data_module.ml_research_output_boundary import (  # noqa: E402
+    resolve_ml_research_output_path,
+)
 SCHEMA_VERSION = "portfolio-ml-direct-v3-refresh-chain.v1"
 _HEARTBEAT_SCHEMA_VERSION = "portfolio-ml-direct-v3-refresh-chain-heartbeat.v1"
 # Allow normal Windows scan/indexer locks to clear without abandoning a long
@@ -95,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
             "custom --status-path uses its parent logs directory"
         ),
     )
+    parser.add_argument(
+        "--allow-research",
+        action="store_true",
+        help="allow research raw candidates and output to isolated roots",
+    )
     return parser
 
 
@@ -104,6 +112,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     store_output_dir = args.store_output_dir.resolve()
     training_output_dir = args.training_output_dir.resolve()
     output_root = args.output_root.resolve()
+    research_mode = bool(getattr(args, "allow_research", False))
+    if research_mode:
+        for candidate_path, label in (
+            (store_output_dir, "store_output_dir"),
+            (training_output_dir, "training_output_dir"),
+            (output_root, "output_root"),
+        ):
+            try:
+                resolve_ml_research_output_path(candidate_path)
+            except ValueError as exc:
+                raise ValueError(
+                    f"allow_research path rejected for {label}: {candidate_path}"
+                ) from exc
     primary_status_path = (
         args.status_path.resolve()
         if args.status_path is not None
@@ -114,11 +135,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.resume_after_legacy_chain and args.status_path is None
         else primary_status_path
     )
+    if research_mode:
+        resolve_ml_research_output_path(status_path)
     operational_log_dir = _operational_log_dir(
         args=args,
         primary_status_path=primary_status_path,
         store_output_dir=store_output_dir,
     )
+    if research_mode:
+        resolve_ml_research_output_path(operational_log_dir)
     direct_process: subprocess.Popen[Any] | None = None
     ooc_process: subprocess.Popen[Any] | None = None
     release_process: subprocess.Popen[Any] | None = None
@@ -239,29 +264,46 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         ooc_log = operational_log_dir / "ooc_v3_refresh.log"
         ooc_process = _start_logged(ooc_command, ooc_log)
-        release_command = _release_command(
-            ooc_process_id=ooc_process.pid,
-            training_output_dir=training_output_dir,
-            output_root=output_root,
-            database=args.database.resolve(),
-        )
-        release_log = operational_log_dir / "release_v3_refresh.log"
-        release_process = _start_logged(release_command, release_log)
-        _atomic_write_json(
-            status_path,
-            {
-                "schema_version": SCHEMA_VERSION,
-                "status": "v3_downstream_started",
-                "direct_process_id": direct_process.pid,
-                "ooc_process_id": ooc_process.pid,
-                "release_process_id": release_process.pid,
-                "store_output_dir": str(store_output_dir),
-                "training_output_dir": str(training_output_dir),
-                "formal_oos_allowed": False,
-                "production_alpha_bp": 0,
-                "broker_order_allowed": False,
-            },
-        )
+        if research_mode:
+            _atomic_write_json(
+                status_path,
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "status": "research_ooc_helper_started",
+                    "direct_process_id": direct_process.pid,
+                    "ooc_process_id": ooc_process.pid,
+                    "store_output_dir": str(store_output_dir),
+                    "training_output_dir": str(training_output_dir),
+                    "formal_release_coordinator_started": False,
+                    "formal_oos_allowed": False,
+                    "production_alpha_bp": 0,
+                    "broker_order_allowed": False,
+                },
+            )
+        else:
+            release_command = _release_command(
+                ooc_process_id=ooc_process.pid,
+                training_output_dir=training_output_dir,
+                output_root=output_root,
+                database=args.database.resolve(),
+            )
+            release_log = operational_log_dir / "release_v3_refresh.log"
+            release_process = _start_logged(release_command, release_log)
+            _atomic_write_json(
+                status_path,
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "status": "v3_downstream_started",
+                    "direct_process_id": direct_process.pid,
+                    "ooc_process_id": ooc_process.pid,
+                    "release_process_id": release_process.pid,
+                    "store_output_dir": str(store_output_dir),
+                    "training_output_dir": str(training_output_dir),
+                    "formal_oos_allowed": False,
+                    "production_alpha_bp": 0,
+                    "broker_order_allowed": False,
+                },
+            )
         _wait_for_expected_process(
             process_id=direct_process.pid,
             expected_fragments=(
@@ -281,34 +323,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         direct_manifest_path, direct_manifest = _latest_direct_manifest(
             store_output_dir
         )
-        _wait_for_expected_process(
-            process_id=ooc_process.pid,
-            expected_fragments=(
-                "continue_ml_direct_ooc_after_store.py",
-                str(training_output_dir),
-            ),
-            poll_seconds=args.poll_seconds,
-            status_path=status_path,
-            wait_phase="ooc_helper",
-        )
-        _wait_for_expected_process(
-            process_id=release_process.pid,
-            expected_fragments=(
-                "continue_ml_release_after_ooc.py",
-                str(training_output_dir),
-            ),
-            poll_seconds=args.poll_seconds,
-            status_path=status_path,
-            wait_phase="release_helper",
-        )
+        if research_mode:
+            ooc_returncode = ooc_process.wait()
+        else:
+            _wait_for_expected_process(
+                process_id=ooc_process.pid,
+                expected_fragments=(
+                    "continue_ml_direct_ooc_after_store.py",
+                    str(training_output_dir),
+                ),
+                poll_seconds=args.poll_seconds,
+                status_path=status_path,
+                wait_phase="ooc_helper",
+            )
+            ooc_returncode = ooc_process.wait()
+        if release_process is not None:
+            _wait_for_expected_process(
+                process_id=release_process.pid,
+                expected_fragments=(
+                    "continue_ml_release_after_ooc.py",
+                    str(training_output_dir),
+                ),
+                poll_seconds=args.poll_seconds,
+                status_path=status_path,
+                wait_phase="release_helper",
+            )
         ooc_status = _read_json(
             training_output_dir / "continuation_status.json"
         )
-        release_status = _read_json(
-            training_output_dir / "post_ooc_followup_status.json"
+        release_status = (
+            None
+            if research_mode
+            else _read_json(
+                training_output_dir / "post_ooc_followup_status.json"
+            )
         )
-        complete = (
-            ooc_status.get("status") == "complete"
+        complete = bool(
+            not research_mode
+            and ooc_status.get("status") == "complete"
+            and isinstance(release_status, Mapping)
             and release_status.get("status") == "complete"
         )
         payload = {
@@ -318,6 +371,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "direct_manifest_hash": direct_manifest.get("manifest_hash"),
             "ooc_status": ooc_status,
             "release_status": release_status,
+            "formal_release_coordinator_started": not research_mode,
+            "ooc_process_returncode": ooc_returncode,
             "formal_oos_allowed": False,
             "production_alpha_bp": 0,
             "broker_order_allowed": False,
@@ -418,6 +473,8 @@ def _direct_build_command(args: argparse.Namespace) -> list[str]:
         command.extend(
             ["--safety-reserve-bytes", str(args.safety_reserve_bytes)]
         )
+    if getattr(args, "allow_research", False):
+        command.append("--allow-research")
     return command
 
 
@@ -428,7 +485,7 @@ def _ooc_helper_command(
     training_output_dir: Path,
     args: argparse.Namespace,
 ) -> list[str]:
-    return [
+    command = [
         sys.executable,
         str(ROOT / "scripts" / "continue_ml_direct_ooc_after_store.py"),
         "--direct-process-id",
@@ -448,6 +505,9 @@ def _ooc_helper_command(
         "--poll-seconds",
         str(args.poll_seconds),
     ]
+    if getattr(args, "allow_research", False):
+        command.append("--allow-research")
+    return command
 
 
 def _release_command(

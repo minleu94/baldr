@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime
 import gzip
 import hashlib
 import json
@@ -67,6 +67,12 @@ LABEL_FIELDS = (
     "fill_feasible_observed",
 )
 _SHA256_PREFIX = "sha256:"
+
+
+class InsufficientMatureHistoryError(ValueError):
+    """真實標籤成熟歷史不足以建立要求的 purged folds。"""
+
+    classification = "insufficient_mature_history"
 
 
 @dataclass(frozen=True)
@@ -153,6 +159,11 @@ class PortfolioMLOutOfCoreStoreBuilder:
             field_name="horizons",
         )
         folds = _folds(source_manifest)
+        research_minimum_train_dates = (
+            _research_fold_minimum_train_dates(source_manifest)
+            if request.lane == "research_shadow"
+            else None
+        )
         source_shards = _source_shards(
             source_manifest_path=source_manifest_path,
             manifest=source_manifest,
@@ -173,6 +184,11 @@ class PortfolioMLOutOfCoreStoreBuilder:
             "folds": folds,
             "lane": request.lane,
         }
+        if research_minimum_train_dates is not None:
+            store_identity["research_fold_qualification"] = {
+                "policy": "post_purge_distinct_train_dates.v1",
+                "minimum_train_dates": research_minimum_train_dates,
+            }
         run_id = "ooc-" + _sha256_json(store_identity)[7:31]
         output_root = request.output_root.resolve()
         output_root.mkdir(parents=True, exist_ok=True)
@@ -287,7 +303,13 @@ class PortfolioMLOutOfCoreStoreBuilder:
             folds=folds,
             year_manifests=year_manifests,
             batch_size=request.batch_size,
+            training_as_of=str(source_manifest["training_as_of"]),
+            minimum_train_dates_after_purge=research_minimum_train_dates,
         )
+        if request.lane == "research_shadow" and len(fold_manifests) < 4:
+            raise InsufficientMatureHistoryError(
+                "research OOC requires four folds with enough post-purge train dates"
+            )
         manifest: dict[str, Any] = {
             "schema_version": STORE_SCHEMA_VERSION,
             "status": "complete",
@@ -377,6 +399,13 @@ class PortfolioMLOutOfCoreStoreBuilder:
             },
             "store_identity": store_identity,
         }
+        if research_minimum_train_dates is not None:
+            manifest["fold_qualification_policy"] = (
+                "post_purge_distinct_train_dates.v1"
+            )
+            manifest["minimum_train_dates_after_purge"] = (
+                research_minimum_train_dates
+            )
         source_policy = source_manifest.get("portfolio_state_policy")
         if (
             isinstance(source_policy, Mapping)
@@ -791,10 +820,26 @@ class PortfolioMLOutOfCoreStoreBuilder:
         year_manifests: Sequence[Mapping[str, Any]],
         batch_size: int,
         year_rows_paths: Mapping[int, Path] | None = None,
+        training_as_of: str | None = None,
+        minimum_train_dates_after_purge: int | None = None,
     ) -> list[dict[str, Any]]:
         folds_directory = run_directory / "folds"
         folds_directory.mkdir(parents=True, exist_ok=True)
+        training_as_of_dt = (
+            None
+            if training_as_of is None
+            else _aware_datetime(training_as_of, field_name="training_as_of")
+        )
         results: list[dict[str, Any]] = []
+        if minimum_train_dates_after_purge is not None:
+            minimum_train_dates_after_purge = _required_integer(
+                minimum_train_dates_after_purge,
+                field_name="minimum_train_dates_after_purge",
+            )
+            if minimum_train_dates_after_purge <= 0:
+                raise ValueError(
+                    "minimum_train_dates_after_purge must be positive"
+                )
         for fold in folds:
             fold_id = str(fold["fold_id"])
             train_path = folds_directory / f"{fold_id}.train.refs.i64"
@@ -808,6 +853,22 @@ class PortfolioMLOutOfCoreStoreBuilder:
                     existing,
                     folds_directory=folds_directory,
                 ):
+                    existing_train_date_count = existing.get(
+                        "train_date_count"
+                    )
+                    if minimum_train_dates_after_purge is not None:
+                        if (
+                            isinstance(existing_train_date_count, bool)
+                            or not isinstance(existing_train_date_count, int)
+                        ):
+                            raise ValueError(
+                                "existing fold index lacks verified distinct-date counts"
+                            )
+                        if (
+                            existing_train_date_count
+                            < minimum_train_dates_after_purge
+                        ):
+                            continue
                     results.append(existing)
                     continue
                 raise ValueError(
@@ -821,6 +882,8 @@ class PortfolioMLOutOfCoreStoreBuilder:
             )
             train_count = 0
             test_count = 0
+            train_dates: set[str] = set()
+            test_dates: set[str] = set()
             train_digest = hashlib.sha256()
             test_digest = hashlib.sha256()
             with (
@@ -846,7 +909,8 @@ class PortfolioMLOutOfCoreStoreBuilder:
                     connection.execute("PRAGMA query_only=ON")
                     cursor = connection.execute(
                         """
-                        SELECT local_row_index, decision_date
+                        SELECT local_row_index, decision_date,
+                               max_label_available_at, max_horizon_end_date
                         FROM rows
                         ORDER BY local_row_index
                         """
@@ -855,7 +919,12 @@ class PortfolioMLOutOfCoreStoreBuilder:
                         rows = cursor.fetchmany(batch_size)
                         if not rows:
                             break
-                        for local_row_index, decision_date_value in rows:
+                        for (
+                            local_row_index,
+                            decision_date_value,
+                            max_label_available_at,
+                            max_horizon_end_date,
+                        ) in rows:
                             decision_date = str(decision_date_value)
                             encoded = struct.pack(
                                 "<qq",
@@ -865,9 +934,42 @@ class PortfolioMLOutOfCoreStoreBuilder:
                             if decision_date <= str(
                                 fold["train_end_date"]
                             ):
+                                try:
+                                    label_end = date.fromisoformat(
+                                        str(max_horizon_end_date)
+                                    )
+                                    test_start = date.fromisoformat(
+                                        str(fold["test_start"])
+                                    )
+                                except ValueError as exc:
+                                    connection.close()
+                                    raise ValueError(
+                                        "fold dates must be ISO calendar dates"
+                                    ) from exc
+                                if label_end >= test_start:
+                                    connection.close()
+                                    raise ValueError(
+                                        "train label horizon reaches test_start: "
+                                        f"fold={fold_id}; decision={decision_date}; "
+                                        f"label_end={max_horizon_end_date}"
+                                    )
+                                if training_as_of_dt is not None and (
+                                    _aware_datetime(
+                                        str(max_label_available_at),
+                                        field_name="rows.max_label_available_at",
+                                    )
+                                    > training_as_of_dt
+                                ):
+                                    connection.close()
+                                    raise ValueError(
+                                        "train label availability exceeds real "
+                                        f"training_as_of: fold={fold_id}; "
+                                        f"decision={decision_date}"
+                                    )
                                 train_stream.write(encoded)
                                 train_digest.update(encoded)
                                 train_count += 1
+                                train_dates.add(decision_date)
                             elif (
                                 str(fold["test_start"])
                                 <= decision_date
@@ -876,6 +978,7 @@ class PortfolioMLOutOfCoreStoreBuilder:
                                 test_stream.write(encoded)
                                 test_digest.update(encoded)
                                 test_count += 1
+                                test_dates.add(decision_date)
                     connection.close()
                 train_stream.flush()
                 os.fsync(train_stream.fileno())
@@ -887,11 +990,20 @@ class PortfolioMLOutOfCoreStoreBuilder:
                 raise ValueError(
                     f"fold requires non-empty train and test refs: {fold_id}"
                 )
+            if (
+                minimum_train_dates_after_purge is not None
+                and len(train_dates) < minimum_train_dates_after_purge
+            ):
+                train_partial.unlink(missing_ok=True)
+                test_partial.unlink(missing_ok=True)
+                continue
             os.replace(train_partial, train_path)
             os.replace(test_partial, test_path)
             fold_manifest: dict[str, Any] = {
                 "schema_version": FOLD_INDEX_SCHEMA_VERSION,
                 **fold,
+                "train_date_count": len(train_dates),
+                "test_date_count": len(test_dates),
                 "train": {
                     "path": train_path.name,
                     "row_count": train_count,
@@ -1027,6 +1139,24 @@ def _feature_packs(
     if not result:
         raise ValueError("feature_packs are required")
     return tuple(result)
+
+
+def _research_fold_minimum_train_dates(
+    manifest: Mapping[str, Any],
+) -> int:
+    minimum = manifest.get("minimum_train_dates")
+    if minimum is None:
+        identity = manifest.get("computation_identity")
+        if not isinstance(identity, Mapping):
+            raise ValueError(
+                "research OOC source lacks a typed minimum_train_dates contract"
+            )
+        minimum = identity.get("minimum_train_dates")
+    if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum <= 0:
+        raise ValueError(
+            "research OOC minimum_train_dates must be a positive exact integer"
+        )
+    return minimum
 
 
 def _feature_scales(
@@ -1486,6 +1616,16 @@ def _require_int_range(
     limits = np.iinfo(dtype)
     if not int(limits.min) <= value <= int(limits.max):
         raise OverflowError(f"{field_name} exceeds {dtype.str}")
+
+
+def _aware_datetime(value: str, *, field_name: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be an ISO datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field_name} must include a timezone")
+    return parsed
 
 
 def _required_integer(value: object, *, field_name: str) -> int:

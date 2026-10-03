@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import gzip
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -158,6 +159,62 @@ def _build_database(path: Path) -> None:
              '2024-01-03T18:30:00+08:00', 'flow-r1', 'accepted')
             """
         )
+
+
+def test_current_restated_daily_turnover_unit_is_twd_without_rescaling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = SimpleNamespace(
+        feature_id="daily_prices.成交金額",
+        table_name="daily_prices",
+        column_name="成交金額",
+        family="price_liquidity_technical",
+        source_id="daily_prices.成交金額",
+        sqlite_declared_type="INTEGER",
+        canonical_dtype="scaled_integer",
+        unit="currency_minor",
+        scale=1,
+        eligibility_status="formal_backfill",
+        staleness_days=1,
+        record_hash="sha256:" + "a" * 64,
+        formal_training_eligible=False,
+    )
+    manifest_feature = exporter_module._feature_manifest_payload(
+        record, current_restated=True
+    )
+    assert manifest_feature["unit"] == "TWD"
+    assert manifest_feature["scale"] == 1
+    assert manifest_feature["unit_contract"] == (
+        "tw-daily-price-transaction-amount-twd.v1"
+    )
+
+    source_observed_at = datetime(2026, 10, 3, 2, 0, tzinfo=timezone.utc)
+    dependency_verified_at = datetime(2026, 10, 3, 2, 1, tzinfo=timezone.utc)
+    current_value_available_at = datetime(2026, 10, 3, 2, 2, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        exporter_module,
+        "_current_restated_context_payload",
+        lambda _context: {"schema_version": "test-context.v1"},
+    )
+    payload = exporter_module._current_restated_feature_value_payload(
+        record,
+        raw_value=7_654_181_137,
+        decision=current_value_available_at,
+        current_value_available_at=current_value_available_at,
+        quality="available",
+        derived_value=None,
+        source_context=SimpleNamespace(
+            source_observed_at=source_observed_at,
+            revision_dependencies_verified_at=dependency_verified_at,
+        ),
+    )
+
+    assert payload["value_int"] == 7_654_181_137
+    assert payload["scale"] == 0
+    assert payload["source_scale_denominator"] == 1
+    assert payload["unit"] == "TWD"
+    assert payload["unit_contract"] == manifest_feature["unit_contract"]
+    assert payload["formal_training_eligible"] is False
 
 
 def _build_price_gap_database(path: Path) -> None:
@@ -454,6 +511,79 @@ def test_source_revision_receipt_before_cutoff_allows_build(tmp_path: Path) -> N
     )
     manifest = _json(publication.manifest_path)
     assert manifest["source_revision_gate"]["relevant_row_count"] == 0
+
+
+def test_research_gate_records_validated_namespace_hashes_and_consistent_flags(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "source.db"
+    _build_database(database)
+    receipt = tmp_path / "daily_price_revision.json"
+    _write_source_revision_receipt(receipt)
+
+    gate = exporter_module.check_daily_price_source_revision(
+        database_path=database,
+        decision_date="2024-02-15",
+        symbols=("2330",),
+        explicit_path=receipt,
+        allow_source_revision_research=True,
+    )
+
+    assert gate is not None
+    assert gate["current_restated_research"] is True
+    assert gate["market_revision_blocks_historical_pit"] is True
+    assert gate["research_only"] is True
+    assert gate["formal_historical_PIT"] is False
+    assert gate["formal_training_allowed"] is False
+    evidence = gate["source_revision_evidence"]
+    assert evidence["schema_version"] == "validated-source-evidence.v1"
+    assert len(evidence["namespaces"]) == 4
+    daily = next(
+        item
+        for item in evidence["namespaces"]
+        if item["namespace"] == "daily_price_repair_receipt"
+    )
+    assert daily["presence"] == "present"
+    assert daily["files"][0]["sha256"] == (
+        gate["checked_receipts"][0]["receipt_hash"].removeprefix("sha256:")
+    )
+    assert gate["source_revision_evidence_sha256"] == evidence["digest_sha256"]
+
+
+def test_research_gate_rejects_pending_or_malformed_daily_receipts(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "source.db"
+    _build_database(database)
+    pending = tmp_path / "pending.json"
+    _write_source_revision_receipt(pending, pending=True)
+
+    with pytest.raises(
+        exporter_module.DailyPriceSourceRevisionError, match="pending"
+    ):
+        exporter_module.check_daily_price_source_revision(
+            database_path=database,
+            decision_date="2024-02-15",
+            symbols=("2330",),
+            explicit_path=pending,
+            allow_source_revision_research=True,
+        )
+
+    malformed = tmp_path / "malformed.json"
+    _write_source_revision_receipt(malformed)
+    payload = _json(malformed)
+    payload["status"] = "applied-ish"
+    malformed.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(
+        exporter_module.DailyPriceSourceRevisionError, match="status is invalid"
+    ):
+        exporter_module.check_daily_price_source_revision(
+            database_path=database,
+            decision_date="2024-02-15",
+            symbols=("2330",),
+            explicit_path=malformed,
+            allow_source_revision_research=True,
+        )
 
 
 def test_source_revision_receipt_requires_source_date(tmp_path: Path) -> None:

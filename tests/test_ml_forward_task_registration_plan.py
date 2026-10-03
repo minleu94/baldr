@@ -11,14 +11,23 @@ XML = ROOT / "scripts" / "scheduled" / "ml_forward_task_registration.xml"
 NS = {"task": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 
-def test_forward_registration_plan_is_registered_and_pinned() -> None:
+def test_forward_registration_plan_prepares_aware_trigger_and_preserves_prior_evidence() -> None:
     plan = json.loads(PLAN.read_text(encoding="utf-8"))
 
-    assert plan["status"] == "registered_verified"
+    assert plan["status"] == "prepared_timezone_aware_update_not_applied"
     assert plan["task_name"] == "baldr-ml-allocation-forward-daily"
     assert plan["host_timezone"] == "Pacific Standard Time"
-    assert plan["schedule"]["pacific_local_time"] == "16:15"
+    assert plan["schedule"]["decision_timezone"] == "Asia/Taipei"
+    assert plan["schedule"]["decision_local_time"] == "08:25"
+    assert plan["schedule"]["start_boundary"] == "2026-10-03T08:25:00+08:00"
+    assert plan["schedule"]["utc_time"] == "00:25"
+    assert plan["schedule"]["taipei_mapping"] == {
+        "PDT": "17:25 previous Pacific calendar date",
+        "PST": "16:25 previous Pacific calendar date",
+    }
+    assert "five minutes" in plan["schedule"]["wrapper_waits_for"]
     assert plan["settings"]["multiple_instances"] == "IgnoreNew"
+    assert plan["settings"]["random_delay"] == "PT0S"
     assert plan["settings"]["execution_time_limit"] == "PT2H"
     assert plan["forward_environment"]["ML_FORWARD_OUTPUT_ROOT"].endswith(
         "v4_ml_daily_derived_shadow_real_v2"
@@ -32,10 +41,11 @@ def test_forward_registration_plan_is_registered_and_pinned() -> None:
     assert plan["forward_environment"]["BALDR_ML_RELEASE_MANIFEST_FILE_HASH"] == (
         "sha256:c306c1ea53ccef112204a8412a605b575e4d107b4503b2b5be5d6d5ee50910ea"
     )
-    registration = plan["registration_evidence"]
+    registration = plan["prior_registration_evidence"]
     assert registration["task_name"] == "baldr-ml-allocation-forward-daily"
     assert registration["next_run_pacific"] == "2026/9/8 16:15:00"
-    assert registration["status"] == "Ready"
+    assert registration["status"] == "historical_readback_superseded_by_pending_trigger_update"
+    assert plan["safety"]["timezone_aware_update_applied"] is False
 
 
 def test_forward_registration_xml_matches_plan_without_aggregate_registration() -> None:
@@ -45,7 +55,7 @@ def test_forward_registration_xml_matches_plan_without_aggregate_registration() 
     )
     assert root.findtext(
         "task:Triggers/task:CalendarTrigger/task:StartBoundary", namespaces=NS
-    ) == "2026-09-08T16:15:00"
+    ) == "2026-10-03T08:25:00+08:00"
     assert root.findtext(
         "task:Triggers/task:CalendarTrigger/task:ScheduleByDay/task:DaysInterval",
         namespaces=NS,
@@ -62,6 +72,10 @@ def test_forward_registration_xml_matches_plan_without_aggregate_registration() 
     assert root.findtext(
         "task:Settings/task:StartWhenAvailable", namespaces=NS
     ) == "false"
+    assert root.findtext("task:Settings/task:Enabled", namespaces=NS) == "false"
+    assert root.findtext(
+        "task:Triggers/task:CalendarTrigger/task:RandomDelay", namespaces=NS
+    ) == "PT0S"
     assert root.findtext("task:Settings/task:WakeToRun", namespaces=NS) == "false"
     assert root.findtext(
         "task:Actions/task:Exec/task:Command", namespaces=NS

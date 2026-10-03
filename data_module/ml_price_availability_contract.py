@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any, Mapping, Sequence
 
 
@@ -34,6 +35,9 @@ _UNAVAILABLE_MARKERS = frozenset(
         "﹘",
         "﹣",
     }
+)
+_GROUPED_PRICE_PATTERN = re.compile(
+    r"^[+-]?(?:[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]+)?$"
 )
 
 
@@ -69,11 +73,18 @@ def _canonical_window(
 def _field_status(value: Any) -> str:
     if value is None:
         return "missing"
+    if isinstance(value, bool):
+        return "invalid"
     if isinstance(value, str):
         stripped = value.strip()
         if stripped.casefold() in _UNAVAILABLE_MARKERS:
             return "missing_marker"
-        value = stripped
+        if "," in stripped:
+            if _GROUPED_PRICE_PATTERN.fullmatch(stripped) is None:
+                return "invalid"
+            value = stripped.replace(",", "")
+        else:
+            value = stripped
     try:
         numeric = Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):

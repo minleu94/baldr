@@ -30,7 +30,8 @@ if str(ROOT) not in sys.path:
 TAIPEI = ZoneInfo("Asia/Taipei")
 TAIPEI_DECISION_TIME = time(8, 30)
 FORWARD_DEADLINE_TIME = time(8, 35)
-SCHEDULED_WAKE_LOCAL_TIME = "16:15"
+SCHEDULED_WAKE_LOCAL_TIME = "08:25"
+SCHEDULED_WAKE_TIMEZONE = "Asia/Taipei"
 TASK_NAME = "baldr-ml-allocation-forward-daily"
 CONFIG_SCHEMA_VERSION = "ml-forward-scheduled-config.v1"
 STATUS_SCHEMA_VERSION = "ml-forward-config-producer-status.v1"
@@ -631,6 +632,7 @@ def prepare_daily_config(
         "decision_timezone": "Asia/Taipei",
         "decision_time": "08:30",
         "scheduled_wake_local": SCHEDULED_WAKE_LOCAL_TIME,
+        "scheduled_wake_timezone": SCHEDULED_WAKE_TIMEZONE,
         "run_date": decision.date().isoformat(),
         "database": str(_path(database)),
         "paper_state_db": str(_path(paper_state_db)),

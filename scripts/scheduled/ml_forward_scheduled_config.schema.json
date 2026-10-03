@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://baldr.local/schemas/ml-forward-scheduled-config.v1.json",
   "title": "BALDR ML forward scheduled caller configuration",
-  "description": "A frozen, date-bound configuration for the non-registered 16:15 Pacific forward shadow preparation wrapper.",
+  "description": "A frozen, date-bound configuration for the timezone-aware Asia/Taipei 08:25 forward shadow preparation wrapper.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,6 +11,7 @@
     "decision_timezone",
     "decision_time",
     "scheduled_wake_local",
+    "scheduled_wake_timezone",
     "run_date",
     "database",
     "paper_state_db",
@@ -34,7 +35,10 @@
       "const": "08:30"
     },
     "scheduled_wake_local": {
-      "const": "16:15"
+      "const": "08:25"
+    },
+    "scheduled_wake_timezone": {
+      "const": "Asia/Taipei"
     },
     "run_date": {
       "type": "string",

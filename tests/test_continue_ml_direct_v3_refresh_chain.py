@@ -64,6 +64,20 @@ def test_direct_and_downstream_commands_use_fresh_process_custody(
     assert release[release.index("--ooc-helper-process-id") + 1] == "27182"
 
 
+def test_research_ooc_command_carries_opt_in_flag(tmp_path: Path) -> None:
+    args = _args(tmp_path)
+    args.allow_research = True
+
+    command = chain._ooc_helper_command(
+        direct_process_id=31415,
+        store_output_dir=args.store_output_dir,
+        training_output_dir=args.training_output_dir,
+        args=args,
+    )
+
+    assert command[-1] == "--allow-research"
+
+
 def test_latest_direct_manifest_requires_current_v4(tmp_path: Path) -> None:
     output_root = tmp_path / "store"
     run = output_root / "runs" / "direct-v3"

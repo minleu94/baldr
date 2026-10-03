@@ -221,6 +221,8 @@ class SafeShadowModelArtifactLoader:
         try:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest = ModelArtifactManifest.from_dict(payload)
+        except OSError:
+            return ShadowModelArtifactLoadResult.fallback("manifest_read_failed")
         except (KeyError, TypeError, json.JSONDecodeError, ValueError) as exc:
             return ShadowModelArtifactLoadResult.fallback(_manifest_blocker(exc))
 

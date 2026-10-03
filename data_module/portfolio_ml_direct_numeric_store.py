@@ -40,6 +40,9 @@ from data_module.ml_storage_capacity import (
     directory_size_bytes as capacity_directory_size_bytes,
     preflight_capacity,
 )
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
 from data_module.ml_pit_shared_block_resolver import resolve_pit_shard_record
 from data_module.ml_direct_shared_block_resolver import (
     DIRECT_NUMERIC_ARTIFACT_IDS,
@@ -164,6 +167,7 @@ class PortfolioMLDirectNumericRequest:
     safety_reserve_bytes: int | None = None
     shared_block_store_root: Path | None = None
     shared_numeric_store_root: Path | None = None
+    allow_research: bool = False
 
     def __post_init__(self) -> None:
         legacy.PortfolioMLDatasetAssemblyRequest(
@@ -240,6 +244,8 @@ class PortfolioMLDirectNumericRequest:
                 raise ValueError("safety_reserve_bytes must be positive")
         if not isinstance(self.resume, bool):
             raise TypeError("resume must be bool")
+        if self.allow_research:
+            resolve_ml_research_output_path(self.output_root)
 
 
 @dataclass(frozen=True)
@@ -376,7 +382,20 @@ class PortfolioMLDirectNumericStoreBuilder:
         memory_guard = _MemoryBudgetGuard.create(request.memory_budget_mb)
         raw_path = request.raw_manifest_path.resolve()
         raw_manifest = legacy._read_json(raw_path)
-        legacy._validate_raw_dataset_manifest(raw_manifest)
+        legacy._validate_raw_dataset_manifest(
+            raw_manifest, allow_research=request.allow_research
+        )
+        is_research = (
+            request.allow_research
+            or (not raw_manifest.get("safety", {}).get("formal_dataset", True))
+            or raw_manifest.get("schema_version") == "ml-research-adapted-raw-manifest.v1"
+        )
+        if is_research:
+            resolve_ml_research_output_path(request.output_root)
+            if request.shared_block_store_root is not None:
+                resolve_ml_research_output_path(request.shared_block_store_root)
+            if request.shared_numeric_store_root is not None:
+                resolve_ml_research_output_path(request.shared_numeric_store_root)
         shared_contract = legacy._validate_shared_block_dataset_manifest(
             raw_manifest
         )
@@ -428,7 +447,14 @@ class PortfolioMLDirectNumericStoreBuilder:
             "volume_history_carry_policy_version": (
                 DIRECT_REPLAY_VOLUME_POLICY_VERSION
             ),
+            "research_only": is_research,
+            "formal_dataset": not is_research,
         }
+        if is_research:
+            direct_identity["research_fold_qualification"] = {
+                "policy": "post_purge_distinct_train_dates.v1",
+                "minimum_train_dates": request.minimum_train_dates,
+            }
         if shared_contract is not None:
             direct_identity["shared_block_store_mode"] = "content_addressed"
         if request.shared_numeric_store_root is not None:
@@ -514,6 +540,7 @@ class PortfolioMLDirectNumericStoreBuilder:
             embargo_trading_days=request.embargo_trading_days,
             shared_block_store_root=request.shared_block_store_root,
             shared_contract=shared_contract,
+            allow_research=request.allow_research,
         )
         if discovery is None:
             discovery = _discover(
@@ -528,6 +555,7 @@ class PortfolioMLDirectNumericStoreBuilder:
                 shared_block_store_root=request.shared_block_store_root,
                 shared_contract=shared_contract,
                 progress_callback=report_discovery,
+                allow_research=request.allow_research,
             )
             _write_discovery_cache(
                 path=discovery_cache_path,
@@ -636,7 +664,7 @@ class PortfolioMLDirectNumericStoreBuilder:
             "folds": [
                 asdict(window) for window in discovery.fold_windows
             ],
-            "lane": "formal",
+            "lane": "research" if request.allow_research else "formal",
         }
         if manifest_path.is_file():
             existing_manifest = _read_json(manifest_path)
@@ -1238,6 +1266,11 @@ class PortfolioMLDirectNumericStoreBuilder:
                 year_manifests=year_manifests,
                 batch_size=request.batch_size,
                 year_rows_paths=shared_year_rows_paths,
+                minimum_train_dates_after_purge=(
+                    request.minimum_train_dates
+                    if request.allow_research
+                    else None
+                ),
             )
         )
         capacity_checkpoint("fold_indexes_complete")
@@ -1290,7 +1323,9 @@ class PortfolioMLDirectNumericStoreBuilder:
                 == set(years)
             ),
             "nonempty_numeric_rows": row_count > 0,
-            "minimum_four_outer_folds": len(fold_manifests) >= 4,
+            "minimum_four_outer_folds": (
+                len(fold_manifests) >= 4
+            ),
             "pit_sector_membership_present": sector_count > 0,
             "official_corporate_action_custody_present": (
                 corporate_custody.manifest_present
@@ -1343,9 +1378,15 @@ class PortfolioMLDirectNumericStoreBuilder:
                 list(item) for item in source_manifest_hashes
             ],
             "training_as_of": cutoff.isoformat(),
-            "formal_source_only": True,
+            "minimum_train_dates": request.minimum_train_dates,
+            "formal_source_only": not request.allow_research,
             "research_shadow_included": False,
-            "research_only": False,
+            "research_only": request.allow_research,
+            "fold_qualification_policy": (
+                "post_purge_distinct_train_dates.v1"
+                if request.allow_research
+                else None
+            ),
             "promotion_eligible": False,
             "feature_packs": discovery.feature_packs,
             "feature_family_coverage": (
@@ -2553,6 +2594,7 @@ def _load_discovery_cache(
     embargo_trading_days: int,
     shared_block_store_root: Path | None = None,
     shared_contract: tuple[str, str, str] | None = None,
+    allow_research: bool = False,
 ) -> _Discovery | None:
     if not path.is_file():
         return None
@@ -2657,7 +2699,9 @@ def _load_discovery_cache(
         if not source_content_hash.startswith(_SHA256_PREFIX):
             raise ValueError("discovery cache source hash is invalid")
         if len(fold_windows) < 4:
-            raise ValueError("discovery cache requires at least four folds")
+            raise store_module.InsufficientMatureHistoryError(
+                "discovery cache requires at least four mature folds"
+            )
         return _Discovery(
             definitions=definitions,
             feature_packs=feature_packs,
@@ -2791,6 +2835,7 @@ def _discover(
     shared_block_store_root: Path | None = None,
     shared_contract: tuple[str, str, str] | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    allow_research: bool = False,
 ) -> _Discovery:
     base_definitions = legacy._base_feature_definitions(raw_manifest)
     runtime = dict(base_definitions)
@@ -2939,8 +2984,16 @@ def _discover(
         purge_trading_days=purge_trading_days,
         embargo_trading_days=embargo_trading_days,
     )
+    if allow_research and (
+        purge_trading_days < 60 or embargo_trading_days < 5
+    ):
+        raise ValueError(
+            "research fold policy requires purge>=60 and embargo>=5"
+        )
     if len(folds) < 4:
-        raise ValueError("direct numeric store requires at least four folds")
+        raise store_module.InsufficientMatureHistoryError(
+            "direct numeric store requires at least four mature folds"
+        )
     return _Discovery(
         definitions=definitions,
         feature_packs=feature_packs,

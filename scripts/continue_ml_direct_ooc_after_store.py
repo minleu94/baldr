@@ -21,6 +21,9 @@ if str(ROOT) not in sys.path:
 
 from data_module import portfolio_ml_dataset_assembler as dataset_assembler
 from data_module import portfolio_ml_out_of_core_store as store_module
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
 from data_module.ml_storage_capacity import (  # noqa: E402
     authorize_heavy_chain_reservation_handoff_child,
     HEAVY_CHAIN_RESERVATION_HELD_ENV,
@@ -88,6 +91,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--hgb-max-iter", type=int, default=100)
     parser.add_argument("--hgb-max-fit-rows", type=int, default=250_000)
     parser.add_argument("--poll-seconds", type=int, default=5)
+    parser.add_argument(
+        "--allow-research",
+        action="store_true",
+        help="隔離研究資料僅在 typed research consumer 接通後才可訓練",
+    )
     return parser
 
 
@@ -100,6 +108,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--direct-process-id is required unless "
             "--resume-after-direct-store is set"
         )
+    if args.allow_research:
+        store_output_dir = resolve_ml_research_output_path(
+            args.store_output_dir
+        )
+        training_output_dir = resolve_ml_research_output_path(
+            args.training_output_dir
+        )
+        if args.output_root is not None:
+            resolve_ml_research_output_path(args.output_root)
+        status_path = training_output_dir / "continuation_status.json"
+        resolve_ml_research_output_path(status_path)
+        _atomic_write_json(
+            status_path,
+            {
+                "schema_version": "portfolio-ml-direct-ooc-continuation.v1",
+                "status": "blocked",
+                "classification": (
+                    "current_restated_training_consumer_not_connected"
+                ),
+                "message": (
+                    "research lane requires a verified current-restated "
+                    "numeric consumer; formal trainer was not started"
+                ),
+                "store_output_dir": str(store_output_dir),
+                "training_output_dir": str(training_output_dir),
+                "formal_release_coordinator_started": False,
+                "formal_oos_allowed": False,
+                "production_alpha_bp": 0,
+                "broker_order_allowed": False,
+            },
+        )
+        print(json.dumps(_read_json(status_path), ensure_ascii=False, sort_keys=True))
+        return 2
     status_path = args.training_output_dir.resolve() / "continuation_status.json"
     store_output_dir = args.store_output_dir.resolve()
     training_output_dir = args.training_output_dir.resolve()

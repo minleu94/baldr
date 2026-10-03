@@ -39,6 +39,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
+
 import scripts.continue_ml_direct_ooc_after_store as ooc_continuation
 from data_module.rule_champion_snapshot_service import (
     load_verified_rule_champion_snapshot_history,
@@ -170,6 +174,11 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="0 means retry without an artificial cap; positive values cap retries",
+    )
+    parser.add_argument(
+        "--allow-research",
+        action="store_true",
+        help="allow research raw candidates and output to isolated roots",
     )
     return parser
 
@@ -361,7 +370,10 @@ def _validated_latest_raw_dataset(
         if dataset_path is None:
             return None
         dataset_manifest = ooc_continuation._read_json(dataset_path)
-        dataset_assembler._validate_raw_dataset_manifest(dataset_manifest)
+        dataset_assembler._validate_raw_dataset_manifest(
+            dataset_manifest,
+            allow_research=getattr(args, "allow_research", False),
+        )
         dataset_hash = ooc_continuation._required_sha256_text(
             dataset_manifest.get("manifest_hash"),
             "raw PIT dataset manifest_hash",
@@ -1068,6 +1080,8 @@ def _continuation_command(
                     else str(value),
                 ]
             )
+    if getattr(args, "allow_research", False):
+        command.append("--allow-research")
     return command
 
 
@@ -1249,6 +1263,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     restart_count = 0
     last_prospective_guard: tuple[str, ...] | None = None
     output_root = _required_path_argument(args, "output_root")
+    if getattr(args, "allow_research", False):
+        for candidate_path, label in (
+            (args.store_output_dir.resolve(), "store_output_dir"),
+            (training_output_dir, "training_output_dir"),
+            (output_root, "output_root"),
+            (log_path, "log_path"),
+        ):
+            try:
+                resolve_ml_research_output_path(candidate_path)
+            except ValueError as exc:
+                raise ValueError(
+                    f"allow_research path rejected for {label}: {candidate_path}"
+                ) from exc
     heavy_lock_path = resolve_heavy_chain_lock_path(output_root)
     if heavy_lock_path is None:
         # Isolated fixtures do not carry a release_v4 ancestor, but the

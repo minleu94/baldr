@@ -67,6 +67,9 @@ from data_module.ml_price_availability_contract import (
     PRICE_AVAILABILITY_CONTRACT_VERSION,
     validate_price_unavailable_research_contract,
 )
+from data_module.ml_daily_price_revision_gate import (
+    CurrentRestatedContractNotConnectedError,
+)
 
 
 TRAINING_JSONL_SCHEMA_VERSION = "allocation-training-jsonl-v2"
@@ -116,6 +119,8 @@ _PORTFOLIO_STATE_REPLAY_SCHEMA_VERSION = "causal-portfolio-state-replay-v1"
 _RAW_SPOOL_PROGRESS_INTERVAL = 100_000
 _RAW_SPOOL_PROGRESS_CHECK_INTERVAL = 4_096
 _RAW_SPOOL_PROGRESS_MAX_SILENCE_NS = 30 * 1_000_000_000
+_RAW_SCALE_MAXIMUM = 1_000_000
+_RESEARCH_SCALE_EXPONENT_MAXIMUM = 18
 _ASSEMBLY_PROGRESS_INTERVAL = 100_000
 _ASSEMBLY_PROGRESS_CHECK_INTERVAL = 4_096
 _ASSEMBLY_PROGRESS_MAX_SILENCE_NS = _RAW_SPOOL_PROGRESS_MAX_SILENCE_NS
@@ -1182,13 +1187,10 @@ class PortfolioMLDatasetAssembler:
                             or not isinstance(value_int, int)
                         ):
                             raise TypeError("raw value_int must be integer or null")
-                        scale = value.get("scale")
-                        if (
-                            isinstance(scale, bool)
-                            or not isinstance(scale, int)
-                            or scale <= 0
-                        ):
-                            raise TypeError("raw scale must be positive integer")
+                        scale = _validated_raw_scale(
+                            value.get("scale"),
+                            schema=manifest.get("schema_version"),
+                        )
                         if scale != runtime_definition.scale:
                             raise ValueError(
                                 "blocker:manifest_observation_scale_mismatch:"
@@ -1837,9 +1839,11 @@ def _base_feature_definitions(
     manifest: Mapping[str, Any],
 ) -> dict[str, _FeatureDefinition]:
     result: dict[str, _FeatureDefinition] = {}
+    schema = manifest.get("schema_version")
     for payload in _mapping_sequence(
         manifest.get("features"), field_name="features"
     ):
+        _validated_raw_scale(payload.get("scale"), schema=schema)
         base_feature_id = str(payload["feature_id"])
         table_name = str(payload["table_name"])
         definition = _definition_from_manifest(
@@ -1870,6 +1874,21 @@ def _definition_from_manifest(
         scope=_scope_for_table(table_name),
         dimension_values=(),
     )
+
+
+def _validated_raw_scale(value: object, *, schema: object) -> int:
+    """依來源 schema 驗證原始整數尺度或研究指數。"""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("raw scale must be an integer")
+    if schema == "ml-research-adapted-raw-manifest.v1":
+        if not 0 <= value <= _RESEARCH_SCALE_EXPONENT_MAXIMUM:
+            raise ValueError(
+                "research raw scale exponent must be from 0 through 18"
+            )
+        return value
+    if not 1 <= value <= _RAW_SCALE_MAXIMUM:
+        raise ValueError("raw scale factor must be from 1 through 1000000")
+    return value
 
 
 def _runtime_definition(
@@ -4479,11 +4498,29 @@ class _TrainingShardWriterRegistry:
         ]
 
 
-def _validate_raw_dataset_manifest(manifest: Mapping[str, Any]) -> None:
-    if manifest.get("schema_version") != "ml-pit-year-shard-dataset.v1":
+def _validate_raw_dataset_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    allow_research: bool = False,
+) -> None:
+    schema = manifest.get("schema_version")
+    if allow_research and schema in (
+        "ml-pit-year-shard-dataset.v1",
+        "ml-research-adapted-raw-manifest.v1",
+    ):
+        pass
+    elif schema != "ml-pit-year-shard-dataset.v1":
         raise ValueError("unsupported raw dataset manifest schema")
-    if manifest.get("stage") != "raw_pit_observations":
+
+    stage = manifest.get("stage")
+    if allow_research and stage in (
+        "raw_pit_observations",
+        "research_adapted_raw_observations",
+    ):
+        pass
+    elif stage != "raw_pit_observations":
         raise ValueError("input manifest is not a raw PIT observation dataset")
+
     if manifest.get("format") != "gzip_jsonl":
         raise ValueError("raw dataset must use gzip_jsonl")
     expected = str(manifest.get("manifest_hash", ""))
@@ -4491,37 +4528,56 @@ def _validate_raw_dataset_manifest(manifest: Mapping[str, Any]) -> None:
     payload.pop("manifest_hash", None)
     if expected != _sha256_json(payload):
         raise ValueError("raw dataset manifest hash mismatch")
+    if manifest.get("data_temporality") == "current_restated_research":
+        raise CurrentRestatedContractNotConnectedError(
+            "current-restated raw data cannot enter PIT row assembly"
+        )
     safety = _as_mapping(manifest.get("safety"), field_name="safety")
-    if not _required_json_bool(
-        safety.get("formal_dataset"), field_name="safety.formal_dataset"
-    ):
-        raise ValueError("raw dataset is not formal")
-    if _required_json_bool(
-        safety.get("unreviewed_included"),
-        field_name="safety.unreviewed_included",
-    ):
-        raise ValueError("raw dataset includes unreviewed features")
-    if _required_json_bool(
-        safety.get("excluded_leakage_included"),
-        field_name="safety.excluded_leakage_included",
-    ):
-        raise ValueError("raw dataset includes leakage features")
-    if not _required_json_bool(
-        safety.get("research_shadow_isolated"),
-        field_name="safety.research_shadow_isolated",
-    ):
-        raise ValueError("raw dataset does not isolate research shadow")
     if _required_json_bool(
         safety.get("raw_float_persistence_allowed"),
         field_name="safety.raw_float_persistence_allowed",
     ):
         raise ValueError("raw dataset allows float persistence")
-    if manifest.get("source_quality") is not None:
-        _validated_raw_source_quality(manifest["source_quality"])
+
+    formal_dataset = _required_json_bool(
+        safety.get("formal_dataset"), field_name="safety.formal_dataset"
+    )
+    unreviewed_included = _required_json_bool(
+        safety.get("unreviewed_included"),
+        field_name="safety.unreviewed_included",
+    )
+    excluded_leakage_included = _required_json_bool(
+        safety.get("excluded_leakage_included"),
+        field_name="safety.excluded_leakage_included",
+    )
+    research_shadow_isolated = _required_json_bool(
+        safety.get("research_shadow_isolated"),
+        field_name="safety.research_shadow_isolated",
+    )
+    if unreviewed_included:
+        raise ValueError("raw dataset includes unreviewed features")
+    if excluded_leakage_included:
+        raise ValueError("raw dataset includes leakage features")
+    if not research_shadow_isolated:
+        raise ValueError("raw dataset does not isolate research shadow")
+
+    if not allow_research:
+        if not formal_dataset:
+            raise ValueError("raw dataset is not formal")
+        if manifest.get("source_quality") is not None:
+            _validated_raw_source_quality(manifest["source_quality"])
+    else:
+        if manifest.get("source_quality") is not None:
+            _validated_raw_source_quality(manifest["source_quality"], allow_research=True)
+
     _mapping_sequence(manifest.get("features"), field_name="features")
 
 
-def _validated_raw_source_quality(value: Any) -> dict[str, Any]:
+def _validated_raw_source_quality(
+    value: Any,
+    *,
+    allow_research: bool = False,
+) -> dict[str, Any]:
     payload = dict(
         _as_mapping(value, field_name="source_quality")
     )
@@ -4533,7 +4589,7 @@ def _validated_raw_source_quality(value: Any) -> dict[str, Any]:
         payload.get("formal_training_allowed"),
         field_name="source_quality.formal_training_allowed",
     )
-    if research_only or not formal_training_allowed:
+    if not allow_research and (research_only or not formal_training_allowed):
         raise ValueError(
             "raw dataset source quality is research-only and cannot become "
             "formal training input"

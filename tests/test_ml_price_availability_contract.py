@@ -5,6 +5,7 @@ import pytest
 from data_module.ml_price_availability_contract import (
     PRICE_AVAILABILITY_CONTRACT_VERSION,
     build_price_unavailable_research_contract,
+    validate_price_unavailable_research_contract,
 )
 
 
@@ -194,3 +195,77 @@ def test_invalid_price_is_not_eligible_for_missing_price_research_exception(
     assert contract["disposition"]["source_quality_disposition"] == (
         "invalid_price_requires_quarantine"
     )
+
+
+def test_valid_thousands_grouping_is_numeric_and_raw_text_is_preserved() -> None:
+    raw_row = {
+        "symbol": "2330",
+        "open": "1,005.00",
+        "high": "1,010.00",
+        "low": "995.00",
+        "close": None,
+        "volume": "37,166,049",
+    }
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2024-11-27",
+        raw_row=raw_row,
+    )
+
+    assert contract["raw_row"] == raw_row
+    assert contract["field_status"] == {
+        "open": "available",
+        "high": "available",
+        "low": "available",
+        "close": "missing",
+    }
+    assert contract["disposition"]["source_quality_research_eligible"] is True
+    assert validate_price_unavailable_research_contract(contract) == (
+        "2330",
+        "2024-11-27",
+        frozenset({"2024-11-27"}),
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_grouping",
+    ["1,0,05", "1.234,56", "12,34.56", "1,,000", "1234,567"],
+)
+def test_malformed_thousands_grouping_remains_quarantined(
+    bad_grouping: str,
+) -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2024-11-27",
+        raw_row={
+            "open": bad_grouping,
+            "high": "1,010.00",
+            "low": "995.00",
+            "close": "1,005.00",
+            "volume": 1000,
+        },
+    )
+
+    assert contract["field_status"]["open"] == "invalid"
+    assert contract["disposition"]["source_quality_research_eligible"] is False
+    assert contract["raw_row"]["open"] == bad_grouping
+
+
+@pytest.mark.parametrize("invalid_value", [True, False, "Infinity", "-Infinity", "0", "-1"])
+def test_boolean_nonfinite_zero_and_negative_prices_remain_invalid(
+    invalid_value: object,
+) -> None:
+    contract = build_price_unavailable_research_contract(
+        symbol="2330",
+        date_iso="2024-11-27",
+        raw_row={
+            "open": invalid_value,
+            "high": "1,010.00",
+            "low": "995.00",
+            "close": "1,005.00",
+            "volume": 1000,
+        },
+    )
+
+    assert contract["field_status"]["open"] == "invalid"
+    assert contract["disposition"]["source_quality_research_eligible"] is False

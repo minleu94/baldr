@@ -76,6 +76,11 @@ def _parser() -> argparse.ArgumentParser:
         help="heavy chain 執行後必須保留的 filesystem bytes",
     )
     parser.add_argument(
+        "--allow-research",
+        action="store_true",
+        help="Allow consuming research raw manifests with strict research isolation and formal_oos_allowed=False",
+    )
+    parser.add_argument(
         "--heavy-lock-path",
         type=Path,
         help="可選；正式 release_v4 output 必須與 canonical lock 相同",
@@ -148,6 +153,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 safety_reserve_bytes=args.safety_reserve_bytes,
                 resume=not args.no_resume,
+                allow_research=args.allow_research,
             )
         )
     except (

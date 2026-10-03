@@ -33,13 +33,18 @@ from data_module.ml_storage_capacity import (
     directory_size_bytes,
     preflight_capacity,
 )
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
 from data_module.ml_daily_price_source_quality import (
     DailyPriceSourceQualityError,
     assert_daily_price_source_quality,
     write_quarantine_report,
 )
 from data_module.ml_daily_price_revision_gate import (
+    CurrentRestatedContractNotConnectedError,
     DailyPriceSourceRevisionError,
+    VerifiedCurrentRestatedSourceContext,
     check_daily_price_source_revision,
 )
 from data_module.ml_price_availability_contract import (
@@ -77,6 +82,12 @@ _CORE_TABLES = frozenset(
         "market_indices",
         "industry_indices",
     }
+)
+_CORE_RESEARCH_TABLE_ORDER: tuple[str, ...] = (
+    "daily_prices",
+    "technical_indicators",
+    "market_indices",
+    "industry_indices",
 )
 _FORMAL_STATUSES = frozenset({"formal_backfill", "first_seen_only"})
 _SHADOW_STATUSES = frozenset({"research_shadow"})
@@ -172,6 +183,10 @@ class PITYearShardBuildRequest:
     # 另以串流 JSONL 保存全量，candidate_count 與 classification/date counts
     # 仍計算全量候選。
     source_quality_candidate_sample_limit: int = 64
+    # 允許在存在修訂時輸出 research-only 原始 PIT shards
+    allow_source_revision_research: bool = False
+    # 唯一可啟用 current-restated raw profile 的已驗證原始 DB / snapshot custody。
+    current_restated_source_context: VerifiedCurrentRestatedSourceContext | None = None
 
     def __post_init__(self) -> None:
         if not str(self.decision_at).strip():
@@ -200,6 +215,17 @@ class PITYearShardBuildRequest:
                 "source_quality_candidate_evidence_path requires "
                 "source_quality_report_path"
             )
+        if not isinstance(self.allow_source_revision_research, bool):
+            raise TypeError("allow_source_revision_research must be a boolean")
+        if self.current_restated_source_context is not None:
+            if type(self.current_restated_source_context) is not VerifiedCurrentRestatedSourceContext:
+                raise TypeError(
+                    "current_restated_source_context must be a verified source context"
+                )
+            if not self.allow_source_revision_research:
+                raise ValueError(
+                    "current-restated source context requires research-only mode"
+                )
         if self.source_revision_receipt_path is not None:
             object.__setattr__(
                 self,
@@ -598,6 +624,8 @@ class PITYearShardExporter:
         if not database_path.is_file():
             raise FileNotFoundError(database_path)
         output_root = request.output_root.resolve()
+        if request.allow_source_revision_research:
+            output_root = resolve_ml_research_output_path(output_root)
         capacity_budget = _capacity_budget_for_request(request)
         # The first check must happen before mkdir/tempfile so a low-capacity
         # invocation is read-only and fail-closed at the process boundary.
@@ -613,11 +641,57 @@ class PITYearShardExporter:
         if request.years and max(request.years) > decision.year:
             raise ValueError("requested shard year must not exceed decision year")
 
-        source_revision_summary = check_daily_price_source_revision(
-            database_path=database_path,
-            decision_date=decision,
-            symbols=request.symbols,
-            explicit_path=request.source_revision_receipt_path,
+        current_restated_context = request.current_restated_source_context
+        source_revision_summary: dict[str, Any] | None = None
+        if current_restated_context is not None:
+            explicit_decision = _explicit_aware_datetime(
+                request.decision_at, field_name="decision_at"
+            )
+            if not _same_utc_instant(
+                explicit_decision, current_restated_context.decision_at
+            ):
+                raise CurrentRestatedContractNotConnectedError(
+                    "raw decision_at differs from the verified source context"
+                )
+            if not _same_path(
+                database_path,
+                Path(current_restated_context.snapshot_database_path),
+            ):
+                raise CurrentRestatedContractNotConnectedError(
+                    "raw SQLite input is not the verified snapshot database"
+                )
+            if _file_sha256(database_path) != current_restated_context.snapshot_database_sha256:
+                raise CurrentRestatedContractNotConnectedError(
+                    "raw SQLite input differs from the verified snapshot bytes"
+                )
+            source_revision_summary = _current_restated_gate_summary(
+                current_restated_context
+            )
+        else:
+            source_revision_summary = check_daily_price_source_revision(
+                database_path=database_path,
+                decision_date=decision,
+                symbols=request.symbols,
+                explicit_path=request.source_revision_receipt_path,
+                allow_source_revision_research=request.allow_source_revision_research,
+            )
+            if (
+                source_revision_summary is not None
+                and source_revision_summary.get("current_restated_research") is True
+            ):
+                raise CurrentRestatedContractNotConnectedError(
+                    "revision-aware raw producer requires a verified original-source context"
+                )
+        is_current_restated = current_restated_context is not None
+        active_dataset_ids: tuple[DatasetId, ...] = (
+            ("core_long_history",)
+            if is_current_restated
+            else _DATASET_IDS
+        )
+        active_source_tables = (
+            _CORE_RESEARCH_TABLE_ORDER
+            if is_current_restated
+            else ALL_FIELD_SOURCE_TABLES
         )
         source_quality_summary: dict[str, Any] | None = None
 
@@ -766,7 +840,7 @@ class PITYearShardExporter:
             compression_level=request.compression_level,
         )
         if request.years:
-            for dataset_id in _DATASET_IDS:
+            for dataset_id in active_dataset_ids:
                 for year in request.years:
                     writers.get(dataset_id, year)
 
@@ -783,7 +857,7 @@ class PITYearShardExporter:
             dataset_records = _dataset_records(eligibility)
             table_results: list[dict[str, Any]] = []
             query_count = 0
-            for table_name in ALL_FIELD_SOURCE_TABLES:
+            for table_name in active_source_tables:
                 capacity_checkpoint(f"raw_table_{table_name}_start")
                 if table_name in eligibility.missing_tables:
                     table_results.append(
@@ -814,6 +888,7 @@ class PITYearShardExporter:
                     industry_index_names=request.industry_index_names,
                     batch_size=request.batch_size,
                     capacity_checkpoint=capacity_checkpoint,
+                    current_restated_context=current_restated_context,
                 )
                 table_results.append(table_result)
                 query_count += 1
@@ -859,8 +934,17 @@ class PITYearShardExporter:
                 requested_years=request.years,
                 eligibility_manifest_hash=eligibility.manifest_hash,
                 source_fingerprint=source_fingerprint,
+                source_revision_summary=source_revision_summary,
                 source_quality_summary=source_quality_summary,
                 capacity_checkpoint=capacity_checkpoint,
+                allow_source_revision_research=request.allow_source_revision_research,
+                dataset_ids=active_dataset_ids,
+                current_restated_context=current_restated_context,
+            )
+            generated_at = (
+                datetime.now(timezone.utc).isoformat()
+                if is_current_restated
+                else None
             )
             content_identity = {
                 "decision_at": decision.isoformat(),
@@ -871,24 +955,46 @@ class PITYearShardExporter:
                     dataset_id: manifest["manifest_hash"]
                     for dataset_id, manifest in sorted(dataset_manifests.items())
                 },
+                **(
+                    {"generated_at": generated_at}
+                    if generated_at is not None
+                    else {}
+                ),
             }
             publication_id = (
-                "pit-" + _sha256_hex(_canonical_json(content_identity))[:24]
+                ("current-restated-" if is_current_restated else "pit-")
+                + _sha256_hex(_canonical_json(content_identity))[:24]
             )
             source_unreviewed = tuple(
                 record.feature_id
                 for record in eligibility.unreviewed_records
-                if record.table_name in ALL_FIELD_SOURCE_TABLES
+                if record.table_name in active_source_tables
             )
             publication_manifest: dict[str, Any] = {
-                "schema_version": "ml-pit-year-shards.v1",
-                "stage": "raw_pit_observations",
+                "schema_version": (
+                    "ml-current-restated-year-shards.v1"
+                    if is_current_restated
+                    else "ml-pit-year-shards.v1"
+                ),
+                "stage": (
+                    "raw_current_restated_research_observations"
+                    if is_current_restated
+                    else "raw_pit_observations"
+                ),
                 "publication_id": publication_id,
                 "decision_at": decision.isoformat(),
                 "history_start_date": history_start.isoformat(),
-                "partition_basis": "available_at_taipei_year",
+                "partition_basis": (
+                    "event_date_calendar_year"
+                    if is_current_restated
+                    else "available_at_taipei_year"
+                ),
                 "format": "gzip_jsonl",
-                "numeric_contract": "value_int_plus_positive_scale",
+                "numeric_contract": (
+                    "value_int_plus_decimal_exponent"
+                    if is_current_restated
+                    else "value_int_plus_positive_scale"
+                ),
                 "source": {
                     "database_fingerprint": source_fingerprint,
                     "database_size": source_stat_before.st_size,
@@ -959,31 +1065,95 @@ class PITYearShardExporter:
                     "capacity_quota_enforced_during_stages": True,
                 },
                 "training_adapter": {
-                    "direct_training_input": False,
-                    "target_cli": "scripts/train_ml_allocation_copilot.py",
-                    "target_schema_version": "allocation-training-input-v1",
-                    "required_horizons": [5, 10, 20, 60],
-                    "next_stage": "portfolio_ml_dataset_row_assembly",
-                    "assembly_blockers": [
-                        "as_of_join_raw_observations_into_symbol_decision_rows",
-                        "attach_t_minus_1_causal_portfolio_state",
-                        "build_matured_allocation_targets_and_horizon_labels",
-                        "build_four_or_more_purged_walk_forward_folds",
-                        "recompute_staleness_against_each_training_decision_at",
-                    ],
-                    "must_emit": [
-                        "PortfolioMLDatasetRow",
-                        "AllocationTargets",
-                        "AllocationHorizonLabel",
-                        "feature_packs",
-                        "folds",
-                    ],
+                    **(
+                        {
+                            "direct_training_input": False,
+                            "next_stage": "current_restated_direct_outcome_numeric",
+                            "targets_or_teacher_emitted": False,
+                            "historical_pit_eligible": False,
+                        }
+                        if is_current_restated
+                        else {
+                            "direct_training_input": False,
+                            "target_cli": "scripts/train_ml_allocation_copilot.py",
+                            "target_schema_version": "allocation-training-input-v1",
+                            "required_horizons": [5, 10, 20, 60],
+                            "next_stage": "portfolio_ml_dataset_row_assembly",
+                            "assembly_blockers": [
+                                "as_of_join_raw_observations_into_symbol_decision_rows",
+                                "attach_t_minus_1_causal_portfolio_state",
+                                "build_matured_allocation_targets_and_horizon_labels",
+                                "build_four_or_more_purged_walk_forward_folds",
+                                "recompute_staleness_against_each_training_decision_at",
+                            ],
+                            "must_emit": [
+                                "PortfolioMLDatasetRow",
+                                "AllocationTargets",
+                                "AllocationHorizonLabel",
+                                "feature_packs",
+                                "folds",
+                            ],
+                        }
+                    ),
                 },
             }
+            if is_current_restated:
+                if current_restated_context is None:
+                    raise RuntimeError("current-restated context disappeared")
+                context_payload = _current_restated_context_payload(
+                    current_restated_context
+                )
+                publication_manifest.update(
+                    {
+                        "generated_at": generated_at,
+                        "raw_generated_at": generated_at,
+                        "data_temporality": "current_restated_research",
+                        "profile": {
+                            "id": "core_long_history_current_restated_outcome_only",
+                            "included_tables": list(_CORE_RESEARCH_TABLE_ORDER),
+                            "excluded_tables": [
+                                table_name
+                                for table_name in ALL_FIELD_SOURCE_TABLES
+                                if table_name not in _CORE_TABLES
+                            ],
+                            "unknown_financial_statement_basis_included": False,
+                        },
+                        "source_context": context_payload,
+                        "source_context_bundle_sha256": _sha256_json(
+                            context_payload
+                        ),
+                        "source_observed_at": current_restated_context.source_observed_at.isoformat(),
+                        "data_selection_as_of": current_restated_context.training_as_of.isoformat(),
+                        "training_as_of_semantics": "source_selection_cutoff_not_model_fit_freeze",
+                        "revision_dependencies_verified_at": current_restated_context.revision_dependencies_verified_at.isoformat(),
+                        "revision_dependency_bundle_sha256": current_restated_context.revision_dependency_bundle_sha256,
+                        "current_restated": True,
+                        "historical_pit_eligible": False,
+                        "formal_training_eligible": False,
+                    }
+                )
             if source_quality_summary is not None:
                 publication_manifest["source_quality"] = source_quality_summary
             if source_revision_summary is not None:
                 publication_manifest["source_revision_gate"] = source_revision_summary
+                publication_manifest["source_revision_evidence_sha256"] = (
+                    source_revision_summary.get("source_revision_evidence_sha256")
+                )
+                if source_revision_summary.get("current_restated_research") is True:
+                    publication_manifest.setdefault(
+                        "data_temporality", "current_restated_research"
+                    )
+                    publication_manifest.setdefault(
+                        "historical_pit_eligible", False
+                    )
+            publication_manifest["safety"] = {
+                "formal_dataset": not request.allow_source_revision_research,
+                "research_only": request.allow_source_revision_research,
+                "formal_training_allowed": not request.allow_source_revision_research,
+                "formal_oos_allowed": False,
+                "production_alpha_bp": 0,
+                "raw_float_persistence_allowed": False,
+            }
             publication_manifest["manifest_hash"] = _sha256_json(
                 publication_manifest
             )
@@ -1076,6 +1246,7 @@ class PITYearShardExporter:
         industry_index_names: tuple[str, ...],
         batch_size: int,
         capacity_checkpoint: Callable[[str], None] | None = None,
+        current_restated_context: VerifiedCurrentRestatedSourceContext | None = None,
     ) -> dict[str, Any]:
         table_manifest_records = manifest.for_table(table_name)
         column_names = {record.column_name for record in table_manifest_records}
@@ -1313,6 +1484,13 @@ class PITYearShardExporter:
                 if event_date < history_start:
                     filtered_history_rows += 1
                     continue
+                if (
+                    current_restated_context is not None
+                    and years
+                    and event_date.year not in years
+                ):
+                    filtered_year_rows += 1
+                    continue
                 event_at = datetime.combine(
                     event_date, _MARKET_CLOSE_TIME, tzinfo=_TAIPEI
                 )
@@ -1439,21 +1617,42 @@ class PITYearShardExporter:
                 future_this_source_row = False
                 missing_this_source_row = False
                 year_filtered_this_source_row = False
+                current_restated_value_available_at = (
+                    max(
+                        current_restated_context.source_observed_at,
+                        current_restated_context.revision_dependencies_verified_at,
+                        datetime.now(timezone.utc),
+                    )
+                    if current_restated_context is not None
+                    else None
+                )
                 for dataset_id in _DATASET_IDS:
+                    if (
+                        current_restated_context is not None
+                        and dataset_id != "core_long_history"
+                    ):
+                        continue
                     records = per_dataset[dataset_id]
                     if not records:
                         continue
                     grouped: dict[datetime, list[FeatureEligibilityRecord]] = {}
                     for record in records:
-                        available_at = _availability_for_status(
-                            status=record.eligibility_status,
-                            event_at=event_at,
-                            available_at=explicit_available_at,
-                            announced_at=announced_at,
-                            first_seen_at=first_seen_at,
+                        available_at = (
+                            current_restated_value_available_at
+                            if current_restated_context is not None
+                            else _availability_for_status(
+                                status=record.eligibility_status,
+                                event_at=event_at,
+                                available_at=explicit_available_at,
+                                announced_at=announced_at,
+                                first_seen_at=first_seen_at,
+                            )
                         )
                         if available_at is None:
                             missing_this_source_row = True
+                            continue
+                        if current_restated_context is not None:
+                            grouped.setdefault(available_at, []).append(record)
                             continue
                         if available_at > decision:
                             future_this_source_row = True
@@ -1465,22 +1664,41 @@ class PITYearShardExporter:
 
                     for available_at, group_records in sorted(grouped.items()):
                         values = tuple(
-                            _feature_value_payload(
-                                record,
-                                raw_value=row[feature_aliases[record.feature_id]],
-                                decision=decision,
-                                available_at=available_at,
-                                quality=quality,
-                                derived_value=derived_values.get(
-                                    record.feature_id
-                                ),
+                            (
+                                _current_restated_feature_value_payload(
+                                    record,
+                                    raw_value=row[feature_aliases[record.feature_id]],
+                                    decision=decision,
+                                    current_value_available_at=available_at,
+                                    quality=quality,
+                                    derived_value=derived_values.get(
+                                        record.feature_id
+                                    ),
+                                    source_context=current_restated_context,
+                                )
+                                if current_restated_context is not None
+                                else _feature_value_payload(
+                                    record,
+                                    raw_value=row[feature_aliases[record.feature_id]],
+                                    decision=decision,
+                                    available_at=available_at,
+                                    quality=quality,
+                                    derived_value=derived_values.get(
+                                        record.feature_id
+                                    ),
+                                )
                             )
                             for record in sorted(
                                 group_records, key=lambda item: item.feature_id
                             )
                         )
+                        is_current_restated_row = current_restated_context is not None
                         row_payload: dict[str, Any] = {
-                            "schema_version": "ml-pit-observation.v1",
+                            "schema_version": (
+                                "ml-current-restated-observation.v1"
+                                if is_current_restated_row
+                                else "ml-pit-observation.v1"
+                            ),
                             "dataset_id": dataset_id,
                             "source_table": table_name,
                             "source_id": group_records[0].source_id,
@@ -1511,15 +1729,46 @@ class PITYearShardExporter:
                             "revision_id": revision_id,
                             "quality": quality,
                             "source": source,
-                            "pit_status": "eligible_as_of_decision",
+                            "pit_status": (
+                                "current_observed_non_pit"
+                                if is_current_restated_row
+                                else "eligible_as_of_decision"
+                            ),
                             "values": list(values),
                         }
+                        if current_restated_context is not None:
+                            context_payload = _current_restated_context_payload(
+                                current_restated_context
+                            )
+                            row_payload.update(
+                                {
+                                    "event_date": event_date.isoformat(),
+                                    "event_reference_only": True,
+                                    "available_at_semantics": "current_restated_value_derived_after_snapshot_and_dependency_verification",
+                                    "source_available_at": None,
+                                    "source_observed_at": current_restated_context.source_observed_at.isoformat(),
+                                    "current_value_available_at": available_at.isoformat(),
+                                    "revision_dependencies_verified_at": current_restated_context.revision_dependencies_verified_at.isoformat(),
+                                    "source_context_bundle_sha256": _sha256_json(
+                                        context_payload
+                                    ),
+                                    "source_revision_evidence_sha256": current_restated_context.source_revision_evidence_sha256,
+                                    "current_restated": True,
+                                    "historical_pit_eligible": False,
+                                    "formal_training_eligible": False,
+                                }
+                            )
                         if price_unavailable_contract is not None:
                             row_payload["price_availability_contract"] = (
                                 price_unavailable_contract
                             )
                         row_payload["source_row_hash"] = _sha256_json(row_payload)
-                        writers.get(dataset_id, available_at.year).write(row_payload)
+                        partition_year = (
+                            event_date.year
+                            if current_restated_context is not None
+                            else available_at.year
+                        )
+                        writers.get(dataset_id, partition_year).write(row_payload)
                         emitted_row_count += 1
                         emitted_this_source_row = True
 
@@ -1527,28 +1776,62 @@ class PITYearShardExporter:
                     "core_long_history",
                     "all_field_enriched",
                 ):
+                    if (
+                        current_restated_context is not None
+                        and dataset_id != "core_long_history"
+                    ):
+                        continue
                     records = derived_atr_adx_records[dataset_id]
                     if not records:
                         continue
-                    derived_available_at = event_at
-                    if years and derived_available_at.year not in years:
+                    derived_available_at = (
+                        max(
+                            current_restated_context.source_observed_at,
+                            current_restated_context.revision_dependencies_verified_at,
+                            datetime.now(timezone.utc),
+                        )
+                        if current_restated_context is not None
+                        else event_at
+                    )
+                    if (
+                        current_restated_context is None
+                        and years
+                        and derived_available_at.year not in years
+                    ):
                         year_filtered_this_source_row = True
                         continue
                     values = tuple(
-                        _feature_value_payload(
-                            record,
-                            raw_value=None,
-                            decision=decision,
-                            available_at=derived_available_at,
-                            quality=quality,
-                            derived_value=derived_values.get(record.feature_id),
+                        (
+                            _current_restated_feature_value_payload(
+                                record,
+                                raw_value=None,
+                                decision=decision,
+                                current_value_available_at=derived_available_at,
+                                quality=quality,
+                                derived_value=derived_values.get(record.feature_id),
+                                source_context=current_restated_context,
+                            )
+                            if current_restated_context is not None
+                            else _feature_value_payload(
+                                record,
+                                raw_value=None,
+                                decision=decision,
+                                available_at=derived_available_at,
+                                quality=quality,
+                                derived_value=derived_values.get(record.feature_id),
+                            )
                         )
                         for record in sorted(
                             records, key=lambda item: item.feature_id
                         )
                     )
+                    is_current_restated_row = current_restated_context is not None
                     derived_payload: dict[str, Any] = {
-                        "schema_version": "ml-pit-observation.v1",
+                        "schema_version": (
+                            "ml-current-restated-observation.v1"
+                            if is_current_restated_row
+                            else "ml-pit-observation.v1"
+                        ),
                         "dataset_id": dataset_id,
                         "source_table": "daily_prices",
                         "source_id": "derived:daily_prices.ohlc",
@@ -1562,9 +1845,35 @@ class PITYearShardExporter:
                         "revision_id": None,
                         "quality": quality,
                         "source": source,
-                        "pit_status": "eligible_as_of_decision",
+                        "pit_status": (
+                            "current_observed_non_pit"
+                            if is_current_restated_row
+                            else "eligible_as_of_decision"
+                        ),
                         "values": list(values),
                     }
+                    if current_restated_context is not None:
+                        context_payload = _current_restated_context_payload(
+                            current_restated_context
+                        )
+                        derived_payload.update(
+                            {
+                                "event_date": event_date.isoformat(),
+                                "event_reference_only": True,
+                                "available_at_semantics": "current_restated_value_derived_after_snapshot_and_dependency_verification",
+                                "source_available_at": None,
+                                "source_observed_at": current_restated_context.source_observed_at.isoformat(),
+                                "current_value_available_at": derived_available_at.isoformat(),
+                                "revision_dependencies_verified_at": current_restated_context.revision_dependencies_verified_at.isoformat(),
+                                "source_context_bundle_sha256": _sha256_json(
+                                    context_payload
+                                ),
+                                "source_revision_evidence_sha256": current_restated_context.source_revision_evidence_sha256,
+                                "current_restated": True,
+                                "historical_pit_eligible": False,
+                                "formal_training_eligible": False,
+                            }
+                        )
                     if price_unavailable_contract is not None:
                         derived_payload["price_availability_contract"] = (
                             price_unavailable_contract
@@ -1572,9 +1881,12 @@ class PITYearShardExporter:
                     derived_payload["source_row_hash"] = _sha256_json(
                         derived_payload
                     )
-                    writers.get(
-                        dataset_id, derived_available_at.year
-                    ).write(derived_payload)
+                    partition_year = (
+                        event_date.year
+                        if current_restated_context is not None
+                        else derived_available_at.year
+                    )
+                    writers.get(dataset_id, partition_year).write(derived_payload)
                     emitted_row_count += 1
                     emitted_this_source_row = True
 
@@ -1666,11 +1978,15 @@ class PITYearShardExporter:
         requested_years: tuple[int, ...],
         eligibility_manifest_hash: str,
         source_fingerprint: str,
+        source_revision_summary: Mapping[str, Any] | None = None,
         source_quality_summary: Mapping[str, Any] | None = None,
         capacity_checkpoint: Callable[[str], None] | None = None,
+        allow_source_revision_research: bool = False,
+        dataset_ids: tuple[DatasetId, ...] = _DATASET_IDS,
+        current_restated_context: VerifiedCurrentRestatedSourceContext | None = None,
     ) -> dict[DatasetId, dict[str, Any]]:
         result: dict[DatasetId, dict[str, Any]] = {}
-        for dataset_id in _DATASET_IDS:
+        for dataset_id in dataset_ids:
             dataset_records = records[dataset_id]
             for writer in writers.for_dataset(dataset_id):
                 if capacity_checkpoint is not None:
@@ -1681,17 +1997,49 @@ class PITYearShardExporter:
                 writer.manifest_payload(staging=staging)
                 for writer in writers.for_dataset(dataset_id)
             ]
-            features = [_feature_manifest_payload(record) for record in dataset_records]
+            features = [
+                _feature_manifest_payload(
+                    record,
+                    current_restated=current_restated_context is not None,
+                )
+                for record in dataset_records
+            ]
+            if current_restated_context is not None:
+                for feature in features:
+                    source_denominator = int(feature["scale"])
+                    feature["source_scale_denominator"] = source_denominator
+                    feature["scale"] = _scale_exponent_for_denominator(
+                        source_denominator
+                    )
+                    feature["formal_training_eligible"] = False
+                features = sorted(features, key=lambda item: str(item["feature_id"]))
             included_statuses = tuple(
                 sorted({record.eligibility_status for record in dataset_records})
             )
             manifest: dict[str, Any] = {
-                "schema_version": "ml-pit-year-shard-dataset.v1",
-                "stage": "raw_pit_observations",
+                "schema_version": (
+                    "ml-current-restated-year-shard-dataset.v1"
+                    if current_restated_context is not None
+                    else "ml-pit-year-shard-dataset.v1"
+                ),
+                "stage": (
+                    "raw_current_restated_research_observations"
+                    if current_restated_context is not None
+                    else "raw_pit_observations"
+                ),
                 "dataset_id": dataset_id,
                 "decision_at": decision.isoformat(),
+                "data_selection_as_of": (
+                    current_restated_context.training_as_of.isoformat()
+                    if current_restated_context is not None
+                    else None
+                ),
                 "history_start_date": history_start.isoformat(),
-                "partition_basis": "available_at_taipei_year",
+                "partition_basis": (
+                    "event_date_calendar_year"
+                    if current_restated_context is not None
+                    else "available_at_taipei_year"
+                ),
                 "format": "gzip_jsonl",
                 "eligibility_manifest_hash": eligibility_manifest_hash,
                 "source_fingerprint": source_fingerprint,
@@ -1712,41 +2060,88 @@ class PITYearShardExporter:
                 ),
                 "shards": shard_payloads,
                 "safety": {
-                    "formal_dataset": dataset_id != "research_shadow_all_fields",
+                    "formal_dataset": (not allow_source_revision_research) and (dataset_id != "research_shadow_all_fields"),
+                    "research_only": allow_source_revision_research or (dataset_id == "research_shadow_all_fields"),
+                    "formal_training_allowed": not allow_source_revision_research,
                     "research_shadow_isolated": True,
                     "unreviewed_included": False,
                     "excluded_leakage_included": False,
                     "raw_float_persistence_allowed": False,
-                    "staleness_mask_basis": "publication_decision_at",
+                    "staleness_mask_basis": (
+                        "current_snapshot_observed_at"
+                        if current_restated_context is not None
+                        else "publication_decision_at"
+                    ),
+                    "formal_oos_allowed": False,
+                    "production_alpha_bp": 0,
                 },
                 "training_adapter": {
-                    "direct_training_input": False,
-                    "target_schema_version": "allocation-training-input-v1",
-                    "feature_pack_adapter": [
+                    **(
                         {
-                            "pack_id": family,
-                            "feature_ids": [
-                                feature["feature_id"]
-                                for feature in features
-                                if feature["family"] == family
+                            "direct_training_input": False,
+                            "next_stage": "current_restated_direct_outcome_numeric",
+                            "targets_or_teacher_emitted": False,
+                            "historical_pit_eligible": False,
+                        }
+                        if current_restated_context is not None
+                        else {
+                            "direct_training_input": False,
+                            "target_schema_version": "allocation-training-input-v1",
+                            "feature_pack_adapter": [
+                                {
+                                    "pack_id": family,
+                                    "feature_ids": [
+                                        feature["feature_id"]
+                                        for feature in features
+                                        if feature["family"] == family
+                                    ],
+                                }
+                                for family in sorted(
+                                    {str(feature["family"]) for feature in features}
+                                )
+                            ],
+                            "next_stage": "portfolio_ml_dataset_row_assembly",
+                            "assembly_blockers": [
+                                "daily_as_of_join_not_yet_materialized",
+                                "causal_portfolio_state_not_in_raw_observation",
+                                "teacher_targets_and_horizon_labels_not_in_raw_observation",
+                                "purged_walk_forward_folds_not_in_raw_observation",
+                                "per_decision_staleness_not_yet_materialized",
                             ],
                         }
-                        for family in sorted(
-                            {str(feature["family"]) for feature in features}
-                        )
-                    ],
-                    "next_stage": "portfolio_ml_dataset_row_assembly",
-                    "assembly_blockers": [
-                        "daily_as_of_join_not_yet_materialized",
-                        "causal_portfolio_state_not_in_raw_observation",
-                        "teacher_targets_and_horizon_labels_not_in_raw_observation",
-                        "purged_walk_forward_folds_not_in_raw_observation",
-                        "per_decision_staleness_not_yet_materialized",
-                    ],
+                    ),
                 },
             }
+            if current_restated_context is not None:
+                context_payload = _current_restated_context_payload(
+                    current_restated_context
+                )
+                manifest.update(
+                    {
+                        "data_temporality": "current_restated_research",
+                        "source_context": context_payload,
+                        "source_context_bundle_sha256": _sha256_json(
+                            context_payload
+                        ),
+                        "source_observed_at": current_restated_context.source_observed_at.isoformat(),
+                        "training_as_of_semantics": "source_selection_cutoff_not_model_fit_freeze",
+                        "revision_dependencies_verified_at": current_restated_context.revision_dependencies_verified_at.isoformat(),
+                        "revision_dependency_bundle_sha256": current_restated_context.revision_dependency_bundle_sha256,
+                        "current_restated": True,
+                        "historical_pit_eligible": False,
+                        "formal_training_eligible": False,
+                    }
+                )
             if source_quality_summary is not None:
                 manifest["source_quality"] = dict(source_quality_summary)
+            if source_revision_summary is not None:
+                manifest["source_revision_gate"] = dict(source_revision_summary)
+                manifest["source_revision_evidence_sha256"] = (
+                    source_revision_summary.get("source_revision_evidence_sha256")
+                )
+                if source_revision_summary.get("current_restated_research") is True:
+                    manifest.setdefault("data_temporality", "current_restated_research")
+                    manifest.setdefault("historical_pit_eligible", False)
             manifest["manifest_hash"] = _sha256_json(manifest)
             dataset_directory = staging / dataset_id
             dataset_directory.mkdir(parents=True, exist_ok=True)
@@ -1982,6 +2377,212 @@ def _feature_value_payload(
     return payload
 
 
+def _current_restated_feature_value_payload(
+    record: FeatureEligibilityRecord,
+    *,
+    raw_value: object,
+    decision: datetime,
+    current_value_available_at: datetime,
+    quality: str,
+    derived_value: _DerivedFeatureValue | None,
+    source_context: VerifiedCurrentRestatedSourceContext | None,
+) -> dict[str, Any]:
+    if source_context is None:
+        raise CurrentRestatedContractNotConnectedError(
+            "current-restated feature row has no verified source context"
+        )
+    payload = _feature_value_payload(
+        record,
+        raw_value=raw_value,
+        decision=decision,
+        available_at=current_value_available_at,
+        quality=quality,
+        derived_value=derived_value,
+    )
+    unit, unit_contract = _current_restated_feature_unit(record)
+    payload["unit"] = unit
+    if unit_contract is not None:
+        payload["unit_contract"] = unit_contract
+    exponent = _scale_exponent_for_denominator(record.scale)
+    context_sha256 = _sha256_json(_current_restated_context_payload(source_context))
+    source_value_hash_payload: dict[str, Any] = {
+        "schema_version": "current-restated-feature-value-hash.v1",
+        "raw_feature_value_hash": payload["source_value_hash"],
+        "source_context_bundle_sha256": context_sha256,
+        "source_observed_at": source_context.source_observed_at.isoformat(),
+        "revision_dependencies_verified_at": source_context.revision_dependencies_verified_at.isoformat(),
+        "current_value_available_at": current_value_available_at.isoformat(),
+    }
+    if unit_contract is not None:
+        source_value_hash_payload.update(
+            {
+                "effective_unit": unit,
+                "unit_contract": unit_contract,
+            }
+        )
+    payload.update(
+        {
+            "scale": exponent,
+            "source_scale_denominator": record.scale,
+            "original_source_available_at": None,
+            "source_observed_at": source_context.source_observed_at.isoformat(),
+            "revision_dependencies_verified_at": (
+                source_context.revision_dependencies_verified_at.isoformat()
+            ),
+            "current_value_available_at": current_value_available_at.isoformat(),
+            "source_context_bundle_sha256": context_sha256,
+            "source_value_hash": _sha256_json(source_value_hash_payload),
+            "source_value_hash_semantics": (
+                "current_restated_feature_value_plus_verified_source_context.v1"
+            ),
+            "formal_training_eligible": False,
+        }
+    )
+    return payload
+
+
+def _current_restated_feature_unit(
+    record: FeatureEligibilityRecord,
+) -> tuple[str, str | None]:
+    if record.feature_id == "daily_prices.成交金額":
+        return "TWD", "tw-daily-price-transaction-amount-twd.v1"
+    return record.unit, None
+
+
+def _scale_exponent_for_denominator(denominator: int) -> int:
+    if isinstance(denominator, bool) or not isinstance(denominator, int):
+        raise TypeError("source scale denominator must be an integer")
+    if denominator < 1 or denominator > 1_000_000_000_000:
+        raise ValueError("source scale denominator is outside the supported range")
+    exponent = 0
+    remaining = denominator
+    while remaining > 1 and remaining % 10 == 0:
+        remaining //= 10
+        exponent += 1
+    if remaining != 1 or exponent > 12:
+        raise ValueError("source scale denominator is not a canonical power of ten")
+    return exponent
+
+
+def _current_restated_context_payload(
+    context: VerifiedCurrentRestatedSourceContext,
+) -> dict[str, Any]:
+    evidence_by_namespace: dict[str, list[dict[str, str]]] = {
+        namespace: [] for namespace in context.source_revision_evidence_namespaces
+    }
+    for namespace, role_id, sha256 in context.source_revision_evidence_files:
+        if namespace not in evidence_by_namespace:
+            raise CurrentRestatedContractNotConnectedError(
+                "verified source context has an unknown typed evidence namespace"
+            )
+        evidence_by_namespace[namespace].append(
+            {"role_id": role_id, "sha256": sha256}
+        )
+    return {
+        "schema_version": "verified-current-restated-source-context.v1",
+        "current_restated": context.current_restated,
+        "historical_pit_eligible": context.historical_pit_eligible,
+        "source_database_path": context.source_database_path,
+        "source_database_sha256": context.source_database_sha256,
+        "source_wal_path": context.source_wal_path,
+        "source_wal_sha256": context.source_wal_sha256,
+        "snapshot_database_path": context.snapshot_database_path,
+        "snapshot_database_sha256": context.snapshot_database_sha256,
+        "snapshot_receipt_path": context.snapshot_receipt_path,
+        "snapshot_receipt_sha256": context.snapshot_receipt_sha256,
+        "source_observed_at": context.source_observed_at.isoformat(),
+        "decision_at": context.decision_at.isoformat(),
+        "data_selection_as_of": context.training_as_of.isoformat(),
+        "training_as_of": context.training_as_of.isoformat(),
+        "training_as_of_semantics": "source_selection_cutoff_not_model_fit_freeze",
+        "source_generation": context.source_generation,
+        "revision_namespace_bundle_sha256": context.revision_namespace_bundle_sha256,
+        "revision_namespace_files": [
+            {
+                "path": item.path,
+                "bytes": item.bytes,
+                "mtime_ns": item.mtime_ns,
+                "sha256": item.sha256,
+            }
+            for item in context.revision_namespace_files
+        ],
+        "revision_dependencies_verified_at": (
+            context.revision_dependencies_verified_at.isoformat()
+        ),
+        "revision_dependency_bundle_sha256": (
+            context.revision_dependency_bundle_sha256
+        ),
+        "revision_dependency_files": [
+            {
+                "namespace": item.namespace,
+                "role_id": item.role_id,
+                "path": item.path,
+                "bytes": item.bytes,
+                "mtime_ns": item.mtime_ns,
+                "sha256": item.sha256,
+                "captured_at": item.captured_at.isoformat(),
+            }
+            for item in context.revision_dependency_files
+        ],
+        "source_revision_evidence": {
+            "schema_version": context.source_revision_evidence_schema_version,
+            "scope_id": context.source_revision_evidence_scope_id,
+            "cutoff_date": context.source_revision_evidence_cutoff_date,
+            "digest_sha256": context.source_revision_evidence_sha256,
+            "namespaces": [
+                {
+                    "namespace": namespace,
+                    "presence": (
+                        "present"
+                        if evidence_by_namespace.get(namespace)
+                        else "empty"
+                    ),
+                    "files": sorted(
+                        evidence_by_namespace.get(namespace, []),
+                        key=lambda item: item["role_id"],
+                    ),
+                }
+                for namespace in sorted(context.source_revision_evidence_namespaces)
+            ],
+        },
+    }
+
+
+def _current_restated_gate_summary(
+    context: VerifiedCurrentRestatedSourceContext,
+) -> dict[str, Any]:
+    payload = _current_restated_context_payload(context)
+    evidence = payload["source_revision_evidence"]
+    return {
+        "schema_version": "current-restated-source-revision-gate.v1",
+        "database_path": context.source_database_path,
+        "decision_date": context.decision_at.astimezone(_TAIPEI).date().isoformat(),
+        "current_restated_research": True,
+        "market_revision_blocks_historical_pit": True,
+        "research_only": True,
+        "formal_historical_PIT": False,
+        "formal_training_allowed": False,
+        "formal_oos_allowed": False,
+        "production_alpha_bp": 0,
+        "source_revision_evidence_schema_version": (
+            context.source_revision_evidence_schema_version
+        ),
+        "source_revision_evidence_scope_id": (
+            context.source_revision_evidence_scope_id
+        ),
+        "source_revision_evidence_cutoff_date": (
+            context.source_revision_evidence_cutoff_date
+        ),
+                "source_revision_evidence_sha256": context.source_revision_evidence_sha256.removeprefix(
+                    "sha256:"
+                ),
+        "source_revision_evidence": evidence,
+        "source_revision_namespace_bundle_sha256": (
+            context.revision_namespace_bundle_sha256
+        ),
+    }
+
+
 def _availability_for_status(
     *,
     status: FeatureEligibilityStatus,
@@ -2027,11 +2628,18 @@ def _eligibility_payload(manifest: FeatureEligibilityManifest) -> dict[str, Any]
 
 def _feature_manifest_payload(
     record: FeatureEligibilityRecord,
+    *,
+    current_restated: bool = False,
 ) -> dict[str, Any]:
     is_causal_atr_adx = record.feature_id in {
         "technical_indicators.ATR",
         "technical_indicators.ADX",
     }
+    unit, unit_contract = (
+        _current_restated_feature_unit(record)
+        if current_restated
+        else (record.unit, None)
+    )
     payload: dict[str, Any] = {
         "feature_id": record.feature_id,
         "table_name": record.table_name,
@@ -2042,12 +2650,14 @@ def _feature_manifest_payload(
             if is_causal_atr_adx
             else record.source_id
         ),
-        "unit": record.unit,
+        "unit": unit,
         "scale": record.scale,
         "eligibility_status": record.eligibility_status,
         "staleness_days": record.staleness_days,
         "record_hash": record.record_hash,
     }
+    if unit_contract is not None:
+        payload["unit_contract"] = unit_contract
     if is_causal_atr_adx:
         payload["derivation_policy"] = {
             "method": "causal_wilder_prefix",
@@ -2086,6 +2696,36 @@ def _decision_datetime(value: str) -> datetime:
         )
     parsed = _parse_datetime(text)
     return parsed.astimezone(_TAIPEI)
+
+
+def _explicit_aware_datetime(value: str, *, field_name: str) -> datetime:
+    """current-restated custody 只接受明確帶時區的輸入時鐘。"""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a timezone-aware ISO datetime")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(
+            f"{field_name} must be a timezone-aware ISO datetime"
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field_name} must include a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _same_utc_instant(left: datetime, right: datetime) -> bool:
+    if (
+        left.tzinfo is None
+        or left.utcoffset() is None
+        or right.tzinfo is None
+        or right.utcoffset() is None
+    ):
+        raise ValueError("custody timestamps must be timezone-aware")
+    return left.astimezone(timezone.utc) == right.astimezone(timezone.utc)
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return left.resolve(strict=True) == right.resolve(strict=True)
 
 
 def _optional_date(value: object) -> date | None:

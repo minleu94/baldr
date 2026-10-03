@@ -23,7 +23,7 @@ from decimal import Decimal, ROUND_HALF_EVEN
 import hashlib
 from io import BytesIO
 import json
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo
 
 import joblib
@@ -106,6 +106,175 @@ class FeaturePackDefinition:
             or len(self.feature_ids) != len(set(self.feature_ids))
         ):
             raise ValueError("feature_ids must be non-empty and unique")
+
+
+class RestatedOutcomeFeatureProtocol(Protocol):
+    """研究分支最小 feature 介面；不要求 PIT row 或 AllocationTargets。"""
+
+    feature_id: str
+    value_int: int | None
+    scale: int
+    observed: bool
+    stale: bool
+    current_value_available_at: str
+    source_observed_at: str
+
+
+class RestatedOutcomeLabelProtocol(Protocol):
+    horizon_trading_days: int
+    horizon_end_date: str
+    available_at: str | None
+    benchmark_excess_return_bp: int | None
+    observed: bool
+    source_observed_at: str
+
+
+class RestatedOutcomeRowProtocol(Protocol):
+    row_id: str
+    symbol: str
+    event_date: str
+    features: Sequence[RestatedOutcomeFeatureProtocol]
+    quality_blocked_mask: Sequence[str]
+    staleness_mask: Sequence[str]
+
+
+class RestatedOutcomeSampleProtocol(Protocol):
+    row: RestatedOutcomeRowProtocol
+    horizon_labels: Sequence[RestatedOutcomeLabelProtocol]
+
+
+def _preflight_current_restated_fold_calendar(
+    *,
+    sample_by_id: Mapping[str, RestatedOutcomeSampleProtocol],
+    event_date_calendar: Sequence[str],
+    folds: Sequence[PurgedWalkForwardFold],
+    horizons: Sequence[int],
+    minimum_train_dates: int,
+    minimum_test_dates: int,
+    minimum_purge_days: int,
+    minimum_embargo_days: int,
+) -> None:
+    """Validate every fold against the complete observed-date calendar pre-fit."""
+
+    parsed_calendar = tuple(
+        _parse_date(value, field_name="event_date_calendar") for value in event_date_calendar
+    )
+    if tuple(sorted(set(parsed_calendar))) != parsed_calendar:
+        raise ValueError("complete event-date calendar must be sorted and unique")
+    calendar = parsed_calendar
+    if not calendar:
+        raise ValueError("current-restated fold calendar is empty")
+    calendar_index = {event_date: index for index, event_date in enumerate(calendar)}
+    sample_event_dates = {
+        _parse_date(sample.row.event_date, field_name="event_date")
+        for sample in sample_by_id.values()
+    }
+    if not sample_event_dates.issubset(calendar_index):
+        raise ValueError("sample event dates fall outside the verified complete calendar")
+    previously_tested: set[str] = set()
+    previous_test_end_index: int | None = None
+
+    for fold in folds:
+        for name in ("purge_days", "embargo_days"):
+            value = getattr(fold, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"fold {name} must be an integer count of observed dates")
+        if fold.purge_days < minimum_purge_days or fold.embargo_days < minimum_embargo_days:
+            raise ValueError("supplied current-restated fold weakens required purge/embargo")
+        train_ids = tuple(row.row_id for row in fold.train_rows)
+        test_ids = tuple(row.row_id for row in fold.test_rows)
+        if (
+            not train_ids
+            or not test_ids
+            or len(train_ids) != len(set(train_ids))
+            or len(test_ids) != len(set(test_ids))
+            or set(train_ids).intersection(test_ids)
+        ):
+            raise ValueError("research fold row ownership is empty, repeated, or overlapping")
+        if not set(train_ids + test_ids).issubset(sample_by_id):
+            raise ValueError("research fold references an absent sample")
+        if previously_tested.intersection(test_ids):
+            raise ValueError("a row may appear in only one restated outer test fold")
+        previously_tested.update(test_ids)
+
+        train_samples = tuple(sample_by_id[row_id] for row_id in train_ids)
+        test_samples = tuple(sample_by_id[row_id] for row_id in test_ids)
+        for window_row, sample in tuple(zip(fold.train_rows, train_samples)) + tuple(
+            zip(fold.test_rows, test_samples)
+        ):
+            event_date = _parse_date(sample.row.event_date, field_name="row.event_date")
+            if _parse_date(window_row.decision_date, field_name="fold.decision_date") != event_date:
+                raise ValueError("fold event date differs from the source row")
+            label = next(
+                (
+                    item
+                    for item in sample.horizon_labels
+                    if item.horizon_trading_days == min(horizons)
+                ),
+                None,
+            )
+            if label is None or _parse_date(
+                window_row.label_end_date, field_name="fold.label_end_date"
+            ) != _parse_date(label.horizon_end_date, field_name="label.horizon_end_date"):
+                raise ValueError("fold label end differs from its source outcome label")
+
+        train_dates = {
+            _parse_date(sample.row.event_date, field_name="train.event_date")
+            for sample in train_samples
+        }
+        test_dates = {
+            _parse_date(sample.row.event_date, field_name="test.event_date")
+            for sample in test_samples
+        }
+        if len(test_dates) < minimum_test_dates:
+            raise ValueError("research fold has insufficient test dates")
+        test_start = _parse_date(fold.test_start, field_name="fold.test_start")
+        test_end = _parse_date(fold.test_end, field_name="fold.test_end")
+        if not test_dates or min(test_dates) != test_start or max(test_dates) != test_end:
+            raise ValueError("research fold date bounds disagree with test rows")
+        if any(event_date not in calendar_index for event_date in train_dates | test_dates):
+            raise ValueError("research fold date is absent from the complete observed-date calendar")
+        test_start_index = calendar_index[test_start]
+        test_end_index = calendar_index[test_end]
+        latest_train_index = max(calendar_index[event_date] for event_date in train_dates)
+        actual_purge_dates = test_start_index - latest_train_index - 1
+        if actual_purge_dates < minimum_purge_days:
+            raise ValueError(
+                "current-restated fold actual observed-date purge is below the required minimum"
+            )
+        if previous_test_end_index is not None:
+            actual_embargo_dates = test_start_index - previous_test_end_index - 1
+            if actual_embargo_dates < minimum_embargo_days:
+                raise ValueError(
+                    "current-restated fold actual observed-date embargo is below the required minimum"
+                )
+        if latest_train_index >= test_start_index:
+            raise ValueError("research fold training events are not earlier than test")
+        for horizon in horizons:
+            mature_train = tuple(
+                sample
+                for sample in train_samples
+                if _outcome_label(sample, horizon).observed
+            )
+            mature_train_dates = {
+                _parse_date(sample.row.event_date, field_name="train.event_date")
+                for sample in mature_train
+            }
+            if len(mature_train_dates) < minimum_train_dates:
+                raise ValueError(f"H{horizon} fold lacks required mature train dates")
+            for sample in mature_train:
+                label = _outcome_label(sample, horizon)
+                if _parse_date(label.horizon_end_date, field_name="horizon_end_date") >= test_start:
+                    raise ValueError(f"H{horizon} train outcome crosses the test boundary")
+        previous_test_end_index = test_end_index
+
+
+@dataclass(frozen=True)
+class RestatedOutcomeOnlyFitResult:
+    """沒有 teacher/配置 target 的 base regression fit 與量化 audit。"""
+
+    models: Mapping[str, Any]
+    audit: Mapping[str, Any]
 
 
 @dataclass(frozen=True)
@@ -1593,6 +1762,400 @@ class AllocationTrainingService:
                     models[key] = model_payload
         return models
 
+    def fit_current_restated_outcome_only(
+        self,
+        *,
+        samples: Sequence[RestatedOutcomeSampleProtocol],
+        feature_packs: Sequence[FeaturePackDefinition],
+        folds: Sequence[PurgedWalkForwardFold],
+        training_as_of: str,
+        dataset_manifest_file_hash: str,
+        event_date_calendar: Sequence[str],
+        horizons: Sequence[int] = (5,),
+        algorithms: Sequence[str] = ("ridge_logistic",),
+        minimum_train_dates: int = 125,
+        minimum_test_dates: int = 63,
+        minimum_purge_days: int = 60,
+        minimum_embargo_days: int = 5,
+    ) -> RestatedOutcomeOnlyFitResult:
+        """只訓練已成熟 benchmark-excess base regression，不接配置 teacher。
+
+        這是 current-restated 研究分支；feature availability 以本次真實 fit
+        freeze 驗證，歷史 event date 只用於切分及 label chronology，輸出永不
+        標成 historical PIT、formal OOS 或完整 allocation fit。
+        """
+
+        _require_sha256(
+            dataset_manifest_file_hash,
+            field_name="dataset_manifest_file_hash",
+        )
+        training_cutoff = _parse_available_at(
+            training_as_of,
+            field_name="training_as_of",
+        )
+        canonical_horizons = _validate_horizons(horizons)
+        canonical_packs = _validate_feature_packs(feature_packs)
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            for value in (
+                minimum_train_dates,
+                minimum_test_dates,
+                minimum_purge_days,
+                minimum_embargo_days,
+            )
+        ):
+            raise TypeError("research fold minimums must be positive integers")
+        if minimum_purge_days < 60 or minimum_embargo_days < 5:
+            raise ValueError("research fold profile cannot weaken 60/5 purge/embargo")
+        canonical_algorithms = tuple(dict.fromkeys(algorithms))
+        if not canonical_algorithms or any(
+            algorithm not in EXPERT_ALGORITHMS for algorithm in canonical_algorithms
+        ):
+            raise ValueError("research algorithms must use existing expert estimators")
+        sample_by_id: dict[str, RestatedOutcomeSampleProtocol] = {}
+        expected_ids = {
+            feature_id
+            for pack in canonical_packs
+            for feature_id in pack.feature_ids
+        }
+        canonical_scales: dict[str, int] = {}
+        for sample in samples:
+            row = sample.row
+            _require_text(row_id=row.row_id, symbol=row.symbol)
+            if row.row_id in sample_by_id:
+                raise ValueError(f"duplicate restated outcome row id: {row.row_id}")
+            event_date = _parse_date(row.event_date, field_name="event_date")
+            features: dict[str, RestatedOutcomeFeatureProtocol] = {}
+            for feature in row.features:
+                if feature.feature_id in features:
+                    raise ValueError("restated row has duplicate feature id")
+                if feature.feature_id not in expected_ids:
+                    raise ValueError("restated row contains a feature outside its registry")
+                if not isinstance(feature.observed, bool):
+                    raise TypeError("restated feature observed flag must be bool")
+                if not isinstance(feature.stale, bool):
+                    raise TypeError("restated feature stale flag must be bool")
+                if isinstance(feature.scale, bool) or not isinstance(feature.scale, int):
+                    raise TypeError("restated feature scale must be an integer exponent")
+                if not 0 <= feature.scale <= 18:
+                    raise ValueError("restated feature scale exponent is outside 0..18")
+                if feature.observed:
+                    _require_integer("restated feature value_int", feature.value_int)
+                elif feature.value_int is not None:
+                    raise ValueError("missing restated feature must not carry a value")
+                current_value_clock = _parse_available_at(
+                    feature.current_value_available_at,
+                    field_name="current_value_available_at",
+                )
+                source_observed_clock = _parse_available_at(
+                    feature.source_observed_at,
+                    field_name="feature.source_observed_at",
+                )
+                if current_value_clock > training_cutoff or source_observed_clock > training_cutoff:
+                    raise ValueError("current-restated feature is after actual fit freeze")
+                prior_scale = canonical_scales.setdefault(feature.feature_id, feature.scale)
+                if prior_scale != feature.scale:
+                    raise ValueError("restated feature scale changed across rows")
+                features[feature.feature_id] = feature
+            if set(features) != expected_ids:
+                raise ValueError("restated row feature set differs from dynamic CORE registry")
+            quality_blocked = row.quality_blocked_mask
+            if (
+                isinstance(quality_blocked, (str, bytes))
+                or len(quality_blocked) != len(set(quality_blocked))
+                or not set(quality_blocked).issubset(expected_ids)
+            ):
+                raise ValueError("restated quality-blocked mask is invalid")
+            staleness_blocked = row.staleness_mask
+            if (
+                isinstance(staleness_blocked, (str, bytes))
+                or len(staleness_blocked) != len(set(staleness_blocked))
+                or not set(staleness_blocked).issubset(expected_ids)
+            ):
+                raise ValueError("restated staleness mask is invalid")
+            expected_stale = {
+                feature_id for feature_id, feature in features.items() if feature.stale
+            }
+            if set(staleness_blocked) != expected_stale:
+                raise ValueError("restated staleness mask differs from feature flags")
+            labels_by_horizon: dict[int, RestatedOutcomeLabelProtocol] = {}
+            for label in sample.horizon_labels:
+                if (
+                    isinstance(label.horizon_trading_days, bool)
+                    or not isinstance(label.horizon_trading_days, int)
+                    or label.horizon_trading_days in labels_by_horizon
+                ):
+                    raise TypeError("restated outcome horizon is invalid or duplicated")
+                if label.horizon_trading_days not in canonical_horizons:
+                    continue
+                if not isinstance(label.observed, bool):
+                    raise TypeError("outcome label observed flag must be bool")
+                horizon_end = _parse_date(label.horizon_end_date, field_name="horizon_end_date")
+                if horizon_end <= event_date:
+                    raise ValueError("outcome horizon end must follow its event date")
+                if label.observed:
+                    _require_integer(
+                        "benchmark_excess_return_bp",
+                        label.benchmark_excess_return_bp,
+                    )
+                    if label.available_at is None:
+                        raise ValueError("observed outcome label needs an availability clock")
+                    available = _parse_available_at(
+                        label.available_at,
+                        field_name="label.available_at",
+                    )
+                    source_observed = _parse_available_at(
+                        label.source_observed_at,
+                        field_name="label.source_observed_at",
+                    )
+                    if available.date() < horizon_end:
+                        raise ValueError("outcome label became available before its horizon ended")
+                    if available > training_cutoff or source_observed > training_cutoff:
+                        raise ValueError("observed outcome label is after actual fit freeze")
+                elif label.benchmark_excess_return_bp is not None:
+                    raise ValueError("missing outcome label must not carry a numeric target")
+                labels_by_horizon[label.horizon_trading_days] = label
+            if any(horizon not in labels_by_horizon for horizon in canonical_horizons):
+                raise ValueError("restated sample misses a requested outcome horizon")
+            sample_by_id[row.row_id] = sample
+        if not sample_by_id:
+            raise ValueError("no typed current-restated outcome samples were supplied")
+        if set(canonical_scales) != expected_ids:
+            raise ValueError("dynamic CORE registry has no observed schema rows")
+        if len(folds) < 4:
+            raise ValueError("current-restated outcome fit requires at least four supplied folds")
+
+        ordered_folds = tuple(sorted(folds, key=lambda fold: (fold.test_start, fold.fold_id)))
+        if len({fold.fold_id for fold in ordered_folds}) != len(ordered_folds):
+            raise ValueError("current-restated folds have duplicate IDs")
+        _preflight_current_restated_fold_calendar(
+            sample_by_id=sample_by_id,
+            event_date_calendar=event_date_calendar,
+            folds=ordered_folds,
+            horizons=canonical_horizons,
+            minimum_train_dates=minimum_train_dates,
+            minimum_test_dates=minimum_test_dates,
+            minimum_purge_days=minimum_purge_days,
+            minimum_embargo_days=minimum_embargo_days,
+        )
+        model_payloads: dict[str, Any] = {}
+        fold_audits: list[dict[str, Any]] = []
+        prediction_rows: list[dict[str, Any]] = []
+        previously_tested_ids: set[str] = set()
+        previous_test_end: date | None = None
+        for fold in ordered_folds:
+            if fold.purge_days < minimum_purge_days or fold.embargo_days < minimum_embargo_days:
+                raise ValueError("supplied current-restated fold weakens required purge/embargo")
+            train_ids = tuple(row.row_id for row in fold.train_rows)
+            test_ids = tuple(row.row_id for row in fold.test_rows)
+            if (
+                not train_ids
+                or not test_ids
+                or len(train_ids) != len(set(train_ids))
+                or len(test_ids) != len(set(test_ids))
+                or set(train_ids).intersection(test_ids)
+            ):
+                raise ValueError("research fold row ownership is empty, repeated, or overlapping")
+            if not set(train_ids + test_ids).issubset(sample_by_id):
+                raise ValueError("research fold references an absent sample")
+            if previously_tested_ids.intersection(test_ids):
+                raise ValueError("a row may appear in only one restated outer test fold")
+            previously_tested_ids.update(test_ids)
+            train_samples = tuple(sample_by_id[row_id] for row_id in train_ids)
+            test_samples = tuple(sample_by_id[row_id] for row_id in test_ids)
+            for window_row, sample in tuple(zip(fold.train_rows, train_samples)) + tuple(zip(fold.test_rows, test_samples)):
+                if _parse_date(window_row.decision_date, field_name="fold.decision_date") != _parse_date(sample.row.event_date, field_name="row.event_date"):
+                    raise ValueError("fold event date differs from the source row")
+            train_mature = tuple(
+                sample
+                for sample in train_samples
+                if _outcome_label(sample, canonical_horizons[0]).observed
+            )
+            train_dates = {
+                _parse_date(sample.row.event_date, field_name="event_date")
+                for sample in train_mature
+            }
+            test_dates = {
+                _parse_date(sample.row.event_date, field_name="event_date")
+                for sample in test_samples
+            }
+            if len(train_dates) < minimum_train_dates or len(test_dates) < minimum_test_dates:
+                raise ValueError("research fold has insufficient mature train/test dates")
+            test_start = _parse_date(fold.test_start, field_name="fold.test_start")
+            test_end = _parse_date(fold.test_end, field_name="fold.test_end")
+            if not test_dates or min(test_dates) != test_start or max(test_dates) != test_end:
+                raise ValueError("research fold date bounds disagree with test rows")
+            if previous_test_end is not None and test_start <= previous_test_end:
+                raise ValueError("restated test folds overlap or move backwards")
+            previous_test_end = test_end
+            if max(train_dates) >= test_start:
+                raise ValueError("research fold training events are not earlier than test")
+            for horizon in canonical_horizons:
+                mature_train = tuple(
+                    sample
+                    for sample in train_samples
+                    if _outcome_label(sample, horizon).observed
+                )
+                horizon_train_dates = {
+                    _parse_date(sample.row.event_date, field_name="event_date")
+                    for sample in mature_train
+                }
+                if len(horizon_train_dates) < minimum_train_dates:
+                    raise ValueError(f"H{horizon} fold lacks required mature train dates")
+                for sample in mature_train:
+                    label = _outcome_label(sample, horizon)
+                    if _parse_date(label.horizon_end_date, field_name="horizon_end_date") >= test_start:
+                        raise ValueError(f"H{horizon} train outcome crosses the test boundary")
+                for pack in canonical_packs:
+                    for algorithm in canonical_algorithms:
+                        if len(mature_train) < 10:
+                            raise ValueError("outcome head has fewer than ten mature fit rows")
+                        matrix_train = _restated_outcome_matrix(
+                            mature_train,
+                            pack=pack,
+                            algorithm=algorithm,
+                        )
+                        target = np.asarray(
+                            [
+                                float(  # numeric-boundary: analytics
+                                    _require_integer(
+                                        "benchmark_excess_return_bp",
+                                        _outcome_label(sample, horizon).benchmark_excess_return_bp,
+                                    )
+                                )
+                                for sample in mature_train
+                            ],
+                            dtype=float,  # numeric-boundary: analytics
+                        )
+                        model = self._fit_regression_model(
+                            algorithm=algorithm,
+                            x=matrix_train,
+                            target=target,
+                        )
+                        matrix_test = _restated_outcome_matrix(
+                            test_samples,
+                            pack=pack,
+                            algorithm=algorithm,
+                        )
+                        predictions = model.predict(matrix_test)
+                        model_key = f"{pack.pack_id}|h{horizon}|{algorithm}"
+                        for sample, prediction in zip(test_samples, predictions, strict=True):
+                            label = _outcome_label(sample, horizon)
+                            prediction_rows.append(
+                                {
+                                    "row_id": sample.row.row_id,
+                                    "event_date": sample.row.event_date,
+                                    "symbol": sample.row.symbol,
+                                    "fold_id": fold.fold_id,
+                                    "model_key": model_key,
+                                    "horizon_trading_days": horizon,
+                                    "predicted_excess_return_bp": _quantize_signed_bp(prediction),
+                                    "observed_label": label.observed,
+                                    "actual_excess_return_bp": label.benchmark_excess_return_bp,
+                                }
+                            )
+                        fold_audits.append(
+                            {
+                                "fold_id": fold.fold_id,
+                                "model_key": model_key,
+                                "train_row_ids": list(sample.row.row_id for sample in mature_train),
+                                "test_row_ids": list(test_ids),
+                                "training_mature_date_count": len(train_dates),
+                                "test_date_count": len(test_dates),
+                                "purge_trading_days": fold.purge_days,
+                                "embargo_trading_days": fold.embargo_days,
+                                "preprocessing_fit_scope": "fold-local-training-rows-only",
+                                "label_head": "benchmark_excess_return_bp",
+                            }
+                        )
+        final_samples_by_horizon = {
+            horizon: tuple(
+                sample
+                for sample in sample_by_id.values()
+                if _outcome_label(sample, horizon).observed
+            )
+            for horizon in canonical_horizons
+        }
+        for horizon, mature_samples in final_samples_by_horizon.items():
+            if len(mature_samples) < 10:
+                raise ValueError("final outcome head has fewer than ten mature fit rows")
+            for pack in canonical_packs:
+                for algorithm in canonical_algorithms:
+                    key = f"final|{pack.pack_id}|h{horizon}|{algorithm}"
+                    matrix = _restated_outcome_matrix(mature_samples, pack=pack, algorithm=algorithm)
+                    target = np.asarray(
+                        [
+                            float(  # numeric-boundary: analytics
+                                _require_integer(
+                                    "benchmark_excess_return_bp",
+                                    _outcome_label(sample, horizon).benchmark_excess_return_bp,
+                                )
+                            )
+                            for sample in mature_samples
+                        ],
+                        dtype=float,  # numeric-boundary: analytics
+                    )
+                    model_payloads[key] = self._fit_regression_model(
+                        algorithm=algorithm,
+                        x=matrix,
+                        target=target,
+                    )
+        audit = {
+            "schema_version": "current-restated-outcome-only-fit-audit.v1",
+            "status": "verified_base_outcome_only",
+            "dataset_temporality": "current_restated_research",
+            "historical_pit": False,
+            "formal_oos_allowed": False,
+            "production_alpha_bp": 0,
+            "production_action_allowed": False,
+            "full_allocation_status": "blocked_full_allocation_teacher_unavailable",
+            "target_heads": ["benchmark_excess_return_bp"],
+            "unfitted_heads": [
+                "expected_sector_excess_return_bp",
+                "downside_probability_bp",
+                "predicted_mae_bp",
+                "predicted_mfe_bp",
+                "predicted_realized_volatility_bp",
+                "predicted_max_drawdown_bp",
+                "predicted_tail_loss_bp",
+                "fill_feasibility_probability_bp",
+            ],
+            "training_as_of": training_cutoff.isoformat(),
+            "dataset_manifest_file_hash": dataset_manifest_file_hash.removeprefix("sha256:").lower(),
+            "event_date_calendar": list(event_date_calendar),
+            "event_date_calendar_sha256": hashlib.sha256(
+                json.dumps(
+                    list(event_date_calendar),
+                    ensure_ascii=False,
+                    sort_keys=False,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest(),
+            "sample_count": len(sample_by_id),
+            "feature_ids_by_pack": [
+                {"pack_id": pack.pack_id, "feature_ids": list(pack.feature_ids)}
+                for pack in canonical_packs
+            ],
+            "feature_scale_exponents": dict(sorted(canonical_scales.items())),
+            "quality_blocked_value_count": sum(
+                len(sample.row.quality_blocked_mask) for sample in sample_by_id.values()
+            ),
+            "staleness_blocked_value_count": sum(
+                len(sample.row.staleness_mask) for sample in sample_by_id.values()
+            ),
+            "folds": fold_audits,
+            "oof_predictions": prediction_rows,
+            "model_keys": sorted(model_payloads),
+            "algorithm_ids": list(canonical_algorithms),
+            "horizons": list(canonical_horizons),
+        }
+        _assert_no_float(audit, "current_restated_outcome_audit")
+        return RestatedOutcomeOnlyFitResult(
+            models=model_payloads,
+            audit=audit,
+        )
+
 
 @dataclass(frozen=True)
 class _ConstantProbabilityClassifier:
@@ -1660,7 +2223,7 @@ def _pack_matrix(
     value_width = len(pack.feature_ids)
     include_masks = algorithm == "hist_gradient_boosting"
     matrix_width = value_width * (2 if include_masks else 1)
-    matrix = np.empty(
+    matrix: NDArray[np.float64] = np.empty(
         (len(samples), matrix_width),
         dtype=float,  # numeric-boundary: analytics
     )
@@ -1684,6 +2247,82 @@ def _pack_matrix(
                 if include_masks:
                     matrix[row_index, value_width + feature_index] = 0.0
     return matrix
+
+
+def _outcome_label(
+    sample: RestatedOutcomeSampleProtocol,
+    horizon: int,
+) -> RestatedOutcomeLabelProtocol:
+    matching = tuple(
+        label for label in sample.horizon_labels
+        if label.horizon_trading_days == horizon
+    )
+    if len(matching) != 1:
+        raise ValueError(f"restated outcome sample must have exactly one H{horizon} label")
+    return matching[0]
+
+
+def _restated_outcome_matrix(
+    samples: Sequence[RestatedOutcomeSampleProtocol],
+    *,
+    pack: FeaturePackDefinition,
+    algorithm: str,
+) -> NDArray[np.float64]:
+    """把 typed scaled-int 特徵在模型邊界轉為正確十進位值與缺值遮罩。"""
+
+    if not samples:
+        raise ValueError("cannot build a model matrix without rows")
+    value_width = len(pack.feature_ids)
+    include_masks = algorithm == "hist_gradient_boosting"
+    matrix: NDArray[np.float64] = np.full(
+        (len(samples), value_width * (2 if include_masks else 1)),
+        np.nan,
+        dtype=float,  # numeric-boundary: analytics
+    )
+    if include_masks:
+        matrix[:, value_width:] = 1.0
+    for row_index, sample in enumerate(samples):
+        feature_by_id = {feature.feature_id: feature for feature in sample.row.features}
+        if set(feature_by_id) != set(pack.feature_ids):
+            raise ValueError("restated feature row differs from ordered registry")
+        quality_blocked = set(sample.row.quality_blocked_mask)
+        staleness_blocked = set(sample.row.staleness_mask)
+        if not quality_blocked.issubset(set(pack.feature_ids)):
+            raise ValueError("restated quality-blocked mask differs from ordered registry")
+        if not staleness_blocked.issubset(set(pack.feature_ids)):
+            raise ValueError("restated staleness mask differs from ordered registry")
+        for feature_index, feature_id in enumerate(pack.feature_ids):
+            feature = feature_by_id[feature_id]
+            if feature.observed:
+                _require_integer("restated feature value_int", feature.value_int)
+            elif feature.value_int is not None:
+                raise ValueError("missing restated feature unexpectedly carries a value")
+            if (
+                feature.observed
+                and feature_id not in quality_blocked
+                and feature_id not in staleness_blocked
+                and not feature.stale
+            ):
+                value_int = _require_integer("restated feature value_int", feature.value_int)
+                decimal_value = Decimal(value_int).scaleb(-feature.scale)
+                numeric_value = float(decimal_value)  # numeric-boundary: analytics
+                if not np.isfinite(numeric_value):
+                    raise ValueError("restated scaled feature is not finite at model boundary")
+                matrix[row_index, feature_index] = numeric_value
+                if include_masks:
+                    matrix[row_index, value_width + feature_index] = 0.0
+    return matrix
+
+
+def _assert_no_float(value: Any, context: str) -> None:
+    if isinstance(value, float):
+        raise ValueError(f"{context} must serialize numbers as integer bp or text")
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            _assert_no_float(item, f"{context}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _assert_no_float(item, f"{context}[{index}]")
 
 
 def _build_meta_oof_matrix(

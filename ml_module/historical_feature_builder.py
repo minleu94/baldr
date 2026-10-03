@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 import hashlib
 import json
@@ -27,6 +28,59 @@ from ml_module.historical_contracts import HistoricalFeatureRow
 
 
 FeatureSchema = tuple[tuple[str, str, str], ...]
+
+CURRENT_RESTATED_CORE19_FEATURE_IDS = tuple(
+    feature_id
+    for feature_id in CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids
+    if feature_id != "industry_relative_return_20d_bp"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentRestatedCore19Projection:
+    """不含 PIT availability 的 CORE19 純數值投影結果。"""
+
+    symbol: str
+    event_date: str
+    feature_ids: tuple[str, ...]
+    values: tuple[int | None, ...]
+    missing_feature_ids: tuple[str, ...]
+    quality_blocked_feature_ids: tuple[str, ...] = ()
+    staleness_blocked_feature_ids: tuple[str, ...] = ()
+    excluded_feature_ids: tuple[str, ...] = ("industry_relative_return_20d_bp",)
+    excluded_reason: str = "verified_symbol_industry_membership_unavailable"
+
+    def __post_init__(self) -> None:
+        if not self.symbol or self.symbol != self.symbol.strip():
+            raise ValueError("current-restated projection symbol is invalid")
+        parsed = date.fromisoformat(self.event_date)
+        if parsed.isoformat() != self.event_date:
+            raise ValueError("current-restated projection event date must be ISO")
+        if self.feature_ids != CURRENT_RESTATED_CORE19_FEATURE_IDS:
+            raise ValueError("current-restated projection feature IDs differ from CORE19")
+        if len(self.values) != len(self.feature_ids):
+            raise ValueError("current-restated projection values differ from CORE19 width")
+        if any(value is not None and (isinstance(value, bool) or not isinstance(value, int)) for value in self.values):
+            raise TypeError("current-restated projection values must be integer units or missing")
+        expected_missing = tuple(
+            feature_id
+            for feature_id, value in zip(self.feature_ids, self.values)
+            if value is None
+        )
+        if self.missing_feature_ids != expected_missing:
+            raise ValueError("current-restated projection missing mask differs from values")
+        for label, feature_ids in (
+            ("quality", self.quality_blocked_feature_ids),
+            ("staleness", self.staleness_blocked_feature_ids),
+        ):
+            if len(feature_ids) != len(set(feature_ids)) or not set(feature_ids).issubset(
+                self.feature_ids
+            ):
+                raise ValueError(f"current-restated {label} mask is outside CORE19")
+        if self.excluded_feature_ids != ("industry_relative_return_20d_bp",):
+            raise ValueError("CORE19 must explicitly exclude the unverified industry feature")
+        if not self.excluded_reason:
+            raise ValueError("excluded industry feature requires a reason")
 
 
 @dataclass(frozen=True)
@@ -373,6 +427,320 @@ class HistoricalFeatureBuilder:
                 values=tuple((feature_id, values[feature_id]) for feature_id in self.load_contract.canonical_ids),
             ))
         return tuple(rows)
+
+
+def compute_current_restated_core19_projection(
+    *,
+    symbol: str,
+    event_date: str,
+    prices: Sequence[HistoricalPriceObservation],
+    technicals: Sequence[HistoricalTechnicalObservation],
+    market: Sequence[HistoricalIndexObservation],
+    unavailable_price_dates: Sequence[str] = (),
+    unavailable_technical_dates: Sequence[str] = (),
+    unavailable_market_dates: Sequence[str] = (),
+    quality_blocked_price_dates: Sequence[str] = (),
+    stale_price_dates: Sequence[str] = (),
+    quality_blocked_technical_dates: Sequence[str] = (),
+    stale_technical_dates: Sequence[str] = (),
+    quality_blocked_market_dates: Sequence[str] = (),
+    stale_market_dates: Sequence[str] = (),
+) -> CurrentRestatedCore19Projection:
+    """以既有 Decimal 公式投影 CORE19，不建立任何歷史/PIT row。
+
+    ``event_date`` 是 raw observation 的參考日，不代表決策日或 availability。
+    呼叫端需從已驗證來源傳入觀測值與遮罩日期；此函式只回傳 scaled integer
+    feature values，沒有 available_date、decision_date 或 provider evidence。
+    """
+
+    if not isinstance(symbol, str) or not symbol or symbol != symbol.strip():
+        raise ValueError("current-restated projection symbol is invalid")
+    cutoff = _strict_iso_date(event_date, "event_date")
+    unavailable_prices = _strict_date_set(unavailable_price_dates, cutoff, "price")
+    unavailable_technicals = _strict_date_set(
+        unavailable_technical_dates, cutoff, "technical"
+    )
+    unavailable_market = _strict_date_set(unavailable_market_dates, cutoff, "market")
+    quality_price = _strict_date_set(quality_blocked_price_dates, cutoff, "quality price")
+    stale_price = _strict_date_set(stale_price_dates, cutoff, "stale price")
+    quality_technical = _strict_date_set(
+        quality_blocked_technical_dates, cutoff, "quality technical"
+    )
+    stale_technical = _strict_date_set(
+        stale_technical_dates, cutoff, "stale technical"
+    )
+    quality_market = _strict_date_set(
+        quality_blocked_market_dates, cutoff, "quality market"
+    )
+    stale_market = _strict_date_set(stale_market_dates, cutoff, "stale market")
+
+    price_by_date: dict[str, HistoricalPriceObservation] = {}
+    for price_observation in prices:
+        if type(price_observation) is not HistoricalPriceObservation:
+            raise TypeError("current-restated prices must be typed price observations")
+        if price_observation.symbol != symbol:
+            raise ValueError("current-restated price symbol differs from projection symbol")
+        _strict_iso_date(price_observation.trading_date, "price.trading_date")
+        if price_observation.trading_date > event_date:
+            continue
+        if price_observation.trading_date in price_by_date:
+            raise ValueError("current-restated prices repeat a symbol/date")
+        _validate_price_observation(price_observation)
+        price_by_date[price_observation.trading_date] = price_observation
+
+    technical_by_date: dict[str, HistoricalTechnicalObservation] = {}
+    for technical_observation in technicals:
+        if type(technical_observation) is not HistoricalTechnicalObservation:
+            raise TypeError("current-restated technicals must be typed observations")
+        if technical_observation.symbol != symbol:
+            raise ValueError("current-restated technical symbol differs from projection symbol")
+        _strict_iso_date(technical_observation.trading_date, "technical.trading_date")
+        if technical_observation.trading_date > event_date:
+            continue
+        if technical_observation.trading_date in technical_by_date:
+            raise ValueError("current-restated technicals repeat a symbol/date")
+        _validate_optional_decimal_observation(
+            (technical_observation.rsi, technical_observation.macd, technical_observation.adx),
+            "technical value",
+        )
+        technical_by_date[technical_observation.trading_date] = technical_observation
+
+    market_by_date: dict[str, Decimal | None] = {}
+    for market_observation in market:
+        if type(market_observation) is not HistoricalIndexObservation:
+            raise TypeError("current-restated market must be typed index observations")
+        if market_observation.index_name != "market":
+            raise ValueError("current-restated market index name must be canonical 'market'")
+        _strict_iso_date(market_observation.trading_date, "market.trading_date")
+        if market_observation.trading_date > event_date:
+            continue
+        if market_observation.trading_date in market_by_date:
+            raise ValueError("current-restated market repeats a date")
+        _validate_optional_decimal_observation((market_observation.close_value,), "market value")
+        market_by_date[market_observation.trading_date] = market_observation.close_value
+
+    timeline_dates = tuple(
+        sorted(set(market_by_date) | set(price_by_date) | {event_date})
+    )
+    effective_prices: list[HistoricalPriceObservation] = []
+    for trading_date in timeline_dates:
+        source_row = price_by_date.get(trading_date)
+        if source_row is None:
+            effective_prices.append(_missing_price_observation(symbol, trading_date))
+            continue
+        incomplete_ohlc = any(
+            value is None
+            for value in (
+                source_row.open_price,
+                source_row.high_price,
+                source_row.low_price,
+                source_row.close_price,
+            )
+        )
+        if (
+            incomplete_ohlc
+            or trading_date in unavailable_prices
+            or trading_date in quality_price
+            or trading_date in stale_price
+        ):
+            effective_prices.append(
+                replace(
+                    source_row,
+                    open_price=None,
+                    high_price=None,
+                    low_price=None,
+                    close_price=None,
+                    volume=None,
+                    turnover_amount_minor=None,
+                )
+            )
+        else:
+            effective_prices.append(source_row)
+
+    closes = [row.close_price for row in effective_prices]
+    volumes = [row.volume for row in effective_prices]
+    latest = effective_prices[-1]
+    technical = technical_by_date.get(event_date)
+    if (
+        event_date in unavailable_technicals
+        or event_date in quality_technical
+        or event_date in stale_technical
+    ):
+        technical = None
+    market_values = [
+        None
+        if trading_date in unavailable_market
+        or trading_date in quality_market
+        or trading_date in stale_market
+        else market_by_date.get(trading_date)
+        for trading_date in timeline_dates
+    ]
+    stock_20 = _return_bp(closes, 20)
+    market_5 = _return_bp(market_values, 5)
+    market_20 = _return_bp(market_values, 20)
+    market_60 = _return_bp(market_values, 60)
+    values_by_id = {
+        "stock_return_1d_bp": _return_bp(closes, 1),
+        "stock_return_5d_bp": _return_bp(closes, 5),
+        "stock_return_20d_bp": stock_20,
+        "stock_return_60d_bp": _return_bp(closes, 60),
+        "trailing_volatility_20d_bp": _volatility_bp(closes, 20),
+        "high_low_range_20d_bp": _range_bp(effective_prices, 20),
+        "close_to_ma_5d_bp": _close_to_average_bp(closes, 5),
+        "close_to_ma_20d_bp": _close_to_average_bp(closes, 20),
+        "close_to_ma_60d_bp": _close_to_average_bp(closes, 60),
+        "rsi_normalized_bp": _rsi_bp(technical.rsi if technical else None),
+        "adx_normalized_bp": _scaled_bp(technical.adx if technical else None),
+        "macd_normalized_bp": _ratio_bp(
+            technical.macd if technical else None, latest.close_price
+        ),
+        "volume_ratio_5d_bp": _recent_ratio_bp(volumes, 5),
+        "volume_ratio_20d_bp": _recent_ratio_bp(volumes, 20),
+        "turnover_amount_minor": latest.turnover_amount_minor,
+        "market_return_5d_bp": market_5,
+        "market_return_20d_bp": market_20,
+        "market_return_60d_bp": market_60,
+        "stock_minus_market_20d_bp": _difference(stock_20, market_20),
+    }
+    if tuple(values_by_id) != CURRENT_RESTATED_CORE19_FEATURE_IDS:
+        raise RuntimeError("current-restated CORE19 projection order differs from registry")
+    values = tuple(values_by_id[feature_id] for feature_id in CURRENT_RESTATED_CORE19_FEATURE_IDS)
+    missing = tuple(
+        feature_id
+        for feature_id, value in zip(CURRENT_RESTATED_CORE19_FEATURE_IDS, values)
+        if value is None
+    )
+    close_dates = {
+        feature_id: tuple(timeline_dates[-periods - 1 :])
+        for feature_id, periods in (
+            ("stock_return_1d_bp", 1),
+            ("stock_return_5d_bp", 5),
+            ("stock_return_20d_bp", 20),
+            ("stock_return_60d_bp", 60),
+            ("trailing_volatility_20d_bp", 20),
+        )
+    }
+    close_dates.update(
+        {
+            feature_id: tuple(timeline_dates[-periods:])
+            for feature_id, periods in (
+                ("close_to_ma_5d_bp", 5),
+                ("close_to_ma_20d_bp", 20),
+                ("close_to_ma_60d_bp", 60),
+                ("volume_ratio_5d_bp", 5),
+                ("volume_ratio_20d_bp", 20),
+                ("high_low_range_20d_bp", 20),
+            )
+        }
+    )
+    close_dates["turnover_amount_minor"] = (timeline_dates[-1],)
+    close_dates["rsi_normalized_bp"] = (event_date,)
+    close_dates["adx_normalized_bp"] = (event_date,)
+    close_dates["macd_normalized_bp"] = (event_date, timeline_dates[-1])
+    for period, feature_id in (
+        (5, "market_return_5d_bp"),
+        (20, "market_return_20d_bp"),
+        (60, "market_return_60d_bp"),
+    ):
+        close_dates[feature_id] = tuple(timeline_dates[-period - 1 :])
+    close_dates["stock_minus_market_20d_bp"] = tuple(timeline_dates[-21:])
+
+    def _depends_on(dates: Sequence[str], blocked_dates: frozenset[str]) -> bool:
+        return bool(set(dates).intersection(blocked_dates))
+
+    quality_blocked_ids: list[str] = []
+    staleness_blocked_ids: list[str] = []
+    for feature_id, value in zip(CURRENT_RESTATED_CORE19_FEATURE_IDS, values):
+        if value is not None:
+            continue
+        dates = close_dates[feature_id]
+        price_dependent = feature_id not in {
+            "market_return_5d_bp",
+            "market_return_20d_bp",
+            "market_return_60d_bp",
+        }
+        market_dependent = feature_id.startswith("market_return_") or feature_id == "stock_minus_market_20d_bp"
+        technical_dependent = feature_id in {
+            "rsi_normalized_bp",
+            "adx_normalized_bp",
+            "macd_normalized_bp",
+        }
+        if price_dependent and _depends_on(dates, quality_price):
+            quality_blocked_ids.append(feature_id)
+        if market_dependent and _depends_on(dates, quality_market):
+            quality_blocked_ids.append(feature_id)
+        if technical_dependent and event_date in quality_technical:
+            quality_blocked_ids.append(feature_id)
+        if price_dependent and _depends_on(dates, stale_price):
+            staleness_blocked_ids.append(feature_id)
+        if market_dependent and _depends_on(dates, stale_market):
+            staleness_blocked_ids.append(feature_id)
+        if technical_dependent and event_date in stale_technical:
+            staleness_blocked_ids.append(feature_id)
+    return CurrentRestatedCore19Projection(
+        symbol=symbol,
+        event_date=event_date,
+        feature_ids=CURRENT_RESTATED_CORE19_FEATURE_IDS,
+        values=values,
+        missing_feature_ids=missing,
+        quality_blocked_feature_ids=tuple(
+            feature_id for feature_id in CURRENT_RESTATED_CORE19_FEATURE_IDS
+            if feature_id in set(quality_blocked_ids)
+        ),
+        staleness_blocked_feature_ids=tuple(
+            feature_id for feature_id in CURRENT_RESTATED_CORE19_FEATURE_IDS
+            if feature_id in set(staleness_blocked_ids)
+        ),
+    )
+
+
+def _strict_iso_date(value: str, field: str) -> date:
+    if not isinstance(value, str):
+        raise TypeError(f"{field} must be canonical ISO date text")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be canonical ISO date text") from exc
+    if parsed.isoformat() != value:
+        raise ValueError(f"{field} must be canonical ISO date text")
+    return parsed
+
+
+def _strict_date_set(
+    values: Sequence[str], cutoff: date, field: str
+) -> frozenset[str]:
+    result: set[str] = set()
+    for value in values:
+        parsed = _strict_iso_date(value, f"{field} unavailable date")
+        if parsed <= cutoff:
+            result.add(value)
+    return frozenset(result)
+
+
+def _validate_optional_decimal_observation(
+    values: Sequence[Decimal | None], field: str
+) -> None:
+    for value in values:
+        if value is not None and (not isinstance(value, Decimal) or not value.is_finite()):
+            raise TypeError(f"{field} must be a finite Decimal or None")
+
+
+def _validate_price_observation(observation: HistoricalPriceObservation) -> None:
+    _validate_optional_decimal_observation(
+        (
+            observation.open_price,
+            observation.high_price,
+            observation.low_price,
+            observation.close_price,
+        ),
+        "price value",
+    )
+    for name, value in (
+        ("volume", observation.volume),
+        ("turnover_amount_minor", observation.turnover_amount_minor),
+    ):
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise TypeError(f"{name} must be an integer or None")
 
 
 def _validated_feature_contract_scope(
